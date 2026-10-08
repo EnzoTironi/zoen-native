@@ -28,6 +28,7 @@ use roda_log::chain_hash;
 use roda_proto::{Envelope, InviteCreated, Sequenced};
 use roda_types::{EventBody, Role, SpaceKind, GENESIS_PREV};
 use sha2::{Digest, Sha256};
+use std::sync::atomic::{AtomicU32, AtomicU64, Ordering};
 
 use super::{
     admission::{admit, Effect, Facts},
@@ -341,19 +342,25 @@ impl FdbLog {
     }
 }
 
+/// Append transactions run again after a conflict (two writers on one Space head) or a
+/// retryable error, since start: the contention signal for hot Spaces (ADR 0022).
+pub static APPEND_RETRIES: AtomicU64 = AtomicU64::new(0);
+
 #[async_trait]
 impl LogStore for FdbLog {
     #[tracing::instrument(name = "fdb.append", skip_all, fields(attempts = tracing::field::Empty))]
     async fn append(&self, env: &Envelope, target_known: bool) -> Result<Sequencing, Reject> {
-        let attempts = std::sync::atomic::AtomicU32::new(0);
+        let attempts = AtomicU32::new(0);
         let r = self
             .db
             .run(|trx, _committed| {
-                attempts.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                attempts.fetch_add(1, Ordering::Relaxed);
                 async move { self.append_in(&trx, env, target_known).await }
             })
             .await;
-        tracing::Span::current().record("attempts", i64::from(attempts.into_inner()));
+        let attempts = attempts.into_inner();
+        tracing::Span::current().record("attempts", i64::from(attempts));
+        APPEND_RETRIES.fetch_add(u64::from(attempts.saturating_sub(1)), Ordering::Relaxed);
         r.unwrap_or_else(|e| {
             tracing::error!(error = %e, "log store error while sequencing");
             Err(Reject::unavailable())

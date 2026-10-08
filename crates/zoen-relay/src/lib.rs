@@ -183,6 +183,9 @@ pub async fn build(cfg: &Config) -> anyhow::Result<(Router, Shared)> {
     Ok((app, state))
 }
 
+/// Initial read and write buffer per WebSocket (see `ws`, ADR 0022).
+const SOCKET_BUFFER: usize = 8 * 1024;
+
 /// Runs until Ctrl-C / SIGTERM.
 pub async fn serve(cfg: Config) -> anyhow::Result<()> {
     let (app, state) = build(&cfg).await?;
@@ -229,7 +232,11 @@ async fn ws(
     State(st): State<Shared>,
     ClientIp(ip): ClientIp,
 ) -> axum::response::Response {
+    // Frames are small; the default 128 KiB read and write buffers per socket would cost a
+    // million connections 256 GB of reserved memory. Both still grow for a large sync batch.
     ws.max_message_size(session::MAX_FRAME)
+        .read_buffer_size(SOCKET_BUFFER)
+        .write_buffer_size(SOCKET_BUFFER)
         .on_upgrade(move |socket| session::run(socket, st, ip))
 }
 
