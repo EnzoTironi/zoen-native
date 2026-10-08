@@ -84,11 +84,11 @@ fn args() -> anyhow::Result<Args> {
     Ok(a)
 }
 
-fn ms(h: &Histogram<u64>, q: f64) -> f64 {
+fn ms(h: &Histogram<u32>, q: f64) -> f64 {
     (h.value_at_quantile(q) as f64 / 1000.0 * 100.0).round() / 100.0
 }
 
-fn latency(h: &Histogram<u64>) -> Value {
+fn latency(h: &Histogram<u32>) -> Value {
     json!({
         "count": h.len(),
         "p50_ms": ms(h, 0.5), "p90_ms": ms(h, 0.9), "p99_ms": ms(h, 0.99),
@@ -155,14 +155,19 @@ async fn main() -> anyhow::Result<()> {
         })
         .collect::<serde_json::Map<_, _>>()
         .into();
-    eprintln!("connected {} people in {connect_secs:.1} s", a.users);
+    eprintln!(
+        "connected {} people in {connect_secs:.1} s ({})",
+        a.users,
+        own_rss()
+    );
 
     // ── groups ──
+    // Exact-size groups: keeping `split_off`'s head would keep the whole remaining list's
+    // capacity in every group, quadratic in people (3.7 GB at 10,000).
     let mut groups: Vec<Vec<Conn>> = Vec::new();
-    while !conns.is_empty() {
-        let take = a.group.min(conns.len());
-        let rest = conns.split_off(take);
-        groups.push(std::mem::replace(&mut conns, rest));
+    let mut people = conns.into_iter().peekable();
+    while people.peek().is_some() {
+        groups.push(people.by_ref().take(a.group).collect());
     }
     if groups.len() > 1 && groups.last().is_some_and(|g| g.len() < 2) {
         let lone = groups.pop().and_then(|mut g| g.pop());
@@ -179,9 +184,10 @@ async fn main() -> anyhow::Result<()> {
         .try_collect()
         .await?;
     eprintln!(
-        "formed {} groups in {:.1} s",
+        "formed {} groups in {:.1} s ({})",
         formed.len(),
-        t1.elapsed().as_secs_f64()
+        t1.elapsed().as_secs_f64(),
+        own_rss()
     );
 
     // ── catch up, then run ──
@@ -201,6 +207,7 @@ async fn main() -> anyhow::Result<()> {
         .buffer_unordered(a.connect_concurrency)
         .try_collect()
         .await?;
+    eprintln!("caught up ({})", own_rss());
     for (c, space, head, n) in ready {
         let (tx, rx) = mpsc::channel(1024);
         senders.push((tx, n));
@@ -218,6 +225,7 @@ async fn main() -> anyhow::Result<()> {
     }
 
     tokio::time::sleep_until(start).await;
+    eprintln!("running ({})", own_rss());
     let total_us = ((a.warmup + a.seconds) * 1e6) as u64;
     let mut dispatched: u64 = 0;
     let mut expected_deliveries: u64 = 0;
@@ -321,4 +329,12 @@ async fn main() -> anyhow::Result<()> {
         );
     }
     Ok(())
+}
+
+/// This load generator's own resident memory, so a run shows what it cost the machine.
+fn own_rss() -> String {
+    procfs::rss_bytes(std::process::id()).map_or_else(
+        || "rss unknown".into(),
+        |b| format!("{} MiB resident", b >> 20),
+    )
 }

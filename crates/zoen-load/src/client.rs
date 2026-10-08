@@ -12,13 +12,17 @@ use roda_proto::{
 };
 use roda_types::{EventBody, Identity, IdentityKind, Privacy, Role, Seen, SpaceKind};
 use tokio::{net::TcpStream, sync::mpsc, time::Instant};
-use tokio_tungstenite::{tungstenite::Message, MaybeTlsStream, WebSocketStream};
+use tokio_tungstenite::{
+    tungstenite::{protocol::WebSocketConfig, Message},
+    MaybeTlsStream, WebSocketStream,
+};
 
 type Ws = WebSocketStream<MaybeTlsStream<TcpStream>>;
 
-/// Latencies are recorded in microseconds, up to a minute.
-pub fn histogram() -> Histogram<u64> {
-    Histogram::new_with_bounds(1, 60_000_000, 3).expect("histogram bounds")
+/// Latencies in microseconds up to a minute, to 1% (two significant figures): small enough
+/// that every simulated person can keep their own.
+pub fn histogram() -> Histogram<u32> {
+    Histogram::new_with_bounds(1, 60_000_000, 2).expect("histogram bounds")
 }
 
 pub struct Conn {
@@ -30,9 +34,18 @@ impl Conn {
     /// TCP + WebSocket + Hello/Challenge/Auth + Register.
     pub async fn open(relay: &str) -> anyhow::Result<Conn> {
         let url = format!("{}/v1/sync", relay.replace("http://", "ws://"));
-        let (ws, _) = tokio_tungstenite::connect_async_with_config(url.as_str(), None, true)
-            .await
-            .context("websocket")?;
+        let (ws, _) = tokio_tungstenite::connect_async_with_config(
+            url.as_str(),
+            // Small buffers, as the relay uses, so 10,000 simulated people fit in memory.
+            Some(
+                WebSocketConfig::default()
+                    .read_buffer_size(8 * 1024)
+                    .write_buffer_size(8 * 1024),
+            ),
+            true,
+        )
+        .await
+        .context("websocket")?;
         let root = Signer::generate();
         let author = Author::device(&root, Signer::generate());
         let mut c = Conn { ws, author };
@@ -115,20 +128,33 @@ impl Conn {
             .sign_event(space, &roda_types::new_ulid(now), now, seen, body);
         let env = Envelope::plain(&e);
         let client_id = env.client_id().to_string();
-        self.send(&ClientFrame::Publish { env }).await?;
-        loop {
-            match self.recv().await? {
-                ServerFrame::Event { ev } if ev.env.client_id() == client_id => return Ok(ev),
-                ServerFrame::Rejected {
-                    client_id: c,
-                    reason,
-                    ..
-                } if c == client_id => {
-                    bail!("rejected: {reason}")
+        // Like the app: a temporary refusal (a rate limit) means send the same envelope again
+        // after a pause; the relay deduplicates by client id.
+        let mut pause = Duration::from_millis(100);
+        for _ in 0..40 {
+            self.send(&ClientFrame::Publish { env: env.clone() })
+                .await?;
+            loop {
+                match self.recv().await? {
+                    ServerFrame::Event { ev } if ev.env.client_id() == client_id => return Ok(ev),
+                    ServerFrame::Rejected {
+                        client_id: c,
+                        reason,
+                        permanent,
+                        ..
+                    } if c == client_id => {
+                        if permanent {
+                            bail!("rejected: {reason}");
+                        }
+                        break;
+                    }
+                    _ => {}
                 }
-                _ => {}
             }
+            tokio::time::sleep(pause).await;
+            pause = (pause * 2).min(Duration::from_secs(2));
         }
+        bail!("still refused after 40 attempts")
     }
 
     /// Creates a group Space with `members` in it; returns its id.
@@ -204,8 +230,8 @@ pub struct Tally {
     pub accepted: u64,
     pub delivered: u64,
     pub rejected: HashMap<String, u64>,
-    pub ack: Histogram<u64>,
-    pub delivery: Histogram<u64>,
+    pub ack: Histogram<u32>,
+    pub delivery: Histogram<u32>,
 }
 
 impl Tally {
