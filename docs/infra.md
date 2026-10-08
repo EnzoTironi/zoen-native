@@ -17,6 +17,7 @@ Everything is code under `infra/`; nothing secret is in git.
 ```sh
 scripts/local-cluster.sh up        # cluster, relay image from this checkout, Postgres, relay
 scripts/local-cluster.sh journey   # port-forward, then scripts/journey-remote.sh through the cluster
+scripts/local-cluster.sh telemetry # relay logs and traces reach the collector, also after it moves pods
 scripts/local-cluster.sh down
 ```
 
@@ -27,8 +28,14 @@ the disk with 14 GB for Postgres, the relay and the FDB operator; the whole cell
 4 GB). The k3s image ships no libfuse, so the node gets the upstream static `fuse-overlayfs`
 (version and SHA-256 pinned in the script, cached under `.tools/`) and `infra/k3d/mount.fuse3`,
 a ten-line helper that hands containerd's mount to it, both mounted read-only, and
-`--flannel-backend=host-gw` (the box kernel has no vxlan). `K3D_FIX_DNS=0` keeps Docker's
-embedded DNS.
+`--flannel-backend=host-gw` (the box kernel has no vxlan). kube-proxy runs in `nftables`
+mode: its default iptables mode balances a Service over several pods with `-m statistic`, the
+box kernel has no `xt_statistic`, and because `iptables-restore` is atomic one such rule (NATS,
+kube-dns) failed every sync, freezing all Services at the pods that existed first. A rolled
+collector then silently stopped receiving relay telemetry; `scripts/local-cluster.sh telemetry`
+now proves delivery before and after rolling the collector. Eviction starts at 2 GiB free
+(not 5% of a disk the node shares with the rest of the machine). `K3D_FIX_DNS=0` keeps
+Docker's embedded DNS.
 
 One-time box fix, already applied: an older Docker had left `iptables-legacy` rules with a
 `FORWARD DROP` policy that only allowed `docker0`, so containers on user-defined bridges
