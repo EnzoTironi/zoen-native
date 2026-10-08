@@ -71,9 +71,10 @@ struct FanMenu: View {
     @State private var holdTask: Task<Void, Never>?
     @State private var armHoldAt: Date?
     @State private var labelSize = CGSize(width: 80, height: 26)
-    /// The + and the items share one Liquid Glass container, so opening reads as the + itself
-    /// stretching out into the items (and closing as them flowing back in), not a pop.
-    @Namespace private var glass
+    /// The + and the items share one Liquid Glass container: as the items leave the + they
+    /// pull out of its glass like drops and flow back into it on close. The merge distance is
+    /// smaller than the gap between open items, so the open fan stays a row of clean circles.
+    private static let glassMerge: CGFloat = 4
 
     private var metrics: RadialMetrics {
         RadialMetrics(count: items.count, span: arc.upperBound - arc.lowerBound, triggerSize: triggerSize)
@@ -82,7 +83,7 @@ struct FanMenu: View {
     private var itemSize: CGFloat { RadialMetrics.itemDiameter }
 
     var body: some View {
-        GlassEffectContainer(spacing: 30) {
+        GlassEffectContainer(spacing: Self.glassMerge) {
             fan
         }
         .frame(width: triggerSize, height: triggerSize)
@@ -129,7 +130,6 @@ struct FanMenu: View {
                 .rotationEffect(.degrees(isOpen ? 45 : 0))
                 .frame(width: triggerSize, height: triggerSize)
                 .glassEffect(.regular.tint(scheme == .dark ? Palette.action : Color(hex: "#1D2418").opacity(0.92)).interactive(), in: .circle)
-                .glassEffectID("plus", in: glass)
                 .overlay { if scheme == .dark { Circle().strokeBorder(.white.opacity(0.3), lineWidth: 0.75).allowsHitTesting(false) } }
                 .shadow(color: .black.opacity(scheme == .dark ? 0.55 : 0.25), radius: isOpen ? 14 : 10, y: 4)
                 .scaleEffect(touching && !reduceMotion ? 0.9 : 1)
@@ -300,10 +300,12 @@ struct FanMenu: View {
         guard !reduceMotion, let h = hovered,
               let hi = items.firstIndex(where: { $0.id == h }),
               let i = items.firstIndex(where: { $0.id == item.id }) else { return 1 }
+        // Sized so the grown item still clears its neighbours by more than the glass merge
+        // distance (gap 8 − 3.8 > 4): no gooey bridges between open items.
         switch abs(hi - i) {
-        case 0: return 1.22
-        case 1: return 1.04
-        default: return 0.9
+        case 0: return 1.16
+        case 1: return 1.0
+        default: return 0.92
         }
     }
 
@@ -319,7 +321,6 @@ struct FanMenu: View {
                 .frame(width: itemSize, height: itemSize)
                 // Same Liquid Glass as the bottom bar; the item under the finger fills with moss green.
                 .glassEffect(on ? .regular.tint(Palette.action).interactive() : .regular.interactive(), in: .circle)
-                .glassEffectID(item.id, in: glass)
                 .shadow(color: (on ? Palette.action : Color.black).opacity(on ? 0.35 : 0.12), radius: on ? 14 : 8, y: on ? 6 : 3)
                 .overlay(alignment: .topTrailing) {
                     if item.badge > 0 {

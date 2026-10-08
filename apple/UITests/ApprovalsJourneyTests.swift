@@ -179,7 +179,7 @@ final class ApprovalsJourneyTests: XCTestCase {
         let first = topCard(app)
         card(app).tap()
         let details = NSPredicate { _, _ in app.descendants(matching: .any)["approval-card"].firstMatch.label.contains("Quem está pedindo") }
-        XCTAssertEqual(XCTWaiter().wait(for: [XCTNSPredicateExpectation(predicate: details, object: nil)], timeout: 5),
+        XCTAssertEqual(XCTWaiter().wait(for: [XCTNSPredicateExpectation(predicate: details, object: nil)], timeout: 8),
                        .completed, "details show who's asking, what it touches and past decisions")
         XCTAssertTrue(card(app).label.contains("Decisões anteriores"))
         // The same glass buttons work from the details.

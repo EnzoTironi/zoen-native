@@ -50,9 +50,11 @@ final class ProofVideoTests: XCTestCase {
         sleep(1)
         // 4. Tap for details, then a long pull up: the ink "SEMPRE" stamp.
         card.tap()
-        sleep(2)
+        // Waits for the flip rather than a fixed nap: a cold first launch can stall a beat.
+        let flipped = NSPredicate { _, _ in card.label.contains("Quem está pedindo") }
+        XCTAssertEqual(XCTWaiter().wait(for: [XCTNSPredicateExpectation(predicate: flipped, object: nil)], timeout: 8), .completed, "details open")
+        sleep(1)
         label = card.label
-        XCTAssertTrue(label.contains("Quem está pedindo"), "details open")
         pull(10, -420, speed: 260, hold: 0.3)
         next(after: label)
         sleep(2)
