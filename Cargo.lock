@@ -1252,6 +1252,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "hdrhistogram"
+version = "7.6.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f49d1053f4708f0af3cf9fc5bffc7e68a914a3c45becb231c80068c9c3f78bea"
+dependencies = [
+ "byteorder",
+ "num-traits",
+]
+
+[[package]]
 name = "heck"
 version = "0.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4685,6 +4695,22 @@ dependencies = [
  "roda-types",
  "serde_json",
  "sqlx",
+ "tokio",
+ "tokio-tungstenite 0.30.0",
+]
+
+[[package]]
+name = "zoen-load"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "fastrand",
+ "futures-util",
+ "hdrhistogram",
+ "roda-log",
+ "roda-proto",
+ "roda-types",
+ "serde_json",
  "tokio",
  "tokio-tungstenite 0.30.0",
 ]
