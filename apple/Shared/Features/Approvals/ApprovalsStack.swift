@@ -1,5 +1,8 @@
 import SwiftUI
 import RodaCore
+#if os(iOS)
+import CoreMotion
+#endif
 
 // Catch-up stack for approval requests (Slack's swipe cards, in Zoen's ink and glass).
 // Right approves, left denies, up always approves, down always denies; tap opens the
@@ -107,6 +110,12 @@ struct ApprovalsStackView: View {
     @State private var cardWidth: CGFloat = 360
     @State private var cardHeight: CGFloat = 560
     @State private var commitTick = 0
+    /// Cards fall into place when the stack opens (Wallet-style: weight, then a settle).
+    @State private var entered = false
+    /// Ids already shown; anything new that arrives live drops in from above.
+    @State private var known: Set<String> = []
+    @State private var arriving: Set<String> = []
+    @State private var arrivalTick = 0
     @State private var commitFeel: SensoryFeedback = .impact(weight: .light)
     @State private var expanded = false
     @State private var lockedHint = false
@@ -158,10 +167,16 @@ struct ApprovalsStackView: View {
         }
         .padding(.bottom, 8)
         .background(Palette.background.ignoresSafeArea())
-        .animation(.spring(duration: 0.4, bounce: 0.2), value: visible.map(\.id))
+        .animation(.spring(response: 0.55, dampingFraction: 0.66), value: visible.map(\.id))
         .onAppear(perform: sync)
         .onChange(of: model.revision) { _, _ in sync() }
-        .onChange(of: visible.isEmpty, initial: true) { _, empty in if !empty { seenCards = true } }
+        .onChange(of: visible.isEmpty, initial: true) { _, empty in
+            if !empty {
+                seenCards = true
+                if !entered { DispatchQueue.main.asyncAfter(deadline: .now() + 0.12) { entered = true } }
+            }
+        }
+        .sensoryFeedback(.impact(weight: .medium, intensity: 0.7), trigger: arrivalTick)
         .onDisappear { commitPending() }
         // Crossing a threshold (or back): a light, crisp tick. A red-line "always" warns.
         .sensoryFeedback(trigger: crossed) { old, new in
@@ -271,9 +286,12 @@ struct ApprovalsStackView: View {
         let angle = top ? tilt + (flying != nil ? exitSpin : 0) : 0
         let scale = top ? (pressed && flying == nil ? 1.02 : 1) : 1 - 0.055 * back
         let locked = lead?.0 == .up && !r.canAlwaysApprove
-        return ApprovalCardView(request: r, expanded: top && expanded,
-                                history: top ? history(for: r) : [], standing: top ? model.standing(for: r.agent.id) : [],
-                                showHint: top && decided == 0)
+        let drop = reduceMotion ? 0 : (entered ? 0 : -(cardHeight + 160 + i * 70))
+        return TiltSheen(active: top && !pressed && flying == nil && drag == .zero && entered) {
+            ApprovalCardView(request: r, expanded: top && expanded,
+                             history: top ? history(for: r) : [], standing: top ? model.standing(for: r.agent.id) : [],
+                             showHint: top && decided == 0)
+        }
             .overlay {
                 // Back cards sit a little dimmer, as if further from the light.
                 RoundedRectangle(cornerRadius: ApprovalCardView.radius, style: .continuous)
@@ -296,6 +314,14 @@ struct ApprovalsStackView: View {
                     x: top ? CGFloat(-angle) * 1.1 : 0, y: top && pressed ? 18 : 8)
             .rotationEffect(.degrees(angle), anchor: grabTop ? .bottom : .top)
             .offset(offset)
+            .offset(y: drop)
+            .rotationEffect(.degrees(entered || reduceMotion ? 0 : (i == 0 ? -5 : 4)))
+            .opacity(reduceMotion && !entered ? 0 : 1)
+            // Back cards land first, the top one last, each with a little bounce.
+            .animation(reduceMotion ? .easeOut(duration: 0.25) : .spring(response: 0.62, dampingFraction: 0.68).delay(Double(2 - min(2, i)) * 0.07), value: entered)
+            .transition(arriving.contains(r.id) && !reduceMotion
+                        ? .asymmetric(insertion: .offset(y: -(cardHeight + 200)).combined(with: .scale(scale: 1.04)), removal: .opacity)
+                        : .opacity)
             .opacity(top && flying != nil && reduceMotion ? 0 : 1)
             .allowsHitTesting(top)
             .gesture(dragGesture(for: r), isEnabled: top)
@@ -531,6 +557,11 @@ struct ApprovalsStackView: View {
         let waiting = Set(pending?.ids ?? [])
         // Keep what's waiting in the undo window; drop what the core already resolved.
         let kept = deck.filter { waiting.contains($0.id) && !ids.contains($0.id) }
+        // A request that shows up while the stack is open drops in with weight.
+        let fresh = seenCards ? Set(queue.map(\.id)).subtracting(known) : []
+        arriving = fresh
+        if !fresh.isEmpty { arrivalTick += 1 }
+        known.formUnion(queue.map(\.id))
         deck = queue + kept.filter { k in !queue.contains { $0.id == k.id } }
         hidden = hidden.filter { ids.contains($0) || waiting.contains($0) }
     }
@@ -646,25 +677,39 @@ struct ApprovalCardView: View {
     var showHint = false
 
     var body: some View {
-        ViewThatFits(in: .vertical) {
-            content
-            ScrollView { content }.scrollBounceBehavior(.basedOnSize)
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-        .background {
-            ZStack {
-                Palette.surface
-                CardGrain()
+        // Tap flips the card: the details live on its back, and the swipes still work there.
+        ZStack {
+            face { front }
+                .modifier(FlipFace(angle: expanded ? 180 : 0, back: false, reduceMotion: reduceMotion))
+            face {
+                ViewThatFits(in: .vertical) {
+                    backSide
+                    ScrollView { backSide }.scrollBounceBehavior(.basedOnSize)
+                }
             }
-            .clipShape(.rect(cornerRadius: Self.radius, style: .continuous))
+            .modifier(FlipFace(angle: expanded ? 180 : 0, back: true, reduceMotion: reduceMotion))
         }
-        .overlay(RoundedRectangle(cornerRadius: Self.radius, style: .continuous).strokeBorder(Palette.hairline, lineWidth: 0.5))
     }
 
-    private var content: some View {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    private func face<C: View>(@ViewBuilder _ c: () -> C) -> some View {
+        c()
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+            .background {
+                ZStack {
+                    Palette.surface
+                    CardGrain()
+                }
+                .clipShape(.rect(cornerRadius: Self.radius, style: .continuous))
+            }
+            .overlay(RoundedRectangle(cornerRadius: Self.radius, style: .continuous).strokeBorder(Palette.hairline, lineWidth: 0.5))
+    }
+
+    private var front: some View {
         VStack(alignment: .leading, spacing: 0) {
             who
-            Spacer(minLength: expanded ? 22 : 30)
+            Spacer(minLength: 30)
             // The hero: the action, as one short sentence.
             Text(request.title)
                 .font(.system(size: 27, weight: .bold))
@@ -681,7 +726,7 @@ struct ApprovalCardView: View {
                     Text(request.detail)
                         .font(.callout)
                         .foregroundStyle(Palette.textSecondary)
-                        .lineLimit(expanded ? nil : 2)
+                        .lineLimit(2)
                         .fixedSize(horizontal: false, vertical: true)
                 }
                 .fixedSize(horizontal: false, vertical: true)
@@ -691,10 +736,33 @@ struct ApprovalCardView: View {
                 ForEach(chips) { ChipView(chip: $0) }
             }
             .padding(.top, 20)
-            if expanded { details.padding(.top, 22).transition(.opacity.combined(with: .offset(y: 12))) }
             // Twice the room below: the action sits at the card's optical third.
-            Spacer(minLength: expanded ? 18 : 30)
-            if !expanded { Spacer(minLength: 0) }
+            Spacer(minLength: 30)
+            Spacer(minLength: 0)
+            hint
+        }
+        .padding(.horizontal, 26)
+        .padding(.top, 24)
+        .padding(.bottom, 18)
+    }
+
+    private var backSide: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            who
+            Text(request.title)
+                .font(.title3.weight(.bold))
+                .foregroundStyle(Palette.textPrimary)
+                .fixedSize(horizontal: false, vertical: true)
+                .padding(.top, 18)
+            if !request.detail.isEmpty {
+                Text(request.detail)
+                    .font(.subheadline)
+                    .foregroundStyle(Palette.textSecondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(.top, 6)
+            }
+            details.padding(.top, 18)
+            Spacer(minLength: 18)
             hint
         }
         .padding(.horizontal, 26)
@@ -714,15 +782,15 @@ struct ApprovalCardView: View {
                         .font(.caption.weight(.medium))
                         .foregroundStyle(Palette.textTertiary)
                 }
-                HStack(spacing: 6) {
-                    if let s = model.space(request.spaceId) { ChatAvatar(space: s, size: 18) }
-                    Text("asks in \(request.spaceTitle)")
-                        .font(.footnote)
-                        .foregroundStyle(Palette.textSecondary)
-                        .lineLimit(1)
-                }
+                Text("asks in \(request.spaceTitle)")
+                    .font(.footnote)
+                    .foregroundStyle(Palette.textSecondary)
+                    .lineLimit(1)
             }
-            Spacer(minLength: 0)
+            Spacer(minLength: 8)
+            if let s = model.space(request.spaceId) {
+                ContextFan(space: s, people: Array(s.members.filter { $0.kind != .agent && !$0.isMe }.prefix(2)), key: request.id)
+            }
         }
     }
 
@@ -732,8 +800,8 @@ struct ApprovalCardView: View {
             if showHint && !expanded {
                 Text("Tap for details").font(.caption.weight(.medium))
             }
-            Image(systemName: expanded ? "chevron.compact.up" : "chevron.compact.down")
-                .font(.system(size: 18, weight: .medium))
+            Image(systemName: expanded ? "arrow.uturn.backward" : "chevron.compact.down")
+                .font(.system(size: expanded ? 13 : 18, weight: .semibold))
         }
         .foregroundStyle(Palette.textTertiary.opacity(0.8))
         .frame(maxWidth: .infinity)
@@ -771,7 +839,6 @@ struct ApprovalCardView: View {
     @ViewBuilder
     private var details: some View {
         VStack(alignment: .leading, spacing: 14) {
-            Divider().opacity(0.5)
             VStack(alignment: .leading, spacing: 10) {
                 fact("person.2", String(localized: "Who sees it"), request.audience)
                 fact("bolt", String(localized: "Action"), request.actionLabel)
@@ -900,6 +967,166 @@ private struct CardGrain: View {
         .allowsHitTesting(false)
         .accessibilityHidden(true)
     }
+}
+
+/// One face of a flipping card. Animatable, so each face hides exactly at 90°; with
+/// Reduce Motion it cross-fades instead of turning.
+private struct FlipFace: ViewModifier, Animatable {
+    var angle: Double
+    let back: Bool
+    let reduceMotion: Bool
+
+    nonisolated var animatableData: Double {
+        get { angle }
+        set { angle = newValue }
+    }
+
+    func body(content: Content) -> some View {
+        let a = back ? angle - 180 : angle
+        let shown = abs(a) < 90
+        content
+            .rotation3DEffect(.degrees(reduceMotion ? 0 : a), axis: (x: 0, y: 1, z: 0), perspective: 0.4)
+            .opacity(reduceMotion ? (back ? angle / 180 : 1 - angle / 180) : (shown ? 1 : 0))
+            .accessibilityHidden(!shown)
+            .allowsHitTesting(shown)
+    }
+}
+
+/// Where the ask lives, at a glance: the Space's art fanned with a couple of the people in
+/// it, like tiny photos. They shuffle back into place with a spring when the card changes.
+private struct ContextFan: View {
+    let space: SpaceSummary
+    let people: [Persona]
+    let key: String
+    @State private var fanned = false
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    var body: some View {
+        ZStack {
+            ForEach(Array(people.enumerated().reversed()), id: \.element.id) { i, p in
+                ContactAvatar(persona: p, size: 26)
+                    .padding(2)
+                    .background(Palette.surface, in: .circle)
+                    .shadow(color: .black.opacity(0.12), radius: 3, y: 1)
+                    .rotationEffect(.degrees(fanned ? (i == 0 ? -12 : 12) : 0))
+                    .offset(x: fanned ? (i == 0 ? -22 : 20) : 0, y: fanned ? 6 : 2)
+            }
+            ChatAvatar(space: space, size: 36)
+                .padding(2.5)
+                .background(Palette.surface, in: .rect(cornerRadius: 12, style: .continuous))
+                .clipShape(.rect(cornerRadius: 12, style: .continuous))
+                .shadow(color: .black.opacity(0.14), radius: 4, y: 2)
+                .rotationEffect(.degrees(fanned ? -4 : 0))
+        }
+        .frame(width: 78, height: 46)
+        .accessibilityHidden(true)
+        .onAppear { reshuffle() }
+        .onChange(of: key) { _, _ in fanned = false; reshuffle() }
+    }
+
+    private func reshuffle() {
+        guard !reduceMotion else { fanned = true; return }
+        withAnimation(.spring(response: 0.5, dampingFraction: 0.62).delay(0.08)) { fanned = true }
+    }
+}
+
+#if os(iOS)
+/// The phone's lean, smoothed to -1…1. Only runs while a card shows it.
+@MainActor @Observable
+final class DeviceLean {
+    var x: Double = 0
+    var y: Double = 0
+    @ObservationIgnored private let motion = CMMotionManager()
+    @ObservationIgnored private var users = 0
+
+    func start() {
+        users += 1
+        guard users == 1, motion.isDeviceMotionAvailable else { return }
+        motion.deviceMotionUpdateInterval = 1.0 / 60
+        motion.startDeviceMotionUpdates(to: .main) { [weak self] m, _ in
+            guard let g = m?.gravity else { return }
+            let nx = max(-1, min(1, g.x * 2.2)), ny = max(-1, min(1, (g.y + 0.55) * 2.2))
+            MainActor.assumeIsolated {
+                guard let self else { return }
+                self.x += (nx - self.x) * 0.12
+                self.y += (ny - self.y) * 0.12
+            }
+        }
+    }
+
+    func stop() {
+        users = max(0, users - 1)
+        if users == 0 { motion.stopDeviceMotionUpdates() }
+    }
+}
+#endif
+
+/// A few degrees of parallax with the phone's lean and a soft sheen that slides across the
+/// paper as the light catches it. Paused while the card is held; off with Reduce Motion.
+struct TiltSheen<Content: View>: View {
+    var active: Bool
+    @ViewBuilder var content: Content
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.colorScheme) private var scheme
+    #if os(iOS)
+    @State private var lean = DeviceLean()
+    #endif
+
+    var body: some View {
+        #if os(iOS)
+        if reduceMotion {
+            content
+        } else {
+            leaning
+        }
+        #else
+        content
+        #endif
+    }
+
+    #if os(iOS)
+    @ViewBuilder
+    private var leaning: some View {
+        #if DEBUG
+        if UserDefaults.standard.bool(forKey: "RodaFakeLean") {
+            // Recording hook: the simulator has no gyroscope, so sway slowly.
+            TimelineView(.animation) { tl in
+                let s = tl.date.timeIntervalSinceReferenceDate
+                tilted(x: sin(s * 1.3) * 0.9, y: cos(s * 0.9) * 0.6)
+            }
+        } else {
+            tilted(x: lean.x, y: lean.y)
+                .onAppear { lean.start() }
+                .onDisappear { lean.stop() }
+        }
+        #else
+        tilted(x: lean.x, y: lean.y)
+            .onAppear { lean.start() }
+            .onDisappear { lean.stop() }
+        #endif
+    }
+
+    private func tilted(x: Double, y: Double) -> some View {
+        let k = active ? 1.0 : 0.0
+        return content
+            .overlay {
+                // The specular highlight: a soft band that moves against the lean.
+                LinearGradient(stops: [
+                    .init(color: .white.opacity(0), location: 0),
+                    .init(color: .white.opacity(scheme == .dark ? 0.07 : 0.32), location: 0.5),
+                    .init(color: .white.opacity(0), location: 1),
+                ], startPoint: UnitPoint(x: -0.4 - x * 0.6, y: -0.2 - y * 0.4), endPoint: UnitPoint(x: 0.9 - x * 0.6, y: 1.1 - y * 0.4))
+                .blendMode(scheme == .dark ? .plusLighter : .softLight)
+                .clipShape(.rect(cornerRadius: ApprovalCardView.radius, style: .continuous))
+                .opacity(k)
+                .allowsHitTesting(false)
+                .accessibilityHidden(true)
+            }
+            .rotation3DEffect(.degrees(y * 3.5 * k), axis: (x: 1, y: 0, z: 0), perspective: 0.6)
+            .rotation3DEffect(.degrees(-x * 3.5 * k), axis: (x: 0, y: 1, z: 0), perspective: 0.6)
+            .animation(.spring(response: 0.35, dampingFraction: 0.8), value: active)
+    }
+    #endif
 }
 
 // MARK: - "Sempre" stamp
