@@ -1,0 +1,22 @@
+# zoen-staging-pg: the directory (identities, handles, devices). Space logs live in FoundationDB.
+# Private network only: zoen-staging-pg.internal:5432. No public service.
+app = "zoen-staging-pg"
+primary_region = "gru"
+
+[build]
+  image = "postgres:17-bookworm"
+
+[env]
+  POSTGRES_USER = "zoen"
+  POSTGRES_DB = "zoen_relay"
+  PGDATA = "/data/pgdata"
+
+[[mounts]]
+  source = "pgdata"
+  destination = "/data"
+  initial_size = "1gb"
+  snapshot_retention = 5
+
+[[vm]]
+  size = "shared-cpu-1x"
+  memory = "512mb"

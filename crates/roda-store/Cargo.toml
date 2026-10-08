@@ -1,0 +1,13 @@
+[package]
+name = "roda-store"
+description = "Armazenamento local em SQLite (rusqlite, bundled). Seam para SQLCipher."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+roda-types.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+rusqlite.workspace = true

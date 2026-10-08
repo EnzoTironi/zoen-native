@@ -1,0 +1,485 @@
+[
+ {
+  "id": "agent-furball-wave",
+  "kind": "agent",
+  "tags": [
+   "mascot",
+   "assistant",
+   "general"
+  ],
+  "subject": "a round fluffy green furball creature with two big friendly eyes and tiny feet, waving hello"
+ },
+ {
+  "id": "agent-furball-reader",
+  "kind": "agent",
+  "tags": [
+   "mascot",
+   "research",
+   "reading"
+  ],
+  "subject": "a round fluffy green furball creature wearing round glasses reading an open book"
+ },
+ {
+  "id": "agent-furball-headphones",
+  "kind": "agent",
+  "tags": [
+   "mascot",
+   "music",
+   "podcast"
+  ],
+  "subject": "a round fluffy green furball creature wearing big headphones, eyes closed, happy"
+ },
+ {
+  "id": "agent-robot-chef",
+  "kind": "agent",
+  "tags": [
+   "chef",
+   "recipes",
+   "cooking"
+  ],
+  "subject": "a small round friendly robot wearing a tall chef hat holding a wooden spoon"
+ },
+ {
+  "id": "agent-owl-tutor",
+  "kind": "agent",
+  "tags": [
+   "tutor",
+   "school",
+   "learning"
+  ],
+  "subject": "a cute owl wearing a graduation cap standing on a stack of books"
+ },
+ {
+  "id": "agent-fox-traveler",
+  "kind": "agent",
+  "tags": [
+   "travel",
+   "trips",
+   "planner"
+  ],
+  "subject": "a cute fox with a small backpack holding a folded map"
+ },
+ {
+  "id": "agent-octopus-coder",
+  "kind": "agent",
+  "tags": [
+   "coding",
+   "developer",
+   "tech"
+  ],
+  "subject": "a cute purple octopus typing on a small laptop with its tentacles"
+ },
+ {
+  "id": "agent-piggy-bank",
+  "kind": "agent",
+  "tags": [
+   "finance",
+   "budget",
+   "money"
+  ],
+  "subject": "a smiling pink piggy bank with a gold coin"
+ },
+ {
+  "id": "agent-frog-fitness",
+  "kind": "agent",
+  "tags": [
+   "fitness",
+   "workout",
+   "health"
+  ],
+  "subject": "a cute green frog wearing a headband lifting a small dumbbell"
+ },
+ {
+  "id": "agent-calendar-buddy",
+  "kind": "agent",
+  "tags": [
+   "calendar",
+   "schedule",
+   "planning"
+  ],
+  "subject": "a cheerful paper desk calendar character with a smiling face and little arms"
+ },
+ {
+  "id": "agent-coffee-cup",
+  "kind": "agent",
+  "tags": [
+   "assistant",
+   "morning",
+   "daily"
+  ],
+  "subject": "a smiling coffee cup character with a little steam swirl"
+ },
+ {
+  "id": "agent-cat-detective",
+  "kind": "agent",
+  "tags": [
+   "research",
+   "search",
+   "facts"
+  ],
+  "subject": "a cute orange cat holding a magnifying glass"
+ },
+ {
+  "id": "agent-potted-plant",
+  "kind": "agent",
+  "tags": [
+   "wellness",
+   "garden",
+   "habits"
+  ],
+  "subject": "a happy little potted plant with a smiling face on the terracotta pot"
+ },
+ {
+  "id": "agent-turtle-writer",
+  "kind": "agent",
+  "tags": [
+   "writing",
+   "editor",
+   "notes"
+  ],
+  "subject": "a cute turtle holding a feather quill pen next to a sheet of paper"
+ },
+ {
+  "id": "agent-bee-tasks",
+  "kind": "agent",
+  "tags": [
+   "tasks",
+   "productivity",
+   "todo"
+  ],
+  "subject": "a cute bumblebee holding a small clipboard checklist"
+ },
+ {
+  "id": "agent-penguin-weather",
+  "kind": "agent",
+  "tags": [
+   "weather",
+   "forecast"
+  ],
+  "subject": "a cute penguin holding a small red umbrella"
+ },
+ {
+  "id": "agent-lightbulb-ideas",
+  "kind": "agent",
+  "tags": [
+   "ideas",
+   "brainstorm",
+   "creative"
+  ],
+  "subject": "a smiling glowing light bulb character with little arms"
+ },
+ {
+  "id": "agent-rocket-news",
+  "kind": "agent",
+  "tags": [
+   "news",
+   "launch",
+   "updates"
+  ],
+  "subject": "a small cute cartoon rocket with a round window and a little flame"
+ },
+ {
+  "id": "agent-dog-courier",
+  "kind": "agent",
+  "tags": [
+   "email",
+   "messages",
+   "inbox"
+  ],
+  "subject": "a cute dog carrying a letter envelope in its mouth"
+ },
+ {
+  "id": "agent-teapot-calm",
+  "kind": "agent",
+  "tags": [
+   "meditation",
+   "calm",
+   "mindfulness"
+  ],
+  "subject": "a round cute teapot character with a sleepy smile"
+ },
+ {
+  "id": "agent-alarm-clock",
+  "kind": "agent",
+  "tags": [
+   "reminders",
+   "time",
+   "alarms"
+  ],
+  "subject": "a cute retro alarm clock character with a smiling face and two bells"
+ },
+ {
+  "id": "agent-paint-palette",
+  "kind": "agent",
+  "tags": [
+   "design",
+   "art",
+   "images"
+  ],
+  "subject": "a cheerful paintbrush character with a smiling face standing next to paint pots",
+  "hseed": 33
+ },
+ {
+  "id": "agent-bear-doctor",
+  "kind": "agent",
+  "tags": [
+   "health",
+   "doctor",
+   "care"
+  ],
+  "subject": "a cute teddy bear wearing a stethoscope"
+ },
+ {
+  "id": "agent-hedgehog-shopper",
+  "kind": "agent",
+  "tags": [
+   "shopping",
+   "deals",
+   "groceries"
+  ],
+  "subject": "a cute hedgehog carrying a small wicker shopping basket with apples"
+ },
+ {
+  "id": "agent-moon-sleep",
+  "kind": "agent",
+  "tags": [
+   "sleep",
+   "night",
+   "bedtime"
+  ],
+  "subject": "a sleepy crescent moon character wearing a nightcap with a small star"
+ },
+ {
+  "id": "agent-camera-buddy",
+  "kind": "agent",
+  "tags": [
+   "photos",
+   "memories",
+   "camera"
+  ],
+  "subject": "a cute vintage photo camera with a smiling face drawn on it",
+  "hseed": 34
+ },
+ {
+  "id": "group-beach-trip",
+  "kind": "group",
+  "tags": [
+   "trip",
+   "beach",
+   "vacation",
+   "summer"
+  ],
+  "subject": "a beach umbrella with a towel, a bucket and a little sailboat on the sea"
+ },
+ {
+  "id": "group-soccer-ball",
+  "kind": "group",
+  "tags": [
+   "soccer",
+   "football",
+   "sports",
+   "team"
+  ],
+  "subject": "a soccer ball on green grass in front of a small goal"
+ },
+ {
+  "id": "group-family-dinner",
+  "kind": "group",
+  "tags": [
+   "family",
+   "dinner",
+   "home"
+  ],
+  "subject": "a round dinner table with plates, a pot of food, bread and glasses seen from above"
+ },
+ {
+  "id": "group-study-desk",
+  "kind": "group",
+  "tags": [
+   "study",
+   "school",
+   "university"
+  ],
+  "subject": "a study desk with a lamp, open books, pencils and a mug"
+ },
+ {
+  "id": "group-guitar-music",
+  "kind": "group",
+  "tags": [
+   "music",
+   "band",
+   "guitar"
+  ],
+  "subject": "an acoustic guitar with a few floating music notes"
+ },
+ {
+  "id": "group-work-laptop",
+  "kind": "group",
+  "tags": [
+   "work",
+   "team",
+   "office"
+  ],
+  "subject": "an open laptop on a desk with a coffee mug and sticky notes"
+ },
+ {
+  "id": "group-camping-tent",
+  "kind": "group",
+  "tags": [
+   "camping",
+   "outdoors",
+   "friends"
+  ],
+  "subject": "a camping tent with a small campfire under pine trees"
+ },
+ {
+  "id": "group-party-balloons",
+  "kind": "group",
+  "tags": [
+   "party",
+   "celebration",
+   "friends"
+  ],
+  "subject": "a bunch of colorful party balloons with confetti and streamers"
+ },
+ {
+  "id": "group-book-club",
+  "kind": "group",
+  "tags": [
+   "books",
+   "reading",
+   "club"
+  ],
+  "subject": "a stack of books with a cup of tea and reading glasses"
+ },
+ {
+  "id": "group-gym",
+  "kind": "group",
+  "tags": [
+   "gym",
+   "fitness",
+   "training"
+  ],
+  "subject": "a pair of dumbbells, a water bottle and a towel"
+ },
+ {
+  "id": "group-pets",
+  "kind": "group",
+  "tags": [
+   "pets",
+   "dogs",
+   "cats"
+  ],
+  "subject": "a dog and a cat sleeping curled up together on a cushion"
+ },
+ {
+  "id": "group-city-skyline",
+  "kind": "group",
+  "tags": [
+   "city",
+   "neighborhood",
+   "local"
+  ],
+  "subject": "a small city skyline with buildings and a few trees"
+ },
+ {
+  "id": "group-houseplants",
+  "kind": "group",
+  "tags": [
+   "plants",
+   "garden",
+   "home"
+  ],
+  "subject": "three potted houseplants of different shapes on a shelf"
+ },
+ {
+  "id": "group-board-games",
+  "kind": "group",
+  "tags": [
+   "games",
+   "board games",
+   "fun"
+  ],
+  "subject": "a board game with dice and colorful game pieces"
+ },
+ {
+  "id": "group-cooking",
+  "kind": "group",
+  "tags": [
+   "cooking",
+   "recipes",
+   "food"
+  ],
+  "subject": "a cooking pot on a stove with vegetables, a wooden spoon and herbs"
+ },
+ {
+  "id": "group-road-trip",
+  "kind": "group",
+  "tags": [
+   "road trip",
+   "travel",
+   "friends"
+  ],
+  "subject": "a small vintage camper van on a winding road with hills"
+ },
+ {
+  "id": "group-mountain-hike",
+  "kind": "group",
+  "tags": [
+   "hiking",
+   "mountains",
+   "outdoors"
+  ],
+  "subject": "mountains with a winding trail and a hiking backpack"
+ },
+ {
+  "id": "group-coffee-friends",
+  "kind": "group",
+  "tags": [
+   "friends",
+   "coffee",
+   "chat"
+  ],
+  "subject": "two coffee cups and a croissant on a small cafe table"
+ },
+ {
+  "id": "group-picnic",
+  "kind": "group",
+  "tags": [
+   "picnic",
+   "weekend",
+   "friends"
+  ],
+  "subject": "a picnic basket on a checkered blanket with fruit and a lemonade bottle"
+ },
+ {
+  "id": "group-birthday-cake",
+  "kind": "group",
+  "tags": [
+   "birthday",
+   "celebration",
+   "family"
+  ],
+  "subject": "a birthday cake with candles and a small gift box"
+ },
+ {
+  "id": "group-bike-ride",
+  "kind": "group",
+  "tags": [
+   "cycling",
+   "bike",
+   "sports"
+  ],
+  "subject": "a vintage bicycle with a basket of flowers"
+ },
+ {
+  "id": "group-video-games",
+  "kind": "group",
+  "tags": [
+   "gaming",
+   "video games",
+   "friends"
+  ],
+  "subject": "a game controller with snacks and a soda can"
+ }
+]

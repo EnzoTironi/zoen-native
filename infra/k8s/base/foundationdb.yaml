@@ -1,0 +1,80 @@
+# The Space logs (ADR 0008), run by fdb-kubernetes-operator (infra/k8s/operators/foundationdb).
+# The operator publishes the cluster file in the ConfigMap `zoen-fdb-config`, which the relay
+# mounts. Base is the smallest real cluster; production overlays raise redundancy
+# (double/triple), process counts and storage, and spread fault domains across zones.
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: fdb-kubernetes
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: fdb-kubernetes
+rules:
+  - apiGroups: [""]
+    resources: [pods]
+    verbs: [get, watch, update, patch, list]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: fdb-kubernetes
+roleRef: {apiGroup: rbac.authorization.k8s.io, kind: Role, name: fdb-kubernetes}
+subjects:
+  - {kind: ServiceAccount, name: fdb-kubernetes}
+---
+apiVersion: apps.foundationdb.org/v1beta2
+kind: FoundationDBCluster
+metadata:
+  name: zoen-fdb
+  labels: {app.kubernetes.io/name: foundationdb, app.kubernetes.io/part-of: zoen}
+spec:
+  version: 7.3.69
+  databaseConfiguration:
+    redundancy_mode: single
+    storage_engine: ssd-2
+  automationOptions:
+    replacements: {enabled: true}
+  faultDomain:
+    key: foundationdb.org/none
+  labels:
+    filterOnOwnerReference: false
+    matchLabels: {foundationdb.org/fdb-cluster-name: zoen-fdb}
+    processClassLabels: [foundationdb.org/fdb-process-class]
+    processGroupIDLabels: [foundationdb.org/fdb-process-group-id]
+  minimumUptimeSecondsForBounce: 60
+  processCounts:
+    cluster_controller: 1
+    storage: 1
+    log: 1
+    stateless: -1
+  processes:
+    general:
+      customParameters:
+        - knob_disable_posix_kernel_aio=1
+      podTemplate:
+        spec:
+          serviceAccountName: fdb-kubernetes
+          containers:
+            - name: foundationdb
+              resources:
+                requests: {cpu: 100m, memory: 256Mi}
+                limits: {memory: 2Gi}
+              securityContext: {runAsUser: 0}
+            - name: foundationdb-kubernetes-sidecar
+              resources:
+                requests: {cpu: 50m, memory: 64Mi}
+                limits: {memory: 128Mi}
+              securityContext: {runAsUser: 0}
+      volumeClaimTemplate:
+        spec:
+          resources:
+            requests: {storage: 4Gi}
+  routing:
+    defineDNSLocalityFields: true
+    useDNSInClusterFile: true
+  sidecarContainer:
+    enableLivenessProbe: true
+    enableReadinessProbe: false
+  useExplicitListenAddress: true

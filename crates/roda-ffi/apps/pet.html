@@ -1,0 +1,218 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>Group pet</title>
+<style>
+  :root {
+    --color-background-primary: #FBFAF7; --color-background-secondary: #F1EFEA;
+    --color-text-primary: #1C1C1E; --color-text-secondary: #6B6B70; --color-border-primary: #E4E1DA;
+    --accent: #E8833A; --font-sans: -apple-system, system-ui, sans-serif;
+    color-scheme: light dark;
+  }
+  [data-theme=dark] {
+    --color-background-primary: #1F1F22; --color-background-secondary: #2A2A2E;
+    --color-text-primary: #F2F2F0; --color-text-secondary: #A1A1A6; --color-border-primary: #3A3A3F;
+  }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body { margin: 0; background: transparent; font-family: var(--font-sans); color: var(--color-text-primary); -webkit-user-select: none; user-select: none; }
+  .wrap { padding: 12px 14px 14px; }
+  header { display: flex; align-items: baseline; gap: 8px; margin-bottom: 8px; }
+  header h1 { font-size: 17px; margin: 0; font-weight: 700; letter-spacing: -0.2px; }
+  header .mood { font-size: 13px; color: var(--color-text-secondary); }
+  .scene { position: relative; border-radius: 16px; overflow: hidden; background: var(--color-background-secondary); }
+  canvas { display: block; width: 100%; image-rendering: pixelated; image-rendering: crisp-edges; }
+  .bars { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin: 12px 2px 12px; }
+  .bar label { display: flex; justify-content: space-between; font-size: 11px; font-weight: 600; color: var(--color-text-secondary); margin-bottom: 4px; }
+  .track { height: 6px; border-radius: 3px; background: var(--color-background-secondary); overflow: hidden; }
+  .fill { height: 100%; border-radius: 3px; transition: width .5s cubic-bezier(.2,.9,.3,1.2); }
+  .actions { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+  button { font: inherit; border: 0; border-radius: 14px; padding: 11px 6px; font-size: 14px; font-weight: 650; color: var(--color-text-primary); background: var(--color-background-secondary); transition: transform .12s; }
+  button:active { transform: scale(.94); }
+  button .emoji { display: block; font-size: 22px; line-height: 1.1; margin-bottom: 2px; }
+  button:disabled { opacity: .45; }
+  .log { margin: 12px 2px 0; font-size: 12px; color: var(--color-text-secondary); line-height: 1.55; }
+  .log b { color: var(--color-text-primary); font-weight: 600; }
+  .full-only { display: none; }
+  body.full .full-only { display: block; }
+  body.full .wrap { padding: 16px 18px 24px; }
+  body.full header h1 { font-size: 24px; }
+  .release { margin-top: 18px; width: 100%; background: transparent; color: #D9534F; font-size: 14px; }
+  .toast { position: absolute; left: 50%; bottom: 10px; transform: translateX(-50%); background: rgba(0,0,0,.72); color: #fff; font-size: 12px; font-weight: 600; padding: 6px 10px; border-radius: 10px; opacity: 0; transition: opacity .25s; white-space: nowrap; }
+  .toast.on { opacity: 1; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header><h1 id="name">Donkey</h1><span class="mood" id="mood">…</span></header>
+  <div class="scene"><canvas id="c" width="160" height="96"></canvas><div class="toast" id="toast"></div></div>
+  <div class="bars">
+    <div class="bar"><label><span data-i18n="food">Food</span> <span id="vf"></span></label><div class="track"><div class="fill" id="bf" style="background:#E8833A"></div></div></div>
+    <div class="bar"><label><span data-i18n="rest">Rest</span> <span id="ve"></span></label><div class="track"><div class="fill" id="be" style="background:#5B8DEF"></div></div></div>
+    <div class="bar"><label><span data-i18n="mood">Mood</span> <span id="vj"></span></label><div class="track"><div class="fill" id="bj" style="background:#3FB27F"></div></div></div>
+  </div>
+  <div class="actions">
+    <button id="feed"><span class="emoji">🥕</span><span data-i18n="feed">Feed</span></button>
+    <button id="nap"><span class="emoji">💤</span><span>Nap</span></button>
+    <button id="play"><span class="emoji">⚽</span><span data-i18n="play">Play</span></button>
+  </div>
+  <div class="log" id="log"></div>
+  <div class="full-only"><button class="release" id="release" data-i18n="release">Release the pet…</button></div>
+</div>
+<script>
+const I18N = {
+  en: { title: 'Group pet', donkey: 'Donkey', food: 'Food', rest: 'Rest', mood: 'Mood', feed: 'Feed', nap: 'Nap', wake: 'Wake', play: 'Play', release: 'Release the pet…', gone: 'moved to a farm', failed: 'Couldn’t do that right now' },
+  pt: { title: 'Bichinho do grupo', donkey: 'Jumento', food: 'Comida', rest: 'Descanso', mood: 'Humor', feed: 'Dar comida', nap: 'Cochilar', wake: 'Acordar', play: 'Brincar', release: 'Devolver o bichinho…', gone: 'foi morar num sítio', failed: 'Não deu agora' },
+};
+// i18n: English by default; follows hostContext.locale (pt-BR is the second language).
+let LANG = 'en';
+function T(k) { return (LANG === 'pt' && I18N.pt[k]) || I18N.en[k] || k; }
+function applyLocale(locale) {
+  LANG = String(locale || '').toLowerCase().startsWith('pt') ? 'pt' : 'en';
+  document.documentElement.lang = LANG === 'pt' ? 'pt-BR' : 'en';
+  document.querySelectorAll('[data-i18n]').forEach(el => { el.textContent = T(el.dataset.i18n); });
+  document.querySelectorAll('[data-i18n-ph]').forEach(el => { el.placeholder = T(el.dataset.i18nPh); });
+  if (I18N.en.title) document.title = T('title');
+}
+
+// ── Cliente MCP mínimo (JSON-RPC 2.0 via postMessage), como no SEP-1865 ──
+const rpc = (() => {
+  let next = 0; const pending = new Map(); const handlers = {};
+  window.addEventListener('message', (e) => {
+    const m = e.data; if (!m || m.jsonrpc !== '2.0') return;
+    if (m.id != null && !m.method && pending.has(m.id)) { const p = pending.get(m.id); pending.delete(m.id); m.error ? p.reject(m.error) : p.resolve(m.result); return; }
+    if (m.method && m.id != null) { const r = handlers[m.method] ? handlers[m.method](m.params) : {}; window.parent.postMessage({ jsonrpc: '2.0', id: m.id, result: r || {} }, '*'); return; }
+    if (m.method && handlers[m.method]) handlers[m.method](m.params);
+  });
+  return {
+    request(method, params) { const id = ++next; window.parent.postMessage({ jsonrpc: '2.0', id, method, params }, '*'); return new Promise((resolve, reject) => pending.set(id, { resolve, reject })); },
+    notify(method, params) { window.parent.postMessage({ jsonrpc: '2.0', method, params }, '*'); },
+    on(method, fn) { handlers[method] = fn; },
+  };
+})();
+
+// ── Pixel art: um burro de 24×18 ──
+const SPRITE = [
+  '................D..D....',
+  '...............DPD.DPD..',
+  '...............DPD.DPD..',
+  '...............DGGGGGD..',
+  '..............MDGGGGGGD.',
+  '.............MMGGEGGGGGD',
+  '............MMGGGGGGGWWD',
+  '...........MMGGGGGGWWWWD',
+  '..DGGGGGGGGGGGGGGDWWWNWD',
+  '.DGGGGGGGGGGGGGGGD.DWWD.',
+  'TGGGGGGGGGGGGGGGGD..DD..',
+  'TGGGGGGGGGGGGGGGGD......',
+  '.DGGGWWWWWWWWGGGGD......',
+  '..DGGGGGGGGGGGGGD.......',
+  '..DGD.DGD...DGD.DGD.....',
+  '..DGD.DGD...DGD.DGD.....',
+  '..DGD.DGD...DGD.DGD.....',
+  '..HHH.HHH...HHH.HHH.....',
+];
+const PAL = { D: '#5E554D', G: '#9A8F84', W: '#EDE6DC', P: '#E9A8A1', M: '#4A423C', E: '#1E1A17', N: '#4A423C', H: '#3A332E', T: '#5E554D' };
+const cv = document.getElementById('c'); const ctx = cv.getContext('2d');
+let state = null, dark = false, frame = 0, anim = null, animUntil = 0;
+
+function px(x, y, c) { ctx.fillStyle = c; ctx.fillRect(x, y, 1, 1); }
+function drawDonkey(ox, oy, eyesClosed) {
+  for (let y = 0; y < SPRITE.length; y++) for (let x = 0; x < 24; x++) {
+    let ch = SPRITE[y][x]; if (ch === '.') continue;
+    if (ch === 'E' && eyesClosed) ch = 'D';
+    px(ox + x, oy + y, PAL[ch]);
+  }
+}
+function draw() {
+  const W = cv.width, H = cv.height; frame++;
+  const now = Date.now(); const a = now < animUntil ? anim : null;
+  const asleep = state && state.asleep && !a;
+  // céu e chão (paleta calma; cor só no bichinho)
+  ctx.fillStyle = dark ? (asleep ? '#16171C' : '#24252B') : (asleep ? '#E3E6EE' : '#EEF2F5'); ctx.fillRect(0, 0, W, H);
+  ctx.fillStyle = dark ? '#E9E3C8' : '#F6C453';
+  if (asleep || dark) { ctx.beginPath(); ctx.arc(136, 18, 7, 0, 7); ctx.fill(); ctx.fillStyle = dark ? (asleep ? '#16171C' : '#24252B') : '#E3E6EE'; ctx.beginPath(); ctx.arc(139, 16, 6, 0, 7); ctx.fill(); }
+  else { ctx.beginPath(); ctx.arc(136, 18, 8, 0, 7); ctx.fill(); }
+  ctx.fillStyle = dark ? '#2F3A2E' : '#B9D49A'; ctx.fillRect(0, 74, W, 22);
+  ctx.fillStyle = dark ? '#3A4838' : '#A6C786';
+  for (let x = (frame >> 1) % 6; x < W; x += 6) ctx.fillRect(x, 76 + ((x * 7) % 5), 2, 1);
+  // bichinho
+  let ox = 62, oy = 57;
+  const blink = !asleep && frame % 40 < 2;
+  if (a === 'play') { oy -= Math.round(Math.abs(Math.sin(frame / 2.2)) * 7); }
+  if (a === 'feed') { oy += frame % 4 < 2 ? 1 : 0; }
+  if (asleep) oy += 1;
+  ctx.globalAlpha = state && state.released ? 0.25 : 1;
+  drawDonkey(ox, oy, asleep || blink);
+  ctx.globalAlpha = 1;
+  // acessórios
+  if (a === 'feed') { ctx.fillStyle = '#E2B65C'; ctx.fillRect(88, 68, 10, 6); ctx.fillStyle = '#C99A3E'; ctx.fillRect(88, 70, 10, 1); ctx.fillStyle = '#E8833A'; ctx.fillRect(99, 70, 5, 2); ctx.fillStyle = '#3FB27F'; ctx.fillRect(104, 69, 2, 1); }
+  if (a === 'play') { const bx = 30 + ((frame * 3) % 30); ctx.fillStyle = '#FFFFFF'; ctx.fillRect(bx, 68, 5, 5); ctx.fillStyle = '#1E1A17'; ctx.fillRect(bx + 2, 68, 1, 5); ctx.fillRect(bx, 70, 5, 1); }
+  if (asleep) { ctx.fillStyle = dark ? '#C9CBD6' : '#6B6F80'; const z = frame % 30; ctx.font = '7px -apple-system'; ctx.fillText('z', 86 + z / 6, 54 - z / 3); if (z > 10) ctx.fillText('Z', 92 + z / 8, 48 - z / 4); }
+  if (state && state.released) { ctx.fillStyle = dark ? '#C9CBD6' : '#6B6F80'; ctx.font = 'bold 8px -apple-system'; ctx.fillText(T('gone'), 46, 40); }
+}
+setInterval(draw, 120);
+
+// ── estado ──
+const esc = (s) => String(s == null ? '' : s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+function rel(ms) { const s = (Date.now() - ms) / 1000; if (s < 60) return 'agora'; if (s < 3600) return Math.round(s / 60) + ' min'; if (s < 86400) return Math.round(s / 3600) + ' h'; return Math.round(s / 86400) + ' d'; }
+function setBar(id, v) { document.getElementById('b' + id).style.width = Math.max(0, Math.min(100, v)) + '%'; document.getElementById('v' + id).textContent = Math.round(v); }
+function render(st) {
+  if (!st) return;
+  document.getElementById('nap').innerHTML = st.asleep ? '<span class="emoji">☀️</span>' + T('wake') : '<span class="emoji">💤</span>' + T('nap');
+  document.getElementById('feed').disabled = !!st.asleep;
+  requestAnimationFrame(() => reportSize()); setTimeout(reportSize, 60); state = st;
+  document.getElementById('name').textContent = st.name || T('donkey');
+  document.getElementById('mood').textContent = st.mood || '';
+  setBar('f', st.fullness); setBar('e', st.energy); setBar('j', st.joy);
+  const log = (st.log || []).slice(0, 3).map(l => `<b>${esc(l.who)}</b> ${esc(l.what)} · ${rel(l.at)}`).join('<br>');
+  document.getElementById('log').innerHTML = log;
+  for (const b of ['feed', 'nap', 'play', 'release']) document.getElementById(b).disabled = !!st.released;
+}
+function toast(t) { const el = document.getElementById('toast'); el.textContent = t; el.classList.add('on'); clearTimeout(toast._t); toast._t = setTimeout(() => el.classList.remove('on'), 1800); }
+async function act(tool, a) {
+  anim = a; animUntil = Date.now() + 1800;
+  try {
+    const r = await rpc.request('tools/call', { name: tool, arguments: {} });
+    if (r.structuredContent) render(r.structuredContent);
+    const text = r.content && r.content[0] && r.content[0].text; if (text) toast(text);
+  } catch (e) { animUntil = 0; toast((e && e.message) || T('failed')); }
+}
+document.getElementById('feed').onclick = () => act('pet_feed', 'feed');
+document.getElementById('nap').onclick = () => act(state && state.asleep ? 'pet_wake' : 'pet_nap', null);
+document.getElementById('play').onclick = () => act('pet_play', 'play');
+document.getElementById('release').onclick = () => act('pet_release', null);
+
+function applyContext(c) {
+  if (!c) return;
+  if (c.locale) applyLocale(c.locale);
+  if (c.theme) { dark = c.theme === 'dark'; document.documentElement.dataset.theme = c.theme; }
+  const vars = c.styles && c.styles.variables; if (vars) for (const k in vars) if (vars[k]) document.documentElement.style.setProperty(k, vars[k]);
+  if (c.displayMode) document.body.classList.toggle('full', c.displayMode === 'fullscreen');
+}
+rpc.on('ui/notifications/tool-input', () => {});
+rpc.on('ui/notifications/tool-result', (r) => render(r && r.structuredContent));
+rpc.on('ui/notifications/host-context-changed', applyContext);
+rpc.on('ui/resource-teardown', () => ({}));
+
+// Altura real do conteúdo (não da janela), para o host dimensionar o cartão.
+let lastH = 0;
+function reportSize() {
+  const r = document.body.getBoundingClientRect(); const h = Math.ceil(r.height);
+  if (Math.abs(h - lastH) < 1) return; lastH = h;
+  rpc.notify('ui/notifications/size-changed', { width: Math.ceil(r.width), height: h });
+}
+new ResizeObserver(reportSize).observe(document.body);
+window.addEventListener('load', () => requestAnimationFrame(reportSize));
+
+(async () => {
+  try {
+    const init = await rpc.request('ui/initialize', { protocolVersion: '2026-01-26', appInfo: { name: 'roda-pet', version: '1.0.0' }, appCapabilities: { availableDisplayModes: ['inline', 'fullscreen'] } });
+    applyContext(init && init.hostContext);
+  } catch (e) {}
+  rpc.notify('ui/notifications/initialized', {});
+})();
+</script>
+</body>
+</html>

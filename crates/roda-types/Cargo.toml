@@ -1,0 +1,13 @@
+[package]
+name = "roda-types"
+description = "Os 5 primitivos do Zoen (Identidade, Espaço, Membro, Item, Concessão) e os eventos do log."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+serde.workspace = true
+serde_json.workspace = true
+getrandom.workspace = true
+hex.workspace = true

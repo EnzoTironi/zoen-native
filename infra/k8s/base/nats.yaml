@@ -1,0 +1,78 @@
+# Fan-out bus between relay nodes (ADR 0019): three NATS servers in one cluster, JetStream on
+# for the durable streams and KV that later units use. Core pub/sub carries live fan-out.
+apiVersion: v1
+kind: Service
+metadata:
+  name: nats
+  labels: {app.kubernetes.io/name: nats, app.kubernetes.io/part-of: zoen}
+spec:
+  selector: {app.kubernetes.io/name: nats}
+  ports:
+    - {name: client, port: 4222, targetPort: client}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: nats-cluster
+  labels: {app.kubernetes.io/name: nats, app.kubernetes.io/part-of: zoen}
+spec:
+  clusterIP: None
+  publishNotReadyAddresses: true
+  selector: {app.kubernetes.io/name: nats}
+  ports:
+    - {name: cluster, port: 6222, targetPort: cluster}
+    - {name: monitor, port: 8222, targetPort: monitor}
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: nats
+  labels: {app.kubernetes.io/name: nats, app.kubernetes.io/part-of: zoen}
+spec:
+  serviceName: nats-cluster
+  replicas: 3
+  podManagementPolicy: Parallel
+  selector:
+    matchLabels: {app.kubernetes.io/name: nats}
+  template:
+    metadata:
+      labels: {app.kubernetes.io/name: nats, app.kubernetes.io/part-of: zoen}
+    spec:
+      automountServiceAccountToken: false
+      terminationGracePeriodSeconds: 30
+      securityContext: {runAsNonRoot: true, runAsUser: 10002, fsGroup: 10002, seccompProfile: {type: RuntimeDefault}}
+      containers:
+        - name: nats
+          image: nats:2.15.0-alpine
+          args:
+            - --server_name=$(POD_NAME)
+            - --jetstream
+            - --store_dir=/data
+            - --http_port=8222
+            - --cluster_name=zoen
+            - --cluster=nats://0.0.0.0:6222
+            - --routes=nats://nats-0.nats-cluster:6222,nats://nats-1.nats-cluster:6222,nats://nats-2.nats-cluster:6222
+          env:
+            - name: POD_NAME
+              valueFrom: {fieldRef: {fieldPath: metadata.name}}
+          ports:
+            - {name: client, containerPort: 4222}
+            - {name: cluster, containerPort: 6222}
+            - {name: monitor, containerPort: 8222}
+          readinessProbe:
+            httpGet: {path: "/healthz?js-enabled-only=true", port: monitor}
+            periodSeconds: 5
+          livenessProbe:
+            httpGet: {path: /healthz, port: monitor}
+            periodSeconds: 10
+          resources:
+            requests: {cpu: 50m, memory: 64Mi}
+            limits: {memory: 512Mi}
+          securityContext: {allowPrivilegeEscalation: false, readOnlyRootFilesystem: true, capabilities: {drop: [ALL]}}
+          volumeMounts:
+            - {name: data, mountPath: /data}
+  volumeClaimTemplates:
+    - metadata: {name: data}
+      spec:
+        accessModes: [ReadWriteOnce]
+        resources: {requests: {storage: 2Gi}}

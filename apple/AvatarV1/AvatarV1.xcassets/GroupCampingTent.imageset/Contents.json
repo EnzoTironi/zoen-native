@@ -1,0 +1,26 @@
+{
+  "images": [
+    {
+      "filename": "GroupCampingTent.png",
+      "idiom": "universal",
+      "scale": "1x"
+    },
+    {
+      "filename": "GroupCampingTent@2x.png",
+      "idiom": "universal",
+      "scale": "2x"
+    },
+    {
+      "filename": "GroupCampingTent@3x.png",
+      "idiom": "universal",
+      "scale": "3x"
+    }
+  ],
+  "info": {
+    "author": "zoen",
+    "version": 1
+  },
+  "properties": {
+    "template-rendering-intent": "original"
+  }
+}

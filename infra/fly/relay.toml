@@ -1,0 +1,42 @@
+# zoen-staging-relay: sync WebSocket, blobs, apple-app-site-association.
+# Hostnames: relay.tryzoen.com, api.tryzoen.com, media.tryzoen.com, id.tryzoen.com.
+app = "zoen-staging-relay"
+primary_region = "gru"
+
+[env]
+  ZOEN_RELAY_NAME = "relay.tryzoen.com"
+  ZOEN_S3_BUCKET = "zoen-staging-media"
+  ZOEN_DB_POOL = "8"
+  FDB_CLUSTER = "zoen:staging@zoen-staging-fdb.internal:4500"
+  ZOEN_FDB_CELL = "c0"
+  # Fly's proxy overwrites this header, so clients can't forge their address (ADR 0020).
+  ZOEN_CLIENT_IP_HEADER = "fly-client-ip"
+  RUST_LOG = "info,sqlx=warn,tower_http=warn"
+
+[http_service]
+  internal_port = 8080
+  force_https = true
+  # Clients hold a WebSocket open; the relay stays up so pushes reach them.
+  auto_stop_machines = "off"
+  auto_start_machines = true
+  min_machines_running = 1
+  [http_service.concurrency]
+    type = "connections"
+    soft_limit = 5000
+    hard_limit = 10000
+
+[[http_service.checks]]
+  grace_period = "20s"
+  interval = "15s"
+  timeout = "3s"
+  method = "GET"
+  path = "/readyz"
+
+[metrics]
+  port = 9091
+  path = "/metrics"
+
+[[vm]]
+  size = "shared-cpu-1x"
+  # The FoundationDB client keeps its own network thread and caches.
+  memory = "512mb"

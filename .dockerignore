@@ -1,0 +1,9 @@
+target
+apple
+.dev
+.tools
+.env
+blobs
+build
+miniapps/*/node_modules
+packages/*/node_modules

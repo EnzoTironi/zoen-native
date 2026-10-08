@@ -1,0 +1,62 @@
+# Rust checks and every box journey on Linux: fmt, clippy (-D warnings), unit tests, and the
+# journeys against a real relay, Postgres, FoundationDB and NATS. No macOS runners: the
+# simulator journey runs on the Mac (scripts/journey-sim.sh).
+name: ci
+
+on:
+  push:
+    branches: [main, "real/**"]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_INCREMENTAL: "0"
+  CARGO_PROFILE_DEV_DEBUG: "0"
+  RUST_TOOLCHAIN: "1.99.0"
+  ZOEN_TEST_PG: postgres://zoen@127.0.0.1:5432/postgres
+
+jobs:
+  rust:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Toolchain
+        run: |
+          rustup toolchain install "$RUST_TOOLCHAIN" --profile minimal --component clippy,rustfmt
+          rustup default "$RUST_TOOLCHAIN"
+
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+
+      - name: Format
+        run: cargo fmt --all --check
+
+      - name: Postgres, FoundationDB and NATS
+        run: |
+          docker run -d --name pg -p 5432:5432 \
+            -e POSTGRES_USER=zoen -e POSTGRES_HOST_AUTH_METHOD=trust \
+            postgres:17-alpine -c max_connections=300
+          scripts/fdb.sh up
+          scripts/nats.sh up
+          eval "$(scripts/fdb.sh env)"
+          eval "$(scripts/nats.sh env)"
+          for v in FDB_CLUSTER_FILE LIBRARY_PATH LD_LIBRARY_PATH ZOEN_NATS_URL; do
+            echo "$v=${!v}" >> "$GITHUB_ENV"
+          done
+          for _ in $(seq 1 30); do docker exec pg pg_isready -U zoen >/dev/null 2>&1 && break; sleep 1; done
+
+      - name: Clippy
+        run: cargo clippy --workspace --all-targets -- -D warnings
+
+      - name: Tests and journeys
+        run: cargo test --workspace --no-fail-fast

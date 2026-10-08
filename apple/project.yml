@@ -1,0 +1,132 @@
+name: Zoen
+options:
+  bundleIdPrefix: xyz.tironi
+  deploymentTarget:
+    iOS: "26.0"
+    macOS: "26.0"
+  createIntermediateGroups: true
+  developmentLanguage: en
+settings:
+  base:
+    SWIFT_VERSION: "6.0"
+    MARKETING_VERSION: "0.1.0"
+    CURRENT_PROJECT_VERSION: "1"
+    ENABLE_USER_SCRIPT_SANDBOXING: YES
+    DEAD_CODE_STRIPPING: YES
+    LOCALIZATION_PREFERS_STRING_CATALOGS: YES
+    SWIFT_EMIT_LOC_STRINGS: YES
+packages:
+  RodaCore:
+    path: Packages/RodaCore
+targets:
+  ZoeniOS:
+    type: application
+    platform: iOS
+    sources:
+      - Shared
+      - iOS
+      - path: AvatarV1/AvatarV1.xcassets
+      - path: AvatarV1/Heroes
+        type: folder
+        buildPhase: resources
+      - path: AvatarV1/Loops
+        type: folder
+        buildPhase: resources
+      - path: AvatarV1/AvatarV1Manifest.json
+        type: file
+        buildPhase: resources
+    dependencies:
+      - package: RodaCore
+    info:
+      path: iOS/Info.plist
+      properties:
+        CFBundleDisplayName: Zoen
+        CFBundleDevelopmentRegion: en
+        CFBundleLocalizations: [en, pt-BR]
+        UILaunchScreen:
+          UIColorName: ""
+        UIApplicationSceneManifest:
+          UIApplicationSupportsMultipleScenes: true
+        UISupportedInterfaceOrientations: [UIInterfaceOrientationPortrait]
+        UISupportedInterfaceOrientations~ipad: [UIInterfaceOrientationPortrait, UIInterfaceOrientationLandscapeLeft, UIInterfaceOrientationLandscapeRight, UIInterfaceOrientationPortraitUpsideDown]
+        ITSAppUsesNonExemptEncryption: false
+        NSCameraUsageDescription: "Zoen uses the camera for your profile photo and for photos you take in a chat."
+        NSLocationWhenInUseUsageDescription: "A mini-app you allowed can see roughly where you are, for example how far a trailhead is. It stays on this iPhone."
+        NSCalendarsWriteOnlyAccessUsageDescription: "Mini-apps can add an event you review first, like the hike your group picked."
+        NSCalendarsFullAccessUsageDescription: "A mini-app you allowed can see when you’re busy (not what your events are) to find a time that works."
+        NSContactsUsageDescription: "You pick one contact to share its name with a mini-app. Zoen never reads your address book."
+        NSMicrophoneUsageDescription: "Hold the mic in a chat to record a voice message. Zoen only listens while you hold or lock it."
+        NSSpeechRecognitionUsageDescription: "Zoen transcribes your voice messages on this iPhone so the chat can read them. The audio isn’t sent anywhere to be transcribed."
+        NSAppTransportSecurity:
+          NSAllowsLocalNetworking: true
+        ZoenRelayURL: $(ZOEN_RELAY_URL)
+    settings:
+      configs:
+        Release:
+          ZOEN_RELAY_URL: https://relay.tryzoen.com
+      base:
+        ZOEN_RELAY_URL: ""
+        PRODUCT_BUNDLE_IDENTIFIER: xyz.tironi.zoen
+        PRODUCT_NAME: Zoen
+        TARGETED_DEVICE_FAMILY: "1,2"
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor
+        CODE_SIGN_STYLE: Automatic
+        GENERATE_INFOPLIST_FILE: NO
+  ZoenMac:
+    type: application
+    platform: macOS
+    sources:
+      - Shared
+      - Mac
+      - path: AvatarV1/AvatarV1.xcassets
+      - path: AvatarV1/Heroes
+        type: folder
+        buildPhase: resources
+      - path: AvatarV1/Loops
+        type: folder
+        buildPhase: resources
+      - path: AvatarV1/AvatarV1Manifest.json
+        type: file
+        buildPhase: resources
+    dependencies:
+      - package: RodaCore
+    info:
+      path: Mac/Info.plist
+      properties:
+        CFBundleDisplayName: Zoen
+        CFBundleDevelopmentRegion: en
+        CFBundleLocalizations: [en, pt-BR]
+        LSApplicationCategoryType: public.app-category.social-networking
+        ITSAppUsesNonExemptEncryption: false
+        ZoenRelayURL: $(ZOEN_RELAY_URL)
+    settings:
+      configs:
+        Release:
+          ZOEN_RELAY_URL: https://relay.tryzoen.com
+      base:
+        ZOEN_RELAY_URL: ""
+        PRODUCT_BUNDLE_IDENTIFIER: xyz.tironi.zoen.mac
+        PRODUCT_NAME: Zoen
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor
+        CODE_SIGN_IDENTITY: "-"
+        CODE_SIGN_STYLE: Manual
+        ENABLE_HARDENED_RUNTIME: NO
+        GENERATE_INFOPLIST_FILE: NO
+  ZoenUITests:
+    type: bundle.ui-testing
+    platform: iOS
+    sources:
+      - UITests
+    dependencies:
+      - target: ZoeniOS
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: xyz.tironi.zoen.uitests
+        GENERATE_INFOPLIST_FILE: YES
+        TEST_TARGET_NAME: ZoeniOS
+        CODE_SIGNING_ALLOWED: NO
+    scheme:
+      testTargets:
+        - ZoenUITests

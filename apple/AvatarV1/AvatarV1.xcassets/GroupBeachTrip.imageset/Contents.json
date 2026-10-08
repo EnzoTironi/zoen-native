@@ -1,0 +1,26 @@
+{
+  "images": [
+    {
+      "filename": "GroupBeachTrip.png",
+      "idiom": "universal",
+      "scale": "1x"
+    },
+    {
+      "filename": "GroupBeachTrip@2x.png",
+      "idiom": "universal",
+      "scale": "2x"
+    },
+    {
+      "filename": "GroupBeachTrip@3x.png",
+      "idiom": "universal",
+      "scale": "3x"
+    }
+  ],
+  "info": {
+    "author": "zoen",
+    "version": 1
+  },
+  "properties": {
+    "template-rendering-intent": "original"
+  }
+}

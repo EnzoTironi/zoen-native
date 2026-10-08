@@ -1,0 +1,9 @@
+{
+  "name": "zoen-miniapp-gen",
+  "license": "UNLICENSED",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Box-only test harness: prompt → Codex CLI → React mini-app → miniapp-build → checks → headless render → self-critique.",
+  "type": "module",
+  "dependencies": { "puppeteer-core": "24.22.0" }
+}

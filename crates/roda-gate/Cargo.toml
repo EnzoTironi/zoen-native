@@ -1,0 +1,14 @@
+[package]
+name = "roda-gate"
+description = "Safety gate: hard rules first, then one typed decision call (OpenAI Decisions, TypeSafe Jev, on-device or mock) mapped to allow/ask/block."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+roda-types.workspace = true
+roda-grants.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+sha2.workspace = true

@@ -1,0 +1,13 @@
+[package]
+name = "roda-proto"
+description = "Zoen Sync wire protocol: envelopes, frames and their verification. Shared by the relay, the app core and agents."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+roda-types.workspace = true
+roda-log.workspace = true
+hex.workspace = true
+prost.workspace = true

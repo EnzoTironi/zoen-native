@@ -1,0 +1,50 @@
+[package]
+name = "zoen-relay"
+description = "Zoen Sync relay: orders, stores and fans out signed events per Space (axum, FoundationDB logs, Postgres directory)."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[[bin]]
+name = "zoen-relay"
+path = "src/main.rs"
+
+# Real FoundationDB, so a custom main owns the client network and stops it before exit.
+[[test]]
+name = "log_store"
+harness = false
+
+[features]
+default = []
+# Dev only: download and run a private Postgres so a laptop needs no brew/apt.
+embedded-pg = ["dep:postgresql_embedded"]
+
+[dependencies]
+roda-types.workspace = true
+roda-log.workspace = true
+roda-proto.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+hex.workspace = true
+sha2.workspace = true
+getrandom.workspace = true
+anyhow = "1"
+axum = { version = "0.8", features = ["ws", "macros"] }
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync", "time", "signal", "net", "fs", "io-util"] }
+futures-util = { version = "0.3", default-features = false, features = ["sink", "std"] }
+sqlx = { version = "0.9", default-features = false, features = ["runtime-tokio", "postgres", "json", "migrate", "macros"] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "json", "fmt"] }
+tower-http = { version = "0.6", features = ["trace", "limit"] }
+postgresql_embedded = { version = "0.21", optional = true, default-features = false, features = ["tokio", "zonky", "tls-rustls-ring"] }
+object_store = { version = "0.14.2", features = ["aws"] }
+bytes = "1.12.1"
+async-trait = "0.1"
+async-nats = "0.50"
+foundationdb = { version = "0.11", default-features = false, features = ["fdb-7_3", "embedded-fdb-include"] }
+opentelemetry = { version = "0.33", default-features = false, features = ["trace", "logs"] }
+opentelemetry_sdk = { version = "0.33", default-features = false, features = ["trace", "logs"] }
+opentelemetry-otlp = { version = "0.33", default-features = false, features = ["trace", "logs", "http-proto", "reqwest-blocking-client"] }
+tracing-opentelemetry = "0.34"
+opentelemetry-appender-tracing = "0.33"

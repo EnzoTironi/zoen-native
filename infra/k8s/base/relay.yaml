@@ -1,0 +1,81 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: relay
+  labels: {app.kubernetes.io/name: relay, app.kubernetes.io/part-of: zoen}
+spec:
+  selector: {app.kubernetes.io/name: relay}
+  ports:
+    - {name: http, port: 80, targetPort: http}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: relay-metrics
+  labels: {app.kubernetes.io/name: relay, app.kubernetes.io/part-of: zoen}
+spec:
+  selector: {app.kubernetes.io/name: relay}
+  ports:
+    - {name: metrics, port: 9091, targetPort: metrics}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: relay
+  labels: {app.kubernetes.io/name: relay, app.kubernetes.io/part-of: zoen}
+spec:
+  replicas: 1
+  selector:
+    matchLabels: {app.kubernetes.io/name: relay}
+  strategy:
+    rollingUpdate: {maxUnavailable: 0, maxSurge: 1}
+  template:
+    metadata:
+      labels: {app.kubernetes.io/name: relay, app.kubernetes.io/part-of: zoen}
+    spec:
+      automountServiceAccountToken: false
+      terminationGracePeriodSeconds: 30
+      securityContext: {runAsNonRoot: true, runAsUser: 10001, seccompProfile: {type: RuntimeDefault}}
+      containers:
+        - name: relay
+          image: zoen-relay
+          ports:
+            - {name: http, containerPort: 8080}
+            - {name: metrics, containerPort: 9091}
+          env:
+            - {name: ZOEN_RELAY_NAME, value: relay.zoen.local}
+            - {name: ZOEN_BLOB_DIR, value: /blobs}
+            - {name: ZOEN_DB_POOL, value: "8"}
+            - {name: ZOEN_FDB_CELL, value: c0}
+            - {name: ZOEN_NATS_URL, value: "nats://nats:4222"}
+            - {name: LOG_FORMAT, value: json}
+            - {name: OTEL_EXPORTER_OTLP_ENDPOINT, value: "http://otel-collector:4318"}
+            - {name: OTEL_TRACES_SAMPLER, value: parentbased_traceidratio}
+            - {name: OTEL_TRACES_SAMPLER_ARG, value: "0.1"}
+            - {name: FDB_CLUSTER_SOURCE, value: /etc/fdb/cluster-file}
+            - {name: FDB_CLUSTER_FILE, value: /tmp/fdb.cluster}
+            - name: DATABASE_URL
+              valueFrom: {secretKeyRef: {name: relay, key: database-url}}
+            - name: ZOEN_LOG_PSEUDONYM_KEY
+              valueFrom: {secretKeyRef: {name: relay, key: log-pseudonym-key}}
+          readinessProbe:
+            httpGet: {path: /readyz, port: http}
+            periodSeconds: 5
+          livenessProbe:
+            httpGet: {path: /healthz, port: http}
+            periodSeconds: 10
+          resources:
+            requests: {cpu: 100m, memory: 64Mi}
+            limits: {memory: 512Mi}
+          securityContext: {allowPrivilegeEscalation: false, readOnlyRootFilesystem: true, capabilities: {drop: [ALL]}}
+          volumeMounts:
+            - {name: blobs, mountPath: /blobs}
+            - {name: fdb-cluster, mountPath: /etc/fdb, readOnly: true}
+            - {name: tmp, mountPath: /tmp}
+      volumes:
+        - name: blobs
+          emptyDir: {}
+        - name: tmp
+          emptyDir: {}
+        - name: fdb-cluster
+          configMap: {name: zoen-fdb-config, items: [{key: cluster-file, path: cluster-file}]}

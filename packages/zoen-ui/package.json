@@ -1,0 +1,10 @@
+{
+  "name": "@zoen/ui",
+  "version": "0.1.0",
+  "description": "Zoen UI kit for mini-apps: CSS tokens that match the native app, a few React components, hooks over @zoen/miniapp-sdk and a spring helper.",
+  "type": "module",
+  "main": "src/index.tsx",
+  "license": "UNLICENSED",
+  "private": true,
+  "peerDependencies": { "react": "^19" }
+}

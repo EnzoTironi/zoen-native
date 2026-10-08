@@ -1,0 +1,35 @@
+{
+  "id": "hike",
+  "name": "Saturday hike",
+  "description": "Three trails with maps and photos. Vote, compare, then the agent plans the day.",
+  "capabilities": [
+    {
+      "id": "location.approximate",
+      "purpose": "Show how far each trailhead is from you. Your location stays on this phone."
+    },
+    {
+      "id": "calendar.add",
+      "purpose": "Add the hike you picked to your calendar. You see the event before it's saved."
+    },
+    {
+      "id": "photos.pick",
+      "purpose": "Add the photos you choose to the group's hike album."
+    }
+  ],
+  "allowedDomains": [
+    "tiles.openfreemap.org"
+  ],
+  "networkPurpose": "Load map tiles (OpenFreeMap, no account, no tracking). Without it you get a simple offline map.",
+  "linkDomains": [
+    "www.nps.gov",
+    "www.parks.ca.gov"
+  ],
+  "sha256": "e8dde9e11bc9e828a6243464c406da91782df081c3a079fbce6d3d1419fe8e99",
+  "bytes": 1238346,
+  "deps": {
+    "scheduler": "0.26.0",
+    "react": "19.1.1",
+    "react-dom": "19.1.1",
+    "maplibre-gl": "5.7.1"
+  }
+}

@@ -1,0 +1,47 @@
+[workspace]
+resolver = "2"
+members = [
+  "crates/roda-types",
+  "crates/roda-log",
+  "crates/roda-grants",
+  "crates/roda-store",
+  "crates/roda-ffi",
+  "crates/roda-gate",
+  "crates/roda-proto",
+  "crates/zoen-relay",
+  "crates/zoen-cli",
+  "tools/uniffi-bindgen",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+license = "LicenseRef-Proprietary"
+publish = false
+
+[workspace.dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+thiserror = "2"
+hex = "0.4"
+sha2 = "0.10"
+ed25519-dalek = "2"
+getrandom = "0.2"
+chacha20poly1305 = "0.11.0"
+x25519-dalek = { version = "2", features = ["static_secrets"] }
+hkdf = "0.12"
+rusqlite = { version = "0.37", features = ["bundled"] }
+uniffi = "0.32"
+prost = "0.14"
+roda-types = { path = "crates/roda-types" }
+roda-log = { path = "crates/roda-log" }
+roda-grants = { path = "crates/roda-grants" }
+roda-gate = { path = "crates/roda-gate" }
+roda-store = { path = "crates/roda-store" }
+roda-proto = { path = "crates/roda-proto" }
+
+[profile.release]
+opt-level = 3
+lto = "thin"
+codegen-units = 4
+panic = "unwind"

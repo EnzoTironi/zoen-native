@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>Group list</title>
+<style>
+  :root { --color-background-secondary: #F1EFEA; --color-text-primary: #1C1C1E; --color-text-secondary: #6B6B70; --font-sans: -apple-system, system-ui, sans-serif; color-scheme: light dark; }
+  [data-theme=dark] { --color-background-secondary: #2A2A2E; --color-text-primary: #F2F2F0; --color-text-secondary: #A1A1A6; }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body { margin: 0; background: transparent; font-family: var(--font-sans); color: var(--color-text-primary); -webkit-user-select: none; user-select: none; }
+  .wrap { padding: 12px 14px 14px; }
+  h1 { font-size: 17px; margin: 0 0 8px; font-weight: 700; }
+  .it { display: flex; align-items: center; gap: 12px; width: 100%; font: inherit; font-size: 15px; text-align: left; color: var(--color-text-primary); background: none; border: 0; padding: 9px 2px; border-bottom: 0.5px solid color-mix(in srgb, var(--color-text-secondary) 25%, transparent); }
+  .box { width: 22px; height: 22px; border-radius: 7px; border: 2px solid var(--color-text-secondary); flex: none; display: grid; place-items: center; transition: all .2s; }
+  .it.done .box { background: #3FB27F; border-color: #3FB27F; }
+  .it.done .box::after { content: '✓'; color: #fff; font-size: 13px; font-weight: 800; }
+  .it.done .t { text-decoration: line-through; color: var(--color-text-secondary); }
+  .by { margin-left: auto; font-size: 11px; color: var(--color-text-secondary); }
+  .row { display: flex; gap: 8px; margin-top: 10px; }
+  input { flex: 1; font: inherit; font-size: 14px; border: 0; border-radius: 12px; padding: 10px 12px; background: var(--color-background-secondary); color: var(--color-text-primary); outline: none; }
+  button.small { font: inherit; font-size: 14px; font-weight: 650; border: 0; border-radius: 12px; padding: 10px 14px; background: var(--color-background-secondary); color: var(--color-text-primary); }
+  .send { width: 100%; margin-top: 10px; }
+  .meta { font-size: 12px; color: var(--color-text-secondary); margin-top: 8px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1 id="title">…</h1>
+  <div id="items"></div>
+  <div class="row"><input id="txt" placeholder="Add" data-i18n-ph="add" maxlength="60"><button class="small" id="add">＋</button></div>
+  <button class="small send" id="send" data-i18n="send">Send on WhatsApp…</button>
+  <div class="meta" id="meta"></div>
+</div>
+<script>
+const I18N = {
+  en: { title: 'Group list', add: 'Add', send: 'Send on WhatsApp…', failed: 'Couldn’t do that right now' },
+  pt: { title: 'Lista do grupo', add: 'Adicionar', send: 'Mandar no WhatsApp…', failed: 'Não deu agora' },
+};
+// i18n: English by default; follows hostContext.locale (pt-BR is the second language).
+let LANG = 'en';
+function T(k) { return (LANG === 'pt' && I18N.pt[k]) || I18N.en[k] || k; }
+function applyLocale(locale) {
+  LANG = String(locale || '').toLowerCase().startsWith('pt') ? 'pt' : 'en';
+  document.documentElement.lang = LANG === 'pt' ? 'pt-BR' : 'en';
+  document.querySelectorAll('[data-i18n]').forEach(el => { el.textContent = T(el.dataset.i18n); });
+  document.querySelectorAll('[data-i18n-ph]').forEach(el => { el.placeholder = T(el.dataset.i18nPh); });
+  if (I18N.en.title) document.title = T('title');
+}
+
+// ── Cliente MCP mínimo (JSON-RPC 2.0 via postMessage), como no SEP-1865 ──
+const rpc = (() => {
+  let next = 0; const pending = new Map(); const handlers = {};
+  window.addEventListener('message', (e) => {
+    const m = e.data; if (!m || m.jsonrpc !== '2.0') return;
+    if (m.id != null && !m.method && pending.has(m.id)) { const p = pending.get(m.id); pending.delete(m.id); m.error ? p.reject(m.error) : p.resolve(m.result); return; }
+    if (m.method && m.id != null) { const r = handlers[m.method] ? handlers[m.method](m.params) : {}; window.parent.postMessage({ jsonrpc: '2.0', id: m.id, result: r || {} }, '*'); return; }
+    if (m.method && handlers[m.method]) handlers[m.method](m.params);
+  });
+  return {
+    request(method, params) { const id = ++next; window.parent.postMessage({ jsonrpc: '2.0', id, method, params }, '*'); return new Promise((resolve, reject) => pending.set(id, { resolve, reject })); },
+    notify(method, params) { window.parent.postMessage({ jsonrpc: '2.0', method, params }, '*'); },
+    on(method, fn) { handlers[method] = fn; },
+  };
+})();
+function render(st) {
+  if (!st) return;
+  requestAnimationFrame(() => reportSize()); setTimeout(reportSize, 60);
+  document.getElementById('title').textContent = st.title;
+  const box = document.getElementById('items'); box.innerHTML = '';
+  for (const it of st.items) {
+    const b = document.createElement('button'); b.className = 'it' + (it.done ? ' done' : '');
+    const box2 = document.createElement('span'); box2.className = 'box';
+    const t = document.createElement('span'); t.className = 't'; t.textContent = it.text;
+    const by = document.createElement('span'); by.className = 'by'; by.textContent = it.by || '';
+    b.append(box2, t, by); b.onclick = () => call('list_toggle', { id: it.id }); box.appendChild(b);
+  }
+  const last = (st.log || [])[0]; document.getElementById('meta').textContent = last ? last.who + ' ' + last.what : '';
+}
+async function call(name, args) {
+  try { const r = await rpc.request('tools/call', { name, arguments: args || {} }); if (r.structuredContent) render(r.structuredContent); if (r.content && (r.isError || name === 'list_send_whatsapp')) document.getElementById('meta').textContent = r.content[0].text; }
+  catch (e) { document.getElementById('meta').textContent = (e && e.message) || T('failed'); }
+}
+document.getElementById('add').onclick = () => { const t = document.getElementById('txt'); if (t.value.trim()) { call('list_add', { text: t.value.trim() }); t.value = ''; } };
+document.getElementById('send').onclick = () => call('list_send_whatsapp', {});
+function applyContext(c) {
+  if (!c) return;
+  if (c.locale) applyLocale(c.locale);
+  if (c.theme) document.documentElement.dataset.theme = c.theme;
+  const vars = c.styles && c.styles.variables; if (vars) for (const k in vars) if (vars[k]) document.documentElement.style.setProperty(k, vars[k]);
+}
+rpc.on('ui/notifications/tool-input', () => {});
+rpc.on('ui/notifications/tool-result', (r) => render(r && r.structuredContent));
+rpc.on('ui/notifications/host-context-changed', applyContext);
+rpc.on('ui/resource-teardown', () => ({}));
+// Altura real do conteúdo (não da janela), para o host dimensionar o cartão.
+let lastH = 0;
+function reportSize() {
+  const r = document.body.getBoundingClientRect(); const h = Math.ceil(r.height);
+  if (Math.abs(h - lastH) < 1) return; lastH = h;
+  rpc.notify('ui/notifications/size-changed', { width: Math.ceil(r.width), height: h });
+}
+new ResizeObserver(reportSize).observe(document.body);
+window.addEventListener('load', () => requestAnimationFrame(reportSize));
+(async () => {
+  try { const init = await rpc.request('ui/initialize', { protocolVersion: '2026-01-26', appInfo: { name: 'roda-list', version: '1.0.0' }, appCapabilities: { availableDisplayModes: ['inline', 'fullscreen'] } }); applyContext(init && init.hostContext); } catch (e) {}
+  rpc.notify('ui/notifications/initialized', {});
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,50 @@
+/* Zoen design tokens. Same values as apple/Shared/DesignSystem/Theme.swift (Palette).
+   The host also pushes MCP style variables (--color-*) which win when present. */
+:root {
+  --z-bg: #F4F6FB; --z-surface: #FFFFFF; --z-muted: #ECEFF6; --z-hairline: #E1E5EE;
+  --z-ink: #0E1320; --z-ink-2: #5B6478; --z-ink-3: #8C95A8;
+  --z-action: #3D7A28; --z-action-deep: #2C5E1C; --z-on-action: #FFFFFF;
+  --z-black: #111113; --z-on-black: #FFFFFF;
+  --z-amber: #FFB020; --z-danger: #FF4D5E; --z-success: #22C55E;
+  --z-glass: rgba(255,255,255,.72); --z-glass-stroke: rgba(255,255,255,.65); --z-glass-shadow: 0 8px 28px rgba(14,19,32,.14);
+  --z-radius: 28px; --z-radius-m: 18px; --z-radius-s: 12px;
+  --z-font: -apple-system, system-ui, "SF Pro Text", sans-serif;
+  --z-font-rounded: ui-rounded, -apple-system, system-ui, sans-serif;
+  --z-spring: cubic-bezier(.2, .9, .25, 1.12);
+  --z-ease-out: cubic-bezier(.16, 1, .3, 1);
+  color-scheme: light dark;
+}
+:root[data-theme="dark"] {
+  --z-bg: #090D15; --z-surface: #121826; --z-muted: #1A2233; --z-hairline: #253047;
+  --z-ink: #EEF2FA; --z-ink-2: #93A0B8; --z-ink-3: #5F6B82;
+  --z-action: #86C25A; --z-action-deep: #5E9A35; --z-on-action: #0E1320;
+  --z-black: #F2F2F0; --z-on-black: #111113;
+  --z-glass: rgba(24,32,50,.66); --z-glass-stroke: rgba(255,255,255,.10); --z-glass-shadow: 0 8px 28px rgba(0,0,0,.45);
+}
+* { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+html, body { margin: 0; height: 100%; background: transparent; color: var(--z-ink); font: 16px/1.35 var(--z-font); -webkit-font-smoothing: antialiased; -webkit-user-select: none; user-select: none; overscroll-behavior: none; }
+button { font: inherit; color: inherit; border: 0; background: none; padding: 0; cursor: pointer; }
+.z-glass { background: var(--z-glass); -webkit-backdrop-filter: blur(22px) saturate(1.6); backdrop-filter: blur(22px) saturate(1.6); border: .5px solid var(--z-glass-stroke); box-shadow: var(--z-glass-shadow); }
+.z-pill { display: inline-flex; align-items: center; gap: 6px; height: 36px; padding: 0 14px; border-radius: 999px; font-weight: 600; font-size: 15px; white-space: nowrap; transition: transform .25s var(--z-spring); }
+.z-pill:active { transform: scale(.95); }
+.z-pill.black { background: var(--z-black); color: var(--z-on-black); }
+.z-pill.brand { background: var(--z-action); color: var(--z-on-action); }
+.z-pill.tag { height: 26px; padding: 0 10px; font-size: 13px; background: var(--z-muted); color: var(--z-ink-2); }
+.z-pill.tag.brand-soft { background: color-mix(in srgb, var(--z-action) 16%, transparent); color: var(--z-action); }
+.z-circle { width: 40px; height: 40px; border-radius: 50%; display: grid; place-items: center; transition: transform .25s var(--z-spring); }
+.z-circle:active { transform: scale(.92); }
+.z-card { background: var(--z-surface); border-radius: var(--z-radius); overflow: hidden; box-shadow: 0 10px 30px rgba(14,19,32,.10); }
+.z-title { font: 800 28px/1.1 var(--z-font-rounded); letter-spacing: -.4px; margin: 0; }
+.z-sub { color: var(--z-ink-2); font-size: 15px; margin: 2px 0 0; }
+.z-h { font: 700 17px/1.2 var(--z-font); margin: 0 0 8px; }
+.z-stat-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+.z-stat { background: var(--z-muted); border-radius: var(--z-radius-m); padding: 12px; }
+.z-stat b { display: block; font: 800 20px/1.1 var(--z-font-rounded); font-variant-numeric: tabular-nums; }
+.z-stat span { color: var(--z-ink-2); font-size: 12px; font-weight: 600; }
+.z-avatars { display: inline-flex; }
+.z-avatar { width: 22px; height: 22px; border-radius: 50%; display: grid; place-items: center; font: 700 10px var(--z-font); color: #fff; border: 2px solid var(--z-surface); margin-left: -6px; }
+.z-avatar:first-child { margin-left: 0; }
+.z-snap-x { display: flex; overflow-x: auto; scroll-snap-type: x mandatory; scrollbar-width: none; -webkit-overflow-scrolling: touch; }
+.z-snap-x::-webkit-scrollbar { display: none; }
+.z-snap-x > * { scroll-snap-align: center; flex: none; }
+@media (prefers-reduced-motion: reduce) { * { animation-duration: .01ms !important; transition-duration: .01ms !important; } }

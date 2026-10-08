@@ -1,0 +1,44 @@
+# Rust
+/target/
+**/*.rs.bk
+
+# Artefatos gerados (recriados por scripts/build-core.sh)
+/build/
+apple/Packages/RodaCore/RodaFFI.xcframework/
+apple/Packages/RodaCore/Sources/RodaCore/RodaFFI.generated.swift
+
+# Xcode (o projeto é gerado pelo XcodeGen a partir de apple/project.yml)
+apple/Zoen.xcodeproj/
+apple/iOS/Info.plist
+apple/Mac/Info.plist
+DerivedData/
+xcuserdata/
+*.xcuserstate
+.swiftpm/
+.build/
+
+# Sistema
+.DS_Store
+*.log
+
+# local model tooling (venvs, HF cache)
+.tools/
+node_modules/
+
+# secrets: never committed
+*.env
+gate.env
+auth.json
+*.pem
+*.p8
+*.key
+
+# dev relay blob store (local only)
+tools/dev-relay/blobs/
+
+# local dev stack (scripts/dev-stack.sh)
+/.dev/
+.env
+.env.*
+/.tools/
+.zoen/

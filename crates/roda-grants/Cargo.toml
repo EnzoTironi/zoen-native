@@ -1,0 +1,11 @@
+[package]
+name = "roda-grants"
+description = "Concessões: níveis de confiança, orçamento e a decisão agir/pedir/bloquear."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+roda-types.workspace = true
+serde.workspace = true
