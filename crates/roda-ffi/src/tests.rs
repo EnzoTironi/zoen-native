@@ -1336,6 +1336,7 @@ fn a_device_refuses_a_relay_that_hides_a_message_and_rehashes() {
                 message: "m1".into(),
                 text: "não vou mais".into(),
                 attaches: None,
+                reply: None,
             },
         ))
         .clone();
@@ -1348,6 +1349,7 @@ fn a_device_refuses_a_relay_that_hides_a_message_and_rehashes() {
             message: "m2".into(),
             text: "ok, entendi".into(),
             attaches: None,
+            reply: None,
         },
     );
     assert_eq!(
@@ -1375,4 +1377,67 @@ fn a_device_refuses_a_relay_that_hides_a_message_and_rehashes() {
         .find(|s| s.title == "Viagem")
         .unwrap();
     assert!(!space.last_preview.contains("ok, entendi"));
+}
+
+#[test]
+fn inline_replies_quote_and_thread_replies_gather_under_the_root() {
+    let e = seeded();
+    let paraty = find_space(&e, "Paraty com a Marina");
+    let tl = e.timeline(paraty.id.clone()).unwrap();
+    let root = tl
+        .iter()
+        .find(|x| matches!(&x.kind, EntryKind::Message { text, .. } if !text.is_empty()))
+        .expect("a message to answer")
+        .clone();
+    assert!(
+        tl.iter()
+            .all(|x| x.reply_to.is_none() && x.in_thread.is_none()),
+        "seeded messages are plain"
+    );
+
+    // Inline: stays in the chat, quoting the root.
+    let inline = e
+        .send_reply(paraty.id.clone(), "Fechado!".into(), root.id.clone(), false)
+        .unwrap();
+    let q = inline.reply_to.clone().expect("a quote");
+    assert_eq!(q.id, root.id);
+    assert_eq!(q.author.id, root.author.id);
+    assert!(inline.in_thread.is_none());
+
+    // Thread: two replies, the second aimed at the first, both land under the root.
+    let t1 = e
+        .send_reply(
+            paraty.id.clone(),
+            "Eu levo o protetor".into(),
+            root.id.clone(),
+            true,
+        )
+        .unwrap();
+    assert_eq!(t1.in_thread.as_deref(), Some(root.id.as_str()));
+    let t2 = e
+        .send_reply(paraty.id.clone(), "E eu a água".into(), t1.id.clone(), true)
+        .unwrap();
+    assert_eq!(
+        t2.in_thread.as_deref(),
+        Some(root.id.as_str()),
+        "threads stay one level deep"
+    );
+
+    let tl = e.timeline(paraty.id.clone()).unwrap();
+    let r = tl.iter().find(|x| x.id == root.id).unwrap();
+    assert_eq!(r.thread_replies, 2);
+    let th = e.thread(paraty.id.clone(), root.id.clone()).unwrap();
+    assert_eq!(th.len(), 3);
+    assert_eq!(th[0].id, root.id);
+    assert_eq!(th[0].thread_replies, 2);
+    assert_eq!(th[2].id, t2.id);
+
+    // Only messages can be answered, and the target must exist.
+    assert!(e
+        .send_reply(paraty.id.clone(), "?".into(), "nope".into(), false)
+        .is_err());
+    assert!(
+        e.verify_all().iter().all(|r| r.valid),
+        "replies are signed like any message"
+    );
 }

@@ -69,6 +69,8 @@ pub(crate) enum EntryBody {
     Message {
         text: String,
         attaches: Option<ItemId>,
+        /// Inline reply / thread reply link (see `roda_types::reply`).
+        reply: Option<roda_types::ReplyRef>,
     },
     ItemEdited {
         item: ItemId,
@@ -231,11 +233,17 @@ impl State {
                     s.members.retain(|(id, _)| id != identity);
                 }
             }
-            EventBody::MessagePosted { text, attaches, .. } => {
+            EventBody::MessagePosted {
+                text,
+                attaches,
+                reply,
+                ..
+            } => {
                 if let Some(s) = self.spaces.get_mut(&e.space) {
                     s.entries.push(entry(EntryBody::Message {
                         text: text.clone(),
                         attaches: attaches.clone(),
+                        reply: reply.clone(),
                     }));
                     s.last_at_ms = s.last_at_ms.max(e.at_ms);
                 }
@@ -739,7 +747,7 @@ impl Engine {
 
     // ── conversões para DTO ──
 
-    fn card(&self, item: &str) -> Option<ItemCard> {
+    pub(crate) fn card(&self, item: &str) -> Option<ItemCard> {
         let it = self.state.items.get(item)?;
         let v = it.current();
         let (summary, total, budget, lines, done) = match &v.content {
@@ -773,7 +781,7 @@ impl Engine {
 
     pub(crate) fn entry_dto(&self, e: &Entry) -> TimelineEntry {
         let kind = match &e.body {
-            EntryBody::Message { text, attaches } => EntryKind::Message {
+            EntryBody::Message { text, attaches, .. } => EntryKind::Message {
                 text: text.clone(),
                 card: attaches.as_deref().and_then(|i| self.card(i)),
             },
@@ -830,6 +838,7 @@ impl Engine {
                 background: spec.into(),
             },
         };
+        let (reply_to, in_thread) = self.reply_parts(e);
         TimelineEntry {
             id: e.id().to_string(),
             seq: e.seq,
@@ -837,13 +846,16 @@ impl Engine {
             at_ms: e.at_ms,
             kind,
             delivery: self.delivery(e),
+            reply_to,
+            in_thread,
+            thread_replies: 0,
         }
     }
 
     fn preview(&self, s: &SpaceState) -> (String, Option<Persona>) {
         for e in s.entries.iter().rev() {
             let text = match &e.body {
-                EntryBody::Message { text, attaches } => {
+                EntryBody::Message { text, attaches, .. } => {
                     match attaches.as_deref().and_then(|i| self.card(i)) {
                         Some(c) if text.is_empty() => format!("{} · {}", c.kind_label, c.title),
                         _ => text.clone(),
@@ -1031,7 +1043,9 @@ impl Engine {
 
     pub fn timeline(&self, space: &str) -> R<Vec<TimelineEntry>> {
         let s = self.space_state(space)?;
-        Ok(s.entries.iter().map(|e| self.entry_dto(e)).collect())
+        let mut out: Vec<TimelineEntry> = s.entries.iter().map(|e| self.entry_dto(e)).collect();
+        crate::replies::count_thread_replies(&mut out);
+        Ok(out)
     }
 
     pub fn send_message(&mut self, space: &str, text: &str) -> R<TimelineEntry> {
@@ -1067,6 +1081,7 @@ impl Engine {
                 message: new_id("msg"),
                 text: text.to_string(),
                 attaches,
+                reply: None,
             },
         )?;
         let s = self.space_state(space)?;
