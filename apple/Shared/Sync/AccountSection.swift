@@ -107,11 +107,12 @@ private struct ProfileEditor: View {
                     TextField("Your name", text: $name).textContentType(.name)
                     HStack(spacing: 2) {
                         Text(verbatim: "@").foregroundStyle(Palette.textSecondary)
-                        TextField("username", text: Binding(get: { handle }, set: { handle = ProfileFields.clean($0) }))
-                            .textContentType(.username)
+                        TextField("yourname", text: Binding(get: { handle }, set: { handle = ProfileFields.clean($0) }))
+                            .textContentType(nil)
                             .autocorrectionDisabled()
                             #if os(iOS)
                             .textInputAutocapitalization(.never)
+                            .keyboardType(.asciiCapable)
                             #endif
                     }
                 } footer: {

@@ -7297,22 +7297,22 @@
         }
       }
     },
-    "username": {
-      "localizations": {
-        "pt-BR": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "usuário"
-          }
-        }
-      }
-    },
     "Your chats stay in sync across your devices. Erasing removes them from this device only.": {
       "localizations": {
         "pt-BR": {
           "stringUnit": {
             "state": "translated",
             "value": "Suas conversas ficam iguais em todos os seus aparelhos. Apagar tira tudo só deste aparelho."
+          }
+        }
+      }
+    },
+    "yourname": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "seunome"
           }
         }
       }

@@ -675,11 +675,12 @@ struct ProfileFields: View {
             }
             HStack(spacing: 2) {
                 Text(verbatim: "@").font(.title3.weight(.semibold)).foregroundStyle(InkPalette.ink.opacity(0.45))
-                TextField(String(localized: "username"), text: Binding(get: { handle }, set: { handle = Self.clean($0); handleEdited = true }))
-                    .textContentType(.username)
+                TextField(String(localized: "yourname"), text: Binding(get: { handle }, set: { handle = Self.clean($0); handleEdited = true }))
+                    .textContentType(nil)   // not a login: no Passwords bar over the keys
                     .autocorrectionDisabled()
                     #if os(iOS)
                     .textInputAutocapitalization(.never)
+                    .keyboardType(.asciiCapable)
                     #endif
                     .focused($focus, equals: .handle)
             }

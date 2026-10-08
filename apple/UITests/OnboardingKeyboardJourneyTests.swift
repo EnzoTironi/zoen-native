@@ -16,7 +16,10 @@ final class OnboardingKeyboardJourneyTests: XCTestCase {
         let name = app.textFields.element(boundBy: 0)
         XCTAssertTrue(name.waitForExistence(timeout: 20), "the name field is there")
         name.tap()
-        name.typeText("Enzo Tironi\n")          // Next on the keyboard moves on to the @
+        name.typeText("Enzo Tironi")
+        sleep(1)
+        keep(app, "onboarding-name-keyboard")
+        name.typeText("\n")          // Next on the keyboard moves on to the @
         let handle = app.textFields.element(boundBy: 1)
         let keyboard = app.keyboards.firstMatch
         XCTAssertTrue(keyboard.waitForExistence(timeout: 5), "the keyboard is up")
@@ -36,6 +39,9 @@ final class OnboardingKeyboardJourneyTests: XCTestCase {
         XCTAssertLessThanOrEqual(next.frame.maxY, kb.minY + 1, "Continue sits above the keyboard")
         XCTAssertGreaterThan(next.frame.minY, kb.minY - 120, "Continue rides just above the keyboard")
         XCTAssertTrue(next.isHittable && handle.isHittable)
+
+        // Zoen has no passwords: iOS shouldn't offer its Passwords bar over the keys.
+        XCTAssertFalse(app.buttons["Passwords"].exists || app.buttons["Senhas"].exists, "no Passwords bar")
 
         let jargon = app.staticTexts.matching(NSPredicate(format: "label CONTAINS[c] 'Keychain' OR label CONTAINS[c] 'chaves' OR label CONTAINS[c] ' keys '"))
         XCTAssertEqual(jargon.count, 0, "no tech talk on the step")

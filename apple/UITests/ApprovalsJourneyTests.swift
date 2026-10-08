@@ -8,10 +8,13 @@ final class ApprovalsJourneyTests: XCTestCase {
     override func setUp() { continueAfterFailure = false }
 
     @MainActor
-    private func launch(fresh: Bool = true, open: String = "aprovacoes") -> XCUIApplication {
+    /// `showcase: false` on a relaunch: the showcase flag reseeds the demo on every launch,
+    /// which would wipe what the person just decided.
+    private func launch(fresh: Bool = true, open: String = "aprovacoes", showcase: Bool = true) -> XCUIApplication {
         let app = XCUIApplication()
-        var args = ["-RodaShowcase", "YES", "-RodaDemo", "YES", "-AppleLanguages", "(pt-BR)",
+        var args = ["-RodaDemo", "YES", "-AppleLanguages", "(pt-BR)",
                     "-RodaAppearance", "light", "-RodaApprovalsExplained", "YES", "-RodaOpen", open]
+        if showcase { args += ["-RodaShowcase", "YES"] }
         if fresh { args += ["-RodaFreshStart", "YES", "-RodaResetDemo", "YES"] }
         app.launchArguments = args
         app.launch()
@@ -152,10 +155,17 @@ final class ApprovalsJourneyTests: XCTestCase {
 
         // Financeiro's permissions in Paraty list the standing decision, and it can be revoked.
         app.terminate()
-        let again = launch(fresh: false, open: "permissoes")
+        let again = launch(fresh: false, open: "permissoes", showcase: false)
+        // The standing decisions sit below the tools, so scroll down to them like a person would.
         let row = again.descendants(matching: .any).matching(NSPredicate(format: "label CONTAINS 'Sempre negar'")).firstMatch
-        let found = row.waitForExistence(timeout: 20)
+        let none = again.staticTexts["Nenhuma ainda."]
+        XCTAssertTrue(again.navigationBars.firstMatch.waitForExistence(timeout: 20) || again.staticTexts["Ferramentas"].waitForExistence(timeout: 5))
+        for _ in 0..<6 where !row.exists && !none.exists {
+            again.swipeUp()
+        }
+        let found = row.waitForExistence(timeout: 3)
         if !found { keep(again, "permissions") }
+        XCTAssertFalse(none.exists && !found, "the always-deny was saved (not reset on relaunch)")
         XCTAssertTrue(found, "Permissões shows the standing deny")
         let revoke = again.buttons["Revogar"].firstMatch
         XCTAssertTrue(revoke.waitForExistence(timeout: 5))
