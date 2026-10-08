@@ -58,31 +58,41 @@ struct OnboardingFlow: View {
     @State private var profileError: String?
     @State private var creating = false
     @State private var pendingPhoto: PlatformImage?
+    @Namespace private var avatarSlot
 
     var body: some View {
         VStack(spacing: 0) {
             header
             GeometryReader { geo in
+            // The keyboard shrinks `geo` inside its own animation, so everything derived from
+            // the height (mascot, avatar slot, type size) moves with the keyboard, not after it.
+            let h = geo.size.height
+            let compact = isCompact(h)
+            let mascot = compact ? compactMascotSize(h) : mascotSize(h)
             ScrollView {
-                VStack(spacing: geo.size.height < 560 ? 10 : 14) {
+                VStack(spacing: h < 560 ? 10 : 14) {
                     MascotView(pose: pose)
-                        .frame(width: mascotSize(geo.size.height), height: mascotSize(geo.size.height))
-                        .padding(.top, 2)
+                        .frame(width: mascot, height: mascot)
+                        .scaleEffect(mascot > 0 ? 1 : 0.4)
+                        .opacity(mascot > 0 ? 1 : 0)
+                        .padding(.top, mascot > 0 ? 2 : 0)
                     VStack(spacing: 6) {
                         Text(title)
-                            .font(.system(geo.size.height < 560 ? .title2 : .title, design: .rounded).weight(.heavy))
+                            .font(.system(h < 560 ? .title2 : .title, design: .rounded).weight(.heavy))
                             .minimumScaleFactor(0.8)
                             .multilineTextAlignment(.center)
                             .foregroundStyle(InkPalette.ink)
                             .contentTransition(.opacity)
-                        Text(subtitle)
-                            .font(.body)
-                            .multilineTextAlignment(.center)
-                            .foregroundStyle(InkPalette.ink.opacity(0.6))
-                            .contentTransition(.opacity)
+                        if let subtitle {
+                            Text(subtitle)
+                                .font(.body)
+                                .multilineTextAlignment(.center)
+                                .foregroundStyle(InkPalette.ink.opacity(0.6))
+                                .contentTransition(.opacity)
+                        }
                     }
                     .padding(.horizontal, 28)
-                    controls
+                    controls(compact: compact)
                         .padding(.horizontal, 20)
                         .padding(.top, 6)
                 }
@@ -181,6 +191,19 @@ struct OnboardingFlow: View {
         return min(230, max(110, height - tallestStepContent - 112))   // 112 ≈ the Continue inset + paddings
     }
 
+    /// The profile step with the keyboard up (or any short screen): the photo moves next to
+    /// the name and Zo makes room, so the title, both fields and Continue fit above the keys.
+    private func isCompact(_ height: CGFloat) -> Bool {
+        step == .profile && height < 560
+    }
+
+    /// Zo stays only if there's real room for it above the title once the fields fit.
+    private func compactMascotSize(_ height: CGFloat) -> CGFloat {
+        let fieldsAndTitle: CGFloat = 230, continueInset: CGFloat = 78
+        let room = height - continueInset - fieldsAndTitle - 14
+        return room >= 88 ? min(room, 190) : 0
+    }
+
     private var pose: MascotPose {
         switch step {
         case .hello: .wave
@@ -207,10 +230,10 @@ struct OnboardingFlow: View {
         }
     }
 
-    private var subtitle: String {
+    private var subtitle: String? {
         switch step {
         case .hello: String(localized: "I’m the app and the agent inside it. I turn chats into plans you control.")
-        case .profile: String(localized: "Your @ is how people find you. No email, no password: your keys are made on this device and stay in its Keychain.")
+        case .profile: nil
         case .areas: String(localized: "Pick a few. Your first plan starts there.")
         case .plan: planning || plan == nil ? String(localized: "Planning on this device. Nothing leaves it.") : String(localized: "Edit anything. Every change is a version you can undo.")
         case .agents: String(localized: "You can change it per agent and per chat, anytime.")
@@ -221,16 +244,23 @@ struct OnboardingFlow: View {
     }
 
     @ViewBuilder
-    private var controls: some View {
+    private func controls(compact: Bool) -> some View {
         switch step {
         case .hello:
             EmptyView()
         case .profile:
-            AvatarPhotoPicker(personaId: nil, pending: $pendingPhoto, size: 104,
-                               initials: initialsFrom(name), tintHex: "#6B8F71")
-                .frame(maxWidth: .infinity)
-                .padding(.bottom, 4)
-            ProfileFields(name: $name, handle: $handle, handleEdited: $handleEdited, error: profileError)
+            if !compact {
+                AvatarPhotoPicker(personaId: nil, pending: $pendingPhoto, size: 104,
+                                   initials: initialsFrom(name), tintHex: "#6B8F71")
+                    .matchedGeometryEffect(id: "avatar", in: avatarSlot)
+                    .frame(maxWidth: .infinity)
+                    .padding(.bottom, 4)
+            }
+            ProfileFields(name: $name, handle: $handle, handleEdited: $handleEdited, error: profileError,
+                          avatar: compact ? AnyView(
+                            AvatarPhotoPicker(personaId: nil, pending: $pendingPhoto, size: 54,
+                                              initials: initialsFrom(name), tintHex: "#6B8F71", caption: false)
+                                .matchedGeometryEffect(id: "avatar", in: avatarSlot)) : nil)
         case .areas:
             FlowPills(items: OnboardingArea.allCases, selected: Set(areas)) { a in
                 Haptics.selectionTick()
@@ -626,21 +656,26 @@ struct ProfileFields: View {
     @Binding var handle: String
     @Binding var handleEdited: Bool
     var error: String?
+    /// The photo, beside the name when the keyboard leaves no room above.
+    var avatar: AnyView? = nil
     @FocusState private var focus: Field?
     enum Field { case name, handle }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
-            TextField(String(localized: "Your name"), text: $name)
-                .textContentType(.name)
-                .focused($focus, equals: .name)
-                .submitLabel(.next)
-                .onSubmit { focus = .handle }
-                .onChange(of: name) { _, v in if !handleEdited { handle = Self.suggest(v) } }
-                .modifier(OnboardingField())
+            HStack(spacing: 12) {
+                if let avatar { avatar }
+                TextField(String(localized: "Your name"), text: $name)
+                    .textContentType(.name)
+                    .focused($focus, equals: .name)
+                    .submitLabel(.next)
+                    .onSubmit { focus = .handle }
+                    .onChange(of: name) { _, v in if !handleEdited { handle = Self.suggest(v) } }
+                    .modifier(OnboardingField())
+            }
             HStack(spacing: 2) {
                 Text(verbatim: "@").font(.title3.weight(.semibold)).foregroundStyle(InkPalette.ink.opacity(0.45))
-                TextField(String(localized: "handle"), text: Binding(get: { handle }, set: { handle = Self.clean($0); handleEdited = true }))
+                TextField(String(localized: "username"), text: Binding(get: { handle }, set: { handle = Self.clean($0); handleEdited = true }))
                     .textContentType(.username)
                     .autocorrectionDisabled()
                     #if os(iOS)

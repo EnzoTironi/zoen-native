@@ -52,7 +52,7 @@ struct AccountSection: View {
             } header: {
                 Text("Account")
             } footer: {
-                Text("Your chats stay in sync across your devices. Erasing removes them and your keys from this device only.")
+                Text("Your chats stay in sync across your devices. Erasing removes them from this device only.")
             }
             .sheet(isPresented: $editing) { ProfileEditor(account: acct) }
             .confirmationDialog("Erase this device?", isPresented: $confirmErase, titleVisibility: .visible) {
@@ -107,7 +107,7 @@ private struct ProfileEditor: View {
                     TextField("Your name", text: $name).textContentType(.name)
                     HStack(spacing: 2) {
                         Text(verbatim: "@").foregroundStyle(Palette.textSecondary)
-                        TextField("handle", text: Binding(get: { handle }, set: { handle = ProfileFields.clean($0) }))
+                        TextField("username", text: Binding(get: { handle }, set: { handle = ProfileFields.clean($0) }))
                             .textContentType(.username)
                             .autocorrectionDisabled()
                             #if os(iOS)

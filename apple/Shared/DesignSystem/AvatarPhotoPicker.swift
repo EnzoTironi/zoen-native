@@ -13,6 +13,8 @@ struct AvatarPhotoPicker: View {
     var size: CGFloat = 96
     var initials: String = "?"
     var tintHex: String = "#6B8F71"
+    /// "Your photo, or initials" under the circle; off where the picker sits inline.
+    var caption = true
 
     @State private var item: PhotosPickerItem?
     @State private var showLibrary = false
@@ -32,9 +34,10 @@ struct AvatarPhotoPicker: View {
                         .shadow(color: .black.opacity(0.08), radius: 8, y: 3)
 
                     Image(systemName: "camera.fill")
-                        .font(.system(size: 13, weight: .bold))
+                        .font(.system(size: size < 80 ? 9 : 13, weight: .bold))
                         .foregroundStyle(.white)
-                        .frame(width: 32, height: 32)
+                        .frame(width: size < 80 ? 22 : 32, height: size < 80 ? 22 : 32)
+                        .offset(x: size < 80 ? 3 : 0, y: size < 80 ? 3 : 0)
                         .background(Palette.action, in: .circle)
                         .overlay(Circle().strokeBorder(.white, lineWidth: 2))
                 }
@@ -52,9 +55,11 @@ struct AvatarPhotoPicker: View {
                 Button(String(localized: "Cancel"), role: .cancel) {}
             }
 
-            Text(String(localized: "Your photo — or initials if you skip"))
-                .font(.caption)
-                .foregroundStyle(InkPalette.ink.opacity(0.55))
+            if caption {
+                Text(String(localized: "Your photo — or initials if you skip"))
+                    .font(.caption)
+                    .foregroundStyle(InkPalette.ink.opacity(0.55))
+            }
         }
         .task(id: "\(personaId ?? "")-\(tick)") { reload() }
         .photosPicker(isPresented: $showLibrary, selection: $item, matching: .images)
