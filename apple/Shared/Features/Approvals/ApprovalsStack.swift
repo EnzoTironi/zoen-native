@@ -325,7 +325,6 @@ struct ApprovalsStackView: View {
             .opacity(top && flying != nil && reduceMotion ? 0 : 1)
             .allowsHitTesting(top)
             .gesture(dragGesture(for: r), isEnabled: top)
-            .onTapGesture { if top && expanded { toggleDetails() } }
             .accessibilityElement(children: .combine)
             .accessibilityAddTraits(.isButton)
             .accessibilityHint(Text("Actions: approve, deny, always approve, always deny, details."))
@@ -373,9 +372,8 @@ struct ApprovalsStackView: View {
     }
 
     private func dragGesture(for r: AgentRequestDto) -> some Gesture {
-        // Zero distance on the summary, so the card lifts the moment you touch it; a short
-        // tap opens the details. In the details a ScrollView may need vertical drags.
-        DragGesture(minimumDistance: expanded ? 14 : 0)
+        // Zero distance, so the card lifts the moment you touch it; a short tap flips it.
+        DragGesture(minimumDistance: 0)
             .onChanged { v in
                 guard flying == nil, stamping == nil else { return }
                 if !pressed {
@@ -391,7 +389,7 @@ struct ApprovalsStackView: View {
                 guard flying == nil, stamping == nil else { return }
                 crossed = nil
                 let t = v.translation
-                if hypot(t.width, t.height) < 8 && !expanded {
+                if hypot(t.width, t.height) < 8 {
                     withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) { pressed = false; drag = .zero }
                     toggleDetails()
                     return
@@ -682,9 +680,10 @@ struct ApprovalCardView: View {
             face { front }
                 .modifier(FlipFace(angle: expanded ? 180 : 0, back: false, reduceMotion: reduceMotion))
             face {
+                // No ScrollView here: vertical drags must stay swipes. A tighter back instead.
                 ViewThatFits(in: .vertical) {
-                    backSide
-                    ScrollView { backSide }.scrollBounceBehavior(.basedOnSize)
+                    backSide(compact: false)
+                    backSide(compact: true)
                 }
             }
             .modifier(FlipFace(angle: expanded ? 180 : 0, back: true, reduceMotion: reduceMotion))
@@ -746,22 +745,23 @@ struct ApprovalCardView: View {
         .padding(.bottom, 18)
     }
 
-    private var backSide: some View {
+    private func backSide(compact: Bool) -> some View {
         VStack(alignment: .leading, spacing: 0) {
             who
             Text(request.title)
                 .font(.title3.weight(.bold))
                 .foregroundStyle(Palette.textPrimary)
+                .lineLimit(compact ? 2 : nil)
                 .fixedSize(horizontal: false, vertical: true)
                 .padding(.top, 18)
-            if !request.detail.isEmpty {
+            if !request.detail.isEmpty && !compact {
                 Text(request.detail)
                     .font(.subheadline)
                     .foregroundStyle(Palette.textSecondary)
                     .fixedSize(horizontal: false, vertical: true)
                     .padding(.top, 6)
             }
-            details.padding(.top, 18)
+            details(compact: compact).padding(.top, 18)
             Spacer(minLength: 18)
             hint
         }
@@ -837,7 +837,7 @@ struct ApprovalCardView: View {
     }
 
     @ViewBuilder
-    private var details: some View {
+    private func details(compact: Bool) -> some View {
         VStack(alignment: .leading, spacing: 14) {
             VStack(alignment: .leading, spacing: 10) {
                 fact("person.2", String(localized: "Who sees it"), request.audience)
@@ -871,7 +871,7 @@ struct ApprovalCardView: View {
                           systemImage: s.allow ? "checkmark.seal.fill" : "hand.raised.fill")
                         .font(.subheadline)
                 }
-                ForEach(history, id: \.id) { h in
+                ForEach(history.prefix(compact ? 1 : 3), id: \.id) { h in
                     HStack(spacing: 8) {
                         Image(systemName: h.status == .approved ? "checkmark.circle.fill" : "xmark.circle.fill")
                             .foregroundStyle(h.status == .approved ? Palette.action : Palette.danger)
