@@ -188,6 +188,14 @@ Goal: your Zoen agent and community agents are real members of chats, running on
 calling real models and tools under Grants.
 
 Shape:
+- Runtime decision (2026-10-08, Enzo approved): `zoen-agentd` is a Rust process, and
+  [Rig](https://github.com/0xPlaygrounds/rig) is used only as a library for model, tool and
+  streaming plumbing, behind Zoen-owned traits (`zoen-models::ModelGateway`), so replacing it
+  touches one crate. Zoen owns the durable run loop: run state sealed in FoundationDB, driven
+  by JetStream. **Restate is dropped**: no second durable-execution tier beside FDB and
+  JetStream, and no source-available licence in a shipped path. Mastra and Open Instinct are
+  design references only (ideas, not code). The ADR (draft in the planning notes) is committed
+  under the next free number when M3 starts.
 - `zoen-agentd`: a runtime process that holds agent identities (each owned by a person),
   joins Spaces as an MLS member, and reacts to messages.
 - Model gateway: one interface over OpenAI-compatible chat completions with tool calls, with
