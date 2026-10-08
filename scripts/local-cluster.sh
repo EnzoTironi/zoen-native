@@ -4,18 +4,37 @@
 #   scripts/local-cluster.sh up        create the cluster, build, deploy
 #   scripts/local-cluster.sh journey   port-forward the relay and run scripts/journey-remote.sh
 #   scripts/local-cluster.sh down
-# k3d flags: the native snapshotter works on any Docker storage driver (vfs included) and
-# host-gw flannel needs no vxlan module, so this runs inside other containers too.
+# k3d flags: fuse-overlayfs shares image layers where the host is itself an overlay (the box);
+# the native snapshotter would copy every layer in full and needed 14 GB for three
+# workloads. The k3s image has no libfuse, so the node gets the upstream static
+# fuse-overlayfs (checksum-pinned) and infra/k3d/mount.fuse3. host-gw flannel needs no
+# vxlan module, so this runs inside other containers too.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 CLUSTER=zoen
 NS=zoen
 PORT="${ZOEN_LOCAL_PORT:-18787}"
+FUSE_OVERLAYFS_VERSION=v1.18
+FUSE_OVERLAYFS_SHA256=56b0ae0aeb8abb308b068af2f137ed8d1bd239f4f27e21672ff0def861eea1e8
+FUSE_OVERLAYFS="$PWD/.tools/fuse-overlayfs/$FUSE_OVERLAYFS_VERSION/fuse-overlayfs"
+
+fuse_overlayfs() {
+  [[ -x "$FUSE_OVERLAYFS" ]] && return
+  mkdir -p "$(dirname "$FUSE_OVERLAYFS")"
+  curl -fsSL -o "$FUSE_OVERLAYFS.part" \
+    "https://github.com/containers/fuse-overlayfs/releases/download/$FUSE_OVERLAYFS_VERSION/fuse-overlayfs-x86_64"
+  echo "$FUSE_OVERLAYFS_SHA256  $FUSE_OVERLAYFS.part" | sha256sum -c --quiet
+  chmod +x "$FUSE_OVERLAYFS.part"
+  mv "$FUSE_OVERLAYFS.part" "$FUSE_OVERLAYFS"
+}
 
 up() {
   if ! k3d cluster list -o json | grep -q "\"name\": *\"$CLUSTER\""; then
+    fuse_overlayfs
     K3D_FIX_DNS=0 k3d cluster create "$CLUSTER" --servers 1 --agents 0 \
-      --k3s-arg "--snapshotter=native@server:0" --k3s-arg "--disable=traefik@server:0" \
+      --volume "$FUSE_OVERLAYFS:/usr/local/bin/fuse-overlayfs:ro@server:0" \
+      --volume "$PWD/infra/k3d/mount.fuse3:/usr/local/bin/mount.fuse3:ro@server:0" \
+      --k3s-arg "--snapshotter=fuse-overlayfs@server:0" --k3s-arg "--disable=traefik@server:0" \
       --k3s-arg "--flannel-backend=host-gw@server:0" --wait --timeout 400s
   fi
   # Reach the API server on the node's address, which works even where published ports don't.

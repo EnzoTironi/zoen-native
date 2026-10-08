@@ -1,0 +1,21 @@
+#!/bin/sh
+# mount.fuse3 for the local k3d node (scripts/local-cluster.sh). containerd's fuse-overlayfs
+# snapshotter mounts with `mount.fuse3 <source> <target> -o <opts>… -t fuse-overlayfs`, and
+# the k3s image ships no libfuse, so this hands the mount straight to fuse-overlayfs.
+set -eu
+target="$2"
+shift 2
+opts=""
+type=""
+while [ $# -gt 0 ]; do
+  case "$1" in
+    -o) opts="${opts:+$opts,}$2"; shift 2 ;;
+    -t) type="$2"; shift 2 ;;
+    *) echo "mount.fuse3: unexpected argument: $1" >&2; exit 2 ;;
+  esac
+done
+if [ "$type" != fuse-overlayfs ]; then
+  echo "mount.fuse3: only fuse-overlayfs mounts are supported, not '$type'" >&2
+  exit 2
+fi
+exec fuse-overlayfs -o "$opts" "$target"

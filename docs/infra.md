@@ -21,7 +21,12 @@ scripts/local-cluster.sh down
 ```
 
 Why k3d and these flags: kind's control plane can't start on a Docker using the vfs storage
-driver (the box). k3d runs with `--snapshotter=native` (works on any storage driver) and
+driver (the box). k3d runs with `--snapshotter=fuse-overlayfs` (layers shared on an
+overlay-backed host; the earlier `native` snapshotter copies every layer in full and filled
+the disk with 14 GB for Postgres, the relay and the FDB operator; the whole cell now takes
+4 GB). The k3s image ships no libfuse, so the node gets the upstream static `fuse-overlayfs`
+(version and SHA-256 pinned in the script, cached under `.tools/`) and `infra/k3d/mount.fuse3`,
+a ten-line helper that hands containerd's mount to it, both mounted read-only, and
 `--flannel-backend=host-gw` (the box kernel has no vxlan). `K3D_FIX_DNS=0` keeps Docker's
 embedded DNS.
 
