@@ -14,6 +14,61 @@ final class ProofVideoTests: XCTestCase {
         return app
     }
 
+    /// Approvals stack: slow drags (overlay ramp, threshold), a cancelled drag springing
+    /// back, a fast flick, details then a long pull up ("Sempre aprovar"), a pull down
+    /// ("Sempre negar"), a button, and the all-caught-up end state.
+    @MainActor
+    func testApprovalsSwipeProof() throws {
+        let app = launch(["-RodaApprovalsExplained", "YES", "-RodaOpen", "aprovacoes"])
+        let card = app.descendants(matching: .any)["approval-card"].firstMatch
+        XCTAssertTrue(card.waitForExistence(timeout: 20), "the stack opens on a card")
+        sleep(2)
+        func grab() -> XCUICoordinate { card.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.32)) }
+        func pull(_ dx: CGFloat, _ dy: CGFloat, speed: CGFloat, hold: TimeInterval = 0.5) {
+            let g = grab()
+            g.press(forDuration: 0.15, thenDragTo: g.withOffset(CGVector(dx: dx, dy: dy)),
+                    withVelocity: XCUIGestureVelocity(speed), thenHoldForDuration: hold)
+        }
+        func next(after label: String) {
+            let moved = NSPredicate { _, _ in !card.exists || card.label != label }
+            XCTAssertEqual(XCTWaiter().wait(for: [XCTNSPredicateExpectation(predicate: moved, object: nil)], timeout: 6), .completed)
+        }
+
+        // 1. Slow drag right past the line: the green wash and "Aprovar" ramp in.
+        var label = card.label
+        pull(230, 24, speed: 220)
+        next(after: label)
+        sleep(1)
+        // 2. A hesitant drag left, let go short of the line: it springs back.
+        label = card.label
+        pull(-90, 10, speed: 160, hold: 0.4)
+        sleep(1)
+        XCTAssertEqual(card.label, label, "a short drag doesn't decide")
+        // 3. A fast flick left: it flies off the way the finger went.
+        pull(-120, -30, speed: 2600, hold: 0)
+        next(after: label)
+        sleep(1)
+        // 4. Tap for details, then a long pull up: the ink "SEMPRE" stamp.
+        card.tap()
+        sleep(2)
+        label = card.label
+        XCTAssertTrue(label.contains("Quem está pedindo"), "details open")
+        pull(10, -420, speed: 260, hold: 0.3)
+        next(after: label)
+        sleep(2)
+        // 5. A long pull down: "Sempre negar".
+        label = card.label
+        pull(-6, 420, speed: 260, hold: 0.3)
+        next(after: label)
+        sleep(2)
+        // 6. The glass button, then the end state.
+        label = card.label
+        app.buttons["approval-approve"].tap()
+        next(after: label)
+        XCTAssertTrue(app.descendants(matching: .any)["approvals-done"].waitForExistence(timeout: 8), "all caught up")
+        sleep(4)
+    }
+
     /// WOW: Store ink stamp → new Space draws in its art → first message flourish.
     @MainActor
     func testWowMomentsProof() throws {

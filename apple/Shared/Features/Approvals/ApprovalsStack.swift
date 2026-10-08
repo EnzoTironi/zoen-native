@@ -277,7 +277,7 @@ struct ApprovalsStackView: View {
             .overlay {
                 // Back cards sit a little dimmer, as if further from the light.
                 RoundedRectangle(cornerRadius: ApprovalCardView.radius, style: .continuous)
-                    .fill(Palette.background.opacity(top ? 0 : Double(min(0.55, 0.32 * back))))
+                    .fill(Palette.background.opacity(top ? 0 : Double(min(0.4, 0.22 * back))))
                     .allowsHitTesting(false)
             }
             .overlay {
@@ -692,7 +692,9 @@ struct ApprovalCardView: View {
             }
             .padding(.top, 20)
             if expanded { details.padding(.top, 22).transition(.opacity.combined(with: .offset(y: 12))) }
+            // Twice the room below: the action sits at the card's optical third.
             Spacer(minLength: expanded ? 18 : 30)
+            if !expanded { Spacer(minLength: 0) }
             hint
         }
         .padding(.horizontal, 26)
@@ -704,9 +706,14 @@ struct ApprovalCardView: View {
         HStack(spacing: 12) {
             ContactAvatar(persona: request.agent, size: 46)
             VStack(alignment: .leading, spacing: 3) {
-                Text(request.agent.name)
-                    .font(.headline)
-                    .foregroundStyle(Palette.textPrimary)
+                HStack(alignment: .firstTextBaseline, spacing: 6) {
+                    Text(request.agent.name)
+                        .font(.headline)
+                        .foregroundStyle(Palette.textPrimary)
+                    Text(RodaTime.relative(request.openedMs))
+                        .font(.caption.weight(.medium))
+                        .foregroundStyle(Palette.textTertiary)
+                }
                 HStack(spacing: 6) {
                     if let s = model.space(request.spaceId) { ChatAvatar(space: s, size: 18) }
                     Text("asks in \(request.spaceTitle)")
@@ -715,10 +722,7 @@ struct ApprovalCardView: View {
                         .lineLimit(1)
                 }
             }
-            Spacer(minLength: 8)
-            Text(RodaTime.relative(request.openedMs))
-                .font(.caption.weight(.medium))
-                .foregroundStyle(Palette.textTertiary)
+            Spacer(minLength: 0)
         }
     }
 
@@ -741,7 +745,7 @@ struct ApprovalCardView: View {
         var c: [ApprovalChip] = []
         switch request.actionKey {
         case "money":
-            c.append(.init(id: "money", symbol: "brazilianrealsign", text: String(localized: "Spends \(Money.format(request.costCents ?? 0))"), sensitive: true))
+            c.append(.init(id: "money", symbol: "banknote", text: String(localized: "Spends \(Money.format(request.costCents ?? 0))"), sensitive: true))
         case "third_party_data":
             c.append(.init(id: "data", symbol: "eye", text: String(localized: "Someone else’s data"), sensitive: true))
         case "public_audience":
