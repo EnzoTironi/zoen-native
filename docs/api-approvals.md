@@ -105,9 +105,10 @@ grant for the same (agent, Space, key) arrives.
 2. **`zoen-agentd` must run the same `decide()`** before opening a request, so an agent with
    a standing allow acts without asking and one with a standing deny stops, on the server
    too.
-3. **Push:** one notification per `RequestOpened` for the owner (category `approval`, deep
-   link `zoen://aprovacoes`). The app opens the stack when the bell has approvals waiting.
-   No push for requests resolved by a standing decision.
+3. **Push:** one notification per `RequestOpened` for the owner (category `approval`). Opening
+   it should land on the approvals stack (the app needs a route for it; today the bell
+   opens the stack when approvals are waiting). No push for requests a standing decision
+   resolved.
 4. **Multi-device:** a decision on one device resolves the card on the others through the
    live sync (`RequestResolved`). The stack reloads on every sync revision.
 
