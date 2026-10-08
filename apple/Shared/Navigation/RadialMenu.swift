@@ -71,6 +71,9 @@ struct FanMenu: View {
     @State private var holdTask: Task<Void, Never>?
     @State private var armHoldAt: Date?
     @State private var labelSize = CGSize(width: 80, height: 26)
+    /// The + and the items share one Liquid Glass container, so opening reads as the + itself
+    /// stretching out into the items (and closing as them flowing back in), not a pop.
+    @Namespace private var glass
 
     private var metrics: RadialMetrics {
         RadialMetrics(count: items.count, span: arc.upperBound - arc.lowerBound, triggerSize: triggerSize)
@@ -79,6 +82,17 @@ struct FanMenu: View {
     private var itemSize: CGFloat { RadialMetrics.itemDiameter }
 
     var body: some View {
+        GlassEffectContainer(spacing: 30) {
+            fan
+        }
+        .frame(width: triggerSize, height: triggerSize)
+        .onChange(of: isOpen) { _, open in
+            if !open { hovered = nil; dragging = false }
+        }
+        .task { await runDemoIfAsked() }
+    }
+
+    private var fan: some View {
         ZStack {
             if isOpen {
                 // Faint ring at the press origin, like Pinterest's ghost touch ring.
@@ -102,10 +116,6 @@ struct FanMenu: View {
             }
         }
         .frame(width: triggerSize, height: triggerSize)
-        .onChange(of: isOpen) { _, open in
-            if !open { hovered = nil; dragging = false }
-        }
-        .task { await runDemoIfAsked() }
     }
 
     // MARK: trigger
@@ -119,6 +129,7 @@ struct FanMenu: View {
                 .rotationEffect(.degrees(isOpen ? 45 : 0))
                 .frame(width: triggerSize, height: triggerSize)
                 .glassEffect(.regular.tint(scheme == .dark ? Palette.action : Color(hex: "#1D2418").opacity(0.92)).interactive(), in: .circle)
+                .glassEffectID("plus", in: glass)
                 .overlay { if scheme == .dark { Circle().strokeBorder(.white.opacity(0.3), lineWidth: 0.75).allowsHitTesting(false) } }
                 .shadow(color: .black.opacity(scheme == .dark ? 0.55 : 0.25), radius: isOpen ? 14 : 10, y: 4)
                 .scaleEffect(touching && !reduceMotion ? 0.9 : 1)
@@ -283,6 +294,19 @@ struct FanMenu: View {
         return .asymmetric(insertion: insertion, removal: removal)
     }
 
+    /// Dock-style magnification: the item under the finger grows, its neighbours lean in a
+    /// little, the rest step back.
+    private func magnification(_ item: RadialItem) -> CGFloat {
+        guard !reduceMotion, let h = hovered,
+              let hi = items.firstIndex(where: { $0.id == h }),
+              let i = items.firstIndex(where: { $0.id == item.id }) else { return 1 }
+        switch abs(hi - i) {
+        case 0: return 1.22
+        case 1: return 1.04
+        default: return 0.9
+        }
+    }
+
     @ViewBuilder
     private func itemView(_ item: RadialItem) -> some View {
         let on = hovered == item.id
@@ -295,6 +319,7 @@ struct FanMenu: View {
                 .frame(width: itemSize, height: itemSize)
                 // Same Liquid Glass as the bottom bar; the item under the finger fills with moss green.
                 .glassEffect(on ? .regular.tint(Palette.action).interactive() : .regular.interactive(), in: .circle)
+                .glassEffectID(item.id, in: glass)
                 .shadow(color: (on ? Palette.action : Color.black).opacity(on ? 0.35 : 0.12), radius: on ? 14 : 8, y: on ? 6 : 3)
                 .overlay(alignment: .topTrailing) {
                     if item.badge > 0 {
@@ -306,8 +331,8 @@ struct FanMenu: View {
                             .offset(x: 3, y: -3)
                     }
                 }
-                .scaleEffect(on && !reduceMotion ? 1.18 : 1)
-                .animation(reduceMotion ? nil : .spring(duration: 0.24, bounce: 0.4), value: on)
+                .scaleEffect(magnification(item))
+                .animation(reduceMotion ? nil : .spring(duration: 0.26, bounce: 0.35), value: hovered)
                 .frame(width: RadialMetrics.hitDiameter, height: RadialMetrics.hitDiameter)
                 .contentShape(.circle)
         }
