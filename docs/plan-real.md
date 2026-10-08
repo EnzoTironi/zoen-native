@@ -36,11 +36,11 @@ this model; the load generator (S8) replaces the per-node guesses with measureme
 | messages sent | 40 per DAU per day | 20B/day, 230k/s average, 700k/s peak (3x) |
 | device deliveries | 5 devices per message on average (2.2 people, 1.6 devices each, groups skew it up) | 100B/day, 3.5M/s peak |
 | connected devices | 25% of DAU online at peak, 1.3 devices each | 160M WebSockets |
-| connections per edge node | 150k (tokio, about 30 KB each with TLS) | about 1,100 edge nodes, 1,500 with headroom |
+| connections per edge node | 150k (tokio, 37 KiB each measured without TLS, ADR 0022) | about 1,100 edge nodes, 1,500 with headroom |
 | relay log | 1 KB per envelope with MLS overhead, kept 30 days for catch-up | 20 TB/day, 600 TB hot, 1.8 PB with 3 replicas |
 | media | 2 photos per DAU per day at 200 KB | 200 TB/day, 73 PB/year in object storage behind a CDN |
 | pushes | half of deliveries go to offline devices, collapsed per chat burst | about 10B/day after collapsing |
-| infrastructure cost | edge plus sequencers plus hot storage, before media egress | about $2M/month, $0.002 per user per month |
+| infrastructure cost | relay, FoundationDB, hot storage and delivery egress, before media; from measurements (ADR 0022) | about $470k/month at Fly list prices, $0.0005 per user per month |
 
 What the model forces:
 - **Stateless edge, sharded relay.** Edges terminate WebSockets and hold no durable state.
@@ -103,9 +103,15 @@ storage seams. Each unit ends with the full journey suite green.
 7. **S7 telemetry. Done.** OTLP traces and logs from the relay's own code only, pseudonymous
    fields, W3C context across the NATS bus, Prometheus metrics scraped by a cell collector
    that scrubs address and URL attributes (ADR 0021).
-8. **S8 load generator.** `zoen-load` drives simulated clients over the real protocol and
-   reports messages per second per core, p50 and p99 delivery latency, and connections
-   per node.
+8. **S8 load generator. Done.** `zoen-load` drives simulated people over the real protocol,
+   open loop (latency from the due time), with exact delivery accounting and per-process CPU
+   and memory from `/proc`; `scripts/bench-load.sh sweep` is the capacity record. Measured:
+   37 KiB per connection (was 160), 0.58 ms of relay CPU per message + 45 µs per delivery,
+   about 2,500 appends per FoundationDB core, p50 4–6 ms and p99 8–27 ms up to 2,000 msgs/s on
+   one node; 1B users ≈ $470k/month at list prices (ADR 0022).
+9. **S9 owner-side sequencing.** The Space owner serializes appends per Space in memory, keeps
+   membership cached and commits bursts in one transaction: fewer FoundationDB operations per
+   message and no conflict retries in hot Spaces. Proof: the sweep before and after.
 
 ## Where things stand
 
@@ -122,7 +128,9 @@ storage seams. Each unit ends with the full journey suite green.
 | S5 fan-out bus | done | `journey_cluster` (2 relays over NATS + control), ADR 0019 |
 | S6 abuse controls | done | `journey_limits` (fast sender loses nothing, flood, caps), ADR 0020 |
 | S7 telemetry | done | `journey_telemetry` (two nodes, cross-node trace, 18 secrets absent from OTLP bytes and debug stdout), real otelcol-contrib run in roda-shots/real-s7, ADR 0021 |
-| S8 load generator | next | |
+| S8 load generator | done | `scripts/bench-load.sh sweep` (10 scenarios, exact delivery counts, JSON per scenario in roda-shots/real-s8/final), ADR 0022 |
+| Local k3d cell | healthy with the collector | `scripts/local-cluster.sh up`, `journey`, `telemetry` (relay logs and traces reach the collector before and after it moves pods), roda-shots/local-cluster-s7 |
+| S9 owner-side sequencing | next | |
 | M2, M3, M5, M6, M7 | planned below | |
 
 ## M1. Relay, real accounts, sync
