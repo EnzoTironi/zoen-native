@@ -857,6 +857,7 @@ struct StandingDecisionRow: View {
             .font(.subheadline.weight(.semibold))
             .accessibilityIdentifier("revoke-standing")
         }
-        .accessibilityElement(children: .combine)
+        // Contain, not combine: Revoke stays its own button for VoiceOver.
+        .accessibilityElement(children: .contain)
     }
 }

@@ -539,7 +539,8 @@ final class AppModel {
             }
         case "pedido":
             if let r = requests.first(where: { $0.status == .pending }) {
-                openNotifications(); paths[.activity] = [.request(r.id)]
+                // The review screen itself, so the plain list (not the swipe stack).
+                notificationsOpen = true; paths[.activity] = [.request(r.id)]
             }
         default: break
         }
