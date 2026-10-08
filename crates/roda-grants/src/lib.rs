@@ -30,6 +30,8 @@ pub enum Reason {
     ThirdPartyData,
     /// O orçamento de IA do mês acabou.
     OverBudget { remaining_cents: i64 },
+    /// O dono decidiu "sempre negar" este tipo de pedido deste agente aqui.
+    StandingDeny,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
@@ -137,6 +139,30 @@ pub fn evaluate(
         (Autonomous, Money { .. }) => Decision::Act { undoable: false }, // ≤ teto (linha vermelha já filtrou)
         (Autonomous, Irreversible) => Decision::Request(Reason::LeavesTheSpace),
         (Autonomous, _) => Decision::Request(Reason::LeavesTheSpace),
+    }
+}
+
+/// The kind of action a standing decision ("always approve/deny") covers. Same agent,
+/// same key, same scope → the decision applies without asking again.
+pub fn standing_key(action: &ActionClass) -> &'static str {
+    match action {
+        ActionClass::Reply => "reply",
+        ActionClass::Reversible => "reversible",
+        ActionClass::External => "external",
+        ActionClass::Irreversible => "irreversible",
+        ActionClass::Money { .. } => "money",
+        ActionClass::PublicAudience => "public_audience",
+        ActionClass::ThirdPartyData => "third_party_data",
+    }
+}
+
+/// "Always approve" never covers a red line or something that can't be undone: those
+/// keep asking every time. "Always deny" is allowed for anything.
+pub fn standing_allow_permitted(action: &ActionClass, policy: &Policy) -> bool {
+    match action {
+        ActionClass::Money { cents } => *cents <= policy.money_ceiling_cents,
+        ActionClass::PublicAudience | ActionClass::ThirdPartyData | ActionClass::Irreversible => false,
+        ActionClass::Reply | ActionClass::Reversible | ActionClass::External => true,
     }
 }
 

@@ -272,6 +272,21 @@ impl RodaEngine {
         self.lock().requests()
     }
 
+    /// A swipe on the approvals stack: approve / deny / always approve / always deny.
+    pub fn decide_request(&self, request_id: String, decision: RequestDecision) -> Result<DecideOutcome, CoreError> {
+        self.lock().decide_request(&request_id, decision)
+    }
+
+    /// Standing "always approve / always deny" decisions you gave your agents.
+    pub fn standing_decisions(&self) -> Vec<StandingDecisionDto> {
+        self.lock().standing_decisions()
+    }
+
+    /// Revokes a standing decision: the agent asks again next time.
+    pub fn revoke_standing(&self, grant_id: String) -> Result<(), CoreError> {
+        self.lock().revoke_standing(&grant_id)
+    }
+
     pub fn approve_request(&self, request_id: String) -> Result<ApproveOutcome, CoreError> {
         self.lock().resolve_request(&request_id, true)
     }
@@ -426,6 +441,34 @@ impl RodaEngine {
     ) -> Result<AppCallOutcome, CoreError> {
         self.lock()
             .demo_member_app_call(&item_id, &member_handle, &tool, &args_json)
+    }
+
+    /// Demonstration (Debug showcase only): one of your agents asks for something.
+    /// `action` is a standing key ("external", "third_party_data", "reversible", "money"…);
+    /// `cents` is used for "money". Goes through the evaluator like any request.
+    #[allow(clippy::too_many_arguments)]
+    pub fn demo_open_request(
+        &self,
+        space_id: String,
+        agent_handle: String,
+        title: String,
+        detail: String,
+        audience: String,
+        action: String,
+        cents: i64,
+    ) -> Result<Option<String>, CoreError> {
+        use roda_types::ActionClass as A;
+        let class = match action.as_str() {
+            "reply" => A::Reply,
+            "reversible" => A::Reversible,
+            "external" => A::External,
+            "irreversible" => A::Irreversible,
+            "money" => A::Money { cents },
+            "public_audience" => A::PublicAudience,
+            "third_party_data" => A::ThirdPartyData,
+            other => return Err(CoreError::Invalid { reason: format!("unknown action {other}") }),
+        };
+        self.lock().demo_open_request(&space_id, &agent_handle, &title, &detail, &audience, class)
     }
 
     /// Demonstração: mensagem de outro membro, como se tivesse chegado pela sincronização.
