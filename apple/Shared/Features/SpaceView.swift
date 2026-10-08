@@ -102,7 +102,12 @@ struct SpaceView: View {
             .scrollDismissesKeyboard(.interactively)
             .environment(\.chatBackdrop, !background.isNone)
             .background(ChatBackdropView(background: background, spaceId: spaceId, layout: backgroundState.layout).ignoresSafeArea())
-            .safeAreaInset(edge: .bottom, spacing: 0) {
+            // A bar, not an inset: iOS 26 fades and blurs what scrolls under the composer,
+            // so message text doesn't ghost through its glass.
+            #if os(iOS)
+            .scrollEdgeEffectStyle(.soft, for: .bottom)
+            #endif
+            .safeAreaBar(edge: .bottom, spacing: 0) {
                 Composer(text: $draft,
                          placeholder: space?.counterpart?.kind == .agent ? String(localized: "What do you want to get done?") : String(localized: "Message"),
                          focused: $composerFocused,
@@ -456,6 +461,15 @@ struct DeliveryMark: View {
     }
 }
 
+private extension VerticalAlignment {
+    /// Where a sender's face sits beside a message: the text bubble's bottom when there is
+    /// one, otherwise the bottom of the row.
+    enum MessageFace: AlignmentID {
+        static func defaultValue(in d: ViewDimensions) -> CGFloat { d[.bottom] }
+    }
+    static let messageFace = VerticalAlignment(MessageFace.self)
+}
+
 struct MessageRow: View {
     let author: Persona
     let text: String
@@ -472,7 +486,9 @@ struct MessageRow: View {
 
     var body: some View {
         let mine = author.isMe
-        HStack(alignment: .bottom, spacing: 8) {
+        // The face lines up with the run's last text bubble, not the bottom of a tall card
+        // under it (an agent's trail card pushed its face out of view).
+        HStack(alignment: .messageFace, spacing: 8) {
             if mine { Spacer(minLength: 48) }
             if !mine {
                 if endsRun || author.kind == .agent {
@@ -509,6 +525,7 @@ struct MessageRow: View {
                 }
                 if let voice = VoiceNoteRef.parse(text) {
                     VoiceBubble(ref: voice, mine: mine, grouped: grouped)
+                        .alignmentGuide(.messageFace) { $0[.bottom] }
                 } else if !text.isEmpty {
                     if author.kind == .agent && !mine, let plan = Itinerary(text) {
                         ItineraryCard(itinerary: plan)
@@ -531,6 +548,7 @@ struct MessageRow: View {
                             }
                             .shadow(color: .black.opacity(backdrop ? 0.1 : 0), radius: 1.5, y: 0.5)
                             .textSelection(.enabled)
+                            .alignmentGuide(.messageFace) { $0[.bottom] }
                         if mine && !grouped {
                             FirstBubbleFlourish(key: "\(author.id)-\(atMs)")
                         }
