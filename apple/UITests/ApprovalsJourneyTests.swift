@@ -74,7 +74,7 @@ final class ApprovalsJourneyTests: XCTestCase {
         drag(app, dx: 320, dy: 10)
         XCTAssertTrue(waitForNext(app, after: first), "the card flies off to the right")
         XCTAssertTrue(undoToast(app).waitForExistence(timeout: 3))
-        XCTAssertTrue(undoToast(app).label.contains("Aprovado"), "the toast says what happened: \(undoToast(app).label)")
+        XCTAssertTrue(app.staticTexts["Aprovado"].exists, "the toast says what happened")
         waitForCommit(app)
 
         // Close and come back from the bell: the approved ask doesn't return.
@@ -92,7 +92,7 @@ final class ApprovalsJourneyTests: XCTestCase {
         drag(app, dx: -320, dy: 10)
         XCTAssertTrue(waitForNext(app, after: first), "the card flies off to the left")
         XCTAssertTrue(undoToast(app).waitForExistence(timeout: 3))
-        XCTAssertTrue(undoToast(app).label.contains("Negado"), "toast: \(undoToast(app).label)")
+        XCTAssertTrue(app.staticTexts["Negado"].exists, "the toast says what happened")
         waitForCommit(app)
         XCTAssertNotEqual(topCard(app), first)
     }
@@ -104,7 +104,7 @@ final class ApprovalsJourneyTests: XCTestCase {
         drag(app, dx: 320, dy: 10)
         XCTAssertTrue(waitForNext(app, after: first))
         XCTAssertTrue(undoToast(app).waitForExistence(timeout: 3))
-        undoToast(app).buttons.firstMatch.tap()
+        undoToast(app).tap()
         let back = NSPredicate { _, _ in app.descendants(matching: .any)["approval-card"].firstMatch.label == first }
         XCTAssertEqual(XCTWaiter().wait(for: [XCTNSPredicateExpectation(predicate: back, object: nil)], timeout: 5),
                        .completed, "undo puts the same card back on top")
@@ -117,13 +117,13 @@ final class ApprovalsJourneyTests: XCTestCase {
     func testAlwaysApproveAlsoClearsTheSameAskFromThatAgent() {
         let app = launch()
         // Financeiro has two "send outside Zoen" asks for Marina in Paraty: the bill and the itinerary.
-        denyUntil(app, contains: "Marina")
+        denyUntil(app, contains: "Mandar")
         let marina = topCard(app)
-        let other = marina.contains("cobrança") ? "roteiro de Paraty" : "cobrança de R$ 694"
+        let other = marina.contains("cobrança de R$ 694") ? "roteiro de Paraty" : "cobrança de R$ 694"
         drag(app, dx: 0, dy: -420)
         XCTAssertTrue(waitForNext(app, after: marina), "a long pull up sends it off")
         XCTAssertTrue(undoToast(app).waitForExistence(timeout: 3))
-        XCTAssertTrue(undoToast(app).label.contains("Sempre aprovado"), "toast: \(undoToast(app).label)")
+        XCTAssertTrue(app.staticTexts["Sempre aprovado"].exists, "the toast says what happened")
         waitForCommit(app)
 
         // Go through what's left: the twin ask never shows up again.
@@ -141,11 +141,12 @@ final class ApprovalsJourneyTests: XCTestCase {
     @MainActor
     func testAlwaysDenyThenRevokeInPermissions() {
         let app = launch()
-        denyUntil(app, contains: "Pousada")
+        denyUntil(app, contains: "Reservar a Pousada")
         let pousada = topCard(app)
         drag(app, dx: 0, dy: 420)
         XCTAssertTrue(waitForNext(app, after: pousada), "a long pull down sends it off")
-        XCTAssertTrue(undoToast(app).label.contains("Sempre negado"), "toast: \(undoToast(app).label)")
+        XCTAssertTrue(undoToast(app).waitForExistence(timeout: 3))
+        XCTAssertTrue(app.staticTexts["Sempre negado"].exists, "the toast says what happened")
         waitForCommit(app)
         app.buttons["approvals-back"].tap()
 

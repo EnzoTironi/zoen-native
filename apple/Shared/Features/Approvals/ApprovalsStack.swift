@@ -100,6 +100,9 @@ struct ApprovalsStackView: View {
     @State private var expanded = false
     @State private var lockedHint = false
     @State private var explainerStep = 0
+    /// Cards have been on screen at least once (a deep link can open the stack before the
+    /// first sync lands; that's not "all caught up").
+    @State private var seenCards = false
 
     struct Pending: Equatable {
         let id: String
@@ -114,7 +117,7 @@ struct ApprovalsStackView: View {
     private var showingExplainers: Bool { !explained && explainerStep < ApprovalExplainer.all.count && !visible.isEmpty }
     private var progress: Double {
         let total = decided + visible.count
-        return total == 0 ? 1 : Double(decided) / Double(total)
+        return total == 0 ? (seenCards ? 1 : 0) : Double(decided) / Double(total)
     }
 
     var body: some View {
@@ -125,7 +128,7 @@ struct ApprovalsStackView: View {
                     explainerDeck
                 } else if let top = visible.first {
                     cards(top: top)
-                } else {
+                } else if seenCards {
                     AllCaughtUpView { close() }
                         .transition(.opacity.combined(with: .scale(scale: 0.96)))
                 }
@@ -143,6 +146,7 @@ struct ApprovalsStackView: View {
         .animation(.spring(duration: 0.4, bounce: 0.2), value: visible.map(\.id))
         .onAppear(perform: sync)
         .onChange(of: model.revision) { _, _ in sync() }
+        .onChange(of: visible.isEmpty, initial: true) { _, empty in if !empty { seenCards = true } }
         .onDisappear { commitPending() }
     }
 
