@@ -43,7 +43,7 @@ final class InvestorShowcaseTests: XCTestCase {
         app.launchArguments += ["-RodaAppearance", appearance]
         app.launch()
         // Settle chrome + optional scroll-top task
-        sleep(name.hasPrefix("chat") ? 7 : 3)
+        sleep(name.hasPrefix("chat") ? 9 : 3)
         let a = XCTAttachment(screenshot: app.screenshot())
         a.name = "investor-\(name)-\(appearance)-\(lang)"
         a.lifetime = .keepAlways

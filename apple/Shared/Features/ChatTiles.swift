@@ -12,6 +12,9 @@ struct ChatPinStrip: View {
     let apps: [ItemDetail]
     var compact = false
     @State private var avail: CGFloat = 402
+    /// Starts on the first tile and stays there while tiles load in (the strip used to drift
+    /// a tile to the right when one arrived late).
+    @State private var leadingTile: Int? = 0
 
     private var side: CGFloat { min(170, max(140, (avail - 34) / 2)) }
 
@@ -42,6 +45,7 @@ struct ChatPinStrip: View {
                 .padding(.horizontal, 12)
             }
             .scrollTargetBehavior(.viewAligned)
+            .scrollPosition(id: $leadingTile, anchor: .leading)
             .scrollIndicators(.hidden)
             .scrollClipDisabled()
             .background(Color.clear)

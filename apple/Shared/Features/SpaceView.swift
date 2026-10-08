@@ -16,6 +16,8 @@ struct SpaceView: View {
     @State private var safeTop: CGFloat = 0
     @State private var scrollPos = ScrollPosition(edge: .bottom)
     @State private var offsetY: CGFloat = 0
+    /// Top of the composer bar, in global coordinates (the message fade ends there).
+    @State private var composerTop: CGFloat = .infinity
     @Environment(\.dismiss) private var dismiss
     @FocusState private var composerFocused: Bool
     @State private var backgroundPicker = false
@@ -101,6 +103,21 @@ struct SpaceView: View {
             .safeAreaPadding(.top, chromeHeight + 8)
             .scrollDismissesKeyboard(.interactively)
             .environment(\.chatBackdrop, !background.isNone)
+            // Messages fade out just above the composer instead of ghosting through its
+            // glass; the chat background (drawn below this mask) stays whole.
+            .mask {
+                GeometryReader { g in
+                    let fade: CGFloat = 28
+                    let cut = composerTop.isFinite ? max(0, composerTop - g.frame(in: .global).minY) : g.size.height
+                    VStack(spacing: 0) {
+                        Color.black.frame(height: max(0, cut - fade))
+                        LinearGradient(colors: [.black, .black.opacity(0)], startPoint: .top, endPoint: .bottom)
+                            .frame(height: min(fade, cut))
+                        Color.clear
+                    }
+                }
+                .ignoresSafeArea()
+            }
             .background(ChatBackdropView(background: background, spaceId: spaceId, layout: backgroundState.layout).ignoresSafeArea())
             // A bar, not an inset: iOS 26 fades and blurs what scrolls under the composer,
             // so message text doesn't ghost through its glass.
@@ -119,6 +136,7 @@ struct SpaceView: View {
                     model.sync.stoppedTyping(spaceId)
                     Task { await model.send(text, in: spaceId) }
                 }
+                .onGeometryChange(for: CGFloat.self) { $0.frame(in: .global).minY } action: { composerTop = $0 }
             }
             .onChange(of: draft) { _, text in model.sync.typingChanged(spaceId, text: text) }
             .onDisappear { model.sync.stoppedTyping(spaceId) }
@@ -204,9 +222,12 @@ struct SpaceView: View {
                 if top { scrollPos.scrollTo(edge: .top) } else { scrollPos.scrollTo(y: max(0, offsetY - up)) }
             }
             if top {
-                // Late tiles/images can still grow the content; re-pin once it settles.
-                try? await Task.sleep(for: .seconds(2))
-                withAnimation(.smooth(duration: 0.3)) { scrollPos.scrollTo(edge: .top) }
+                // Late tiles, images and app cards can still grow the content: keep re-pinning
+                // for a few seconds until nothing moves it any more.
+                for _ in 0..<6 {
+                    try? await Task.sleep(for: .seconds(1))
+                    withAnimation(.smooth(duration: 0.3)) { scrollPos.scrollTo(edge: .top) }
+                }
             }
         }
         .task {
