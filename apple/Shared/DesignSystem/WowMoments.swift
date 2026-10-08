@@ -27,13 +27,16 @@ enum WowGate {
 struct InkStampMark: View {
     var portuguese = false
     var animate = true
+    /// Another word and ink (the approvals stack's "SEMPRE" stamp).
+    var word: String? = nil
+    var inkColor: Color = InkPalette.tomato
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var press: CGFloat = 0      // 0…1 squash-in
     @State private var spread: CGFloat = 0     // ink bloom
     @State private var settle: CGFloat = 0     // boil amp
     @State private var start = Date()
 
-    private var label: String { portuguese ? "INSTALADO" : "INSTALLED" }
+    private var label: String { word ?? (portuguese ? "INSTALADO" : "INSTALLED") }
 
     var body: some View {
         TimelineView(.animation(minimumInterval: 1 / 60, paused: reduceMotion || !animate)) { tl in
@@ -62,7 +65,7 @@ struct InkStampMark: View {
         let r = min(size.width, size.height) * 0.42
         // Stamp oval (double ring)
         var ring = Path(ellipseIn: CGRect(x: cx - r, y: cy - r * 0.72, width: r * 2, height: r * 1.44))
-        let ink = InkPalette.tomato.opacity(0.55 + 0.25 * spread)
+        let ink = inkColor.opacity(0.55 + 0.25 * spread)
         ctx.stroke(ring, with: .color(ink), style: StrokeStyle(lineWidth: 3.2 + CGFloat(boil), lineCap: .round))
         // Inner wobble ring
         var inner = Path()

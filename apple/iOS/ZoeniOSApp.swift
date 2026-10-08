@@ -94,6 +94,9 @@ struct RootView: View {
         .sheet(isPresented: $model.notificationsOpen) {
             NotificationsSheet().environment(model).environment(\.appZoom, zoom)
         }
+        .fullScreenCover(isPresented: $model.approvalsOpen) {
+            ApprovalsStackView().environment(model).environment(\.appZoom, zoom)
+        }
         .sheet(item: $model.appSheet) { ref in
             AppSheetHost(itemId: ref.id)
                 .environment(model)
