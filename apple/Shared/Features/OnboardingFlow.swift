@@ -251,7 +251,7 @@ struct OnboardingFlow: View {
         case .profile:
             if !compact {
                 AvatarPhotoPicker(personaId: nil, pending: $pendingPhoto, size: 104,
-                                   initials: initialsFrom(name), tintHex: "#6B8F71")
+                                   initials: initialsFrom(name), tintHex: "#6B8F71", ringColor: InkPalette.paper)
                     .matchedGeometryEffect(id: "avatar", in: avatarSlot)
                     .frame(maxWidth: .infinity)
                     .padding(.bottom, 4)
@@ -259,7 +259,8 @@ struct OnboardingFlow: View {
             ProfileFields(name: $name, handle: $handle, handleEdited: $handleEdited, error: profileError,
                           avatar: compact ? AnyView(
                             AvatarPhotoPicker(personaId: nil, pending: $pendingPhoto, size: 54,
-                                              initials: initialsFrom(name), tintHex: "#6B8F71", caption: false)
+                                              initials: initialsFrom(name), tintHex: "#6B8F71", caption: false,
+                                              ringColor: InkPalette.paper)
                                 .matchedGeometryEffect(id: "avatar", in: avatarSlot)) : nil)
         case .areas:
             FlowPills(items: OnboardingArea.allCases, selected: Set(areas)) { a in
