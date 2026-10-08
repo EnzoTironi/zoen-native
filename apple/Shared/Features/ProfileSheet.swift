@@ -220,6 +220,17 @@ struct ProfileSheet: View {
             }
         }
 
+        if p.kind == .agent && p.isMine {
+            let decisions = model.standing(for: p.id)
+            if !decisions.isEmpty {
+                section(String(localized: "Standing decisions")) {
+                    VStack(spacing: 12) {
+                        ForEach(decisions, id: \.grantId) { d in StandingDecisionRow(decision: d) }
+                    }
+                }
+            }
+        }
+
         // Shared media/files placeholder from local store (no jargon)
         section(String(localized: "Shared")) {
             Text(String(localized: "Photos, links and files you share in chats appear here."))
