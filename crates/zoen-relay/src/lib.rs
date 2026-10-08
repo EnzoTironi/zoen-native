@@ -29,6 +29,7 @@ use axum::{
     http::StatusCode,
     response::IntoResponse,
     routing::{get, put},
+    serve::ListenerExt,
     Router,
 };
 use sqlx::{postgres::PgPoolOptions, PgPool};
@@ -190,7 +191,12 @@ pub async fn serve(cfg: Config) -> anyhow::Result<()> {
         tracing::info!(bind = %bind, "metrics listening");
         tokio::spawn(async move { axum::serve(listener, metrics_router(state)).await });
     }
-    let listener = tokio::net::TcpListener::bind(cfg.bind).await?;
+    // Frames are small and latency is the product: no Nagle delay on any connection.
+    let listener = tokio::net::TcpListener::bind(cfg.bind)
+        .await?
+        .tap_io(|tcp| {
+            let _ = tcp.set_nodelay(true);
+        });
     tracing::info!(bind = %cfg.bind, relay = %cfg.relay_name, "zoen-relay listening");
     axum::serve(
         listener,

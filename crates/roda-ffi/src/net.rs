@@ -371,7 +371,8 @@ async fn session(
     let url = ws_url(&relay_url);
     let ws = match tokio::time::timeout(
         Duration::from_secs(10),
-        tokio_tungstenite::connect_async(url.as_str()),
+        // Small frames must go out now, not wait for Nagle's delayed ACK.
+        tokio_tungstenite::connect_async_with_config(url.as_str(), None, true),
     )
     .await
     {
