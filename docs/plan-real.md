@@ -281,6 +281,16 @@ keyed to the MLS epoch, and the signed export bundle. Proof: golden retrieval ev
 test that finds nothing derived afterwards, a revoke test that drops vectors, and a sandbox
 test that the agent can't read its own runtime or any secret.
 
+## M2.7. Files, editors, live pages and dynamic UI (proposed)
+
+After M2.6: a viewer for every file and an editor for most (ADR 0023), a native WYSIWYG
+Markdown page editor on TextKit 2 over Loro, live pages that people and agent members keep
+current from the Space's ontology (ADR 0024), and native declarative Zoen Views with MCP Apps
+HTML as the sandboxed fallback (ADR 0025). Build order in ADR 0023. Proof: a Markdown corpus
+that round-trips byte-identical through the CLI, an agent page edit that waits for a swipe
+approval and reaches a second device while the relay holds only ciphertext, and a view action
+outside its grant that is refused.
+
 ## First-class concerns (after M1 to M3, in this order)
 
 These shape the architecture now; each gets built in full after milestones 1 to 3.
