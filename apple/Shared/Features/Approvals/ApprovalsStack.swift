@@ -93,10 +93,21 @@ struct ApprovalsStackView: View {
     @State private var hidden: Set<String> = []
     @State private var decided = 0
     @State private var pending: Pending?
+    /// The finger's raw translation (what thresholds read). The card shows `shown(_:)` of it.
     @State private var drag: CGSize = .zero
+    /// Grabbed in the top half: the card pivots on its bottom edge (and the other way round).
+    @State private var grabTop = true
+    @State private var pressed = false
     @State private var flying: ApprovalSwipe?
+    /// Where the card flies to (continues the finger) and the spin it carries.
+    @State private var exit: CGSize = .zero
+    @State private var exitSpin: Double = 0
     @State private var stamping: ApprovalSwipe?
     @State private var crossed: ApprovalSwipe?
+    @State private var cardWidth: CGFloat = 360
+    @State private var cardHeight: CGFloat = 560
+    @State private var commitTick = 0
+    @State private var commitFeel: SensoryFeedback = .impact(weight: .light)
     @State private var expanded = false
     @State private var lockedHint = false
     @State private var explainerStep = 0
@@ -126,15 +137,19 @@ struct ApprovalsStackView: View {
             ZStack {
                 if showingExplainers {
                     explainerDeck
-                } else if let top = visible.first {
-                    cards(top: top)
+                } else if !visible.isEmpty {
+                    cards
                 } else if seenCards {
                     AllCaughtUpView { close() }
                         .transition(.opacity.combined(with: .scale(scale: 0.96)))
                 }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .padding(.horizontal, 18)
+            .padding(.horizontal, 20)
+            .padding(.top, 10)
+            .onGeometryChange(for: CGSize.self) { $0.size } action: {
+                cardWidth = max(200, $0.width - 40); cardHeight = max(200, $0.height - 10)
+            }
             .overlay(alignment: .bottom) { toast.padding(.bottom, 6) }
             if !showingExplainers, let top = visible.first {
                 buttons(for: top)
@@ -148,6 +163,14 @@ struct ApprovalsStackView: View {
         .onChange(of: model.revision) { _, _ in sync() }
         .onChange(of: visible.isEmpty, initial: true) { _, empty in if !empty { seenCards = true } }
         .onDisappear { commitPending() }
+        // Crossing a threshold (or back): a light, crisp tick. A red-line "always" warns.
+        .sensoryFeedback(trigger: crossed) { old, new in
+            if new == .up, let top = visible.first, !top.canAlwaysApprove { return .warning }
+            return old == new ? nil : .impact(weight: .light)
+        }
+        .sensoryFeedback(trigger: commitTick) { _, _ in commitFeel }
+        // The next card settles on top: a tiny tap.
+        .sensoryFeedback(.impact(weight: .light, intensity: 0.45), trigger: visible.first?.id)
     }
 
     // MARK: header (no numbers: the bar alone shows progress)
@@ -200,98 +223,123 @@ struct ApprovalsStackView: View {
 
     // MARK: cards
 
-    @ViewBuilder
-    private func cards(top: AgentRequestDto) -> some View {
-        let dir = direction(for: drag)
-        let p = dir.map { swipeProgress(drag, $0) } ?? 0
-        ForEach(Array(visible.prefix(3).enumerated().reversed()), id: \.element.id) { i, r in
-            if i == 0 {
-                ApprovalCardView(request: r, expanded: expanded, history: history(for: r), standing: model.standing(for: r.agent.id))
-                    .overlay { tintOverlay(dir: flying ?? dir, progress: flying != nil ? 1 : p, locked: dir == .up && !r.canAlwaysApprove) }
-                    .overlay {
-                        if let s = stamping {
-                            AlwaysStamp(tint: s.tint)
-                                .transition(.scale(scale: 1.4).combined(with: .opacity))
-                        }
-                    }
-                    .offset(cardOffset(r))
-                    .rotationEffect(cardRotation, anchor: .bottom)
-                    .opacity(reduceMotion && flying != nil ? 0 : 1)
-                    .gesture(dragGesture(for: r))
-                    .onTapGesture {
-                        Haptics.tap()
-                        withAnimation(.spring(duration: 0.45, bounce: 0.18)) { expanded.toggle() }
-                    }
-                    .accessibilityElement(children: .combine)
-                    .accessibilityAddTraits(.isButton)
-                    .accessibilityHint(Text("Actions: approve, deny, always approve, always deny, details."))
-                    .accessibilityActions {
-                        ForEach(available(for: r)) { s in
-                            Button(s.label) { decide(s) }
-                        }
-                        Button(expanded ? String(localized: "Hide details") : String(localized: "Show details")) {
-                            withAnimation(.spring(duration: 0.4)) { expanded.toggle() }
-                        }
-                    }
-                    .accessibilityIdentifier("approval-card")
-                    .zIndex(3)
-            } else {
-                let lift: CGFloat = flying != nil ? 1 : min(1, p)
-                ApprovalCardView(request: r, expanded: false, history: [], standing: [])
-                    .scaleEffect(1 - 0.05 * (CGFloat(i) - lift))
-                    .offset(y: -14 * (CGFloat(i) - lift))
-                    .opacity(i == 2 ? 0.6 : 1)
-                    .allowsHitTesting(false)
-                    .accessibilityHidden(true)
+    /// Sideways is free; up and down pull against a rubber band until the "always"
+    /// threshold, so a standing decision always feels deliberate.
+    private func shown(_ raw: CGSize, _ r: AgentRequestDto) -> CGSize {
+        if reduceMotion { return .zero }
+        let a = abs(raw.height), s: CGFloat = raw.height < 0 ? -1 : 1
+        let T = ApprovalSwipe.up.threshold
+        let y: CGFloat
+        if raw.height < 0 && !r.canAlwaysApprove {
+            y = -sqrt(a) * 4.5                                   // red line: it won't go
+        } else {
+            y = s * (a < T ? a * 0.5 : T * 0.5 + (a - T) * 0.92)  // resistance, then it gives
+        }
+        return CGSize(width: raw.width, height: y)
+    }
+
+    /// Proportional to x, capped at 12°, pivoting on the edge opposite the finger.
+    private var tilt: Double {
+        guard !reduceMotion else { return 0 }
+        let a = Double(drag.width / cardWidth) * 18
+        return min(12, max(-12, a)) * (grabTop ? 1 : -1)
+    }
+
+    private var leading: (ApprovalSwipe, CGFloat)? {
+        guard let d = direction(for: drag) else { return nil }
+        return (d, swipeProgress(drag, d))
+    }
+
+    private var cards: some View {
+        let lead = leading
+        // The next card rises with the pull, live; all the way once the top one is gone.
+        let lift: CGFloat = flying != nil ? 1 : min(1, (lead?.1 ?? 0) * 0.9)
+        return ZStack {
+            ForEach(Array(visible.prefix(3).enumerated()), id: \.element.id) { i, r in
+                deckCard(r, depth: CGFloat(i), lift: lift, lead: lead)
                     .zIndex(Double(3 - i))
             }
         }
     }
 
-    private func cardOffset(_ r: AgentRequestDto) -> CGSize {
-        if let f = flying, !reduceMotion {
-            switch f {
-            case .right: return CGSize(width: 700, height: drag.height + 80)
-            case .left: return CGSize(width: -700, height: drag.height + 80)
-            case .up: return CGSize(width: drag.width, height: -1100)
-            case .down: return CGSize(width: drag.width, height: 1100)
+    /// One card in the deck. Same view for the top and the ones behind (only values change),
+    /// so a card that comes to the top keeps its identity: no cross-fade, no relayout.
+    private func deckCard(_ r: AgentRequestDto, depth i: CGFloat, lift: CGFloat, lead: (ApprovalSwipe, CGFloat)?) -> some View {
+        let top = i == 0
+        let back = max(0, i - lift)                     // 0 = on top
+        let offset = top ? (flying != nil ? exit : shown(drag, r)) : CGSize(width: 0, height: reduceMotion ? 0 : -(cardHeight * 0.0275 + 11) * back)
+        let angle = top ? tilt + (flying != nil ? exitSpin : 0) : 0
+        let scale = top ? (pressed && flying == nil ? 1.02 : 1) : 1 - 0.055 * back
+        let locked = lead?.0 == .up && !r.canAlwaysApprove
+        return ApprovalCardView(request: r, expanded: top && expanded,
+                                history: top ? history(for: r) : [], standing: top ? model.standing(for: r.agent.id) : [],
+                                showHint: top && decided == 0)
+            .overlay {
+                // Back cards sit a little dimmer, as if further from the light.
+                RoundedRectangle(cornerRadius: ApprovalCardView.radius, style: .continuous)
+                    .fill(Palette.background.opacity(top ? 0 : Double(min(0.55, 0.32 * back))))
+                    .allowsHitTesting(false)
             }
-        }
-        var d = drag
-        // "Always approve" on a red line: rubber band, it won't go.
-        if direction(for: drag) == .up && !r.canAlwaysApprove {
-            d.height = -sqrt(abs(drag.height)) * 5
-        }
-        return reduceMotion ? CGSize(width: d.width * 0.25, height: d.height * 0.25) : d
+            .overlay {
+                if top { tintOverlay(dir: flying ?? lead?.0, progress: flying != nil ? 1 : (lead?.1 ?? 0), locked: locked) }
+            }
+            .overlay {
+                if top, let s = stamping {
+                    AlwaysStamp(tint: s.tint)
+                        .transition(.scale(scale: 1.5).combined(with: .opacity))
+                }
+            }
+            .scaleEffect(scale)
+            // Lift on touch: the shadow grows, and leans away from the tilt.
+            .shadow(color: .black.opacity(top ? (pressed ? 0.16 : 0.09) : 0.05),
+                    radius: top && pressed ? 30 : 16,
+                    x: top ? CGFloat(-angle) * 1.1 : 0, y: top && pressed ? 18 : 8)
+            .rotationEffect(.degrees(angle), anchor: grabTop ? .bottom : .top)
+            .offset(offset)
+            .opacity(top && flying != nil && reduceMotion ? 0 : 1)
+            .allowsHitTesting(top)
+            .gesture(dragGesture(for: r), isEnabled: top)
+            .onTapGesture { if top && expanded { toggleDetails() } }
+            .accessibilityElement(children: .combine)
+            .accessibilityAddTraits(.isButton)
+            .accessibilityHint(Text("Actions: approve, deny, always approve, always deny, details."))
+            .accessibilityActions {
+                ForEach(available(for: r)) { s in
+                    Button(s.label) { decide(s) }
+                }
+                Button(expanded ? String(localized: "Hide details") : String(localized: "Show details")) { toggleDetails() }
+            }
+            .accessibilityHidden(!top)
+            .accessibilityIdentifier(top ? "approval-card" : "approval-card-behind")
     }
 
-    private var cardRotation: Angle {
-        guard !reduceMotion else { return .zero }
-        let w = flying == .right ? 700 : flying == .left ? -700 : drag.width
-        guard abs(w) > abs(drag.height) || flying == .left || flying == .right else { return .zero }
-        return .degrees(Double(w) / 22)
+    private func toggleDetails() {
+        withAnimation(.spring(response: 0.42, dampingFraction: 0.82)) { expanded.toggle() }
     }
 
     @ViewBuilder
     private func tintOverlay(dir: ApprovalSwipe?, progress p: CGFloat, locked: Bool) -> some View {
         if let dir {
             let color = locked ? Palette.textTertiary : dir.tint
+            // Fades in with the pull; the label grows a touch as you near the threshold.
+            let ramp = Double(min(1, max(0, (p - 0.12) / 0.6)))
             ZStack(alignment: dir.labelAlignment) {
-                RoundedRectangle(cornerRadius: 32, style: .continuous)
-                    .fill(color.opacity(Double(min(0.82, p * 0.82))))
+                RoundedRectangle(cornerRadius: ApprovalCardView.radius, style: .continuous)
+                    .fill(color.opacity(min(0.5, Double(p) * 0.42 + (p >= 1 ? 0.08 : 0))))
                 HStack(spacing: 8) {
                     Image(systemName: locked ? "lock.fill" : dir.symbol)
-                        .font(.system(size: 17, weight: .bold))
-                        .foregroundStyle(color)
-                        .frame(width: 38, height: 38)
-                        .background(.white, in: .circle)
+                        .font(.system(size: 16, weight: .heavy))
                     Text(locked ? String(localized: "Always asks") : dir.label)
-                        .font(.headline)
-                        .foregroundStyle(.white)
+                        .font(.system(size: 17, weight: .bold, design: .rounded))
                 }
-                .padding(22)
-                .opacity(Double(min(1, p * 1.6)))
-                .scaleEffect(0.85 + 0.15 * min(1, p))
+                .foregroundStyle(.white)
+                .padding(.horizontal, 16).padding(.vertical, 11)
+                .background(color, in: .capsule)
+                .shadow(color: color.opacity(0.35), radius: 8, y: 3)
+                .rotationEffect(.degrees(dir == .right ? -8 : dir == .left ? 8 : 0))
+                .padding(24)
+                .opacity(ramp)
+                .scaleEffect(0.86 + 0.22 * min(1, p))
             }
             .allowsHitTesting(false)
             .accessibilityHidden(true)
@@ -299,46 +347,64 @@ struct ApprovalsStackView: View {
     }
 
     private func dragGesture(for r: AgentRequestDto) -> some Gesture {
-        DragGesture(minimumDistance: 10)
+        // Zero distance on the summary, so the card lifts the moment you touch it; a short
+        // tap opens the details. In the details a ScrollView may need vertical drags.
+        DragGesture(minimumDistance: expanded ? 14 : 0)
             .onChanged { v in
-                guard flying == nil else { return }
-                drag = v.translation
+                guard flying == nil, stamping == nil else { return }
+                if !pressed {
+                    grabTop = v.startLocation.y < cardHeight / 2
+                    withAnimation(.spring(response: 0.25, dampingFraction: 0.75)) { pressed = true }
+                }
+                drag = v.translation           // 1:1, no animation
                 let dir = direction(for: v.translation)
                 let over = dir.flatMap { swipeProgress(v.translation, $0) >= 1 ? $0 : nil }
-                if over != crossed {
-                    crossed = over
-                    if let over {
-                        if over == .up && !r.canAlwaysApprove { Haptics.warning() }
-                        else if over.isStanding { Haptics.open() } else { Haptics.selectionTick() }
-                    }
-                }
+                if over != crossed { crossed = over }
             }
             .onEnded { v in
-                guard flying == nil else { return }
+                guard flying == nil, stamping == nil else { return }
                 crossed = nil
-                // Sideways also flies on a quick flick; up/down need the full, deliberate pull.
-                var t = v.translation
-                if abs(v.predictedEndTranslation.width) > abs(t.width) && abs(t.width) > abs(t.height) {
-                    t.width = v.predictedEndTranslation.width
+                let t = v.translation
+                if hypot(t.width, t.height) < 8 && !expanded {
+                    withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) { pressed = false; drag = .zero }
+                    toggleDetails()
+                    return
                 }
-                if let dir = direction(for: t), swipeProgress(t, dir) >= 1 {
-                    if dir == .up && !r.canAlwaysApprove {
-                        lockedHint = true
-                        withAnimation(.spring(duration: 0.45, bounce: 0.35)) { drag = .zero }
-                        DispatchQueue.main.asyncAfter(deadline: .now() + 3) { lockedHint = false }
-                        return
-                    }
-                    decide(dir)
-                } else {
-                    withAnimation(.spring(duration: 0.45, bounce: 0.3)) { drag = .zero }
+                guard let dir = direction(for: t) else { return settle(v.velocity, r) }
+                let along: CGFloat = switch dir {
+                case .right: v.velocity.width
+                case .left: -v.velocity.width
+                case .up: -v.velocity.height
+                case .down: v.velocity.height
                 }
+                // A quick flick commits short of the line; up and down still need half the pull.
+                let flick = dir.isStanding ? (along > 1100 && swipeProgress(t, dir) > 0.5) : (along > 650 && abs(t.width) > 24)
+                guard swipeProgress(t, dir) >= 1 || flick else { return settle(v.velocity, r) }
+                if dir == .up && !r.canAlwaysApprove {
+                    withAnimation(.spring(duration: 0.3)) { lockedHint = true }
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 3) { withAnimation { lockedHint = false } }
+                    return settle(v.velocity, r)
+                }
+                decide(dir, velocity: v.velocity)
             }
     }
 
+    /// Back to the middle with an interactive spring that keeps the finger's speed.
+    private func settle(_ velocity: CGSize, _ r: AgentRequestDto) {
+        let at = shown(drag, r)
+        let d2 = max(1, at.width * at.width + at.height * at.height)
+        let toward = -(velocity.width * at.width + velocity.height * at.height) / d2
+        withAnimation(.interpolatingSpring(Spring(response: 0.35, dampingRatio: 0.7), initialVelocity: min(30, max(-10, toward)))) {
+            drag = .zero
+            pressed = false
+        }
+    }
+
     private func direction(for t: CGSize) -> ApprovalSwipe? {
-        guard abs(t.width) > 6 || abs(t.height) > 6 else { return nil }
-        if abs(t.width) >= abs(t.height) { return t.width > 0 ? .right : .left }
-        return t.height < 0 ? .up : .down
+        guard hypot(t.width, t.height) > 8 else { return nil }
+        // Vertical has to clearly dominate: a sloppy sideways swipe is still sideways.
+        if abs(t.height) > abs(t.width) * 1.15 { return t.height < 0 ? .up : .down }
+        return t.width > 0 ? .right : .left
     }
 
     private func swipeProgress(_ t: CGSize, _ d: ApprovalSwipe) -> CGFloat {
@@ -352,12 +418,13 @@ struct ApprovalsStackView: View {
 
     // MARK: deciding
 
-    private func decide(_ s: ApprovalSwipe) {
-        guard flying == nil, let top = visible.first else { return }
+    /// `velocity` is the finger's at release (nil for the buttons and VoiceOver).
+    private func decide(_ s: ApprovalSwipe, velocity: CGSize? = nil) {
+        guard flying == nil, stamping == nil, let top = visible.first else { return }
         if s == .up && !top.canAlwaysApprove {
-            Haptics.warning()
-            lockedHint = true
-            DispatchQueue.main.asyncAfter(deadline: .now() + 3) { lockedHint = false }
+            commitFeel = .warning; commitTick += 1
+            withAnimation(.spring(duration: 0.3)) { lockedHint = true }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 3) { withAnimation { lockedHint = false } }
             return
         }
         commitPending()
@@ -366,10 +433,35 @@ struct ApprovalsStackView: View {
             $0.agent.id == top.agent.id && $0.spaceId == top.spaceId && $0.actionKey == top.actionKey
                 && (s == .down || $0.canAlwaysApprove)
         }.map(\.id) : []
+
         let fly = {
-            if s.isStanding { Haptics.strongCommit() } else { Haptics.commit() }
-            withAnimation(reduceMotion ? .easeOut(duration: 0.2) : .easeIn(duration: 0.26)) { flying = s }
-            DispatchQueue.main.asyncAfter(deadline: .now() + (reduceMotion ? 0.22 : 0.28)) {
+            let start = shown(drag, top)
+            // Keep going the way the finger was going (no snapping to an axis).
+            var unit: CGVector = switch s {
+            case .right: CGVector(dx: 1, dy: 0.12)
+            case .left: CGVector(dx: -1, dy: 0.12)
+            case .up: CGVector(dx: 0.05, dy: -1)
+            case .down: CGVector(dx: 0.05, dy: 1)
+            }
+            var speed: CGFloat = 0
+            if let v = velocity {
+                speed = hypot(v.width, v.height)
+                let along = v.width * unit.dx + v.height * unit.dy
+                if speed > 350 && along > 0 { unit = CGVector(dx: v.width / speed, dy: v.height / speed) }
+            }
+            let distance: CGFloat = 1300
+            // easeOut starts at 3·d/t: match the finger, within a sane range.
+            let duration = speed > 350 ? min(0.5, max(0.26, Double(3 * distance / speed))) : 0.34
+            if !s.isStanding { commitFeel = .impact(weight: .light, intensity: 0.8); commitTick += 1 }
+            var t = Transaction(); t.disablesAnimations = true
+            withTransaction(t) { exit = start }
+            withAnimation(reduceMotion ? .easeOut(duration: 0.22) : (speed > 350 ? .easeOut(duration: duration) : .easeIn(duration: 0.3))) {
+                flying = s
+                exit = reduceMotion ? .zero : CGSize(width: start.width + unit.dx * distance, height: start.height + unit.dy * distance)
+                exitSpin = reduceMotion ? 0 : Double(unit.dx) * 14 * (grabTop ? 1 : -1)
+                pressed = false
+            }
+            DispatchQueue.main.asyncAfter(deadline: .now() + (reduceMotion ? 0.23 : (speed > 350 ? min(0.42, duration) : 0.3))) {
                 var t = Transaction(); t.disablesAnimations = true
                 withTransaction(t) {
                     hidden.insert(top.id)
@@ -378,15 +470,18 @@ struct ApprovalsStackView: View {
                     flying = nil
                     stamping = nil
                     drag = .zero
+                    exit = .zero
+                    exitSpin = 0
                     expanded = false
                 }
                 schedule(Pending(id: top.id, ids: [top.id] + covered, swipe: s, title: top.title, agent: top.agent.name))
             }
         }
-        if s.isStanding && !reduceMotion {
-            // The ink "Sempre" stamp presses in first: this one sticks.
-            withAnimation(.spring(duration: 0.3, bounce: 0.3)) { stamping = s }
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.55, execute: fly)
+        if s.isStanding {
+            // The ink "Sempre" stamp presses in first, with a firmer thud: this one sticks.
+            commitFeel = .impact(weight: .medium); commitTick += 1
+            withAnimation(reduceMotion ? .easeOut(duration: 0.2) : .spring(response: 0.28, dampingFraction: 0.55)) { stamping = s }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5, execute: fly)
         } else {
             fly()
         }
@@ -412,7 +507,7 @@ struct ApprovalsStackView: View {
 
     private func undo() {
         guard let p = pending else { return }
-        Haptics.dismiss()
+        commitFeel = .impact(weight: .light, intensity: 0.6); commitTick += 1
         pending = nil
         let from: CGSize = switch p.swipe {
         case .right: CGSize(width: 500, height: 40)
@@ -539,12 +634,16 @@ struct ApprovalsStackView: View {
 
 // MARK: - The card
 
+/// One glance: who asks, what (one human sentence), where, and how risky.
 struct ApprovalCardView: View {
+    static let radius: CGFloat = 36
     @Environment(AppModel.self) private var model
     let request: AgentRequestDto
     var expanded: Bool
     var history: [AgentRequestDto]
     var standing: [StandingDecisionDto]
+    /// "Tap for details", spelled out on the first card only.
+    var showHint = false
 
     var body: some View {
         ViewThatFits(in: .vertical) {
@@ -552,60 +651,129 @@ struct ApprovalCardView: View {
             ScrollView { content }.scrollBounceBehavior(.basedOnSize)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-        .background(Palette.surface, in: .rect(cornerRadius: 32, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: 32, style: .continuous).strokeBorder(Palette.hairline, lineWidth: 0.5))
-        .shadow(color: .black.opacity(0.08), radius: 18, y: 8)
+        .background {
+            ZStack {
+                Palette.surface
+                CardGrain()
+            }
+            .clipShape(.rect(cornerRadius: Self.radius, style: .continuous))
+        }
+        .overlay(RoundedRectangle(cornerRadius: Self.radius, style: .continuous).strokeBorder(Palette.hairline, lineWidth: 0.5))
     }
 
     private var content: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            HStack(spacing: 12) {
-                ContactAvatar(persona: request.agent, size: 52)
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(request.agent.name).font(.headline).foregroundStyle(Palette.textPrimary)
-                    Text("asks in \(request.spaceTitle)").font(.subheadline).foregroundStyle(Palette.textSecondary).lineLimit(1)
-                }
-                Spacer(minLength: 0)
-                Text(RodaTime.relative(request.openedMs)).font(.caption).foregroundStyle(Palette.textTertiary)
-            }
+        VStack(alignment: .leading, spacing: 0) {
+            who
+            Spacer(minLength: expanded ? 22 : 30)
+            // The hero: the action, as one short sentence.
             Text(request.title)
-                .font(.title2.weight(.bold))
+                .font(.system(size: 27, weight: .bold))
+                .tracking(-0.3)
+                .lineSpacing(1)
                 .foregroundStyle(Palette.textPrimary)
+                .lineLimit(3)
+                .minimumScaleFactor(0.85)
                 .fixedSize(horizontal: false, vertical: true)
             if !request.detail.isEmpty {
-                Text(request.detail).font(.body).foregroundStyle(Palette.textSecondary)
-                    .fixedSize(horizontal: false, vertical: true)
+                // Why / preview, quoted like a note in the margin.
+                HStack(alignment: .top, spacing: 10) {
+                    Capsule().fill(Palette.textPrimary.opacity(0.14)).frame(width: 3)
+                    Text(request.detail)
+                        .font(.callout)
+                        .foregroundStyle(Palette.textSecondary)
+                        .lineLimit(expanded ? nil : 2)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                .fixedSize(horizontal: false, vertical: true)
+                .padding(.top, 14)
             }
-            VStack(alignment: .leading, spacing: 10) {
-                fact("person.2", String(localized: "Who sees it"), request.audience)
-                fact("bolt", String(localized: "Action"), request.actionLabel)
-                if let c = request.costCents { fact("brazilianrealsign.circle", String(localized: "Amount"), Money.format(c)) }
+            FlowLayout(spacing: 8, lineSpacing: 8) {
+                ForEach(chips) { ChipView(chip: $0) }
             }
-            reasonPill
-            if expanded { details.transition(.opacity.combined(with: .move(edge: .top))) }
-            Spacer(minLength: 0)
-            if !expanded {
-                Label(String(localized: "Tap for details"), systemImage: "hand.tap")
-                    .font(.caption).foregroundStyle(Palette.textTertiary)
-                    .frame(maxWidth: .infinity)
-            }
+            .padding(.top, 20)
+            if expanded { details.padding(.top, 22).transition(.opacity.combined(with: .offset(y: 12))) }
+            Spacer(minLength: expanded ? 18 : 30)
+            hint
         }
-        .padding(22)
+        .padding(.horizontal, 26)
+        .padding(.top, 24)
+        .padding(.bottom, 18)
     }
 
-    private var reasonPill: some View {
-        let red = !request.canAlwaysApprove
-        return Label(request.reason, systemImage: red ? "exclamationmark.shield.fill" : "hand.raised.fill")
-            .font(.footnote.weight(.medium))
-            .foregroundStyle(red ? Palette.danger : Palette.textSecondary)
-            .padding(.horizontal, 12).padding(.vertical, 8)
-            .background((red ? Palette.danger : Palette.textPrimary).opacity(0.08), in: .capsule)
+    private var who: some View {
+        HStack(spacing: 12) {
+            ContactAvatar(persona: request.agent, size: 46)
+            VStack(alignment: .leading, spacing: 3) {
+                Text(request.agent.name)
+                    .font(.headline)
+                    .foregroundStyle(Palette.textPrimary)
+                HStack(spacing: 6) {
+                    if let s = model.space(request.spaceId) { ChatAvatar(space: s, size: 18) }
+                    Text("asks in \(request.spaceTitle)")
+                        .font(.footnote)
+                        .foregroundStyle(Palette.textSecondary)
+                        .lineLimit(1)
+                }
+            }
+            Spacer(minLength: 8)
+            Text(RodaTime.relative(request.openedMs))
+                .font(.caption.weight(.medium))
+                .foregroundStyle(Palette.textTertiary)
+        }
+    }
+
+    @ViewBuilder
+    private var hint: some View {
+        HStack(spacing: 5) {
+            if showHint && !expanded {
+                Text("Tap for details").font(.caption.weight(.medium))
+            }
+            Image(systemName: expanded ? "chevron.compact.up" : "chevron.compact.down")
+                .font(.system(size: 18, weight: .medium))
+        }
+        .foregroundStyle(Palette.textTertiary.opacity(0.8))
+        .frame(maxWidth: .infinity)
+        .accessibilityHidden(true)
+    }
+
+    /// Risk and scope, quiet unless sensitive (then a warm accent, never alarm red).
+    private var chips: [ApprovalChip] {
+        var c: [ApprovalChip] = []
+        switch request.actionKey {
+        case "money":
+            c.append(.init(id: "money", symbol: "brazilianrealsign", text: String(localized: "Spends \(Money.format(request.costCents ?? 0))"), sensitive: true))
+        case "third_party_data":
+            c.append(.init(id: "data", symbol: "eye", text: String(localized: "Someone else’s data"), sensitive: true))
+        case "public_audience":
+            c.append(.init(id: "public", symbol: "megaphone", text: String(localized: "Wider audience"), sensitive: true))
+        case "irreversible":
+            c.append(.init(id: "irrev", symbol: "trash", text: String(localized: "No undo"), sensitive: true))
+        case "external":
+            c.append(.init(id: "out", symbol: "arrow.up.right", text: String(localized: "Leaves Zoen"), sensitive: false))
+        case "reversible":
+            c.append(.init(id: "undo", symbol: "arrow.uturn.backward", text: String(localized: "Can be undone"), sensitive: false))
+        default:
+            c.append(.init(id: "reply", symbol: "text.bubble", text: String(localized: "Replies in the chat"), sensitive: false))
+        }
+        if !request.audience.isEmpty {
+            c.append(.init(id: "who", symbol: "person.2", text: request.audience, sensitive: false))
+        }
+        c.append(request.canAlwaysApprove
+                 ? .init(id: "once", symbol: "1.circle", text: String(localized: "Just this once"), sensitive: false)
+                 : .init(id: "red", symbol: "lock", text: String(localized: "Always asks"), sensitive: true))
+        return c
     }
 
     @ViewBuilder
     private var details: some View {
         VStack(alignment: .leading, spacing: 14) {
             Divider().opacity(0.5)
+            VStack(alignment: .leading, spacing: 10) {
+                fact("person.2", String(localized: "Who sees it"), request.audience)
+                fact("bolt", String(localized: "Action"), request.actionLabel)
+                if let c = request.costCents { fact("brazilianrealsign.circle", String(localized: "Amount"), Money.format(c)) }
+                fact(request.canAlwaysApprove ? "hand.raised" : "lock", String(localized: "Why it asks"), request.reason)
+            }
             section(String(localized: "What it touches")) {
                 Text(touches).font(.subheadline).foregroundStyle(Palette.textPrimary)
             }
@@ -676,6 +844,57 @@ struct ApprovalCardView: View {
             Spacer(minLength: 8)
             Text(value).font(.subheadline.weight(.medium)).foregroundStyle(Palette.textPrimary).multilineTextAlignment(.trailing)
         }
+    }
+}
+
+struct ApprovalChip: Identifiable {
+    let id: String
+    let symbol: String
+    let text: String
+    let sensitive: Bool
+}
+
+private struct ChipView: View {
+    let chip: ApprovalChip
+    /// Warm, not alarming: terracotta ink on a peach wash.
+    static let warm = Color.adaptive(light: "#B4532A", dark: "#F2A77E")
+
+    var body: some View {
+        Label(chip.text, systemImage: chip.symbol)
+            .font(.footnote.weight(chip.sensitive ? .semibold : .medium))
+            .labelStyle(ChipLabelStyle())
+            .lineLimit(1)
+            .foregroundStyle(chip.sensitive ? Self.warm : Palette.textSecondary)
+            .padding(.horizontal, 11).padding(.vertical, 7)
+            .background((chip.sensitive ? Self.warm.opacity(0.11) : Palette.textPrimary.opacity(0.05)), in: .capsule)
+    }
+}
+
+private struct ChipLabelStyle: LabelStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        HStack(spacing: 5) {
+            configuration.icon.font(.system(size: 11, weight: .bold))
+            configuration.title
+        }
+    }
+}
+
+/// A whisper of paper: faint ink specks, drawn once (offsets and rotation don't redraw it).
+private struct CardGrain: View {
+    var body: some View {
+        Canvas { ctx, size in
+            var rng = InkRNG(11)
+            let count = Int(size.width * size.height / 900)
+            for _ in 0..<count {
+                let x = CGFloat(rng.unit()) * size.width, y = CGFloat(rng.unit()) * size.height
+                let d = 0.6 + CGFloat(rng.unit()) * 1.2
+                ctx.fill(Path(ellipseIn: CGRect(x: x, y: y, width: d, height: d)),
+                         with: .color(Palette.textPrimary.opacity(0.025 + rng.unit() * 0.03)))
+            }
+        }
+        .drawingGroup()
+        .allowsHitTesting(false)
+        .accessibilityHidden(true)
     }
 }
 

@@ -7196,6 +7196,96 @@
           }
         }
       }
+    },
+    "Spends %@": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Gasta %@"
+          }
+        }
+      }
+    },
+    "Someone else’s data": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Dados de outra pessoa"
+          }
+        }
+      }
+    },
+    "Wider audience": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Público maior"
+          }
+        }
+      }
+    },
+    "No undo": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sem desfazer"
+          }
+        }
+      }
+    },
+    "Leaves Zoen": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sai do Zoen"
+          }
+        }
+      }
+    },
+    "Can be undone": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Dá pra desfazer"
+          }
+        }
+      }
+    },
+    "Replies in the chat": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Responde na conversa"
+          }
+        }
+      }
+    },
+    "Just this once": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Só desta vez"
+          }
+        }
+      }
+    },
+    "Why it asks": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Por que pede"
+          }
+        }
+      }
     }
   },
   "version": "1.0"

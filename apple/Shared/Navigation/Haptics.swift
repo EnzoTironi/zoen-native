@@ -53,16 +53,6 @@ enum Haptics {
         #endif
     }
 
-    /// A standing decision landed ("Sempre"): a heavier thud, then success.
-    static func strongCommit() {
-        #if os(iOS)
-        UIImpactFeedbackGenerator(style: .heavy).impactOccurred()
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.12) { notify.notificationOccurred(.success) }
-        #elseif os(macOS)
-        NSHapticFeedbackManager.defaultPerformer.perform(.levelChange, performanceTime: .now)
-        #endif
-    }
-
     /// Algo precisa da sua confirmação.
     static func warning() {
         #if os(iOS)

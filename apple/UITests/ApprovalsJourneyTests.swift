@@ -74,7 +74,7 @@ final class ApprovalsJourneyTests: XCTestCase {
         drag(app, dx: 320, dy: 10)
         XCTAssertTrue(waitForNext(app, after: first), "the card flies off to the right")
         XCTAssertTrue(undoToast(app).waitForExistence(timeout: 3))
-        XCTAssertTrue(app.staticTexts["Aprovado"].exists, "the toast says what happened")
+        XCTAssertTrue(app.staticTexts["Aprovado"].waitForExistence(timeout: 4), "the toast says what happened")
         waitForCommit(app)
 
         // Close and come back from the bell: the approved ask doesn't return.
@@ -92,7 +92,7 @@ final class ApprovalsJourneyTests: XCTestCase {
         drag(app, dx: -320, dy: 10)
         XCTAssertTrue(waitForNext(app, after: first), "the card flies off to the left")
         XCTAssertTrue(undoToast(app).waitForExistence(timeout: 3))
-        XCTAssertTrue(app.staticTexts["Negado"].exists, "the toast says what happened")
+        XCTAssertTrue(app.staticTexts["Negado"].waitForExistence(timeout: 4), "the toast says what happened")
         waitForCommit(app)
         XCTAssertNotEqual(topCard(app), first)
     }
@@ -123,7 +123,7 @@ final class ApprovalsJourneyTests: XCTestCase {
         drag(app, dx: 0, dy: -420)
         XCTAssertTrue(waitForNext(app, after: marina), "a long pull up sends it off")
         XCTAssertTrue(undoToast(app).waitForExistence(timeout: 3))
-        XCTAssertTrue(app.staticTexts["Sempre aprovado"].exists, "the toast says what happened")
+        XCTAssertTrue(app.staticTexts["Sempre aprovado"].waitForExistence(timeout: 4), "the toast says what happened")
         waitForCommit(app)
 
         // Go through what's left: the twin ask never shows up again.
@@ -146,7 +146,7 @@ final class ApprovalsJourneyTests: XCTestCase {
         drag(app, dx: 0, dy: 420)
         XCTAssertTrue(waitForNext(app, after: pousada), "a long pull down sends it off")
         XCTAssertTrue(undoToast(app).waitForExistence(timeout: 3))
-        XCTAssertTrue(app.staticTexts["Sempre negado"].exists, "the toast says what happened")
+        XCTAssertTrue(app.staticTexts["Sempre negado"].waitForExistence(timeout: 4), "the toast says what happened")
         waitForCommit(app)
         app.buttons["approvals-back"].tap()
 
@@ -154,7 +154,9 @@ final class ApprovalsJourneyTests: XCTestCase {
         app.terminate()
         let again = launch(fresh: false, open: "permissoes")
         let row = again.descendants(matching: .any).matching(NSPredicate(format: "label CONTAINS 'Sempre negar'")).firstMatch
-        XCTAssertTrue(row.waitForExistence(timeout: 20), "Permissões shows the standing deny")
+        let found = row.waitForExistence(timeout: 20)
+        if !found { keep(again, "permissions") }
+        XCTAssertTrue(found, "Permissões shows the standing deny")
         let revoke = again.buttons["Revogar"].firstMatch
         XCTAssertTrue(revoke.waitForExistence(timeout: 5))
         revoke.tap()
@@ -175,5 +177,18 @@ final class ApprovalsJourneyTests: XCTestCase {
         XCTAssertTrue(waitForNext(app, after: first))
         XCTAssertTrue(undoToast(app).waitForExistence(timeout: 3))
         XCTAssertFalse(card(app).label.contains("Quem está pedindo"), "the next card opens as a summary")
+    }
+
+    /// A screenshot and the element tree, kept in the result bundle for a post-mortem.
+    @MainActor
+    private func keep(_ app: XCUIApplication, _ name: String) {
+        let shot = XCTAttachment(screenshot: app.screenshot())
+        shot.name = name
+        shot.lifetime = .keepAlways
+        add(shot)
+        let tree = XCTAttachment(string: app.debugDescription)
+        tree.name = "\(name) (tree)"
+        tree.lifetime = .keepAlways
+        add(tree)
     }
 }
