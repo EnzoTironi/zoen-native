@@ -229,6 +229,40 @@ instead of disabling SMT.
   stealth patches. Our agents identify themselves with **Web Bot Auth** signatures (signed
   agents), and CAPTCHAs and blocks go to the human takeover.
 
+**As built in P2 (2026-10-09).** Where it differs from the plan above:
+- **No separate `zoen-browserd`, no CDP library.** `zoen-guestd` starts Chromium (Alpine's
+  package, headless) with `--remote-debugging-pipe` and speaks raw CDP over that pipe: no
+  port exists, not even inside the VM. Chromium starts once per template, so a lease gets a
+  browser that is already running. Chromium's own sandbox is off (`--no-sandbox`); the
+  microVM is the sandbox.
+- **The model's tools are four:** `browser_open`, `browser_read` (page text plus numbered
+  links, buttons and fields), `browser_click` and `browser_type` (by number or CSS selector).
+  No screenshot, no script evaluation, no shell for the model. `read` shows password and
+  one-time-code fields as `[hidden]`; `type` refuses them (`FIELD_NEEDS_OWNER`).
+  `screenshot` and `download` wait for a need.
+- **Network:** Chromium's only proxy is the in-VM address to the egress proxy. A browser lease
+  signs its requests (Web Bot Auth, below), so its HTTPS to allowlisted hosts is intercepted.
+  Chromium can't take a new CA once it runs, and the template exists before any lease, so each
+  node has a **sandbox root** baked into browser templates, and a browser lease's CA is a
+  name-constrained intermediate under it. Only the node's egress proxy holds the root key,
+  and a VM's traffic reaches no other proxy.
+- **Web Bot Auth:** RFC 9421 with Ed25519 over `@authority` and `signature-agent`,
+  `tag="web-bot-auth"`, the RFC 7638 thumbprint as `keyid`, 5-minute validity, a random
+  nonce. The signed key directory (`/.well-known/http-message-signatures-directory`) is built
+  by the same module; hosting it and registering with Cloudflare stay in P5. `Signature*`
+  headers the page sends are dropped.
+- **Live view:** frames are sealed in the VM to the owner device's X25519 key (a fresh VM key
+  per session, HKDF-SHA256, ChaCha20-Poly1305; the HPKE base-mode construction without the
+  HPKE wrapper) and streamed to the host on vsock port 1081; the host relays ciphertext.
+- **Takeover:** the owner starts it (needs a live view). From then on the VM refuses the
+  model's browser calls and also exec and file access (`TAKEOVER_IN_PROGRESS`). The device's
+  input is sealed the other way, with sequence numbers: replays and anything the host makes
+  up are refused, and only the device's sealed `Done` ends it. Text the owner typed stays in
+  the VM's memory only, to scrub it from anything the model reads later (a site that echoes a
+  password back shows `[hidden]`).
+- **Not yet:** the handoff `AgentRequest` and the SwiftUI live card (the app side), saved
+  profiles, WebRTC.
+
 ### 8. Where it runs
 
 | Environment | How | Cost |
@@ -263,6 +297,7 @@ need is worth about 13×.**
 | **P1** | `zoen-sandboxd` + `zoen-guestd`, template build from OCI, snapshot restore with userfaultfd, nftables + egress proxy, suspend, resume, fork; measure start time and density on the box | journey on the box's `/dev/kvm`: acquire under 1 s from a warm pool, suspend and resume keep files, the VM cannot reach the metadata IP or the relay | none |
 | P1 as built (2026-10-08) | jailer + cgroup limits, template snapshot per shape, warm pool, suspend/resume (restore once), vsock egress instead of tap + nftables, per-lease CA; still to do: OCI template builder, userfaultfd, diff snapshots, per-lease disk instead of a tmpfs `/work`, fork, density | journeys pass on the box and in CI (GitHub runners have `/dev/kvm`); numbers in the research note §4 | none |
 | **P2** | browser template, `zoen-browserd`, live view with encrypted frames, handoff `AgentRequest`, SwiftUI live card and takeover | journey: agent fills a form; handoff for a login; the model's transcript has no password; measured MB per session | none |
+| P2 as built (2026-10-09) | browser image (Alpine Chromium), Chromium in the template over a CDP pipe, the four model tools, egress with Web Bot Auth and the sandbox root, live view sealed to the device, takeover with sealed input; not yet: handoff card and SwiftUI live card | `journey_browser` passes on the box and in CI: the agent shops through the proxy as a signed agent, can't type the password, Ana signs in from her "phone", the model never sees what she typed; numbers in the research note §5 | none |
 | **P3** | `FlyMachines` backend and staging app on its own private network | the P0–P2 journeys pass against staging | about $22/month; asked for when P3 starts; needs Enzo's `fly auth login` |
 | **P4** | scheduler with FoundationDB leases, warm pools, core-scheduling cookies, OpenTofu module for the bare-metal pool, load test to 1,000 concurrent sandboxes | measured density, core-scheduling overhead and cost per sandbox-hour replace the estimates | one or two bare-metal hosts; asked for when P4 starts |
 | **P5** | GPU tier, more regions, Web Bot Auth registration, "route through my device" exit (section 6c: macOS helper first, then iOS in-app) | journey: an allowlisted request leaves through the owner's Mac; another owner's ticket is refused; device offline falls back | later |

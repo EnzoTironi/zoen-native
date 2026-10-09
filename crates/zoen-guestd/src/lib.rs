@@ -10,6 +10,9 @@ use serde::{Deserialize, Serialize};
 
 pub const CONTROL_PORT: u32 = 52;
 pub const EGRESS_PORT: u32 = 1080;
+/// The guest connects to the host on this port to stream live-view frames, already
+/// encrypted to the owner's device ([`zoen_liveview`]); the host relays ciphertext only.
+pub const LIVE_PORT: u32 = 1081;
 /// Where tools inside the VM find the proxy (`HTTP(S)_PROXY`).
 pub const GUEST_PROXY: &str = "127.0.0.1:3128";
 /// The per-lease CA certificate, written by the host at acquire time.
@@ -45,6 +48,57 @@ pub enum Request {
         path: String,
         max_bytes: usize,
     },
+    /// The browser in a browser microVM (ADR 0028 §7). CDP never leaves the VM: Chromium
+    /// talks to `zoen-guestd` over a pipe, and only these operations cross vsock.
+    Browser {
+        browser: BrowserOp,
+    },
+}
+
+/// What can be asked of the in-VM browser. `Open`, `Read`, `Click` and `Type` are the agent's
+/// (the model's) tools; the live view and takeover are the owner's, and their input arrives
+/// sealed by the owner's device.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(tag = "action", rename_all = "snake_case")]
+pub enum BrowserOp {
+    /// Starts Chromium (template build time), trusting `root_ca_pem` (the node's sandbox root).
+    Launch {
+        root_ca_pem: Option<String>,
+    },
+    Open {
+        url: String,
+        timeout_ms: u64,
+    },
+    /// The page as text plus its interactive elements, numbered for `Click` and `Type`.
+    /// Password and one-time-code fields show as `[hidden]`.
+    Read {
+        max_chars: usize,
+    },
+    /// `target`: an element number from `Read`, or a CSS selector.
+    Click {
+        target: String,
+        timeout_ms: u64,
+    },
+    /// Refused for password and one-time-code fields: those are the owner's, in a takeover.
+    Type {
+        target: String,
+        text: String,
+        submit: bool,
+        timeout_ms: u64,
+    },
+    /// Starts streaming frames, sealed to the device key, to the host on [`LIVE_PORT`].
+    LiveStart {
+        device_pub_b64: String,
+    },
+    LiveStop,
+    /// The owner takes the browser. The agent's operations (and exec/files) are refused
+    /// until the device sends a sealed `Done`.
+    TakeoverBegin,
+    /// One sealed event from the owner's device.
+    TakeoverInput {
+        sealed_b64: String,
+    },
+    Status,
 }
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq, Eq)]
@@ -62,9 +116,24 @@ pub struct Response {
     pub stderr_b64: String,
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub data_b64: String,
+    /// Structured results (browser operations).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub value: Option<serde_json::Value>,
 }
 
+/// Error codes the browser returns as `error` prefixes.
+pub const TAKEOVER_IN_PROGRESS: &str = "TAKEOVER_IN_PROGRESS";
+pub const FIELD_NEEDS_OWNER: &str = "FIELD_NEEDS_OWNER";
+
 impl Response {
+    pub fn value(v: serde_json::Value) -> Self {
+        Response {
+            ok: true,
+            value: Some(v),
+            ..Default::default()
+        }
+    }
+
     pub fn err(e: impl ToString) -> Self {
         Response {
             ok: false,

@@ -65,7 +65,7 @@ jobs:
           echo "ZOEN_RUNSC=$ZOEN_RUNSC" >> "$GITHUB_ENV"
           echo "ZOEN_SANDBOX_ROOTFS=$ZOEN_SANDBOX_ROOTFS" >> "$GITHUB_ENV"
 
-      - name: Firecracker for the microVM journeys (ADR 0028 P1)
+      - name: Firecracker for the microVM and browser journeys (ADR 0028 P1, P2)
         run: |
           # GitHub's Linux runners have /dev/kvm; the jailer (through sudo) gives each VMM its
           # own device node, so the runner user doesn't need the kvm group.
@@ -73,9 +73,11 @@ jobs:
           rustup target add x86_64-unknown-linux-musl
           scripts/firecracker.sh up
           scripts/firecracker.sh image
+          # The browser microVM's image: Alpine's Chromium on top of the base (sudo for apk).
+          scripts/firecracker.sh browser-image
           scripts/firecracker.sh cgroup
           eval "$(scripts/firecracker.sh env)"
-          for v in ZOEN_FIRECRACKER ZOEN_JAILER ZOEN_VMLINUX ZOEN_GUEST_ROOTFS ZOEN_SANDBOX_CGROUP; do
+          for v in ZOEN_FIRECRACKER ZOEN_JAILER ZOEN_VMLINUX ZOEN_GUEST_ROOTFS ZOEN_BROWSER_ROOTFS ZOEN_SANDBOX_CGROUP; do
             echo "$v=${!v}" >> "$GITHUB_ENV"
           done
           echo "ZOEN_REQUIRE_FIRECRACKER=1" >> "$GITHUB_ENV"

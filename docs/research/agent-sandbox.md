@@ -126,12 +126,36 @@ Through `zoen-sandboxd` (jailer, cgroups, vsock; `cargo test -p zoen-sandboxd`, 
   WebRTC stack and TURN. noVNC is MPL-2.0, which is file-level copyleft; fine unmodified, but
   we do not need it.
 - **Memory.** Plan 250–500 MB per typical headless Chrome, 400–700 MB for heavy SPAs, more
-  than 1 GB with video or WebGL; measure with PSS or cgroups, not summed RSS [BR1]. This is a
-  secondary source; we will replace it with our own measurement in phase 2.
+  than 1 GB with video or WebGL; measure with PSS or cgroups, not summed RSS [BR1]. Our own
+  numbers for light pages are below.
 - **Anti-bot.** Datacenter IPs get challenged. Providers sell residential proxies by the GB
   (Browserbase $10–12/GB [BB1], Steel $6–10/GB [ST3], Hyperbrowser $10/GB [HB1]) and CAPTCHA
   solving. The honest alternative is to sign our agent's requests with **Web Bot Auth**
   (HTTP message signatures), which Cloudflare recognizes as "signed agents" [CF3].
+
+### Measured on the box (P2, 2026-10-09)
+
+`cargo test -p zoen-sandboxd --test journey_browser`: Chromium 152 (Alpine 3.24 package) in a
+Firecracker VM with 2 vCPUs and 1 GiB, through the egress proxy with Web Bot Auth signing and
+TLS interception, on the same nested-KVM box as P1. The shop pages are small, so memory is a
+lower bound for real sites.
+
+| What | Measured | In plain words |
+|---|---|---|
+| Browser template, once per shape (cold boot, Chromium start, 1 GiB snapshot) | 4.1–4.4 s | paid once per node start |
+| Warm start: lease from the pool (restore, resume, entropy, clock) | 74–77 ms | the browser is already running when the agent gets it |
+| Warm start to the first page on screen (HTTPS through the proxy, signed) | 0.76–0.82 s | most of it is the first page load, not the VM |
+| Later page loads / a click to the next page | about 0.36 s / about 0.2 s | each request is its own TLS connection through the proxy today |
+| Live view, start to first sealed frame | 48–64 ms; about 8 KiB per frame | |
+| Memory of one browser VM after five pages (VMM, cgroup) | about 400–485 MiB charged; guest using about 350–400 MiB | well inside the 1 GiB + 64 MiB cap |
+| A second browser from the same template, same pages | adds about 90–180 MiB written since restore; about 230 MiB of the template is shared page cache | snapshots make browsers cheap to run side by side |
+
+**Browsers per host.** On these light pages each extra browser costs about 130 MiB, so about
+100 fit on a 16 GiB host and about 470 on 64 GiB (keeping 2 GiB for the host). Real sites
+are heavier: at the 250–500 MB per browser the secondary sources give [BR1], that is about
+30–55 per 16 GiB and 120–240 per 64 GiB; if every browser grew to its 1 GiB cap, 58 per
+64 GiB. The cost model keeps its 2 GiB-per-browser assumption until we measure real sites at
+scale (P4).
 
 ### Provider prices (per browser-hour)
 
