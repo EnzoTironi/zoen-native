@@ -18,11 +18,7 @@ The app ships in **English** (development language) and **Brazilian Portuguese**
 
 ![Zoen's face: eight hand-drawn, animated poses](docs/screens/mascot.jpg)
 
-![iPhone mini-apps: the group donkey, Donkey Dash, MapTap and the dinner recipe](docs/screens/mini-apps.jpg)
-
 ![iPhone: Chats, fan menu, Space, Participants, Permissions, Plan, Activity, Review request, Your agents, Files, Communities and Your context](docs/screens/iphone.jpg)
-
-![The same app in Brazilian Portuguese](docs/screens/pt-BR.jpg)
 
 ![Mac: sidebar with the fan menu, chat + Item in the inspector](docs/screens/mac.jpg)
 
@@ -34,7 +30,11 @@ The screens follow the original concept (the 133 reference posters), redrawn in 
 
 </details>
 
-## What works end to end
+## App features and demo examples
+
+The examples below include the original demo stories. Use the
+[roadmap evidence map](docs/roadmap-status.md) to identify the real multi-device journeys
+and the flows that remain simulated or unfinished.
 
 - **Onboarding in under 10 seconds, no signup** (Amy-style): back arrow, segmented progress, one mascot pose per step with an idle loop, a bold question plus a "why we ask" line, pills and toggles, and a sticky solid Continue.
   - Steps: hello → *What could use a hand?* (life areas) → **Zoen makes your first plan** → how much agents may do alone (sets Zoen's real trust level in the core) → notifications (the real iOS prompt) → location → done.
