@@ -99,7 +99,14 @@ impl CoreListener for Printer {
             );
         }
     }
-    fn on_connection(&self, _status: ConnectionDto) {}
+    fn on_connection(&self, status: ConnectionDto) {
+        if std::env::var_os("ZOEN_NET_DEBUG").is_some() {
+            eprintln!(
+                "[zoen-net] connection={} synced={} pending={} error={:?}",
+                status.state, status.synced, status.pending, status.error
+            );
+        }
+    }
     fn on_error(&self, message: String) {
         eprintln!("! relay refused: {message}");
     }
