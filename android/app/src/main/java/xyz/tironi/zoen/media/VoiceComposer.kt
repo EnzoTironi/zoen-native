@@ -45,6 +45,7 @@ fun VoiceComposer(
     modifier: Modifier = Modifier,
     reply: String? = null,
     thread: Boolean = false,
+    threadRoot: String? = reply,
     startSignal: Int = 0,
     releaseSignal: Int = 0,
     lockSignal: Int = 0,
@@ -55,7 +56,7 @@ fun VoiceComposer(
 ) {
     val context = LocalContext.current
     // Home remains composed while a chat is open; it must not present the chat's recording or review.
-    val origin = if (!showTrigger) "home" else if (thread) "thread" else "chat"
+    val origin = if (!showTrigger) "home" else if (thread) "thread:${checkNotNull(threadRoot)}" else "chat"
     val session: VoiceSession = viewModel(key = "voice:$origin:$spaceId", factory = remember(context.applicationContext) { viewModelFactory { initializer { VoiceSession(context.applicationContext) } } })
     val appState by model.state.collectAsStateWithLifecycle()
     val microphonePermission = stringResource(R.string.media_microphone_permission)

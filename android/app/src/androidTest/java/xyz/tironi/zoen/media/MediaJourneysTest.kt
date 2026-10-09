@@ -4,6 +4,7 @@ import android.Manifest
 import android.content.Intent
 import android.graphics.Bitmap
 import android.graphics.Color
+import android.net.Uri
 import android.os.ParcelFileDescriptor
 import android.view.WindowManager
 import androidx.compose.ui.geometry.Offset
@@ -110,6 +111,63 @@ class MediaJourneysTest {
             scenario.recreate()
             compose.waitUntil(10_000) { compose.onAllNodesWithText("v2", substring = true).fetchSemanticsNodes().isNotEmpty() }
             capture("image-saved-version")
+        } finally { scenario.close() }
+    }
+
+    @Test fun retainedVoiceReviewStaysWithItsOriginalThreadWhenAnotherThreadOpens() {
+        InstrumentationRegistry.getInstrumentation().uiAutomation.grantRuntimePermission(application.packageName, Manifest.permission.RECORD_AUDIO)
+        val scenario = open()
+        try {
+            val space = checkNotNull(application.repository.state.value.zoenChat).id
+            val texts = listOf("First voice thread ${UUID.randomUUID()}", "Second voice thread ${UUID.randomUUID()}")
+            val roots = runBlocking { application.repository.change { core ->
+                texts.forEach { core.sendMessage(space, it) }
+                val entries = core.timeline(space)
+                texts.map { text -> entries.single { (it.kind as? EntryKind.Message)?.text == text }.id }
+            } }
+            compose.onNodeWithTag("conversation-list").performScrollToNode(hasTestTag("chat:zoen"))
+            compose.onNodeWithTag("chat:zoen").performClick()
+            fun openThread(root: String) {
+                compose.onNodeWithTag("chat-timeline").performScrollToNode(hasTestTag("timeline:$root"))
+                compose.onNodeWithTag("timeline:$root").performTouchInput { swipeRight() }
+                compose.onNodeWithText(application.getString(R.string.replies), substring = false).assertExists()
+            }
+            openThread(roots[0])
+            compose.onNodeWithTag("voice-record").performClick()
+            val timerPrefix = application.getString(R.string.media_recording_locked, "0:00").substringBefore("0:00")
+            compose.waitUntil(20_000) { compose.onAllNodes(hasText(timerPrefix, substring = true) and !hasText("0:00", substring = true)).fetchSemanticsNodes().isNotEmpty() }
+            compose.onNodeWithContentDescription(application.getString(R.string.media_stop_review)).performClick()
+            compose.waitUntil(15_000) { compose.onAllNodesWithTag("voice-send").fetchSemanticsNodes().isNotEmpty() }
+            compose.onAllNodesWithTag("voice-send").assertCountEquals(1)
+
+            // A new chat intent can arrive while the first thread's review is still retained.
+            scenario.onActivity { activity ->
+                activity.startActivity(Intent(activity, MainActivity::class.java).setAction(Intent.ACTION_VIEW)
+                    .setData(Uri.parse("zoen://chat/$space"))
+                    .addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP))
+            }
+            compose.waitUntil(10_000) { compose.onAllNodesWithTag("chat-timeline").fetchSemanticsNodes().isNotEmpty() }
+            compose.onAllNodesWithTag("voice-send").assertCountEquals(0)
+            openThread(roots[1])
+            compose.onAllNodesWithTag("voice-send").assertCountEquals(0)
+            compose.onAllNodesWithTag("voice-recording").assertCountEquals(0)
+            compose.onNodeWithTag("voice-record").assertIsEnabled()
+
+            compose.onNodeWithContentDescription(application.getString(R.string.back)).performClick()
+            openThread(roots[0])
+            compose.waitUntil(15_000) { compose.onAllNodes(hasTestTag("voice-send") and isEnabled()).fetchSemanticsNodes().isNotEmpty() }
+            compose.onAllNodesWithTag("voice-send").assertCountEquals(1)
+            compose.onNodeWithTag("voice-send").performClick()
+            compose.waitUntil(20_000) { runBlocking { application.repository.query { core ->
+                core.thread(space, roots[0]).any { (it.kind as? EntryKind.Message)?.text?.let(VoiceNoteRef::parse) != null }
+            } } }
+            runBlocking { application.repository.query { core ->
+                val first = core.thread(space, roots[0]).filter { (it.kind as? EntryKind.Message)?.text?.let(VoiceNoteRef::parse) != null }
+                val second = core.thread(space, roots[1]).filter { (it.kind as? EntryKind.Message)?.text?.let(VoiceNoteRef::parse) != null }
+                assertEquals(1, first.size)
+                assertTrue(second.isEmpty())
+                assertTrue(core.verifyAll().all { it.valid })
+            } }
         } finally { scenario.close() }
     }
 }
