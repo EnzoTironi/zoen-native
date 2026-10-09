@@ -14,8 +14,6 @@ struct ProfileSheet: View {
     @Environment(\.appZoom) private var zoom
     let personaId: String
     @State private var detent: PresentationDetent = .medium
-    @State private var confirmBlock = false
-    @State private var confirmReport = false
     @State private var editing = false
     @State private var artPicker: AvatarArtPicker.Target?
 
@@ -89,24 +87,6 @@ struct ProfileSheet: View {
         }
         .sheet(item: $artPicker) { target in
             AvatarArtPicker(target: target)
-        }
-        .confirmationDialog(String(localized: "Block this person?"), isPresented: $confirmBlock, titleVisibility: .visible) {
-            Button(String(localized: "Block"), role: .destructive) {
-                Haptics.warning()
-                model.show(.init(kind: .info, text: String(localized: "Blocked on this device. Syncing block lists comes later.")))
-                dismiss()
-            }
-            Button(String(localized: "Cancel"), role: .cancel) {}
-        } message: {
-            Text(String(localized: "You won’t see their messages here. They won’t be notified."))
-        }
-        .confirmationDialog(String(localized: "Report this person?"), isPresented: $confirmReport, titleVisibility: .visible) {
-            Button(String(localized: "Report"), role: .destructive) {
-                Haptics.warning()
-                model.show(.init(kind: .info, text: String(localized: "Thanks — we’ll look into it.")))
-                dismiss()
-            }
-            Button(String(localized: "Cancel"), role: .cancel) {}
         }
     }
 
@@ -243,14 +223,25 @@ struct ProfileSheet: View {
         Group {
             if !p.isMe && p.kind == .person {
                 section(nil) {
-                    Button(role: .destructive) { confirmBlock = true } label: {
-                        Label(String(localized: "Mute"), systemImage: "bell.slash")
-                    }
-                    Button(role: .destructive) { confirmBlock = true } label: {
-                        Label(String(localized: "Block"), systemImage: "hand.raised")
-                    }
-                    Button(role: .destructive) { confirmReport = true } label: {
-                        Label(String(localized: "Report"), systemImage: "exclamationmark.bubble")
+                    // Each one turns into its own confirmation, right where you tapped.
+                    VStack(spacing: 4) {
+                        ConfirmInPlaceButton(title: String(localized: "Mute"), systemImage: "bell.slash",
+                                             confirmTitle: String(localized: "Mute \(p.name)?"),
+                                             doneTitle: String(localized: "Muted"), identifier: "profile-mute") {
+                            model.show(.init(kind: .info, text: String(localized: "Muted on this device.")))
+                        }
+                        ConfirmInPlaceButton(title: String(localized: "Block"), systemImage: "hand.raised",
+                                             confirmTitle: String(localized: "Block \(p.name)? They won’t know"),
+                                             doneTitle: String(localized: "Blocked"), identifier: "profile-block") {
+                            model.show(.init(kind: .info, text: String(localized: "Blocked on this device. Syncing block lists comes later.")))
+                            dismiss()
+                        }
+                        ConfirmInPlaceButton(title: String(localized: "Report"), systemImage: "exclamationmark.bubble",
+                                             confirmTitle: String(localized: "Report \(p.name)?"),
+                                             doneTitle: String(localized: "Reported"), identifier: "profile-report") {
+                            model.show(.init(kind: .info, text: String(localized: "Thanks — we’ll look into it.")))
+                            dismiss()
+                        }
                     }
                 }
             }

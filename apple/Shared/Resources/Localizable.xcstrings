@@ -7316,6 +7316,356 @@
           }
         }
       }
+    },
+    "%lld replies": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld respostas"
+          }
+        }
+      }
+    },
+    "1 reply": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "1 resposta"
+          }
+        }
+      }
+    },
+    "Block %@? They won’t know": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bloquear %@? A pessoa não fica sabendo"
+          }
+        }
+      }
+    },
+    "Blocked": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bloqueado"
+          }
+        }
+      }
+    },
+    "Cancel reply": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Cancelar resposta"
+          }
+        }
+      }
+    },
+    "Done editing": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Concluir"
+          }
+        }
+      }
+    },
+    "Hold and drag to move": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Segure e arraste para mover"
+          }
+        }
+      }
+    },
+    "It stays in its chat; you can pin it again from there.": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ele continua na conversa; dá pra fixar de novo por lá."
+          }
+        }
+      }
+    },
+    "It stays in the chat; you can pin it again from there.": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ele continua na conversa; dá pra fixar de novo por lá."
+          }
+        }
+      }
+    },
+    "Mute %@?": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Silenciar %@?"
+          }
+        }
+      }
+    },
+    "Muted": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Silenciado"
+          }
+        }
+      }
+    },
+    "Muted on this device.": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Silenciado neste aparelho."
+          }
+        }
+      }
+    },
+    "No replies yet": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Nenhuma resposta ainda"
+          }
+        }
+      }
+    },
+    "Remove %@": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Remover %@"
+          }
+        }
+      }
+    },
+    "Remove item": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Remover item"
+          }
+        }
+      }
+    },
+    "Reply": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Responder"
+          }
+        }
+      }
+    },
+    "Reply in thread": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Responder na thread"
+          }
+        }
+      }
+    },
+    "Replying to %@": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Respondendo a %@"
+          }
+        }
+      }
+    },
+    "Replying to yourself": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Respondendo a você mesmo"
+          }
+        }
+      }
+    },
+    "Report %@?": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Denunciar %@?"
+          }
+        }
+      }
+    },
+    "Reported": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Denunciado"
+          }
+        }
+      }
+    },
+    "Revoke?": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Revogar?"
+          }
+        }
+      }
+    },
+    "Revoked": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Revogado"
+          }
+        }
+      }
+    },
+    "The mini-app stays in the chat as a card.": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "O mini-app continua na conversa como cartão."
+          }
+        }
+      }
+    },
+    "Thread": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Thread"
+          }
+        }
+      }
+    },
+    "Unpin from chat": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tirar da conversa"
+          }
+        }
+      }
+    },
+    "Unpin “%@” from Home?": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tirar “%@” do Início?"
+          }
+        }
+      }
+    },
+    "Unpin “%@” from the top of the chat?": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tirar “%@” do topo da conversa?"
+          }
+        }
+      }
+    },
+    "Update": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Atualizar"
+          }
+        }
+      }
+    },
+    "Members": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Membros"
+          }
+        }
+      }
+    },
+    "Pages": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Páginas"
+          }
+        }
+      }
+    },
+    "Opens the chat menu": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Abre o menu da conversa"
+          }
+        }
+      }
+    },
+    "Trials": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Testes"
+          }
+        }
+      }
+    },
+    "Header menu": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Menu no cabeçalho"
+          }
+        }
+      }
+    },
+    "Tap a chat’s name to open its menu. Not shipped.": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Toque no nome de uma conversa para abrir o menu dela. Não vai no app final."
+          }
+        }
+      }
     }
   },
   "version": "1.0"

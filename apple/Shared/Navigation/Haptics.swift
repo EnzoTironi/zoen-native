@@ -25,6 +25,33 @@ enum Haptics {
         #endif
     }
 
+    /// A tile lifts under the finger (edit mode).
+    static func pickUp() {
+        #if os(iOS)
+        rigid.impactOccurred(intensity: 0.75)
+        #elseif os(macOS)
+        NSHapticFeedbackManager.defaultPerformer.perform(.generic, performanceTime: .now)
+        #endif
+    }
+
+    /// A tile settles into its new place.
+    static func drop() {
+        #if os(iOS)
+        soft.impactOccurred(intensity: 0.9)
+        #elseif os(macOS)
+        NSHapticFeedbackManager.defaultPerformer.perform(.alignment, performanceTime: .now)
+        #endif
+    }
+
+    /// Something was removed (after you confirmed it).
+    static func remove() {
+        #if os(iOS)
+        medium.impactOccurred(intensity: 0.85)
+        #elseif os(macOS)
+        NSHapticFeedbackManager.defaultPerformer.perform(.levelChange, performanceTime: .now)
+        #endif
+    }
+
     /// Menu opened.
     static func open() {
         #if os(iOS)

@@ -167,9 +167,14 @@ final class ApprovalsJourneyTests: XCTestCase {
         if !found { keep(again, "permissions") }
         XCTAssertFalse(none.exists && !found, "the always-deny was saved (not reset on relaunch)")
         XCTAssertTrue(found, "Permissões shows the standing deny")
-        let revoke = again.buttons["Revogar"].firstMatch
+        let revoke = again.buttons["revoke-standing"].firstMatch
         XCTAssertTrue(revoke.waitForExistence(timeout: 5))
         revoke.tap()
+        // It asks in place (the pill turns red: "Revogar?"); the second tap revokes.
+        let sure = again.buttons["revoke-standing-confirm"].firstMatch
+        XCTAssertTrue(sure.waitForExistence(timeout: 3), "revoking asks first, in place")
+        XCTAssertFalse(again.staticTexts["Nenhuma ainda."].exists, "one tap alone doesn't revoke")
+        sure.tap()
         XCTAssertTrue(again.staticTexts["Nenhuma ainda."].waitForExistence(timeout: 5), "revoked: none left")
     }
 
