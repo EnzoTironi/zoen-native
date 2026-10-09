@@ -206,11 +206,13 @@ pub fn event_from_content(
     hash: String,
 ) -> Result<Event, LogError> {
     let c = SignedContent::parse(&content).ok_or(LogError::BadContent { seq })?;
-    let Some(Payload::Body(body)) = &c.payload else {
-        return Err(LogError::BadContent { seq });
+    let body = match &c.payload {
+        Some(Payload::Body(body)) => content::decode_body(body),
+        Some(Payload::Sealed(s)) => sealed_body(s),
+        None => return Err(LogError::BadContent { seq }),
     };
     Ok(Event {
-        body: content::decode_body(body),
+        body,
         seen: c.seen(),
         space: c.space,
         seq,
@@ -225,6 +227,14 @@ pub fn event_from_content(
         content,
         sealed_wire: None,
     })
+}
+
+/// The view of an entry kept sealed: its kind, from the clear framing.
+fn sealed_body(s: &content::Sealed) -> EventBody {
+    let kind = content::SealedKind::try_from(s.kind).unwrap_or(content::SealedKind::Unspecified);
+    EventBody::Sealed {
+        kind: kind.name().to_string(),
+    }
 }
 
 /// What an identity signs to certify a device key.
@@ -288,8 +298,12 @@ pub fn verify_author(e: &Event) -> Result<(), LogError> {
     let seq = e.seq;
     let c = SignedContent::parse(&e.content).ok_or(LogError::BadContent { seq })?;
     let body_matches = match &c.payload {
-        Some(Payload::Body(b)) => content::decode_body(b) == e.body,
-        _ => false,
+        // `Sealed` describes outer bytes; a body claiming it is a forgery.
+        Some(Payload::Body(b)) => {
+            !matches!(e.body, EventBody::Sealed { .. }) && content::decode_body(b) == e.body
+        }
+        Some(Payload::Sealed(s)) => sealed_body(s) == e.body,
+        None => false,
     };
     if c.space != e.space
         || c.client_id != e.client_id

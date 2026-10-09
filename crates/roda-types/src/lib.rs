@@ -436,6 +436,12 @@ pub enum EventBody {
         epoch: u64,
         digest: String,
     },
+    /// An entry of an end-to-end Space this device keeps as the relay ordered it: an MLS
+    /// handshake (`Commit`, `Welcome`), or ciphertext from before it joined. Derived from
+    /// the signed outer bytes, never signed as a body itself.
+    Sealed {
+        kind: String,
+    },
     /// A kind this build doesn't know yet (a newer client wrote it). The signed bytes are
     /// kept verbatim, so the event still verifies, syncs and chains; it just isn't shown.
     Unsupported {
