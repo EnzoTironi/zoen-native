@@ -17,6 +17,10 @@ ed25519-dalek.workspace = true
 getrandom.workspace = true
 zoen-egress.workspace = true
 async-trait = "0.1"
+base64 = "0.22"
+# The Fly Machines backend talks to api.machines.dev (staging, ADR 0028 P3).
+reqwest = { version = "0.13", default-features = false, features = ["rustls-no-provider"] }
+rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12", "logging"] }
 bytes = "1"
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync", "time", "process", "fs", "io-util"] }
 
