@@ -572,6 +572,10 @@ impl Engine {
             let _ = self.store.outbox_remove(&client_id);
             let _ = self.store.meta_delete(&sealed_meta(&client_id));
             let _ = self.store.meta_delete(&welcome_meta(&client_id));
+            if kind == SealedKind::Welcome {
+                // The group may owe a commit that waited for this Welcome to land.
+                self.net.mls.dirty.insert(space.clone());
+            }
             if let Some(s) = self.state.spaces.get_mut(&space) {
                 for entry in s.entries.iter_mut().filter(|x| x.client_id == client_id) {
                     entry.seq = e.seq;
@@ -850,6 +854,18 @@ impl Engine {
                     )
             });
         if changing {
+            return Ok(None);
+        }
+        // A commit or Welcome of ours still on its way: the next commit waits for it, or a
+        // newcomer could join from a Welcome that lands after a later commit and never
+        // see that commit.
+        let handshaking = self.store.outbox()?.iter().any(|p| {
+            p.event.space == space
+                && !p.failed
+                && matches!(&p.event.body, EventBody::Sealed { kind }
+                    if kind == SealedKind::Commit.name() || kind == SealedKind::Welcome.name())
+        });
+        if handshaking {
             return Ok(None);
         }
         let device = self.device()?;
