@@ -7537,6 +7537,7 @@ dependencies = [
  "roda-log",
  "roda-proto",
  "roda-types",
+ "rusqlite",
  "serde_json",
  "sha2 0.10.9",
  "sqlx",

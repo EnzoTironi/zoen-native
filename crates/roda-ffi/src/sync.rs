@@ -413,6 +413,16 @@ impl Engine {
             })
             .filter_map(|p| {
                 let event = self.store.outbox_get(&p.client_id).ok().flatten()?;
+                // An offline creation has a predicted genesis link. Its descendants
+                // must wait for confirmation: a retryable creation failure can otherwise
+                // let them reach the relay before the Space exists.
+                if event
+                    .seen
+                    .as_ref()
+                    .is_some_and(|seen| self.next_seq(&event.space) <= seen.seq)
+                {
+                    return None;
+                }
                 let mut env = self.outgoing_envelope_with(&event, &mut ready)?;
                 if !env.is_sealed() {
                     env.invite = self

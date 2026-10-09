@@ -643,13 +643,13 @@ async fn transaction_conflict() {
         db.clone(),
         root.clone(),
         "alpha".into(),
-        Duration::from_secs(3),
+        Duration::from_secs(30),
     );
     let b = ownership::NodeOwner::new(
         db.clone(),
         root.clone(),
         "beta".into(),
-        Duration::from_secs(3),
+        Duration::from_secs(30),
     );
     let space = choose_space("beta", &["alpha".into(), "beta".into()]);
     a.maintain().await.unwrap();
@@ -665,7 +665,26 @@ async fn transaction_conflict() {
         old.get_read_version().await.unwrap()
     ));
     old.set(&root.pack(&("proof", "stale-write")), &pack(&1i64));
-    tokio::time::sleep(Duration::from_millis(3300)).await;
+    // The process journey above proves natural expiry. Here expire only the fixture
+    // lease in the store, keeping the admitted transaction younger than FDB's 5s
+    // transaction window even when its version clock advances slowly.
+    db.run(|trx, _| {
+        let (root, initial) = (&root, &initial);
+        async move {
+            let version = trx.get_read_version().await?;
+            let lease = ownership::lease_in(&trx, root, initial.fence.partition)
+                .await?
+                .unwrap();
+            assert_eq!(lease.fence, initial.fence);
+            trx.set(
+                &ownership::lease_key(root, lease.fence.partition),
+                &pack(&(lease.fence.owner.as_str(), lease.fence.token, version)),
+            );
+            Ok(())
+        }
+    })
+    .await
+    .unwrap();
     b.maintain().await.unwrap();
     let next = current(&db, &root, &space).await;
     assert_eq!(next.fence.owner, "beta");

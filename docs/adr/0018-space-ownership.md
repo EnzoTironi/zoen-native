@@ -107,7 +107,16 @@ expiry takeover, stale writes/invites, replay after resume and process death,
 a gapless deduplicated durable log, and independent revoked-device rejection.
 A paused destination receives 128 concurrent probes; the 64-request limit
 rejects excess work and all attempts terminate. A separate real transaction
-checks that admission before takeover cannot commit after takeover.
+checks that admission before takeover cannot commit after takeover: it expires
+the fixture lease in the store, then lets the other node claim it, and requires
+FDB's conflict error (1020), rather than an old-transaction error.
+
+The native outbox holds events that cite an unconfirmed genesis until that
+genesis is confirmed locally. A temporary creation rejection during relay
+restart must leave its dependent messages queued. The offline CLI journey and
+a retry-and-relaunch core regression verify that ordering. The no-bus control
+routes the saved client account to the second relay and checks both relays use
+the local bus before asserting live traffic stays on its origin node.
 
 Sequencer unit tests hold the batch destination, abandon callers, fill a Space
 queue, check retryable excess rejection, and check that capacity returns only
