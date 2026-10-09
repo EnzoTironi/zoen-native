@@ -506,8 +506,28 @@ async fn key_packages_refill_when_they_run_low() {
     assert_eq!(w.count(&sql).await, 8);
 
     // Online when one more group takes him under 8: he refills while it happens.
-    let watch = w.spawn_zoen("bruno", &["watch", "--for", "25"]);
-    w.wait_online(1);
+    // Wait for this client's catch-up, rather than a session count that can still include
+    // the preceding sync. Keep it alive until the assertion; 120 s is only a failsafe.
+    let log_path = w.dir.join("bruno-watch.log");
+    let mut watch = w.spawn_zoen_logged("bruno", &["watch", "--for", "120"], "bruno-watch.log");
+    let mut ready = false;
+    for _ in 0..300 {
+        ready = std::fs::read_to_string(&log_path)
+            .unwrap()
+            .contains("watching as @bruno");
+        if ready || watch.try_wait().expect("watch status").is_some() {
+            break;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+    }
+    if !ready {
+        let _ = watch.kill();
+        let _ = watch.wait();
+        panic!(
+            "Bruno never finished starting the watcher:\n{}",
+            std::fs::read_to_string(&log_path).unwrap()
+        );
+    }
     w.zoen("ana", &["group", "Roda 49", "@bruno"]);
     let mut stock = 0;
     for _ in 0..200 {
@@ -517,13 +537,15 @@ async fn key_packages_refill_when_they_run_low() {
         }
         tokio::time::sleep(std::time::Duration::from_millis(100)).await;
     }
-    assert_eq!(stock, 32, "refilled while watching");
-    let out = watch.wait_with_output().expect("watch");
+    let status = watch.try_wait().expect("watch status");
+    let _ = watch.kill();
+    let _ = watch.wait();
+    let log = std::fs::read_to_string(&log_path).unwrap();
     assert!(
-        out.status.success(),
-        "{}",
-        String::from_utf8_lossy(&out.stderr)
+        status.is_none(),
+        "watcher exited before the refill assertion: {status:?}\n{log}"
     );
+    assert_eq!(stock, 32, "refilled while watching:\n{log}");
 
     // A group made from a refilled package opens like any other, and so do the old ones.
     w.zoen("ana", &["group", "Roda nova", "@bruno"]);

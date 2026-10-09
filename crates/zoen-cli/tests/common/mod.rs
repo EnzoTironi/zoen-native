@@ -299,6 +299,16 @@ impl World {
             .expect("spawn zoen")
     }
 
+    /// A background client whose output is retained without filling an unread pipe.
+    pub fn spawn_zoen_logged(&self, who: &str, args: &[&str], log_name: &str) -> Child {
+        let log = std::fs::File::create(self.dir.join(log_name)).expect("client log");
+        self.cmd(who, args)
+            .stdout(log.try_clone().expect("clone client log"))
+            .stderr(log)
+            .spawn()
+            .expect("spawn zoen")
+    }
+
     pub fn init(&self, handle: &str, name: &str) {
         let out = self.zoen(handle, &["init", "--name", name, "--handle", handle]);
         assert!(out.contains("registered"), "{out}");
