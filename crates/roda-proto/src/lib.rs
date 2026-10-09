@@ -389,10 +389,12 @@ pub enum Op {
         ids: Vec<IdentityId>,
     },
     /// Leaves a sealed link box for a device being linked (ADR 0045), under `id` = SHA-256
-    /// of the link secret in its QR code. Only the new device can open it.
+    /// of the link secret in its QR code. Only the new device can open it. The identity
+    /// box also enrolls its certified device; history manifests carry no device.
     DeliverLink {
         id: String,
         sealed: Vec<u8>,
+        device: Option<DeviceCertificate>,
     },
     /// Takes the link box under `id`, if it is there yet. The one op a device being linked
     /// (signed in as itself, not registered) may use besides registering.
@@ -412,6 +414,12 @@ pub enum Op {
         to: String,
         sealed: Vec<u8>,
     },
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct DeviceCertificate {
+    pub device: String,
+    pub cert: String,
 }
 
 impl Op {

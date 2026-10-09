@@ -143,18 +143,22 @@ pub async fn run(socket: WebSocket, st: Shared, ip: String) {
         return finish(writer, tx).await;
     };
 
-    if registered
-        && db::touch_device(&st.pool, &identity, &device, &cert)
-            .await
-            .is_err()
-    {
-        let _ = tx
-            .send(ServerFrame::error(
+    if registered {
+        let refused = match db::touch_device(&st.pool, &identity, &device, &cert).await {
+            Ok(true) => None,
+            Ok(false) => Some(ServerFrame::error(
+                ErrorCode::Unauthorized,
+                "link this device first",
+            )),
+            Err(_) => Some(ServerFrame::error(
                 ErrorCode::Unavailable,
                 "database unavailable",
-            ))
-            .await;
-        return finish(writer, tx).await;
+            )),
+        };
+        if let Some(error) = refused {
+            let _ = tx.send(error).await;
+            return finish(writer, tx).await;
+        }
     }
     let initial_authorization =
         match db::authorize_device(&st.session_auth, &identity, &device, registered).await {
@@ -395,6 +399,25 @@ async fn handshake(
         )
         .await;
     };
+    if registered {
+        match db::device_linked(&st.pool, &identity, &device).await {
+            Ok(true) => {}
+            Ok(false) => {
+                return refuse(
+                    "not_enrolled",
+                    ServerFrame::error(ErrorCode::Unauthorized, "link this device first"),
+                )
+                .await;
+            }
+            Err(_) => {
+                return refuse(
+                    "unavailable",
+                    ServerFrame::error(ErrorCode::Unavailable, "database unavailable"),
+                )
+                .await;
+            }
+        }
+    }
     let span = tracing::Span::current();
     span.record("outcome", "ok");
     span.record("identity", tracing::field::display(pseudo(&identity)));
@@ -561,15 +584,16 @@ impl Session {
             return false;
         }
         let registered = self.hub_id.is_some();
-        // Unlink uses the ordinary pool and performs its SQL in this same transaction.
-        // An occupied inbound authorization lane must not exclude the revocation itself.
-        let authorization_pool = if matches!(
+        // Directory changes keep the active-device fence through their SQL commit.
+        // They reuse this connection even when each bounded pool has only one slot.
+        let directory_change = matches!(
             &f,
             ClientFrame::Req {
-                op: Op::Unlink { .. },
+                op: Op::Unlink { .. } | Op::Register { .. } | Op::DeliverLink { .. },
                 ..
             }
-        ) {
+        );
+        let authorization_pool = if directory_change {
             &self.st.pool
         } else {
             &self.st.session_auth
@@ -587,14 +611,7 @@ impl Session {
                 return false;
             }
         };
-        let unlinking = matches!(
-            &f,
-            ClientFrame::Req {
-                op: Op::Unlink { .. },
-                ..
-            }
-        );
-        let mut authorization = if unlinking {
+        let mut authorization = if directory_change {
             Some(authorization)
         } else {
             // This is a request-admission fence. Work admitted before revocation can
@@ -639,7 +656,12 @@ impl Session {
                 };
                 let refill = refill && result.is_ok();
                 if let Some(authorization) = authorization {
-                    if authorization.commit().await.is_err() {
+                    let committed = if result.is_ok() {
+                        authorization.commit().await
+                    } else {
+                        authorization.rollback().await
+                    };
+                    if committed.is_err() {
                         return false;
                     }
                 }
@@ -740,20 +762,22 @@ impl Session {
                         }
                     }
                 }
-                if !db::is_registered(pool, &self.identity)
-                    .await
-                    .map_err(|e| e.to_string())?
-                {
+                if !registered {
                     self.st
                         .limits
                         .register_ip
                         .check(&self.ip)
                         .map_err(limits::slow_down)?;
                 }
-                db::register(pool, &profile, &handle).await?;
-                db::touch_device(pool, &self.identity, &self.device, &self.cert)
-                    .await
-                    .map_err(|e| e.to_string())?;
+                db::register(
+                    authorization.ok_or("registration authorization unavailable")?,
+                    &profile,
+                    &handle,
+                    &self.device,
+                    &self.cert,
+                    !registered,
+                )
+                .await?;
                 Ok(Reply::Registered(profile))
             }
             Op::FetchLink { id } => {
@@ -767,7 +791,7 @@ impl Session {
                 ))
             }
             _ if !registered => Err("register first".into()),
-            Op::DeliverLink { id, sealed } => {
+            Op::DeliverLink { id, sealed, device } => {
                 self.st
                     .limits
                     .lookup_account
@@ -776,7 +800,13 @@ impl Session {
                 if !valid_hex64(&id) || sealed.is_empty() || sealed.len() > db::MAX_LINK_BOX {
                     return Err("bad link box".into());
                 }
-                if !db::put_link_box(pool, &id, &sealed)
+                let authorization = authorization.ok_or("link authorization unavailable")?;
+                if let Some(device) = device {
+                    db::enroll_device(authorization, &self.identity, &device.device, &device.cert)
+                        .await
+                        .map_err(|e| e.to_string())?;
+                }
+                if !db::put_link_box(authorization, &id, &sealed)
                     .await
                     .map_err(|e| e.to_string())?
                 {

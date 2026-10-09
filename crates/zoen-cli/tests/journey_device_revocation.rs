@@ -3,7 +3,7 @@
 mod common;
 use common::*;
 use roda_log::{Author, Signer};
-use roda_proto::{ClientFrame, Envelope, ErrorCode, Op, ServerFrame};
+use roda_proto::{ClientFrame, DeviceCertificate, Envelope, ErrorCode, Op, ServerFrame};
 use roda_types::{EventBody, Privacy, Seen, SpaceKind};
 use sqlx::{Connection, PgConnection};
 
@@ -48,6 +48,17 @@ async fn revoke_live_sockets(two_nodes: bool, miss_bus_invalidation: bool) {
         w.relay_url()
     };
     let mut controller = RawClient::reconnect(&w.relay_url(), first).await;
+    controller
+        .request(Op::DeliverLink {
+            id: Signer::generate().id(),
+            sealed: vec![1],
+            device: Some(DeviceCertificate {
+                device: lost.device.clone().unwrap(),
+                cert: lost.cert.clone().unwrap(),
+            }),
+        })
+        .await
+        .unwrap();
     let mut syncing = RawClient::reconnect(&other_url, lost.clone()).await;
     let mut publishing = RawClient::reconnect(&other_url, lost.clone()).await;
     let mut receiving = RawClient::reconnect(&other_url, lost.clone()).await;

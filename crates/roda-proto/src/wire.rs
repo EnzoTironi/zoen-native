@@ -7,9 +7,9 @@ use prost::Message;
 use roda_types::{Identity, IdentityKind, Role};
 
 use crate::{
-    AgreementKeyRecord, ClientFrame, Cursor, DeviceRecord, DeviceSigned, Envelope, EphemeralKind,
-    ErrorCode, InviteCreated, InvitePreview, KeyPackageRecord, Op, Reply, SealedProfile, Sequenced,
-    ServerFrame,
+    AgreementKeyRecord, ClientFrame, Cursor, DeviceCertificate, DeviceRecord, DeviceSigned,
+    Envelope, EphemeralKind, ErrorCode, InviteCreated, InvitePreview, KeyPackageRecord, Op, Reply,
+    SealedProfile, Sequenced, ServerFrame,
 };
 
 /// Why a frame didn't decode.
@@ -196,6 +196,16 @@ pub struct PbLinkBox {
     pub id: String,
     #[prost(bytes = "vec", tag = "2")]
     pub sealed: Vec<u8>,
+    #[prost(message, optional, tag = "3")]
+    pub device: Option<PbDeviceCertificate>,
+}
+
+#[derive(Clone, PartialEq, Message)]
+pub struct PbDeviceCertificate {
+    #[prost(string, tag = "1")]
+    pub device: String,
+    #[prost(string, tag = "2")]
+    pub cert: String,
 }
 
 #[derive(Clone, PartialEq, Message)]
@@ -779,9 +789,13 @@ impl ClientFrame {
                     Op::ClaimKeyPackages { ids } => {
                         pb_req::Op::ClaimKeyPackages(PbIds { ids: ids.clone() })
                     }
-                    Op::DeliverLink { id, sealed } => pb_req::Op::DeliverLink(PbLinkBox {
+                    Op::DeliverLink { id, sealed, device } => pb_req::Op::DeliverLink(PbLinkBox {
                         id: id.clone(),
                         sealed: sealed.clone(),
+                        device: device.as_ref().map(|d| PbDeviceCertificate {
+                            device: d.device.clone(),
+                            cert: d.cert.clone(),
+                        }),
                     }),
                     Op::FetchLink { id } => pb_req::Op::FetchLink(id.clone()),
                     Op::Devices => pb_req::Op::Devices(PbEmpty {}),
@@ -857,6 +871,10 @@ impl ClientFrame {
                     pb_req::Op::DeliverLink(b) => Op::DeliverLink {
                         id: b.id,
                         sealed: b.sealed,
+                        device: b.device.map(|d| DeviceCertificate {
+                            device: d.device,
+                            cert: d.cert,
+                        }),
                     },
                     pb_req::Op::FetchLink(id) => Op::FetchLink { id },
                     pb_req::Op::Devices(_) => Op::Devices,
@@ -956,6 +974,7 @@ impl ServerFrame {
                     Ok(Reply::Link(sealed)) => pb_res::R::Link(PbLinkBox {
                         id: String::new(),
                         sealed: sealed.clone().unwrap_or_default(),
+                        device: None,
                     }),
                     Ok(Reply::Devices(ds)) => pb_res::R::Devices(PbDevices {
                         devices: ds
@@ -1429,6 +1448,25 @@ mod tests {
                     ids: vec!["a".into()],
                 },
             },
+            ClientFrame::Req {
+                id: 11,
+                op: Op::DeliverLink {
+                    id: "identity-box".into(),
+                    sealed: vec![1, 2],
+                    device: Some(DeviceCertificate {
+                        device: "d".into(),
+                        cert: "c".into(),
+                    }),
+                },
+            },
+            ClientFrame::Req {
+                id: 12,
+                op: Op::DeliverLink {
+                    id: "history-box".into(),
+                    sealed: vec![3, 4],
+                    device: None,
+                },
+            },
             ClientFrame::Sync {
                 cursors: vec![Cursor {
                     space: "sp".into(),
@@ -1447,6 +1485,25 @@ mod tests {
         for f in frames {
             assert_eq!(ClientFrame::decode(&f.encode()).unwrap(), f);
         }
+    }
+
+    #[test]
+    fn a_legacy_link_box_does_not_enroll_a_device() {
+        // Pre-enrollment protobuf: Req{id:1, DeliverLink{id:"box", sealed:[1]}}.
+        let legacy = [
+            0x1a, 0x0c, 0x08, 0x01, 0x6a, 0x08, 0x0a, 0x03, b'b', b'o', b'x', 0x12, 0x01, 0x01,
+        ];
+        assert_eq!(
+            ClientFrame::decode(&legacy).unwrap(),
+            ClientFrame::Req {
+                id: 1,
+                op: Op::DeliverLink {
+                    id: "box".into(),
+                    sealed: vec![1],
+                    device: None,
+                },
+            }
+        );
     }
 
     #[test]

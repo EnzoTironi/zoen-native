@@ -10,7 +10,7 @@ use std::{sync::Arc, time::Duration};
 
 use base64::Engine as _;
 use roda_log::Signer;
-use roda_proto::{transfer_message, Op, Reply};
+use roda_proto::{transfer_message, DeviceCertificate, Op, Reply};
 
 use crate::{
     api::SecretVault,
@@ -333,6 +333,10 @@ impl RodaEngine {
             .request(Op::DeliverLink {
                 id: link::box_id(&code.secret, "identity"),
                 sealed,
+                device: Some(DeviceCertificate {
+                    device: code.device.clone(),
+                    cert: b.cert,
+                }),
             })
             .await?
         {
@@ -418,6 +422,7 @@ impl RodaEngine {
             .request(Op::DeliverLink {
                 id: link::box_id(&secret, "history"),
                 sealed,
+                device: None,
             })
             .await?
         {
