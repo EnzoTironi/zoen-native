@@ -77,21 +77,28 @@ recovery behavior against the combined linking/backup tree before integration.
 
 ### Reliability work from this audit
 
-[PR 40](https://github.com/EnzoTironi/zoen-native/pull/40) fixes a sender publishing its
-first encrypted message while the recipient's Welcome is still queued. A controlled
-network journey fails on the original code and passes with the fix, including recipient
-delivery and signed-history verification. All three rate-limit journeys pass locally.
-The [full workspace CI](https://github.com/EnzoTironi/zoen-native/actions/runs/37905323963)
-also passes, including the required Linux sandbox journeys. The repair is now included
-in PRs 33, 34 and 38 for their own validation. PR 33's stale-device fixture was corrected
-to keep active peers checkpointing throughout the absent device's pruning window; that
-real relay journey passes locally, and both M2 CI runs pass. The backup branch's full CI
-also passes after the repair and ADR renumbering. Later CI on the chat and roadmap branches
-exposed an intermittent key-package watcher failure. That fixture now waits for the actual
-client's ready signal, retains its output without unread pipes and verifies it stays alive
-through refill; the 20-second refill deadline and exact 32-package target remain unchanged.
-The amended journey passes locally. Follow each PR's current checks before integration.
-Combined-tree and native UI checks remain completion gates.
+[PR 40](https://github.com/EnzoTironi/zoen-native/pull/40) repairs two MLS delivery boundaries.
+A sender now waits for its queued Welcome to be confirmed before publishing application
+messages. A connecting device is attached to live delivery before the relay reads its
+key-package stock, so a concurrent claim cannot fall between that snapshot and mailbox
+attachment. Controlled WebSocket and NATS journeys fail on the original code and pass
+with their respective fixes. The rate-limit journeys and existing refill journey pass
+locally; production quotas and the refill target remain unchanged. Follow the PR's
+[current workspace checks](https://github.com/EnzoTironi/zoen-native/pull/40/checks).
+
+The repair is included in PRs 33, 34 and 38. PR 33's stale-device fixture keeps active peers
+checkpointing throughout the absent device's pruning window. The refill fixture also
+retains watcher output and verifies that the actual client is ready and alive; it still
+requires exactly 32 packages within the original 20-second polling window.
+
+[PR 34](https://github.com/EnzoTironi/zoen-native/pull/34) now builds on PR 33. Restore
+persists the new device's signed MLS join requests in the durable outbox. Both password
+and recovery-key journeys exchange new encrypted messages through a surviving group
+admin, revoke the lost phone and verify signed history. A stale backup cannot regain
+removed membership. The combined recovery and M2 journeys pass locally. Native recovery
+and linking UI, release device journeys, and recovery without a surviving authorized MLS
+device remain completion gates; see the
+[restore design](https://github.com/EnzoTironi/zoen-native/blob/feat/encrypted-backup/docs/adr/0046-encrypted-backup.md).
 
 The Grok computer also holds an unpublished `ux/audit-p2` patch across 14 Swift files.
 It was saved before further work; it still needs review, simulator validation and a PR.
