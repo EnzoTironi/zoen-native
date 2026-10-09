@@ -88,8 +88,15 @@ waits, authorization, append/invite work and reply publication. Target identity
 lookup stays inside the authorization transaction, with one-second PostgreSQL
 statement/lock timeouts; device authorization has five-second SQL timeouts.
 These server timeouts also terminate queries after a dropped receiver future.
-A caller timing
-out can retry its durable client ID. A queued job keeps its capacity until it
+Public WebSocket target registration has its own two-second total deadline,
+including pool wait, and one-second SQL statement/lock timeouts. A directory
+failure returns a retryable rejection rather than a permanent unknown-member
+decision. A caller timing out can retry its durable client ID. Duplicate replies
+carry current membership from the replay transaction and repeat live `Event`
+delivery plus `Joined` when the original added identity remains a member.
+Removed identities are excluded, including removals later in the same batch.
+Recipients deduplicate by client ID; this is best-effort live replay, with
+durable log catch-up still required after disconnection. A queued job keeps its capacity until it
 finishes. Queued requests recheck forwarding health before renewing, so they
 cannot keep an isolated owner alive indefinitely. Saturation rejects without
 waiting for capacity:
@@ -155,6 +162,11 @@ holds admission past the caller's timeout; releasing it commits exactly one
 client ID and its retry returns `Duplicate`. A separate identities-table lock
 blocks all eight pool connections while 64 receiver tasks are admitted. With
 the lock still held, capacity returns and an ordinary message can commit.
+Eight actual WebSocket publishers independently reach a locked identities table,
+receive retryable directory failures, and leave ordinary publishing available.
+A caller whose owner inbox expires before commit retries through WebSocket;
+the recipient receives `Event` and `Joined`, one durable client ID remains, and
+another replay after removal sends neither frame to that removed identity.
 
 The native outbox holds events that cite an unconfirmed genesis until that
 genesis is confirmed locally. A temporary creation rejection during relay

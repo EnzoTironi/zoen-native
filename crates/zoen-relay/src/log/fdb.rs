@@ -633,7 +633,11 @@ impl Cell {
                 let Ok(Sequencing::New { ev, .. }) = &results[at] else {
                     unreachable!("fresh points at a new entry")
                 };
-                results.push(Ok(Sequencing::Duplicate { ev: ev.clone() }));
+                results.push(Ok(Sequencing::Duplicate {
+                    ev: ev.clone(),
+                    audience: Vec::new(),
+                    joined: None,
+                }));
                 continue;
             }
             if let Some(seq) = &dedupes[i] {
@@ -642,7 +646,11 @@ impl Cell {
                     .entry(trx, space, seq as u64, true)
                     .await?
                     .ok_or_else(|| custom("dedupe points at a missing entry"))?;
-                results.push(Ok(Sequencing::Duplicate { ev }));
+                results.push(Ok(Sequencing::Duplicate {
+                    ev,
+                    audience: Vec::new(),
+                    joined: None,
+                }));
                 continue;
             }
 
@@ -820,6 +828,28 @@ impl Cell {
                 audience,
                 joined,
             }));
+        }
+        // Use final membership even if a removal followed a duplicate in this
+        // same batch. Oversized/invalid legacy rosters keep author-only replay.
+        if state.members.len() <= super::admission::MAX_MEMBERS as usize && !unsupported_members {
+            for result in &mut results {
+                if let Ok(Sequencing::Duplicate {
+                    ev,
+                    audience,
+                    joined,
+                }) = result
+                {
+                    *audience = state.members.keys().cloned().collect();
+                    *joined = match ev.env.body() {
+                        Some(EventBody::MemberAdded { identity, .. })
+                            if state.members.contains_key(&identity) =>
+                        {
+                            Some(identity)
+                        }
+                        _ => None,
+                    };
+                }
+            }
         }
         if state.head != head {
             if let Some((seq, hash)) = &state.head {

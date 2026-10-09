@@ -1138,14 +1138,28 @@ impl Session {
         }
         let target_known = match env.body() {
             Some(EventBody::MemberAdded { identity, .. }) => {
-                db::is_registered(&self.st.pool, &identity)
-                    .await
-                    .unwrap_or(false)
+                match db::is_registered(&self.st.pool, &identity).await {
+                    Ok(known) => known,
+                    Err(_) => {
+                        Metrics::inc(&self.st.metrics.events_rejected);
+                        self.send(reject(
+                            "directory_unavailable",
+                            "directory unavailable",
+                            false,
+                        ))
+                        .await;
+                        return;
+                    }
+                }
             }
             _ => true,
         };
         match self.st.log.append(&env, target_known).await {
-            Ok(Sequencing::Duplicate { ev }) => {
+            Ok(Sequencing::Duplicate {
+                ev,
+                audience,
+                joined,
+            }) => {
                 Metrics::inc(&self.st.metrics.events_duplicate);
                 span.record("outcome", "duplicate");
                 span.record("seq", ev.seq as i64);
@@ -1155,7 +1169,21 @@ impl Session {
                     seq: ev.seq,
                 })
                 .await;
-                self.send(ServerFrame::Event { ev }).await;
+                self.send(ServerFrame::Event { ev: ev.clone() }).await;
+                let space = ev.env.space().to_string();
+                let n = self
+                    .st
+                    .fanout
+                    .send(&audience, &ServerFrame::Event { ev }, self.hub_id);
+                span.record("audience", audience.len() as i64);
+                span.record("delivered_here", n as i64);
+                if let Some(identity) = joined.filter(|id| id != &self.identity) {
+                    self.st.fanout.send(
+                        std::slice::from_ref(&identity),
+                        &ServerFrame::Joined { space },
+                        None,
+                    );
+                }
             }
             Ok(Sequencing::New {
                 ev,

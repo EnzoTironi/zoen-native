@@ -49,7 +49,10 @@ enum Answer {
         audience: Vec<String>,
         joined: Option<String>,
     },
-    Duplicate,
+    Duplicate {
+        audience: Vec<String>,
+        joined: Option<String>,
+    },
     Rejected {
         reason: String,
         permanent: bool,
@@ -391,7 +394,11 @@ fn encode(result: Result<Sequencing, Reject>) -> Bytes {
             audience,
             joined,
         }) => (Answer::New { audience, joined }, Some(ev)),
-        Ok(Sequencing::Duplicate { ev }) => (Answer::Duplicate, Some(ev)),
+        Ok(Sequencing::Duplicate {
+            ev,
+            audience,
+            joined,
+        }) => (Answer::Duplicate { audience, joined }, Some(ev)),
         Err(r) => (
             Answer::Rejected {
                 reason: r.reason,
@@ -426,7 +433,7 @@ fn decode_parts(bytes: &[u8]) -> Result<(Answer, &[u8]), Reject> {
     }
     let meta = bytes.get(4..4 + size).ok_or_else(Reject::unavailable)?;
     let meta: Answer = serde_json::from_slice(meta).map_err(|_| Reject::unavailable())?;
-    if let Answer::New { audience, joined } = &meta {
+    if let Answer::New { audience, joined } | Answer::Duplicate { audience, joined } = &meta {
         if audience.len() > crate::log::admission::MAX_MEMBERS as usize + 1
             || audience
                 .iter()
@@ -453,7 +460,11 @@ fn decode(bytes: &[u8]) -> Result<Sequencing, Reject> {
             audience,
             joined,
         }),
-        Answer::Duplicate => Ok(Sequencing::Duplicate { ev }),
+        Answer::Duplicate { audience, joined } => Ok(Sequencing::Duplicate {
+            ev,
+            audience,
+            joined,
+        }),
         Answer::Invite { .. } => Err(Reject::unavailable()),
         Answer::Rejected { .. } => unreachable!(),
     }
@@ -465,7 +476,7 @@ mod tests {
     use roda_log::{Author, Signer};
 
     #[test]
-    fn new_response_retains_audience_and_joined_at_supported_membership_sizes() {
+    fn new_and_duplicate_responses_retain_supported_audiences_and_joined() {
         let author = Author::root(Signer::generate());
         let env = Envelope::plain(&author.sign_event(
             "space",
@@ -485,27 +496,43 @@ mod tests {
         ] {
             let audience: Vec<String> = (0..size).map(|i| format!("{i:064x}")).collect();
             let joined = Some("f".repeat(64));
-            let bytes = encode(Ok(Sequencing::New {
-                ev: Sequenced {
-                    env: env.clone(),
-                    seq: 0,
-                    prev: roda_types::GENESIS_PREV.into(),
-                    hash: "h".into(),
-                },
-                audience: audience.clone(),
-                joined: joined.clone(),
-            }));
-            assert!(bytes.len() < crate::session::MAX_FRAME);
-            let Sequencing::New {
-                audience: decoded,
-                joined: decoded_joined,
-                ..
-            } = decode(&bytes).unwrap()
-            else {
-                panic!("new became a duplicate")
+            let ev = Sequenced {
+                env: env.clone(),
+                seq: 0,
+                prev: roda_types::GENESIS_PREV.into(),
+                hash: "h".into(),
             };
-            assert_eq!(decoded, audience);
-            assert_eq!(decoded_joined, joined);
+            for duplicate in [false, true] {
+                let result = if duplicate {
+                    Sequencing::Duplicate {
+                        ev: ev.clone(),
+                        audience: audience.clone(),
+                        joined: joined.clone(),
+                    }
+                } else {
+                    Sequencing::New {
+                        ev: ev.clone(),
+                        audience: audience.clone(),
+                        joined: joined.clone(),
+                    }
+                };
+                let bytes = encode(Ok(result));
+                assert!(bytes.len() < crate::session::MAX_FRAME);
+                let decoded = decode(&bytes).unwrap();
+                assert_eq!(matches!(decoded, Sequencing::Duplicate { .. }), duplicate);
+                let (Sequencing::New {
+                    audience: decoded,
+                    joined: decoded_joined,
+                    ..
+                }
+                | Sequencing::Duplicate {
+                    audience: decoded,
+                    joined: decoded_joined,
+                    ..
+                }) = decoded;
+                assert_eq!(decoded, audience);
+                assert_eq!(decoded_joined, joined);
+            }
         }
     }
 }

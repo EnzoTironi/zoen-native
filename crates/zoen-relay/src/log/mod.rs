@@ -48,7 +48,13 @@ pub enum Sequencing {
         joined: Option<String>,
     },
     /// Same `client_id` again: the stored copy, so the device can stop retrying.
-    Duplicate { ev: Sequenced },
+    Duplicate {
+        ev: Sequenced,
+        /// Current members at the replay transaction, so late acknowledgments
+        /// can restore live delivery without disclosing to departed identities.
+        audience: Vec<String>,
+        joined: Option<String>,
+    },
 }
 
 /// A redeemable invite, as the preview shows it.

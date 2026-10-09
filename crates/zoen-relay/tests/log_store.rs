@@ -149,7 +149,7 @@ async fn a_retried_envelope_is_answered_with_the_stored_copy() {
     let Ok(Sequencing::New { ev: first, .. }) = log.append(&env, true).await else {
         panic!()
     };
-    let Ok(Sequencing::Duplicate { ev }) = log.append(&env, true).await else {
+    let Ok(Sequencing::Duplicate { ev, .. }) = log.append(&env, true).await else {
         panic!("not deduplicated")
     };
     assert_eq!((ev.seq, ev.hash), (first.seq, first.hash));
@@ -361,7 +361,7 @@ async fn duplicates_in_one_batch() {
                 new += 1;
                 stored.push((ev.seq, ev.hash));
             }
-            Ok(Sequencing::Duplicate { ev }) => stored.push((ev.seq, ev.hash)),
+            Ok(Sequencing::Duplicate { ev, .. }) => stored.push((ev.seq, ev.hash)),
             Err(r) => panic!("refused: {}", r.reason),
         }
     }

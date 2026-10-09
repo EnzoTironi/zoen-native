@@ -413,6 +413,18 @@ async fn journey() {
     let target =
         forwarding::audience(&db, &root, &mut device_b, b.port, &author, &alpha, &live).await;
     forwarding::deadlines(&url, &author, &target).await;
+    forwarding::public_lookup(&url, &db, &root, b.port, &target, &beta, &live).await;
+    forwarding::late_delivery(
+        &url,
+        &db_name,
+        &mut device_b,
+        b.port,
+        &author,
+        &target,
+        &alpha,
+        &live,
+    )
+    .await;
     let stale = Arc::new(
         FdbLog::open_as(Some(&cluster), &db_name, &alpha, Duration::from_secs(1)).unwrap(),
     );
