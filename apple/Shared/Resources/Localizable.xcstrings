@@ -7570,7 +7570,7 @@
         "pt-BR": {
           "stringUnit": {
             "state": "translated",
-            "value": "Thread"
+            "value": "Respostas"
           }
         }
       }
@@ -8181,6 +8181,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "Voltar para a conversa"
+          }
+        }
+      }
+    },
+    "%lld items · %@": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld itens · %@"
           }
         }
       }
