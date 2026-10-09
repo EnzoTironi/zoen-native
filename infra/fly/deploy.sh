@@ -45,12 +45,25 @@ storage() {
   has_secret "$RELAY" AWS_ACCESS_KEY_ID || fly storage create -a "$RELAY" -n "$BUCKET" -o "$ORG" -y >/dev/null
 }
 
+# Metrics pseudonym key and the admin token for /admin (ADR 0043). Generated once, staged
+# straight into Fly; nobody sees them. Enzo reads the token with `fly ssh console -a
+# zoen-staging-relay -C 'printenv ZOEN_ADMIN_TOKEN'` when he wants the dashboard.
+# The PostHog project key is staged only if ZOEN_POSTHOG_KEY is set in the environment.
+metrics_secrets() {
+  has_secret "$RELAY" ZOEN_METRICS_KEY || fly secrets set -a "$RELAY" --stage ZOEN_METRICS_KEY="$(openssl rand -hex 32)" >/dev/null
+  has_secret "$RELAY" ZOEN_ADMIN_TOKEN || fly secrets set -a "$RELAY" --stage ZOEN_ADMIN_TOKEN="$(openssl rand -hex 32)" >/dev/null
+  if [[ -n "${ZOEN_POSTHOG_KEY:-}" ]]; then
+    fly secrets set -a "$RELAY" --stage ZOEN_POSTHOG_KEY="$ZOEN_POSTHOG_KEY" ZOEN_POSTHOG_HOST="${ZOEN_POSTHOG_HOST:-https://us.i.posthog.com}" >/dev/null
+  fi
+}
+
 relay() {
   ensure_app "$RELAY"
   # The backup vault's master key (ADR 0045). Generated once and never rotated by this script:
   # losing it makes every password backup unopenable (recovery-key backups don't need it).
   has_secret "$RELAY" ZOEN_BACKUP_VAULT_KEY \
     || fly secrets set -a "$RELAY" --stage ZOEN_BACKUP_VAULT_KEY="$(openssl rand -hex 32)" >/dev/null
+  metrics_secrets
   (cd ../.. && fly deploy . -c infra/fly/relay.toml --dockerfile infra/fly/relay.Dockerfile -a "$RELAY" --ha=false --remote-only --yes)
   for h in "${HOSTS[@]}"; do fly certs show "$h" -a "$RELAY" >/dev/null 2>&1 || fly certs add "$h" -a "$RELAY" >/dev/null; done
 }

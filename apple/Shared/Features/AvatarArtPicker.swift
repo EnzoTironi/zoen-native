@@ -73,7 +73,7 @@ struct AvatarArtPicker: View {
                 }
             }
         }
-        .presentationDetents([.medium, .large])
+        .zoenSheet([.medium, .large])
     }
 
     private func choose(_ a: HandDrawnAvatarAsset.Asset) {

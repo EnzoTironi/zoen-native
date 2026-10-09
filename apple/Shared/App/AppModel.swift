@@ -81,6 +81,8 @@ final class AppModel {
     let planner = AgentPlanner()
     /// Account, relay connection and the live signals (typing, presence).
     let sync = SyncModel()
+    /// An agent's browser in a chat: live view and takeover (ADR 0028 §7).
+    let browser = AgentBrowser()
 
     private(set) var me: Persona?
     private(set) var spaces: [SpaceSummary] = []
@@ -718,6 +720,12 @@ final class AppModel {
         #endif
         // After showcase seed polish so `-RodaOpen` is not wiped by `paths = []`.
         applyRodaOpen(d)
+        // `-RodaAgentBrowser YES`: Zoen books the inn in Paraty's browser and stops at the
+        // sign-in for you to take over (showcase until the relay carries real sessions).
+        if d.bool(forKey: "RodaAgentBrowser"), let id = spaceId(titled: DemoSpace.paraty), let agent = zoen {
+            try? await Task.sleep(for: .seconds(1.2))
+            browser.startDemo(spaceId: id, agent: agent)
+        }
         if let story = d.string(forKey: "RodaStory") {
             await runStory(story)
             if let q = d.string(forKey: "RodaSearch") {
