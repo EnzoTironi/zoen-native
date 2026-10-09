@@ -225,11 +225,12 @@ async fn a_tool_reaches_only_what_it_declared_and_never_sees_the_secret() {
     .await;
     assert!(r.starts_with("HTTP/1.1 407"), "{r}");
 
-    // 6. CONNECT tunnels carry bytes both ways for a listed host.
+    // 6. CONNECT tunnels carry bytes both ways, untouched, for an allowed host no secret is
+    //    bound to (hosts with a bound secret are intercepted instead: journey_https).
     let mut c = TcpStream::connect(("127.0.0.1", pport)).await.unwrap();
     c.write_all(
         format!(
-            "CONNECT api.github.test:{oport} HTTP/1.1\r\nProxy-Authorization: Basic {a}\r\n\r\n"
+            "CONNECT docs.example.test:{oport} HTTP/1.1\r\nProxy-Authorization: Basic {a}\r\n\r\n"
         )
         .as_bytes(),
     )

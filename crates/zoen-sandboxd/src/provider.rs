@@ -530,7 +530,9 @@ impl SandboxProvider for FirecrackerProvider {
                 return Err(backend(err));
             }
         }
-        let bridge = match self.start_for(&vm, &lease.id, None).await {
+        // The lease CA's certificate (never its key) joins the guest's trust bundle.
+        let ca = self.egress.as_ref().and_then(|e| e.lease_ca_pem(&lease.id));
+        let bridge = match self.start_for(&vm, &lease.id, ca).await {
             Ok(b) => b,
             Err(e) => {
                 vm.kill().await;

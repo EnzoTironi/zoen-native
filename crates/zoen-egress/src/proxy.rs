@@ -3,6 +3,7 @@
 use crate::policy::{
     host_matches, is_forbidden, EgressRule, SecretBinding, BLOCKED_PORTS, PLACEHOLDER_PREFIX,
 };
+use crate::tls::{LeaseCa, Upstream};
 use base64::Engine;
 use roda_types::{ActionClass, AgentRequest, Capability, Grant, GrantScope, IdentityId};
 use serde::{Deserialize, Serialize};
@@ -67,6 +68,8 @@ pub struct EgressConfig {
     /// Test only: lets a loopback upstream through so journeys can run a local origin. Every
     /// other forbidden range stays forbidden.
     pub allow_loopback_upstreams: bool,
+    /// Test only: roots trusted for upstream TLS on top of Mozilla's (a journey's own origin).
+    pub extra_upstream_roots_pem: Vec<String>,
 }
 
 impl Default for EgressConfig {
@@ -76,6 +79,7 @@ impl Default for EgressConfig {
             max_head_bytes: 16 * 1024,
             connect_timeout: Duration::from_secs(10),
             allow_loopback_upstreams: false,
+            extra_upstream_roots_pem: vec![],
         }
     }
 }
@@ -173,6 +177,7 @@ struct State {
     leases: HashMap<String, LeaseState>,
     pending: HashMap<String, Pending>,
     tool_wide: HashMap<(IdentityId, String), Vec<EgressRule>>,
+    cas: HashMap<String, Arc<LeaseCa>>,
     log: Vec<LogEntry>,
 }
 
@@ -182,6 +187,7 @@ pub struct Egress {
     resolver: Resolver,
     secrets: Arc<dyn SecretSource>,
     approvals: Arc<dyn ApprovalSink>,
+    upstream: Upstream,
 }
 
 fn now_ms() -> i64 {
@@ -202,8 +208,10 @@ fn ct_eq(a: &[u8], b: &[u8]) -> bool {
 struct Target {
     host: String,
     port: u16,
-    /// Origin-form path for plain HTTP; `None` for CONNECT.
+    /// Origin-form path for absolute-form requests; `None` for CONNECT.
     path: Option<String>,
+    /// `https://` absolute form: the proxy opens the TLS connection to the origin.
+    tls: bool,
 }
 
 struct Ctx {
@@ -222,12 +230,15 @@ impl Egress {
         secrets: Arc<dyn SecretSource>,
         approvals: Arc<dyn ApprovalSink>,
     ) -> Arc<Self> {
+        let upstream = Upstream::new(&config.extra_upstream_roots_pem)
+            .expect("upstream TLS roots (extra roots must be valid PEM)");
         Arc::new(Egress {
             state: Mutex::new(State::default()),
             config,
             resolver,
             secrets,
             approvals,
+            upstream,
         })
     }
 
@@ -237,7 +248,22 @@ impl Egress {
         for r in &policy.rules {
             r.validate()?;
         }
+        // A tool with secrets gets its own CA, limited to the hosts those secrets are for.
+        let hosts: Vec<String> = policy
+            .secrets
+            .iter()
+            .flat_map(|b| b.hosts.iter().cloned())
+            .collect();
+        let ca = if hosts.is_empty() {
+            None
+        } else {
+            Some(Arc::new(LeaseCa::new(&policy.lease, &hosts)?))
+        };
         let mut st = self.state.lock().unwrap();
+        match ca {
+            Some(ca) => st.cas.insert(policy.lease.clone(), ca),
+            None => st.cas.remove(&policy.lease),
+        };
         st.leases.insert(
             policy.lease.clone(),
             LeaseState {
@@ -254,7 +280,19 @@ impl Egress {
     pub fn revoke(&self, lease: &str) {
         let mut st = self.state.lock().unwrap();
         st.leases.remove(lease);
+        st.cas.remove(lease);
         st.pending.retain(|_, p| p.lease != lease);
+    }
+
+    /// The certificate of the lease's CA, for the sandbox's trust bundle; `None` when the
+    /// tool has no secrets (then nothing is ever intercepted).
+    pub fn lease_ca_pem(&self, lease: &str) -> Option<String> {
+        self.state
+            .lock()
+            .unwrap()
+            .cas
+            .get(lease)
+            .map(|c| c.cert_pem().to_string())
     }
 
     /// The owner said yes. With `AlwaysForTool`, returns the Grant to record (`net:<host>`
@@ -379,22 +417,14 @@ impl Egress {
         };
 
         // Read the request head.
-        let mut buf = Vec::with_capacity(4096);
-        let head_end = loop {
-            let mut chunk = [0u8; 4096];
-            let n = conn.read(&mut chunk).await?;
-            if n == 0 {
-                return Ok(());
-            }
-            buf.extend_from_slice(&chunk[..n]);
-            if let Some(i) = buf.windows(4).position(|w| w == b"\r\n\r\n") {
-                break i + 4;
-            }
-            if buf.len() > self.config.max_head_bytes {
+        let (buf, head_end) = match read_head(&mut conn, self.config.max_head_bytes).await? {
+            Head::Closed => return Ok(()),
+            Head::TooBig => {
                 return self
                     .refuse(&mut conn, &ctx, Decision::BadRequest, None)
-                    .await;
+                    .await
             }
+            Head::Complete(buf, end) => (buf, end),
         };
         let mut headers = [httparse::EMPTY_HEADER; 64];
         let mut req = httparse::Request::new(&mut headers);
@@ -484,38 +514,7 @@ impl Egress {
         }
 
         // Allowlist: the manifest, plus what the owner approved.
-        let allowed = {
-            let mut st = self.state.lock().unwrap();
-            let tool_wide = st
-                .tool_wide
-                .get(&(policy.owner.clone(), policy.tool.clone()))
-                .map(|rs| {
-                    rs.iter()
-                        .any(|r| r.matches(&target.host, target.port, &method))
-                })
-                .unwrap_or(false);
-            let l = st
-                .leases
-                .get_mut(&policy.lease)
-                .expect("lease checked above");
-            if l.policy
-                .rules
-                .iter()
-                .any(|r| r.matches(&target.host, target.port, &method))
-                || tool_wide
-            {
-                true
-            } else if let Some(i) = l
-                .once
-                .iter()
-                .position(|r| r.matches(&target.host, target.port, &method))
-            {
-                l.once.remove(i);
-                true
-            } else {
-                false
-            }
-        };
+        let allowed = self.allowed(&policy, &target.host, target.port, &method);
         if !allowed {
             let id = self.open_card(&policy, &target, &method);
             return self
@@ -524,79 +523,185 @@ impl Egress {
         }
 
         // Secrets: placeholders become values only for hosts the secret is bound to.
-        let mut out_headers = Vec::with_capacity(hdrs.len());
+        let mut out_headers = vec![];
         if target.path.is_some() {
-            for (name, value) in &hdrs {
-                let lname = name.to_ascii_lowercase();
-                if lname.starts_with("proxy-") || lname == "connection" || lname == "keep-alive" {
-                    continue;
-                }
-                match self.inject(&policy, &target.host, value) {
-                    Ok(v) => out_headers.push((name.clone(), v)),
-                    Err(d) => return self.refuse(&mut conn, &ctx, d, None).await,
-                }
+            match self.rewrite_headers(&policy, &target.host, &hdrs) {
+                Ok(h) => out_headers = h,
+                Err(d) => return self.refuse(&mut conn, &ctx, d, None).await,
             }
         }
 
         // Resolve ourselves; every address must be public.
-        let addrs = match self.resolver.resolve(&target.host, target.port).await {
-            Ok(a) if !a.is_empty() => a,
-            _ => {
-                return self
-                    .refuse(&mut conn, &ctx, Decision::UpstreamError, None)
-                    .await
-            }
+        let upstream = match self.dial(&target.host, target.port).await {
+            Ok(s) => s,
+            Err(d) => return self.refuse(&mut conn, &ctx, d, None).await,
         };
-        let forbidden = addrs.iter().any(|a| {
-            is_forbidden(a.ip()) && !(self.config.allow_loopback_upstreams && a.ip().is_loopback())
-        });
-        if forbidden {
-            return self
-                .refuse(&mut conn, &ctx, Decision::PrivateAddress, None)
-                .await;
+
+        if target.path.is_none() {
+            conn.write_all(b"HTTP/1.1 200 Connection Established\r\n\r\n")
+                .await?;
+            let ca = {
+                let st = self.state.lock().unwrap();
+                st.cas.get(&policy.lease).cloned()
+            };
+            let intercept = ca.filter(|_| policy.secrets.iter().any(|b| b.allows(&target.host)));
+            let Some(ca) = intercept else {
+                // An opaque tunnel.
+                let mut upstream = upstream;
+                if !leftover.is_empty() {
+                    upstream.write_all(&leftover).await?;
+                }
+                let (a, b) = tokio::io::copy_bidirectional(&mut conn, &mut upstream)
+                    .await
+                    .unwrap_or((0, 0));
+                self.record(&ctx, Decision::Allowed, leftover.len() as u64 + a, b);
+                return Ok(());
+            };
+            // Intercepted: TLS with the lease's CA towards the sandbox, real TLS upstream.
+            let acceptor = match ca.acceptor(&target.host) {
+                Ok(a) => a,
+                Err(_) => {
+                    self.record(&ctx, Decision::UpstreamError, 0, 0);
+                    return Ok(());
+                }
+            };
+            let prefixed = Prefixed {
+                prefix: leftover,
+                inner: conn,
+            };
+            let mut inner = match acceptor.accept(prefixed).await {
+                Ok(s) => s,
+                Err(_) => {
+                    self.record(&ctx, Decision::BadRequest, 0, 0);
+                    return Ok(());
+                }
+            };
+            let (buf, head_end) = match read_head(&mut inner, self.config.max_head_bytes).await? {
+                Head::Closed => return Ok(()),
+                Head::TooBig => {
+                    return self
+                        .refuse(&mut inner, &ctx, Decision::BadRequest, None)
+                        .await
+                }
+                Head::Complete(buf, end) => (buf, end),
+            };
+            let mut headers = [httparse::EMPTY_HEADER; 64];
+            let mut req = httparse::Request::new(&mut headers);
+            if !matches!(
+                req.parse(&buf[..head_end]),
+                Ok(httparse::Status::Complete(_))
+            ) {
+                return self
+                    .refuse(&mut inner, &ctx, Decision::BadRequest, None)
+                    .await;
+            }
+            let method = req.method.unwrap_or("").to_string();
+            let path = req.path.unwrap_or("/").to_string();
+            let hdrs: Vec<(String, Vec<u8>)> = req
+                .headers
+                .iter()
+                .map(|h| (h.name.to_string(), h.value.to_vec()))
+                .collect();
+            ctx.method = Some(method.clone());
+            // Method rules apply to what's inside the tunnel too.
+            if !self.allowed(&policy, &target.host, target.port, &method) {
+                let id = self.open_card(&policy, &target, &method);
+                return self
+                    .refuse(&mut inner, &ctx, Decision::NeedsApproval, Some(&id))
+                    .await;
+            }
+            let out_headers = match self.rewrite_headers(&policy, &target.host, &hdrs) {
+                Ok(h) => h,
+                Err(d) => return self.refuse(&mut inner, &ctx, d, None).await,
+            };
+            let mut tls_up = match self.upstream.connect(&target.host, upstream).await {
+                Ok(s) => s,
+                Err(_) => {
+                    return self
+                        .refuse(&mut inner, &ctx, Decision::UpstreamError, None)
+                        .await
+                }
+            };
+            let head = request_head(&method, &path, &out_headers);
+            let (a, b) = forward(&mut inner, &mut tls_up, &head, &buf[head_end..]).await?;
+            self.record(&ctx, Decision::Allowed, a, b);
+            return Ok(());
         }
-        let upstream =
-            match tokio::time::timeout(self.config.connect_timeout, TcpStream::connect(addrs[0]))
-                .await
-            {
-                Ok(Ok(s)) => s,
-                _ => {
+
+        let head = request_head(&method, target.path.as_deref().unwrap_or("/"), &out_headers);
+        let (a, b) = if target.tls {
+            let mut up = match self.upstream.connect(&target.host, upstream).await {
+                Ok(s) => s,
+                Err(_) => {
                     return self
                         .refuse(&mut conn, &ctx, Decision::UpstreamError, None)
                         .await
                 }
             };
-        let mut upstream = upstream;
-
-        let mut up = leftover.len() as u64;
-        if target.path.is_none() {
-            conn.write_all(b"HTTP/1.1 200 Connection Established\r\n\r\n")
-                .await?;
+            forward(&mut conn, &mut up, &head, &leftover).await?
         } else {
-            let mut head = format!(
-                "{} {} HTTP/1.1\r\n",
-                method,
-                target.path.as_deref().unwrap_or("/")
-            )
-            .into_bytes();
-            for (n, v) in &out_headers {
-                head.extend_from_slice(n.as_bytes());
-                head.extend_from_slice(b": ");
-                head.extend_from_slice(v);
-                head.extend_from_slice(b"\r\n");
-            }
-            head.extend_from_slice(b"Connection: close\r\n\r\n");
-            up += head.len() as u64;
-            upstream.write_all(&head).await?;
-        }
-        if !leftover.is_empty() {
-            upstream.write_all(&leftover).await?;
-        }
-        let (a, b) = tokio::io::copy_bidirectional(&mut conn, &mut upstream)
-            .await
-            .unwrap_or((0, 0));
-        self.record(&ctx, Decision::Allowed, up + a, b);
+            let mut up = upstream;
+            forward(&mut conn, &mut up, &head, &leftover).await?
+        };
+        self.record(&ctx, Decision::Allowed, a, b);
         Ok(())
+    }
+
+    /// The manifest's rules, the owner's tool-wide approvals, or a one-time approval.
+    fn allowed(&self, policy: &LeasePolicy, host: &str, port: u16, method: &str) -> bool {
+        let mut st = self.state.lock().unwrap();
+        let tool_wide = st
+            .tool_wide
+            .get(&(policy.owner.clone(), policy.tool.clone()))
+            .map(|rs| rs.iter().any(|r| r.matches(host, port, method)))
+            .unwrap_or(false);
+        let Some(l) = st.leases.get_mut(&policy.lease) else {
+            return false;
+        };
+        if l.policy.rules.iter().any(|r| r.matches(host, port, method)) || tool_wide {
+            return true;
+        }
+        if let Some(i) = l.once.iter().position(|r| r.matches(host, port, method)) {
+            l.once.remove(i);
+            return true;
+        }
+        false
+    }
+
+    fn rewrite_headers(
+        &self,
+        policy: &LeasePolicy,
+        host: &str,
+        hdrs: &[(String, Vec<u8>)],
+    ) -> Result<Vec<(String, Vec<u8>)>, Decision> {
+        let mut out = Vec::with_capacity(hdrs.len());
+        for (name, value) in hdrs {
+            let lname = name.to_ascii_lowercase();
+            if lname.starts_with("proxy-") || lname == "connection" || lname == "keep-alive" {
+                continue;
+            }
+            out.push((name.clone(), self.inject(policy, host, value)?));
+        }
+        Ok(out)
+    }
+
+    /// Resolves `host` ourselves and connects, refusing private and metadata addresses.
+    async fn dial(&self, host: &str, port: u16) -> Result<TcpStream, Decision> {
+        let addrs = match self.resolver.resolve(host, port).await {
+            Ok(a) if !a.is_empty() => a,
+            _ => return Err(Decision::UpstreamError),
+        };
+        let forbidden = addrs.iter().any(|a| {
+            is_forbidden(a.ip()) && !(self.config.allow_loopback_upstreams && a.ip().is_loopback())
+        });
+        if forbidden {
+            return Err(Decision::PrivateAddress);
+        }
+        match tokio::time::timeout(self.config.connect_timeout, TcpStream::connect(addrs[0])).await
+        {
+            Ok(Ok(s)) => Ok(s),
+            _ => Err(Decision::UpstreamError),
+        }
     }
 
     fn inject(&self, policy: &LeasePolicy, host: &str, value: &[u8]) -> Result<Vec<u8>, Decision> {
@@ -684,6 +789,108 @@ impl Egress {
     }
 }
 
+enum Head {
+    Closed,
+    TooBig,
+    Complete(Vec<u8>, usize),
+}
+
+async fn read_head<S: AsyncRead + Unpin>(conn: &mut S, max: usize) -> std::io::Result<Head> {
+    let mut buf = Vec::with_capacity(4096);
+    loop {
+        let mut chunk = [0u8; 4096];
+        let n = conn.read(&mut chunk).await?;
+        if n == 0 {
+            return Ok(Head::Closed);
+        }
+        buf.extend_from_slice(&chunk[..n]);
+        if let Some(i) = buf.windows(4).position(|w| w == b"\r\n\r\n") {
+            return Ok(Head::Complete(buf, i + 4));
+        }
+        if buf.len() > max {
+            return Ok(Head::TooBig);
+        }
+    }
+}
+
+/// One request upstream: `Connection: close`, so one request per connection.
+fn request_head(method: &str, path: &str, headers: &[(String, Vec<u8>)]) -> Vec<u8> {
+    let mut head = format!("{method} {path} HTTP/1.1\r\n").into_bytes();
+    for (n, v) in headers {
+        head.extend_from_slice(n.as_bytes());
+        head.extend_from_slice(b": ");
+        head.extend_from_slice(v);
+        head.extend_from_slice(b"\r\n");
+    }
+    head.extend_from_slice(b"Connection: close\r\n\r\n");
+    head
+}
+
+async fn forward<C, U>(
+    conn: &mut C,
+    upstream: &mut U,
+    head: &[u8],
+    leftover: &[u8],
+) -> std::io::Result<(u64, u64)>
+where
+    C: AsyncRead + AsyncWrite + Unpin,
+    U: AsyncRead + AsyncWrite + Unpin,
+{
+    upstream.write_all(head).await?;
+    if !leftover.is_empty() {
+        upstream.write_all(leftover).await?;
+    }
+    let (a, b) = tokio::io::copy_bidirectional(conn, upstream)
+        .await
+        .unwrap_or((0, 0));
+    Ok(((head.len() + leftover.len()) as u64 + a, b))
+}
+
+/// A stream with bytes already read in front of it (the TLS ClientHello can arrive together
+/// with the CONNECT head).
+struct Prefixed<S> {
+    prefix: Vec<u8>,
+    inner: S,
+}
+
+impl<S: AsyncRead + Unpin> AsyncRead for Prefixed<S> {
+    fn poll_read(
+        mut self: std::pin::Pin<&mut Self>,
+        cx: &mut std::task::Context<'_>,
+        buf: &mut tokio::io::ReadBuf<'_>,
+    ) -> std::task::Poll<std::io::Result<()>> {
+        if !self.prefix.is_empty() {
+            let n = self.prefix.len().min(buf.remaining());
+            buf.put_slice(&self.prefix[..n]);
+            self.prefix.drain(..n);
+            return std::task::Poll::Ready(Ok(()));
+        }
+        std::pin::Pin::new(&mut self.inner).poll_read(cx, buf)
+    }
+}
+
+impl<S: AsyncWrite + Unpin> AsyncWrite for Prefixed<S> {
+    fn poll_write(
+        mut self: std::pin::Pin<&mut Self>,
+        cx: &mut std::task::Context<'_>,
+        buf: &[u8],
+    ) -> std::task::Poll<std::io::Result<usize>> {
+        std::pin::Pin::new(&mut self.inner).poll_write(cx, buf)
+    }
+    fn poll_flush(
+        mut self: std::pin::Pin<&mut Self>,
+        cx: &mut std::task::Context<'_>,
+    ) -> std::task::Poll<std::io::Result<()>> {
+        std::pin::Pin::new(&mut self.inner).poll_flush(cx)
+    }
+    fn poll_shutdown(
+        mut self: std::pin::Pin<&mut Self>,
+        cx: &mut std::task::Context<'_>,
+    ) -> std::task::Poll<std::io::Result<()>> {
+        std::pin::Pin::new(&mut self.inner).poll_shutdown(cx)
+    }
+}
+
 fn split_host_port(authority: &str, default_port: u16) -> Option<(String, u16)> {
     if let Some(rest) = authority.strip_prefix('[') {
         let (h, tail) = rest.split_once(']')?;
@@ -706,10 +913,14 @@ fn parse_target(method: &str, raw: &str) -> Option<Target> {
             host,
             port,
             path: None,
+            tls: false,
         });
     }
-    // P0 forwards plain HTTP only; HTTPS goes through CONNECT.
-    let rest = raw.strip_prefix("http://")?;
+    let (rest, tls, default_port) = if let Some(r) = raw.strip_prefix("http://") {
+        (r, false, 80)
+    } else {
+        (raw.strip_prefix("https://")?, true, 443)
+    };
     let (authority, path) = match rest.find('/') {
         Some(i) => (&rest[..i], rest[i..].to_string()),
         None => (rest, "/".to_string()),
@@ -718,11 +929,12 @@ fn parse_target(method: &str, raw: &str) -> Option<Target> {
         .rsplit_once('@')
         .map(|(_, a)| a)
         .unwrap_or(authority);
-    let (host, port) = split_host_port(authority, 80)?;
+    let (host, port) = split_host_port(authority, default_port)?;
     (!host.is_empty()).then_some(Target {
         host,
         port,
         path: Some(path),
+        tls,
     })
 }
 
@@ -742,7 +954,9 @@ mod tests {
             (t.host.as_str(), t.port, t.path.as_deref()),
             ("example.test", 8080, Some("/a?b"))
         );
-        assert!(parse_target("GET", "https://x.test/").is_none());
+        let t = parse_target("GET", "https://x.test/a").unwrap();
+        assert_eq!((t.port, t.tls, t.path.as_deref()), (443, true, Some("/a")));
+        assert!(parse_target("GET", "ftp://x.test/").is_none());
         assert!(parse_target("GET", "/relative").is_none());
         let t = parse_target("CONNECT", "[::1]:443").unwrap();
         assert_eq!(t.host, "[::1]");
