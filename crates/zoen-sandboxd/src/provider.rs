@@ -466,6 +466,8 @@ impl FirecrackerProvider {
             tool: spec.tool.clone(),
             rules: spec.egress.clone(),
             secrets: spec.secrets.clone(),
+            sign_requests: false,
+            browser: false,
         }
     }
 }

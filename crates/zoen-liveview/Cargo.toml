@@ -1,0 +1,16 @@
+[package]
+name = "zoen-liveview"
+description = "End-to-end encryption between a browser microVM and its owner's device: live-view frames down, takeover input up, with replay protection (ADR 0028 §7)."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+serde.workspace = true
+serde_json.workspace = true
+sha2.workspace = true
+getrandom.workspace = true
+chacha20poly1305.workspace = true
+x25519-dalek.workspace = true
+hkdf.workspace = true
