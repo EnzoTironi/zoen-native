@@ -19,13 +19,29 @@ if [[ "$pg_ci_cluster" != 16/main ]]; then
   exit 1
 fi
 
-sudo -n pg_conftool 16 main set listen_addresses 127.0.0.1
+pg_ci_diagnostics() {
+  echo "Runner PostgreSQL startup diagnostics:" >&2
+  timeout 5s pg_lsclusters >&2 || true
+  timeout 5s sudo -n cat /etc/postgresql/16/main/start.conf >&2 || true
+  timeout 5s sudo -n pg_conftool 16 main show listen_addresses >&2 || true
+  timeout 5s sudo -n pg_conftool 16 main show max_connections >&2 || true
+  timeout 5s sudo -n systemctl --no-pager --full status postgresql@16-main.service >&2 || true
+  timeout 5s sudo -n journalctl --no-pager --unit=postgresql@16-main.service --lines=60 >&2 || true
+  timeout 5s sudo -n tail -n 60 /var/log/postgresql/postgresql-16-main.log >&2 || true
+}
+
+# PgCommon leaves digits-and-dots values unquoted: an IPv4 literal is invalid config syntax.
+sudo -n pg_conftool 16 main set listen_addresses localhost
 sudo -n pg_conftool 16 main set max_connections 300
-timeout 60s sudo -n systemctl restart postgresql@16-main.service
+timeout 60s sudo -n systemctl restart postgresql@16-main.service || {
+  pg_ci_status=$?
+  pg_ci_diagnostics
+  exit "$pg_ci_status"
+}
 pg_ci_deadline=$((SECONDS + 30))
 until pg_isready --quiet --host=127.0.0.1 --port=5432 --timeout=1; do
   if (( SECONDS >= pg_ci_deadline )); then
-    pg_lsclusters
+    pg_ci_diagnostics
     echo "Runner PostgreSQL did not become ready within 30 seconds" >&2
     exit 1
   fi
