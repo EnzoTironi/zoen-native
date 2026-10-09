@@ -299,6 +299,35 @@ impl World {
             .expect("spawn zoen")
     }
 
+    /// Like `spawn_zoen`, with extra environment for this one process.
+    pub fn spawn_zoen_env(&self, who: &str, args: &[&str], env: &[(&str, &str)]) -> Child {
+        let mut c = self.cmd(who, args);
+        c.envs(env.iter().copied())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()
+            .expect("spawn zoen")
+    }
+
+    /// Every file under the relay's object store, by path.
+    pub fn blobs(&self) -> Vec<(PathBuf, Vec<u8>)> {
+        let mut out = vec![];
+        let mut stack = vec![self.dir.join("blobs")];
+        while let Some(d) = stack.pop() {
+            let Ok(rd) = std::fs::read_dir(&d) else {
+                continue;
+            };
+            for e in rd.flatten() {
+                if e.path().is_dir() {
+                    stack.push(e.path())
+                } else {
+                    out.push((e.path(), std::fs::read(e.path()).unwrap()))
+                }
+            }
+        }
+        out
+    }
+
     pub fn init(&self, handle: &str, name: &str) {
         let out = self.zoen(handle, &["init", "--name", name, "--handle", handle]);
         assert!(out.contains("registered"), "{out}");

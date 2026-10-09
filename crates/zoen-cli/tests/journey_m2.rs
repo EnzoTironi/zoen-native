@@ -706,3 +706,298 @@ async fn a_message_queued_offline_survives_many_commits() {
         .iter()
         .all(|ev| !matches!(ev.env.body(), Some(EventBody::MessagePosted { .. }))));
 }
+
+/// ADR 0026, the ceiling: a member device that stops coming back stops holding pruning
+/// back once its last checkpoint is older than the ceiling (30 days; 8 s here). When it
+/// does come back, what it never fetched is gone: it asks for a fresh leaf, an admin takes
+/// its old one out and adds it again, and it reads from its new Welcome on.
+#[tokio::test]
+async fn a_device_away_past_the_ceiling_rejoins_from_a_new_welcome() {
+    let mut w = World::with_env("m2ceiling", &[("ZOEN_PRUNE_CEILING_SECS", "8")]).await;
+    w.set_client_env("ZOEN_CHECKPOINT_EVERY", "4");
+    // Devices in use say they are alive at every sync a second after their last checkpoint.
+    w.set_client_env("ZOEN_CHECKPOINT_REFRESH_SECS", "1");
+    for (h, n) in [("ana", "Ana"), ("bruno", "Bruno"), ("carla", "Carla")] {
+        w.init(h, n);
+    }
+    let space = w.zoen("ana", &["group", "Teto", "@bruno", "@carla"]);
+    let space = space.trim().to_string();
+    let early = "antes do teto: sabia-laranjeira";
+    w.zoen("ana", &["send", "Teto", early]);
+    for who in ["bruno", "carla"] {
+        assert!(w.zoen(who, &["read", "Teto"]).contains(early), "{who}");
+    }
+    let carla_saw = w.events_in(&space).await.last().map(|ev| ev.seq).unwrap();
+
+    // Carla goes quiet past the ceiling. Ana and Bruno keep talking (and checkpointing):
+    // her hold stops counting, so what she never fetched gets pruned.
+    std::thread::sleep(std::time::Duration::from_secs(9));
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(90);
+    let mut i = 0;
+    while !pruned_seqs(&w, &space).await.iter().any(|s| *s > carla_saw) {
+        assert!(
+            std::time::Instant::now() < deadline,
+            "nothing past Carla's place was pruned"
+        );
+        for who in ["ana", "bruno"] {
+            w.zoen(who, &["send", "Teto", &format!("sem a Carla {who} {i}")]);
+        }
+        for who in ["ana", "bruno"] {
+            w.sync_until(who, |s| s.contains("pending=0"));
+        }
+        i += 1;
+    }
+
+    // Carla is back: she finds stubs where her history should go on and asks to rejoin.
+    w.sync_until("carla", |s| s.contains("pending=0"));
+    let carla = w.id_of("carla").await;
+    let asked = w.events_in(&space).await.iter().any(|ev| {
+        ev.env.author() == carla && matches!(ev.env.body(), Some(EventBody::DeviceJoining { .. }))
+    });
+    assert!(asked, "Carla's device asked for a fresh leaf");
+
+    // Ana (admin) takes the old leaf out and adds her again; Carla joins from the Welcome.
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(90);
+    let mut n = 0;
+    loop {
+        let probe = format!("de volta? {n}");
+        w.zoen("ana", &["send", "Teto", &probe]);
+        w.sync_until("ana", |s| s.contains("pending=0"));
+        w.sync_until("carla", |s| s.contains("pending=0"));
+        if w.zoen("carla", &["read", "Teto"]).contains(&probe) {
+            break;
+        }
+        assert!(
+            std::time::Instant::now() < deadline,
+            "Carla never read a message again"
+        );
+        n += 1;
+    }
+    let after = "depois do teto: bem-te-vi";
+    w.zoen("bruno", &["send", "Teto", after]);
+    w.sync_until("bruno", |s| s.contains("pending=0"));
+    w.sync_until("carla", |s| s.contains("pending=0"));
+    let read = w.zoen("carla", &["read", "Teto"]);
+    assert!(read.contains(after), "{read}");
+    // Her own history stays; what was said while she was gone doesn't come back.
+    assert!(read.contains(early), "{read}");
+    assert!(!read.contains("sem a Carla ana 0"), "{read}");
+    let v = w.zoen("carla", &["verify"]);
+    assert!(!v.contains("BROKEN"), "{v}");
+}
+
+/// Reads a spawned `zoen`'s stdout line by line on a thread.
+fn lines_of(child: &mut std::process::Child) -> std::sync::mpsc::Receiver<String> {
+    use std::io::BufRead;
+    let out = child.stdout.take().unwrap();
+    let (tx, rx) = std::sync::mpsc::channel();
+    std::thread::spawn(move || {
+        for l in std::io::BufReader::new(out).lines().map_while(Result::ok) {
+            if tx.send(l).is_err() {
+                break;
+            }
+        }
+    });
+    rx
+}
+
+fn wait_line(rx: &std::sync::mpsc::Receiver<String>, prefix: &str) -> String {
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(60);
+    loop {
+        let left = deadline.saturating_duration_since(std::time::Instant::now());
+        match rx.recv_timeout(left) {
+            Ok(l) if l.starts_with(prefix) => return l[prefix.len()..].trim().to_string(),
+            Ok(_) => {}
+            Err(_) => panic!("no {prefix:?} line"),
+        }
+    }
+}
+
+fn finish(child: std::process::Child) -> (bool, String) {
+    let out = child.wait_with_output().unwrap();
+    (
+        out.status.success(),
+        String::from_utf8_lossy(&out.stderr).to_string(),
+    )
+}
+
+/// ADR 0043: a second device of the same account. The new device shows a code; the
+/// existing one sends it the account over the relay (sealed to the code), adds it to every
+/// end-to-end group, and hands it the recent history in encrypted chunks it downloads (and
+/// resumes) and then deletes. Older pages come from the existing device on demand while it
+/// is online. The relay sees no plaintext at any point; an unlinked device loses access.
+#[tokio::test]
+async fn a_linked_device_gets_the_history_and_loses_access_when_unlinked() {
+    let mut w = World::new("m2link").await;
+    w.set_client_env("ZOEN_CHECKPOINT_EVERY", "4");
+    w.set_client_env("ZOEN_HISTORY_RECENT", "3");
+    w.set_client_env("ZOEN_HISTORY_PAGE", "3");
+    w.set_client_env("ZOEN_TRANSFER_CHUNK", "700");
+    for (h, n) in [("ana", "Ana"), ("bruno", "Bruno")] {
+        w.init(h, n);
+    }
+    let space = w
+        .zoen("ana", &["group", "Casa", "@bruno"])
+        .trim()
+        .to_string();
+    let before: Vec<String> = (0..9)
+        .map(|i| format!("antes do notebook {i} jabuticaba"))
+        .collect();
+    for (i, m) in before.iter().enumerate() {
+        let who = if i % 2 == 0 { "ana" } else { "bruno" };
+        w.zoen(who, &["send", "Casa", m]);
+        w.sync_until(if who == "ana" { "bruno" } else { "ana" }, |s| {
+            s.contains("pending=0")
+        });
+    }
+    for who in ["ana", "bruno"] {
+        w.sync_until(who, |s| s.contains("pending=0"));
+    }
+    // The relay already pruned some of it: the new device can only get it from Ana's phone.
+    assert!(
+        !pruned_seqs(&w, &space).await.is_empty(),
+        "nothing was pruned before the link"
+    );
+
+    // ── link: the new device shows a code; Ana's device takes it ──
+    let mut b = w.spawn_zoen_env(
+        "ana-notebook",
+        &["link-request", "--for", "120"],
+        &[("ZOEN_TRANSFER_STOP_AFTER", "1")],
+    );
+    let rx = lines_of(&mut b);
+    let code = wait_line(&rx, "code:");
+    let check_b = wait_line(&rx, "check:");
+    assert!(code.starts_with("zoen-link:1:"), "{code}");
+    let linked = w.zoen("ana", &["link", &code]);
+    let devices_in = |who: &str| -> String {
+        w.zoen(who, &["keys", "Casa"])
+            .split('\t')
+            .find_map(|f| f.trim().strip_prefix("devices=").map(str::to_string))
+            .unwrap()
+    };
+    assert_eq!(
+        devices_in("ana"),
+        "3",
+        "Ana's phone and notebook, and Bruno"
+    );
+    assert!(linked.contains(&format!("check: {check_b}")), "{linked}");
+    assert!(linked.contains("history sent: "), "{linked}");
+    let device_b = wait_line(&rx, "linked:");
+    assert!(device_b.starts_with("@ana "), "{device_b}");
+    let device_b = device_b.rsplit(' ').next().unwrap().to_string();
+    // The transfer stopped after one chunk (as if the network dropped).
+    let (ok, err) = finish(b);
+    assert!(!ok, "the first download was cut short");
+    assert!(err.contains("history stopped at 1/"), "{err}");
+    let chunks = w
+        .blobs()
+        .into_iter()
+        .filter(|(p, _)| p.to_string_lossy().contains("transfers"))
+        .collect::<Vec<_>>();
+    assert!(chunks.len() > 1, "the history went up in several chunks");
+
+    // ── it resumes, and only the recent window arrives at first ──
+    let h = w.zoen("ana-notebook", &["history"]);
+    assert!(h.contains("(1 resumed)"), "{h}");
+    assert!(
+        !w.blobs()
+            .iter()
+            .any(|(p, _)| p.to_string_lossy().contains("transfers")),
+        "the chunks are gone from the relay once downloaded"
+    );
+    let read = w.zoen("ana-notebook", &["read", "Casa"]);
+    for m in &before[6..] {
+        assert!(read.contains(m.as_str()), "recent {m:?} missing:\n{read}");
+    }
+    assert!(!read.contains(&before[0]), "{read}");
+
+    // ── older pages, from Ana's phone while it is online ──
+    let mut watch = w.spawn_zoen("ana", &["watch", "--for", "90"]);
+    w.wait_online(1);
+    let read = w.zoen("ana-notebook", &["read", "Casa", "--older"]);
+    assert!(read.contains("(older: 3 more, still more)"), "{read}");
+    for m in &before[3..] {
+        assert!(read.contains(m.as_str()), "{m:?} missing:\n{read}");
+    }
+    assert!(!read.contains(&before[0]), "{read}");
+    let _ = watch.kill();
+    let _ = watch.wait();
+    // With the phone away, a gentle state instead of a page.
+    let offline = w.zoen("ana-notebook", &["read", "Casa", "--older"]);
+    assert!(
+        offline.contains("Abra o Zoen no celular") || offline.contains("Open Zoen on your phone"),
+        "{offline}"
+    );
+    // The phone is back: the rest arrives, and then there is nothing older to ask for.
+    let mut watch = w.spawn_zoen("ana", &["watch", "--for", "90"]);
+    w.wait_online(1);
+    let read = w.zoen("ana-notebook", &["read", "Casa", "--older"]);
+    assert!(read.contains("(older: 3 more)"), "{read}");
+    for m in &before {
+        assert!(read.contains(m.as_str()), "{m:?} missing:\n{read}");
+    }
+    let _ = watch.kill();
+    let _ = watch.wait();
+    let done = w.zoen("ana-notebook", &["read", "Casa", "--older"]);
+    assert!(done.contains("(older: 0 more)"), "{done}");
+
+    // ── both devices get what's new ──
+    let after = "depois do link: maracujá";
+    w.zoen("bruno", &["send", "Casa", after]);
+    w.sync_until("bruno", |s| s.contains("pending=0"));
+    for who in ["ana", "ana-notebook"] {
+        w.sync_until(who, |s| s.contains("pending=0"));
+        assert!(w.zoen(who, &["read", "Casa"]).contains(after), "{who}");
+    }
+    let from_b = "escrito no notebook: goiaba";
+    w.zoen("ana-notebook", &["send", "Casa", from_b]);
+    for who in ["bruno", "ana"] {
+        w.sync_until(who, |s| s.contains("pending=0"));
+        assert!(w.zoen(who, &["read", "Casa"]).contains(from_b), "{who}");
+    }
+
+    // ── the relay never held plaintext: log, database, object store ──
+    let mut needles: Vec<String> = before.clone();
+    needles.extend([after.to_string(), from_b.to_string(), "jabuticaba".into()]);
+    for ev in w.events_in(&space).await {
+        let bytes = String::from_utf8_lossy(ev.env.content()).to_string();
+        for n in &needles {
+            assert!(!bytes.contains(n.as_str()), "FoundationDB holds {n:?}");
+        }
+    }
+    let pg = postgres_text(&w).await;
+    for (_, blob) in chunks.iter().chain(w.blobs().iter()) {
+        let text = String::from_utf8_lossy(blob);
+        for n in &needles {
+            assert!(!text.contains(n.as_str()), "a blob holds {n:?}");
+        }
+    }
+    for n in &needles {
+        assert!(!pg.contains(n.as_str()), "Postgres holds {n:?}");
+        assert!(!pg.contains(&hex::encode(n)), "Postgres holds {n:?} as hex");
+    }
+
+    // ── unlink: the notebook is refused and reads nothing new ──
+    let devices = w.zoen("ana", &["devices"]);
+    assert_eq!(devices.lines().count(), 2, "{devices}");
+    w.zoen("ana", &["unlink", &device_b]);
+    assert!(w.zoen("ana", &["devices"]).contains(" unlinked"));
+    let secret = "só no celular: pitanga";
+    w.zoen("ana", &["send", "Casa", secret]);
+    w.sync_until("bruno", |s| s.contains("pending=0"));
+    assert!(w.zoen("bruno", &["read", "Casa"]).contains(secret));
+    assert!(
+        w.try_zoen("ana-notebook", &["sync"]).is_err(),
+        "an unlinked device can't log in"
+    );
+    let read = w.zoen("ana-notebook", &["read", "Casa"]);
+    assert!(!read.contains(secret), "{read}");
+    // Its leaf left the group: Ana's commit took it out, and Bruno agrees.
+    assert_eq!(devices_in("ana"), "2");
+    assert_eq!(devices_in("bruno"), "2");
+    let (epoch, digest) = keys(&w.zoen("ana", &["keys", "Casa"]));
+    assert_eq!(keys(&w.zoen("bruno", &["keys", "Casa"])), (epoch, digest));
+    let v = w.zoen("ana", &["verify"]);
+    assert!(!v.contains("BROKEN"), "{v}");
+}

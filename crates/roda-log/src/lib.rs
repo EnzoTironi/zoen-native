@@ -277,6 +277,11 @@ pub fn content_hash<T: serde::Serialize>(value: &T) -> String {
     sha256_hex(&serde_json::to_vec(value).expect("serialização"))
 }
 
+/// Whether `hexkey` is an Ed25519 public key (a device or identity key).
+pub fn parse_device_key(hexkey: &str) -> Option<()> {
+    parse_key(hexkey).map(|_| ())
+}
+
 fn parse_key(hexkey: &str) -> Option<VerifyingKey> {
     let bytes: [u8; 32] = hex::decode(hexkey).ok()?.try_into().ok()?;
     VerifyingKey::from_bytes(&bytes).ok()

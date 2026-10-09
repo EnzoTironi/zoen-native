@@ -303,6 +303,16 @@ impl Store {
         Ok(())
     }
 
+    /// Replaces the event at (space, seq): a sealed entry this device couldn't open, by
+    /// its opened form from another device of the same person (ADR 0043).
+    pub fn replace_event(&self, e: &Event) -> Result<bool> {
+        let n = self.conn.execute(
+            "UPDATE events SET at_ms = ?3, json = ?4 WHERE space = ?1 AND seq = ?2",
+            params![e.space, e.seq as i64, e.at_ms, serde_json::to_string(e)?],
+        )?;
+        Ok(n == 1)
+    }
+
     /// Grava vários eventos numa transação (tudo ou nada).
     pub fn append_events(&mut self, events: &[Event]) -> Result<()> {
         let tx = self.conn.transaction()?;

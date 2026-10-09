@@ -348,6 +348,30 @@ pub enum Op {
     ClaimKeyPackages {
         ids: Vec<IdentityId>,
     },
+    /// Leaves a sealed link box for a device being linked (ADR 0043), under `id` = SHA-256
+    /// of the link secret in its QR code. Only the new device can open it.
+    DeliverLink {
+        id: String,
+        sealed: Vec<u8>,
+    },
+    /// Takes the link box under `id`, if it is there yet. The one op a device being linked
+    /// (signed in as itself, not registered) may use besides registering.
+    FetchLink {
+        id: String,
+    },
+    /// This identity's devices, unlinked ones included.
+    Devices,
+    /// Unlinks one of this identity's devices: it can't sign in again and its key packages
+    /// go. Its leaves leave the groups through commits by the other devices.
+    Unlink {
+        device: String,
+    },
+    /// Sends sealed bytes to another linked device of this identity that is online (ADR
+    /// 0043: history pages). Nothing is stored; an offline device just doesn't get it.
+    SendDevice {
+        to: String,
+        sealed: Vec<u8>,
+    },
 }
 
 impl Op {
@@ -365,6 +389,11 @@ impl Op {
             Op::GetProfiles { .. } => "get_profiles",
             Op::PublishKeyPackages { .. } => "publish_key_packages",
             Op::ClaimKeyPackages { .. } => "claim_key_packages",
+            Op::DeliverLink { .. } => "deliver_link",
+            Op::FetchLink { .. } => "fetch_link",
+            Op::Devices => "devices",
+            Op::Unlink { .. } => "unlink",
+            Op::SendDevice { .. } => "send_device",
         }
     }
 }
@@ -401,6 +430,16 @@ pub enum Reply {
     AgreementKeys(Vec<AgreementKeyRecord>),
     SealedProfiles(Vec<SealedProfile>),
     KeyPackages(Vec<KeyPackageRecord>),
+    /// FetchLink: the sealed box, `None` while nobody left one.
+    Link(Option<Vec<u8>>),
+    Devices(Vec<DeviceRecord>),
+}
+
+/// One of an identity's devices, as the directory has it.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct DeviceRecord {
+    pub device: String,
+    pub revoked: bool,
 }
 
 /// One device's MLS key package, as claimed. Members re-check the leaf inside; the relay's
@@ -505,6 +544,12 @@ pub enum ServerFrame {
         device: String,
         remaining: u32,
     },
+    /// Sealed bytes from another device of yours (`Op::SendDevice`); the others ignore it.
+    DeviceMessage {
+        from: String,
+        to: String,
+        sealed: Vec<u8>,
+    },
     /// You were added to a Space: sync it from the start.
     Joined {
         space: SpaceId,
@@ -533,6 +578,12 @@ pub fn auth_message(nonce: &str, relay: &str) -> Vec<u8> {
 
 /// What a device signs to upload a blob: binds the content hash and a timestamp to this
 /// relay, so a captured header only re-uploads the same bytes for a few minutes.
+/// What a device signs to put or delete a chunk of a history transfer (ADR 0043).
+/// `op` is "put" or "delete"; `n` and `sha256` are empty for a delete.
+pub fn transfer_message(op: &str, transfer: &str, n: &str, sha256: &str, ts_ms: i64) -> Vec<u8> {
+    format!("{PROTOCOL}:transfer-{op}:{transfer}:{n}:{sha256}:{ts_ms}").into_bytes()
+}
+
 pub fn blob_put_message(sha256: &str, ts_ms: i64, relay: &str) -> Vec<u8> {
     format!("{PROTOCOL}:blob-put:{relay}:{sha256}:{ts_ms}").into_bytes()
 }

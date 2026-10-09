@@ -36,6 +36,7 @@ roda-docs.workspace = true
 hkdf.workspace = true
 base64 = "0.22"
 fastcdc = "5"
+hpke-rs = { version = "0.7", default-features = false, features = ["rustcrypto"] }
 
 [dev-dependencies]
 sha2.workspace = true

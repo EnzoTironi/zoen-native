@@ -500,6 +500,13 @@ pub enum EventBody {
         epoch: u64,
         digest: String,
     },
+    /// The author's `device` needs a fresh leaf in this end-to-end Space's group from here
+    /// (ADR 0026, ADR 0043): a device just linked, or one back after the pruning ceiling let
+    /// history it never fetched go. Whoever may commit for it adds it (taking an old leaf
+    /// out first); the relay holds pruning for it from this entry until it checkpoints.
+    DeviceJoining {
+        device: String,
+    },
     /// An entry of an end-to-end Space this device keeps as the relay ordered it: an MLS
     /// handshake (`Commit`, `Welcome`), or ciphertext from before it joined. Derived from
     /// the signed outer bytes, never signed as a body itself.

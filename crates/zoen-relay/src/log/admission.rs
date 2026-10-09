@@ -58,6 +58,10 @@ pub enum Effect {
         device: String,
         upto: u64,
     },
+    /// One of the author's devices joins the group from this entry: pruning waits for it.
+    Hold {
+        device: String,
+    },
     Nothing,
 }
 
@@ -166,6 +170,18 @@ pub fn admit(env: &Envelope, f: &Facts) -> Result<Effect, Reject> {
                 upto: upto.seq,
             }
         }
+        (Some(_), Some(EventBody::DeviceJoining { device })) => {
+            if f.author_role.is_none() {
+                return Err(Reject::no("not a member of this space"));
+            }
+            if f.privacy != Some(Privacy::EndToEnd) {
+                return Err(Reject::no("devices join groups of end-to-end spaces only"));
+            }
+            if device.len() != 64 || !device.bytes().all(|b| b.is_ascii_hexdigit()) {
+                return Err(Reject::no("not a device key"));
+            }
+            Effect::Hold { device }
+        }
         (Some(_), _) => match f.author_role {
             None => return Err(Reject::no("not a member of this space")),
             Some(Role::Reader) => return Err(Reject::no("readers can't write here")),
@@ -235,7 +251,8 @@ fn check_privacy(
                 | EventBody::MemberRemoved { .. }
                 | EventBody::ProfileKeyShared { .. }
                 | EventBody::SpaceEncrypted
-                | EventBody::Checkpoint { .. },
+                | EventBody::Checkpoint { .. }
+                | EventBody::DeviceJoining { .. },
             ),
         ) => Ok(()),
         (None, _) if e2e => Err(Reject::no(roda_proto::SEAL_REQUIRED)),

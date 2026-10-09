@@ -49,6 +49,29 @@ impl SecretVault for FileVault {
     }
 }
 
+/// Prints a history transfer's progress.
+struct Progress;
+
+impl roda_ffi::TransferListener for Progress {
+    fn on_progress(&self, done: u32, total: u32) {
+        println!("history {done}/{total}");
+    }
+}
+
+/// Takes the first history bundle from the device that linked this one.
+async fn receive_history(e: &RodaEngine, timeout: u64) {
+    match e
+        .receive_history(timeout.max(30_000), Some(Arc::new(Progress)))
+        .await
+    {
+        Ok(h) => println!(
+            "history: {} messages in {} chunks ({} resumed)",
+            h.messages, h.chunks, h.resumed
+        ),
+        Err(err) => die(err),
+    }
+}
+
 struct Printer {
     me: String,
     engine: std::sync::Weak<RodaEngine>,
@@ -184,7 +207,11 @@ fn usage() -> ! {
          remove CHAT @HANDLE              take someone out (end-to-end: they read nothing after)\n\
          keys CHAT                        an end-to-end chat's group: epoch, digest, members\n\
          send CHAT TEXT [--offline]      CHAT = @handle, title or space id\n\
-         read CHAT\n\
+         read CHAT [--older]              --older: ask your other device for an older page\n\
+         link-request [--relay URL]       new device: show a code, become your account, get history\n\
+         link CODE                        existing device: link the device showing CODE\n\
+         history                          new device: finish (resume) the history transfer\n\
+         devices | unlink DEVICE          your devices; unlink one (prefix ok)\n\
          invite CHAT\n\
          join CODE\n\
          sync [--timeout MS]\n\
@@ -422,6 +449,38 @@ async fn main() {
         return;
     }
 
+    if cmd == "link-request" {
+        let relay = cli
+            .flag("--relay")
+            .or_else(|| std::env::var("ZOEN_RELAY").ok())
+            .unwrap_or_else(|| "http://127.0.0.1:8787".into());
+        let req = e
+            .link_request(relay, vault.clone())
+            .unwrap_or_else(|err| die(err));
+        println!("code: {}", req.code);
+        println!("check: {}", req.check);
+        use std::io::Write;
+        let _ = std::io::stdout().flush();
+        let wait = for_secs.map(|s| s * 1000).unwrap_or(120_000);
+        let acct = e
+            .link_wait(vault.clone(), wait)
+            .await
+            .unwrap_or_else(|err| die(err));
+        e.start_sync(None).unwrap_or_else(|err| die(err));
+        e.wait_until_idle(timeout).await;
+        println!(
+            "linked: @{} ({}) device {}",
+            acct.handle,
+            &acct.identity_id[..12],
+            &acct.device_id[..12]
+        );
+        let _ = std::io::stdout().flush();
+        receive_history(&e, wait).await;
+        e.wait_until_idle(timeout).await;
+        e.stop_sync();
+        return;
+    }
+
     if !e.unlock(vault.clone()).unwrap_or_else(|err| die(err)) {
         die(format!(
             "no account in {} (run `zoen init`)",
@@ -551,10 +610,83 @@ async fn main() {
                     .map(String::as_str)
                     .unwrap_or_else(|| usage()),
             );
+            if cli.switch("--older") {
+                let wait: u64 = std::env::var("ZOEN_PAGE_TIMEOUT_MS")
+                    .ok()
+                    .and_then(|v| v.parse().ok())
+                    .unwrap_or(8000);
+                let older = e
+                    .load_older(space.clone(), wait)
+                    .await
+                    .unwrap_or_else(|err| die(err));
+                match older.message {
+                    Some(m) => println!("({m})"),
+                    None => println!(
+                        "(older: {} more{})",
+                        older.loaded,
+                        if older.more { ", still more" } else { "" }
+                    ),
+                }
+            }
             for t in e.timeline(space.clone()).unwrap_or_else(|err| die(err)) {
                 println!("{}", line(&t));
             }
             let _ = e.mark_read(space);
+        }
+        "link" => {
+            let code = cli.args.first().cloned().unwrap_or_else(|| usage());
+            let linked = e
+                .link_device(code, vault.clone())
+                .await
+                .unwrap_or_else(|err| die(err));
+            println!("check: {}", linked.check);
+            // The new device comes online and publishes key packages; then this device
+            // adds it to every group, and only then seals the history for it.
+            let deadline =
+                std::time::Instant::now() + std::time::Duration::from_secs(for_secs.unwrap_or(120));
+            loop {
+                e.wait_until_idle(timeout).await;
+                let p = e.link_progress(linked.device_id.clone()).await;
+                if p[0] == p[1] {
+                    println!("in {} of {} groups", p[0], p[1]);
+                    break;
+                }
+                if std::time::Instant::now() > deadline {
+                    die(format!("the new device is in {} of {} groups", p[0], p[1]));
+                }
+                tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+            }
+            let n = e
+                .send_history(linked.device_id.clone(), Some(Arc::new(Progress)))
+                .await
+                .unwrap_or_else(|err| die(err));
+            println!("history sent: {n} messages");
+        }
+        "history" => receive_history(&e, timeout).await,
+        "devices" => {
+            for d in e.devices().await.unwrap_or_else(|err| die(err)) {
+                println!(
+                    "{}{}{}",
+                    d.device_id,
+                    if d.this_device { " (this device)" } else { "" },
+                    if d.revoked { " unlinked" } else { "" }
+                );
+            }
+        }
+        "unlink" => {
+            let prefix = cli.args.first().cloned().unwrap_or_else(|| usage());
+            let device = e
+                .devices()
+                .await
+                .unwrap_or_else(|err| die(err))
+                .into_iter()
+                .find(|d| d.device_id.starts_with(&prefix) && !d.this_device && !d.revoked)
+                .unwrap_or_else(|| die("no such linked device"));
+            e.unlink_device(device.device_id.clone())
+                .await
+                .unwrap_or_else(|err| die(err));
+            e.wait_until_idle(timeout).await;
+            println!("unlinked {}", &device.device_id[..12]);
         }
         "add" | "remove" => {
             let admin = cli.switch("--admin");
@@ -597,12 +729,13 @@ async fn main() {
                     .map(String::as_str)
                     .unwrap_or_else(|| usage()),
             );
-            match e.group_keys(space) {
+            match e.group_keys(space.clone()) {
                 Some(k) => println!(
-                    "epoch={}\tdigest={}\tmembers={}",
+                    "epoch={}\tdigest={}\tmembers={}\tdevices={}",
                     k.epoch,
                     k.digest,
-                    k.members.len()
+                    k.members.len(),
+                    e.group_devices(space.clone()).len()
                 ),
                 None => die("no group keys for that chat on this device"),
             }

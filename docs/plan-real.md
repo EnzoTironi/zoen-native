@@ -196,8 +196,12 @@ Shape:
   Spaces stay for communities.
 - Device secrets: the Ed25519 secrets are wrapped by a Secure Enclave P-256 key
   (`kSecAttrTokenIDSecureEnclave`) on hardware; the simulator keeps the Keychain item.
-- Linking a second device: the new device shows a QR with its key; an existing device
-  certifies it and adds it to every group (commit per group, batched).
+- Linking a second device (built, ADR 0043): the new device shows a code (QR) with its keys
+  and a one-time secret; an existing device sends it the account sealed to that secret,
+  adds it to every group and hands over the history: the recent window per chat in
+  encrypted, resumable chunks deleted after download, older pages on demand from the
+  phone while it is online. `zoen link-request` / `zoen link` / `zoen history` /
+  `zoen read CHAT --older` / `zoen devices` / `zoen unlink`.
 
 Proof: CLI journeys where the relay's Postgres has no plaintext anywhere, a removed member
 can't read anything after removal, a second device reads new messages, and the simulator
@@ -224,7 +228,12 @@ newly added members; a later joiner links over the stubs).
 Also done: the outbox across many epochs (`a_message_queued_offline_survives_many_commits`;
 the relay refuses stale-epoch seals so a device that flushed before catching up seals again).
 
-Next, in order: linking a second device, the app on the simulator with the Notification
+Also done: the sealed-entry hash covers the header plus the hash of the MLS bytes, so stubs
+verify and prove they were sealed; and the 30-day ceiling with rejoin from a new Welcome
+(`a_device_away_past_the_ceiling_rejoins_from_a_new_welcome`).
+
+Linking is built (`a_linked_device_gets_the_history_and_loses_access_when_unlinked`).
+Next: the app on the simulator with the Notification
 Service Extension sharing state.
 
 ## M3. Real agents
