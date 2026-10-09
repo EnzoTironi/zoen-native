@@ -18,6 +18,8 @@ import xyz.tironi.zoen.core.AppCallStatus
 class McpSecurityTest {
     @Test fun payloadsRejectBatchesWrongIdsExcessiveNestingAndOversizedMessages() {
         assertNotNull(McpPayload.parse("{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"tools/call\",\"params\":{\"name\":\"pet_feed\",\"arguments\":{}}}"))
+        assertNull(McpPayload.parse("{\"jsonrpc\":2.0,\"id\":1,\"method\":\"ping\"}"))
+        assertNull(McpPayload.parse("{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":123}"))
         listOf("[]", "{\"jsonrpc\":\"1.0\",\"id\":1,\"method\":\"ping\"}", "{\"jsonrpc\":\"2.0\",\"id\":{},\"method\":\"ping\"}", "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"ping\",\"params\":[]}", "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"ping\",\"result\":{}}", "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"ping\",\"params\":{\"x\":${"[".repeat(30)}1${"]".repeat(30)}}}", " ".repeat(McpPayload.MAX_BYTES + 1)).forEach { assertNull(McpPayload.parse(it)) }
     }
     @Test fun widgetSchemaRejectsUrlsForeignItemsAndUnknownPhotoTemplates() {
@@ -44,6 +46,7 @@ class McpSecurityTest {
             assertEquals(AppCallStatus.DONE, core.appCallTool(item.id, "pet_feed", "{}", false).status)
             val changed = core.item(item.id)
             assertTrue(changed.version > item.version)
+            assertNotNull(WidgetSnapshot.from(changed))
             assertNotEquals("Old UI view", WidgetSnapshot.from(changed)?.title)
             assertTrue(core.verifyAll().all { it.valid })
         } finally { MiniAppSnapshots.clear(); core.destroy(); folder.deleteRecursively() }

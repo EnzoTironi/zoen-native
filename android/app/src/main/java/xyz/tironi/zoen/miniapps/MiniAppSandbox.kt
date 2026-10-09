@@ -116,8 +116,8 @@ object McpPayload {
             else when (ch) { '"' -> quoted = true; '{', '[' -> { depth++; require(depth <= 20) }; '}', ']' -> depth-- }
         }
         val obj = JSONObject(raw)
-        require(obj.getString("jsonrpc") == "2.0")
-        val method = obj.getString("method")
+        require(obj.opt("jsonrpc") == "2.0")
+        val method = obj.opt("method") as? String ?: error("Invalid method")
         require(method.length <= 96 && Regex("[A-Za-z0-9_./-]+").matches(method))
         val id = obj.opt("id").takeUnless { it == JSONObject.NULL }
         require(id == null || id is String && id.length <= 128 || id is Number && id.toDouble().isFinite() && id.toDouble() == id.toLong().toDouble())

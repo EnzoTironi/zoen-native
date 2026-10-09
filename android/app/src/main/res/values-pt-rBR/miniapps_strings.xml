@@ -115,4 +115,5 @@
   <string name="miniapp_no_scores">Sem pontos ainda</string>
   <string name="miniapp_continue">Continuar</string>
   <string name="miniapp_pause">Pausar</string>
+  <string name="miniapp_place">Lugar (opcional)</string>
 </resources>

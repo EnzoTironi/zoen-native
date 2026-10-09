@@ -115,4 +115,5 @@
   <string name="miniapp_no_scores">No scores yet</string>
   <string name="miniapp_continue">Continue</string>
   <string name="miniapp_pause">Pause</string>
+  <string name="miniapp_place">Place (optional)</string>
 </resources>

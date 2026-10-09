@@ -28,11 +28,11 @@ import xyz.tironi.zoen.ui.SectionLabel
 import xyz.tironi.zoen.ui.appIcon
 
 @Composable
-fun MiniAppStoreScreen(model: ZoenViewModel, state: AppState, onOpenItem: (String) -> Unit, back: () -> Unit, onOpenAgent: (String) -> Unit = {}) {
+fun MiniAppStoreScreen(model: ZoenViewModel, state: AppState, onOpenItem: (String) -> Unit, back: () -> Unit, onOpenAgent: (String) -> Unit = {}, initialAppId: String? = null) {
     var specs by remember(model.repository.locale) { mutableStateOf<List<AppSpecDto>>(emptyList()) }
     var query by rememberSaveable { mutableStateOf("") }
     var category by rememberSaveable { mutableStateOf("all") }
-    var selected by rememberSaveable { mutableStateOf<String?>(null) }
+    var selected by rememberSaveable { mutableStateOf(initialAppId) }
     LaunchedEffect(model.repository.locale) { specs = model.repository.query { it.appSpecs() } }
     val filtered = specs.filter { spec ->
         (query.isBlank() || (spec.name + " " + spec.description).contains(query, true)) && when (category) {
@@ -108,10 +108,12 @@ private fun MiniAppInstallSheet(model: ZoenViewModel, state: AppState, spec: App
     var selectedSpace by rememberSaveable(spec.id) { mutableStateOf(spaces.firstOrNull()?.id) }
     var title by rememberSaveable(spec.id) { mutableStateOf(spec.name) }
     var choices by rememberSaveable(spec.id) { mutableStateOf("") }
+    var place by rememberSaveable(spec.id) { mutableStateOf("") }
     var target by rememberSaveable(spec.id) { mutableLongStateOf(System.currentTimeMillis() + 7 * 86_400_000L) }
     var pickDate by remember { mutableStateOf(false) }
     var pickTime by remember { mutableStateOf(false) }
-    val dateState = rememberDatePickerState(initialSelectedDateMillis = target)
+    val selectedDay = java.time.Instant.ofEpochMilli(target).atZone(java.time.ZoneId.systemDefault()).toLocalDate().atStartOfDay(java.time.ZoneOffset.UTC).toInstant().toEpochMilli()
+    val dateState = rememberDatePickerState(initialSelectedDateMillis = selectedDay)
     val initialTime = remember(target) { java.time.Instant.ofEpochMilli(target).atZone(java.time.ZoneId.systemDefault()) }
     val timeState = rememberTimePickerState(initialHour = initialTime.hour, initialMinute = initialTime.minute)
     var html by rememberSaveable(spec.id) { mutableStateOf(spec.hasView && spec.id !in xyz.tironi.zoen.ui.nativeMiniApps) }
@@ -140,9 +142,12 @@ private fun MiniAppInstallSheet(model: ZoenViewModel, state: AppState, spec: App
             item {
                 if (spec.id !in setOf("maptap", "hike", "recipe")) OutlinedTextField(title, { title = it.take(if (spec.id == "pet") 18 else 32) }, Modifier.fillMaxWidth(), label = { Text(stringResource(R.string.miniapp_name)) }, singleLine = true)
                 if (spec.id in setOf("poll", "list")) OutlinedTextField(choices, { choices = it.take(2_000) }, Modifier.fillMaxWidth(), label = { Text(stringResource(if (spec.id == "poll") R.string.miniapp_options else R.string.miniapp_list_items)) }, minLines = 3)
-                if (spec.id == "countdown") OutlinedButton(onClick = { pickDate = true }) {
-                    Icon(Icons.Rounded.CalendarMonth, null); Spacer(Modifier.width(8.dp))
-                    Text(java.text.DateFormat.getDateTimeInstance(java.text.DateFormat.MEDIUM, java.text.DateFormat.SHORT).format(java.util.Date(target)))
+                if (spec.id == "countdown") {
+                    OutlinedTextField(place, { place = it.take(32) }, Modifier.fillMaxWidth(), label = { Text(stringResource(R.string.miniapp_place)) }, singleLine = true)
+                    OutlinedButton(onClick = { pickDate = true }) {
+                        Icon(Icons.Rounded.CalendarMonth, null); Spacer(Modifier.width(8.dp))
+                        Text(java.text.DateFormat.getDateTimeInstance(java.text.DateFormat.MEDIUM, java.text.DateFormat.SHORT).format(java.util.Date(target)))
+                    }
                 }
             }
             if (spec.hasView && spec.id in xyz.tironi.zoen.ui.nativeMiniApps) item {
@@ -183,7 +188,7 @@ private fun MiniAppInstallSheet(model: ZoenViewModel, state: AppState, spec: App
                         "pet" -> JSONObject().put("name", title)
                         "poll" -> JSONObject().put("question", title).put("options", JSONArray(choices.lines().map(String::trim).filter(String::isNotEmpty).take(12)))
                         "list" -> JSONObject().put("title", title).put("items", JSONArray(choices.lines().map(String::trim).filter(String::isNotEmpty).take(50)))
-                        "countdown" -> JSONObject().put("title", title).put("target_ms", target)
+                        "countdown" -> JSONObject().put("title", title).put("target_ms", target).also { if (place.isNotBlank()) it.put("place", place.trim()) }
                         else -> JSONObject()
                     }
                     val item = model.repository.change { it.installApp(checkNotNull(selectedSpace), spec.id, args.toString()) }
