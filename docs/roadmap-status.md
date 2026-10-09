@@ -1,6 +1,6 @@
 # Roadmap status: the path to one billion users
 
-Evidence reviewed on 2026-10-09, against `main` at `f50b589` and open PRs
+Evidence reviewed on 2026-10-09, against `main` at `f50b589` and the initial open PRs
 [#33](https://github.com/EnzoTironi/zoen-native/pull/33) through
 [#38](https://github.com/EnzoTironi/zoen-native/pull/38).
 The target is the complete product at one billion monthly users.
@@ -85,14 +85,26 @@ The [full workspace CI](https://github.com/EnzoTironi/zoen-native/actions/runs/3
 also passes, including the required Linux sandbox journeys. The repair is now included
 in PRs 33, 34 and 38 for their own validation. PR 33's stale-device fixture was corrected
 to keep active peers checkpointing throughout the absent device's pruning window; that
-real relay journey passes locally. Combined-tree and native UI checks remain completion
-gates.
+real relay journey passes locally, and both M2 CI runs pass. The backup branch's full CI
+also passes after the repair and ADR renumbering. Later CI on the chat and roadmap branches
+exposed an intermittent key-package watcher failure. That fixture now waits for the actual
+client's ready signal, retains its output without unread pipes and verifies it stays alive
+through refill; the 20-second refill deadline and exact 32-package target remain unchanged.
+The amended journey passes locally. Follow each PR's current checks before integration.
+Combined-tree and native UI checks remain completion gates.
 
 The Grok computer also holds an unpublished `ux/audit-p2` patch across 14 Swift files.
 It was saved before further work; it still needs review, simulator validation and a PR.
 The conversation confirms that some native flows are designed UI awaiting their backing
 implementation, including the displayed agent browser. Track these flows against their
 product completion gates.
+
+[PR 41](https://github.com/EnzoTironi/zoen-native/pull/41) now adds a native Kotlin/Compose
+Android client backed by the shared Rust engine. Its verification record reports native
+UI, Keystore, persistence and release-build checks. Review its own CI and
+[remaining coverage](https://github.com/EnzoTironi/zoen-native/blob/codex/native-android/docs/dev/android.md):
+live two-device relay sync and production encrypted media transfer still need proof, and
+the local planner does not complete the durable agent runtime.
 
 ## Execution order and acceptance gates
 
