@@ -6,6 +6,14 @@ import UIKit
 
 /// The page's text view (TextKit 2).
 final class PageUITextView: UITextView, PageTextHost {
+    /// Take the keyboard once on screen (a new page starts typing right away).
+    var wantsFocus = false
+    override func didMoveToWindow() {
+        super.didMoveToWindow()
+        guard wantsFocus, window != nil else { return }
+        wantsFocus = false
+        DispatchQueue.main.async { [weak self] in _ = self?.becomeFirstResponder() }
+    }
     var pageStorage: NSTextStorage { textStorage }
     var pageSelection: NSRange {
         get { selectedRange }
@@ -54,21 +62,26 @@ struct PageTextView: UIViewRepresentable {
             tv.inputAccessoryView = bar.view
             context.coordinator.bar = bar
         }
-        if autofocus {
-            DispatchQueue.main.async { tv.becomeFirstResponder() }
-        }
+        tv.wantsFocus = autofocus
+        context.coordinator.focused = autofocus
         return tv
     }
 
     func updateUIView(_ tv: PageUITextView, context: Context) {
         if tv.isEditable != editable { tv.isEditable = editable }
-        controller.editable = editable
+        if controller.editable != editable { controller.editable = editable }
+        // The screen learns it's a new page after loading, so focus can arrive here too (once).
+        if autofocus, !context.coordinator.focused {
+            context.coordinator.focused = true
+            if tv.window != nil { DispatchQueue.main.async { _ = tv.becomeFirstResponder() } } else { tv.wantsFocus = true }
+        }
     }
 
     @MainActor
     final class Coordinator: NSObject, UITextViewDelegate, UIGestureRecognizerDelegate {
         let controller: PageEditorController
         var bar: UIHostingController<FormatBar>?
+        var focused = false
         private var pending: NSRange?
 
         init(controller: PageEditorController) { self.controller = controller }
@@ -174,7 +187,10 @@ struct PageTextView: NSViewRepresentable {
 
     func updateNSView(_ scroll: NSScrollView, context: Context) {
         if let tv = scroll.documentView as? NSTextView, tv.isEditable != editable { tv.isEditable = editable }
-        controller.editable = editable
+        if controller.editable != editable { controller.editable = editable }
+        if autofocus, let tv = scroll.documentView as? NSTextView, tv.window?.firstResponder !== tv, tv.string.isEmpty {
+            DispatchQueue.main.async { tv.window?.makeFirstResponder(tv) }
+        }
     }
 
     @MainActor

@@ -23,6 +23,12 @@ final class FilesEditorJourneyTests: XCTestCase {
         add(a)
     }
 
+    /// The header reads "v<n> · você · agora" once version n is saved.
+    @MainActor
+    private func saved(_ app: XCUIApplication, version: Int) -> Bool {
+        app.staticTexts.containing(NSPredicate(format: "label BEGINSWITH %@", "v\(version) ")).firstMatch.waitForExistence(timeout: 15)
+    }
+
     /// Write a page from nothing with Markdown shortcuts, the block menu and the format bar.
     @MainActor
     func testWriteAPage() throws {
@@ -31,6 +37,8 @@ final class FilesEditorJourneyTests: XCTestCase {
         let editor = app.textViews["page.editor"]
         XCTAssertTrue(editor.waitForExistence(timeout: 20), "a new page opens in the editor")
         sleep(1)
+        if !app.keyboards.firstMatch.exists { editor.tap() }
+        XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 5), "the keyboard is up, ready for the title")
         editor.typeText("Fim de semana em Paraty\n")
         editor.typeText("Três dias de barco e trilha.\n")
         // "[] " becomes a checklist item; return keeps the list going; return on an empty item ends it.
@@ -62,7 +70,7 @@ final class FilesEditorJourneyTests: XCTestCase {
         XCTAssertFalse(text.contains("[]"), "the shortcut turned into a checkbox: \(text)")
         XCTAssertFalse(text.contains("## "), "the shortcut turned into a heading: \(text)")
         // Pausing saves a version for everyone.
-        XCTAssertTrue(app.descendants(matching: .any)["page.saved"].waitForExistence(timeout: 12), "Salvo appears")
+        XCTAssertTrue(saved(app, version: 2), "pausing saved version 2")
         shot(app, "04-saved")
         sleep(2)
     }
@@ -79,10 +87,11 @@ final class FilesEditorJourneyTests: XCTestCase {
         let text = editor.value as? String ?? ""
         XCTAssertTrue(text.contains("Roteiro: Paraty") && text.contains("Alugar o barco"), text)
         XCTAssertFalse(text.contains("- [ ]"), "checklists show as checkboxes, not Markdown: \(text)")
-        // Add a line at the end and pause: a second version.
-        editor.tap()
+        // Add a line at the end (tap below the text) and pause: a second version.
+        editor.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.92)).tap()
         editor.typeText("\nLevar capa de chuva.")
-        XCTAssertTrue(app.descendants(matching: .any)["page.saved"].waitForExistence(timeout: 12))
+        XCTAssertTrue(saved(app, version: 2), "pausing saved version 2")
+        XCTAssertTrue((editor.value as? String ?? "").contains("Levar capa de chuva."))
         sleep(1)
         app.buttons["page.versions"].tap()
         let v1 = app.descendants(matching: .any)["version.1"]

@@ -207,6 +207,20 @@ final class PageEditorController {
         case "task": next = BlockTag(kind: "task", indent: tag.indent, checked: false)
         default: next = BlockTag(kind: "paragraph")
         }
+        if range.length == 0, range.location == text.location, text.length > 0, !tag.isAtomic {
+            // Return at the start of a block opens an empty one above; this one keeps its kind.
+            let above = tag.isListItem || tag.kind == "quote" ? next : BlockTag(kind: "paragraph")
+            let piece = NSMutableAttributedString(attributedString: above.hasMarker ? PageText.marker(above, number: 0) : NSAttributedString())
+            piece.append(NSAttributedString(string: "\n", attributes: PageStyle.attributes(above, marks: [:])))
+            applying = true
+            s.insert(piece, at: para.location)
+            applying = false
+            host.pageSelection = NSRange(location: range.location + piece.length, length: 0)
+            renumber()
+            bump(strong: false)
+            edited()
+            return false
+        }
         if range.length > 0 {
             applying = true
             s.replaceCharacters(in: range, with: "")
@@ -377,7 +391,7 @@ final class PageEditorController {
         let t = tag(at: p)
         if currentKind != t.kind { currentKind = t.kind }
         if currentLevel != t.level { currentLevel = t.level }
-        hasSelection = sel.length > 0
+        if hasSelection != (sel.length > 0) { hasSelection = sel.length > 0 }
         let empty = host.pageStorage.length == 0
         if empty != isEmpty { isEmpty = empty }
         var marks = Set<String>()

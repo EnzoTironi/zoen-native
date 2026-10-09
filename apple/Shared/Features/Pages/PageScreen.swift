@@ -20,6 +20,8 @@ struct PageScreen: View {
     @State private var linkText = ""
     @State private var savedBump = 0
     @State private var isNew = false
+    /// What Share sends (refreshed on load and save, not on every keystroke).
+    @State private var markdown = ""
 
     enum SaveState: Equatable { case idle, editing, saved }
 
@@ -46,8 +48,8 @@ struct PageScreen: View {
             ToolbarItemGroup(placement: .primaryAction) {
                 Button { commitNow(); showVersions = true } label: { Label("Versions", systemImage: "clock.arrow.circlepath") }
                     .accessibilityIdentifier("page.versions")
-                if let md = try? model.core.pageMarkdown(itemId: itemId) {
-                    ShareLink(item: md, preview: SharePreview(item?.title ?? "Page")) { Label("Share", systemImage: "square.and.arrow.up") }
+                if !markdown.isEmpty {
+                    ShareLink(item: markdown, preview: SharePreview(item?.title ?? "Page")) { Label("Share", systemImage: "square.and.arrow.up") }
                 }
             }
         }
@@ -143,6 +145,7 @@ struct PageScreen: View {
         }
         controller.load(blocks, keepSelection: !initial)
         loadedVersion = page.version
+        markdown = (try? model.core.pageMarkdown(itemId: itemId)) ?? ""
         if initial {
             synced = Dictionary(page.blocks.map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a })
             syncedOrder = page.blocks.map(\.id)
@@ -202,6 +205,7 @@ struct PageScreen: View {
         }
         item = try? model.core.item(itemId: itemId)
         if let v = item?.version { loadedVersion = v }
+        markdown = (try? model.core.pageMarkdown(itemId: itemId)) ?? ""
     }
 
     /// Someone else saved a version: show it unless this person is mid-edit.
@@ -214,6 +218,7 @@ struct PageScreen: View {
         synced = Dictionary(page.blocks.map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a })
         syncedOrder = page.blocks.map(\.id)
         loadedVersion = page.version
+        markdown = (try? model.core.pageMarkdown(itemId: itemId)) ?? ""
     }
 
     private func openLink() {
