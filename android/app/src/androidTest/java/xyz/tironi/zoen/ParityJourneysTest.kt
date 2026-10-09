@@ -1,6 +1,7 @@
 package xyz.tironi.zoen
 
 import android.content.Intent
+import android.graphics.Bitmap
 import android.net.Uri
 import android.os.Build
 import android.view.WindowManager
@@ -41,6 +42,15 @@ class ParityJourneysTest {
 
     private fun open(link: String) {
         scenario.onActivity { activity -> activity.startActivity(Intent(activity, MainActivity::class.java).setAction(Intent.ACTION_VIEW).setData(Uri.parse(link)).addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP)) }
+    }
+
+    private fun capturePageHistory(name: String) {
+        Evidence.outputFile("pages", "$name.txt").writeText(
+            compose.onAllNodes(isRoot(), useUnmergedTree = true).printToString(maxDepth = Int.MAX_VALUE)
+        )
+        val bitmap = InstrumentationRegistry.getInstrumentation().uiAutomation.takeScreenshot() ?: return
+        try { Evidence.outputFile("pages", "$name.png").outputStream().use { bitmap.compress(Bitmap.CompressFormat.PNG, 100, it) } }
+        finally { bitmap.recycle() }
     }
 
     @Test fun nativeLinksReuseTheActivityAndConsumedLinksDoNotReplayAfterRecreation() {
@@ -132,9 +142,17 @@ class ParityJourneysTest {
             compose.onAllNodesWithText(application.getString(R.string.page_restore_version)).fetchSemanticsNodes()
                 .singleOrNull()?.config?.contains(androidx.compose.ui.semantics.SemanticsProperties.Disabled) == false
         }
+        capturePageHistory("historical-version-before-restore")
         compose.onNodeWithText(application.getString(R.string.page_restore_version)).assertIsDisplayed().assertIsEnabled().performClick()
-        compose.waitUntil(10_000) { compose.onAllNodes(isDialog()).fetchSemanticsNodes().size == 1 }
+        try {
+            compose.waitUntil(10_000) { compose.onAllNodes(isDialog()).fetchSemanticsNodes().size == 1 }
+        } catch (failure: Throwable) {
+            try { capturePageHistory("historical-version-restore-failure") }
+            catch (captureFailure: Throwable) { failure.addSuppressed(captureFailure) }
+            throw failure
+        }
         compose.onNode(isDialog()).assertExists()
+        capturePageHistory("historical-version-restore-confirmation")
         compose.onNode(hasText(application.getString(R.string.restore), substring = false) and hasClickAction() and hasAnyAncestor(isDialog())).performClick()
         compose.waitUntil(10_000) { application.repository.state.value.items.first { it.id == item.id }.version == 3u }
         assertEquals(original.blocks, runBlocking { application.repository.query { it.page(item.id) } }.blocks)
