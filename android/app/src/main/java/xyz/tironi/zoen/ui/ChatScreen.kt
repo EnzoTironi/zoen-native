@@ -91,8 +91,9 @@ fun ChatScreen(model: ZoenViewModel, state: AppState, spaceId: String, navigate:
     var jumpTo by remember(spaceId) { mutableStateOf<String?>(focusMessage) }
     val context = LocalContext.current
     val owner = LocalLifecycleOwner.current
+    val observationOwner = remember(owner, spaceId) { Any() }
     val working by model.working.collectAsStateWithLifecycle()
-    DisposableEffect(owner, spaceId) {
+    DisposableEffect(owner, spaceId, observationOwner) {
         val repository = model.repository
         val observer = LifecycleEventObserver { _, event ->
             if (event == Lifecycle.Event.ON_START) repository.activeSpace = spaceId
@@ -103,7 +104,7 @@ fun ChatScreen(model: ZoenViewModel, state: AppState, spaceId: String, navigate:
         onDispose {
             owner.lifecycle.removeObserver(observer)
             if (repository.activeSpace == spaceId) repository.activeSpace = null
-            model.launch { repository.unobserve(spaceId) }
+            model.launch { repository.unobserve(spaceId, observationOwner) }
         }
     }
     LaunchedEffect(spaceId, space?.eventCount, space?.unread) {
@@ -111,7 +112,7 @@ fun ChatScreen(model: ZoenViewModel, state: AppState, spaceId: String, navigate:
     }
     val imported = stringResource(R.string.file_imported)
     val newPageTitle = stringResource(R.string.new_page)
-    LaunchedEffect(spaceId, space != null) { model.repository.observe(spaceId) }
+    LaunchedEffect(spaceId, space != null, observationOwner) { model.repository.observe(spaceId, observationOwner) }
     var lastTypingAt by remember(spaceId) { mutableLongStateOf(0L) }
     LaunchedEffect(draft, spaceId) {
         val now = SystemClock.elapsedRealtime()
@@ -121,7 +122,6 @@ fun ChatScreen(model: ZoenViewModel, state: AppState, spaceId: String, navigate:
         }
         if (draft.isNotEmpty()) { delay(4_000); model.repository.query { it.setTyping(spaceId, false) } }
     }
-    DisposableEffect(spaceId) { onDispose { model.launch { model.repository.query { it.setTyping(spaceId, false) } } } }
     LaunchedEffect(focusMessage) { if (focusMessage != null) jumpTo = focusMessage }
     LaunchedEffect(jumpTo, allEntries.size) {
         val target = jumpTo ?: return@LaunchedEffect

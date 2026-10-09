@@ -18,6 +18,8 @@ import androidx.test.platform.app.InstrumentationRegistry
 import java.io.ByteArrayOutputStream
 import java.util.UUID
 import kotlinx.coroutines.runBlocking
+import org.json.JSONArray
+import org.json.JSONObject
 import org.junit.Assert.*
 import org.junit.Rule
 import org.junit.Test
@@ -37,6 +39,25 @@ class MediaJourneysTest {
         try { Evidence.outputFile("media", "$name.png").outputStream().use { bitmap.compress(Bitmap.CompressFormat.PNG, 100, it) } }
         finally { bitmap.recycle() }
     }
+    private fun voiceFailure(stage: String, space: String?, entry: String?, voice: String?, error: Throwable) {
+        runCatching { capture("voice-failure") }.onFailure(error::addSuppressed)
+        runCatching {
+            val state = application.repository.state.value
+            val playback = VoicePlayback.state.value
+            val report = JSONObject().put("stage", stage).put("error", error.stackTraceToString())
+                .put("space", space ?: JSONObject.NULL).put("expectedEntry", entry ?: JSONObject.NULL).put("expectedVoice", voice ?: JSONObject.NULL)
+                .put("ready", state.ready).put("repositoryFailure", state.failure ?: JSONObject.NULL)
+                .put("activeSpace", application.repository.activeSpace ?: JSONObject.NULL)
+                .put("observedSpaces", JSONArray(state.timelines.keys.toList()))
+                .put("observedTimelineIds", JSONArray(space?.let { state.timelines[it] }.orEmpty().map { it.id }))
+                .put("durableTimelineIds", JSONArray(if (space == null) emptyList<String>() else runBlocking { application.repository.query { it.timeline(space).map { entry -> entry.id } } }))
+                .put("playback", JSONObject().put("id", playback.id ?: JSONObject.NULL).put("playing", playback.playing).put("duration", playback.duration).put("error", playback.error ?: JSONObject.NULL))
+            Evidence.outputFile("media", "voice-failure.json").writeText(report.toString(2))
+        }.onFailure(error::addSuppressed)
+        runCatching {
+            Evidence.outputFile("media", "voice-failure.txt").writeText(compose.onAllNodes(isRoot(), useUnmergedTree = true).printToString(maxDepth = Int.MAX_VALUE))
+        }.onFailure(error::addSuppressed)
+    }
     private fun open(): ActivityScenario<MainActivity> {
         for (command in listOf("input keyevent 224", "wm dismiss-keyguard")) ParcelFileDescriptor.AutoCloseInputStream(InstrumentationRegistry.getInstrumentation().uiAutomation.executeShellCommand(command)).use { it.readBytes() }
         application.repository.preferences.edit().putBoolean("demo", true).putBoolean("onboarded", true).commit()
@@ -49,10 +70,15 @@ class MediaJourneysTest {
     @Test fun actualMicrophoneReviewCutAndSendCreatesPlayableSignedAudioAfterRotation() {
         InstrumentationRegistry.getInstrumentation().uiAutomation.grantRuntimePermission(application.packageName, Manifest.permission.RECORD_AUDIO)
         val scenario = open()
+        var stage = "recording"
+        var spaceId: String? = null
+        var sentEntry: String? = null
+        var sentVoice: String? = null
         try {
             compose.onNodeWithTag("conversation-list").performScrollToNode(hasTestTag("chat:zoen"))
             compose.onNodeWithTag("chat:zoen").performClick()
             val space = checkNotNull(application.repository.state.value.zoenChat).id
+            spaceId = space
             val previous = application.repository.state.value.timelines[space].orEmpty().map { it.id }.toSet()
             compose.onNodeWithTag("voice-record").performClick()
             val timerPrefix = application.getString(R.string.media_recording_locked, "0:00").substringBefore("0:00")
@@ -73,23 +99,42 @@ class MediaJourneysTest {
             compose.waitForIdle()
             compose.onNodeWithTag("voice-cut-summary").assertTextContains("1", substring = true)
             capture("voice-review-cut")
+            stage = "sending"
             compose.onNodeWithTag("voice-send").assertIsEnabled().performClick()
             val remainingSendTime = sendDeadline - SystemClock.elapsedRealtime()
             assertTrue("Readiness and sending must share the original 20-second deadline", remainingSendTime > 0)
             compose.waitUntil(remainingSendTime) { application.repository.state.value.timelines[space].orEmpty().any { it.id !in previous && (it.kind as? EntryKind.Message)?.text?.let(VoiceNoteRef::parse) != null } }
             val entry = application.repository.state.value.timelines[space].orEmpty().last { it.id !in previous && (it.kind as? EntryKind.Message)?.text?.let(VoiceNoteRef::parse) != null }
             val voice = checkNotNull(VoiceNoteRef.parse((entry.kind as EntryKind.Message).text))
+            sentEntry = entry.id
+            sentVoice = voice.id
+            stage = "checking-signed-audio"
             assertTrue(voice.ms >= 300)
             val file = runBlocking { VoiceTransport.localFile(application, application.repository, voice) }
             assertNotNull(file)
             try { assertEquals(voice.ms / 1000.0, runBlocking { MediaExport.duration(file!!) }, .15) } finally { file?.delete() }
             assertTrue(runBlocking { application.repository.query { it.verifyAll().all { report -> report.valid } } })
+            val bubble = hasTestTag("voice-message") and hasAnyAncestor(hasTestTag("timeline:${entry.id}"))
+            val rotationDeadline = SystemClock.elapsedRealtime() + 10_000
+            stage = "before-recreation"
+            compose.waitUntil(10_000) { compose.onAllNodes(bubble, useUnmergedTree = true).fetchSemanticsNodes().size == 1 }
+            compose.waitForIdle()
+            compose.onNode(bubble, useUnmergedTree = true).assertIsDisplayed()
             scenario.recreate()
-            compose.waitUntil(10_000) { compose.onAllNodesWithTag("voice-message", useUnmergedTree = true).fetchSemanticsNodes().isNotEmpty() }
-            compose.onAllNodesWithContentDescription(application.getString(R.string.media_play_voice), useUnmergedTree = true).onLast().performClick()
-            compose.waitUntil(10_000) { VoicePlayback.state.value.playing }
+            stage = "after-recreation"
+            val remainingRotationTime = rotationDeadline - SystemClock.elapsedRealtime()
+            assertTrue("The exact sent bubble must settle and survive recreation within the original 10-second deadline", remainingRotationTime > 0)
+            compose.waitUntil(remainingRotationTime) { compose.onAllNodes(bubble, useUnmergedTree = true).fetchSemanticsNodes().size == 1 }
+            compose.onNode(bubble, useUnmergedTree = true).assertIsDisplayed()
+            capture("voice-after-rotation")
+            stage = "playback"
+            compose.onNode(hasContentDescription(application.getString(R.string.media_play_voice)) and hasAnyAncestor(hasTestTag("timeline:${entry.id}")), useUnmergedTree = true).assertIsDisplayed().performClick()
+            compose.waitUntil(10_000) { VoicePlayback.state.value.id == voice.id && VoicePlayback.state.value.playing }
             assertTrue(VoicePlayback.state.value.duration > .3)
             capture("voice-playback")
+        } catch (error: Throwable) {
+            voiceFailure(stage, spaceId, sentEntry, sentVoice, error)
+            throw error
         } finally { scenario.close() }
     }
 

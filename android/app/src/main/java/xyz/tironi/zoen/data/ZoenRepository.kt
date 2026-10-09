@@ -55,7 +55,7 @@ class ZoenRepository(private val context: Context) {
     private var syncRunning = false
     private var backgroundOwner: Any? = null
     private var openedLanguage: String? = null
-    private val observed = mutableSetOf<String>()
+    private val observed = mutableMapOf<String, MutableSet<Any>>()
     private val typingUpdates = mutableMapOf<String, Long>()
     private val activityUpdates = mutableMapOf<String, Long>()
     private val mutableState = MutableStateFlow(AppState())
@@ -228,13 +228,13 @@ class ZoenRepository(private val context: Context) {
         val account = core.account()
         val old = mutableState.value
         val spaces = core.spaces()
-        observed.retainAll(spaces.map { it.id }.toSet())
+        observed.keys.retainAll(spaces.map { it.id }.toSet())
         mutableState.value = old.copy(
             ready = true, failure = null, account = account,
             me = if (old.demo || account != null) core.me() else null,
             spaces = spaces, items = core.items(), agents = core.agents(), requests = core.requests(),
             connection = core.connection(), revision = old.revision + 1,
-            timelines = observed.associateWith { core.timeline(it) },
+            timelines = observed.keys.associateWith { core.timeline(it) },
         )
     }
 
@@ -250,20 +250,26 @@ class ZoenRepository(private val context: Context) {
         }
     }
 
-    suspend fun observe(space: String) = withContext(Dispatchers.IO) {
+    suspend fun observe(space: String, owner: Any) = withContext(Dispatchers.IO) {
         gate.withLock {
             if (mutableState.value.spaces.any { it.id == space }) {
-                observed.add(space)
+                observed.getOrPut(space) {
+                    java.util.Collections.newSetFromMap(java.util.IdentityHashMap<Any, Boolean>())
+                }.add(owner)
                 engine?.markRead(space)
             }
             refreshLocked()
         }
     }
 
-    suspend fun unobserve(space: String) = withContext(Dispatchers.IO) {
+    suspend fun unobserve(space: String, owner: Any) = withContext(Dispatchers.IO) {
         gate.withLock {
-            observed.remove(space)
-            engine?.setTyping(space, false)
+            val owners = observed[space] ?: return@withLock
+            if (!owners.remove(owner)) return@withLock
+            if (owners.isEmpty()) {
+                observed.remove(space)
+                engine?.setTyping(space, false)
+            }
             refreshLocked()
         }
     }
