@@ -23,12 +23,13 @@ struct MessageSwipe: ViewModifier {
     static let edgeZone: CGFloat = 24
 
     @State private var x: CGFloat = 0
+    @State private var pull: CGFloat = 0    // the finger's signed pull (x stays 0 under Reduce Motion)
     @State private var locked: Bool?        // nil: undecided; true: horizontal; false: let go
     @State private var armed: MessageSwipeIntent?
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.accessibilityVoiceOverEnabled) private var voiceOver
 
-    private var progress: CGFloat { min(1, abs(x) / Self.threshold) }
+    private var progress: CGFloat { min(1, abs(pull) / (Self.threshold * 0.9)) }
 
     func body(content: Content) -> some View {
         content
@@ -36,15 +37,15 @@ struct MessageSwipe: ViewModifier {
             .background(alignment: .trailing) {
                 // Left pull: the reply arrow waits on the right.
                 icon("arrowshape.turn.up.left.fill", active: armed == .reply)
-                    .opacity(x < 0 ? Double(progress) : 0)
-                    .scaleEffect(x < 0 ? 0.4 + 0.6 * progress : 0.4)
+                    .opacity(pull < 0 ? Double(progress) : 0)
+                    .scaleEffect(pull < 0 ? 0.4 + 0.6 * progress : 0.4)
                     .padding(.trailing, 6)
             }
             .background(alignment: .leading) {
                 // Right pull: the thread glyph waits on the left.
                 icon("bubble.left.and.text.bubble.right.fill", active: armed == .thread)
-                    .opacity(x > 0 ? Double(progress) : 0)
-                    .scaleEffect(x > 0 ? 0.4 + 0.6 * progress : 0.4)
+                    .opacity(pull > 0 ? Double(progress) : 0)
+                    .scaleEffect(pull > 0 ? 0.4 + 0.6 * progress : 0.4)
                     .padding(.leading, 6)
             }
             .simultaneousGesture(drag, isEnabled: enabled)
@@ -75,7 +76,9 @@ struct MessageSwipe: ViewModifier {
                 // Free up to the threshold, then a rubber band.
                 let a = abs(raw)
                 let shown = a <= Self.threshold ? a * 0.9 : Self.threshold * 0.9 + (a - Self.threshold) * 0.22
-                x = reduceMotion ? 0 : (raw < 0 ? -shown : shown)
+                pull = raw < 0 ? -shown : shown
+                // Reduce Motion: the bubble stays put; the icon alone shows the pull.
+                x = reduceMotion ? 0 : pull
                 let now: MessageSwipeIntent? = a >= Self.threshold ? (raw < 0 ? .reply : .thread) : nil
                 if now != armed {
                     if now != nil { Haptics.selectionTick() }
@@ -86,7 +89,7 @@ struct MessageSwipe: ViewModifier {
                 let fire = locked == true ? armed : nil
                 locked = nil
                 armed = nil
-                withAnimation(.spring(response: 0.32, dampingFraction: 0.72)) { x = 0 }
+                withAnimation(.spring(response: 0.32, dampingFraction: 0.72)) { x = 0; pull = 0 }
                 if let fire {
                     Haptics.open()
                     onIntent(fire)
