@@ -354,7 +354,17 @@ impl Cell {
         for (k, v) in Self::scan(trx, holds.range(), usize::MAX, true).await? {
             let (who, device): (String, String) =
                 holds.unpack(&k).map_err(|e| custom(e.to_string()))?;
-            let (at, when): (i64, i64) = unpack(&v).map_err(|e| custom(e.to_string()))?;
+            let (at, when) = match unpack::<(i64, i64)>(&v) {
+                Ok(hold) => hold,
+                Err(_) => {
+                    let at: i64 = unpack(&v).map_err(|e| custom(e.to_string()))?;
+                    // Older relays did not record a time. Start their ceiling now,
+                    // under the head fence, rather than expiring unread history.
+                    let hold = (at, now_ms());
+                    trx.set(&k, &pack(&hold));
+                    hold
+                }
+            };
             state.holds.insert((who, device), (at as u64, when));
         }
         if let Some(v) = trx.get(&self.space_key(space, "pruned"), true).await? {
