@@ -27,7 +27,8 @@ que o repositório exige manter atualizado a cada PR. Conferimos os pontos citad
 
 1. **Na E2B, criar uma sandbox é retomar um snapshot.** O template é uma VM já ligada e
    congelada (memória + disco + estado). "Criar", "retomar depois de pausar" e "bifurcar"
-   passam pelo mesmo caminho. É o que o ADR 0028 já decidiu, e a E2B prova que escala.
+   passam pelo mesmo caminho. É o que o ADR 0028 já decidiu. O código oferece uma
+   referência de implementação; nossa capacidade ainda precisa de medições próprias.
 2. **A memória chega sob demanda.** Um handler de `userfaultfd` entrega cada página só quando o
    convidado a toca, lida direto do arquivo de memória do template. Um passo "optimize" no
    build grava quais páginas o boot toca e vira dica de pré-carga. É o item que mais falta no
@@ -40,10 +41,10 @@ que o repositório exige manter atualizado a cada PR. Conferimos os pontos citad
    *como*; o tráfego da sandbox não passa pela API. O nó publica o próprio registro de rota,
    e tráfego para uma sandbox pausada a acorda sozinho. Copiamos isso, trocando Redis por
    FoundationDB.
-5. **A rede deles é mais fraca que a nossa.** Cada VM tem uma interface de rede (tap, netns,
+5. **A rede usa uma fronteira diferente.** Cada VM tem uma interface de rede (tap, netns,
    nftables), e a lista de domínios é decidida pelo SNI/Host. Nosso desenho (VM sem placa de
    rede, só vsock até o `zoen-egress`, que resolve DNS ele mesmo) é mais fechado. Não copiar.
-6. **O isolamento do processo também é mais fraco.** O Firecracker deles sobe por
+6. **O isolamento do processo segue outro desenho.** O Firecracker deles sobe por
    `unshare -m` + `ip netns exec`, como root, sem `jailer`. Mantemos jailer, seccomp, um uid
    por VM e core scheduling.
 7. **O desktop da E2B é simples e antigo:** Xvfb + XFCE + x11vnc + noVNC no navegador. Cada
@@ -60,7 +61,8 @@ que o repositório exige manter atualizado a cada PR. Conferimos os pontos citad
    sequência e assinatura, como o `zoen-liveview` já faz.
 10. **Custo:** uma hora de desktop com navegador na E2B (2 vCPU, 4 GiB) sai a **US$0,166**; no
     nosso modelo em Hetzner, **≈US$0,017** parado e **≈US$0,028** transmitindo vídeo. É
-    cerca de 6 a 10 vezes mais barato, e o vídeo só existe enquanto alguém assiste.
+   uma diferença projetada de 6 a 10 vezes nessas premissas, sem prova de custo em
+   produção. O vídeo só existe enquanto alguém assiste.
 
 ---
 
@@ -445,6 +447,9 @@ grátis; plano Pro US$150/mês; Enterprise mínimo US$3.000/mês; 1–8 vCPU e 1
 
 Nossos custos usam as premissas de [agent-sandbox.md §6](agent-sandbox.md) (Hetzner AX102,
 US$302,10/mês, 128 GB, 16 núcleos/32 threads, 60% de uso, SMT com core scheduling a 80%).
+São projeções por host, sem medir a densidade real nem o custo total de operação,
+redundância, manutenção e infraestrutura de controle. Os preços públicos da E2B incluem
+serviços que esse modelo próprio ainda precisa entregar.
 Para o desktop: 3 GiB alocados (~2,25 GiB efetivos), 2 vCPU com 2:1 → ~40 VMs por host
 paradas e ~25 transmitindo vídeo em tela cheia (o encoder gasta ~0,5 núcleo).
 
