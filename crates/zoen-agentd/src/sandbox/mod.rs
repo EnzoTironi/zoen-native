@@ -9,6 +9,7 @@ use std::time::Duration;
 use zoen_egress::{EgressRule, SecretBinding};
 
 pub mod fake;
+pub mod fly;
 pub mod gvisor;
 
 /// What to start: the manifest's needs plus the template.

@@ -946,6 +946,16 @@ final class AppModel {
     }
     #endif
 
+    func receiveIncomingStoryMessages() async {
+        guard SyncModel.mode == .demo,
+              let turma = spaceId(titled: DemoSpace.saturdayCrew) else { return }
+        perform { try core.demoMemberSay(spaceId: turma, memberHandle: "marina",
+                                         text: AppLocale.pick("chegando em 10 min", "there in 10 min")) }
+        try? await Task.sleep(for: .milliseconds(600))
+        perform { try core.demoMemberSay(spaceId: turma, memberHandle: "lucas",
+                                         text: AppLocale.pick("guarda um lugar pra mim", "save me a seat")) }
+    }
+
     func runStory(_ story: String) async {
         guard let turma = spaceId(titled: DemoSpace.saturdayCrew) else { return }
         func wait(_ s: Double) async { try? await Task.sleep(for: .seconds(s)) }
@@ -963,9 +973,50 @@ final class AppModel {
             paths[.conversations] = []
             return
         }
+        #if DEBUG
+        if story == "incoming", SyncModel.mode == .demo {
+            perform { try core.markRead(spaceId: turma) }
+        }
+        if ["unread", "unread-mixed"].contains(story), SyncModel.mode == .demo {
+            perform { try core.markRead(spaceId: turma) }
+            let prefix = story == "unread-mixed" ? "Mensagem mista não lida" : "Mensagem não lida"
+            for i in 1...12 {
+                let incoming = perform { try core.demoMemberSay(spaceId: turma, memberHandle: "marina",
+                    text: "\(prefix) \(i): a saída é às oito. Levo água e lanches; nos encontramos na praça antes de pegar a trilha.") }
+                if story == "unread-mixed" {
+                    perform { try core.sendMessage(spaceId: turma,
+                        text: "Minha mensagem \(i): combinado, vou conferir o trajeto e preparar a mochila antes de sair.") }
+                    if i == 1, let incoming {
+                        perform { try core.sendReply(spaceId: turma, text: "Minha resposta na conversa paralela.",
+                                                     to: incoming.id, thread: true) }
+                    }
+                    perform { try core.setBackground(spaceId: turma,
+                        background: PhotoBackgroundLayout().dto(style: "none", media: nil)) }
+                }
+            }
+        }
+        if story == "unread-all", SyncModel.mode == .demo {
+            guard let marina = space(turma)?.members.first(where: { $0.handle == "marina" }),
+                  let fresh = perform({ try core.createCommunity(title: "Primeira leitura") }),
+                  perform({ try core.addMember(spaceId: fresh, identityId: marina.id) }) != nil else { return }
+            // A new chat has no read marker and no earlier messages.
+            for i in 1...12 {
+                perform { try core.demoMemberSay(spaceId: fresh, memberHandle: "marina",
+                    text: "Mensagem da primeira leitura \(i): a saída é às oito. Levo água e lanches; nos encontramos na praça antes de pegar a trilha.") }
+            }
+            go(.space(fresh))
+            return
+        }
+        #endif
         go(.space(turma))
         await wait(0.8)
         switch story {
+        // `incoming`: two friends write while you're reading further up (journey for the
+        // "novas mensagens" pill: the chat must keep your place).
+        case "incoming":
+            if d("RodaIncomingManual") { return }
+            await wait(d("RodaIncomingFast") ? 2 : 5)
+            await receiveIncomingStoryMessages()
         case let s where s.hasPrefix("pet"):
             await send(AppLocale.pick("e se a gente adotasse um jumento pro grupo?", "what if we adopted a donkey for the group?"), in: turma)
             guard let pet = app("pet") else { return }

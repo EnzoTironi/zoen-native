@@ -182,7 +182,7 @@ impl Author {
         sealed: content::Sealed,
     ) -> (Vec<u8>, String) {
         let content = SignedContent {
-            v: EVENT_FORMAT as u32,
+            v: content::SEALED_CONTENT_VERSION,
             space: space.to_string(),
             client_id: client_id.to_string(),
             author: self.identity.clone(),
@@ -192,7 +192,10 @@ impl Author {
             payload: Some(Payload::Sealed(sealed)),
         }
         .encode();
-        let sig = self.key.sign(content::content_hash(&content).as_bytes());
+        let sig = self.key.sign(&content::signature_message(
+            &content,
+            &content::signed_hash(&content),
+        ));
         (content, sig)
     }
 }
@@ -232,15 +235,6 @@ pub fn event_from_content(
 }
 
 /// The view of an entry kept sealed: its kind, from the clear framing.
-/// A sealed entry the relay pruned: sealed, no MLS bytes left, and linked by the
-/// original's wire hash. (An opened sealed event carries `sealed_wire` with its inner
-/// plaintext body, never a `Sealed` one.)
-fn is_pruned_stub(e: &Event, c: &SignedContent) -> bool {
-    e.sealed_wire.is_some()
-        && matches!(e.body, EventBody::Sealed { .. })
-        && matches!(&c.payload, Some(Payload::Sealed(s)) if s.data.is_empty())
-}
-
 fn sealed_body(s: &content::Sealed) -> EventBody {
     let kind = content::SealedKind::try_from(s.kind).unwrap_or(content::SealedKind::Unspecified);
     EventBody::Sealed {
@@ -257,9 +251,43 @@ pub fn sha256_hex(bytes: &[u8]) -> String {
     hex::encode(Sha256::digest(bytes))
 }
 
-/// The hash the author signed: over the exact content bytes, never a re-encoding.
+/// The hash the author signed: over the exact content bytes for clear events, over the
+/// header and the hash of the MLS bytes for sealed ones (`content::signed_hash`).
 pub fn content_hash_of(e: &Event) -> String {
-    content::content_hash(&e.content)
+    if let Some(original) = legacy_stub_hash(e) {
+        return original.to_string();
+    }
+    signed_content_hash(&e.content, &e.sig)
+}
+
+/// Select the signed hash without changing any legacy chain links. M2 briefly emitted
+/// a pruning hash with v3; accept that variant only with its authentic signature.
+pub fn signed_content_hash(bytes: &[u8], sig: &str) -> String {
+    let hash = content::signed_hash(bytes);
+    if let Some(c) = SignedContent::parse(bytes) {
+        if c.v == 3 && matches!(c.payload, Some(Payload::Sealed(_))) {
+            let signer = c.device.as_deref().unwrap_or(&c.author);
+            if !verify_sig(signer, hash.as_bytes(), sig) {
+                if let Some(previous) = content::unversioned_sealed_hash(bytes) {
+                    if verify_sig(signer, previous.as_bytes(), sig) {
+                        return previous;
+                    }
+                }
+            }
+        }
+    }
+    hash
+}
+
+fn legacy_stub_hash(e: &Event) -> Option<&str> {
+    let c = SignedContent::parse(&e.content)?;
+    if c.v != 3
+        || !matches!(c.payload, Some(Payload::Sealed(s)) if s.data.is_empty() && s.data_hash.is_empty())
+    {
+        return None;
+    }
+    let original = e.sealed_wire.as_deref()?;
+    (original.len() == 64 && original.bytes().all(|b| b.is_ascii_hexdigit())).then_some(original)
 }
 
 /// What traveled: the sealed envelope's hash, or the content hash for plaintext.
@@ -285,6 +313,11 @@ pub fn content_hash<T: serde::Serialize>(value: &T) -> String {
     sha256_hex(&serde_json::to_vec(value).expect("serialização"))
 }
 
+/// Whether `hexkey` is an Ed25519 public key (a device or identity key).
+pub fn parse_device_key(hexkey: &str) -> Option<()> {
+    parse_key(hexkey).map(|_| ())
+}
+
 fn parse_key(hexkey: &str) -> Option<VerifyingKey> {
     let bytes: [u8; 32] = hex::decode(hexkey).ok()?.try_into().ok()?;
     VerifyingKey::from_bytes(&bytes).ok()
@@ -308,16 +341,6 @@ pub fn verify_sig(pubkey_hex: &str, msg: &[u8], sig_hex: &str) -> bool {
 pub fn verify_author(e: &Event) -> Result<(), LogError> {
     let seq = e.seq;
     let c = SignedContent::parse(&e.content).ok_or(LogError::BadContent { seq })?;
-    if is_pruned_stub(e, &c) {
-        // The relay took the MLS bytes out (ADR 0026), so the signature no longer covers
-        // the content. What holds it in place is the chain: `sealed_wire` is the original's
-        // hash, and members' signed checkpoints pin the chain past it.
-        return if c.space == e.space && c.client_id == e.client_id && c.author == e.author {
-            Ok(())
-        } else {
-            Err(LogError::BadContent { seq })
-        };
-    }
     let body_matches = match &c.payload {
         // `Sealed` describes outer bytes; a body claiming it is a forgery.
         Some(Payload::Body(b)) => {
@@ -353,7 +376,10 @@ pub fn verify_author(e: &Event) -> Result<(), LogError> {
     };
     let sig = parse_sig(&e.sig).ok_or(LogError::BadSignature { seq })?;
     signer
-        .verify(content_hash_of(e).as_bytes(), &sig)
+        .verify(
+            &content::signature_message(&e.content, &content_hash_of(e)),
+            &sig,
+        )
         .map_err(|_| LogError::BadSignature { seq })
 }
 

@@ -58,6 +58,7 @@ pub struct NetState {
     pub poke: Option<Box<dyn Fn() + Send>>,
     pub profiles: crate::profile::ProfileNet,
     pub mls: crate::mls::MlsNet,
+    pub link: crate::linking::LinkNet,
 }
 
 impl NetState {
@@ -87,7 +88,7 @@ pub enum Ingest {
     Invalid(String),
 }
 
-fn tint_for(id: &str) -> String {
+pub(crate) fn tint_for(id: &str) -> String {
     const TINTS: [&str; 8] = [
         "#4F7CFF", "#FF5C8A", "#19B5A5", "#F59E0B", "#7C5CFF", "#22C55E", "#0EA5E9", "#FF9F0A",
     ];
@@ -275,6 +276,7 @@ impl Engine {
         if matches!(r, Ingest::Applied | Ingest::Confirmed) {
             self.mls_membership_changed(&e);
             self.compare_checkpoint(&e);
+            self.mls_device_joining(&e);
         }
         r
     }
@@ -340,16 +342,23 @@ impl Engine {
             .unwrap_or(false)
     }
 
-    /// The relay refused one of ours.
-    pub fn reject(&mut self, client_id: &str, reason: &str, permanent: bool) -> bool {
+    /// The relay refused one of ours. `sent_epoch` describes the application envelope
+    /// actually sent on this connection, not a copy resealed since then.
+    pub fn reject(
+        &mut self,
+        client_id: &str,
+        reason: &str,
+        permanent: bool,
+        sent_epoch: Option<u64>,
+    ) -> bool {
         if permanent && self.mls_handshake_refused(client_id, reason) {
             return false;
         }
         // Written in the clear just before the Space went end-to-end: it waits for the
         // group and goes out sealed, it doesn't fail.
         // Sealed before this device caught up with a commit: it seals again once it has.
-        if reason == roda_proto::STALE_SEAL {
-            self.mls_sealed_stale(client_id);
+        if let (roda_proto::STALE_SEAL, Some(epoch)) = (reason, sent_epoch) {
+            self.mls_sealed_stale(client_id, epoch);
         }
         let permanent =
             permanent && reason != roda_proto::SEAL_REQUIRED && reason != roda_proto::STALE_SEAL;
@@ -380,13 +389,13 @@ impl Engine {
 
     /// Envelopes still waiting for the relay, oldest first.
     pub fn outbox_envelopes(&self) -> Vec<Envelope> {
-        self.outbox_envelopes_except(&HashSet::new())
+        self.outbox_envelopes_except(&HashMap::new())
     }
 
     /// The outbox as envelopes, leaving out the ones already sent on this connection.
     /// Called after every write, so it skips sent entries before any sealing work and asks
     /// each Space's group for its epoch once: a long import stays linear, not quadratic.
-    pub fn outbox_envelopes_except(&self, sent: &HashSet<String>) -> Vec<Envelope> {
+    pub fn outbox_envelopes_except(&self, sent: &HashMap<String, Option<u64>>) -> Vec<Envelope> {
         let mut ready = HashMap::new();
         // A Welcome goes out only once its commit is in: sent together, a commit held back
         // by the relay (rate limit) would let the Welcome arrive first and be refused.
@@ -395,7 +404,7 @@ impl Engine {
             .outbox_heads()
             .unwrap_or_default()
             .into_iter()
-            .filter(|p| !p.failed && !sent.contains(&p.client_id))
+            .filter(|p| !p.failed && !sent.contains_key(&p.client_id))
             .filter(|p| !held.contains(&p.client_id))
             // Refused for being clear in a Space that went end-to-end: it waits until this
             // device has caught up with that, then goes out sealed.
@@ -480,6 +489,10 @@ impl Engine {
         self.net.author.is_some()
     }
 
+    pub(crate) fn save_linked_account(&mut self, a: AccountMeta) -> R<()> {
+        self.save_account(a)
+    }
+
     fn save_account(&mut self, a: AccountMeta) -> R<()> {
         self.store.set_meta(
             "account",
@@ -552,6 +565,29 @@ impl Engine {
         let agreement = self.init_profile(&me.id, &me.name)?;
         self.seed_personal_agent(&me.id)?;
         Ok((root.secret(), device.secret(), agreement))
+    }
+
+    /// After a backup's tables land (ADR 0046): this device becomes a new device of the
+    /// restored identity, with its own key and certificate. The relay already knows the
+    /// identity, so it isn't registered again.
+    pub(crate) fn install_restored_account(
+        &mut self,
+        root: &Signer,
+        device: Signer,
+        relay_url: &str,
+    ) -> R<()> {
+        let author = Author::device(root, device.clone());
+        self.store.set_meta("me", &root.id())?;
+        self.save_account(AccountMeta {
+            identity: root.id(),
+            device: device.id(),
+            cert: author.cert.clone().unwrap_or_default(),
+            relay_url: relay_url.trim_end_matches('/').to_string(),
+            registered: true,
+        })?;
+        self.net.author = Some(author);
+        self.reload()?;
+        Ok(())
     }
 
     /// Your on-device Zoen (local agent, local DM) until the agent runtime takes over.

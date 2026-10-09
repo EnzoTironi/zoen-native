@@ -8194,6 +8194,46 @@
           }
         }
       }
+    },
+    "Unread messages": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Mensagens não lidas"
+          }
+        }
+      }
+    },
+    "1 new message": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "1 nova mensagem"
+          }
+        }
+      }
+    },
+    "%lld new messages": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld novas mensagens"
+          }
+        }
+      }
+    },
+    "Jumps to the latest message": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Vai para a mensagem mais recente"
+          }
+        }
+      }
     }
   },
   "version": "1.0"
