@@ -4,11 +4,13 @@
 
 > © 2026 Enzo Tironi. All rights reserved. Public for viewing only, not open source: see [LICENSE](LICENSE).
 
-The first working prototype of **Zoen**: the "week 4 demo" from the plan in [`docs/repensado.md`](docs/repensado.md), cut down to what can be built solidly now. A **Rust core** (the 5 primitives + a signed log) sits under a **100% SwiftUI** app for **iPhone and Mac**, with real Liquid Glass.
+The first working prototype of **Zoen**: the "week 4 demo" from the plan in [`docs/repensado.md`](docs/repensado.md), cut down to what can be built solidly now. A **Rust core** (the 5 primitives + a signed log) powers native **SwiftUI** apps for **iPhone and Mac**, with Liquid Glass, and a **Kotlin/Compose** app for **Android**.
 
 The app and its built-in agent share one name, **Zoen**, the way Wabi's agent is called Wabi; the green furball mascot is Zoen's face. (The project started as "Roda": internal names such as the `roda-*` Rust crates, the `RodaCore` Swift package and the `-Roda…` launch flags keep that name for now, to avoid churn.)
 
 The app ships in **English** (development language) and **Brazilian Portuguese** (a full second translation). It follows the device language.
+
+An Android app now lives in [`android/`](android/README.md): Kotlin, Jetpack Compose, Material 3, and the same Rust engine through UniFFI. It uses native Android navigation, pickers, sharing, Keystore, and adaptive phone/tablet layouts. Build instructions and the current feature limits are in the Android README.
 
 ![Onboarding: six steps, one grumpy furball, a plan in under ten seconds](docs/screens/onboarding.jpg)
 

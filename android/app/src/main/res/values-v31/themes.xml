@@ -1,0 +1,7 @@
+<resources>
+    <style name="Theme.Zoen" parent="android:Theme.Material.Light.NoActionBar">
+        <item name="android:windowSplashScreenBackground">#E9F1DB</item>
+        <item name="android:windowSplashScreenAnimatedIcon">@drawable/ic_launcher_foreground</item>
+        <item name="android:windowLightNavigationBar">true</item>
+    </style>
+</resources>

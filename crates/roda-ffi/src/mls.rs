@@ -155,7 +155,7 @@ fn fork_meta(space: &str) -> String {
 
 fn storage(e: impl std::fmt::Display) -> CoreError {
     CoreError::Storage {
-        message: e.to_string(),
+        reason: e.to_string(),
     }
 }
 

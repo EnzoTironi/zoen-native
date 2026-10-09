@@ -1,0 +1,6 @@
+-keep class com.sun.jna.** { *; }
+-keep interface com.sun.jna.** { *; }
+-keep class xyz.tironi.zoen.core.** { *; }
+-keepclassmembers class * extends com.sun.jna.Structure { <fields>; }
+-dontwarn java.awt.**
+-dontwarn javax.swing.**

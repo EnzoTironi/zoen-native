@@ -437,7 +437,7 @@ pub(crate) type R<T> = Result<T, CoreError>;
 impl From<roda_store::StoreError> for CoreError {
     fn from(e: roda_store::StoreError) -> Self {
         CoreError::Storage {
-            message: e.to_string(),
+            reason: e.to_string(),
         }
     }
 }

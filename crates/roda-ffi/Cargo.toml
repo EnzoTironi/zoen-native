@@ -1,6 +1,6 @@
 [package]
 name = "roda-ffi"
-description = "Motor do Zoen exposto para Swift (e Kotlin, depois) via UniFFI."
+description = "Motor do Zoen exposto para Swift e Kotlin via UniFFI."
 version.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -37,6 +37,9 @@ zoen-liveview.workspace = true
 hkdf.workspace = true
 base64 = "0.22"
 fastcdc = "5"
+
+[target.'cfg(target_os = "android")'.dependencies]
+webpki-roots = "1"
 
 [dev-dependencies]
 sha2.workspace = true

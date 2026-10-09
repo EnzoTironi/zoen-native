@@ -812,10 +812,19 @@ async fn media_worker(
     key: roda_log::Signer,
     kick: Arc<tokio::sync::Notify>,
 ) {
-    let Ok(http) = reqwest::Client::builder()
-        .timeout(Duration::from_secs(60))
-        .build()
-    else {
+    let builder = reqwest::Client::builder().timeout(Duration::from_secs(60));
+    // Match the WebSocket transport's WebPKI roots on Android. The platform verifier
+    // requires a JVM context; this core is loaded through UniFFI/JNA, without JNI setup.
+    #[cfg(target_os = "android")]
+    let builder = {
+        let roots =
+            rustls::RootCertStore::from_iter(webpki_roots::TLS_SERVER_ROOTS.iter().cloned());
+        let tls = rustls::ClientConfig::builder()
+            .with_root_certificates(roots)
+            .with_no_client_auth();
+        builder.tls_backend_preconfigured(tls)
+    };
+    let Ok(http) = builder.build() else {
         tracing_like("media: no HTTP client");
         return;
     };

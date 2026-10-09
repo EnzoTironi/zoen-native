@@ -484,7 +484,7 @@ impl Engine {
         self.store.set_meta(
             "account",
             &serde_json::to_string(&a).map_err(|e| CoreError::Storage {
-                message: e.to_string(),
+                reason: e.to_string(),
             })?,
         )?;
         self.net.account = Some(a);

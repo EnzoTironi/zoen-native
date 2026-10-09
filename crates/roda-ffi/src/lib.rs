@@ -42,8 +42,8 @@ uniffi::setup_scaffolding!();
 
 #[derive(Debug, thiserror::Error, uniffi::Error)]
 pub enum CoreError {
-    #[error("{}{message}", crate::i18n::ts("Armazenamento: ", "Storage: "))]
-    Storage { message: String },
+    #[error("{}{reason}", crate::i18n::ts("Armazenamento: ", "Storage: "))]
+    Storage { reason: String },
     #[error("{}{what}", crate::i18n::ts("Não encontrado: ", "Not found: "))]
     NotFound { what: String },
     #[error("{reason}")]
