@@ -31,6 +31,10 @@ enum State {
     Suspended {
         snap: SnapshotRef,
     },
+    Finishing {
+        lease: Lease,
+        since: Option<Instant>,
+    },
     Done,
 }
 
@@ -68,12 +72,13 @@ impl ToolSession {
         }
     }
 
-    /// "cold", "running", "suspended" or "done".
+    /// "cold", "running", "suspended", "finishing" or "done".
     pub async fn state(&self) -> &'static str {
         match &*self.state.lock().await {
             State::Cold => "cold",
             State::Running { .. } => "running",
             State::Suspended { .. } => "suspended",
+            State::Finishing { .. } => "finishing",
             State::Done => "done",
         }
     }
@@ -99,7 +104,7 @@ impl ToolSession {
         let mut st = self.state.lock().await;
         let running_uncharged = match &*st {
             State::Running { since, .. } => secs_ceil(since.elapsed()),
-            State::Done => return Err(SessionError::Finished),
+            State::Finishing { .. } | State::Done => return Err(SessionError::Finished),
             _ => 0,
         };
         let left = self.budget.lock().unwrap().admit(self.spec.tier, now_ms)?;
@@ -121,7 +126,7 @@ impl ToolSession {
                 };
                 lease
             }
-            State::Done => unreachable!(),
+            State::Finishing { .. } | State::Done => unreachable!(),
         };
         if let State::Cold = &*st {
             let now = Instant::now();
@@ -169,17 +174,31 @@ impl ToolSession {
     /// The task is over: charge what ran and delete everything.
     pub async fn finish(&self, now_ms: i64) -> Result<(), SessionError> {
         let mut st = self.state.lock().await;
-        match std::mem::replace(&mut *st, State::Done) {
+        match &*st {
             State::Running { lease, since, .. } => {
-                self.charge(since, now_ms);
-                self.provider.release(lease).await?;
+                *st = State::Finishing {
+                    lease: lease.clone(),
+                    since: Some(*since),
+                };
             }
             State::Suspended { snap } => {
-                let lease = self.provider.resume(&snap).await?;
-                self.provider.release(lease).await?;
+                let lease = self.provider.resume(snap).await?;
+                *st = State::Finishing { lease, since: None };
             }
-            State::Cold | State::Done => {}
+            State::Finishing { .. } => {}
+            State::Cold | State::Done => {
+                *st = State::Done;
+                return Ok(());
+            }
         }
+        let State::Finishing { lease, since } = &*st else {
+            unreachable!()
+        };
+        self.provider.release(lease.clone()).await?;
+        if let Some(since) = since {
+            self.charge(*since, now_ms);
+        }
+        *st = State::Done;
         Ok(())
     }
 }

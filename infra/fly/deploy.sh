@@ -3,6 +3,8 @@
 #   infra/fly/deploy.sh            everything
 #   infra/fly/deploy.sh relay      just the relay image
 #   infra/fly/deploy.sh fdb        just FoundationDB
+#   infra/fly/deploy.sh sandbox    the agent sandbox app (P3, ADR 0028). NOT part of `all`:
+#                                  it's a new paid resource, needs Enzo's go-ahead.
 # Needs `fly` logged in. Secrets are generated here and go straight into `fly secrets`;
 # nothing is printed or written to disk.
 set -euo pipefail
@@ -68,9 +70,24 @@ relay() {
   for h in "${HOSTS[@]}"; do fly certs show "$h" -a "$RELAY" >/dev/null 2>&1 || fly certs add "$h" -a "$RELAY" >/dev/null; done
 }
 
+# Agent sandbox (ADR 0028 P3): one empty app on its OWN private network, so sandbox VMs
+# can't reach the relay/pg/fdb over 6PN. Machines are created per lease by zoen-agentd
+# (FlyMachinesProvider) and destroyed on release; idle cost is $0. zoen-agentd authenticates
+# with a deploy token scoped to this app only (minted here, piped into the relay's secrets,
+# never printed).
+SANDBOX=zoen-staging-sandbox
+sandbox() {
+  has_app "$SANDBOX" || fly apps create "$SANDBOX" --org "$ORG" --network zoen-sandbox
+  ensure_app "$RELAY"
+  if ! has_secret "$RELAY" ZOEN_FLY_SANDBOX_TOKEN; then
+    local t; t="$(fly tokens create deploy -a "$SANDBOX" -x 8760h -n zoen-agentd)"
+    fly secrets set -a "$RELAY" --stage ZOEN_FLY_SANDBOX_APP="$SANDBOX" ZOEN_FLY_SANDBOX_TOKEN="$t" >/dev/null
+  fi
+}
+
 case "${1:-all}" in
   all) postgres; fdb; storage; relay ;;
-  postgres|fdb|storage|relay) "$1" ;;
-  *) echo "usage: $0 [all|postgres|fdb|storage|relay]"; exit 2 ;;
+  postgres|fdb|storage|relay|sandbox) "$1" ;;
+  *) echo "usage: $0 [all|postgres|fdb|storage|relay|sandbox]"; exit 2 ;;
 esac
 echo "▸ https://$RELAY.fly.dev/healthz: $(curl -s -m 10 "https://$RELAY.fly.dev/healthz" || echo unreachable)"
