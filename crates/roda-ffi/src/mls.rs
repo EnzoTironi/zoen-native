@@ -594,6 +594,11 @@ impl Engine {
         if ev.seq > next {
             return Ingest::Gap { next };
         }
+        // Opened/own events persist their inner signature. Authenticate the outer
+        // envelope too before replacing it with that inner event or changing MLS state.
+        if let Err(err) = ev.env.verify() {
+            return Ingest::Invalid(err.to_string());
+        }
         if ev.env.is_pruned() {
             return self.ingest_pruned(ev);
         }
@@ -1498,6 +1503,86 @@ pub(crate) fn must_seal(body: &EventBody) -> bool {
 mod tests {
     use super::*;
     use roda_log::{chain_hash, Author};
+
+    #[test]
+    fn rejected_outer_signature_keeps_the_own_event_pending() {
+        let mut engine = Engine::open(":memory:").unwrap();
+        engine
+            .create_account("Ana", "ana", "http://relay.test")
+            .unwrap();
+        let author = engine.net.author.clone().unwrap();
+        let space = "sp_own_outer_auth";
+        let mut log = SpaceLog::new(space);
+        let genesis = log
+            .sequence(author.sign_event(
+                space,
+                "created",
+                1,
+                None,
+                EventBody::SpaceCreated {
+                    title: "Outer signature".into(),
+                    kind: SpaceKind::Group,
+                    privacy: Privacy::EndToEnd,
+                },
+            ))
+            .clone();
+        assert_eq!(
+            engine.ingest(Sequenced {
+                seq: genesis.seq,
+                prev: genesis.prev.clone(),
+                hash: genesis.hash.clone(),
+                env: Envelope::plain(&genesis),
+            }),
+            Ingest::Applied
+        );
+        engine.create_mls_group(space).unwrap();
+        let own = author.sign_event(
+            space,
+            "pending",
+            2,
+            log.head().as_ref(),
+            EventBody::MessagePosted {
+                message: "message".into(),
+                text: "Still pending".into(),
+                attaches: None,
+                reply: None,
+            },
+        );
+        engine.store.outbox_put(&own).unwrap();
+        engine
+            .net
+            .pending
+            .insert(own.client_id.clone(), space.into());
+        let mut env = Envelope::sealed(
+            &author,
+            space,
+            &own.client_id,
+            own.at_ms,
+            own.seen.as_ref(),
+            Sealed::new(SealedKind::Application, SUITE_ID, vec![1, 2, 3]),
+        );
+        let hash = chain_hash(space, 1, &genesis.hash, &env.wire_hash());
+        env.sig = "00".repeat(64);
+        let group_before = engine.mls_status(space).unwrap();
+        let count_before = engine.store.event_count().unwrap();
+        assert!(matches!(
+            engine.ingest(Sequenced {
+                seq: 1,
+                prev: genesis.hash,
+                hash,
+                env,
+            }),
+            Ingest::Invalid(_)
+        ));
+        assert_eq!(
+            engine.store.outbox_get(&own.client_id).unwrap(),
+            Some(own.clone())
+        );
+        assert!(engine.net.pending.contains_key(&own.client_id));
+        assert_eq!(engine.logs[space].next_seq(), 1);
+        assert_eq!(engine.store.event_count().unwrap(), count_before);
+        assert_eq!(engine.mls_status(space), Some(group_before));
+    }
 
     #[test]
     fn rejected_pruned_history_preserves_the_mls_group() {
