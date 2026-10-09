@@ -129,6 +129,24 @@ pub struct TimelineEntry {
     pub kind: EntryKind,
     /// Where this entry is on its way to the others.
     pub delivery: Delivery,
+    /// Inline reply: a quote of the message this one answers.
+    #[uniffi(default = None)]
+    pub reply_to: Option<ReplyQuote>,
+    /// Thread reply: the root message's id. The main timeline leaves these out and shows
+    /// `thread_replies` under the root instead.
+    #[uniffi(default = None)]
+    pub in_thread: Option<String>,
+    /// On a thread root: how many replies its thread has.
+    #[uniffi(default = 0)]
+    pub thread_replies: u32,
+}
+
+/// What an inline reply shows of the message it answers.
+#[derive(Debug, Clone, PartialEq, uniffi::Record)]
+pub struct ReplyQuote {
+    pub id: String,
+    pub author: Persona,
+    pub text: String,
 }
 
 /// `Local`: a Space that lives only on this device. `Sending`: signed and queued for the

@@ -14,6 +14,7 @@ mod media;
 mod mls;
 mod net;
 mod profile;
+mod replies;
 pub use profile::{PhotoChange, ProfileDto};
 mod sync;
 pub use api::*;
