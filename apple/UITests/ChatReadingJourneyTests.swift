@@ -79,6 +79,31 @@ final class ChatReadingJourneyTests: XCTestCase {
     }
 
     @MainActor
+    func testMixedHistoryStartsAtTheFirstUnreadIncomingMessage() {
+        let app = launch(fast: false, story: "unread-mixed")
+        let divider = app.descendants(matching: .any).matching(identifier: "unread-divider").firstMatch
+        XCTAssertTrue(divider.waitForExistence(timeout: 15), "the mixed history has an unread boundary")
+        XCTAssertTrue(divider.isHittable, "opening mixed history brings its unread boundary into view")
+        XCTAssertTrue(text(app, "Mensagem mista não lida 1:").isHittable,
+                      "own messages, background changes and thread replies do not shift the first unread message")
+        XCTAssertFalse(text(app, "Mensagem mista não lida 12:").isHittable,
+                       "opening mixed history does not skip to its end")
+        capture("Mixed chat opens at the first unread incoming message")
+    }
+
+    @MainActor
+    func testOpeningAChatWithNoReadHistoryStartsAtTheFirstMessage() {
+        let app = launch(fast: false, story: "unread-all")
+        let divider = app.descendants(matching: .any).matching(identifier: "unread-divider").firstMatch
+        XCTAssertTrue(divider.waitForExistence(timeout: 15), "an entirely unread chat has an unread boundary")
+        XCTAssertTrue(divider.isHittable, "opening a chat for the first time brings the boundary into view")
+        XCTAssertTrue(text(app, "Mensagem da primeira leitura 1:").isHittable, "its first message is visible")
+        XCTAssertFalse(text(app, "Mensagem da primeira leitura 12:").isHittable,
+                       "a chat without a read marker does not open at its newest message")
+        capture("Entirely unread chat opens at the first message")
+    }
+
+    @MainActor
     func testAtTheEndNewMessagesJustAppear() {
         let app = launch(fast: true)
         let newest = text(app, "guarda um lugar")

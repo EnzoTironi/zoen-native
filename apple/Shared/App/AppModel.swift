@@ -974,12 +974,35 @@ final class AppModel {
             return
         }
         #if DEBUG
-        if story == "unread", SyncModel.mode == .demo {
+        if ["unread", "unread-mixed"].contains(story), SyncModel.mode == .demo {
             perform { try core.markRead(spaceId: turma) }
+            let prefix = story == "unread-mixed" ? "Mensagem mista não lida" : "Mensagem não lida"
             for i in 1...12 {
-                perform { try core.demoMemberSay(spaceId: turma, memberHandle: "marina",
-                    text: "Mensagem não lida \(i): a saída é às oito. Levo água e lanches; nos encontramos na praça antes de pegar a trilha.") }
+                let incoming = perform { try core.demoMemberSay(spaceId: turma, memberHandle: "marina",
+                    text: "\(prefix) \(i): a saída é às oito. Levo água e lanches; nos encontramos na praça antes de pegar a trilha.") }
+                if story == "unread-mixed" {
+                    perform { try core.sendMessage(spaceId: turma,
+                        text: "Minha mensagem \(i): combinado, vou conferir o trajeto e preparar a mochila antes de sair.") }
+                    if i == 1, let incoming {
+                        perform { try core.sendReply(spaceId: turma, text: "Minha resposta na conversa paralela.",
+                                                     to: incoming.id, thread: true) }
+                    }
+                    perform { try core.setBackground(spaceId: turma,
+                        background: PhotoBackgroundLayout().dto(style: "none", media: nil)) }
+                }
             }
+        }
+        if story == "unread-all", SyncModel.mode == .demo {
+            guard let marina = space(turma)?.members.first(where: { $0.handle == "marina" }),
+                  let fresh = perform({ try core.createCommunity(title: "Primeira leitura") }),
+                  perform({ try core.addMember(spaceId: fresh, identityId: marina.id) }) != nil else { return }
+            // A new chat has no read marker and no earlier messages.
+            for i in 1...12 {
+                perform { try core.demoMemberSay(spaceId: fresh, memberHandle: "marina",
+                    text: "Mensagem da primeira leitura \(i): a saída é às oito. Levo água e lanches; nos encontramos na praça antes de pegar a trilha.") }
+            }
+            go(.space(fresh))
+            return
         }
         #endif
         go(.space(turma))
