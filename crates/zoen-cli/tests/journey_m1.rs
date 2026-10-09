@@ -91,6 +91,15 @@ async fn offline_writes_flush_after_the_relay_comes_back() {
     assert_eq!(w.zoen("bruno", &["read", "@ana"]).trim(), "Ana: primeira");
 
     w.stop_relay();
+    let pending = |status: &str| {
+        status
+            .split_whitespace()
+            .find_map(|field| field.strip_prefix("pending="))
+            .expect("queue count")
+            .parse::<usize>()
+            .expect("numeric queue count")
+    };
+    let before = pending(&w.zoen("bruno", &["status", "--offline"]));
     let q = w.zoen(
         "bruno",
         &["send", "@ana", "escrita sem internet", "--offline"],
@@ -103,7 +112,7 @@ async fn offline_writes_flush_after_the_relay_comes_back() {
     );
     // Relaunching while offline keeps it queued (outbox survives the process).
     let status = w.zoen("bruno", &["status", "--offline"]);
-    assert!(status.contains("pending=1"), "{status}");
+    assert_eq!(pending(&status), before + 1, "{status}");
     // A group created and written in while offline: the message is signed on top of a
     // genesis the relay hasn't seen yet (its link is known in advance).
     w.zoen("bruno", &["group", "Ideias", "--offline"]);
