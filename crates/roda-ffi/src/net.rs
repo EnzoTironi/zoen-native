@@ -467,7 +467,9 @@ async fn session(
     if let Err(e) = send(&mut sink, &ClientFrame::Sync { cursors, all: true }).await {
         return Exit::Retry(e);
     }
-    let mut sent: HashSet<String> = HashSet::new();
+    // Preserve the actual sent epoch even if maintenance reseals the outbox while
+    // this publication is still waiting for the relay's answer.
+    let mut sent: HashMap<String, Option<u64>> = HashMap::new();
     if let Err(e) = flush(ctx, &mut sink, &mut sent).await {
         return Exit::Retry(e);
     }
@@ -512,8 +514,10 @@ async fn session(
                 match frame {
                     ServerFrame::Event { ev } => {
                         let space = ev.env.space().to_string();
+                        let client_id = ev.env.client_id().to_string();
                         let commit = ev.env.sealed_kind() == Some(roda_log::content::SealedKind::Commit);
                         let r = ctx.engine().ingest(ev);
+                        if r == Ingest::Confirmed { sent.remove(&client_id); }
                         match r {
                             Ingest::Confirmed if commit => {
                                 // Our commit is in: its Welcome, held until now, goes out.
@@ -535,15 +539,20 @@ async fn session(
                     }
                     ServerFrame::Accepted { .. } => {}
                     ServerFrame::Rejected { space, client_id, reason, permanent } => {
-                        sent.remove(&client_id);
-                        if ctx.engine().reject(&client_id, &reason, permanent) { dirty.insert(space); }
+                        let sent_epoch = sent.remove(&client_id).flatten();
+                        let recoverable = reason == roda_proto::STALE_SEAL || reason == roda_proto::SEAL_REQUIRED;
+                        if ctx.engine().reject(&client_id, &reason, permanent, sent_epoch) { dirty.insert(space); }
                         if !permanent {
                             // Transient (rate limit, db hiccup): retry shortly.
                             let poke = ctx.engine().net.poke.is_some();
                             if poke { tokio::time::sleep(Duration::from_millis(500)).await; }
+                        }
+                        if !permanent || recoverable {
+                            // The relay refuses the old encoding permanently, but the
+                            // queued plaintext may already have a current sealed copy.
                             if let Err(e) = flush(ctx, &mut sink, &mut sent).await { break Exit::Retry(e) }
                         }
-                        if let Some(l) = &ctx.listener { if permanent { l.on_error(reason); } }
+                        if let Some(l) = &ctx.listener { if permanent && !recoverable { l.on_error(reason); } }
                     }
                     ServerFrame::Ephemeral { space, from, kind } => {
                         if let Some(l) = &ctx.listener {
@@ -804,13 +813,24 @@ async fn register(
     }
 }
 
-async fn flush(ctx: &Ctx, sink: &mut Sink, sent: &mut HashSet<String>) -> Result<(), String> {
+async fn flush(
+    ctx: &Ctx,
+    sink: &mut Sink,
+    sent: &mut HashMap<String, Option<u64>>,
+) -> Result<(), String> {
     if !ctx.status.borrow().synced {
         return Ok(());
     }
     let envs = ctx.engine().outbox_envelopes_except(sent);
     for env in envs {
-        if sent.insert(env.client_id().to_string()) {
+        if let std::collections::hash_map::Entry::Vacant(entry) =
+            sent.entry(env.client_id().to_string())
+        {
+            let epoch = env.sealed_data().and_then(|(kind, data)| match kind {
+                roda_log::content::SealedKind::Application => roda_mls::application_epoch(data),
+                _ => None,
+            });
+            entry.insert(epoch);
             send(sink, &ClientFrame::Publish { env }).await?;
         }
     }
@@ -992,6 +1012,20 @@ mod tests {
 
     #[tokio::test(flavor = "current_thread")]
     async fn queued_messages_wait_for_catch_up_and_use_the_current_epoch() {
+        queued_messages_round_trip(CatchUp::Initial).await;
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn late_stale_rejections_preserve_resealed_messages_at_the_current_epoch() {
+        queued_messages_round_trip(CatchUp::Incremental).await;
+    }
+
+    enum CatchUp {
+        Initial,
+        Incremental,
+    }
+
+    async fn queued_messages_round_trip(catch_up: CatchUp) {
         let _ = rustls::crypto::ring::default_provider().install_default();
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
         let url = format!("ws://{}", listener.local_addr().unwrap());
@@ -1180,54 +1214,132 @@ mod tests {
                 request(&mut socket).await,
                 ClientFrame::Sync { all: true, .. }
             ));
-            // Wait for a real maintenance turn before the FIFO request marker.
-            // Its arrival proves the initial flush and explicit Flush have completed;
-            // no sleep is used to infer the absence of a publication.
-            maintenance_started.recv().await.unwrap();
-            cmd.send(Cmd::Flush).unwrap();
-            let (marker, marked) = oneshot::channel();
-            let marker_box = "11".repeat(32);
-            cmd.send(Cmd::Req {
-                op: Op::FetchLink {
-                    id: marker_box.clone(),
-                },
-                reply: marker,
-            })
-            .unwrap();
-            loop {
-                match request(&mut socket).await {
-                    ClientFrame::Publish { .. } => {
-                        panic!("an offline write overtook the initial catch-up")
+            let mut current_copies = HashMap::new();
+            if matches!(catch_up, CatchUp::Incremental) {
+                reply(&mut socket, ServerFrame::SyncDone).await;
+                let mut sent_at_old_epoch = HashSet::new();
+                while sent_at_old_epoch.len() < 2 {
+                    match request(&mut socket).await {
+                        ClientFrame::Publish { env }
+                            if env.sealed_kind() == Some(SealedKind::Application) =>
+                        {
+                            assert!(ctx.status.borrow().synced);
+                            let (_, bytes) = env.sealed_data().unwrap();
+                            assert_eq!(roda_mls::application_epoch(bytes), Some(1));
+                            assert!(sent_at_old_epoch.insert(env.client_id().to_string()));
+                        }
+                        ClientFrame::Req { id, .. } => {
+                            reply(
+                                &mut socket,
+                                ServerFrame::Res {
+                                    id,
+                                    result: Ok(Reply::Done),
+                                },
+                            )
+                            .await;
+                        }
+                        ClientFrame::Ping => reply(&mut socket, ServerFrame::Pong).await,
+                        ClientFrame::Publish { .. } => {}
+                        other => panic!("unexpected {other:?}"),
                     }
-                    ClientFrame::Req {
-                        id,
-                        op: Op::FetchLink { id: link },
-                    } if link == marker_box => {
-                        reply(
-                            &mut socket,
-                            ServerFrame::Res {
-                                id,
-                                result: Ok(Reply::Link(None)),
-                            },
-                        )
-                        .await;
+                }
+                assert!(sent_at_old_epoch.contains(&cached.client_id));
+                assert!(sent_at_old_epoch.contains(&fresh.client_id));
+                // Live catch-up overtakes the answers to both epoch-1 publications.
+                reply(
+                    &mut socket,
+                    ServerFrame::Event {
+                        ev: missed_commit.clone(),
+                    },
+                )
+                .await;
+                reply(&mut socket, ServerFrame::SyncDone).await;
+                loop {
+                    maintenance_started.recv().await.unwrap();
+                    let engine = lock(&engine);
+                    if [&cached_key, &fresh_key].iter().all(|key| {
+                        engine
+                            .store
+                            .meta(key)
+                            .unwrap()
+                            .is_some_and(|v| v.starts_with("2:"))
+                    }) {
+                        assert_eq!(engine.mls_status(space).unwrap().0, 2);
                         break;
                     }
-                    ClientFrame::Ping => reply(&mut socket, ServerFrame::Pong).await,
-                    other => panic!("maintenance sent {other:?} before catch-up"),
+                }
+                current_copies = lock(&engine)
+                    .outbox_envelopes()
+                    .into_iter()
+                    .filter(|env| env.sealed_kind() == Some(SealedKind::Application))
+                    .map(|env| (env.client_id().to_string(), env))
+                    .collect();
+                assert_eq!(current_copies.len(), 2);
+                // The cache now contains new ciphertext, but each outstanding answer
+                // still belongs to the old envelope actually written to the socket.
+                for event in [&cached, &fresh] {
+                    reply(
+                        &mut socket,
+                        ServerFrame::Rejected {
+                            space: space.into(),
+                            client_id: event.client_id.clone(),
+                            reason: roda_proto::STALE_SEAL.into(),
+                            permanent: true,
+                        },
+                    )
+                    .await;
                 }
             }
-            assert!(matches!(marked.await.unwrap(), Ok(Reply::Link(None))));
-            {
-                let engine = lock(&engine);
-                assert_eq!(engine.outbox_len(), 2);
-                assert_eq!(engine.store.meta(&cached_key).unwrap(), Some(cached_copy));
-                assert!(engine.store.meta(&fresh_key).unwrap().is_none());
-                assert!(engine.store.outbox_handshakes().unwrap().is_empty());
-                assert_eq!(engine.mls_status(space).unwrap().0, 1);
+            if matches!(catch_up, CatchUp::Initial) {
+                // Wait for a real maintenance turn before the FIFO request marker.
+                // Its arrival proves the initial flush and explicit Flush have completed;
+                // no sleep is used to infer the absence of a publication.
+                maintenance_started.recv().await.unwrap();
+                cmd.send(Cmd::Flush).unwrap();
+                let (marker, marked) = oneshot::channel();
+                let marker_box = "11".repeat(32);
+                cmd.send(Cmd::Req {
+                    op: Op::FetchLink {
+                        id: marker_box.clone(),
+                    },
+                    reply: marker,
+                })
+                .unwrap();
+                loop {
+                    match request(&mut socket).await {
+                        ClientFrame::Publish { .. } => {
+                            panic!("an offline write overtook the initial catch-up")
+                        }
+                        ClientFrame::Req {
+                            id,
+                            op: Op::FetchLink { id: link },
+                        } if link == marker_box => {
+                            reply(
+                                &mut socket,
+                                ServerFrame::Res {
+                                    id,
+                                    result: Ok(Reply::Link(None)),
+                                },
+                            )
+                            .await;
+                            break;
+                        }
+                        ClientFrame::Ping => reply(&mut socket, ServerFrame::Pong).await,
+                        other => panic!("maintenance sent {other:?} before catch-up"),
+                    }
+                }
+                assert!(matches!(marked.await.unwrap(), Ok(Reply::Link(None))));
+                {
+                    let engine = lock(&engine);
+                    assert_eq!(engine.outbox_len(), 2);
+                    assert_eq!(engine.store.meta(&cached_key).unwrap(), Some(cached_copy));
+                    assert!(engine.store.meta(&fresh_key).unwrap().is_none());
+                    assert!(engine.store.outbox_handshakes().unwrap().is_empty());
+                    assert_eq!(engine.mls_status(space).unwrap().0, 1);
+                }
+                reply(&mut socket, ServerFrame::Event { ev: missed_commit }).await;
+                reply(&mut socket, ServerFrame::SyncDone).await;
             }
-            reply(&mut socket, ServerFrame::Event { ev: missed_commit }).await;
-            reply(&mut socket, ServerFrame::SyncDone).await;
             let mut readable = HashSet::new();
             while readable.len() < 2 {
                 match request(&mut socket).await {
@@ -1239,6 +1351,13 @@ mod tests {
                             .into_iter()
                             .find(|event| event.client_id == env.client_id())
                             .expect("only the two queued messages are published");
+                        if matches!(catch_up, CatchUp::Incremental) {
+                            assert_eq!(
+                                current_copies.get(env.client_id()),
+                                Some(&env),
+                                "a late rejection must preserve the newer sealed copy"
+                            );
+                        }
                         let (_, bytes) = env.sealed_data().unwrap();
                         assert_eq!(roda_mls::application_epoch(bytes), Some(2));
                         let Opened::Application { plaintext, .. } =
