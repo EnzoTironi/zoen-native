@@ -33,13 +33,42 @@ import xyz.tironi.zoen.R
 import xyz.tironi.zoen.ZoenViewModel
 import xyz.tironi.zoen.core.*
 import xyz.tironi.zoen.data.AppState
+import xyz.tironi.zoen.miniapps.McpAppView
+
+val nativeMiniApps = setOf("pet", "poll", "list", "hike", "maptap", "recipe", "countdown")
 
 private fun JSONObject.rows(key: String): List<JSONObject> = optJSONArray(key)?.let { rows -> (0 until rows.length()).mapNotNull { rows.optJSONObject(it) } } ?: emptyList()
 private typealias AppAction = (String, JSONObject) -> Unit
 private data class Confirmation(val tool: String, val args: JSONObject, val outcome: AppCallOutcome)
 
 @Composable
-fun MiniAppScreen(model: ZoenViewModel, state: AppState, item: ItemDetail, modifier: Modifier = Modifier) {
+fun MiniAppScreen(model: ZoenViewModel, state: AppState, item: ItemDetail, modifier: Modifier = Modifier, onClose: () -> Unit = {}) {
+    val app = checkNotNull(item.app)
+    var hasHtml by remember(app.appId) { mutableStateOf(app.appId in setOf("pet", "poll", "list", "hike")) }
+    val preferences = model.repository.preferences
+    var html by remember(app.appId, state.revision) { mutableStateOf(preferences.getBoolean("miniapps.html:${app.appId}", app.appId !in nativeMiniApps) || app.appId !in nativeMiniApps) }
+    LaunchedEffect(app.appId) { hasHtml = model.repository.query { core -> core.appSpecs().any { it.id == app.appId && it.hasView } } }
+    if (hasHtml && html) {
+        Column(modifier.fillMaxSize()) {
+            if (app.appId in nativeMiniApps) Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp), horizontalArrangement = Arrangement.End) {
+                TextButton(onClick = { html = false; preferences.edit().putBoolean("miniapps.html:${app.appId}", false).apply() }) { Text(stringResource(R.string.miniapp_native_view)) }
+            }
+            McpAppView(model, state, item, Modifier.weight(1f).fillMaxWidth(), onClose = onClose)
+        }
+        return
+    }
+    if (hasHtml) {
+        Column(modifier.fillMaxSize()) {
+            Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp), horizontalArrangement = Arrangement.End) {
+                TextButton(onClick = { html = true; preferences.edit().putBoolean("miniapps.html:${app.appId}", true).apply() }) { Text(stringResource(R.string.miniapp_html_view)) }
+            }
+            NativeMiniAppScreen(model, state, item, Modifier.weight(1f))
+        }
+    } else NativeMiniAppScreen(model, state, item, modifier)
+}
+
+@Composable
+private fun NativeMiniAppScreen(model: ZoenViewModel, state: AppState, item: ItemDetail, modifier: Modifier) {
     val app = checkNotNull(item.app)
     val data = remember(app.viewJson) { JSONObject(app.viewJson) }
     var confirmation by remember { mutableStateOf<Confirmation?>(null) }
@@ -53,7 +82,10 @@ fun MiniAppScreen(model: ZoenViewModel, state: AppState, item: ItemDetail, modif
                     when (outcome.status) {
                         AppCallStatus.NEEDS_CONFIRMATION -> confirmation = Confirmation(tool, args, outcome)
                         AppCallStatus.DENIED -> model.notify(outcome.message)
-                        AppCallStatus.DONE -> if (outcome.message.isNotBlank()) model.notify(outcome.message)
+                        AppCallStatus.DONE -> {
+                            if (outcome.message.isNotBlank()) model.notify(outcome.message)
+                            if (tool == "hike_decide") model.planHikeIfReady(item.id)
+                        }
                     }
                 } finally { busy = false }
             }
@@ -77,7 +109,11 @@ fun MiniAppScreen(model: ZoenViewModel, state: AppState, item: ItemDetail, modif
     confirmation?.let { pending -> AlertDialog(onDismissRequest = { confirmation = null }, title = { Text(pending.outcome.confirmTitle ?: stringResource(R.string.confirm_action)) }, text = { Text(pending.outcome.confirmDetail ?: pending.outcome.message) }, confirmButton = {
         TextButton(onClick = {
             confirmation = null
-            model.launch { val result = model.repository.change { it.appCallTool(item.id, pending.tool, pending.args.toString(), true) }; model.notify(result.message) }
+            model.launch {
+                val result = model.repository.change { it.appCallTool(item.id, pending.tool, pending.args.toString(), true) }
+                model.notify(result.message)
+                if (result.status == AppCallStatus.DONE && pending.tool == "hike_decide") model.planHikeIfReady(item.id)
+            }
         }) { Text(stringResource(R.string.approve)) }
     }, dismissButton = { TextButton(onClick = { confirmation = null }) { Text(stringResource(R.string.cancel)) } }) }
 }

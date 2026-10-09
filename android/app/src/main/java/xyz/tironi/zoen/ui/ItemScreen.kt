@@ -22,6 +22,7 @@ import xyz.tironi.zoen.ZoenViewModel
 import xyz.tironi.zoen.core.*
 import xyz.tironi.zoen.data.AppState
 import xyz.tironi.zoen.data.FileAccess
+import xyz.tironi.zoen.miniapps.MiniAppDetailsButton
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
@@ -41,6 +42,7 @@ fun ItemScreen(model: ZoenViewModel, state: AppState, id: String, navigate: (Nav
     }
     Scaffold(topBar = {
         ScreenBar(item.title, back, actions = {
+            if (item.app != null) MiniAppDetailsButton(model, state, item)
             IconButton(onClick = { versions = true }) { Icon(Icons.Rounded.History, stringResource(R.string.versions)) }
             IconButton(onClick = {
                 model.launch {
@@ -57,7 +59,7 @@ fun ItemScreen(model: ZoenViewModel, state: AppState, id: String, navigate: (Nav
         })
     }) { padding ->
         when {
-            item.app != null -> MiniAppScreen(model, state, item, Modifier.padding(padding))
+            item.app != null -> MiniAppScreen(model, state, item, Modifier.padding(padding), onClose = back)
             item.kindId == "page" -> key(id, restored) { PageEditor(model, state, item, Modifier.padding(padding)) }
             item.file != null -> FileScreen(model, state, item, Modifier.padding(padding))
             else -> LazyColumn(Modifier.padding(padding), contentPadding = PaddingValues(24.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {

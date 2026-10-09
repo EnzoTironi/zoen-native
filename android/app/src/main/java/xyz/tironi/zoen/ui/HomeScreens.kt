@@ -27,10 +27,15 @@ import xyz.tironi.zoen.R
 import xyz.tironi.zoen.ZoenViewModel
 import xyz.tironi.zoen.core.*
 import xyz.tironi.zoen.data.AppState
+import xyz.tironi.zoen.miniapps.MiniAppTileStrip
+import xyz.tironi.zoen.miniapps.MiniAppStoreScreen
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 
 @Composable
-private fun HomeBar(title: String, state: AppState, navigate: (NavKey) -> Unit) {
+private fun HomeBar(title: String, state: AppState, navigate: (NavKey) -> Unit, onStore: (() -> Unit)? = null) {
     ScreenBar(title, actions = {
+        if (onStore != null) IconButton(onClick = onStore) { Icon(Icons.Rounded.Storefront, stringResource(R.string.miniapp_store)) }
         if (state.demo) AssistChip(onClick = { navigate(Context) }, label = { Text(stringResource(R.string.demo)) }, modifier = Modifier.padding(end = 4.dp))
         IconButton(onClick = { navigate(Search) }) { Icon(Icons.Rounded.Search, stringResource(R.string.search)) }
         IconButton(onClick = { navigate(Context) }) { Avatar(state.me, size = 34) }
@@ -39,6 +44,7 @@ private fun HomeBar(title: String, state: AppState, navigate: (NavKey) -> Unit) 
 
 @Composable
 fun ConversationsScreen(model: ZoenViewModel, state: AppState, navigate: (NavKey) -> Unit, split: Boolean) {
+    var store by rememberSaveable { mutableStateOf(false) }
     var selectedChat by rememberSaveable { mutableStateOf<String?>(null) }
     var filter by rememberSaveable { mutableIntStateOf(0) }
     var pinned by remember { mutableStateOf(model.repository.preferences.getStringSet("pins", setOf("zoen"))!!.toSet()) }
@@ -46,7 +52,7 @@ fun ConversationsScreen(model: ZoenViewModel, state: AppState, navigate: (NavKey
         .filter { when (filter) { 1 -> it.counterpart?.kind == PersonaKind.PERSON; 2 -> it.unread > 0u; else -> true } }
         .sortedByDescending { it.id in pinned || it.counterpart?.handle in pinned }
     val list: @Composable () -> Unit = {
-        Scaffold(topBar = { HomeBar(stringResource(R.string.app_name), state, navigate) }, contentWindowInsets = WindowInsets(0, 0, 0, 0)) { padding ->
+        Scaffold(topBar = { HomeBar(stringResource(R.string.app_name), state, navigate, onStore = { store = true }) }, contentWindowInsets = WindowInsets(0, 0, 0, 0)) { padding ->
             LazyColumn(Modifier.fillMaxSize().padding(padding), contentPadding = PaddingValues(bottom = 100.dp)) {
                 item {
                     Column(Modifier.padding(horizontal = 24.dp, vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
@@ -54,13 +60,11 @@ fun ConversationsScreen(model: ZoenViewModel, state: AppState, navigate: (NavKey
                         Text(stringResource(R.string.your_day), color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                 }
-                val apps = state.items.filter { it.app != null }.take(12)
+                val apps = state.items.filter { it.app != null }
                 if (apps.isNotEmpty()) {
                     item { SectionLabel(stringResource(R.string.live_apps), Modifier.padding(horizontal = 24.dp)) }
                     item {
-                        LazyRow(contentPadding = PaddingValues(horizontal = 24.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                            items(apps, key = { it.id }) { item -> ItemTile(item, { navigate(Item(item.id)) }) }
-                        }
+                        MiniAppTileStrip(model, state, apps, onOpenItem = { navigate(Item(it)) })
                     }
                 }
                 item {
@@ -96,6 +100,9 @@ fun ConversationsScreen(model: ZoenViewModel, state: AppState, navigate: (NavKey
             else Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { EmptyState(stringResource(R.string.chat_empty_title), stringResource(R.string.chat_empty_detail)) }
         }
     } else list()
+    if (store) Dialog(onDismissRequest = { store = false }, properties = DialogProperties(usePlatformDefaultWidth = false)) {
+        MiniAppStoreScreen(model, state, onOpenItem = { store = false; navigate(Item(it)) }, back = { store = false }, onOpenAgent = { store = false; navigate(Agent(it)) })
+    }
 }
 
 @OptIn(ExperimentalFoundationApi::class)
