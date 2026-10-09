@@ -8,16 +8,16 @@ The port uses Kotlin/Compose and the real Rust JNI library. The completion gate 
 |---|---|
 | Shared core | 39 `roda-ffi` tests pass; strict Clippy passes. User catalog installation, typed media versions and immutable historical content have engine tests. |
 | JVM | 72 tests pass in 11 suites, with zero failures, errors or skips. Coverage includes structured generation, routing/context, Unicode search, rich page editing, onboarding drafts/routes, MCP boundaries, snapshots, media edits and globe geometry. |
-| Combined build | The integrated debug app and instrumentation APK compile; lint passes. Final release compilation uses the normal `buildRodaCore` task and both release ABIs. |
+| Combined build | The normal both-ABI debug/test/release build, R8 and lint pass at `a71e3ee`. Matching debug/test APKs and all 72 JVM tests also pass after the lifecycle and duplicate-recorder fixes at `d2b7928`. The thread ownership and Android tonal-surface changes require the next matching build. |
 | Isolated relay | Independent Android identities exchanged encrypted messages, a chunked attachment, a new typed version and an encrypted photo background. Closing/reopening and offline outbox recovery passed. The local relay uses the existing Postgres/FoundationDB backend. |
 | Native core/system integration | All five `NativeParityTest` cases passed: private account data erasure, batch Markdown/image content URIs and thumbnails, rich page/history reopening, all seven real RemoteViews templates with private content hidden, and notification preview/read/mute/visible-chat behavior. |
 | Focused media | Android codecs and image/PDF rendering were exercised; actual image ink produced a signed v2, preserved original v1 bytes, and survived activity recreation. Microphone review, cut, AAC send and playback ran against the actual core. |
 | Agents and permissions | Context/routing and fallback tests pass. Encrypted profile and browser takeover checks passed. Native globe interaction, complete signed audit verification and scoped standing/device grant persistence/revocation passed. |
 | HTML MCP | Real HTML List touch updated signed Rust state and live DOM. Cross-app resource access and foreign origin bridge access were denied; irreversible calls required native confirmation. The full bundled React/MapLibre Hike journey is in the final combined run. |
-| Final device/CI run | In progress. The Android 9/15 x86_64 matrix starts an isolated relay and runs the complete instrumented suite. Local UI runs encountered stock System UI ANRs under severe host memory pressure; conflicted/failed runs are retained and are not counted as passing evidence. |
-| Release/package checks | In progress for the final implementation. The original port passed R8 startup and 16 KB ELF/APK alignment; those earlier results do not establish the final artifact's result. |
+| Final device/CI run | In progress. The complete `a71e3ee` matrix ran all 45 cases without a JNI abort. API 28 passed 36, failed seven and skipped two unsupported HTML-provider cases; API 35 passed 37 and failed eight. Full Rust CI passed. The identified lifecycle, recorder ownership and rendering fixes are integrated for another complete run; failed runs are retained and do not count as passing evidence. |
+| Release/package checks | The `a71e3ee` normal release build passes R8. All six packaged ARM64/x86_64 native libraries have at least 16 KB LOAD alignment and the APK passes 16 KB zip alignment. Release SHA256 is `54bb7de69b205285c67db3d604a8dd5878627d60519ef39f4350d829894ce81a`. Final source changes require rebuilding and checking the new artifact. |
 
-Final integrated UI journeys exercise all eight onboarding areas, real background connection and message deep links, separate threads and quotes, pinned plans, stationary Home voice hold/release, rich page editing/autosave/old-version restoration, chat appearance, native media, browser takeover, globe, audit/grants and the HTML host. A discovered stationary-hold collision with the native clickable is being corrected in both record buttons; the regression journey retains a stationary pointer.
+Final integrated UI journeys exercise all eight onboarding areas, real background connection and message deep links, separate threads and quotes, pinned plans, stationary Home voice hold/release, rich page editing/autosave/old-version restoration, chat appearance, native media, browser takeover, globe, audit/grants and the HTML host. All six stationary-hold/accessibility gesture cases and all six native media/codec cases pass on the completed matrix. New regressions check consumable cold/warm links, notification handback and retained voice reviews across different thread roots. Hike keeps its real touch, rendered-frame and signed-vote gates; Android tonal surfaces replace expensive backdrop-filter readbacks before the first paint.
 
 ## Reproduce
 
@@ -31,11 +31,13 @@ cd android
   :app:testDebugUnitTest :app:lintDebug -PcoreProfile=release
 # In another terminal, from the repository root:
 # scripts/dev-stack.sh
-./gradlew :app:connectedDebugAndroidTest \
+../scripts/test-android-device.sh \
   -Pandroid.testInstrumentationRunnerArguments.zoenRelay=http://10.0.2.2:8787
 ```
 
 The relay argument is required for the two-identity and onboarding/background cases. They create and clean up their own accounts; without the argument they report a skip. They refuse to replace an existing real account. Demo peers alone do not establish network delivery.
+
+The device runner preserves Gradle's test exit status and collects generated MCP, globe and media PNGs before the CI emulator is stopped. App and instrumentation APKs are separate packages and must be installed separately when installing them manually.
 
 ## Visual evidence
 
