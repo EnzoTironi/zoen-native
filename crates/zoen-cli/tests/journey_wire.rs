@@ -200,14 +200,16 @@ async fn the_relay_refuses_events_signed_on_a_history_it_doesnt_have() {
 #[tokio::test]
 async fn an_outdated_client_is_told_to_upgrade() {
     let w = World::new("upgrade").await;
-    // Protocol 2 is the deployed client that hashes all v3 ciphertext bytes.
-    // It must be refused before any version-4 sealed entry can reach it.
-    match hello_only(&w.relay_url(), 2).await {
-        ServerFrame::Error { code, message } => {
-            assert_eq!(code, ErrorCode::UpgradeRequired);
-            assert!(message.contains("too old"), "{message}");
+    // Protocol 2 cannot verify sealed v4 entries; protocol 3 sponsors cannot enroll
+    // linked devices. Both need an explicit upgrade before authentication.
+    for protocol in [2, 3] {
+        match hello_only(&w.relay_url(), protocol).await {
+            ServerFrame::Error { code, message } => {
+                assert_eq!(code, ErrorCode::UpgradeRequired);
+                assert!(message.contains("too old"), "{message}");
+            }
+            other => panic!("expected an upgrade error, got {other:?}"),
         }
-        other => panic!("expected an upgrade error, got {other:?}"),
     }
     assert!(
         matches!(
