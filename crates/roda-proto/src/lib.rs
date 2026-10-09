@@ -25,15 +25,17 @@
 pub mod experiments;
 pub mod wire;
 
-use roda_log::content::{decode_body, signed_hash, stub_content, Payload, SignedContent};
+use roda_log::content::{content_hash, decode_body, stub_content, Payload, SignedContent};
 pub use roda_log::content::{Sealed, SealedKind};
-use roda_log::{event_from_content, verify_author, verify_sig, Author, LogError};
+use roda_log::{
+    event_from_content, signed_content_hash, verify_author, verify_sig, Author, LogError,
+};
 use roda_types::{Event, EventBody, Identity, IdentityId, Role, Seen, SpaceId};
 
 pub use roda_log::profile::DeviceSigned;
 
 /// The version this build speaks, and the oldest one it still accepts.
-pub const PROTOCOL_VERSION: u32 = 2;
+pub const PROTOCOL_VERSION: u32 = 3;
 /// Why a relay refuses a clear event in an end-to-end Space. A client that wrote it before
 /// it learned the Space went end-to-end (ADR 0027) seals it and sends it again.
 pub const SEAL_REQUIRED: &str = "this space is end-to-end encrypted; seal the event";
@@ -45,7 +47,7 @@ pub const STALE_COMMIT: &str = "stale_epoch: another commit took this epoch";
 /// Why a relay refuses a message sealed at an epoch the group has left (a device that
 /// sealed before catching up). It waits, catches up, and seals again at the new epoch.
 pub const STALE_SEAL: &str = "stale_epoch: sealed at an epoch the group has left";
-pub const MIN_PROTOCOL_VERSION: u32 = 2;
+pub const MIN_PROTOCOL_VERSION: u32 = 3;
 /// Domain tag for what devices sign outside the log (login, blob uploads).
 pub const PROTOCOL: &str = "zoen-sync/2";
 /// Optional features; each side announces its own and uses the intersection.
@@ -69,6 +71,10 @@ pub struct Envelope {
     pub cert: Option<String>,
     /// Transport only, never stored: the invite code that lets a newcomer add themselves.
     pub invite: Option<String>,
+    /// Already-pruned v3 entries retain the original hash carried by old relays.
+    /// Its signature authenticates that hash, not the surviving header. Those lost
+    /// bytes cannot be recovered by an upgrade; new v4 stubs authenticate both.
+    legacy_pruned: Option<String>,
 }
 
 impl Envelope {
@@ -87,6 +93,7 @@ impl Envelope {
             sig,
             cert,
             invite,
+            legacy_pruned: None,
         })
     }
 
@@ -94,13 +101,39 @@ impl Envelope {
     /// hash of the MLS bytes, without them. It hashes and verifies like the original.
     /// `None` for anything that isn't sealed, or is already a stub.
     pub fn pruned(&self) -> Option<Envelope> {
+        if self.is_pruned()
+            || (self.parsed.v == 3 && self.wire_hash() == content_hash(&self.content))
+        {
+            // Full legacy ciphertext remains intact: its old signature cannot
+            // authenticate a replacement digest. Never create another weak stub.
+            return None;
+        }
         let content = stub_content(&self.content)?;
         Envelope::new(content, self.sig.clone(), self.cert.clone(), None)
     }
 
     /// A stub the relay left when it pruned this entry.
     pub fn is_pruned(&self) -> bool {
-        matches!(&self.parsed.payload, Some(Payload::Sealed(s)) if s.is_stub())
+        self.legacy_pruned.is_some()
+            || matches!(&self.parsed.payload, Some(Payload::Sealed(s)) if s.is_stub())
+    }
+
+    pub fn legacy_pruned_hash(&self) -> Option<&str> {
+        self.legacy_pruned.as_deref()
+    }
+
+    pub(crate) fn with_legacy_pruned(mut self, hash: Option<String>) -> Option<Self> {
+        if let Some(original) = &hash {
+            if self.parsed.v != 3
+                || !matches!(&self.parsed.payload, Some(Payload::Sealed(s)) if s.data.is_empty() && s.data_hash.is_empty())
+                || original.len() != 64
+                || !original.bytes().all(|b| b.is_ascii_hexdigit())
+            {
+                return None;
+            }
+        }
+        self.legacy_pruned = hash;
+        Some(self)
     }
 
     /// Wraps a signed, unsequenced plaintext event.
@@ -180,7 +213,9 @@ impl Envelope {
 
     /// The hash the chain links: over the exact bytes, plain or sealed.
     pub fn wire_hash(&self) -> String {
-        signed_hash(&self.content)
+        self.legacy_pruned
+            .clone()
+            .unwrap_or_else(|| signed_content_hash(&self.content, &self.sig))
     }
 
     /// Checks the device certificate and the author's signature over the bytes.
@@ -619,6 +654,134 @@ pub fn normalize_handle(raw: &str) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use roda_log::{chain_hash, SpaceLog};
+    use roda_types::GENESIS_PREV;
+
+    fn fixture(name: &str) -> Sequenced {
+        let data: serde_json::Value = serde_json::from_str(include_str!(
+            "../../roda-log/testdata/legacy-sealed-v3.json"
+        ))
+        .unwrap();
+        Sequenced::decode(&hex::decode(data[name].as_str().unwrap()).unwrap()).unwrap()
+    }
+
+    fn stored_event(ev: &Sequenced) -> Event {
+        let mut e = event_from_content(
+            ev.env.content.clone(),
+            ev.env.sig.clone(),
+            ev.env.cert.clone(),
+            ev.seq,
+            ev.prev.clone(),
+            ev.hash.clone(),
+        )
+        .unwrap();
+        e.sealed_wire = ev.env.legacy_pruned_hash().map(str::to_string);
+        e
+    }
+
+    #[test]
+    fn frozen_main_v3_ciphertext_keeps_its_signature_chain_and_outbox_bytes() {
+        let ev = fixture("legacy_full");
+        ev.env.verify().unwrap();
+        assert_eq!(Sequenced::decode(&ev.encode()).unwrap(), ev);
+        assert!(
+            ev.env.pruned().is_none(),
+            "an old signature cannot authenticate a new pruning digest"
+        );
+        let frame = ClientFrame::Publish {
+            env: ev.env.clone(),
+        };
+        assert_eq!(ClientFrame::decode(&frame.encode()).unwrap(), frame);
+        SpaceLog::from_events(
+            "sp_upgrade",
+            vec![stored_event(&fixture("genesis")), stored_event(&ev)],
+        )
+        .unwrap();
+    }
+
+    #[test]
+    fn frozen_legacy_tag_five_stubs_keep_their_authenticated_original_hash() {
+        let ev = fixture("legacy_stub");
+        let original = fixture("legacy_full");
+        ev.env.verify().unwrap();
+        assert_eq!(ev.env.wire_hash(), original.env.wire_hash());
+        assert_eq!(ev.hash, original.hash);
+        assert_eq!(Sequenced::decode(&ev.encode()).unwrap(), ev);
+        SpaceLog::from_events(
+            "sp_upgrade",
+            vec![stored_event(&fixture("genesis")), stored_event(&ev)],
+        )
+        .unwrap();
+        assert!(ClientFrame::decode(
+            &ClientFrame::Publish {
+                env: ev.env.clone()
+            }
+            .encode()
+        )
+        .is_err());
+        let mut bad = ev.env;
+        bad.sig = "0".repeat(128);
+        assert!(bad.verify().is_err());
+    }
+
+    #[test]
+    fn frozen_unversioned_m2_hashes_keep_their_chain_and_pruning_proof() {
+        let ev = fixture("unversioned_full");
+        let stub = fixture("unversioned_stub");
+        ev.env.verify().unwrap();
+        stub.env.verify().unwrap();
+        assert_eq!(ev.env.pruned().unwrap(), stub.env);
+        assert_eq!(ev.env.wire_hash(), stub.env.wire_hash());
+        for entry in [ev, stub] {
+            SpaceLog::from_events(
+                "sp_upgrade",
+                vec![stored_event(&fixture("genesis")), stored_event(&entry)],
+            )
+            .unwrap();
+        }
+    }
+
+    #[test]
+    fn versioned_stubs_authenticate_unknown_fields_and_refuse_legacy_markers() {
+        let author = Author::root(roda_log::Signer::from_secret(&[37; 32]));
+        let env = Envelope::sealed(
+            &author,
+            "sp",
+            "message",
+            3,
+            None,
+            Sealed::new(SealedKind::Application, 1, vec![1, 2, 3]),
+        );
+        let mut bytes = env.content().to_vec();
+        // A newer client's unknown length-delimited field 127 must remain signed.
+        bytes.extend_from_slice(&[0xfa, 0x07, 0x03, b'n', b'e', b'w']);
+        let sig = author
+            .key
+            .sign(roda_log::content::signed_hash(&bytes).as_bytes());
+        let full = Envelope::new(bytes, sig, None, None).unwrap();
+        full.verify().unwrap();
+        assert_eq!(full.parsed.v, roda_log::content::SEALED_CONTENT_VERSION);
+        let stub = full.pruned().unwrap();
+        stub.verify().unwrap();
+        assert_eq!(stub.wire_hash(), full.wire_hash());
+        assert!(stub
+            .content
+            .ends_with(&[0xfa, 0x07, 0x03, b'n', b'e', b'w']));
+        assert!(stub
+            .clone()
+            .with_legacy_pruned(Some(full.wire_hash()))
+            .is_none());
+        let mut changed = stub.content.clone();
+        *changed.last_mut().unwrap() = b'x';
+        assert!(Envelope::new(changed, stub.sig, None, None)
+            .unwrap()
+            .verify()
+            .is_err());
+        assert_eq!(
+            chain_hash("sp", 0, GENESIS_PREV, &full.wire_hash()),
+            chain_hash("sp", 0, GENESIS_PREV, &stub.wire_hash())
+        );
+    }
 
     #[test]
     fn handles_are_normalized() {

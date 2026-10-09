@@ -17,7 +17,7 @@ use std::{
 use futures_util::{SinkExt, StreamExt};
 use roda_proto::{
     auth_message, blob_put_message, ClientFrame, EphemeralKind, ErrorCode, Op, Reply, ServerFrame,
-    CAPABILITIES, PROTOCOL_VERSION,
+    CAPABILITIES, MIN_PROTOCOL_VERSION, PROTOCOL_VERSION,
 };
 use roda_types::Identity;
 use tokio::sync::{mpsc, oneshot, watch};
@@ -406,8 +406,16 @@ async fn session(
             nonce,
             relay,
             capabilities,
+            protocol,
             ..
-        }) => (nonce, relay, capabilities.iter().any(|c| c == "profiles")),
+        }) if protocol >= MIN_PROTOCOL_VERSION => {
+            (nonce, relay, capabilities.iter().any(|c| c == "profiles"))
+        }
+        Ok(ServerFrame::Challenge { protocol, .. }) => {
+            return Exit::Blocked(format!(
+                "relay protocol {protocol} needs an upgrade before encrypted histories can sync"
+            ))
+        }
         Ok(ServerFrame::Error { code, message }) => return refused(code, message, backoff),
         Ok(other) => return Exit::Retry(format!("unexpected {other:?}")),
         Err(e) => return Exit::Retry(e),
@@ -962,7 +970,17 @@ pub async fn fetch_link_box(
     )
     .await?;
     let (nonce, relay) = match recv(&mut stream).await? {
-        ServerFrame::Challenge { nonce, relay, .. } => (nonce, relay),
+        ServerFrame::Challenge {
+            nonce,
+            relay,
+            protocol,
+            ..
+        } if protocol >= MIN_PROTOCOL_VERSION => (nonce, relay),
+        ServerFrame::Challenge { protocol, .. } => {
+            return Err(format!(
+                "relay protocol {protocol} needs an upgrade before linking"
+            ))
+        }
         ServerFrame::Error { message, .. } => return Err(message),
         other => return Err(format!("unexpected {other:?}")),
     };
