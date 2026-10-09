@@ -67,7 +67,7 @@ final class TileEditJourneyTests: XCTestCase {
         XCTAssertTrue(confirm.exists, "removing asks first")
         confirm.tap()
         let gone = NSPredicate { _, _ in !self.names(app, "home-tile").contains(victim) }
-        XCTAssertEqual(XCTWaiter().wait(for: [XCTNSPredicateExpectation(predicate: gone, object: nil)], timeout: 5), .completed, "the card is unpinned")
+        XCTAssertEqual(XCTWaiter().wait(for: [XCTNSPredicateExpectation(predicate: gone, object: nil)], timeout: 5), .completed, "the card is unpinned (still: \(self.names(app, "home-tile")))")
         sleep(1)
 
         // Concluir: the wobble and minus badges go away.
