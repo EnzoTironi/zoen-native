@@ -177,6 +177,19 @@ impl From<&SeenLink> for Seen {
 /// Domain of a sealed entry's hash.
 pub const SEALED_DOMAIN: &[u8] = b"zoen-sealed-v1\0";
 
+/// V4 signatures cannot be replayed as opaque legacy v3 stub hashes. Legacy signatures
+/// signed only the digest, so their surviving headers remain a historical trust limit.
+pub fn signature_message(content: &[u8], hash: &str) -> Vec<u8> {
+    let mut message = Vec::new();
+    if SignedContent::parse(content).is_some_and(|c| {
+        c.v >= SEALED_CONTENT_VERSION && matches!(c.payload, Some(Payload::Sealed(_)))
+    }) {
+        message.extend_from_slice(b"zoen-sealed-signature-v4\0");
+    }
+    message.extend_from_slice(hash.as_bytes());
+    message
+}
+
 /// The hash an author signs and the chain links (ADR 0026). V3 keeps its exact-byte hash.
 /// V4 sealed content: SHA-256(sealed domain ‖ hash of the header with the MLS bytes out ‖
 /// SHA-256 of the MLS bytes). A pruned stub keeps the header and the bytes' hash, so it
@@ -223,17 +236,19 @@ pub fn unversioned_sealed_hash(content: &[u8]) -> Option<String> {
 /// The stub content a pruned sealed entry leaves; `None` unless sealed with its bytes.
 pub fn stub_content(content: &[u8]) -> Option<Vec<u8>> {
     let mut c = SignedContent::parse(content)?;
-    if !matches!(c.payload, Some(Payload::Sealed(_))) {
+    let Some(Payload::Sealed(sealed)) = &c.payload else {
         return None;
-    }
+    };
     if c.v >= SEALED_CONTENT_VERSION {
+        if sealed.is_stub() {
+            return None;
+        }
+        // Protobuf merges repeated message fields. Every raw occurrence must carry
+        // the digest of that final merged payload, including an empty last occurrence.
+        let digest = sealed.data_digest();
         return rewrite_sealed(content, |bytes| {
-            let sealed = <Sealed as Message>::decode(bytes).ok()?;
-            if sealed.is_stub() {
-                return None;
-            }
             let mut header = strip_sealed_data(bytes)?;
-            append_bytes(&mut header, 4, &sealed.data_digest());
+            append_bytes(&mut header, 4, &digest);
             Some(header)
         });
     }
@@ -406,12 +421,12 @@ mod tests {
         })
         .unwrap();
         let hash = signed_hash(&content);
-        let sig = author.key.sign(hash.as_bytes());
+        let sig = author.key.sign(&signature_message(&content, &hash));
         let stub = stub_content(&content).unwrap();
         assert_eq!(signed_hash(&stub), hash);
         assert!(crate::verify_sig(
             &author.identity,
-            signed_hash(&stub).as_bytes(),
+            &signature_message(&stub, &signed_hash(&stub)),
             &sig
         ));
         let changed = rewrite_sealed(&stub, |inner| {
@@ -423,8 +438,37 @@ mod tests {
         .unwrap();
         assert!(!crate::verify_sig(
             &author.identity,
-            signed_hash(&changed).as_bytes(),
+            &signature_message(&changed, &signed_hash(&changed)),
             &sig
         ));
+    }
+
+    #[test]
+    fn repeated_sealed_fields_keep_the_final_merged_digest_when_pruned() {
+        let author = crate::Author::root(crate::Signer::from_secret(&[57; 32]));
+        let (mut content, _) = author.sign_sealed(
+            "space",
+            "message",
+            1,
+            None,
+            Sealed::new(SealedKind::Application, 1, vec![10, 20, 30]),
+        );
+        // An empty second message merges with the first; it does not replace data.
+        append_bytes(&mut content, 9, &[]);
+        let hash = signed_hash(&content);
+        let sig = author.key.sign(&signature_message(&content, &hash));
+        let stub = stub_content(&content).unwrap();
+        assert_eq!(signed_hash(&stub), hash);
+        assert!(crate::verify_sig(
+            &author.identity,
+            &signature_message(&stub, &signed_hash(&stub)),
+            &sig,
+        ));
+        let parsed = SignedContent::parse(&stub).unwrap();
+        let Some(Payload::Sealed(sealed)) = parsed.payload else {
+            panic!("sealed fixture");
+        };
+        assert!(sealed.data.is_empty());
+        assert_eq!(sealed.data_hash, Sha256::digest([10, 20, 30]).to_vec());
     }
 }
