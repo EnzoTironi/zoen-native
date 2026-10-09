@@ -3,18 +3,25 @@ package xyz.tironi.zoen
 import android.app.KeyguardManager
 import android.graphics.Bitmap
 import android.graphics.Rect
+import android.os.Build
 import android.os.Handler
 import android.os.HandlerThread
 import android.os.PowerManager
+import android.os.SystemClock
 import android.util.Log
 import android.view.FrameMetrics
+import android.view.PixelCopy
 import android.view.View
 import android.view.ViewTreeObserver
 import android.view.Window
 import android.webkit.WebView
 import androidx.activity.ComponentActivity
 import androidx.test.platform.app.InstrumentationRegistry
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicInteger
+import java.util.concurrent.atomic.AtomicLong
 import java.util.concurrent.atomic.AtomicReference
 import org.json.JSONObject
 
@@ -25,6 +32,7 @@ internal class McpRenderProbe(private val activity: ComponentActivity, private v
     private val frames = AtomicInteger()
     private val state = AtomicReference("{}")
     private val frame = AtomicReference("{}")
+    private val capture = AtomicReference("{}")
     private val drawListener = ViewTreeObserver.OnDrawListener {
         if (draws.incrementAndGet() <= 3) Log.i(TAG, "Native draw: ${report()}")
     }
@@ -80,7 +88,80 @@ internal class McpRenderProbe(private val activity: ComponentActivity, private v
     }
 
     fun report(): String = JSONObject().put("native", JSONObject(state.get())).put("draws", draws.get())
-        .put("frames", frames.get()).put("lastFrame", JSONObject(frame.get())).toString()
+        .put("frames", frames.get()).put("lastFrame", JSONObject(frame.get())).put("windowCapture", JSONObject(capture.get())).toString()
+
+    /** Captures the submitted app surface within the caller's existing visual/draw deadline. */
+    fun captureCommittedWindow(name: String, deadline: Long) {
+        val instrumentation = InstrumentationRegistry.getInstrumentation()
+        val finished = CountDownLatch(1)
+        val result = AtomicInteger(-1)
+        val copiedAt = AtomicLong(Long.MAX_VALUE)
+        val failure = AtomicReference<Throwable?>()
+        val cancelled = AtomicBoolean()
+        val started = AtomicBoolean()
+        var bitmap: Bitmap? = null
+        var commit: Runnable? = null
+        var legacyFrame: Window.OnFrameMetricsAvailableListener? = null
+        try {
+            instrumentation.runOnMainSync {
+                check(nativeReady() && web.isHardwareAccelerated) { "Committed evidence needs the foreground hardware-rendered window: ${report()}" }
+                val decor = activity.window.decorView
+                val pixels = Bitmap.createBitmap(decor.width, decor.height, Bitmap.Config.ARGB_8888)
+                bitmap = pixels
+                val info = JSONObject().put("deadlineUptimeMs", deadline).put("width", pixels.width).put("height", pixels.height)
+                    .put("barrier", if (Build.VERSION.SDK_INT >= 29) "frame-commit" else "frame-metrics")
+                fun mark(stage: String, timestampKey: String) {
+                    info.put("stage", stage).put(timestampKey, SystemClock.uptimeMillis())
+                    capture.set(info.toString())
+                    Log.i(TAG, "Window capture: $info")
+                }
+                commit = Runnable {
+                    if (cancelled.get() || !started.compareAndSet(false, true)) return@Runnable
+                    mark("frame submitted", "submittedUptimeMs")
+                    try {
+                        PixelCopy.request(activity.window, pixels, { status ->
+                            result.set(status)
+                            copiedAt.set(SystemClock.uptimeMillis())
+                            info.put("pixelCopyResult", status)
+                            mark("pixels copied", "copiedUptimeMs")
+                            if (cancelled.get()) pixels.recycle()
+                            finished.countDown()
+                        }, Handler(activity.mainLooper))
+                    } catch (error: Exception) {
+                        failure.set(error)
+                        finished.countDown()
+                    }
+                }
+                mark("frame requested", "requestedUptimeMs")
+                if (Build.VERSION.SDK_INT >= 29) web.viewTreeObserver.registerFrameCommitCallback(checkNotNull(commit))
+                else {
+                    // API28 reports completed hardware frames but has no frame-commit callback.
+                    val requestedAt = System.nanoTime()
+                    legacyFrame = Window.OnFrameMetricsAvailableListener { _, metrics, _ ->
+                        if (metrics.getMetric(FrameMetrics.INTENDED_VSYNC_TIMESTAMP) >= requestedAt) checkNotNull(commit).run()
+                    }
+                    activity.window.addOnFrameMetricsAvailableListener(checkNotNull(legacyFrame), Handler(activity.mainLooper))
+                }
+                web.postInvalidateOnAnimation()
+            }
+            val completed = finished.await((deadline - SystemClock.uptimeMillis()).coerceAtLeast(0), TimeUnit.MILLISECONDS)
+            failure.get()?.let { throw it }
+            check(completed && copiedAt.get() <= deadline) {
+                "The updated app window did not commit and copy within the visual/draw deadline: ${report()}"
+            }
+            check(result.get() == PixelCopy.SUCCESS) { "Native Window PixelCopy failed with ${result.get()}: ${report()}" }
+            Evidence.outputFile("mcp", name).outputStream().use { check(checkNotNull(bitmap).compress(Bitmap.CompressFormat.PNG, 100, it)) }
+            Evidence.outputFile("mcp", name.removeSuffix(".png") + "-render.json").writeText(report())
+        } finally {
+            cancelled.set(true)
+            instrumentation.runOnMainSync {
+                if (Build.VERSION.SDK_INT >= 29 && web.viewTreeObserver.isAlive) commit?.let(web.viewTreeObserver::unregisterFrameCommitCallback)
+                legacyFrame?.let(activity.window::removeOnFrameMetricsAvailableListener)
+                // A timed-out PixelCopy still owns its destination until its callback completes.
+                if (!started.get() || finished.count == 0L) bitmap?.takeUnless(Bitmap::isRecycled)?.recycle()
+            }
+        }
+    }
 
     /** Uses the last observed UI state so diagnostics do not depend on an unblocked UI loop. */
     fun failureEvidence(name: String, error: Throwable) {

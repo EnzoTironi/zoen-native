@@ -202,9 +202,10 @@ class McpWebViewTest {
             val trails = JSONObject(core.item(item.id).app!!.viewJson).getJSONArray("trails")
             assertTrue((0 until trails.length()).any { trails.getJSONObject(it).getJSONArray("votes").length() > 0 })
             waitUntil(description = "The signed vote must return to the HTML Vote control") { evaluate(web.get(), "document.querySelector('.sticky button:last-child').textContent.startsWith('Voted')") == "true" }
-            awaitFrame(web.get(), probe.get())
+            val renderDeadline = awaitFrame(web.get(), probe.get())
             assertTrue(core.verifyAll().all { it.valid })
-            val evidence = evidenceFile("mcp-hike-offline-vote.png")
+            probe.get().captureCommittedWindow("mcp-hike-offline-vote.png", renderDeadline)
+            val evidence = evidenceFile("mcp-hike-offline-vote-display.png")
             InstrumentationRegistry.getInstrumentation().uiAutomation.takeScreenshot().use { bitmap -> evidence.outputStream().use { bitmap.compress(Bitmap.CompressFormat.PNG, 100, it) } }
             htmlInputEvidence(web.get(), "mcp-hike-input-success.json", lastTool.get())
             assertNull(failure.get())
@@ -357,7 +358,7 @@ class McpWebViewTest {
             ready
         }
     }
-    private fun awaitFrame(web: WebView, probe: McpRenderProbe) {
+    private fun awaitFrame(web: WebView, probe: McpRenderProbe): Long {
         val limit = SystemClock.uptimeMillis() + 10_000
         val ready = CountDownLatch(1)
         val drawn = CountDownLatch(1)
@@ -389,6 +390,7 @@ class McpWebViewTest {
                 if (web.viewTreeObserver.isAlive) web.viewTreeObserver.removeOnDrawListener(drawListener)
             }
         }
+        return limit
     }
     private fun waitUntil(timeoutMs: Long = 10_000, description: String = "HTML did not reach the expected state", condition: () -> Boolean) {
         val limit = SystemClock.uptimeMillis() + timeoutMs
