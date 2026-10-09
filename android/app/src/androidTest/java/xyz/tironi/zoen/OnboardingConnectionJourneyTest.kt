@@ -116,9 +116,11 @@ class OnboardingConnectionJourneyTest {
             peer.stopSync(); peer.eraseDevice(peerVault); peer.destroy(); peerFolder.deleteRecursively()
             File(application.noBackupFilesDir, "onboard-peer-vault-$suffix").deleteRecursively()
             if (ownsCurrent) runBlocking { repository.signOut() }
-            scenario?.close()
-            repository.preferences.edit().putBoolean("demo", wasDemo).putBoolean("onboarded", wasOnboarded).putBoolean(MessagingService.PREFERENCE, wasBackground).commit()
-            if (wasDemo && !repository.state.value.demo) runBlocking { repository.useDemo() }
+            try { scenario?.close() }
+            finally {
+                repository.preferences.edit().putBoolean("demo", wasDemo).putBoolean("onboarded", wasOnboarded).putBoolean(MessagingService.PREFERENCE, wasBackground).commit()
+                if (wasDemo && !repository.state.value.demo) runBlocking { repository.useDemo() }
+            }
         }
     }
 }

@@ -1,50 +1,54 @@
 # Android verification
 
-Verified on 2026-10-09 with JDK 17, SDK 36, NDK 27.1.12297006, and an ARM64 Android 36 emulator. The emulator's normal display was 1080 × 2400 at 420 dpi. A temporary 2200 × 1400 display at 240 dpi exercised the tablet layout; font scale 1.5 exercised larger text. After the checks the emulator returned to its phone display, font scale 1.0, enabled animations, English, and light mode.
+The port uses Kotlin/Compose and the real Rust JNI library. The completion gate is the current Apple prototype's functional coverage, native Android behavior, combined device journeys, release shrinking and CI. This record distinguishes completed checks from checks still running.
 
-## Automated checks
+## Current checks — 2026-10-09
 
-| Check | Local result |
+| Check | Evidence |
 |---|---|
-| `cargo test -q -p roda-ffi` | 34 tests passed. |
-| `:app:testDebugUnitTest` | Five planner tests passed: currency/cents, overflow, Portuguese, normal and small budgets. |
-| `NativeJourneysTest` | Three real UI journeys passed: search opens the matching chat, approval is recorded by Rust, and a created plan plus completed task survive activity recreation. |
-| `NativeCoreTest` | A real local identity was created using Android Keystore, then its signed plan, page, and file were recovered after closing and reopening the database. Every log verified. This isolated test does not connect to a relay. |
-| `SecretVaultTest` | Keystore encryption, a new vault instance, tampered ciphertext rejection, and deletion passed. |
-| `:app:lintDebug` | Passed with no errors. Remaining warnings include dependency updates, unused resources, pluralization suggestions, and Kotlin convenience APIs. |
-| Debug and release builds | Both ARM64 and x86_64 built with the release Rust profile. The release app passed R8 and resource shrinking. |
-| Native packaging | Every packaged Rust, JNA, and Compose graphics library has 16 KB ELF LOAD alignment. `zipalign -c -P 16 4` passed for the release APK. |
-| Release startup | The minified release APK, signed locally with a development key only for installation, opened native onboarding. Passing the debug demo extra did not enable the demo. |
-| Gradle configuration cache | A debug build stored the cache successfully, and an identical build reused it. |
+| Shared core | 39 `roda-ffi` tests pass; strict Clippy passes. User catalog installation, typed media versions and immutable historical content have engine tests. |
+| JVM | 72 tests pass in 11 suites, with zero failures, errors or skips. Coverage includes structured generation, routing/context, Unicode search, rich page editing, onboarding drafts/routes, MCP boundaries, snapshots, media edits and globe geometry. |
+| Combined build | The integrated debug app and instrumentation APK compile; lint passes. Final release compilation uses the normal `buildRodaCore` task and both release ABIs. |
+| Isolated relay | Independent Android identities exchanged encrypted messages, a chunked attachment, a new typed version and an encrypted photo background. Closing/reopening and offline outbox recovery passed. The local relay uses the existing Postgres/FoundationDB backend. |
+| Native core/system integration | All five `NativeParityTest` cases passed: private account data erasure, batch Markdown/image content URIs and thumbnails, rich page/history reopening, all seven real RemoteViews templates with private content hidden, and notification preview/read/mute/visible-chat behavior. |
+| Focused media | Android codecs and image/PDF rendering were exercised; actual image ink produced a signed v2, preserved original v1 bytes, and survived activity recreation. Microphone review, cut, AAC send and playback ran against the actual core. |
+| Agents and permissions | Context/routing and fallback tests pass. Encrypted profile and browser takeover checks passed. Native globe interaction, complete signed audit verification and scoped standing/device grant persistence/revocation passed. |
+| HTML MCP | Real HTML List touch updated signed Rust state and live DOM. Cross-app resource access and foreign origin bridge access were denied; irreversible calls required native confirmation. The full bundled React/MapLibre Hike journey is in the final combined run. |
+| Final device/CI run | In progress. The Android 9/15 x86_64 matrix starts an isolated relay and runs the complete instrumented suite. Local UI runs encountered stock System UI ANRs under severe host memory pressure; conflicted/failed runs are retained and are not counted as passing evidence. |
+| Release/package checks | In progress for the final implementation. The original port passed R8 startup and 16 KB ELF/APK alignment; those earlier results do not establish the final artifact's result. |
 
-The five instrumentation tests were run against the final debug APK using AndroidJUnitRunner. The Kotlin/Compose screens call the generated UniFFI bindings and packaged Rust library; these tests do not replace the repository or engine with mocks.
+Final integrated UI journeys exercise all eight onboarding areas, real background connection and message deep links, separate threads and quotes, pinned plans, stationary Home voice hold/release, rich page editing/autosave/old-version restoration, chat appearance, native media, browser takeover, globe, audit/grants and the HTML host. A discovered stationary-hold collision with the native clickable is being corrected in both record buttons; the regression journey retains a stationary pointer.
 
-The local build commands were:
+## Reproduce
+
+Use JDK 17, SDK 36 and NDK 27.1.12297006. Both ARM64 and x86_64 native libraries are built from the same source as generated bindings.
 
 ```bash
 cargo test -q -p roda-ffi
+cargo clippy -p roda-ffi -- -D warnings
 cd android
 ./gradlew :app:assembleDebug :app:assembleDebugAndroidTest :app:assembleRelease \
-  :app:lintDebug :app:testDebugUnitTest -PcoreProfile=release \
-  -Pkotlin.compiler.execution.strategy=in-process --no-daemon --max-workers=2 \
-  --no-configuration-cache
-adb install -r app/build/outputs/apk/debug/app-debug.apk
-adb install -r app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk
-adb shell am instrument -w -r xyz.tironi.zoen.test/androidx.test.runner.AndroidJUnitRunner
+  :app:testDebugUnitTest :app:lintDebug -PcoreProfile=release
+# In another terminal, from the repository root:
+# scripts/dev-stack.sh
+./gradlew :app:connectedDebugAndroidTest \
+  -Pandroid.testInstrumentationRunnerArguments.zoenRelay=http://10.0.2.2:8787
 ```
 
-The device run used `adb shell am instrument -w -r xyz.tironi.zoen.test/androidx.test.runner.AndroidJUnitRunner` after installing the app and test APKs. CI uses Gradle's connected test task on Android 35 x86_64. Building an x86_64 APK locally does not establish that it ran on an x86_64 device; that runtime check belongs to CI.
+The relay argument is required for the two-identity and onboarding/background cases. They create and clean up their own accounts; without the argument they report a skip. They refuse to replace an existing real account. Demo peers alone do not establish network delivery.
 
-## Visual checks
+## Visual evidence
 
-Reviewed native onboarding and chats, plan task edits and version history, approval details and confirmation, MapTap touch selection and persisted scoring, pet feeding and its persisted state, and Donkey Dash's native controls. At font scale 1.5 the pet actions and game controls remained readable and reachable. The tablet used a navigation rail and separate chat list/detail panes.
+[PR 41](https://github.com/EnzoTironi/zoen-native/pull/41) contains running-app screenshots and recordings uploaded with `gh --attach`. New native image ink, persisted signed image v2, native globe reveal and markup-controls video are attached alongside the original phone/tablet, large-text, Portuguese/dark-mode, plan/version and mini-app captures. Further captures will accompany the final combined run. Images are visually reviewed before publication; a black voice capture was excluded.
 
-Switching Android's per-app language from an open English demo item to pt-BR reopened the Portuguese engine and returned to valid navigation. The Portuguese demo contains translated source data, and dark mode follows Android's setting. Activity recreation and a fresh process launch recovered stored demo edits. The final app was also installed over a minified release smoke build without losing the separate demo data.
+Original visual checks covered a 1080 × 2400 phone at 420 dpi, a 2200 × 1400 tablet at 240 dpi, font scale 1.5, per-app English/pt-BR switching and Android light/dark themes. Final source changes require the new integrated review. Generated APKs, videos, screenshots and logs remain in ignored build directories; source records stay in Git.
 
-Screenshots and screen recordings are uploaded to the Android pull request with `gh pr create --attach`. They show demo peers; no messages, invitations, or payments were sent to other people. Generated APKs, recordings, and local logs stay in ignored build directories.
+## Platform conditions
 
-## Scope of this evidence
+- Gemini Nano generation requires a supported physical device and a downloaded ML Kit model. Availability/download/error handling and the labeled deterministic fallback are implemented. Emulator fallback results do not demonstrate Nano generation.
+- On-device speech transcription requires Android's recognizer and an installed language model. Recording, editing, saving and playback work independently; the emulator has no usable speech model.
+- Background delivery uses a user-enabled remote-messaging foreground service with a visible Stop control and the existing relay. Android force-stop and power policy apply. No FCM backend or production relay result is implied by isolated local relay tests.
+- Home widget pinning/configuration and real launcher actions remain part of the final manual gate; RemoteViews inflation alone is insufficient.
+- Apple prototype placeholders—calls, passkey recovery, simulated external actions and debug browser guest—remain identified placeholders on Android. The same source has seven actual catalog apps; fake store listings are not counted as functional apps.
 
-Live two-device relay sync, encrypted media transfer against the production relay, physical hardware, and the Android 9 minimum version were not exercised locally. The transport, signatures, MLS, and outbox come from the existing shared Rust engine.
-
-Android currently uses the explicitly labeled local planner fallback. Background push delivery, PDF/video markup, the microphone editor, home-screen widgets, and arbitrary third-party HTML mini-app hosting remain outside this port. The bundled mini-apps have native Compose implementations. The [Android README](../../android/README.md#current-limits) describes these limits and how to build and run the app.
+See the [feature parity record](android-parity.md), [append-only decisions](android-parity-decisions.tsv) and [Android README](../../android/README.md).
