@@ -38,6 +38,14 @@ class NativeParityTest {
         val repository = ZoenRepository(scoped)
         try {
             repository.boot()
+            val firstActivity = Any()
+            val secondActivity = Any()
+            repository.setAppVisible(true, firstActivity)
+            repository.setAppVisible(true, secondActivity)
+            repository.setAppVisible(false, firstActivity)
+            assertTrue(repository.appVisible)
+            repository.setAppVisible(false, secondActivity)
+            assertFalse(repository.appVisible)
             repository.createAccount("First owner", "owner_a", "http://10.0.2.2:18787")
             val oldOwner = repository.state.value.me!!.id
             val oldKey = repository.localKey("pageDraft", "shared-page")

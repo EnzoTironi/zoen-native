@@ -36,7 +36,7 @@ class ParityJourneysTest {
         runBlocking { application.repository.resetDemo() }
         compose.waitForIdle()
     }
-    @After fun close() { scenario.close() }
+    @After fun close() { if (::scenario.isInitialized) scenario.close() }
 
     private fun open(link: String) {
         scenario.onActivity { activity -> activity.startActivity(Intent(activity, MainActivity::class.java).setAction(Intent.ACTION_VIEW).setData(Uri.parse(link)).addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP)) }

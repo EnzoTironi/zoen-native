@@ -69,7 +69,8 @@ class MessagingService : Service() {
     private fun notification(text: String) = NotificationCompat.Builder(this, "connection")
         .setSmallIcon(R.drawable.ic_notification).setContentTitle(getString(R.string.app_name)).setContentText(text)
         .setCategory(NotificationCompat.CATEGORY_SERVICE).setOngoing(true).setOnlyAlertOnce(true)
-        .setContentIntent(PendingIntent.getActivity(this, 0, Intent(this, MainActivity::class.java), PendingIntent.FLAG_IMMUTABLE))
+        .setContentIntent(PendingIntent.getActivity(this, 0, Intent(this, MainActivity::class.java)
+            .addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP), PendingIntent.FLAG_IMMUTABLE))
         .addAction(0, getString(R.string.stop_background_connection), PendingIntent.getService(this, 1,
             Intent(this, MessagingService::class.java).setAction(STOP), PendingIntent.FLAG_IMMUTABLE))
         .build()

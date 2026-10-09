@@ -62,13 +62,17 @@ class ZoenRepository(private val context: Context) {
     val preferences = context.getSharedPreferences("zoen", Context.MODE_PRIVATE)
     @Volatile var appVisible: Boolean = false
         private set
+    private val visibleActivities = java.util.Collections.newSetFromMap(java.util.IdentityHashMap<Any, Boolean>())
     @Volatile var activeSpace: String? = null
     val locale: String get() = context.resources.configuration.locales[0].toLanguageTag()
 
     fun localKey(kind: String, id: String, owner: String = state.value.me?.id.orEmpty()) = "$kind:$owner:$id"
 
-    fun setAppVisible(visible: Boolean) {
-        appVisible = visible
+    fun setAppVisible(visible: Boolean, owner: Any) {
+        synchronized(visibleActivities) {
+            if (visible) visibleActivities.add(owner) else visibleActivities.remove(owner)
+            appVisible = visibleActivities.isNotEmpty()
+        }
         scope.launch { gate.withLock { updateSyncLocked(); refreshLocked() } }
     }
 

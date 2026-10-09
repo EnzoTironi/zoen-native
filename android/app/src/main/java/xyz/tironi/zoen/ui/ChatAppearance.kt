@@ -48,6 +48,7 @@ import xyz.tironi.zoen.data.ZoenRepository
 object ChatAppearanceStore {
     fun default() = BackgroundDto("none", null, 1000u, 0, 0, null, 0u, "auto")
     private fun key(repository: ZoenRepository, space: String) = repository.localKey("background", space)
+    fun isLocal(repository: ZoenRepository, space: String) = repository.preferences.contains(key(repository, space))
 
     suspend fun load(repository: ZoenRepository, space: String): BackgroundDto {
         val local = repository.preferences.getString(key(repository, space), null)
@@ -147,7 +148,7 @@ private fun blurPhoto(source: Bitmap, amount: Int): Bitmap {
 fun ChatAppearanceScreen(model: ZoenViewModel, space: String, back: () -> Unit) {
     var background by remember { mutableStateOf(ChatAppearanceStore.default()) }
     var loaded by remember { mutableStateOf(false) }
-    var local by rememberSaveable(space) { mutableStateOf(model.repository.preferences.contains("background:$space")) }
+    var local by rememberSaveable(space) { mutableStateOf(ChatAppearanceStore.isLocal(model.repository, space)) }
     var saving by remember { mutableStateOf(false) }
     val context = LocalContext.current
     LaunchedEffect(space) { background = ChatAppearanceStore.load(model.repository, space); loaded = true }

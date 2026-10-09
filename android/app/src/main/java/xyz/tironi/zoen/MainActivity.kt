@@ -40,9 +40,9 @@ class MainActivity : ComponentActivity() {
 
     override fun onStart() {
         super.onStart()
-        model.repository.setAppVisible(true)
+        model.repository.setAppVisible(true, this)
         if (model.repository.preferences.getBoolean(MessagingService.PREFERENCE, false) && !model.state.value.demo) MessagingService.start(this)
     }
 
-    override fun onStop() { model.repository.setAppVisible(false); super.onStop() }
+    override fun onStop() { model.repository.setAppVisible(false, this); super.onStop() }
 }

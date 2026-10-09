@@ -77,6 +77,7 @@ fun RichPageEditor(model: ZoenViewModel, state: AppState, item: ItemDetail, modi
             val savingBlocks = PageEditing.decode(savingDraft, original ?: current.blocks) ?: blocks
             val originals = (original ?: current.blocks).associateBy { it.id }
             val changed = model.repository.change { core ->
+                check(core.me()?.id == identity) { "The page belongs to another account" }
                 val remote = core.page(item.id)
                 val ids = savingBlocks.map { it.id }
                 val additions = remote.blocks.map { it.id }.filter { it !in originals && it !in ids }
