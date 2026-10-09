@@ -27,7 +27,10 @@
     <string name="media_try_transcript">Tentar transcrever novamente</string>
     <string name="media_model_requested">Download do modelo de fala local solicitado.</string>
     <string name="media_original_deleted">Somente o áudio editado e as palavras mantidas são enviados. A gravação original é excluída depois que o envio é concluído.</string>
-    <string name="media_cut_summary">%1$d cortes · %2$s segundos removidos</string>
+    <plurals name="media_cut_summary">
+        <item quantity="one">%1$d corte · %2$s segundos removidos</item>
+        <item quantity="other">%1$d cortes · %2$s segundos removidos</item>
+    </plurals>
     <string name="media_cut">Cortar seleção</string>
     <string name="media_remove_fillers">Remover palavras de apoio (%1$d)</string>
     <string name="media_shorten_pauses">Encurtar pausas longas (%1$d)</string>

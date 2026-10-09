@@ -27,7 +27,10 @@
     <string name="media_try_transcript">Try transcription again</string>
     <string name="media_model_requested">Local speech model download requested.</string>
     <string name="media_original_deleted">Only the edited audio and words you keep are sent. The original recording is deleted after sending succeeds.</string>
-    <string name="media_cut_summary">%1$d cuts · %2$s seconds removed</string>
+    <plurals name="media_cut_summary">
+        <item quantity="one">%1$d cut · %2$s seconds removed</item>
+        <item quantity="other">%1$d cuts · %2$s seconds removed</item>
+    </plurals>
     <string name="media_cut">Cut selection</string>
     <string name="media_remove_fillers">Remove filler words (%1$d)</string>
     <string name="media_shorten_pauses">Shorten long pauses (%1$d)</string>

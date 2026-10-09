@@ -80,7 +80,7 @@ fun MediaPreview(file: File, mime: String, modifier: Modifier = Modifier, range:
                 }, enabled = ready, modifier = Modifier.testTag("media-play")) { Icon(if (playing) Icons.Rounded.Pause else Icons.Rounded.PlayArrow, stringResource(if (playing) R.string.media_pause else R.string.media_play)) }
                 Slider(value = position.toFloat().coerceIn(0f, maxOf(.001, duration).toFloat()), onValueChange = { position = it.toDouble(); view?.seekTo((it * 1000).toInt()) }, enabled = ready,
                     valueRange = 0f..maxOf(.001, duration).toFloat(), modifier = Modifier.weight(1f).testTag("media-seek"))
-                Text(voiceTime(position) + " / " + voiceTime(duration), style = MaterialTheme.typography.labelSmall)
+                Text(voiceTime(position) + " / " + voiceDuration(duration), style = MaterialTheme.typography.labelSmall)
             }
         }
     }

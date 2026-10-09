@@ -25,6 +25,7 @@ import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextDecoration
@@ -67,7 +68,7 @@ fun VoiceReview(session: VoiceSession, model: ZoenViewModel, space: String, repl
                     IconButton(onClick = { session.cancel() }, enabled = !state.busy) { Icon(Icons.Rounded.Close, stringResource(R.string.close)) }
                 }
                 Column(Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(horizontal = 20.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-                    if (state.editing) Text(stringResource(R.string.media_cut_summary, editor.removedRanges.size, String.format(Locale.getDefault(), "%.1f", editor.duration - editor.keptDuration)), Modifier.testTag("voice-cut-summary"), style = MaterialTheme.typography.titleMedium)
+                    if (state.editing) Text(pluralStringResource(R.plurals.media_cut_summary, editor.removedRanges.size, editor.removedRanges.size, String.format(Locale.getDefault(), "%.1f", editor.duration - editor.keptDuration)), Modifier.testTag("voice-cut-summary"), style = MaterialTheme.typography.titleMedium)
                     VoiceWaveform(clip.detail, head / editor.duration, editor.duration, editor.removedRanges, selection,
                         Modifier.fillMaxWidth().height(if (state.editing) 90.dp else 64.dp).testTag("voice-waveform")
                             .pointerInput(editor, state.editing) {
@@ -86,7 +87,7 @@ fun VoiceReview(session: VoiceSession, model: ZoenViewModel, space: String, repl
                                     else { playhead = time; if (current) VoicePlayback.seek(editor.editedTime(time)) }
                                 }
                             })
-                    Text(voiceTime(editor.editedTime(head)) + " / " + voiceTime(editor.keptDuration), style = MaterialTheme.typography.labelLarge)
+                    Text(voiceTime(editor.editedTime(head)) + " / " + voiceDuration(editor.keptDuration), style = MaterialTheme.typography.labelLarge)
                     if (state.editing) {
                         Text(stringResource(R.string.media_restore_hint), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         selection?.takeIf { it.duration >= .05 }?.let { range ->
@@ -131,7 +132,7 @@ fun VoiceReview(session: VoiceSession, model: ZoenViewModel, space: String, repl
                     OutlinedIconButton(onClick = { session.cancel() }, enabled = !state.busy) { Icon(Icons.Rounded.DeleteOutline, stringResource(R.string.media_delete_recording)) }
                     OutlinedButton(onClick = { session.preview() }, enabled = !state.busy && editor.keptDuration >= .3) {
                         Icon(if (current && playback.playing) Icons.Rounded.Pause else Icons.Rounded.PlayArrow, stringResource(if (current && playback.playing) R.string.media_pause else R.string.media_play_preview))
-                        Text(voiceTime(editor.keptDuration))
+                        Text(voiceDuration(editor.keptDuration))
                     }
                     if (!state.editing) OutlinedButton(onClick = { session.edit() }, enabled = !state.busy) { Text(stringResource(R.string.edit)) }
                     Button(onClick = { session.sendNow(model.repository, space, reply, thread, onSent) }, enabled = !state.busy && !state.transcribing && editor.keptDuration >= .3 && !appState.keyMissing, modifier = Modifier.testTag("voice-send")) {

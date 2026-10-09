@@ -172,3 +172,6 @@ fun voiceTime(seconds: Double): String {
     val total = max(0, seconds.toInt())
     return String.format(Locale.ROOT, "%d:%02d", total / 60, total % 60)
 }
+
+fun voiceDuration(seconds: Double): String =
+    if (seconds > 0 && seconds < 1) String.format(Locale.getDefault(), "0:%04.1f", seconds) else voiceTime(seconds)

@@ -182,7 +182,7 @@ fun VoiceBubble(model: ZoenViewModel, reference: VoiceNoteRef, modifier: Modifie
                     onValueChange = { fraction -> if (current) VoicePlayback.seek(fraction * playback.duration) else play() }, modifier = Modifier.fillMaxWidth().height(24.dp))
             }
             Column(horizontalAlignment = Alignment.End) {
-                Text(voiceTime(if (current) playback.position else reference.ms / 1000.0), style = MaterialTheme.typography.labelMedium)
+                Text(if (current) voiceTime(playback.position) else voiceDuration(reference.ms / 1000.0), style = MaterialTheme.typography.labelMedium)
                 TextButton(onClick = { if (current) VoicePlayback.cycleRate() else play() }, contentPadding = PaddingValues(4.dp)) { Text(if (current) "${playback.rate}×" else "1×", modifier = Modifier.testTag("voice-speed")) }
             }
         }
