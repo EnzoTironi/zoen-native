@@ -1,4 +1,4 @@
-//! Zoen pages (ADR 0023): a page is a Loro document holding a list of blocks; each block
+//! Zoen pages (ADR 0025): a page is a Loro document holding a list of blocks; each block
 //! is a kind, a few attributes and rich text. Markdown is only an import and export format.
 //!
 //! Layout inside the Loro document:

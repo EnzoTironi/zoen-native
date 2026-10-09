@@ -1,7 +1,7 @@
-# ADR 0023: A viewer for every file, an editor for most, and a native WYSIWYG Markdown editor
+# ADR 0025: A viewer for every file, an editor for most, and a native WYSIWYG Markdown editor
 
-Status: proposed (research done 2026-10-08; nothing built yet). Companion ADRs: 0024 (live
-pages) and 0025 (dynamic UI). Builds on 0007 (encrypted blobs) and 0014 (files are Items).
+Status: accepted, being built (research 2026-10-08; phase 0 in the core and the first editor on feat/files-editors). Companion ADRs: 0026 (live
+pages) and 0027 (dynamic UI). Builds on 0007 (encrypted blobs) and 0014 (files are Items).
 
 ## Context
 Enzo: "Eu quero visualizador e editor para todos os formatos. E para md precisamos de WYSIWYG."
@@ -32,7 +32,7 @@ the app; 1B-user cost; no jargon in the UI; haptics and motion matter; user-jour
 
 ### 1. One file model
 - `ItemKind::File` (bytes in a blob) and `ItemKind::Page` (a Zoen document whose content is a
-  Loro CRDT, ADR 0024). Both carry `path` (folders are path prefixes, ADR 0014).
+  Loro CRDT, ADR 0026). Both carry `path` (folders are path prefixes, ADR 0014).
 - A File version is a new `MediaRef` (same Item, `ItemVersioned`). Large files use 4 MB
   content-defined chunks (FastCDC) encrypted under per-chunk keys derived (HKDF) from the
   file's key, so a new version uploads only changed chunks and dedupe never crosses files or
@@ -119,7 +119,7 @@ How A works:
 - **Rendering.** One `UITextView`/`NSTextView` on TextKit 2 per page so selection crosses
   blocks like in Notes; block styles via custom `NSTextLayoutFragment`s; non-text blocks
   (images, tables, live blocks) as `NSTextAttachmentViewProvider` views hosting SwiftUI
-  (the ADR 0025 renderer).
+  (the ADR 0027 renderer).
 - **Feel.** `.sensoryFeedback` on checklist toggle (success), block drop (impact), slash menu
   open (selection); a short ink flourish when a checklist completes; matched-geometry morph
   from file card to page; Reduce Motion respected.
@@ -161,7 +161,7 @@ Page history is Loro's own; File history is the list of `MediaRef` versions.
 - **Compute.** Previews, conversions and edits run on devices. The server only stores and
   fans out ciphertext, which ADR 0022 already measured.
 
-## Build order (covers ADRs 0023, 0024 and 0025)
+## Build order (covers ADRs 0025, 0026 and 0027)
 Each phase ships with journeys; nothing is called done on mocks.
 
 0. **Foundations:**
@@ -177,7 +177,7 @@ Each phase ships with journeys; nothing is called done on mocks.
    - the universal QuickLook viewer with markup-as-new-version;
    - import from Files/Share/drag-and-drop;
    - Versões with authors;
-   - the first live-page slice (ADR 0024) on the first Zoen View slice (ADR 0025).
+   - the first live-page slice (ADR 0026) on the first Zoen View slice (ADR 0027).
 2. **PDF and media:**
    - PDF annotate, sign, fill forms and organize pages;
    - image edits including HEIC and RAW develop;

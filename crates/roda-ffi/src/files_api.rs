@@ -1,4 +1,4 @@
-//! Pages and files for the apps (ADR 0023).
+//! Pages and files for the apps (ADR 0025).
 
 use crate::files::FileDto;
 use crate::pages::{PageBlockDto, PageDto};
