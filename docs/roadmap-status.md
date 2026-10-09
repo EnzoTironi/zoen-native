@@ -12,7 +12,7 @@ The original prototype schedule in [repensado.md](repensado.md) does not determi
 
 Zoen has real encrypted messaging foundations, a native Apple app, staging infrastructure,
 and several tested building blocks for agents, files and growth. It is still completing
-the product and the distributed operating system underneath it. A screen, an accepted ADR,
+the product and its distributed infrastructure. A screen, an accepted ADR,
 a passing unit test and a deployed journey are different kinds of evidence.
 
 | Area | Implemented on main | Remaining completion gate |
@@ -73,6 +73,20 @@ integrating it; a green check alone does not establish product completeness.
 
 Both PR 33 and PR 34 use ADR number 0045. Allocate a unique number when combining them
 and verify migration numbering against the combined tree.
+
+### Reliability work from this audit
+
+[PR 40](https://github.com/EnzoTironi/zoen-native/pull/40) fixes a sender publishing its
+first encrypted message while the recipient's Welcome is still queued. A controlled
+network journey fails on the original code and passes with the fix, including recipient
+delivery and signed-history verification. All three rate-limit journeys pass locally;
+the PR's full workspace CI remains the integration gate.
+
+The Grok computer also holds an unpublished `ux/audit-p2` patch across 14 Swift files.
+It was saved before further work; it still needs review, simulator validation and a PR.
+The conversation confirms that some native flows are designed UI awaiting their backing
+implementation, including the displayed agent browser. Track those against the product
+gates rather than treating every placeholder as a regression.
 
 ## Execution order and acceptance gates
 
