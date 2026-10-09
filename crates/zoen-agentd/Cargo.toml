@@ -21,6 +21,9 @@ base64 = "0.22"
 # The Fly Machines backend talks to api.machines.dev (staging, ADR 0028 P3).
 reqwest = { version = "0.13", default-features = false, features = ["rustls-no-provider"] }
 rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12", "logging"] }
+# T0: WASI p2 components in-process (ADR 0028 §1, ADR 0013).
+wasmtime = { version = "49", default-features = false, features = ["cranelift", "pooling-allocator", "component-model", "async", "runtime", "std", "parallel-compilation"] }
+wasmtime-wasi = { version = "49", default-features = false, features = ["p2"] }
 bytes = "1"
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync", "time", "process", "fs", "io-util"] }
 

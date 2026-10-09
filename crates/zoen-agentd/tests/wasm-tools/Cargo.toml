@@ -1,0 +1,13 @@
+# Tools for the WASM tier's journeys (ADR 0028 T0): WASI p2 command components, built by the
+# journey itself (`cargo build --target wasm32-wasip2`). Not a workspace member.
+[package]
+name = "zoen-wasm-tools"
+version = "0.0.0"
+edition = "2021"
+publish = false
+
+[workspace]
+
+[profile.release]
+opt-level = "s"
+strip = true
