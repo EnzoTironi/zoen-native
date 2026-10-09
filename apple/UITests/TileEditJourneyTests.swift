@@ -31,6 +31,26 @@ final class TileEditJourneyTests: XCTestCase {
             .filter { $0.exists && $0.frame.width > 60 && $0.frame.maxX > 8 && $0.frame.minX < width }
             .sorted { $0.frame.minX < $1.frame.minX }
     }
+    /// Long-press the first tile until edit mode shows. On a loaded simulator a hold can be
+    /// read as a tap (the mini-app opens); then relaunch with the same arguments and hold
+    /// again, up to three times. The journey under test is edit mode, not the hold timing.
+    @MainActor private func holdUntilEditing(_ app: XCUIApplication, _ prefix: String) -> Bool {
+        let done = app.buttons["\(prefix)-done"]
+        for attempt in 0..<3 {
+            if attempt > 0 {
+                app.terminate(); app.launch()
+                let first = app.descendants(matching: .any).matching(NSPredicate(format: "identifier BEGINSWITH %@", "\(prefix)-")).firstMatch
+                _ = first.waitForExistence(timeout: 20)
+                sleep(5)
+            }
+            guard let t = tiles(app, prefix).first else { continue }
+            t.press(forDuration: 1.6)
+            if done.waitForExistence(timeout: 4) { return true }
+            let shot = XCTAttachment(screenshot: app.screenshot()); shot.name = "\(prefix)-hold-\(attempt)"; shot.lifetime = .keepAlways; add(shot)
+        }
+        return false
+    }
+
     @MainActor private func names(_ app: XCUIApplication, _ prefix: String) -> [String] {
         tiles(app, prefix).map { String($0.identifier.dropFirst(prefix.count + 1)) }
     }
@@ -40,21 +60,13 @@ final class TileEditJourneyTests: XCTestCase {
         var app = launch(fresh: true)
         let first = app.descendants(matching: .any).matching(NSPredicate(format: "identifier BEGINSWITH 'home-tile-'")).firstMatch
         XCTAssertTrue(first.waitForExistence(timeout: 20), "Home shows mini-app cards")
-        sleep(4) // let launch work settle so the hold reads as a hold, not a tap
+        sleep(6) // let launch work settle so the hold reads as a hold, not a tap
         let before = names(app, "home-tile")
         XCTAssertGreaterThanOrEqual(before.count, 2, "at least two cards to reorder")
 
         // Long-press: edit mode, with a minus on every card and "Concluir".
-        tiles(app, "home-tile")[0].press(forDuration: 1.2)
         let done = app.buttons["home-tile-done"]
-        if !done.waitForExistence(timeout: 4) {
-            // A hold that lands while launch work still settles can read as a tap and open
-            // the app; close it and hold again.
-            let close = app.buttons["miniapp-close"].firstMatch
-            if close.waitForExistence(timeout: 3) { close.tap(); sleep(2) }
-            tiles(app, "home-tile")[0].press(forDuration: 1.5)
-        }
-        XCTAssertTrue(done.waitForExistence(timeout: 4), "long-press enters edit mode")
+        XCTAssertTrue(holdUntilEditing(app, "home-tile"), "long-press enters edit mode")
         XCTAssertTrue(app.buttons["home-tile-remove-\(before[0])"].exists, "each card shows a minus")
         sleep(1)
 
@@ -106,9 +118,7 @@ final class TileEditJourneyTests: XCTestCase {
         sleep(3)
         let before = names(app, "pin-tile")
         XCTAssertGreaterThanOrEqual(before.count, 2)
-        tiles(app, "pin-tile")[0].press(forDuration: 0.9)
-        let shot = XCTAttachment(screenshot: app.screenshot()); shot.name = "pin-press"; shot.lifetime = .keepAlways; add(shot)
-        XCTAssertTrue(app.buttons["pin-tile-done"].waitForExistence(timeout: 4), "long-press enters edit mode in the chat too")
+        XCTAssertTrue(holdUntilEditing(app, "pin-tile"), "long-press enters edit mode in the chat too")
         sleep(1)
         let t0 = tiles(app, "pin-tile")[0]
         let start = t0.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.6))
