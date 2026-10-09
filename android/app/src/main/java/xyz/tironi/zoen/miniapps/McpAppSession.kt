@@ -145,7 +145,7 @@ class McpAppSession(
             }
         }
         grantedHosts = wanted.filter { gateway.allowed(itemId, "net:$it") }.toSet()
-        document = MiniAppSandbox.document(resource.text, grantedHosts).toByteArray(Charsets.UTF_8)
+        document = MiniAppSandbox.document(resource.text, grantedHosts, dark).toByteArray(Charsets.UTF_8)
     }
 
     @SuppressLint("SetJavaScriptEnabled")
@@ -373,12 +373,7 @@ class McpAppSession(
             .put("hostContext", context())
     }
     private fun context(): JSONObject {
-        val variables = JSONObject().put("--font-sans", "Roboto, system-ui, sans-serif")
-            .put("--color-background-primary", if (dark) "#191C18" else "#FCFAF4")
-            .put("--color-background-secondary", if (dark) "#252A22" else "#F0EEE6")
-            .put("--color-text-primary", if (dark) "#ECEFE3" else "#1C2119")
-            .put("--color-text-secondary", if (dark) "#BDC7B5" else "#687062")
-            .put("--color-border-primary", if (dark) "#424A3B" else "#D8DCCF")
+        val variables = JSONObject(MiniAppAppearance.variables(dark))
         val ctx = JSONObject().put("theme", if (dark) "dark" else "light").put("styles", JSONObject().put("variables", variables))
             .put("displayMode", displayMode).put("availableDisplayModes", JSONArray(listOf("inline", "fullscreen")))
             .put("containerDimensions", JSONObject().put("width", width.toDouble()).also { if (displayMode == "inline") it.put("maxHeight", 640) })

@@ -83,8 +83,9 @@ object MiniAppSandbox {
         val net = granted.sorted().joinToString(" ") { "https://$it" }
         return "default-src 'none'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: $net; media-src 'self' data:; font-src 'self' data:; connect-src ${net.ifEmpty { "'none'" }}; worker-src blob:; frame-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'"
     }
-    fun document(html: String, granted: Set<String>): String {
-        val guard = "<meta http-equiv=\"Content-Security-Policy\" content=\"${csp(granted)}\"><meta name=\"referrer\" content=\"no-referrer\"><script>$shim</script>"
+    fun document(html: String, granted: Set<String>, dark: Boolean? = null): String {
+        val appearance = dark?.let(MiniAppAppearance::initialScript).orEmpty()
+        val guard = "<meta http-equiv=\"Content-Security-Policy\" content=\"${csp(granted)}\"><meta name=\"referrer\" content=\"no-referrer\"><script>$appearance\n$shim</script>"
         val head = Regex("<head(?:\\s[^>]*)?>", RegexOption.IGNORE_CASE).find(html)
         return if (head != null) html.replaceRange(head.range.last + 1, head.range.last + 1, guard) else "<!doctype html><head>$guard</head>$html"
     }

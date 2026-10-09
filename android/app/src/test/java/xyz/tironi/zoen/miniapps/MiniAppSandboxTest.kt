@@ -34,6 +34,19 @@ class MiniAppSandboxTest {
         assertTrue(document.contains("frame-src 'none'"))
         assertTrue(document.contains("object-src 'none'"))
     }
+    @Test fun androidOverlaysAreTonalBeforeTheFirstApplicationPaintAndKeepTheSamePolicy() {
+        val html = "<html><head><script>window.firstPaint = true;</script></head></html>"
+        for (dark in listOf(false, true)) {
+            val document = MiniAppSandbox.document(html, emptySet(), dark)
+            assertTrue(document.indexOf("Content-Security-Policy") < document.indexOf("root.style.setProperty"))
+            assertTrue(document.indexOf("root.style.setProperty") < document.indexOf("window.firstPaint"))
+            assertTrue(document.contains("root.dataset.theme = '${if (dark) "dark" else "light"}'"))
+            assertEquals("none", MiniAppAppearance.variables(dark).getValue("--z-glass-filter"))
+            assertEquals(if (dark) "#252A22" else "#F0EEE6", MiniAppAppearance.variables(dark).getValue("--z-glass"))
+            assertTrue(document.contains("connect-src 'none'"))
+            assertTrue(document.contains("frame-src 'none'"))
+        }
+    }
     @Test fun externalLinksRequireAnExplicitSupportedScheme() {
         assertTrue(MiniAppSandbox.openLink("https://example.com/article"))
         assertTrue(MiniAppSandbox.openLink("zoen://app/it_123"))

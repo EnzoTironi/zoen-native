@@ -2,9 +2,12 @@ package xyz.tironi.zoen
 
 import android.content.Intent
 import android.graphics.Bitmap
+import android.os.ParcelFileDescriptor
 import android.os.SystemClock
 import android.util.Log
 import android.view.MotionEvent
+import android.view.ViewTreeObserver
+import android.view.WindowManager
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import android.webkit.WebChromeClient
@@ -52,18 +55,23 @@ class McpWebViewTest {
         val gateway = gateway(core, confirmedCalls)
         val session = McpAppSession(item.id, gateway, confirm = { prompts.incrementAndGet(); confirm.get() }, consent = { MiniAppConsent.DENY }, native = { _, _ -> error("No device capability was granted") }, nativeAvailable = emptySet(), openLink = { error("No external browser should open") }, onDisplay = {}, haptic = {}, onError = { failure.set(it) })
         val web = AtomicReference<WebView>()
+        val probe = AtomicReference<McpRenderProbe>()
         val loaded = CountDownLatch(1)
+        wakeDevice()
         Log.i("McpWebViewTest", "Launching ActivityScenario")
         val scenario = ActivityScenario.launch<ComponentActivity>(Intent(context, ComponentActivity::class.java))
         Log.i("McpWebViewTest", "Activity resumed")
         try {
             scenario.onActivity { activity ->
+                activity.window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
                 CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate).launch {
                     try {
                         Log.i("McpWebViewTest", "Preparing signed bundle")
                         session.prepare()
                         Log.i("McpWebViewTest", "Creating isolated WebView")
                         web.set(session.createWebView(activity)); activity.setContentView(web.get())
+                        probe.set(McpRenderProbe(activity, web.get()))
+                        session.visible(true)
                         Log.i("McpWebViewTest", "WebView attached")
                     }
                     catch (error: Exception) { failure.set(error.toString()) }
@@ -72,12 +80,15 @@ class McpWebViewTest {
             }
             assertTrue(loaded.await(20, TimeUnit.SECONDS))
             assertNull(failure.get())
+            awaitNativeWindow(probe.get())
             waitUntil { evaluate(web.get(), "document.querySelectorAll('#items .it').length") == "1" }
+            awaitFrame(web.get(), probe.get())
             val before = core.item(item.id).version
             touch(web.get(), "#items .it")
             waitUntil { JSONObject(core.item(item.id).app!!.viewJson).getJSONArray("items").getJSONObject(0).getBoolean("done") }
             assertTrue(core.item(item.id).version > before)
             waitUntil { evaluate(web.get(), "document.querySelector('#items .it').classList.contains('done')") == "true" }
+            awaitFrame(web.get(), probe.get())
             assertTrue(core.verifyAll().all { it.valid })
             val evidence = File(context.getExternalFilesDir(null), "evidence/mcp-webview-list.png").apply { parentFile!!.mkdirs() }
             InstrumentationRegistry.getInstrumentation().uiAutomation.takeScreenshot().use { bitmap -> evidence.outputStream().use { bitmap.compress(Bitmap.CompressFormat.PNG, 100, it) } }
@@ -103,8 +114,11 @@ class McpWebViewTest {
             }
             waitUntil { evaluate(web.get(), "document.body.textContent") == "\"bridge missing\"" }
             assertEquals(authorizedVersion, core.item(item.id).version)
+        } catch (error: Throwable) {
+            runCatching { probe.get()?.failureEvidence("mcp-list-failure", error) }.exceptionOrNull()?.let(error::addSuppressed)
+            throw error
         } finally {
-            InstrumentationRegistry.getInstrumentation().runOnMainSync { session.dispose() }
+            InstrumentationRegistry.getInstrumentation().runOnMainSync { probe.get()?.close(); session.dispose() }
             scenario.close(); core.destroy(); folder.deleteRecursively()
         }
     }
@@ -120,13 +134,16 @@ class McpWebViewTest {
         val failure = AtomicReference<String?>()
         val session = McpAppSession(item.id, gateway(core), confirm = { false }, consent = { MiniAppConsent.DENY }, native = { _, _ -> error("No device capability was granted") }, nativeAvailable = emptySet(), openLink = { error("No external browser should open") }, onDisplay = {}, haptic = {}, onError = { failure.set(it) })
         val web = AtomicReference<WebView>()
+        val probe = AtomicReference<McpRenderProbe>()
         val loaded = CountDownLatch(1)
+        wakeDevice()
         Log.i("McpWebViewTest", "Launching ActivityScenario")
         val scenario = ActivityScenario.launch<ComponentActivity>(Intent(context, ComponentActivity::class.java))
         Log.i("McpWebViewTest", "Activity resumed")
         try {
             scenario.onActivity { activity -> CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate).launch {
                 try {
+                    activity.window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
                     Log.i("McpWebViewTest", "Preparing signed Hike bundle")
                     session.prepare()
                     Log.i("McpWebViewTest", "Creating isolated Hike WebView")
@@ -139,6 +156,8 @@ class McpWebViewTest {
                         override fun onPermissionRequest(request: PermissionRequest) { request.deny() }
                     }
                     activity.setContentView(web.get())
+                    probe.set(McpRenderProbe(activity, web.get()))
+                    session.visible(true)
                     Log.i("McpWebViewTest", "Hike WebView attached")
                 }
                 catch (error: Exception) { failure.set(error.toString()) }
@@ -146,20 +165,21 @@ class McpWebViewTest {
             } }
             assertTrue(loaded.await(20, TimeUnit.SECONDS))
             assertNull(failure.get())
+            awaitNativeWindow(probe.get())
             var lastPageStatus = ""
             waitUntil(30_000) {
                 val status = evaluate(web.get(), "JSON.stringify({ready:document.readyState,cards:document.querySelectorAll('.card').length,text:document.body?.innerText?.slice(0,200)})")
                 if (status != lastPageStatus) { Log.i("McpWebViewTest", "Hike page: $status"); lastPageStatus = status }
                 evaluate(web.get(), "document.querySelectorAll('.card').length === 3 && Boolean(document.querySelector('.lead > .z-circle')) && Boolean(document.querySelector('[data-map=offline] > svg'))") == "true"
             }
-            awaitFrame(web.get())
+            awaitFrame(web.get(), probe.get())
             assertEquals("0", evaluate(web.get(), "document.querySelectorAll('.maplibregl-canvas').length"))
             val originalMap = evaluate(web.get(), "document.querySelector('[data-map=offline] > svg > g').getAttribute('transform')")
             touch(web.get(), ".offline-controls button")
             waitUntil { evaluate(web.get(), "document.querySelector('[data-map=offline] > svg > g').getAttribute('transform')") != originalMap }
             touch(web.get(), ".offline-controls button:last-child")
             waitUntil { evaluate(web.get(), "document.querySelector('[data-map=offline] > svg > g').getAttribute('transform')") == originalMap }
-            awaitFrame(web.get())
+            awaitFrame(web.get(), probe.get())
             val mapEvidence = File(context.getExternalFilesDir(null), "evidence/mcp-hike-offline-map.png").apply { parentFile!!.mkdirs() }
             InstrumentationRegistry.getInstrumentation().uiAutomation.takeScreenshot().use { bitmap -> mapEvidence.outputStream().use { bitmap.compress(Bitmap.CompressFormat.PNG, 100, it) } }
             touch(web.get(), ".card")
@@ -170,13 +190,16 @@ class McpWebViewTest {
             val trails = JSONObject(core.item(item.id).app!!.viewJson).getJSONArray("trails")
             assertTrue((0 until trails.length()).any { trails.getJSONObject(it).getJSONArray("votes").length() > 0 })
             waitUntil { evaluate(web.get(), "document.querySelector('.sticky button:last-child').textContent.startsWith('Voted')") == "true" }
-            awaitFrame(web.get())
+            awaitFrame(web.get(), probe.get())
             assertTrue(core.verifyAll().all { it.valid })
             val evidence = File(context.getExternalFilesDir(null), "evidence/mcp-hike-offline-vote.png").apply { parentFile!!.mkdirs() }
             InstrumentationRegistry.getInstrumentation().uiAutomation.takeScreenshot().use { bitmap -> evidence.outputStream().use { bitmap.compress(Bitmap.CompressFormat.PNG, 100, it) } }
             assertNull(failure.get())
+        } catch (error: Throwable) {
+            runCatching { probe.get()?.failureEvidence("mcp-hike-failure", error) }.exceptionOrNull()?.let(error::addSuppressed)
+            throw error
         } finally {
-            InstrumentationRegistry.getInstrumentation().runOnMainSync { session.dispose() }
+            InstrumentationRegistry.getInstrumentation().runOnMainSync { probe.get()?.close(); session.dispose() }
             scenario.close(); core.destroy(); folder.deleteRecursively()
         }
     }
@@ -239,14 +262,50 @@ class McpWebViewTest {
             MotionEvent.obtain(at, SystemClock.uptimeMillis(), MotionEvent.ACTION_UP, x, y, 0).also { web.dispatchTouchEvent(it); it.recycle() }
         }
     }
-    private fun awaitFrame(web: WebView) {
+    private fun wakeDevice() {
+        for (command in listOf("input keyevent 224", "wm dismiss-keyguard")) {
+            ParcelFileDescriptor.AutoCloseInputStream(InstrumentationRegistry.getInstrumentation().uiAutomation.executeShellCommand(command)).use { it.readBytes() }
+        }
+    }
+    private fun awaitNativeWindow(probe: McpRenderProbe) {
+        waitUntil {
+            var ready = false
+            InstrumentationRegistry.getInstrumentation().runOnMainSync { ready = probe.nativeReady() }
+            ready
+        }
+    }
+    private fun awaitFrame(web: WebView, probe: McpRenderProbe) {
+        val limit = SystemClock.uptimeMillis() + 10_000
+        val ready = CountDownLatch(1)
         val drawn = CountDownLatch(1)
+        val cancelled = AtomicBoolean(false)
+        val drawListener = ViewTreeObserver.OnDrawListener { drawn.countDown() }
         InstrumentationRegistry.getInstrumentation().runOnMainSync {
+            check(probe.nativeReady()) { "The WebView lost its foreground draw surface: ${probe.report()}" }
+            probe.record("visual callback requested")
             web.postVisualStateCallback(1L, object : WebView.VisualStateCallback() {
-                override fun onComplete(requestId: Long) { drawn.countDown() }
+                override fun onComplete(requestId: Long) {
+                    if (cancelled.get()) return
+                    probe.record("visual callback completed")
+                    web.viewTreeObserver.addOnDrawListener(drawListener)
+                    web.postInvalidateOnAnimation()
+                    ready.countDown()
+                }
             })
         }
-        check(drawn.await(10, TimeUnit.SECONDS)) { "HTML DOM exists but its rendered frame is not ready" }
+        try {
+            check(ready.await((limit - SystemClock.uptimeMillis()).coerceAtLeast(0), TimeUnit.MILLISECONDS)) {
+                "HTML DOM exists but its rendered frame is not ready: ${probe.report()}"
+            }
+            check(drawn.await((limit - SystemClock.uptimeMillis()).coerceAtLeast(0), TimeUnit.MILLISECONDS)) {
+                "The HTML visual callback completed but the native window did not draw it: ${probe.report()}"
+            }
+        } finally {
+            cancelled.set(true)
+            InstrumentationRegistry.getInstrumentation().runOnMainSync {
+                if (web.viewTreeObserver.isAlive) web.viewTreeObserver.removeOnDrawListener(drawListener)
+            }
+        }
     }
     private fun waitUntil(timeoutMs: Long = 10_000, condition: () -> Boolean) {
         val limit = SystemClock.uptimeMillis() + timeoutMs

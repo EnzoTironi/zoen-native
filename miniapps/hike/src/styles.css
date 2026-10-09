@@ -48,7 +48,7 @@ html, body, #root { height: 100%; overflow: hidden; background: var(--z-bg); }
 .album { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
 .album img, .album .ph { width: 100%; aspect-ratio: 1; object-fit: cover; border-radius: 14px; display: block; }
 .mine { outline: 2px dashed var(--z-ink-3); outline-offset: 2px; }
-.cmp-head { position: sticky; top: 0; z-index: 3; display: flex; align-items: center; gap: 12px; padding: calc(env(safe-area-inset-top) + 10px) 14px 10px; background: color-mix(in srgb, var(--z-bg) 88%, transparent); -webkit-backdrop-filter: blur(16px); backdrop-filter: blur(16px); }
+.cmp-head { position: sticky; top: 0; z-index: 3; display: flex; align-items: center; gap: 12px; padding: calc(env(safe-area-inset-top) + 10px) 14px 10px; background: var(--z-header-background, color-mix(in srgb, var(--z-bg) 88%, transparent)); -webkit-backdrop-filter: var(--z-glass-filter, blur(16px)); backdrop-filter: var(--z-glass-filter, blur(16px)); }
 .cmp-head h1 { font: 800 22px var(--z-font-rounded); margin: 0; }
 .cmp { overflow-x: auto; scrollbar-width: none; padding-bottom: 40px; }
 .cmp::-webkit-scrollbar { display: none; }
