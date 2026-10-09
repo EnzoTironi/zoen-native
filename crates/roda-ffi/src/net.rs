@@ -1139,12 +1139,14 @@ mod tests {
                 let _ = maintenance.send(());
             })),
         };
+        let (client_stopped, stopped) = oneshot::channel();
         let client = async {
             let mut backoff = Duration::from_millis(500);
             assert!(matches!(
                 session(&ctx, &mut commands, &mut backoff).await,
                 Exit::Stop
             ));
+            let _ = client_stopped.send(());
         };
         let relay = async {
             let (socket, _) = listener.accept().await.unwrap();
@@ -1309,11 +1311,14 @@ mod tests {
                 }
             }
             assert!(matches!(marked.await.unwrap(), Ok(Reply::Link(None))));
-            let engine = lock(&engine);
-            assert!(!engine.net.pending.contains_key(&cached.client_id));
-            assert!(!engine.net.pending.contains_key(&fresh.client_id));
-            engine.logs[space].verify().unwrap();
+            {
+                let engine = lock(&engine);
+                assert!(!engine.net.pending.contains_key(&cached.client_id));
+                assert!(!engine.net.pending.contains_key(&fresh.client_id));
+                engine.logs[space].verify().unwrap();
+            }
             cmd.send(Cmd::Stop).unwrap();
+            stopped.await.unwrap();
         };
         tokio::time::timeout(Duration::from_secs(10), async {
             tokio::join!(client, relay)
