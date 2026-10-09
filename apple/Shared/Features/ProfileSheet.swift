@@ -35,8 +35,10 @@ struct ProfileSheet: View {
             }
             .background(InkPalette.paper.opacity(0.35).ignoresSafeArea())
         }
+        .modifier(SheetLandingHost())
         .presentationDetents([.medium, .large], selection: $detent)
         .presentationDragIndicator(.visible)
+        .onChange(of: detent) { old, new in if old != new { Haptics.selectionTick() } }
         .presentationBackground {
             // iOS 26 Liquid Glass sheet surface
             Rectangle().fill(.clear).glassEffect(.regular, in: .rect(cornerRadius: 28, style: .continuous))
@@ -49,6 +51,7 @@ struct ProfileSheet: View {
         ScrollView {
             VStack(spacing: 18) {
                 hero(p)
+                    .sheetItem(0)
                 if p.kind == .agent && p.handle != "zoen" {
                     Button {
                         Haptics.tap()
@@ -300,7 +303,7 @@ private struct ProfileEditorSheet: View {
             }
             .onAppear { name = persona.name; bio = persona.bio }
         }
-        .presentationDetents([.medium, .large])
+        .zoenSheet([.medium, .large])
     }
 
     private func save() {

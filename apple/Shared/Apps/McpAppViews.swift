@@ -186,11 +186,13 @@ struct AppConfirmSheet: View {
                 .font(.system(size: 34, weight: .semibold))
                 .foregroundStyle(request.destructive ? Palette.amber : Palette.action)
                 .padding(.top, 8)
+                .sheetItem(0)
             VStack(spacing: 6) {
                 Text(request.title).font(.title3.weight(.bold)).multilineTextAlignment(.center)
                 Text(request.detail).font(.subheadline).foregroundStyle(Palette.textSecondary).multilineTextAlignment(.center)
                     .fixedSize(horizontal: false, vertical: true)
             }
+            .sheetItem(1)
             Text(request.confirmLabel == nil ? String(localized: "Requested by \(request.appName) · this isn’t covered yet, so only you decide.") : String(localized: "Requested by \(request.appName) · only you decide."))
                 .font(.caption).foregroundStyle(Palette.textTertiary).multilineTextAlignment(.center)
             VStack(spacing: 10) {
@@ -210,9 +212,9 @@ struct AppConfirmSheet: View {
             }
         }
         .padding(.horizontal, 22)
+        .padding(.top, 20)
         .padding(.bottom, 12)
-        .presentationDetents([.height(400), .large])
-        .presentationDragIndicator(.visible)
+        .zoenFittedSheet(min: 300, max: 620, extra: [.large])
         .interactiveDismissDisabled()
     }
 }
