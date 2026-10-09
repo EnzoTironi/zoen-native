@@ -6,10 +6,13 @@ import XCTest
 final class TileEditJourneyTests: XCTestCase {
     override func setUp() { continueAfterFailure = false }
 
+    /// `-RodaShowcase` re-arranges Home on every launch (stage setting), so only the fresh
+    /// launch uses it; a relaunch must show what the person left.
     @MainActor private func launch(fresh: Bool, extra: [String] = []) -> XCUIApplication {
         let app = XCUIApplication()
-        var args = ["-RodaDemo", "YES", "-RodaShowcase", "YES", "-AppleLanguages", "(pt-BR)",
+        var args = ["-RodaDemo", "YES", "-AppleLanguages", "(pt-BR)",
                     "-RodaAppearance", "light", "-RodaApprovalsExplained", "YES"]
+        if fresh { args += ["-RodaShowcase", "YES"] }
         if fresh { args += ["-RodaFreshStart", "YES", "-RodaResetDemo", "YES"] }
         app.launchArguments = args + extra
         app.launch()
@@ -51,8 +54,9 @@ final class TileEditJourneyTests: XCTestCase {
         // Drag the first card over the second: they swap.
         let t0 = tiles(app, "home-tile")[0]
         let start = t0.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.6))
-        start.press(forDuration: 0.4, thenDragTo: start.withOffset(CGVector(dx: t0.frame.width + 40, dy: 0)),
-                    withVelocity: XCUIGestureVelocity(300), thenHoldForDuration: 0.3)
+        // Hold long enough to lift, move at finger speed, and rest over the neighbour.
+        start.press(forDuration: 0.8, thenDragTo: start.withOffset(CGVector(dx: t0.frame.width + 40, dy: 0)),
+                    withVelocity: XCUIGestureVelocity(200), thenHoldForDuration: 0.6)
         sleep(1)
         let moved = names(app, "home-tile")
         XCTAssertEqual(Array(moved.prefix(2)), [before[1], before[0]], "the dragged card took its neighbour's place")

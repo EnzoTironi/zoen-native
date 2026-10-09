@@ -4,6 +4,7 @@ import RodaCore
 @main
 struct ZoeniOSApp: App {
     @State private var model = AppModel()
+    @Environment(\.scenePhase) private var phase
 
     var body: some Scene {
         WindowGroup {
@@ -13,6 +14,8 @@ struct ZoeniOSApp: App {
                 .preferredColorScheme(AppModel.launchColorScheme)
                 .task { await model.applyLaunchOptions() }
         }
+        // A revoke waiting on its "Desfazer" is settled before the app can be killed.
+        .onChange(of: phase) { _, p in if p != .active { model.commitPendingRevokes() } }
     }
 }
 
@@ -62,7 +65,7 @@ struct RootView: View {
             }
 
             if let toast = model.toast {
-                ToastView(toast: toast, onUndo: { model.undo($0) }, onClose: { withAnimation { model.toast = nil } })
+                ToastView(toast: toast, onUndo: { model.undo($0) }, onRestore: { model.restoreStanding($0) }, onClose: { withAnimation { model.toast = nil } })
                     .padding(.bottom, barVisible ? 96 : 84)
                     .transition(.move(edge: .bottom).combined(with: .opacity))
             }

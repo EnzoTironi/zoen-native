@@ -229,7 +229,7 @@ struct Chip: View {
 // MARK: - Toast (desfazer / reação do agente / erro)
 
 struct ToastModel: Identifiable, Equatable {
-    enum Kind: Equatable { case undo(UndoToken), agent(Persona), error, info }
+    enum Kind: Equatable { case undo(UndoToken), agent(Persona), revoked(grantId: String, agent: Persona), error, info }
     let id = UUID()
     let kind: Kind
     let text: String
@@ -238,6 +238,7 @@ struct ToastModel: Identifiable, Equatable {
 struct ToastView: View {
     let toast: ToastModel
     var onUndo: (UndoToken) -> Void
+    var onRestore: (String) -> Void = { _ in }
     var onClose: () -> Void
 
     var body: some View {
@@ -253,6 +254,17 @@ struct ToastView: View {
                     Label("Undo", systemImage: "arrow.uturn.backward").font(.subheadline.weight(.semibold))
                 }
                 .buttonStyle(.glassProminent)
+            case .revoked(let grantId, let p):
+                AgentAvatar(persona: p, size: 28, showsOwner: false)
+                Text(toast.text).font(.subheadline).lineLimit(2)
+                Spacer(minLength: 4)
+                Button {
+                    onRestore(grantId)
+                } label: {
+                    Label("Undo", systemImage: "arrow.uturn.backward").font(.subheadline.weight(.semibold))
+                }
+                .buttonStyle(.glassProminent)
+                .accessibilityIdentifier("toast-undo")
             case .agent(let p):
                 AgentAvatar(persona: p, size: 28, showsOwner: false)
                 Text(toast.text).font(.subheadline).lineLimit(3)

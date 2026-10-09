@@ -1328,12 +1328,14 @@ struct StandingDecisionRow: View {
                     .font(.caption).foregroundStyle(Palette.textSecondary)
             }
             Spacer(minLength: 8)
-            // Tap once: the pill turns red and asks; tap again to revoke.
-            ConfirmInPlaceButton(title: String(localized: "Revoke"), confirmTitle: String(localized: "Revoke?"),
-                                 doneTitle: String(localized: "Revoked"), compact: true, identifier: "revoke-standing") {
-                withAnimation(.snappy) { model.revokeStanding(decision) }
+            // One tap revokes; the toast offers "Desfazer" for a few seconds.
+            Button(String(localized: "Revoke"), role: .destructive) {
+                Haptics.tap()
+                model.revokeStanding(decision)
             }
-            .fixedSize()
+            .buttonStyle(.borderless)
+            .font(.subheadline.weight(.semibold))
+            .accessibilityIdentifier("revoke-standing")
         }
         // Contain, not combine: Revoke stays its own button for VoiceOver.
         .accessibilityElement(children: .contain)

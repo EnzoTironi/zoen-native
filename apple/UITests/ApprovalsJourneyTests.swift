@@ -169,15 +169,20 @@ final class ApprovalsJourneyTests: XCTestCase {
         XCTAssertTrue(found, "Permissões shows the standing deny")
         let revoke = again.buttons["revoke-standing"].firstMatch
         XCTAssertTrue(revoke.waitForExistence(timeout: 5))
+        // One tap revokes at once; the toast offers Desfazer, which brings it back.
         revoke.tap()
-        // It asks in place (the pill turns red: "Revogar?"); the second tap revokes.
-        let armed = NSPredicate(format: "value == 'armed'")
-        XCTAssertEqual(XCTWaiter().wait(for: [XCTNSPredicateExpectation(predicate: armed, object: revoke)], timeout: 3), .completed,
-                       "revoking asks first, in place")
-        XCTAssertFalse(again.staticTexts["Nenhuma ainda."].exists, "one tap alone doesn't revoke")
-        sleep(1) // let the pill settle (it grows) before the second tap
-        revoke.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap()
-        XCTAssertTrue(again.staticTexts["Nenhuma ainda."].waitForExistence(timeout: 5), "revoked: none left")
+        XCTAssertTrue(none.waitForExistence(timeout: 3), "one tap revokes")
+        let undo = again.buttons["toast-undo"]
+        XCTAssertTrue(undo.waitForExistence(timeout: 3), "the toast offers Desfazer")
+        undo.tap()
+        XCTAssertTrue(row.waitForExistence(timeout: 3), "Desfazer brings the decision back")
+        sleep(1)
+        // Revoke for real and let the undo window pass: it stays gone.
+        again.buttons["revoke-standing"].firstMatch.tap()
+        XCTAssertTrue(none.waitForExistence(timeout: 3))
+        sleep(7)
+        XCTAssertTrue(none.exists, "revoked: none left")
+        XCTAssertFalse(row.exists, "and the agent will ask again")
     }
 
     @MainActor

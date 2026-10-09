@@ -87,6 +87,9 @@ final class AppModel {
     private(set) var requests: [AgentRequestDto] = []
     /// Standing "always approve / always deny" decisions you gave your agents.
     private(set) var standing: [StandingDecisionDto] = []
+    /// Revoked on screen, still undoable (see `revokeStanding`).
+    private(set) var pendingRevokes: Set<String> = []
+    @ObservationIgnored private var revokeTasks: [String: Task<Void, Never>] = [:]
     private(set) var agents: [AgentProfile] = []
     private(set) var mentions: [Mention] = []
     private(set) var stats: CoreStats?
@@ -245,7 +248,7 @@ final class AppModel {
         requests.filter { $0.status == .pending && $0.agent.isMine }.sorted { $0.openedMs < $1.openedMs }
     }
     func standing(for agentId: String, space: String? = nil) -> [StandingDecisionDto] {
-        standing.filter { $0.agent.id == agentId && (space == nil || $0.spaceId == space) }
+        standing.filter { $0.agent.id == agentId && (space == nil || $0.spaceId == space) && !pendingRevokes.contains($0.grantId) }
     }
 
     func space(_ id: String) -> SpaceSummary? { spaces.first { $0.id == id } }
@@ -341,11 +344,46 @@ final class AppModel {
         perform { try core.decideRequest(requestId: requestId, decision: decision) }
     }
 
+    /// One tap revokes, with "Desfazer" for a few seconds (like the rest of the app). The row
+    /// goes at once; the core only forgets the grant when the undo window closes.
     func revokeStanding(_ s: StandingDecisionDto) {
-        if perform({ try core.revokeStanding(grantId: s.grantId) }) != nil {
-            show(.init(kind: .agent(s.agent), text: String(localized: "\(s.agent.name) will ask again.")), seconds: 3)
+        let id = s.grantId
+        withAnimation(.snappy) { _ = pendingRevokes.insert(id) }
+        show(.init(kind: .revoked(grantId: id, agent: s.agent), text: String(localized: "\(s.agent.name) will ask again.")),
+             seconds: Self.revokeUndoSeconds)
+        revokeTasks[id]?.cancel()
+        revokeTasks[id] = Task { @MainActor [weak self] in
+            try? await Task.sleep(for: .seconds(Self.revokeUndoSeconds + 0.3))
+            guard !Task.isCancelled else { return }
+            self?.commitRevoke(id)
         }
     }
+
+    /// "Desfazer" on the revoke toast: the decision comes back as it was.
+    func restoreStanding(_ grantId: String) {
+        guard pendingRevokes.contains(grantId) else { return }
+        revokeTasks.removeValue(forKey: grantId)?.cancel()
+        Haptics.selectionTick()
+        withAnimation(.snappy) {
+            _ = pendingRevokes.remove(grantId)
+            toast = nil
+        }
+    }
+
+    /// Leaving the app (or the window closing) settles any revoke still waiting on its undo.
+    func commitPendingRevokes() {
+        for id in pendingRevokes { commitRevoke(id) }
+    }
+
+    private func commitRevoke(_ id: String) {
+        revokeTasks.removeValue(forKey: id)?.cancel()
+        guard pendingRevokes.contains(id) else { return }
+        _ = perform { try core.revokeStanding(grantId: id) }
+        pendingRevokes.remove(id)
+        standing = core.standingDecisions()
+    }
+
+    static let revokeUndoSeconds: Double = 5
 
     func approveAll(agent: Persona) {
         if let n = perform({ try core.approveAll(agentId: agent.id) }) {
