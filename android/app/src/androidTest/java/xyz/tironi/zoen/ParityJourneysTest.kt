@@ -7,6 +7,7 @@ import android.view.WindowManager
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createEmptyComposeRule
 import androidx.compose.ui.text.TextRange
+import androidx.lifecycle.Lifecycle
 import androidx.test.core.app.ActivityScenario
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -40,6 +41,40 @@ class ParityJourneysTest {
 
     private fun open(link: String) {
         scenario.onActivity { activity -> activity.startActivity(Intent(activity, MainActivity::class.java).setAction(Intent.ACTION_VIEW).setData(Uri.parse(link)).addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP)) }
+    }
+
+    @Test fun nativeLinksReuseTheActivityAndConsumedLinksDoNotReplayAfterRecreation() {
+        val chat = application.repository.state.value.zoenChat!!
+        val otherSpace = application.repository.state.value.spaces.first { it.id != chat.id && it.counterpart?.handle == "marina" }
+        scenario.close()
+        scenario = ActivityScenario.launch(Intent(application, MainActivity::class.java).putExtra("demo", true)
+            .setAction(Intent.ACTION_VIEW).setData(Uri.parse("zoen://chat/${chat.id}")))
+        scenario.onActivity { it.window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON) }
+        compose.waitUntil(10_000) { compose.onAllNodesWithTag("composer").fetchSemanticsNodes().isNotEmpty() }
+        compose.onNodeWithContentDescription(application.getString(R.string.back)).performClick()
+        compose.onNodeWithTag("home-plus").assertExists()
+        scenario.recreate()
+        compose.onNodeWithTag("home-plus").assertExists()
+        compose.onNodeWithTag("composer").assertDoesNotExist()
+
+        var identity = 0
+        var task = 0
+        scenario.onActivity { identity = System.identityHashCode(it); task = it.taskId }
+        open("zoen://chat/${otherSpace.id}")
+        compose.waitUntil(10_000) { application.repository.activeSpace == otherSpace.id && compose.onAllNodesWithTag("composer").fetchSemanticsNodes().isNotEmpty() }
+        assertEquals(Lifecycle.State.RESUMED, scenario.state)
+        scenario.onActivity { assertEquals(identity, System.identityHashCode(it)); assertEquals(task, it.taskId) }
+        scenario.moveToState(Lifecycle.State.CREATED)
+        assertFalse(application.repository.appVisible)
+        scenario.moveToState(Lifecycle.State.RESUMED)
+        assertTrue(application.repository.appVisible)
+        compose.onNodeWithContentDescription(application.getString(R.string.back)).performClick()
+        scenario.recreate()
+        compose.onNodeWithTag("home-plus").assertExists()
+        compose.onNodeWithTag("composer").assertDoesNotExist()
+        scenario.close()
+        assertEquals(Lifecycle.State.DESTROYED, scenario.state)
+        assertFalse(application.repository.appVisible)
     }
 
     @Test fun threadRepliesStaySeparateQuotesJumpAndPinnedPlanOpensTheRealItem() {

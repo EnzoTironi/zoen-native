@@ -42,6 +42,7 @@ class OnboardingConnectionJourneyTest {
         val peerVault = AndroidSecretVault(application, "onboard-peer-vault-$suffix")
         val peer = RodaEngine.open(File(peerFolder, "peer.sqlite").absolutePath, "en")
         var scenario: ActivityScenario<MainActivity>? = null
+        var journeyFailure: Throwable? = null
         val automation = InstrumentationRegistry.getInstrumentation().uiAutomation
         fun shell(command: String) { automation.executeShellCommand(command).use { android.os.ParcelFileDescriptor.AutoCloseInputStream(it).readBytes() } }
         try {
@@ -91,6 +92,9 @@ class OnboardingConnectionJourneyTest {
             }
             val direct = runBlocking { repository.network { it.startDirect(discovered.id) } }
             compose.waitUntil(30_000) { peer.spaces().any { it.id == direct } && peer.groupKeys(direct) != null }
+            var activityIdentity = 0
+            var task = 0
+            scenario.onActivity { activityIdentity = System.identityHashCode(it); task = it.taskId }
             scenario.moveToState(Lifecycle.State.CREATED)
             assertFalse(repository.appVisible)
             peer.sendMessage(direct, "Encrypted message while the Android app is in the background")
@@ -99,6 +103,8 @@ class OnboardingConnectionJourneyTest {
             assertEquals(Notification.VISIBILITY_PRIVATE, incoming.visibility)
             incoming.contentIntent.send()
             compose.waitUntil(10_000) { repository.appVisible && repository.activeSpace == direct }
+            assertEquals(Lifecycle.State.RESUMED, scenario.state)
+            scenario.onActivity { assertEquals(activityIdentity, System.identityHashCode(it)); assertEquals(task, it.taskId) }
             compose.waitUntil(10_000) { notifications.activeNotifications.none { it.tag == "chat:$direct" } }
             compose.onNodeWithContentDescription(application.getString(R.string.back)).performClick()
             compose.onNodeWithTag("background-connection").performScrollTo().performClick()
@@ -109,20 +115,29 @@ class OnboardingConnectionJourneyTest {
             scenario.moveToState(Lifecycle.State.RESUMED)
             compose.waitUntil(30_000) { repository.state.value.connection.state == "online" }
             assertTrue(runBlocking { repository.query { it.verifyAll().all { log -> log.valid } } })
+        } catch (failure: Throwable) {
+            journeyFailure = failure
+            throw failure
         } finally {
-            val current = repository.state.value.account?.identityId
-            val ownsCurrent = current != null && (current == ownIdentity || repository.state.value.account?.handle == "on_$suffix")
-            if (ownsCurrent) {
-                MessagingService.stop(application)
-                repository.preferences.edit().putBoolean(MessagingService.PREFERENCE, false).commit()
-            }
-            peer.stopSync(); peer.eraseDevice(peerVault); peer.destroy(); peerFolder.deleteRecursively()
-            File(application.noBackupFilesDir, "onboard-peer-vault-$suffix").deleteRecursively()
-            if (ownsCurrent) runBlocking { repository.signOut() }
-            try { scenario?.close() }
-            finally {
-                repository.preferences.edit().putBoolean("demo", wasDemo).putBoolean("onboarded", wasOnboarded).putBoolean(MessagingService.PREFERENCE, wasBackground).commit()
-                if (wasDemo && !repository.state.value.demo) runBlocking { repository.useDemo() }
+            try {
+                val current = repository.state.value.account?.identityId
+                val ownsCurrent = current != null && (current == ownIdentity || repository.state.value.account?.handle == "on_$suffix")
+                if (ownsCurrent) {
+                    MessagingService.stop(application)
+                    repository.preferences.edit().putBoolean(MessagingService.PREFERENCE, false).commit()
+                }
+                peer.stopSync(); peer.eraseDevice(peerVault); peer.destroy(); peerFolder.deleteRecursively()
+                File(application.noBackupFilesDir, "onboard-peer-vault-$suffix").deleteRecursively()
+                if (ownsCurrent) runBlocking { repository.signOut() }
+                try { scenario?.close() }
+                finally {
+                    repository.preferences.edit().putBoolean("demo", wasDemo).putBoolean("onboarded", wasOnboarded).putBoolean(MessagingService.PREFERENCE, wasBackground).commit()
+                    if (wasDemo && !repository.state.value.demo) runBlocking { repository.useDemo() }
+                }
+            } catch (cleanupFailure: Throwable) {
+                val original = journeyFailure
+                if (original == null) throw cleanupFailure
+                original.addSuppressed(cleanupFailure)
             }
         }
     }

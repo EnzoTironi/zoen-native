@@ -24,7 +24,7 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
-        deepLink = intent.dataString
+        deepLink = if (savedInstanceState == null) intent.dataString else savedInstanceState.getString(PENDING_LINK)
         model.boot(BuildConfig.DEBUG && intent.getBooleanExtra("demo", false))
         setContent { ZoenTheme { ZoenApp(model, deepLink) { deepLink = null } } }
         lifecycleScope.launch {
@@ -34,8 +34,14 @@ class MainActivity : ComponentActivity() {
 
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
-        setIntent(intent)
+        // Keep the launch identity stable; incoming links are consumable navigation events.
         deepLink = intent.dataString
+    }
+
+    override fun onSaveInstanceState(outState: Bundle) {
+        // A saved null means the UI already handled the link, including after a cold launch.
+        outState.putString(PENDING_LINK, deepLink)
+        super.onSaveInstanceState(outState)
     }
 
     override fun onStart() {
@@ -45,4 +51,6 @@ class MainActivity : ComponentActivity() {
     }
 
     override fun onStop() { model.repository.setAppVisible(false, this); super.onStop() }
+
+    private companion object { const val PENDING_LINK = "zoen.pending-link" }
 }
