@@ -67,6 +67,10 @@ targets:
         NSLocalNetworkUsageDescription: "Zoen connects to a Zoen server on your Wi-Fi when you're testing one there."
         NSAppTransportSecurity:
           NSAllowsLocalNetworking: true
+        # zoen://friend/<handle>, zoen://join/<code>: links that open the app (ADR 0044).
+        CFBundleURLTypes:
+          - CFBundleURLName: xyz.tironi.zoen.links
+            CFBundleURLSchemes: [zoen]
         ZoenRelayURL: $(ZOEN_RELAY_URL)
     settings:
       configs:
@@ -117,6 +121,10 @@ targets:
         CFBundleLocalizations: [en, pt-BR]
         LSApplicationCategoryType: public.app-category.social-networking
         ITSAppUsesNonExemptEncryption: false
+        # zoen://friend/<handle>, zoen://join/<code>: links that open the app (ADR 0044).
+        CFBundleURLTypes:
+          - CFBundleURLName: xyz.tironi.zoen.links
+            CFBundleURLSchemes: [zoen]
         ZoenRelayURL: $(ZOEN_RELAY_URL)
     settings:
       configs:

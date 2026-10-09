@@ -74,3 +74,30 @@ Como medimos (detalhes técnicos na [ADR 0043](../adr/0043-product-metrics.md)):
 - Conteúdo, texto, nomes de chat, anexos e com quem a pessoa conversa, além do "≥ 2 pessoas".
 - Qualquer evento por pessoa no PostHog ou em outro fornecedor.
 - Fingerprinting, IP ou id de anúncio.
+
+## Origem do usuário e onboarding
+
+Detalhes na [ADR 0044](../adr/0044-experiments-remote-config-onboarding.md).
+
+| Métrica | Definição | Por que importa |
+|---|---|---|
+| **Origem** | Primeiro link que abriu o app: `friend` (link de um amigo), `space` (link de Space), `campaign` (anúncio ou criador, com o id da campanha) ou `organic`. Só o tipo e o id da campanha vão ao servidor. Quem convidou e o código ficam no aparelho. | Diz de onde vem quem fica, não só quem chega. |
+| **Funil por origem** | Cadastros, % que enviou a 1ª mensagem, ativação em 24 h, D1 e D7 por origem e campanha. | Mostra onde investir. Convite de amigo costuma reter muito mais que anúncio. |
+| **Funil por braço do onboarding** | O mesmo, separado pelo braço do experimento de onboarding. | Mostra se o fluxo novo ativa e retém mais. |
+
+Não usamos fingerprinting. Quando a pessoa clicou num convite antes de instalar, a primeira tela oferece "Colar" do sistema, e é ela quem escolhe trazer o link. Anúncios pagos, quando existirem, são medidos pelo AdAttributionKit/SKAdNetwork da Apple, agregado por campanha.
+
+## Experimentos (A/B)
+
+- **Como funciona:** a config remota (`/v1/config`, trocada em `PUT /admin/config`) define flags, braços e pesos. O aparelho sorteia o braço sozinho, sempre igual para a mesma instalação. 5% das instalações ficam num **holdout** sem nenhum experimento.
+- **Exposição:** só conta quem **viu** o braço, como a tela renderizada ou o texto lido.
+- **Por braço:** unidades, mensagens por dia exposto (com CUPED, que desconta o quanto a pessoa já mandava antes), D1 e sessões sem crash.
+- **Contra o controle:** diferença, p-valor e **p-valor sempre válido** (mSPRT). Dá para olhar todo dia sem se enganar com sorte.
+- **Guardrails:** retenção D1, sessões sem crash e latência de envio. A latência é medida no servidor para todos, então protege versões, não braços. Se um braço piora um guardrail com significância, a decisão vira "stop".
+- **Limite:** os dados por instalação duram 35 dias. Cada experimento é lido em até 4 semanas, e o holdout mostra o efeito somado de longo prazo.
+
+Experimento no ar: `onboarding_friend_v1`.
+- **`control`:** quem chega por link de amigo vê o onboarding padrão de 8 telas.
+- **`direct`:** quem chega por link de amigo vê 3 telas ("@ana te chamou pro Zoen") e cai direto no chat com quem convidou.
+- **Métrica principal:** mensagens por dia.
+- **Guardrails:** D1 e crash.

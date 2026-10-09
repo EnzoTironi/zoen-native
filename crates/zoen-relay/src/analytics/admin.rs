@@ -12,14 +12,14 @@ use sha2::{Digest, Sha256};
 
 use crate::Shared;
 
-fn token() -> Option<String> {
+pub(crate) fn token() -> Option<String> {
     std::env::var("ZOEN_ADMIN_TOKEN")
         .ok()
         .filter(|t| t.len() >= 16)
 }
 
 /// Compares digests, so the time taken doesn't leak how much of the token matched.
-fn authorized(headers: &HeaderMap, expected: &str) -> bool {
+pub(crate) fn authorized(headers: &HeaderMap, expected: &str) -> bool {
     let Some(given) = headers
         .get(header::AUTHORIZATION)
         .and_then(|v| v.to_str().ok())
@@ -59,7 +59,8 @@ pub async fn metrics(
         tracing::warn!(error = %e, "metrics flush before report failed");
     }
     let everyone = p.population.as_deref() == Some("everyone");
-    match super::report::report(&st.pool, everyone).await {
+    let config = st.analytics.config.get().config.clone();
+    match super::report::report(&st.pool, everyone, &config).await {
         Ok(r) => ([(header::CACHE_CONTROL, "no-store")], Json(r)).into_response(),
         Err(e) => {
             tracing::error!(error = %e, "metrics report failed");

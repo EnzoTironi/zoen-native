@@ -10,6 +10,8 @@
 
 pub mod admin;
 pub mod clock;
+pub mod config;
+pub mod experiments;
 pub mod export;
 pub mod report;
 
@@ -66,11 +68,19 @@ struct Pending {
     accounts: HashMap<(i32, String), Acc>,
     spaces: HashMap<(i32, String), SpaceAcc>,
     counters: HashMap<(i32, String), i64>,
+    /// First touch: (kind, campaign) per account.
+    sources: HashMap<String, (String, Option<String>)>,
+    /// (account, flag) → (variant, first day shown).
+    exposures: HashMap<(String, String), (String, i32)>,
 }
 
 impl Pending {
     fn is_empty(&self) -> bool {
-        self.accounts.is_empty() && self.spaces.is_empty() && self.counters.is_empty()
+        self.accounts.is_empty()
+            && self.spaces.is_empty()
+            && self.counters.is_empty()
+            && self.sources.is_empty()
+            && self.exposures.is_empty()
     }
 
     fn merge(&mut self, other: Pending) {
@@ -94,6 +104,15 @@ impl Pending {
         for (k, v) in other.counters {
             *self.counters.entry(k).or_default() += v;
         }
+        for (k, v) in other.sources {
+            self.sources.entry(k).or_insert(v);
+        }
+        for (k, v) in other.exposures {
+            let e = self.exposures.entry(k).or_insert_with(|| v.clone());
+            if v.1 < e.1 {
+                *e = v;
+            }
+        }
     }
 }
 
@@ -107,6 +126,8 @@ pub struct SentMessage<'a> {
 
 pub struct Analytics {
     key: [u8; 32],
+    /// Remote config (ADR 0044): served to devices, checks their reports.
+    pub config: config::ConfigStore,
     pending: Mutex<Pending>,
     /// Handle prefixes of QA/test accounts, counted apart.
     test_prefixes: Vec<String>,
@@ -138,12 +159,15 @@ impl Analytics {
         };
         let prefixes = std::env::var("ZOEN_METRICS_TEST_HANDLES")
             .unwrap_or_else(|_| DEFAULT_TEST_PREFIXES.into());
-        Ok(Analytics::with_key(key, &prefixes))
+        let a = Analytics::with_key(key, &prefixes);
+        a.config.refresh(pool).await?;
+        Ok(a)
     }
 
     pub fn with_key(key: [u8; 32], test_prefixes: &str) -> Analytics {
         Analytics {
             key,
+            config: config::ConfigStore::default(),
             pending: Mutex::new(Pending::default()),
             test_prefixes: test_prefixes
                 .split(',')
@@ -232,6 +256,28 @@ impl Analytics {
         self.count("invites_accepted", 1);
     }
 
+    /// Where the account came from (first touch wins; later reports are ignored).
+    pub fn source(&self, identity: &str, kind: &str, campaign: Option<String>) {
+        let day = today();
+        self.with(|p| {
+            p.accounts.entry((day, identity.to_owned())).or_default();
+            p.sources
+                .entry(identity.to_owned())
+                .or_insert((kind.to_owned(), campaign));
+        });
+    }
+
+    /// The account was shown `variant` of `flag` (the first day it was is kept).
+    pub fn exposure(&self, identity: &str, flag: &str, variant: &str) {
+        let day = today();
+        self.with(|p| {
+            p.accounts.entry((day, identity.to_owned())).or_default();
+            p.exposures
+                .entry((identity.to_owned(), flag.to_owned()))
+                .or_insert((variant.to_owned(), day));
+        });
+    }
+
     /// A global counter for today (`name` is one of a fixed set, never data).
     pub fn count(&self, name: &str, n: i64) {
         let day = today();
@@ -294,6 +340,7 @@ impl Analytics {
             .collect();
 
         let mut tx = pool.begin().await?;
+        let (sources, exposures) = (&b.sources, &b.exposures);
 
         // Accounts young enough to matter for activation and cohorts.
         let horizon = now_ms() - i64::from(RETENTION_DAYS) * 86_400_000;
@@ -384,6 +431,47 @@ impl Analytics {
             .await?;
         }
 
+        if !sources.is_empty() {
+            let (mut p, mut k, mut c) = (vec![], vec![], vec![]);
+            for (id, (kind, campaign)) in sources {
+                p.push(self.pseudonym(b"acct\0", id));
+                k.push(kind.clone());
+                c.push(campaign.clone());
+            }
+            sqlx::query(
+                "UPDATE metrics_accounts a SET source = x.k, campaign = x.c
+                 FROM unnest($1::bytea[], $2::text[], $3::text[]) AS x(p, k, c)
+                 WHERE a.pid = x.p AND a.source IS NULL",
+            )
+            .bind(&p)
+            .bind(&k)
+            .bind(&c)
+            .execute(&mut *tx)
+            .await?;
+        }
+
+        if !exposures.is_empty() {
+            let (mut p, mut f, mut v, mut d) = (vec![], vec![], vec![], vec![]);
+            for ((id, flag), (variant, day)) in exposures {
+                p.push(self.pseudonym(b"acct\0", id));
+                f.push(flag.clone());
+                v.push(variant.clone());
+                d.push(*day);
+            }
+            sqlx::query(
+                "INSERT INTO metrics_exposures (pid, flag, variant, first_day)
+                 SELECT p, f, v, DATE '1970-01-01' + d
+                 FROM unnest($1::bytea[], $2::text[], $3::text[], $4::int[]) AS x(p, f, v, d)
+                 ON CONFLICT (pid, flag) DO NOTHING",
+            )
+            .bind(&p)
+            .bind(&f)
+            .bind(&v)
+            .bind(&d)
+            .execute(&mut *tx)
+            .await?;
+        }
+
         if !b.spaces.is_empty() {
             let (mut d, mut s, mut m, mut n) = (vec![], vec![], vec![], vec![]);
             for ((day, space), a) in &b.spaces {
@@ -442,6 +530,10 @@ impl Analytics {
             .bind(cutoff)
             .execute(pool)
             .await?;
+        sqlx::query("DELETE FROM metrics_exposures WHERE first_day < DATE '1970-01-01' + $1")
+            .bind(cutoff)
+            .execute(pool)
+            .await?;
         sqlx::query("DELETE FROM metrics_accounts WHERE signup_at < to_timestamp($1 / 1000.0)")
             .bind(now_ms() - i64::from(RETENTION_DAYS) * 86_400_000)
             .execute(pool)
@@ -459,6 +551,9 @@ pub fn spawn(state: crate::Shared) {
             tick.tick().await;
             if let Err(e) = state.analytics.flush(&state.pool).await {
                 tracing::warn!(error = %e, "metrics flush failed; kept for the next one");
+            }
+            if let Err(e) = state.analytics.config.refresh(&state.pool).await {
+                tracing::warn!(error = %e, "remote config refresh failed");
             }
             if last_maintenance.is_none_or(|t| t.elapsed() > Duration::from_secs(600)) {
                 last_maintenance = Some(std::time::Instant::now());
