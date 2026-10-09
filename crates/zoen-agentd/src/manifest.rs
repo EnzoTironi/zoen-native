@@ -46,6 +46,10 @@ pub struct ToolManifest {
     pub egress: Vec<EgressRule>,
     #[serde(default)]
     pub secrets: Vec<SecretBinding>,
+    /// For `needs: wasm`: the sha256 of the component the publisher signed. The WASM tier
+    /// refuses any other bytes, so nobody can swap a tool's code under its manifest.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub component_sha256: Option<String>,
 }
 
 fn needs_none() -> Needs {
@@ -185,6 +189,7 @@ mod tests {
             },
             egress: vec![EgressRule::host("*.pypi.org")],
             secrets: vec![],
+            component_sha256: None,
         }
     }
 
