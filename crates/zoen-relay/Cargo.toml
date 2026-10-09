@@ -24,6 +24,7 @@ embedded-pg = ["dep:postgresql_embedded"]
 roda-types.workspace = true
 roda-log.workspace = true
 roda-proto.workspace = true
+roda-mls.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 hex.workspace = true

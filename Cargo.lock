@@ -5839,6 +5839,7 @@ dependencies = [
  "opentelemetry_sdk",
  "postgresql_embedded",
  "roda-log",
+ "roda-mls",
  "roda-proto",
  "roda-types",
  "serde",

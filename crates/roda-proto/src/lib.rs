@@ -314,6 +314,16 @@ pub enum Op {
     GetProfiles {
         ids: Vec<IdentityId>,
     },
+    /// Publishes MLS key packages for this device (ADR 0026). Each must name this identity
+    /// and device; `last_resort` replaces the device's previous one.
+    PublishKeyPackages {
+        packages: Vec<Vec<u8>>,
+        last_resort: Option<Vec<u8>>,
+    },
+    /// Takes one key package for each device of each identity, to add them to a group.
+    ClaimKeyPackages {
+        ids: Vec<IdentityId>,
+    },
 }
 
 impl Op {
@@ -329,6 +339,8 @@ impl Op {
             Op::AgreementKeys { .. } => "agreement_keys",
             Op::PutProfile { .. } => "put_profile",
             Op::GetProfiles { .. } => "get_profiles",
+            Op::PublishKeyPackages { .. } => "publish_key_packages",
+            Op::ClaimKeyPackages { .. } => "claim_key_packages",
         }
     }
 }
@@ -364,6 +376,16 @@ pub enum Reply {
     Done,
     AgreementKeys(Vec<AgreementKeyRecord>),
     SealedProfiles(Vec<SealedProfile>),
+    KeyPackages(Vec<KeyPackageRecord>),
+}
+
+/// One device's MLS key package, as claimed. Members re-check the leaf inside; the relay's
+/// check only keeps junk out of the table.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct KeyPackageRecord {
+    pub identity: IdentityId,
+    pub device: String,
+    pub data: Vec<u8>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
