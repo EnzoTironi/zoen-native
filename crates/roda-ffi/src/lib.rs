@@ -434,6 +434,16 @@ impl RodaEngine {
         )
     }
 
+    /// Installs a catalog mini-app explicitly as the current user, with an Item-scoped grant.
+    pub fn install_app(
+        &self,
+        space_id: String,
+        app_id: String,
+        args_json: String,
+    ) -> Result<ItemDetail, CoreError> {
+        self.lock().install_app(&space_id, &app_id, &args_json)
+    }
+
     /// `tools/call` da interface do mini-app, pelo crivo de Concessões.
     pub fn app_call_tool(
         &self,

@@ -2796,6 +2796,74 @@ impl Engine {
         }
     }
 
+    pub fn install_app(&mut self, space: &str, app_id: &str, args_json: &str) -> R<ItemDetail> {
+        let me = self.me_id()?;
+        if !self.is_member(space, &me) {
+            return Err(CoreError::Forbidden {
+                reason: t(
+                    "você não é membro deste Espaço",
+                    "you are not a member of this Space",
+                ),
+            });
+        }
+        let spec = apps::specs()
+            .into_iter()
+            .find(|spec| spec.id == app_id)
+            .ok_or_else(|| CoreError::Invalid {
+                reason: t("mini-app desconhecido", "unknown mini-app"),
+            })?;
+        let args: Value = serde_json::from_str(args_json).map_err(|_| CoreError::Invalid {
+            reason: t("argumentos inválidos", "invalid arguments"),
+        })?;
+        if !args.is_object() {
+            return Err(CoreError::Invalid {
+                reason: t("argumentos inválidos", "invalid arguments"),
+            });
+        }
+        let (title, state) = apps::create(spec.id, &args, &self.persona(&me).name, now_ms())
+            .map_err(|reason| CoreError::Invalid { reason })?;
+        let item = new_id("it");
+        self.append(
+            space,
+            &me,
+            EventBody::ItemCreated {
+                item: item.clone(),
+                kind: ItemKind::App,
+                content: ItemContent::App(AppDoc {
+                    app: spec.id.into(),
+                    resource_uri: spec.resource_uri.into(),
+                    title,
+                    state_json: state.to_string(),
+                }),
+                origin: t("Instalado por você", "Installed by you"),
+            },
+        )?;
+        self.append(
+            space,
+            &me,
+            EventBody::GrantIssued {
+                grant: Grant {
+                    id: new_id("gr"),
+                    grantor: me.clone(),
+                    grantee: Some(format!("app:{item}")),
+                    scope: GrantScope::Item(item.clone()),
+                    capability: Capability::Trust(TrustLevel::Act),
+                    expires_at_ms: None,
+                },
+            },
+        )?;
+        self.post_as(
+            space,
+            &me,
+            &t(
+                "Mini-app adicionado a este Espaço.",
+                "Mini-app added to this Space.",
+            ),
+            Some(item.clone()),
+        )?;
+        self.item(&item)
+    }
+
     /// `tools/call` vindo da interface de um mini-app. Toda chamada passa pelo avaliador
     /// de Concessões: reversível roda (e vira versão do Item); irreversível ou externo
     /// volta como `NeedsConfirmation` e só roda com `confirmed = true` (a folha nativa).

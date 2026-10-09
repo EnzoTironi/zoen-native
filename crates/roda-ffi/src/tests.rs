@@ -427,6 +427,61 @@ fn mcp_specs_follow_the_apps_extension() {
 }
 
 #[test]
+fn explicit_install_does_not_raise_agent_trust_and_limits_the_app_grant_to_its_item() {
+    let e = seeded();
+    let space = find_space(&e, "Paraty com a Marina");
+    let agent = zoen(&e);
+    e.set_trust(agent.id.clone(), space.id.clone(), TrustLevelDto::Listen)
+        .unwrap();
+    let pet = e
+        .install_app(
+            space.id.clone(),
+            "pet".into(),
+            r#"{"name":"Android Burrico"}"#.into(),
+        )
+        .unwrap();
+    assert_eq!(pet.created_by.id, e.me().unwrap().id);
+    assert_eq!(pet.app.as_ref().unwrap().trust, TrustLevelDto::Act);
+    let profile = e.agent_profile(agent.id);
+    assert_eq!(
+        profile
+            .spaces
+            .iter()
+            .find(|s| s.space_id == space.id)
+            .unwrap()
+            .level,
+        TrustLevelDto::Listen
+    );
+    let fed = e
+        .app_call_tool(pet.id.clone(), "pet_feed".into(), "{}".into(), false)
+        .unwrap();
+    assert_eq!(fed.status, AppCallStatus::Done);
+    assert_eq!(
+        e.app_call_tool(pet.id, "pet_release".into(), "{}".into(), false)
+            .unwrap()
+            .status,
+        AppCallStatus::NeedsConfirmation
+    );
+    assert!(e.verify_log(space.id).valid);
+}
+
+#[test]
+fn explicit_install_rejects_invalid_inputs_before_creating_any_item() {
+    let e = seeded();
+    let space = find_space(&e, "Paraty com a Marina");
+    let before = e.items().len();
+    for (id, args) in [("unknown", "{}"), ("pet", "{"), ("pet", "[]")] {
+        assert!(e
+            .install_app(space.id.clone(), id.into(), args.into())
+            .is_err());
+    }
+    assert!(e
+        .install_app("missing-space".into(), "pet".into(), "{}".into())
+        .is_err());
+    assert_eq!(e.items().len(), before);
+}
+
+#[test]
 fn pet_is_shared_state_versioned_and_gated_by_grants() {
     let e = seeded();
     let paraty = find_space(&e, "Paraty com a Marina");
