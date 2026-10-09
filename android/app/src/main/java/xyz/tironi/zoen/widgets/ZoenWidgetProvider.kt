@@ -183,9 +183,11 @@ class ZoenWidgetProvider : AppWidgetProvider() {
                 else -> snapshot.detail.orEmpty()
             }
             views.setTextViewText(R.id.widget_detail, detail)
+            views.setViewVisibility(R.id.widget_detail, if (detail.isBlank()) View.GONE else View.VISIBLE)
             views.setViewVisibility(R.id.widget_progress, if (!hidden && snapshot!!.bars.isNotEmpty()) View.VISIBLE else View.GONE)
             snapshot?.bars?.firstOrNull()?.let { views.setProgressBar(R.id.widget_progress, 1000, (it.value * 1000).toInt(), false) }
             views.setTextViewText(R.id.widget_bars, if (hidden) "" else snapshot!!.bars.joinToString(" · ") { "${it.label} ${(it.value * 100).toInt()}%" })
+            views.setViewVisibility(R.id.widget_bars, if (hidden || snapshot!!.bars.isEmpty()) View.GONE else View.VISIBLE)
             val link = if (hidden) "zoen://widgets" else snapshot!!.deepLink
             val open = Intent(context, MainActivity::class.java).setAction(Intent.ACTION_VIEW).setData(Uri.parse(link))
                 .addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP)
