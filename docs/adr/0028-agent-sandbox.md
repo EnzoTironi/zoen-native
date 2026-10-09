@@ -112,19 +112,92 @@ pub trait SandboxProvider: Send + Sync {
 - **Wake on use:** a call to a suspended lease restores it on any node holding the snapshot,
   then falls back to object storage.
 
-### 6. Network and data rules
+### 6. Network: default deny, and the egress proxy as a first-class component
 - **Default deny.** Each VM has its own tap and netns; nftables drops everything except the
-  egress proxy. No route to the metadata service, cluster CIDRs, other sandboxes or the host.
-- **Egress proxy** (per node): enforces the manifest's domain allowlist by SNI or Host, does DNS
-  itself, rate-limits, and **swaps secrets in**: the sandbox holds a placeholder and the proxy
-  inserts the real token only on requests to that token's allowed hosts, so code can use a
-  credential but never read or exfiltrate it.
-- **Logs** hold metadata only: lease id, host, bytes, duration, exit code. Never commands,
-  file contents, page contents or screenshots.
-- All control traffic (agentd ↔ scheduler ↔ sandboxd) is mTLS; agentd ↔ guest is vsock with
-  a per-lease token.
-- **Abuse:** per-owner CPU and egress budgets, outbound SMTP blocked, and kill on mining-like
-  CPU profiles.
+  node's egress proxy. No route to the metadata service, cluster CIDRs, other sandboxes or
+  the host. WASM tools (T0) have no sockets at all; their HTTP goes through the same proxy
+  via a host function.
+- **`zoen-egress`** is its own crate and process (one per sandbox node, one per agentd pod for
+  T0), not a feature of something else. It:
+  1. **Allows only what the tool's manifest lists.** The manifest declares `egress` as hosts
+     (`api.github.com`, `*.pypi.org`) with ports and methods. The proxy checks the CONNECT
+     host or the Host header, resolves DNS itself, and refuses IP literals and private,
+     loopback, link-local and metadata addresses even if a listed name resolves to them.
+  2. **Injects credentials.** The sandbox and the model only ever see a placeholder such as
+     `zoen-secret://github`. The proxy swaps it for the real token, which it gets sealed from
+     the owner's vault for this lease, only on requests to the hosts that secret is bound to.
+     A placeholder sent anywhere else is refused, so code can use a credential but can never
+     read it or send it elsewhere.
+  3. **Turns an unlisted request into an approval card.** A request to a host outside the
+     list is refused with `EGRESS_NEEDS_APPROVAL` and an id, and the proxy raises an
+     `AgentRequest` (kind `egress`, tool, host, port, method, never the path or body). The
+     owner chooses *once*, *for this task* or *always for this tool* (a new Grant); the
+     tool retries after approval. Nothing is held open while waiting.
+  4. **Logs metadata only:** lease, tool, host, port, method, decision, bytes in and out,
+     duration. Never URLs past the host, headers, bodies, secrets or page contents.
+  5. **Rate-limits** per lease and per owner, blocks SMTP and raw TCP not in the manifest.
+- All control traffic (agentd ↔ scheduler ↔ sandboxd ↔ egress) is mTLS; agentd ↔ guest is
+  vsock with a per-lease token.
+- **Abuse:** per-owner CPU and egress budgets, and kill on mining-like CPU profiles.
+
+### 6c. "Route through my device" (optional exit, designed in P0, built later)
+Purpose: sites that block or CAPTCHA datacenter IPs see the person's own home or phone
+connection instead, without paid residential proxies.
+- **Off by default.** The person turns it on per device in Settings, and can turn it off any
+  time. The app shows the number of requests routed through that device today and this week,
+  by site (host only).
+- **Only your own agents.** The exit accepts a tunnel only for leases whose owner is the
+  device's identity: `zoen-egress` asks for a tunnel ticket signed by the owner's identity key
+  (ADR 0003) naming the lease, tool and expiry, and the device checks it. No other person's
+  agent, no community agent and no Zoen service can use it.
+- **End-to-end.** `zoen-egress` keeps doing the allowlist, approval cards and credential
+  injection, then sends each permitted connection over a tunnel encrypted end to end to the
+  device (Noise or HPKE with the device key; the relay forwards ciphertext only). The device
+  opens the outbound connection itself and **checks the destination again against the
+  allowlist carried in the signed ticket**, refusing private, loopback and LAN addresses, so
+  the person's home network is never reachable. TLS stays end to end between the browser in
+  the VM and the site; the device sees host names and byte counts, not content.
+- **Platforms.**
+  - macOS: a background login-item helper (SMAppService) holds the tunnel while the Mac is
+    awake.
+  - iOS: in-app while Zoen is in the foreground, which covers the common case of a person
+    watching or taking over a browser. A Network Extension (`NEPacketTunnelProvider`) for
+    background use is an option to evaluate, not a plan: App Review guideline 5.4 treats VPN
+    services strictly (organization account, `NEVPNManager`, data disclosures), and 2.4.2
+    limits unrelated background work.
+- **Caps.** Wi-Fi only by default (cellular is an extra toggle); not on Low Power Mode or
+  below 20% battery unless charging; a per-day byte cap (default 200 MB) and requests-per-
+  minute cap per device; video and downloads above a size limit stay on our egress.
+- **Abuse limits.** The same egress budgets apply as on our own exit, plus a lower
+  per-host rate, no SMTP, no ports other than 80 and 443, and an automatic off switch if a
+  site starts refusing the person's IP. Every routed request is in the owner's metadata log.
+- **Fallback.** If the device is offline, asleep, over a cap or refuses, traffic goes through
+  our egress as usual, and the tool is told which exit was used.
+
+### 6b. SMT stays on, with core scheduling
+Enzo's call (2026-10-08): keep SMT (hyper-threading) on and use Linux **core scheduling**
+instead of disabling SMT.
+- `zoen-sandboxd` gives every sandbox a unique core-scheduling cookie
+  (`prctl(PR_SCHED_CORE, PR_SCHED_CORE_CREATE, pid, PR_SCHED_CORE_SCOPE_THREAD_GROUP)`) on the
+  jailer process before it execs Firecracker. Cookies are inherited across clone and exec, so
+  every vCPU and VMM thread of that VM carries it, and the kernel never runs two different
+  cookies on the two threads of one physical core at the same time. Host kernel 5.14+ with
+  `CONFIG_SCHED_CORE`.
+- Sandboxes get vCPUs **in pairs** (2 by default) so a VM can fill both threads of a core;
+  a 1-vCPU VM would leave its sibling forced idle.
+- **Residual risk** (from the kernel's own documentation): core scheduling does not protect
+  kernel contexts on sibling threads from each other (IRQ, syscalls, VMEXIT); it cannot stop
+  MDS between a sibling in user mode and one in kernel mode, nor an L1TF guest attacker on
+  affected CPUs; and there is a short window while siblings receive the IPI to switch. So
+  hosts also run the full CPU mitigations (`mitigations=auto`, plus L1D flush on VM entry
+  where the CPU needs it), we buy CPUs not listed as affected by L1TF and MDS in
+  `/sys/devices/system/cpu/vulnerabilities`, and `zoen-sandboxd` refuses to start on a host
+  whose kernel lacks core scheduling.
+- **Fallback:** a `smt=off` node pool (`nosmt` on the kernel command line) for high-risk
+  tenants: organizations that ask for it, and owners flagged by abuse signals. The scheduler
+  places them there by label.
+- Cost: core scheduling has overhead (forced idle), and the kernel docs say to measure. We
+  assume 80% of full SMT throughput until P1 measures it.
 
 ### 7. Browser use
 - **T2 runs Chromium inside the microVM.** `zoen-browserd` in the guest speaks CDP to it
@@ -143,9 +216,9 @@ pub trait SandboxProvider: Send + Sync {
   they hand back. Typed passwords never reach the model or the logs.
 - **Sessions:** a saved browser profile (cookies, local storage) is an opt-in, per-site
   approval. It is stored sealed to the owner's agent key and opened only inside the VM.
-- **Anti-bot:** we do not run stealth patches or CAPTCHA solvers. Our agents identify
-  themselves with **Web Bot Auth** signatures; CAPTCHAs go to the human handoff. Residential
-  proxies are a paid add-on and a separate decision.
+- **Anti-bot (decided for v1):** no residential proxies, no CAPTCHA-solving services and no
+  stealth patches. Our agents identify themselves with **Web Bot Auth** signatures (signed
+  agents), and CAPTCHAs and blocks go to the human takeover.
 
 ### 8. Where it runs
 
@@ -158,29 +231,31 @@ pub trait SandboxProvider: Send + Sync {
 | Production | bare metal declared in OpenTofu modules per provider (Hetzner AX, AWS `*.metal`, or AWS C7i/M7i/C8i with nested virtualization for small regions), joined to the cluster as the `kvm=true` pool | see below |
 
 ### 9. Cost (details and sources in the research note)
+With SMT on and core scheduling (80% of SMT throughput assumed until measured):
 
 | | Ours on Hetzner AX102 (60% utilization) | Ours on AWS m7i.metal-24xl | Providers |
 |---|---|---|---|
-| Code sandbox-hour (1 vCPU, 1 GiB) | $0.0069 | $0.025 | E2B $0.067, Modal $0.095 |
-| Browser-hour | $0.0115 | $0.042 | Steel $0.08–0.10, Cloudflare $0.09, Browserbase $0.10–0.12 |
+| Code sandbox-hour (2 vCPU shared, 1 GiB) | $0.0069 (memory-bound, unchanged) | $0.026 | E2B $0.067, Modal $0.095 (1 vCPU + 1 GiB) |
+| Browser-hour | $0.0135 (SMT off: $0.0216) | $0.053 (SMT off: $0.084) | Steel $0.08–0.10, Cloudflare $0.09, Browserbase $0.10–0.12 |
 
 At 1B users (500M DAU; 20% use an agent daily; 10% of those escalate to a code sandbox for
 3 min, 5% to a browser for 5 min; 60 s idle suspend; 2× peak; 20% spare):
-**≈ $361k/month on Hetzner-class metal ($0.0007 per DAU)**, ≈ $1.33M on AWS metal on demand,
-≈ $2.25M if bought from E2B and Browserbase. If every agent task got a microVM for 10 minutes
-instead (no escalation), it would be ≈ $5.0M/month. **Escalating only on need is worth about
-14×.**
+**≈ $398k/month on Hetzner-class metal ($0.0008 per DAU)**, ≈ $1.54M on AWS metal on demand,
+≈ $2.25M if bought from E2B and Browserbase. With SMT off everywhere it would be ≈ $629k
+(Hetzner) and ≈ $2.45M (AWS), so core scheduling saves about a third. If every agent task got
+a microVM for 10 minutes (no escalation), it would be ≈ $5.0M/month. **Escalating only on
+need is worth about 13×.**
 
 ## Build plan
 
 | Phase | Scope | Proof | Spend |
 |---|---|---|---|
-| **P0** | `SandboxProvider` trait, manifest and router in `zoen-agentd`, `Fake` and `Gvisor` backends, WASM tier wired to the same router, egress allowlist model, budgets | journey: a T0 tool runs in WASM; a tool declaring `microvm` without a Grant raises an `AgentRequest`; with a Grant it runs in gVisor | none |
+| **P0** | `SandboxProvider` trait, manifest and router in `zoen-agentd`, `Fake` and `Gvisor` backends, budgets, `zoen-egress` skeleton (allowlist, credential injection, approval on unlisted hosts, metadata-only log) | journey: a T0 tool runs in WASM; a tool declaring `microvm` without a Grant raises an `AgentRequest`; with a Grant it runs in gVisor | none |
 | **P1** | `zoen-sandboxd` + `zoen-guestd`, template build from OCI, snapshot restore with userfaultfd, nftables + egress proxy, suspend, resume, fork; measure start time and density on the box | journey on the box's `/dev/kvm`: acquire under 1 s from a warm pool, suspend and resume keep files, the VM cannot reach the metadata IP or the relay | none |
 | **P2** | browser template, `zoen-browserd`, live view with encrypted frames, handoff `AgentRequest`, SwiftUI live card and takeover | journey: agent fills a form; handoff for a login; the model's transcript has no password; measured MB per session | none |
-| **P3** | `FlyMachines` backend and staging app on its own private network | the P0–P2 journeys pass against staging | about $22/month; needs Enzo's `fly auth login` and approval to create the app |
-| **P4** | scheduler with FoundationDB leases, warm pools, OpenTofu module for the bare-metal pool, load test to 1,000 concurrent sandboxes | measured density and cost per sandbox-hour replace the estimates | one or two bare-metal hosts; needs approval |
-| **P5** | GPU tier, more regions, Web Bot Auth registration | | later |
+| **P3** | `FlyMachines` backend and staging app on its own private network | the P0–P2 journeys pass against staging | about $22/month; asked for when P3 starts; needs Enzo's `fly auth login` |
+| **P4** | scheduler with FoundationDB leases, warm pools, core-scheduling cookies, OpenTofu module for the bare-metal pool, load test to 1,000 concurrent sandboxes | measured density, core-scheduling overhead and cost per sandbox-hour replace the estimates | one or two bare-metal hosts; asked for when P4 starts |
+| **P5** | GPU tier, more regions, Web Bot Auth registration, "route through my device" exit (section 6c: macOS helper first, then iOS in-app) | journey: an allowlisted request leaves through the owner's Mac; another owner's ticket is refused; device offline falls back | later |
 
 ## Consequences
 - We own a security boundary. This needs a STRIDE review before P3, fuzzing of the vsock and
@@ -191,10 +266,11 @@ instead (no escalation), it would be ≈ $5.0M/month. **Escalating only on need 
 - A provider (E2B and Browserbase have free tiers) can still be plugged in behind the trait
   for comparison, without changing app code.
 
-## Open decisions for Enzo
-1. **SMT off on sandbox hosts** (Firecracker's recommendation, stronger against side channels)
-   costs about half the CPU capacity, which matters most for browsers. Proposed: off.
-2. **Residential proxies and CAPTCHA services** for sites that block datacenter IPs: proposed
-   not in v1 (human handoff plus Web Bot Auth instead).
-3. **Staging spend** of about $22/month on Fly Machines (P3), and **one or two bare-metal
-   hosts** for P4.
+## Decisions taken (Enzo, 2026-10-08)
+1. SMT stays on with core scheduling; `smt=off` pool as the fallback for high-risk tenants
+   (section 6b).
+2. v1 has no residential proxies and no CAPTCHA-solving services: human takeover and signed
+   agents (section 7).
+3. Spend is asked for per phase, when that phase starts (P3 staging, P4 bare metal).
+4. The egress proxy is a first-class component (section 6).
+5. "Route through my device" is designed now (section 6c) and built later; off by default.
