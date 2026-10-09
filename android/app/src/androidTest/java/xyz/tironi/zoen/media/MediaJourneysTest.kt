@@ -89,7 +89,8 @@ class MediaJourneysTest {
             compose.onNodeWithText(application.getString(R.string.ask_zoen), useUnmergedTree = true).performClick()
             compose.onNodeWithText(application.getString(R.string.files), useUnmergedTree = true).performClick()
             compose.onNodeWithText(item.title, useUnmergedTree = true).performScrollTo().performClick()
-            compose.onNodeWithTag("file-markup").performScrollTo().performClick()
+            compose.waitUntil(15_000) { compose.onAllNodesWithTag("file-markup", useUnmergedTree = true).fetchSemanticsNodes().isNotEmpty() }
+            compose.onNodeWithTag("file-markup", useUnmergedTree = true).performScrollTo().performClick()
             compose.waitUntil(10_000) { compose.onAllNodesWithTag("markup-canvas").fetchSemanticsNodes().isNotEmpty() }
             compose.onNodeWithTag("markup-canvas").performTouchInput { swipe(Offset(width * .2f, height * .5f), Offset(width * .8f, height * .5f), durationMillis = 700) }
             capture("image-native-ink")
