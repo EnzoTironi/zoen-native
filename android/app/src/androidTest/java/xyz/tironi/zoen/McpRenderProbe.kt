@@ -85,7 +85,7 @@ internal class McpRenderProbe(private val activity: ComponentActivity, private v
 
     /** Uses the last observed UI state so diagnostics do not depend on an unblocked UI loop. */
     fun failureEvidence(name: String, error: Throwable) {
-        val directory = File(activity.getExternalFilesDir(null), "evidence").apply { mkdirs() }
+        val directory = File(InstrumentationRegistry.getInstrumentation().targetContext.cacheDir, "mcp-evidence").apply { mkdirs() }
         File(directory, "$name.json").writeText(JSONObject(report()).put("error", error.toString()).toString(2))
         Log.e(TAG, "Failure evidence $name: ${report()}")
         val screenshot = InstrumentationRegistry.getInstrumentation().uiAutomation.takeScreenshot()

@@ -90,7 +90,7 @@ class McpWebViewTest {
             waitUntil { evaluate(web.get(), "document.querySelector('#items .it').classList.contains('done')") == "true" }
             awaitFrame(web.get(), probe.get())
             assertTrue(core.verifyAll().all { it.valid })
-            val evidence = File(context.getExternalFilesDir(null), "evidence/mcp-webview-list.png").apply { parentFile!!.mkdirs() }
+            val evidence = evidenceFile("mcp-webview-list.png")
             InstrumentationRegistry.getInstrumentation().uiAutomation.takeScreenshot().use { bitmap -> evidence.outputStream().use { bitmap.compress(Bitmap.CompressFormat.PNG, 100, it) } }
 
             // This request travels through the same HTML protocol, but cannot read another app's resource.
@@ -132,7 +132,8 @@ class McpWebViewTest {
         val space = core.spaces().first { it.counterpart?.handle == "zoen" }
         val item = core.installApp(space.id, "hike", "{}")
         val failure = AtomicReference<String?>()
-        val session = McpAppSession(item.id, gateway(core), confirm = { false }, consent = { MiniAppConsent.DENY }, native = { _, _ -> error("No device capability was granted") }, nativeAvailable = emptySet(), openLink = { error("No external browser should open") }, onDisplay = {}, haptic = {}, onError = { failure.set(it) })
+        val lastTool = AtomicReference("No core tool request received")
+        val session = McpAppSession(item.id, gateway(core, lastTool = lastTool), confirm = { false }, consent = { MiniAppConsent.DENY }, native = { _, _ -> error("No device capability was granted") }, nativeAvailable = emptySet(), openLink = { error("No external browser should open") }, onDisplay = {}, haptic = {}, onError = { failure.set(it) })
         val web = AtomicReference<WebView>()
         val probe = AtomicReference<McpRenderProbe>()
         val loaded = CountDownLatch(1)
@@ -174,29 +175,36 @@ class McpWebViewTest {
             }
             awaitFrame(web.get(), probe.get())
             assertEquals("0", evaluate(web.get(), "document.querySelectorAll('.maplibregl-canvas').length"))
+            observeHtmlInput(web.get())
             val originalMap = evaluate(web.get(), "document.querySelector('[data-map=offline] > svg > g').getAttribute('transform')")
             touch(web.get(), ".offline-controls button")
-            waitUntil { evaluate(web.get(), "document.querySelector('[data-map=offline] > svg > g').getAttribute('transform')") != originalMap }
+            waitUntil(description = "The Zoom in touch must change the route transform") { evaluate(web.get(), "document.querySelector('[data-map=offline] > svg > g').getAttribute('transform')") != originalMap }
             touch(web.get(), ".offline-controls button:last-child")
-            waitUntil { evaluate(web.get(), "document.querySelector('[data-map=offline] > svg > g').getAttribute('transform')") == originalMap }
+            waitUntil(description = "The Fit route touch must restore the exact original transform") { evaluate(web.get(), "document.querySelector('[data-map=offline] > svg > g').getAttribute('transform')") == originalMap }
             awaitFrame(web.get(), probe.get())
-            val mapEvidence = File(context.getExternalFilesDir(null), "evidence/mcp-hike-offline-map.png").apply { parentFile!!.mkdirs() }
+            val mapEvidence = evidenceFile("mcp-hike-offline-map.png")
             InstrumentationRegistry.getInstrumentation().uiAutomation.takeScreenshot().use { bitmap -> mapEvidence.outputStream().use { bitmap.compress(Bitmap.CompressFormat.PNG, 100, it) } }
             touch(web.get(), ".card")
-            waitUntil { evaluate(web.get(), "Boolean(document.querySelector('.sticky button:last-child'))") == "true" }
+            waitUntil(description = "The trail card touch must open its Vote detail") { evaluate(web.get(), "Boolean(document.querySelector('.sticky button:last-child'))") == "true" }
+            // The FLIP page exists in the DOM before its controls reach the native compositor.
+            awaitFrame(web.get(), probe.get())
             val before = core.item(item.id).version
             touch(web.get(), ".sticky button:last-child")
-            waitUntil { core.item(item.id).version > before }
+            waitUntil(description = "The Vote touch must create a new signed Rust item version") { core.item(item.id).version > before }
             val trails = JSONObject(core.item(item.id).app!!.viewJson).getJSONArray("trails")
             assertTrue((0 until trails.length()).any { trails.getJSONObject(it).getJSONArray("votes").length() > 0 })
-            waitUntil { evaluate(web.get(), "document.querySelector('.sticky button:last-child').textContent.startsWith('Voted')") == "true" }
+            waitUntil(description = "The signed vote must return to the HTML Vote control") { evaluate(web.get(), "document.querySelector('.sticky button:last-child').textContent.startsWith('Voted')") == "true" }
             awaitFrame(web.get(), probe.get())
             assertTrue(core.verifyAll().all { it.valid })
-            val evidence = File(context.getExternalFilesDir(null), "evidence/mcp-hike-offline-vote.png").apply { parentFile!!.mkdirs() }
+            val evidence = evidenceFile("mcp-hike-offline-vote.png")
             InstrumentationRegistry.getInstrumentation().uiAutomation.takeScreenshot().use { bitmap -> evidence.outputStream().use { bitmap.compress(Bitmap.CompressFormat.PNG, 100, it) } }
             assertNull(failure.get())
         } catch (error: Throwable) {
             runCatching { probe.get()?.failureEvidence("mcp-hike-failure", error) }.exceptionOrNull()?.let(error::addSuppressed)
+            Log.e("McpWebViewTest", "Hike last core tool: ${lastTool.get()}")
+            runCatching {
+                Log.e("McpWebViewTest", "Hike failure HTML: ${evaluate(web.get(), "({events:window.mcpInputTrace,toast:document.querySelector('.toast')?.textContent,vote:document.querySelector('.sticky button:last-child')?.textContent,text:document.body.innerText.slice(-1000)})")}")
+            }.exceptionOrNull()?.let(error::addSuppressed)
             throw error
         } finally {
             InstrumentationRegistry.getInstrumentation().runOnMainSync { probe.get()?.close(); session.dispose() }
@@ -204,11 +212,24 @@ class McpWebViewTest {
         }
     }
 
-    private fun gateway(core: RodaEngine, confirmedCalls: AtomicInteger = AtomicInteger()): MiniAppGateway = object : MiniAppGateway {
+    private fun gateway(core: RodaEngine, confirmedCalls: AtomicInteger = AtomicInteger(), lastTool: AtomicReference<String>? = null): MiniAppGateway = object : MiniAppGateway {
         override suspend fun item(id: String) = withContext(Dispatchers.IO) { core.item(id) }
         override suspend fun specs() = withContext(Dispatchers.IO) { core.appSpecs() }
         override suspend fun resource(uri: String) = withContext(Dispatchers.IO) { core.readAppResource(uri) }
-        override suspend fun call(item: String, tool: String, args: String, confirmed: Boolean): AppCallOutcome = withContext(Dispatchers.IO) { if (confirmed) confirmedCalls.incrementAndGet(); core.appCallTool(item, tool, args, confirmed) }
+        override suspend fun call(item: String, tool: String, args: String, confirmed: Boolean): AppCallOutcome = withContext(Dispatchers.IO) {
+            if (confirmed) confirmedCalls.incrementAndGet()
+            lastTool?.set("$tool requested, confirmed=$confirmed")
+            try {
+                core.appCallTool(item, tool, args, confirmed).also { result ->
+                    val trace = "$tool: status=${result.status}, version=${result.item?.version}, message=${result.message}"
+                    lastTool?.set(trace)
+                    Log.i("McpWebViewTest", "Core tool $trace")
+                }
+            } catch (error: Exception) {
+                lastTool?.set("$tool failed: $error")
+                throw error
+            }
+        }
         override suspend fun allowed(item: String, capability: String) = withContext(Dispatchers.IO) { core.appDeviceAllowed(item, capability) }
         override suspend fun grant(item: String, capability: String, purpose: String, always: Boolean) { withContext(Dispatchers.IO) { core.grantAppDevice(item, capability, purpose, always) } }
         override suspend fun message(space: String, text: String) { withContext(Dispatchers.IO) { core.sendMessage(space, text) } }
@@ -217,12 +238,40 @@ class McpWebViewTest {
 
     private inline fun <T> Bitmap.use(block: (Bitmap) -> T): T = try { block(this) } finally { recycle() }
 
+    private fun evidenceFile(name: String): File = File(
+        InstrumentationRegistry.getInstrumentation().targetContext.cacheDir,
+        "mcp-evidence/$name",
+    ).apply { parentFile!!.mkdirs() }
+
     private fun evaluate(web: WebView, script: String): String {
         val answer = AtomicReference<String>()
         val done = CountDownLatch(1)
         InstrumentationRegistry.getInstrumentation().runOnMainSync { web.evaluateJavascript(script) { answer.set(it); done.countDown() } }
         check(done.await(10, TimeUnit.SECONDS)) { "WebView JavaScript callback timed out" }
         return answer.get()
+    }
+    private fun observeHtmlInput(web: WebView) {
+        evaluate(web, """
+            (() => {
+              const trace = window.mcpInputTrace = [];
+              const record = entry => {
+                trace.push(entry);
+                if (trace.length > 24) trace.shift();
+                console.info('MCP input ' + JSON.stringify(entry));
+              };
+              for (const type of ['pointerdown', 'pointerup', 'click']) {
+                document.addEventListener(type, event => {
+                  const button = event.target.closest?.('button');
+                  record({type, trusted:event.isTrusted, pointer:event.pointerType, x:event.clientX, y:event.clientY,
+                    button:button?.textContent.slice(0,80), classes:button?.className});
+                }, {capture:true, passive:true});
+              }
+              new MutationObserver(() => {
+                const text = document.querySelector('.toast')?.textContent;
+                if (text && trace[trace.length-1]?.toast !== text) record({toast:text});
+              }).observe(document.body, {childList:true, subtree:true});
+            })();
+        """.trimIndent())
     }
     private fun touch(web: WebView, selector: String) {
         val target = JSONObject(evaluate(web, """
@@ -307,8 +356,8 @@ class McpWebViewTest {
             }
         }
     }
-    private fun waitUntil(timeoutMs: Long = 10_000, condition: () -> Boolean) {
+    private fun waitUntil(timeoutMs: Long = 10_000, description: String = "HTML did not reach the expected state", condition: () -> Boolean) {
         val limit = SystemClock.uptimeMillis() + timeoutMs
-        while (!condition()) { check(SystemClock.uptimeMillis() < limit) { "HTML did not reach the expected state" }; SystemClock.sleep(100) }
+        while (!condition()) { check(SystemClock.uptimeMillis() < limit) { description }; SystemClock.sleep(100) }
     }
 }
