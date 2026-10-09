@@ -25,7 +25,7 @@ use zoen_relay::{
     log::{fdb::FdbLog, LogStore},
     ownership::{
         self,
-        forward::{Forwarder, MAX_REQUESTS},
+        forward::{Forwarder, MAX_BYTES, MAX_REQUESTS},
         Lease,
     },
 };
@@ -425,6 +425,20 @@ async fn journey() {
     )
     .await
     .unwrap();
+    let oversized_space = "x".repeat(MAX_BYTES / 6 + 1);
+    let oversized_invite = forwarder
+        .invite(
+            &author.identity,
+            &oversized_space,
+            Role::Member,
+            1,
+            60,
+            "oversized-code",
+            &renewed.fence,
+        )
+        .await
+        .unwrap_err();
+    assert!(oversized_invite.contains("capacity"));
     let invite = device_b.invite(&space_a).await;
     let replayed_invite = forwarder
         .invite(

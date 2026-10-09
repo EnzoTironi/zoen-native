@@ -314,7 +314,7 @@ impl NodeOwner {
             .unwrap_or(false)
     }
 
-    pub fn spawn(owner: &Arc<Self>, should_renew: impl Fn() -> bool + Send + 'static) {
+    pub fn spawn(owner: &Arc<Self>, should_renew: impl Fn() -> bool + Send + Sync + 'static) {
         let weak = Arc::downgrade(owner);
         let interval = owner.interval;
         tokio::spawn(async move {
@@ -324,7 +324,7 @@ impl NodeOwner {
                 if !should_renew() {
                     continue;
                 }
-                if let Err(e) = owner.maintain().await {
+                if let Err(e) = owner.maintain_if_due(false, &should_renew).await {
                     tracing::warn!(error = %e, "ownership renewal failed");
                 }
             }

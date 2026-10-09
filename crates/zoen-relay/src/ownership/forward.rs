@@ -222,6 +222,17 @@ impl Forwarder {
             .clone()
             .try_acquire_owned()
             .map_err(|_| "owner forwarding capacity reached".to_string())?;
+        // Reserve before cloning or JSON encoding; a string can expand sixfold.
+        let size = [who, space, code, &fence.owner]
+            .iter()
+            .fold(512usize, |bytes, value| {
+                bytes.saturating_add(value.len().saturating_mul(6))
+            });
+        let _bytes = self
+            .bytes
+            .clone()
+            .try_acquire_many_owned(size.min(u32::MAX as usize) as u32)
+            .map_err(|_| "owner forwarding capacity reached".to_string())?;
         let request = Request {
             fence: fence.clone(),
             invite: Some(InviteRequest {
@@ -236,6 +247,9 @@ impl Forwarder {
         let encoded = serde_json::to_string(&request).map_err(|e| e.to_string())?;
         let mut headers = HeaderMap::new();
         headers.insert(FENCE_HEADER, encoded.as_str());
+        if header_bytes(&headers) > self.client.server_info().max_payload {
+            return Err("invite exceeds cell forwarding payload limit".into());
+        }
         let response = tokio::time::timeout(
             RPC_TIMEOUT,
             self.client.request_with_headers(
