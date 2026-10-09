@@ -734,6 +734,7 @@ impl Engine {
                 self.net.mls.publishing = Some((packages, Some(last_resort)));
             } else if self.net.mls.top_up > 0 {
                 let packages = device.key_packages(self.net.mls.top_up, false).ok()?;
+                tracing_like(&format!("key packages generated count={}", packages.len()));
                 self.net.mls.top_up = 0;
                 self.net.mls.publishing = Some((packages, None));
             }
@@ -749,12 +750,17 @@ impl Engine {
             .account
             .as_ref()
             .is_some_and(|a| a.device == device);
+        tracing_like(&format!(
+            "key packages low remaining={remaining} mine={mine} publishing={}",
+            self.net.mls.publishing.is_some()
+        ));
         if mine && self.net.mls.publishing.is_none() {
             self.net.mls.top_up = KEY_PACKAGES.saturating_sub(remaining as usize);
         }
     }
 
     pub fn mls_key_packages_published(&mut self, result: Result<(), String>) {
+        tracing_like(&format!("key packages published result={result:?}"));
         match result {
             Ok(()) => {
                 if let Some(a) = &self.net.account {
