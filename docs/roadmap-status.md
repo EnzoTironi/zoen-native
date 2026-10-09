@@ -74,8 +74,13 @@ including nine ownership assertion groups, ten real-store journeys and seven ses
 revocation tests. Its owner also reports 42 local core tests and nine client journeys
 passing. Local relay failures remain recorded: FDB startup returned 1031 and a short
 lease fixture lost renewal stability. The CI result is independently checked; the local
-results are workstream reports. They do not close workload, authenticated TLS, production-cell
-or regional recovery gates.
+results are workstream reports. Source review found five issues that must be fixed before
+integration: a full relay registry cannot recover expired entries; inbound forwarding can
+retain capacity without a deadline; large accepted audiences exceed reply metadata bounds
+and lose live delivery; invite strings escape byte quotas; permanently rejected genesis
+entries strand queued descendants. The findings have been sent to the backend workstream
+for causal regressions and fresh-head CI. The passing run above predates these fixes and
+does not close workload, authenticated TLS, production-cell or regional recovery gates.
 
 The analytics hot path already batches counters in RAM every 15 seconds.
 Account/Space daily rows still accumulate in Postgres.
@@ -100,7 +105,7 @@ establish product completeness.
 | [40](https://github.com/EnzoTironi/zoen-native/pull/40) | Merged `076d69e3` | Welcome ordering, refill, catch-up and stale-rejection fixes | Integrated; controlled regressions pass; historical stock-7 cause remains unproven and repeatability remains required |
 | [41](https://github.com/EnzoTironi/zoen-native/pull/41) | Separate draft | Native Android client | Owned by another active chat; untouched by this audit; owner supplies live sync/media evidence |
 | [42](https://github.com/EnzoTironi/zoen-native/pull/42) | `d9ebb3e` | Temporary combined validation PR | Full Linux CI passes; 41 local FFI tests and focused CLI/FFI Clippy pass; unmerged, close after original feature integration |
-| [43](https://github.com/EnzoTironi/zoen-native/pull/43) | `3fe1ef5`, open | Renewable persisted bucket ownership, fencing and bounded forwarding | Full Linux CI passes, including nine ownership assertion groups; review/integration and workload, short-lease and authenticated TLS proof remain |
+| [43](https://github.com/EnzoTironi/zoen-native/pull/43) | `3fe1ef5`, draft | Renewable persisted bucket ownership, fencing and bounded forwarding | Full Linux CI passes, including nine ownership assertion groups; five source-review fixes and causal regressions are pending before integration. Workload, short-lease and authenticated TLS proof remain |
 | [44](https://github.com/EnzoTironi/zoen-native/pull/44) | `836910c` stacked on PR 38 | One Chats inbox, native header/pins/palette, Cards/List notifications and reusable web shell | Full Linux CI, iOS/macOS builds, 13 web checks and Mac/browser journeys pass; fresh iOS UI journeys pending. Web data remains a local sample preview |
 
 Backup uses ADR 0046 and linking uses ADR 0045. Existing backup migration bytes were
