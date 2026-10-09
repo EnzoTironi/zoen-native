@@ -624,7 +624,7 @@ async fn legacy_checkpoint_holds_upgrade_without_expiring_history() {
     let migrated = db
         .run(|trx, _| {
             let key = key.clone();
-            async move { trx.get(&key, false).await }
+            async move { Ok(trx.get(&key, false).await?) }
         })
         .await
         .unwrap()
