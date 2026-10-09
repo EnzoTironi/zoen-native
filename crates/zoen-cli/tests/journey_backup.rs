@@ -1,4 +1,4 @@
-//! Encrypted server backup (ADR 0045): Ana turns on a password backup, loses her phone and
+//! Encrypted server backup (ADR 0046): Ana turns on a password backup, loses her phone and
 //! gets her account and history back on a new one; the relay never holds anything readable;
 //! ten wrong passwords lock a backup for good; a recovery key works without the vault.
 //!

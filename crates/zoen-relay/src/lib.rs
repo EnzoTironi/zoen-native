@@ -75,7 +75,7 @@ pub struct AppState {
     /// This node's Space-partition leases (S4). One process owns every partition until
     /// S5 brings a multi-node lease exchange over NATS.
     pub owner: ownership::NodeOwner,
-    /// Guards password backups (ADR 0045); `None` = only recovery-key backups.
+    /// Guards password backups (ADR 0046); `None` = only recovery-key backups.
     pub backup_vault: Option<Arc<dyn backup::Vault>>,
     /// Product metrics, counted without content (ADR 0043).
     pub analytics: analytics::Analytics,

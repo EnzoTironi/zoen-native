@@ -139,7 +139,7 @@ pub struct Limits {
     pub invite_account: Limiter,
     /// Uploaded blob kilobytes per device.
     pub blob_kib_device: Limiter,
-    /// Backup writes per device (ADR 0045).
+    /// Backup writes per device (ADR 0046).
     pub backup_device: Limiter,
     /// Restore requests per client IP and per handle (password guessing).
     pub backup_restore_ip: Limiter,

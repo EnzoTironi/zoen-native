@@ -1,4 +1,4 @@
-# ADR 0045: Encrypted server backup
+# ADR 0046: Encrypted server backup
 
 Status: accepted (built in `feat/encrypted-backup`)
 
@@ -124,3 +124,5 @@ like any new device of that person.
 - a wrong password is refused, and 10 wrong ones lock the backup forever;
 - restore with a recovery key;
 - the relay database holds no plaintext.
+
+The backup decision was originally numbered 0045, also used by device linking. It is now 0046. The existing `0020_backups.sql` migration retains its historical comment so its SQLx checksum remains unchanged.

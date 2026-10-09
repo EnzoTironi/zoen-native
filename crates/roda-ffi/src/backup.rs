@@ -1,4 +1,4 @@
-//! Encrypted server backup, device side (ADR 0045).
+//! Encrypted server backup, device side (ADR 0046).
 //!
 //! A backup is the device database minus everything tied to this device (MLS state, outbox,
 //! search index), plus the identity and agreement secrets, sealed under a random backup key

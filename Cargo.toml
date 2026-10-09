@@ -54,7 +54,7 @@ roda-mls = { path = "crates/roda-mls", default-features = false }
 zoen-egress = { path = "crates/zoen-egress" }
 zoen-liveview = { path = "crates/zoen-liveview" }
 
-# Backup passwords stretch with Argon2id (64 MiB, ADR 0045): unoptimized it takes seconds.
+# Backup passwords stretch with Argon2id (64 MiB, ADR 0046): unoptimized it takes seconds.
 [profile.dev.package.argon2]
 opt-level = 3
 [profile.dev.package.blake2]

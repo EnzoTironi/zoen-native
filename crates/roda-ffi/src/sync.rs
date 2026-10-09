@@ -554,7 +554,7 @@ impl Engine {
         Ok((root.secret(), device.secret(), agreement))
     }
 
-    /// After a backup's tables land (ADR 0045): this device becomes a new device of the
+    /// After a backup's tables land (ADR 0046): this device becomes a new device of the
     /// restored identity, with its own key and certificate. The relay already knows the
     /// identity, so it isn't registered again.
     pub(crate) fn install_restored_account(

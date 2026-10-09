@@ -1,4 +1,4 @@
-//! Encrypted backup in the app API (ADR 0045): turn it on with a password or a recovery
+//! Encrypted backup in the app API (ADR 0046): turn it on with a password or a recovery
 //! key, back up now, turn it off, and restore on a new device.
 
 use std::{sync::Arc, time::Duration};

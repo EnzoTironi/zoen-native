@@ -1,4 +1,4 @@
-//! Encrypted server backups (ADR 0045). The relay keeps, per person, one sealed object and a
+//! Encrypted server backups (ADR 0046). The relay keeps, per person, one sealed object and a
 //! vault that guards the key to it. It never sees the payload, the backup key or the
 //! password:
 //!

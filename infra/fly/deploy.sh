@@ -59,7 +59,7 @@ metrics_secrets() {
 
 relay() {
   ensure_app "$RELAY"
-  # The backup vault's master key (ADR 0045). Generated once and never rotated by this script:
+  # The backup vault's master key (ADR 0046). Generated once and never rotated by this script:
   # losing it makes every password backup unopenable (recovery-key backups don't need it).
   has_secret "$RELAY" ZOEN_BACKUP_VAULT_KEY \
     || fly secrets set -a "$RELAY" --stage ZOEN_BACKUP_VAULT_KEY="$(openssl rand -hex 32)" >/dev/null
