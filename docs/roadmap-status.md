@@ -87,9 +87,12 @@ locally; production quotas and the refill target remain unchanged. Follow the PR
 [current workspace checks](https://github.com/EnzoTironi/zoen-native/pull/40/checks).
 
 The repair is included in PRs 33, 34 and 38. PR 33's stale-device fixture keeps active peers
-checkpointing throughout the absent device's pruning window. The refill fixture also
-retains watcher output and verifies that the actual client is ready and alive; it still
-requires exactly 32 packages within the original 20-second polling window.
+checkpointing throughout the absent device's pruning window. Further diagnostics confirmed
+that the CLI's watching banner can appear after a catch-up timeout. The refill fixture now
+waits for the watcher's latest online, synced state and verifies that it stays alive. It
+still requires exactly 32 packages within the original 20-second polling window. The
+offline-message fixture also drains the sender's initial Welcome before taking the
+recipient offline through subsequent commits.
 
 [PR 34](https://github.com/EnzoTironi/zoen-native/pull/34) now builds on PR 33. Restore
 persists the new device's signed MLS join requests in the durable outbox. Both password
