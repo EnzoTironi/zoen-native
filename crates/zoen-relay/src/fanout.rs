@@ -29,6 +29,7 @@ use crate::hub::{Hub, Mailbox};
 const ORIGIN: &str = "Zoen-Origin";
 const KIND: &str = "Zoen-Kind";
 const PING: &str = "ping";
+const REVOKE: &str = "revoke-device";
 const OUTBOUND_QUEUE: usize = 65_536;
 const PRESENCE_TIMEOUT: Duration = Duration::from_millis(750);
 
@@ -41,6 +42,7 @@ pub trait Bus: Send + Sync {
     fn detach(&self, identity: &str);
     /// Carries `frame` to the sessions of `to` on every other node.
     fn publish(&self, to: &[String], frame: &ServerFrame);
+    async fn revoke_device(&self, identity: &str, device: &str) -> anyhow::Result<()>;
     /// Which of `ids` have a session on some other node.
     async fn online_elsewhere(&self, ids: &[String]) -> Vec<String>;
     fn stats(&self) -> BusStats {
@@ -105,6 +107,22 @@ impl Fanout {
         n
     }
 
+    /// The durable revocation commits before this invalidation. Receivers also check
+    /// that record at authorization boundaries, so a missed bus notice cannot grant access.
+    pub async fn revoke_device(&self, identity: &str, device: &str) {
+        self.hub.revoke_device(identity, device);
+        match tokio::time::timeout(
+            Duration::from_secs(2),
+            self.bus.revoke_device(identity, device),
+        )
+        .await
+        {
+            Ok(Ok(())) => {}
+            Ok(Err(error)) => tracing::warn!(%error, "live device revocation broadcast failed"),
+            Err(_) => tracing::warn!("live device revocation broadcast timed out"),
+        }
+    }
+
     pub async fn is_online(&self, identity: &str) -> bool {
         !self
             .online(std::slice::from_ref(&identity.to_string()))
@@ -159,6 +177,9 @@ impl Bus for LocalBus {
     fn attach(&self, _: &str) {}
     fn detach(&self, _: &str) {}
     fn publish(&self, _: &[String], _: &ServerFrame) {}
+    async fn revoke_device(&self, _: &str, _: &str) -> anyhow::Result<()> {
+        Ok(())
+    }
     async fn online_elsewhere(&self, _: &[String]) -> Vec<String> {
         Vec::new()
     }
@@ -251,6 +272,14 @@ impl NatsBus {
                 if header(ORIGIN).as_deref() == Some(node.as_str()) {
                     continue;
                 }
+                if header(KIND).as_deref() == Some(REVOKE) {
+                    if let Ok(device) = std::str::from_utf8(&m.payload) {
+                        if device.len() == 64 && device.bytes().all(|b| b.is_ascii_hexdigit()) {
+                            hub.revoke_device(&identity, device);
+                        }
+                    }
+                    continue;
+                }
                 match ServerFrame::decode(&m.payload) {
                     Ok(frame) => {
                         stats.received.fetch_add(1, Relaxed);
@@ -312,6 +341,21 @@ impl Bus for NatsBus {
         if self.out.try_send(out).is_err() {
             self.stats.dropped.fetch_add(1, Relaxed);
         }
+    }
+
+    async fn revoke_device(&self, identity: &str, device: &str) -> anyhow::Result<()> {
+        let mut headers = HeaderMap::new();
+        headers.insert(ORIGIN, self.node.as_str());
+        headers.insert(KIND, REVOKE);
+        self.client
+            .publish_with_headers(
+                subject_for(&self.prefix, identity),
+                headers,
+                Bytes::copy_from_slice(device.as_bytes()),
+            )
+            .await?;
+        self.client.flush().await?;
+        Ok(())
     }
 
     async fn online_elsewhere(&self, ids: &[String]) -> Vec<String> {

@@ -127,7 +127,11 @@ pub fn normalize_code(raw: &str) -> String {
 }
 
 impl RodaEngine {
-    fn account_dto(&self) -> Option<AccountDto> {
+    pub(crate) fn account_dto_pub(&self) -> Option<AccountDto> {
+        self.account_dto()
+    }
+
+    pub(crate) fn account_dto(&self) -> Option<AccountDto> {
         let e = self.lock();
         let a = e.account()?.clone();
         let me = e.my_profile();
@@ -157,7 +161,7 @@ impl RodaEngine {
         }
     }
 
-    async fn request(&self, op: Op) -> Result<Reply, CoreError> {
+    pub(crate) async fn request(&self, op: Op) -> Result<Reply, CoreError> {
         // Clone the command channel out of the lock; never hold a lock across an await.
         let fut = {
             let guard = self.net.lock().unwrap_or_else(|p| p.into_inner());
@@ -212,6 +216,9 @@ impl RodaEngine {
         }
         if !e.unlock(vault.load(VAULT_DEVICE.into()))? {
             return Ok(false);
+        }
+        for peer in crate::link_api::load_peers(&vault) {
+            e.add_peer(peer);
         }
         if let Some(fresh) = e.unlock_profile(vault.load(VAULT_AGREEMENT.into()))? {
             if !vault.save(VAULT_AGREEMENT.into(), fresh.to_vec()) {
@@ -331,6 +338,16 @@ impl RodaEngine {
         };
         self.lock()
             .create_synced_space(title, SpaceKind::Group, privacy, &member_ids)
+    }
+
+    /// The leaves (`identity/device`) of an end-to-end chat's MLS group on this device.
+    pub fn group_devices(&self, space_id: String) -> Vec<String> {
+        self.lock()
+            .mls_leaves(&space_id)
+            .unwrap_or_default()
+            .into_iter()
+            .map(|(id, dev)| roda_mls::leaf_name(&id, &dev))
+            .collect()
     }
 
     /// The MLS group of an end-to-end chat as this device has it.

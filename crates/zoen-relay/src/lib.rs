@@ -11,6 +11,7 @@
 //! write and who receives. Everything else is the clients' business.
 
 pub mod analytics;
+pub mod backup;
 pub mod blobs;
 pub mod db;
 pub mod fanout;
@@ -22,6 +23,7 @@ pub mod ownership;
 pub mod pseudonym;
 pub mod session;
 pub mod telemetry;
+pub mod transfer;
 
 use std::{net::SocketAddr, path::PathBuf, sync::Arc};
 
@@ -29,7 +31,7 @@ use axum::{
     extract::{DefaultBodyLimit, State, WebSocketUpgrade},
     http::StatusCode,
     response::IntoResponse,
-    routing::{get, post, put},
+    routing::{delete, get, post, put},
     serve::ListenerExt,
     Router,
 };
@@ -63,6 +65,10 @@ pub struct Config {
 
 pub struct AppState {
     pub pool: PgPool,
+    /// Separate bounded lanes keep durable delivery checks independent of admission
+    /// traffic. Ordinary requests release their admission fence before doing any work.
+    pub session_auth: PgPool,
+    pub delivery_auth: PgPool,
     pub log: Arc<dyn log::LogStore>,
     pub fanout: fanout::Fanout,
     pub limits: limits::Limits,
@@ -74,6 +80,9 @@ pub struct AppState {
     /// This node's Space-partition leases (S4). One process owns every partition until
     /// S5 brings a multi-node lease exchange over NATS.
     pub owner: ownership::NodeOwner,
+    /// Guards password backups (ADR 0046); `None` = only recovery-key backups.
+    pub backup_vault: Option<Arc<dyn backup::Vault>>,
+    pub backup_settings: backup::Settings,
     /// Product metrics, counted without content (ADR 0043).
     pub analytics: analytics::Analytics,
 }
@@ -90,7 +99,24 @@ pub async fn connect(cfg: &Config) -> anyhow::Result<PgPool> {
 }
 
 pub fn router(state: Shared) -> Router {
+    let backups = Router::new()
+        .route("/v1/backup/oprf", post(backup::oprf))
+        .route("/v1/backup/vault", put(backup::put_vault))
+        .route(
+            "/v1/backup/blob",
+            put(backup::put_blob).layer(DefaultBodyLimit::max(backup::MAX_BACKUP_BYTES + 1024)),
+        )
+        .route("/v1/backup", axum::routing::delete(backup::delete))
+        .route("/v1/backup/restore/start", post(backup::restore_start))
+        .route("/v1/backup/restore/open", post(backup::restore_open))
+        .route("/v1/backup/restore/enroll", post(backup::restore_enroll))
+        .route("/v1/backup/restore/blob", get(backup::restore_blob))
+        .route_layer(axum::middleware::from_fn_with_state(
+            state.clone(),
+            backup::deadline,
+        ));
     Router::new()
+        .merge(backups)
         .route("/v1/sync", get(ws))
         .route(
             "/v1/blobs/{sha}",
@@ -98,6 +124,13 @@ pub fn router(state: Shared) -> Router {
                 .get(blobs::get)
                 .layer(DefaultBodyLimit::max(blobs::MAX_BLOB_BYTES + 1024)),
         )
+        .route(
+            "/v1/transfer/{id}/{n}",
+            put(transfer::put)
+                .get(transfer::get)
+                .layer(DefaultBodyLimit::max(transfer::MAX_CHUNK + 1024)),
+        )
+        .route("/v1/transfer/{id}", delete(transfer::delete))
         .route(
             "/.well-known/apple-app-site-association",
             get(apple_app_site_association),
@@ -152,6 +185,15 @@ pub fn metrics_router(state: Shared) -> Router {
 
 pub async fn build(cfg: &Config) -> anyhow::Result<(Router, Shared)> {
     let pool = connect(cfg).await?;
+    let auth_pool = || {
+        PgPoolOptions::new()
+            .min_connections(0)
+            .max_connections(cfg.max_db_connections.clamp(1, 16))
+            .acquire_timeout(std::time::Duration::from_secs(2))
+            .connect_lazy(&cfg.database_url)
+    };
+    let session_auth = auth_pool()?;
+    let delivery_auth = auth_pool()?;
     let (blobs, where_) = blobs::store_from_env(&cfg.blob_dir)?;
     tracing::info!(blobs = %where_, "blob store ready");
     let log = log::fdb::FdbLog::open(cfg.fdb_cluster_file.as_deref(), &cfg.fdb_cell)?;
@@ -171,6 +213,8 @@ pub async fn build(cfg: &Config) -> anyhow::Result<(Router, Shared)> {
     let analytics = analytics::Analytics::load(&pool).await?;
     let state = Arc::new(AppState {
         pool,
+        session_auth,
+        delivery_auth,
         log: Arc::new(log),
         fanout,
         limits: limits::Limits::from_spec(&cfg.limits)?,
@@ -184,6 +228,8 @@ pub async fn build(cfg: &Config) -> anyhow::Result<(Router, Shared)> {
         blobs,
         apple_app_ids: cfg.apple_app_ids.clone(),
         owner,
+        backup_vault: backup_vault(),
+        backup_settings: backup::Settings::from_env()?,
         analytics,
     });
     analytics::spawn(state.clone());
@@ -192,6 +238,25 @@ pub async fn build(cfg: &Config) -> anyhow::Result<(Router, Shared)> {
         None => router(state.clone()).merge(metrics_router(state.clone())),
     };
     Ok((app, state))
+}
+
+fn backup_vault() -> Option<Arc<dyn backup::Vault>> {
+    match backup::EnvVault::from_env() {
+        Ok(Some(v)) => {
+            tracing::info!(
+                "backup vault key loaded (password backups require separate development opt-in)"
+            );
+            Some(Arc::new(v))
+        }
+        Ok(None) => {
+            tracing::info!("backup vault not configured (recovery-key backups only)");
+            None
+        }
+        Err(e) => {
+            tracing::error!(error = %e, "backup vault key invalid; password backups off");
+            None
+        }
+    }
 }
 
 /// Initial read and write buffer per WebSocket (see `ws`, ADR 0022).

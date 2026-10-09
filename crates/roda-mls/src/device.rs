@@ -10,7 +10,7 @@ use rusqlite::Connection;
 use sha2::{Digest, Sha256};
 
 use crate::sealed::{Scope, SealedCodec};
-use crate::{leaf_of, mls, validate_key_package, Leaf, MlsError, SUITE};
+use crate::{leaf_name, leaf_of, mls, validate_key_package, Leaf, MlsError, SUITE};
 
 /// Past epochs whose keys stay around for messages sequenced just after a commit.
 const PAST_EPOCHS: usize = 4;
@@ -255,6 +255,8 @@ impl<'c> Device<'c> {
     /// identities in `remove`. Every package must carry a verified leaf. It applies (and
     /// the group moves on) when it comes back through [`Device::open`]; if the log refuses
     /// it, the next `open` drops it and this device can commit again.
+    /// Commits adding `add` (key packages) and removing `remove`: identities (all their
+    /// leaves) or single leaves named by [`leaf_name`].
     pub fn commit(
         &self,
         space: &str,
@@ -277,8 +279,10 @@ impl<'c> Device<'c> {
             let gone = group
                 .members()
                 .filter(|m| {
-                    leaf_of(&m.credential, &m.signature_key)
-                        .is_ok_and(|l| remove.contains(&l.identity))
+                    leaf_of(&m.credential, &m.signature_key).is_ok_and(|l| {
+                        remove.contains(&l.identity)
+                            || remove.contains(&leaf_name(&l.identity, &l.device))
+                    })
                 })
                 .map(|m| m.index)
                 .collect::<Vec<_>>();
@@ -466,6 +470,23 @@ impl<'c> Device<'c> {
     /// Member identities in the group as this device has it.
     pub fn roster(&self, space: &str) -> Result<BTreeSet<String>, MlsError> {
         self.with(|p| identities(&self.load(p, space)?))
+    }
+
+    /// The group's leaves: (identity, device) -> the leaf's current encryption key. A leaf
+    /// that was taken out and added again (a device back from a long absence) has a new key.
+    pub fn leaves(
+        &self,
+        space: &str,
+    ) -> Result<std::collections::BTreeMap<(String, String), Vec<u8>>, MlsError> {
+        self.with(|p| {
+            self.load(p, space)?
+                .members()
+                .map(|m| {
+                    leaf_of(&m.credential, &m.signature_key)
+                        .map(|l| ((l.identity, l.device), m.encryption_key.clone()))
+                })
+                .collect()
+        })
     }
 
     pub fn epoch(&self, space: &str) -> Result<u64, MlsError> {

@@ -31,6 +31,7 @@ fn summarize() -> ToolManifest {
         needs: Needs::None,
         egress: vec![],
         secrets: vec![],
+        component_sha256: None,
     }
 }
 
@@ -47,6 +48,7 @@ fn python() -> ToolManifest {
         },
         egress: vec![EgressRule::host("*.pypi.org")],
         secrets: vec![],
+        component_sha256: None,
     }
 }
 
