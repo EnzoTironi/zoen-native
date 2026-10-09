@@ -3,6 +3,7 @@
 Status: accepted (M3 design; build in phases below)
 
 Research, prices and every citation: [docs/research/agent-sandbox.md](../research/agent-sandbox.md).
+What we copy, adapt or avoid from E2B's open-source runtime and desktop: [docs/research/e2b-sandbox.md](../research/e2b-sandbox.md).
 
 ## Context
 Agents in `zoen-agentd` (Rust, Rig behind Zoen traits) need to run tools. Most tools are small
