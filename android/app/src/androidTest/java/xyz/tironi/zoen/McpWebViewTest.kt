@@ -5,6 +5,7 @@ import android.graphics.Bitmap
 import android.os.ParcelFileDescriptor
 import android.os.SystemClock
 import android.util.Log
+import android.view.InputDevice
 import android.view.MotionEvent
 import android.view.ViewTreeObserver
 import android.view.WindowManager
@@ -30,6 +31,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import org.json.JSONArray
 import org.json.JSONObject
 import org.junit.Assert.*
 import org.junit.Assume.assumeTrue
@@ -40,6 +42,8 @@ import xyz.tironi.zoen.miniapps.*
 
 @RunWith(AndroidJUnit4::class)
 class McpWebViewTest {
+    private val systemInput = JSONArray()
+
     @Test fun actualHtmlTouchChangesSignedRustStateAndNativeConfirmationControlsExternalCalls() {
         assumeTrue("The installed WebView must support origin-scoped messaging and isolated profiles", MiniAppWebProvider.supported())
         val context = ApplicationProvider.getApplicationContext<ZoenApplication>()
@@ -190,7 +194,11 @@ class McpWebViewTest {
             awaitFrame(web.get(), probe.get())
             val before = core.item(item.id).version
             touch(web.get(), ".sticky button:last-child")
-            waitUntil(description = "The Vote touch must create a new signed Rust item version") { core.item(item.id).version > before }
+            val voteDeadline = SystemClock.uptimeMillis() + 10_000
+            waitUntil((voteDeadline - SystemClock.uptimeMillis()).coerceAtLeast(0), description = "The system finger tap must emit a trusted touch click on Vote") {
+                evaluate(web.get(), "window.mcpInputTrace.some(event => event.type === 'click' && event.trusted && event.pointer === 'touch' && event.button === 'Vote')") == "true"
+            }
+            waitUntil((voteDeadline - SystemClock.uptimeMillis()).coerceAtLeast(0), description = "The Vote touch must create a new signed Rust item version") { core.item(item.id).version > before }
             val trails = JSONObject(core.item(item.id).app!!.viewJson).getJSONArray("trails")
             assertTrue((0 until trails.length()).any { trails.getJSONObject(it).getJSONArray("votes").length() > 0 })
             waitUntil(description = "The signed vote must return to the HTML Vote control") { evaluate(web.get(), "document.querySelector('.sticky button:last-child').textContent.startsWith('Voted')") == "true" }
@@ -198,12 +206,13 @@ class McpWebViewTest {
             assertTrue(core.verifyAll().all { it.valid })
             val evidence = evidenceFile("mcp-hike-offline-vote.png")
             InstrumentationRegistry.getInstrumentation().uiAutomation.takeScreenshot().use { bitmap -> evidence.outputStream().use { bitmap.compress(Bitmap.CompressFormat.PNG, 100, it) } }
+            htmlInputEvidence(web.get(), "mcp-hike-input-success.json", lastTool.get())
             assertNull(failure.get())
         } catch (error: Throwable) {
             runCatching { probe.get()?.failureEvidence("mcp-hike-failure", error) }.exceptionOrNull()?.let(error::addSuppressed)
             Log.e("McpWebViewTest", "Hike last core tool: ${lastTool.get()}")
             runCatching {
-                Log.e("McpWebViewTest", "Hike failure HTML: ${evaluate(web.get(), "({events:window.mcpInputTrace,toast:document.querySelector('.toast')?.textContent,vote:document.querySelector('.sticky button:last-child')?.textContent,text:document.body.innerText.slice(-1000)})")}")
+                htmlInputEvidence(web.get(), "mcp-hike-input-failure.json", lastTool.get())
             }.exceptionOrNull()?.let(error::addSuppressed)
             throw error
         } finally {
@@ -256,10 +265,12 @@ class McpWebViewTest {
                 if (trace.length > 24) trace.shift();
                 console.info('MCP input ' + JSON.stringify(entry));
               };
-              for (const type of ['pointerdown', 'pointerup', 'click']) {
+              for (const type of ['pointerdown', 'pointerup', 'pointercancel', 'touchstart', 'touchend', 'touchcancel', 'click', 'contextmenu']) {
                 document.addEventListener(type, event => {
                   const button = event.target.closest?.('button');
-                  record({type, trusted:event.isTrusted, pointer:event.pointerType, x:event.clientX, y:event.clientY,
+                  const point = event.changedTouches?.[0] ?? event;
+                  record({type, trusted:event.isTrusted, pointer:event.pointerType ?? (type.startsWith('touch') ? 'touch' : undefined),
+                    eventTime:event.timeStamp, receivedAt:performance.now(), x:point.clientX, y:point.clientY,
                     button:button?.textContent.slice(0,80), classes:button?.className});
                 }, {capture:true, passive:true});
               }
@@ -269,6 +280,13 @@ class McpWebViewTest {
               }).observe(document.body, {childList:true, subtree:true});
             })();
         """.trimIndent())
+    }
+    private fun htmlInputEvidence(web: WebView, name: String, lastTool: String) {
+        val result = JSONObject(evaluate(web, "({events:window.mcpInputTrace,toast:document.querySelector('.toast')?.textContent,vote:document.querySelector('.sticky button:last-child')?.textContent,text:document.body.innerText.slice(-1000)})"))
+            .put("systemInput", systemInput)
+            .put("lastCoreTool", lastTool)
+        evidenceFile(name).writeText(result.toString(2))
+        Log.i("McpWebViewTest", "Hike input evidence $name: $result")
     }
     private fun touch(web: WebView, selector: String) {
         val target = JSONObject(evaluate(web, """
@@ -288,7 +306,6 @@ class McpWebViewTest {
             })()
         """.trimIndent()))
         check(!target.optBoolean("missing")) { "The HTML touch target is missing: $selector" }
-        val at = SystemClock.uptimeMillis()
         var x = 0f
         var y = 0f
         InstrumentationRegistry.getInstrumentation().runOnMainSync {
@@ -301,12 +318,32 @@ class McpWebViewTest {
             Log.i("McpWebViewTest", "Touch $selector: $target")
             check(target.getBoolean("receivesTouch")) { "The HTML target is covered or hidden: $selector ($target)" }
             check(x.isFinite() && y.isFinite() && x in 0f..web.width.toFloat() && y in 0f..web.height.toFloat()) { "The HTML target is outside the visible WebView: $selector" }
-            MotionEvent.obtain(at, at, MotionEvent.ACTION_DOWN, x, y, 0).also { web.dispatchTouchEvent(it); it.recycle() }
+            val location = IntArray(2).also(web::getLocationOnScreen)
+            x += location[0]
+            y += location[1]
+            target.put("screenX", x).put("screenY", y)
+            Log.i("McpWebViewTest", "System touch target $selector: $target")
         }
-        SystemClock.sleep(60)
-        InstrumentationRegistry.getInstrumentation().runOnMainSync {
-            MotionEvent.obtain(at, SystemClock.uptimeMillis(), MotionEvent.ACTION_UP, x, y, 0).also { web.dispatchTouchEvent(it); it.recycle() }
+        val at = SystemClock.uptimeMillis()
+        fun inject(action: Int) {
+            val event = MotionEvent.obtain(at, SystemClock.uptimeMillis(), action, 1,
+                arrayOf(MotionEvent.PointerProperties().apply { id = 0; toolType = MotionEvent.TOOL_TYPE_FINGER }),
+                arrayOf(MotionEvent.PointerCoords().apply { this.x = x; this.y = y; pressure = if (action == MotionEvent.ACTION_DOWN) 1f else 0f; size = 1f }),
+                0, 0, 1f, 1f, 0, 0, InputDevice.SOURCE_TOUCHSCREEN, 0)
+            try {
+                val submitted = SystemClock.uptimeMillis()
+                // ASYNC does not wait for the app to finish handling DOWN before scheduling UP.
+                val accepted = InstrumentationRegistry.getInstrumentation().uiAutomation.injectInputEvent(event, false)
+                val trace = JSONObject().put("selector", selector).put("target", target).put("action", MotionEvent.actionToString(action))
+                    .put("source", event.source).put("toolType", event.getToolType(0)).put("downTime", event.downTime).put("eventTime", event.eventTime)
+                    .put("submittedAt", submitted).put("returnedAt", SystemClock.uptimeMillis()).put("accepted", accepted)
+                systemInput.put(trace)
+                Log.i("McpWebViewTest", "System finger $selector: $trace")
+                check(accepted) { "Android rejected the system finger event for $selector" }
+            } finally { event.recycle() }
         }
+        inject(MotionEvent.ACTION_DOWN)
+        try { SystemClock.sleep(60) } finally { inject(MotionEvent.ACTION_UP) }
     }
     private fun wakeDevice() {
         for (command in listOf("input keyevent 224", "wm dismiss-keyguard")) {
