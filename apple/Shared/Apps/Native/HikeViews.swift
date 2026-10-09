@@ -186,7 +186,9 @@ struct ItineraryCard: View {
                         Text(s.time)
                             .font(.subheadline.weight(.bold).monospacedDigit())
                             .foregroundStyle(Palette.textPrimary)
-                            .frame(width: 44, alignment: .trailing)
+                            .lineLimit(1)
+                            .fixedSize()
+                            .frame(minWidth: 48, alignment: .trailing)
                         VStack(spacing: 0) {
                             Circle().fill(i == 0 ? Color(hex: "#3D7A28") : Color(hex: "#3D7A28").opacity(0.35))
                                 .frame(width: 10, height: 10)
