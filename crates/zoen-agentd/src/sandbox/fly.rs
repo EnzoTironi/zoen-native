@@ -15,11 +15,16 @@
 
 use super::*;
 use base64::Engine as _;
+use sha2::{Digest, Sha256};
 use std::collections::HashMap;
 use std::sync::Mutex;
 use std::time::Instant;
 
 const API: &str = "https://api.machines.dev";
+const FILE_CHUNK_BYTES: usize = 64 * 1024;
+const MAX_API_RESPONSE: usize = 16 * 1024 * 1024;
+/// Staging file-transfer ceiling; larger files are refused before transfer.
+pub const MAX_FILE_BYTES: usize = 16 * 1024 * 1024;
 
 #[derive(Clone)]
 pub struct FlyConfig {
@@ -118,12 +123,12 @@ impl FlyMachinesProvider {
         format!("{}/v1/apps/{}{path}", self.cfg.api, self.cfg.app)
     }
 
-    async fn call(
+    async fn response(
         &self,
         method: reqwest::Method,
         path: &str,
         body: Option<serde_json::Value>,
-    ) -> Result<serde_json::Value, SandboxError> {
+    ) -> Result<(reqwest::StatusCode, String), SandboxError> {
         let mut rb = self
             .http
             .request(method, self.url(path))
@@ -133,9 +138,25 @@ impl FlyMachinesProvider {
                 .header("content-type", "application/json")
                 .body(b.to_string());
         }
-        let r = rb.send().await.map_err(backend)?;
+        let mut r = rb.send().await.map_err(backend)?;
         let status = r.status();
-        let text = r.text().await.map_err(backend)?;
+        let mut bytes = Vec::new();
+        while let Some(chunk) = r.chunk().await.map_err(backend)? {
+            if chunk.len() > MAX_API_RESPONSE - bytes.len() {
+                return Err(backend("fly response exceeds 16 MiB"));
+            }
+            bytes.extend_from_slice(&chunk);
+        }
+        Ok((status, String::from_utf8(bytes).map_err(backend)?))
+    }
+
+    async fn call(
+        &self,
+        method: reqwest::Method,
+        path: &str,
+        body: Option<serde_json::Value>,
+    ) -> Result<serde_json::Value, SandboxError> {
+        let (status, text) = self.response(method, path, body).await?;
         if !status.is_success() {
             // Fly's error bodies carry no secrets; keep them short.
             return Err(SandboxError::Backend(format!(
@@ -223,6 +244,43 @@ impl FlyMachinesProvider {
             elapsed: started.elapsed(),
         })
     }
+
+    async fn file_info(&self, machine: &str, path: &str) -> Result<(usize, String), SandboxError> {
+        let out = self
+            .exec_raw(
+                machine,
+                vec![
+                    "/bin/sh".into(),
+                    "-c".into(),
+                    "n=$(stat -c %s -- \"$1\") && [ \"$n\" -le \"$2\" ] && printf '%s\\n' \"$n\" && sha256sum < \"$1\"".into(),
+                    "sh".into(),
+                    path.into(),
+                    MAX_FILE_BYTES.to_string(),
+                ],
+                None,
+                Duration::from_secs(60),
+            )
+            .await?;
+        if out.exit_code != Some(0) {
+            return Err(backend("file unavailable or exceeds 16 MiB"));
+        }
+        let text = std::str::from_utf8(&out.stdout).map_err(backend)?;
+        let mut lines = text.lines();
+        let size = lines
+            .next()
+            .ok_or_else(|| backend("missing file size"))?
+            .parse::<usize>()
+            .map_err(backend)?;
+        if size > MAX_FILE_BYTES {
+            return Err(SandboxError::Unsupported("transfer files over 16 MiB"));
+        }
+        let hash = lines
+            .next()
+            .and_then(|line| line.split_whitespace().next())
+            .filter(|hash| hash.len() == 64 && hash.bytes().all(|b| b.is_ascii_hexdigit()))
+            .ok_or_else(|| backend("missing file checksum"))?;
+        Ok((size, hash.to_ascii_lowercase()))
+    }
 }
 
 #[async_trait]
@@ -291,18 +349,20 @@ impl SandboxProvider for FlyMachinesProvider {
 
     async fn put_file(&self, lease: &Lease, path: &str, bytes: Bytes) -> Result<(), SandboxError> {
         let machine = self.machine(&lease.id)?;
-        let b64 = base64::engine::general_purpose::STANDARD.encode(&bytes);
+        if bytes.len() > MAX_FILE_BYTES {
+            return Err(SandboxError::Unsupported("transfer files over 16 MiB"));
+        }
         let out = self
             .exec_raw(
                 &machine,
                 vec![
                     "/bin/sh".into(),
                     "-c".into(),
-                    "mkdir -p \"$(dirname \"$1\")\" && base64 -d > \"$1\"".into(),
+                    "mkdir -p \"$(dirname -- \"$1\")\" && : > \"$1\"".into(),
                     "sh".into(),
                     path.into(),
                 ],
-                Some(b64),
+                None,
                 Duration::from_secs(60),
             )
             .await?;
@@ -312,33 +372,71 @@ impl SandboxProvider for FlyMachinesProvider {
                 String::from_utf8_lossy(&out.stderr)
             )));
         }
+        for chunk in bytes.chunks(FILE_CHUNK_BYTES) {
+            let out = self
+                .exec_raw(
+                    &machine,
+                    vec![
+                        "/bin/sh".into(),
+                        "-c".into(),
+                        "base64 -d >> \"$1\"".into(),
+                        "sh".into(),
+                        path.into(),
+                    ],
+                    Some(base64::engine::general_purpose::STANDARD.encode(chunk)),
+                    Duration::from_secs(60),
+                )
+                .await?;
+            if out.exit_code != Some(0) {
+                return Err(backend("file upload failed"));
+            }
+        }
+        let (size, hash) = self.file_info(&machine, path).await?;
+        if size != bytes.len() || hash != hex::encode(Sha256::digest(&bytes)) {
+            return Err(backend("file upload is incomplete or changed"));
+        }
         Ok(())
     }
 
     async fn get_file(&self, lease: &Lease, path: &str) -> Result<Bytes, SandboxError> {
         let machine = self.machine(&lease.id)?;
-        let out = self
-            .exec_raw(
-                &machine,
-                vec!["/usr/bin/base64".into(), path.into()],
-                None,
-                Duration::from_secs(60),
-            )
-            .await?;
-        if out.exit_code != Some(0) {
-            return Err(backend(format!(
-                "get_file: {}",
-                String::from_utf8_lossy(&out.stderr)
-            )));
+        let (size, hash) = self.file_info(&machine, path).await?;
+        let mut bytes = Vec::with_capacity(size);
+        for offset in (0..size).step_by(FILE_CHUNK_BYTES) {
+            let out = self
+                .exec_raw(
+                    &machine,
+                    vec![
+                        "/bin/sh".into(),
+                        "-c".into(),
+                        "dd if=\"$1\" bs=65536 skip=\"$2\" count=1 2>/dev/null | base64".into(),
+                        "sh".into(),
+                        path.into(),
+                        (offset / FILE_CHUNK_BYTES).to_string(),
+                    ],
+                    None,
+                    Duration::from_secs(60),
+                )
+                .await?;
+            if out.exit_code != Some(0) {
+                return Err(backend("file download failed"));
+            }
+            let text: String = String::from_utf8_lossy(&out.stdout)
+                .chars()
+                .filter(|c| !c.is_whitespace())
+                .collect();
+            let chunk = base64::engine::general_purpose::STANDARD
+                .decode(text)
+                .map_err(backend)?;
+            if chunk.len() != FILE_CHUNK_BYTES.min(size - offset) {
+                return Err(backend("file download is incomplete or changed"));
+            }
+            bytes.extend_from_slice(&chunk);
         }
-        let text: String = String::from_utf8_lossy(&out.stdout)
-            .chars()
-            .filter(|c| !c.is_whitespace())
-            .collect();
-        base64::engine::general_purpose::STANDARD
-            .decode(text)
-            .map(Bytes::from)
-            .map_err(backend)
+        if hex::encode(Sha256::digest(&bytes)) != hash {
+            return Err(backend("file download checksum changed"));
+        }
+        Ok(Bytes::from(bytes))
     }
 
     async fn suspend(&self, lease: &Lease) -> Result<SnapshotRef, SandboxError> {
@@ -378,15 +476,25 @@ impl SandboxProvider for FlyMachinesProvider {
             .machines
             .lock()
             .unwrap()
-            .remove(&lease.id)
-            .map(|(m, _)| m)
-            .ok_or(SandboxError::NoLease)?;
-        self.call(
-            reqwest::Method::DELETE,
-            &format!("/machines/{machine}?force=true"),
-            None,
-        )
-        .await?;
+            .get(&lease.id)
+            .map(|(m, _)| m.clone());
+        let Some(machine) = machine else {
+            return Ok(());
+        };
+        let (status, text) = self
+            .response(
+                reqwest::Method::DELETE,
+                &format!("/machines/{machine}?force=true"),
+                None,
+            )
+            .await?;
+        if !status.is_success() && status != reqwest::StatusCode::NOT_FOUND {
+            return Err(backend(format!(
+                "fly {status}: {}",
+                text.chars().take(300).collect::<String>()
+            )));
+        }
+        self.machines.lock().unwrap().remove(&lease.id);
         Ok(())
     }
 }
