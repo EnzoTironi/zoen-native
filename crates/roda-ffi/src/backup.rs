@@ -346,7 +346,12 @@ impl Engine {
     /// Installs a backup's tables on this (empty) device and makes it the identity's new
     /// device. Returns the new device secret; the caller stores it and the restored
     /// secrets in the vault.
-    pub(crate) fn restore_snapshot(&mut self, header: &Header, db: &[u8]) -> R<[u8; 32]> {
+    pub(crate) fn restore_snapshot(
+        &mut self,
+        header: &Header,
+        db: &[u8],
+        device: roda_log::Signer,
+    ) -> R<[u8; 32]> {
         if self.account().is_some() {
             return Err(invalid(t(
                 "Este aparelho já tem uma conta.",
@@ -413,7 +418,6 @@ impl Engine {
         })();
         remove_db(&path);
         res?;
-        let device = roda_log::Signer::generate();
         let device_secret = device.secret();
         let device_id = device.id();
         self.install_restored_account(&root, device, &header.relay_url)?;

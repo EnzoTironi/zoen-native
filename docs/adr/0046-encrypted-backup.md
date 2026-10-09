@@ -33,8 +33,9 @@ Requirements, from Enzo's mandates:
     (content-addressed, ADR 0007), and `media_keys` brings back the keys to open them.
 - **Sealing.** A random 32-byte backup key `K` encrypts the payload with
   XChaCha20-Poly1305. The stored form is `nonce ‖ ciphertext`, with AAD
-  `zoen-backup-v1\0 ‖ identity`. The relay keeps one object per identity
-  (`backups/{identity}`), and the newest upload replaces the old one.
+  `zoen-backup-v1\0 ‖ identity`. The relay keeps one active object pointer per identity.
+  Each upload uses a fresh immutable object path; activation switches the pointer before
+  bounded cleanup of the old object. Legacy `backups/{identity}` objects remain readable.
 
 ### Two ways to protect `K`
 1. **Password (HSM-guarded).** The password needs 8 or more characters.
@@ -118,6 +119,13 @@ evaluates blinded points, and provides independent decoy evaluations and metadat
     the same configuration; a rotation requires restarting restore.
   - `GET /v1/backup/restore/blob?handle=…&generation=…` with header
     `x-zoen-backup-auth: auth_key`.
+  - `POST /v1/backup/restore/enroll {handle, auth_key, generation, device, cert, sig}`
+    enrolls the fresh root-certified device only after recovery authentication. Its
+    device signature covers the identity, device, certificate and current generation,
+    under the `backup-device-enroll` domain. The authority check and enrollment share
+    one bounded database transaction. Safe retries accept the same active key;
+    revoked or conflicting keys are never reactivated. A root certificate alone cannot
+    enroll a device into an existing account.
   - **No existence oracle.** For a handle without a backup (or an unknown one), `start`
     answers like a password vault, with an evaluation under a key derived from the master
     key and the handle. Every `open` for it then fails the same way. The relay limits these
@@ -126,9 +134,10 @@ evaluates blinded points, and provides independent decoy evaluations and metadat
     identity. Failed authentication returns the same refusal regardless of generation.
 
 ### After a restore
-The device installs the restored tables, writes the root and agreement secrets to its vault,
-makes a **new device key**, and certifies it with the restored identity. It then connects
-like any new device of that person.
+The device decrypts the snapshot, validates the identity root, makes a **new device key**,
+and certifies it with the restored identity. It proves control of that key and current
+recovery authority at `restore/enroll` before installing the tables and secrets. It then
+connects using the same enrolled key. A refused enrollment leaves the local account empty.
 - **What works right away.** History, contacts, profiles and readable Spaces.
 - **End-to-end Spaces.** Restore persists a signed `DeviceJoining` request in the durable
   outbox for each encrypted Space in the snapshot where the identity is a member. A
@@ -138,6 +147,9 @@ like any new device of that person.
   backup cannot restore access after removal.
 - **Lost-device revocation.** The recovered account can use `unlink` to revoke the old
   device and remove its MLS leaves. Its key is refused at every backup write endpoint.
+  Knowing the identity root alone cannot mint another relay device after revocation.
+  Valid recovery authority can deliberately enroll a different fresh device; keys
+  enrolled before revocation and recovery-authority rotation need their own lifecycle.
 - **Upgrade.** Existing vaults and their original object paths remain readable.
   Migrations `0021` and `0023` preserve `0020` and assign legacy wrappers an opaque
   generation. A successful restore binds its verified key to that generation. Existing

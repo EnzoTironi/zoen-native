@@ -6839,6 +6839,7 @@ dependencies = [
  "futures-util",
  "getrandom 0.2.17",
  "hex",
+ "hkdf 0.12.4",
  "opentelemetry-proto",
  "prost",
  "roda-ffi",
