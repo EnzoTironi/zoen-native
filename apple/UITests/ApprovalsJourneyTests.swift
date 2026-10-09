@@ -179,9 +179,11 @@ final class ApprovalsJourneyTests: XCTestCase {
         sleep(1)
         // Revoke for real and let the undo window pass: it stays gone.
         again.buttons["revoke-standing"].firstMatch.tap()
-        XCTAssertTrue(none.waitForExistence(timeout: 3))
+        XCTAssertTrue(row.waitForNonExistence(timeout: 5), "revoked again")
         sleep(7)
-        XCTAssertTrue(none.exists, "revoked: none left")
+        // The list can move under the toast; find the empty line again before asserting.
+        for _ in 0..<6 where !none.exists { again.swipeUp() }
+        XCTAssertTrue(none.waitForExistence(timeout: 3), "revoked: none left")
         XCTAssertFalse(row.exists, "and the agent will ask again")
     }
 

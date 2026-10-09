@@ -47,6 +47,13 @@ final class TileEditJourneyTests: XCTestCase {
         // Long-press: edit mode, with a minus on every card and "Concluir".
         tiles(app, "home-tile")[0].press(forDuration: 1.2)
         let done = app.buttons["home-tile-done"]
+        if !done.waitForExistence(timeout: 4) {
+            // A hold that lands while launch work still settles can read as a tap and open
+            // the app; close it and hold again.
+            let close = app.buttons["miniapp-close"].firstMatch
+            if close.waitForExistence(timeout: 3) { close.tap(); sleep(2) }
+            tiles(app, "home-tile")[0].press(forDuration: 1.5)
+        }
         XCTAssertTrue(done.waitForExistence(timeout: 4), "long-press enters edit mode")
         XCTAssertTrue(app.buttons["home-tile-remove-\(before[0])"].exists, "each card shows a minus")
         sleep(1)
