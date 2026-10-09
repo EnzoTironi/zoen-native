@@ -14,7 +14,9 @@ The completion gate is functional coverage of the current Apple app, with Androi
 - [x] Android: actual launcher widgets, background messaging notifications, shared chat appearance.
 - [x] End-to-end: two local real accounts, encrypted chat and attachments, offline outbox, restart.
 - [x] Keep the audit trail as each unit is verified.
-- [ ] Verify the whole app, Android 9 compatibility, release shrinking, and CI. Upload new images and videos to PR 41 with `gh --attach`.
+- [x] Verify the complete local app, both ABIs, release shrinking, cold launch and fresh images/videos with `gh --attach`.
+- [x] Configure full Rust and Android 9/15 CI with real relay journeys; current-head results are published on [PR 41 checks](https://github.com/EnzoTironi/zoen-native/pull/41/checks).
+- [ ] Release the default real-account connection after the documented shared public relay upgrade. The currently deployed protocol-2 service cannot serve the protocol-4 core.
 
 ## Baseline
 
@@ -37,6 +39,6 @@ Existing native navigation, onboarding, plans/versions/Undo, pages, search, appr
 
 Android notifications use the existing relay through a user-controlled foreground messaging connection. This adds Android background behavior without requiring a new push backend or cloud credentials.
 
-Complete matching API 35 runs at `827f312` and `8739825` each pass all 48 native cases without failures or skips. The normal both-ABI debug/test/release build, R8, lint, all 73 JVM tests, signed release cold launch and committed-frame visual captures pass. The current Android 9/15 and full Rust CI results are tracked in the [verification record](android.md) and [PR 41](https://github.com/EnzoTironi/zoen-native/pull/41).
+Production source `82479b4` passes all 48 native cases without failures or skips, including authenticated HTTP reporting and the actual settled launcher widget. The normal both-ABI debug/test/release build, R8, lint, all 77 JVM tests, 57 FFI tests, signed non-debuggable release cold launch and fresh committed-frame captures pass. The Android 9 baseline at `81b0ea4` passes 46 cases and skips only two provider-gated HTML cases. Current-head Android 9/15 and full Rust CI results are published on [PR 41 checks](https://github.com/EnzoTironi/zoen-native/pull/41/checks). The [verification record](android.md) distinguishes these checks, hardware conditions and the separate [public relay release dependency](android-relay-release.md).
 
 The append-only decisions are in [android-parity-decisions.tsv](android-parity-decisions.tsv).

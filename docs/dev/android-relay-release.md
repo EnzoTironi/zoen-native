@@ -2,7 +2,7 @@
 
 The Android port uses the current shared Rust core. That core requires relay protocol 4, including explicit device enrollment and authenticated history handling. The Apple app built from the same source has the same requirement.
 
-At 2026-10-09 22:25 UTC, a certificate-only Hello to `wss://relay.tryzoen.com/v1/sync` returned protocol 2. The probe sent neither Auth nor Register and created no account. `/healthz` returned `ok`; health alone does not establish client compatibility. The isolated local relay is rebuilt from the same source as the Android libraries for encrypted device journeys.
+At 2026-10-09 23:11 UTC, a certificate-only Hello to `wss://relay.tryzoen.com/v1/sync` returned protocol 2. The probe sent neither Auth nor Register and created no account. `/healthz` returned `ok`; health alone does not establish client compatibility. The isolated local relay is rebuilt from the same source as the Android libraries for encrypted device journeys.
 
 ## Existing deployment
 
