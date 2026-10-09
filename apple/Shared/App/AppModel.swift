@@ -973,6 +973,15 @@ final class AppModel {
             paths[.conversations] = []
             return
         }
+        #if DEBUG
+        if story == "unread", SyncModel.mode == .demo {
+            perform { try core.markRead(spaceId: turma) }
+            for i in 1...12 {
+                perform { try core.demoMemberSay(spaceId: turma, memberHandle: "marina",
+                    text: "Mensagem não lida \(i): a saída é às oito. Levo água e lanches; nos encontramos na praça antes de pegar a trilha.") }
+            }
+        }
+        #endif
         go(.space(turma))
         await wait(0.8)
         switch story {

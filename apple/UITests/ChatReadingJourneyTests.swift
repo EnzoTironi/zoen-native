@@ -6,13 +6,13 @@ import XCTest
 final class ChatReadingJourneyTests: XCTestCase {
     override func setUp() { continueAfterFailure = false }
 
-    @MainActor private func launch(fast: Bool) -> XCUIApplication {
+    @MainActor private func launch(fast: Bool, story: String = "incoming") -> XCUIApplication {
         let app = XCUIApplication()
         app.launchArguments = ["-RodaDemo", "YES", "-RodaFreshStart", "YES", "-RodaResetDemo", "YES",
                                "-AppleLanguages", "(pt-BR)", "-RodaAppearance", "light",
-                               "-RodaApprovalsExplained", "YES", "-RodaStory", "incoming",
+                               "-RodaApprovalsExplained", "YES", "-RodaStory", story,
                                "-RodaIncomingFast", fast ? "YES" : "NO",
-                               "-RodaIncomingManual", fast ? "NO" : "YES"]
+                               "-RodaIncomingManual", !fast && story == "incoming" ? "YES" : "NO"]
         app.launch()
         return app
     }
@@ -65,6 +65,17 @@ final class ChatReadingJourneyTests: XCTestCase {
         sleep(1)
         XCTAssertTrue(text(app, "guarda um lugar").isHittable, "tapping it lands on the latest message")
         capture("Capsule jumps to the latest message")
+    }
+
+    @MainActor
+    func testOpeningUnreadHistoryStartsAtTheFirstUnreadMessage() {
+        let app = launch(fast: false, story: "unread")
+        let divider = app.descendants(matching: .any).matching(identifier: "unread-divider").firstMatch
+        XCTAssertTrue(divider.waitForExistence(timeout: 15), "the unread boundary appears")
+        XCTAssertTrue(divider.isHittable, "opening the chat brings its unread boundary into view")
+        XCTAssertTrue(text(app, "Mensagem não lida 1:").isHittable, "the first unread message is visible")
+        XCTAssertFalse(text(app, "Mensagem não lida 12:").isHittable, "opening unread history does not skip to its end")
+        capture("Chat opens at the first unread message")
     }
 
     @MainActor
