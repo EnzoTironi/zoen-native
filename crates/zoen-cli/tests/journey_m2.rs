@@ -270,3 +270,65 @@ async fn a_readable_group_becomes_end_to_end_and_never_goes_back() {
         assert!(!v.contains("BROKEN"), "{who}: {v}");
     }
 }
+
+/// A removed member reads nothing written after their removal, their device forgets the
+/// group, and nobody seals a message before the commit that takes them out.
+#[tokio::test]
+async fn a_removed_member_reads_nothing_after_removal() {
+    let w = World::new("m2rm").await;
+    for (h, n) in [("ana", "Ana"), ("bruno", "Bruno"), ("carla", "Carla")] {
+        w.init(h, n);
+    }
+    let space = w.zoen("ana", &["group", "Cofre", "@bruno", "@carla"]);
+    let space = space.trim();
+    let before = "todos leem isto";
+    w.zoen("ana", &["send", "Cofre", before]);
+    for who in ["bruno", "carla"] {
+        assert!(w.zoen(who, &["read", "Cofre"]).contains(before), "{who}");
+    }
+
+    w.zoen("ana", &["remove", "Cofre", "@bruno"]);
+    let after = "sem o Bruno: tucano-depois";
+    w.zoen("ana", &["send", "Cofre", after]);
+    let reply = "combinado, só nós: tucano-resposta";
+    w.zoen("carla", &["send", "Cofre", reply]);
+
+    let carla = w.zoen("carla", &["read", "Cofre"]);
+    assert!(carla.contains(after) && carla.contains(reply), "{carla}");
+    let bruno = w.zoen("bruno", &["read", "Cofre"]);
+    assert!(bruno.contains(before), "{bruno}");
+    assert!(!bruno.contains("tucano"), "{bruno}");
+    // Bruno's device forgot the group's secrets.
+    assert!(w.try_zoen("bruno", &["keys", "Cofre"]).is_err());
+    let (ae, ad) = keys(&w.zoen("ana", &["keys", "Cofre"]));
+    let (ce, cd) = keys(&w.zoen("carla", &["keys", "Cofre"]));
+    assert_eq!((ae, &ad), (ce, &cd));
+    assert_eq!(ae, 2, "the add, then the removal");
+
+    // In the relay's order: the removal, the commit, and only then messages sealed for the
+    // smaller group.
+    let stored = w.events_in(space).await;
+    let removed = stored
+        .iter()
+        .position(|ev| matches!(ev.env.body(), Some(EventBody::MemberRemoved { .. })))
+        .expect("the removal");
+    let commit = stored
+        .iter()
+        .skip(removed)
+        .position(|ev| ev.env.sealed_kind() == Some(roda_proto::SealedKind::Commit))
+        .map(|i| i + removed)
+        .expect("the removal's commit");
+    let messages_after: Vec<usize> = stored
+        .iter()
+        .enumerate()
+        .skip(removed)
+        .filter(|(_, ev)| ev.env.sealed_kind() == Some(roda_proto::SealedKind::Application))
+        .map(|(i, _)| i)
+        .collect();
+    assert_eq!(messages_after.len(), 2, "Ana's and Carla's");
+    assert!(messages_after.iter().all(|i| *i > commit));
+    for who in ["ana", "bruno", "carla"] {
+        let v = w.zoen(who, &["verify"]);
+        assert!(!v.contains("BROKEN"), "{who}: {v}");
+    }
+}
