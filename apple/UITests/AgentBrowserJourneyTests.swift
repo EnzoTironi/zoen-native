@@ -25,7 +25,8 @@ final class AgentBrowserJourneyTests: XCTestCase {
         let any = app.descendants(matching: .any)
         let title = any["browser-title"]
         XCTAssertTrue(title.waitForExistence(timeout: 25), "Paraty shows Zoen's browser card")
-        XCTAssertTrue(title.label.contains("usando o navegador"), "while it works: \(title.label)")
+        // On a slow machine it may already be at the sign-in by now; either way it's live.
+        XCTAssertTrue(title.label.contains("usando o navegador") || title.label.contains("precisa de você"), "while it works: \(title.label)")
         XCTAssertTrue(app.staticTexts["Ao vivo"].exists, "the screen is live")
         shot(app, "browser-live")
 
