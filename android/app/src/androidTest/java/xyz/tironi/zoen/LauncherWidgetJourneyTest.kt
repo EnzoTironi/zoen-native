@@ -88,11 +88,20 @@ class LauncherWidgetJourneyTest {
             assertEquals(owner, list.createdBy.id)
             assertEquals(owner, pet.createdBy.id)
             assertTrue(manager.isRequestPinAppWidgetSupported)
-            launcher = checkNotNull(application.packageManager.resolveActivity(Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_HOME), PackageManager.MATCH_DEFAULT_ONLY)).activityInfo.packageName
             automation.serviceInfo = automation.serviceInfo.apply {
                 flags = flags or AccessibilityServiceInfo.FLAG_REPORT_VIEW_IDS or AccessibilityServiceInfo.FLAG_RETRIEVE_INTERACTIVE_WINDOWS
             }
             wake()
+            step("Discover the default launcher through system HOME")
+            assertTrue("System HOME action must succeed", automation.performGlobalAction(AccessibilityService.GLOBAL_ACTION_HOME))
+            val homeIntent = Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_HOME)
+            val homeActivity = checkNotNull(application.packageManager.resolveActivity(homeIntent, PackageManager.MATCH_DEFAULT_ONLY)).activityInfo
+            await("The resolved HOME activity is actually foreground") { readUi()?.packageName == homeActivity.packageName }
+            launcher = checkNotNull(readUi()?.packageName)
+            assertEquals(homeActivity.packageName, launcher)
+            val homePackages = application.packageManager.queryIntentActivities(homeIntent, PackageManager.MATCH_DEFAULT_ONLY).map { it.activityInfo.packageName }.toSet()
+            assertTrue("The observed launcher must advertise a HOME activity", launcher in homePackages)
+            trace.put(JSONObject().put("observedLauncher", launcher).put("resolvedHome", ComponentName(homeActivity.packageName, homeActivity.name).flattenToString()).put("homePackages", JSONArray(homePackages.toList())))
             repository.preferences.edit().putBoolean("onboarded", true).putBoolean("miniapps.html:pet", false).putBoolean("miniapps.html:list", false).commit()
             scenario = ActivityScenario.launch(Intent(application, MainActivity::class.java).putExtra("demo", true))
             scenario.onActivity { it.window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON) }
