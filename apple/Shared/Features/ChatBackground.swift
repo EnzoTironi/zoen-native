@@ -476,6 +476,7 @@ struct PhotoBackdrop: View {
 }
 
 struct DoodleBackdrop: View {
+    @Environment(\.ambientPaused) private var ambientPaused
     let set: String
     @Environment(\.colorScheme) private var scheme
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -485,7 +486,7 @@ struct DoodleBackdrop: View {
         let dark = scheme == .dark
         let base = ChatBackground.colors[spec.tint] ?? ("#FFFFFF", "#000000")
         let ink = dark ? Color.white.opacity(0.13) : InkPalette.ink.opacity(0.12)
-        TimelineView(.animation(minimumInterval: 1 / 30, paused: reduceMotion)) { tl in
+        TimelineView(.animation(minimumInterval: 1 / 30, paused: ambientPaused || reduceMotion)) { tl in
             let t = reduceMotion ? 0 : tl.date.timeIntervalSinceReferenceDate
             Canvas { ctx, size in
                 let cell: CGFloat = 74

@@ -11,6 +11,7 @@ enum BrandShimmer {
 /// The agent-thinking state: a container that grows from a small spark into a capsule
 /// with a shimmering brand border and text, and resizes smoothly as the phrase changes.
 struct ThinkingShimmer: View {
+    @Environment(\.ambientPaused) private var ambientPaused
     let phrases: [String]
     var compact = false
     var showsHead = true            // Zoen's face; off when an avatar already sits beside it
@@ -19,7 +20,7 @@ struct ThinkingShimmer: View {
     @State private var start = Date()
 
     var body: some View {
-        TimelineView(.animation(minimumInterval: 1 / 30, paused: reduceMotion)) { tl in
+        TimelineView(.animation(minimumInterval: 1 / 30, paused: ambientPaused || reduceMotion)) { tl in
             let t = reduceMotion ? 0 : tl.date.timeIntervalSince(start)
             let phase = CGFloat((t * 0.55).truncatingRemainder(dividingBy: 1))
             let index = phrases.isEmpty ? 0 : min(phrases.count - 1, Int(t / 1.9))

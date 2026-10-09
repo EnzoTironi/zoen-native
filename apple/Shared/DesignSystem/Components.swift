@@ -327,8 +327,9 @@ struct FilterPills<T: Hashable & Identifiable>: View {
 // MARK: - Indicador "pensando"
 
 struct ThinkingDots: View {
+    @Environment(\.ambientPaused) private var ambientPaused
     var body: some View {
-        TimelineView(.animation) { ctx in
+        TimelineView(.animation(paused: ambientPaused)) { ctx in
             let t = ctx.date.timeIntervalSinceReferenceDate * 4
             HStack(spacing: 5) {
                 ForEach(0..<3) { i in

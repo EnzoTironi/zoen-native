@@ -169,6 +169,16 @@ struct ApprovalsStackView: View {
         .background(Palette.background.ignoresSafeArea())
         .animation(.spring(response: 0.55, dampingFraction: 0.66), value: visible.map(\.id))
         .onAppear(perform: sync)
+        #if os(iOS) && DEBUG
+        .task {
+            // Frame-pacing baseline: the stack sitting still, before any drag.
+            guard FramePacingProbe.enabled else { return }
+            try? await Task.sleep(for: .seconds(2.5))
+            FramePacingProbe.shared.begin("idle")
+            try? await Task.sleep(for: .seconds(1.5))
+            FramePacingProbe.shared.end()
+        }
+        #endif
         .onChange(of: model.revision) { _, _ in sync() }
         .onChange(of: visible.isEmpty, initial: true) { _, empty in
             if !empty {
@@ -377,6 +387,9 @@ struct ApprovalsStackView: View {
             .onChanged { v in
                 guard flying == nil, stamping == nil else { return }
                 if !pressed {
+                    #if os(iOS) && DEBUG
+                    FramePacingProbe.shared.begin("card-drag")
+                    #endif
                     grabTop = v.startLocation.y < cardHeight / 2
                     withAnimation(.spring(response: 0.25, dampingFraction: 0.75)) { pressed = true }
                 }
@@ -386,6 +399,10 @@ struct ApprovalsStackView: View {
                 if over != crossed { crossed = over }
             }
             .onEnded { v in
+                #if os(iOS) && DEBUG
+                // Keep measuring through the settle / fly-out, then report.
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) { FramePacingProbe.shared.end() }
+                #endif
                 guard flying == nil, stamping == nil else { return }
                 crossed = nil
                 let t = v.translation
@@ -451,7 +468,10 @@ struct ApprovalsStackView: View {
             DispatchQueue.main.asyncAfter(deadline: .now() + 3) { withAnimation { lockedHint = false } }
             return
         }
-        commitPending()
+        // The previous card's undo window closes now, but its write to the core waits until
+        // this card has flown: committing (core write + refresh) mid-throw was a 200+ ms hitch.
+        let previous = pending
+        if previous != nil { withAnimation(.easeOut(duration: 0.2)) { pending = nil } }
         // A standing decision settles the other cards it covers, here and in the core.
         let covered = s.isStanding ? visible.dropFirst().filter {
             $0.agent.id == top.agent.id && $0.spaceId == top.spaceId && $0.actionKey == top.actionKey
@@ -498,6 +518,7 @@ struct ApprovalsStackView: View {
                     exitSpin = 0
                     expanded = false
                 }
+                if let previous { commit(previous) }
                 schedule(Pending(id: top.id, ids: [top.id] + covered, swipe: s, title: top.title, agent: top.agent.name))
             }
         }
@@ -522,6 +543,10 @@ struct ApprovalsStackView: View {
     private func commitPending() {
         guard let p = pending else { return }
         withAnimation(.easeOut(duration: 0.25)) { pending = nil }
+        commit(p)
+    }
+
+    private func commit(_ p: Pending) {
         if model.decide(p.id, p.swipe.decision) == nil {
             // The core said no (stale, already resolved…): its toast explains; the card returns.
             for id in p.ids { hidden.remove(id) }

@@ -69,6 +69,7 @@ enum DonkeyArt {
 }
 
 struct PetSprite: View {
+    @Environment(\.ambientPaused) private var ambientPaused
     var asleep = false
     var faded = false
     var bounce = true
@@ -77,7 +78,7 @@ struct PetSprite: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
-        TimelineView(.animation(minimumInterval: 1 / 20, paused: !bounce || reduceMotion)) { tl in
+        TimelineView(.animation(minimumInterval: 1 / 20, paused: ambientPaused || !bounce || reduceMotion)) { tl in
             let t = tl.date.timeIntervalSinceReferenceDate
             Canvas { ctx, size in
                 let animated = bounce && !reduceMotion

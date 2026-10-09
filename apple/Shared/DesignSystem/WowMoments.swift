@@ -25,6 +25,7 @@ enum WowGate {
 /// Hand-drawn “Instalado / Installed” stamp: presses in with squash, ink spread + splatter,
 /// then a short line-boil settle. Interruptible; Reduce Motion → opacity fade only.
 struct InkStampMark: View {
+    @Environment(\.ambientPaused) private var ambientPaused
     var portuguese = false
     var animate = true
     /// Another word and ink (the approvals stack's "SEMPRE" stamp).
@@ -39,7 +40,7 @@ struct InkStampMark: View {
     private var label: String { word ?? (portuguese ? "INSTALADO" : "INSTALLED") }
 
     var body: some View {
-        TimelineView(.animation(minimumInterval: 1 / 60, paused: reduceMotion || !animate)) { tl in
+        TimelineView(.animation(minimumInterval: 1 / 60, paused: ambientPaused || reduceMotion || !animate)) { tl in
             let t = reduceMotion ? 1.2 : max(0, tl.date.timeIntervalSince(start))
             let p = reduceMotion ? 1.0 : min(1, t / 0.18)
             let s = reduceMotion ? 1.0 : max(0, min(1, (t - 0.12) / 0.28))
@@ -187,12 +188,13 @@ struct SpaceArtReveal: View {
 // MARK: - 3. First-message ink flourish
 
 struct InkFlourish: View {
+    @Environment(\.ambientPaused) private var ambientPaused
     var width: CGFloat = 120
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var start = Date()
 
     var body: some View {
-        TimelineView(.animation(minimumInterval: 1 / 60, paused: reduceMotion)) { tl in
+        TimelineView(.animation(minimumInterval: 1 / 60, paused: ambientPaused || reduceMotion)) { tl in
             let t = reduceMotion ? 1 : max(0, tl.date.timeIntervalSince(start))
             let progress = reduceMotion ? 1 : min(1, t / 0.45)
             Canvas { ctx, size in

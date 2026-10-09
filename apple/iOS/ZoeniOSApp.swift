@@ -69,6 +69,9 @@ struct RootView: View {
         }
         .onGeometryChange(for: CGSize.self) { $0.size } action: { size = $0 }
         .animation(.spring(duration: 0.35), value: barVisible)
+        // Nothing under the approvals cover is visible: stop its ink/mascot/globe loops so
+        // the cards get the whole main thread (sheets below are outside this and keep theirs).
+        .environment(\.ambientPaused, model.approvalsOpen)
         .overlay {
             if onboarding || model.sync.needsAccount {
                 OnboardingFlow { withAnimation(.easeInOut(duration: 0.4)) { onboarding = false } }

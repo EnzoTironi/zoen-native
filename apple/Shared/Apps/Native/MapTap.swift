@@ -165,13 +165,14 @@ func drawGlobe(_ ctx: GraphicsContext, size: CGSize, center: GeoPoint, guess: Ge
 
 /// Globo girando sozinho (widget) ou parado (ícone).
 struct GlobeView: View {
+    @Environment(\.ambientPaused) private var ambientPaused
     var spin = true
     var interactive = false
     var center = GeoPoint(lat: 20, lon: 10)
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
-        TimelineView(.animation(minimumInterval: 1 / 30, paused: !spin || reduceMotion)) { tl in
+        TimelineView(.animation(minimumInterval: 1 / 30, paused: ambientPaused || !spin || reduceMotion)) { tl in
             let t = tl.date.timeIntervalSinceReferenceDate
             Canvas { ctx, size in
                 var c = center

@@ -689,8 +689,9 @@ struct WorkingRow: View {
 }
 
 struct TypingDots: View {
+    @Environment(\.ambientPaused) private var ambientPaused
     var body: some View {
-        TimelineView(.animation) { ctx in
+        TimelineView(.animation(paused: ambientPaused)) { ctx in
             let t = ctx.date.timeIntervalSinceReferenceDate
             HStack(spacing: 4) {
                 ForEach(0..<3, id: \.self) { i in
