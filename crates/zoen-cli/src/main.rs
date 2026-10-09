@@ -240,7 +240,9 @@ fn usage() -> ! {
          file add CHAT FILE [--thumb PNG] [--path DIR] | files CHAT\n\
          file get ITEM --out FILE [--version N] [--thumb-out PNG]\n\
          file version ITEM FILE [--thumb PNG]\n\
-         versions ITEM | restore ITEM N      ITEM = id (prefix ok), path or title"
+         versions ITEM | restore ITEM N      ITEM = id (prefix ok), path or title\n\
+         backup on (--password P | --recovery-key) | backup now | backup off | backup status\n\
+         recover @HANDLE (--password P | --recovery-key KEY) [--relay URL]   a new device from a backup"
     );
     std::process::exit(2)
 }
@@ -493,6 +495,37 @@ async fn main() {
         return;
     }
 
+    if cmd == "recover" {
+        if cli.args.is_empty() {
+            usage();
+        }
+        let handle = cli.args.remove(0);
+        let relay = cli
+            .flag("--relay")
+            .or_else(|| std::env::var("ZOEN_RELAY").ok())
+            .unwrap_or_else(|| "http://127.0.0.1:8787".into());
+        let secret = cli
+            .flag("--password")
+            .or_else(|| cli.flag("--recovery-key"))
+            .unwrap_or_else(|| usage());
+        let acct = e
+            .restore_backup(relay, handle, secret, vault.clone())
+            .await
+            .unwrap_or_else(|err| die(err));
+        e.start_sync(None).unwrap_or_else(|err| die(err));
+        let c = e.wait_until_idle(timeout).await;
+        println!(
+            "@{} ({}) restored on a new device {} — {} chats, connection={}",
+            acct.handle,
+            &acct.identity_id[..12],
+            &acct.device_id[..12],
+            e.spaces().len(),
+            c.state
+        );
+        e.stop_sync();
+        return;
+    }
+
     if cmd == "link-request" {
         let relay = cli
             .flag("--relay")
@@ -555,6 +588,55 @@ async fn main() {
     }
 
     match cmd.as_str() {
+        "backup" => {
+            let sub = if cli.args.is_empty() {
+                "status".to_string()
+            } else {
+                cli.args.remove(0)
+            };
+            let show = |s: roda_ffi::BackupStatusDto| {
+                println!(
+                    "backup {} mode={} bytes={} last={}",
+                    if s.enabled { "on" } else { "off" },
+                    if s.mode.is_empty() { "-" } else { &s.mode },
+                    s.bytes,
+                    s.last_backup_ms
+                )
+            };
+            match sub.as_str() {
+                "on" => {
+                    if let Some(p) = cli.flag("--password") {
+                        let s = e
+                            .backup_turn_on_password(p, vault.clone())
+                            .await
+                            .unwrap_or_else(|err| die(err));
+                        show(s);
+                    } else if cli.switch("--recovery-key") {
+                        let rk = e
+                            .backup_turn_on_recovery_key(vault.clone())
+                            .await
+                            .unwrap_or_else(|err| die(err));
+                        println!("recovery-key\t{rk}");
+                        show(e.backup_status());
+                    } else {
+                        usage();
+                    }
+                }
+                "now" => show(
+                    e.backup_now(vault.clone())
+                        .await
+                        .unwrap_or_else(|err| die(err)),
+                ),
+                "off" => {
+                    e.backup_turn_off(vault.clone())
+                        .await
+                        .unwrap_or_else(|err| die(err));
+                    show(e.backup_status());
+                }
+                "status" => show(e.backup_status()),
+                _ => usage(),
+            }
+        }
         "whoami" | "status" => {
             let a = e.account().unwrap_or_else(|| die("no account"));
             let c = e.connection();

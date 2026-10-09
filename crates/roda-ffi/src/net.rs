@@ -425,6 +425,8 @@ async fn session(
         Ok(other) => return Exit::Retry(format!("unexpected {other:?}")),
         Err(e) => return Exit::Retry(e),
     };
+    // HTTP writes beside the socket (backups) sign for this name too.
+    let _ = ctx.engine().store.set_meta("relay_name", &relay);
     if let Err(e) = send(
         &mut sink,
         &ClientFrame::Auth {

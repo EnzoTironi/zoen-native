@@ -639,6 +639,31 @@ pub fn blob_put_message(sha256: &str, ts_ms: i64, relay: &str) -> Vec<u8> {
     format!("{PROTOCOL}:blob-put:{relay}:{sha256}:{ts_ms}").into_bytes()
 }
 
+/// Prefix followed by a 32-byte configuration generation and the encrypted backup.
+pub const BACKUP_UPLOAD_MAGIC: &[u8; 8] = b"ZOENBG1\0";
+
+/// Proof that a recovered device controls the key being enrolled for this backup.
+pub fn backup_enroll_message(
+    identity: &str,
+    device: &str,
+    cert: &str,
+    generation: &str,
+) -> Vec<u8> {
+    format!("{PROTOCOL}:backup-device-enroll:{identity}:{device}:{cert}:{generation}").into_bytes()
+}
+
+/// What a device signs for a backup write (ADR 0046): binds the operation, the identity,
+/// the body's hash and a timestamp to this relay.
+pub fn backup_message(
+    relay: &str,
+    identity: &str,
+    op: &str,
+    body_sha256: &str,
+    ts_ms: i64,
+) -> Vec<u8> {
+    format!("{PROTOCOL}:backup:{relay}:{identity}:{op}:{body_sha256}:{ts_ms}").into_bytes()
+}
+
 /// Handles: 3–24 chars, lowercase letters, digits, `_` and `.`; must start with a letter.
 pub fn normalize_handle(raw: &str) -> Option<String> {
     let h = raw.trim().trim_start_matches('@').to_lowercase();
