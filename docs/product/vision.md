@@ -26,6 +26,12 @@ Zoen é o "WhatsApp 2": um mensageiro privado onde, além de conversar, as pesso
 - O gancho tem que ser o que o agente entrega de verdade, nunca promessa vazia.
 - Convites para Spaces e conversas abrem direto na web: a pessoa entra e já usa.
 
+### B2C: crescimento viral sem pagar anúncio
+- Tese: o B2C traz crescimento viral orgânico, sem custo de anúncio, e complementa o B2B dos pequenos negócios. As pessoas chegam pelo uso pessoal e levam o Zoen para o trabalho e para as lojas onde compram (e vice-versa).
+- Widgets nativos na tela inicial e na tela de bloqueio do iPhone, aproveitando que o app é nativo. Exemplo de referência: o widget do burrinho, algo fofo que as pessoas querem mostrar e compartilhar. Os widgets seguem o estilo desenhado à mão e animado do Zoen.
+- Momentos de app de casal: cortes curtos e compartilháveis (lembranças, conquistas, momentos juntos) gerados a partir do uso, prontos para stories e vídeos curtos, reforçando o efeito viral.
+- Tudo que é compartilhável respeita a privacidade: nada sai de uma conversa sem a pessoa escolher compartilhar.
+
 ### SEO no estilo n8n
 - Cada caso de uso, tipo de negócio e integração vira uma página indexável (ex.: "agente para barbearia", "agente que agenda pelo WhatsApp", "Canva + Zoen").
 - As páginas mostram o mini app/agente funcionando e levam direto para usar.
