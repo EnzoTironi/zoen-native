@@ -109,6 +109,7 @@ impl Hub {
         if let Some(sessions) = self.sessions.read().expect("hub").get(identity) {
             for mailbox in sessions.values().filter(|mailbox| mailbox.device == device) {
                 mailbox.revoked.store(true, Ordering::Release);
+                mailbox.kick.notify_waiters();
                 mailbox.kick.notify_one();
             }
         }

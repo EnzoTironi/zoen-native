@@ -1,4 +1,10 @@
 //! One WebSocket = one authenticated device.
+//!
+//! The device row authorizes request admission. An ordinary request admitted before
+//! Unlink's Postgres commit may finish afterward, including an FDB append whose caller
+//! was cancelled. Fresh requests and every outgoing frame recheck the durable row.
+//! Atomic ordering of FDB commits against Postgres revocation would require one
+//! transaction domain; cancelling a response future cannot establish that ordering.
 
 use crate::pseudonym::pseudo;
 use std::{
@@ -83,7 +89,11 @@ pub async fn run(socket: WebSocket, st: Shared, ip: String) {
     let writer_kick = kick.clone();
     let delivery_auth = st.delivery_auth.clone();
     let writer = tokio::spawn(async move {
-        while let Some(frame) = rx.recv().await {
+        loop {
+            let frame = tokio::select! {
+                frame = rx.recv() => match frame { Some(frame) => frame, None => break },
+                _ = writer_kick.notified() => break,
+            };
             if writer_revoked.load(Ordering::Acquire) {
                 break;
             }
@@ -120,6 +130,7 @@ pub async fn run(socket: WebSocket, st: Shared, ip: String) {
             }
         }
         let _ = tokio::time::timeout(Duration::from_secs(1), sink.close()).await;
+        writer_kick.notify_one();
     });
 
     let Some(LoggedIn {
@@ -195,10 +206,16 @@ pub async fn run(socket: WebSocket, st: Shared, ip: String) {
             registered,
         })
         .await;
-    if registered {
-        s.go_online().await;
-    }
     drop(initial_authorization);
+    if registered {
+        if tokio::time::timeout(Duration::from_secs(5), s.go_online())
+            .await
+            .is_err()
+        {
+            s.kick.notify_waiters();
+            s.kick.notify_one();
+        }
+    }
     tracing::info!(identity = %pseudo(&identity), registered, "session ready");
 
     // ── frames ──
@@ -211,7 +228,20 @@ pub async fn run(socket: WebSocket, st: Shared, ip: String) {
                 match frame {
                     Ok(Some(f)) => {
                         idle_deadline = tokio::time::Instant::now() + Duration::from_secs(90);
-                        if !s.handle(f).await { break; }
+                        let handled = if matches!(&f, ClientFrame::Sync { .. }) {
+                            // Catch-up may stream for longer than one request budget;
+                            // each log read and output wait has its own deadline.
+                            tokio::select! {
+                                _ = kick.notified() => false,
+                                keep = s.handle(f) => keep,
+                            }
+                        } else {
+                            tokio::select! {
+                                _ = kick.notified() => false,
+                                result = tokio::time::timeout(Duration::from_secs(5), s.handle(f)) => result.is_ok_and(|keep| keep),
+                            }
+                        };
+                        if !handled { break; }
                     },
                     Ok(None) => break,
                     Err(_) => { tracing::info!(identity = %pseudo(&identity), "idle timeout"); break }
@@ -222,26 +252,28 @@ pub async fn run(socket: WebSocket, st: Shared, ip: String) {
                 break;
             }
             _ = refresh.tick() => {
-                if !s.still_authorized().await { break; }
+                if !tokio::time::timeout(Duration::from_secs(5), s.still_authorized()).await.is_ok_and(|active| active) { break; }
             }
         }
     }
 
-    if let Some(id) = s.hub_id {
-        if st.fanout.remove(&identity, id) && !st.fanout.is_online(&identity).await {
-            if let Ok(co) = st.log.co_members(&identity).await {
-                st.fanout.send(
-                    &co,
-                    &ServerFrame::Presence {
-                        identity: identity.clone(),
-                        online: false,
-                    },
-                    None,
-                );
-            }
+    let last = s.hub_id.is_some_and(|id| st.fanout.remove(&identity, id));
+    drop(s);
+    finish(writer, tx).await;
+    if last && !st.fanout.is_online(&identity).await {
+        if let Ok(Ok(co)) =
+            tokio::time::timeout(Duration::from_secs(2), st.log.co_members(&identity)).await
+        {
+            st.fanout.send(
+                &co,
+                &ServerFrame::Presence {
+                    identity: identity.clone(),
+                    online: false,
+                },
+                None,
+            );
         }
     }
-    finish(writer, tx).await;
 }
 
 /// A device that proved its keys.
@@ -375,14 +407,33 @@ async fn handshake(
     })
 }
 
-async fn finish(writer: tokio::task::JoinHandle<()>, tx: mpsc::Sender<ServerFrame>) {
+async fn finish(mut writer: tokio::task::JoinHandle<()>, tx: mpsc::Sender<ServerFrame>) {
     drop(tx);
-    let _ = tokio::time::timeout(Duration::from_secs(2), writer).await;
+    if tokio::time::timeout(Duration::from_secs(2), &mut writer)
+        .await
+        .is_err()
+    {
+        writer.abort();
+        let _ = writer.await;
+    }
 }
 
 impl Session {
     async fn send(&self, f: ServerFrame) {
         let _ = self.tx.send(f).await;
+    }
+
+    async fn send_sync(&self, frame: ServerFrame) -> bool {
+        if tokio::time::timeout(Duration::from_secs(5), self.tx.send(frame))
+            .await
+            .is_ok_and(|sent| sent.is_ok())
+        {
+            true
+        } else {
+            self.kick.notify_waiters();
+            self.kick.notify_one();
+            false
+        }
     }
 
     /// Tells each claimed device that's running low, wherever it is connected.
@@ -432,7 +483,12 @@ impl Session {
         // mailbox, or is reflected in the query. Reading first can lose both signals.
         // Packages claimed while this device was away: it refills as it comes back.
         self.send_key_package_stock().await;
-        if let Ok(co) = self.st.log.co_members(&self.identity).await {
+        if let Ok(Ok(co)) = tokio::time::timeout(
+            Duration::from_secs(2),
+            self.st.log.co_members(&self.identity),
+        )
+        .await
+        {
             if !was_online {
                 self.st.fanout.send(
                     &co,
@@ -505,20 +561,52 @@ impl Session {
             return false;
         }
         let registered = self.hub_id.is_some();
-        let mut authorization = match db::authorize_device(
-            &self.st.session_auth,
-            &self.identity,
-            &self.device,
-            registered,
+        // Unlink uses the ordinary pool and performs its SQL in this same transaction.
+        // An occupied inbound authorization lane must not exclude the revocation itself.
+        let authorization_pool = if matches!(
+            &f,
+            ClientFrame::Req {
+                op: Op::Unlink { .. },
+                ..
+            }
+        ) {
+            &self.st.pool
+        } else {
+            &self.st.session_auth
+        };
+        let authorization = match tokio::time::timeout(
+            Duration::from_secs(5),
+            db::authorize_device(authorization_pool, &self.identity, &self.device, registered),
         )
         .await
         {
-            Ok(Some(tx)) => tx,
+            Ok(Ok(Some(tx))) => tx,
             _ => {
                 self.revoked.store(true, Ordering::Release);
                 self.kick.notify_one();
                 return false;
             }
+        };
+        let unlinking = matches!(
+            &f,
+            ClientFrame::Req {
+                op: Op::Unlink { .. },
+                ..
+            }
+        );
+        let mut authorization = if unlinking {
+            Some(authorization)
+        } else {
+            // This is a request-admission fence. Work admitted before revocation can
+            // finish, including a queued FDB append after this handler is cancelled.
+            // Fresh requests and every later delivery independently check the row.
+            if !tokio::time::timeout(Duration::from_secs(5), authorization.commit())
+                .await
+                .is_ok_and(|committed| committed.is_ok())
+            {
+                return false;
+            }
+            None
         };
         match f {
             ClientFrame::Ping => self.send(ServerFrame::Pong).await,
@@ -538,7 +626,7 @@ impl Session {
                 let result = match self.st.limits.request_device.check(&self.device) {
                     Ok(()) => {
                         let r = self
-                            .request(op, registered, &mut authorization)
+                            .request(op, registered, authorization.as_mut())
                             .instrument(span.clone())
                             .await;
                         span.record("outcome", if r.is_ok() { "ok" } else { "refused" });
@@ -550,8 +638,10 @@ impl Session {
                     }
                 };
                 let refill = refill && result.is_ok();
-                if authorization.commit().await.is_err() {
-                    return false;
+                if let Some(authorization) = authorization {
+                    if authorization.commit().await.is_err() {
+                        return false;
+                    }
                 }
                 if result.is_ok() {
                     if registering {
@@ -582,8 +672,6 @@ impl Session {
                     .await
             }
         }
-        // Read-only fences are released explicitly; the output lane checks again at send.
-        let _ = authorization.rollback().await;
         !self.revoked.load(Ordering::Acquire)
     }
 
@@ -624,7 +712,7 @@ impl Session {
         &mut self,
         op: Op,
         registered: bool,
-        authorization: &mut sqlx::Transaction<'_, sqlx::Postgres>,
+        authorization: Option<&mut sqlx::Transaction<'_, sqlx::Postgres>>,
     ) -> Result<Reply, String> {
         let pool = &self.st.pool;
         match op {
@@ -663,7 +751,7 @@ impl Session {
                         .map_err(limits::slow_down)?;
                 }
                 db::register(pool, &profile, &handle).await?;
-                db::touch_device_in(authorization, &self.identity, &self.device, &self.cert)
+                db::touch_device(pool, &self.identity, &self.device, &self.cert)
                     .await
                     .map_err(|e| e.to_string())?;
                 Ok(Reply::Registered(profile))
@@ -702,6 +790,7 @@ impl Session {
                     .map_err(|e| e.to_string())?,
             )),
             Op::Unlink { device } => {
+                let authorization = authorization.ok_or("unlink authorization unavailable")?;
                 if !db::revoke_device(authorization, &self.identity, &device)
                     .await
                     .map_err(|e| e.to_string())?
@@ -1096,13 +1185,18 @@ impl Session {
         fields(identity = %pseudo(&self.identity), all, spaces = Empty, events = Empty)
     )]
     async fn sync(&mut self, cursors: Vec<roda_proto::Cursor>, all: bool) {
-        let Ok(mine) = self.st.log.spaces_of(&self.identity).await else {
-            return self
-                .send(ServerFrame::error(
-                    ErrorCode::Unavailable,
-                    "database unavailable",
-                ))
-                .await;
+        let Ok(Ok(mine)) = tokio::time::timeout(
+            Duration::from_secs(5),
+            self.st.log.spaces_of(&self.identity),
+        )
+        .await
+        else {
+            self.send_sync(ServerFrame::error(
+                ErrorCode::Unavailable,
+                "database unavailable",
+            ))
+            .await;
+            return;
         };
         // (space, from, through): a member reads to the head; someone removed reads up to
         // and including their removal, so their device learns of it, and nothing after.
@@ -1110,7 +1204,12 @@ impl Session {
         for c in cursors {
             if mine.contains(&c.space) {
                 plan.push((c.space, c.next_seq, None));
-            } else if let Ok(Some(gone)) = self.st.log.removed_at(&c.space, &self.identity).await {
+            } else if let Ok(Ok(Some(gone))) = tokio::time::timeout(
+                Duration::from_secs(5),
+                self.st.log.removed_at(&c.space, &self.identity),
+            )
+            .await
+            {
                 if c.next_seq <= gone {
                     plan.push((c.space, c.next_seq, Some(gone)));
                 }
@@ -1128,8 +1227,18 @@ impl Session {
         let mut sent = 0usize;
         for (space, mut next, through) in plan {
             loop {
-                let Ok(page) = self.st.log.read(&space, next, SYNC_PAGE).await else {
-                    break;
+                let Ok(Ok(page)) = tokio::time::timeout(
+                    Duration::from_secs(5),
+                    self.st.log.read(&space, next, SYNC_PAGE),
+                )
+                .await
+                else {
+                    self.send_sync(ServerFrame::error(
+                        ErrorCode::Unavailable,
+                        "log store unavailable",
+                    ))
+                    .await;
+                    return;
                 };
                 let n = page.len();
                 for ev in page {
@@ -1139,7 +1248,9 @@ impl Session {
                     next = ev.seq + 1;
                     Metrics::inc(&self.st.metrics.sync_events_sent);
                     sent += 1;
-                    self.send(ServerFrame::Event { ev }).await;
+                    if !self.send_sync(ServerFrame::Event { ev }).await {
+                        return;
+                    }
                 }
                 if n < SYNC_PAGE || through.is_some_and(|last| next > last) {
                     break;
@@ -1147,7 +1258,9 @@ impl Session {
             }
         }
         span.record("events", sent as i64);
-        self.send(ServerFrame::SyncDone).await;
+        if !self.send_sync(ServerFrame::SyncDone).await {
+            return;
+        }
         self.st.analytics.synced(&self.identity);
         if !self.first_sync_done {
             self.first_sync_done = true;
