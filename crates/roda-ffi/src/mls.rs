@@ -391,6 +391,17 @@ impl Engine {
         if !device.has_group(space) || device.pending(space) {
             return None;
         }
+        // The commit can land before its Welcome is accepted (e.g. under a publish
+        // limit). The new member cannot open messages that overtake that Welcome.
+        if self
+            .store
+            .outbox_handshakes()
+            .ok()?
+            .iter()
+            .any(|(_, s, kind)| s == space && kind == SealedKind::Welcome.name())
+        {
+            return None;
+        }
         let me = self.me.as_deref()?;
         let s = self.state.spaces.get(space)?;
         let group = device.roster(space).ok()?;
