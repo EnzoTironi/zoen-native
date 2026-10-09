@@ -405,6 +405,7 @@ impl State {
             }
             EventBody::ProfileKeyShared { .. }
             | EventBody::Checkpoint { .. }
+            | EventBody::DeviceJoining { .. }
             | EventBody::Sealed { .. }
             | EventBody::Unsupported { .. } => {}
         }
@@ -3255,6 +3256,10 @@ fn event_label(b: &EventBody) -> String {
                 "Checkpoint: epoch {epoch}"
             )
         }
+        EventBody::DeviceJoining { .. } => t(
+            "Um aparelho entrou na criptografia",
+            "A device joined the encryption",
+        ),
         EventBody::Unsupported { kind } => tr!(
             "Evento de uma versão mais nova: {kind}",
             "Event from a newer version: {kind}"

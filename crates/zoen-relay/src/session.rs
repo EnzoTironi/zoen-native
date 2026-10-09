@@ -238,6 +238,23 @@ async fn handshake(
         )
         .await;
     }
+    match db::device_revoked(&st.pool, &device).await {
+        Ok(false) => {}
+        Ok(true) => {
+            return refuse(
+                "unlinked",
+                ServerFrame::error(ErrorCode::Unauthorized, "this device was unlinked"),
+            )
+            .await;
+        }
+        Err(_) => {
+            return refuse(
+                "unavailable",
+                ServerFrame::error(ErrorCode::Unavailable, "database unavailable"),
+            )
+            .await;
+        }
+    }
     let Ok(registered) = db::is_registered(&st.pool, &identity).await else {
         return refuse(
             "unavailable",
@@ -467,7 +484,75 @@ impl Session {
                 self.go_online().await;
                 Ok(Reply::Registered(profile))
             }
+            Op::FetchLink { id } => {
+                if !valid_hex64(&id) {
+                    return Err("bad link id".into());
+                }
+                Ok(Reply::Link(
+                    db::take_link_box(pool, &id)
+                        .await
+                        .map_err(|e| e.to_string())?,
+                ))
+            }
             _ if !registered => Err("register first".into()),
+            Op::DeliverLink { id, sealed } => {
+                self.st
+                    .limits
+                    .lookup_account
+                    .check(&self.identity)
+                    .map_err(limits::slow_down)?;
+                if !valid_hex64(&id) || sealed.is_empty() || sealed.len() > db::MAX_LINK_BOX {
+                    return Err("bad link box".into());
+                }
+                if !db::put_link_box(pool, &id, &sealed)
+                    .await
+                    .map_err(|e| e.to_string())?
+                {
+                    return Err("a link box is already there".into());
+                }
+                Ok(Reply::Done)
+            }
+            Op::Devices => Ok(Reply::Devices(
+                db::devices_of(pool, &self.identity)
+                    .await
+                    .map_err(|e| e.to_string())?,
+            )),
+            Op::Unlink { device } => {
+                if !db::revoke_device(pool, &self.identity, &device)
+                    .await
+                    .map_err(|e| e.to_string())?
+                {
+                    return Err("not a linked device of yours".into());
+                }
+                tracing::info!(identity = %pseudo(&self.identity), "device unlinked");
+                Ok(Reply::Done)
+            }
+            Op::SendDevice { to, sealed } => {
+                self.st
+                    .limits
+                    .lookup_account
+                    .check(&self.identity)
+                    .map_err(limits::slow_down)?;
+                if sealed.is_empty() || sealed.len() > db::MAX_LINK_BOX * 16 {
+                    return Err("bad device message".into());
+                }
+                if !db::device_linked(pool, &self.identity, &to)
+                    .await
+                    .map_err(|e| e.to_string())?
+                {
+                    return Err("not a linked device of yours".into());
+                }
+                self.st.fanout.send(
+                    std::slice::from_ref(&self.identity),
+                    &ServerFrame::DeviceMessage {
+                        from: self.device.clone(),
+                        to,
+                        sealed,
+                    },
+                    None,
+                );
+                Ok(Reply::Done)
+            }
             Op::Lookup { handle, prefix } => {
                 self.st
                     .limits
@@ -875,4 +960,8 @@ impl Session {
                 .latency("first_sync_ms", self.started.elapsed());
         }
     }
+}
+
+fn valid_hex64(s: &str) -> bool {
+    s.len() == 64 && s.bytes().all(|b| b.is_ascii_hexdigit())
 }

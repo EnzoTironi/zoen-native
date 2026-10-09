@@ -7,8 +7,8 @@ use prost::Message;
 use roda_types::{Identity, IdentityKind, Role};
 
 use crate::{
-    AgreementKeyRecord, ClientFrame, Cursor, DeviceSigned, Envelope, EphemeralKind, ErrorCode,
-    InviteCreated, InvitePreview, KeyPackageRecord, Op, Reply, SealedProfile, Sequenced,
+    AgreementKeyRecord, ClientFrame, Cursor, DeviceRecord, DeviceSigned, Envelope, EphemeralKind,
+    ErrorCode, InviteCreated, InvitePreview, KeyPackageRecord, Op, Reply, SealedProfile, Sequenced,
     ServerFrame,
 };
 
@@ -75,7 +75,10 @@ pub struct PbHello {
 pub struct PbReq {
     #[prost(uint64, tag = "1")]
     pub id: u64,
-    #[prost(oneof = "pb_req::Op", tags = "2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12")]
+    #[prost(
+        oneof = "pb_req::Op",
+        tags = "2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17"
+    )]
     pub op: Option<pb_req::Op>,
 }
 
@@ -106,6 +109,16 @@ pub mod pb_req {
         PublishKeyPackages(PbPublishKeyPackages),
         #[prost(message, tag = "12")]
         ClaimKeyPackages(PbIds),
+        #[prost(message, tag = "13")]
+        DeliverLink(PbLinkBox),
+        #[prost(string, tag = "14")]
+        FetchLink(String),
+        #[prost(message, tag = "15")]
+        Devices(PbEmpty),
+        #[prost(string, tag = "16")]
+        Unlink(String),
+        #[prost(message, tag = "17")]
+        SendDevice(PbDeviceMessage),
     }
 }
 
@@ -175,6 +188,38 @@ pub struct PbKeyPackage {
 pub struct PbKeyPackages {
     #[prost(message, repeated, tag = "1")]
     pub packages: Vec<PbKeyPackage>,
+}
+
+#[derive(Clone, PartialEq, Message)]
+pub struct PbLinkBox {
+    #[prost(string, tag = "1")]
+    pub id: String,
+    #[prost(bytes = "vec", tag = "2")]
+    pub sealed: Vec<u8>,
+}
+
+#[derive(Clone, PartialEq, Message)]
+pub struct PbDeviceMessage {
+    #[prost(string, tag = "1")]
+    pub from: String,
+    #[prost(string, tag = "2")]
+    pub to: String,
+    #[prost(bytes = "vec", tag = "3")]
+    pub sealed: Vec<u8>,
+}
+
+#[derive(Clone, PartialEq, Message)]
+pub struct PbDevice {
+    #[prost(string, tag = "1")]
+    pub device: String,
+    #[prost(bool, tag = "2")]
+    pub revoked: bool,
+}
+
+#[derive(Clone, PartialEq, Message)]
+pub struct PbDevices {
+    #[prost(message, repeated, tag = "1")]
+    pub devices: Vec<PbDevice>,
 }
 
 #[derive(Clone, PartialEq, Message)]
@@ -265,9 +310,6 @@ pub struct PbEnvelope {
     pub cert: Option<String>,
     #[prost(string, optional, tag = "4")]
     pub invite: Option<String>,
-    /// A pruned sealed entry: the original's wire hash (`content` lost its MLS bytes).
-    #[prost(string, optional, tag = "5")]
-    pub pruned: Option<String>,
 }
 
 #[derive(Clone, PartialEq, Message)]
@@ -316,7 +358,7 @@ pub mod pb_ephemeral {
 pub struct PbServerFrame {
     #[prost(
         oneof = "pb_server_frame::F",
-        tags = "1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14"
+        tags = "1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15"
     )]
     pub f: Option<pb_server_frame::F>,
 }
@@ -354,6 +396,8 @@ pub mod pb_server_frame {
         ProfileChanged(PbProfileChanged),
         #[prost(message, tag = "14")]
         KeyPackagesLow(PbKeyPackagesLow),
+        #[prost(message, tag = "15")]
+        DeviceMessage(PbDeviceMessage),
     }
 }
 
@@ -381,7 +425,7 @@ pub struct PbReady {
 pub struct PbRes {
     #[prost(uint64, tag = "1")]
     pub id: u64,
-    #[prost(oneof = "pb_res::R", tags = "2, 3, 4, 5, 6, 7, 8, 9, 10")]
+    #[prost(oneof = "pb_res::R", tags = "2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12")]
     pub r: Option<pb_res::R>,
 }
 
@@ -408,6 +452,10 @@ pub mod pb_res {
         SealedProfiles(PbSealedProfiles),
         #[prost(message, tag = "10")]
         KeyPackages(PbKeyPackages),
+        #[prost(message, tag = "11")]
+        Link(PbLinkBox),
+        #[prost(message, tag = "12")]
+        Devices(PbDevices),
     }
 }
 
@@ -608,14 +656,11 @@ fn envelope_to(e: &Envelope) -> PbEnvelope {
         sig: e.sig.clone(),
         cert: e.cert.clone(),
         invite: e.invite.clone(),
-        pruned: e.pruned_wire().map(str::to_string),
     }
 }
 
 fn envelope_from(e: PbEnvelope) -> Result<Envelope, DecodeError> {
-    Envelope::new(e.content, e.sig, e.cert, e.invite)
-        .map(|env| env.with_pruned(e.pruned))
-        .ok_or_else(|| bad("envelope content"))
+    Envelope::new(e.content, e.sig, e.cert, e.invite).ok_or_else(|| bad("envelope content"))
 }
 
 fn ephemeral_to(space: &str, from: &str, k: &EphemeralKind) -> PbEphemeral {
@@ -728,6 +773,18 @@ impl ClientFrame {
                     Op::ClaimKeyPackages { ids } => {
                         pb_req::Op::ClaimKeyPackages(PbIds { ids: ids.clone() })
                     }
+                    Op::DeliverLink { id, sealed } => pb_req::Op::DeliverLink(PbLinkBox {
+                        id: id.clone(),
+                        sealed: sealed.clone(),
+                    }),
+                    Op::FetchLink { id } => pb_req::Op::FetchLink(id.clone()),
+                    Op::Devices => pb_req::Op::Devices(PbEmpty {}),
+                    Op::Unlink { device } => pb_req::Op::Unlink(device.clone()),
+                    Op::SendDevice { to, sealed } => pb_req::Op::SendDevice(PbDeviceMessage {
+                        from: String::new(),
+                        to: to.clone(),
+                        sealed: sealed.clone(),
+                    }),
                 }),
             }),
             ClientFrame::Publish { env } => F::Publish(envelope_to(env)),
@@ -791,13 +848,27 @@ impl ClientFrame {
                         last_resort: p.last_resort,
                     },
                     pb_req::Op::ClaimKeyPackages(p) => Op::ClaimKeyPackages { ids: p.ids },
+                    pb_req::Op::DeliverLink(b) => Op::DeliverLink {
+                        id: b.id,
+                        sealed: b.sealed,
+                    },
+                    pb_req::Op::FetchLink(id) => Op::FetchLink { id },
+                    pb_req::Op::Devices(_) => Op::Devices,
+                    pb_req::Op::Unlink(device) => Op::Unlink { device },
+                    pb_req::Op::SendDevice(m) => Op::SendDevice {
+                        to: m.to,
+                        sealed: m.sealed,
+                    },
                 },
             },
             // Only the relay prunes: a device can't hand it a stub.
-            F::Publish(e) if e.pruned.is_some() => return Err(bad("a pruned envelope")),
-            F::Publish(e) => ClientFrame::Publish {
-                env: envelope_from(e)?,
-            },
+            F::Publish(e) => {
+                let env = envelope_from(e)?;
+                if env.is_pruned() {
+                    return Err(bad("a pruned envelope"));
+                }
+                ClientFrame::Publish { env }
+            }
             F::Sync(s) => ClientFrame::Sync {
                 cursors: s
                     .cursors
@@ -876,6 +947,19 @@ impl ServerFrame {
                             })
                             .collect(),
                     }),
+                    Ok(Reply::Link(sealed)) => pb_res::R::Link(PbLinkBox {
+                        id: String::new(),
+                        sealed: sealed.clone().unwrap_or_default(),
+                    }),
+                    Ok(Reply::Devices(ds)) => pb_res::R::Devices(PbDevices {
+                        devices: ds
+                            .iter()
+                            .map(|d| PbDevice {
+                                device: d.device.clone(),
+                                revoked: d.revoked,
+                            })
+                            .collect(),
+                    }),
                 }),
             }),
             ServerFrame::Event { ev } => F::Event(PbSequenced {
@@ -923,6 +1007,11 @@ impl ServerFrame {
                     remaining: *remaining,
                 })
             }
+            ServerFrame::DeviceMessage { from, to, sealed } => F::DeviceMessage(PbDeviceMessage {
+                from: from.clone(),
+                to: to.clone(),
+                sealed: sealed.clone(),
+            }),
             ServerFrame::Joined { space } => F::Joined(space.clone()),
             ServerFrame::SyncDone => F::SyncDone(PbEmpty {}),
             ServerFrame::Pong => F::Pong(PbEmpty {}),
@@ -999,6 +1088,18 @@ impl ServerFrame {
                             })
                             .collect(),
                     )),
+                    pb_res::R::Link(b) => {
+                        Ok(Reply::Link((!b.sealed.is_empty()).then_some(b.sealed)))
+                    }
+                    pb_res::R::Devices(ds) => Ok(Reply::Devices(
+                        ds.devices
+                            .into_iter()
+                            .map(|d| DeviceRecord {
+                                device: d.device,
+                                revoked: d.revoked,
+                            })
+                            .collect(),
+                    )),
                 },
             },
             F::Event(s) => ServerFrame::Event {
@@ -1036,6 +1137,11 @@ impl ServerFrame {
             F::KeyPackagesLow(k) => ServerFrame::KeyPackagesLow {
                 device: k.device,
                 remaining: k.remaining,
+            },
+            F::DeviceMessage(m) => ServerFrame::DeviceMessage {
+                from: m.from,
+                to: m.to,
+                sealed: m.sealed,
             },
             F::Joined(space) => ServerFrame::Joined { space },
             F::SyncDone(_) => ServerFrame::SyncDone,
@@ -1226,6 +1332,11 @@ mod tests {
             ServerFrame::KeyPackagesLow {
                 device: "d".into(),
                 remaining: 3,
+            },
+            ServerFrame::DeviceMessage {
+                from: "a".into(),
+                to: "b".into(),
+                sealed: vec![7],
             },
             ServerFrame::Joined { space: "sp".into() },
             ServerFrame::SyncDone,

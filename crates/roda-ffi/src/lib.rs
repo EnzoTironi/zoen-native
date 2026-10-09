@@ -20,6 +20,9 @@ mod media;
 mod pages;
 pub use files::FileDto;
 pub use pages::{MarkdownFileDto, PageBlockDto, PageDto, TextSpanDto};
+mod link;
+mod link_api;
+mod linking;
 mod mls;
 mod net;
 mod profile;
@@ -27,6 +30,7 @@ mod replies;
 pub use profile::{PhotoChange, ProfileDto};
 mod sync;
 pub use api::*;
+pub use link_api::{DeviceDto, HistoryDto, LinkRequestDto, LinkedDto, OlderDto, TransferListener};
 
 mod apps;
 pub mod dto;

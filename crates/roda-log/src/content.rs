@@ -73,6 +73,9 @@ pub struct Sealed {
     pub suite: u32,
     #[prost(bytes = "vec", tag = "3")]
     pub data: Vec<u8>,
+    /// Only in a pruned stub (ADR 0026): SHA-256 of the MLS bytes the relay took out.
+    #[prost(bytes = "vec", tag = "4")]
+    pub data_hash: Vec<u8>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, prost::Enumeration)]
@@ -125,6 +128,28 @@ impl Sealed {
             kind: kind as i32,
             suite,
             data,
+            data_hash: Vec::new(),
+        }
+    }
+
+    /// What a pruned stub keeps of this: no MLS bytes, their hash.
+    pub fn stub(&self) -> Sealed {
+        Sealed {
+            data: Vec::new(),
+            data_hash: Sha256::digest(&self.data).to_vec(),
+            ..self.clone()
+        }
+    }
+
+    pub fn is_stub(&self) -> bool {
+        self.data.is_empty() && !self.data_hash.is_empty()
+    }
+
+    fn data_digest(&self) -> Vec<u8> {
+        if self.is_stub() {
+            self.data_hash.clone()
+        } else {
+            Sha256::digest(&self.data).to_vec()
         }
     }
 }
@@ -147,7 +172,44 @@ impl From<&SeenLink> for Seen {
     }
 }
 
-/// The hash an author signs: SHA-256(domain ‖ content), lowercase hex.
+/// Domain of a sealed entry's hash.
+pub const SEALED_DOMAIN: &[u8] = b"zoen-sealed-v1\0";
+
+/// The hash an author signs and the chain links (ADR 0026). Clear content: the content hash.
+/// Sealed content: SHA-256(sealed domain ‖ hash of the header with the MLS bytes out ‖
+/// SHA-256 of the MLS bytes). A pruned stub keeps the header and the bytes' hash, so it
+/// hashes (and verifies) the same as the original, and only a sealed entry can become one.
+pub fn signed_hash(content: &[u8]) -> String {
+    let Some(mut c) = SignedContent::parse(content) else {
+        return content_hash(content);
+    };
+    let Some(Payload::Sealed(s)) = &mut c.payload else {
+        return content_hash(content);
+    };
+    let digest = s.data_digest();
+    s.data = Vec::new();
+    s.data_hash = Vec::new();
+    let header = content_hash(&c.encode());
+    hex::encode(
+        Sha256::new()
+            .chain_update(SEALED_DOMAIN)
+            .chain_update(header.as_bytes())
+            .chain_update(&digest)
+            .finalize(),
+    )
+}
+
+/// The stub content a pruned sealed entry leaves; `None` unless sealed with its bytes.
+pub fn stub_content(content: &[u8]) -> Option<Vec<u8>> {
+    let mut c = SignedContent::parse(content)?;
+    match &mut c.payload {
+        Some(Payload::Sealed(s)) if !s.is_stub() => *s = s.stub(),
+        _ => return None,
+    }
+    Some(c.encode())
+}
+
+/// SHA-256(domain ‖ content), lowercase hex: the hash of clear content.
 pub fn content_hash(content: &[u8]) -> String {
     hex::encode(
         Sha256::new()

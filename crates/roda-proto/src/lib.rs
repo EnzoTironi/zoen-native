@@ -25,7 +25,7 @@
 pub mod experiments;
 pub mod wire;
 
-use roda_log::content::{content_hash, decode_body, Payload, SignedContent};
+use roda_log::content::{decode_body, signed_hash, stub_content, Payload, SignedContent};
 pub use roda_log::content::{Sealed, SealedKind};
 use roda_log::{event_from_content, verify_author, verify_sig, Author, LogError};
 use roda_types::{Event, EventBody, Identity, IdentityId, Role, Seen, SpaceId};
@@ -69,10 +69,6 @@ pub struct Envelope {
     pub cert: Option<String>,
     /// Transport only, never stored: the invite code that lets a newcomer add themselves.
     pub invite: Option<String>,
-    /// Set when the relay pruned this sealed entry (ADR 0026): `content` is the signed
-    /// header with the MLS bytes taken out, so the signature no longer covers it, and this
-    /// is the wire hash of the original, which the chain still links.
-    pruned: Option<String>,
 }
 
 impl Envelope {
@@ -91,40 +87,20 @@ impl Envelope {
             sig,
             cert,
             invite,
-            pruned: None,
         })
     }
 
-    /// The stub a pruned sealed entry leaves (ADR 0026): the same header and kind, no MLS
-    /// bytes, and the original's wire hash so the chain still links. `None` for anything
-    /// that isn't sealed, or is already pruned.
+    /// The stub a pruned sealed entry leaves (ADR 0026): the same header and kind and the
+    /// hash of the MLS bytes, without them. It hashes and verifies like the original.
+    /// `None` for anything that isn't sealed, or is already a stub.
     pub fn pruned(&self) -> Option<Envelope> {
-        if self.pruned.is_some() {
-            return None;
-        }
-        let mut header = self.parsed.clone();
-        match &mut header.payload {
-            Some(Payload::Sealed(s)) => s.data.clear(),
-            _ => return None,
-        }
-        let mut stub = Envelope::new(header.encode(), self.sig.clone(), self.cert.clone(), None)?;
-        stub.pruned = Some(self.wire_hash());
-        Some(stub)
+        let content = stub_content(&self.content)?;
+        Envelope::new(content, self.sig.clone(), self.cert.clone(), None)
     }
 
-    /// A stub as it comes off the wire or out of storage.
-    pub fn with_pruned(mut self, wire_hash: Option<String>) -> Self {
-        self.pruned = wire_hash;
-        self
-    }
-
-    /// The original's wire hash when this is a pruned stub.
-    pub fn pruned_wire(&self) -> Option<&str> {
-        self.pruned.as_deref()
-    }
-
+    /// A stub the relay left when it pruned this entry.
     pub fn is_pruned(&self) -> bool {
-        self.pruned.is_some()
+        matches!(&self.parsed.payload, Some(Payload::Sealed(s)) if s.is_stub())
     }
 
     /// Wraps a signed, unsequenced plaintext event.
@@ -204,10 +180,7 @@ impl Envelope {
 
     /// The hash the chain links: over the exact bytes, plain or sealed.
     pub fn wire_hash(&self) -> String {
-        if let Some(original) = &self.pruned {
-            return original.clone();
-        }
-        content_hash(&self.content)
+        signed_hash(&self.content)
     }
 
     /// Checks the device certificate and the author's signature over the bytes.
@@ -376,6 +349,30 @@ pub enum Op {
     ClaimKeyPackages {
         ids: Vec<IdentityId>,
     },
+    /// Leaves a sealed link box for a device being linked (ADR 0045), under `id` = SHA-256
+    /// of the link secret in its QR code. Only the new device can open it.
+    DeliverLink {
+        id: String,
+        sealed: Vec<u8>,
+    },
+    /// Takes the link box under `id`, if it is there yet. The one op a device being linked
+    /// (signed in as itself, not registered) may use besides registering.
+    FetchLink {
+        id: String,
+    },
+    /// This identity's devices, unlinked ones included.
+    Devices,
+    /// Unlinks one of this identity's devices: it can't sign in again and its key packages
+    /// go. Its leaves leave the groups through commits by the other devices.
+    Unlink {
+        device: String,
+    },
+    /// Sends sealed bytes to another linked device of this identity that is online (ADR
+    /// 0043: history pages). Nothing is stored; an offline device just doesn't get it.
+    SendDevice {
+        to: String,
+        sealed: Vec<u8>,
+    },
 }
 
 impl Op {
@@ -393,6 +390,11 @@ impl Op {
             Op::GetProfiles { .. } => "get_profiles",
             Op::PublishKeyPackages { .. } => "publish_key_packages",
             Op::ClaimKeyPackages { .. } => "claim_key_packages",
+            Op::DeliverLink { .. } => "deliver_link",
+            Op::FetchLink { .. } => "fetch_link",
+            Op::Devices => "devices",
+            Op::Unlink { .. } => "unlink",
+            Op::SendDevice { .. } => "send_device",
         }
     }
 }
@@ -429,6 +431,16 @@ pub enum Reply {
     AgreementKeys(Vec<AgreementKeyRecord>),
     SealedProfiles(Vec<SealedProfile>),
     KeyPackages(Vec<KeyPackageRecord>),
+    /// FetchLink: the sealed box, `None` while nobody left one.
+    Link(Option<Vec<u8>>),
+    Devices(Vec<DeviceRecord>),
+}
+
+/// One of an identity's devices, as the directory has it.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct DeviceRecord {
+    pub device: String,
+    pub revoked: bool,
 }
 
 /// One device's MLS key package, as claimed. Members re-check the leaf inside; the relay's
@@ -533,6 +545,12 @@ pub enum ServerFrame {
         device: String,
         remaining: u32,
     },
+    /// Sealed bytes from another device of yours (`Op::SendDevice`); the others ignore it.
+    DeviceMessage {
+        from: String,
+        to: String,
+        sealed: Vec<u8>,
+    },
     /// You were added to a Space: sync it from the start.
     Joined {
         space: SpaceId,
@@ -561,6 +579,12 @@ pub fn auth_message(nonce: &str, relay: &str) -> Vec<u8> {
 
 /// What a device signs to upload a blob: binds the content hash and a timestamp to this
 /// relay, so a captured header only re-uploads the same bytes for a few minutes.
+/// What a device signs to put or delete a chunk of a history transfer (ADR 0045).
+/// `op` is "put" or "delete"; `n` and `sha256` are empty for a delete.
+pub fn transfer_message(op: &str, transfer: &str, n: &str, sha256: &str, ts_ms: i64) -> Vec<u8> {
+    format!("{PROTOCOL}:transfer-{op}:{transfer}:{n}:{sha256}:{ts_ms}").into_bytes()
+}
+
 pub fn blob_put_message(sha256: &str, ts_ms: i64, relay: &str) -> Vec<u8> {
     format!("{PROTOCOL}:blob-put:{relay}:{sha256}:{ts_ms}").into_bytes()
 }

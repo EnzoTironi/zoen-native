@@ -307,3 +307,99 @@ pub async fn claim_key_packages(
         })
         .collect())
 }
+
+// ── Linking devices (ADR 0045) ──
+
+/// Largest sealed link box (identity keys, a certificate, a history manifest).
+pub const MAX_LINK_BOX: usize = 64 * 1024;
+
+pub async fn device_revoked(pool: &PgPool, device: &str) -> Result<bool, sqlx::Error> {
+    Ok(sqlx::query_scalar::<_, i32>(
+        "SELECT 1 FROM devices WHERE device = $1 AND revoked_at IS NOT NULL",
+    )
+    .bind(device)
+    .fetch_optional(pool)
+    .await?
+    .is_some())
+}
+
+/// Leaves a box; a second one under the same id is refused (they are one-time).
+pub async fn put_link_box(pool: &PgPool, id: &str, sealed: &[u8]) -> Result<bool, sqlx::Error> {
+    sqlx::query("DELETE FROM link_boxes WHERE created_at < now() - interval '15 minutes'")
+        .execute(pool)
+        .await?;
+    let r =
+        sqlx::query("INSERT INTO link_boxes (id, sealed) VALUES ($1, $2) ON CONFLICT DO NOTHING")
+            .bind(id)
+            .bind(sealed)
+            .execute(pool)
+            .await?;
+    Ok(r.rows_affected() == 1)
+}
+
+/// Takes the box under `id` (deleting it), if there is a fresh one.
+pub async fn take_link_box(pool: &PgPool, id: &str) -> Result<Option<Vec<u8>>, sqlx::Error> {
+    sqlx::query_scalar(
+        "DELETE FROM link_boxes WHERE id = $1 AND created_at > now() - interval '15 minutes'
+         RETURNING sealed",
+    )
+    .bind(id)
+    .fetch_optional(pool)
+    .await
+}
+
+pub async fn devices_of(
+    pool: &PgPool,
+    identity: &str,
+) -> Result<Vec<roda_proto::DeviceRecord>, sqlx::Error> {
+    let rows: Vec<(String, bool)> = sqlx::query_as(
+        "SELECT device, revoked_at IS NOT NULL FROM devices WHERE identity = $1 ORDER BY created_at",
+    )
+    .bind(identity)
+    .fetch_all(pool)
+    .await?;
+    Ok(rows
+        .into_iter()
+        .map(|(device, revoked)| roda_proto::DeviceRecord { device, revoked })
+        .collect())
+}
+
+/// Whether `device` is a device of `identity` still linked.
+pub async fn device_linked(
+    pool: &PgPool,
+    identity: &str,
+    device: &str,
+) -> Result<bool, sqlx::Error> {
+    Ok(sqlx::query_scalar::<_, i32>(
+        "SELECT 1 FROM devices WHERE identity = $1 AND device = $2 AND revoked_at IS NULL",
+    )
+    .bind(identity)
+    .bind(device)
+    .fetch_optional(pool)
+    .await?
+    .is_some())
+}
+
+/// Unlinks one of `identity`'s devices and drops its key packages. `false` if it isn't
+/// theirs (or already unlinked).
+pub async fn revoke_device(
+    pool: &PgPool,
+    identity: &str,
+    device: &str,
+) -> Result<bool, sqlx::Error> {
+    let mut tx = pool.begin().await?;
+    let r = sqlx::query(
+        "UPDATE devices SET revoked_at = now() WHERE identity = $1 AND device = $2 AND revoked_at IS NULL",
+    )
+    .bind(identity)
+    .bind(device)
+    .execute(&mut *tx)
+    .await?;
+    sqlx::query("DELETE FROM key_packages WHERE identity = $1 AND device = $2")
+        .bind(identity)
+        .bind(device)
+        .execute(&mut *tx)
+        .await?;
+    tx.commit().await?;
+    Ok(r.rows_affected() == 1)
+}

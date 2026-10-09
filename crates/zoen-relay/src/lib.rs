@@ -22,6 +22,7 @@ pub mod ownership;
 pub mod pseudonym;
 pub mod session;
 pub mod telemetry;
+pub mod transfer;
 
 use std::{net::SocketAddr, path::PathBuf, sync::Arc};
 
@@ -29,7 +30,7 @@ use axum::{
     extract::{DefaultBodyLimit, State, WebSocketUpgrade},
     http::StatusCode,
     response::IntoResponse,
-    routing::{get, post, put},
+    routing::{delete, get, post, put},
     serve::ListenerExt,
     Router,
 };
@@ -98,6 +99,13 @@ pub fn router(state: Shared) -> Router {
                 .get(blobs::get)
                 .layer(DefaultBodyLimit::max(blobs::MAX_BLOB_BYTES + 1024)),
         )
+        .route(
+            "/v1/transfer/{id}/{n}",
+            put(transfer::put)
+                .get(transfer::get)
+                .layer(DefaultBodyLimit::max(transfer::MAX_CHUNK + 1024)),
+        )
+        .route("/v1/transfer/{id}", delete(transfer::delete))
         .route(
             "/.well-known/apple-app-site-association",
             get(apple_app_site_association),
