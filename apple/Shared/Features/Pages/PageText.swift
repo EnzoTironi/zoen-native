@@ -34,15 +34,15 @@ extension NSAttributedString.Key {
 final class BlockTag: NSObject, @unchecked Sendable {
     let id: String
     let kind: String
-    let level: UInt8
-    let indent: UInt8
+    let level: UInt32
+    let indent: UInt32
     let number: UInt32
     let checked: Bool
     let lang: String
     let url: String
     let alt: String
 
-    init(id: String = BlockTag.newId(), kind: String, level: UInt8 = 0, indent: UInt8 = 0, number: UInt32 = 0,
+    init(id: String = BlockTag.newId(), kind: String, level: UInt32 = 0, indent: UInt32 = 0, number: UInt32 = 0,
          checked: Bool = false, lang: String = "", url: String = "", alt: String = "") {
         self.id = id; self.kind = kind; self.level = level; self.indent = indent; self.number = number
         self.checked = checked; self.lang = lang; self.url = url; self.alt = alt
@@ -57,7 +57,7 @@ final class BlockTag: NSObject, @unchecked Sendable {
         String(format: "%016llx", UInt64.random(in: 1...UInt64.max))
     }
 
-    func with(id: String? = nil, kind: String? = nil, level: UInt8? = nil, indent: UInt8? = nil,
+    func with(id: String? = nil, kind: String? = nil, level: UInt32? = nil, indent: UInt32? = nil,
               number: UInt32? = nil, checked: Bool? = nil) -> BlockTag {
         BlockTag(id: id ?? self.id, kind: kind ?? self.kind, level: level ?? self.level,
                  indent: indent ?? self.indent, number: number ?? self.number, checked: checked ?? self.checked,
@@ -84,7 +84,7 @@ struct BlockChoice: Identifiable, Sendable {
     let title: LocalizedStringResource
     let symbol: String
     let kind: String
-    var level: UInt8 = 0
+    var level: UInt32 = 0
 
     static let all: [BlockChoice] = [
         .init(id: "p", title: "Text", symbol: "text.alignleft", kind: "paragraph"),
@@ -408,7 +408,7 @@ enum PageText {
 
 /// Numbers consecutive numbered items like Markdown does (start + position in the run).
 struct NumberCounter {
-    private var current: [UInt8: UInt32] = [:]
+    private var current: [UInt32: UInt32] = [:]
     mutating func next(_ tag: BlockTag) -> UInt32 {
         guard tag.kind == "numbered" else {
             if !tag.isListItem { current.removeAll() }

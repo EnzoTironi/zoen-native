@@ -21,7 +21,7 @@ protocol PageTextHost: AnyObject {
 final class PageEditorController {
     /// The block kind under the cursor (the format bar highlights it).
     private(set) var currentKind = "paragraph"
-    private(set) var currentLevel: UInt8 = 0
+    private(set) var currentLevel: UInt32 = 0
     /// Marks active at the cursor or over the whole selection.
     private(set) var activeMarks: Set<String> = []
     /// Text after "/" at the start of an empty block, while the block menu is open.
@@ -551,7 +551,7 @@ final class PageEditorController {
         let p = paragraphRange(at: host.pageSelection.location)
         let t = tag(at: p)
         guard t.isListItem else { return }
-        let n = UInt8(max(0, min(6, Int(t.indent) + delta)))
+        let n = UInt32(max(0, min(6, Int(t.indent) + delta)))
         guard n != t.indent else { return }
         let nt = t.with(indent: n)
         applying = true
