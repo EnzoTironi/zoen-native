@@ -13,7 +13,8 @@ const outfile = join(here, 'dist', 'shell.server.mjs');
 const result = await build({
   stdin: {
     contents: `export { ZoenShell, ShellIcon } from '@zoen/ui/shell';
-      export { CommunityResources, InboxFilters, filterInbox, navigation, sampleChats } from './inbox';`,
+      export { CommunityResources, InboxFilters, filterInbox, navigation, sampleChats } from './inbox';
+      export { SampleActivity, ActivityUpdates } from './activity';`,
     resolveDir: here,
     loader: 'ts',
   },
@@ -33,6 +34,8 @@ const {
   filterInbox,
   navigation,
   sampleChats,
+  SampleActivity,
+  ActivityUpdates,
 } = await import(pathToFileURL(outfile).href);
 const props = {
   navigation: [
@@ -186,6 +189,33 @@ test('sample community resources and roles stay inside an expandable conversatio
   assert.match(html, /Sample member roles/);
   assert.match(html, /does not change anyone/);
   assert.equal(html.includes('href='), false);
+});
+
+test('Activity opens in sample Cards with List available and a real open-chat control', () => {
+  const html = renderToStaticMarkup(createElement(SampleActivity, { onSelectChat() {} }));
+  assert.match(html, /Sample updates/);
+  assert.match(html, /class="preview-activity-cards"/);
+  assert.match(html, /aria-label="Show sample updates as a list">List<\/button>/);
+  assert.match(html, /aria-label="Open Design studio conversation">Open chat<\/button>/);
+  assert.match(html, /aria-label="Previous sample update" disabled=""/);
+  assert.match(html, /aria-label="Next sample update"/);
+  assert.equal(html.includes('class="preview-results preview-activity-list"'), false);
+});
+
+test('explicit Activity List keeps every sample update and exposes Cards to return', () => {
+  const html = renderToStaticMarkup(
+    createElement(ActivityUpdates, {
+      presentation: 'list',
+      onPresentationChange() {},
+      onSelectChat() {},
+    }),
+  );
+  assert.match(html, /aria-label="Show sample updates as cards">Cards<\/button>/);
+  assert.match(html, /class="preview-results preview-activity-list"/);
+  for (const chat of sampleChats.filter((chat) => (chat.unreadCount ?? 0) > 0)) {
+    assert.ok(html.includes(chat.title));
+  }
+  assert.equal(html.includes('class="preview-activity-cards"'), false);
 });
 
 test('light, dark, and system colors agree with the native semantic Palette', async () => {

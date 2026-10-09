@@ -453,10 +453,15 @@ export function ZoenShell<NavigationId extends string, ChatId extends string>({
     const focusable = () =>
       Array.from(
         sidebar.querySelectorAll<HTMLElement>(
-          'button:not(:disabled), a[href], input:not(:disabled), select:not(:disabled), textarea:not(:disabled), [tabindex="0"]',
+          'button, a[href], input, select, textarea, summary, [tabindex]',
         ),
       ).filter(
-        (element) => !element.closest('[hidden], [inert]') && element.getClientRects().length > 0,
+        (element) =>
+          element.tabIndex >= 0 &&
+          !element.matches(':disabled') &&
+          !element.closest('[hidden], [inert]') &&
+          getComputedStyle(element).visibility !== 'hidden' &&
+          element.getClientRects().length > 0,
       );
     (focusable()[0] ?? sidebar).focus();
     const handleKey = (event: KeyboardEvent) => {

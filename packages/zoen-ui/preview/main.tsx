@@ -11,6 +11,7 @@ import {
   type Destination,
   type InboxFilter,
 } from './inbox';
+import { SampleActivity } from './activity';
 import '@zoen/ui/shell.css';
 import './preview.css';
 
@@ -259,23 +260,7 @@ function DestinationContent({
 }) {
   switch (destination) {
     case 'activity':
-      return (
-        <>
-          <span className="preview-eyebrow">Sample updates</span>
-          <h1>Recent activity</h1>
-          <p>Pick an update to return to its conversation.</p>
-          <div className="preview-results">
-            {sampleChats
-              .filter((chat) => chat.unreadCount)
-              .map((chat) => (
-                <button key={chat.id} type="button" onClick={() => onSelectChat(chat.id)}>
-                  <strong>{chat.title}</strong>
-                  <span>{chat.unreadCount} sample unread messages</span>
-                </button>
-              ))}
-          </div>
-        </>
-      );
+      return <SampleActivity onSelectChat={onSelectChat} />;
     case 'store':
       return <DemoStore />;
     case 'files':

@@ -237,7 +237,7 @@ private struct TopBarLayout: Layout {
         subviews[0].place(at: CGPoint(x: b.minX, y: b.midY), anchor: .leading, proposal: ProposedViewSize(l))
         subviews[2].place(at: CGPoint(x: b.maxX, y: b.midY), anchor: .trailing, proposal: ProposedViewSize(r))
         // Leave real room for long group names; sides keep their natural widths.
-        let cap = max(120, b.width - l.width - r.width - 2 * gap)
+        let cap = max(0, b.width - 2 * max(l.width, r.width) - 2 * gap)
         let t = subviews[1].sizeThatFits(ProposedViewSize(width: cap, height: b.height))
         subviews[1].place(at: CGPoint(x: b.midX, y: b.midY), anchor: .center, proposal: ProposedViewSize(width: min(t.width, cap), height: t.height))
     }

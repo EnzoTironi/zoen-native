@@ -103,6 +103,11 @@ These local examples do not enroll members or enforce permissions. The generic
 shell navigation API and existing `ShellIcon` names remain compatible; only the
 preview's default navigation changes.
 
+Activity opens as a stack of sample update cards. Previous and Next browse the
+local examples, and Open chat opens the corresponding conversation. List is an
+explicit view choice; its Cards button returns to the stack. Re-entering Activity
+starts in Cards again. These sample updates are independent of any approval queue.
+
 From the repository root:
 
 ```sh
@@ -129,6 +134,9 @@ For visual review:
    inbox. Confirm the same conversation frame is used for each. Choose each
    kind filter, then All. Open Community resources in Makers community and
    expand its guide without leaving the conversation.
+   In Activity, confirm Cards is the initial view, browse with Next and Previous,
+   then select List and confirm Cards returns to the stack. Open a chat from each
+   view and return to Activity; it should start in Cards again.
 2. Select Search in the rail and search for `Marina`, open a result, then search
    for a name that does not exist. Both the secondary panel and main results
    reflect the query. Repeat with Cmd/Ctrl-F.

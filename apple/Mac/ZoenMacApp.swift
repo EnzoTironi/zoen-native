@@ -328,6 +328,12 @@ struct MacRootView: View {
                     .accessibilityAddTraits(model.macSelection == .space(s.id) ? .isSelected : [])
                     .accessibilityIdentifier("mac-chat-\(s.id)")
                     .contextMenu {
+                        Button(model.isPinned(s) ? "Unpin" : "Pin") {
+                            withAnimation(.spring(duration: 0.4)) { model.togglePin(s) }
+                        }
+                        Button("Mark as read") {
+                            model.perform { try model.core.markRead(spaceId: s.id) }
+                        }
                         Button("Participants") { model.go(.space(s.id)); model.go(.participants(s.id)) }
                     }
                 }
