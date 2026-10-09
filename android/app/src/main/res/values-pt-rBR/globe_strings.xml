@@ -1,0 +1,12 @@
+<resources>
+    <string name="globe_description">Globo. Arraste para girar e toque para marcar seu palpite. As ações de acessibilidade giram o globo ou selecionam o centro.</string>
+    <string name="globe_center">Centro: %1$.1f de latitude, %2$.1f de longitude</string>
+    <string name="globe_guess">Seu palpite: %1$.1f de latitude, %2$.1f de longitude</string>
+    <string name="globe_answer">Resposta: %1$.1f de latitude, %2$.1f de longitude</string>
+    <string name="globe_west">Girar para oeste</string>
+    <string name="globe_east">Girar para leste</string>
+    <string name="globe_north">Girar para norte</string>
+    <string name="globe_south">Girar para sul</string>
+    <string name="globe_select_center">Marcar palpite no centro</string>
+    <string name="globe_error">Não foi possível carregar o mapa</string>
+</resources>
