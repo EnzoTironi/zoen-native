@@ -36,7 +36,12 @@ class ZoenViewModel(application: Application) : AndroidViewModel(application) {
         val owner = state.value.account?.copy() ?: return
         viewModelScope.launch {
             xyz.tironi.zoen.growth.reportGrowthWhenRegistered(state, owner) {
-                repository.network { it.growthSync(owner.relayUrl, false, 0u, 0u) }
+                repository.network { core ->
+                    val account = core.account()
+                    if (account != null && account.identityId == owner.identityId && account.deviceId == owner.deviceId && account.relayUrl == owner.relayUrl) {
+                        core.growthSync(null, false, 0u, 0u)
+                    }
+                }
             }
         }
     }
