@@ -12,6 +12,8 @@ primary_region = "gru"
   # Fly's proxy overwrites this header, so clients can't forge their address (ADR 0020).
   ZOEN_CLIENT_IP_HEADER = "fly-client-ip"
   RUST_LOG = "info,sqlx=warn,tower_http=warn"
+  # Product metrics (ADR 0043). Secrets: ZOEN_METRICS_KEY, ZOEN_ADMIN_TOKEN, ZOEN_POSTHOG_KEY.
+  ZOEN_METRICS_ENV = "staging"
 
 [http_service]
   internal_port = 8080
