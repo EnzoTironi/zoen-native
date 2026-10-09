@@ -257,6 +257,10 @@ pub async fn deadlines(database: &str, author: &Author, target: &Author) {
     // lookup, with the remaining receiver tasks waiting for a pool connection.
     let blocked = tokio::time::timeout(Duration::from_secs(1), async {
         loop {
+            // The lock transaction caches session activity on its first read;
+            // refresh it so connections reaching the lock later are observable.
+            sqlx::query("SELECT pg_stat_clear_snapshot()")
+                .execute(&mut lock).await.unwrap();
             let n = sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM pg_stat_activity WHERE datname = current_database() AND wait_event_type = 'Lock' AND query LIKE 'SELECT EXISTS(SELECT 1 FROM identities%'")
                 .fetch_one(&mut lock).await.unwrap();
             if n == 8 { break n }
