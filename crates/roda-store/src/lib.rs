@@ -138,6 +138,19 @@ impl Store {
         Ok(())
     }
 
+    /// Whether these bytes are on this device (without reading them).
+    pub fn has_media(&self, sha256: &str) -> Result<bool> {
+        Ok(self
+            .conn
+            .query_row(
+                "SELECT 1 FROM media WHERE sha256 = ?1",
+                [sha256],
+                |_| Ok(()),
+            )
+            .optional()?
+            .is_some())
+    }
+
     pub fn media(&self, sha256: &str) -> Result<Option<(String, Vec<u8>)>> {
         Ok(self
             .conn

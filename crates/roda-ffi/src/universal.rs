@@ -199,6 +199,8 @@ impl Engine {
                     ("item", b)
                 }
                 ItemContent::Text { text } => ("item", text.clone()),
+                ItemContent::Page(_) => ("item", self.page_text(&it.id)),
+                ItemContent::File(f) => ("item", format!("{} {}", f.name, f.path)),
                 ItemContent::App(a) => (
                     "app",
                     apps::headline(

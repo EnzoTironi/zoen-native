@@ -184,6 +184,9 @@ pub struct ItemDetail {
     /// Pedidos de agentes ligados a linhas deste Item (linha → status).
     pub linked_requests: Vec<AgentRequestDto>,
     pub app: Option<AppStateDto>,
+    /// Folder path inside the Space for pages and files ("" at the top).
+    pub path: String,
+    pub file: Option<crate::files::FileDto>,
 }
 
 // ───────────────────────────── MCP Apps (mini-apps) ─────────────────────────────
