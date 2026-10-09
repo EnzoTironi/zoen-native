@@ -1393,14 +1393,15 @@ impl Engine {
         at
     }
 
-    /// The relay refused a message sealed at an epoch the group has left: this device is
-    /// behind a commit it hasn't applied yet. It stops sealing in that Space until it has.
-    pub(crate) fn mls_sealed_stale(&mut self, client_id: &str) {
+    /// A stale publication blocks sealing only while its sent epoch is still current.
+    /// A commit may already have landed and maintenance may have resealed this outbox
+    /// entry before the old rejection arrives. Preserve that newer copy and epoch.
+    pub(crate) fn mls_sealed_stale(&mut self, client_id: &str, sent_epoch: u64) {
         let Some(space) = self.net.pending.get(client_id).cloned() else {
             return;
         };
-        if let Some(epoch) = self.device().ok().and_then(|d| d.epoch(&space).ok()) {
-            self.net.mls.behind.insert(space, epoch);
+        if self.device().ok().and_then(|d| d.epoch(&space).ok()) == Some(sent_epoch) {
+            self.net.mls.behind.insert(space, sent_epoch);
         }
     }
 
@@ -1503,6 +1504,103 @@ pub(crate) fn must_seal(body: &EventBody) -> bool {
 mod tests {
     use super::*;
     use roda_log::{chain_hash, Author};
+
+    #[test]
+    fn an_obsolete_stale_rejection_cannot_release_a_current_epoch_block() {
+        let mut engine = Engine::open(":memory:").unwrap();
+        engine
+            .create_account("Ana", "ana", "http://relay.test")
+            .unwrap();
+        let author = engine.net.author.clone().unwrap();
+        let space = "sp_current_stale_epoch";
+        let mut log = SpaceLog::new(space);
+        let genesis = log
+            .sequence(author.sign_event(
+                space,
+                "created",
+                1,
+                None,
+                EventBody::SpaceCreated {
+                    title: "Current epoch".into(),
+                    kind: SpaceKind::Group,
+                    privacy: Privacy::EndToEnd,
+                },
+            ))
+            .clone();
+        assert_eq!(
+            engine.ingest(Sequenced {
+                seq: genesis.seq,
+                prev: genesis.prev.clone(),
+                hash: genesis.hash.clone(),
+                env: Envelope::plain(&genesis),
+            }),
+            Ingest::Applied
+        );
+        engine.create_mls_group(space).unwrap();
+        let commit = engine
+            .device()
+            .unwrap()
+            .commit(space, &[], &Default::default())
+            .unwrap();
+        let env = Envelope::sealed(
+            &author,
+            space,
+            "advance",
+            2,
+            log.head().as_ref(),
+            Sealed::new(SealedKind::Commit, SUITE_ID, commit.commit),
+        );
+        assert_eq!(
+            engine.ingest(Sequenced {
+                seq: 1,
+                prev: genesis.hash.clone(),
+                hash: chain_hash(space, 1, &genesis.hash, &env.wire_hash()),
+                env,
+            }),
+            Ingest::Applied
+        );
+        assert_eq!(engine.mls_status(space).unwrap().0, 1);
+        let message = engine
+            .append_synced(
+                space,
+                &author,
+                3,
+                EventBody::MessagePosted {
+                    message: "pending".into(),
+                    text: "Waiting for the next commit".into(),
+                    attaches: None,
+                    reply: None,
+                },
+            )
+            .unwrap();
+        assert!(engine.mls_seal_outbox().unwrap());
+        let copy = engine
+            .store
+            .meta(&sealed_meta(&message.client_id))
+            .unwrap()
+            .unwrap();
+        assert_eq!(engine.outbox_envelopes().len(), 1);
+        engine.reject(&message.client_id, roda_proto::STALE_SEAL, true, Some(1));
+        assert!(
+            engine.outbox_envelopes().is_empty(),
+            "a rejected current epoch waits for its missing commit"
+        );
+        engine.reject(&message.client_id, roda_proto::STALE_SEAL, true, Some(0));
+        assert!(
+            engine.outbox_envelopes().is_empty(),
+            "an obsolete rejection must not overwrite the current epoch's block"
+        );
+        assert_eq!(engine.net.mls.behind.get(space), Some(&1));
+        assert_eq!(
+            engine.store.meta(&sealed_meta(&message.client_id)).unwrap(),
+            Some(copy)
+        );
+        assert_eq!(
+            engine.store.outbox_get(&message.client_id).unwrap(),
+            Some(message)
+        );
+        engine.logs[space].verify().unwrap();
+    }
 
     #[test]
     fn rejected_outer_signature_keeps_the_own_event_pending() {
