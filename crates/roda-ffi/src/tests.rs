@@ -482,6 +482,54 @@ fn explicit_install_rejects_invalid_inputs_before_creating_any_item() {
 }
 
 #[test]
+fn rendered_file_versions_record_the_output_format_and_preserve_original_bytes() {
+    let e = seeded();
+    let space = find_space(&e, "Paraty com a Marina");
+    let original = e
+        .file_add(
+            space.id.clone(),
+            "".into(),
+            "recording.mp3".into(),
+            "audio/mpeg".into(),
+            vec![1, 2, 3],
+            None,
+        )
+        .unwrap();
+    let encoded = e
+        .file_new_version_typed(
+            original.id.clone(),
+            vec![4, 5],
+            None,
+            "Trimmed".into(),
+            "recording.m4a".into(),
+            "audio/mp4".into(),
+        )
+        .unwrap();
+    assert_eq!(encoded.version, 2);
+    assert_eq!(encoded.file.as_ref().unwrap().name, "recording.m4a");
+    assert_eq!(encoded.file.as_ref().unwrap().mime, "audio/mp4");
+    assert_eq!(
+        e.file_bytes(original.id.clone(), Some(1)).unwrap(),
+        Some(vec![1, 2, 3])
+    );
+    assert_eq!(
+        e.file_bytes(original.id.clone(), Some(2)).unwrap(),
+        Some(vec![4, 5])
+    );
+    assert!(e
+        .file_new_version_typed(
+            original.id,
+            vec![6],
+            None,
+            "Invalid".into(),
+            "../bad.mp4".into(),
+            "video/mp4".into()
+        )
+        .is_err());
+    assert!(e.verify_log(space.id).valid);
+}
+
+#[test]
 fn pet_is_shared_state_versioned_and_gated_by_grants() {
     let e = seeded();
     let paraty = find_space(&e, "Paraty com a Marina");
