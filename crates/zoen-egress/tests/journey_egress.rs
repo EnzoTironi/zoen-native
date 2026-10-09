@@ -125,6 +125,8 @@ async fn a_tool_reaches_only_what_it_declared_and_never_sees_the_secret() {
                 name: "github".into(),
                 hosts: vec!["api.github.test".into()],
             }],
+            sign_requests: false,
+            browser: false,
         })
         .unwrap();
     let a = auth("lease_1", "t0k");
@@ -197,6 +199,8 @@ async fn a_tool_reaches_only_what_it_declared_and_never_sees_the_secret() {
             tool: "github-issues".into(),
             rules: vec![],
             secrets: vec![],
+            sign_requests: false,
+            browser: false,
         })
         .unwrap();
     let r = send(

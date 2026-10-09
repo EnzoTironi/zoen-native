@@ -3,7 +3,8 @@
 use crate::policy::{
     host_matches, is_forbidden, EgressRule, SecretBinding, BLOCKED_PORTS, PLACEHOLDER_PREFIX,
 };
-use crate::tls::{LeaseCa, Upstream};
+use crate::tls::{LeaseCa, SandboxRoot, Upstream};
+use crate::webbotauth::SignedAgent;
 use base64::Engine;
 use roda_types::{ActionClass, AgentRequest, Capability, Grant, GrantScope, IdentityId};
 use serde::{Deserialize, Serialize};
@@ -26,6 +27,12 @@ pub struct LeasePolicy {
     pub tool: String,
     pub rules: Vec<EgressRule>,
     pub secrets: Vec<SecretBinding>,
+    /// Sign this lease's requests with Web Bot Auth (when the node has a [`SignedAgent`]).
+    /// HTTPS to the allowlisted hosts is then intercepted so the signature can be added.
+    pub sign_requests: bool,
+    /// A browser lease: its CA is issued under the node's [`SandboxRoot`], which the
+    /// browser template already trusts.
+    pub browser: bool,
 }
 
 /// Where real secret values come from. In production: the owner's vault, unsealed for this
@@ -70,6 +77,8 @@ pub struct EgressConfig {
     pub allow_loopback_upstreams: bool,
     /// Test only: roots trusted for upstream TLS on top of Mozilla's (a journey's own origin).
     pub extra_upstream_roots_pem: Vec<String>,
+    /// The operator's Web Bot Auth identity; `None` signs nothing.
+    pub signed_agent: Option<Arc<SignedAgent>>,
 }
 
 impl Default for EgressConfig {
@@ -80,6 +89,7 @@ impl Default for EgressConfig {
             connect_timeout: Duration::from_secs(10),
             allow_loopback_upstreams: false,
             extra_upstream_roots_pem: vec![],
+            signed_agent: None,
         }
     }
 }
@@ -188,6 +198,7 @@ pub struct Egress {
     secrets: Arc<dyn SecretSource>,
     approvals: Arc<dyn ApprovalSink>,
     upstream: Upstream,
+    root: SandboxRoot,
 }
 
 fn now_ms() -> i64 {
@@ -239,6 +250,7 @@ impl Egress {
             secrets,
             approvals,
             upstream,
+            root: SandboxRoot::new().expect("sandbox root CA"),
         })
     }
 
@@ -248,16 +260,23 @@ impl Egress {
         for r in &policy.rules {
             r.validate()?;
         }
-        // A tool with secrets gets its own CA, limited to the hosts those secrets are for.
-        let hosts: Vec<String> = policy
+        // A tool with secrets gets its own CA, limited to the hosts those secrets are for; a
+        // signing lease's CA also covers its allowlisted hosts.
+        let mut hosts: Vec<String> = policy
             .secrets
             .iter()
             .flat_map(|b| b.hosts.iter().cloned())
             .collect();
+        if self.signs(&policy) {
+            hosts.extend(policy.rules.iter().map(|r| r.host.clone()));
+        }
+        hosts.sort();
+        hosts.dedup();
         let ca = if hosts.is_empty() {
             None
         } else {
-            Some(Arc::new(LeaseCa::new(&policy.lease, &hosts)?))
+            let root = policy.browser.then_some(&self.root);
+            Some(Arc::new(LeaseCa::new(&policy.lease, &hosts, root)?))
         };
         let mut st = self.state.lock().unwrap();
         match ca {
@@ -284,8 +303,17 @@ impl Egress {
         st.pending.retain(|_, p| p.lease != lease);
     }
 
+    fn signs(&self, policy: &LeasePolicy) -> bool {
+        policy.sign_requests && self.config.signed_agent.is_some()
+    }
+
+    /// The node's sandbox root certificate, baked into browser templates.
+    pub fn sandbox_root_pem(&self) -> String {
+        self.root.cert_pem().to_string()
+    }
+
     /// The certificate of the lease's CA, for the sandbox's trust bundle; `None` when the
-    /// tool has no secrets (then nothing is ever intercepted).
+    /// tool has no secrets and doesn't sign (then nothing is ever intercepted).
     pub fn lease_ca_pem(&self, lease: &str) -> Option<String> {
         self.state
             .lock()
@@ -525,7 +553,9 @@ impl Egress {
         // Secrets: placeholders become values only for hosts the secret is bound to.
         let mut out_headers = vec![];
         if target.path.is_some() {
-            match self.rewrite_headers(&policy, &target.host, &hdrs) {
+            let default_port = if target.tls { 443 } else { 80 };
+            let authority = authority(&target.host, target.port, default_port);
+            match self.rewrite_headers(&policy, &target.host, &authority, &hdrs) {
                 Ok(h) => out_headers = h,
                 Err(d) => return self.refuse(&mut conn, &ctx, d, None).await,
             }
@@ -544,7 +574,7 @@ impl Egress {
                 let st = self.state.lock().unwrap();
                 st.cas.get(&policy.lease).cloned()
             };
-            let intercept = ca.filter(|_| policy.secrets.iter().any(|b| b.allows(&target.host)));
+            let intercept = ca.filter(|c| c.covers(&target.host));
             let Some(ca) = intercept else {
                 // An opaque tunnel.
                 let mut upstream = upstream;
@@ -610,7 +640,8 @@ impl Egress {
                     .refuse(&mut inner, &ctx, Decision::NeedsApproval, Some(&id))
                     .await;
             }
-            let out_headers = match self.rewrite_headers(&policy, &target.host, &hdrs) {
+            let authority = authority(&target.host, target.port, 443);
+            let out_headers = match self.rewrite_headers(&policy, &target.host, &authority, &hdrs) {
                 Ok(h) => h,
                 Err(d) => return self.refuse(&mut inner, &ctx, d, None).await,
             };
@@ -672,15 +703,31 @@ impl Egress {
         &self,
         policy: &LeasePolicy,
         host: &str,
+        authority: &str,
         hdrs: &[(String, Vec<u8>)],
     ) -> Result<Vec<(String, Vec<u8>)>, Decision> {
-        let mut out = Vec::with_capacity(hdrs.len());
+        let signer = self
+            .config
+            .signed_agent
+            .as_ref()
+            .filter(|_| policy.sign_requests);
+        let mut out = Vec::with_capacity(hdrs.len() + 3);
         for (name, value) in hdrs {
             let lname = name.to_ascii_lowercase();
             if lname.starts_with("proxy-") || lname == "connection" || lname == "keep-alive" {
                 continue;
             }
+            // Only the proxy signs: whatever the sandbox put there goes.
+            if signer.is_some() && lname.starts_with("signature") {
+                continue;
+            }
             out.push((name.clone(), self.inject(policy, host, value)?));
+        }
+        if let Some(agent) = signer {
+            let now = (now_ms() / 1000) as u64;
+            for (n, v) in agent.sign_request(authority, now) {
+                out.push((n, v.into_bytes()));
+            }
         }
         Ok(out)
     }
@@ -888,6 +935,15 @@ impl<S: AsyncWrite + Unpin> AsyncWrite for Prefixed<S> {
         cx: &mut std::task::Context<'_>,
     ) -> std::task::Poll<std::io::Result<()>> {
         std::pin::Pin::new(&mut self.inner).poll_shutdown(cx)
+    }
+}
+
+/// `@authority`: the host, plus the port when it isn't the scheme's default.
+fn authority(host: &str, port: u16, default_port: u16) -> String {
+    if port == default_port {
+        host.to_ascii_lowercase()
+    } else {
+        format!("{}:{port}", host.to_ascii_lowercase())
     }
 }
 
