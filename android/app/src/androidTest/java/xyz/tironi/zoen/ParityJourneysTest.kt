@@ -232,7 +232,10 @@ class ParityJourneysTest {
         }
         val chosen = runBlocking { xyz.tironi.zoen.ui.ChatAppearanceStore.load(application.repository, chat.id) }
         assertEquals("color:mint", chosen.style)
+        capturePageHistory("chat-appearance-mint-saved")
         scenario.recreate()
         assertEquals(chosen, runBlocking { xyz.tironi.zoen.ui.ChatAppearanceStore.load(application.repository, chat.id) })
+        compose.waitUntil(10_000) { compose.onAllNodesWithTag("chat-timeline").fetchSemanticsNodes().isNotEmpty() }
+        capturePageHistory("chat-appearance-mint-after-recreation")
     }
 }
