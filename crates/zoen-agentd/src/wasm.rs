@@ -3,7 +3,7 @@
 //!
 //! A tool reads its input on stdin and answers on stdout. It gets nothing else: no files, no
 //! environment, no sockets, no clock beyond what WASI gives every component. Each run has
-//! **fuel** (instructions), a **wall-clock deadline** (epoch interruption) and a **memory
+//! **fuel** (instructions), a **wall-clock deadline** (epoch interruption and async timeout) and a **memory
 //! cap** (a store limiter, inside a pooling allocator sized for the node). The component's
 //! bytes must hash to what the publisher signed in the manifest.
 
@@ -113,19 +113,45 @@ impl WasiView for RunState {
 /// Caps linear memory and remembers when it said no.
 struct Limiter {
     memory_bytes: usize,
+    memory_used: usize,
+    pending_growth: usize,
     denied: bool,
+}
+
+impl Limiter {
+    fn new(memory_bytes: usize) -> Self {
+        Self {
+            memory_bytes,
+            memory_used: 0,
+            pending_growth: 0,
+            denied: false,
+        }
+    }
 }
 
 impl wasmtime::ResourceLimiter for Limiter {
     fn memory_growing(
         &mut self,
-        _current: usize,
+        current: usize,
         desired: usize,
-        _maximum: Option<usize>,
+        maximum: Option<usize>,
     ) -> wasmtime::Result<bool> {
-        let ok = desired <= self.memory_bytes;
+        self.pending_growth = 0;
+        let growth = desired.saturating_sub(current);
+        let total = self.memory_used.checked_add(growth);
+        let ok = maximum.is_none_or(|maximum| desired <= maximum)
+            && total.is_some_and(|total| total <= self.memory_bytes);
         self.denied |= !ok;
+        if ok {
+            self.memory_used += growth;
+            self.pending_growth = growth;
+        }
         Ok(ok)
+    }
+
+    fn memory_grow_failed(&mut self, _error: wasmtime::Error) -> wasmtime::Result<()> {
+        self.memory_used -= std::mem::take(&mut self.pending_growth);
+        Ok(())
     }
 
     fn table_growing(
@@ -143,6 +169,7 @@ pub struct WasmTier {
     engine: Engine,
     linker: Linker<RunState>,
     trusted: Vec<VerifyingKey>,
+    max_memory: usize,
     stop: Arc<AtomicBool>,
 }
 
@@ -191,6 +218,7 @@ impl WasmTier {
             engine,
             linker,
             trusted,
+            max_memory,
             stop,
         })
     }
@@ -242,10 +270,7 @@ impl WasmTier {
             RunState {
                 wasi,
                 table: ResourceTable::new(),
-                limiter: Limiter {
-                    memory_bytes: limits.memory_bytes,
-                    denied: false,
-                },
+                limiter: Limiter::new(limits.memory_bytes.min(self.max_memory)),
             },
         );
         store.limiter(|s| &mut s.limiter);
@@ -260,17 +285,18 @@ impl WasmTier {
         store.set_epoch_deadline(ticks);
         store.epoch_deadline_trap();
 
-        let result = async {
+        let result = tokio::time::timeout(limits.wall, async {
             let cmd = Command::instantiate_async(&mut store, &tool.component, &self.linker).await?;
             cmd.wasi_cli_run().call_run(&mut store).await
-        }
+        })
         .await;
         let fuel_used = limits.fuel - store.get_fuel().unwrap_or(0);
         let denied = store.data().limiter.denied;
         let stopped = match result {
-            Ok(Ok(())) => None,
-            Ok(Err(())) => Some(Stopped::Failed("exited with an error".into())),
-            Err(e) => Some(match e.downcast_ref::<wasmtime::Trap>() {
+            Err(_) => Some(Stopped::OutOfTime),
+            Ok(Ok(Ok(()))) => None,
+            Ok(Ok(Err(()))) => Some(Stopped::Failed("exited with an error".into())),
+            Ok(Err(e)) => Some(match e.downcast_ref::<wasmtime::Trap>() {
                 Some(wasmtime::Trap::OutOfFuel) => Stopped::OutOfFuel,
                 Some(wasmtime::Trap::Interrupt) => Stopped::OutOfTime,
                 _ if denied => Stopped::OutOfMemory,
@@ -288,5 +314,49 @@ impl WasmTier {
             fuel_used,
             elapsed: started.elapsed(),
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use wasmtime::{Memory, MemoryType, ResourceLimiter};
+
+    fn memory_store(bytes: usize) -> Store<Limiter> {
+        let mut store = Store::new(&Engine::default(), Limiter::new(bytes));
+        store.limiter(|limiter| limiter);
+        store
+    }
+
+    #[test]
+    fn linear_memories_share_one_run_budget() {
+        let mut store = memory_store(64 * 1024 * 1024);
+        Memory::new(&mut store, MemoryType::new(640, None)).unwrap();
+        assert!(Memory::new(&mut store, MemoryType::new(640, None)).is_err());
+        Memory::new(&mut store, MemoryType::new(384, None)).unwrap();
+        assert_eq!(store.data().memory_used, 64 * 1024 * 1024);
+    }
+
+    #[test]
+    fn rejected_growth_does_not_consume_another_memorys_budget() {
+        let mut store = memory_store(4 * 64 * 1024);
+        let memory = Memory::new(&mut store, MemoryType::new(1, Some(1))).unwrap();
+        assert!(memory.grow(&mut store, 1).is_err());
+        Memory::new(&mut store, MemoryType::new(3, None)).unwrap();
+        assert_eq!(store.data().memory_used, 4 * 64 * 1024);
+    }
+
+    #[test]
+    fn failed_allocation_returns_reserved_growth_to_the_run_budget() {
+        let mut limiter = Limiter::new(4 * 64 * 1024);
+        assert!(limiter.memory_growing(0, 64 * 1024, None).unwrap());
+        assert!(limiter
+            .memory_growing(64 * 1024, 3 * 64 * 1024, None)
+            .unwrap());
+        limiter
+            .memory_grow_failed(wasmtime::Error::msg("allocation failed"))
+            .unwrap();
+        assert!(limiter.memory_growing(0, 3 * 64 * 1024, None).unwrap());
+        assert!(!limiter.memory_growing(0, 64 * 1024, None).unwrap());
     }
 }
