@@ -217,7 +217,11 @@ removal is sealed after its commit), one commit per batch of membership changes.
 Also done: concurrent commits (one commit per epoch at the relay, admin turns, Welcomes held
 behind their commit, stranded leaves re-added) and key package top-up (`KeyPackagesLow`).
 
-Next, in order: checkpoint pruning, linking a second device, the app on the simulator with the Notification
+Also done: checkpoint pruning (`journey_m2::the_relay_prunes_what_every_member_holds`: sealed
+entries below every member device's checkpoint become stubs that keep the chain; holds for
+newly added members; a later joiner links over the stubs).
+
+Next, in order: linking a second device, the app on the simulator with the Notification
 Service Extension sharing state.
 
 ## M3. Real agents

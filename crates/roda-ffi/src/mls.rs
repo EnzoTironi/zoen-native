@@ -47,7 +47,19 @@ type R<T> = Result<T, CoreError>;
 /// Single-use key packages a device keeps on the relay, beside its last-resort one.
 const KEY_PACKAGES: usize = 32;
 const META_PUBLISHED: &str = "mls.key_packages";
-const CHECKPOINT_EVERY: u64 = 256;
+/// Log entries between a device's checkpoints in a Space (ADR 0026). Pruning waits on the
+/// slowest member's checkpoint, so readers post them too. `ZOEN_CHECKPOINT_EVERY` changes it
+/// (journeys use a small one to reach pruning in a few messages).
+fn checkpoint_every() -> u64 {
+    static EVERY: std::sync::OnceLock<u64> = std::sync::OnceLock::new();
+    *EVERY.get_or_init(|| {
+        std::env::var("ZOEN_CHECKPOINT_EVERY")
+            .ok()
+            .and_then(|v| v.parse().ok())
+            .filter(|n| *n > 0)
+            .unwrap_or(256)
+    })
+}
 /// How long to wait before claiming again for someone who had no key packages.
 const CLAIM_RETRY: Duration = Duration::from_secs(5);
 /// How long each admin waits behind the one before it (by identity order) before
@@ -73,7 +85,9 @@ pub struct MlsNet {
     claiming: HashSet<SpaceId>,
     retry_at: HashMap<SpaceId, Instant>,
     checkpoint_due: HashSet<SpaceId>,
-    sealed_since_checkpoint: HashMap<SpaceId, u64>,
+    /// Where this device's last checkpoint in each Space reached (`upto.seq`), from the
+    /// device database; it survives restarts so a reader still checkpoints.
+    checkpointed_at: HashMap<SpaceId, u64>,
     /// Spaces where someone listed had no key packages: messages stop waiting for them.
     stuck: HashSet<SpaceId>,
     /// When this device's turn to commit comes, behind the admins before it.
@@ -122,6 +136,10 @@ fn identity_set(v: Option<String>) -> BTreeSet<IdentityId> {
 
 fn join_set(set: &BTreeSet<IdentityId>) -> String {
     set.iter().cloned().collect::<Vec<_>>().join(",")
+}
+
+fn checkpointed_meta(space: &str) -> String {
+    format!("mls.checkpointed:{space}")
 }
 
 fn digest_meta(space: &str, epoch: u64) -> String {
@@ -479,6 +497,9 @@ impl Engine {
         if ev.seq > next {
             return Ingest::Gap { next };
         }
+        if ev.env.is_pruned() {
+            return self.ingest_pruned(ev);
+        }
         let Some((kind, data)) = ev.env.sealed_data().map(|(k, d)| (k, d.to_vec())) else {
             return Ingest::Invalid("not sealed".into());
         };
@@ -591,9 +612,9 @@ impl Engine {
             // Refused or stale: the group may still owe this Space a commit.
             m.dirty.insert(space.clone());
         }
-        let count = m.sealed_since_checkpoint.entry(space.clone()).or_default();
-        *count += 1;
-        if *count >= CHECKPOINT_EVERY && self.device().is_ok_and(|d| d.has_group(&space)) {
+        if e.seq >= self.checkpointed_at(&space) + checkpoint_every()
+            && self.device().is_ok_and(|d| d.has_group(&space))
+        {
             self.net.mls.checkpoint_due.insert(space.clone());
         }
 
@@ -617,6 +638,42 @@ impl Engine {
         self.state.apply(&e);
         self.index_dirty = true;
         self.note_unknown(&e);
+        Ingest::Applied
+    }
+
+    /// What a pruned entry leaves (ADR 0026): only a device that joined later reads it, and
+    /// it predates its Welcome, so there is nothing to open. It keeps the chain whole: the
+    /// stub links by the original's wire hash, which members' signed checkpoints pin.
+    fn ingest_pruned(&mut self, ev: Sequenced) -> Ingest {
+        let space = ev.env.space().to_string();
+        let mut e = match event_from_content(
+            ev.env.content().to_vec(),
+            ev.env.sig.clone(),
+            ev.env.cert.clone(),
+            ev.seq,
+            ev.prev.clone(),
+            ev.hash.clone(),
+        ) {
+            Ok(e) => e,
+            Err(err) => return Ingest::Invalid(err.to_string()),
+        };
+        e.sealed_wire = ev.env.pruned_wire().map(str::to_string);
+        let log = self
+            .logs
+            .entry(space.clone())
+            .or_insert_with(|| SpaceLog::new(space.clone()));
+        if let Err(err) = log.accept(e.clone()) {
+            if log.is_empty() {
+                self.logs.remove(&space);
+            }
+            return Ingest::Invalid(err.to_string());
+        }
+        if let Err(err) = self.store.append_event(&e) {
+            let _ = self.reload();
+            return Ingest::Invalid(err.to_string());
+        }
+        let _ = self.store.set_synced(&space);
+        self.net.synced.insert(space);
         Ingest::Applied
     }
 
@@ -968,6 +1025,21 @@ impl Engine {
         Ok(())
     }
 
+    fn checkpointed_at(&mut self, space: &str) -> u64 {
+        if let Some(at) = self.net.mls.checkpointed_at.get(space) {
+            return *at;
+        }
+        let at = self
+            .store
+            .meta(&checkpointed_meta(space))
+            .ok()
+            .flatten()
+            .and_then(|v| v.parse().ok())
+            .unwrap_or(0);
+        self.net.mls.checkpointed_at.insert(space.to_string(), at);
+        at
+    }
+
     /// Posts the checkpoints this device owes. `true` when it queued any.
     pub fn mls_checkpoints(&mut self) -> R<bool> {
         let due: Vec<SpaceId> = self.net.mls.checkpoint_due.drain().collect();
@@ -984,6 +1056,7 @@ impl Engine {
                 Err(_) => continue,
             };
             let me = self.me_id()?;
+            let reached = upto.seq;
             self.append(
                 &space,
                 &me,
@@ -993,7 +1066,10 @@ impl Engine {
                     digest,
                 },
             )?;
-            self.net.mls.sealed_since_checkpoint.insert(space, 0);
+            let _ = self
+                .store
+                .set_meta(&checkpointed_meta(&space), &reached.to_string());
+            self.net.mls.checkpointed_at.insert(space, reached);
             queued = true;
         }
         Ok(queued)
