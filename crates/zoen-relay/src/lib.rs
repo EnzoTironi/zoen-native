@@ -65,6 +65,10 @@ pub struct Config {
 
 pub struct AppState {
     pub pool: PgPool,
+    /// Separate bounded lanes: an authorized Sync can fill its output queue while its
+    /// writer checks authorization without waiting for the inbound lane's connection.
+    pub session_auth: PgPool,
+    pub delivery_auth: PgPool,
     pub log: Arc<dyn log::LogStore>,
     pub fanout: fanout::Fanout,
     pub limits: limits::Limits,
@@ -173,6 +177,15 @@ pub fn metrics_router(state: Shared) -> Router {
 
 pub async fn build(cfg: &Config) -> anyhow::Result<(Router, Shared)> {
     let pool = connect(cfg).await?;
+    let auth_pool = || {
+        PgPoolOptions::new()
+            .min_connections(0)
+            .max_connections(cfg.max_db_connections.clamp(1, 16))
+            .acquire_timeout(std::time::Duration::from_secs(2))
+            .connect_lazy(&cfg.database_url)
+    };
+    let session_auth = auth_pool()?;
+    let delivery_auth = auth_pool()?;
     let (blobs, where_) = blobs::store_from_env(&cfg.blob_dir)?;
     tracing::info!(blobs = %where_, "blob store ready");
     let log = log::fdb::FdbLog::open(cfg.fdb_cluster_file.as_deref(), &cfg.fdb_cell)?;
@@ -192,6 +205,8 @@ pub async fn build(cfg: &Config) -> anyhow::Result<(Router, Shared)> {
     let analytics = analytics::Analytics::load(&pool).await?;
     let state = Arc::new(AppState {
         pool,
+        session_auth,
+        delivery_auth,
         log: Arc::new(log),
         fanout,
         limits: limits::Limits::from_spec(&cfg.limits)?,

@@ -4,7 +4,7 @@
 use std::{
     collections::HashMap,
     sync::{
-        atomic::{AtomicU64, Ordering},
+        atomic::{AtomicBool, AtomicU64, Ordering},
         Arc, RwLock,
     },
 };
@@ -20,6 +20,8 @@ pub type Outbox = mpsc::Sender<ServerFrame>;
 pub struct Mailbox {
     pub tx: Outbox,
     pub kick: Arc<Notify>,
+    pub device: String,
+    pub revoked: Arc<AtomicBool>,
 }
 
 #[derive(Default)]
@@ -54,7 +56,15 @@ impl Hub {
     }
 
     pub fn is_online(&self, identity: &str) -> bool {
-        self.sessions.read().expect("hub").contains_key(identity)
+        self.sessions
+            .read()
+            .expect("hub")
+            .get(identity)
+            .is_some_and(|sessions| {
+                sessions
+                    .values()
+                    .any(|mailbox| !mailbox.revoked.load(Ordering::Acquire))
+            })
     }
 
     pub fn online_sessions(&self) -> usize {
@@ -62,7 +72,11 @@ impl Hub {
             .read()
             .expect("hub")
             .values()
-            .map(|s| s.len())
+            .map(|s| {
+                s.values()
+                    .filter(|mailbox| !mailbox.revoked.load(Ordering::Acquire))
+                    .count()
+            })
             .sum()
     }
 
@@ -77,6 +91,9 @@ impl Hub {
                     if Some(*id) == skip {
                         continue;
                     }
+                    if tx.revoked.load(Ordering::Acquire) {
+                        continue;
+                    }
                     match tx.tx.try_send(frame.clone()) {
                         Ok(()) => n += 1,
                         Err(mpsc::error::TrySendError::Full(_)) => tx.kick.notify_one(),
@@ -86,5 +103,14 @@ impl Hub {
             }
         }
         n
+    }
+
+    pub fn revoke_device(&self, identity: &str, device: &str) {
+        if let Some(sessions) = self.sessions.read().expect("hub").get(identity) {
+            for mailbox in sessions.values().filter(|mailbox| mailbox.device == device) {
+                mailbox.revoked.store(true, Ordering::Release);
+                mailbox.kick.notify_one();
+            }
+        }
     }
 }
