@@ -81,11 +81,13 @@ struct VoterStack: View {
     @Environment(AppModel.self) private var model
     let names: [String]
     var size: CGFloat = 22
+    var limit = 4
     var body: some View {
         HStack(spacing: -size * 0.34) {
-            ForEach(Array(Set(names)).sorted().prefix(4), id: \.self) { n in
+            ForEach(Array(Set(names)).sorted().prefix(limit), id: \.self) { n in
                 if let p = model.persona(named: n) {
-                    Avatar(persona: p, size: size).overlay(Circle().strokeBorder(.white, lineWidth: 1.5))
+                    // The ring is the card colour, so dark mode doesn't get bright halos.
+                    Avatar(persona: p, size: size).overlay(Circle().strokeBorder(Palette.surfaceRaised, lineWidth: 1.5))
                 }
             }
         }
@@ -111,17 +113,21 @@ struct HikeChatCard: View {
                     .frame(width: 58, height: 58)
                     .clipShape(.rect(cornerRadius: 14, style: .continuous))
                     .contentTransition(.opacity)
+                // Title and status win the width: two lines before an ellipsis, faces shrink to 3.
                 VStack(alignment: .leading, spacing: 3) {
-                    Text(h.title).font(.body.weight(.semibold)).foregroundStyle(Palette.textPrimary).lineLimit(1)
-                    Text(h.status).font(.subheadline).foregroundStyle(Palette.textSecondary).lineLimit(1)
+                    Text(h.title).font(.body.weight(.semibold)).foregroundStyle(Palette.textPrimary)
+                        .lineLimit(2).minimumScaleFactor(0.9).fixedSize(horizontal: false, vertical: true)
+                    Text(h.status).font(.subheadline).foregroundStyle(Palette.textSecondary)
+                        .lineLimit(1).minimumScaleFactor(0.85)
                         .contentTransition(.numericText())
                 }
+                .layoutPriority(1)
                 Spacer(minLength: 6)
-                if !h.voters.isEmpty { VoterStack(names: h.voters, size: 22) }
+                if !h.voters.isEmpty { VoterStack(names: h.voters, size: 20, limit: 3) }
                 ZoenIcon(.chevron, size: 14).foregroundStyle(Palette.textTertiary)
             }
             .padding(10)
-            .frame(maxWidth: 300)
+            .frame(minWidth: 270, maxWidth: 300, alignment: .leading)
             .background(Palette.surfaceRaised, in: .rect(cornerRadius: 22, style: .continuous))
             .overlay(RoundedRectangle(cornerRadius: 22, style: .continuous).strokeBorder(Palette.textPrimary.opacity(0.06), lineWidth: 0.5))
             .shadow(color: .black.opacity(0.07), radius: 12, y: 5)
