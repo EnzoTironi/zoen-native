@@ -539,10 +539,13 @@ struct SpaceView: View {
         if firstLoad {
             // Opening the chat: remember where unread starts, then show everything at once.
             let unread = Int(space?.unread ?? 0)
-            let main = new.filter { $0.inThread == nil }
-            if unread > 0, unread < main.count, !main[main.count - unread].author.isMe {
-                firstUnread = main[main.count - unread].id
+            // The core counts incoming messages, including replies in threads.
+            let incoming = new.filter {
+                guard !$0.author.isMe else { return false }
+                if case .message = $0.kind { return true }
+                return false
             }
+            firstUnread = incoming.suffix(unread).first { $0.inThread == nil }?.id
             appendedMine = false
             appendedOthers = 0
             var t = Transaction()
