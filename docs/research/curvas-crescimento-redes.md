@@ -15,7 +15,7 @@
 
 ---
 
-## 0. Resumo em 10 linhas
+## 0. Resumo em 11 linhas
 
 1. **Nenhuma rede grande cresceu em linha reta.** As vencedoras têm uma curva em S ou em degraus por cima de uma base orgânica. As de hype têm um pico seguido de queda de 60–90% em meses.
 2. **O Facebook ficou restrito a universidades por ~2,5 anos** (fev/2004 → set/2006). Mais da metade dos alunos de graduação de Harvard entrou **em cerca de uma semana**. Chegou a 1 mi de usuários em dez/2004, a 100 mi em ago/2008 e a 1 bi em out/2012.
@@ -27,6 +27,7 @@
 8. **Google+ declarou 90 mi de usuários** (jan/2012), mas 90% das sessões duravam menos de 5 segundos. Fechou em 2019. Tamanho emprestado não cria rede.
 9. **No Brasil:** o WhatsApp está em **98% dos smartphones** (jan/2024) e o Instagram tem **147 mi** de alcance de anúncio (fim de 2025). O Orkut, que já foi ~50% brasileiro, perdeu a liderança para o Facebook em dez/2011.
 10. **Veredito:** começar por um nicho denso é **a estratégia com mais evidência a favor**, desde que o nicho seja uma **rede atômica** (turma, curso, grupo de estudo para um concurso específico) e não uma "categoria" (todos os universitários). Recomendação: **universitários, por turma/curso de calouros, com concurseiros como segundo nicho e o ENEM como ponte.** Detalhes na seção 5.
+11. **Gringos:** o Fizz saturou Stanford (~95% de downloads, segundo a empresa) antes de ir para outros campi; o Gas fez 1 mi de DAU em 2 meses escola por escola e morreu em 15 meses; o BeReal saiu de campi franceses e achou nos EUA o maior mercado. O TikTok entrou pagando (fusão com o musical.ly + anúncios) e o Kwai gastou >R$ 7 bi para entrar no Brasil. **Recomendação: Brasil primeiro, pronto para o mundo** (PT/EN/ES desde o 1º dia; próximos passos: diáspora e Portugal, depois LatAm, depois nichos sem idioma). Seção 6.
 
 ---
 
@@ -321,3 +322,47 @@ São metas operacionais (julgamento), inspiradas nos casos acima:
 
 ### 5.5 Preparar-se para choques
 Os choques mais lucrativos do Brasil vieram de **falhas do líder** (bloqueios judiciais do WhatsApp em 2015–2016 e do X em 2024). O Zoen precisa de: onboarding em menos de 30 s, importar grupos e contatos, infraestrutura que aguente 10× de carga em 48 h (o Bluesky tinha 14 engenheiros trabalhando "dia e noite"; [Fast Company](https://www.fastcompany.com/91192731/bluesky-could-become-brazils-next-big-social-media-platform-it-has-elon-musks-x-to-thank)) e uma razão para ficar quando o líder voltar. A referência é reter ≥33%, o que o Bluesky conseguiu.
+
+---
+
+## 6. "Pense nos gringos": lançamentos de nicho lá fora e travessia de fronteiras
+
+### 6.1 Lançamentos em campus fora do Brasil (EUA e França)
+
+| App | Como entrou | Números | Fonte | O que aconteceu |
+|---|---|---|---|---|
+| **Fizz** (EUA, Stanford, jul/2021) | Um campus só, com "lançamentos controlados" em poucos campi depois | >700 usuários na 1ª semana. Em jan/2022: 5.100 usuários (~3/4 dos alunos de graduação), 80% ativos por semana. Em meados de 2022: ~95% dos ~7.600 alunos de graduação baixaram (Rice: 70%), com 50–60% dos usuários ativos por dia, segundo a empresa. Eram 13 campi em out/2022, 25 em nov/2022 e >80 em ago/2023 | [Stanford, estudo de caso](https://ethicsinsociety.stanford.edu/sites/ethicsinsociety/files/media/file/case_study_fizz1.pdf), [Stanford Daily](https://stanforddaily.com/2022/01/23/from-buzz-to-fizz-anonymous-social-platform-takes-off-at-stanford/), [TechCrunch out/2022](https://techcrunch.com/2022/10/04/fizz-app-college-stanford-social/), [TechCrunch nov/2022](https://techcrunch.com/2022/11/23/fizz-college-social-app-series-a/), [GovTech](https://www.govtech.com/education/higher-ed/stanford-social-media-platform-fizz-gaining-popularity) | É a rede atômica de manual: saturar um campus e só então abrir o próximo. Alerta: parte dos downloads foi "comprada" com donuts grátis (TechCrunch). A meta de 1.000 campi até o fim de 2023 não foi confirmada (não encontrado) |
+| **Gas** (EUA, ensino médio, ago/2022) | Escola por escola: a pessoa entra com a escola e vota em enquetes positivas sobre colegas | 1 mi de DAU em 2 meses; 30 mil novos por hora em out/2022; nº 1 da App Store dos EUA; 7,4 mi de instalações e ~US$ 7 mi de gastos dos usuários (Sensor Tower); equipe de 4 pessoas. O Discord comprou em jan/2023 e fechou em nov/2023 | [The Verge](https://www.theverge.com/2023/1/17/23558563/discord-gas-app-social-media-acquisition), [TechCrunch (aquisição)](https://techcrunch.com/2023/01/17/discord-acquires-gas-a-compliments-based-social-media-app-for-teens/), [TechCrunch (fechamento)](https://techcrunch.com/2023/10/19/discord-kills-gas-anonymous-compliments-app-bought-nine-months-ago/) | A densidade por escola **acende** a rede muito rápido, mas uma mecânica de novidade não **retém**. É o mesmo padrão do tbh, do mesmo fundador, comprado e fechado pelo Facebook |
+| **BeReal** (França, 2020 → EUA e Reino Unido, jan/2022) | Primeiro campi franceses. Nos EUA e no Reino Unido, um **programa pago de embaixadores**: US$ 30 por indicação, US$ 50 por download com avaliação, festas e grupos de fraternidade | ~500 mil usuários em campi franceses em 2021 (fonte secundária). 7,67 mi de downloads em 2022 até abril (França 20,5%, EUA 19,7%; Apptopia). Até mar/2023, os downloads foram 33,3 mi nos EUA, 10,3 mi no Reino Unido e 5,9 mi na França (fonte secundária) | [Brown Daily Herald](https://www.browndailyherald.com/article/2022/02/new-social-media-app-tells-students-to-bereal), [Business Insider](https://www.businessinsider.com/new-social-media-app-bereal-used-campus-ambassadors-to-grow-2022-4), [Contrary Research](https://research.contrary.com/report/bereal) | Um app francês achou o maior mercado **fora de casa**, e os campi foram a porta de entrada. Embaixadores pagos geram pico, não rede (veja a queda na seção 2.3) |
+
+### 6.2 Como redes atravessaram fronteiras
+
+- **Telegram, global desde o 1º dia, país por país via lacunas do líder.** Em 2016, os maiores mercados eram EUA, Brasil, Itália, Alemanha, Espanha, Irã, Índia, Malásia e Indonésia ([Quartz](https://qz.com/623863/this-free-chat-app-offers-secrecy-and-bots-and-now-has-100-million-users)). No Irã, virou o app nº 1, com ~40 mi de usuários mensais, depois que o Viber foi bloqueado ([Freedom House 2017](https://freedomhouse.org/country/iran/freedom-net/2017)). A Índia virou o maior mercado, com 22% das instalações acumuladas em 2021 ([India Today / Sensor Tower](https://www.indiatoday.in/technology/news/story/whatsapp-rival-telegram-has-highest-number-of-users-in-india-clocks-1-billion-downloads-globally-1847681-2021-08-31)). No surto de jan/2021, **21% dos novos usuários eram da América Latina** ([Times of India](https://timesofindia.indiatimes.com/business/india-business/whatsapps-new-privacy-policy-25-million-new-users-join-telegram-in-past-72-hours/articleshow/80246127.cms)). **Lição:** um mensageiro "alternativo" cruza fronteiras onde o líder falha (bloqueio, censura, privacidade), e esses eventos acontecem em datas diferentes em cada país.
+- **Discord, a fronteira atravessada pelo nicho.** Jogos são globais: uma guilda de FFXIV junta várias nacionalidades, então o produto se espalhou sem "lançamento por país". Números por país: **não encontrado**.
+- **TikTok, que comprou a entrada.** A ByteDance anunciou a fusão com o musical.ly em nov/2017 ([PR Newswire](https://en.prnasia.com/releases/apac/Bytedance_and_Musical_ly_Announce_Agreement_to_Merge-193715.shtml)), um negócio de ~US$ 1 bi segundo o [TechCrunch](https://techcrunch.com/2018/08/02/musically-tiktok/). As duas se fundiram em ago/2018, quando o musical.ly tinha ~100 mi de MAU e o TikTok dizia ter 500 mi ([PR Newswire](https://www.prnewswire.com/news-releases/musically-and-tiktok-unite-to-debut-new-worldwide-short-form-video-platform-300690719.html), [TechCrunch](https://techcrunch.com/2018/08/02/musically-tiktok/)). Em 2018 fez uma ofensiva de anúncios de instalação: no pico, foi ~22% dos anúncios de app no iOS dos EUA dentro da rede do Facebook (Sensor Tower via [Reuters](https://www.reuters.com/article/technology/factbox-facebook-and-tiktoks-fraught-history-idUSKCN2512FQ/)). O gasto de >US$ 1 bi em 2018 vem do WSJ, citado em [fonte secundária](https://www.readmargins.com/p/tiktok-the-facebook-competitor). **Lição:** "global desde o 1º dia" funcionou para um produto de **algoritmo**, que não depende de amigos, e com bilhões de dólares.
+- **Kwai, um app chinês entrando no Brasil.** Entrou pelo Nordeste em 2019 ([Coletiva](https://coletiva.net/noticias/kwai-reforca-presenca-no-brasil-e-aposta-em-conteudo-local-e-vida-real/)), investiu **>R$ 7 bi no país desde 2019** (Flamengo, seleções, BBB, São João, minisséries) ([Acontecendo Aqui](https://acontecendoaqui.com.br/marketing/kwai-for-business-apresenta-novo-posicionamento-no-brasil/)) e fez parceria de dados grátis (zero rating) com a Claro em 2025. Hoje tem **60 mi de MAU no Brasil**, metade ativa por dia ([Mobile Time](https://www.mobiletime.com.br/noticias/19/01/2026/kwai-zero-rating-2026/)). **Lição:** é o preço de entrar no Brasil "de fora". Para um gringo, competir aqui custa bilhões; nós temos essa vantagem em casa.
+- **Gartic (Onrizon), um app brasileiro que saiu do Brasil.** Foi só em português de 2008 a 2017 e ganhou versão internacional em 2017 ([Rice Digital](https://ricedigital.co.uk/what-is-gartic-phone/)). O Gartic Phone (dez/2020) viralizou no mundo por meio de **streamers e VTubers**. Hoje tem média de 19 mi de visitas por mês e está em 42 idiomas, segundo a empresa ([Onrizon](https://onrizon.com/en/products/garticphone)). **Lição:** um produto social brasileiro atravessa fronteiras quando o formato é **independente de idioma** (desenho, jogo, voz) e quando criadores gringos o levam.
+- **Orkut, o caso inverso.** Era um produto americano que o Brasil "sequestrou" (51% brasileiros em 2008; seção 2.8). Mostra que um nicho por país pode dominar uma rede global, e que isso pode afastar os outros países. Esse último ponto é julgamento nosso.
+- **Um app social brasileiro com escala global além do Gartic:** não encontrado.
+
+### 6.3 Brasil primeiro ou global desde o 1º dia?
+
+| Critério | Brasil primeiro | Global desde o 1º dia |
+|---|---|---|
+| Densidade da rede atômica (turma, grupo, campus) | ✅ Densidade é local. Fizz, Facebook e Gas venceram um campus de cada vez | ❌ Espalha usuários finos demais; ninguém encontra amigos |
+| Custo de aquisição | ✅ Vantagem de casa (o Kwai precisou de R$ 7 bi para entrar) | ❌ Só funciona com algoritmo + bilhões (TikTok) |
+| Choques externos | ✅ O Brasil tem histórico de bloqueios (WhatsApp 2015/16, X 2024, Discord Go Live 2026) | ✅ Telegram: cada país tem seus choques; estar disponível em vários idiomas captura todos |
+| Teto de mercado | ⚠️ 150 mi de identidades em redes sociais no Brasil ([DataReportal](https://datareportal.com/reports/digital-2026-brazil)) é grande, mas não chega a 1 bi | ✅ |
+| Risco de marca "local" | ⚠️ Orkut virou "coisa de brasileiro" | ✅ |
+| Nichos que não dependem de idioma (gamers, criadores, jogos) | ⚠️ Desperdiça o alcance natural | ✅ Discord e Gartic atravessaram por jogos e streamers |
+
+**Recomendação (julgamento): "Brasil primeiro, pronto para o mundo".**
+1. **A densidade começa no Brasil.** As redes atômicas (turmas, concursos) são locais por natureza, e aqui o custo de aquisição é o mais baixo possível.
+2. **O produto nasce global:** interface em PT, EN e ES desde o 1º dia, marca sem cara regional, onboarding web em qualquer idioma e infraestrutura multi-região. Assim, um choque em outro país (bloqueio, apagão, polêmica de privacidade) vira um degrau, como aconteceu com o Telegram.
+3. **Primeiros pinos fora do Brasil, em ordem:**
+   - (a) **brasileiros no exterior e Portugal**, mesmo idioma e o grafo vai junto;
+   - (b) **América Latina hispânica** (México, Argentina, Colômbia): culturas igualmente centradas no WhatsApp, e 21% dos novos usuários do Telegram em 2021 eram da América Latina;
+   - (c) **nichos sem idioma, gamers e criadores**, pelo caminho Discord/Gartic: comunidades de streamers que já têm público internacional;
+   - (d) **campi dos EUA** só com o playbook provado, num lançamento controlado no estilo Fizz (um campus por vez, sem pagar embaixador por download).
+4. **Gatilho para ir para fora:** quando o playbook de turma atingir o limiar da seção 5.4 em ≥3 campi diferentes, com coortes de D30 estáveis. Antes disso, gringos entram de forma orgânica (convites, criadores, choques) mas sem esforço dedicado.
+5. **Cuidado regulatório:** o ECA Digital vale no Brasil, e cada país tem sua regra (verificação de idade nos EUA e Reino Unido, DSA na Europa). Projetar os padrões para menores de forma global evita refazer tudo a cada país.
