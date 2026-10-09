@@ -273,19 +273,24 @@ impl Session {
             .iter()
             .map(|k| (k.identity.clone(), k.device.clone()))
             .collect();
-        let Ok(stock) = db::key_package_stock(&self.st.pool, &devices).await else {
-            return;
+        let stock = match db::key_package_stock(&self.st.pool, &devices).await {
+            Ok(stock) => stock,
+            Err(error) => {
+                tracing::warn!(%error, "claimed key-package stock query failed");
+                return;
+            }
         };
         for (identity, device, left) in stock {
             if left < roda_proto::KEY_PACKAGES_LOW as i64 {
-                self.st.fanout.send(
-                    &[identity],
+                let delivered_here = self.st.fanout.send(
+                    std::slice::from_ref(&identity),
                     &ServerFrame::KeyPackagesLow {
-                        device,
+                        device: device.clone(),
                         remaining: left as u32,
                     },
                     None,
                 );
+                tracing::debug!(identity = %pseudo(&identity), device = %pseudo(&device), remaining = left, delivered_here, "low key-package notice");
             }
         }
     }
@@ -296,21 +301,6 @@ impl Session {
         }
         self.st.analytics.session(&self.identity);
         let _ = db::touch_device(&self.st.pool, &self.identity, &self.device, &self.cert).await;
-        // Packages claimed while this device was away: it refills as it comes back.
-        let me = [(self.identity.clone(), self.device.clone())];
-        if let Ok(stock) = db::key_package_stock(&self.st.pool, &me).await {
-            for (_, device, left) in stock {
-                if left < roda_proto::KEY_PACKAGES_LOW as i64 {
-                    let _ = self
-                        .tx
-                        .send(ServerFrame::KeyPackagesLow {
-                            device,
-                            remaining: left as u32,
-                        })
-                        .await;
-                }
-            }
-        }
         let was_online = self.st.fanout.is_online(&self.identity).await;
         self.hub_id = Some(self.st.fanout.add(
             &self.identity,
@@ -319,6 +309,10 @@ impl Session {
                 kick: self.kick.clone(),
             },
         ));
+        // Attach before reading stock: a claim racing the snapshot then reaches this
+        // mailbox, or is reflected in the query. Reading first can lose both signals.
+        // Packages claimed while this device was away: it refills as it comes back.
+        self.send_key_package_stock().await;
         if let Ok(co) = self.st.log.co_members(&self.identity).await {
             if !was_online {
                 self.st.fanout.send(
@@ -341,6 +335,21 @@ impl Session {
         }
     }
 
+    async fn send_key_package_stock(&self) {
+        let me = [(self.identity.clone(), self.device.clone())];
+        if let Ok(stock) = db::key_package_stock(&self.st.pool, &me).await {
+            for (_, device, left) in stock {
+                if left < roda_proto::KEY_PACKAGES_LOW as i64 {
+                    self.send(ServerFrame::KeyPackagesLow {
+                        device,
+                        remaining: left as u32,
+                    })
+                    .await;
+                }
+            }
+        }
+    }
+
     /// Device bucket first, then the account's: one device can't spend its siblings' share.
     fn publish_allowed(&self) -> Result<(), std::time::Duration> {
         let l = &self.st.limits;
@@ -353,6 +362,7 @@ impl Session {
         match f {
             ClientFrame::Ping => self.send(ServerFrame::Pong).await,
             ClientFrame::Req { id, op } => {
+                let refill = matches!(&op, Op::PublishKeyPackages { .. });
                 let span = tracing::info_span!(
                     "request",
                     op = op.name(),
@@ -370,7 +380,13 @@ impl Session {
                         Err(limits::slow_down(wait))
                     }
                 };
+                let refill = refill && result.is_ok();
                 self.send(ServerFrame::Res { id, result }).await;
+                // Claims before this reply may have reached a client still publishing.
+                // A fresh snapshot after the reply covers them without reusing a stale count.
+                if refill {
+                    self.send_key_package_stock().await;
+                }
             }
             _ if !registered => {
                 self.send(ServerFrame::error(ErrorCode::Other, "register first"))
@@ -555,11 +571,23 @@ impl Session {
                 if packages.len() > 100 {
                     return Err("at most 100 key packages at a time".into());
                 }
-                for kp in packages.iter().chain(&last_resort) {
+                let mut publications = Vec::with_capacity(packages.len());
+                for kp in &packages {
                     if kp.len() > MAX_KEY_PACKAGE {
                         return Err("key package too large".into());
                     }
-                    let leaf = roda_mls::key_package_leaf(kp)
+                    let (leaf, expires) = roda_mls::key_package_publication(kp)
+                        .map_err(|_| "not a valid key package".to_string())?;
+                    if leaf.identity != self.identity || leaf.device != self.device {
+                        return Err("key package is for another device".into());
+                    }
+                    publications.push((kp.clone(), expires));
+                }
+                if let Some(kp) = &last_resort {
+                    if kp.len() > MAX_KEY_PACKAGE {
+                        return Err("key package too large".into());
+                    }
+                    let (leaf, _) = roda_mls::key_package_publication(kp)
                         .map_err(|_| "not a valid key package".to_string())?;
                     if leaf.identity != self.identity || leaf.device != self.device {
                         return Err("key package is for another device".into());
@@ -569,7 +597,7 @@ impl Session {
                     pool,
                     &self.identity,
                     &self.device,
-                    &packages,
+                    &publications,
                     last_resort.as_deref(),
                 )
                 .await

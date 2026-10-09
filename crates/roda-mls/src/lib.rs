@@ -69,6 +69,21 @@ pub fn key_package_leaf(bytes: &[u8]) -> Result<Leaf, MlsError> {
     )
 }
 
+/// A verified publication's device and signed expiry, for replay receipts on the relay.
+pub fn key_package_publication(bytes: &[u8]) -> Result<(Leaf, i64), MlsError> {
+    let kp = validate_key_package(&RustCrypto::default(), bytes)?;
+    if !kp.life_time().has_acceptable_range() {
+        return Err(MlsError::Mls("key package lifetime is too long".into()));
+    }
+    let expires = i64::try_from(kp.life_time().not_after())
+        .map_err(|_| MlsError::Mls("key package expiry is out of range".into()))?;
+    let leaf = leaf_of(
+        kp.leaf_node().credential(),
+        kp.leaf_node().signature_key().as_slice(),
+    )?;
+    Ok((leaf, expires))
+}
+
 /// The epoch a sealed commit was made at, from the clear framing of its PrivateMessage.
 /// `None` for anything that isn't a commit. The relay sequences at most one commit per
 /// epoch with this; it never needs a key.

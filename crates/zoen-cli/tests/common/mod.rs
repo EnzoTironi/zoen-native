@@ -194,6 +194,10 @@ impl World {
         self.client_env.push((key.to_string(), value.to_string()));
     }
 
+    pub fn set_relay_env(&mut self, key: &str, value: &str) {
+        self.relay_env.push((key.to_string(), value.to_string()));
+    }
+
     /// Runs `zoen` as `who` against the relay node on `port`.
     pub fn zoen_at(&self, port: u16, who: &str, args: &[&str]) -> String {
         let out = debug(
@@ -280,7 +284,7 @@ impl World {
         let deadline = std::time::Instant::now() + Duration::from_secs(30);
         loop {
             let out = self.zoen(who, &["sync"]);
-            if done(&out) {
+            if out.contains("connection=online synced=true") && done(&out) {
                 return out;
             }
             assert!(
@@ -295,6 +299,16 @@ impl World {
         self.cmd(who, args)
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
+            .spawn()
+            .expect("spawn zoen")
+    }
+
+    /// A background client whose output is retained without filling an unread pipe.
+    pub fn spawn_zoen_logged(&self, who: &str, args: &[&str], log_name: &str) -> Child {
+        let log = std::fs::File::create(self.dir.join(log_name)).expect("client log");
+        self.cmd(who, args)
+            .stdout(log.try_clone().expect("clone client log"))
+            .stderr(log)
             .spawn()
             .expect("spawn zoen")
     }
@@ -442,6 +456,36 @@ pub struct RawClient {
 }
 
 impl RawClient {
+    pub async fn reconnect(relay: &str, author: Author) -> RawClient {
+        let url = format!("{}/v1/sync", relay.replace("http://", "ws://"));
+        let (ws, _) = tokio_tungstenite::connect_async(url).await.unwrap();
+        let mut c = RawClient { ws, author };
+        c.send(&ClientFrame::Hello {
+            protocol: PROTOCOL_VERSION,
+            capabilities: Vec::new(),
+            identity: c.identity(),
+            device: c.author.device.clone().unwrap(),
+            cert: c.author.cert.clone().unwrap(),
+        })
+        .await;
+        let ServerFrame::Challenge { nonce, relay, .. } = c.recv().await else {
+            panic!("challenge")
+        };
+        let sig = c.author.key.sign(&auth_message(&nonce, &relay));
+        c.send(&ClientFrame::Auth { sig }).await;
+        assert!(matches!(c.recv().await, ServerFrame::Ready { .. }));
+        c
+    }
+
+    pub async fn request(&mut self, op: Op) -> Result<roda_proto::Reply, String> {
+        self.send(&ClientFrame::Req { id: 1, op }).await;
+        loop {
+            if let ServerFrame::Res { id: 1, result } = self.recv().await {
+                return result;
+            }
+        }
+    }
+
     pub async fn connect(relay: &str, handle: &str) -> RawClient {
         Self::connect_registering(relay, handle).await.0
     }
@@ -515,7 +559,7 @@ impl RawClient {
             .unwrap();
     }
 
-    async fn recv(&mut self) -> ServerFrame {
+    pub async fn recv(&mut self) -> ServerFrame {
         loop {
             match tokio::time::timeout(Duration::from_secs(5), self.ws.next())
                 .await
