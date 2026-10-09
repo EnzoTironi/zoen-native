@@ -6,6 +6,7 @@
 
 mod common;
 use common::*;
+use roda_types::EventBody;
 
 const VAULT_KEY: &str = "5ec0e7d5ec0e7d5ec0e7d5ec0e7d5ec0e7d5ec0e7d5ec0e7d5ec0e7d5ec0e7d0";
 const PASSWORD: &str = "trilha no sábado 42";
@@ -223,4 +224,124 @@ async fn a_recovery_key_restores_without_the_vault() {
     assert!(w
         .zoen("davi-new", &["read", "Viagem"])
         .contains("Davi: passagens compradas"));
+}
+
+async fn restored_device_rejoins_encrypted_chats(recovery_key: bool) {
+    let w = world(if recovery_key {
+        "backup_e2e_rk"
+    } else {
+        "backup_e2e_pw"
+    })
+    .await;
+    w.init("ana", "Ana");
+    w.init("bruno", "Bruno");
+    let ana = w.id_of("ana").await;
+    let old_device = w
+        .scalar(&format!(
+            "SELECT device FROM devices WHERE identity = '{ana}'"
+        ))
+        .await;
+    let space = w
+        .zoen("bruno", &["group", "Cofre", "@ana"])
+        .trim()
+        .to_string();
+    let before = "antes de perder o celular: tucano";
+    w.zoen("bruno", &["send", "Cofre", before]);
+    assert!(w.zoen("ana", &["read", "Cofre"]).contains(before));
+    let (flag, secret) = if recovery_key {
+        let out = w.zoen("ana", &["backup", "on", "--recovery-key"]);
+        (
+            "--recovery-key",
+            out.lines()
+                .find_map(|l| l.strip_prefix("recovery-key\t"))
+                .expect("recovery key")
+                .to_string(),
+        )
+    } else {
+        w.zoen("ana", &["backup", "on", "--password", PASSWORD]);
+        ("--password", PASSWORD.to_string())
+    };
+
+    // The old phone stays offline throughout recovery. Bruno is the surviving admin.
+    let restored = w.zoen("ana-new", &["recover", "@ana", flag, &secret]);
+    assert!(restored.contains("connection=online"), "{restored}");
+    let new_device = w
+        .scalar(&format!(
+            "SELECT device FROM devices WHERE identity = '{ana}' AND device <> '{old_device}'"
+        ))
+        .await;
+    assert!(w.events_in(&space).await.iter().any(|ev| {
+        ev.env.author() == ana
+            && matches!(ev.env.body(), Some(EventBody::DeviceJoining { device }) if device == new_device)
+    }), "the restored device never requested its own fresh MLS leaf");
+    w.sync_until("bruno", |s| s.contains("pending=0"));
+    w.sync_until("ana-new", |s| s.contains("pending=0"));
+    let after = "depois de recuperar: maracujá";
+    w.zoen("bruno", &["send", "Cofre", after]);
+    let history = w.zoen("ana-new", &["read", "Cofre"]);
+    assert!(
+        history.contains(before) && history.contains(after),
+        "{history}"
+    );
+    let reply = "celular novo também envia: bem-te-vi";
+    w.zoen("ana-new", &["send", "Cofre", reply]);
+    assert!(w.zoen("bruno", &["read", "Cofre"]).contains(reply));
+
+    // The recovered account can revoke the lost phone and keep the encrypted chat going.
+    w.zoen("ana-new", &["unlink", &old_device]);
+    w.sync_until("ana-new", |s| s.contains("pending=0"));
+    let revoked = w.try_zoen("ana", &["sync"]).unwrap_err();
+    assert!(revoked.contains("unlinked"), "{revoked}");
+    let last = "depois de revogar o celular antigo";
+    w.zoen("bruno", &["send", "Cofre", last]);
+    assert!(w.zoen("ana-new", &["read", "Cofre"]).contains(last));
+    for who in ["ana-new", "bruno"] {
+        let verified = w.zoen(who, &["verify"]);
+        assert!(!verified.contains("BROKEN"), "{who}: {verified}");
+    }
+    assert!(!backup_files(&w).iter().any(|blob| contains(blob, before)));
+}
+
+#[tokio::test]
+async fn a_restored_password_device_rejoins_encrypted_chats() {
+    restored_device_rejoins_encrypted_chats(false).await;
+}
+
+#[tokio::test]
+async fn a_restored_recovery_key_device_rejoins_encrypted_chats() {
+    restored_device_rejoins_encrypted_chats(true).await;
+}
+
+#[tokio::test]
+async fn a_stale_backup_does_not_restore_removed_membership() {
+    let w = world("backup_removed").await;
+    w.init("ana", "Ana");
+    w.init("bruno", "Bruno");
+    let ana = w.id_of("ana").await;
+    let space = w
+        .zoen("bruno", &["group", "Revogado", "@ana"])
+        .trim()
+        .to_string();
+    let before = "história de quando eu era membro";
+    w.zoen("bruno", &["send", "Revogado", before]);
+    assert!(w.zoen("ana", &["read", "Revogado"]).contains(before));
+    w.zoen("ana", &["backup", "on", "--password", PASSWORD]);
+    w.zoen("bruno", &["remove", "Revogado", "@ana"]);
+    let after = "segredo depois de remover a Ana";
+    w.zoen("bruno", &["send", "Revogado", after]);
+
+    w.zoen("ana-new", &["recover", "@ana", "--password", PASSWORD]);
+    w.zoen("bruno", &["sync"]);
+    let history = w.zoen("ana-new", &["read", "Revogado"]);
+    assert!(history.contains(before), "{history}");
+    assert!(
+        !history.contains(after),
+        "removed membership returned: {history}"
+    );
+    assert!(
+        !w.events_in(&space).await.iter().any(|ev| {
+            ev.env.author() == ana && matches!(ev.env.body(), Some(EventBody::DeviceJoining { .. }))
+        }),
+        "the relay accepted a removed member's recovery join request"
+    );
 }

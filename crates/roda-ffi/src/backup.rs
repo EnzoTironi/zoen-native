@@ -414,7 +414,29 @@ impl Engine {
         res?;
         let device = roda_log::Signer::generate();
         let device_secret = device.secret();
+        let device_id = device.id();
         self.install_restored_account(&root, device, &header.relay_url)?;
+        // The snapshot has history but no MLS state. Persist requests for this new
+        // device so a surviving group admin can add its leaf, even after a relaunch.
+        let me = root.id();
+        let spaces: Vec<_> = self
+            .net
+            .synced
+            .iter()
+            .filter(|space| {
+                self.is_e2e(space) && self.mls_roster(space).is_some_and(|r| r.contains_key(&me))
+            })
+            .cloned()
+            .collect();
+        for space in spaces {
+            self.append(
+                &space,
+                &me,
+                roda_types::EventBody::DeviceJoining {
+                    device: device_id.clone(),
+                },
+            )?;
+        }
         Ok(device_secret)
     }
 }

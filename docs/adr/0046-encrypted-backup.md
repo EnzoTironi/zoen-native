@@ -100,9 +100,17 @@ The device installs the restored tables, writes the root and agreement secrets t
 makes a **new device key**, and certifies it with the restored identity. It then connects
 like any new device of that person.
 - **What works right away.** History, contacts, profiles and readable Spaces.
-- **End-to-end Spaces.** New messages there need the group to add the new device. That's
-  M2's device linking: the old device's leaf is dead, and the 30-day ceiling removes it.
-  Until then, new sealed entries stay sealed on this device.
+- **End-to-end Spaces.** Restore persists a signed `DeviceJoining` request in the durable
+  outbox for each encrypted Space in the snapshot where the identity is a member. A
+  surviving group admin adds the new device's leaf and sends its Welcome. The new device
+  then receives and sends encrypted messages while keeping its backed-up history. The
+  requests survive a relaunch; the relay still checks current membership, so a stale
+  backup cannot restore access after removal.
+- **Lost-device revocation.** The recovered account can use `unlink` to revoke the old
+  device and remove its MLS leaves. The old device is then refused on reconnect.
+- **Remaining recovery gate.** Joining waits for an authorized device that still has the
+  group's MLS state. Recovery when no such device survives needs a protocol design and
+  its own failure journey. The snapshot deliberately excludes old MLS state.
 
 ## Consequences
 - **Privacy.** Plaintext and `K` never leave the device. The relay learns that a backup
@@ -119,10 +127,13 @@ like any new device of that person.
 
 ## Tests
 `crates/zoen-cli/tests/journey_backup.rs` covers these journeys:
-- turn on a password backup, lose the phone, restore on a new device, read the history,
-  keep chatting;
+- turn on a password backup, lose the phone, restore on a new device, read the encrypted
+  history and continue in a readable group;
 - a wrong password is refused, and 10 wrong ones lock the backup forever;
 - restore with a recovery key;
+- restore by password or recovery key, rejoin an encrypted group through a surviving
+  admin, exchange new messages, revoke the lost phone and verify signed history;
+- a stale backup retains old history but cannot regain removed group membership;
 - the relay database holds no plaintext.
 
 The backup decision was originally numbered 0045, also used by device linking. It is now 0046. The existing `0020_backups.sql` migration retains its historical comment so its SQLx checksum remains unchanged.
