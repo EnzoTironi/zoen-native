@@ -87,6 +87,48 @@ pub enum SealedKind {
     Welcome = 3,
 }
 
+/// What an MLS application message carries: the author's inner signed event. The outer
+/// envelope repeats its space, client id, author, device, time and `seen`; members check
+/// both agree before they accept it.
+#[derive(Clone, PartialEq, Message)]
+pub struct InnerEvent {
+    #[prost(bytes = "vec", tag = "1")]
+    pub content: Vec<u8>,
+    #[prost(string, tag = "2")]
+    pub sig: String,
+}
+
+impl InnerEvent {
+    pub fn encode(&self) -> Vec<u8> {
+        self.encode_to_vec()
+    }
+    pub fn decode(bytes: &[u8]) -> Option<Self> {
+        <Self as Message>::decode(bytes).ok()
+    }
+}
+
+impl SealedKind {
+    /// The name a device records for an entry it keeps sealed.
+    pub fn name(self) -> &'static str {
+        match self {
+            SealedKind::Unspecified => "Unspecified",
+            SealedKind::Application => "Application",
+            SealedKind::Commit => "Commit",
+            SealedKind::Welcome => "Welcome",
+        }
+    }
+}
+
+impl Sealed {
+    pub fn new(kind: SealedKind, suite: u32, data: Vec<u8>) -> Self {
+        Self {
+            kind: kind as i32,
+            suite,
+            data,
+        }
+    }
+}
+
 impl From<&Seen> for SeenLink {
     fn from(s: &Seen) -> Self {
         SeenLink {

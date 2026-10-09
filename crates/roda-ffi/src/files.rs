@@ -1,4 +1,4 @@
-//! Files as Items (ADR 0027): bytes cut into content-defined chunks, each encrypted for
+//! Files as Items (ADR 0040): bytes cut into content-defined chunks, each encrypted for
 //! the relay under a key derived from the file's own key and the chunk's hash.
 //!
 //! A new version re-uses every chunk that didn't change (same plaintext, same key, same

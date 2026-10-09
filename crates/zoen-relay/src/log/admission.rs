@@ -1,6 +1,7 @@
 //! Who may append what to a Space: pure rules over facts read inside the append
 //! transaction, shared by every `LogStore` backend.
 
+use roda_log::content::SealedKind;
 use roda_proto::Envelope;
 use roda_types::{EventBody, Privacy, Role, SpaceKind};
 
@@ -22,6 +23,9 @@ pub struct Facts {
     pub invite: Option<(String, Role)>,
     /// Whether the identity a `MemberAdded` names is registered (checked in the directory).
     pub target_known: bool,
+    pub privacy: Option<Privacy>,
+    /// Hash stored at a `Checkpoint`'s `upto.seq`, when that seq exists.
+    pub upto_hash: Option<String>,
 }
 
 /// What an admitted envelope changes besides the log.
@@ -39,13 +43,15 @@ pub enum Effect {
     Remove {
         identity: String,
     },
+    /// The Space becomes end-to-end (ADR 0027).
+    Encrypt,
     Nothing,
 }
 
 pub fn admit(env: &Envelope, f: &Facts) -> Result<Effect, Reject> {
     let body = env.body();
     let author = env.author();
-    let effect = match (&f.head, body) {
+    let effect = match (&f.head, body.clone()) {
         (None, Some(EventBody::SpaceCreated { kind, privacy, .. })) => {
             if kind == SpaceKind::Personal {
                 return Err(Reject::no("personal spaces stay on the device"));
@@ -111,14 +117,82 @@ pub fn admit(env: &Envelope, f: &Facts) -> Result<Effect, Reject> {
             }
             Effect::Remove { identity }
         }
+        (Some(_), Some(EventBody::SpaceEncrypted)) => {
+            if !matches!(f.kind, Some(SpaceKind::Direct | SpaceKind::Group)) {
+                return Err(Reject::no("only chats and groups become end-to-end"));
+            }
+            match f.privacy {
+                Some(Privacy::Closed) => {}
+                Some(Privacy::EndToEnd) => return Err(Reject::no("already end-to-end")),
+                _ => return Err(Reject::no("public spaces stay readable")),
+            }
+            // In a direct chat either person may; in a group, whoever runs it.
+            let allowed = match f.author_role {
+                Some(Role::Owner | Role::Admin) => true,
+                Some(Role::Member) => f.kind == Some(SpaceKind::Direct),
+                _ => false,
+            };
+            if !allowed {
+                return Err(Reject::no("only owners and admins turn on encryption"));
+            }
+            Effect::Encrypt
+        }
+        (Some(_), Some(EventBody::Checkpoint { upto, .. })) => {
+            if f.author_role.is_none() {
+                return Err(Reject::no("not a member of this space"));
+            }
+            let on_chain = f.head.as_ref().is_some_and(|(head, _)| upto.seq <= *head)
+                && f.upto_hash.as_deref() == Some(upto.hash.as_str());
+            if !on_chain {
+                return Err(Reject::no(
+                    "checkpoint names a history this relay doesn't have",
+                ));
+            }
+            Effect::Nothing
+        }
         (Some(_), _) => match f.author_role {
             None => return Err(Reject::no("not a member of this space")),
             Some(Role::Reader) => return Err(Reject::no("readers can't write here")),
             Some(_) => Effect::Nothing,
         },
     };
+    // Who may write comes first: a non-member learns nothing about the Space.
+    if f.head.is_some() {
+        check_privacy(env, body.as_ref(), f.privacy)?;
+    }
     check_causal_link(env, f, &effect)?;
     Ok(effect)
+}
+
+/// An end-to-end Space takes ciphertext plus the few clear events the relay must read to
+/// order and authorize it; anything else in the clear would leak what MLS hides. Other
+/// Spaces have no group, so ciphertext there is refused.
+fn check_privacy(
+    env: &Envelope,
+    body: Option<&EventBody>,
+    privacy: Option<Privacy>,
+) -> Result<(), Reject> {
+    let e2e = privacy == Some(Privacy::EndToEnd);
+    match (env.sealed_kind(), body) {
+        (Some(SealedKind::Unspecified), _) => Err(Reject::no("sealed event of an unknown kind")),
+        (Some(_), _) if !e2e => Err(Reject::no("only end-to-end spaces take sealed events")),
+        (Some(_), _) => Ok(()),
+        (None, Some(EventBody::Checkpoint { .. })) if !e2e => {
+            Err(Reject::no("checkpoints are for end-to-end spaces"))
+        }
+        (
+            None,
+            Some(
+                EventBody::MemberAdded { .. }
+                | EventBody::MemberRemoved { .. }
+                | EventBody::ProfileKeyShared { .. }
+                | EventBody::SpaceEncrypted
+                | EventBody::Checkpoint { .. },
+            ),
+        ) => Ok(()),
+        (None, _) if e2e => Err(Reject::no(roda_proto::SEAL_REQUIRED)),
+        (None, _) => Ok(()),
+    }
 }
 
 fn check_causal_link(env: &Envelope, f: &Facts, effect: &Effect) -> Result<(), Reject> {
@@ -159,6 +233,184 @@ mod tests {
             seen_hash: Some("h3".into()),
             target_known: true,
             ..Facts::default()
+        }
+    }
+
+    fn e2e_facts(role: Role) -> Facts {
+        Facts {
+            privacy: Some(Privacy::EndToEnd),
+            ..member_facts(role)
+        }
+    }
+
+    fn sealed(author: &Author, kind: SealedKind) -> Envelope {
+        let seen = Seen {
+            seq: 3,
+            hash: "h3".into(),
+        };
+        Envelope::sealed(
+            author,
+            "sp_1",
+            "c",
+            1,
+            Some(&seen),
+            roda_proto::Sealed::new(kind, 3, vec![1, 2, 3]),
+        )
+    }
+
+    fn checkpoint(seq: u64, hash: &str) -> EventBody {
+        EventBody::Checkpoint {
+            upto: Seen {
+                seq,
+                hash: hash.into(),
+            },
+            epoch: 2,
+            digest: "d".into(),
+        }
+    }
+
+    #[test]
+    fn end_to_end_spaces_take_only_ciphertext_and_control_events() {
+        let a = Author::root(Signer::generate());
+        let seen = Some(Seen {
+            seq: 3,
+            hash: "h3".into(),
+        });
+        let f = e2e_facts(Role::Member);
+        assert_eq!(
+            admit(&env(&a, seen.clone(), msg()), &f).unwrap_err().reason,
+            "this space is end-to-end encrypted; seal the event"
+        );
+        for kind in [
+            SealedKind::Application,
+            SealedKind::Commit,
+            SealedKind::Welcome,
+        ] {
+            assert_eq!(admit(&sealed(&a, kind), &f).unwrap(), Effect::Nothing);
+        }
+        assert_eq!(
+            admit(&sealed(&a, SealedKind::Unspecified), &f)
+                .unwrap_err()
+                .reason,
+            "sealed event of an unknown kind"
+        );
+        let shares = EventBody::ProfileKeyShared {
+            version: 1,
+            shares: vec![],
+        };
+        assert_eq!(admit(&env(&a, seen, shares), &f).unwrap(), Effect::Nothing);
+        // Ciphertext still needs a member: the relay authorizes on the clear framing.
+        let stranger = Facts {
+            author_role: None,
+            ..e2e_facts(Role::Member)
+        };
+        assert_eq!(
+            admit(&sealed(&a, SealedKind::Application), &stranger)
+                .unwrap_err()
+                .reason,
+            "not a member of this space"
+        );
+    }
+
+    #[test]
+    fn privacy_only_goes_up() {
+        let a = Author::root(Signer::generate());
+        let seen = Some(Seen {
+            seq: 3,
+            hash: "h3".into(),
+        });
+        let up = |f: &Facts| admit(&env(&a, seen.clone(), EventBody::SpaceEncrypted), f);
+        let closed = |kind, role| Facts {
+            kind: Some(kind),
+            privacy: Some(Privacy::Closed),
+            ..member_facts(role)
+        };
+        assert_eq!(
+            up(&closed(SpaceKind::Group, Role::Admin)).unwrap(),
+            Effect::Encrypt
+        );
+        assert_eq!(
+            up(&closed(SpaceKind::Direct, Role::Member)).unwrap(),
+            Effect::Encrypt
+        );
+        assert_eq!(
+            up(&closed(SpaceKind::Group, Role::Member))
+                .unwrap_err()
+                .reason,
+            "only owners and admins turn on encryption"
+        );
+        assert_eq!(
+            up(&closed(SpaceKind::Community, Role::Owner))
+                .unwrap_err()
+                .reason,
+            "only chats and groups become end-to-end"
+        );
+        assert_eq!(
+            up(&e2e_facts(Role::Owner)).unwrap_err().reason,
+            "already end-to-end"
+        );
+        let public = Facts {
+            privacy: Some(Privacy::Public),
+            ..member_facts(Role::Owner)
+        };
+        assert_eq!(
+            up(&public).unwrap_err().reason,
+            "public spaces stay readable"
+        );
+    }
+
+    #[test]
+    fn spaces_without_a_group_refuse_ciphertext_and_checkpoints() {
+        let a = Author::root(Signer::generate());
+        let f = member_facts(Role::Member);
+        assert_eq!(
+            admit(&sealed(&a, SealedKind::Application), &f)
+                .unwrap_err()
+                .reason,
+            "only end-to-end spaces take sealed events"
+        );
+        let seen = Some(Seen {
+            seq: 3,
+            hash: "h3".into(),
+        });
+        let f = Facts {
+            upto_hash: Some("h3".into()),
+            ..member_facts(Role::Member)
+        };
+        assert_eq!(
+            admit(&env(&a, seen, checkpoint(3, "h3")), &f)
+                .unwrap_err()
+                .reason,
+            "checkpoints are for end-to-end spaces"
+        );
+    }
+
+    #[test]
+    fn a_checkpoint_must_name_this_relays_history() {
+        let a = Author::root(Signer::generate());
+        let seen = Some(Seen {
+            seq: 3,
+            hash: "h3".into(),
+        });
+        let at = |upto_hash: Option<&str>| Facts {
+            upto_hash: upto_hash.map(Into::into),
+            ..e2e_facts(Role::Reader)
+        };
+        // Readers are group members too, so they checkpoint.
+        assert_eq!(
+            admit(&env(&a, seen.clone(), checkpoint(2, "h2")), &at(Some("h2"))).unwrap(),
+            Effect::Nothing
+        );
+        for (body, facts) in [
+            (checkpoint(2, "h2"), at(Some("other"))),
+            (checkpoint(9, "h9"), at(None)),
+        ] {
+            assert_eq!(
+                admit(&env(&a, seen.clone(), body), &facts)
+                    .unwrap_err()
+                    .reason,
+                "checkpoint names a history this relay doesn't have"
+            );
         }
     }
 

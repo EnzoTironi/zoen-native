@@ -30,6 +30,9 @@ async fn a_fast_sender_is_slowed_down_and_loses_nothing() {
     for n in 2..=6 {
         w.zoen("ana", &["send", "@bruno", &n.to_string()]);
     }
+    // The bucket also paces the chat's commit, Welcome and checkpoint: wait it out.
+    let s = w.zoen("ana", &["sync", "--timeout", "30000"]);
+    assert!(s.contains("pending=0"), "{s}");
     let seen = w.zoen("bruno", &["read", "@ana"]);
     let lines: Vec<&str> = seen.lines().collect();
     assert_eq!(

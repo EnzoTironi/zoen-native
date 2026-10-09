@@ -1,7 +1,7 @@
 //! Postgres: the directory (identities, handles, devices). Logs and membership live in
 //! the log store (`crate::log`).
 
-use roda_proto::{AgreementKeyRecord, DeviceSigned, SealedProfile};
+use roda_proto::{AgreementKeyRecord, DeviceSigned, KeyPackageRecord, SealedProfile};
 use roda_types::{Identity, IdentityKind};
 use sqlx::PgPool;
 
@@ -194,5 +194,94 @@ pub async fn sealed_profiles(
                 signed: DeviceSigned { device, sig, cert },
             },
         )
+        .collect())
+}
+
+/// Single-use key packages a device may keep stored; publishing past it is refused.
+pub const MAX_KEY_PACKAGES: i64 = 200;
+
+/// Stores a device's key packages, and its last-resort one in place of the previous.
+/// `false` when that would keep more than [`MAX_KEY_PACKAGES`] single-use ones.
+pub async fn put_key_packages(
+    pool: &PgPool,
+    identity: &str,
+    device: &str,
+    packages: &[Vec<u8>],
+    last_resort: Option<&[u8]>,
+) -> Result<bool, sqlx::Error> {
+    let mut tx = pool.begin().await?;
+    // One publisher per device at a time, so the count below holds when we insert.
+    sqlx::query("SELECT pg_advisory_xact_lock(hashtextextended($1, 0))")
+        .bind(format!("kp:{identity}:{device}"))
+        .execute(&mut *tx)
+        .await?;
+    let (stored,): (i64,) = sqlx::query_as(
+        "SELECT count(*) FROM key_packages WHERE identity = $1 AND device = $2 AND NOT last_resort",
+    )
+    .bind(identity)
+    .bind(device)
+    .fetch_one(&mut *tx)
+    .await?;
+    if stored + packages.len() as i64 > MAX_KEY_PACKAGES {
+        return Ok(false);
+    }
+    sqlx::query(
+        "INSERT INTO key_packages (identity, device, data) SELECT $1, $2, unnest($3::bytea[])",
+    )
+    .bind(identity)
+    .bind(device)
+    .bind(packages)
+    .execute(&mut *tx)
+    .await?;
+    if let Some(data) = last_resort {
+        sqlx::query(
+            "INSERT INTO key_packages (identity, device, data, last_resort) VALUES ($1, $2, $3, true)
+             ON CONFLICT (identity, device) WHERE last_resort DO UPDATE SET data = excluded.data, created_at = now()",
+        )
+        .bind(identity)
+        .bind(device)
+        .bind(data)
+        .execute(&mut *tx)
+        .await?;
+    }
+    tx.commit().await?;
+    Ok(true)
+}
+
+/// One key package per device of each identity: the oldest single-use one, taken (deleted)
+/// in the same statement, or else the device's last-resort one, left in place. Concurrent
+/// claimers skip each other's rows, so no single-use package is handed out twice.
+pub async fn claim_key_packages(
+    pool: &PgPool,
+    ids: &[String],
+) -> Result<Vec<KeyPackageRecord>, sqlx::Error> {
+    let rows: Vec<(String, String, Vec<u8>)> = sqlx::query_as(
+        "WITH devices AS (
+             SELECT DISTINCT identity, device FROM key_packages WHERE identity = ANY($1)
+         ), taken AS (
+             DELETE FROM key_packages WHERE id IN (
+                 SELECT k.id FROM devices d CROSS JOIN LATERAL (
+                     SELECT id FROM key_packages k
+                     WHERE k.identity = d.identity AND k.device = d.device AND NOT k.last_resort
+                     ORDER BY id LIMIT 1 FOR UPDATE SKIP LOCKED
+                 ) k
+             ) RETURNING identity, device, data
+         )
+         SELECT identity, device, data FROM taken
+         UNION ALL
+         SELECT k.identity, k.device, k.data FROM key_packages k JOIN devices d USING (identity, device)
+         WHERE k.last_resort
+           AND NOT EXISTS (SELECT 1 FROM taken t WHERE t.identity = k.identity AND t.device = k.device)",
+    )
+    .bind(ids)
+    .fetch_all(pool)
+    .await?;
+    Ok(rows
+        .into_iter()
+        .map(|(identity, device, data)| KeyPackageRecord {
+            identity,
+            device,
+            data,
+        })
         .collect())
 }

@@ -152,9 +152,9 @@ pub enum ItemKind {
     Note,
     /// Mini-app (MCP App): uma interface interativa cujo estado é este Item.
     App,
-    /// A Zoen page: blocks in a Loro document (ADR 0027).
+    /// A Zoen page: blocks in a Loro document (ADR 0040).
     Page,
-    /// A file: bytes in encrypted chunks on the relay (ADR 0027).
+    /// A file: bytes in encrypted chunks on the relay (ADR 0040).
     File,
 }
 
@@ -472,6 +472,25 @@ pub enum EventBody {
     ProfileKeyShared {
         version: u64,
         shares: Vec<ProfileKeyShare>,
+    },
+    /// A relay-readable Space becomes end-to-end from this entry on (ADR 0027). There is
+    /// no event for the other direction: a Space's privacy only ever goes up.
+    SpaceEncrypted,
+    /// A member's statement about an end-to-end Space (ADR 0026): having applied the log
+    /// through `upto`, its MLS group is at `epoch`, and `digest` is SHA-256 over a tag, the
+    /// group id, the epoch and the epoch authenticator. Only members of that exact group can
+    /// compute it, so members who were shown different groups (a forked relay) disagree in
+    /// public. The relay checks `upto` is on its chain and keeps the newest per member.
+    Checkpoint {
+        upto: Seen,
+        epoch: u64,
+        digest: String,
+    },
+    /// An entry of an end-to-end Space this device keeps as the relay ordered it: an MLS
+    /// handshake (`Commit`, `Welcome`), or ciphertext from before it joined. Derived from
+    /// the signed outer bytes, never signed as a body itself.
+    Sealed {
+        kind: String,
     },
     /// A kind this build doesn't know yet (a newer client wrote it). The signed bytes are
     /// kept verbatim, so the event still verifies, syncs and chains; it just isn't shown.

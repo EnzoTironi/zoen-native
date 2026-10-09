@@ -16,6 +16,9 @@ use tracing::{field::Empty, Instrument};
 
 use crate::{db, hub::Mailbox, limits, log::Sequencing, metrics::Metrics, Shared};
 
+/// An X25519/Ed25519 key package is about 300 bytes; this leaves room for extensions.
+const MAX_KEY_PACKAGE: usize = 4096;
+
 pub const MAX_FRAME: usize = 1024 * 1024;
 const MAX_ENVELOPE: usize = 90 * 1024;
 const SYNC_PAGE: usize = 500;
@@ -497,6 +500,50 @@ impl Session {
                     );
                 }
                 Ok(Reply::Done)
+            }
+            Op::PublishKeyPackages {
+                packages,
+                last_resort,
+            } => {
+                if packages.len() > 100 {
+                    return Err("at most 100 key packages at a time".into());
+                }
+                for kp in packages.iter().chain(&last_resort) {
+                    if kp.len() > MAX_KEY_PACKAGE {
+                        return Err("key package too large".into());
+                    }
+                    let leaf = roda_mls::key_package_leaf(kp)
+                        .map_err(|_| "not a valid key package".to_string())?;
+                    if leaf.identity != self.identity || leaf.device != self.device {
+                        return Err("key package is for another device".into());
+                    }
+                }
+                if !db::put_key_packages(
+                    pool,
+                    &self.identity,
+                    &self.device,
+                    &packages,
+                    last_resort.as_deref(),
+                )
+                .await
+                .map_err(|e| e.to_string())?
+                {
+                    return Err("too many key packages stored".into());
+                }
+                Ok(Reply::Done)
+            }
+            Op::ClaimKeyPackages { ids } => {
+                self.st
+                    .limits
+                    .lookup_account
+                    .check(&self.identity)
+                    .map_err(limits::slow_down)?;
+                let ids: Vec<String> = ids.into_iter().take(50).collect();
+                Ok(Reply::KeyPackages(
+                    db::claim_key_packages(pool, &ids)
+                        .await
+                        .map_err(|e| e.to_string())?,
+                ))
             }
             Op::GetProfiles { ids } => {
                 let ids: Vec<String> = ids.into_iter().take(500).collect();

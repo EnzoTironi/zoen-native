@@ -367,6 +367,99 @@ async fn duplicates_in_one_batch() {
     log.drop_cell().await.unwrap();
 }
 
+/// ADR 0026 at the store: the privacy is part of the Space state, so a relay that never
+/// saw the creation still refuses plaintext, and a checkpoint naming an entry long out of
+/// the cache is checked against the stored chain.
+async fn end_to_end_spaces_hold_ciphertext_on_every_relay() {
+    let cell = roda_types::new_id("t");
+    let (warm, cold) = (store_on(&cell), store_on(&cell));
+    let ana = Author::device(&Signer::generate(), Signer::generate());
+    let space = roda_types::new_id("sp");
+    let body = EventBody::SpaceCreated {
+        title: "t".into(),
+        kind: SpaceKind::Group,
+        privacy: Privacy::EndToEnd,
+    };
+    let Ok(Sequencing::New { ev, .. }) = warm.append(&sign(&ana, &space, None, body), true).await
+    else {
+        panic!("genesis refused");
+    };
+    let genesis = Seen {
+        seq: ev.seq,
+        hash: ev.hash,
+    };
+    let seal = |seen: &Seen| {
+        let data = roda_proto::Sealed::new(roda_proto::SealedKind::Application, 3, vec![9; 48]);
+        Envelope::sealed(
+            &ana,
+            &space,
+            &roda_types::new_ulid(now_ms()),
+            now_ms(),
+            Some(seen),
+            data,
+        )
+    };
+    for _ in 0..3 {
+        assert!(matches!(
+            warm.append(&seal(&genesis), true).await,
+            Ok(Sequencing::New { .. })
+        ));
+    }
+    let r = cold
+        .append(&sign(&ana, &space, Some(genesis.clone()), message(0)), true)
+        .await;
+    assert!(
+        r.is_err_and(|r| r.reason.contains("end-to-end")),
+        "a cold relay refuses plaintext"
+    );
+    assert!(matches!(
+        cold.append(&seal(&genesis), true).await,
+        Ok(Sequencing::New { .. })
+    ));
+
+    let checkpoint = |upto: Seen| EventBody::Checkpoint {
+        upto,
+        epoch: 0,
+        digest: "d".into(),
+    };
+    let fresh = store_on(&cell);
+    let ok = fresh
+        .append(
+            &sign(
+                &ana,
+                &space,
+                Some(genesis.clone()),
+                checkpoint(genesis.clone()),
+            ),
+            true,
+        )
+        .await;
+    assert!(
+        matches!(ok, Ok(Sequencing::New { .. })),
+        "an old upto is read from the chain"
+    );
+    let forged = Seen {
+        seq: 0,
+        hash: "f".repeat(64),
+    };
+    let r = fresh
+        .append(
+            &sign(&ana, &space, Some(genesis.clone()), checkpoint(forged)),
+            true,
+        )
+        .await;
+    assert!(
+        r.is_err_and(|r| r.reason.contains("checkpoint")),
+        "and must match it"
+    );
+
+    let events = read_all(&warm, &space, 100).await;
+    assert_eq!(events.len(), 6);
+    assert_chain(&space, &events);
+    assert_eq!(events.iter().filter(|e| e.env.is_sealed()).count(), 4);
+    warm.drop_cell().await.unwrap();
+}
+
 async fn run<F: Future<Output = ()>>(name: &str, f: F) {
     f.await;
     println!("ok  {name}");
@@ -396,6 +489,11 @@ fn main() {
         )
         .await;
         run("invites are bounded by uses", invites_are_bounded_by_uses()).await;
+        run(
+            "end-to-end spaces hold ciphertext on every relay",
+            end_to_end_spaces_hold_ciphertext_on_every_relay(),
+        )
+        .await;
         run(
             "two relays on one space share one chain and one membership",
             two_relays_on_one_space_share_one_chain_and_one_membership(),

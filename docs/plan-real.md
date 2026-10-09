@@ -136,7 +136,9 @@ storage seams. Each unit ends with the full journey suite green.
 | S8 load generator | done | `scripts/bench-load.sh sweep` (10 scenarios, exact delivery counts, JSON per scenario in roda-shots/real-s8/final), ADR 0022 |
 | Local k3d cell | healthy with the collector | `scripts/local-cluster.sh up`, `journey`, `telemetry` (relay logs and traces reach the collector before and after it moves pods), roda-shots/local-cluster-s7 |
 | S9 owner-side sequencing | done | `log_store.rs` (7 contracts incl. two relays on one Space, duplicates in one batch), `sequencer::tests`, before/after sweep in roda-shots/real-s9, ADR 0023 |
-| M2, M3, M5, M6, M7 | planned below | |
+| M2 first journey (E2E group, relay holds only ciphertext) | done | `journey_m2.rs` (key packages, commit + Welcome, messages both ways from a sealed device database, FoundationDB and Postgres scanned for text and hex, plaintext refused, agreeing checkpoints, a newcomer reads from her Welcome on), `roda-mls` tests, ADR 0026 |
+| M2 end-to-end by default (DMs and groups; M1 Spaces upgrade one way) | done | `journey_m2::a_readable_group_becomes_end_to_end_and_never_goes_back`, `journey_m1` DMs now end-to-end, `privacy_only_goes_up`, `an_end_to_end_space_cannot_be_created_again_as_readable`, ADR 0027 |
+| M2 rest, M3, M5, M6, M7 | planned below | |
 
 ## M1. Relay, real accounts, sync
 
@@ -180,10 +182,13 @@ Shape:
   order is the MLS epoch order. A commit for a stale epoch is rejected with `stale_epoch` and
   the client rebases (re-proposes after processing the winner). Application messages are
   `Payload::Sealed` (MLS PrivateMessage); the relay sees author, device, Space and size.
-- Welcomes go to the added devices' mailboxes on the relay and are deleted on fetch.
-- Membership stays checkable by the relay: membership changes carry a signed public
-  `MemberAdded`/`MemberRemoved` envelope alongside the commit, and the relay rejects a commit
-  whose roster disagrees.
+- Welcomes are sealed entries in the Space's own log right after their commit (ADR 0026), so
+  ordering, catch-up and pruning are the log's; no separate mailbox.
+- Membership stays checkable by the relay: membership changes are signed public
+  `MemberAdded`/`MemberRemoved` events, and every member refuses a commit or Welcome that
+  leaves someone in the group the log doesn't list (the subset rule, ADR 0026).
+- Member-signed checkpoints (`Checkpoint { upto, epoch, digest }`) catch a forked Space and
+  later let the relay prune ciphertext every member already has.
 - History: new members read from their join onward (forward secrecy). Closed (relay-readable)
   Spaces stay for communities.
 - Device secrets: the Ed25519 secrets are wrapped by a Secure Enclave P-256 key
@@ -194,6 +199,17 @@ Shape:
 Proof: CLI journeys where the relay's Postgres has no plaintext anywhere, a removed member
 can't read anything after removal, a second device reads new messages, and the simulator
 journey passes unchanged on top.
+
+Done: ADR 0026, `roda-mls` (device leaf, SIV-sealed state in the device database, subset
+rule, checkpoints), relay admission for E2E Spaces and the `key_packages` directory, the client
+path (seal, open, reconcile, checkpoints) and `journey_m2`.
+
+Also done: end-to-end by default for DMs and groups, one-way upgrade of M1 Spaces
+(`SpaceEncrypted`), sealing at send time at the current epoch (ADR 0027).
+
+Next, in order: removal journey, concurrent commits and `stale_epoch`, key package top-up,
+checkpoint pruning, linking a second device, the app on the simulator with the Notification
+Service Extension sharing state.
 
 ## M3. Real agents
 
@@ -288,10 +304,10 @@ test that the agent can't read its own runtime or any secret.
 
 ## M2.7. Files, editors, live pages and dynamic UI (proposed)
 
-After M2.6: a viewer for every file and an editor for most (ADR 0027), a native WYSIWYG
+After M2.6: a viewer for every file and an editor for most (ADR 0040), a native WYSIWYG
 Markdown page editor on TextKit 2 over Loro, live pages that people and agent members keep
-current from the Space's ontology (ADR 0028), and native declarative Zoen Views with MCP Apps
-HTML as the sandboxed fallback (ADR 0029). Build order in ADR 0027. Proof: a Markdown corpus
+current from the Space's ontology (ADR 0041), and native declarative Zoen Views with MCP Apps
+HTML as the sandboxed fallback (ADR 0042). Build order in ADR 0040. Proof: a Markdown corpus
 that round-trips byte-identical through the CLI, an agent page edit that waits for a swipe
 approval and reaches a second device while the relay holds only ciphertext, and a view action
 outside its grant that is refused.

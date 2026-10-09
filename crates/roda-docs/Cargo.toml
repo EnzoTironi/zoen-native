@@ -1,6 +1,6 @@
 [package]
 name = "roda-docs"
-description = "Zoen pages: a Loro block document, Markdown in and out with untouched blocks byte-identical (ADR 0027)."
+description = "Zoen pages: a Loro block document, Markdown in and out with untouched blocks byte-identical (ADR 0040)."
 version.workspace = true
 edition.workspace = true
 license.workspace = true

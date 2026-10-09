@@ -49,6 +49,8 @@ pub enum LogError {
     BrokenCausalLink { seq: u64 },
     #[error("o evento #{seq} não diz o que o autor já tinha visto")]
     MissingCausalLink { seq: u64 },
+    #[error("o evento #{seq} cria de novo um Espaço que já existe")]
+    Recreated { seq: u64 },
 }
 
 /// An Ed25519 signing key (identity root key or device key).
@@ -167,6 +169,32 @@ impl Author {
             sealed_wire: None,
         }
     }
+
+    /// Signs MLS ciphertext for `space` (ADR 0026). The relay sees the framing (kind,
+    /// suite, author, device, `seen`) and orders it; the event inside is MLS's to open.
+    /// Returns the content bytes and the signature over their hash.
+    pub fn sign_sealed(
+        &self,
+        space: &str,
+        client_id: &str,
+        at_ms: i64,
+        seen: Option<&Seen>,
+        sealed: content::Sealed,
+    ) -> (Vec<u8>, String) {
+        let content = SignedContent {
+            v: EVENT_FORMAT as u32,
+            space: space.to_string(),
+            client_id: client_id.to_string(),
+            author: self.identity.clone(),
+            device: self.device.clone(),
+            at_ms,
+            seen: seen.map(Into::into),
+            payload: Some(Payload::Sealed(sealed)),
+        }
+        .encode();
+        let sig = self.key.sign(content::content_hash(&content).as_bytes());
+        (content, sig)
+    }
 }
 
 /// Rebuilds an event from what traveled: the author's exact bytes, the signature and
@@ -180,11 +208,13 @@ pub fn event_from_content(
     hash: String,
 ) -> Result<Event, LogError> {
     let c = SignedContent::parse(&content).ok_or(LogError::BadContent { seq })?;
-    let Some(Payload::Body(body)) = &c.payload else {
-        return Err(LogError::BadContent { seq });
+    let body = match &c.payload {
+        Some(Payload::Body(body)) => content::decode_body(body),
+        Some(Payload::Sealed(s)) => sealed_body(s),
+        None => return Err(LogError::BadContent { seq }),
     };
     Ok(Event {
-        body: content::decode_body(body),
+        body,
         seen: c.seen(),
         space: c.space,
         seq,
@@ -199,6 +229,14 @@ pub fn event_from_content(
         content,
         sealed_wire: None,
     })
+}
+
+/// The view of an entry kept sealed: its kind, from the clear framing.
+fn sealed_body(s: &content::Sealed) -> EventBody {
+    let kind = content::SealedKind::try_from(s.kind).unwrap_or(content::SealedKind::Unspecified);
+    EventBody::Sealed {
+        kind: kind.name().to_string(),
+    }
 }
 
 /// What an identity signs to certify a device key.
@@ -262,8 +300,12 @@ pub fn verify_author(e: &Event) -> Result<(), LogError> {
     let seq = e.seq;
     let c = SignedContent::parse(&e.content).ok_or(LogError::BadContent { seq })?;
     let body_matches = match &c.payload {
-        Some(Payload::Body(b)) => content::decode_body(b) == e.body,
-        _ => false,
+        // `Sealed` describes outer bytes; a body claiming it is a forgery.
+        Some(Payload::Body(b)) => {
+            !matches!(e.body, EventBody::Sealed { .. }) && content::decode_body(b) == e.body
+        }
+        Some(Payload::Sealed(s)) => sealed_body(s) == e.body,
+        None => false,
     };
     if c.space != e.space
         || c.client_id != e.client_id
@@ -311,6 +353,15 @@ pub fn verify_causal_link(before: &[Event], e: &Event) -> Result<(), LogError> {
             _ => Err(LogError::MissingCausalLink { seq }),
         },
     }
+}
+
+/// What an event may be at its place in the log: causally linked, and never a second
+/// `SpaceCreated` (which would reset the Space's privacy, ADR 0027).
+fn verify_place(before: &[Event], e: &Event) -> Result<(), LogError> {
+    if !before.is_empty() && matches!(e.body, EventBody::SpaceCreated { .. }) {
+        return Err(LogError::Recreated { seq: e.seq });
+    }
+    verify_causal_link(before, e)
 }
 
 /// Full check of one event at its position: chain hash plus author signature.
@@ -419,7 +470,7 @@ impl SpaceLog {
             return Err(LogError::BrokenChain { seq: e.seq });
         }
         verify_event(&e)?;
-        verify_causal_link(&self.events, &e)?;
+        verify_place(&self.events, &e)?;
         self.events.push(e);
         Ok(self.events.last().expect("acabou de entrar"))
     }
@@ -441,7 +492,7 @@ impl SpaceLog {
                 return Err(LogError::BrokenChain { seq: e.seq });
             }
             verify_event(e)?;
-            verify_causal_link(&self.events[..i], e)?;
+            verify_place(&self.events[..i], e)?;
             prev = e.hash.clone();
         }
         Ok(())
@@ -902,6 +953,32 @@ mod tests {
         client.accept(a).unwrap();
         client.accept(b).unwrap();
         assert_eq!(client.head_hash(), relay.head_hash());
+    }
+
+    #[test]
+    fn an_end_to_end_space_cannot_be_created_again_as_readable() {
+        let me = Author::root(Signer::generate());
+        let created = |client_id: &str, privacy, seen| {
+            let body = EventBody::SpaceCreated {
+                title: "g".into(),
+                kind: SpaceKind::Group,
+                privacy,
+            };
+            me.sign_event("sp_g", client_id, 1, seen, body)
+        };
+        let mut relay = SpaceLog::new("sp_g");
+        let first = relay
+            .sequence(created("a", Privacy::EndToEnd, None))
+            .clone();
+        let seen = relay.head();
+        let again = relay.sequence(created("b", Privacy::Closed, seen)).clone();
+        assert_eq!(relay.verify().unwrap_err(), LogError::Recreated { seq: 1 });
+        let mut client = SpaceLog::new("sp_g");
+        client.accept(first).unwrap();
+        assert_eq!(
+            client.accept(again).unwrap_err(),
+            LogError::Recreated { seq: 1 }
+        );
     }
 
     #[test]

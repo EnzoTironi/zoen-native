@@ -16,6 +16,7 @@ mod media;
 mod pages;
 pub use files::FileDto;
 pub use pages::{PageBlockDto, PageDto, TextSpanDto};
+mod mls;
 mod net;
 mod profile;
 pub use profile::{PhotoChange, ProfileDto};
