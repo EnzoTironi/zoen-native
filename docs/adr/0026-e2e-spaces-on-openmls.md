@@ -85,6 +85,20 @@ order.
   first commit for the epoch wins (below), so several admins reconciling at once converge.
   A device's own commit comes back from the relay as its own message: at the current epoch
   with a commit pending it merges it, and anything else is stale.
+- **Batching:** a device doesn't reconcile while membership events of its own for that Space
+  are still on their way to the relay. Creating a group with five people is one commit and
+  one Welcome, never five epochs, and a commit never gets ahead of the log entries it
+  depends on.
+- **Removal:** after a `MemberRemoved` lands, **no device seals** for that Space until the
+  commit taking the person out has landed too. This applies to every member, not only the
+  admin who will commit, because a message sealed one epoch early is readable by the person
+  just removed. The relay stops sending the Space to them, but serves their catch-up
+  *through* their own removal (`("s", space, "gone", identity) -> seq`, cleared if they are
+  added back). Their device sees the removal and deletes the group (`Device::forget`). It
+  never receives the commit, it keeps no secrets, and a later Welcome starts it fresh. A
+  member leaving on their own is removed the same way: the group holds sends until an owner
+  or admin device commits. That is the price of the guarantee, and it is visible as
+  *Sending*.
 - **Concurrent commits:** every member applies the first commit for the current epoch in log
   order and ignores later ones for an epoch already gone. The losing author sees its commit
   skipped, processes the winner, and re-proposes. The relay rejecting stale epochs early

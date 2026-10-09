@@ -138,6 +138,7 @@ storage seams. Each unit ends with the full journey suite green.
 | S9 owner-side sequencing | done | `log_store.rs` (7 contracts incl. two relays on one Space, duplicates in one batch), `sequencer::tests`, before/after sweep in roda-shots/real-s9, ADR 0023 |
 | M2 first journey (E2E group, relay holds only ciphertext) | done | `journey_m2.rs` (key packages, commit + Welcome, messages both ways from a sealed device database, FoundationDB and Postgres scanned for text and hex, plaintext refused, agreeing checkpoints, a newcomer reads from her Welcome on), `roda-mls` tests, ADR 0026 |
 | M2 end-to-end by default (DMs and groups; M1 Spaces upgrade one way) | done | `journey_m2::a_readable_group_becomes_end_to_end_and_never_goes_back`, `journey_m1` DMs now end-to-end, `privacy_only_goes_up`, `an_end_to_end_space_cannot_be_created_again_as_readable`, ADR 0027 |
+| M2 removal | done | `journey_m2::a_removed_member_reads_nothing_after_removal`, `a_removed_device_forgets_the_group_and_can_be_added_back`, ADR 0026 (Removal) |
 | M2 rest, M3, M5, M6, M7 | planned below | |
 
 ## M1. Relay, real accounts, sync
@@ -207,7 +208,11 @@ path (seal, open, reconcile, checkpoints) and `journey_m2`.
 Also done: end-to-end by default for DMs and groups, one-way upgrade of M1 Spaces
 (`SpaceEncrypted`), sealing at send time at the current epoch (ADR 0027).
 
-Next, in order: removal journey, concurrent commits and `stale_epoch`, key package top-up,
+Also done: removal (`journey_m2::a_removed_member_reads_nothing_after_removal`: the removed
+member reads nothing after, their device forgets the group, and every message after the
+removal is sealed after its commit), one commit per batch of membership changes.
+
+Next, in order: concurrent commits and `stale_epoch`, key package top-up,
 checkpoint pruning, linking a second device, the app on the simulator with the Notification
 Service Extension sharing state.
 
