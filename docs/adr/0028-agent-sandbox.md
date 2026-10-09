@@ -52,8 +52,8 @@ we ship.
 - **`zoen-sandboxd`** (new Rust crate, one per bare-metal host, deployed as a privileged
   DaemonSet on a `kvm=true` node pool): runs `jailer` + `firecracker` per sandbox, serves
   memory pages from the template's memory file through a userfaultfd handler, gives each VM a
-  copy-on-write root disk (device-mapper thin snapshots), a tap device with nftables rules,
-  and a vsock channel to **`zoen-guestd`** inside the guest (exec, files, process streams).
+  copy-on-write root disk (device-mapper thin snapshots), no network interface (see §6), and a
+  vsock channel to **`zoen-guestd`** inside the guest (exec, files, process streams, egress).
   The guest kernel (GPL-2.0) runs only inside the VM on our servers; nothing GPL is linked
   into our binaries.
 - **Why not Kata or `agent-sandbox` pods:** both are good and Kubernetes-native, but each
@@ -113,10 +113,14 @@ pub trait SandboxProvider: Send + Sync {
   then falls back to object storage.
 
 ### 6. Network: default deny, and the egress proxy as a first-class component
-- **Default deny.** Each VM has its own tap and netns; nftables drops everything except the
-  node's egress proxy. No route to the metadata service, cluster CIDRs, other sandboxes or
-  the host. WASM tools (T0) have no sockets at all; their HTTP goes through the same proxy
-  via a host function.
+- **Default deny, by construction (changed in P1).** A VM has **no network interface**, only
+  loopback. Tools find the proxy at `127.0.0.1:3128` in the guest (`HTTP(S)_PROXY` are set);
+  `zoen-guestd` carries each connection over vsock to `zoen-sandboxd`, which hands it to
+  `zoen-egress` already bound to the lease, so the guest holds no proxy credential. There is
+  no tap, no netns and no nftables to get wrong, and no route to the metadata service,
+  cluster CIDRs, other sandboxes or the host. Cost: raw TCP and UDP don't work, which v1
+  doesn't need (a tool needing them would get a manifest-scoped tap later). WASM tools (T0)
+  have no sockets at all; their HTTP goes through the same proxy via a host function.
 - **`zoen-egress`** is its own crate and process (one per sandbox node, one per agentd pod for
   T0), not a feature of something else. It:
   1. **Allows only what the tool's manifest lists.** The manifest declares `egress` as hosts
@@ -127,7 +131,12 @@ pub trait SandboxProvider: Send + Sync {
      `zoen-secret://github`. The proxy swaps it for the real token, which it gets sealed from
      the owner's vault for this lease, only on requests to the hosts that secret is bound to.
      A placeholder sent anywhere else is refused, so code can use a credential but can never
-     read it or send it elsewhere.
+     read it or send it elsewhere. **HTTPS:** a tool with secrets gets a per-lease CA, made in
+     the proxy and name-constrained to the hosts its secrets are bound to; only its
+     certificate enters the VM's trust bundle. CONNECTs to those hosts are intercepted
+     (HTTP/1.1, one request per connection), the placeholder swapped, and the request sent on
+     over verified TLS; every other CONNECT is an opaque tunnel. Absolute-form `https://`
+     requests (busybox `wget`) are opened by the proxy itself.
   3. **Turns an unlisted request into an approval card.** A request to a host outside the
      list is refused with `EGRESS_NEEDS_APPROVAL` and an id, and the proxy raises an
      `AgentRequest` (kind `egress`, tool, host, port, method, never the path or body). The
@@ -252,6 +261,7 @@ need is worth about 13×.**
 |---|---|---|---|
 | **P0** | `SandboxProvider` trait, manifest and router in `zoen-agentd`, `Fake` and `Gvisor` backends, budgets, `zoen-egress` skeleton (allowlist, credential injection, approval on unlisted hosts, metadata-only log) | journey: a T0 tool runs in WASM; a tool declaring `microvm` without a Grant raises an `AgentRequest`; with a Grant it runs in gVisor | none |
 | **P1** | `zoen-sandboxd` + `zoen-guestd`, template build from OCI, snapshot restore with userfaultfd, nftables + egress proxy, suspend, resume, fork; measure start time and density on the box | journey on the box's `/dev/kvm`: acquire under 1 s from a warm pool, suspend and resume keep files, the VM cannot reach the metadata IP or the relay | none |
+| P1 as built (2026-10-08) | jailer + cgroup limits, template snapshot per shape, warm pool, suspend/resume (restore once), vsock egress instead of tap + nftables, per-lease CA; still to do: OCI template builder, userfaultfd, diff snapshots, per-lease disk instead of a tmpfs `/work`, fork, density | journeys pass on the box and in CI (GitHub runners have `/dev/kvm`); numbers in the research note §4 | none |
 | **P2** | browser template, `zoen-browserd`, live view with encrypted frames, handoff `AgentRequest`, SwiftUI live card and takeover | journey: agent fills a form; handoff for a login; the model's transcript has no password; measured MB per session | none |
 | **P3** | `FlyMachines` backend and staging app on its own private network | the P0–P2 journeys pass against staging | about $22/month; asked for when P3 starts; needs Enzo's `fly auth login` |
 | **P4** | scheduler with FoundationDB leases, warm pools, core-scheduling cookies, OpenTofu module for the bare-metal pool, load test to 1,000 concurrent sandboxes | measured density, core-scheduling overhead and cost per sandbox-hour replace the estimates | one or two bare-metal hosts; asked for when P4 starts |

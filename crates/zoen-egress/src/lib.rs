@@ -11,11 +11,13 @@
 //!    it with `EGRESS_NEEDS_APPROVAL` until the owner says yes;
 //! 4. logs metadata only: lease, tool, host, port, method, decision, bytes, duration.
 //!
-//! P0 scope: HTTP CONNECT tunnels and plain-HTTP forwarding. Secrets are injected into
-//! plain-HTTP request headers; HTTPS injection needs the per-lease CA of phase 1.
+//! Transports: HTTP CONNECT (an opaque tunnel, or intercepted with the lease's own CA when
+//! one of its secrets is bound to that host, see [`tls`]), plain HTTP, and absolute-form
+//! `https://` requests (the proxy opens the TLS connection). Secrets go into request headers.
 
 pub mod policy;
 pub mod proxy;
+pub mod tls;
 
 pub use policy::{
     host_matches, is_forbidden, placeholder, EgressRule, SecretBinding, PLACEHOLDER_PREFIX,

@@ -340,12 +340,21 @@ mod linux {
         };
         // SAFETY: valid timespec.
         unsafe { libc::clock_settime(libc::CLOCK_REALTIME, &ts) };
-        if let Some(ca) = ca_pem {
-            let _ = std::fs::create_dir_all("/run/zoen");
+        // The trust bundle tools are pointed at always exists: the image's roots, plus the
+        // lease CA when the host sends one.
+        let _ = std::fs::create_dir_all("/run/zoen");
+        if !std::path::Path::new(GUEST_TRUST_BUNDLE).exists() || ca_pem.is_some() {
             let system = std::fs::read_to_string(SYSTEM_BUNDLE).unwrap_or_default();
-            if std::fs::write(GUEST_CA_PATH, &ca).is_err()
-                || std::fs::write(GUEST_TRUST_BUNDLE, format!("{system}\n{ca}")).is_err()
-            {
+            let bundle = match &ca_pem {
+                Some(ca) => format!("{system}\n{ca}"),
+                None => system,
+            };
+            if std::fs::write(GUEST_TRUST_BUNDLE, bundle).is_err() {
+                return Response::err("could not write the trust bundle");
+            }
+        }
+        if let Some(ca) = ca_pem {
+            if std::fs::write(GUEST_CA_PATH, &ca).is_err() {
                 return Response::err("could not write the lease CA");
             }
             // Tools that ignore SSL_CERT_FILE read the system bundle; the root filesystem is
@@ -392,6 +401,9 @@ mod linux {
             .env("https_proxy", &proxy)
             .env("NO_PROXY", "localhost,127.0.0.1")
             .env("SSL_CERT_FILE", GUEST_TRUST_BUNDLE)
+            .env("CURL_CA_BUNDLE", GUEST_TRUST_BUNDLE)
+            .env("REQUESTS_CA_BUNDLE", GUEST_TRUST_BUNDLE)
+            .env("NODE_EXTRA_CA_CERTS", GUEST_TRUST_BUNDLE)
             .envs(env)
             .current_dir(cwd.as_deref().unwrap_or(GUEST_WORK))
             .stdin(if stdin_b64.is_some() {
