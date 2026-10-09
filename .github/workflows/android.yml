@@ -2,10 +2,10 @@ name: android
 
 on:
   pull_request:
-    paths: ["android/**", "crates/**", "Cargo.toml", "Cargo.lock", "scripts/build-android-core.sh", "scripts/*android-uniffi-callbacks.py", "scripts/test-android-device.sh", ".github/workflows/android.yml"]
+    paths: ["android/**", "crates/**", "Cargo.toml", "Cargo.lock", "scripts/build-android-core.sh", "scripts/*android-uniffi-callbacks.py", "scripts/test-android-device.sh", "scripts/ci-postgres.sh", ".github/workflows/android.yml"]
   push:
     branches: [main]
-    paths: ["android/**", "crates/**", "Cargo.toml", "Cargo.lock", "scripts/build-android-core.sh", "scripts/*android-uniffi-callbacks.py", "scripts/test-android-device.sh", ".github/workflows/android.yml"]
+    paths: ["android/**", "crates/**", "Cargo.toml", "Cargo.lock", "scripts/build-android-core.sh", "scripts/*android-uniffi-callbacks.py", "scripts/test-android-device.sh", "scripts/ci-postgres.sh", ".github/workflows/android.yml"]
 
 permissions:
   contents: read
@@ -52,14 +52,14 @@ jobs:
         run: |
           python3 ../scripts/test-android-uniffi-callbacks.py
           ./gradlew :app:assembleDebug :app:testDebugUnitTest :app:lintDebug --max-workers=4
+      - name: Runner PostgreSQL
+        run: scripts/ci-postgres.sh
       - name: Isolated relay for encrypted Android journeys
         run: |
-          docker run -d --name android-pg -p 5432:5432 -e POSTGRES_USER=zoen -e POSTGRES_HOST_AUTH_METHOD=trust public.ecr.aws/docker/library/postgres:17-alpine
           scripts/fdb.sh up
           eval "$(scripts/fdb.sh env)"
           cargo build -q -p zoen-relay
-          for _ in $(seq 1 30); do docker exec android-pg pg_isready -U zoen >/dev/null 2>&1 && break; sleep 1; done
-          DATABASE_URL=postgres://zoen@127.0.0.1:5432/postgres ZOEN_BLOB_DIR="$RUNNER_TEMP/android-blobs" \
+          DATABASE_URL="$ZOEN_TEST_PG" ZOEN_BLOB_DIR="$RUNNER_TEMP/android-blobs" \
             nohup target/debug/zoen-relay --bind 0.0.0.0:8787 > "$RUNNER_TEMP/android-relay.log" 2>&1 &
           for _ in $(seq 1 30); do curl -fsS http://127.0.0.1:8787/healthz && break; sleep 1; done
           curl -fsS http://127.0.0.1:8787/healthz
