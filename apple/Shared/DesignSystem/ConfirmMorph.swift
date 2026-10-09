@@ -171,7 +171,10 @@ struct ConfirmInPlaceButton: View {
             // In a List row (compact), only .borderless keeps the row from claiming the tap.
             .modifier(ConfirmButtonStyle(compact: compact))
             .accessibilityLabel(Text(armed ? confirmTitle : title))
-            .accessibilityIdentifier(armed ? "\(identifier)-confirm" : identifier)
+            // In a List row the cell keeps the element it first saw, so the compact pill keeps
+            // one identifier and says "armed" in its value instead of swapping ids.
+            .accessibilityIdentifier(armed && !compact ? "\(identifier)-confirm" : identifier)
+            .accessibilityValue(compact && armed ? Text(verbatim: "armed") : Text(verbatim: ""))
 
             // The compact pill sits in list rows, where a second button in the row muddles
             // the taps: there, not tapping (it folds back on its own) is the cancel.

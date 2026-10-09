@@ -66,8 +66,10 @@ final class TileEditJourneyTests: XCTestCase {
             : app.buttons.matching(NSPredicate(format: "label == 'Tirar do Início'")).firstMatch
         XCTAssertTrue(confirm.exists, "removing asks first")
         confirm.tap()
-        let gone = NSPredicate { _, _ in !self.names(app, "home-tile").contains(victim) }
-        XCTAssertEqual(XCTWaiter().wait(for: [XCTNSPredicateExpectation(predicate: gone, object: nil)], timeout: 5), .completed, "the card is unpinned (still: \(self.names(app, "home-tile")))")
+        // Poll on the main thread (a block predicate's queries can stall) for up to 10s.
+        var left = names(app, "home-tile")
+        for _ in 0..<10 where left.contains(victim) { sleep(1); left = names(app, "home-tile") }
+        XCTAssertFalse(left.contains(victim), "the card is unpinned (still: \(left))")
         sleep(1)
 
         // Concluir: the wobble and minus badges go away.

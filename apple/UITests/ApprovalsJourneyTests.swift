@@ -171,13 +171,12 @@ final class ApprovalsJourneyTests: XCTestCase {
         XCTAssertTrue(revoke.waitForExistence(timeout: 5))
         revoke.tap()
         // It asks in place (the pill turns red: "Revogar?"); the second tap revokes.
-        let sure = again.buttons["revoke-standing-confirm"].firstMatch
-        XCTAssertTrue(sure.waitForExistence(timeout: 3), "revoking asks first, in place")
+        let armed = NSPredicate(format: "value == 'armed'")
+        XCTAssertEqual(XCTWaiter().wait(for: [XCTNSPredicateExpectation(predicate: armed, object: revoke)], timeout: 3), .completed,
+                       "revoking asks first, in place")
         XCTAssertFalse(again.staticTexts["Nenhuma ainda."].exists, "one tap alone doesn't revoke")
-        sleep(1) // let the pill settle (it grows and the × slides in) before the second tap
-        let armedPill = again.buttons["revoke-standing-confirm"].firstMatch
-        XCTAssertTrue(armedPill.isHittable, "the armed pill takes the tap (\(armedPill.frame))")
-        armedPill.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap()
+        sleep(1) // let the pill settle (it grows) before the second tap
+        revoke.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap()
         XCTAssertTrue(again.staticTexts["Nenhuma ainda."].waitForExistence(timeout: 5), "revoked: none left")
     }
 
