@@ -9,7 +9,7 @@ use roda_proto::{EphemeralKind, InvitePreview, Op, Reply};
 use roda_types::{new_id, EventBody, Identity, Privacy, Role, SpaceKind};
 
 use crate::{
-    dto::Persona,
+    dto::{GroupKeysDto, Persona, PrivacyDto},
     i18n::t,
     net::{ConnState, Net, NetStatus},
     profile::{PhotoChange, ProfileDto, VAULT_AGREEMENT},
@@ -303,8 +303,45 @@ impl RodaEngine {
         if title.is_empty() {
             return Err(invalid(t("Dê um nome ao grupo.", "Give the group a name.")));
         }
+        self.create_group_with(title.to_string(), member_ids, PrivacyDto::EndToEnd)
+    }
+
+    /// Turns on end-to-end encryption in a relay-readable chat or group (ADR 0027). There is
+    /// no way back: privacy only goes up.
+    pub fn encrypt_chat(&self, space_id: String) -> Result<(), CoreError> {
+        self.lock().encrypt_space(&space_id)
+    }
+
+    /// A group with a chosen privacy. `EndToEnd` (what `create_group` makes) is an MLS
+    /// group: the relay orders and stores ciphertext only (ADR 0026).
+    pub fn create_group_with(
+        &self,
+        title: String,
+        member_ids: Vec<String>,
+        privacy: PrivacyDto,
+    ) -> Result<String, CoreError> {
+        let title = title.trim();
+        if title.is_empty() {
+            return Err(invalid(t("Dê um nome ao grupo.", "Give the group a name.")));
+        }
+        let privacy = match privacy {
+            PrivacyDto::EndToEnd => Privacy::EndToEnd,
+            PrivacyDto::Closed => Privacy::Closed,
+            PrivacyDto::Public => Privacy::Public,
+        };
         self.lock()
-            .create_synced_space(title, SpaceKind::Group, &member_ids)
+            .create_synced_space(title, SpaceKind::Group, privacy, &member_ids)
+    }
+
+    /// The MLS group of an end-to-end chat as this device has it.
+    pub fn group_keys(&self, space_id: String) -> Option<GroupKeysDto> {
+        self.lock()
+            .mls_status(&space_id)
+            .map(|(epoch, digest, members)| GroupKeysDto {
+                epoch,
+                digest,
+                members,
+            })
     }
 
     /// A Space (community): closed by default. Synced when signed in; local-only in the demo.
@@ -318,7 +355,7 @@ impl RodaEngine {
         }
         let mut e = self.lock();
         if e.net.author.is_some() {
-            return e.create_synced_space(title, SpaceKind::Community, &[]);
+            return e.create_synced_space(title, SpaceKind::Community, Privacy::Closed, &[]);
         }
         let me = e.me_id()?;
         let space = new_id("sp");
@@ -512,7 +549,10 @@ impl RodaEngine {
             let c = self.connection();
             let idle = c.state == "online" && c.synced && c.pending == 0 && {
                 let e = self.lock();
-                e.net.unknown.is_empty() && e.uploads_pending() == 0 && e.profiles_settled()
+                e.net.unknown.is_empty()
+                    && e.uploads_pending() == 0
+                    && e.profiles_settled()
+                    && e.mls_settled()
             };
             if idle || tokio::time::Instant::now() >= deadline {
                 return c;

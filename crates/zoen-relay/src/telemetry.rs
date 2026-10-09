@@ -40,7 +40,12 @@ pub fn init(service: &'static str) -> anyhow::Result<Telemetry> {
             .with_filter(env_filter)
             .boxed()
     } else {
+        // Colour only for a person at a terminal: escapes in a file or a log pipeline break
+        // every reader that searches the text.
+        use std::io::IsTerminal;
+        let ansi = std::io::stdout().is_terminal() && std::env::var_os("NO_COLOR").is_none();
         tracing_subscriber::fmt::layer()
+            .with_ansi(ansi)
             .with_filter(env_filter)
             .boxed()
     };

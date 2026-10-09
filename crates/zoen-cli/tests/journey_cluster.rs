@@ -26,9 +26,8 @@ fn two_people_on_two_nodes(w: &mut World) -> u16 {
     );
     assert!(out.contains("registered"), "{out}");
     w.zoen("ana", &["dm", "@bruno", "oi Bruno"]);
-    assert!(w
-        .zoen_at(b, "bruno", &["read", "@ana"])
-        .contains("Ana: oi Bruno"));
+    let read = w.zoen_at(b, "bruno", &["read", "@ana"]);
+    assert!(read.contains("Ana: oi Bruno"), "{read}");
     b
 }
 

@@ -36,11 +36,11 @@ this model; the load generator (S8) replaces the per-node guesses with measureme
 | messages sent | 40 per DAU per day | 20B/day, 230k/s average, 700k/s peak (3x) |
 | device deliveries | 5 devices per message on average (2.2 people, 1.6 devices each, groups skew it up) | 100B/day, 3.5M/s peak |
 | connected devices | 25% of DAU online at peak, 1.3 devices each | 160M WebSockets |
-| connections per edge node | 150k (tokio, about 30 KB each with TLS) | about 1,100 edge nodes, 1,500 with headroom |
+| connections per edge node | 150k (tokio, 37 KiB each measured without TLS, ADR 0022) | about 1,100 edge nodes, 1,500 with headroom |
 | relay log | 1 KB per envelope with MLS overhead, kept 30 days for catch-up | 20 TB/day, 600 TB hot, 1.8 PB with 3 replicas |
 | media | 2 photos per DAU per day at 200 KB | 200 TB/day, 73 PB/year in object storage behind a CDN |
 | pushes | half of deliveries go to offline devices, collapsed per chat burst | about 10B/day after collapsing |
-| infrastructure cost | edge plus sequencers plus hot storage, before media egress | about $2M/month, $0.002 per user per month |
+| infrastructure cost | relay, FoundationDB, hot storage and delivery egress, before media; from measurements (ADR 0022) | about $470k/month at Fly list prices, $0.0005 per user per month |
 
 What the model forces:
 - **Stateless edge, sharded relay.** Edges terminate WebSockets and hold no durable state.
@@ -103,9 +103,20 @@ storage seams. Each unit ends with the full journey suite green.
 7. **S7 telemetry. Done.** OTLP traces and logs from the relay's own code only, pseudonymous
    fields, W3C context across the NATS bus, Prometheus metrics scraped by a cell collector
    that scrubs address and URL attributes (ADR 0021).
-8. **S8 load generator.** `zoen-load` drives simulated clients over the real protocol and
-   reports messages per second per core, p50 and p99 delivery latency, and connections
-   per node.
+8. **S8 load generator. Done.** `zoen-load` drives simulated people over the real protocol,
+   open loop (latency from the due time), with exact delivery accounting and per-process CPU
+   and memory from `/proc`; `scripts/bench-load.sh sweep` is the capacity record. Measured:
+   37 KiB per connection (was 160), 0.58 ms of relay CPU per message + 45 µs per delivery,
+   about 2,500 appends per FoundationDB core, p50 4–6 ms and p99 8–27 ms up to 2,000 msgs/s on
+   one node; 1B users ≈ $470k/month at list prices (ADR 0022).
+9. **S9 owner-side sequencing. Done.** One in-memory queue and worker per active Space commits
+   batches of up to 64 envelopes in one transaction behind a head-validated cache (members,
+   kind, recent hashes); the head read stays the fence, so two relays on one Space stay correct.
+   Same harness, 406515f vs S9: relay CPU per message −35 to 45%, FoundationDB CPU −25 to 40%;
+   rate-4000 and fanout-128 now pass (were saturated); one hot Space with 16 senders goes from
+   collapse at 441 msgs/s (p50 12.9 s, 0.28 conflict retries per append) to 2,000/s at p50
+   5 ms and a 3,180/s ceiling with zero retries. Units now 0.37 ms per message + 30 µs per
+   delivery, 3,300 appends per FoundationDB core (ADR 0023).
 
 ## Where things stand
 
@@ -122,8 +133,12 @@ storage seams. Each unit ends with the full journey suite green.
 | S5 fan-out bus | done | `journey_cluster` (2 relays over NATS + control), ADR 0019 |
 | S6 abuse controls | done | `journey_limits` (fast sender loses nothing, flood, caps), ADR 0020 |
 | S7 telemetry | done | `journey_telemetry` (two nodes, cross-node trace, 18 secrets absent from OTLP bytes and debug stdout), real otelcol-contrib run in roda-shots/real-s7, ADR 0021 |
-| S8 load generator | next | |
-| M2, M3, M5, M6, M7 | planned below | |
+| S8 load generator | done | `scripts/bench-load.sh sweep` (10 scenarios, exact delivery counts, JSON per scenario in roda-shots/real-s8/final), ADR 0022 |
+| Local k3d cell | healthy with the collector | `scripts/local-cluster.sh up`, `journey`, `telemetry` (relay logs and traces reach the collector before and after it moves pods), roda-shots/local-cluster-s7 |
+| S9 owner-side sequencing | done | `log_store.rs` (7 contracts incl. two relays on one Space, duplicates in one batch), `sequencer::tests`, before/after sweep in roda-shots/real-s9, ADR 0023 |
+| M2 first journey (E2E group, relay holds only ciphertext) | done | `journey_m2.rs` (key packages, commit + Welcome, messages both ways from a sealed device database, FoundationDB and Postgres scanned for text and hex, plaintext refused, agreeing checkpoints, a newcomer reads from her Welcome on), `roda-mls` tests, ADR 0026 |
+| M2 end-to-end by default (DMs and groups; M1 Spaces upgrade one way) | done | `journey_m2::a_readable_group_becomes_end_to_end_and_never_goes_back`, `journey_m1` DMs now end-to-end, `privacy_only_goes_up`, `an_end_to_end_space_cannot_be_created_again_as_readable`, ADR 0027 |
+| M2 rest, M3, M5, M6, M7 | planned below | |
 
 ## M1. Relay, real accounts, sync
 
@@ -167,10 +182,13 @@ Shape:
   order is the MLS epoch order. A commit for a stale epoch is rejected with `stale_epoch` and
   the client rebases (re-proposes after processing the winner). Application messages are
   `Payload::Sealed` (MLS PrivateMessage); the relay sees author, device, Space and size.
-- Welcomes go to the added devices' mailboxes on the relay and are deleted on fetch.
-- Membership stays checkable by the relay: membership changes carry a signed public
-  `MemberAdded`/`MemberRemoved` envelope alongside the commit, and the relay rejects a commit
-  whose roster disagrees.
+- Welcomes are sealed entries in the Space's own log right after their commit (ADR 0026), so
+  ordering, catch-up and pruning are the log's; no separate mailbox.
+- Membership stays checkable by the relay: membership changes are signed public
+  `MemberAdded`/`MemberRemoved` events, and every member refuses a commit or Welcome that
+  leaves someone in the group the log doesn't list (the subset rule, ADR 0026).
+- Member-signed checkpoints (`Checkpoint { upto, epoch, digest }`) catch a forked Space and
+  later let the relay prune ciphertext every member already has.
 - History: new members read from their join onward (forward secrecy). Closed (relay-readable)
   Spaces stay for communities.
 - Device secrets: the Ed25519 secrets are wrapped by a Secure Enclave P-256 key
@@ -182,12 +200,31 @@ Proof: CLI journeys where the relay's Postgres has no plaintext anywhere, a remo
 can't read anything after removal, a second device reads new messages, and the simulator
 journey passes unchanged on top.
 
+Done: ADR 0026, `roda-mls` (device leaf, SIV-sealed state in the device database, subset
+rule, checkpoints), relay admission for E2E Spaces and the `key_packages` directory, the client
+path (seal, open, reconcile, checkpoints) and `journey_m2`.
+
+Also done: end-to-end by default for DMs and groups, one-way upgrade of M1 Spaces
+(`SpaceEncrypted`), sealing at send time at the current epoch (ADR 0027).
+
+Next, in order: removal journey, concurrent commits and `stale_epoch`, key package top-up,
+checkpoint pruning, linking a second device, the app on the simulator with the Notification
+Service Extension sharing state.
+
 ## M3. Real agents
 
 Goal: your Zoen agent and community agents are real members of chats, running on a server,
 calling real models and tools under Grants.
 
 Shape:
+- Runtime decision (2026-10-08, Enzo approved): `zoen-agentd` is a Rust process, and
+  [Rig](https://github.com/0xPlaygrounds/rig) is used only as a library for model, tool and
+  streaming plumbing, behind Zoen-owned traits (`zoen-models::ModelGateway`), so replacing it
+  touches one crate. Zoen owns the durable run loop: run state sealed in FoundationDB, driven
+  by JetStream. **Restate is dropped**: no second durable-execution tier beside FDB and
+  JetStream, and no source-available licence in a shipped path. Mastra and Open Instinct are
+  design references only (ideas, not code). The ADR (draft in the planning notes) is committed
+  under the next free number when M3 starts.
 - `zoen-agentd`: a runtime process that holds agent identities (each owned by a person),
   joins Spaces as an MLS member, and reacts to messages.
 - Model gateway: one interface over OpenAI-compatible chat completions with tool calls, with

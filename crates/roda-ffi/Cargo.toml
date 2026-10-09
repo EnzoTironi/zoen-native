@@ -15,6 +15,8 @@ roda-types.workspace = true
 roda-log.workspace = true
 roda-grants.workspace = true
 roda-store.workspace = true
+roda-mls = { workspace = true, features = ["device"] }
+rusqlite.workspace = true
 serde_json.workspace = true
 thiserror.workspace = true
 

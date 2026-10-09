@@ -3,20 +3,47 @@
 # relay image built from this checkout, then the two-client journey through the cluster.
 #   scripts/local-cluster.sh up        create the cluster, build, deploy
 #   scripts/local-cluster.sh journey   port-forward the relay and run scripts/journey-remote.sh
+#   scripts/local-cluster.sh telemetry the journey's logs and traces reach the collector, also
+#                                      after the collector moves to a new pod
 #   scripts/local-cluster.sh down
-# k3d flags: the native snapshotter works on any Docker storage driver (vfs included) and
-# host-gw flannel needs no vxlan module, so this runs inside other containers too.
+# k3d flags: fuse-overlayfs shares image layers where the host is itself an overlay (the box);
+# the native snapshotter would copy every layer in full and needed 14 GB for three
+# workloads. The k3s image has no libfuse, so the node gets the upstream static
+# fuse-overlayfs (checksum-pinned) and infra/k3d/mount.fuse3. host-gw flannel needs no
+# vxlan module, so this runs inside other containers too. kube-proxy runs in nftables mode:
+# its iptables mode spreads a Service over several pods with xt_statistic, which the box
+# kernel lacks, and one failed rule freezes every Service at its first pods. The node shares
+# its disk with the whole machine, so eviction starts at 2 GiB free rather than at 5%.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 CLUSTER=zoen
 NS=zoen
 PORT="${ZOEN_LOCAL_PORT:-18787}"
+FUSE_OVERLAYFS_VERSION=v1.18
+FUSE_OVERLAYFS_SHA256=56b0ae0aeb8abb308b068af2f137ed8d1bd239f4f27e21672ff0def861eea1e8
+FUSE_OVERLAYFS="$PWD/.tools/fuse-overlayfs/$FUSE_OVERLAYFS_VERSION/fuse-overlayfs"
+
+fuse_overlayfs() {
+  [[ -x "$FUSE_OVERLAYFS" ]] && return
+  mkdir -p "$(dirname "$FUSE_OVERLAYFS")"
+  curl -fsSL -o "$FUSE_OVERLAYFS.part" \
+    "https://github.com/containers/fuse-overlayfs/releases/download/$FUSE_OVERLAYFS_VERSION/fuse-overlayfs-x86_64"
+  echo "$FUSE_OVERLAYFS_SHA256  $FUSE_OVERLAYFS.part" | sha256sum -c --quiet
+  chmod +x "$FUSE_OVERLAYFS.part"
+  mv "$FUSE_OVERLAYFS.part" "$FUSE_OVERLAYFS"
+}
 
 up() {
   if ! k3d cluster list -o json | grep -q "\"name\": *\"$CLUSTER\""; then
+    fuse_overlayfs
     K3D_FIX_DNS=0 k3d cluster create "$CLUSTER" --servers 1 --agents 0 \
-      --k3s-arg "--snapshotter=native@server:0" --k3s-arg "--disable=traefik@server:0" \
-      --k3s-arg "--flannel-backend=host-gw@server:0" --wait --timeout 400s
+      --volume "$FUSE_OVERLAYFS:/usr/local/bin/fuse-overlayfs:ro@server:0" \
+      --volume "$PWD/infra/k3d/mount.fuse3:/usr/local/bin/mount.fuse3:ro@server:0" \
+      --k3s-arg "--snapshotter=fuse-overlayfs@server:0" --k3s-arg "--disable=traefik@server:0" \
+      --k3s-arg "--flannel-backend=host-gw@server:0" \
+      --k3s-arg "--kube-proxy-arg=proxy-mode=nftables@server:0" \
+      --k3s-arg "--kubelet-arg=eviction-hard=nodefs.available<2Gi,imagefs.available<2Gi@server:0" \
+      --wait --timeout 400s
   fi
   # Reach the API server on the node's address, which works even where published ports don't.
   local ip; ip="$(docker inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' "k3d-$CLUSTER-server-0")"
@@ -56,9 +83,37 @@ journey() {
   scripts/journey-remote.sh "http://127.0.0.1:$PORT"
 }
 
+# Log records (never sampled) and spans the collector received since a timestamp.
+received() {
+  kubectl -n "$NS" logs deploy/otel-collector --since-time="$1" |
+    awk '/"otelcol.signal": "logs"/ { match($0, /"log records": [0-9]+/); l += substr($0, RSTART + 15, RLENGTH - 15) }
+         /"otelcol.signal": "traces"/ { match($0, /"spans": [0-9]+/); t += substr($0, RSTART + 9, RLENGTH - 9) }
+         END { print l + 0, t + 0 }'
+}
+
+telemetry() {
+  for round in "first collector pod" "after rolling the collector"; do
+    if [[ "$round" == after* ]]; then
+      kubectl -n "$NS" rollout restart deploy/otel-collector >/dev/null
+      kubectl -n "$NS" rollout status deploy/otel-collector --timeout=120s >/dev/null
+    fi
+    local since; since="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+    (journey) >/dev/null
+    sleep 8 # batch export delay plus the collector's batch processor
+    local logs spans; read -r logs spans < <(received "$since")
+    echo "▸ $round: $logs log records, $spans spans (traces sampled at 10%)"
+    (( logs > 0 )) || { echo "no relay telemetry reached the collector ($round)"; exit 1; }
+  done
+  if docker logs --since 10m "k3d-$CLUSTER-server-0" 2>&1 | grep -q '"Sync failed"'; then
+    echo "kube-proxy failed to sync Service rules"; exit 1
+  fi
+  echo "telemetry reaches the collector"
+}
+
 case "${1:-up}" in
   up) up ;;
   journey) journey ;;
+  telemetry) telemetry ;;
   down) k3d cluster delete "$CLUSTER" ;;
-  *) echo "usage: $0 [up|journey|down]"; exit 2 ;;
+  *) echo "usage: $0 [up|journey|telemetry|down]"; exit 2 ;;
 esac

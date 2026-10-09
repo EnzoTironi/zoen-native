@@ -10,3 +10,7 @@ images:
   - name: zoen-relay
     newName: zoen-relay
     newTag: dev
+# One collector is enough on a laptop-sized node; base runs two for availability.
+replicas:
+  - name: otel-collector
+    count: 1

@@ -8,8 +8,10 @@ members = [
   "crates/roda-ffi",
   "crates/roda-gate",
   "crates/roda-proto",
+  "crates/roda-mls",
   "crates/zoen-relay",
   "crates/zoen-cli",
+  "crates/zoen-load",
   "tools/uniffi-bindgen",
 ]
 
@@ -39,6 +41,7 @@ roda-grants = { path = "crates/roda-grants" }
 roda-gate = { path = "crates/roda-gate" }
 roda-store = { path = "crates/roda-store" }
 roda-proto = { path = "crates/roda-proto" }
+roda-mls = { path = "crates/roda-mls", default-features = false }
 
 [profile.release]
 opt-level = 3

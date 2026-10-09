@@ -233,6 +233,17 @@ impl State {
                     s.members.retain(|(id, _)| id != identity);
                 }
             }
+            EventBody::SpaceEncrypted => {
+                if let Some(s) = self.spaces.get_mut(&e.space) {
+                    s.privacy = Privacy::EndToEnd;
+                    s.entries.push(entry(EntryBody::System {
+                        text: t(
+                            "Criptografia de ponta a ponta ativada. Só os membros leem as mensagens novas.",
+                            "End-to-end encryption is on. Only members can read new messages.",
+                        ),
+                    }));
+                }
+            }
             EventBody::MessagePosted {
                 text,
                 attaches,
@@ -390,7 +401,10 @@ impl State {
             EventBody::UsageRecorded { agent, cents, .. } => {
                 self.usage.push((agent.clone(), *cents, e.at_ms));
             }
-            EventBody::ProfileKeyShared { .. } | EventBody::Unsupported { .. } => {}
+            EventBody::ProfileKeyShared { .. }
+            | EventBody::Checkpoint { .. }
+            | EventBody::Sealed { .. }
+            | EventBody::Unsupported { .. } => {}
         }
     }
 }
@@ -452,6 +466,7 @@ impl Engine {
             net: Default::default(),
         };
         engine.migrate_event_format()?;
+        engine.migrate_mls()?;
         engine.reload()?;
         Ok(engine)
     }
@@ -3126,6 +3141,17 @@ fn event_label(b: &EventBody) -> String {
             "Profile key shared with {}",
             shares.len()
         ),
+        EventBody::Sealed { kind } => tr!("Cifrado: {kind}", "Encrypted: {kind}"),
+        EventBody::SpaceEncrypted => t(
+            "Criptografia de ponta a ponta ativada",
+            "End-to-end encryption turned on",
+        ),
+        EventBody::Checkpoint { epoch, .. } => {
+            tr!(
+                "Ponto de verificação: época {epoch}",
+                "Checkpoint: epoch {epoch}"
+            )
+        }
         EventBody::Unsupported { kind } => tr!(
             "Evento de uma versão mais nova: {kind}",
             "Event from a newer version: {kind}"

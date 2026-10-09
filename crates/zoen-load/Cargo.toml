@@ -1,0 +1,19 @@
+[package]
+name = "zoen-load"
+description = "`zoen-load`: simulated people on the real wire protocol, for throughput, latency and capacity numbers."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+roda-proto.workspace = true
+roda-log.workspace = true
+roda-types.workspace = true
+serde_json.workspace = true
+anyhow = "1"
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "time", "sync", "net"] }
+tokio-tungstenite = { version = "0.30", default-features = false, features = ["connect", "handshake"] }
+futures-util = { version = "0.3", default-features = false, features = ["sink", "std"] }
+hdrhistogram = { version = "7", default-features = false }
+fastrand = "2"

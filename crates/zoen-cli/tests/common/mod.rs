@@ -188,7 +188,10 @@ impl World {
 
     /// Runs `zoen` as `who` against the relay node on `port`.
     pub fn zoen_at(&self, port: u16, who: &str, args: &[&str]) -> String {
-        let out = self.cmd_at(port, who, args).output().expect("run zoen");
+        let out = debug(
+            who,
+            self.cmd_at(port, who, args).output().expect("run zoen"),
+        );
         let stdout = String::from_utf8_lossy(&out.stdout).to_string();
         assert!(
             out.status.success(),
@@ -208,7 +211,7 @@ impl World {
 
     /// Runs `zoen` as `who` and returns stdout; panics with stderr on failure.
     pub fn zoen(&self, who: &str, args: &[&str]) -> String {
-        let out = self.cmd(who, args).output().expect("run zoen");
+        let out = debug(who, self.cmd(who, args).output().expect("run zoen"));
         let stdout = String::from_utf8_lossy(&out.stdout).to_string();
         if !out.status.success() {
             panic!(
@@ -221,7 +224,7 @@ impl World {
 
     /// Runs `zoen` as `who`; stdout on success, stderr+stdout on failure.
     pub fn try_zoen(&self, who: &str, args: &[&str]) -> Result<String, String> {
-        let out = self.cmd(who, args).output().expect("run zoen");
+        let out = debug(who, self.cmd(who, args).output().expect("run zoen"));
         let stdout = String::from_utf8_lossy(&out.stdout).to_string();
         if out.status.success() {
             Ok(stdout)
@@ -542,6 +545,20 @@ impl RawClient {
         self.publish_signed(content, sig, cert).await
     }
 
+    /// Joins `space` with an invite code, as a client with no MLS support would.
+    pub async fn join(&mut self, space: &str, code: &str) -> Result<Sequenced, String> {
+        let body = EventBody::MemberAdded {
+            identity: self.identity(),
+            role: roda_types::Role::Member,
+        };
+        let e =
+            self.author
+                .sign_event(space, &roda_types::new_ulid(now_ms()), now_ms(), None, body);
+        let mut env = Envelope::new(e.content, e.sig, e.cert, None).ok_or("not a v3 content")?;
+        env.invite = Some(code.to_string());
+        self.publish_env(env).await
+    }
+
     async fn publish_signed(
         &mut self,
         content: Vec<u8>,
@@ -549,6 +566,10 @@ impl RawClient {
         cert: Option<String>,
     ) -> Result<Sequenced, String> {
         let env = Envelope::new(content, sig, cert, None).ok_or("not a v3 content")?;
+        self.publish_env(env).await
+    }
+
+    async fn publish_env(&mut self, env: Envelope) -> Result<Sequenced, String> {
         let client_id = env.client_id().to_string();
         self.send(&ClientFrame::Publish { env }).await;
         loop {
@@ -612,4 +633,14 @@ pub async fn hello_only(relay: &str, version: u32) -> ServerFrame {
             _ => continue,
         }
     }
+}
+
+/// With `ZOEN_NET_DEBUG` set, each client's network log is shown under its name.
+fn debug(who: &str, out: std::process::Output) -> std::process::Output {
+    if std::env::var_os("ZOEN_NET_DEBUG").is_some() {
+        for line in String::from_utf8_lossy(&out.stderr).lines() {
+            eprintln!("[{who}] {line}");
+        }
+    }
+    out
 }

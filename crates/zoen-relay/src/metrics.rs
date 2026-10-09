@@ -57,6 +57,18 @@ impl Metrics {
             self.events_duplicate.load(Relaxed),
         );
         put(
+            "zoen_relay_append_retries_total",
+            "Log append transactions retried after a conflict or retryable error",
+            "counter",
+            crate::log::fdb::APPEND_RETRIES.load(Relaxed),
+        );
+        put(
+            "zoen_relay_append_batches_total",
+            "Log append transactions (one per batch of appends to a Space)",
+            "counter",
+            crate::log::fdb::APPEND_BATCHES.load(Relaxed),
+        );
+        put(
             "zoen_relay_events_rejected_total",
             "Envelopes rejected",
             "counter",

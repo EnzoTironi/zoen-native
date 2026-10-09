@@ -8,7 +8,8 @@ use roda_types::{Identity, IdentityKind, Role};
 
 use crate::{
     AgreementKeyRecord, ClientFrame, Cursor, DeviceSigned, Envelope, EphemeralKind, ErrorCode,
-    InviteCreated, InvitePreview, Op, Reply, SealedProfile, Sequenced, ServerFrame,
+    InviteCreated, InvitePreview, KeyPackageRecord, Op, Reply, SealedProfile, Sequenced,
+    ServerFrame,
 };
 
 /// Why a frame didn't decode.
@@ -74,7 +75,7 @@ pub struct PbHello {
 pub struct PbReq {
     #[prost(uint64, tag = "1")]
     pub id: u64,
-    #[prost(oneof = "pb_req::Op", tags = "2, 3, 4, 5, 6, 7, 8, 9, 10")]
+    #[prost(oneof = "pb_req::Op", tags = "2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12")]
     pub op: Option<pb_req::Op>,
 }
 
@@ -101,6 +102,10 @@ pub mod pb_req {
         PutProfile(PbSealedProfile),
         #[prost(message, tag = "10")]
         GetProfiles(PbIds),
+        #[prost(message, tag = "11")]
+        PublishKeyPackages(PbPublishKeyPackages),
+        #[prost(message, tag = "12")]
+        ClaimKeyPackages(PbIds),
     }
 }
 
@@ -146,6 +151,30 @@ pub struct PbAgreementKeys {
 pub struct PbSealedProfiles {
     #[prost(message, repeated, tag = "1")]
     pub profiles: Vec<PbSealedProfile>,
+}
+
+#[derive(Clone, PartialEq, Message)]
+pub struct PbPublishKeyPackages {
+    #[prost(bytes = "vec", repeated, tag = "1")]
+    pub packages: Vec<Vec<u8>>,
+    #[prost(bytes = "vec", optional, tag = "2")]
+    pub last_resort: Option<Vec<u8>>,
+}
+
+#[derive(Clone, PartialEq, Message)]
+pub struct PbKeyPackage {
+    #[prost(string, tag = "1")]
+    pub identity: String,
+    #[prost(string, tag = "2")]
+    pub device: String,
+    #[prost(bytes = "vec", tag = "3")]
+    pub data: Vec<u8>,
+}
+
+#[derive(Clone, PartialEq, Message)]
+pub struct PbKeyPackages {
+    #[prost(message, repeated, tag = "1")]
+    pub packages: Vec<PbKeyPackage>,
 }
 
 #[derive(Clone, PartialEq, Message)]
@@ -339,7 +368,7 @@ pub struct PbReady {
 pub struct PbRes {
     #[prost(uint64, tag = "1")]
     pub id: u64,
-    #[prost(oneof = "pb_res::R", tags = "2, 3, 4, 5, 6, 7, 8, 9")]
+    #[prost(oneof = "pb_res::R", tags = "2, 3, 4, 5, 6, 7, 8, 9, 10")]
     pub r: Option<pb_res::R>,
 }
 
@@ -364,6 +393,8 @@ pub mod pb_res {
         AgreementKeys(PbAgreementKeys),
         #[prost(message, tag = "9")]
         SealedProfiles(PbSealedProfiles),
+        #[prost(message, tag = "10")]
+        KeyPackages(PbKeyPackages),
     }
 }
 
@@ -671,6 +702,16 @@ impl ClientFrame {
                         pb_req::Op::PutProfile(sealed_profile_to(profile))
                     }
                     Op::GetProfiles { ids } => pb_req::Op::GetProfiles(PbIds { ids: ids.clone() }),
+                    Op::PublishKeyPackages {
+                        packages,
+                        last_resort,
+                    } => pb_req::Op::PublishKeyPackages(PbPublishKeyPackages {
+                        packages: packages.clone(),
+                        last_resort: last_resort.clone(),
+                    }),
+                    Op::ClaimKeyPackages { ids } => {
+                        pb_req::Op::ClaimKeyPackages(PbIds { ids: ids.clone() })
+                    }
                 }),
             }),
             ClientFrame::Publish { env } => F::Publish(envelope_to(env)),
@@ -729,6 +770,11 @@ impl ClientFrame {
                         profile: sealed_profile_from(p)?,
                     },
                     pb_req::Op::GetProfiles(p) => Op::GetProfiles { ids: p.ids },
+                    pb_req::Op::PublishKeyPackages(p) => Op::PublishKeyPackages {
+                        packages: p.packages,
+                        last_resort: p.last_resort,
+                    },
+                    pb_req::Op::ClaimKeyPackages(p) => Op::ClaimKeyPackages { ids: p.ids },
                 },
             },
             F::Publish(e) => ClientFrame::Publish {
@@ -801,6 +847,16 @@ impl ServerFrame {
                     }),
                     Ok(Reply::SealedProfiles(ps)) => pb_res::R::SealedProfiles(PbSealedProfiles {
                         profiles: ps.iter().map(sealed_profile_to).collect(),
+                    }),
+                    Ok(Reply::KeyPackages(ks)) => pb_res::R::KeyPackages(PbKeyPackages {
+                        packages: ks
+                            .iter()
+                            .map(|k| PbKeyPackage {
+                                identity: k.identity.clone(),
+                                device: k.device.clone(),
+                                data: k.data.clone(),
+                            })
+                            .collect(),
                     }),
                 }),
             }),
@@ -908,6 +964,16 @@ impl ServerFrame {
                             .into_iter()
                             .map(sealed_profile_from)
                             .collect::<Result<_, _>>()?,
+                    )),
+                    pb_res::R::KeyPackages(ks) => Ok(Reply::KeyPackages(
+                        ks.packages
+                            .into_iter()
+                            .map(|k| KeyPackageRecord {
+                                identity: k.identity,
+                                device: k.device,
+                                data: k.data,
+                            })
+                            .collect(),
                     )),
                 },
             },
@@ -1117,6 +1183,14 @@ mod tests {
                 id: 14,
                 result: Ok(Reply::SealedProfiles(vec![sealed_profile()])),
             },
+            ServerFrame::Res {
+                id: 15,
+                result: Ok(Reply::KeyPackages(vec![KeyPackageRecord {
+                    identity: "i".into(),
+                    device: "d".into(),
+                    data: vec![1, 2],
+                }])),
+            },
             ServerFrame::ProfileChanged {
                 identity: "i".into(),
                 version: 4,
@@ -1190,6 +1264,19 @@ mod tests {
             ClientFrame::Req {
                 id: 8,
                 op: Op::GetProfiles {
+                    ids: vec!["a".into()],
+                },
+            },
+            ClientFrame::Req {
+                id: 9,
+                op: Op::PublishKeyPackages {
+                    packages: vec![vec![1], vec![2]],
+                    last_resort: Some(vec![3]),
+                },
+            },
+            ClientFrame::Req {
+                id: 10,
+                op: Op::ClaimKeyPackages {
                     ids: vec!["a".into()],
                 },
             },
