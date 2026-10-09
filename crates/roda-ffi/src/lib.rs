@@ -12,6 +12,8 @@ use std::sync::{Arc, Mutex, MutexGuard};
 mod api;
 mod files;
 mod files_api;
+mod liveview;
+pub use liveview::{LiveViewDemoVm, LiveViewInput, LiveViewKey, LiveViewSession};
 mod media;
 mod pages;
 pub use files::FileDto;
