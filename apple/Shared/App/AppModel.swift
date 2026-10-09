@@ -966,6 +966,13 @@ final class AppModel {
         go(.space(turma))
         await wait(0.8)
         switch story {
+        // `incoming`: two friends write while you're reading further up (journey for the
+        // "novas mensagens" pill: the chat must keep your place).
+        case "incoming":
+            await wait(d("RodaIncomingFast") ? 2 : 5)
+            say("marina", AppLocale.pick("chegando em 10 min", "there in 10 min"))
+            await wait(0.6)
+            say("lucas", AppLocale.pick("guarda um lugar pra mim", "save me a seat"))
         case let s where s.hasPrefix("pet"):
             await send(AppLocale.pick("e se a gente adotasse um jumento pro grupo?", "what if we adopted a donkey for the group?"), in: turma)
             guard let pet = app("pet") else { return }

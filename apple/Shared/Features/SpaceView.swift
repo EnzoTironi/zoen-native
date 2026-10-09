@@ -16,6 +16,16 @@ struct SpaceView: View {
     @State private var safeTop: CGFloat = 0
     @State private var scrollPos = ScrollPosition(edge: .bottom)
     @State private var offsetY: CGFloat = 0
+    /// Reading position: new messages only pull the chat down while you're at the end.
+    @State private var nearBottom = true
+    /// Messages that arrived while you were reading further up ("↓ N novas mensagens").
+    @State private var unseen = 0
+    /// First message you hadn't read when the chat opened; the divider sits above it.
+    @State private var firstUnread: String?
+    /// Set by `reload()` for the next scroll decision: did *I* just send something?
+    @State private var appendedMine = false
+    @State private var appendedOthers = 0
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     /// Top of the composer bar, in global coordinates (the message fade ends there).
     @State private var composerTop: CGFloat = .infinity
     @Environment(\.dismiss) private var dismiss
@@ -68,6 +78,9 @@ struct SpaceView: View {
                     if let space { SpaceHeaderCard(space: space).padding(.bottom, 12) }
                     let shown = visible
                     ForEach(Array(shown.enumerated()), id: \.element.id) { idx, entry in
+                        if entry.id == firstUnread {
+                            UnreadDivider().id("unread-divider")
+                        }
                         EntryView(entry: entry,
                                   previous: idx > 0 ? shown[idx - 1] : nil,
                                   next: idx + 1 < shown.count ? shown[idx + 1] : nil,
@@ -129,6 +142,12 @@ struct SpaceView: View {
             // changes, which would feed back into the insets and loop).
             .scrollPosition($scrollPos)
             .onScrollGeometryChange(for: CGFloat.self) { $0.contentOffset.y } action: { _, y in offsetY = y }
+            .onScrollGeometryChange(for: Bool.self) { g in
+                g.visibleRect.maxY >= g.contentSize.height - 140
+            } action: { _, near in
+                nearBottom = near
+                if near && unseen > 0 { withAnimation(.smooth(duration: 0.3)) { unseen = 0 } }
+            }
             // Content starts just under the glass bar (bar height + 8pt): at rest nothing sits
             // behind the glass or the status bar; content passes under the bar only while
             // scrolling. No mask, blur or band.
@@ -158,6 +177,16 @@ struct SpaceView: View {
             #endif
             .safeAreaBar(edge: .bottom, spacing: 0) {
               VStack(spacing: 6) {
+                if unseen > 0 {
+                    NewMessagesPill(count: unseen) {
+                        Haptics.selectionTick()
+                        withAnimation(reduceMotion ? .easeOut(duration: 0.2) : .smooth(duration: 0.45)) {
+                            proxy.scrollTo("bottom", anchor: .bottom)
+                        }
+                        withAnimation(.smooth(duration: 0.3)) { unseen = 0 }
+                    }
+                    .transition(reduceMotion ? .opacity : .scale(scale: 0.85, anchor: .bottom).combined(with: .opacity))
+                }
                 if let r = replyTo {
                     ReplyComposerBar(entry: r) { withAnimation(.spring(response: 0.3, dampingFraction: 0.85)) { replyTo = nil } }
                         .transition(.move(edge: .bottom).combined(with: .opacity))
@@ -180,6 +209,7 @@ struct SpaceView: View {
                 }
               }
               .animation(.spring(response: 0.35, dampingFraction: 0.85), value: replyTo?.id)
+              .animation(.spring(response: 0.35, dampingFraction: 0.8), value: unseen > 0)
               .onGeometryChange(for: CGFloat.self) { $0.frame(in: .global).minY } action: { composerTop = $0 }
             }
             #if os(iOS)
@@ -195,11 +225,11 @@ struct SpaceView: View {
             // The agent's browser card shows up (or asks for you): bring it into view.
             .onChange(of: model.browser.phase) { _, _ in
                 guard model.browser.session?.spaceId == spaceId else { return }
-                withAnimation(.smooth(duration: 0.4)) { proxy.scrollTo("bottom", anchor: .bottom) }
+                followOrCount(1, proxy: proxy)
             }
             .onChange(of: model.browser.session?.spaceId) { _, id in
                 guard id == spaceId else { return }
-                withAnimation(.smooth(duration: 0.4)) { proxy.scrollTo("bottom", anchor: .bottom) }
+                followOrCount(1, proxy: proxy)
             }
             .onDisappear { model.sync.stoppedTyping(spaceId) }
             .onChange(of: entries.count) { old, _ in
@@ -215,14 +245,21 @@ struct SpaceView: View {
                     return
                 }
                 if old == 0 {
-                    // Primeira carga: vai direto para o fim, sem animação.
-                    proxy.scrollTo("bottom", anchor: .bottom)
+                    // Primeira carga: sem animação, direto na primeira mensagem não lida
+                    // (ou no fim, quando está tudo lido).
+                    let target = firstUnread == nil ? "bottom" : "unread-divider"
+                    let anchor: UnitPoint = firstUnread == nil ? .bottom : .top
+                    proxy.scrollTo(target, anchor: anchor)
                     Task { @MainActor in
                         try? await Task.sleep(for: .milliseconds(60))
-                        proxy.scrollTo("bottom", anchor: .bottom)
+                        proxy.scrollTo(target, anchor: anchor)
                     }
-                } else {
+                } else if appendedMine {
+                    // I just sent it: always follow, even from further up.
                     withAnimation(.snappy) { proxy.scrollTo("bottom", anchor: .bottom) }
+                    unseen = 0
+                } else if appendedOthers > 0 {
+                    followOrCount(appendedOthers, proxy: proxy)
                 }
             }
             .task(id: "\(model.jumpTarget?.entry ?? "")|\(entries.isEmpty)") {
@@ -238,7 +275,9 @@ struct SpaceView: View {
                 }
                 model.jumpTarget = nil
             }
-            .onChange(of: workingAgent?.id) { _, _ in
+            .onChange(of: workingAgent?.id) { _, id in
+                // Only follow the "working" row while you're at the end; never yank you down.
+                guard nearBottom, id != nil else { return }
                 withAnimation(.snappy) { proxy.scrollTo("bottom", anchor: .bottom) }
             }
         }
@@ -451,14 +490,58 @@ struct SpaceView: View {
         return out
     }
 
+    /// At the end: follow new content. Reading further up: keep your place and count it.
+    private func followOrCount(_ n: Int, proxy: ScrollViewProxy) {
+        if nearBottom {
+            withAnimation(reduceMotion ? .easeOut(duration: 0.2) : .snappy) { proxy.scrollTo("bottom", anchor: .bottom) }
+        } else {
+            withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) { unseen += n }
+            Haptics.selectionTick()
+            AccessibilityNotification.Announcement(NewMessagesPill.label(unseen)).post()
+        }
+    }
+
     private func reload() {
         let new = (try? model.core.timeline(spaceId: spaceId)) ?? []
         pinned = model.core.items().first { $0.spaceId == spaceId && $0.plan != nil }
         // Live mini-apps of this chat, newest first (the hike leads when there is one).
         let apps = model.liveApps.filter { $0.spaceId == spaceId && $0.app != nil && !model.chatAppsUnpinned.contains($0.id) }
             .sorted { ($0.app?.appId == "hike" ? 1 : 0, $0.versions.first?.atMs ?? 0) > ($1.app?.appId == "hike" ? 1 : 0, $1.versions.first?.atMs ?? 0) }
-        withAnimation(.spring(duration: 0.5, bounce: 0.2)) { pinnedApps = apps }
-        withAnimation(.spring(duration: 0.5, bounce: 0.2)) { entries = new }
+        let firstLoad = entries.isEmpty
+        if apps != pinnedApps {
+            if firstLoad || apps.map(\.id) == pinnedApps.map(\.id) {
+                pinnedApps = apps
+            } else {
+                withAnimation(.spring(duration: 0.5, bounce: 0.2)) { pinnedApps = apps }
+            }
+        }
+        // Another chat changed (or nothing did): leave this one alone, no re-render, no motion.
+        guard new != entries else { return }
+        if firstLoad {
+            // Opening the chat: remember where unread starts, then show everything at once.
+            let unread = Int(space?.unread ?? 0)
+            let main = new.filter { $0.inThread == nil }
+            if unread > 0, unread < main.count, !main[main.count - unread].author.isMe {
+                firstUnread = main[main.count - unread].id
+            }
+            appendedMine = false
+            appendedOthers = 0
+            var t = Transaction()
+            t.disablesAnimations = true
+            withTransaction(t) { entries = new }
+        } else {
+            let known = Set(entries.map(\.id))
+            let added = new.filter { !known.contains($0.id) && $0.inThread == nil }
+            appendedMine = added.contains { $0.author.isMe }
+            appendedOthers = added.filter { !$0.author.isMe }.count
+            if added.isEmpty {
+                // Edits, delivery ticks, reactions: update in place, nothing flies in.
+                entries = new
+            } else {
+                // Only the new bubbles animate in (their own insertion transition).
+                withAnimation(.spring(duration: 0.4, bounce: 0.15)) { entries = new }
+            }
+        }
         if !new.isEmpty { try? model.core.markRead(spaceId: spaceId) }
     }
 }
@@ -1137,5 +1220,49 @@ private struct FirstBubbleFlourish: View {
                 show = true
             }
         }
+    }
+}
+
+/// "Mensagens não lidas": where you stopped reading when the chat opened.
+struct UnreadDivider: View {
+    var body: some View {
+        HStack(spacing: 10) {
+            Rectangle().fill(Palette.action.opacity(0.35)).frame(height: 1)
+            Text("Unread messages")
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(Palette.action)
+                .fixedSize()
+            Rectangle().fill(Palette.action.opacity(0.35)).frame(height: 1)
+        }
+        .padding(.vertical, 10)
+        .accessibilityElement(children: .combine)
+        .accessibilityIdentifier("unread-divider")
+    }
+}
+
+/// Glass capsule above the composer while new messages wait below you.
+struct NewMessagesPill: View {
+    let count: Int
+    var onTap: () -> Void
+
+    static func label(_ n: Int) -> String {
+        n == 1 ? String(localized: "1 new message") : String(localized: "\(n) new messages")
+    }
+
+    var body: some View {
+        Button(action: onTap) {
+            HStack(spacing: 6) {
+                Image(systemName: "arrow.down").font(.caption.weight(.bold))
+                Text(Self.label(count)).font(.subheadline.weight(.semibold)).monospacedDigit()
+                    .contentTransition(.numericText(value: Double(count)))
+            }
+            .foregroundStyle(Palette.textPrimary)
+            .padding(.horizontal, 14)
+            .padding(.vertical, 8)
+            .glassEffect(.regular.interactive(), in: .capsule)
+        }
+        .buttonStyle(.plain)
+        .accessibilityIdentifier("new-messages-pill")
+        .accessibilityHint(Text("Jumps to the latest message"))
     }
 }
