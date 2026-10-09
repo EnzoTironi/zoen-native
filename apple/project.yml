@@ -86,11 +86,16 @@ targets:
           CODE_SIGN_STYLE: Automatic
           CODE_SIGN_ENTITLEMENTS: ""
           SWIFT_ACTIVE_COMPILATION_CONDITIONS: DEBUG ZOEN_PERSONAL_DEVICE
+          # iPhone só: no Mac com Apple Silicon ("My Mac (Designed for iPhone)") a janela
+          # fica no formato de iPhone. Ver docs/dev/iphone-no-mac.md.
+          TARGETED_DEVICE_FAMILY: "1"
+          SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD: YES
       base:
         ZOEN_RELAY_URL: ""
         PRODUCT_BUNDLE_IDENTIFIER: xyz.tironi.zoen
         PRODUCT_NAME: Zoen
         TARGETED_DEVICE_FAMILY: "1,2"
+        SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD: YES
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor
         CODE_SIGN_STYLE: Automatic
