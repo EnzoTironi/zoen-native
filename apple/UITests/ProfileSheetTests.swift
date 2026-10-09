@@ -18,8 +18,8 @@ final class ProfileSheetTests: XCTestCase {
         marina.tap()
 
         // Profile sheet medium detent
-        XCTAssertTrue(app.buttons["Message"].waitForExistence(timeout: 5), "profile sheet actions")
-        app.buttons["Message"].tap()
+        XCTAssertTrue(app.buttons["Message"].firstMatch.waitForExistence(timeout: 5), "profile sheet actions")
+        app.buttons["Message"].firstMatch.tap()
 
         // Lands in a chat (1:1 or existing space with them)
         XCTAssertTrue(app.buttons["zoenBack"].waitForExistence(timeout: 8)

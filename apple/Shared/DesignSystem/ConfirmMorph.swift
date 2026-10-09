@@ -168,7 +168,8 @@ struct ConfirmInPlaceButton: View {
                 }
                 .contentShape(.rect)
             }
-            .buttonStyle(PressScaleStyle())
+            // In a List row (compact), only .borderless keeps the row from claiming the tap.
+            .modifier(ConfirmButtonStyle(compact: compact))
             .accessibilityLabel(Text(armed ? confirmTitle : title))
             .accessibilityIdentifier(armed ? "\(identifier)-confirm" : identifier)
 
@@ -217,5 +218,12 @@ struct ConfirmInPlaceButton: View {
             try? await Task.sleep(for: .milliseconds(reduceMotion ? 150 : 480))
             action()
         }
+    }
+}
+
+private struct ConfirmButtonStyle: ViewModifier {
+    var compact: Bool
+    func body(content: Content) -> some View {
+        if compact { content.buttonStyle(.borderless) } else { content.buttonStyle(PressScaleStyle()) }
     }
 }
