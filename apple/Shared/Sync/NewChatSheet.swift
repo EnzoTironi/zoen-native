@@ -97,7 +97,7 @@ struct NewChatSheet: View {
             TextField(String(localized: "Community name"), text: $groupTitle)
                 .accessibilityIdentifier("communityNameField")
         } footer: {
-            Text("A chat for a club or neighbourhood. Invite members and manage permissions and shared resources inside the conversation.")
+            Text("A conversation for a club or neighbourhood, alongside your other chats.")
         }
     }
 

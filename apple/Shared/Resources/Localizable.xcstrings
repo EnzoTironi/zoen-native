@@ -6339,18 +6339,18 @@
         }
       }
     },
-    "Spaces in common": {
+    "Chats in common": {
       "localizations": {
         "pt-BR": {
           "stringUnit": {
             "state": "translated",
-            "value": "Espaços em comum"
+            "value": "Conversas em comum"
           }
         },
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Spaces in common"
+            "value": "Chats in common"
           }
         }
       }
@@ -8305,12 +8305,32 @@
         }
       }
     },
-    "A chat for a club or neighbourhood. Invite members and manage permissions and shared resources inside the conversation.": {
+    "A conversation for a club or neighbourhood, alongside your other chats.": {
       "localizations": {
         "pt-BR": {
           "stringUnit": {
             "state": "translated",
-            "value": "Uma conversa para um clube ou bairro. Convide membros e gerencie permissões e recursos compartilhados dentro da conversa."
+            "value": "Uma conversa para um clube ou bairro, junto das suas outras conversas."
+          }
+        }
+      }
+    },
+    "Chat": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Conversa"
+          }
+        }
+      }
+    },
+    "New chat": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Nova conversa"
           }
         }
       }

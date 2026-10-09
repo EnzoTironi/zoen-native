@@ -164,7 +164,7 @@ struct ProfileSheet: View {
     private func shared(_ p: Persona) -> some View {
         let spaces = model.spaces.filter { $0.members.contains { $0.id == p.id } && $0.counterpart == nil }
         if !spaces.isEmpty {
-            section(String(localized: "Spaces in common")) {
+            section(String(localized: "Chats in common")) {
                 ForEach(spaces.prefix(6)) { s in
                     Button {
                         dismiss()
