@@ -443,6 +443,49 @@ async fn an_admitted_queued_publish_can_finish_without_blocking_revocation() {
 }
 
 #[tokio::test]
+async fn a_protocol_three_client_is_refused_before_authentication_or_linking() {
+    let test = TestRelay::new().await;
+    let primary = Author::device(&Signer::generate(), Signer::generate());
+    let mut current = connect(&test.ws_url, &primary).await;
+    request(
+        &mut current,
+        1,
+        Op::Register {
+            profile: profile(&primary, "ana"),
+        },
+    )
+    .await
+    .unwrap();
+    let _ = current.close(None).await;
+
+    // An enrolled sponsor with a valid certificate still needs the enrollment-aware
+    // client. Refusal must be the first frame, before a challenge or link request.
+    let (mut old, _) = tokio_tungstenite::connect_async(&test.ws_url)
+        .await
+        .unwrap();
+    send(
+        &mut old,
+        ClientFrame::Hello {
+            protocol: 3,
+            capabilities: Vec::new(),
+            identity: primary.identity.clone(),
+            device: primary.device.clone().unwrap(),
+            cert: primary.cert.clone().unwrap(),
+        },
+    )
+    .await;
+    match recv(&mut old).await {
+        Some(ServerFrame::Error { code, message }) => {
+            assert_eq!(code, ErrorCode::UpgradeRequired);
+            assert!(message.contains("needs 4 or newer"), "{message}");
+        }
+        other => panic!("expected an upgrade error before authentication, got {other:?}"),
+    }
+    assert!(recv(&mut old).await.is_none());
+    test.close().await;
+}
+
+#[tokio::test]
 async fn an_unlinked_root_holder_cannot_return_with_a_fresh_certificate() {
     let test = TestRelay::new().await;
     let root = Signer::generate();
