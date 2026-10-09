@@ -54,11 +54,15 @@ const CLAIM_RETRY: Duration = Duration::from_secs(5);
 /// committing a change, so a group's admins rarely race for the same epoch.
 const ADMIN_STAGGER: Duration = Duration::from_millis(400);
 
+/// Key packages on their way to the relay: single-use ones, and a last-resort one with the
+/// first set.
+pub type KeyPackageBatch = (Vec<Vec<u8>>, Option<Vec<u8>>);
+
 /// MLS bookkeeping beside the network state.
 #[derive(Default)]
 pub struct MlsNet {
     /// Key packages generated and on their way to the relay.
-    publishing: Option<(Vec<Vec<u8>>, Option<Vec<u8>>)>,
+    publishing: Option<KeyPackageBatch>,
     /// Single-use packages the relay says this device should add (it's running low).
     top_up: usize,
     /// Who each end-to-end Space's confirmed log lists, and as what.
@@ -610,7 +614,7 @@ impl Engine {
 
     /// This device's key packages, until the relay has them: the first full set with a
     /// last-resort one, then top-ups when the relay says the stock is low.
-    pub fn mls_key_packages_to_publish(&mut self) -> Option<(Vec<Vec<u8>>, Option<Vec<u8>>)> {
+    pub fn mls_key_packages_to_publish(&mut self) -> Option<KeyPackageBatch> {
         let device_id = self.net.account.as_ref()?.device.clone();
         if self.net.mls.publishing.is_none() {
             let first = self.store.meta(META_PUBLISHED).ok().flatten() != Some(device_id);
