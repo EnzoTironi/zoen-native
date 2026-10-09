@@ -12,6 +12,7 @@ members = [
   "crates/zoen-relay",
   "crates/zoen-cli",
   "crates/zoen-load",
+  "crates/zoen-egress",
   "tools/uniffi-bindgen",
 ]
 
@@ -42,6 +43,7 @@ roda-gate = { path = "crates/roda-gate" }
 roda-store = { path = "crates/roda-store" }
 roda-proto = { path = "crates/roda-proto" }
 roda-mls = { path = "crates/roda-mls", default-features = false }
+zoen-egress = { path = "crates/zoen-egress" }
 
 [profile.release]
 opt-level = 3
