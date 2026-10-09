@@ -71,6 +71,10 @@ struct FanMenu: View {
     @State private var holdTask: Task<Void, Never>?
     @State private var armHoldAt: Date?
     @State private var labelSize = CGSize(width: 80, height: 26)
+    /// The + and the items share one Liquid Glass container: as the items leave the + they
+    /// pull out of its glass like drops and flow back into it on close. The merge distance is
+    /// smaller than the gap between open items, so the open fan stays a row of clean circles.
+    private static let glassMerge: CGFloat = 4
 
     private var metrics: RadialMetrics {
         RadialMetrics(count: items.count, span: arc.upperBound - arc.lowerBound, triggerSize: triggerSize)
@@ -79,6 +83,17 @@ struct FanMenu: View {
     private var itemSize: CGFloat { RadialMetrics.itemDiameter }
 
     var body: some View {
+        GlassEffectContainer(spacing: Self.glassMerge) {
+            fan
+        }
+        .frame(width: triggerSize, height: triggerSize)
+        .onChange(of: isOpen) { _, open in
+            if !open { hovered = nil; dragging = false }
+        }
+        .task { await runDemoIfAsked() }
+    }
+
+    private var fan: some View {
         ZStack {
             if isOpen {
                 // Faint ring at the press origin, like Pinterest's ghost touch ring.
@@ -102,10 +117,6 @@ struct FanMenu: View {
             }
         }
         .frame(width: triggerSize, height: triggerSize)
-        .onChange(of: isOpen) { _, open in
-            if !open { hovered = nil; dragging = false }
-        }
-        .task { await runDemoIfAsked() }
     }
 
     // MARK: trigger
@@ -283,6 +294,21 @@ struct FanMenu: View {
         return .asymmetric(insertion: insertion, removal: removal)
     }
 
+    /// Dock-style magnification: the item under the finger grows, its neighbours lean in a
+    /// little, the rest step back.
+    private func magnification(_ item: RadialItem) -> CGFloat {
+        guard !reduceMotion, let h = hovered,
+              let hi = items.firstIndex(where: { $0.id == h }),
+              let i = items.firstIndex(where: { $0.id == item.id }) else { return 1 }
+        // Sized so the grown item still clears its neighbours by more than the glass merge
+        // distance (gap 8 − 3.8 > 4): no gooey bridges between open items.
+        switch abs(hi - i) {
+        case 0: return 1.16
+        case 1: return 1.0
+        default: return 0.92
+        }
+    }
+
     @ViewBuilder
     private func itemView(_ item: RadialItem) -> some View {
         let on = hovered == item.id
@@ -306,8 +332,8 @@ struct FanMenu: View {
                             .offset(x: 3, y: -3)
                     }
                 }
-                .scaleEffect(on && !reduceMotion ? 1.18 : 1)
-                .animation(reduceMotion ? nil : .spring(duration: 0.24, bounce: 0.4), value: on)
+                .scaleEffect(magnification(item))
+                .animation(reduceMotion ? nil : .spring(duration: 0.26, bounce: 0.35), value: hovered)
                 .frame(width: RadialMetrics.hitDiameter, height: RadialMetrics.hitDiameter)
                 .contentShape(.circle)
         }

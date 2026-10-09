@@ -68,6 +68,7 @@ struct PersonAvatar: View {
 
 /// A representação única de agente (§3 do documento).
 struct AgentAvatar: View {
+    @Environment(\.ambientPaused) private var ambientPaused
     let persona: Persona
     var size: CGFloat = 44
     var state: AgentState = .idle
@@ -87,7 +88,7 @@ struct AgentAvatar: View {
         // Animação dirigida por TimelineView (sem repeatForever em @State): some
         // limpo quando o estado muda, sem transições presas.
         if state == .working {
-            TimelineView(.animation) { ctx in
+            TimelineView(.animation(paused: ambientPaused)) { ctx in
                 let t = ctx.date.timeIntervalSinceReferenceDate
                 content(angle: .degrees((t.truncatingRemainder(dividingBy: 1.6)) / 1.6 * 360),
                         scale: 0.97 + 0.03 * cos(t * 2 * .pi / 1.8))

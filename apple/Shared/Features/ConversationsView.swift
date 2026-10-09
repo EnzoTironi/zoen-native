@@ -264,39 +264,36 @@ struct HomeStrip: View {
     @Environment(AppModel.self) private var model
     @Environment(\.appZoom) private var zoom
     static let side: CGFloat = 170
+    /// Jiggle edit mode (long-press a card): reorder by dragging, minus to unpin.
+    @State private var editing = false
+
+    private struct Card: Identifiable { let id: String; let item: ItemDetail; let snap: WidgetSnapshot }
 
     var body: some View {
-        let apps = model.homeApps
-        ScrollView(.horizontal, showsIndicators: false) {
-            LazyHStack(spacing: 12) {
-                ForEach(Array(apps.enumerated()), id: \.element.id) { i, item in
-                    if let snap = WidgetSnapshot.from(item) {
-                        Button {
-                            Haptics.open()
-                            model.openApp(item.id, fromHome: true)
-                        } label: {
-                            SnapshotCard(snap: snap, side: Self.side)
-                        }
-                        .buttonStyle(PressScaleStyle())
-                        .appZoomSource(item.id, zoom)
-                        .menuPreviewShape(.rect(cornerRadius: 28, style: .continuous))
-                        .contextMenu {
-                            if i > 0 { Button { withAnimation(.spring(duration: 0.4)) { model.moveOnHome(item.id, by: -1) } } label: { Label { Text("Move left") } icon: { ZoenGlyph.back.menuImage } } }
-                            if i < apps.count - 1 { Button { withAnimation(.spring(duration: 0.4)) { model.moveOnHome(item.id, by: 1) } } label: { Label { Text("Move right") } icon: { ZoenGlyph.chevron.menuImage } } }
-                            Button { withAnimation(.spring(duration: 0.4)) { model.unpinFromHome(item.id) } } label: { Label { Text("Unpin from Home") } icon: { ZoenGlyph.pin.menuImage } }
-                        }
-                        .accessibilityHint("Opens the mini-app")
-                        .accessibilityAction(named: "Unpin from Home") { model.unpinFromHome(item.id) }
-                    }
-                }
-                if apps.isEmpty { PinHereCard(side: Self.side) }
+        let cards = model.homeApps.compactMap { item in WidgetSnapshot.from(item).map { Card(id: item.id, item: item, snap: $0) } }
+        if cards.isEmpty {
+            ScrollView(.horizontal, showsIndicators: false) { PinHereCard(side: Self.side) }
+                .contentMargins(.horizontal, 20, for: .scrollContent)
+                .scrollClipDisabled()
+                .frame(height: Self.side)
+        } else {
+            EditableTileStrip(
+                items: cards, tileWidth: Self.side, spacing: 12, margin: 20, idPrefix: "home-tile",
+                editing: $editing,
+                title: { $0.snap.title },
+                open: { c in Haptics.open(); model.openApp(c.id, fromHome: true) },
+                openFrom: { c, frame, front in model.flipOpenApp(c.id, from: frame, sourceKey: "home-tile-\(c.id)", front: front) },
+                move: { ids in model.setHomeOrder(ids) },
+                remove: { c in model.unpinFromHome(c.id) },
+                removeTitle: { c in String(localized: "Unpin “\(c.snap.title)” from Home?") },
+                removeMessage: "It stays in its chat; you can pin it again from there.",
+                removeAction: "Unpin from Home"
+            ) { c in
+                SnapshotCard(snap: c.snap, side: Self.side)
+                    .appZoomSource(c.id, zoom)
             }
-            .scrollTargetLayout()
+            .frame(minHeight: Self.side)
         }
-        .contentMargins(.horizontal, 20, for: .scrollContent)
-        .scrollTargetBehavior(.viewAligned)
-        .scrollClipDisabled()
-        .frame(height: Self.side)
     }
 }
 

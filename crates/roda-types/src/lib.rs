@@ -345,6 +345,14 @@ pub enum Capability {
         purpose: String,
         rule: String,
     },
+    /// A standing decision on an agent's requests: "always approve" / "always deny" this
+    /// kind of action (`roda_grants::standing_key`) in the grant's scope. Issued by the
+    /// agent's owner from the approvals stack; revoking it (GrantRevoked) makes the agent
+    /// ask again. Red lines can't be always-approved (`standing_allow_permitted`).
+    Standing {
+        action: String,
+        allow: bool,
+    },
 }
 
 /// Consent mode. `Auto` is the default; `Trusted` is only for agents or mini-apps you mark.

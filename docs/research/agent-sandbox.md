@@ -79,7 +79,23 @@ the host. Kubernetes is used to run the node agents, not to schedule each sandbo
 | Azure | nested virtualization on Dv5 and others | [AZ1] |
 | Hetzner dedicated (AX) | yes, bare metal | [H1] |
 | Fly.io Machines | **no** nested virtualization | [FL3] |
-| The box (this dev machine) | `/dev/kvm` exists; the `box` user is not in its group yet | measured |
+| The box (this dev machine) | yes, nested (the box is itself a VM); the `box` user is in the `kvm` group | measured |
+
+### Measured on the box (P1, 2026-10-08)
+
+`scripts/firecracker.sh measure 20`: Firecracker v1.17.0, 6.1 guest kernel, 2 vCPUs and
+128 MiB per VM, alpine root filesystem, shell script as init. The box is a VM itself (nested
+KVM, 8 vCPUs, other agents' builds running), so these are upper bounds; bare metal is faster.
+
+| What | Measured | What it means |
+|---|---|---|
+| Cold boot, process start to init running | p50 940 ms (733–1088 ms, 20 runs; an idle box gave 672–760 ms) | too slow to do per call; we boot once per template |
+| Full snapshot of a running VM | 292 ms, 128 MiB memory file | paid once per template build |
+| Restore, process start to snapshot loaded and running | p50 9.7 ms | |
+| Restore, process start to the guest answering | p50 17.8 ms (12.5–36.4 ms) | about 50× faster than booting; this is what a user waits for |
+
+The restore number uses the memory file mapped privately (pages load on first touch), not
+userfaultfd; userfaultfd matters when memory files live on remote storage.
 
 ## 5. Browser use
 

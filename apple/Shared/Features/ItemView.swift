@@ -74,8 +74,11 @@ struct PlanItemView: View {
             }
         }
         .sheet(item: $editing) { e in
-            NavigationStack { LineEditor(editing: e) { save($0) } }
-                .presentationDetents([.height(320)])
+            NavigationStack {
+                LineEditor(editing: e, onSave: { save($0) },
+                           onRemove: e.lineId == nil ? nil : { remove(lineId: e.lineId!) })
+            }
+            .presentationDetents([.height(e.lineId == nil ? 320 : 390)])
         }
         .sheet(isPresented: $showVersions) {
             if let item { NavigationStack { VersionsView(item: item) } .presentationDetents([.medium, .large]) }
@@ -190,8 +193,9 @@ struct PlanItemView: View {
         apply(out)
     }
 
-    private func remove(_ line: PlanLineDto) {
-        apply(model.perform { try model.core.removePlanLine(itemId: itemId, lineId: line.id) })
+    private func remove(_ line: PlanLineDto) { remove(lineId: line.id) }
+    private func remove(lineId: String) {
+        apply(model.perform { try model.core.removePlanLine(itemId: itemId, lineId: lineId) })
     }
 
     private func save(_ e: EditingLine) {
@@ -319,6 +323,8 @@ struct AgentReaction: View {
 struct LineEditor: View {
     @State var editing: PlanItemView.EditingLine
     var onSave: (PlanItemView.EditingLine) -> Void
+    /// Editing an existing line: the bottom row offers [trash] [Update], Things-style.
+    var onRemove: (() -> Void)? = nil
     @Environment(\.dismiss) private var dismiss
     @FocusState private var focus: Bool
 
@@ -327,6 +333,7 @@ struct LineEditor: View {
             Section("Item") {
                 TextField("E.g. Kayak tour", text: $editing.text)
                     .focused($focus)
+                    .accessibilityIdentifier("line-editor-text")
             }
             Section("Cost") {
                 TextField("Amount", value: $editing.reais, format: .currency(code: AppLocale.currencyCode).locale(AppLocale.locale))
@@ -341,12 +348,30 @@ struct LineEditor: View {
         #endif
         .toolbar {
             ToolbarItem(placement: .cancellationAction) { Button("Cancel", role: .cancel) { dismiss() } }
-            ToolbarItem(placement: .confirmationAction) {
-                Button("Save") { onSave(editing); dismiss() }
-                    .disabled(editing.text.trimmingCharacters(in: .whitespaces).isEmpty)
+            if onRemove == nil {
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Save") { onSave(editing); dismiss() }
+                        .disabled(editing.text.trimmingCharacters(in: .whitespaces).isEmpty)
+                }
             }
         }
-        .onAppear { focus = true }
+        .safeAreaInset(edge: .bottom) {
+            if let onRemove {
+                ConfirmMorphRow(
+                    primaryTitle: "Update",
+                    primaryEnabled: !editing.text.trimmingCharacters(in: .whitespaces).isEmpty,
+                    primary: { Haptics.commit(); onSave(editing); dismiss() },
+                    destructiveLabel: "Remove item",
+                    confirmTitle: "Remove item",
+                    doneTitle: "Removed",
+                    confirm: { onRemove(); dismiss() },
+                    idPrefix: "line-editor"
+                )
+                .padding(.horizontal, 18)
+                .padding(.bottom, 8)
+            }
+        }
+        .onAppear { focus = onRemove == nil }
     }
 }
 

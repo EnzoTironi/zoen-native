@@ -6665,6 +6665,986 @@
         }
       }
     },
+    "Deny": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Negar"
+          }
+        }
+      }
+    },
+    "Always approve": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sempre aprovar"
+          }
+        }
+      }
+    },
+    "Always deny": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sempre negar"
+          }
+        }
+      }
+    },
+    "Denied": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Negado"
+          }
+        }
+      }
+    },
+    "Always approved": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sempre aprovado"
+          }
+        }
+      }
+    },
+    "Always denied": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sempre negado"
+          }
+        }
+      }
+    },
+    "Always asks": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sempre pede"
+          }
+        }
+      }
+    },
+    "Back to the cards": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Voltar aos cartões"
+          }
+        }
+      }
+    },
+    "%lld of %lld decided": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%1$lld de %2$lld decididos"
+          }
+        }
+      }
+    },
+    "All notifications": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Todas as notificações"
+          }
+        }
+      }
+    },
+    "Actions: approve, deny, always approve, always deny, details.": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ações: aprovar, negar, sempre aprovar, sempre negar, detalhes."
+          }
+        }
+      }
+    },
+    "Hide details": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Esconder detalhes"
+          }
+        }
+      }
+    },
+    "Show details": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ver detalhes"
+          }
+        }
+      }
+    },
+    "Red line: this always asks. You can approve just this once.": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Linha vermelha: isso sempre pede. Dá pra aprovar só esta vez."
+          }
+        }
+      }
+    },
+    "%@ · and the same from %@": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%1$@ · e o mesmo de %2$@"
+          }
+        }
+      }
+    },
+    "asks in %@": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "pede em %@"
+          }
+        }
+      }
+    },
+    "Who sees it": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Quem vê"
+          }
+        }
+      }
+    },
+    "Action": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ação"
+          }
+        }
+      }
+    },
+    "Tap for details": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Toque para ver detalhes"
+          }
+        }
+      }
+    },
+    "What it touches": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "O que isso toca"
+          }
+        }
+      }
+    },
+    "Where": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Onde"
+          }
+        }
+      }
+    },
+    "Who’s asking": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Quem está pedindo"
+          }
+        }
+      }
+    },
+    "%@, your agent": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@, seu agente"
+          }
+        }
+      }
+    },
+    "%@, %@’s agent": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%1$@, agente de %2$@"
+          }
+        }
+      }
+    },
+    "Past decisions": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Decisões anteriores"
+          }
+        }
+      }
+    },
+    "First time it asks for this.": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Primeira vez que pede isso."
+          }
+        }
+      }
+    },
+    "Always approve: %@ in %@": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sempre aprovar: %1$@ em %2$@"
+          }
+        }
+      }
+    },
+    "Always deny: %@ in %@": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sempre negar: %1$@ em %2$@"
+          }
+        }
+      }
+    },
+    "Always": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sempre"
+          }
+        }
+      }
+    },
+    "Sends something outside Zoen, to: %@": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Envia algo para fora do Zoen, para: %@"
+          }
+        }
+      }
+    },
+    "Someone else’s data: %@": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Dados de outra pessoa: %@"
+          }
+        }
+      }
+    },
+    "Real money: %@": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Dinheiro de verdade: %@"
+          }
+        }
+      }
+    },
+    "Posts to a wider audience: %@": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Publica para mais gente: %@"
+          }
+        }
+      }
+    },
+    "Deletes for good. There’s no undo.": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Apaga de vez. Não tem desfazer."
+          }
+        }
+      }
+    },
+    "Changes in this chat. Versioned, so it can be undone.": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Mudanças nesta conversa. Versionadas, então dá pra desfazer."
+          }
+        }
+      }
+    },
+    "ALWAYS": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "SEMPRE"
+          }
+        }
+      }
+    },
+    "All caught up": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tudo em dia"
+          }
+        }
+      }
+    },
+    "Nothing is waiting for you. Your agents carry on with what you allowed.": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Nada esperando por você. Seus agentes seguem com o que você liberou."
+          }
+        }
+      }
+    },
+    "Swipe right to approve": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Arraste para a direita para aprovar"
+          }
+        }
+      }
+    },
+    "Just this once. You can also use the buttons at the bottom.": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Só desta vez. Também dá pra usar os botões lá embaixo."
+          }
+        }
+      }
+    },
+    "Swipe left to deny": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Arraste para a esquerda para negar"
+          }
+        }
+      }
+    },
+    "The agent won’t do it and says so in the chat.": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "O agente não faz e avisa na conversa."
+          }
+        }
+      }
+    },
+    "Swipe up to always approve": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Arraste para cima para sempre aprovar"
+          }
+        }
+      }
+    },
+    "This kind of request, from this agent, in this chat. Red lines still ask. Revoke it in Permissions.": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Este tipo de pedido, deste agente, nesta conversa. Linhas vermelhas continuam pedindo. Revogue em Permissões."
+          }
+        }
+      }
+    },
+    "Swipe down to always deny": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Arraste para baixo para sempre negar"
+          }
+        }
+      }
+    },
+    "It stops asking for this here. Revoke it in Permissions.": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ele para de pedir isso aqui. Revogue em Permissões."
+          }
+        }
+      }
+    },
+    "Got it": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Entendi"
+          }
+        }
+      }
+    },
+    "Always approve: %@": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sempre aprovar: %@"
+          }
+        }
+      }
+    },
+    "Always deny: %@": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sempre negar: %@"
+          }
+        }
+      }
+    },
+    "Revoke": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Revogar"
+          }
+        }
+      }
+    },
+    "None yet.": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Nenhuma ainda."
+          }
+        }
+      }
+    },
+    "Standing decisions": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Decisões permanentes"
+          }
+        }
+      }
+    },
+    "Set by swiping up (always approve) or down (always deny) on an approval. Revoke one and the agent asks again.": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Criadas ao arrastar um pedido para cima (sempre aprovar) ou para baixo (sempre negar). Revogue e o agente volta a pedir."
+          }
+        }
+      }
+    },
+    "%@ will ask again.": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ vai voltar a pedir."
+          }
+        }
+      }
+    },
+    "Spends %@": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Gasta %@"
+          }
+        }
+      }
+    },
+    "Someone else’s data": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Dados de outra pessoa"
+          }
+        }
+      }
+    },
+    "Wider audience": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Público maior"
+          }
+        }
+      }
+    },
+    "No undo": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sem desfazer"
+          }
+        }
+      }
+    },
+    "Leaves Zoen": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sai do Zoen"
+          }
+        }
+      }
+    },
+    "Can be undone": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Dá pra desfazer"
+          }
+        }
+      }
+    },
+    "Replies in the chat": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Responde na conversa"
+          }
+        }
+      }
+    },
+    "Just this once": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Só desta vez"
+          }
+        }
+      }
+    },
+    "Why it asks": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Por que pede"
+          }
+        }
+      }
+    },
+    "What should friends call you?": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Como os amigos te chamam?"
+          }
+        }
+      }
+    },
+    "Your chats stay in sync across your devices. Erasing removes them from this device only.": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Suas conversas ficam iguais em todos os seus aparelhos. Apagar tira tudo só deste aparelho."
+          }
+        }
+      }
+    },
+    "yourname": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "seunome"
+          }
+        }
+      }
+    },
+    "%lld replies": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld respostas"
+          }
+        }
+      }
+    },
+    "1 reply": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "1 resposta"
+          }
+        }
+      }
+    },
+    "Block %@? They won’t know": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bloquear %@? A pessoa não fica sabendo"
+          }
+        }
+      }
+    },
+    "Blocked": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bloqueado"
+          }
+        }
+      }
+    },
+    "Cancel reply": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Cancelar resposta"
+          }
+        }
+      }
+    },
+    "Done editing": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Concluir"
+          }
+        }
+      }
+    },
+    "Hold and drag to move": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Segure e arraste para mover"
+          }
+        }
+      }
+    },
+    "It stays in its chat; you can pin it again from there.": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ele continua na conversa; dá pra fixar de novo por lá."
+          }
+        }
+      }
+    },
+    "It stays in the chat; you can pin it again from there.": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ele continua na conversa; dá pra fixar de novo por lá."
+          }
+        }
+      }
+    },
+    "Mute %@?": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Silenciar %@?"
+          }
+        }
+      }
+    },
+    "Muted": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Silenciado"
+          }
+        }
+      }
+    },
+    "Muted on this device.": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Silenciado neste aparelho."
+          }
+        }
+      }
+    },
+    "No replies yet": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Nenhuma resposta ainda"
+          }
+        }
+      }
+    },
+    "Remove %@": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Remover %@"
+          }
+        }
+      }
+    },
+    "Remove item": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Remover item"
+          }
+        }
+      }
+    },
+    "Reply": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Responder"
+          }
+        }
+      }
+    },
+    "Reply in thread": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Responder na thread"
+          }
+        }
+      }
+    },
+    "Replying to %@": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Respondendo a %@"
+          }
+        }
+      }
+    },
+    "Replying to yourself": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Respondendo a você mesmo"
+          }
+        }
+      }
+    },
+    "Report %@?": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Denunciar %@?"
+          }
+        }
+      }
+    },
+    "Reported": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Denunciado"
+          }
+        }
+      }
+    },
+    "Revoke?": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Revogar?"
+          }
+        }
+      }
+    },
+    "Revoked": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Revogado"
+          }
+        }
+      }
+    },
+    "The mini-app stays in the chat as a card.": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "O mini-app continua na conversa como cartão."
+          }
+        }
+      }
+    },
+    "Thread": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Thread"
+          }
+        }
+      }
+    },
+    "Unpin from chat": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tirar da conversa"
+          }
+        }
+      }
+    },
+    "Unpin “%@” from Home?": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tirar “%@” do Início?"
+          }
+        }
+      }
+    },
+    "Unpin “%@” from the top of the chat?": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tirar “%@” do topo da conversa?"
+          }
+        }
+      }
+    },
+    "Update": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Atualizar"
+          }
+        }
+      }
+    },
+    "Members": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Membros"
+          }
+        }
+      }
+    },
+    "Pages": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Páginas"
+          }
+        }
+      }
+    },
+    "Opens the chat menu": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Abre o menu da conversa"
+          }
+        }
+      }
+    },
     "Text": {
       "localizations": {
         "pt-BR": {

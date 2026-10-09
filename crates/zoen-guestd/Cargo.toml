@@ -1,0 +1,17 @@
+[package]
+name = "zoen-guestd"
+description = "The agent inside each Zoen microVM: runs commands, moves files, forwards the sandbox's only network path to the host egress proxy over vsock (ADR 0028)."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+serde.workspace = true
+serde_json.workspace = true
+base64 = "0.22"
+libc = "0.2"
+
+[[bin]]
+name = "zoen-guestd"
+path = "src/main.rs"

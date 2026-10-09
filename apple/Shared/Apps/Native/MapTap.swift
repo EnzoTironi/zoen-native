@@ -165,13 +165,14 @@ func drawGlobe(_ ctx: GraphicsContext, size: CGSize, center: GeoPoint, guess: Ge
 
 /// Globo girando sozinho (widget) ou parado (ícone).
 struct GlobeView: View {
+    @Environment(\.ambientPaused) private var ambientPaused
     var spin = true
     var interactive = false
     var center = GeoPoint(lat: 20, lon: 10)
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
-        TimelineView(.animation(minimumInterval: 1 / 30, paused: !spin || reduceMotion)) { tl in
+        TimelineView(.animation(minimumInterval: 1 / 30, paused: ambientPaused || !spin || reduceMotion)) { tl in
             let t = tl.date.timeIntervalSinceReferenceDate
             Canvas { ctx, size in
                 var c = center
@@ -188,6 +189,7 @@ struct GlobeView: View {
 struct MapTapSheet: View {
     @Environment(AppModel.self) private var model
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.miniAppClose) private var miniAppClose
     let item: ItemDetail
     let app: AppStateDto
 
@@ -219,7 +221,7 @@ struct MapTapSheet: View {
         }
         .preferredColorScheme(.dark)
         .overlay(alignment: .topLeading) {
-            Button { dismiss() } label: { Image(systemName: "chevron.down").font(.body.weight(.semibold)).frame(width: 36, height: 36) }
+            Button { (miniAppClose ?? { dismiss() })() } label: { Image(systemName: "chevron.down").font(.body.weight(.semibold)).frame(width: 36, height: 36) }.accessibilityIdentifier("miniapp-close")
                 .buttonStyle(.plain).foregroundStyle(.white)
                 .glassEffect(.regular.interactive(), in: .circle)
                 .padding(.top, 16).padding(.leading, 16)
@@ -395,7 +397,7 @@ struct MapTapSheet: View {
                 .padding(12)
                 .background(.white.opacity(0.08), in: .rect(cornerRadius: 14, style: .continuous))
             }
-            Button("Close") { dismiss() }.buttonStyle(WabiPill()).padding(.top, 8)
+            Button("Close") { (miniAppClose ?? { dismiss() })() }.buttonStyle(WabiPill()).padding(.top, 8).accessibilityIdentifier("miniapp-close")
         }
         .padding(.horizontal, 20)
         .padding(.bottom, 30)
