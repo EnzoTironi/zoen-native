@@ -1,4 +1,4 @@
-//! The engine's side of linked devices (ADR 0043): siblings in every group, unlinked ones
+//! The engine's side of linked devices (ADR 0045): siblings in every group, unlinked ones
 //! out, the history bundle and older pages between two devices of the same person.
 
 use std::collections::{BTreeSet, HashMap};

@@ -898,13 +898,21 @@ impl Engine {
             if !self.device().is_ok_and(|d| d.has_group(&space)) {
                 continue;
             }
-            let last: i64 = self
+            let last: Option<i64> = self
                 .store
                 .meta(&checkpointed_ms_meta(&space))
                 .ok()
                 .flatten()
-                .and_then(|v| v.parse().ok())
-                .unwrap_or(0);
+                .and_then(|v| v.parse().ok());
+            // A group this device never checkpointed starts its clock now: its hold (from
+            // when it was added) is fresh, and a device in many new groups must not
+            // checkpoint them all at its next launch.
+            let Some(last) = last else {
+                let _ = self
+                    .store
+                    .set_meta(&checkpointed_ms_meta(&space), &now.to_string());
+                continue;
+            };
             if now - last >= checkpoint_refresh_ms() {
                 self.net.mls.checkpoint_due.insert(space);
             }

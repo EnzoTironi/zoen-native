@@ -1,4 +1,4 @@
-# ADR 0043: Linking a second device, with its history
+# ADR 0045: Linking a second device, with its history
 
 Status: accepted (M2)
 

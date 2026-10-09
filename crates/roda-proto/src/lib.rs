@@ -349,7 +349,7 @@ pub enum Op {
     ClaimKeyPackages {
         ids: Vec<IdentityId>,
     },
-    /// Leaves a sealed link box for a device being linked (ADR 0043), under `id` = SHA-256
+    /// Leaves a sealed link box for a device being linked (ADR 0045), under `id` = SHA-256
     /// of the link secret in its QR code. Only the new device can open it.
     DeliverLink {
         id: String,
@@ -579,7 +579,7 @@ pub fn auth_message(nonce: &str, relay: &str) -> Vec<u8> {
 
 /// What a device signs to upload a blob: binds the content hash and a timestamp to this
 /// relay, so a captured header only re-uploads the same bytes for a few minutes.
-/// What a device signs to put or delete a chunk of a history transfer (ADR 0043).
+/// What a device signs to put or delete a chunk of a history transfer (ADR 0045).
 /// `op` is "put" or "delete"; `n` and `sha256` are empty for a delete.
 pub fn transfer_message(op: &str, transfer: &str, n: &str, sha256: &str, ts_ms: i64) -> Vec<u8> {
     format!("{PROTOCOL}:transfer-{op}:{transfer}:{n}:{sha256}:{ts_ms}").into_bytes()

@@ -821,7 +821,7 @@ fn finish(child: std::process::Child) -> (bool, String) {
     )
 }
 
-/// ADR 0043: a second device of the same account. The new device shows a code; the
+/// ADR 0045: a second device of the same account. The new device shows a code; the
 /// existing one sends it the account over the relay (sealed to the code), adds it to every
 /// end-to-end group, and hands it the recent history in encrypted chunks it downloads (and
 /// resumes) and then deletes. Older pages come from the existing device on demand while it

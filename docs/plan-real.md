@@ -196,7 +196,7 @@ Shape:
   Spaces stay for communities.
 - Device secrets: the Ed25519 secrets are wrapped by a Secure Enclave P-256 key
   (`kSecAttrTokenIDSecureEnclave`) on hardware; the simulator keeps the Keychain item.
-- Linking a second device (built, ADR 0043): the new device shows a code (QR) with its keys
+- Linking a second device (built, ADR 0045): the new device shows a code (QR) with its keys
   and a one-time secret; an existing device sends it the account sealed to that secret,
   adds it to every group and hands over the history: the recent window per chat in
   encrypted, resumable chunks deleted after download, older pages on demand from the

@@ -930,7 +930,7 @@ pub(crate) fn tracing_like(msg: &str) {
     }
 }
 
-/// Waits for a link box as a device with no account yet (ADR 0043): it signs in as itself
+/// Waits for a link box as a device with no account yet (ADR 0045): it signs in as itself
 /// (its device key as identity, self-certified), which lets it fetch and nothing else.
 pub async fn fetch_link_box(
     relay_url: &str,

@@ -308,7 +308,7 @@ pub async fn claim_key_packages(
         .collect())
 }
 
-// ── Linking devices (ADR 0043) ──
+// ── Linking devices (ADR 0045) ──
 
 /// Largest sealed link box (identity keys, a certificate, a history manifest).
 pub const MAX_LINK_BOX: usize = 64 * 1024;

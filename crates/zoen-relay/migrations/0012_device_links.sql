@@ -1,4 +1,4 @@
--- Linking and unlinking devices (ADR 0043).
+-- Linking and unlinking devices (ADR 0045).
 
 -- An unlinked device can't sign in again; its row stays so it can't come back quietly.
 ALTER TABLE devices ADD COLUMN revoked_at TIMESTAMPTZ;

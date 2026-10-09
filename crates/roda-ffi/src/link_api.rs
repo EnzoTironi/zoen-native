@@ -1,4 +1,4 @@
-//! Linking a second device, from the apps and the CLI (ADR 0043).
+//! Linking a second device, from the apps and the CLI (ADR 0045).
 //!
 //! New device: [`RodaEngine::link_request`] (shows the code), [`RodaEngine::link_wait`]
 //! (becomes the account), then [`RodaEngine::receive_history`] (the first bundle) and

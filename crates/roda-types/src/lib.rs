@@ -501,7 +501,7 @@ pub enum EventBody {
         digest: String,
     },
     /// The author's `device` needs a fresh leaf in this end-to-end Space's group from here
-    /// (ADR 0026, ADR 0043): a device just linked, or one back after the pruning ceiling let
+    /// (ADR 0026, ADR 0045): a device just linked, or one back after the pruning ceiling let
     /// history it never fetched go. Whoever may commit for it adds it (taking an old leaf
     /// out first); the relay holds pruning for it from this entry until it checkpoints.
     DeviceJoining {

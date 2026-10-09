@@ -1,4 +1,4 @@
-//! Linking a second device (ADR 0043): the code a new device shows, the boxes an existing
+//! Linking a second device (ADR 0045): the code a new device shows, the boxes an existing
 //! device seals to it, and the history it hands over.
 //!
 //! Everything between the two devices is HPKE (RFC 9180) in PSK mode: DHKEM(X25519,
@@ -142,7 +142,7 @@ pub fn open(sk: &[u8], secret: &[u8; 32], context: &str, sealed: &[u8]) -> Optio
 }
 
 /// What the existing device hands the new one: the account (the identity key moves, see
-/// ADR 0043), a certificate for the new device, and how to reach the existing one.
+/// ADR 0045), a certificate for the new device, and how to reach the existing one.
 #[derive(Clone, Serialize, Deserialize)]
 pub struct IdentityBox {
     pub identity_secret: String,

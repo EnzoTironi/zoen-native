@@ -1,4 +1,4 @@
-//! History transfers between two devices of one person (ADR 0043): encrypted chunks the
+//! History transfers between two devices of one person (ADR 0045): encrypted chunks the
 //! existing device puts and the new one takes, then deletes. The relay never has the key.
 //!
 //!   PUT    /v1/transfer/{id}/{n}   body = ciphertext; headers x-zoen-device, x-zoen-ts,
