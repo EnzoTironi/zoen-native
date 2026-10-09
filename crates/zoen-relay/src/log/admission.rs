@@ -315,13 +315,13 @@ mod tests {
             admit(&env(&a, seen.clone(), msg()), &f).unwrap_err().reason,
             "this space is end-to-end encrypted; seal the event"
         );
-        for kind in [
-            SealedKind::Application,
-            SealedKind::Commit,
-            SealedKind::Welcome,
-        ] {
-            assert_eq!(admit(&sealed(&a, kind), &f).unwrap(), Effect::Nothing);
-        }
+        // Commits and Welcomes carry real MLS framing the relay reads (one commit per
+        // epoch): `log_store`'s `one commit per epoch, and each welcome follows its commit`
+        // drives them with real groups.
+        assert_eq!(
+            admit(&sealed(&a, SealedKind::Application), &f).unwrap(),
+            Effect::Nothing
+        );
         assert_eq!(
             admit(&sealed(&a, SealedKind::Unspecified), &f)
                 .unwrap_err()
