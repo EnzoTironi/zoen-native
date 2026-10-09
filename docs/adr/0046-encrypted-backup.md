@@ -100,6 +100,16 @@ evaluates blinded points, and provides independent decoy evaluations and metadat
     updates the matching active one. A stale device gets `409` and must configure backup
     again. Per-identity database locks serialize writes across relay nodes.
   - `DELETE /v1/backup` turns the backup off. It forgets the vault and the object.
+  - **Bounded waits.** `ZOEN_BACKUP_STORAGE_TIMEOUT_MS` defaults to 15000 for each PUT,
+    complete GET including its body, and DELETE. `ZOEN_BACKUP_REQUEST_TIMEOUT_MS` defaults
+    to 30000 for the full HTTP operation. `ZOEN_BACKUP_LOCK_TIMEOUT_MS` defaults to 5000
+    for database lock acquisition. Values must be 1–120000 ms, storage must be below the
+    request budget, and the lock budget must not exceed it. Each authorization transaction
+    also sets PostgreSQL statement and idle-in-transaction timeouts to the request budget,
+    so cancellation cannot leave device or restore locks held indefinitely. A timed-out
+    PUT never publishes its new object pointer, even if the cloud write finishes later.
+    Cleanup runs after commit and is bounded; failed or uncertain cleanup and orphaned PUTs
+    still require an operations-tested garbage collector before full-scale completion.
 - **Restore (no device yet).**
   - `POST /v1/backup/restore/start {handle, blinded?}` → `{identity, mode, kdf,
     evaluated?, generation}`. The development password mode counts a guess.
@@ -167,5 +177,9 @@ like any new device of that person.
   lockout from an older relay;
 - a vault key without the development opt-in rejects password setup, upload and restore
   while preserving an existing snapshot and counter.
+- contested database locks and incomplete request bodies terminate within configured
+  budgets without mutating the existing snapshot;
+- a local S3-compatible endpoint proves stalled PUT acknowledgements, stalled GET bodies,
+  and stalled cleanup are bounded, Unlink completes, and a late PUT remains an orphan.
 
 The backup decision was originally numbered 0045, also used by device linking. It is now 0046. The existing `0020_backups.sql` migration retains its historical comment so its SQLx checksum remains unchanged.

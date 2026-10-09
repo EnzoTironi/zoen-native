@@ -99,14 +99,7 @@ pub async fn connect(cfg: &Config) -> anyhow::Result<PgPool> {
 }
 
 pub fn router(state: Shared) -> Router {
-    Router::new()
-        .route("/v1/sync", get(ws))
-        .route(
-            "/v1/blobs/{sha}",
-            put(blobs::put)
-                .get(blobs::get)
-                .layer(DefaultBodyLimit::max(blobs::MAX_BLOB_BYTES + 1024)),
-        )
+    let backups = Router::new()
         .route("/v1/backup/oprf", post(backup::oprf))
         .route("/v1/backup/vault", put(backup::put_vault))
         .route(
@@ -117,6 +110,19 @@ pub fn router(state: Shared) -> Router {
         .route("/v1/backup/restore/start", post(backup::restore_start))
         .route("/v1/backup/restore/open", post(backup::restore_open))
         .route("/v1/backup/restore/blob", get(backup::restore_blob))
+        .route_layer(axum::middleware::from_fn_with_state(
+            state.clone(),
+            backup::deadline,
+        ));
+    Router::new()
+        .merge(backups)
+        .route("/v1/sync", get(ws))
+        .route(
+            "/v1/blobs/{sha}",
+            put(blobs::put)
+                .get(blobs::get)
+                .layer(DefaultBodyLimit::max(blobs::MAX_BLOB_BYTES + 1024)),
+        )
         .route(
             "/v1/transfer/{id}/{n}",
             put(transfer::put)
