@@ -47,6 +47,10 @@ import xyz.tironi.zoen.ZoenViewModel
 import xyz.tironi.zoen.core.*
 import xyz.tironi.zoen.data.AppState
 import xyz.tironi.zoen.data.FileAccess
+import xyz.tironi.zoen.media.VoiceBubble
+import xyz.tironi.zoen.media.VoiceComposer
+import xyz.tironi.zoen.media.VoiceNoteRef
+import xyz.tironi.zoen.media.MediaFiles
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -100,6 +104,10 @@ fun ChatScreen(model: ZoenViewModel, state: AppState, spaceId: String, navigate:
     var cameraUri by rememberSaveable { mutableStateOf<String?>(null) }
     val camera = rememberLauncherForActivityResult(ActivityResultContracts.TakePicture()) { success ->
         if (success) cameraUri?.let { import(Uri.parse(it)) }
+    }
+    var videoUri by rememberSaveable { mutableStateOf<String?>(null) }
+    val videoCamera = rememberLauncherForActivityResult(ActivityResultContracts.CaptureVideo()) { success ->
+        if (success) videoUri?.let { import(Uri.parse(it)) }
     }
     val send: () -> Unit = {
         if (draft.isNotBlank() && !sending) {
@@ -164,7 +172,8 @@ fun ChatScreen(model: ZoenViewModel, state: AppState, spaceId: String, navigate:
                             maxLines = 5, keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Sentences, imeAction = ImeAction.Send),
                             keyboardActions = KeyboardActions(onSend = { send() }),
                         )
-                        FilledIconButton(onClick = send, enabled = draft.isNotBlank() && !sending && !state.keyMissing, modifier = Modifier.padding(bottom = 4.dp).size(48.dp).testTag("send")) {
+                        if (draft.isBlank()) VoiceComposer(model, spaceId, Modifier.padding(bottom = 4.dp), reply = replyId, onSent = { replyId = null })
+                        else FilledIconButton(onClick = send, enabled = draft.isNotBlank() && !sending && !state.keyMissing, modifier = Modifier.padding(bottom = 4.dp).size(48.dp).testTag("send")) {
                             if (sending) CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp)
                             else Icon(Icons.AutoMirrored.Rounded.Send, stringResource(R.string.send))
                         }
@@ -183,7 +192,7 @@ fun ChatScreen(model: ZoenViewModel, state: AppState, spaceId: String, navigate:
             }
             Box(Modifier.weight(1f)) {
                 LazyColumn(state = list, modifier = Modifier.fillMaxSize(), contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-                    items(timeline, key = { it.id }) { entry -> TimelineRow(entry, navigate, onReply = { replyId = entry.id }, onThread = { navigate(Thread(spaceId, entry.id)) }) }
+                    items(timeline, key = { it.id }) { entry -> TimelineRow(model, entry, navigate, onReply = { replyId = entry.id }, onThread = { navigate(Thread(spaceId, entry.id)) }) }
                 }
                 val lastVisible = list.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: 0
                 if (timeline.size > 5 && lastVisible < timeline.lastIndex - 1) SmallFloatingActionButton(onClick = { model.launch { list.animateScrollToItem(timeline.lastIndex) } }, Modifier.align(Alignment.BottomEnd).padding(16.dp)) {
@@ -193,8 +202,9 @@ fun ChatScreen(model: ZoenViewModel, state: AppState, spaceId: String, navigate:
         }
     }
     if (attachments) ModalBottomSheet(onDismissRequest = { attachments = false }) {
-        SettingsRow(Icons.Rounded.PhotoLibrary, stringResource(R.string.photo), onClick = { attachments = false; photoPicker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) })
+        SettingsRow(Icons.Rounded.PhotoLibrary, stringResource(R.string.media_gallery), onClick = { attachments = false; photoPicker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageAndVideo)) })
         SettingsRow(Icons.Rounded.CameraAlt, stringResource(R.string.camera), onClick = { attachments = false; val uri = FileAccess.cameraUri(context); cameraUri = uri.toString(); camera.launch(uri) })
+        SettingsRow(Icons.Rounded.Videocam, stringResource(R.string.media_record_video), onClick = { attachments = false; val uri = MediaFiles.videoUri(context); videoUri = uri.toString(); videoCamera.launch(uri) })
         SettingsRow(Icons.Rounded.AttachFile, stringResource(R.string.import_file), onClick = { attachments = false; filePicker.launch(arrayOf("*/*")) })
         SettingsRow(Icons.Rounded.Article, stringResource(R.string.new_page), onClick = {
             attachments = false
@@ -206,7 +216,7 @@ fun ChatScreen(model: ZoenViewModel, state: AppState, spaceId: String, navigate:
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
-fun TimelineRow(entry: TimelineEntry, navigate: (NavKey) -> Unit, onReply: () -> Unit, onThread: (() -> Unit)?) {
+fun TimelineRow(model: ZoenViewModel, entry: TimelineEntry, navigate: (NavKey) -> Unit, onReply: () -> Unit, onThread: (() -> Unit)?) {
     val context = LocalContext.current
     var menu by remember { mutableStateOf(false) }
     val copied = stringResource(R.string.copied)
@@ -229,7 +239,9 @@ fun TimelineRow(entry: TimelineEntry, navigate: (NavKey) -> Unit, onReply: () ->
                                     Column(Modifier.padding(10.dp)) { Text(quote.author.name, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary); Text(quote.text, maxLines = 2, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.bodySmall) }
                                 }
                             }
-                            if (kind.text.isNotBlank()) Text(kind.text, style = MaterialTheme.typography.bodyLarge)
+                            val voice = VoiceNoteRef.parse(kind.text)
+                            if (voice != null) VoiceBubble(model, voice)
+                            else if (kind.text.isNotBlank()) Text(kind.text, style = MaterialTheme.typography.bodyLarge)
                             kind.card?.let { card ->
                                 Card(onClick = { navigate(Item(card.itemId)) }, modifier = Modifier.testTag("item:${card.itemId}"), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
                                     Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -273,12 +285,13 @@ fun ThreadScreen(model: ZoenViewModel, state: AppState, space: String, root: Str
         Row(Modifier.navigationBarsPadding().imePadding().padding(16.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             OutlinedTextField(text, { text = it }, Modifier.weight(1f), placeholder = { Text(stringResource(R.string.reply)) }, maxLines = 4,
                 label = entries.firstOrNull { it.id == replyTo }?.let { { Text(it.author.name) } })
-            FilledIconButton(onClick = {
+            if (text.isBlank()) VoiceComposer(model, space, reply = replyTo, thread = true, onSent = { replyTo = root })
+            else FilledIconButton(onClick = {
                 val draft = text; val target = replyTo; sending = true
                 model.launch { try { model.send(space, draft, target, true); if (text == draft) text = ""; replyTo = root } finally { sending = false } }
             }, enabled = text.isNotBlank() && !sending) { Icon(Icons.AutoMirrored.Rounded.Send, stringResource(R.string.send)) }
         }
     }) { padding -> LazyColumn(Modifier.padding(padding), contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-        items(entries, key = { it.id }) { entry -> TimelineRow(entry, navigate, onReply = { replyTo = entry.id }, onThread = null) }
+        items(entries, key = { it.id }) { entry -> TimelineRow(model, entry, navigate, onReply = { replyTo = entry.id }, onThread = null) }
     } }
 }
