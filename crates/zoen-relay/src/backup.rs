@@ -19,7 +19,7 @@
 // Helpers return the refusal itself, ready to send; it's built once per request, never hot.
 #![allow(clippy::result_large_err)]
 
-use std::sync::Arc;
+use std::{sync::Arc, time::Duration};
 
 use axum::{
     body::Bytes,
@@ -48,11 +48,25 @@ pub const MAX_GUESSES: i32 = 10;
 pub const MAX_BACKUP_BYTES: usize = 64 * 1024 * 1024;
 const MAX_SKEW_MS: i64 = 5 * 60 * 1000;
 
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug)]
 pub struct Settings {
     /// Development only. Public password recovery currently lets any caller exhaust
     /// another person's destructive guess counter. Production needs independent proof.
     pub dev_allow_unauthenticated_password_backup: bool,
+    pub storage_timeout: Duration,
+    pub request_timeout: Duration,
+    pub lock_timeout: Duration,
+}
+
+impl Default for Settings {
+    fn default() -> Self {
+        Self {
+            dev_allow_unauthenticated_password_backup: false,
+            storage_timeout: Duration::from_secs(15),
+            request_timeout: Duration::from_secs(30),
+            lock_timeout: Duration::from_secs(5),
+        }
+    }
 }
 
 impl Settings {
@@ -63,9 +77,54 @@ impl Settings {
                 Ok("1") => true,
                 _ => anyhow::bail!("ZOEN_DEV_ALLOW_UNAUTHENTICATED_PASSWORD_BACKUP must be 0 or 1"),
             };
+        let defaults = Self::default();
+        let storage_timeout =
+            timeout_from_env("ZOEN_BACKUP_STORAGE_TIMEOUT_MS", defaults.storage_timeout)?;
+        let request_timeout =
+            timeout_from_env("ZOEN_BACKUP_REQUEST_TIMEOUT_MS", defaults.request_timeout)?;
+        let lock_timeout = timeout_from_env(
+            "ZOEN_BACKUP_LOCK_TIMEOUT_MS",
+            defaults.lock_timeout.min(request_timeout),
+        )?;
+        anyhow::ensure!(
+            storage_timeout < request_timeout && lock_timeout <= request_timeout,
+            "backup storage timeout must be below the request timeout; lock timeout must not exceed it"
+        );
         Ok(Self {
             dev_allow_unauthenticated_password_backup,
+            storage_timeout,
+            request_timeout,
+            lock_timeout,
         })
+    }
+}
+
+fn timeout_from_env(name: &str, default: Duration) -> anyhow::Result<Duration> {
+    let value = match std::env::var(name) {
+        Err(std::env::VarError::NotPresent) => return Ok(default),
+        value => value?,
+    };
+    let milliseconds: u64 = value
+        .parse()
+        .map_err(|_| anyhow::anyhow!("{name} must be milliseconds"))?;
+    anyhow::ensure!(
+        (1..=120_000).contains(&milliseconds),
+        "{name} must be between 1 and 120000 milliseconds"
+    );
+    Ok(Duration::from_millis(milliseconds))
+}
+
+pub(crate) async fn deadline(
+    State(st): State<Shared>,
+    request: axum::extract::Request,
+    next: axum::middleware::Next,
+) -> Response {
+    match tokio::time::timeout(st.backup_settings.request_timeout, next.run(request)).await {
+        Ok(response) => response,
+        Err(_) => err(
+            StatusCode::SERVICE_UNAVAILABLE,
+            "backup operation timed out",
+        ),
     }
 }
 
@@ -215,6 +274,25 @@ fn hex32(s: &str) -> Option<[u8; 32]> {
     hex::decode(s).ok()?.try_into().ok()
 }
 
+async fn begin(st: &Shared) -> Result<Transaction<'static, Postgres>, Response> {
+    let mut tx = st.pool.begin().await.map_err(|_| unavailable())?;
+    let request = format!("{}ms", st.backup_settings.request_timeout.as_millis());
+    let lock = format!("{}ms", st.backup_settings.lock_timeout.as_millis());
+    // These are server-side backstops if a cancelled request cannot send its rollback.
+    // In particular, idle timeout releases device/restore locks during stalled storage.
+    sqlx::query(
+        "SELECT set_config('lock_timeout', $1, true),
+                set_config('statement_timeout', $2, true),
+                set_config('idle_in_transaction_session_timeout', $2, true)",
+    )
+    .bind(lock)
+    .bind(request)
+    .execute(&mut *tx)
+    .await
+    .map_err(|_| unavailable())?;
+    Ok(tx)
+}
+
 /// The identity behind a signed backup write, or the response that refuses it.
 async fn signed_identity(
     st: &Shared,
@@ -236,7 +314,7 @@ async fn signed_identity(
     if (now_ms() - ts_ms).abs() > MAX_SKEW_MS {
         return Err(err(StatusCode::UNAUTHORIZED, "stale signature"));
     }
-    let mut tx = st.pool.begin().await.map_err(|_| unavailable())?;
+    let mut tx = begin(st).await?;
     // Unlink waits for this authorization lock. A write cannot commit after revocation.
     let identity: Option<String> = match sqlx::query_scalar(
         "SELECT identity FROM devices WHERE device = $1 AND revoked_at IS NULL FOR SHARE",
@@ -499,9 +577,23 @@ pub async fn put_blob(State(st): State<Shared>, headers: HeaderMap, body: Bytes)
     }
     let key = format!("backups/v2/{identity}/{}", hex::encode(object_id));
     let path = object_key(&identity, Some(&key));
-    if let Err(e) = st.blobs.put(&path, PutPayload::from_bytes(body)).await {
-        tracing::warn!(error = %e, "backup put failed");
-        return err(StatusCode::SERVICE_UNAVAILABLE, "storage unavailable");
+    match tokio::time::timeout(
+        st.backup_settings.storage_timeout,
+        st.blobs.put(&path, PutPayload::from_bytes(body)),
+    )
+    .await
+    {
+        Ok(Ok(_)) => {}
+        Ok(Err(e)) => {
+            tracing::warn!(error = %e, "backup put failed");
+            return err(StatusCode::SERVICE_UNAVAILABLE, "storage unavailable");
+        }
+        Err(_) => {
+            // The remote PUT may still finish. This unique key is an orphan, never an
+            // active pointer: publication only follows an acknowledged durable write.
+            tracing::warn!("backup put timed out");
+            return err(StatusCode::SERVICE_UNAVAILABLE, "storage unavailable");
+        }
     }
     let r = if let Some(setup) = setup {
         sqlx::query(
@@ -552,7 +644,7 @@ pub async fn put_blob(State(st): State<Shared>, headers: HeaderMap, body: Bytes)
         let old_key: Option<String> = old.get("blob_key");
         let old_path = object_key(&identity, old_key.as_deref());
         if old_path != path {
-            let _ = st.blobs.delete(&old_path).await;
+            cleanup(&st, &old_path).await;
         }
     }
     tracing::info!(identity = %crate::pseudonym::pseudo(&identity), bytes = n, "backup stored");
@@ -589,12 +681,17 @@ pub async fn delete(State(st): State<Shared>, headers: HeaderMap, body: Bytes) -
     }
     if let Some(row) = old {
         let key: Option<String> = row.get("blob_key");
-        let _ = st
-            .blobs
-            .delete(&object_key(&identity, key.as_deref()))
-            .await;
+        cleanup(&st, &object_key(&identity, key.as_deref())).await;
     }
     StatusCode::NO_CONTENT.into_response()
+}
+
+async fn cleanup(st: &Shared, path: &ObjPath) {
+    match tokio::time::timeout(st.backup_settings.storage_timeout, st.blobs.delete(path)).await {
+        Ok(Ok(())) | Ok(Err(object_store::Error::NotFound { .. })) => {}
+        Ok(Err(e)) => tracing::warn!(error = %e, "backup cleanup failed; object retained for GC"),
+        Err(_) => tracing::warn!("backup cleanup timed out; object retained for GC"),
+    }
 }
 
 // ───────────────────────────── restore (no device yet) ─────────────────────────────
@@ -616,7 +713,7 @@ async fn vault_by_handle(
     st: &Shared,
     handle: &str,
 ) -> Result<(Option<VaultRow>, Transaction<'static, Postgres>), Response> {
-    let mut tx = st.pool.begin().await.map_err(|_| unavailable())?;
+    let mut tx = begin(st).await?;
     let row = sqlx::query(
         "SELECT v.identity, v.mode, v.oprf_key, v.verifier, v.wrapped_key, v.kdf, v.locked,
                 v.blob_bytes, v.blob_key, v.generation
@@ -942,21 +1039,20 @@ pub async fn restore_blob(
         Ok(r) => r,
         Err(r) => return r,
     };
-    match st
-        .blobs
-        .get(&object_key(&row.identity, row.blob_key.as_deref()))
-        .await
+    let path = object_key(&row.identity, row.blob_key.as_deref());
+    // Keep the snapshot row locked through headers and the entire bounded body fetch.
+    match tokio::time::timeout(st.backup_settings.storage_timeout, async {
+        st.blobs.get(&path).await?.bytes().await
+    })
+    .await
     {
-        Ok(r) => match r.bytes().await {
-            Ok(b) => {
-                if tx.commit().await.is_err() {
-                    return unavailable();
-                }
-                ([("content-type", "application/octet-stream")], b).into_response()
+        Ok(Ok(b)) => {
+            if tx.commit().await.is_err() {
+                return unavailable();
             }
-            Err(_) => err(StatusCode::SERVICE_UNAVAILABLE, "storage unavailable"),
-        },
-        Err(object_store::Error::NotFound { .. }) => err(StatusCode::NOT_FOUND, "missing"),
-        Err(_) => err(StatusCode::SERVICE_UNAVAILABLE, "storage unavailable"),
+            ([("content-type", "application/octet-stream")], b).into_response()
+        }
+        Ok(Err(object_store::Error::NotFound { .. })) => err(StatusCode::NOT_FOUND, "missing"),
+        Ok(Err(_)) | Err(_) => err(StatusCode::SERVICE_UNAVAILABLE, "storage unavailable"),
     }
 }
