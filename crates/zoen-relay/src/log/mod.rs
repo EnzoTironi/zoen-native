@@ -4,6 +4,7 @@
 
 pub mod admission;
 pub mod fdb;
+pub mod sequencer;
 
 use roda_proto::{Envelope, InviteCreated, Sequenced};
 use roda_types::Role;
