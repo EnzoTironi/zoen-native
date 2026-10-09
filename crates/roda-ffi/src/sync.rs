@@ -56,6 +56,7 @@ pub struct NetState {
     /// Wakes the network task (set while sync runs).
     pub poke: Option<Box<dyn Fn() + Send>>,
     pub profiles: crate::profile::ProfileNet,
+    pub mls: crate::mls::MlsNet,
 }
 
 impl NetState {
@@ -81,8 +82,6 @@ pub enum Ingest {
     Duplicate,
     /// There's a hole before it: sync this Space from `next`.
     Gap { next: u64 },
-    /// End-to-end encrypted: needs the MLS layer.
-    Sealed,
     /// Bad signature, broken chain…: refused and not stored.
     Invalid(String),
 }
@@ -165,6 +164,7 @@ impl Engine {
             self.state.apply(&e);
         }
         self.recompute_unknown();
+        self.reload_mls();
         Ok(())
     }
 
@@ -185,7 +185,7 @@ impl Engine {
         self.net.unknown = unknown;
     }
 
-    fn note_unknown(&mut self, e: &Event) {
+    pub(crate) fn note_unknown(&mut self, e: &Event) {
         if !self.identities.contains_key(&e.author) {
             self.net.unknown.insert(e.author.clone());
         }
@@ -237,6 +237,7 @@ impl Engine {
         body: EventBody,
     ) -> R<Event> {
         let creating = matches!(body, EventBody::SpaceCreated { .. });
+        let seal = self.is_e2e(space) && crate::mls::must_seal(&body);
         if !creating && !self.state.spaces.contains_key(space) {
             return Err(CoreError::NotFound {
                 what: t("Espaço", "Space"),
@@ -249,6 +250,9 @@ impl Engine {
             self.causal_head(space)?
         };
         let e = signer.sign_event(space, &client_id, at_ms, seen, body);
+        if seal {
+            self.seal_outgoing(&e)?;
+        }
         self.store.outbox_put(&e)?;
         if creating && !self.space_order.contains(&space.to_string()) {
             self.space_order.push(space.to_string());
@@ -264,9 +268,21 @@ impl Engine {
 
     /// An event the relay sequenced.
     pub fn ingest(&mut self, ev: Sequenced) -> Ingest {
+        if ev.env.is_sealed() {
+            return self.ingest_sealed(ev);
+        }
         let Some(e) = ev.plain_event() else {
-            return Ingest::Sealed;
+            return Ingest::Invalid(t("evento ilegível", "unreadable event"));
         };
+        let r = self.ingest_plain(e.clone());
+        if matches!(r, Ingest::Applied | Ingest::Confirmed) {
+            self.mls_membership_changed(&e);
+            self.compare_checkpoint(&e);
+        }
+        r
+    }
+
+    fn ingest_plain(&mut self, e: Event) -> Ingest {
         let space = e.space.clone();
         let next = self.logs.get(&space).map(|l| l.next_seq()).unwrap_or(0);
         if e.seq < next {
@@ -362,12 +378,14 @@ impl Engine {
             .into_iter()
             .filter(|p| !p.failed)
             .map(|p| {
-                let mut env = Envelope::plain(&p.event);
-                env.invite = self
-                    .store
-                    .meta(&format!("invite:{}", p.event.client_id))
-                    .ok()
-                    .flatten();
+                let mut env = self.outgoing_envelope(&p.event);
+                if !env.is_sealed() {
+                    env.invite = self
+                        .store
+                        .meta(&format!("invite:{}", p.event.client_id))
+                        .ok()
+                        .flatten();
+                }
                 env
             })
             .collect()
@@ -630,6 +648,7 @@ impl Engine {
         &mut self,
         title: &str,
         kind: SpaceKind,
+        privacy: Privacy,
         members: &[IdentityId],
     ) -> R<SpaceId> {
         let me = self.me_id()?;
@@ -641,16 +660,18 @@ impl Engine {
         let space = new_id("sp");
         self.store.set_synced(&space)?;
         self.net.synced.insert(space.clone());
-        // M1: the relay can read (Closed). M2 switches DMs and groups to MLS (EndToEnd).
         self.append(
             &space,
             &me,
             EventBody::SpaceCreated {
                 title: title.to_string(),
                 kind,
-                privacy: Privacy::Closed,
+                privacy,
             },
         )?;
+        if privacy == Privacy::EndToEnd {
+            self.create_mls_group(&space)?;
+        }
         for m in members.iter().filter(|m| **m != me) {
             self.append(
                 &space,
@@ -690,7 +711,7 @@ impl Engine {
                 what: t("pessoa", "person"),
             });
         }
-        self.create_synced_space("", SpaceKind::Direct, &[who.to_string()])
+        self.create_synced_space("", SpaceKind::Direct, Privacy::Closed, &[who.to_string()])
     }
 
     pub fn add_member(&mut self, space: &str, who: &str) -> R<()> {

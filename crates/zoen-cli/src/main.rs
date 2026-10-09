@@ -16,8 +16,8 @@ use std::{
 };
 
 use roda_ffi::{
-    ConnectionDto, CoreListener, Delivery, EntryKind, PhotoChange, ProfileDto, RodaEngine,
-    SecretVault, SpaceKindDto,
+    ConnectionDto, CoreListener, Delivery, EntryKind, PhotoChange, PrivacyDto, ProfileDto,
+    RodaEngine, SecretVault, SpaceKindDto,
 };
 
 struct FileVault {
@@ -178,7 +178,8 @@ fn usage() -> ! {
          whoami | status | chats | verify\n\
          people QUERY\n\
          dm @HANDLE [TEXT]\n\
-         group TITLE @HANDLE...\n\
+         group TITLE @HANDLE... [--e2e]   --e2e: end-to-end (MLS), the relay holds ciphertext\n\
+         keys CHAT                        an end-to-end chat's group: epoch, digest, members\n\
          send CHAT TEXT [--offline]      CHAT = @handle, title or space id\n\
          read CHAT\n\
          invite CHAT\n\
@@ -386,6 +387,11 @@ async fn main() {
             println!("{space}");
         }
         "group" => {
+            let privacy = if cli.switch("--e2e") {
+                PrivacyDto::EndToEnd
+            } else {
+                PrivacyDto::Closed
+            };
             if cli.args.is_empty() {
                 usage();
             }
@@ -402,7 +408,9 @@ async fn main() {
                     .unwrap_or_else(|| die(format!("@{h} isn't on Zoen")));
                 ids.push(p.id);
             }
-            let space = e.create_group(title, ids).unwrap_or_else(|err| die(err));
+            let space = e
+                .create_group_with(title, ids, privacy)
+                .unwrap_or_else(|err| die(err));
             e.wait_until_idle(timeout).await;
             println!("{space}");
         }
@@ -440,6 +448,24 @@ async fn main() {
                 println!("{}", line(&t));
             }
             let _ = e.mark_read(space);
+        }
+        "keys" => {
+            let space = chat(
+                &e,
+                cli.args
+                    .first()
+                    .map(String::as_str)
+                    .unwrap_or_else(|| usage()),
+            );
+            match e.group_keys(space) {
+                Some(k) => println!(
+                    "epoch={}\tdigest={}\tmembers={}",
+                    k.epoch,
+                    k.digest,
+                    k.members.len()
+                ),
+                None => die("no group keys for that chat on this device"),
+            }
         }
         "chats" => {
             for s in e.spaces() {

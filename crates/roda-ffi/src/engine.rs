@@ -384,6 +384,7 @@ impl State {
             }
             EventBody::ProfileKeyShared { .. }
             | EventBody::Checkpoint { .. }
+            | EventBody::Sealed { .. }
             | EventBody::Unsupported { .. } => {}
         }
     }
@@ -446,6 +447,7 @@ impl Engine {
             net: Default::default(),
         };
         engine.migrate_event_format()?;
+        engine.migrate_mls()?;
         engine.reload()?;
         Ok(engine)
     }
@@ -2917,6 +2919,7 @@ fn event_label(b: &EventBody) -> String {
             "Profile key shared with {}",
             shares.len()
         ),
+        EventBody::Sealed { kind } => tr!("Cifrado: {kind}", "Encrypted: {kind}"),
         EventBody::Checkpoint { epoch, .. } => {
             tr!(
                 "Ponto de verificação: época {epoch}",

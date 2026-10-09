@@ -330,6 +330,9 @@ enum Waiting {
     ProfileUploaded(u64),
     AgreementKeys(Vec<String>),
     SealedProfiles(Vec<String>),
+    KeyPackagesPublished,
+    /// Key packages claimed for this Space's newcomers.
+    Claimed(String),
 }
 
 /// Encrypted-profile requests: free (`None`), or in flight / backing off until a deadline.
@@ -339,6 +342,7 @@ struct ProfileTraffic {
     upload: Option<tokio::time::Instant>,
     keys: Option<tokio::time::Instant>,
     profiles: Option<tokio::time::Instant>,
+    key_packages: Option<tokio::time::Instant>,
 }
 
 /// Free to send when nothing is in flight and any backoff has passed.
@@ -509,7 +513,6 @@ async fn session(
                                 let c = vec![roda_proto::Cursor { space, next_seq: next }];
                                 if let Err(e) = send(&mut sink, &ClientFrame::Sync { cursors: c, all: false }).await { break Exit::Retry(e) }
                             }
-                            Ingest::Sealed => {}
                             Ingest::Invalid(reason) => {
                                 // A relay that serves a bad chain or signature is not trusted for this
                                 // Space until a fresh sync; the event isn't stored.
@@ -603,6 +606,20 @@ async fn session(
                                 } else { false };
                                 settle(&mut traffic.profiles, ok);
                             }
+                            Some(Waiting::KeyPackagesPublished) => {
+                                let ok = matches!(result, Ok(Reply::Done));
+                                ctx.engine().mls_key_packages_published(result.map(|_| ()));
+                                settle(&mut traffic.key_packages, ok);
+                            }
+                            Some(Waiting::Claimed(space)) => {
+                                let packages = match result {
+                                    Ok(Reply::KeyPackages(list)) => Ok(list),
+                                    Ok(other) => Err(format!("unexpected {other:?}")),
+                                    Err(e) => Err(e),
+                                };
+                                ctx.engine().mls_claimed(&space, packages);
+                                if let Err(e) = flush(ctx, &mut sink, &mut sent).await { break Exit::Retry(e) }
+                            }
                             None => {}
                         }
                     }
@@ -677,6 +694,23 @@ async fn session(
                         opening = Some(tokio::time::Instant::now());
                         reqs.push((Op::GetProfiles { ids: ids.clone() }, Waiting::SealedProfiles(ids)));
                     }
+                }
+                if free(&mut traffic.key_packages) {
+                    let publish = ctx.engine().mls_key_packages_to_publish();
+                    if let Some((packages, last_resort)) = publish {
+                        traffic.key_packages = Some(tokio::time::Instant::now() + PROFILE_TIMEOUT);
+                        reqs.push((Op::PublishKeyPackages { packages, last_resort: Some(last_resort) }, Waiting::KeyPackagesPublished));
+                    }
+                }
+                let claim = ctx.engine().mls_to_claim();
+                if let Some((space, ids)) = claim {
+                    reqs.push((Op::ClaimKeyPackages { ids }, Waiting::Claimed(space)));
+                }
+                let checkpoints = ctx.engine().mls_checkpoints();
+                match checkpoints {
+                    Ok(true) => if let Err(e) = flush(ctx, &mut sink, &mut sent).await { break Exit::Retry(e) },
+                    Ok(false) => {}
+                    Err(e) => tracing_like(&format!("checkpoints: {e}")),
                 }
                 let mut failed = None;
                 for (op, w) in reqs {

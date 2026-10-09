@@ -11,6 +11,7 @@ use std::sync::{Arc, Mutex, MutexGuard};
 
 mod api;
 mod media;
+mod mls;
 mod net;
 mod profile;
 pub use profile::{PhotoChange, ProfileDto};
