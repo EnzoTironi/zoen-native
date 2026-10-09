@@ -24,17 +24,246 @@ async fn world(name: &str) -> World {
 
 fn backup_files(w: &World) -> Vec<Vec<u8>> {
     let dir = w.dir.join("blobs").join("backups");
-    std::fs::read_dir(&dir)
-        .map(|it| {
-            it.flatten()
-                .map(|e| std::fs::read(e.path()).unwrap())
-                .collect()
-        })
-        .unwrap_or_default()
+    fn visit(dir: &std::path::Path, files: &mut Vec<Vec<u8>>) {
+        if let Ok(entries) = std::fs::read_dir(dir) {
+            for entry in entries.flatten() {
+                let path = entry.path();
+                if path.is_dir() {
+                    visit(&path, files);
+                } else {
+                    files.push(std::fs::read(path).unwrap());
+                }
+            }
+        }
+    }
+    let mut files = Vec::new();
+    visit(&dir, &mut files);
+    files
 }
 
 fn contains(hay: &[u8], needle: &str) -> bool {
     hay.windows(needle.len()).any(|w| w == needle.as_bytes())
+}
+
+fn device_key(w: &World, who: &str) -> roda_log::Signer {
+    let bytes = std::fs::read(w.dir.join(who).join("vault/zoen.device.v1")).unwrap();
+    roda_log::Signer::from_secret(&bytes.try_into().unwrap())
+}
+
+async fn signed_backup_write(
+    w: &World,
+    key: &roda_log::Signer,
+    identity: &str,
+    method: &str,
+    op: &str,
+    path: &str,
+    body: &[u8],
+) -> u16 {
+    use sha2::{Digest, Sha256};
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+    let ts = now_ms();
+    let relay = format!("127.0.0.1:{}", w.port);
+    let sig = key.sign(&roda_proto::backup_message(
+        &relay,
+        identity,
+        op,
+        &hex::encode(Sha256::digest(body)),
+        ts,
+    ));
+    let headers = format!(
+        "{method} {path} HTTP/1.1\r\nHost: {relay}\r\nConnection: close\r\nContent-Type: application/json\r\nContent-Length: {}\r\nx-zoen-device: {}\r\nx-zoen-ts: {ts}\r\nx-zoen-sig: {sig}\r\n\r\n",
+        body.len(), key.id(),
+    );
+    let mut socket = tokio::net::TcpStream::connect(&relay).await.unwrap();
+    socket.write_all(headers.as_bytes()).await.unwrap();
+    socket.write_all(body).await.unwrap();
+    let mut response = Vec::new();
+    tokio::time::timeout(
+        std::time::Duration::from_secs(10),
+        socket.read_to_end(&mut response),
+    )
+    .await
+    .unwrap()
+    .unwrap();
+    std::str::from_utf8(&response)
+        .unwrap()
+        .split_whitespace()
+        .nth(1)
+        .unwrap()
+        .parse()
+        .unwrap()
+}
+
+fn link_notebook(w: &World) {
+    use std::io::BufRead;
+    let mut child = w.spawn_zoen("ana-notebook", &["link-request", "--for", "120"]);
+    let stdout = child.stdout.take().unwrap();
+    let (tx, rx) = std::sync::mpsc::channel();
+    std::thread::spawn(move || {
+        for line in std::io::BufReader::new(stdout)
+            .lines()
+            .map_while(Result::ok)
+        {
+            if tx.send(line).is_err() {
+                break;
+            }
+        }
+    });
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(60);
+    let code = loop {
+        let line = rx
+            .recv_timeout(deadline.saturating_duration_since(std::time::Instant::now()))
+            .unwrap();
+        if let Some(code) = line.strip_prefix("code:") {
+            break code.trim().to_string();
+        }
+    };
+    w.zoen("ana", &["link", &code]);
+    let result = child.wait_with_output().unwrap();
+    assert!(
+        result.status.success(),
+        "{}",
+        String::from_utf8_lossy(&result.stderr)
+    );
+    w.sync_until("ana-notebook", |s| s.contains("pending=0"));
+}
+
+#[tokio::test]
+async fn linked_devices_cannot_overwrite_a_new_backup_with_an_old_key() {
+    let w = world("backup_generation").await;
+    w.init("ana", "Ana");
+    w.init("bruno", "Bruno");
+    w.zoen("ana", &["group", "Casa", "@bruno", "--readable"]);
+    w.zoen("ana", &["send", "Casa", "história antes do notebook"]);
+    w.zoen("ana", &["backup", "on", "--password", PASSWORD]);
+    let first = w.scalar("SELECT generation FROM backup_vaults").await;
+    link_notebook(&w);
+    assert!(!w.dir.join("ana-notebook/vault/zoen.backup.v1").exists());
+    w.zoen("ana-notebook", &["send", "Casa", "cópia nova no notebook"]);
+    w.zoen(
+        "ana-notebook",
+        &["backup", "on", "--password", "senha nova do notebook"],
+    );
+    let second = w.scalar("SELECT generation FROM backup_vaults").await;
+    assert_ne!(first, second);
+    let sha = w.scalar("SELECT blob_sha FROM backup_vaults").await;
+    let refused = w.try_zoen("ana", &["backup", "now"]).unwrap_err();
+    assert!(refused.contains("configuration changed"), "{refused}");
+    assert_eq!(w.scalar("SELECT blob_sha FROM backup_vaults").await, sha);
+    assert_eq!(w.count("SELECT count(*) FROM backup_setups").await, 0);
+    w.zoen(
+        "ana-new",
+        &["recover", "@ana", "--password", "senha nova do notebook"],
+    );
+    let history = w.zoen("ana-new", &["read", "Casa"]);
+    assert!(
+        history.contains("história antes do notebook")
+            && history.contains("cópia nova no notebook"),
+        "{history}"
+    );
+    assert!(!w.zoen("ana-new", &["verify"]).contains("BROKEN"));
+}
+
+#[tokio::test]
+async fn interrupted_backup_setup_keeps_the_previous_copy_restorable() {
+    let w = world("backup_atomic").await;
+    w.init("ana", "Ana");
+    w.zoen("ana", &["backup", "on", "--password", PASSWORD]);
+    let identity = w.id_of("ana").await;
+    let key = device_key(&w, "ana");
+    let generation = w.scalar("SELECT generation FROM backup_vaults").await;
+    let sha = w.scalar("SELECT blob_sha FROM backup_vaults").await;
+    let setup = serde_json::json!({
+        "generation": "11".repeat(32), "mode": "recovery_key",
+        "verifier": "22".repeat(32), "wrapped_key": "33".repeat(72),
+        "kdf": {"alg": "hkdf-sha256", "v": 1},
+    });
+    assert_eq!(
+        signed_backup_write(
+            &w,
+            &key,
+            &identity,
+            "PUT",
+            "vault",
+            "/v1/backup/vault",
+            setup.to_string().as_bytes()
+        )
+        .await,
+        204
+    );
+    assert_eq!(w.count("SELECT count(*) FROM backup_setups").await, 1);
+    assert_eq!(
+        w.scalar("SELECT generation FROM backup_vaults").await,
+        generation
+    );
+    assert_eq!(w.scalar("SELECT blob_sha FROM backup_vaults").await, sha);
+    assert!(w
+        .zoen("ana-new", &["recover", "@ana", "--password", PASSWORD])
+        .contains("restored"));
+}
+
+#[tokio::test]
+async fn revoked_devices_are_refused_by_every_backup_write_endpoint() {
+    let w = world("backup_revoked").await;
+    w.init("ana", "Ana");
+    w.zoen("ana", &["backup", "on", "--password", PASSWORD]);
+    let identity = w.id_of("ana").await;
+    let key = device_key(&w, "ana");
+    let sha = w.scalar("SELECT blob_sha FROM backup_vaults").await;
+    w.zoen("ana-new", &["recover", "@ana", "--password", PASSWORD]);
+    w.zoen("ana-new", &["unlink", &key.id()]);
+    for (method, op, path) in [
+        ("POST", "oprf", "/v1/backup/oprf"),
+        ("PUT", "vault", "/v1/backup/vault"),
+        ("PUT", "blob", "/v1/backup/blob"),
+        ("DELETE", "delete", "/v1/backup"),
+    ] {
+        assert_eq!(
+            signed_backup_write(&w, &key, &identity, method, op, path, b"{}").await,
+            403,
+            "{op}"
+        );
+    }
+    assert_eq!(w.scalar("SELECT blob_sha FROM backup_vaults").await, sha);
+    assert_eq!(w.count("SELECT count(*) FROM backup_setups").await, 0);
+    assert!(w
+        .zoen("ana-third", &["recover", "@ana", "--password", PASSWORD])
+        .contains("restored"));
+}
+
+#[tokio::test]
+async fn a_pre_generation_backup_still_restores_after_upgrade() {
+    let w = world("backup_legacy").await;
+    w.init("ana", "Ana");
+    w.zoen("ana", &["backup", "on", "--password", PASSWORD]);
+    let identity = w.id_of("ana").await;
+    let sha = w.scalar("SELECT blob_sha FROM backup_vaults").await;
+    let legacy_path = w.dir.join("blobs/backups").join(&identity);
+    let generated_path = w.dir.join("blobs/backups/v2").join(&identity);
+    let object = std::fs::read(generated_path.join(sha)).unwrap();
+    // The previous version stored one object directly at backups/{identity}.
+    std::fs::remove_dir_all(&generated_path).unwrap();
+    std::fs::write(&legacy_path, object).unwrap();
+    assert_eq!(
+        w.count(
+            "WITH changed AS (UPDATE backup_vaults SET generation = NULL RETURNING identity)
+         SELECT count(*) FROM changed",
+        )
+        .await,
+        1
+    );
+    assert!(w
+        .zoen("ana-new", &["recover", "@ana", "--password", PASSWORD])
+        .contains("restored"));
+    let refused = w.try_zoen("ana-new", &["backup", "now"]).unwrap_err();
+    assert!(refused.contains("Set up backup again"), "{refused}");
+    // Re-enabling upgrades the copy only after the new upload is durable.
+    assert!(w
+        .zoen("ana-new", &["backup", "on", "--password", PASSWORD])
+        .starts_with("backup on"));
+    assert!(w
+        .zoen("ana-third", &["recover", "@ana", "--password", PASSWORD])
+        .contains("restored"));
 }
 
 #[tokio::test]

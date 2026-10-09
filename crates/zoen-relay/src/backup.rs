@@ -35,10 +35,10 @@ use chacha20poly1305::{
 use curve25519_dalek::{ristretto::CompressedRistretto, Scalar};
 use object_store::{path::Path as ObjPath, ObjectStoreExt, PutPayload};
 use roda_log::verify_sig;
-use roda_proto::backup_message;
+use roda_proto::{backup_message, BACKUP_UPLOAD_MAGIC};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
-use sqlx::Row;
+use sqlx::{PgConnection, Postgres, Row, Transaction};
 
 use crate::Shared;
 
@@ -167,8 +167,11 @@ fn ct_eq(a: &[u8], b: &[u8]) -> bool {
     a.len() == b.len() && a.iter().zip(b).fold(0u8, |acc, (x, y)| acc | (x ^ y)) == 0
 }
 
-fn object_key(identity: &str) -> ObjPath {
-    ObjPath::from(format!("backups/{identity}"))
+fn object_key(identity: &str, sha: Option<&str>) -> ObjPath {
+    match sha {
+        Some(sha) => ObjPath::from(format!("backups/v2/{identity}/{sha}")),
+        None => ObjPath::from(format!("backups/{identity}")),
+    }
 }
 
 fn unavailable() -> Response {
@@ -185,7 +188,7 @@ async fn signed_identity(
     headers: &HeaderMap,
     op: &str,
     body: &[u8],
-) -> Result<String, Response> {
+) -> Result<(String, Transaction<'static, Postgres>), Response> {
     let h = |name: &str| {
         headers
             .get(name)
@@ -200,16 +203,18 @@ async fn signed_identity(
     if (now_ms() - ts_ms).abs() > MAX_SKEW_MS {
         return Err(err(StatusCode::UNAUTHORIZED, "stale signature"));
     }
-    // Devices land in the directory only after a login that checked their certificate.
-    let identity: Option<String> =
-        match sqlx::query_scalar("SELECT identity FROM devices WHERE device = $1")
-            .bind(&device)
-            .fetch_optional(&st.pool)
-            .await
-        {
-            Ok(i) => i,
-            Err(_) => return Err(unavailable()),
-        };
+    let mut tx = st.pool.begin().await.map_err(|_| unavailable())?;
+    // Unlink waits for this authorization lock. A write cannot commit after revocation.
+    let identity: Option<String> = match sqlx::query_scalar(
+        "SELECT identity FROM devices WHERE device = $1 AND revoked_at IS NULL FOR SHARE",
+    )
+    .bind(&device)
+    .fetch_optional(&mut *tx)
+    .await
+    {
+        Ok(i) => i,
+        Err(_) => return Err(unavailable()),
+    };
     let Some(identity) = identity else {
         return Err(err(StatusCode::FORBIDDEN, "unknown device"));
     };
@@ -224,7 +229,12 @@ async fn signed_identity(
     if let Err(wait) = st.limits.backup_device.check(&device) {
         return Err(slow(wait));
     }
-    Ok(identity)
+    sqlx::query("SELECT pg_advisory_xact_lock(hashtextextended($1, 0))")
+        .bind(&identity)
+        .execute(&mut *tx)
+        .await
+        .map_err(|_| unavailable())?;
+    Ok((identity, tx))
 }
 
 fn slow(wait: std::time::Duration) -> Response {
@@ -250,6 +260,7 @@ fn vault(st: &Shared) -> Result<&Arc<dyn Vault>, Response> {
 #[derive(Deserialize)]
 pub struct OprfReq {
     blinded: String,
+    generation: String,
 }
 
 #[derive(Serialize)]
@@ -259,7 +270,7 @@ pub struct OprfResp {
 
 /// Starts a password setup: a new pending OPRF key, evaluated on the device's blinded input.
 pub async fn oprf(State(st): State<Shared>, headers: HeaderMap, body: Bytes) -> Response {
-    let identity = match signed_identity(&st, &headers, "oprf", &body).await {
+    let (identity, mut tx) = match signed_identity(&st, &headers, "oprf", &body).await {
         Ok(i) => i,
         Err(r) => return r,
     };
@@ -273,6 +284,9 @@ pub async fn oprf(State(st): State<Shared>, headers: HeaderMap, body: Bytes) -> 
     let Some(blinded) = hex32(&req.blinded) else {
         return err(StatusCode::BAD_REQUEST, "bad point");
     };
+    if hex32(&req.generation).is_none() {
+        return err(StatusCode::BAD_REQUEST, "bad generation");
+    }
     let Ok(sealed) = vault.new_key(&identity) else {
         return err(StatusCode::SERVICE_UNAVAILABLE, "vault unavailable");
     };
@@ -280,14 +294,17 @@ pub async fn oprf(State(st): State<Shared>, headers: HeaderMap, body: Bytes) -> 
         return err(StatusCode::BAD_REQUEST, "bad point");
     };
     let r = sqlx::query(
-        "INSERT INTO backup_pending (identity, pending_key) VALUES ($1, $2)
-         ON CONFLICT (identity) DO UPDATE SET pending_key = $2, created_at = now()",
+        "INSERT INTO backup_pending (identity, pending_key, generation, device) VALUES ($1, $2, $3, $4)
+         ON CONFLICT (identity) DO UPDATE SET pending_key = $2, generation = $3,
+             device = $4, created_at = now()",
     )
     .bind(&identity)
     .bind(&sealed)
-    .execute(&st.pool)
+    .bind(&req.generation)
+    .bind(headers.get("x-zoen-device").and_then(|v| v.to_str().ok()).unwrap_or(""))
+    .execute(&mut *tx)
     .await;
-    if r.is_err() {
+    if r.is_err() || tx.commit().await.is_err() {
         return unavailable();
     }
     Json(OprfResp {
@@ -298,15 +315,16 @@ pub async fn oprf(State(st): State<Shared>, headers: HeaderMap, body: Bytes) -> 
 
 #[derive(Deserialize)]
 pub struct VaultReq {
+    generation: String,
     mode: String,
     verifier: String,
     wrapped_key: String,
     kdf: serde_json::Value,
 }
 
-/// Turns the backup on (or changes the password or the mode).
+/// Stages a configuration. The previous backup remains restorable until its upload commits.
 pub async fn put_vault(State(st): State<Shared>, headers: HeaderMap, body: Bytes) -> Response {
-    let identity = match signed_identity(&st, &headers, "vault", &body).await {
+    let (identity, mut tx) = match signed_identity(&st, &headers, "vault", &body).await {
         Ok(i) => i,
         Err(r) => return r,
     };
@@ -317,17 +335,25 @@ pub async fn put_vault(State(st): State<Shared>, headers: HeaderMap, body: Bytes
     else {
         return err(StatusCode::BAD_REQUEST, "bad request");
     };
-    if wrapped.len() > 256 {
+    if wrapped.len() > 256 || hex32(&req.generation).is_none() {
         return err(StatusCode::BAD_REQUEST, "bad request");
     }
     let oprf_key: Option<Vec<u8>> = match req.mode.as_str() {
         "recovery_key" => None,
         "passphrase" => {
             let pending: Option<Vec<u8>> = match sqlx::query_scalar(
-                "DELETE FROM backup_pending WHERE identity = $1 RETURNING pending_key",
+                "DELETE FROM backup_pending WHERE identity = $1 AND generation = $2
+                    AND device = $3 RETURNING pending_key",
             )
             .bind(&identity)
-            .fetch_optional(&st.pool)
+            .bind(&req.generation)
+            .bind(
+                headers
+                    .get("x-zoen-device")
+                    .and_then(|v| v.to_str().ok())
+                    .unwrap_or(""),
+            )
+            .fetch_optional(&mut *tx)
             .await
             {
                 Ok(p) => p,
@@ -341,10 +367,10 @@ pub async fn put_vault(State(st): State<Shared>, headers: HeaderMap, body: Bytes
         _ => return err(StatusCode::BAD_REQUEST, "bad mode"),
     };
     let r = sqlx::query(
-        "INSERT INTO backup_vaults (identity, mode, oprf_key, verifier, wrapped_key, kdf)
-         VALUES ($1, $2, $3, $4, $5, $6)
+        "INSERT INTO backup_setups (identity, mode, oprf_key, verifier, wrapped_key, kdf, generation)
+         VALUES ($1, $2, $3, $4, $5, $6, $7)
          ON CONFLICT (identity) DO UPDATE SET mode = $2, oprf_key = $3, verifier = $4,
-             wrapped_key = $5, kdf = $6, guesses = 0, locked = false, updated_at = now()",
+             wrapped_key = $5, kdf = $6, generation = $7, created_at = now()",
     )
     .bind(&identity)
     .bind(&req.mode)
@@ -352,57 +378,123 @@ pub async fn put_vault(State(st): State<Shared>, headers: HeaderMap, body: Bytes
     .bind(verifier.as_slice())
     .bind(&wrapped)
     .bind(&req.kdf)
-    .execute(&st.pool)
+    .bind(&req.generation)
+    .execute(&mut *tx)
     .await;
-    if r.is_err() {
+    if r.is_err() || tx.commit().await.is_err() {
         return unavailable();
     }
-    tracing::info!(identity = %crate::pseudonym::pseudo(&identity), mode = %req.mode, "backup vault set");
+    tracing::info!(identity = %crate::pseudonym::pseudo(&identity), mode = %req.mode, "backup configuration staged");
     StatusCode::NO_CONTENT.into_response()
 }
 
 /// Stores the newest sealed backup (replaces the previous one).
 pub async fn put_blob(State(st): State<Shared>, headers: HeaderMap, body: Bytes) -> Response {
-    let identity = match signed_identity(&st, &headers, "blob", &body).await {
+    let (identity, mut tx) = match signed_identity(&st, &headers, "blob", &body).await {
         Ok(i) => i,
         Err(r) => return r,
     };
-    if body.is_empty() || body.len() > MAX_BACKUP_BYTES {
+    const PREFIX: usize = 8 + 32;
+    if body.len() <= PREFIX || body.len() > MAX_BACKUP_BYTES + PREFIX {
         return err(StatusCode::PAYLOAD_TOO_LARGE, "empty or too large");
     }
-    let has_vault: Option<bool> =
-        match sqlx::query_scalar("SELECT locked FROM backup_vaults WHERE identity = $1")
-            .bind(&identity)
-            .fetch_optional(&st.pool)
-            .await
-        {
-            Ok(v) => v,
-            Err(_) => return unavailable(),
-        };
-    if has_vault != Some(false) {
-        return err(StatusCode::CONFLICT, "turn the backup on first");
+    if body.get(..8) != Some(BACKUP_UPLOAD_MAGIC.as_slice()) {
+        return err(StatusCode::BAD_REQUEST, "backup generation required");
+    }
+    let generation = hex::encode(&body[8..PREFIX]);
+    let body = body.slice(PREFIX..);
+    let active = match sqlx::query(
+        "SELECT generation, locked, blob_sha FROM backup_vaults WHERE identity = $1 FOR UPDATE",
+    )
+    .bind(&identity)
+    .fetch_optional(&mut *tx)
+    .await
+    {
+        Ok(row) => row,
+        Err(_) => return unavailable(),
+    };
+    let setup = match sqlx::query(
+        "SELECT mode, oprf_key, verifier, wrapped_key, kdf FROM backup_setups
+         WHERE identity = $1 AND generation = $2",
+    )
+    .bind(&identity)
+    .bind(&generation)
+    .fetch_optional(&mut *tx)
+    .await
+    {
+        Ok(row) => row,
+        Err(_) => return unavailable(),
+    };
+    let active_matches = active.as_ref().is_some_and(|row| {
+        row.get::<Option<String>, _>("generation").as_deref() == Some(&generation)
+            && !row.get::<bool, _>("locked")
+    });
+    if setup.is_none() && !active_matches {
+        return err(
+            StatusCode::CONFLICT,
+            "backup configuration changed; set it up again on this device",
+        );
     }
     let sha = hex::encode(Sha256::digest(&body));
     let n = body.len();
-    if let Err(e) = st
-        .blobs
-        .put(&object_key(&identity), PutPayload::from_bytes(body))
-        .await
-    {
+    let path = object_key(&identity, Some(&sha));
+    if let Err(e) = st.blobs.put(&path, PutPayload::from_bytes(body)).await {
         tracing::warn!(error = %e, "backup put failed");
         return err(StatusCode::SERVICE_UNAVAILABLE, "storage unavailable");
     }
-    let r = sqlx::query(
-        "UPDATE backup_vaults SET blob_sha = $2, blob_bytes = $3, updated_at = now()
-         WHERE identity = $1",
-    )
-    .bind(&identity)
-    .bind(&sha)
-    .bind(n as i64)
-    .execute(&st.pool)
-    .await;
+    let r = if let Some(setup) = setup {
+        sqlx::query(
+            "INSERT INTO backup_vaults (identity, mode, oprf_key, verifier, wrapped_key,
+                kdf, generation, blob_sha, blob_bytes) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
+             ON CONFLICT (identity) DO UPDATE SET mode = $2, oprf_key = $3, verifier = $4,
+                wrapped_key = $5, kdf = $6, generation = $7, blob_sha = $8, blob_bytes = $9,
+                guesses = 0, armed = false, locked = false, updated_at = now()",
+        )
+        .bind(&identity)
+        .bind(setup.get::<String, _>("mode"))
+        .bind(setup.get::<Option<Vec<u8>>, _>("oprf_key"))
+        .bind(setup.get::<Vec<u8>, _>("verifier"))
+        .bind(setup.get::<Vec<u8>, _>("wrapped_key"))
+        .bind(setup.get::<serde_json::Value, _>("kdf"))
+        .bind(&generation)
+        .bind(&sha)
+        .bind(n as i64)
+        .execute(&mut *tx)
+        .await
+    } else {
+        sqlx::query(
+            "UPDATE backup_vaults SET blob_sha = $2, blob_bytes = $3, updated_at = now()
+             WHERE identity = $1",
+        )
+        .bind(&identity)
+        .bind(&sha)
+        .bind(n as i64)
+        .execute(&mut *tx)
+        .await
+    };
     if r.is_err() {
         return unavailable();
+    }
+    if sqlx::query("DELETE FROM backup_setups WHERE identity = $1 AND generation = $2")
+        .bind(&identity)
+        .bind(&generation)
+        .execute(&mut *tx)
+        .await
+        .is_err()
+        || tx.commit().await.is_err()
+    {
+        return unavailable();
+    }
+    if let Some(old) = active {
+        let old_sha: Option<String> = old.get("blob_sha");
+        let old_generation: Option<String> = old.get("generation");
+        let old_path = object_key(
+            &identity,
+            old_sha.as_deref().filter(|_| old_generation.is_some()),
+        );
+        if old_path != path {
+            let _ = st.blobs.delete(&old_path).await;
+        }
     }
     tracing::info!(identity = %crate::pseudonym::pseudo(&identity), bytes = n, "backup stored");
     StatusCode::CREATED.into_response()
@@ -410,21 +502,44 @@ pub async fn put_blob(State(st): State<Shared>, headers: HeaderMap, body: Bytes)
 
 /// Turns the backup off: forgets the vault and the object.
 pub async fn delete(State(st): State<Shared>, headers: HeaderMap, body: Bytes) -> Response {
-    let identity = match signed_identity(&st, &headers, "delete", &body).await {
+    let (identity, mut tx) = match signed_identity(&st, &headers, "delete", &body).await {
         Ok(i) => i,
         Err(r) => return r,
     };
-    let _ = st.blobs.delete(&object_key(&identity)).await;
-    let a = sqlx::query("DELETE FROM backup_vaults WHERE identity = $1")
-        .bind(&identity)
-        .execute(&st.pool)
-        .await;
-    let b = sqlx::query("DELETE FROM backup_pending WHERE identity = $1")
-        .bind(&identity)
-        .execute(&st.pool)
-        .await;
-    if a.is_err() || b.is_err() {
+    let old = match sqlx::query(
+        "DELETE FROM backup_vaults WHERE identity = $1 RETURNING blob_sha, generation",
+    )
+    .bind(&identity)
+    .fetch_optional(&mut *tx)
+    .await
+    {
+        Ok(row) => row,
+        Err(_) => return unavailable(),
+    };
+    for table in ["backup_pending", "backup_setups"] {
+        let sql = format!("DELETE FROM {table} WHERE identity = $1");
+        if sqlx::query(sqlx::AssertSqlSafe(sql))
+            .bind(&identity)
+            .execute(&mut *tx)
+            .await
+            .is_err()
+        {
+            return unavailable();
+        }
+    }
+    if tx.commit().await.is_err() {
         return unavailable();
+    }
+    if let Some(row) = old {
+        let sha: Option<String> = row.get("blob_sha");
+        let generation: Option<String> = row.get("generation");
+        let _ = st
+            .blobs
+            .delete(&object_key(
+                &identity,
+                sha.as_deref().filter(|_| generation.is_some()),
+            ))
+            .await;
     }
     StatusCode::NO_CONTENT.into_response()
 }
@@ -440,33 +555,49 @@ struct VaultRow {
     kdf: serde_json::Value,
     locked: bool,
     blob_bytes: Option<i64>,
+    blob_sha: Option<String>,
+    generation: Option<String>,
 }
 
-async fn vault_by_handle(st: &Shared, handle: &str) -> Result<Option<VaultRow>, Response> {
+async fn vault_by_handle(
+    st: &Shared,
+    handle: &str,
+) -> Result<(Option<VaultRow>, Transaction<'static, Postgres>), Response> {
+    let mut tx = st.pool.begin().await.map_err(|_| unavailable())?;
     let row = sqlx::query(
-        "SELECT v.identity, v.mode, v.oprf_key, v.verifier, v.wrapped_key, v.kdf, v.locked, v.blob_bytes
+        "SELECT v.identity, v.mode, v.oprf_key, v.verifier, v.wrapped_key, v.kdf, v.locked,
+                v.blob_bytes, v.blob_sha, v.generation
          FROM backup_vaults v JOIN identities i ON i.id = v.identity
-         WHERE i.handle = $1",
+         WHERE i.handle = $1 FOR UPDATE OF v",
     )
     .bind(handle)
-    .fetch_optional(&st.pool)
+    .fetch_optional(&mut *tx)
     .await
     .map_err(|_| unavailable())?;
-    Ok(row.map(|r| VaultRow {
-        identity: r.get("identity"),
-        mode: r.get("mode"),
-        oprf_key: r.get("oprf_key"),
-        verifier: r.get("verifier"),
-        wrapped_key: r.get("wrapped_key"),
-        kdf: r.get("kdf"),
-        locked: r.get("locked"),
-        blob_bytes: r.get("blob_bytes"),
-    }))
+    Ok((
+        row.map(|r| VaultRow {
+            identity: r.get("identity"),
+            mode: r.get("mode"),
+            oprf_key: r.get("oprf_key"),
+            verifier: r.get("verifier"),
+            wrapped_key: r.get("wrapped_key"),
+            kdf: r.get("kdf"),
+            locked: r.get("locked"),
+            blob_bytes: r.get("blob_bytes"),
+            blob_sha: r.get("blob_sha"),
+            generation: r.get("generation"),
+        }),
+        tx,
+    ))
 }
 
 /// One more guess; at the limit the OPRF key is destroyed and the vault locked for good.
 /// `armed`: the guess was an OPRF evaluation, so the open that follows it is free.
-async fn spend_guess(st: &Shared, identity: &str, armed: bool) -> Result<bool, Response> {
+async fn spend_guess(
+    conn: &mut PgConnection,
+    identity: &str,
+    armed: bool,
+) -> Result<bool, Response> {
     let locked: bool = sqlx::query_scalar(
         "UPDATE backup_vaults SET guesses = guesses + 1, armed = $3,
              locked = locked OR guesses + 1 >= $2,
@@ -476,7 +607,7 @@ async fn spend_guess(st: &Shared, identity: &str, armed: bool) -> Result<bool, R
     .bind(identity)
     .bind(MAX_GUESSES)
     .bind(armed)
-    .fetch_one(&st.pool)
+    .fetch_one(conn)
     .await
     .map_err(|_| unavailable())?;
     if locked {
@@ -511,6 +642,7 @@ pub struct StartResp {
     kdf: serde_json::Value,
     #[serde(skip_serializing_if = "Option::is_none")]
     evaluated: Option<String>,
+    generation: Option<String>,
 }
 
 fn locked_response() -> Response {
@@ -532,7 +664,7 @@ pub async fn restore_start(
         return r;
     }
     let blinded = req.blinded.as_deref().and_then(hex32);
-    let row = match vault_by_handle(&st, &handle).await {
+    let (row, mut tx) = match vault_by_handle(&st, &handle).await {
         Ok(r) => r,
         Err(r) => return r,
     };
@@ -557,6 +689,7 @@ pub async fn restore_start(
             mode: "passphrase".into(),
             kdf: default_kdf(),
             evaluated: Some(hex::encode(e)),
+            generation: None,
         })
         .into_response()
     };
@@ -572,6 +705,7 @@ pub async fn restore_start(
             mode: row.mode,
             kdf: row.kdf,
             evaluated: None,
+            generation: row.generation,
         })
         .into_response(),
         _ => {
@@ -579,10 +713,15 @@ pub async fn restore_start(
             else {
                 return err(StatusCode::BAD_REQUEST, "bad point");
             };
-            match spend_guess(&st, &row.identity, true).await {
-                Ok(true) => return locked_response(),
-                Ok(false) => {}
+            let locked = match spend_guess(&mut tx, &row.identity, true).await {
+                Ok(locked) => locked,
                 Err(r) => return r,
+            };
+            if tx.commit().await.is_err() {
+                return unavailable();
+            }
+            if locked {
+                return locked_response();
             }
             let Some(e) = vault.evaluate(sealed, &row.identity, &b) else {
                 return err(StatusCode::BAD_REQUEST, "bad point");
@@ -592,6 +731,7 @@ pub async fn restore_start(
                 mode: row.mode,
                 kdf: row.kdf,
                 evaluated: Some(hex::encode(e)),
+                generation: row.generation,
             })
             .into_response()
         }
@@ -602,19 +742,32 @@ pub async fn restore_start(
 pub struct OpenReq {
     handle: String,
     auth_key: String,
+    generation: Option<String>,
 }
 
 #[derive(Serialize)]
 pub struct OpenResp {
     wrapped_key: String,
     size: i64,
+    generation: Option<String>,
 }
 
 /// Checks `auth_key` against the vault; `Ok` resets the guess counter.
-async fn authorize(st: &Shared, handle: &str, auth_key: &str) -> Result<VaultRow, Response> {
+async fn authorize(
+    st: &Shared,
+    handle: &str,
+    auth_key: &str,
+    generation: Option<&str>,
+) -> Result<VaultRow, Response> {
     let wrong = || err(StatusCode::FORBIDDEN, "wrong password or key");
-    let row = vault_by_handle(st, handle).await?;
+    let (row, mut tx) = vault_by_handle(st, handle).await?;
     let Some(row) = row else { return Err(wrong()) };
+    if row.generation.as_deref() != generation {
+        return Err(err(
+            StatusCode::CONFLICT,
+            "backup configuration changed; restart restore",
+        ));
+    }
     if row.locked {
         return Err(locked_response());
     }
@@ -629,23 +782,23 @@ async fn authorize(st: &Shared, handle: &str, auth_key: &str) -> Result<VaultRow
              WHERE v.identity = $1 AND old.identity = v.identity RETURNING old.armed",
         )
         .bind(&row.identity)
-        .fetch_one(&st.pool)
+        .fetch_one(&mut *tx)
         .await
         .map_err(|_| unavailable())?;
-        if armed {
-            return Err(wrong());
-        }
-        return Err(match spend_guess(st, &row.identity, false).await {
-            Ok(true) => locked_response(),
-            Ok(false) => wrong(),
-            Err(r) => r,
-        });
+        let locked = if armed {
+            false
+        } else {
+            spend_guess(&mut tx, &row.identity, false).await?
+        };
+        tx.commit().await.map_err(|_| unavailable())?;
+        return Err(if locked { locked_response() } else { wrong() });
     }
     sqlx::query("UPDATE backup_vaults SET guesses = 0, armed = false WHERE identity = $1")
         .bind(&row.identity)
-        .execute(&st.pool)
+        .execute(&mut *tx)
         .await
         .map_err(|_| unavailable())?;
+    tx.commit().await.map_err(|_| unavailable())?;
     Ok(row)
 }
 
@@ -660,11 +813,12 @@ pub async fn restore_open(
     if let Err(r) = restore_limit(&st, &ip, &handle) {
         return r;
     }
-    match authorize(&st, &handle, &req.auth_key).await {
+    match authorize(&st, &handle, &req.auth_key, req.generation.as_deref()).await {
         Ok(row) => match row.blob_bytes {
             Some(size) => Json(OpenResp {
                 wrapped_key: hex::encode(row.wrapped_key),
                 size,
+                generation: row.generation,
             })
             .into_response(),
             None => err(StatusCode::NOT_FOUND, "no backup uploaded yet"),
@@ -676,6 +830,7 @@ pub async fn restore_open(
 #[derive(Deserialize)]
 pub struct BlobQuery {
     handle: String,
+    generation: Option<String>,
 }
 
 pub async fn restore_blob(
@@ -694,11 +849,18 @@ pub async fn restore_blob(
         .get("x-zoen-backup-auth")
         .and_then(|v| v.to_str().ok())
         .unwrap_or("");
-    let row = match authorize(&st, &handle, auth).await {
+    let row = match authorize(&st, &handle, auth, q.generation.as_deref()).await {
         Ok(r) => r,
         Err(r) => return r,
     };
-    match st.blobs.get(&object_key(&row.identity)).await {
+    match st
+        .blobs
+        .get(&object_key(
+            &row.identity,
+            row.blob_sha.as_deref().filter(|_| row.generation.is_some()),
+        ))
+        .await
+    {
         Ok(r) => match r.bytes().await {
             Ok(b) => ([("content-type", "application/octet-stream")], b).into_response(),
             Err(_) => err(StatusCode::SERVICE_UNAVAILABLE, "storage unavailable"),

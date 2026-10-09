@@ -3,13 +3,13 @@
 
 use std::{sync::Arc, time::Duration};
 
-use roda_proto::backup_message;
+use roda_proto::{backup_message, BACKUP_UPLOAD_MAGIC};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
 use crate::{
     api::{AccountDto, SecretVault},
-    backup::{self, Header, Kdf, Keys, VAULT_BACKUP},
+    backup::{self, Header, Kdf, Keys, VAULT_BACKUP, VAULT_BACKUP_GENERATION},
     i18n::t,
     net::http_base,
     profile::VAULT_AGREEMENT,
@@ -59,6 +59,10 @@ async fn refused(r: reqwest::Response) -> CoreError {
     let status = r.status().as_u16();
     let body = r.text().await.unwrap_or_default();
     match status {
+        403 if body.contains("device") => invalid(t(
+            "Este aparelho foi desvinculado. Use um aparelho autorizado.",
+            "This device was unlinked. Use an authorized device.",
+        )),
         403 => invalid(t(
             "Senha ou chave de recuperação errada.",
             "Wrong password or recovery key.",
@@ -132,11 +136,13 @@ struct Started {
     mode: String,
     kdf: serde_json::Value,
     evaluated: Option<String>,
+    generation: Option<String>,
 }
 
 #[derive(Deserialize)]
 struct Opened {
     wrapped_key: String,
+    generation: Option<String>,
 }
 
 async fn json<T: serde::de::DeserializeOwned>(r: reqwest::Response) -> Result<T, CoreError> {
@@ -187,6 +193,7 @@ impl RodaEngine {
         mode: &str,
         keys: &Keys,
         kdf: serde_json::Value,
+        generation: [u8; 32],
         vault: &Arc<dyn SecretVault>,
     ) -> Result<(), CoreError> {
         let k = match vault
@@ -197,6 +204,7 @@ impl RodaEngine {
             None => backup::new_backup_key(),
         };
         let body = serde_json::json!({
+            "generation": hex::encode(generation),
             "mode": mode,
             "verifier": hex::encode(keys.verifier()),
             "wrapped_key": hex::encode(backup::wrap_key(keys, &c.identity, &k)),
@@ -211,7 +219,9 @@ impl RodaEngine {
             body.to_string().into_bytes(),
         )
         .await?;
-        if !vault.save(VAULT_BACKUP.into(), k.to_vec()) {
+        if !vault.save(VAULT_BACKUP.into(), k.to_vec())
+            || !vault.save(VAULT_BACKUP_GENERATION.into(), generation.to_vec())
+        {
             return Err(invalid(t(
                 "Não deu para guardar a chave no Keychain.",
                 "Couldn't store the key in the Keychain.",
@@ -238,7 +248,10 @@ impl RodaEngine {
         }
         let c = self.backup_creds()?;
         let b = backup::blind(&password);
-        let body = serde_json::json!({ "blinded": hex::encode(b.blinded) });
+        let generation = backup::new_backup_key();
+        let body = serde_json::json!({
+            "blinded": hex::encode(b.blinded), "generation": hex::encode(generation),
+        });
         let r = signed(
             &http()?,
             &c,
@@ -265,6 +278,7 @@ impl RodaEngine {
             "passphrase",
             &keys,
             serde_json::to_value(&kdf).unwrap_or_default(),
+            generation,
             &vault,
         )
         .await?;
@@ -290,6 +304,7 @@ impl RodaEngine {
             "recovery_key",
             &keys,
             serde_json::json!({"alg": "hkdf-sha256", "v": 1}),
+            backup::new_backup_key(),
             &vault,
         )
         .await?;
@@ -311,6 +326,15 @@ impl RodaEngine {
             .load(VAULT_BACKUP.into())
             .and_then(|b| b.try_into().ok())
             .ok_or_else(|| invalid(t("O backup está desligado.", "Backup is off.")))?;
+        let generation: [u8; 32] = vault
+            .load(VAULT_BACKUP_GENERATION.into())
+            .and_then(|b| b.try_into().ok())
+            .ok_or_else(|| {
+                invalid(t(
+                    "Configure o backup novamente neste aparelho.",
+                    "Set up backup again on this device.",
+                ))
+            })?;
         let c = self.backup_creds()?;
         let secret = |name: &str| -> Result<String, CoreError> {
             vault
@@ -333,13 +357,14 @@ impl RodaEngine {
             backup::seal_payload(&k, &header, &db)?
         };
         let bytes = sealed.len() as u64;
+        let upload = [BACKUP_UPLOAD_MAGIC.as_slice(), &generation, &sealed].concat();
         signed(
             &http()?,
             &c,
             reqwest::Method::PUT,
             "/v1/backup/blob",
             "blob",
-            sealed,
+            upload,
         )
         .await?;
         let mut s = self.backup_status();
@@ -363,6 +388,7 @@ impl RodaEngine {
         )
         .await?;
         vault.delete(VAULT_BACKUP.into());
+        vault.delete(VAULT_BACKUP_GENERATION.into());
         self.lock().store.meta_delete(STATUS_META)?;
         Ok(())
     }
@@ -420,7 +446,12 @@ impl RodaEngine {
         let r = http
             .post(format!("{base}/v1/backup/restore/open"))
             .header("content-type", "application/json")
-            .body(serde_json::json!({"handle": handle, "auth_key": auth}).to_string())
+            .body(
+                serde_json::json!({
+                    "handle": handle, "auth_key": auth, "generation": s.generation,
+                })
+                .to_string(),
+            )
             .send()
             .await
             .map_err(offline)?;
@@ -428,13 +459,27 @@ impl RodaEngine {
             return Err(refused(r).await);
         }
         let o: Opened = json(r).await?;
+        if o.generation != s.generation {
+            return Err(invalid("backup configuration changed; restart restore"));
+        }
+        let generation = o.generation.as_deref().map(hex32).transpose()?;
         let k = backup::unwrap_key(
             &keys,
             &s.identity,
             &hex::decode(&o.wrapped_key).map_err(|_| invalid("backup"))?,
         )?;
+        let mut download_url =
+            reqwest::Url::parse(&format!("{base}/v1/backup/restore/blob")).map_err(offline)?;
+        download_url
+            .query_pairs_mut()
+            .append_pair("handle", &handle);
+        if let Some(generation) = &s.generation {
+            download_url
+                .query_pairs_mut()
+                .append_pair("generation", generation);
+        }
         let r = http
-            .get(format!("{base}/v1/backup/restore/blob?handle={handle}"))
+            .get(download_url)
             .header("x-zoen-backup-auth", &auth)
             .send()
             .await
@@ -465,6 +510,15 @@ impl RodaEngine {
                 let _ = e.wipe();
                 let _ = e.store.meta_delete("account");
                 return Err(fail());
+            }
+            if let Some(generation) = generation {
+                if !vault.save(VAULT_BACKUP_GENERATION.into(), generation.to_vec()) {
+                    let _ = e.wipe();
+                    let _ = e.store.meta_delete("account");
+                    return Err(fail());
+                }
+            } else {
+                vault.delete(VAULT_BACKUP_GENERATION.into());
             }
             e.unlock_profile(Some(agreement))?;
             let status = BackupStatusDto {

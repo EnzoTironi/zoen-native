@@ -24,6 +24,7 @@ type R<T> = Result<T, CoreError>;
 
 /// Vault item holding `K` on this device while the backup is on.
 pub(crate) const VAULT_BACKUP: &str = "zoen.backup.v1";
+pub(crate) const VAULT_BACKUP_GENERATION: &str = "zoen.backup.generation.v1";
 const MAGIC: &[u8; 8] = b"ZOENBK1\0";
 const PAYLOAD_VERSION: u32 = 1;
 /// Tables a new device can use. Everything else in the device database belongs to the old
