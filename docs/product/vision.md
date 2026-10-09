@@ -1,6 +1,8 @@
 # Visão do produto — anotações
 
 > Anotações de produto (Enzo + Grok Bot, 8–9 out 2026). Guiam decisões; não são promessas de escopo.
+>
+> Regra: registramos tudo para revisar depois, inclusive ideias que podem ser descartadas.
 
 ## Tese
 
@@ -31,6 +33,17 @@ Zoen é o "WhatsApp 2": um mensageiro privado onde, além de conversar, as pesso
 - Widgets nativos na tela inicial e na tela de bloqueio do iPhone, aproveitando que o app é nativo. Exemplo de referência: o widget do burrinho, algo fofo que as pessoas querem mostrar e compartilhar. Os widgets seguem o estilo desenhado à mão e animado do Zoen.
 - Momentos de app de casal: cortes curtos e compartilháveis (lembranças, conquistas, momentos juntos) gerados a partir do uso, prontos para stories e vídeos curtos, reforçando o efeito viral.
 - Tudo que é compartilhável respeita a privacidade: nada sai de uma conversa sem a pessoa escolher compartilhar.
+
+### Comunidades de entrada
+- **Mensa:** Enzo tem amigos na Mensa e quer criar a comunidade deles no Zoen. É uma comunidade pronta, engajada e com muitos membros, um bom primeiro grupo.
+- **Nicho gamer:** atacar o público gamer como alternativa ao Discord. Enzo comentou que o Discord não tem mais compartilhamento de tela; *a validar*, pois isso pode ser só em certos planos ou plataformas. Se confirmado, é uma brecha clara. Preparar as comunidades para criadores com influência: ferramentas de criador, bots treinados no conteúdo e monetização.
+- **Estratégia Alexor Mods (evento concreto):**
+  1. Escolher a comunidade de um influenciador gamer, como o Alexor Mods.
+  2. Montar a comunidade dele no Zoen e treinar os bots no conteúdo dele.
+  3. Chegar com tudo pronto, ainda desativado para os usuários.
+  4. Oferecer o lançamento em parceria com ele.
+  - Generalizável: um playbook repetível de "comunidade pronta para o criador".
+  - Cuidado: usar só conteúdo público dele e pedir autorização antes de abrir para qualquer pessoa.
 
 ### SEO no estilo n8n
 - Cada caso de uso, tipo de negócio e integração vira uma página indexável (ex.: "agente para barbearia", "agente que agenda pelo WhatsApp", "Canva + Zoen").
