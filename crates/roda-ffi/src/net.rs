@@ -1299,8 +1299,9 @@ mod tests {
                 let (marker, marked) = oneshot::channel();
                 let marker_box = "11".repeat(32);
                 cmd.send(Cmd::Req {
-                    op: Op::FetchLink {
-                        id: marker_box.clone(),
+                    op: Op::Lookup {
+                        handle: marker_box.clone(),
+                        prefix: true,
                     },
                     reply: marker,
                 })
@@ -1312,13 +1313,17 @@ mod tests {
                         }
                         ClientFrame::Req {
                             id,
-                            op: Op::FetchLink { id: link },
-                        } if link == marker_box => {
+                            op:
+                                Op::Lookup {
+                                    handle,
+                                    prefix: true,
+                                },
+                        } if handle == marker_box => {
                             reply(
                                 &mut socket,
                                 ServerFrame::Res {
                                     id,
-                                    result: Ok(Reply::Link(None)),
+                                    result: Ok(Reply::Profiles(Vec::new())),
                                 },
                             )
                             .await;
@@ -1328,7 +1333,9 @@ mod tests {
                         other => panic!("maintenance sent {other:?} before catch-up"),
                     }
                 }
-                assert!(matches!(marked.await.unwrap(), Ok(Reply::Link(None))));
+                assert!(
+                    matches!(marked.await.unwrap(), Ok(Reply::Profiles(list)) if list.is_empty())
+                );
                 {
                     let engine = lock(&engine);
                     assert_eq!(engine.outbox_len(), 2);
@@ -1392,8 +1399,9 @@ mod tests {
             let (marker, marked) = oneshot::channel();
             let marker_box = "22".repeat(32);
             cmd.send(Cmd::Req {
-                op: Op::FetchLink {
-                    id: marker_box.clone(),
+                op: Op::Lookup {
+                    handle: marker_box.clone(),
+                    prefix: true,
                 },
                 reply: marker,
             })
@@ -1402,13 +1410,17 @@ mod tests {
                 match request(&mut socket).await {
                     ClientFrame::Req {
                         id,
-                        op: Op::FetchLink { id: link },
-                    } if link == marker_box => {
+                        op:
+                            Op::Lookup {
+                                handle,
+                                prefix: true,
+                            },
+                    } if handle == marker_box => {
                         reply(
                             &mut socket,
                             ServerFrame::Res {
                                 id,
-                                result: Ok(Reply::Link(None)),
+                                result: Ok(Reply::Profiles(Vec::new())),
                             },
                         )
                         .await;
@@ -1429,7 +1441,7 @@ mod tests {
                     other => panic!("unexpected {other:?}"),
                 }
             }
-            assert!(matches!(marked.await.unwrap(), Ok(Reply::Link(None))));
+            assert!(matches!(marked.await.unwrap(), Ok(Reply::Profiles(list)) if list.is_empty()));
             {
                 let engine = lock(&engine);
                 assert!(!engine.net.pending.contains_key(&cached.client_id));
