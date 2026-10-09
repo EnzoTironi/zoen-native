@@ -229,6 +229,7 @@ impl TestRelay {
             metrics: metrics::Metrics::default(),
             blobs: Arc::new(object_store::memory::InMemory::new()),
             backup_vault: None,
+            backup_settings: Default::default(),
             apple_app_ids: Vec::new(),
             owner: ownership::NodeOwner::claim_all("read-revocation"),
         });
