@@ -24,6 +24,13 @@ impl Reject {
         }
     }
 
+    pub fn retry(reason: impl Into<String>) -> Self {
+        Self {
+            reason: reason.into(),
+            permanent: false,
+        }
+    }
+
     pub fn unavailable() -> Self {
         Self {
             reason: "log store unavailable".into(),
@@ -32,6 +39,7 @@ impl Reject {
     }
 }
 
+#[derive(Debug)]
 pub enum Sequencing {
     New {
         ev: Sequenced,
@@ -66,6 +74,10 @@ impl std::error::Error for StoreError {}
 /// Every call names its Space or identity, so cells and regions route above the trait.
 #[async_trait::async_trait]
 pub trait LogStore: Send + Sync {
+    /// Whether this node can renew its cell authority. Test stores default to ready.
+    async fn ready(&self) -> bool {
+        true
+    }
     /// Admits and sequences one envelope in a single transaction. `target_known` says
     /// whether the identity a `MemberAdded` names is in the directory.
     async fn append(&self, env: &Envelope, target_known: bool) -> Result<Sequencing, Reject>;

@@ -1138,16 +1138,6 @@ impl Session {
             }
             _ => true,
         };
-        if !self.st.owner.may_append(env.space()) {
-            Metrics::inc(&self.st.metrics.events_rejected);
-            return self
-                .send(reject(
-                    "not_owner",
-                    "this relay does not own that Space's partition",
-                    false,
-                ))
-                .await;
-        }
         match self.st.log.append(&env, target_known).await {
             Ok(Sequencing::Duplicate { ev }) => {
                 Metrics::inc(&self.st.metrics.events_duplicate);

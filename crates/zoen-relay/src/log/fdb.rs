@@ -56,6 +56,8 @@ use std::{
     },
 };
 
+use crate::ownership::{self, Fence, NodeOwner};
+
 use super::{
     admission::{admit, Effect, Facts},
     sequencer::{Applied, Batcher, Pending, Sequencer},
@@ -65,11 +67,15 @@ use super::{
 pub struct FdbLog {
     cell: Arc<Cell>,
     sequencer: Sequencer<Cell>,
+    pub owner: Arc<NodeOwner>,
+    forwarding: std::sync::OnceLock<ownership::forward::Forwarder>,
+    routing_count: Arc<tokio::sync::Semaphore>,
+    routing_bytes: Arc<tokio::sync::Semaphore>,
 }
 
 /// One cell's keyspace: the transactions behind [`FdbLog`].
 struct Cell {
-    db: Database,
+    db: Arc<Database>,
     root: Subspace,
 }
 
@@ -202,16 +208,159 @@ type Invite = (String, String, String, i64, i64, i64);
 impl FdbLog {
     /// `cluster_file` = `None` uses the default (`FDB_CLUSTER_FILE` or the system file).
     pub fn open(cluster_file: Option<&str>, cell: &str) -> anyhow::Result<Self> {
+        Self::open_as(
+            cluster_file,
+            cell,
+            &crate::fanout::new_node_id(),
+            NodeOwner::ttl_from_env()?,
+        )
+    }
+
+    pub fn open_as(
+        cluster_file: Option<&str>,
+        cell: &str,
+        node: &str,
+        ttl: std::time::Duration,
+    ) -> anyhow::Result<Self> {
         let cell = Arc::new(Cell {
-            db: Database::new(cluster_file)?,
+            db: Arc::new(Database::new(cluster_file)?),
             root: Subspace::all().subspace(&("zoen", cell)),
         });
+        let owner = Arc::new(NodeOwner::new(
+            cell.db.clone(),
+            cell.root.clone(),
+            node.to_string(),
+            ttl,
+        ));
         Ok(Self {
             sequencer: Sequencer::new(cell.clone()),
+            owner,
+            forwarding: std::sync::OnceLock::new(),
+            routing_count: Arc::new(tokio::sync::Semaphore::new(super::sequencer::MAX_PENDING)),
+            routing_bytes: Arc::new(tokio::sync::Semaphore::new(
+                super::sequencer::MAX_PENDING_BYTES,
+            )),
             cell,
         })
     }
 
+    pub async fn enable_forwarding(
+        self: &Arc<Self>,
+        url: &str,
+        cell: &str,
+        pool: sqlx::PgPool,
+    ) -> anyhow::Result<()> {
+        let forwarder = ownership::forward::Forwarder::connect(self, url, cell, pool).await?;
+        self.forwarding
+            .set(forwarder)
+            .map_err(|_| anyhow::anyhow!("forwarding already initialized"))?;
+        Ok(())
+    }
+
+    pub fn start_renewal(self: &Arc<Self>) {
+        let weak = Arc::downgrade(self);
+        NodeOwner::spawn(&self.owner, move || {
+            weak.upgrade().is_some_and(|log| log.forwarding_available())
+        });
+    }
+
+    fn forwarding_available(&self) -> bool {
+        self.forwarding.get().is_none_or(|f| f.connected())
+    }
+
+    /// The receiving owner never re-routes a forwarded request. Its supplied generation
+    /// must survive the conflict read in the transaction that stores the batch.
+    pub async fn append_fenced(
+        &self,
+        env: &Envelope,
+        target_known: bool,
+        fence: Fence,
+    ) -> Result<Sequencing, Reject> {
+        if fence.owner != self.owner.node || fence.partition != ownership::partition_of(env.space())
+        {
+            return Err(Reject::retry("stale partition owner"));
+        }
+        let (result, stats) = self
+            .sequencer
+            .append(env.clone(), target_known, fence)
+            .await;
+        let span = tracing::Span::current();
+        span.record("batch", stats.size);
+        span.record("attempts", stats.attempts);
+        result
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub async fn create_invite_fenced(
+        &self,
+        who: &str,
+        space: &str,
+        role: Role,
+        max_uses: u32,
+        ttl_secs: u64,
+        code: &str,
+        fence: Fence,
+    ) -> Result<InviteCreated, String> {
+        let expires = now_ms() + ttl_secs.clamp(60, 30 * 24 * 3600) as i64 * 1000;
+        let max = max_uses.clamp(1, 10_000) as i64;
+        let key = self.cell.root.pack(&("inv", code_hash(code)));
+        let fence = &fence;
+        let r = self
+            .cell
+            .db
+            .run(|trx, _| {
+                let key = key.clone();
+                async move {
+                    ownership::bound_transaction(&trx)?;
+                    let version = trx.get_read_version().await?;
+                    let lease = ownership::lease_in(&trx, &self.cell.root, fence.partition).await?;
+                    if fence.owner != self.owner.node
+                        || !ownership::accepts(lease.as_ref(), fence, space, version)
+                    {
+                        return Ok(Err("stale partition owner"));
+                    }
+                    let mine = self.cell.role_in(&trx, space, who).await?;
+                    if !matches!(mine, Some(Role::Owner | Role::Admin)) {
+                        return Ok(Err("only owners and admins create invites"));
+                    }
+                    if role <= Role::Admin && mine != Some(Role::Owner) {
+                        return Ok(Err("only the owner invites admins"));
+                    }
+                    let kind = match trx.get(&self.cell.space_key(space, "meta"), false).await? {
+                        Some(m) => {
+                            unpack::<(String, String, String)>(&m)
+                                .map_err(|e| custom(e.to_string()))?
+                                .0
+                        }
+                        None => return Ok(Err("unknown space")),
+                    };
+                    if parse::<SpaceKind>(&kind) == Some(SpaceKind::Direct) {
+                        return Ok(Err("direct chats don't take invites"));
+                    }
+                    if let Some(existing) = trx.get(&key, false).await? {
+                        let inv: Invite = unpack(&existing).map_err(|e| custom(e.to_string()))?;
+                        if inv.0 != space || inv.1 != word(&role) || inv.2 != who || inv.4 != max {
+                            return Ok(Err("invite code collision"));
+                        }
+                    } else {
+                        trx.set(&key, &pack(&(space, word(&role), who, expires, max, 0i64)));
+                    }
+                    let stored = trx
+                        .get(&key, true)
+                        .await?
+                        .ok_or_else(|| custom("invite missing after mint"))?;
+                    let inv: Invite = unpack(&stored).map_err(|e| custom(e.to_string()))?;
+                    Ok(Ok(inv.3))
+                }
+            })
+            .await
+            .map_err(|e| e.to_string())?;
+        let expires = r.map_err(str::to_string)?;
+        Ok(InviteCreated {
+            code: code.to_string(),
+            expires_at_ms: expires,
+        })
+    }
     /// Clears every key of this cell (decommissioning a cell, throwaway test cells).
     pub async fn drop_cell(&self) -> Result<(), StoreError> {
         let (begin, end) = self.cell.root.range();
@@ -384,6 +533,21 @@ impl Cell {
         batch: &[Pending],
         cached: Option<SpaceState>,
     ) -> Result<(Vec<Result<Sequencing, Reject>>, SpaceState), FdbBindingError> {
+        let version = trx.get_read_version().await?;
+        let lease = ownership::lease_in(trx, &self.root, ownership::partition_of(space)).await?;
+        let valid: Vec<bool> = batch
+            .iter()
+            .map(|p| ownership::accepts(lease.as_ref(), &p.fence, space, version))
+            .collect();
+        if valid.iter().all(|v| !v) {
+            return Ok((
+                batch
+                    .iter()
+                    .map(|_| Err(Reject::retry("stale partition owner")))
+                    .collect(),
+                SpaceState::default(),
+            ));
+        }
         let head_key = self.space_key(space, "head");
         let dedupe_keys: Vec<Vec<u8>> = batch
             .iter()
@@ -449,6 +613,10 @@ impl Cell {
         let mut fresh: HashMap<&[u8], usize> = HashMap::new();
         let mut results = Vec::with_capacity(batch.len());
         for (i, p) in batch.iter().enumerate() {
+            if !valid[i] {
+                results.push(Err(Reject::retry("stale partition owner")));
+                continue;
+            }
             let env = &p.env;
             let dedupe = dedupe_keys[i].as_slice();
             if let Some(&at) = fresh.get(dedupe) {
@@ -756,7 +924,10 @@ impl Batcher for Cell {
             .run(|trx, _committed| {
                 attempts.fetch_add(1, Ordering::Relaxed);
                 let cached = cached.lock().expect("cache lock").take();
-                async move { self.apply(&trx, space, batch, cached).await }
+                async move {
+                    ownership::bound_transaction(&trx)?;
+                    self.apply(&trx, space, batch, cached).await
+                }
             })
             .await;
         let attempts = attempts.into_inner();
@@ -778,6 +949,9 @@ impl Batcher for Cell {
 
 #[async_trait]
 impl LogStore for FdbLog {
+    async fn ready(&self) -> bool {
+        self.owner.ready().await && self.forwarding.get().is_none_or(|f| f.connected())
+    }
     /// Waits in the Space's queue, then commits with its batch. The span covers both.
     #[tracing::instrument(
         name = "fdb.append",
@@ -785,11 +959,47 @@ impl LogStore for FdbLog {
         fields(batch = tracing::field::Empty, attempts = tracing::field::Empty)
     )]
     async fn append(&self, env: &Envelope, target_known: bool) -> Result<Sequencing, Reject> {
-        let (result, stats) = self.sequencer.append(env.clone(), target_known).await;
-        let span = tracing::Span::current();
-        span.record("batch", stats.size);
-        span.record("attempts", stats.attempts);
-        result
+        if !self.forwarding_available() {
+            return Err(Reject::retry("cell forwarding unavailable"));
+        }
+        let _count = self
+            .routing_count
+            .clone()
+            .try_acquire_owned()
+            .map_err(|_| Reject::retry("relay routing capacity reached"))?;
+        let _bytes = self
+            .routing_bytes
+            .clone()
+            .try_acquire_many_owned(
+                env.stored_len().saturating_add(1024).min(u32::MAX as usize) as u32
+            )
+            .map_err(|_| Reject::retry("relay routing capacity reached"))?;
+        tokio::time::timeout(std::time::Duration::from_secs(6), async {
+            // At most one retry after a stale route or uncertain RPC result. The same
+            // envelope/client_id reaches durable dedupe on either owner.
+            for attempt in 0..2 {
+                let fence = self
+                    .owner
+                    .resolve(env.space(), || self.forwarding_available())
+                    .await?;
+                let result = if fence.owner == self.owner.node {
+                    self.append_fenced(env, target_known, fence).await
+                } else if let Some(forwarder) = self.forwarding.get() {
+                    forwarder.append(env, &fence).await
+                } else {
+                    return Err(Reject::retry(
+                        "partition owner requires the cell forwarding bus",
+                    ));
+                };
+                match result {
+                    Err(r) if !r.permanent && attempt == 0 => continue,
+                    result => return result,
+                }
+            }
+            unreachable!("bounded attempts return")
+        })
+        .await
+        .unwrap_or_else(|_| Err(Reject::retry("relay routing deadline exceeded")))
     }
 
     async fn read(
@@ -888,45 +1098,47 @@ impl LogStore for FdbLog {
         max_uses: u32,
         ttl_secs: u64,
     ) -> Result<InviteCreated, String> {
-        let code = random_code();
-        let expires = now_ms() + ttl_secs.clamp(60, 30 * 24 * 3600) as i64 * 1000;
-        let max = max_uses.clamp(1, 10_000) as i64;
-        let key = self.cell.root.pack(&("inv", code_hash(&code)));
-        let r = self
-            .cell
-            .db
-            .run(|trx, _| {
-                let key = key.clone();
-                async move {
-                    let mine = self.cell.role_in(&trx, space, who).await?;
-                    if !matches!(mine, Some(Role::Owner | Role::Admin)) {
-                        return Ok(Err("only owners and admins create invites"));
+        if !self.forwarding_available() {
+            return Err("cell forwarding unavailable".into());
+        }
+        let _count = self
+            .routing_count
+            .clone()
+            .try_acquire_owned()
+            .map_err(|_| "relay routing capacity reached".to_string())?;
+        tokio::time::timeout(std::time::Duration::from_secs(6), async {
+            let code = random_code();
+            for attempt in 0..2 {
+                let fence = self
+                    .owner
+                    .resolve(space, || self.forwarding_available())
+                    .await
+                    .map_err(|r| r.reason)?;
+                let result = if fence.owner == self.owner.node {
+                    self.create_invite_fenced(who, space, role, max_uses, ttl_secs, &code, fence)
+                        .await
+                } else if let Some(forwarder) = self.forwarding.get() {
+                    forwarder
+                        .invite(who, space, role, max_uses, ttl_secs, &code, &fence)
+                        .await
+                } else {
+                    return Err("partition owner requires the cell forwarding bus".into());
+                };
+                match result {
+                    Err(ref e)
+                        if attempt == 0
+                            && (e == "stale partition owner"
+                                || e.starts_with("partition owner")) =>
+                    {
+                        continue
                     }
-                    if role <= Role::Admin && mine != Some(Role::Owner) {
-                        return Ok(Err("only the owner invites admins"));
-                    }
-                    let kind = match trx.get(&self.cell.space_key(space, "meta"), false).await? {
-                        Some(m) => {
-                            unpack::<(String, String, String)>(&m)
-                                .map_err(|e| custom(e.to_string()))?
-                                .0
-                        }
-                        None => return Ok(Err("unknown space")),
-                    };
-                    if parse::<SpaceKind>(&kind) == Some(SpaceKind::Direct) {
-                        return Ok(Err("direct chats don't take invites"));
-                    }
-                    trx.set(&key, &pack(&(space, word(&role), who, expires, max, 0i64)));
-                    Ok(Ok(()))
+                    result => return result,
                 }
-            })
-            .await
-            .map_err(|e| e.to_string())?;
-        r.map_err(str::to_string)?;
-        Ok(InviteCreated {
-            code,
-            expires_at_ms: expires,
+            }
+            unreachable!("bounded attempts return")
         })
+        .await
+        .unwrap_or_else(|_| Err("relay routing deadline exceeded".into()))
     }
 
     async fn preview_invite(&self, code: &str) -> Result<InviteInfo, String> {

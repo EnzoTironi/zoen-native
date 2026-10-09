@@ -69,7 +69,10 @@ async fn live_traffic_crosses_nodes_through_nats() {
 #[tokio::test]
 async fn without_a_bus_nothing_live_crosses_nodes() {
     let mut w = World::new("nobus").await;
-    let b = two_people_on_two_nodes(&mut w);
+    w.init("ana", "Ana");
+    w.init("bruno", "Bruno");
+    w.zoen("ana", &["dm", "@bruno", "oi Bruno"]);
+    let b = w.start_node();
 
     let watcher = w.spawn_zoen_at(b, "bruno", &["watch", "--for", "6"]);
     sleep(Duration::from_millis(2500));

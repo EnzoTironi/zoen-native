@@ -1,16 +1,20 @@
-//! Space → partition ownership (ADR 0018 / S4).
-//!
-//! A Space has at most one owner among the live sync nodes. A Space maps to a
-//! partition by sha256-mod (O(1)); partitions map to nodes by rendezvous so
-//! adding or removing a node moves about 1/N of partitions. The owner holds a lease with a
-//! monotonically increasing fencing token; an append that carries a stale
-//! token is refused. Ordering still comes from FoundationDB's conflict on the
-//! Space's head key: two owners racing produce one conflict and one retry,
-//! never a fork. The lease buys batching, membership caches and outbox
-//! forwarding affinity.
+//! Persisted cell ownership, checked inside the log transaction (ADR 0018).
 
+pub mod forward;
+
+use foundationdb::{
+    options::{StreamingMode, TransactionOption},
+    tuple::{pack, unpack, Subspace},
+    Database, FdbBindingError, RangeOption, Transaction,
+};
+use futures_util::future::try_join_all;
+use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
-use std::collections::BTreeMap;
+use std::{
+    sync::Arc,
+    time::{Duration, Instant},
+};
+use tokio::sync::Mutex;
 
 /// How many partitions the cell is carved into. Power of two so a later
 /// split-by-bit is a clean remap of half the Spaces.
@@ -57,147 +61,275 @@ fn owner_of_partition(partition: u32, live: &[String]) -> &str {
     best.expect("live non-empty").0
 }
 
-/// In-process lease table for a single sync node (and for tests). Production
-/// stores the same shape under FDB key `lease/{partition}` once NATS is in
-/// (S5); until then one process is every partition's owner.
-#[derive(Default)]
-pub struct LeaseTable {
-    /// partition → (owner, token, expiry_ms)
-    leases: BTreeMap<u32, (String, u64, i64)>,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Lease {
+/// A generation changes on takeover or reacquisition after expiry, not on renewal.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Fence {
     pub partition: u32,
     pub owner: String,
-    pub token: u64,
-    pub expires_at_ms: i64,
+    pub token: i64,
 }
 
-impl LeaseTable {
-    pub fn new() -> Self {
-        Self::default()
-    }
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Lease {
+    pub fence: Fence,
+    pub expires_version: i64,
+}
 
-    /// Claims or renews `partition` for `owner`. A held lease belonging to
-    /// someone else that has not expired is left alone (`None`). Otherwise the
-    /// token goes up by one and the caller is the new owner.
-    pub fn claim(
-        &mut self,
-        partition: u32,
-        owner: &str,
-        now_ms: i64,
-        ttl_ms: i64,
-    ) -> Option<Lease> {
-        let expires = now_ms.saturating_add(ttl_ms.max(1));
-        match self.leases.get(&partition) {
-            Some((who, token, until)) if who != owner && *until > now_ms => None,
-            Some((_, token, _)) => {
-                let token = token.saturating_add(1);
-                let lease = Lease {
+/// FDB versions normally advance at 1,000,000/s. This is a liveness setting,
+/// not a wall-clock promise. Database recovery can advance versions faster.
+pub const VERSIONS_PER_MS: i64 = 1_000;
+const MAX_NODES: usize = 4096;
+pub const STORE_TIMEOUT_MS: i32 = 2_000;
+
+pub fn bound_transaction(trx: &Transaction) -> Result<(), FdbBindingError> {
+    trx.set_option(TransactionOption::Timeout(STORE_TIMEOUT_MS))?;
+    trx.set_option(TransactionOption::RetryLimit(5))?;
+    Ok(())
+}
+
+fn corrupt(reason: impl Into<String>) -> FdbBindingError {
+    FdbBindingError::CustomError(Box::new(crate::log::StoreError(reason.into())))
+}
+
+pub fn lease_key(root: &Subspace, partition: u32) -> Vec<u8> {
+    root.pack(&("ownership", "lease", partition as i64))
+}
+
+/// Non-snapshot: a renewal or takeover invalidates a concurrent mutation's read.
+pub async fn lease_in(
+    trx: &Transaction,
+    root: &Subspace,
+    partition: u32,
+) -> Result<Option<Lease>, FdbBindingError> {
+    trx.get(&lease_key(root, partition), false)
+        .await?
+        .map(|v| {
+            let (owner, token, expires_version): (String, i64, i64) =
+                unpack(&v).map_err(|e| corrupt(e.to_string()))?;
+            Ok(Lease {
+                fence: Fence {
                     partition,
-                    owner: owner.to_string(),
+                    owner,
                     token,
-                    expires_at_ms: expires,
-                };
-                self.leases.insert(
-                    partition,
-                    (lease.owner.clone(), lease.token, lease.expires_at_ms),
-                );
-                Some(lease)
-            }
-            None => {
-                let lease = Lease {
-                    partition,
-                    owner: owner.to_string(),
-                    token: 1,
-                    expires_at_ms: expires,
-                };
-                self.leases.insert(
-                    partition,
-                    (lease.owner.clone(), lease.token, lease.expires_at_ms),
-                );
-                Some(lease)
-            }
-        }
-    }
-
-    /// True when `owner` currently holds `partition` with exactly `token` and
-    /// the lease has not expired. The fencing check every append (and every
-    /// outbox clear) must pass.
-    pub fn accepts(&self, partition: u32, owner: &str, token: u64, now_ms: i64) -> bool {
-        matches!(
-            self.leases.get(&partition),
-            Some((who, t, until)) if who == owner && *t == token && *until > now_ms
-        )
-    }
-
-    pub fn get(&self, partition: u32) -> Option<Lease> {
-        self.leases
-            .get(&partition)
-            .map(|(owner, token, until)| Lease {
-                partition,
-                owner: owner.clone(),
-                token: *token,
-                expires_at_ms: *until,
+                },
+                expires_version,
             })
-    }
+        })
+        .transpose()
 }
 
-/// This sync node's claimed partitions. Today it claims all of them at boot; with
-/// several nodes (S5) it claims `owned_partitions(node, live)` and renews.
+pub fn accepts(lease: Option<&Lease>, fence: &Fence, space: &str, version: i64) -> bool {
+    fence.partition == partition_of(space)
+        && lease.is_some_and(|l| l.fence == *fence && l.expires_version > version)
+}
+
+/// Placement is advisory. Only the persisted lease and the mutation's conflict
+/// read grant authority. A disconnected node cannot renew or commit to the cell.
 pub struct NodeOwner {
     pub node: String,
-    leases: std::sync::Mutex<LeaseTable>,
-    /// partition → fencing token currently held
-    tokens: std::sync::Mutex<BTreeMap<u32, u64>>,
+    db: Arc<Database>,
+    root: Subspace,
+    ttl_versions: i64,
+    interval: Duration,
+    maintained: Mutex<Option<Instant>>,
 }
 
 impl NodeOwner {
-    pub fn claim_all(node: &str) -> Self {
-        let mut leases = LeaseTable::new();
-        let mut tokens = BTreeMap::new();
-        let now = now_ms();
-        // A year: single-node never expires; multi-node renewals land with S5.
-        let ttl = 365 * 24 * 3_600 * 1_000i64;
-        for p in 0..PARTITION_COUNT {
-            let lease = leases.claim(p, node, now, ttl).expect("empty table");
-            tokens.insert(p, lease.token);
-        }
+    pub fn new(db: Arc<Database>, root: Subspace, node: String, ttl: Duration) -> Self {
+        assert!(!node.is_empty());
+        assert!(ttl >= Duration::from_millis(100));
         Self {
-            node: node.to_string(),
-            leases: std::sync::Mutex::new(leases),
-            tokens: std::sync::Mutex::new(tokens),
+            node,
+            db,
+            root,
+            ttl_versions: i64::try_from(ttl.as_millis()).expect("lease duration") * VERSIONS_PER_MS,
+            interval: ttl / 3,
+            maintained: Mutex::new(None),
         }
     }
 
-    /// Whether this node may act on `space` right now (holds a live lease for its
-    /// partition with the token we claimed).
-    pub fn may_append(&self, space: &str) -> bool {
-        let p = partition_of(space);
-        let token = {
-            let t = self.tokens.lock().unwrap_or_else(|e| e.into_inner());
-            match t.get(&p).copied() {
-                Some(tok) => tok,
-                None => return false,
+    pub fn ttl_from_env() -> anyhow::Result<Duration> {
+        let ms: u64 = std::env::var("ZOEN_OWNER_LEASE_MS")
+            .unwrap_or_else(|_| "15000".into())
+            .parse()?;
+        anyhow::ensure!(
+            (1000..=60000).contains(&ms),
+            "ZOEN_OWNER_LEASE_MS must be 1000..=60000"
+        );
+        Ok(Duration::from_millis(ms))
+    }
+
+    /// Heartbeat, discover the live set, and renew/claim the preferred partitions.
+    /// Undesired partitions stop renewing and hand over only after expiry.
+    pub async fn maintain(&self) -> anyhow::Result<()> {
+        let mut last = self.maintained.lock().await;
+        self.maintain_in_store().await?;
+        *last = Some(Instant::now());
+        Ok(())
+    }
+
+    async fn maintain_in_store(&self) -> anyhow::Result<()> {
+        let (version, renewals, claims) = self
+            .db
+            .run(|trx, _| async move {
+                bound_transaction(&trx)?;
+                let version = trx.get_read_version().await?;
+                let until = version
+                    .checked_add(self.ttl_versions)
+                    .ok_or_else(|| corrupt("lease expiry overflow"))?;
+                let nodes = self.root.subspace(&("ownership", "nodes"));
+                trx.set(&nodes.pack(&self.node), &pack(&until));
+                let mut opt = RangeOption::from(nodes.range());
+                opt.limit = Some(MAX_NODES);
+                opt.mode = StreamingMode::WantAll;
+                let mut entries = Vec::new();
+                let mut iteration = 1;
+                loop {
+                    opt.limit = Some(MAX_NODES + 1 - entries.len());
+                    let page = trx.get_range(&opt, iteration, true).await?;
+                    let more = page.more();
+                    for entry in page.iter() {
+                        entries.push((entry.key().to_vec(), entry.value().to_vec()));
+                    }
+                    if entries.len() > MAX_NODES {
+                        return Err(corrupt("ownership registry limit reached"));
+                    }
+                    if !more {
+                        break;
+                    }
+                    let last = entries
+                        .last()
+                        .ok_or_else(|| corrupt("empty ownership registry page"))?;
+                    opt.begin = foundationdb::KeySelector::first_greater_than(last.0.clone());
+                    iteration += 1;
+                }
+                let mut live = Vec::new();
+                for (key, value) in &entries {
+                    let who: String = nodes.unpack(key).map_err(|e| corrupt(e.to_string()))?;
+                    let expiry: i64 = unpack(value).map_err(|e| corrupt(e.to_string()))?;
+                    if expiry > version {
+                        live.push(who);
+                    } else {
+                        // Protect cleanup against a heartbeat after this transaction's read version.
+                        trx.get(key, false).await?;
+                        trx.clear(key);
+                    }
+                }
+                let partitions = owned_partitions(&self.node, &live);
+                let leases =
+                    try_join_all(partitions.iter().map(|&p| lease_in(&trx, &self.root, p))).await?;
+                let mut renewals = 0usize;
+                let mut claims = 0usize;
+                for (p, old) in partitions.into_iter().zip(leases) {
+                    let token = match old.as_ref() {
+                        Some(l) if l.expires_version > version && l.fence.owner != self.node => {
+                            continue
+                        }
+                        Some(l) if l.expires_version > version => l.fence.token,
+                        Some(l) => l
+                            .fence
+                            .token
+                            .checked_add(1)
+                            .ok_or_else(|| corrupt("fencing token overflow"))?,
+                        None => 1,
+                    };
+                    if old
+                        .as_ref()
+                        .is_some_and(|l| l.expires_version > version && l.fence.owner == self.node)
+                    {
+                        renewals += 1;
+                    } else {
+                        claims += 1;
+                    }
+                    trx.set(
+                        &lease_key(&self.root, p),
+                        &pack(&(self.node.as_str(), token, until)),
+                    );
+                }
+                Ok((version, renewals, claims))
+            })
+            .await?;
+        tracing::debug!(node = %self.node, version, renewals, claims, "ownership maintenance committed");
+        Ok(())
+    }
+
+    async fn maintain_if_due(
+        &self,
+        force: bool,
+        can_renew: &(impl Fn() -> bool + Sync),
+    ) -> anyhow::Result<()> {
+        let mut last = self.maintained.lock().await;
+        anyhow::ensure!(can_renew(), "cell forwarding unavailable");
+        if force || last.is_none_or(|t| t.elapsed() >= self.interval) {
+            self.maintain_in_store().await?;
+            *last = Some(Instant::now());
+        }
+        Ok(())
+    }
+
+    pub async fn resolve(
+        &self,
+        space: &str,
+        can_renew: impl Fn() -> bool + Sync,
+    ) -> Result<Fence, crate::log::Reject> {
+        self.maintain_if_due(false, &can_renew)
+            .await
+            .map_err(|_| crate::log::Reject::unavailable())?;
+        for attempt in 0..2 {
+            let lease = self
+                .db
+                .run(|trx, _| async move {
+                    bound_transaction(&trx)?;
+                    let version = trx.get_read_version().await?;
+                    Ok(lease_in(&trx, &self.root, partition_of(space))
+                        .await?
+                        .filter(|l| l.expires_version > version))
+                })
+                .await
+                .map_err(|_| crate::log::Reject::unavailable())?;
+            if let Some(l) = lease {
+                return Ok(l.fence);
             }
-        };
-        self.leases
-            .lock()
-            .unwrap_or_else(|e| e.into_inner())
-            .accepts(p, &self.node, token, now_ms())
+            if attempt == 0 {
+                self.maintain_if_due(true, &can_renew)
+                    .await
+                    .map_err(|_| crate::log::Reject::unavailable())?;
+            }
+        }
+        Err(crate::log::Reject::retry("partition ownership is changing"))
     }
 
-    pub fn partition_of(space: &str) -> u32 {
-        partition_of(space)
+    pub async fn ready(&self) -> bool {
+        self.db
+            .run(|trx, _| async move {
+                bound_transaction(&trx)?;
+                let version = trx.get_read_version().await?;
+                let key = self.root.pack(&("ownership", "nodes", &self.node));
+                Ok(trx
+                    .get(&key, false)
+                    .await?
+                    .is_some_and(|v| unpack::<i64>(&v).is_ok_and(|expiry| expiry > version)))
+            })
+            .await
+            .unwrap_or(false)
     }
-}
 
-fn now_ms() -> i64 {
-    std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map(|d| d.as_millis() as i64)
-        .unwrap_or(0)
+    pub fn spawn(owner: &Arc<Self>, should_renew: impl Fn() -> bool + Send + 'static) {
+        let weak = Arc::downgrade(owner);
+        let interval = owner.interval;
+        tokio::spawn(async move {
+            loop {
+                tokio::time::sleep(interval).await;
+                let Some(owner) = weak.upgrade() else { break };
+                if !should_renew() {
+                    continue;
+                }
+                if let Err(e) = owner.maintain().await {
+                    tracing::warn!(error = %e, "ownership renewal failed");
+                }
+            }
+        });
+    }
 }
 
 #[cfg(test)]
@@ -236,30 +368,5 @@ mod tests {
             (moved as f64 - expected).abs() / expected < 0.05,
             "moved {moved}, expected ~{expected}"
         );
-    }
-
-    #[test]
-    fn fencing_token_refuses_a_stale_owner() {
-        let mut t = LeaseTable::new();
-        let first = t.claim(7, "alpha", 1_000, 5_000).unwrap();
-        assert!(t.accepts(7, "alpha", first.token, 2_000));
-        assert!(t.claim(7, "beta", 2_000, 5_000).is_none());
-        // Lease expired: beta takes over with a higher token.
-        let second = t.claim(7, "beta", 7_000, 5_000).unwrap();
-        assert!(second.token > first.token);
-        assert!(!t.accepts(7, "alpha", first.token, 7_500));
-        assert!(t.accepts(7, "beta", second.token, 7_500));
-        // Alpha comes back with the old token: refused.
-        assert!(!t.accepts(7, "alpha", first.token, 8_000));
-    }
-
-    #[test]
-    fn renew_keeps_the_same_owner_and_bumps_the_token() {
-        let mut t = LeaseTable::new();
-        let a = t.claim(1, "alpha", 0, 1_000).unwrap();
-        let b = t.claim(1, "alpha", 500, 1_000).unwrap();
-        assert_eq!(b.token, a.token + 1);
-        assert!(!t.accepts(1, "alpha", a.token, 600));
-        assert!(t.accepts(1, "alpha", b.token, 600));
     }
 }

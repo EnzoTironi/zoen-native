@@ -21,11 +21,17 @@ fn store() -> Arc<FdbLog> {
     store_on(&roda_types::new_id("t"))
 }
 
-/// Another relay on the same cell: its own sequencer and caches, the same keys.
+/// Another storage client of the same owner: separate sequencer/cache, shared keys.
+/// Distinct owners and failover are exercised by the ownership journey.
 fn store_on(cell: &str) -> Arc<FdbLog> {
     Arc::new(
-        FdbLog::open(std::env::var("FDB_CLUSTER_FILE").ok().as_deref(), cell)
-            .expect("FoundationDB"),
+        FdbLog::open_as(
+            std::env::var("FDB_CLUSTER_FILE").ok().as_deref(),
+            cell,
+            "log-contract",
+            std::time::Duration::from_secs(15),
+        )
+        .expect("FoundationDB"),
     )
 }
 
@@ -43,6 +49,7 @@ fn message(i: usize) -> EventBody {
 }
 
 async fn create(log: &FdbLog, a: &Author) -> (String, Seen) {
+    log.owner.maintain().await.expect("initialize ownership");
     let space = roda_types::new_id("sp");
     let body = EventBody::SpaceCreated {
         title: "t".into(),
@@ -57,7 +64,8 @@ async fn create(log: &FdbLog, a: &Author) -> (String, Seen) {
                 hash: ev.hash,
             },
         ),
-        _ => panic!("genesis refused"),
+        Err(r) => panic!("genesis refused: {}", r.reason),
+        _ => panic!("genesis answered as a duplicate"),
     }
 }
 
@@ -259,7 +267,7 @@ async fn invites_are_bounded_by_uses() {
     log.drop_cell().await.unwrap();
 }
 
-async fn two_relays_on_one_space_share_one_chain_and_one_membership() {
+async fn two_storage_clients_share_one_chain_and_one_membership() {
     let cell = roda_types::new_id("t");
     let relays = [store_on(&cell), store_on(&cell)];
     let ana = Arc::new(Author::root(Signer::generate()));
@@ -681,8 +689,8 @@ fn main() {
         )
         .await;
         run(
-            "two relays on one space share one chain and one membership",
-            two_relays_on_one_space_share_one_chain_and_one_membership(),
+            "two storage clients of one owner share one chain and one membership",
+            two_storage_clients_share_one_chain_and_one_membership(),
         )
         .await;
         run(
