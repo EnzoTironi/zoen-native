@@ -10,6 +10,12 @@ seção Fontes). Onde não achei dado público, está escrito "não encontrado".
 > não fecha a conta**, a não ser que a IA na nuvem fique rara (5 chamadas por mês) ou que o CPM
 > seja vendido direto, bem acima do programático. Quem fecha a conta é o lado empresa: bots
 > pagos para negócios, mensagens de empresa e comissão na loja.
+>
+> **Gringos (seção 15).** Nem nos EUA o banner médio cobre o custo médio (US$ 0,029 contra US$ 0,047).
+> Com as alavancas de empresa, EUA e Europa rendem ≈ US$ 0,17–0,18 por usuário por mês, a América
+> Latina ≈ US$ 0,10 e a **Índia ≈ US$ 0,03, que fica abaixo do custo**. Na mistura global (B, metade
+> Índia e emergentes) dá ≈ US$ 0,09 por usuário: fecha, mas com pouca folga. **Em mercado de CPM
+> baixo, a IA na nuvem precisa de um teto menor** (modelo no aparelho primeiro).
 
 ## 1. Premissas
 
@@ -185,6 +191,7 @@ fecha a conta com assinatura Premium e cripto.
 | Intersticial e vídeo premiado, América Latina | US$ 1,30–3,40 | idem (formatos de tela cheia, contra a regra de não anunciar para humanos) |
 | Telegram, lance mínimo | 0,1 TON/Gram ≈ US$ 0,13–0,14 | [Neurounit (ago/2026)](https://neurounit.ai/blog/en/how-to-run-telegram-ads/), [yosefk (set/2026)](https://yosefk.me/blog/telegram-ads-complete-guide-2026/) |
 | Telegram, mercados emergentes / EUA e Europa | US$ 0,30–0,60 / US$ 10–12 | yosefk (guia de agência, fonte fraca) |
+| **Telegram medido, contas em euro** (03/10/2026) | **Brasil €2,22 (≈ US$ 2,48)**, Índia €0,25 (≈ US$ 0,28); média €2,97 | [Adsly (out/2026)](https://adsly.pro/guides/telegram-ads-cpm-by-country/) |
 | Meta Ads no Brasil (feed, com segmentação comportamental) | R$ 8–35 ≈ **US$ 1,55–6,80** | [Trafius (2026)](https://trafius.com.br/blog/quanto-custa-anunciar-facebook-instagram) (benchmark de agência) |
 | CPM de comunidade tipo Reddit ou Discord no Brasil | **não encontrado** | — |
 
@@ -210,7 +217,7 @@ sessão × taxa de preenchimento × CPM ÷ 1000.
 | **receita bruta por MAU por mês** | **US$ 0,0002** | **US$ 0,022** | **US$ 0,65** |
 | líquido, se 50% vai ao dono da comunidade (modelo Telegram) | US$ 0,0001 | US$ 0,011 | US$ 0,32 |
 
-**Mistura global** (70% Brasil + 30% de mercados pagando ~4,5 vezes o CPM, como sugerem a razão
+**Mistura global** (versão rápida; a análise por região está na seção 15) (70% Brasil + 30% de mercados pagando ~4,5 vezes o CPM, como sugerem a razão
 de banner América do Norte/América Latina da Appodeal e a razão de ARPU EUA/internacional do
 Reddit): bruto de **US$ 0,0004 / 0,044 / 1,33**.
 
@@ -312,6 +319,105 @@ no piloto.
    - GMV e take rate;
    - % de cadastros sem SMS.
 
+## 15. Internacional ("Pense nos gringos")
+
+Mesmo modelo das seções 9 e 12, região por região. O engajamento é o mesmo em todas as regiões
+(1,8 / 43 / 324 banners por MAU por mês). O que muda é o CPM e quanto as empresas pagam.
+Câmbio: €1 = US$ 1,1186 (BCE, 08/10/2026); 1 TON/Gram ≈ US$ 1,30 (meados de set/2026).
+
+### 15.1 CPM de banner e anúncio nativo por região (US$)
+
+| região | baixo | médio | alto | de onde vem |
+|---|---|---|---|---|
+| EUA | 0,40 | 0,68 | 2,00 | baixo: Appodeal, banner América do Norte (4º tri/2024); médio: SpinX, banner Android nos EUA (2025); alto: MWM, banner iOS nos EUA, topo da faixa (2026) |
+| Europa | 0,20 | 0,35 | 1,50 | baixo: Appodeal Europa; médio: Telegram no Reino Unido e Alemanha, 0,27 TON (Adsly, out/2026); alto: **estimativa minha** (MWM diz "parecido com os EUA, um pouco abaixo") |
+| Índia | 0,10 | 0,28 | 0,50 | baixo: Appodeal APAC; médio: Telegram Índia €0,25 (Adsly); alto: MWM, banner Android Índia/Brasil, topo da faixa |
+| América Latina | 0,10 | 0,50 | 2,48 | baixo: Appodeal América Latina; médio: MWM Índia/Brasil, topo; alto: Telegram Brasil €2,22 (Adsly) |
+
+**Cuidados com a tabela:**
+- O "alto" da América Latina (Telegram medido) passa o "alto" dos EUA (banner). São fontes e
+  formatos diferentes, não uma prova de que o Brasil paga mais que os EUA.
+- O Telegram nos EUA e na Europa só foi medido em conta TON, cujo leilão é bem mais barato.
+- Anúncio nativo costuma render 2–3 vezes o banner (MWM).
+- **Não encontrado:** CPM de banner em comunidade por país em fonte pública auditada.
+
+### 15.2 Quanto cada região rende hoje para outras empresas (referências de ARPU)
+
+| região | Facebook, ARPU mensal (4º tri/2023, último publicado) | Reddit, ARPU mensal por usuário diário (2º tri/2026) | WhatsApp, mensagem de marketing / utilidade (out/2026) |
+|---|---|---|---|
+| EUA e Canadá | US$ 22,81 | US$ 3,95 | US$ 0,0250 / 0,0034 |
+| Europa | US$ 7,71 | internacional: US$ 0,75 | Alemanha 0,1365 / 0,0550; França 0,0859 / 0,0300 |
+| Ásia-Pacífico (inclui Índia) | US$ 1,84 | idem | Índia 0,0118 / 0,0014 |
+| Resto do mundo (inclui América Latina) | US$ 1,50 | idem | Brasil 0,0625 / 0,0068; México 0,0397 / 0,0085 |
+
+- Na receita de anúncio da Meta no 2º tri/2026, EUA e Canadá são 44,1%, Europa 23,5%,
+  Ásia-Pacífico 18,4% e resto do mundo 14,0% (apresentação de resultados).
+- A diferença de ARPU entre EUA e Índia ou América Latina é de **~12–15 vezes**. A do CPM de
+  banner é de só **2–7 vezes**: banner é barato em todo lugar.
+
+### 15.3 Receita por MAU por mês, por região
+
+**Premissas por região (minhas, para validar):**
+- **Bot Pro** (2/5/10 empresas pagantes por 1.000 MAU), mensalidade:
+  - EUA US$ 10/20/40;
+  - Europa US$ 8/15/30;
+  - América Latina US$ 5/10/20;
+  - Índia US$ 1/3/6.
+- **Loja**, gasto por comprador por mês:
+  - EUA US$ 4/8/16;
+  - Europa US$ 3/6/12;
+  - América Latina US$ 2/4/8;
+  - Índia US$ 0,5/1/2.
+- **Mensagens de empresa:** o Zoen cobra **metade da tarifa de utilidade da Meta em cada país**
+  (Europa pela tarifa da França e da Itália).
+
+| região | cenário | anúncio | loja | Bot Pro | mensagens de empresa | **total** |
+|---|---|---|---|---|---|---|
+| EUA | baixo | 0,0007 | 0,0040 | 0,020 | 0,0034 | **0,028** |
+| EUA | médio | **0,029** | 0,036 | 0,100 | 0,0068 | **0,172** |
+| EUA | alto | 0,648 | 0,160 | 0,400 | 0,0136 | **1,22** |
+| Europa | baixo | 0,0004 | 0,0030 | 0,016 | 0,030 | **0,049** |
+| Europa | médio | **0,015** | 0,027 | 0,075 | 0,060 | **0,177** |
+| Europa | alto | 0,486 | 0,120 | 0,300 | 0,120 | **1,03** |
+| Índia | baixo | 0,0002 | 0,0005 | 0,002 | 0,0014 | **0,004** |
+| Índia | médio | **0,012** | 0,0045 | 0,015 | 0,0028 | **0,034** |
+| Índia | alto | 0,162 | 0,020 | 0,060 | 0,0056 | **0,25** |
+| América Latina | baixo | 0,0002 | 0,0020 | 0,010 | 0,0068 | **0,019** |
+| América Latina | médio | **0,022** | 0,018 | 0,050 | 0,0136 | **0,103** |
+| América Latina | alto | 0,804 | 0,080 | 0,200 | 0,0272 | **1,11** |
+
+Valores em US$, sem descontar a parte do dono da comunidade (de 0 a 50% do anúncio).
+
+### 15.4 Mistura global
+
+| mistura de usuários | anúncio, médio | total, médio | anúncio, alto | total, alto |
+|---|---|---|---|---|
+| A: Brasil primeiro (70% América Latina, 10% EUA, 10% Europa, 10% Índia) | 0,021 | **0,111** | 0,69 | 1,03 |
+| B: global tipo WhatsApp (20% América Latina, 10% EUA, 20% Europa, 50% Índia e emergentes, usando o CPM da Índia) | 0,016 | **0,090** | 0,40 | 0,67 |
+| C: ocidental (20% América Latina, 40% EUA, 40% Europa) | 0,022 | **0,160** | 0,61 | 1,12 |
+
+### 15.5 Veredito internacional
+
+- **Só anúncio não cobre o custo médio (US$ 0,047) em nenhuma região** com o engajamento médio.
+  - EUA: US$ 0,029, o melhor caso;
+  - Europa: US$ 0,015;
+  - Índia: US$ 0,012.
+  - Nos EUA, fechar exige ~70 banners por usuário por mês a US$ 0,68. Na Índia, ~170 a US$ 0,28.
+- **Com as alavancas de empresa:**
+  - **EUA, Europa e América Latina fecham com folga** (2 a 4 vezes o custo médio);
+  - **a Índia não fecha** (US$ 0,034 contra US$ 0,047).
+  Em mercados assim, o usuário gratuito precisa de um teto de IA na nuvem bem menor, ~US$ 0,01
+  por mês, com quase tudo resolvido pelo modelo no aparelho.
+- **Na Europa, o que mais rende são as mensagens de empresa**: a tarifa de utilidade da Meta na
+  Alemanha e na França é de US$ 0,03–0,055, 4 a 8 vezes a do Brasil. Um preço abaixo da Meta tem
+  muito espaço por lá.
+- **Na mistura global B**, a receita fica em ≈ US$ 0,09 por usuário por mês: cobre o custo
+  médio, mas com pouca folga. Só o anúncio (US$ 0,016) cobre um terço do custo.
+- **O que fazer:**
+  - teto de IA por região, ligado ao CPM e ao ARPU locais;
+  - preço de Bot Pro e de mensagens de empresa por país, ancorado na tabela da Meta;
+  - venda direta de anúncio primeiro nos EUA e na Europa, onde o CPM médio é maior.
+
 ## Fontes (lidas em 09/out/2026)
 
 - OpenAI API pricing: https://platform.openai.com/docs/pricing
@@ -337,6 +443,12 @@ no piloto.
 - Google Play: https://developer.android.com/blog/posts/expanded-billing-choice-and-lower-fees-on-google-play
 - Hotmart: https://tactus.com.br/taxas-da-hotmart-para-produtor/; iFood: https://blog-parceiros.ifood.com.br/taxas-ifood/; Shopee: https://seller.shopee.com.br/edu/article/26839/Comissao-para-vendedores-CNPJ-e-CPF-em-2026
 - WhatsApp Business: https://developers.facebook.com/documentation/business-messaging/whatsapp/pricing, https://stratacademy.com.br/blog/novos-precos-da-api-do-whatsapp-o-que-mudou-em-outubro-de-2026/
+- Telegram Ads, CPM medido por país (03/10/2026): https://adsly.pro/guides/telegram-ads-cpm-by-country/, https://adsly.pro/guides/telegram-ads-in-brazil/
+- Banner por região em 2026: MWM https://mwm.ai/glossary/banner-ad; SpinX (2025) https://spinx.io/blog/ecpm-by-country-in-2025-the-map-every-mobile-publisher-needs
+- WhatsApp, tarifas por país (out/2026): https://monochat.ai/blog/whatsapp-business-api-pricing, https://instantdm.com/blog/whatsapp-business-api-pricing-2026-india-october-update
+- Meta, receita por região no 2º tri/2026: https://s21.q4cdn.com/399680738/files/doc_financials/2026/q2/Earnings-Presentation-Q2-2026.pdf
+- Apple Mini Apps Partner Program (15% fora do Brasil): https://developer.apple.com/programs/mini-apps-partner/
+- Câmbio do BCE via Frankfurter (08/10/2026): https://api.frankfurter.dev/v1/latest?from=EUR&to=USD
 - Internas: docs/adr/0022-capacity.md, docs/cost-model.md
 
 **Não encontrado:**
@@ -347,7 +459,9 @@ no piloto.
 - o tier barato da xAI;
 - a parcela de aparelhos no Brasil com Gemini Nano;
 - se a nova taxa do Google Play vale para o Brasil;
-- empresas pagantes por 1.000 usuários em mensageiros.
+- empresas pagantes por 1.000 usuários em mensageiros;
+- CPM auditado de banner em comunidade por país;
+- CPM do Telegram nos EUA e na Europa em conta euro.
 
 ## Como reproduzir
 
