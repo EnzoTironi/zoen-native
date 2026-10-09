@@ -10,7 +10,12 @@
 use std::sync::{Arc, Mutex, MutexGuard};
 
 mod api;
+mod files;
+mod files_api;
 mod media;
+mod pages;
+pub use files::FileDto;
+pub use pages::{MarkdownFileDto, PageBlockDto, PageDto, TextSpanDto};
 mod mls;
 mod net;
 mod profile;

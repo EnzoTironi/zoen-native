@@ -6,6 +6,7 @@ members = [
   "crates/roda-grants",
   "crates/roda-store",
   "crates/roda-ffi",
+  "crates/roda-docs",
   "crates/roda-gate",
   "crates/roda-proto",
   "crates/roda-mls",
@@ -46,6 +47,7 @@ roda-grants = { path = "crates/roda-grants" }
 roda-gate = { path = "crates/roda-gate" }
 roda-store = { path = "crates/roda-store" }
 roda-proto = { path = "crates/roda-proto" }
+roda-docs = { path = "crates/roda-docs" }
 roda-mls = { path = "crates/roda-mls", default-features = false }
 zoen-egress = { path = "crates/zoen-egress" }
 zoen-liveview = { path = "crates/zoen-liveview" }

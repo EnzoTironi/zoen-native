@@ -371,23 +371,31 @@ impl Engine {
 
     /// Envelopes still waiting for the relay, oldest first.
     pub fn outbox_envelopes(&self) -> Vec<Envelope> {
+        self.outbox_envelopes_except(&HashSet::new())
+    }
+
+    /// The outbox as envelopes, leaving out the ones already sent on this connection.
+    /// Called after every write, so it skips sent entries before any sealing work and asks
+    /// each Space's group for its epoch once: a long import stays linear, not quadratic.
+    pub fn outbox_envelopes_except(&self, sent: &HashSet<String>) -> Vec<Envelope> {
+        let mut ready = HashMap::new();
         self.store
-            .outbox()
+            .outbox_heads()
             .unwrap_or_default()
             .into_iter()
-            .filter(|p| !p.failed)
+            .filter(|p| !p.failed && !sent.contains(&p.client_id))
             // Refused for being clear in a Space that went end-to-end: it waits until this
             // device has caught up with that, then goes out sealed.
             .filter(|p| {
-                p.last_error.as_deref() != Some(roda_proto::SEAL_REQUIRED)
-                    || self.is_e2e(&p.event.space)
+                p.last_error.as_deref() != Some(roda_proto::SEAL_REQUIRED) || self.is_e2e(&p.space)
             })
             .filter_map(|p| {
-                let mut env = self.outgoing_envelope(&p.event)?;
+                let event = self.store.outbox_get(&p.client_id).ok().flatten()?;
+                let mut env = self.outgoing_envelope_with(&event, &mut ready)?;
                 if !env.is_sealed() {
                     env.invite = self
                         .store
-                        .meta(&format!("invite:{}", p.event.client_id))
+                        .meta(&format!("invite:{}", p.client_id))
                         .ok()
                         .flatten();
                 }

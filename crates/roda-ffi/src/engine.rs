@@ -428,6 +428,8 @@ pub struct Engine {
     pub(crate) policy: Policy,
     /// Account, outbox and relay bookkeeping (see `sync.rs`).
     pub(crate) net: crate::sync::NetState,
+    /// Open pages: Loro documents rebuilt from the log (see `pages.rs`).
+    pub(crate) pages: crate::pages::PageCache,
 }
 
 pub(crate) type R<T> = Result<T, CoreError>;
@@ -466,6 +468,7 @@ impl Engine {
             policy: Policy::default(),
             index_dirty: true,
             net: Default::default(),
+            pages: Default::default(),
         };
         engine.migrate_event_format()?;
         engine.migrate_mls()?;
@@ -475,6 +478,11 @@ impl Engine {
 
     /// Recarrega tudo do disco: reverifica cada log e reprojeta do zero.
     pub fn reload(&mut self) -> R<()> {
+        self.pages
+            .sessions
+            .lock()
+            .unwrap_or_else(|p| p.into_inner())
+            .clear();
         self.logs.clear();
         self.space_order.clear();
         self.identities.clear();
@@ -812,6 +820,19 @@ impl Engine {
             }
             ItemContent::Text { text } => (text.clone(), None, None, 0, 0),
             ItemContent::App(_) => (String::new(), None, None, 0, 0),
+            ItemContent::Page(_) => {
+                let text = self.page_text(item);
+                let summary: String = text
+                    .lines()
+                    .skip(1)
+                    .find(|l| !l.trim().is_empty())
+                    .unwrap_or("")
+                    .chars()
+                    .take(160)
+                    .collect();
+                (summary, None, None, 0, 0)
+            }
+            ItemContent::File(f) => (f.mime.clone(), None, None, 0, 0),
         };
         Some(ItemCard {
             app: self.app_state_dto(it),
@@ -1285,6 +1306,13 @@ impl Engine {
             ItemContent::Plan(p) => (Some(plan_to_dto(p)), None),
             ItemContent::Text { text } => (None, Some(text.clone())),
             ItemContent::App(_) => (None, None),
+            ItemContent::Page(_) => (None, Some(self.page_text(id))),
+            ItemContent::File(_) => (None, None),
+        };
+        let (path, file) = match &v.content {
+            ItemContent::Page(p) => (p.path.clone(), None),
+            ItemContent::File(f) => (f.path.clone(), Some(self.file_dto(f))),
+            _ => (String::new(), None),
         };
         let linked_requests = self
             .state
@@ -1324,6 +1352,8 @@ impl Engine {
                 .collect(),
             linked_requests,
             app: self.app_state_dto(it),
+            path,
+            file,
         })
     }
 
@@ -1545,6 +1575,11 @@ impl Engine {
         let it = self.item_state(item)?;
         if !it.versions.iter().any(|v| v.number == version) {
             return Err(not_found(&t("versão", "version")));
+        }
+        if it.kind == ItemKind::Page {
+            // A page's versions are Loro changes: restoring is a new change, not a copy.
+            self.page_restore(item, version, note)?;
+            return self.item(item);
         }
         let space = it.space.clone();
         self.append(
@@ -2292,6 +2327,8 @@ impl Engine {
                         .map(|l| format!("{} · {}", l.text, money(l.cost_cents)))
                         .unwrap_or(p.summary.clone()),
                     ItemContent::Text { text } => text.clone(),
+                    ItemContent::Page(_) => self.page_text(&it.id),
+                    ItemContent::File(f) => f.name.clone(),
                     ItemContent::App(a) => {
                         apps::headline(
                             &a.app,
@@ -3016,6 +3053,8 @@ pub(crate) fn kind_id(k: ItemKind) -> &'static str {
         ItemKind::Task => "task",
         ItemKind::Note => "note",
         ItemKind::App => "app",
+        ItemKind::Page => "page",
+        ItemKind::File => "file",
     }
 }
 
@@ -3025,6 +3064,8 @@ pub(crate) fn kind_label(k: ItemKind) -> &'static str {
         ItemKind::Task => ts("Tarefa", "Task"),
         ItemKind::Note => ts("Nota", "Note"),
         ItemKind::App => ts("Mini-app", "Mini-app"),
+        ItemKind::Page => ts("Página", "Page"),
+        ItemKind::File => ts("Arquivo", "File"),
     }
 }
 

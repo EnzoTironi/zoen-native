@@ -261,6 +261,24 @@ impl Engine {
         device.epoch(space).ok()
     }
 
+    /// The epoch a queued event was sealed at, without reading its sealed bytes.
+    fn sealed_epoch(&self, e: &Event) -> Option<u64> {
+        self.sealed_epoch_of(&e.client_id)
+    }
+
+    fn sealed_epoch_of(&self, client_id: &str) -> Option<u64> {
+        self.store
+            .conn()
+            .query_row(
+                "SELECT substr(value, 1, instr(value, ':') - 1) FROM meta WHERE key = ?1",
+                [sealed_meta(client_id)],
+                |r| r.get::<_, String>(0),
+            )
+            .ok()?
+            .parse()
+            .ok()
+    }
+
     /// The sealed copy of a queued event: the epoch it was sealed at, and the envelope.
     fn sealed_copy(&self, e: &Event) -> Option<(u64, Envelope)> {
         let v = self.store.meta(&sealed_meta(&e.client_id)).ok().flatten()?;
@@ -277,22 +295,26 @@ impl Engine {
         if self.net.pending.is_empty() {
             return Ok(false);
         }
-        let queued: Vec<Event> = self
-            .store
-            .outbox()?
-            .into_iter()
-            .filter(|p| !p.failed)
-            .map(|p| p.event)
-            .filter(|e| self.is_e2e(&e.space) && must_seal(&e.body))
-            .collect();
+        // Runs after every write: look at the queue without decoding it, and read only the
+        // events that still need sealing for their group's current epoch.
+        let heads = self.store.outbox_heads()?;
         let mut ready: HashMap<SpaceId, Option<u64>> = HashMap::new();
         let mut sealed = false;
-        for e in queued {
+        for h in heads {
+            if h.failed || !self.is_e2e(&h.space) {
+                continue;
+            }
             let epoch = *ready
-                .entry(e.space.clone())
-                .or_insert_with(|| self.ready_epoch(&e.space));
+                .entry(h.space.clone())
+                .or_insert_with(|| self.ready_epoch(&h.space));
             let Some(epoch) = epoch else { continue };
-            if self.sealed_copy(&e).is_some_and(|(at, _)| at == epoch) {
+            if self.sealed_epoch_of(&h.client_id) == Some(epoch) {
+                continue;
+            }
+            let Some(e) = self.store.outbox_get(&h.client_id)? else {
+                continue;
+            };
+            if !must_seal(&e.body) {
                 continue;
             }
             self.seal_outgoing(&e, epoch)?;
@@ -334,15 +356,27 @@ impl Engine {
 
     /// What goes out now for a queued event: its sealed copy for the current epoch, the
     /// handshake it is, or itself. `None` while it waits for its group.
-    pub(crate) fn outgoing_envelope(&self, e: &Event) -> Option<Envelope> {
+    /// Each Space's ready epoch is looked up once per batch (`ready`).
+    pub(crate) fn outgoing_envelope_with(
+        &self,
+        e: &Event,
+        ready: &mut HashMap<SpaceId, Option<u64>>,
+    ) -> Option<Envelope> {
         if matches!(e.body, EventBody::Sealed { .. }) {
             return Envelope::new(e.content.clone(), e.sig.clone(), e.cert.clone(), None);
         }
         if !(self.is_e2e(&e.space) && must_seal(&e.body)) {
             return Some(Envelope::plain(e));
         }
+        let epoch = *ready
+            .entry(e.space.clone())
+            .or_insert_with(|| self.ready_epoch(&e.space));
+        // Cheap check first: only decode the sealed copy when it is for this epoch.
+        if epoch.is_none() || self.sealed_epoch(e) != epoch {
+            return None;
+        }
         let (at, env) = self.sealed_copy(e)?;
-        (Some(at) == self.ready_epoch(&e.space)).then_some(env)
+        (Some(at) == epoch).then_some(env)
     }
 
     /// Signs MLS bytes into the Space's outbox, in order.
@@ -397,11 +431,7 @@ impl Engine {
         let own = self.net.pending.contains_key(&client_id);
         let roster = self.roster(&space);
         let own_copy = if own && kind == SealedKind::Application {
-            self.store.outbox().ok().and_then(|o| {
-                o.into_iter()
-                    .map(|p| p.event)
-                    .find(|e| e.client_id == client_id)
-            })
+            self.store.outbox_get(&client_id).ok().flatten()
         } else {
             None
         };

@@ -1,8 +1,23 @@
 import SwiftUI
 import RodaCore
 
-/// Tela 9: o Item (aqui, um plano). Editável; cada edição é uma versão com Desfazer.
+/// Opens an Item in the screen made for its kind.
 struct ItemView: View {
+    @Environment(AppModel.self) private var model
+    let itemId: String
+
+    var body: some View {
+        let kind = (try? model.core.item(itemId: itemId))?.kindId ?? ""
+        switch kind {
+        case "page": PageScreen(itemId: itemId)
+        case "file": FileScreen(itemId: itemId)
+        default: PlanItemView(itemId: itemId)
+        }
+    }
+}
+
+/// Tela 9: o Item (aqui, um plano). Editável; cada edição é uma versão com Desfazer.
+struct PlanItemView: View {
     @Environment(AppModel.self) private var model
     let itemId: String
 
@@ -306,8 +321,8 @@ struct AgentReaction: View {
 }
 
 struct LineEditor: View {
-    @State var editing: ItemView.EditingLine
-    var onSave: (ItemView.EditingLine) -> Void
+    @State var editing: PlanItemView.EditingLine
+    var onSave: (PlanItemView.EditingLine) -> Void
     /// Editing an existing line: the bottom row offers [trash] [Update], Things-style.
     var onRemove: (() -> Void)? = nil
     @Environment(\.dismiss) private var dismiss
