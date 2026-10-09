@@ -755,7 +755,7 @@ impl Engine {
             }
             self.net.mls.rejoin.insert(space.clone());
         }
-        let e = match event_from_content(
+        let mut e = match event_from_content(
             ev.env.content().to_vec(),
             ev.env.sig.clone(),
             ev.env.cert.clone(),
@@ -766,6 +766,7 @@ impl Engine {
             Ok(e) => e,
             Err(err) => return Ingest::Invalid(err.to_string()),
         };
+        e.sealed_wire = ev.env.legacy_pruned_hash().map(str::to_string);
         let log = self
             .logs
             .entry(space.clone())

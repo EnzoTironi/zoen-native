@@ -1,4 +1,4 @@
-//! Format v3: what an author signs, as protobuf bytes that are encoded exactly once.
+//! Signed protobuf content: v3 clear events and v4 sealed events with pruning proofs.
 //!
 //! ```text
 //! message SignedContent {            // zoen.log.v3
@@ -15,7 +15,7 @@
 //!   }
 //! }
 //! message Seen { uint64 seq = 1; string hash = 2; }
-//! message Sealed { SealedKind kind = 1; uint32 suite = 2; bytes data = 3; }
+//! message Sealed { SealedKind kind = 1; uint32 suite = 2; bytes data = 3; bytes data_hash = 4; }
 //! ```
 //!
 //! The content hash is SHA-256 over a domain tag plus these bytes, and the signature is
@@ -27,6 +27,8 @@ use roda_types::{EventBody, Seen};
 use sha2::{Digest, Sha256};
 
 pub const DOMAIN: &[u8] = b"zoen-content-v3\0";
+/// Sealed entries with an authenticated pruning digest. Clear events remain v3.
+pub const SEALED_CONTENT_VERSION: u32 = 4;
 
 #[derive(Clone, PartialEq, Message)]
 pub struct SignedContent {
@@ -175,38 +177,169 @@ impl From<&SeenLink> for Seen {
 /// Domain of a sealed entry's hash.
 pub const SEALED_DOMAIN: &[u8] = b"zoen-sealed-v1\0";
 
-/// The hash an author signs and the chain links (ADR 0026). Clear content: the content hash.
-/// Sealed content: SHA-256(sealed domain ‖ hash of the header with the MLS bytes out ‖
+/// The hash an author signs and the chain links (ADR 0026). V3 keeps its exact-byte hash.
+/// V4 sealed content: SHA-256(sealed domain ‖ hash of the header with the MLS bytes out ‖
 /// SHA-256 of the MLS bytes). A pruned stub keeps the header and the bytes' hash, so it
 /// hashes (and verifies) the same as the original, and only a sealed entry can become one.
 pub fn signed_hash(content: &[u8]) -> String {
-    let Some(mut c) = SignedContent::parse(content) else {
+    let Some(c) = SignedContent::parse(content) else {
         return content_hash(content);
     };
-    let Some(Payload::Sealed(s)) = &mut c.payload else {
+    let Some(Payload::Sealed(s)) = &c.payload else {
         return content_hash(content);
+    };
+    if c.v < SEALED_CONTENT_VERSION {
+        return content_hash(content);
+    }
+    let Some(header) = rewrite_sealed(content, strip_sealed_data) else {
+        return content_hash(content);
+    };
+    sealed_hash(&header, &s.data_digest())
+}
+
+fn sealed_hash(header: &[u8], digest: &[u8]) -> String {
+    hex::encode(
+        Sha256::new()
+            .chain_update(SEALED_DOMAIN)
+            .chain_update(content_hash(header).as_bytes())
+            .chain_update(digest)
+            .finalize(),
+    )
+}
+
+/// Compatibility for the unversioned pruning hash briefly emitted by M2 branches.
+/// Readers select this only when the author's signature authenticates it.
+pub fn unversioned_sealed_hash(content: &[u8]) -> Option<String> {
+    let mut c = SignedContent::parse(content)?;
+    let Some(Payload::Sealed(s)) = &mut c.payload else {
+        return None;
     };
     let digest = s.data_digest();
     s.data = Vec::new();
     s.data_hash = Vec::new();
-    let header = content_hash(&c.encode());
-    hex::encode(
-        Sha256::new()
-            .chain_update(SEALED_DOMAIN)
-            .chain_update(header.as_bytes())
-            .chain_update(&digest)
-            .finalize(),
-    )
+    Some(sealed_hash(&c.encode(), &digest))
 }
 
 /// The stub content a pruned sealed entry leaves; `None` unless sealed with its bytes.
 pub fn stub_content(content: &[u8]) -> Option<Vec<u8>> {
     let mut c = SignedContent::parse(content)?;
+    if !matches!(c.payload, Some(Payload::Sealed(_))) {
+        return None;
+    }
+    if c.v >= SEALED_CONTENT_VERSION {
+        return rewrite_sealed(content, |bytes| {
+            let sealed = <Sealed as Message>::decode(bytes).ok()?;
+            if sealed.is_stub() {
+                return None;
+            }
+            let mut header = strip_sealed_data(bytes)?;
+            append_bytes(&mut header, 4, &sealed.data_digest());
+            Some(header)
+        });
+    }
     match &mut c.payload {
         Some(Payload::Sealed(s)) if !s.is_stub() => *s = s.stub(),
         _ => return None,
     }
     Some(c.encode())
+}
+
+// Preserve raw protobuf fields, including unknown extensions, in the signed header.
+// Re-encoding through prost would silently remove those fields before hashing a stub.
+fn rewrite_sealed(content: &[u8], rewrite: impl Fn(&[u8]) -> Option<Vec<u8>>) -> Option<Vec<u8>> {
+    let mut input = content;
+    let mut output = Vec::new();
+    while !input.is_empty() {
+        let field = take_field(&mut input)?;
+        if field.tag == 9 && field.wire == 2 {
+            append_bytes(&mut output, 9, &rewrite(field.body?)?);
+        } else {
+            output.extend_from_slice(field.encoded);
+        }
+    }
+    Some(output)
+}
+
+fn strip_sealed_data(mut input: &[u8]) -> Option<Vec<u8>> {
+    let mut output = Vec::new();
+    while !input.is_empty() {
+        let field = take_field(&mut input)?;
+        if field.wire != 2 || !matches!(field.tag, 3 | 4) {
+            output.extend_from_slice(field.encoded);
+        }
+    }
+    Some(output)
+}
+
+struct Field<'a> {
+    tag: u64,
+    wire: u8,
+    encoded: &'a [u8],
+    body: Option<&'a [u8]>,
+}
+
+fn take_varint(input: &mut &[u8]) -> Option<u64> {
+    let mut value = 0u64;
+    for shift in (0..70).step_by(7) {
+        let (&byte, rest) = input.split_first()?;
+        *input = rest;
+        if shift == 63 && byte > 1 {
+            return None;
+        }
+        value |= u64::from(byte & 127) << shift;
+        if byte < 128 {
+            return Some(value);
+        }
+    }
+    None
+}
+
+fn take_field<'a>(input: &mut &'a [u8]) -> Option<Field<'a>> {
+    let start = *input;
+    let key = take_varint(input)?;
+    let tag = key >> 3;
+    if tag == 0 {
+        return None;
+    }
+    let wire = (key & 7) as u8;
+    let body = match wire {
+        0 => {
+            take_varint(input)?;
+            None
+        }
+        1 | 5 => {
+            let size = if wire == 1 { 8 } else { 4 };
+            *input = input.get(size..)?;
+            None
+        }
+        2 => {
+            let size = usize::try_from(take_varint(input)?).ok()?;
+            let bytes = input.get(..size)?;
+            *input = input.get(size..)?;
+            Some(bytes)
+        }
+        _ => return None,
+    };
+    Some(Field {
+        tag,
+        wire,
+        encoded: &start[..start.len() - input.len()],
+        body,
+    })
+}
+
+fn append_varint(output: &mut Vec<u8>, mut value: u64) {
+    while value >= 128 {
+        output.push((value as u8 & 127) | 128);
+        value >>= 7;
+    }
+    output.push(value as u8);
+}
+
+fn append_bytes(output: &mut Vec<u8>, tag: u64, bytes: &[u8]) {
+    append_varint(output, (tag << 3) | 2);
+    append_varint(output, bytes.len() as u64);
+    output.extend_from_slice(bytes);
 }
 
 /// SHA-256(domain ‖ content), lowercase hex: the hash of clear content.
@@ -249,5 +382,49 @@ impl SignedContent {
 
     pub fn seen(&self) -> Option<Seen> {
         self.seen.as_ref().map(Seen::from)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn version_four_authenticates_unknown_fields_inside_the_sealed_header() {
+        let author = crate::Author::root(crate::Signer::from_secret(&[53; 32]));
+        let (content, _) = author.sign_sealed(
+            "space",
+            "message",
+            1,
+            None,
+            Sealed::new(SealedKind::Application, 1, vec![10, 20, 30]),
+        );
+        let content = rewrite_sealed(&content, |inner| {
+            let mut bytes = inner.to_vec();
+            append_bytes(&mut bytes, 127, b"future");
+            Some(bytes)
+        })
+        .unwrap();
+        let hash = signed_hash(&content);
+        let sig = author.key.sign(hash.as_bytes());
+        let stub = stub_content(&content).unwrap();
+        assert_eq!(signed_hash(&stub), hash);
+        assert!(crate::verify_sig(
+            &author.identity,
+            signed_hash(&stub).as_bytes(),
+            &sig
+        ));
+        let changed = rewrite_sealed(&stub, |inner| {
+            let mut bytes = inner.to_vec();
+            let unknown = bytes.windows(6).position(|b| b == b"future").unwrap();
+            bytes[unknown] ^= 1;
+            Some(bytes)
+        })
+        .unwrap();
+        assert!(!crate::verify_sig(
+            &author.identity,
+            signed_hash(&changed).as_bytes(),
+            &sig
+        ));
     }
 }

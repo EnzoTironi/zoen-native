@@ -310,6 +310,9 @@ pub struct PbEnvelope {
     pub cert: Option<String>,
     #[prost(string, optional, tag = "4")]
     pub invite: Option<String>,
+    /// Persisted legacy v3 stub's original signed hash. Never reused for new stubs.
+    #[prost(string, optional, tag = "5")]
+    pub pruned: Option<String>,
 }
 
 #[derive(Clone, PartialEq, Message)]
@@ -656,11 +659,14 @@ fn envelope_to(e: &Envelope) -> PbEnvelope {
         sig: e.sig.clone(),
         cert: e.cert.clone(),
         invite: e.invite.clone(),
+        pruned: e.legacy_pruned_hash().map(str::to_string),
     }
 }
 
 fn envelope_from(e: PbEnvelope) -> Result<Envelope, DecodeError> {
-    Envelope::new(e.content, e.sig, e.cert, e.invite).ok_or_else(|| bad("envelope content"))
+    Envelope::new(e.content, e.sig, e.cert, e.invite)
+        .and_then(|env| env.with_legacy_pruned(e.pruned))
+        .ok_or_else(|| bad("envelope content"))
 }
 
 fn ephemeral_to(space: &str, from: &str, k: &EphemeralKind) -> PbEphemeral {
