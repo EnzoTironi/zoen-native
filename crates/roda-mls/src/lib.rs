@@ -54,6 +54,11 @@ pub(crate) fn mls(e: impl std::fmt::Debug) -> MlsError {
 }
 
 /// The verified leaf of a member, or `Credential` when it doesn't verify.
+/// How a single leaf (one device of an identity) is named in a commit's removals.
+pub fn leaf_name(identity: &str, device: &str) -> String {
+    format!("{identity}/{device}")
+}
+
 pub(crate) fn leaf_of(credential: &Credential, signature_key: &[u8]) -> Result<Leaf, MlsError> {
     let basic = BasicCredential::try_from(credential.clone()).map_err(|_| MlsError::Credential)?;
     Leaf::verified(basic.identity(), signature_key).ok_or(MlsError::Credential)

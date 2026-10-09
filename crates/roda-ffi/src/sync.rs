@@ -58,6 +58,7 @@ pub struct NetState {
     pub poke: Option<Box<dyn Fn() + Send>>,
     pub profiles: crate::profile::ProfileNet,
     pub mls: crate::mls::MlsNet,
+    pub link: crate::linking::LinkNet,
 }
 
 impl NetState {
@@ -87,7 +88,7 @@ pub enum Ingest {
     Invalid(String),
 }
 
-fn tint_for(id: &str) -> String {
+pub(crate) fn tint_for(id: &str) -> String {
     const TINTS: [&str; 8] = [
         "#4F7CFF", "#FF5C8A", "#19B5A5", "#F59E0B", "#7C5CFF", "#22C55E", "#0EA5E9", "#FF9F0A",
     ];
@@ -275,6 +276,7 @@ impl Engine {
         if matches!(r, Ingest::Applied | Ingest::Confirmed) {
             self.mls_membership_changed(&e);
             self.compare_checkpoint(&e);
+            self.mls_device_joining(&e);
         }
         r
     }
@@ -485,6 +487,10 @@ impl Engine {
 
     pub fn is_unlocked(&self) -> bool {
         self.net.author.is_some()
+    }
+
+    pub(crate) fn save_linked_account(&mut self, a: AccountMeta) -> R<()> {
+        self.save_account(a)
     }
 
     fn save_account(&mut self, a: AccountMeta) -> R<()> {

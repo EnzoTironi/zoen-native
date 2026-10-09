@@ -10,8 +10,9 @@
 //! ("s", space, "m", identity)          -> role
 //! ("s", space, "gone", identity)       -> seq of their removal (until they're added back)
 //! ("s", space, "mls")                  -> (next commit epoch, device of the last commit)
-//! ("s", space, "ck", identity, device) -> seq a member device holds up to (end-to-end only;
-//!                                         device "*" = added, no checkpoint yet)
+//! ("s", space, "ck", identity, device) -> (seq a member device holds up to, when it said so
+//!                                         in ms) (end-to-end only; device "*" = added, no
+//!                                         checkpoint yet)
 //! ("s", space, "pruned")               -> first seq not pruned
 //! ("i", identity, space)               -> ""            membership by identity
 //! ("inv", code_hash)                   -> (space, role, created_by, expires_ms, max_uses, uses)
@@ -82,8 +83,9 @@ struct SpaceState {
     creator: String,
     mls: Option<(u64, String)>,
     members: BTreeMap<String, Role>,
-    /// End-to-end only: what each member device holds, by (identity, device).
-    holds: BTreeMap<(String, String), u64>,
+    /// End-to-end only: what each member device holds, by (identity, device), and when
+    /// it said so (ms).
+    holds: BTreeMap<(String, String), (u64, i64)>,
     /// First seq not pruned.
     pruned: u64,
     /// Hashes of the newest entries, by seq, so `seen` checks need no read.
@@ -99,6 +101,22 @@ const ADDED: &str = "*";
 /// Entries one transaction prunes at most; the next checkpoint goes on from there.
 const PRUNE_BATCH: usize = 256;
 
+/// How long a device's hold counts after its last checkpoint (ADR 0026): 30 days. Devices
+/// in use checkpoint at least daily, so one past this never came back; it stops holding
+/// pruning back and, if it returns, rejoins from a new Welcome. `ZOEN_PRUNE_CEILING_SECS`
+/// changes it (journeys use seconds).
+fn prune_ceiling_ms() -> i64 {
+    static CEILING: std::sync::OnceLock<i64> = std::sync::OnceLock::new();
+    *CEILING.get_or_init(|| {
+        std::env::var("ZOEN_PRUNE_CEILING_SECS")
+            .ok()
+            .and_then(|v| v.parse::<i64>().ok())
+            .filter(|s| *s > 0)
+            .unwrap_or(30 * 24 * 3600)
+            * 1000
+    })
+}
+
 /// The seqs an envelope's admission needs the chain hash of.
 fn cited(env: &Envelope) -> impl Iterator<Item = u64> {
     let upto = match env.body() {
@@ -111,7 +129,8 @@ fn cited(env: &Envelope) -> impl Iterator<Item = u64> {
 impl SpaceState {
     /// Where pruning may go up to (exclusive): the lowest seq a current member device
     /// holds, once every current member holds something. `None` while anyone is missing.
-    fn prune_floor(&self) -> Option<u64> {
+    /// A hold older than the ceiling (`now_ms - ceiling_ms`) no longer counts.
+    fn prune_floor(&self, now_ms: i64, ceiling_ms: i64) -> Option<u64> {
         if self.privacy != Some(Privacy::EndToEnd) || self.members.is_empty() {
             return None;
         }
@@ -122,7 +141,13 @@ impl SpaceState {
                 .is_some_and(|((who, _), _)| who == m)
         });
         all_hold
-            .then(|| self.holds.values().copied().min())
+            .then(|| {
+                self.holds
+                    .values()
+                    .filter(|(_, at)| now_ms - at < ceiling_ms)
+                    .map(|(seq, _)| *seq)
+                    .min()
+            })
             .flatten()
     }
 
@@ -329,8 +354,18 @@ impl Cell {
         for (k, v) in Self::scan(trx, holds.range(), usize::MAX, true).await? {
             let (who, device): (String, String) =
                 holds.unpack(&k).map_err(|e| custom(e.to_string()))?;
-            let at: i64 = unpack(&v).map_err(|e| custom(e.to_string()))?;
-            state.holds.insert((who, device), at as u64);
+            let (at, when) = match unpack::<(i64, i64)>(&v) {
+                Ok(hold) => hold,
+                Err(_) => {
+                    let at: i64 = unpack(&v).map_err(|e| custom(e.to_string()))?;
+                    // Older relays did not record a time. Start their ceiling now,
+                    // under the head fence, rather than expiring unread history.
+                    let hold = (at, now_ms());
+                    trx.set(&k, &pack(&hold));
+                    hold
+                }
+            };
+            state.holds.insert((who, device), (at as u64, when));
         }
         if let Some(v) = trx.get(&self.space_key(space, "pruned"), true).await? {
             let at: i64 = unpack(&v).map_err(|e| custom(e.to_string()))?;
@@ -573,7 +608,8 @@ impl Cell {
                     if state.privacy == Some(Privacy::EndToEnd) && !device.is_empty() {
                         let who = env.author().to_string();
                         let had = state.holds.get(&(who.clone(), device.clone())).copied();
-                        if had.is_none_or(|h| h < upto) {
+                        // Same place again still counts: the device is alive.
+                        if had.is_none_or(|(h, _)| h <= upto) {
                             self.put_hold(trx, space, &mut state, &who, &device, upto);
                         }
                         if state
@@ -584,6 +620,11 @@ impl Cell {
                             trx.clear(&self.space_key(space, ("ck", who.as_str(), ADDED)));
                         }
                     }
+                }
+                Effect::Hold { device } => {
+                    // A device joining afresh: what comes from here waits for it, whatever
+                    // it held before.
+                    self.put_hold(trx, space, &mut state, env.author(), &device, seq);
                 }
                 Effect::Nothing => {}
             }
@@ -614,7 +655,7 @@ impl Cell {
         space: &str,
         state: &mut SpaceState,
     ) -> Result<(), FdbBindingError> {
-        let Some(floor) = state.prune_floor() else {
+        let Some(floor) = state.prune_floor(now_ms(), prune_ceiling_ms()) else {
             return Ok(());
         };
         if floor <= state.pruned {
@@ -651,13 +692,14 @@ impl Cell {
         device: &str,
         at: u64,
     ) {
+        let when = now_ms();
         trx.set(
             &self.space_key(space, ("ck", who, device)),
-            &pack(&(at as i64)),
+            &pack(&(at as i64, when)),
         );
         state
             .holds
-            .insert((who.to_string(), device.to_string()), at);
+            .insert((who.to_string(), device.to_string()), (at, when));
     }
 
     fn drop_holds(&self, trx: &Transaction, space: &str, state: &mut SpaceState, who: &str) {

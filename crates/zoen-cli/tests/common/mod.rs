@@ -303,6 +303,35 @@ impl World {
             .expect("spawn zoen")
     }
 
+    /// Like `spawn_zoen`, with extra environment for this one process.
+    pub fn spawn_zoen_env(&self, who: &str, args: &[&str], env: &[(&str, &str)]) -> Child {
+        let mut c = self.cmd(who, args);
+        c.envs(env.iter().copied())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()
+            .expect("spawn zoen")
+    }
+
+    /// Every file under the relay's object store, by path.
+    pub fn blobs(&self) -> Vec<(PathBuf, Vec<u8>)> {
+        let mut out = vec![];
+        let mut stack = vec![self.dir.join("blobs")];
+        while let Some(d) = stack.pop() {
+            let Ok(rd) = std::fs::read_dir(&d) else {
+                continue;
+            };
+            for e in rd.flatten() {
+                if e.path().is_dir() {
+                    stack.push(e.path())
+                } else {
+                    out.push((e.path(), std::fs::read(e.path()).unwrap()))
+                }
+            }
+        }
+        out
+    }
+
     /// A background client whose output is retained without filling an unread pipe.
     pub fn spawn_zoen_logged(&self, who: &str, args: &[&str], log_name: &str) -> Child {
         let log = std::fs::File::create(self.dir.join(log_name)).expect("client log");
@@ -559,6 +588,29 @@ impl RawClient {
             .unwrap();
     }
 
+    /// A revoked socket may already be closed when its next operation is attempted.
+    pub async fn send_if_open(&mut self, f: &ClientFrame) -> bool {
+        self.ws
+            .send(Message::Binary(f.encode().into()))
+            .await
+            .is_ok()
+    }
+
+    pub async fn recv_or_close(&mut self) -> Option<ServerFrame> {
+        loop {
+            match tokio::time::timeout(Duration::from_secs(5), self.ws.next())
+                .await
+                .expect("socket did not respond or close")
+            {
+                Some(Ok(Message::Binary(bytes))) => {
+                    return Some(ServerFrame::decode(&bytes).unwrap())
+                }
+                None | Some(Err(_)) | Some(Ok(Message::Close(_))) => return None,
+                _ => {}
+            }
+        }
+    }
+
     pub async fn recv(&mut self) -> ServerFrame {
         loop {
             match tokio::time::timeout(Duration::from_secs(5), self.ws.next())
@@ -628,10 +680,10 @@ impl RawClient {
 
     /// Publishes bytes this client signed itself (any content a newer client could write).
     pub async fn publish_content(&mut self, content: Vec<u8>) -> Result<Sequenced, String> {
-        let sig = self
-            .author
-            .key
-            .sign(roda_log::content::content_hash(&content).as_bytes());
+        let sig = self.author.key.sign(&roda_log::content::signature_message(
+            &content,
+            &roda_log::content::signed_hash(&content),
+        ));
         let cert = self.author.cert.clone();
         self.publish_signed(content, sig, cert).await
     }

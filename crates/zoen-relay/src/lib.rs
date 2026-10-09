@@ -22,6 +22,7 @@ pub mod ownership;
 pub mod pseudonym;
 pub mod session;
 pub mod telemetry;
+pub mod transfer;
 
 use std::{net::SocketAddr, path::PathBuf, sync::Arc};
 
@@ -29,7 +30,7 @@ use axum::{
     extract::{DefaultBodyLimit, State, WebSocketUpgrade},
     http::StatusCode,
     response::IntoResponse,
-    routing::{get, post, put},
+    routing::{delete, get, post, put},
     serve::ListenerExt,
     Router,
 };
@@ -63,6 +64,10 @@ pub struct Config {
 
 pub struct AppState {
     pub pool: PgPool,
+    /// Separate bounded lanes keep durable delivery checks independent of admission
+    /// traffic. Ordinary requests release their admission fence before doing any work.
+    pub session_auth: PgPool,
+    pub delivery_auth: PgPool,
     pub log: Arc<dyn log::LogStore>,
     pub fanout: fanout::Fanout,
     pub limits: limits::Limits,
@@ -98,6 +103,13 @@ pub fn router(state: Shared) -> Router {
                 .get(blobs::get)
                 .layer(DefaultBodyLimit::max(blobs::MAX_BLOB_BYTES + 1024)),
         )
+        .route(
+            "/v1/transfer/{id}/{n}",
+            put(transfer::put)
+                .get(transfer::get)
+                .layer(DefaultBodyLimit::max(transfer::MAX_CHUNK + 1024)),
+        )
+        .route("/v1/transfer/{id}", delete(transfer::delete))
         .route(
             "/.well-known/apple-app-site-association",
             get(apple_app_site_association),
@@ -152,6 +164,15 @@ pub fn metrics_router(state: Shared) -> Router {
 
 pub async fn build(cfg: &Config) -> anyhow::Result<(Router, Shared)> {
     let pool = connect(cfg).await?;
+    let auth_pool = || {
+        PgPoolOptions::new()
+            .min_connections(0)
+            .max_connections(cfg.max_db_connections.clamp(1, 16))
+            .acquire_timeout(std::time::Duration::from_secs(2))
+            .connect_lazy(&cfg.database_url)
+    };
+    let session_auth = auth_pool()?;
+    let delivery_auth = auth_pool()?;
     let (blobs, where_) = blobs::store_from_env(&cfg.blob_dir)?;
     tracing::info!(blobs = %where_, "blob store ready");
     let log = log::fdb::FdbLog::open(cfg.fdb_cluster_file.as_deref(), &cfg.fdb_cell)?;
@@ -171,6 +192,8 @@ pub async fn build(cfg: &Config) -> anyhow::Result<(Router, Shared)> {
     let analytics = analytics::Analytics::load(&pool).await?;
     let state = Arc::new(AppState {
         pool,
+        session_auth,
+        delivery_auth,
         log: Arc::new(log),
         fanout,
         limits: limits::Limits::from_spec(&cfg.limits)?,

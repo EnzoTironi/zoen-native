@@ -17,7 +17,7 @@ use std::{
 use futures_util::{SinkExt, StreamExt};
 use roda_proto::{
     auth_message, blob_put_message, ClientFrame, EphemeralKind, ErrorCode, Op, Reply, ServerFrame,
-    CAPABILITIES, PROTOCOL_VERSION,
+    CAPABILITIES, MIN_PROTOCOL_VERSION, PROTOCOL_VERSION,
 };
 use roda_types::Identity;
 use tokio::sync::{mpsc, oneshot, watch};
@@ -337,6 +337,10 @@ enum Waiting {
     KeyPackagesPublished,
     /// Key packages claimed for this Space's newcomers.
     Claimed(String),
+    /// Our devices, as the relay lists them.
+    Devices,
+    /// Nothing to do with the answer (a message to another device of ours).
+    Ignored,
 }
 
 /// Encrypted-profile requests: free (`None`), or in flight / backing off until a deadline.
@@ -407,8 +411,16 @@ async fn session(
             nonce,
             relay,
             capabilities,
+            protocol,
             ..
-        }) => (nonce, relay, capabilities.iter().any(|c| c == "profiles")),
+        }) if protocol >= MIN_PROTOCOL_VERSION => {
+            (nonce, relay, capabilities.iter().any(|c| c == "profiles"))
+        }
+        Ok(ServerFrame::Challenge { protocol, .. }) => {
+            return Exit::Blocked(format!(
+                "relay protocol {protocol} needs an upgrade before encrypted histories can sync"
+            ))
+        }
         Ok(ServerFrame::Error { code, message }) => return refused(code, message, backoff),
         Ok(other) => return Exit::Retry(format!("unexpected {other:?}")),
         Err(e) => return Exit::Retry(e),
@@ -578,7 +590,10 @@ async fn session(
                         let first = !ctx.status.borrow().synced;
                         if first {
                             ctx.status.send_modify(|s| s.synced = true);
+                            ctx.engine().mls_refresh_checkpoints();
+                            ctx.engine().net.link.ask_devices = true;
                         }
+                        if let Err(e) = ctx.engine().mls_ask_rejoin() { tracing_like(&format!("rejoin: {e}")); }
                         // Anything still pending after a full catch-up goes out again (it
                         // may have needed the Space to exist first).
                         if let Err(e) = flush(ctx, &mut sink, &mut sent).await { break Exit::Retry(e) }
@@ -587,6 +602,13 @@ async fn session(
                     ServerFrame::Res { id, result } => {
                         match waiting.remove(&id) {
                             Some(Waiting::External(tx)) => { let _ = tx.send(result); }
+                            Some(Waiting::Devices) => {
+                                if let Ok(Reply::Devices(list)) = result { ctx.engine().devices_arrived(list); }
+                                if let Err(e) = flush(ctx, &mut sink, &mut sent).await { break Exit::Retry(e) }
+                            }
+                            Some(Waiting::Ignored) => {
+                                if let Err(e) = result { tracing_like(&format!("device message: {e}")); }
+                            }
                             Some(Waiting::Profiles(asked)) => {
                                 profiles_inflight = None;
                                 let mut eng = ctx.engine();
@@ -647,6 +669,7 @@ async fn session(
                     }
                     ServerFrame::ProfileChanged { identity, .. } => ctx.engine().profile_changed(&identity),
                     ServerFrame::KeyPackagesLow { device, remaining } => ctx.engine().mls_key_packages_low(&device, remaining),
+                    ServerFrame::DeviceMessage { from, to, sealed } => ctx.engine().device_message(&from, &to, &sealed),
                     ServerFrame::Pong => {}
                     ServerFrame::Error { message, .. } => tracing_like(&format!("relay: {message}")),
                     ServerFrame::Challenge { .. } | ServerFrame::Ready { .. } => {}
@@ -732,6 +755,13 @@ async fn session(
                         traffic.key_packages = Some(tokio::time::Instant::now() + PROFILE_TIMEOUT);
                         reqs.push((Op::PublishKeyPackages { packages, last_resort }, Waiting::KeyPackagesPublished));
                     }
+                }
+                for (to, sealed) in ctx.engine().take_device_outbox() {
+                    tracing_like(&format!("device message to {} ({} bytes)", &to[..12.min(to.len())], sealed.len()));
+                    reqs.push((Op::SendDevice { to, sealed }, Waiting::Ignored));
+                }
+                if ctx.engine().take_ask_devices() {
+                    reqs.push((Op::Devices, Waiting::Devices));
                 }
                 let claim = ctx.engine().mls_to_claim();
                 if let Some((space, ids)) = claim {
@@ -952,6 +982,89 @@ async fn media_worker(
 pub(crate) fn tracing_like(msg: &str) {
     if std::env::var_os("ZOEN_NET_DEBUG").is_some() {
         eprintln!("[zoen-net] {msg}");
+    }
+}
+
+/// Waits for a link box as a device with no account yet (ADR 0045): it signs in as itself
+/// (its device key as identity, self-certified), which lets it fetch and nothing else.
+pub async fn fetch_link_box(
+    relay_url: &str,
+    key: &roda_log::Signer,
+    id: &str,
+    deadline: tokio::time::Instant,
+) -> Result<Vec<u8>, String> {
+    let url = ws_url(relay_url);
+    let (ws, _) = tokio::time::timeout(
+        Duration::from_secs(10),
+        tokio_tungstenite::connect_async_with_config(url.as_str(), None, true),
+    )
+    .await
+    .map_err(|_| "can't reach the relay: timed out".to_string())?
+    .map_err(|e| format!("can't reach the relay: {e}"))?;
+    let (mut sink, mut stream) = ws.split();
+    let me = key.id();
+    send(
+        &mut sink,
+        &ClientFrame::Hello {
+            protocol: PROTOCOL_VERSION,
+            capabilities: CAPABILITIES.iter().map(|c| c.to_string()).collect(),
+            identity: me.clone(),
+            device: me.clone(),
+            cert: key.sign(&roda_log::device_cert_message(&me)),
+        },
+    )
+    .await?;
+    let (nonce, relay) = match recv(&mut stream).await? {
+        ServerFrame::Challenge {
+            nonce,
+            relay,
+            protocol,
+            ..
+        } if protocol >= MIN_PROTOCOL_VERSION => (nonce, relay),
+        ServerFrame::Challenge { protocol, .. } => {
+            return Err(format!(
+                "relay protocol {protocol} needs an upgrade before linking"
+            ))
+        }
+        ServerFrame::Error { message, .. } => return Err(message),
+        other => return Err(format!("unexpected {other:?}")),
+    };
+    send(
+        &mut sink,
+        &ClientFrame::Auth {
+            sig: key.sign(&auth_message(&nonce, &relay)),
+        },
+    )
+    .await?;
+    loop {
+        match recv(&mut stream).await? {
+            ServerFrame::Ready { .. } => break,
+            ServerFrame::Error { message, .. } => return Err(message),
+            _ => continue,
+        }
+    }
+    let mut n = 0u64;
+    loop {
+        n += 1;
+        let op = Op::FetchLink { id: id.to_string() };
+        send(&mut sink, &ClientFrame::Req { id: n, op }).await?;
+        let result = loop {
+            match recv(&mut stream).await? {
+                ServerFrame::Res { id, result } if id == n => break result,
+                ServerFrame::Error { message, .. } => return Err(message),
+                _ => continue,
+            }
+        };
+        match result {
+            Ok(Reply::Link(Some(b))) => return Ok(b),
+            Ok(Reply::Link(None)) => {}
+            Ok(_) => return Err("the relay answered something else".into()),
+            Err(e) => return Err(e),
+        }
+        if tokio::time::Instant::now() >= deadline {
+            return Err("nobody linked this device in time".into());
+        }
+        tokio::time::sleep(Duration::from_millis(700)).await;
     }
 }
 
