@@ -1,4 +1,4 @@
-//! # roda-proto — Zoen Sync, the wire protocol (version 2)
+//! # roda-proto — Zoen Sync, the wire protocol (version 4)
 //!
 //! One WebSocket per device, one protobuf message per binary frame ([`wire`]).
 //!
@@ -34,8 +34,9 @@ use roda_types::{Event, EventBody, Identity, IdentityId, Role, Seen, SpaceId};
 
 pub use roda_log::profile::DeviceSigned;
 
-/// The version this build speaks, and the oldest one it still accepts.
-pub const PROTOCOL_VERSION: u32 = 3;
+/// Version 4 requires explicit relay enrollment when linking a device. Version 3
+/// sponsors omitted that enrollment and could report a link that cannot log in.
+pub const PROTOCOL_VERSION: u32 = 4;
 /// Why a relay refuses a clear event in an end-to-end Space. A client that wrote it before
 /// it learned the Space went end-to-end (ADR 0027) seals it and sends it again.
 pub const SEAL_REQUIRED: &str = "this space is end-to-end encrypted; seal the event";
@@ -47,8 +48,10 @@ pub const STALE_COMMIT: &str = "stale_epoch: another commit took this epoch";
 /// Why a relay refuses a message sealed at an epoch the group has left (a device that
 /// sealed before catching up). It waits, catches up, and seals again at the new epoch.
 pub const STALE_SEAL: &str = "stale_epoch: sealed at an epoch the group has left";
-pub const MIN_PROTOCOL_VERSION: u32 = 3;
+/// Refuse older clients before authentication, linking or delivering sealed v4 entries.
+pub const MIN_PROTOCOL_VERSION: u32 = 4;
 /// Domain tag for what devices sign outside the log (login, blob uploads).
+/// This stays stable across handshake upgrades; changing it would change signed bytes.
 pub const PROTOCOL: &str = "zoen-sync/2";
 /// Optional features; each side announces its own and uses the intersection.
 pub const CAPABILITIES: &[&str] = &["blobs", "invites", "presence", "profiles"];
