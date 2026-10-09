@@ -68,6 +68,8 @@ pub(crate) struct PageSession {
     frontiers: Vec<roda_docs::Frontiers>,
     blocked: bool,
     dirty: bool,
+    /// Plain text for lists and search, until the page changes.
+    text: Option<String>,
 }
 
 #[derive(Default)]
@@ -186,6 +188,7 @@ impl Engine {
             };
             let _ = s.shadow.import(&bytes);
             let _ = s.live.import(&bytes);
+            s.text = None;
             s.frontiers.push(s.shadow.frontiers());
             s.applied += 1;
         }
@@ -224,6 +227,7 @@ impl Engine {
                 frontiers: Vec::new(),
                 blocked: false,
                 dirty: false,
+                text: None,
             });
         self.page_sync(it, s);
         f(it, s)
@@ -406,6 +410,7 @@ impl Engine {
                 .collect();
             s.live.apply(order, &edits).map_err(doc_err)?;
             s.dirty = true;
+            s.text = None;
             Ok(())
         })
     }
@@ -459,6 +464,7 @@ impl Engine {
             };
             s.live.revert_to(&f).map_err(doc_err)?;
             s.dirty = true;
+            s.text = None;
             Ok(())
         })?;
         self.page_commit(item, note)?;
@@ -480,12 +486,20 @@ impl Engine {
     /// The page's text for search and summaries ("" while it's arriving).
     pub(crate) fn page_text(&self, item: &str) -> String {
         self.with_page(item, |_, s| {
-            Ok(s.live
+            if let Some(t) = &s.text {
+                return Ok(t.clone());
+            }
+            let t = s
+                .live
                 .blocks()
                 .iter()
                 .map(|b| b.plain_text().replace('\u{2028}', " "))
                 .collect::<Vec<_>>()
-                .join("\n"))
+                .join("\n");
+            if !s.blocked {
+                s.text = Some(t.clone());
+            }
+            Ok(t)
         })
         .unwrap_or_default()
     }
