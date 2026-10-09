@@ -475,6 +475,54 @@ final class AppModel {
 
 
     /// Deep-link into a seeded space / screen (`-RodaOpen`). Called after showcase polish.
+    static let samplePage = """
+    # Roteiro: Paraty
+
+    Três dias de **barco**, trilha e *centro histórico*.
+
+    ## Antes de ir
+
+    - [x] Reservar a pousada
+    - [ ] Alugar o barco
+    - [ ] Comprar protetor
+
+    > Muitos lugares não aceitam cartão: leve dinheiro.
+
+    | Dia | Plano |
+    |-----|-------|
+    | 1   | Centro histórico |
+    | 2   | Barco pelas ilhas |
+
+    ```
+    saída: sexta 7h
+    ```
+    """
+
+    /// A small drawn PNG (a map-like doodle) to show Quick Look and Markup.
+    static func sampleImage(side: CGFloat = 900) -> Data {
+        let size = CGSize(width: side, height: side * 0.75)
+        #if canImport(UIKit)
+        let img = UIGraphicsImageRenderer(size: size).image { ctx in
+            UIColor(red: 0.85, green: 0.93, blue: 0.97, alpha: 1).setFill()
+            ctx.fill(CGRect(origin: .zero, size: size))
+            UIColor(red: 0.55, green: 0.78, blue: 0.45, alpha: 1).setFill()
+            UIBezierPath(ovalIn: CGRect(x: side * 0.1, y: side * 0.15, width: side * 0.45, height: side * 0.35)).fill()
+            UIBezierPath(ovalIn: CGRect(x: side * 0.6, y: side * 0.4, width: side * 0.25, height: side * 0.2)).fill()
+        }
+        return img.pngData() ?? Data()
+        #else
+        let img = NSImage(size: size)
+        img.lockFocus()
+        NSColor(red: 0.85, green: 0.93, blue: 0.97, alpha: 1).setFill()
+        NSRect(origin: .zero, size: size).fill()
+        NSColor(red: 0.55, green: 0.78, blue: 0.45, alpha: 1).setFill()
+        NSBezierPath(ovalIn: NSRect(x: side * 0.1, y: side * 0.15, width: side * 0.45, height: side * 0.35)).fill()
+        img.unlockFocus()
+        guard let tiff = img.tiffRepresentation, let rep = NSBitmapImageRep(data: tiff) else { return Data() }
+        return rep.representation(using: .png, properties: [:]) ?? Data()
+        #endif
+    }
+
     private func applyRodaOpen(_ d: UserDefaults) {
         guard let open = d.string(forKey: "RodaOpen") else { return }
         switch open {
@@ -487,6 +535,18 @@ final class AppModel {
             }
         case "zoen":
             if let id = zoenSpaceId() { go(.space(id)) }
+        case "new-page", "page-sample", "file-sample":
+            // Files and pages (ADR 0023) for UI journeys and proof videos.
+            guard let id = spaceId(titled: DemoSpace.paraty) else { break }
+            select(.files)
+            let made: ItemDetail? = switch open {
+            case "new-page": try? core.pageCreate(spaceId: id, title: "")
+            case "page-sample": try? core.pageImportMarkdown(spaceId: id, path: "roteiro.md", markdown: Self.samplePage)
+            default: try? core.fileAdd(spaceId: id, path: "mapa.png", name: "mapa.png", mime: "image/png",
+                                       bytes: Self.sampleImage(), thumbnail: Self.sampleImage(side: 120))
+            }
+            refresh()
+            if let made { push(.item(made.id)) }
         case "turma", "saturday", "crew":
             if let id = spaceId(titled: DemoSpace.saturdayCrew) { go(.space(id)) }
         case "coastal", "litoral", "viajantes":
