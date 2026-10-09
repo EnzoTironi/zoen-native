@@ -650,10 +650,10 @@ impl Engine {
 
     /// What a pruned entry leaves (ADR 0026): only a device that joined later reads it, and
     /// it predates its Welcome, so there is nothing to open. It keeps the chain whole: the
-    /// stub links by the original's wire hash, which members' signed checkpoints pin.
+    /// stub hashes and verifies like the original (header plus the MLS bytes' hash).
     fn ingest_pruned(&mut self, ev: Sequenced) -> Ingest {
         let space = ev.env.space().to_string();
-        let mut e = match event_from_content(
+        let e = match event_from_content(
             ev.env.content().to_vec(),
             ev.env.sig.clone(),
             ev.env.cert.clone(),
@@ -664,7 +664,6 @@ impl Engine {
             Ok(e) => e,
             Err(err) => return Ingest::Invalid(err.to_string()),
         };
-        e.sealed_wire = ev.env.pruned_wire().map(str::to_string);
         let log = self
             .logs
             .entry(space.clone())

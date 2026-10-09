@@ -24,7 +24,7 @@
 
 pub mod wire;
 
-use roda_log::content::{content_hash, decode_body, Payload, SignedContent};
+use roda_log::content::{decode_body, signed_hash, stub_content, Payload, SignedContent};
 pub use roda_log::content::{Sealed, SealedKind};
 use roda_log::{event_from_content, verify_author, verify_sig, Author, LogError};
 use roda_types::{Event, EventBody, Identity, IdentityId, Role, Seen, SpaceId};
@@ -68,10 +68,6 @@ pub struct Envelope {
     pub cert: Option<String>,
     /// Transport only, never stored: the invite code that lets a newcomer add themselves.
     pub invite: Option<String>,
-    /// Set when the relay pruned this sealed entry (ADR 0026): `content` is the signed
-    /// header with the MLS bytes taken out, so the signature no longer covers it, and this
-    /// is the wire hash of the original, which the chain still links.
-    pruned: Option<String>,
 }
 
 impl Envelope {
@@ -90,40 +86,20 @@ impl Envelope {
             sig,
             cert,
             invite,
-            pruned: None,
         })
     }
 
-    /// The stub a pruned sealed entry leaves (ADR 0026): the same header and kind, no MLS
-    /// bytes, and the original's wire hash so the chain still links. `None` for anything
-    /// that isn't sealed, or is already pruned.
+    /// The stub a pruned sealed entry leaves (ADR 0026): the same header and kind and the
+    /// hash of the MLS bytes, without them. It hashes and verifies like the original.
+    /// `None` for anything that isn't sealed, or is already a stub.
     pub fn pruned(&self) -> Option<Envelope> {
-        if self.pruned.is_some() {
-            return None;
-        }
-        let mut header = self.parsed.clone();
-        match &mut header.payload {
-            Some(Payload::Sealed(s)) => s.data.clear(),
-            _ => return None,
-        }
-        let mut stub = Envelope::new(header.encode(), self.sig.clone(), self.cert.clone(), None)?;
-        stub.pruned = Some(self.wire_hash());
-        Some(stub)
+        let content = stub_content(&self.content)?;
+        Envelope::new(content, self.sig.clone(), self.cert.clone(), None)
     }
 
-    /// A stub as it comes off the wire or out of storage.
-    pub fn with_pruned(mut self, wire_hash: Option<String>) -> Self {
-        self.pruned = wire_hash;
-        self
-    }
-
-    /// The original's wire hash when this is a pruned stub.
-    pub fn pruned_wire(&self) -> Option<&str> {
-        self.pruned.as_deref()
-    }
-
+    /// A stub the relay left when it pruned this entry.
     pub fn is_pruned(&self) -> bool {
-        self.pruned.is_some()
+        matches!(&self.parsed.payload, Some(Payload::Sealed(s)) if s.is_stub())
     }
 
     /// Wraps a signed, unsequenced plaintext event.
@@ -203,10 +179,7 @@ impl Envelope {
 
     /// The hash the chain links: over the exact bytes, plain or sealed.
     pub fn wire_hash(&self) -> String {
-        if let Some(original) = &self.pruned {
-            return original.clone();
-        }
-        content_hash(&self.content)
+        signed_hash(&self.content)
     }
 
     /// Checks the device certificate and the author's signature over the bytes.

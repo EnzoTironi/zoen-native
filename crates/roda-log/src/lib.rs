@@ -192,7 +192,7 @@ impl Author {
             payload: Some(Payload::Sealed(sealed)),
         }
         .encode();
-        let sig = self.key.sign(content::content_hash(&content).as_bytes());
+        let sig = self.key.sign(content::signed_hash(&content).as_bytes());
         (content, sig)
     }
 }
@@ -232,15 +232,6 @@ pub fn event_from_content(
 }
 
 /// The view of an entry kept sealed: its kind, from the clear framing.
-/// A sealed entry the relay pruned: sealed, no MLS bytes left, and linked by the
-/// original's wire hash. (An opened sealed event carries `sealed_wire` with its inner
-/// plaintext body, never a `Sealed` one.)
-fn is_pruned_stub(e: &Event, c: &SignedContent) -> bool {
-    e.sealed_wire.is_some()
-        && matches!(e.body, EventBody::Sealed { .. })
-        && matches!(&c.payload, Some(Payload::Sealed(s)) if s.data.is_empty())
-}
-
 fn sealed_body(s: &content::Sealed) -> EventBody {
     let kind = content::SealedKind::try_from(s.kind).unwrap_or(content::SealedKind::Unspecified);
     EventBody::Sealed {
@@ -257,9 +248,10 @@ pub fn sha256_hex(bytes: &[u8]) -> String {
     hex::encode(Sha256::digest(bytes))
 }
 
-/// The hash the author signed: over the exact content bytes, never a re-encoding.
+/// The hash the author signed: over the exact content bytes for clear events, over the
+/// header and the hash of the MLS bytes for sealed ones (`content::signed_hash`).
 pub fn content_hash_of(e: &Event) -> String {
-    content::content_hash(&e.content)
+    content::signed_hash(&e.content)
 }
 
 /// What traveled: the sealed envelope's hash, or the content hash for plaintext.
@@ -308,16 +300,6 @@ pub fn verify_sig(pubkey_hex: &str, msg: &[u8], sig_hex: &str) -> bool {
 pub fn verify_author(e: &Event) -> Result<(), LogError> {
     let seq = e.seq;
     let c = SignedContent::parse(&e.content).ok_or(LogError::BadContent { seq })?;
-    if is_pruned_stub(e, &c) {
-        // The relay took the MLS bytes out (ADR 0026), so the signature no longer covers
-        // the content. What holds it in place is the chain: `sealed_wire` is the original's
-        // hash, and members' signed checkpoints pin the chain past it.
-        return if c.space == e.space && c.client_id == e.client_id && c.author == e.author {
-            Ok(())
-        } else {
-            Err(LogError::BadContent { seq })
-        };
-    }
     let body_matches = match &c.payload {
         // `Sealed` describes outer bytes; a body claiming it is a forgery.
         Some(Payload::Body(b)) => {

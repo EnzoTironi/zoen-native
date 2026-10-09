@@ -587,7 +587,7 @@ impl RawClient {
         let sig = self
             .author
             .key
-            .sign(roda_log::content::content_hash(&content).as_bytes());
+            .sign(roda_log::content::signed_hash(&content).as_bytes());
         let cert = self.author.cert.clone();
         self.publish_signed(content, sig, cert).await
     }

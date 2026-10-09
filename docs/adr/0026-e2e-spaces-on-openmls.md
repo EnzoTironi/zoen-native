@@ -152,27 +152,28 @@ The relay keeps, per end-to-end Space, what each member device holds:
 seq under device `*`, cleared by their first checkpoint; a removal drops all of theirs. Once
 every current member holds something, the floor is the lowest hold, and the transaction of
 the checkpoint that raises it rewrites sealed entries below it (256 at most per transaction)
-as **stubs**: the same signed header and kind with the MLS bytes taken out, plus the
-original's wire hash, so the chain hash is unchanged. Clear control events are never touched.
+as **stubs**: the same signed header and kind with the MLS bytes replaced by their SHA-256.
+Clear control events are never touched.
+
+**What a sealed entry's hash covers.** The hash an author signs and the chain links is, for
+clear content, `SHA-256("zoen-content-v3\0" ‖ content)`, and for sealed content
+`SHA-256("zoen-sealed-v1\0" ‖ hash(header with the MLS bytes out) ‖ SHA-256(MLS bytes))`
+(`content::signed_hash`). A stub keeps the header and `SHA-256(MLS bytes)`, so it hashes to
+the same value and the author's signature still verifies. And since only sealed content
+hashes that way, a stub proves the original was sealed: a relay can't pass off a clear
+control event as a pruned one (it would need a sealed header whose hash collides with the
+clear event's). A device can't publish a stub; only the relay makes them.
 
 Members never read a stub (they are past it). A device added later reads the log from the
-start: a stub links by the original's wire hash, so it accepts it without the signature
-(which no longer covers the content), and the members' signed checkpoints after it pin the
-chain it built. A device can't publish a stub; only the relay makes them. Proof:
+start and checks every stub like any entry: signature, chain, kind. Proof:
 `journey_m2::the_relay_prunes_what_every_member_holds` (both members' checkpoints pass the
 first message and it becomes a stub in FoundationDB; nothing at or above the lowest
 checkpoint goes; members still read and `verify` their history; nothing from Carla's
 addition on is pruned until she checkpoints; she links the chain over the stubs, joins from
-her Welcome, reads on and `verify` passes).
+her Welcome, reads on and `verify` passes; every stub verifies with the author's signature, and
+no clear entry can be made into a stub).
 
 Limits, on purpose for now:
-- A stub proves its place in the chain, not that the original was sealed: a relay that
-  rewrote a clear control event as a "stub" with its true wire hash would keep the chain
-  and the checkpoints valid, and a later joiner would miss that event. Confidentiality
-  doesn't move (MLS membership is the group, and the subset rule still refuses a group that
-  lists someone the log doesn't), but the joiner's view of past roles or removals could.
-  Fix when it matters: hash sealed envelopes as header plus the hash of the MLS bytes, so a
-  stub carries its proof. That changes the wire hash for new entries.
 - A member device that never comes back holds pruning in that Space forever. The 30-day
   ceiling (ADR 0022) and asking for an update are the answer; not built.
 - A second device of a member has no hold of its own until linking (next step) gives it

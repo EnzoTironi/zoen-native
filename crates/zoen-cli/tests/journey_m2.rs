@@ -549,6 +549,9 @@ async fn pruned_seqs(w: &World, space: &str) -> Vec<u64> {
                 .sealed_data()
                 .expect("only sealed entries are pruned");
             assert!(data.is_empty(), "a stub keeps no ciphertext");
+            // The author's signature still holds: it covers the header and the hash of the
+            // MLS bytes, which the stub keeps.
+            ev.env.verify().expect("a stub verifies like the original");
             ev.seq
         })
         .collect()
@@ -608,11 +611,12 @@ async fn the_relay_prunes_what_every_member_holds() {
         pruned.iter().all(|s| *s < floor),
         "{pruned:?} below {floor}"
     );
-    // Control events stay as they were.
-    assert!(stored
-        .iter()
-        .filter(|ev| ev.env.body().is_some())
-        .all(|ev| !ev.env.is_pruned()));
+    // Control events stay as they were, and can't be made into a stub: only sealed
+    // content hashes as header plus the hash of its MLS bytes.
+    for ev in stored.iter().filter(|ev| ev.env.body().is_some()) {
+        assert!(!ev.env.is_pruned());
+        assert!(ev.env.pruned().is_none());
+    }
 
     // Members keep their history: it's on their devices.
     for who in ["ana", "bruno"] {
