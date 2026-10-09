@@ -106,6 +106,12 @@ struct PageTextView: UIViewRepresentable {
         @objc func tapped(_ g: UITapGestureRecognizer) {
             guard let tv = g.view as? UITextView, g.state == .ended else { return }
             let pt = g.location(in: tv)
+            // A tap below the last line continues writing at the end.
+            if tv.isEditable, pt.y > tv.caretRect(for: tv.endOfDocument).maxY + 8 {
+                if !tv.isFirstResponder { _ = tv.becomeFirstResponder() }
+                tv.selectedRange = NSRange(location: tv.textStorage.length, length: 0)
+                return
+            }
             guard let pos = tv.closestPosition(to: pt) else { return }
             let idx = tv.offset(from: tv.beginningOfDocument, to: pos)
             // A tap left of the text, on the marker.

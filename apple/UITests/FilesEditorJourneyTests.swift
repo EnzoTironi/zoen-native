@@ -88,7 +88,8 @@ final class FilesEditorJourneyTests: XCTestCase {
         XCTAssertTrue(text.contains("Roteiro: Paraty") && text.contains("Alugar o barco"), text)
         XCTAssertFalse(text.contains("- [ ]"), "checklists show as checkboxes, not Markdown: \(text)")
         // Add a line at the end (tap below the text) and pause: a second version.
-        editor.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.92)).tap()
+        editor.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.7)).tap()
+        XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 5), "tapping below the text starts writing")
         editor.typeText("\nLevar capa de chuva.")
         XCTAssertTrue(saved(app, version: 2), "pausing saved version 2")
         XCTAssertTrue((editor.value as? String ?? "").contains("Levar capa de chuva."))

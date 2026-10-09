@@ -203,7 +203,8 @@ final class PageEditorController {
         }
         let next: BlockTag
         switch tag.kind {
-        case "bullet", "numbered", "quote": next = BlockTag(kind: tag.kind, indent: tag.indent)
+        // A quote is one block (shift-return adds a line inside it); return moves on to text.
+        case "bullet", "numbered": next = BlockTag(kind: tag.kind, indent: tag.indent)
         case "task": next = BlockTag(kind: "task", indent: tag.indent, checked: false)
         default: next = BlockTag(kind: "paragraph")
         }
