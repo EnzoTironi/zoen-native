@@ -1,8 +1,8 @@
 # Roadmap status: the path to one billion users
 
-Evidence reviewed on 2026-10-09, against `main` at `f50b589` and the initial open PRs
+Evidence reviewed on 2026-10-09, against `main` at `f50b589` and work in PRs
 [#33](https://github.com/EnzoTironi/zoen-native/pull/33) through
-[#38](https://github.com/EnzoTironi/zoen-native/pull/38).
+[#41](https://github.com/EnzoTironi/zoen-native/pull/41).
 The target is the complete product at one billion monthly users.
 The original prototype schedule in [repensado.md](repensado.md) does not determine readiness.
 
@@ -59,17 +59,19 @@ retention costs and reporting latency at the load model above.
 
 ## Work in flight
 
-This table records the initial CI snapshot. Follow each PR's current checks before
+This table records the audit's latest evidence. Follow each PR's current checks before
 integrating it; a green check alone does not establish product completeness.
 
-| PR | Scope | Initial check result / integration concern |
+| PR | Scope | Validation / remaining integration gate |
 |---|---|---|
-| [33](https://github.com/EnzoTironi/zoen-native/pull/33) | Pruning ceiling, stale-device rejoin, linking, paginated encrypted history | Fails the stale-device journey (`bruno`, `pending=1`); native linking UI still needed |
-| [34](https://github.com/EnzoTironi/zoen-native/pull/34) | Encrypted password/recovery-key backup | Fails key-package refill journey; recovery of new encrypted messages depends on device membership/linking |
+| [33](https://github.com/EnzoTironi/zoen-native/pull/33) | Pruning ceiling, stale-device rejoin, linking, paginated encrypted history | Ten M2 journeys pass locally. CI at `daa4e47` had one full pass and one live-refill failure; `020aeac` captures notice/publication diagnostics. Native linking UI still needed |
+| [34](https://github.com/EnzoTironi/zoen-native/pull/34) | Encrypted password/recovery-key backup | Full Linux CI passes at `21070d5`; six backup journeys and ten M2 journeys pass locally on the combined tree. Native recovery UI and no-surviving-device protocol remain |
 | [35](https://github.com/EnzoTironi/zoen-native/pull/35) | Real WASM sandbox | CI passes; integrate with the runtime after manifest/grant review |
 | [36](https://github.com/EnzoTironi/zoen-native/pull/36) | Fly Machines sandbox provider | CI passes; paid staging deployment and production egress policy still need their own proof |
 | [37](https://github.com/EnzoTironi/zoen-native/pull/37) | E2B research | CI passes; research informs design and does not implement the proposed live computer |
-| [38](https://github.com/EnzoTironi/zoen-native/pull/38) | Chat reading position and unread indicator | Fails the same key-package refill journey; simulator evidence belongs to the UX changes |
+| [38](https://github.com/EnzoTironi/zoen-native/pull/38) | Chat reading position and unread indicator | Three native XCTest journeys pass at `9ab80ca`; video and screenshots are attached. Shared Rust CI passed before the native-only additions; follow current checks |
+| [40](https://github.com/EnzoTironi/zoen-native/pull/40) | Welcome ordering and connection-time refill | Controlled before/after regressions and full Linux CI pass at `4c2f680`. The later intermittent refill failure on PR 33 remains a separate investigation |
+| [41](https://github.com/EnzoTironi/zoen-native/pull/41) | Native Android client | Rust and native CI pass. Live two-device relay sync and production encrypted media still need their own journey evidence |
 
 The initial linking and backup heads both used ADR number 0045. Backup now uses 0046
 in PR 34; its existing migration bytes were preserved. Verify migration numbering and
@@ -93,6 +95,19 @@ waits for the watcher's latest online, synced state and verifies that it stays a
 still requires exactly 32 packages within the original 20-second polling window. The
 offline-message fixture also drains the sender's initial Welcome before taking the
 recipient offline through subsequent commits.
+
+A subsequent PR 33 CI run still failed live refill with seven packages after the watcher
+reported online and synced. Its other run at the same head passed. The next head captures
+low-stock receipt, generated batches, publication replies and session metrics before
+watcher cleanup; ten M2 journeys pass locally with these diagnostics. This intermittent
+failure remains an integration gate, even when an individual run passes.
+
+[PR 38's native evidence](https://github.com/EnzoTironi/zoen-native/pull/38#issuecomment-6080457241)
+covers the reading anchor during two arrivals, the capsule jump, automatic following at
+the bottom, and opening at the first unread boundary. All three XCTest journeys pass on
+an iPhone 17 Pro / iOS 27.0 arm64 Simulator. The recording and screenshots were attached
+with `gh --attach`. These are local stories using the native timeline; they do not measure
+live relay delivery or production capacity.
 
 [PR 34](https://github.com/EnzoTironi/zoen-native/pull/34) now builds on PR 33. Restore
 persists the new device's signed MLS join requests in the durable outbox. Both password
