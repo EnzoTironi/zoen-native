@@ -11,6 +11,7 @@
 //! write and who receives. Everything else is the clients' business.
 
 pub mod analytics;
+pub mod backup;
 pub mod blobs;
 pub mod db;
 pub mod fanout;
@@ -75,6 +76,8 @@ pub struct AppState {
     /// This node's Space-partition leases (S4). One process owns every partition until
     /// S5 brings a multi-node lease exchange over NATS.
     pub owner: ownership::NodeOwner,
+    /// Guards password backups (ADR 0046); `None` = only recovery-key backups.
+    pub backup_vault: Option<Arc<dyn backup::Vault>>,
     /// Product metrics, counted without content (ADR 0043).
     pub analytics: analytics::Analytics,
 }
@@ -99,6 +102,16 @@ pub fn router(state: Shared) -> Router {
                 .get(blobs::get)
                 .layer(DefaultBodyLimit::max(blobs::MAX_BLOB_BYTES + 1024)),
         )
+        .route("/v1/backup/oprf", post(backup::oprf))
+        .route("/v1/backup/vault", put(backup::put_vault))
+        .route(
+            "/v1/backup/blob",
+            put(backup::put_blob).layer(DefaultBodyLimit::max(backup::MAX_BACKUP_BYTES + 1024)),
+        )
+        .route("/v1/backup", axum::routing::delete(backup::delete))
+        .route("/v1/backup/restore/start", post(backup::restore_start))
+        .route("/v1/backup/restore/open", post(backup::restore_open))
+        .route("/v1/backup/restore/blob", get(backup::restore_blob))
         .route(
             "/v1/transfer/{id}/{n}",
             put(transfer::put)
@@ -192,6 +205,7 @@ pub async fn build(cfg: &Config) -> anyhow::Result<(Router, Shared)> {
         blobs,
         apple_app_ids: cfg.apple_app_ids.clone(),
         owner,
+        backup_vault: backup_vault(),
         analytics,
     });
     analytics::spawn(state.clone());
@@ -200,6 +214,23 @@ pub async fn build(cfg: &Config) -> anyhow::Result<(Router, Shared)> {
         None => router(state.clone()).merge(metrics_router(state.clone())),
     };
     Ok((app, state))
+}
+
+fn backup_vault() -> Option<Arc<dyn backup::Vault>> {
+    match backup::EnvVault::from_env() {
+        Ok(Some(v)) => {
+            tracing::info!("backup vault ready (password backups on)");
+            Some(Arc::new(v))
+        }
+        Ok(None) => {
+            tracing::info!("backup vault not configured (recovery-key backups only)");
+            None
+        }
+        Err(e) => {
+            tracing::error!(error = %e, "backup vault key invalid; password backups off");
+            None
+        }
+    }
 }
 
 /// Initial read and write buffer per WebSocket (see `ws`, ADR 0022).
