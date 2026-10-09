@@ -164,15 +164,15 @@ final class MarkupPresenter: NSObject, QLPreviewControllerDataSource, QLPreviewC
         (url ?? URL(fileURLWithPath: "/")) as NSURL
     }
 
-    func previewController(_ controller: QLPreviewController, editingModeFor previewItem: QLPreviewItem) -> QLPreviewItemEditingMode {
+    nonisolated func previewController(_ controller: QLPreviewController, editingModeFor previewItem: QLPreviewItem) -> QLPreviewItemEditingMode {
         .createCopy
     }
 
-    func previewController(_ controller: QLPreviewController, didSaveEditedCopyOf previewItem: QLPreviewItem, at modifiedContentsURL: URL) {
+    nonisolated func previewController(_ controller: QLPreviewController, didSaveEditedCopyOf previewItem: QLPreviewItem, at modifiedContentsURL: URL) {
         // Quick Look removes the copy after this returns: keep our own.
         let keep = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString + "-" + modifiedContentsURL.lastPathComponent)
         try? FileManager.default.copyItem(at: modifiedContentsURL, to: keep)
-        onSave?(keep)
+        Task { @MainActor in self.onSave?(keep) }
     }
 }
 #else

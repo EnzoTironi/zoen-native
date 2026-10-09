@@ -317,8 +317,8 @@ struct AgentReaction: View {
 }
 
 struct LineEditor: View {
-    @State var editing: ItemView.EditingLine
-    var onSave: (ItemView.EditingLine) -> Void
+    @State var editing: PlanItemView.EditingLine
+    var onSave: (PlanItemView.EditingLine) -> Void
     @Environment(\.dismiss) private var dismiss
     @FocusState private var focus: Bool
 
