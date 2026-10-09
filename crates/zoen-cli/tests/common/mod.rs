@@ -481,6 +481,36 @@ pub struct RawClient {
 }
 
 impl RawClient {
+    pub async fn reconnect(relay: &str, author: Author) -> RawClient {
+        let url = format!("{}/v1/sync", relay.replace("http://", "ws://"));
+        let (ws, _) = tokio_tungstenite::connect_async(url).await.unwrap();
+        let mut c = RawClient { ws, author };
+        c.send(&ClientFrame::Hello {
+            protocol: PROTOCOL_VERSION,
+            capabilities: Vec::new(),
+            identity: c.identity(),
+            device: c.author.device.clone().unwrap(),
+            cert: c.author.cert.clone().unwrap(),
+        })
+        .await;
+        let ServerFrame::Challenge { nonce, relay, .. } = c.recv().await else {
+            panic!("challenge")
+        };
+        let sig = c.author.key.sign(&auth_message(&nonce, &relay));
+        c.send(&ClientFrame::Auth { sig }).await;
+        assert!(matches!(c.recv().await, ServerFrame::Ready { .. }));
+        c
+    }
+
+    pub async fn request(&mut self, op: Op) -> Result<roda_proto::Reply, String> {
+        self.send(&ClientFrame::Req { id: 1, op }).await;
+        loop {
+            if let ServerFrame::Res { id: 1, result } = self.recv().await {
+                return result;
+            }
+        }
+    }
+
     pub async fn connect(relay: &str, handle: &str) -> RawClient {
         Self::connect_registering(relay, handle).await.0
     }
@@ -554,7 +584,7 @@ impl RawClient {
             .unwrap();
     }
 
-    async fn recv(&mut self) -> ServerFrame {
+    pub async fn recv(&mut self) -> ServerFrame {
         loop {
             match tokio::time::timeout(Duration::from_secs(5), self.ws.next())
                 .await
