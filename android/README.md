@@ -37,7 +37,7 @@ Or open `android/` in Android Studio and run the `app` configuration. Rust and c
 
 ## Accounts and demo
 
-The default flow creates a real local identity and connects it to `https://relay.tryzoen.com`, the same default relay as the Apple app. Connection settings on the last onboarding step let a developer choose another relay. Debug builds allow HTTP for local development; release builds require HTTPS in onboarding.
+The default flow creates a real local identity and connects it to `https://relay.tryzoen.com`, the same default relay as the Apple app. Connection settings in the profile step let a developer choose another relay. Debug builds allow HTTP for local development; release builds require HTTPS in onboarding.
 
 The Android emulator reaches a relay on your Mac at `http://10.0.2.2:8787`. Use the repository's existing `scripts/dev-stack.sh` to run the backend.
 
@@ -55,29 +55,36 @@ Demo data uses a separate database, has a visible Demo label, and contains simul
 |---|---|
 | Navigation | Material bottom navigation on compact windows, a rail from 600 dp, and chat list/detail panes from 840 dp. Navigation 3 saves each tab's stack and supports system and predictive Back. |
 | Appearance | Zoen's moss green, original mascot drawn by Compose Canvas, Material surfaces, system typography, light/dark themes, and English/pt-BR resources. Decorative mascot motion follows Android's animator duration setting and stops when its screen is not started. |
-| Onboarding | Seven steps, local plan preview, real per-space agent trust, Android notification permission, and an optional location preference. Location access is not requested without a consuming feature. |
-| Conversations | Engine-backed timelines, delivery state, inline replies, threads, draft persistence, unread counts, pinned chats, and scrolling that keeps your place while reading. |
+| Onboarding | Eight configurable steps, encrypted profile photos, all eight life areas, a rotation-safe starter preview, real per-space agent trust, and optional native notification/location permissions. Acquisition links select their configured landing. |
+| Conversations | Engine-backed timelines, delivery/presence/typing state, selectable mentions, quote navigation, swipe-to-reply/thread, separate threads, inline approvals, pinned plans, draft persistence, unread counts, and scrolling that keeps your place while reading. |
 | Plans | Signed edits, task completion, costs, line addition/removal, Undo, full version history, and restoration as a new version. |
 | Approvals and agents | Content-bound approval/denial, standing decisions, revocation, per-space autonomy, budgets, and read-only controls for agents owned by someone else. |
-| Files and pages | Android document and photo pickers, system camera, bounded file import, Markdown page import/export, a block editor, images and text previews, versioned text edits, and Android sharing through FileProvider. |
-| Mini-apps | Native pet care and Donkey Dash, polls, shared lists, cooking and ingredient scaling, MapTap with Natural Earth polygons and accessible coordinate sliders, hike voting, and countdowns. Every mutation passes through the engine's Grants. Irreversible actions ask through a Material dialog. |
-| Search | Local full-text search across messages, items, apps, people, agents, and spaces. A message result opens its chat at the matching message. |
+| Files and pages | Folder browsing and batch imports through Android document/photo pickers and camera; rich text and all ten page block types; durable drafts, autosave, undo/redo, Markdown import/export; read-only historical previews and signed restoration; native PDF/image ink and actual audio/video trims saved as typed versions. FileProvider grants support Android sharing. |
+| Voice notes | Hold, slide-to-cancel, lock and review; AAC recording, waveform/transcript editing, word/cut/filler/pause controls, undo/redo, playback, and signed reply/thread attachments. Offline speech availability and language downloads are explicit. |
+| Mini-apps | Native pet care, Donkey Dash, shared lists, cooking/scaling/timers, an offline draggable MapTap globe, hike voting/filters/comparison, and countdowns. Store installation preserves trust. The HTML MCP host isolates each document's origin, validates JSON-RPC, and uses explicit native capabilities and shared engine grants. Irreversible actions require a Material confirmation. |
+| Widgets | Seven snapshot templates, editable tile order/hiding/pins, and Android home widgets with per-card pinning, configuration, current signed actions, account binding, private locked content, and best-effort countdown refresh. |
+| Search and activity | Native search scopes, grouped/highlighted results, recent searches, suggested people and real catalog discovery. Messages open at the matching entry. Activity separates approvals, mentions, and tasks. Audit history exposes and verifies every signed event; permission screens show and revoke exact standing/device grants. |
+| Chat appearance | Local or shared styles and encrypted photos, original wallpapers, crop/pan/zoom, dimming, blur and dark adjustment. |
 | Sync | Existing Rust WebSocket transport, outbox, signatures, MLS, and encrypted media. App callbacks refresh Compose state. Android HTTPS media uses WebPKI roots, matching the WebSocket transport, without requiring a JNI certificate verifier. |
 | Keys | AES-256-GCM wrapped secrets in no-backup private storage, a non-exportable Android Keystore wrapping key, authenticated records, and atomic writes. Both cloud backup and device transfer exclude app data. |
 | Sharing and links | Android share sheet, content URI grants, and `zoen://chat`, `zoen://app`, `zoen://item`, and `zoen://join` links. Invite links are previewed before joining. |
 
-## Current limits
+## Platform conditions
 
-The Android planner is the labeled deterministic local fallback. Apple Foundation Models has no Android equivalent in this app yet. No remote AI API or API key is silently substituted.
+On supported devices, the planner uses Gemini Nano through ML Kit's on-device Prompt API. Availability, download progress and generation failures are visible. Structured results are validated before signed writes. Other devices use a clearly labeled deterministic local fallback. Emulator fallback tests do not demonstrate model generation on supported physical hardware. No remote AI API or key is silently substituted.
 
-The shared prototype's simulated external actions remain simulated. The app has no FCM push service or persistent Android background service; Android may suspend its connection when the app is backgrounded. Outgoing events remain in the Rust outbox. Notification permission does not imply background push delivery.
+Offline transcription uses Android's on-device recognizer where available. Recording/editing/playback remain available without a speech model; supported languages can request a native model download. The emulator does not provide a usable speech model.
 
-PDF/video markup, a microphone waveform editor, Android home-screen widgets, and a sandboxed host for arbitrary third-party HTML mini-apps are not implemented in this port. The bundled mini-apps use native Compose screens. File export lets other Android apps open formats that have no inline preview.
+Background messages use an opt-in foreground remote-messaging service with a visible connection notification and Stop control. Incoming messages and requests have private notifications and native deep links; active chats and muted people suppress alerts. This uses the existing relay. Android force-stop or restrictive power policies can suspend it, and the Rust outbox persists outgoing work. There is no FCM backend.
 
-The existing licensing for `apple/Shared/Resources/land110.json` applies to its Android copy. It contains Natural Earth public-domain land polygons.
+Apple prototype placeholders—calls, passkey recovery, simulated external actions and the simulated browser guest—remain labeled placeholders. Native browser owner takeover uses the actual sealed frame/input core; its sample guest is debug-demo only.
+
+The Natural Earth globe data retains the source app's public-domain licensing.
 
 ## Verification
 
-`NativeJourneysTest` drives the real Compose UI and Rust library for plan creation, task completion, recreation, approvals, and search. `NativeCoreTest` creates a real local account with Keystore keys and reopens its signed plan, Markdown page, and attachment. `SecretVaultTest` exercises Android Keystore encryption, fresh-instance loading, ciphertext tampering, and deletion. `LocalPlannerTest` checks English/Portuguese output, currency parsing, overflow, and budgets.
+The device suites drive Compose, the actual Rust JNI library and Android system APIs: plans, approvals, search, rich pages and historical restoration, imports, markup/media, voice gestures, appearances, on-device globe interaction, browser takeover, origin-isolated HTML MCP, signed audit and scoped grants, widgets and notifications. Core/Keystore tests also cover persistence and tampering. JVM tests cover structured generation, routing, page edits, search, snapshot schemas, origins, globe geometry and EN/PT behavior.
 
-The Android CI workflow builds both ABIs, runs unit tests and lint, tests on an x86_64 Android emulator, and uploads the debug APK and test reports. See the [device verification record](../docs/dev/android.md) for local results and review evidence.
+For encrypted two-account and onboarding/background journeys, run an isolated local relay and pass `-Pandroid.testInstrumentationRunnerArguments.zoenRelay=http://10.0.2.2:8787` to `connectedDebugAndroidTest`. These tests create and clean up their own identities and never replace an existing real account. Without that argument they report a skip rather than pretend that demo peers test the network.
+
+CI builds both ABIs, runs JVM tests and lint, and exercises x86_64 Android 9 and Android 15 with an isolated real relay. APKs and reports are uploaded. The [parity record](../docs/dev/android-parity.md) records coverage and verification status; the [device verification record](../docs/dev/android.md) includes visual review evidence.

@@ -1,0 +1,135 @@
+package xyz.tironi.zoen
+
+import android.content.Intent
+import android.net.Uri
+import android.os.Build
+import android.view.WindowManager
+import androidx.compose.ui.test.*
+import androidx.compose.ui.test.junit4.createEmptyComposeRule
+import androidx.compose.ui.text.TextRange
+import androidx.test.core.app.ActivityScenario
+import androidx.test.core.app.ApplicationProvider
+import androidx.test.ext.junit.runners.AndroidJUnit4
+import androidx.test.platform.app.InstrumentationRegistry
+import kotlinx.coroutines.runBlocking
+import org.junit.After
+import org.junit.Assert.*
+import org.junit.Before
+import org.junit.Rule
+import org.junit.Test
+import org.junit.runner.RunWith
+
+@RunWith(AndroidJUnit4::class)
+class ParityJourneysTest {
+    @get:Rule val compose = createEmptyComposeRule()
+    private val application get() = ApplicationProvider.getApplicationContext<ZoenApplication>()
+    private lateinit var scenario: ActivityScenario<MainActivity>
+
+    @Before fun openDemo() {
+        val automation = InstrumentationRegistry.getInstrumentation().uiAutomation
+        automation.executeShellCommand("input keyevent KEYCODE_WAKEUP").close()
+        automation.executeShellCommand("wm dismiss-keyguard").close()
+        application.repository.preferences.edit().putBoolean("demo", true).putBoolean("onboarded", true).commit()
+        scenario = ActivityScenario.launch(Intent(application, MainActivity::class.java).putExtra("demo", true))
+        scenario.onActivity { it.window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON) }
+        compose.waitUntil(30_000) { application.repository.state.value.ready && application.repository.state.value.me != null }
+        runBlocking { application.repository.resetDemo() }
+        compose.waitForIdle()
+    }
+    @After fun close() { scenario.close() }
+
+    private fun open(link: String) {
+        scenario.onActivity { activity -> activity.startActivity(Intent(activity, MainActivity::class.java).setAction(Intent.ACTION_VIEW).setData(Uri.parse(link)).addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP)) }
+    }
+
+    @Test fun threadRepliesStaySeparateQuotesJumpAndPinnedPlanOpensTheRealItem() {
+        val plan = application.repository.state.value.items.first { it.plan != null }
+        val space = plan.spaceId
+        val root = runBlocking {
+            application.repository.change { it.sendMessage(space, "Native quote original") }
+            application.repository.query { it.timeline(space).first { row -> (row.kind as? xyz.tironi.zoen.core.EntryKind.Message)?.text == "Native quote original" }.id }
+        }
+        runBlocking {
+            application.repository.change { it.sendReply(space, "Native inline reply", root, false); it.sendReply(space, "Native separate thread", root, true) }
+        }
+        open("zoen://chat/$space")
+        compose.waitUntil(10_000) { compose.onAllNodesWithTag("chat-pinned-plan").fetchSemanticsNodes().isNotEmpty() }
+        compose.onNodeWithText("Native separate thread").assertDoesNotExist()
+        compose.onNodeWithTag("quote:$root").performScrollTo().performClick()
+        compose.onNodeWithTag("timeline:$root").assertIsDisplayed()
+        compose.onNodeWithTag("timeline:$root").performTouchInput { swipeLeft() }
+        compose.onNodeWithTag("reply-target:$root").assertExists()
+        compose.onNodeWithContentDescription(application.getString(R.string.cancel)).performClick()
+        compose.onNodeWithTag("timeline:$root").performTouchInput { swipeRight() }
+        compose.waitUntil(10_000) { compose.onAllNodesWithText("Native separate thread").fetchSemanticsNodes().isNotEmpty() }
+        compose.onNodeWithText("Native separate thread").assertExists()
+        compose.onNodeWithContentDescription(application.getString(R.string.back)).performClick()
+        compose.onNodeWithTag("chat-pinned-plan").performClick()
+        compose.onAllNodesWithText(plan.title, substring = false).onFirst().assertExists()
+    }
+
+    @Test fun richFormattingDraftUndoSaveAndOldVersionPreviewUseTheNativeUi() {
+        val chat = application.repository.state.value.zoenChat!!
+        val item = runBlocking { application.repository.change { it.pageImportMarkdown(chat.id, "notes/native-rich.md", "# Native rich page\n\nEditable paragraph\n\n```kotlin\nval x = 1\n```\n\n![Forest](https://example.com/forest.png)") } }
+        val original = runBlocking { application.repository.query { it.page(item.id) } }
+        val paragraph = original.blocks.first { it.kind == "paragraph" }
+        open("zoen://item/${item.id}")
+        compose.waitUntil(10_000) { compose.onAllNodesWithTag("page-block:${paragraph.id}").fetchSemanticsNodes().isNotEmpty() }
+        compose.onNodeWithTag("page-block:${paragraph.id}").performTextReplacement("Edited paragraph")
+        compose.onNodeWithTag("page-block:${paragraph.id}").performTextInputSelection(TextRange(0, 6))
+        compose.onNodeWithContentDescription(application.getString(R.string.page_bold)).performClick()
+        compose.onNodeWithContentDescription(application.getString(R.string.undo)).performClick()
+        compose.onNodeWithContentDescription(application.getString(R.string.page_redo)).performClick()
+        scenario.recreate()
+        compose.waitUntil(10_000) { compose.onAllNodesWithTag("page-block:${paragraph.id}").fetchSemanticsNodes().isNotEmpty() }
+        compose.onNodeWithTag("page-block:${paragraph.id}").assertTextContains("Edited paragraph")
+        if (!compose.onNodeWithTag("page-save").fetchSemanticsNode().config.contains(androidx.compose.ui.semantics.SemanticsProperties.Disabled)) compose.onNodeWithTag("page-save").performClick()
+        compose.waitUntil(10_000) { application.repository.state.value.items.first { it.id == item.id }.version == 2u }
+        val persisted = runBlocking { application.repository.query { it.page(item.id) } }
+        assertTrue(persisted.blocks.first { it.id == paragraph.id }.spans.any { it.key == "b" && it.start == 0u && it.end == 6u })
+        assertEquals(original.blocks.filter { it.kind in listOf("code", "image") }, persisted.blocks.filter { it.kind in listOf("code", "image") })
+        compose.onNodeWithContentDescription(application.getString(R.string.versions)).performClick()
+        compose.onNodeWithText(application.getString(R.string.version, 1)).performClick()
+        compose.onNodeWithText("Editable paragraph").assertExists()
+        assertEquals(2u, application.repository.state.value.items.first { it.id == item.id }.version)
+        compose.onNodeWithText(application.getString(R.string.page_restore_version)).performClick()
+        compose.onNode(isDialog()).assertExists()
+        compose.onAllNodesWithText(application.getString(R.string.restore), substring = false).onLast().performClick()
+        compose.waitUntil(10_000) { application.repository.state.value.items.first { it.id == item.id }.version == 3u }
+        assertEquals(original.blocks, runBlocking { application.repository.query { it.page(item.id) } }.blocks)
+    }
+
+    @Test fun homeLongHoldRecordsAndReleaseSendsToZoenWithoutOpeningTheActionSheet() {
+        InstrumentationRegistry.getInstrumentation().uiAutomation.executeShellCommand("pm grant ${application.packageName} android.permission.RECORD_AUDIO").use { android.os.ParcelFileDescriptor.AutoCloseInputStream(it).readBytes() }
+        val chat = application.repository.state.value.zoenChat!!
+        val before = application.repository.state.value.items.size
+        compose.onNodeWithTag("home-plus").performTouchInput { down(center) }
+        Thread.sleep(2000)
+        compose.onNodeWithTag("home-plus").performTouchInput { advanceEventTime(2000); up() }
+        compose.waitUntil(20_000) { application.repository.state.value.items.size > before && application.repository.state.value.items.any { it.file?.path?.startsWith("VoiceNotes/") == true } }
+        compose.waitUntil(10_000) { compose.onAllNodesWithTag("composer").fetchSemanticsNodes().isNotEmpty() }
+        val entries = runBlocking { application.repository.query { it.timeline(chat.id) } }
+        assertTrue(entries.any { entry -> (entry.kind as? xyz.tironi.zoen.core.EntryKind.Message)?.text?.startsWith("⟦voice:") == true })
+        assertTrue(runBlocking { application.repository.query { it.verifyAll().all { log -> log.valid } } })
+    }
+
+    @Test fun ActivityMentionsTasksAndChatAppearanceAreReachableAndPersist() {
+        val mention = runBlocking { application.repository.query { it.mentions().first() } }
+        val task = application.repository.state.value.items.first { it.plan?.sections?.any { section -> section.lines.any { !it.done } } == true }
+        compose.onNodeWithText(application.getString(R.string.activity), substring = false).performClick()
+        compose.onNodeWithText(application.getString(R.string.activity_mentions), substring = true).performClick()
+        compose.onNodeWithText(application.getString(R.string.activity_mentioned, mention.entry.author.name), substring = true).assertExists()
+        compose.onNodeWithText(application.getString(R.string.activity_tasks), substring = true).performClick()
+        compose.onNodeWithText(task.title, substring = false).assertExists()
+        val chat = application.repository.state.value.zoenChat!!
+        open("zoen://chat/${chat.id}")
+        compose.onNodeWithContentDescription(application.getString(R.string.more)).performClick()
+        compose.onNodeWithText(application.getString(R.string.chat_appearance), substring = false).performClick()
+        compose.onNodeWithText(application.getString(R.string.bg_mint), substring = false).performClick()
+        compose.onNodeWithText(application.getString(R.string.save), substring = false).performClick()
+        val chosen = runBlocking { xyz.tironi.zoen.ui.ChatAppearanceStore.load(application.repository, chat.id) }
+        assertEquals("color:mint", chosen.style)
+        scenario.recreate()
+        assertEquals(chosen, runBlocking { xyz.tironi.zoen.ui.ChatAppearanceStore.load(application.repository, chat.id) })
+    }
+}

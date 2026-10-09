@@ -15,6 +15,7 @@ import androidx.lifecycle.repeatOnLifecycle
 import kotlinx.coroutines.launch
 import xyz.tironi.zoen.theme.ZoenTheme
 import xyz.tironi.zoen.ui.ZoenApp
+import xyz.tironi.zoen.background.MessagingService
 
 class MainActivity : ComponentActivity() {
     private val model: ZoenViewModel by viewModels()
@@ -36,4 +37,12 @@ class MainActivity : ComponentActivity() {
         setIntent(intent)
         deepLink = intent.dataString
     }
+
+    override fun onStart() {
+        super.onStart()
+        model.repository.setAppVisible(true)
+        if (model.repository.preferences.getBoolean(MessagingService.PREFERENCE, false) && !model.state.value.demo) MessagingService.start(this)
+    }
+
+    override fun onStop() { model.repository.setAppVisible(false); super.onStop() }
 }

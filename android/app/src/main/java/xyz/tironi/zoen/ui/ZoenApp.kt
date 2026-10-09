@@ -25,6 +25,7 @@ import xyz.tironi.zoen.ZoenViewModel
 @Composable
 fun ZoenApp(model: ZoenViewModel, deepLink: String?, consumed: () -> Unit) {
     val state by model.state.collectAsStateWithLifecycle()
+    var onboardingLanding by rememberSaveable { mutableStateOf<String?>(null) }
     val snackbar = remember { SnackbarHostState() }
     val undo = stringResource(R.string.undo)
     LaunchedEffect(model) {
@@ -53,7 +54,7 @@ fun ZoenApp(model: ZoenViewModel, deepLink: String?, consumed: () -> Unit) {
     }
     if (state.me == null || !model.repository.preferences.getBoolean("onboarded", false)) {
         Scaffold(snackbarHost = { SnackbarHost(snackbar) }) { padding ->
-            Onboarding(model, Modifier.padding(padding))
+            Onboarding(model, Modifier.padding(padding), deepLink) { onboardingLanding = it }
         }
         return
     }
@@ -64,15 +65,43 @@ fun ZoenApp(model: ZoenViewModel, deepLink: String?, consumed: () -> Unit) {
         val spaces = rememberNavBackStack(Home)
         val activity = rememberNavBackStack(Home)
         val stack = when (tab) { Tab.Chats -> chats; Tab.Spaces -> spaces; Tab.Activity -> activity }
-        val navigate: (NavKey) -> Unit = { key -> if (stack.lastOrNull() != key) stack.add(key) }
+        val navigate: (NavKey) -> Unit = { key ->
+            if (key == Home) { while (stack.size > 1) stack.removeLastOrNull() }
+            else if (stack.lastOrNull() != key) stack.add(key)
+        }
         val back: () -> Unit = { if (stack.size > 1) stack.removeLastOrNull() }
         var quickActions by rememberSaveable { mutableStateOf(false) }
+        var voiceStart by remember { mutableIntStateOf(0) }
+        var voiceRelease by remember { mutableIntStateOf(0) }
+        var voiceLock by remember { mutableIntStateOf(0) }
+        var voiceCancel by remember { mutableIntStateOf(0) }
+        LaunchedEffect(onboardingLanding) {
+            onboardingLanding?.let { navigate(Chat(it)); onboardingLanding = null; consumed() }
+        }
         LaunchedEffect(deepLink, state.me) {
             val uri = deepLink?.let(Uri::parse) ?: return@LaunchedEffect
+            model.repository.query { it.growthCaptureLink(uri.toString()) }
             if (uri.scheme == "zoen") when (uri.host) {
                 "app", "item" -> uri.lastPathSegment?.let { navigate(Item(it)) }
                 "chat" -> uri.lastPathSegment?.let { navigate(Chat(it)) }
                 "join" -> navigate(Join(uri.lastPathSegment.orEmpty()))
+                "request" -> uri.lastPathSegment?.let { navigate(Request(it)) }
+                "widgets" -> navigate(Widgets)
+                "friend" -> uri.lastPathSegment?.let { handle ->
+                    model.launch {
+                        val friend = model.repository.network { core -> core.findPeople(handle).firstOrNull { it.handle.equals(handle, true) } }
+                        friend?.let { navigate(Chat(model.repository.change { core -> core.startDirect(it.id) })) }
+                    }
+                }
+            }
+            if (uri.scheme == "https" && (uri.host == "tryzoen.com" || uri.host == "zoen.app" || uri.host?.endsWith(".tryzoen.com") == true)) {
+                if (uri.pathSegments.firstOrNull() == "j") navigate(Join(uri.lastPathSegment.orEmpty()))
+                else uri.pathSegments.firstOrNull()?.takeIf { it.startsWith("@") }?.removePrefix("@")?.let { handle ->
+                    model.launch {
+                        val friend = model.repository.network { core -> core.findPeople(handle).firstOrNull { it.handle.equals(handle, true) } }
+                        friend?.let { navigate(Chat(model.repository.change { core -> core.startDirect(it.id) })) }
+                    }
+                }
             }
             consumed()
         }
@@ -83,7 +112,7 @@ fun ZoenApp(model: ZoenViewModel, deepLink: String?, consumed: () -> Unit) {
                 if (rail) NavigationRail(modifier = Modifier.fillMaxHeight(), header = {
                     ZoenMascot(Modifier.padding(top = 12.dp).size(64.dp))
                     Spacer(Modifier.height(16.dp))
-                    FloatingActionButton(onClick = { quickActions = true }) { Icon(Icons.Rounded.Add, stringResource(R.string.more)) }
+                    PlusVoiceButton({ quickActions = true }, { voiceStart++ }, { voiceRelease++ }, { voiceLock++ }, { voiceCancel++ }, compact = true)
                 }) {
                     Spacer(Modifier.height(24.dp))
                     Tab.entries.forEach { target ->
@@ -104,7 +133,7 @@ fun ZoenApp(model: ZoenViewModel, deepLink: String?, consumed: () -> Unit) {
                         }
                     },
                     floatingActionButton = {
-                        if (!rail && stack.size == 1) ExtendedFloatingActionButton(onClick = { quickActions = true }, icon = { Icon(Icons.Rounded.Add, null) }, text = { Text(stringResource(R.string.ask_zoen)) })
+                        if (!rail && stack.size == 1) PlusVoiceButton({ quickActions = true }, { voiceStart++ }, { voiceRelease++ }, { voiceLock++ }, { voiceCancel++ })
                     },
                     contentWindowInsets = WindowInsets(0, 0, 0, 0),
                 ) { padding ->
@@ -120,23 +149,34 @@ fun ZoenApp(model: ZoenViewModel, deepLink: String?, consumed: () -> Unit) {
                             }
                             entry<Chat> { ChatScreen(model, state, it.id, navigate, back, it.message) }
                             entry<Item> { ItemScreen(model, state, it.id, navigate, back) }
-                            entry<Agent> { AgentScreen(model, state, it.id, back) }
+                            entry<Agent> { AgentScreen(model, state, it.id, back, navigate) }
                             entry<Person> { ProfileScreen(model, state, it.id, navigate, back) }
                             entry<Participants> { ParticipantsScreen(model, state, it.id, navigate, back) }
                             entry<Thread> { ThreadScreen(model, state, it.space, it.root, navigate, back) }
                             entry<Files> { FilesScreen(model, state, navigate, back) }
+                            entry<Folder> { FilesScreen(model, state, navigate, back, it.space) }
                             entry<Agents> { AgentsScreen(state, navigate, back) }
                             entry<Context> { ContextScreen(model, state, navigate, back) }
                             entry<Search> { SearchScreen(model, state, navigate, back) }
                             entry<History> { HistoryScreen(model, state, back) }
                             entry<Permissions> { PermissionsScreen(model, state, back) }
+                            entry<AgentPermissions> { StandingPermissionsScreen(model, state, back, it.agent, it.space) }
                             entry<NewChat> { NewChatScreen(model, state, navigate, back) }
                             entry<NewSpace> { NewSpaceScreen(model, navigate, back) }
                             entry<Join> { JoinScreen(model, it.code, navigate, back) }
                             entry<Request> { RequestScreen(model, state, it.id, navigate, back) }
+                            entry<Appearance> { ChatAppearanceScreen(model, it.space, back) }
+                            entry<Widgets> { xyz.tironi.zoen.widgets.WidgetsScreen(state, back) }
+                            entry<Browser> { xyz.tironi.zoen.agent.AgentBrowserScreen(model.browser, back) }
+                            entry<VersionPreview> { VersionPreviewScreen(model, it.id, it.number, back) }
                         },
                     )
                 }
+            }
+        }
+        state.zoenChat?.let { chat ->
+            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.BottomEnd) {
+                xyz.tironi.zoen.media.VoiceComposer(model, chat.id, Modifier.padding(end = 16.dp, bottom = 140.dp), startSignal = voiceStart, releaseSignal = voiceRelease, lockSignal = voiceLock, cancelSignal = voiceCancel, showTrigger = false, onSent = { navigate(Chat(chat.id)) })
             }
         }
         if (quickActions) ModalBottomSheet(onDismissRequest = { quickActions = false }) {
@@ -148,6 +188,7 @@ fun ZoenApp(model: ZoenViewModel, deepLink: String?, consumed: () -> Unit) {
                 Triple(Icons.Rounded.SmartToy, R.string.agents, Agents),
                 Triple(Icons.Rounded.FolderOpen, R.string.files, Files),
                 Triple(Icons.Rounded.PersonOutline, R.string.context, Context),
+                Triple(Icons.Rounded.Widgets, R.string.widgets, Widgets),
             )
             actions.forEach { (icon, label, route) ->
                 if (route != null) SettingsRow(icon, stringResource(label), onClick = { quickActions = false; navigate(route) })

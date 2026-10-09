@@ -16,8 +16,13 @@ concurrency:
 
 jobs:
   native:
+    name: native (Android ${{ matrix.api }})
     runs-on: ubuntu-24.04
     timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        api: [28, 35]
     env:
       CARGO_PROFILE_DEV_DEBUG: "0"
       CARGO_BUILD_JOBS: "4"
@@ -45,6 +50,17 @@ jobs:
       - name: Build both ABIs, unit tests, and lint
         working-directory: android
         run: ./gradlew :app:assembleDebug :app:testDebugUnitTest :app:lintDebug --max-workers=4
+      - name: Isolated relay for encrypted Android journeys
+        run: |
+          docker run -d --name android-pg -p 5432:5432 -e POSTGRES_USER=zoen -e POSTGRES_HOST_AUTH_METHOD=trust postgres:17-alpine
+          scripts/fdb.sh up
+          eval "$(scripts/fdb.sh env)"
+          cargo build -q -p zoen-relay
+          for _ in $(seq 1 30); do docker exec android-pg pg_isready -U zoen >/dev/null 2>&1 && break; sleep 1; done
+          DATABASE_URL=postgres://zoen@127.0.0.1:5432/postgres ZOEN_BLOB_DIR="$RUNNER_TEMP/android-blobs" \
+            nohup target/debug/zoen-relay --bind 0.0.0.0:8787 > "$RUNNER_TEMP/android-relay.log" 2>&1 &
+          for _ in $(seq 1 30); do curl -fsS http://127.0.0.1:8787/healthz && break; sleep 1; done
+          curl -fsS http://127.0.0.1:8787/healthz
       - name: Enable KVM
         run: |
           echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
@@ -53,16 +69,16 @@ jobs:
       - name: Native Android journeys
         uses: reactivecircus/android-emulator-runner@v2
         with:
-          api-level: 35
+          api-level: ${{ matrix.api }}
           target: google_apis
           arch: x86_64
           disable-animations: true
           working-directory: android
-          script: ./gradlew :app:connectedDebugAndroidTest --max-workers=4
+          script: ./gradlew :app:connectedDebugAndroidTest --max-workers=4 -Pandroid.testInstrumentationRunnerArguments.zoenRelay=http://10.0.2.2:8787
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: zoen-android
+          name: zoen-android-${{ matrix.api }}
           path: |
             android/app/build/outputs/apk/debug/*.apk
             android/app/build/reports/

@@ -19,6 +19,7 @@ class ZoenViewModel(application: Application) : AndroidViewModel(application) {
     val repository = (application as ZoenApplication).repository
     val state = repository.state
     val planner = AgentPlanner()
+    val pageSaves = xyz.tironi.zoen.pages.PageSaveCoordinator()
     val browser = AgentBrowser(application, viewModelScope, repository.vault)
     private val mutableWorking = MutableStateFlow<Map<String, String>>(emptyMap())
     val working = mutableWorking.asStateFlow()

@@ -48,6 +48,8 @@ fun VoiceComposer(
     thread: Boolean = false,
     startSignal: Int = 0,
     releaseSignal: Int = 0,
+    lockSignal: Int = 0,
+    cancelSignal: Int = 0,
     showTrigger: Boolean = true,
     onActiveChanged: (Boolean) -> Unit = {},
     onSent: () -> Unit = {},
@@ -87,6 +89,8 @@ fun VoiceComposer(
     LaunchedEffect(releaseSignal) {
         if (releaseSignal > 0 && session.recorder.state.value.phase == RecordingPhase.HOLDING) session.release(model.repository, spaceId, currentReply, thread) { sent() }
     }
+    LaunchedEffect(lockSignal) { if (lockSignal > 0 && session.recorder.state.value.phase == RecordingPhase.HOLDING) session.recorder.lock() }
+    LaunchedEffect(cancelSignal) { if (cancelSignal > 0 && session.recorder.state.value.phase == RecordingPhase.HOLDING) session.cancel() }
     LaunchedEffect(recording.phase, review.clip) { active(recording.phase != RecordingPhase.IDLE || review.clip != null) }
     DisposableEffect(owner, session) {
         val observer = LifecycleEventObserver { _, event ->

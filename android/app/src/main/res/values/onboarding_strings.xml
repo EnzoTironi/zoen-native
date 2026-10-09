@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="life_money">Money</string>
+    <string name="life_food">Food</string>
+    <string name="life_family">Family</string>
+    <string name="onboarding_profile_title">What should friends call you?</string>
+    <string name="onboarding_location_detail">Allow approximate location for nearby plans. You can change this in Android settings.</string>
+    <string name="onboarding_done_detail">Your people, plans and shared things are ready. Your keys stay on this device.</string>
+    <string name="onboarding_planning">Making your first plan…</string>
+    <string name="onboarding_allow_location">Allow approximate location</string>
+</resources>

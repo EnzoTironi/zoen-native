@@ -33,6 +33,7 @@ import xyz.tironi.zoen.core.Persona
 data class AvatarAsset(val id: String, val name: String, val kind: String, val tags: List<String>)
 
 object AvatarArt {
+    fun preferenceKey(context: Context, kind: String, id: String) = (context.applicationContext as xyz.tironi.zoen.ZoenApplication).repository.localKey("avatar", "$kind:$id")
     private var catalog: List<AvatarAsset>? = null
     @Synchronized fun assets(context: Context): List<AvatarAsset> = catalog ?: context.assets.open("avatars/manifest.json").use { stream ->
         val rows = JSONObject(stream.bufferedReader().readText()).getJSONArray("assets")
@@ -43,7 +44,7 @@ object AvatarArt {
     fun choose(context: Context, kind: String, seed: String, tags: List<String> = emptyList()): AvatarAsset? {
         val preferences = context.getSharedPreferences("zoen", Context.MODE_PRIVATE)
         val pool = assets(context).filter { it.kind == kind }
-        val saved = preferences.getString("avatar.$kind.$seed", null)
+        val saved = preferences.getString(preferenceKey(context, kind, seed), null)
         pool.firstOrNull { it.id == saved }?.let { return it }
         pool.maxByOrNull { asset -> asset.tags.count { tag -> tags.any { it == tag || it.contains(tag) || tag.contains(it) } } }
             ?.takeIf { asset -> asset.tags.any { tag -> tags.any { it == tag || it.contains(tag) || tag.contains(it) } } }?.let { return it }
@@ -117,7 +118,7 @@ fun AvatarArtPicker(kind: String, id: String, selected: AvatarAsset?, close: () 
         Text(stringResource(R.string.agent_choose_drawing), Modifier.padding(24.dp), style = MaterialTheme.typography.titleLarge)
         LazyVerticalGrid(GridCells.Adaptive(88.dp), Modifier.fillMaxWidth().heightIn(max = 440.dp), contentPadding = PaddingValues(20.dp), verticalArrangement = Arrangement.spacedBy(16.dp), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
             items(pool, key = { it.id }) { asset ->
-                Card(onClick = { selection = asset.id; context.getSharedPreferences("zoen", Context.MODE_PRIVATE).edit().putString("avatar.$kind.$id", asset.id).apply() },
+                Card(onClick = { selection = asset.id; context.getSharedPreferences("zoen", Context.MODE_PRIVATE).edit().putString(AvatarArt.preferenceKey(context, kind, id), asset.id).apply() },
                     colors = CardDefaults.cardColors(containerColor = if (selection == asset.id) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surface)) {
                     AvatarDrawing(asset, 76, animate = false, modifier = Modifier.padding(4.dp))
                 }

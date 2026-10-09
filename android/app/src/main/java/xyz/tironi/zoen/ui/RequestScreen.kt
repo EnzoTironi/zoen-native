@@ -35,7 +35,7 @@ fun RequestScreen(model: ZoenViewModel, state: AppState, id: String, navigate: (
             } }
             request.itemId?.let { itemId -> item { OutlinedButton(onClick = { navigate(Item(itemId)) }) { Text(stringResource(R.string.files)) } } }
             item { Text(stringResource(requestStatusLabel(request.status)), color = MaterialTheme.colorScheme.primary) }
-            if (request.status == RequestStatus.PENDING) {
+            if (request.status == RequestStatus.PENDING && request.agent.isMine) {
                 item { Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                     OutlinedButton(onClick = { confirm = RequestDecision.DENY }, enabled = !busy, modifier = Modifier.weight(1f)) { Text(stringResource(R.string.deny)) }
                     Button(onClick = { confirm = RequestDecision.APPROVE }, enabled = !busy, modifier = Modifier.weight(1f)) { Text(stringResource(R.string.approve)) }

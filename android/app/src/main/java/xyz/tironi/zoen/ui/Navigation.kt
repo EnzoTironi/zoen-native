@@ -11,14 +11,20 @@ import kotlinx.serialization.Serializable
 @Serializable data class Participants(val id: String) : NavKey
 @Serializable data class Thread(val space: String, val root: String) : NavKey
 @Serializable data object Files : NavKey
+@Serializable data class Folder(val space: String) : NavKey
 @Serializable data object Agents : NavKey
 @Serializable data object Context : NavKey
 @Serializable data object Search : NavKey
 @Serializable data object History : NavKey
 @Serializable data object Permissions : NavKey
+@Serializable data class AgentPermissions(val agent: String, val space: String) : NavKey
 @Serializable data object NewChat : NavKey
 @Serializable data object NewSpace : NavKey
 @Serializable data class Join(val code: String = "") : NavKey
 @Serializable data class Request(val id: String) : NavKey
+@Serializable data class Appearance(val space: String) : NavKey
+@Serializable data object Widgets : NavKey
+@Serializable data object Browser : NavKey
+@Serializable data class VersionPreview(val id: String, val number: UInt) : NavKey
 
 enum class Tab { Chats, Spaces, Activity }

@@ -3,8 +3,6 @@ package xyz.tironi.zoen.data
 import android.content.ClipData
 import android.content.Context
 import android.content.Intent
-import android.graphics.Bitmap
-import android.graphics.BitmapFactory
 import android.net.Uri
 import android.provider.OpenableColumns
 import androidx.core.content.FileProvider
@@ -15,17 +13,49 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import xyz.tironi.zoen.R
 import xyz.tironi.zoen.core.ItemDetail
+import xyz.tironi.zoen.core.MarkdownFileDto
+import xyz.tironi.zoen.media.MediaFiles
 
 object FileAccess {
     const val MAX_BYTES = 20 * 1024 * 1024
 
-    suspend fun import(context: Context, repository: ZoenRepository, space: String, uri: Uri): ItemDetail = withContext(Dispatchers.IO) {
+    suspend fun import(context: Context, repository: ZoenRepository, space: String, uri: Uri): ItemDetail = importMany(context, repository, space, listOf(uri)).single()
+
+    suspend fun importMany(context: Context, repository: ZoenRepository, space: String, uris: List<Uri>): List<ItemDetail> = withContext(Dispatchers.IO) {
+        val pages = mutableListOf<MarkdownFileDto>()
+        val items = mutableListOf<ItemDetail>()
+        var markdownBytes = 0
+        for (uri in uris) {
+            val selected = read(context, uri)
+            val markdown = if (selected.name.substringAfterLast('.').lowercase() in listOf("md", "markdown") || selected.mime == "text/markdown")
+                runCatching { Charsets.UTF_8.newDecoder().decode(java.nio.ByteBuffer.wrap(selected.bytes)).toString() }.getOrNull() else null
+            if (markdown != null) {
+                markdownBytes += selected.bytes.size
+                require(markdownBytes <= MAX_BYTES) { context.getString(R.string.file_too_large) }
+                pages.add(MarkdownFileDto(selected.name, markdown))
+            } else {
+                val directory = File(context.cacheDir, "import-${UUID.randomUUID()}").apply { mkdirs() }
+                val local = File(directory, selected.name)
+                try {
+                    local.writeBytes(selected.bytes)
+                    val thumbnail = MediaFiles.thumbnail(local, selected.mime)
+                    items.add(repository.change { it.fileAdd(space, selected.name, selected.name, selected.mime, selected.bytes, thumbnail) })
+                } finally { directory.deleteRecursively() }
+            }
+        }
+        if (pages.isNotEmpty()) items.addAll(repository.change { it.pagesImportMarkdown(space, pages) })
+        items
+    }
+
+    private data class SelectedFile(val name: String, val mime: String, val bytes: ByteArray)
+
+    private fun read(context: Context, uri: Uri): SelectedFile {
         val resolver = context.contentResolver
         var name = "attachment"
         resolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)?.use { cursor ->
             if (cursor.moveToFirst()) name = cursor.getString(0) ?: name
         }
-        name = File(name).name.take(160)
+        name = File(name).name.take(160).takeUnless { it == "." || it == ".." || it.isBlank() } ?: "attachment"
         val mime = resolver.getType(uri) ?: "application/octet-stream"
         val bytes = resolver.openInputStream(uri)?.use { input ->
             val output = ByteArrayOutputStream()
@@ -38,21 +68,7 @@ object FileAccess {
             }
             output.toByteArray()
         } ?: error(context.getString(R.string.something_wrong))
-        if (name.endsWith(".md", true) || mime == "text/markdown") repository.change { it.pageImportMarkdown(space, name, bytes.toString(Charsets.UTF_8)) }
-        else {
-            var thumbnail: ByteArray? = null
-            if (mime.startsWith("image/")) {
-                val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
-                BitmapFactory.decodeByteArray(bytes, 0, bytes.size, bounds)
-                var sample = 1
-                while (bounds.outWidth / sample > 512 || bounds.outHeight / sample > 512) sample *= 2
-                BitmapFactory.decodeByteArray(bytes, 0, bytes.size, BitmapFactory.Options().apply { inSampleSize = sample })?.let { bitmap ->
-                    thumbnail = ByteArrayOutputStream().use { out -> bitmap.compress(Bitmap.CompressFormat.PNG, 100, out); out.toByteArray() }
-                    bitmap.recycle()
-                }
-            }
-            repository.change { it.fileAdd(space, "", name, mime, bytes, thumbnail) }
-        }
+        return SelectedFile(name, mime, bytes)
     }
 
     fun cameraUri(context: Context): Uri {

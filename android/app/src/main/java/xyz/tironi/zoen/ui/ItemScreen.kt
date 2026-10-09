@@ -1,6 +1,7 @@
 package xyz.tironi.zoen.ui
 
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.text.KeyboardOptions
@@ -36,6 +37,7 @@ fun ItemScreen(model: ZoenViewModel, state: AppState, id: String, navigate: (Nav
     val context = LocalContext.current
     val fileUnavailable = stringResource(R.string.file_not_ready)
     val saved = stringResource(R.string.saved)
+    DisposableEffect(id) { model.viewingItem(id); onDispose { model.viewingItem(null) } }
     if (item == null) {
         Scaffold(topBar = { ScreenBar(stringResource(R.string.files), back) }) { padding -> EmptyState(stringResource(R.string.unavailable), stringResource(R.string.unavailable_detail), Modifier.padding(padding)) }
         return
@@ -43,9 +45,10 @@ fun ItemScreen(model: ZoenViewModel, state: AppState, id: String, navigate: (Nav
     Scaffold(topBar = {
         ScreenBar(item.title, back, actions = {
             if (item.app != null) MiniAppDetailsButton(model, state, item)
-            IconButton(onClick = { versions = true }) { Icon(Icons.Rounded.History, stringResource(R.string.versions)) }
+            IconButton(onClick = { model.launch { model.pageSaves.flush(id); versions = true } }) { Icon(Icons.Rounded.History, stringResource(R.string.versions)) }
             IconButton(onClick = {
                 model.launch {
+                    model.pageSaves.flush(id)
                     when {
                         item.file != null -> {
                             val bytes = model.repository.query { it.fileBytes(id, null) } ?: error(fileUnavailable)
@@ -60,7 +63,7 @@ fun ItemScreen(model: ZoenViewModel, state: AppState, id: String, navigate: (Nav
     }) { padding ->
         when {
             item.app != null -> MiniAppScreen(model, state, item, Modifier.padding(padding), onClose = back)
-            item.kindId == "page" -> key(id, restored) { PageEditor(model, state, item, Modifier.padding(padding)) }
+            item.kindId == "page" -> key(id, restored) { xyz.tironi.zoen.pages.RichPageEditor(model, state, item, Modifier.padding(padding)) }
             item.file != null -> FileScreen(model, state, item, Modifier.padding(padding))
             else -> LazyColumn(Modifier.padding(padding), contentPadding = PaddingValues(24.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
                 item {
@@ -108,7 +111,7 @@ fun ItemScreen(model: ZoenViewModel, state: AppState, id: String, navigate: (Nav
         Text(stringResource(R.string.versions), Modifier.padding(horizontal = 24.dp, vertical = 12.dp), style = MaterialTheme.typography.headlineMedium)
         LazyColumn(contentPadding = PaddingValues(bottom = 24.dp)) {
             items(item.versions.reversed(), key = { it.number.toInt() }) { version ->
-                ListItem(headlineContent = { Text(stringResource(R.string.version, version.number.toInt())) }, supportingContent = {
+                ListItem(modifier = Modifier.clickable { versions = false; navigate(VersionPreview(id, version.number)) }, headlineContent = { Text(stringResource(R.string.version, version.number.toInt())) }, supportingContent = {
                     Text(version.note + "\n" + version.author.name + " · " + DateFormat.getDateTimeInstance(DateFormat.SHORT, DateFormat.SHORT).format(Date(version.atMs)))
                 }, leadingContent = { Icon(if (version.isUndo) Icons.Rounded.Undo else Icons.Rounded.History, null) }, trailingContent = {
                     if (version.number != item.version) TextButton(onClick = { restore = version.number }) { Text(stringResource(R.string.restore)) }
@@ -122,7 +125,7 @@ fun ItemScreen(model: ZoenViewModel, state: AppState, id: String, navigate: (Nav
             restore = null; versions = false
             model.launch {
                 model.repository.change { it.restoreVersion(id, number) }
-                model.repository.preferences.edit().remove("pageDraft:$id").apply()
+                model.repository.preferences.edit().remove(model.repository.localKey("pageDraft", id)).remove(model.repository.localKey("pageDraft", id) + ":base").apply()
                 restored++
                 model.notify(saved)
             }

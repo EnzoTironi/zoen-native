@@ -61,7 +61,7 @@ fun trustLabel(level: TrustLevelDto): Int = when (level) {
 }
 
 @Composable
-fun AgentScreen(model: ZoenViewModel, state: AppState, id: String, back: () -> Unit) {
+fun AgentScreen(model: ZoenViewModel, state: AppState, id: String, back: () -> Unit, navigate: ((NavKey) -> Unit)? = null) {
     val profile = state.agents.firstOrNull { it.persona.id == id }
     var trustSpace by remember { mutableStateOf<AgentSpaceTrust?>(null) }
     var previewSpace by rememberSaveable(id) { mutableStateOf<String?>(null) }
@@ -89,6 +89,7 @@ fun AgentScreen(model: ZoenViewModel, state: AppState, id: String, back: () -> U
             item { SectionLabel(stringResource(R.string.trust)) }
             items(profile.spaces, key = { it.spaceId }) { space ->
                 SettingsRow(Icons.Rounded.Tune, space.spaceTitle, stringResource(trustLabel(space.level)), onClick = { previewSpace = space.spaceId; if (profile.persona.isMine) trustSpace = space }, trailing = { if (profile.persona.isMine) Icon(Icons.Rounded.Edit, stringResource(R.string.edit)) else Icon(Icons.Rounded.Lock, stringResource(R.string.read_only)) })
+                if (navigate != null) TextButton(onClick = { navigate(AgentPermissions(id, space.spaceId)) }) { Text(stringResource(R.string.permissions) + " · " + space.spaceTitle) }
             }
             if (previews.isNotEmpty()) item { SectionLabel(stringResource(R.string.agent_decision_preview)) }
             items(previews, key = { it.action }) { decision ->
@@ -142,13 +143,17 @@ fun ContextScreen(model: ZoenViewModel, state: AppState, navigate: (NavKey) -> U
                 }
             }
             item { SectionLabel(stringResource(R.string.settings)) }
-            if (!state.demo && state.account != null) item { xyz.tironi.zoen.background.BackgroundConnectionSettings(model) }
+            if (!state.demo && state.account != null) {
+                item { xyz.tironi.zoen.background.NotificationSettings(model) }
+                item { xyz.tironi.zoen.background.BackgroundConnectionSettings(model) }
+            }
             item { SettingsRow(Icons.Rounded.Widgets, stringResource(R.string.widgets), onClick = { navigate(Widgets) }) }
             item { SettingsRow(Icons.Rounded.PersonOutline, stringResource(R.string.profile), onClick = { state.me?.let { navigate(Person(it.id)) } }) }
             item { SettingsRow(Icons.Rounded.VerifiedUser, stringResource(R.string.signed_log), onClick = { navigate(History) }) }
             item { SettingsRow(Icons.Rounded.Security, stringResource(R.string.permissions), onClick = { navigate(Permissions) }) }
             item { SettingsRow(Icons.Rounded.NotificationsNone, stringResource(R.string.notification_settings), onClick = { context.startActivity(Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS).putExtra(Settings.EXTRA_APP_PACKAGE, context.packageName)) }) }
             item { SettingsRow(Icons.Rounded.SmartToy, stringResource(R.string.agents), onClick = { navigate(Agents) }) }
+            item { SettingsRow(Icons.Rounded.FolderOpen, stringResource(R.string.files), onClick = { navigate(Files) }) }
             item { OnDeviceAiSettings(model) }
             stats?.let { local ->
                 item {
@@ -170,36 +175,10 @@ fun ContextScreen(model: ZoenViewModel, state: AppState, navigate: (NavKey) -> U
 }
 
 @Composable
-fun PermissionsScreen(model: ZoenViewModel, state: AppState, back: () -> Unit) {
-    val standing by produceState<List<StandingDecisionDto>>(emptyList(), state.revision) { value = model.repository.query { it.standingDecisions() } }
-    val device by produceState<List<DeviceGrantDto>>(emptyList(), state.revision) { value = model.repository.query { it.appDeviceGrants() } }
-    Scaffold(topBar = { ScreenBar(stringResource(R.string.permissions), back) }) { padding ->
-        LazyColumn(Modifier.padding(padding), contentPadding = PaddingValues(24.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            if (standing.isEmpty() && device.isEmpty()) item { EmptyState(stringResource(R.string.no_permissions), stringResource(R.string.trust_detail)) }
-            items(standing, key = { it.grantId }) { grant -> Card { Column(Modifier.fillMaxWidth().padding(16.dp)) { Text(grant.agent.name, style = MaterialTheme.typography.titleMedium); Text(grant.actionLabel + " · " + grant.spaceTitle); Text(stringResource(if (grant.allow) R.string.always_approve else R.string.always_deny)); TextButton(onClick = { model.launch { model.repository.change { it.revokeStanding(grant.grantId) } } }) { Text(stringResource(R.string.revoke)) } } } }
-            if (device.isNotEmpty()) item { SectionLabel(stringResource(R.string.device_permissions)) }
-            items(device, key = { it.grantId }) { grant -> Card { Column(Modifier.fillMaxWidth().padding(16.dp)) { Text(grant.appName, style = MaterialTheme.typography.titleMedium); Text(grant.purpose); TextButton(onClick = { model.launch { model.repository.change { it.revokeAppDevice(grant.grantId) } } }) { Text(stringResource(R.string.revoke)) } } } }
-        }
-    }
-}
+fun PermissionsScreen(model: ZoenViewModel, state: AppState, back: () -> Unit) = StandingPermissionsScreen(model, state, back)
 
 @Composable
-fun HistoryScreen(model: ZoenViewModel, state: AppState, back: () -> Unit) {
-    val reports by produceState<List<LogReport>>(emptyList(), state.revision) { value = model.repository.query { it.verifyAll() } }
-    var expanded by rememberSaveable { mutableStateOf<String?>(null) }
-    val events by produceState<List<LogEventDto>>(emptyList(), expanded, state.revision) { value = expanded?.let { id -> model.repository.query { it.logEvents(id) } } ?: emptyList() }
-    Scaffold(topBar = { ScreenBar(stringResource(R.string.signed_log), back) }) { padding ->
-        LazyColumn(Modifier.padding(padding), contentPadding = PaddingValues(24.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            item { Icon(if (reports.all { it.valid }) Icons.Rounded.VerifiedUser else Icons.Rounded.GppBad, null, Modifier.size(48.dp), tint = if (reports.all { it.valid }) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error); Text(stringResource(if (reports.all { it.valid }) R.string.verified else R.string.invalid_log), style = MaterialTheme.typography.headlineMedium) }
-            items(reports, key = { it.spaceId }) { report ->
-                Card(onClick = { expanded = if (expanded == report.spaceId) null else report.spaceId }) {
-                    Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) { Text(report.spaceTitle, style = MaterialTheme.typography.titleMedium); Text(stringResource(R.string.events, report.events.toInt())); Text(report.error ?: report.headHash, style = MaterialTheme.typography.labelSmall, color = if (report.valid) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.error) }
-                }
-                if (expanded == report.spaceId) events.takeLast(20).reversed().forEach { event -> Column(Modifier.padding(16.dp)) { Text("${event.seq} · ${event.label}", style = MaterialTheme.typography.titleSmall); Text(event.author.name, style = MaterialTheme.typography.bodySmall); Text(event.hash, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant) } }
-            }
-        }
-    }
-}
+fun HistoryScreen(model: ZoenViewModel, state: AppState, back: () -> Unit) = AuditHistoryScreen(model, state, back)
 
 @Composable
 private fun AgentDrawingChooser(persona: Persona) {
@@ -231,7 +210,7 @@ fun ProfileScreen(model: ZoenViewModel, state: AppState, id: String, navigate: (
     var cameraUri by rememberSaveable { mutableStateOf<String?>(null) }
     var confirmBlock by remember { mutableStateOf(false) }
     var demoBlocked by rememberSaveable(id) { mutableStateOf(model.repository.preferences.getBoolean("demo.blocked.$id", false)) }
-    var muted by rememberSaveable(id) { mutableStateOf(model.repository.preferences.getBoolean("muted.person.$id", false)) }
+    var muted by rememberSaveable(id) { mutableStateOf(model.repository.preferences.getBoolean(model.repository.localKey("muted.person", id), false)) }
     fun readPhoto(uri: Uri) { model.launch { photoSource = ProfilePhotos.read(context, uri) } }
     val photoPicker = rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri -> uri?.let(::readPhoto) }
     val camera = rememberLauncherForActivityResult(ActivityResultContracts.TakePicture()) { taken -> if (taken) cameraUri?.let { readPhoto(Uri.parse(it)) } }
@@ -293,7 +272,7 @@ fun ProfileScreen(model: ZoenViewModel, state: AppState, id: String, navigate: (
                 if (persona?.kind == PersonaKind.AGENT) item { SettingsRow(Icons.Rounded.Security, stringResource(R.string.permissions), onClick = { navigate(Agent(id)) }) }
                 if (persona?.isMe == false && persona?.kind == PersonaKind.PERSON) {
                     item { SettingsRow(if (muted) Icons.Rounded.NotificationsActive else Icons.Rounded.NotificationsOff, stringResource(if (muted) R.string.agent_profile_unmute else R.string.agent_profile_mute), if (muted) stringResource(R.string.agent_profile_muted) else null, onClick = {
-                        muted = !muted; model.repository.preferences.edit().putBoolean("muted.person.$id", muted).apply()
+                        muted = !muted; model.repository.preferences.edit().putBoolean(model.repository.localKey("muted.person", id), muted).apply()
                     }) }
                     item { TextButton(onClick = { if (blocked) model.launch { if (state.demo) { demoBlocked = false; model.repository.preferences.edit().remove("demo.blocked.$id").apply() } else model.repository.change { it.unblockPerson(id) } } else confirmBlock = true }) {
                         Text(stringResource(if (blocked) R.string.agent_profile_unblock else R.string.agent_profile_block), color = MaterialTheme.colorScheme.error)

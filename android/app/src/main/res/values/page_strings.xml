@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="page_redo">Redo</string>
+    <string name="page_bold">Bold</string>
+    <string name="page_italic">Italic</string>
+    <string name="page_strike">Strikethrough</string>
+    <string name="page_inline_code">Inline code</string>
+    <string name="page_link">Link</string>
+    <string name="page_indent">Indent list</string>
+    <string name="page_outdent">Outdent list</string>
+    <string name="page_bullet">Bullet list</string>
+    <string name="page_numbered">Numbered list</string>
+    <string name="page_quote">Quote</string>
+    <string name="page_code">Code block</string>
+    <string name="page_code_language">Code language</string>
+    <string name="page_divider">Divider</string>
+    <string name="page_image">Image</string>
+    <string name="page_raw">Raw Markdown</string>
+    <string name="page_image_url">URL</string>
+    <string name="page_image_alt">Image description</string>
+    <string name="page_draft_saved">Draft saved on this device</string>
+    <string name="page_preview_version">Preview version %1$d</string>
+    <string name="page_restore_version">Restore this version</string>
+    <string name="page_line_break">Line break</string>
+</resources>
