@@ -14,6 +14,8 @@ members = [
   "crates/zoen-load",
   "crates/zoen-agentd",
   "crates/zoen-egress",
+  "crates/zoen-guestd",
+  "crates/zoen-sandboxd",
   "tools/uniffi-bindgen",
 ]
 

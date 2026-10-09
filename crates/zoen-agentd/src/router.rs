@@ -167,6 +167,7 @@ pub fn spec_for(m: &ToolManifest) -> SandboxSpec {
         max_secs,
         egress: m.egress.clone(),
         secrets: m.secrets.clone(),
+        agent: None,
     }
 }
 

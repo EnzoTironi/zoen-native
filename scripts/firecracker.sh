@@ -2,6 +2,9 @@
 # Firecracker, its jailer and a guest kernel for the microVM tier (ADR 0028, P1).
 # Linux with /dev/kvm only. Idempotent; pinned and checksummed; installs under .tools/firecracker.
 #   scripts/firecracker.sh up        download firecracker, jailer and the guest kernel
+#   scripts/firecracker.sh image     build zoen-guestd (static) and the guest root filesystem
+#   scripts/firecracker.sh cgroup    (sudo) create the cgroup VMs run under, with a total cap
+#   scripts/firecracker.sh sweep     kill every VM still in that cgroup
 #   scripts/firecracker.sh env       print the exports the journeys need
 #   scripts/firecracker.sh measure   cold boot and snapshot-restore timings (scripts/fc-measure.py)
 # Every VM this script starts runs under `timeout -s KILL`, so nothing can hang the host.
@@ -44,11 +47,58 @@ up() {
   "$TOOLS/firecracker" --version | sed -n 1p
 }
 
+# Alpine's minirootfs plus zoen-guestd as init. Read-only in the VM; /work, /tmp, /run and
+# /root are tmpfs. Rebuilt whenever zoen-guestd changes.
+image() {
+  up >/dev/null
+  rustup target add x86_64-unknown-linux-musl >/dev/null 2>&1 || true
+  cargo build -q -p zoen-guestd --release --target x86_64-unknown-linux-musl
+  local bin="${CARGO_TARGET_DIR:-$ROOT/target}/x86_64-unknown-linux-musl/release/zoen-guestd"
+  local tmp; tmp="$(mktemp -d)"
+  mkdir -p "$tmp/root"
+  tar xzf "$TOOLS/alpine.tar.gz" -C "$tmp/root"
+  install -m 0755 "$bin" "$tmp/root/sbin/zoen-guestd"
+  mkdir -p "$tmp/root/work" "$tmp/root/run"
+  truncate -s 64M "$tmp/rootfs.ext4"
+  "$(command -v mkfs.ext4 || echo /sbin/mkfs.ext4)" -q -F -d "$tmp/root" "$tmp/rootfs.ext4"
+  mv "$tmp/rootfs.ext4" "$TOOLS/rootfs.ext4"
+  rm -rf "$tmp"
+  echo "guest image: $TOOLS/rootfs.ext4"
+}
+
+# The parent cgroup every VMM goes under: cpu, memory and pids for its children, a cap on
+# the total (so no number of VMs can take the host down), owned by the caller so it can
+# remove VM cgroups without root.
+CGROUP="${ZOEN_SANDBOX_CGROUP:-zoen-sandbox}"
+CGROUP_MEMORY_MAX="${ZOEN_SANDBOX_MEMORY_MAX:-3G}"
+cgroup() {
+  local cg="/sys/fs/cgroup/$CGROUP"
+  sudo mkdir -p "$cg"
+  echo "+cpu +memory +pids" | sudo tee /sys/fs/cgroup/cgroup.subtree_control >/dev/null
+  echo "+cpu +memory +pids" | sudo tee "$cg/cgroup.subtree_control" >/dev/null
+  echo "$CGROUP_MEMORY_MAX" | sudo tee "$cg/memory.max" >/dev/null
+  echo 512 | sudo tee "$cg/pids.max" >/dev/null
+  sudo chown "$(id -u):$(id -g)" "$cg" "$cg/cgroup.procs" "$cg/cgroup.subtree_control" "$cg/cgroup.threads"
+  echo "cgroup $cg: memory.max=$(cat "$cg/memory.max") pids.max=$(cat "$cg/pids.max")"
+}
+
+sweep() {
+  local n=0
+  for procs in /sys/fs/cgroup/"$CGROUP"/*/cgroup.procs; do
+    [[ -f "$procs" ]] || continue
+    while read -r pid; do kill -9 "$pid" 2>/dev/null && n=$((n + 1)); done < "$procs"
+    rmdir "$(dirname "$procs")" 2>/dev/null || true
+  done
+  echo "killed $n VMM processes"
+}
+
 env_exports() {
   echo "export ZOEN_FIRECRACKER=\"$TOOLS/firecracker\""
   echo "export ZOEN_JAILER=\"$TOOLS/jailer\""
   echo "export ZOEN_VMLINUX=\"$TOOLS/vmlinux\""
   echo "export ZOEN_ALPINE_TGZ=\"$TOOLS/alpine.tar.gz\""
+  echo "export ZOEN_GUEST_ROOTFS=\"$TOOLS/rootfs.ext4\""
+  echo "export ZOEN_SANDBOX_CGROUP=\"$CGROUP\""
 }
 
 measure() {
@@ -59,7 +109,10 @@ measure() {
 
 case "${1:-}" in
   up) up ;;
+  image) image ;;
+  cgroup) cgroup ;;
+  sweep) sweep ;;
   env) env_exports ;;
   measure) shift; measure "$@" ;;
-  *) echo "usage: $0 up|env|measure [runs]"; exit 2 ;;
+  *) echo "usage: $0 up|image|cgroup|sweep|env|measure [runs]"; exit 2 ;;
 esac
