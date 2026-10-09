@@ -286,6 +286,7 @@ struct AppSheetHost: View {
 /// View MCP em folha (enquete, lista): o caminho do WKWebView isolado.
 struct McpAppSheet: View {
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.miniAppClose) private var miniAppClose
     let item: ItemDetail
     let app: AppStateDto
     @State private var height: CGFloat = 400
@@ -313,7 +314,7 @@ struct McpAppSheet: View {
             #endif
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
-                    Button { dismiss() } label: { Image(systemName: "chevron.down") }.accessibilityLabel("Close")
+                    Button { (miniAppClose ?? { dismiss() })() } label: { Image(systemName: "chevron.down") }.accessibilityLabel("Close").accessibilityIdentifier("miniapp-close")
                 }
             }
         }

@@ -159,6 +159,7 @@ enum PetTab: String, CaseIterable { case care, play, board
 struct PetSheet: View {
     @Environment(AppModel.self) private var model
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.miniAppClose) private var miniAppClose
     let item: ItemDetail
     let app: AppStateDto
     @State private var renaming = false
@@ -200,7 +201,7 @@ struct PetSheet: View {
             }
         }
         .overlay(alignment: .topLeading) {
-            Button { dismiss() } label: { Image(systemName: "chevron.down").font(.body.weight(.semibold)).frame(width: 36, height: 36) }
+            Button { (miniAppClose ?? { dismiss() })() } label: { Image(systemName: "chevron.down").font(.body.weight(.semibold)).frame(width: 36, height: 36) }.accessibilityIdentifier("miniapp-close")
                 .buttonStyle(.plain)
                 .foregroundStyle(asleep || model.petTab == .play ? .white : Color(hex: "#1C1C1E"))
                 .glassEffect(.regular.interactive(), in: .circle)

@@ -8,11 +8,12 @@ import RodaCore
 /// button inside it asks the host to go back inline, which dismisses this sheet.
 struct HikeSheet: View {
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.miniAppClose) private var miniAppClose
     let item: ItemDetail
     @State private var height: CGFloat = 800
 
     var body: some View {
-        McpAppWebView(itemId: item.id, displayMode: "fullscreen", height: $height, onClose: { dismiss() }, edgeToEdge: true)
+        McpAppWebView(itemId: item.id, displayMode: "fullscreen", height: $height, onClose: { (miniAppClose ?? { dismiss() })() }, edgeToEdge: true)
             .ignoresSafeArea()
             .background(Color(hex: "#ECE8DA").ignoresSafeArea())
             .presentationDetents([.large])

@@ -143,6 +143,8 @@ final class AppModel {
     var notificationsOpen = false
     /// The approvals catch-up stack (bell with pending approvals).
     var approvalsOpen = false
+    /// A mini-app flipping open from its tile (see MiniAppFlipHost).
+    var appFlip: AppFlip?
     /// New chat / group / join sheet (real accounts only).
     var newChatOpen = false
     /// Profile sheet (medium → large) opened from any avatar/name tap.
@@ -659,6 +661,14 @@ final class AppModel {
 
     /// Abre o mini-app em tela cheia. Da tela Conversas, entra no Espaço antes (voltar
     /// leva à conversa, onde o cartão mora).
+    /// Opens a mini-app from its tile with the flip: the tile turns over into the app, and
+    /// closing turns it back. Stays where you are (Home or the chat) underneath.
+    func flipOpenApp(_ itemId: String, from: CGRect, sourceKey: String, front: AnyView) {
+        guard appFlip == nil, appSheet == nil else { return }
+        if let item = try? core.item(itemId: itemId), item.app?.appId == "pet" { petTab = .care }
+        appFlip = AppFlip(itemId: itemId, from: from, sourceKey: sourceKey, front: front)
+    }
+
     func openApp(_ itemId: String, fromHome: Bool = false) {
         if fromHome, let item = try? core.item(itemId: itemId) {
             go(.space(item.spaceId))

@@ -82,8 +82,13 @@ struct RootView: View {
             if UserDefaults.standard.bool(forKey: "RodaTopBarWidths") { TopBarWidthSheet() }
             if UserDefaults.standard.bool(forKey: "RodaIconExplore") { IconExploreSheet() }
         }
+        .overlay {
+            if let flip = model.appFlip {
+                MiniAppFlipHost(flip: flip).id(flip.id)
+            }
+        }
         .environment(\.appZoom, zoom)
-        .sheet(item: Binding(get: { model.appSheet == nil ? model.appConfirm : nil }, set: { model.appConfirm = $0 })) { req in
+        .sheet(item: Binding(get: { model.appSheet == nil && model.appFlip == nil ? model.appConfirm : nil }, set: { model.appConfirm = $0 })) { req in
             AppConfirmSheet(request: req) { model.appConfirm = nil }
         }
         .sheet(isPresented: $model.newChatOpen) {
