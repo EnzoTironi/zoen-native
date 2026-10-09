@@ -1448,6 +1448,154 @@ fn account_and_chats_survive_a_relaunch_after_search() {
     std::fs::remove_dir_all(dir).ok();
 }
 
+#[test]
+fn stop_sync_drains_callbacks_before_reopening_the_exclusive_database() {
+    use std::sync::mpsc;
+    use std::time::Duration;
+
+    struct HeldConnection {
+        entered: mpsc::SyncSender<()>,
+        release: Mutex<mpsc::Receiver<()>>,
+        held: std::sync::atomic::AtomicBool,
+    }
+    impl CoreListener for HeldConnection {
+        fn on_change(&self, _: Vec<String>) {}
+        fn on_ephemeral(&self, _: String, _: String, _: String, _: String) {}
+        fn on_presence(&self, _: String, _: bool) {}
+        fn on_error(&self, _: String) {}
+        fn on_profile_changed(&self, _: String) {}
+        fn on_connection(&self, status: ConnectionDto) {
+            if status.state == "connecting"
+                && !self.held.swap(true, std::sync::atomic::Ordering::SeqCst)
+            {
+                self.entered.send(()).unwrap();
+                self.release.lock().unwrap().recv().unwrap();
+            }
+        }
+    }
+
+    let dir = std::env::temp_dir().join(format!("zoen-sync-drain-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let path = dir.join("core.sqlite").to_string_lossy().to_string();
+    let vault: Arc<dyn SecretVault> = Arc::new(MemVault::default());
+    let e = RodaEngine::open(path.clone(), "en".into()).unwrap();
+    e.create_account(
+        "Alice".into(),
+        "sync_drain".into(),
+        "http://127.0.0.1:9".into(),
+        vault.clone(),
+    )
+    .unwrap();
+    let space = e
+        .create_group("Offline persistence".into(), vec![])
+        .unwrap();
+    e.send_message(space.clone(), "Keep this queued message".into())
+        .unwrap();
+    let (entered_tx, entered_rx) = mpsc::sync_channel(1);
+    let (release_tx, release_rx) = mpsc::sync_channel(1);
+    e.start_sync(Some(Arc::new(HeldConnection {
+        entered: entered_tx,
+        release: Mutex::new(release_rx),
+        held: std::sync::atomic::AtomicBool::new(false),
+    })))
+    .unwrap();
+    entered_rx.recv_timeout(Duration::from_secs(5)).unwrap();
+    let (stopping_tx, stopping_rx) = mpsc::sync_channel(1);
+    let (stopped_tx, stopped_rx) = mpsc::sync_channel(1);
+    let stopping = e.clone();
+    let thread = std::thread::spawn(move || {
+        stopping_tx.send(()).unwrap();
+        stopping.stop_sync();
+        stopped_tx.send(()).unwrap();
+    });
+    stopping_rx.recv_timeout(Duration::from_secs(5)).unwrap();
+    let returned_before_callback = stopped_rx.recv_timeout(Duration::from_millis(100)).is_ok();
+    release_tx.send(()).unwrap();
+    thread.join().unwrap();
+    drop(e);
+    let reopened = RodaEngine::open(path, "en".into()).unwrap();
+    assert!(reopened.unlock(vault).unwrap());
+    assert!(reopened.timeline(space).unwrap().iter().any(|row|
+        matches!(&row.kind, EntryKind::Message { text, .. } if text == "Keep this queued message")));
+    assert!(reopened.connection().pending > 0);
+    assert!(reopened.verify_all().iter().all(|report| report.valid));
+    assert!(
+        !returned_before_callback,
+        "stop_sync returned while its callback still owned the database"
+    );
+    drop(reopened);
+    std::fs::remove_dir_all(dir).unwrap();
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn stop_sync_inside_another_runtime_releases_the_database_before_returning() {
+    let dir = std::env::temp_dir().join(format!("zoen-sync-nested-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let path = dir.join("core.sqlite").to_string_lossy().to_string();
+    let vault: Arc<dyn SecretVault> = Arc::new(MemVault::default());
+    for _ in 0..4 {
+        let e = RodaEngine::open(path.clone(), "en".into()).unwrap();
+        if e.account().is_none() {
+            e.create_account(
+                "Bob".into(),
+                "sync_nested".into(),
+                "http://127.0.0.1:9".into(),
+                vault.clone(),
+            )
+            .unwrap();
+        } else {
+            assert!(e.unlock(vault.clone()).unwrap());
+        }
+        e.start_sync(None).unwrap();
+        e.stop_sync();
+        drop(e);
+    }
+    let reopened = RodaEngine::open(path, "en".into()).unwrap();
+    assert!(reopened.unlock(vault).unwrap());
+    assert!(reopened.verify_all().iter().all(|report| report.valid));
+    drop(reopened);
+    std::fs::remove_dir_all(dir).unwrap();
+}
+
+#[test]
+fn stop_sync_from_its_own_connection_callback_does_not_deadlock() {
+    struct StopOnConnection {
+        engine: std::sync::Weak<RodaEngine>,
+        stopped: std::sync::mpsc::SyncSender<()>,
+    }
+    impl CoreListener for StopOnConnection {
+        fn on_change(&self, _: Vec<String>) {}
+        fn on_ephemeral(&self, _: String, _: String, _: String, _: String) {}
+        fn on_presence(&self, _: String, _: bool) {}
+        fn on_error(&self, _: String) {}
+        fn on_profile_changed(&self, _: String) {}
+        fn on_connection(&self, status: ConnectionDto) {
+            if status.state == "connecting" {
+                self.engine.upgrade().unwrap().stop_sync();
+                self.stopped.send(()).unwrap();
+            }
+        }
+    }
+    let e = RodaEngine::open(":memory:".into(), "en".into()).unwrap();
+    e.create_account(
+        "Callback".into(),
+        "sync_callback".into(),
+        "http://127.0.0.1:9".into(),
+        Arc::new(MemVault::default()),
+    )
+    .unwrap();
+    let (stopped_tx, stopped_rx) = std::sync::mpsc::sync_channel(1);
+    e.start_sync(Some(Arc::new(StopOnConnection {
+        engine: Arc::downgrade(&e),
+        stopped: stopped_tx,
+    })))
+    .unwrap();
+    stopped_rx
+        .recv_timeout(std::time::Duration::from_secs(5))
+        .unwrap();
+    assert_eq!(e.connection().state, "offline");
+}
+
 /// A relay that hides one message and rehashes the chain around the gap shows this device
 /// a valid-looking chain, but the next author's causal link names the hidden event, so the
 /// device refuses the forged history instead of showing it.

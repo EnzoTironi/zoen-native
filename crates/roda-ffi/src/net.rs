@@ -177,8 +177,17 @@ impl Drop for Net {
     fn drop(&mut self) {
         let _ = self.cmd.send(Cmd::Stop);
         if let Some(rt) = self.rt.take() {
-            // Safe from inside another async runtime too.
-            rt.shutdown_background();
+            // Sync and media tasks own the database. Drain them before a caller reopens it.
+            if let Ok(caller) = tokio::runtime::Handle::try_current() {
+                let own_worker = caller.id() == rt.handle().id();
+                let shutdown = std::thread::spawn(move || drop(rt));
+                // A callback on this runtime must return before its own worker can join.
+                if !own_worker {
+                    shutdown.join().expect("network runtime shutdown failed");
+                }
+            } else {
+                drop(rt);
+            }
         }
     }
 }

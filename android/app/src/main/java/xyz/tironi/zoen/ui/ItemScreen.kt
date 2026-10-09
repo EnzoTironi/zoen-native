@@ -12,6 +12,7 @@ import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.KeyboardType
@@ -36,6 +37,7 @@ fun ItemScreen(model: ZoenViewModel, state: AppState, id: String, navigate: (Nav
     var addSection by remember { mutableStateOf<Int?>(null) }
     var restored by remember { mutableIntStateOf(0) }
     val context = LocalContext.current
+    val focus = LocalFocusManager.current
     val fileUnavailable = stringResource(R.string.file_not_ready)
     val saved = stringResource(R.string.saved)
     DisposableEffect(id) { model.viewingItem(id); onDispose { model.viewingItem(null) } }
@@ -46,7 +48,7 @@ fun ItemScreen(model: ZoenViewModel, state: AppState, id: String, navigate: (Nav
     Scaffold(topBar = {
         ScreenBar(item.title, back, actions = {
             if (item.app != null) MiniAppDetailsButton(model, state, item)
-            IconButton(onClick = { model.launch { model.pageSaves.flush(id); versions = true } }) { Icon(Icons.Rounded.History, stringResource(R.string.versions)) }
+            IconButton(onClick = { focus.clearFocus(force = true); model.launch { model.pageSaves.flush(id); versions = true } }) { Icon(Icons.Rounded.History, stringResource(R.string.versions)) }
             IconButton(onClick = {
                 model.launch {
                     model.pageSaves.flush(id)

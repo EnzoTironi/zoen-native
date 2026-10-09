@@ -125,11 +125,17 @@ class ParityJourneysTest {
         assertEquals(original.blocks.filter { it.kind in listOf("code", "image") }, persisted.blocks.filter { it.kind in listOf("code", "image") })
         compose.onNodeWithContentDescription(application.getString(R.string.versions)).performClick()
         compose.onNodeWithText(application.getString(R.string.version, 1)).performClick()
-        compose.onNodeWithText("Editable paragraph").assertExists()
+        compose.waitUntil(10_000) { compose.onAllNodesWithText("Editable paragraph").fetchSemanticsNodes().size == 1 }
+        compose.onNodeWithText("Editable paragraph").assertExists().assertIsDisplayed()
         assertEquals(2u, application.repository.state.value.items.first { it.id == item.id }.version)
-        compose.onNodeWithText(application.getString(R.string.page_restore_version)).performClick()
+        compose.waitUntil(10_000) {
+            compose.onAllNodesWithText(application.getString(R.string.page_restore_version)).fetchSemanticsNodes()
+                .singleOrNull()?.config?.contains(androidx.compose.ui.semantics.SemanticsProperties.Disabled) == false
+        }
+        compose.onNodeWithText(application.getString(R.string.page_restore_version)).assertIsDisplayed().assertIsEnabled().performClick()
+        compose.waitUntil(10_000) { compose.onAllNodes(isDialog()).fetchSemanticsNodes().size == 1 }
         compose.onNode(isDialog()).assertExists()
-        compose.onAllNodesWithText(application.getString(R.string.restore), substring = false).onLast().performClick()
+        compose.onNode(hasText(application.getString(R.string.restore), substring = false) and hasClickAction() and hasAnyAncestor(isDialog())).performClick()
         compose.waitUntil(10_000) { application.repository.state.value.items.first { it.id == item.id }.version == 3u }
         assertEquals(original.blocks, runBlocking { application.repository.query { it.page(item.id) } }.blocks)
     }

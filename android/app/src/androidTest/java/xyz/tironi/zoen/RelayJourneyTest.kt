@@ -30,8 +30,11 @@ class RelayJourneyTest {
         val vaultB = AndroidSecretVault(context, "relay-vault-b-$suffix")
         val pathA = File(folder, "a.sqlite").absolutePath
         var a = RodaEngine.open(pathA, "en")
-        val b = RodaEngine.open(File(folder, "b.sqlite").absolutePath, "en")
+        var ownedA: RodaEngine? = a
+        var ownedB: RodaEngine? = null
+        var journeyFailure: Throwable? = null
         try {
+            val b = RodaEngine.open(File(folder, "b.sqlite").absolutePath, "en").also { ownedB = it }
             val accountA = a.createAccount("Android Alice", "aa_$suffix", relay!!, vaultA)
             val accountB = b.createAccount("Android Bob", "ab_$suffix", relay, vaultB)
             assertNotEquals(accountA.identityId, accountB.identityId)
@@ -65,8 +68,9 @@ class RelayJourneyTest {
             a.stopSync()
             a.sendMessage(chat, "Queued while Android is offline")
             assertTrue(a.connection().pending > 0uL)
+            ownedA = null
             a.destroy()
-            a = RodaEngine.open(pathA, "en")
+            a = RodaEngine.open(pathA, "en").also { ownedA = it }
             assertTrue(a.unlock(vaultA))
             assertTrue(a.connection().pending > 0uL)
             a.startSync(null)
@@ -76,13 +80,32 @@ class RelayJourneyTest {
             assertEquals(1500u, a.background(chat)!!.zoomPm)
             assertTrue(a.verifyAll().all { it.valid })
             assertTrue(b.verifyAll().all { it.valid })
+        } catch (failure: Throwable) {
+            journeyFailure = failure
+            throw failure
         } finally {
-            a.stopSync(); b.stopSync()
-            a.eraseDevice(vaultA); b.eraseDevice(vaultB)
-            a.destroy(); b.destroy()
-            folder.deleteRecursively()
-            File(context.noBackupFilesDir, "relay-vault-a-$suffix").deleteRecursively()
-            File(context.noBackupFilesDir, "relay-vault-b-$suffix").deleteRecursively()
+            var cleanupFailure: Throwable? = null
+            fun cleanup(action: () -> Unit) {
+                try { action() }
+                catch (failure: Throwable) {
+                    val previous = cleanupFailure
+                    if (previous == null) cleanupFailure = failure else previous.addSuppressed(failure)
+                }
+            }
+            ownedA?.let { engine ->
+                cleanup { engine.stopSync() }; cleanup { engine.eraseDevice(vaultA) }; cleanup { engine.destroy() }
+            }
+            ownedB?.let { engine ->
+                cleanup { engine.stopSync() }; cleanup { engine.eraseDevice(vaultB) }; cleanup { engine.destroy() }
+            }
+            cleanup { folder.deleteRecursively() }
+            cleanup { File(context.noBackupFilesDir, "relay-vault-a-$suffix").deleteRecursively() }
+            cleanup { File(context.noBackupFilesDir, "relay-vault-b-$suffix").deleteRecursively() }
+            cleanupFailure?.let { failure ->
+                val original = journeyFailure
+                if (original == null) throw failure
+                original.addSuppressed(failure)
+            }
         }
     }
 
