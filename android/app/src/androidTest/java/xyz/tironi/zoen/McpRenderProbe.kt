@@ -14,7 +14,6 @@ import android.view.Window
 import android.webkit.WebView
 import androidx.activity.ComponentActivity
 import androidx.test.platform.app.InstrumentationRegistry
-import java.io.File
 import java.util.concurrent.atomic.AtomicInteger
 import java.util.concurrent.atomic.AtomicReference
 import org.json.JSONObject
@@ -85,12 +84,11 @@ internal class McpRenderProbe(private val activity: ComponentActivity, private v
 
     /** Uses the last observed UI state so diagnostics do not depend on an unblocked UI loop. */
     fun failureEvidence(name: String, error: Throwable) {
-        val directory = File(InstrumentationRegistry.getInstrumentation().targetContext.cacheDir, "mcp-evidence").apply { mkdirs() }
-        File(directory, "$name.json").writeText(JSONObject(report()).put("error", error.toString()).toString(2))
+        Evidence.outputFile("mcp", "$name.json").writeText(JSONObject(report()).put("error", error.toString()).toString(2))
         Log.e(TAG, "Failure evidence $name: ${report()}")
         val screenshot = InstrumentationRegistry.getInstrumentation().uiAutomation.takeScreenshot()
         if (screenshot != null) try {
-            File(directory, "$name.png").outputStream().use { screenshot.compress(Bitmap.CompressFormat.PNG, 100, it) }
+            Evidence.outputFile("mcp", "$name.png").outputStream().use { screenshot.compress(Bitmap.CompressFormat.PNG, 100, it) }
         } finally { screenshot.recycle() }
     }
 

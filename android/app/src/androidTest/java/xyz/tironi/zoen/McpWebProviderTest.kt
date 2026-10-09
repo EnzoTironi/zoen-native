@@ -10,8 +10,6 @@ import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.captureToImage
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
-import androidx.test.platform.app.InstrumentationRegistry
-import java.io.File
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertThrows
 import org.junit.Rule
@@ -43,8 +41,7 @@ class McpWebProviderTest {
             compose.onNodeWithTag("mcp-web-unsupported").assertIsDisplayed()
             compose.onNodeWithTag("mcp-web-update").assertIsDisplayed()
             assertThrows(IllegalStateException::class.java) { MiniAppWebProvider.requireSupported() }
-            val context = InstrumentationRegistry.getInstrumentation().targetContext
-            val file = File(context.getExternalFilesDir(null), "evidence/mcp-unsupported-webview.png").apply { parentFile!!.mkdirs() }
+            val file = Evidence.outputFile("mcp", "mcp-unsupported-webview.png")
             val bitmap = compose.onNodeWithTag("mcp-web-unsupported").captureToImage().asAndroidBitmap()
             try { file.outputStream().use { bitmap.compress(Bitmap.CompressFormat.PNG, 100, it) } } finally { bitmap.recycle() }
         }

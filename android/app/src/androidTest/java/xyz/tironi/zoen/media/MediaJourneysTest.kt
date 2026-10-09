@@ -15,7 +15,6 @@ import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import java.io.ByteArrayOutputStream
-import java.io.File
 import java.util.UUID
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.*
@@ -23,6 +22,7 @@ import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
 import xyz.tironi.zoen.MainActivity
+import xyz.tironi.zoen.Evidence
 import xyz.tironi.zoen.R
 import xyz.tironi.zoen.ZoenApplication
 import xyz.tironi.zoen.core.EntryKind
@@ -33,7 +33,7 @@ class MediaJourneysTest {
     private val application get() = ApplicationProvider.getApplicationContext<ZoenApplication>()
     private fun capture(name: String) {
         val bitmap = InstrumentationRegistry.getInstrumentation().uiAutomation.takeScreenshot() ?: return
-        try { File(application.cacheDir, "media-evidence/$name.png").apply { parentFile!!.mkdirs() }.outputStream().use { bitmap.compress(Bitmap.CompressFormat.PNG, 100, it) } }
+        try { Evidence.outputFile("media", "$name.png").outputStream().use { bitmap.compress(Bitmap.CompressFormat.PNG, 100, it) } }
         finally { bitmap.recycle() }
     }
     private fun open(): ActivityScenario<MainActivity> {

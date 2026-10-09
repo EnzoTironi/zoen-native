@@ -238,10 +238,7 @@ class McpWebViewTest {
 
     private inline fun <T> Bitmap.use(block: (Bitmap) -> T): T = try { block(this) } finally { recycle() }
 
-    private fun evidenceFile(name: String): File = File(
-        InstrumentationRegistry.getInstrumentation().targetContext.cacheDir,
-        "mcp-evidence/$name",
-    ).apply { parentFile!!.mkdirs() }
+    private fun evidenceFile(name: String): File = Evidence.outputFile("mcp", name)
 
     private fun evaluate(web: WebView, script: String): String {
         val answer = AtomicReference<String>()

@@ -16,10 +16,10 @@ import androidx.compose.ui.test.swipe
 import androidx.compose.ui.unit.dp
 import androidx.compose.foundation.layout.width
 import androidx.test.platform.app.InstrumentationRegistry
-import java.io.File
 import org.junit.Assert.*
 import org.junit.Rule
 import org.junit.Test
+import xyz.tironi.zoen.Evidence
 
 class NativeGlobeJourneyTest {
     @get:Rule val compose = createComposeRule()
@@ -55,8 +55,7 @@ class NativeGlobeJourneyTest {
         globe.performTouchInput { click(center) }
         compose.runOnIdle { assertEquals(beforeRevealTap, selections) }
         val image = globe.captureToImage().asAndroidBitmap()
-        val file = File(context.getExternalFilesDir("globe-evidence"), "native-globe-reveal.png")
-        file.parentFile!!.mkdirs()
+        val file = Evidence.outputFile("globe", "native-globe-reveal.png")
         file.outputStream().use { image.compress(Bitmap.CompressFormat.PNG, 100, it) }
         assertTrue(file.length() > 10_000)
     }
