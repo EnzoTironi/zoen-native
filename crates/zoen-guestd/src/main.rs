@@ -4,6 +4,8 @@
 //! It serves two things:
 //! - control requests from the host on vsock port 52 (exec, put, get, hello), one per
 //!   connection;
+//! - in a browser microVM, the browser (see `browser.rs`): Chromium driven over a CDP pipe
+//!   that never leaves the VM;
 //! - the in-VM proxy address 127.0.0.1:3128, where each TCP connection is spliced onto a new
 //!   vsock connection to the host (port 1080), which the host hands to the egress proxy. The
 //!   VM has no other network: no NIC, only loopback.
@@ -18,6 +20,9 @@ fn main() {
     eprintln!("zoen-guestd runs inside Linux microVMs only");
     std::process::exit(2);
 }
+
+#[cfg(target_os = "linux")]
+mod browser;
 
 #[cfg(target_os = "linux")]
 mod linux {
@@ -86,6 +91,11 @@ mod linux {
                 std::io::Error::last_os_error()
             );
         }
+    }
+
+    pub(crate) fn mount_tmpfs(target: &str, data: &str) {
+        let nodev = (libc::MS_NOSUID | libc::MS_NODEV) as libc::c_ulong;
+        mount("tmpfs", target, "tmpfs", nodev, data);
     }
 
     fn cmdline_value(key: &str) -> Option<String> {
@@ -178,7 +188,7 @@ mod linux {
         Ok(unsafe { File::from_raw_fd(c) })
     }
 
-    fn vsock_connect_host(port: u32) -> std::io::Result<File> {
+    pub(crate) fn vsock_connect_host(port: u32) -> std::io::Result<File> {
         // SAFETY: as above; CID 2 is the host.
         unsafe {
             let fd = libc::socket(libc::AF_VSOCK, libc::SOCK_STREAM | libc::SOCK_CLOEXEC, 0);
@@ -278,7 +288,20 @@ mod linux {
     }
 
     fn dispatch(req: Request) -> Response {
+        // While the owner has the browser, nothing but the browser's own operations runs:
+        // no commands, no file access that could read the page or its profile.
+        if crate::browser::takeover_active()
+            && matches!(
+                req,
+                Request::Exec { .. } | Request::Put { .. } | Request::Get { .. }
+            )
+        {
+            return Response::err(format!(
+                "{TAKEOVER_IN_PROGRESS}: the owner is using the browser"
+            ));
+        }
         match req {
+            Request::Browser { browser } => crate::browser::dispatch(browser),
             Request::Hello {
                 entropy_b64,
                 now_ms,

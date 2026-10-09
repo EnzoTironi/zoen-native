@@ -11,6 +11,11 @@
 //! - **Network.** The VM has no NIC. Its only way out is the in-guest proxy address, carried
 //!   over vsock to this process, which hands each connection to [`zoen_egress::Egress`]
 //!   already bound to the lease.
+//! - **Browsers** (T2). A browser shape boots the browser image, and its template is taken
+//!   with Chromium already running and trusting the node's sandbox root, so a lease starts
+//!   from a warm browser. The agent's tools ([`BrowserTools`]) and the owner's live view and
+//!   takeover ([`LiveView`]) are calls into the VM; frames arrive sealed to the owner's
+//!   device and are relayed as they are.
 //! - **Suspend/resume.** Full snapshot of the lease's own VM, which is then killed; resume
 //!   restores it once and deletes the snapshot.
 
@@ -33,9 +38,9 @@ use zoen_agentd::sandbox::{
     ExecOutput, ExecRequest, Lease, SandboxError, SandboxProvider, SandboxSpec, SnapshotRef,
     MAX_OUTPUT,
 };
-use zoen_agentd::Tier;
+use zoen_agentd::{BrowserCall, BrowserTools, Tier};
 use zoen_egress::{Egress, LeasePolicy};
-use zoen_guestd::{Request, Response, EGRESS_PORT};
+use zoen_guestd::{BrowserOp, Request, Response, EGRESS_PORT, LIVE_PORT};
 
 /// The hardware a template is built for; a snapshot can only restore into the same shape.
 #[derive(Clone, Copy, Debug, Hash, PartialEq, Eq)]
@@ -43,6 +48,8 @@ pub struct Shape {
     pub vcpu: u8,
     pub mem_mib: u32,
     pub work_mib: u32,
+    /// The browser image, with Chromium running in the template.
+    pub browser: bool,
 }
 
 impl Shape {
@@ -56,11 +63,18 @@ impl Shape {
             vcpu,
             mem_mib,
             work_mib,
+            browser: spec.tier == Tier::Browser,
         }
     }
 
     fn key(&self) -> String {
-        format!("{}c-{}m-{}w", self.vcpu, self.mem_mib, self.work_mib)
+        format!(
+            "{}{}c-{}m-{}w",
+            if self.browser { "b" } else { "" },
+            self.vcpu,
+            self.mem_mib,
+            self.work_mib
+        )
     }
 }
 
@@ -82,6 +96,23 @@ struct Running {
     shape: Shape,
     vm: Vm,
     bridge: Option<JoinHandle<()>>,
+    /// Relays live-view frames (ciphertext) while the owner watches.
+    live: Option<JoinHandle<()>>,
+}
+
+impl Running {
+    fn stop_tasks(&self) {
+        for t in [&self.bridge, &self.live].into_iter().flatten() {
+            t.abort();
+        }
+    }
+}
+
+/// The owner's side of a browser lease: the session offer for their device and the sealed
+/// frames, exactly as the VM sent them.
+pub struct LiveView {
+    pub offer: zoen_liveview::Offer,
+    pub frames: tokio::sync::mpsc::Receiver<Vec<u8>>,
 }
 
 struct Suspended {
@@ -198,6 +229,25 @@ impl FirecrackerProvider {
         Ok((t, true))
     }
 
+    fn rootfs(&self, shape: Shape) -> Result<&Path, SandboxError> {
+        if shape.browser {
+            self.cfg
+                .browser_rootfs
+                .as_deref()
+                .ok_or(SandboxError::Unsupported("run browsers (no browser image)"))
+        } else {
+            Ok(&self.cfg.rootfs)
+        }
+    }
+
+    fn pool_size(&self, shape: Shape) -> usize {
+        if shape.browser {
+            self.cfg.browser_pool_size
+        } else {
+            self.cfg.pool_size
+        }
+    }
+
     async fn build_template(&self, shape: Shape) -> Result<Template, SandboxError> {
         let limits = Limits::for_shape(&self.cfg, shape.vcpu, shape.mem_mib);
         let vm = Vm::launch(
@@ -205,7 +255,7 @@ impl FirecrackerProvider {
             limits,
             &[
                 (&self.cfg.kernel, "vmlinux"),
-                (&self.cfg.rootfs, "rootfs.ext4"),
+                (self.rootfs(shape)?, "rootfs.ext4"),
             ],
         )
         .await
@@ -300,6 +350,26 @@ impl FirecrackerProvider {
             }
             tokio::time::sleep(Duration::from_millis(20)).await;
         }
+        if shape.browser {
+            // Chromium starts here, once per template, trusting the node's sandbox root
+            // (browser leases' CAs are issued under it).
+            let root_ca_pem = self.egress.as_ref().map(|e| e.sandbox_root_pem());
+            let r = vsock::request(
+                &vm.vsock(),
+                &Request::Browser {
+                    browser: BrowserOp::Launch { root_ca_pem },
+                },
+                Duration::from_secs(90),
+            )
+            .await
+            .map_err(backend)?;
+            if !r.ok {
+                return Err(backend(format!(
+                    "browser launch: {}",
+                    r.error.unwrap_or_default()
+                )));
+            }
+        }
         api::call(&sock, "PATCH", "/vm", &json!({"state": "Paused"}))
             .await
             .map_err(backend)?;
@@ -321,7 +391,7 @@ impl FirecrackerProvider {
             &self.cfg,
             limits,
             &[
-                (&self.cfg.rootfs, "rootfs.ext4"),
+                (self.rootfs(shape)?, "rootfs.ext4"),
                 (state, "snap.state"),
                 (mem, "snap.mem"),
             ],
@@ -348,7 +418,7 @@ impl FirecrackerProvider {
         let Ok((t, _)) = self.template(shape).await else {
             return;
         };
-        while self.pooled(shape) < self.cfg.pool_size {
+        while self.pooled(shape) < self.pool_size(shape) {
             match self.restore(shape, &t.state, &t.mem).await {
                 Ok(vm) => self
                     .inner
@@ -456,6 +526,132 @@ impl FirecrackerProvider {
         Ok(r)
     }
 
+    /// A free Unix socket in the VM's chroot that the guest reaches on `port`.
+    fn listen_on(&self, vm: &Vm, port: u32) -> Result<UnixListener, SandboxError> {
+        let _ = std::fs::remove_file(vm.root.join(format!("v.sock_{port}")));
+        UnixListener::bind(vm.sock_path(&format!("v.sock_{port}"))).map_err(backend)
+    }
+
+    /// One operation on a browser lease's browser.
+    async fn browser_op(
+        &self,
+        lease: &Lease,
+        op: BrowserOp,
+        limit: Duration,
+    ) -> Result<serde_json::Value, SandboxError> {
+        if lease.tier != Tier::Browser {
+            return Err(SandboxError::Unsupported("browse in this tier"));
+        }
+        let r = self
+            .guest(lease, Request::Browser { browser: op }, limit)
+            .await?;
+        Ok(r.value.unwrap_or(serde_json::Value::Null))
+    }
+
+    /// The owner starts watching: frames are sealed in the VM to `device_pub` (their
+    /// device's X25519 key) and relayed here without being opened.
+    pub async fn live_start(
+        &self,
+        lease: &Lease,
+        device_pub: [u8; 32],
+    ) -> Result<LiveView, SandboxError> {
+        let listener = {
+            let st = self.inner.lock().unwrap();
+            let r = st.running.get(&lease.id).ok_or(SandboxError::NoLease)?;
+            if let Some(old) = &r.live {
+                old.abort();
+            }
+            self.listen_on(&r.vm, LIVE_PORT)?
+        };
+        let (tx, rx) = tokio::sync::mpsc::channel::<Vec<u8>>(16);
+        let relay = tokio::spawn(async move {
+            use tokio::io::AsyncReadExt;
+            let Ok((mut conn, _)) = listener.accept().await else {
+                return;
+            };
+            loop {
+                let mut len = [0u8; 4];
+                if conn.read_exact(&mut len).await.is_err() {
+                    return;
+                }
+                let n = u32::from_be_bytes(len) as usize;
+                if n > 8 << 20 {
+                    return;
+                }
+                let mut frame = vec![0u8; n];
+                if conn.read_exact(&mut frame).await.is_err() {
+                    return;
+                }
+                // A viewer that falls behind loses frames, never the browser's time.
+                let _ = tx.try_send(frame);
+            }
+        });
+        if let Some(r) = self.inner.lock().unwrap().running.get_mut(&lease.id) {
+            r.live = Some(relay);
+        }
+        let v = self
+            .browser_op(
+                lease,
+                BrowserOp::LiveStart {
+                    device_pub_b64: B64.encode(device_pub),
+                },
+                Duration::from_secs(20),
+            )
+            .await?;
+        let field = |k: &str| -> Result<Vec<u8>, SandboxError> {
+            v[k].as_str()
+                .and_then(|s| B64.decode(s).ok())
+                .ok_or_else(|| backend("bad live-view offer"))
+        };
+        let offer = zoen_liveview::Offer {
+            vm_pub: field("vm_pub_b64")?
+                .try_into()
+                .map_err(|_| backend("bad live-view key"))?,
+            session: field("session_b64")?
+                .try_into()
+                .map_err(|_| backend("bad live-view session"))?,
+        };
+        Ok(LiveView { offer, frames: rx })
+    }
+
+    pub async fn live_stop(&self, lease: &Lease) -> Result<(), SandboxError> {
+        self.browser_op(lease, BrowserOp::LiveStop, Duration::from_secs(10))
+            .await?;
+        if let Some(r) = self.inner.lock().unwrap().running.get_mut(&lease.id) {
+            if let Some(t) = r.live.take() {
+                t.abort();
+            }
+        }
+        Ok(())
+    }
+
+    /// The owner takes the browser (needs a live view). From now until their device sends a
+    /// sealed `Done`, the agent's browser calls, exec and file access are refused in the VM.
+    pub async fn takeover_begin(&self, lease: &Lease) -> Result<(), SandboxError> {
+        self.browser_op(lease, BrowserOp::TakeoverBegin, Duration::from_secs(10))
+            .await
+            .map(|_| ())
+    }
+
+    /// Relays one sealed event from the owner's device. Returns whether it ended the takeover.
+    pub async fn takeover_input(&self, lease: &Lease, sealed: &[u8]) -> Result<bool, SandboxError> {
+        let v = self
+            .browser_op(
+                lease,
+                BrowserOp::TakeoverInput {
+                    sealed_b64: B64.encode(sealed),
+                },
+                Duration::from_secs(30),
+            )
+            .await?;
+        Ok(v["done"].as_bool().unwrap_or(false))
+    }
+
+    pub async fn browser_status(&self, lease: &Lease) -> Result<serde_json::Value, SandboxError> {
+        self.browser_op(lease, BrowserOp::Status, Duration::from_secs(10))
+            .await
+    }
+
     fn policy(&self, lease: &Lease, spec: &SandboxSpec) -> LeasePolicy {
         LeasePolicy {
             lease: lease.id.clone(),
@@ -466,8 +662,9 @@ impl FirecrackerProvider {
             tool: spec.tool.clone(),
             rules: spec.egress.clone(),
             secrets: spec.secrets.clone(),
-            sign_requests: false,
-            browser: false,
+            // Browsers identify as Zoen's signed agent (Web Bot Auth) when the node has a key.
+            sign_requests: spec.tier == Tier::Browser,
+            browser: spec.tier == Tier::Browser,
         }
     }
 }
@@ -481,9 +678,7 @@ impl Drop for FirecrackerProvider {
             }
         }
         for r in st.running.values() {
-            if let Some(b) = &r.bridge {
-                b.abort();
-            }
+            r.stop_tasks();
             r.vm.kill_blocking();
         }
         for s in st.suspended.values() {
@@ -499,8 +694,13 @@ fn b64(s: &str) -> Bytes {
 #[async_trait]
 impl SandboxProvider for FirecrackerProvider {
     async fn acquire(&self, spec: &SandboxSpec, owner: &str) -> Result<Lease, SandboxError> {
-        if spec.tier != Tier::MicroVm {
-            return Err(SandboxError::Unsupported("run this tier (microVM only)"));
+        match spec.tier {
+            Tier::MicroVm => {}
+            Tier::Browser if self.cfg.browser_rootfs.is_some() => {}
+            Tier::Browser => {
+                return Err(SandboxError::Unsupported("run browsers (no browser image)"))
+            }
+            _ => return Err(SandboxError::Unsupported("run this tier")),
         }
         let started = Instant::now();
         let shape = Shape::of(spec);
@@ -557,6 +757,7 @@ impl SandboxProvider for FirecrackerProvider {
                 shape,
                 vm,
                 bridge,
+                live: None,
             },
         );
         Ok(lease)
@@ -638,9 +839,7 @@ impl SandboxProvider for FirecrackerProvider {
             .await
         }
         .await;
-        if let Some(b) = &r.bridge {
-            b.abort();
-        }
+        r.stop_tasks();
         let dir = self.cfg.work.join("suspended").join(&lease.id);
         let moved = match res {
             Ok(()) => async {
@@ -706,6 +905,7 @@ impl SandboxProvider for FirecrackerProvider {
                 shape: s.shape,
                 vm,
                 bridge,
+                live: None,
             },
         );
         Ok(lease)
@@ -717,9 +917,7 @@ impl SandboxProvider for FirecrackerProvider {
             (st.running.remove(&lease.id), st.suspended.remove(&lease.id))
         };
         if let Some(r) = r {
-            if let Some(b) = r.bridge {
-                b.abort();
-            }
+            r.stop_tasks();
             r.vm.kill().await;
         }
         if let Some(s) = s {
@@ -729,5 +927,60 @@ impl SandboxProvider for FirecrackerProvider {
             e.revoke(&lease.id);
         }
         Ok(())
+    }
+}
+
+#[async_trait]
+impl BrowserTools for FirecrackerProvider {
+    async fn browser(&self, lease: &Lease, call: BrowserCall) -> Result<String, SandboxError> {
+        let (_, max_secs) = self.running(lease)?;
+        let timeout_ms = (u64::from(max_secs.max(1)) * 1000).min(60_000);
+        let limit = Duration::from_millis(timeout_ms + 10_000);
+        let page = |v: &serde_json::Value| {
+            format!(
+                "{} ({})",
+                v["title"].as_str().unwrap_or(""),
+                v["url"].as_str().unwrap_or("")
+            )
+        };
+        match call {
+            BrowserCall::Open { url } => {
+                let v = self
+                    .browser_op(lease, BrowserOp::Open { url, timeout_ms }, limit)
+                    .await?;
+                Ok(format!("Opened {}", page(&v)))
+            }
+            BrowserCall::Read => {
+                let v = self
+                    .browser_op(lease, BrowserOp::Read { max_chars: 20_000 }, limit)
+                    .await?;
+                Ok(v["text"].as_str().unwrap_or("").to_string())
+            }
+            BrowserCall::Click { target } => {
+                let v = self
+                    .browser_op(lease, BrowserOp::Click { target, timeout_ms }, limit)
+                    .await?;
+                Ok(format!("Clicked; now on {}", page(&v)))
+            }
+            BrowserCall::Type {
+                target,
+                text,
+                submit,
+            } => {
+                let v = self
+                    .browser_op(
+                        lease,
+                        BrowserOp::Type {
+                            target,
+                            text,
+                            submit,
+                            timeout_ms,
+                        },
+                        limit,
+                    )
+                    .await?;
+                Ok(format!("Typed; now on {}", page(&v)))
+            }
+        }
     }
 }
