@@ -6,7 +6,9 @@ import java.util.Locale
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -84,6 +86,23 @@ class ZoenRepository(private val context: Context) {
     }
 
     fun releaseBackgroundConnection(owner: Any) { scope.launch { setBackgroundConnection(false, owner) } }
+
+    suspend fun close() {
+        scope.coroutineContext[Job]?.cancelAndJoin()
+        withContext(Dispatchers.IO) {
+            gate.withLock {
+                engine?.stopSync()
+                engine?.destroy()
+                engine = null
+                syncRunning = false
+                backgroundOwner = null
+                changes.close()
+                errors.close()
+                synchronized(visibleActivities) { visibleActivities.clear(); appVisible = false }
+                activeSpace = null
+            }
+        }
+    }
 
     private fun updateSyncLocked() {
         val core = engine ?: return

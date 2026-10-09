@@ -64,7 +64,7 @@ class NativeParityTest {
             assertFalse(repository.preferences.getBoolean(repository.localKey("muted.person", "shared-person"), false))
             assertEquals("offline", repository.state.value.connection.state)
         } finally {
-            repository.signOut(); repository.query { it.destroy() }; folder.deleteRecursively()
+            repository.signOut(); repository.close(); folder.deleteRecursively()
             context.deleteSharedPreferences("$namespace-zoen")
         }
     }
@@ -102,7 +102,7 @@ class NativeParityTest {
             assertTrue(repository.query { it.pageMarkdown(found.first { item -> item.title == "Café" }.id) }.contains("**shared**"))
             assertTrue(repository.query { it.verifyAll().all { report -> report.valid } })
         } finally {
-            repository.query { it.destroy() }; exports.deleteRecursively(); folder.deleteRecursively()
+            repository.close(); exports.deleteRecursively(); folder.deleteRecursively()
             context.deleteSharedPreferences("$namespace-zoen")
         }
     }

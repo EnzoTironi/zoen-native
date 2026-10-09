@@ -150,6 +150,13 @@ class McpWebViewTest {
                 if (status != lastPageStatus) { Log.i("McpWebViewTest", "Hike page: $status"); lastPageStatus = status }
                 evaluate(web.get(), "document.querySelectorAll('.card').length") == "3"
             }
+            val drawn = CountDownLatch(1)
+            InstrumentationRegistry.getInstrumentation().runOnMainSync {
+                web.get().postVisualStateCallback(1L, object : WebView.VisualStateCallback() {
+                    override fun onComplete(requestId: Long) { drawn.countDown() }
+                })
+            }
+            check(drawn.await(10, TimeUnit.SECONDS)) { "Hike DOM exists but its rendered frame is not ready" }
             touch(web.get(), ".card")
             waitUntil { evaluate(web.get(), "Boolean(document.querySelector('.sticky button:last-child'))") == "true" }
             val before = core.item(item.id).version

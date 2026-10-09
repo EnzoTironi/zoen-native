@@ -104,7 +104,9 @@ class ParityJourneysTest {
         val chat = application.repository.state.value.zoenChat!!
         val before = application.repository.state.value.items.size
         compose.onNodeWithTag("home-plus").performTouchInput { down(center) }
-        Thread.sleep(2000)
+        compose.mainClock.advanceTimeBy(800)
+        val timerPrefix = application.getString(R.string.media_recording, "0:00").substringBefore("0:00")
+        compose.waitUntil(20_000) { compose.onAllNodes(hasText(timerPrefix, substring = true) and !hasText("0:00", substring = true)).fetchSemanticsNodes().isNotEmpty() }
         compose.onNodeWithTag("home-plus").performTouchInput { advanceEventTime(2000); up() }
         compose.waitUntil(20_000) { application.repository.state.value.items.size > before && application.repository.state.value.items.any { it.file?.path?.startsWith("VoiceNotes/") == true } }
         compose.waitUntil(10_000) { compose.onAllNodesWithTag("composer").fetchSemanticsNodes().isNotEmpty() }
@@ -117,8 +119,10 @@ class ParityJourneysTest {
         val mention = runBlocking { application.repository.query { it.mentions().first() } }
         val task = application.repository.state.value.items.first { it.plan?.sections?.any { section -> section.lines.any { !it.done } } == true }
         compose.onNodeWithText(application.getString(R.string.activity), substring = false).performClick()
+        compose.onNodeWithTag("activity-tabs").performScrollToNode(hasText(application.getString(R.string.activity_mentions), substring = true))
         compose.onNodeWithText(application.getString(R.string.activity_mentions), substring = true).performClick()
         compose.onNodeWithText(application.getString(R.string.activity_mentioned, mention.entry.author.name), substring = true).assertExists()
+        compose.onNodeWithTag("activity-tabs").performScrollToNode(hasText(application.getString(R.string.activity_tasks), substring = true))
         compose.onNodeWithText(application.getString(R.string.activity_tasks), substring = true).performClick()
         compose.onNodeWithText(task.title, substring = false).assertExists()
         val chat = application.repository.state.value.zoenChat!!

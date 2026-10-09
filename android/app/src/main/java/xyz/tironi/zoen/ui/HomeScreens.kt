@@ -204,7 +204,7 @@ fun ActivityScreen(model: ZoenViewModel, state: AppState, navigate: (NavKey) -> 
     var busy by remember { mutableStateOf(false) }
     Scaffold(topBar = { HomeBar(stringResource(R.string.activity), state, navigate) }, contentWindowInsets = WindowInsets(0, 0, 0, 0)) { padding ->
         LazyColumn(Modifier.padding(padding), contentPadding = PaddingValues(24.dp, 8.dp, 24.dp, 100.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            item { LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            item { LazyRow(Modifier.testTag("activity-tabs"), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 items(3) { index ->
                     val count = listOf(pending.size, mentions.size, tasks.size)[index]
                     FilterChip(section == index, { section = index }, label = { Text(stringResource(listOf(R.string.activity_approvals, R.string.activity_mentions, R.string.activity_tasks)[index]) + if (count > 0) " · $count" else "") })
