@@ -515,7 +515,11 @@ async fn key_packages_refill_when_they_run_low() {
     for _ in 0..300 {
         let log = std::fs::read_to_string(&log_path).unwrap();
         ready = log.contains("watching as @bruno")
-            && log.contains("connection=online synced=true pending=0");
+            && log
+                .lines()
+                .rev()
+                .find(|line| line.starts_with("[zoen-net] connection="))
+                .is_some_and(|line| line.contains("connection=online synced=true"));
         if ready || watch.try_wait().expect("watch status").is_some() {
             break;
         }
