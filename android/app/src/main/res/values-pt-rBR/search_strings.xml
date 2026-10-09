@@ -1,0 +1,20 @@
+<resources>
+    <string name="search_scope_all">Tudo</string>
+    <string name="search_scope_messages">Mensagens</string>
+    <string name="search_scope_people">Pessoas</string>
+    <string name="search_scope_agents">Agentes</string>
+    <string name="search_scope_spaces">Espaços</string>
+    <string name="search_scope_apps">Apps</string>
+    <string name="search_scope_files">Arquivos</string>
+    <string name="search_clear_query">Limpar busca</string>
+    <string name="search_recent">Recentes</string>
+    <string name="search_clear_recent">Limpar</string>
+    <string name="search_suggested">Sugestões</string>
+    <string name="search_apps_for_you">Apps para você</string>
+    <string name="search_not_found">Não encontrou o que precisava?</string>
+    <string name="search_try_suggestion">Tente outra palavra ou uma destas:</string>
+    <string name="search_see_all">Ver tudo</string>
+    <string name="search_failed">Não foi possível buscar</string>
+    <string name="search_catalog_available">Loja · Mini-app</string>
+    <string name="search_catalog_installed">Loja · Instalado</string>
+</resources>
