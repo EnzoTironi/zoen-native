@@ -4,7 +4,6 @@ import android.Manifest
 import android.content.pm.PackageManager
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -68,8 +67,6 @@ fun VoiceComposer(
     val density = LocalDensity.current
     val cancelDistance = with(density) { 110.dp.toPx() }
     val lockDistance = with(density) { 80.dp.toPx() }
-    var x by remember { mutableFloatStateOf(0f) }
-    var y by remember { mutableFloatStateOf(0f) }
     fun start(locked: Boolean) {
         if (appState.keyMissing || review.clip != null) return
         VoicePlayback.pause()
@@ -85,6 +82,7 @@ fun VoiceComposer(
         if (ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED) start(locked)
         else permission.launch(Manifest.permission.RECORD_AUDIO)
     }
+    val currentBegin by rememberUpdatedState(begin)
     LaunchedEffect(startSignal) { if (startSignal > 0 && recording.phase == RecordingPhase.IDLE && review.clip == null) begin(false) }
     LaunchedEffect(releaseSignal) {
         if (releaseSignal > 0 && session.recorder.state.value.phase == RecordingPhase.HOLDING) session.release(model.repository, spaceId, currentReply, thread) { sent() }
@@ -104,17 +102,16 @@ fun VoiceComposer(
     }
     Box(modifier.size(48.dp), contentAlignment = Alignment.Center) {
         if (showTrigger) FilledTonalIconButton(onClick = { begin(true) }, enabled = !appState.keyMissing && recording.phase == RecordingPhase.IDLE && review.clip == null,
-            modifier = Modifier.size(48.dp).testTag("voice-record").pointerInput(session) {
-                detectDragGesturesAfterLongPress(onDragStart = { x = 0f; y = 0f; begin(false) },
-                    onDrag = { change, amount ->
-                        change.consume(); x += amount.x; y += amount.y
-                        if (session.recorder.state.value.phase == RecordingPhase.HOLDING) {
-                            if (x < -cancelDistance) { session.cancel(); haptics.performHapticFeedback(HapticFeedbackType.Reject) }
-                            else if (y < -lockDistance) { session.recorder.lock(); haptics.performHapticFeedback(HapticFeedbackType.LongPress) }
-                        }
-                    }, onDragEnd = {
+            modifier = Modifier.size(48.dp).testTag("voice-record").pointerInput(session, cancelDistance, lockDistance) {
+                detectVoiceHoldGestures(cancelDistance, lockDistance,
+                    onStart = { currentBegin(false) },
+                    onRelease = {
                         if (session.recorder.state.value.phase == RecordingPhase.HOLDING) session.release(model.repository, spaceId, currentReply, thread) { sent() }
-                    }, onDragCancel = { if (session.recorder.state.value.phase == RecordingPhase.HOLDING) session.cancel() })
+                    }, onLock = {
+                        if (session.recorder.state.value.phase == RecordingPhase.HOLDING) { session.recorder.lock(); haptics.performHapticFeedback(HapticFeedbackType.LongPress) }
+                    }, onCancel = {
+                        if (session.recorder.state.value.phase == RecordingPhase.HOLDING) { session.cancel(); haptics.performHapticFeedback(HapticFeedbackType.Reject) }
+                    })
             }) { Icon(Icons.Rounded.Mic, stringResource(R.string.media_hold_record)) }
         if (recording.phase != RecordingPhase.IDLE) {
             val width = (LocalConfiguration.current.screenWidthDp - 32).coerceIn(240, 380).dp

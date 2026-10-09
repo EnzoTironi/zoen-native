@@ -107,11 +107,36 @@ class ParityJourneysTest {
         compose.mainClock.advanceTimeBy(800)
         val timerPrefix = application.getString(R.string.media_recording, "0:00").substringBefore("0:00")
         compose.waitUntil(20_000) { compose.onAllNodes(hasText(timerPrefix, substring = true) and !hasText("0:00", substring = true)).fetchSemanticsNodes().isNotEmpty() }
-        compose.onNodeWithTag("home-plus").performTouchInput { advanceEventTime(2000); up() }
+        compose.onNodeWithText(application.getString(R.string.new_chat), substring = false).assertDoesNotExist()
+        compose.onNodeWithTag("home-plus").performTouchInput { up() }
         compose.waitUntil(20_000) { application.repository.state.value.items.size > before && application.repository.state.value.items.any { it.file?.path?.startsWith("VoiceNotes/") == true } }
         compose.waitUntil(10_000) { compose.onAllNodesWithTag("composer").fetchSemanticsNodes().isNotEmpty() }
         val entries = runBlocking { application.repository.query { it.timeline(chat.id) } }
         assertTrue(entries.any { entry -> (entry.kind as? xyz.tironi.zoen.core.EntryKind.Message)?.text?.startsWith("⟦voice:") == true })
+        assertTrue(runBlocking { application.repository.query { it.verifyAll().all { log -> log.valid } } })
+        compose.onNodeWithText(application.getString(R.string.new_chat), substring = false).assertDoesNotExist()
+    }
+
+    @Test fun chatMicrophoneStationaryHoldReleaseSendsRealAudio() {
+        InstrumentationRegistry.getInstrumentation().uiAutomation.grantRuntimePermission(application.packageName, android.Manifest.permission.RECORD_AUDIO)
+        val chat = application.repository.state.value.zoenChat!!
+        val before = runBlocking { application.repository.query { it.timeline(chat.id).map { row -> row.id }.toSet() } }
+        open("zoen://chat/${chat.id}")
+        compose.waitUntil(10_000) { compose.onAllNodesWithTag("voice-record").fetchSemanticsNodes().isNotEmpty() }
+        compose.onNodeWithTag("voice-record").performTouchInput { down(center) }
+        compose.mainClock.advanceTimeBy(800)
+        val timerPrefix = application.getString(R.string.media_recording, "0:00").substringBefore("0:00")
+        compose.waitUntil(20_000) { compose.onAllNodes(hasText(timerPrefix, substring = true) and !hasText("0:00", substring = true)).fetchSemanticsNodes().isNotEmpty() }
+        compose.onNodeWithTag("voice-record").performTouchInput { up() }
+        compose.waitUntil(20_000) {
+            application.repository.state.value.timelines[chat.id].orEmpty().any { row -> row.id !in before && (row.kind as? xyz.tironi.zoen.core.EntryKind.Message)?.text?.let(xyz.tironi.zoen.media.VoiceNoteRef::parse) != null }
+        }
+        val entry = runBlocking { application.repository.query { it.timeline(chat.id) } }.last { row -> row.id !in before && (row.kind as? xyz.tironi.zoen.core.EntryKind.Message)?.text?.let(xyz.tironi.zoen.media.VoiceNoteRef::parse) != null }
+        val voice = checkNotNull(xyz.tironi.zoen.media.VoiceNoteRef.parse((entry.kind as xyz.tironi.zoen.core.EntryKind.Message).text))
+        assertTrue(voice.ms >= 1000)
+        val file = checkNotNull(runBlocking { xyz.tironi.zoen.media.VoiceTransport.localFile(application, application.repository, voice) })
+        try { assertEquals(voice.ms / 1000.0, runBlocking { xyz.tironi.zoen.media.MediaExport.duration(file) }, .15) }
+        finally { file.delete() }
         assertTrue(runBlocking { application.repository.query { it.verifyAll().all { log -> log.valid } } })
     }
 

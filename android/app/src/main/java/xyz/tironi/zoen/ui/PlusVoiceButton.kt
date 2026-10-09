@@ -1,6 +1,5 @@
 package xyz.tironi.zoen.ui
 
-import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Add
 import androidx.compose.material3.ExtendedFloatingActionButton
@@ -20,6 +19,7 @@ import androidx.compose.ui.semantics.customActions
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import xyz.tironi.zoen.R
+import xyz.tironi.zoen.media.detectVoiceHoldGestures
 
 @Composable
 fun PlusVoiceButton(actions: () -> Unit, start: () -> Unit, release: () -> Unit, lock: () -> Unit, cancel: () -> Unit, compact: Boolean = false) {
@@ -35,15 +35,11 @@ fun PlusVoiceButton(actions: () -> Unit, start: () -> Unit, release: () -> Unit,
     val modifier = Modifier.testTag("home-plus").semantics {
         customActions = listOf(CustomAccessibilityAction(recordLabel) { currentStart(); currentLock(); true })
     }.pointerInput(cancelDistance, lockDistance) {
-        var x = 0f; var y = 0f; var finished = false
-        detectDragGesturesAfterLongPress(onDragStart = { x = 0f; y = 0f; finished = false; haptics.performHapticFeedback(HapticFeedbackType.LongPress); currentStart() },
-            onDrag = { change, amount ->
-                change.consume(); x += amount.x; y += amount.y
-                if (!finished) when {
-                    x < -cancelDistance -> { finished = true; currentCancel(); haptics.performHapticFeedback(HapticFeedbackType.Reject) }
-                    y < -lockDistance -> { finished = true; currentLock(); haptics.performHapticFeedback(HapticFeedbackType.LongPress) }
-                }
-            }, onDragEnd = { if (!finished) currentRelease() }, onDragCancel = { if (!finished) currentCancel() })
+        detectVoiceHoldGestures(cancelDistance, lockDistance,
+            onStart = { haptics.performHapticFeedback(HapticFeedbackType.LongPress); currentStart() },
+            onRelease = { currentRelease() },
+            onLock = { currentLock(); haptics.performHapticFeedback(HapticFeedbackType.LongPress) },
+            onCancel = { currentCancel(); haptics.performHapticFeedback(HapticFeedbackType.Reject) })
     }
     if (compact) FloatingActionButton(onClick = actions, modifier = modifier) { Icon(Icons.Rounded.Add, stringResource(R.string.ask_zoen)) }
     else ExtendedFloatingActionButton(onClick = actions, icon = { Icon(Icons.Rounded.Add, null) }, text = { Text(stringResource(R.string.ask_zoen)) }, modifier = modifier)
