@@ -5,7 +5,6 @@ import RodaCore
 struct YouScreen: View {
     @Environment(AppModel.self) private var model
     @State private var confirmReset = false
-    @AppStorage("RodaHeaderMenuTrial") private var headerMenuTrial = false
 
     var body: some View {
         List {
@@ -86,16 +85,6 @@ struct YouScreen: View {
             } footer: {
                 Text("Your identity will unlock with Face ID on every device you own.")
             }
-
-            #if DEBUG && os(iOS)
-            Section {
-                Toggle("Header menu", isOn: $headerMenuTrial)
-            } header: {
-                Text("Trials")
-            } footer: {
-                Text("Tap a chat’s name to open its menu. Not shipped.")
-            }
-            #endif
 
             Section {
                 LabeledContent("Agent") { Text(model.planner.availabilityLabel).multilineTextAlignment(.trailing) }

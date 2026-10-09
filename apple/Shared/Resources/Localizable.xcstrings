@@ -7636,36 +7636,6 @@
           }
         }
       }
-    },
-    "Trials": {
-      "localizations": {
-        "pt-BR": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Testes"
-          }
-        }
-      }
-    },
-    "Header menu": {
-      "localizations": {
-        "pt-BR": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Menu no cabeçalho"
-          }
-        }
-      }
-    },
-    "Tap a chat’s name to open its menu. Not shipped.": {
-      "localizations": {
-        "pt-BR": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Toque no nome de uma conversa para abrir o menu dela. Não vai no app final."
-          }
-        }
-      }
     }
   },
   "version": "1.0"

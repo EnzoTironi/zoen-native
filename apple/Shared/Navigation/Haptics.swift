@@ -25,6 +25,20 @@ enum Haptics {
         #endif
     }
 
+    /// The chat header grows into its menu.
+    static func menuOpen() {
+        #if os(iOS)
+        soft.impactOccurred(intensity: 0.8)
+        #endif
+    }
+
+    /// The header menu folds back.
+    static func menuClose() {
+        #if os(iOS)
+        light.impactOccurred(intensity: 0.45)
+        #endif
+    }
+
     /// A tile lifts under the finger (edit mode).
     static func pickUp() {
         #if os(iOS)

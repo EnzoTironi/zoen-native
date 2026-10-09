@@ -13,7 +13,7 @@ struct ChatTopBar: View {
     var status: ChatStatus? = nil
     let onBack: () -> Void
     let onOpen: () -> Void
-    /// Trial: the title opens the header menu (the avatar keeps `onOpen`).
+    /// The title opens the header menu (the avatar keeps `onOpen`).
     var onTitle: (() -> Void)? = nil
     var menuOpen = false
     var onCall: (ZoenGlyph) -> Void = { _ in }

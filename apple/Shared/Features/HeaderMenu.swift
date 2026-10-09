@@ -2,13 +2,8 @@ import SwiftUI
 import RodaCore
 
 #if os(iOS)
-/// TRIAL (off by default, Settings ▸ Trials or `-RodaHeaderMenuTrial YES`): tapping the chat's
-/// title grows the header into a menu, Slack-style. The avatar still opens the profile.
-enum HeaderMenuTrial {
-    static let key = "RodaHeaderMenuTrial"
-    static var enabled: Bool { UserDefaults.standard.bool(forKey: key) }
-}
-
+/// Tapping the chat's title grows the header into a menu, Slack-style. The avatar still
+/// opens the profile (or the people, in a group).
 /// The menu that drops out of the header: a line about the chat, then the rows.
 struct HeaderMenuPanel: View {
     enum Pick: CaseIterable, Identifiable {
@@ -54,7 +49,7 @@ struct HeaderMenuPanel: View {
                 .opacity(shown ? 1 : 0)
             ForEach(Array(Pick.allCases.enumerated()), id: \.element) { i, pick in
                 if pick == .mute { Divider().padding(.leading, 54).padding(.vertical, 2) }
-                Button { onPick(pick) } label: {
+                Button { Haptics.selectionTick(); onPick(pick) } label: {
                     HStack(spacing: 14) {
                         Image(systemName: pick.icon)
                             .font(.system(size: 16, weight: .medium))

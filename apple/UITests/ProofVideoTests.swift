@@ -101,7 +101,7 @@ final class ProofVideoTests: XCTestCase {
         sleep(4)
     }
 
-    /// Person sheet from a sender name, then Guia via the title → participants list → art picker.
+    /// Person sheet from a sender name, then Guia via the title menu → Membros → art picker.
     @MainActor
     func testProfileSheetProof() throws {
         let app = launch(["-RodaOpen", "coastal"])
@@ -114,13 +114,14 @@ final class ProofVideoTests: XCTestCase {
         if app.buttons["OK"].firstMatch.exists { app.buttons["OK"].firstMatch.tap() }
         else { app.swipeDown(velocity: .slow) }
         sleep(2)
-        // Title capsule opens participants ("Shows who's in this chat").
-        let title = app.buttons.matching(NSPredicate(format: "label CONTAINS %@", "Viajantes")).firstMatch
-        if title.waitForExistence(timeout: 5) {
-            title.tap()
-        } else {
-            app.buttons["zoenBack"].coordinate(withNormalizedOffset: CGVector(dx: 4.5, dy: 0.5)).tap()
-        }
+        // The title grows into the chat menu; Membros lists who's here.
+        let title = app.buttons["chat-title"]
+        XCTAssertTrue(title.waitForExistence(timeout: 5))
+        title.tap()
+        let members = app.buttons["header-menu-members"]
+        XCTAssertTrue(members.waitForExistence(timeout: 3), "the header menu opens")
+        sleep(1)
+        members.tap()
         sleep(2)
         let guia = app.descendants(matching: .any).matching(NSPredicate(format: "label == %@", "Guia")).firstMatch
         XCTAssertTrue(guia.waitForExistence(timeout: 10), "Guia in participants")

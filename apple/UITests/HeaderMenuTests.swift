@@ -1,22 +1,21 @@
 import XCTest
 
-/// TRIAL behind `-RodaHeaderMenuTrial` (default off): the chat title grows into a menu.
-final class HeaderMenuTrialTests: XCTestCase {
+/// The chat title grows into a menu (on for everyone).
+final class HeaderMenuTests: XCTestCase {
     override func setUp() { continueAfterFailure = false }
 
-    @MainActor private func launch(trial: Bool) -> XCUIApplication {
+    @MainActor private func launch() -> XCUIApplication {
         let app = XCUIApplication()
         app.launchArguments = ["-RodaDemo", "YES", "-RodaFreshStart", "YES", "-RodaResetDemo", "YES",
                                "-AppleLanguages", "(pt-BR)", "-RodaAppearance", "light",
-                               "-RodaApprovalsExplained", "YES", "-RodaOpen", "paraty",
-                               "-RodaHeaderMenuTrial", trial ? "YES" : "NO"]
+                               "-RodaApprovalsExplained", "YES", "-RodaOpen", "paraty"]
         app.launch()
         return app
     }
 
     @MainActor
-    func testTitleExpandsIntoMenuWhenTrialIsOn() {
-        let app = launch(trial: true)
+    func testTitleExpandsIntoMenu() {
+        let app = launch()
         let title = app.buttons["chat-title"]
         XCTAssertTrue(title.waitForExistence(timeout: 20))
         sleep(2)
@@ -39,16 +38,5 @@ final class HeaderMenuTrialTests: XCTestCase {
         app.buttons["header-menu-members"].tap()
         XCTAssertTrue(menu.waitForNonExistence(timeout: 3))
         XCTAssertTrue(app.staticTexts["Marina"].firstMatch.waitForExistence(timeout: 5), "members list")
-    }
-
-    @MainActor
-    func testTitleKeepsOldBehaviourWhenTrialIsOff() {
-        let app = launch(trial: false)
-        let title = app.buttons["chat-title"]
-        XCTAssertTrue(title.waitForExistence(timeout: 20))
-        sleep(1)
-        title.tap()
-        sleep(1)
-        XCTAssertFalse(app.descendants(matching: .any)["header-menu"].exists, "no menu unless the trial is on")
     }
 }

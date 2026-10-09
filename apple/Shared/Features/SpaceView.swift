@@ -25,7 +25,7 @@ struct SpaceView: View {
     @State private var highlighted: String?
     /// Drag-left on a message: the composer answers it inline (quoted).
     @State private var replyTo: TimelineEntry?
-    /// Trial header menu (HeaderMenuTrial).
+    /// The header menu (HeaderMenu): the title grows into it.
     @State private var headerMenu = false
     /// Drag-right on a message (or its "N respostas"): its thread.
     @State private var thread: ThreadRef?
@@ -316,22 +316,22 @@ struct SpaceView: View {
         .overlay(alignment: .top) {
             VStack(spacing: 8) {
                 if let space {
-                    let trial = HeaderMenuTrial.enabled
                     ChatTopBar(space: space, subtitle: subtitle(space), status: status(space),
                                onBack: { _ = model.pop() },
                                onOpen: {
-                                   if trial, let who = space.counterpart { setHeaderMenu(false); model.openProfile(who.id) }
-                                   else { model.go(.participants(spaceId)) }
+                                   setHeaderMenu(false)
+                                   if let who = space.counterpart { model.openProfile(who.id) } else { model.go(.participants(spaceId)) }
                                },
-                               onTitle: trial ? { setHeaderMenu(!headerMenu) } : nil,
+                               onTitle: { setHeaderMenu(!headerMenu) },
                                menuOpen: headerMenu)
                     if headerMenu {
                         HeaderMenuPanel(space: space, about: subtitle(space).isEmpty ? space.title : "\(space.title) · \(subtitle(space))") { pick in
                             headerPick(pick)
                         }
+                        // Grows out of the title (not from nothing), folds back a touch quicker.
                         .transition(.asymmetric(
-                            insertion: .scale(scale: 0.4, anchor: .top).combined(with: .opacity),
-                            removal: .scale(scale: 0.6, anchor: .top).combined(with: .opacity)))
+                            insertion: .scale(scale: 0.88, anchor: .top).combined(with: .offset(y: -12)).combined(with: .opacity),
+                            removal: .scale(scale: 0.95, anchor: .top).combined(with: .opacity)))
                     }
                 }
                 if let pinned, !headerMenu { PinnedItemBar(item: pinned) { onOpenItem(pinned.id) } }
@@ -407,8 +407,10 @@ struct SpaceView: View {
     /// Who answered in a message's thread (newest first, each once).
     private func setHeaderMenu(_ open: Bool) {
         guard open != headerMenu else { return }
-        open ? Haptics.open() : Haptics.selectionTick()
-        withAnimation(reduceMotionOn ? .easeInOut(duration: 0.2) : .spring(response: 0.42, dampingFraction: 0.8)) { headerMenu = open }
+        open ? Haptics.menuOpen() : Haptics.menuClose()
+        let anim: Animation = reduceMotionOn ? .easeInOut(duration: 0.2)
+            : open ? .spring(response: 0.38, dampingFraction: 0.84) : .spring(response: 0.26, dampingFraction: 0.95)
+        withAnimation(anim) { headerMenu = open }
     }
 
     private var reduceMotionOn: Bool { UIAccessibility.isReduceMotionEnabled }
