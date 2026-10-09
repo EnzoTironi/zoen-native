@@ -23,6 +23,16 @@ use sha2::Sha256;
 
 const NONCE: usize = 24;
 
+/// The state key of a device, derived from its Ed25519 secret: it lives wherever that
+/// secret lives (the Keychain), and needs no vault entry of its own.
+pub fn state_key(device_secret: &[u8; 32]) -> [u8; 32] {
+    let mut key = [0; 32];
+    Hkdf::<Sha256>::new(Some(b"zoen-mls-state-key/1"), device_secret)
+        .expand(b"state", &mut key)
+        .expect("32 bytes");
+    key
+}
+
 #[derive(Clone, Copy)]
 struct Keys {
     seal: [u8; 32],

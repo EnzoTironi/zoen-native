@@ -30,6 +30,8 @@ use openmls_rust_crypto::RustCrypto;
 
 /// `MLS_128_DHKEMX25519_CHACHA20POLY1305_SHA256_Ed25519`, the value in `Sealed.suite`.
 pub const SUITE: Ciphersuite = Ciphersuite::MLS_128_DHKEMX25519_CHACHA20POLY1305_SHA256_Ed25519;
+/// [`SUITE`]'s id in the RFC 9420 registry, as `Sealed.suite` carries it.
+pub const SUITE_ID: u32 = 0x0003;
 
 #[derive(Debug, thiserror::Error)]
 pub enum MlsError {

@@ -235,8 +235,10 @@ fn a_forged_device_cannot_be_added() {
         Device::new(&cm, m.key, &m.id(), mallory.device.secret(), &forged),
         Err(MlsError::Credential)
     ));
-    let honest = m.open(&cm).key_packages(1, false).unwrap();
-    assert_eq!(key_package_leaf(&honest[0]).unwrap().identity, m.id());
+    let honest = m.open(&cm).key_packages(1, true).unwrap();
+    for kp in &honest {
+        assert_eq!(key_package_leaf(kp).unwrap().identity, m.id());
+    }
     assert!(key_package_leaf(b"garbage").is_err());
 }
 

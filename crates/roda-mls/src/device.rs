@@ -62,9 +62,16 @@ impl<'c> OpenMlsProvider for Provider<'c> {
     }
 }
 
+/// Every leaf advertises the last-resort extension, so a device's last-resort package
+/// passes validation and its leaf looks the same as the ones from single-use packages.
+fn capabilities() -> Capabilities {
+    Capabilities::new(None, None, Some(&[ExtensionType::LastResort]), None, None)
+}
+
 fn create_config() -> MlsGroupCreateConfig {
     MlsGroupCreateConfig::builder()
         .ciphersuite(SUITE)
+        .capabilities(capabilities())
         .wire_format_policy(PURE_CIPHERTEXT_WIRE_FORMAT_POLICY)
         .use_ratchet_tree_extension(true)
         .max_past_epochs(PAST_EPOCHS)
@@ -203,7 +210,7 @@ impl<'c> Device<'c> {
         self.with(|p| {
             (0..count + usize::from(last_resort))
                 .map(|i| {
-                    let mut b = KeyPackage::builder();
+                    let mut b = KeyPackage::builder().leaf_node_capabilities(capabilities());
                     if last_resort && i == count {
                         b = b.mark_as_last_resort();
                     }
