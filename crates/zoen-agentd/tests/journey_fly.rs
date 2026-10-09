@@ -126,12 +126,15 @@ async fn files_survive_a_suspend_and_the_machine_is_destroyed_on_release() {
     );
 
     fly.release(lease).await.unwrap();
-    let state = fly
-        .state_of(&machine)
-        .await
-        .unwrap_or_else(|_| "destroyed".into());
-    assert!(
-        matches!(state.as_str(), "destroyed" | "destroying"),
-        "{state}"
-    );
+    tokio::time::timeout(Duration::from_secs(30), async {
+        loop {
+            let state = fly.state_of(&machine).await.expect("verify Fly teardown");
+            if state == "destroyed" {
+                return;
+            }
+            tokio::time::sleep(Duration::from_millis(200)).await;
+        }
+    })
+    .await
+    .expect("Fly did not confirm machine destruction within 30 seconds");
 }

@@ -35,6 +35,7 @@ struct Guest {
     truncate_upload: bool,
     oversized_file: bool,
     oversized_response: bool,
+    state_response: Option<(u16, Value)>,
     #[cfg(target_os = "linux")]
     real_exec: bool,
 }
@@ -67,6 +68,9 @@ impl Guest {
             return (200, json!({"ok": true}));
         }
         if method == "GET" {
+            if let Some(response) = &self.state_response {
+                return response.clone();
+            }
             return if self.oversized_response {
                 (
                     200,
@@ -296,6 +300,37 @@ fn session(provider: Arc<FlyMachinesProvider>) -> ToolSession {
         Duration::ZERO,
         Arc::new(Mutex::new(DailyBudget::new(3600, 0, NOW))),
     )
+}
+
+#[tokio::test]
+async fn destruction_proof_requires_a_confirmed_state_or_not_found() {
+    let api = MockFly::new();
+    let fly = api.provider();
+    for (status, body, expected) in [
+        (404, json!({"error": "not found"}), Some("destroyed")),
+        (200, json!({"state": "destroyed"}), Some("destroyed")),
+        (200, json!({"state": "destroying"}), Some("destroying")),
+        (200, json!({"state": "started"}), Some("started")),
+        (200, json!({}), None),
+        (200, json!({"state": ""}), None),
+        (401, json!({"error": "unauthorized"}), None),
+        (403, json!({"error": "forbidden"}), None),
+        (408, json!({"error": "request timeout"}), None),
+        (500, json!({"error": "internal error"}), None),
+        (503, json!({"error": "unavailable"}), None),
+    ] {
+        api.guest.lock().unwrap().state_response = Some((status, body));
+        let proof = fly.state_of("machine-test").await;
+        match expected {
+            Some(state) => assert_eq!(proof.unwrap(), state),
+            None => assert!(proof.is_err(), "HTTP {status}: {proof:?}"),
+        }
+    }
+    drop(api);
+    assert!(
+        fly.state_of("machine-test").await.is_err(),
+        "a transport failure cannot prove destruction",
+    );
 }
 
 #[tokio::test]
