@@ -148,6 +148,28 @@ class AgentPlannerTest {
         assertTrue(invalid.engineLabel.contains("invalid draft"))
     }
 
+    @Test fun fallbackPreservesExplicitDestinationAndCompanionInBothLanguages() = runTest {
+        val planner = AgentPlanner(Model(ModelStatus.Unavailable))
+        val english = planner.makePlan("Plan a weekend trip to New York with Marina, up to $1,500", listOf("Alex", "Marina"), "en")
+        assertEquals("Weekend in New York", english.plan.title)
+        assertTrue(english.plan.summary.contains("with Marina"))
+        assertTrue(english.plan.sections.first().lines.first().text.contains("New York"))
+        assertEquals(150_000L, english.plan.budgetCents)
+        val portuguese = planner.makePlan("Planeja um feriado em São Paulo com a Ana, até R$ 1.500", listOf("Enzo", "Ana"), "pt-BR")
+        assertEquals("Fim de semana em São Paulo", portuguese.plan.title)
+        assertTrue(portuguese.plan.summary.contains("com Ana"))
+    }
+
+    @Test fun fallbackCannotTreatChatMembersOrCalendarNamesAsDestinations() = runTest {
+        val planner = AgentPlanner(Model(ModelStatus.Unavailable))
+        val dinner = planner.makePlan("Plan dinner in Alex’s garden", listOf("Alex", "Sam"), "en", PlannerContext("Weekend", listOf("Sam", "Zoen"), null, emptyList()))
+        assertEquals("Dinner with Sam", dinner.plan.title)
+        assertFalse(dinner.plan.sections.any { it.title == "Transport" })
+        val trip = planner.makePlan("Plan a trip in October", emptyList(), "en")
+        assertEquals("Weekend trip", trip.plan.title)
+        assertFalse(trip.plan.sections.flatMap { it.lines }.any { it.text.contains("beach", ignoreCase = true) && it.costCents > 0 })
+    }
+
     @Test fun generatedCostsCannotOverrideBudgetOrInflateSmallAmounts() {
         for (budget in listOf(1L, 33L, 99L, 4_801L, Long.MAX_VALUE)) {
             val plan = AgentPlanner.parsePlan(PLAN, budget)

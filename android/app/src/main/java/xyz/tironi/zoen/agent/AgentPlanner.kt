@@ -73,7 +73,8 @@ class AgentPlanner(private val model: OnDeviceModel = GeminiNanoModel(), private
     suspend fun makePlan(prompt: String, people: List<String>, locale: String, context: PlannerContext? = null): PlanDraft {
         val budget = LocalPlanner.budget(prompt)
         val (plan, label) = generate(locale, planPrompt(prompt, people, locale, budget, context), planTimeoutMs, 1500) { parsePlan(it, budget) }
-        return PlanDraft(plan ?: LocalPlanner.plan(prompt, locale), label)
+        val companions = context?.names?.let { names -> people.filter { it in names } } ?: people
+        return PlanDraft(plan ?: LocalPlanner.plan(prompt, locale, people + context?.names.orEmpty(), companions), label)
     }
 
     suspend fun makeStarterPlan(areas: List<String>, locale: String): PlanDraft {
