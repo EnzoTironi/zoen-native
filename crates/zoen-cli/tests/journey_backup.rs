@@ -16,6 +16,7 @@ async fn world(name: &str) -> World {
         name,
         &[
             ("ZOEN_BACKUP_VAULT_KEY", VAULT_KEY),
+            ("ZOEN_DEV_ALLOW_UNAUTHENTICATED_PASSWORD_BACKUP", "1"),
             ("ZOEN_LIMITS", "backup_restore_ip=600/h:600"),
         ],
     )
@@ -332,6 +333,134 @@ async fn linked_devices_cannot_overwrite_a_new_backup_with_an_old_key() {
         "{history}"
     );
     assert!(!w.zoen("ana-new", &["verify"]).contains("BROKEN"));
+}
+
+#[tokio::test]
+async fn password_backups_require_explicit_dev_opt_in_and_preserve_existing_data() {
+    let mut w = world("backup_password_gate").await;
+    w.init("ana", "Ana");
+    w.zoen("ana", &["backup", "on", "--password", PASSWORD]);
+    let identity = w.id_of("ana").await;
+    let signer = device_key(&w, "ana");
+    let generation = w.scalar("SELECT generation FROM backup_vaults").await;
+    let key = w.scalar("SELECT blob_key FROM backup_vaults").await;
+    let oprf_key = w
+        .scalar("SELECT encode(oprf_key, 'hex') FROM backup_vaults")
+        .await;
+    let status = w.zoen("ana", &["backup", "status"]);
+    let sealed = std::fs::read(w.dir.join("blobs").join(&key)).unwrap();
+    assert_eq!(
+        w.count(
+            "WITH changed AS (UPDATE backup_vaults SET guesses = 3 RETURNING identity)
+             SELECT count(*) FROM changed"
+        )
+        .await,
+        1
+    );
+    w.stop_relay();
+    // A vault key alone must never activate the destructive public ceremony.
+    w.configure_relay_env("ZOEN_DEV_ALLOW_UNAUTHENTICATED_PASSWORD_BACKUP", None);
+    w.start_relay();
+    for _ in 0..12 {
+        assert_eq!(
+            restore_post(
+                &w,
+                "/v1/backup/restore/start",
+                serde_json::json!({"handle": "ana", "blinded": "01".repeat(32)}),
+            )
+            .await
+            .0,
+            503
+        );
+    }
+    assert_eq!(
+        restore_post(
+            &w,
+            "/v1/backup/restore/open",
+            serde_json::json!({"handle": "ana", "auth_key": "22".repeat(32), "generation": generation}),
+        )
+        .await
+        .0,
+        503
+    );
+    let request = format!(
+        "GET /v1/backup/restore/blob?handle=ana&generation={generation} HTTP/1.1\r\nHost: 127.0.0.1:{}\r\nConnection: close\r\nx-zoen-backup-auth: {}\r\n\r\n",
+        w.port, "22".repeat(32),
+    );
+    assert_eq!(backup_http(&w, request.as_bytes()).await.0, 503);
+    for (method, op, path, body) in [
+        (
+            "POST",
+            "oprf",
+            "/v1/backup/oprf",
+            serde_json::json!({"blinded": "01".repeat(32), "generation": "11".repeat(32)})
+                .to_string()
+                .into_bytes(),
+        ),
+        (
+            "PUT",
+            "vault",
+            "/v1/backup/vault",
+            serde_json::json!({
+                "generation": "11".repeat(32), "mode": "passphrase",
+                "verifier": "22".repeat(32), "wrapped_key": "33".repeat(72),
+                "kdf": {"alg": "argon2id", "m_kib": 65536, "t": 3, "p": 1, "v": 1},
+            })
+            .to_string()
+            .into_bytes(),
+        ),
+        (
+            "PUT",
+            "blob",
+            "/v1/backup/blob",
+            [
+                roda_proto::BACKUP_UPLOAD_MAGIC.as_slice(),
+                hex::decode(&generation).unwrap().as_slice(),
+                sealed.as_slice(),
+            ]
+            .concat(),
+        ),
+    ] {
+        assert_eq!(
+            signed_backup_write(&w, &signer, &identity, method, op, path, &body).await,
+            503,
+            "{op} bypassed the password activation gate"
+        );
+    }
+    let refused = w
+        .try_zoen(
+            "ana",
+            &["backup", "on", "--password", "another good password"],
+        )
+        .unwrap_err();
+    assert!(refused.contains("Password backup"), "{refused}");
+    assert_eq!(w.zoen("ana", &["backup", "status"]), status);
+    assert_eq!(
+        w.scalar("SELECT generation FROM backup_vaults").await,
+        generation
+    );
+    assert_eq!(w.scalar("SELECT blob_key FROM backup_vaults").await, key);
+    assert_eq!(
+        w.scalar("SELECT encode(oprf_key, 'hex') FROM backup_vaults")
+            .await,
+        oprf_key
+    );
+    assert_eq!(
+        w.count("SELECT guesses::bigint FROM backup_vaults").await,
+        3
+    );
+    assert_eq!(w.count("SELECT count(*) FROM backup_pending").await, 0);
+    assert_eq!(w.count("SELECT count(*) FROM backup_setups").await, 0);
+    assert_eq!(
+        std::fs::read(w.dir.join("blobs").join(key)).unwrap(),
+        sealed
+    );
+    w.stop_relay();
+    w.configure_relay_env("ZOEN_DEV_ALLOW_UNAUTHENTICATED_PASSWORD_BACKUP", Some("1"));
+    w.start_relay();
+    assert!(w
+        .zoen("ana-new", &["recover", "@ana", "--password", PASSWORD])
+        .contains("restored"));
 }
 
 #[tokio::test]
@@ -662,7 +791,7 @@ async fn ten_wrong_passwords_lock_a_backup_for_good() {
 
 #[tokio::test]
 async fn recovery_key_survives_bad_attempts_and_heals_legacy_lockout() {
-    let w = world("backup_rk_lockout").await;
+    let w = World::with_env("backup_rk_lockout", &[("ZOEN_BACKUP_VAULT_KEY", VAULT_KEY)]).await;
     w.init("ana", "Ana");
     let out = w.zoen("ana", &["backup", "on", "--recovery-key"]);
     let key = out

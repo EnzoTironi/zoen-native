@@ -82,6 +82,7 @@ pub struct AppState {
     pub owner: ownership::NodeOwner,
     /// Guards password backups (ADR 0046); `None` = only recovery-key backups.
     pub backup_vault: Option<Arc<dyn backup::Vault>>,
+    pub backup_settings: backup::Settings,
     /// Product metrics, counted without content (ADR 0043).
     pub analytics: analytics::Analytics,
 }
@@ -221,6 +222,7 @@ pub async fn build(cfg: &Config) -> anyhow::Result<(Router, Shared)> {
         apple_app_ids: cfg.apple_app_ids.clone(),
         owner,
         backup_vault: backup_vault(),
+        backup_settings: backup::Settings::from_env()?,
         analytics,
     });
     analytics::spawn(state.clone());
@@ -234,7 +236,9 @@ pub async fn build(cfg: &Config) -> anyhow::Result<(Router, Shared)> {
 fn backup_vault() -> Option<Arc<dyn backup::Vault>> {
     match backup::EnvVault::from_env() {
         Ok(Some(v)) => {
-            tracing::info!("backup vault ready (password backups on)");
+            tracing::info!(
+                "backup vault key loaded (password backups require separate development opt-in)"
+            );
             Some(Arc::new(v))
         }
         Ok(None) => {
