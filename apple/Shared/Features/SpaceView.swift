@@ -404,7 +404,7 @@ struct SpaceView: View {
         return String(localized: "\(people) people")
     }
 
-    /// Who answered in a message's thread (newest first, each once).
+    #if os(iOS)
     private func setHeaderMenu(_ open: Bool) {
         guard open != headerMenu else { return }
         open ? Haptics.menuOpen() : Haptics.menuClose()
@@ -423,7 +423,9 @@ struct SpaceView: View {
         case .mute: model.show(.init(kind: .info, text: String(localized: "Muted on this device.")))
         }
     }
+    #endif
 
+    /// Who answered in a message's thread (newest first, each once).
     private func threadFaces(_ root: String) -> [Persona] {
         var seen = Set<String>(), out: [Persona] = []
         for e in entries.reversed() where e.inThread == root && seen.insert(e.author.id).inserted { out.append(e.author) }
