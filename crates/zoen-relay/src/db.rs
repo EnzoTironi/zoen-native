@@ -5,8 +5,8 @@ use roda_proto::{AgreementKeyRecord, DeviceSigned, KeyPackageRecord, SealedProfi
 use roda_types::{Identity, IdentityKind};
 use sqlx::{PgPool, Postgres, Transaction};
 
-/// Holds the device row through an operation or delivery. Revocation's UPDATE waits
-/// for earlier authorized work, and every later acquisition observes the revocation.
+/// Holds the device row for request admission or delivery. Ordinary requests commit
+/// this short fence before work; Unlink keeps it through its revocation transaction.
 /// Only an account that has not registered yet may act without a device row.
 pub async fn authorize_device(
     pool: &PgPool,
@@ -67,24 +67,6 @@ pub async fn touch_device(
     .bind(identity)
     .bind(cert)
     .execute(pool)
-    .await?;
-    Ok(())
-}
-
-pub async fn touch_device_in(
-    tx: &mut Transaction<'_, Postgres>,
-    identity: &str,
-    device: &str,
-    cert: &str,
-) -> Result<(), sqlx::Error> {
-    sqlx::query(
-        "INSERT INTO devices (device, identity, cert) VALUES ($1, $2, $3)
-         ON CONFLICT (device) DO UPDATE SET last_seen = now()",
-    )
-    .bind(device)
-    .bind(identity)
-    .bind(cert)
-    .execute(&mut **tx)
     .await?;
     Ok(())
 }
@@ -348,11 +330,13 @@ pub async fn claim_key_packages(
     ids: &[String],
 ) -> Result<Vec<KeyPackageRecord>, sqlx::Error> {
     let rows: Vec<(String, String, Vec<u8>)> = sqlx::query_as(
-        "WITH devices AS (
-             SELECT DISTINCT identity, device FROM key_packages WHERE identity = ANY($1)
+        "WITH active_devices AS (
+             SELECT DISTINCT k.identity, k.device FROM key_packages k
+             JOIN devices d ON d.identity = k.identity AND d.device = k.device
+             WHERE k.identity = ANY($1) AND d.revoked_at IS NULL
          ), taken AS (
              DELETE FROM key_packages WHERE id IN (
-                 SELECT k.id FROM devices d CROSS JOIN LATERAL (
+                 SELECT k.id FROM active_devices d CROSS JOIN LATERAL (
                      SELECT id FROM key_packages k
                      WHERE k.identity = d.identity AND k.device = d.device AND NOT k.last_resort
                      ORDER BY id LIMIT 1 FOR UPDATE SKIP LOCKED
@@ -361,7 +345,7 @@ pub async fn claim_key_packages(
          )
          SELECT identity, device, data FROM taken
          UNION ALL
-         SELECT k.identity, k.device, k.data FROM key_packages k JOIN devices d USING (identity, device)
+         SELECT k.identity, k.device, k.data FROM key_packages k JOIN active_devices d USING (identity, device)
          WHERE k.last_resort
            AND NOT EXISTS (SELECT 1 FROM taken t WHERE t.identity = k.identity AND t.device = k.device)",
     )

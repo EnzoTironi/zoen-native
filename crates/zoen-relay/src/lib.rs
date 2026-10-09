@@ -64,8 +64,8 @@ pub struct Config {
 
 pub struct AppState {
     pub pool: PgPool,
-    /// Separate bounded lanes: an authorized Sync can fill its output queue while its
-    /// writer checks authorization without waiting for the inbound lane's connection.
+    /// Separate bounded lanes keep durable delivery checks independent of admission
+    /// traffic. Ordinary requests release their admission fence before doing any work.
     pub session_auth: PgPool,
     pub delivery_auth: PgPool,
     pub log: Arc<dyn log::LogStore>,
