@@ -13,6 +13,8 @@
 //! Tudo que acontece num Espaço vira um [`Event`] assinado no log daquele Espaço
 //! (ver `roda-log`). Nenhuma tela mostra o log; ele é a fonte da verdade.
 
+pub mod reply;
+pub use reply::ReplyRef;
 use serde::{Deserialize, Serialize};
 
 /// Chave pública Ed25519 em hex (32 bytes → 64 caracteres).
@@ -381,6 +383,10 @@ pub enum EventBody {
         message: ItemId,
         text: String,
         attaches: Option<ItemId>,
+        /// Inline reply or thread reply (see [`reply`]). Absent on plain messages, so their
+        /// bytes are exactly what older peers expect.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        reply: Option<ReplyRef>,
     },
     ItemCreated {
         item: ItemId,

@@ -83,6 +83,7 @@ async fn main() -> anyhow::Result<()> {
                 message: format!("m{i}"),
                 text: "x".repeat(200),
                 attaches: None,
+                reply: None,
             },
         );
         queues[i % writers].push(Envelope::plain(&e));
