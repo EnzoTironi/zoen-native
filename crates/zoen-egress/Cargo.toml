@@ -1,0 +1,21 @@
+[package]
+name = "zoen-egress"
+description = "Zoen egress proxy: per-tool allowlists, credential injection, approval cards for unlisted hosts, metadata-only logs (ADR 0028 section 6)."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+roda-types.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+hex.workspace = true
+sha2.workspace = true
+base64 = "0.22"
+httparse = "1"
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync", "time", "net", "io-util"] }
+
+[dev-dependencies]
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync", "time", "net", "io-util"] }
