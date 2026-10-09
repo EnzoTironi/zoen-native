@@ -186,7 +186,7 @@ impl TestRelay {
         let admin_url = std::env::var("ZOEN_TEST_PG").expect("set ZOEN_TEST_PG");
         let database = format!(
             "zoen_t_read_revoke_{}",
-            hex::encode(Signer::generate().secret())[..12].to_string()
+            &hex::encode(Signer::generate().secret())[..12]
         );
         let mut admin = PgConnection::connect(&admin_url).await.unwrap();
         sqlx::query(sqlx::AssertSqlSafe(format!("CREATE DATABASE {database}")))
@@ -272,10 +272,9 @@ impl TestRelay {
 async fn request(socket: &mut Socket, id: u64, op: Op) -> Result<Reply, String> {
     send(socket, ClientFrame::Req { id, op }).await;
     loop {
-        if let ServerFrame::Res { id: got, result } = recv(socket).await.expect("caller closed") {
-            if got == id {
-                return result;
-            }
+        match recv(socket).await.expect("caller closed") {
+            ServerFrame::Res { id: got, result } if got == id => return result,
+            _ => {}
         }
     }
 }
