@@ -2,8 +2,6 @@ package xyz.tironi.zoen.data
 
 import java.util.Locale
 import java.math.RoundingMode
-import org.json.JSONArray
-import org.json.JSONObject
 import xyz.tironi.zoen.core.PlanDto
 import xyz.tironi.zoen.core.PlanLineDto
 import xyz.tironi.zoen.core.PlanSectionDto
@@ -67,28 +65,4 @@ object LocalPlanner {
         return PlanDto(text.take(64).replaceFirstChar { it.titlecase() }, l("First draft. Edit freely.", "Primeiro rascunho. Edite à vontade."), budget, sections, 0)
     }
 
-    fun app(prompt: String, locale: String): Pair<String, String>? {
-        val lower = prompt.lowercase(Locale.ROOT)
-        val portuguese = pt(locale)
-        fun l(en: String, br: String) = if (portuguese) br else en
-        return when {
-            listOf("pet", "donkey", "bichinho", "jumento").any(lower::contains) -> "adopt_pet" to JSONObject().put("name", l("Donkey", "Burrico")).toString()
-            lower.contains("maptap") || lower.contains("geography") || lower.contains("geografia") -> "start_maptap" to "{}"
-            lower.contains("recipe") || lower.contains("receita") -> "start_recipe" to "{}"
-            lower.contains("hike") || lower.contains("trilha") -> "start_hike" to "{}"
-            lower.contains("countdown") || lower.contains("contagem") -> {
-                val date = Regex("\\d{4}-\\d{2}-\\d{2}").find(prompt)?.value ?: return null
-                val target = try { java.time.LocalDate.parse(date).atStartOfDay(java.time.ZoneId.systemDefault()).toInstant().toEpochMilli() } catch (_: Exception) { return null }
-                "start_countdown" to JSONObject().put("title", prompt.take(32)).put("target_ms", target).toString()
-            }
-            lower.contains("poll") || lower.contains("enquete") -> {
-                val body = prompt.replace(Regex("^(@?zoen[, ]*)?(make a |start a |criar |cria |uma )?(poll|enquete)[: ,]*", RegexOption.IGNORE_CASE), "").trim()
-                val options = body.split(Regex("\\s+(or|ou)\\s+", RegexOption.IGNORE_CASE)).filter(String::isNotBlank)
-                "start_poll" to JSONObject().put("question", body.ifEmpty { l("What should we do?", "O que vamos fazer?") })
-                    .put("options", JSONArray(if (options.size > 1) options.take(6) else listOf(l("Yes", "Sim"), l("No", "Não")))).toString()
-            }
-            Regex("\\b(list|lista)\\b").containsMatchIn(lower) -> "start_list" to JSONObject().put("title", prompt.take(64)).put("items", JSONArray()).toString()
-            else -> null
-        }
-    }
 }
