@@ -45,7 +45,7 @@ jobs:
         run: |
           docker run -d --name pg -p 5432:5432 \
             -e POSTGRES_USER=zoen -e POSTGRES_HOST_AUTH_METHOD=trust \
-            postgres:17-alpine -c max_connections=300
+            public.ecr.aws/docker/library/postgres:17-alpine -c max_connections=300
           scripts/fdb.sh up
           scripts/nats.sh up
           eval "$(scripts/fdb.sh env)"

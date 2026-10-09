@@ -54,7 +54,7 @@ jobs:
           ./gradlew :app:assembleDebug :app:testDebugUnitTest :app:lintDebug --max-workers=4
       - name: Isolated relay for encrypted Android journeys
         run: |
-          docker run -d --name android-pg -p 5432:5432 -e POSTGRES_USER=zoen -e POSTGRES_HOST_AUTH_METHOD=trust postgres:17-alpine
+          docker run -d --name android-pg -p 5432:5432 -e POSTGRES_USER=zoen -e POSTGRES_HOST_AUTH_METHOD=trust public.ecr.aws/docker/library/postgres:17-alpine
           scripts/fdb.sh up
           eval "$(scripts/fdb.sh env)"
           cargo build -q -p zoen-relay
