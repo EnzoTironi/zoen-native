@@ -2,10 +2,17 @@
 //!
 //! An end-to-end Space is relay-ordered like any other, but the relay holds ciphertext:
 //!
-//! - **Writing:** an event that isn't membership or a checkpoint is signed as usual, then
-//!   sealed as an MLS application message inside an outer envelope the device signs too.
-//!   The outbox keeps the plaintext (shown as *Sending*) and the sealed copy (what goes
-//!   out), so a relaunch resends the same bytes.
+//! - **Writing:** an event that isn't membership or a checkpoint is signed as usual and
+//!   queued in the clear on the device (shown as *Sending*). It is sealed when it goes
+//!   out, as an MLS application message inside an outer envelope the device signs too, at
+//!   the group's current epoch, and only once the group is ready: this device has it, has
+//!   no commit in flight, and owes no commit adding someone it has packages for. So the
+//!   first message of a new chat reaches the person it was written to, and a message
+//!   queued while the group moved on is sealed again for the new epoch. The sealed copy is
+//!   kept, so a relaunch in the same epoch resends the same bytes.
+//! - **Upgrading:** a relay-readable chat becomes end-to-end with `SpaceEncrypted`. The
+//!   author's device starts the group when the relay confirms it, and reconciles everyone
+//!   in. History before it stays as it was; nothing after it is readable to the relay.
 //! - **Reading:** sealed entries are opened in log order, in one SQLite transaction with
 //!   the log append, so group state and log never disagree. The device log keeps the inner
 //!   signed event of each message it opened (bound to the chain by the outer hash), and
@@ -58,6 +65,8 @@ pub struct MlsNet {
     retry_at: HashMap<SpaceId, Instant>,
     checkpoint_due: HashSet<SpaceId>,
     sealed_since_checkpoint: HashMap<SpaceId, u64>,
+    /// Spaces where someone listed had no key packages: messages stop waiting for them.
+    stuck: HashSet<SpaceId>,
 }
 
 /// Events the relay reads even in an end-to-end Space: what it orders and authorizes by.
@@ -68,6 +77,7 @@ fn stays_clear(body: &EventBody) -> bool {
             | EventBody::MemberAdded { .. }
             | EventBody::MemberRemoved { .. }
             | EventBody::ProfileKeyShared { .. }
+            | EventBody::SpaceEncrypted
             | EventBody::Checkpoint { .. }
     )
 }
@@ -194,9 +204,26 @@ impl Engine {
             }
             EventBody::MemberAdded { identity, role } => {
                 roster.insert(identity.clone(), *role);
+                self.net.mls.stuck.remove(&e.space);
             }
             EventBody::MemberRemoved { identity } => {
                 roster.remove(identity);
+            }
+            EventBody::SpaceEncrypted => {
+                *roster = self
+                    .logs
+                    .get(&e.space)
+                    .map(|l| fold_roster(l.events().iter()))
+                    .unwrap_or_default();
+                if self.me.as_deref() == Some(e.author.as_str()) {
+                    let started = self.device().and_then(|d| match d.has_group(&e.space) {
+                        true => Ok(()),
+                        false => d.create_group(&e.space).map_err(mls_err),
+                    });
+                    if let Err(err) = started {
+                        tracing_like(&format!("starting the group of {}: {err}", e.space));
+                    }
+                }
             }
             _ => return,
         }
@@ -210,8 +237,71 @@ impl Engine {
         Ok(())
     }
 
-    /// Seals an event signed for an end-to-end Space and keeps the sealed copy for sending.
-    pub(crate) fn seal_outgoing(&mut self, e: &Event) -> R<()> {
+    /// The epoch to seal `space`'s messages at, once its group is ready for them.
+    fn ready_epoch(&self, space: &str) -> Option<u64> {
+        let device = self.device().ok()?;
+        if !device.has_group(space) || device.pending(space) {
+            return None;
+        }
+        // An owner or admin about to add someone (including adds still on their way to
+        // the relay) sends after the commit, so the newcomer reads it.
+        let me = self.me.as_deref()?;
+        let s = self.state.spaces.get(space)?;
+        let runs_it = s
+            .members
+            .iter()
+            .any(|(m, r)| m == me && matches!(r, Role::Owner | Role::Admin));
+        let m = &self.net.mls;
+        if runs_it && !m.stuck.contains(space) {
+            let group = device.roster(space).ok()?;
+            if m.claiming.contains(space) || s.members.iter().any(|(who, _)| !group.contains(who)) {
+                return None;
+            }
+        }
+        device.epoch(space).ok()
+    }
+
+    /// The sealed copy of a queued event: the epoch it was sealed at, and the envelope.
+    fn sealed_copy(&self, e: &Event) -> Option<(u64, Envelope)> {
+        let v = self.store.meta(&sealed_meta(&e.client_id)).ok().flatten()?;
+        let mut parts = v.splitn(3, ':');
+        let epoch = parts.next()?.parse().ok()?;
+        let content = hex::decode(parts.next()?).ok()?;
+        let env = Envelope::new(content, parts.next()?.to_string(), e.cert.clone(), None)?;
+        Some((epoch, env))
+    }
+
+    /// Seals every queued message whose group is ready and that has no copy for the
+    /// group's current epoch. `true` when something new can go out.
+    pub fn mls_seal_outbox(&mut self) -> R<bool> {
+        if self.net.pending.is_empty() {
+            return Ok(false);
+        }
+        let queued: Vec<Event> = self
+            .store
+            .outbox()?
+            .into_iter()
+            .filter(|p| !p.failed)
+            .map(|p| p.event)
+            .filter(|e| self.is_e2e(&e.space) && must_seal(&e.body))
+            .collect();
+        let mut ready: HashMap<SpaceId, Option<u64>> = HashMap::new();
+        let mut sealed = false;
+        for e in queued {
+            let epoch = *ready
+                .entry(e.space.clone())
+                .or_insert_with(|| self.ready_epoch(&e.space));
+            let Some(epoch) = epoch else { continue };
+            if self.sealed_copy(&e).is_some_and(|(at, _)| at == epoch) {
+                continue;
+            }
+            self.seal_outgoing(&e, epoch)?;
+            sealed = true;
+        }
+        Ok(sealed)
+    }
+
+    fn seal_outgoing(&mut self, e: &Event, epoch: u64) -> R<()> {
         let author = self
             .net
             .author
@@ -219,20 +309,14 @@ impl Engine {
             .ok_or_else(|| CoreError::Forbidden {
                 reason: t("Entre na sua conta primeiro.", "Sign in first."),
             })?;
-        let device = self.device()?;
-        if !device.has_group(&e.space) {
-            return Err(CoreError::Invalid {
-                reason: t(
-                    "As chaves desta conversa ainda não chegaram.",
-                    "This chat's keys haven't arrived yet.",
-                ),
-            });
-        }
         let inner = InnerEvent {
             content: e.content.clone(),
             sig: e.sig.clone(),
         };
-        let data = device.seal(&e.space, &inner.encode()).map_err(mls_err)?;
+        let data = self
+            .device()?
+            .seal(&e.space, &inner.encode())
+            .map_err(mls_err)?;
         let outer = Envelope::sealed(
             &author,
             &e.space,
@@ -243,35 +327,22 @@ impl Engine {
         );
         self.store.set_meta(
             &sealed_meta(&e.client_id),
-            &format!("{}:{}", hex::encode(outer.content()), outer.sig),
+            &format!("{epoch}:{}:{}", hex::encode(outer.content()), outer.sig),
         )?;
         Ok(())
     }
 
-    /// What goes out for a queued event: its sealed copy, the handshake it is, or itself.
-    pub(crate) fn outgoing_envelope(&self, e: &Event) -> Envelope {
-        let sealed = self
-            .store
-            .meta(&sealed_meta(&e.client_id))
-            .ok()
-            .flatten()
-            .and_then(|v| {
-                let (content, sig) = v.split_once(':')?;
-                Envelope::new(
-                    hex::decode(content).ok()?,
-                    sig.to_string(),
-                    e.cert.clone(),
-                    None,
-                )
-            });
-        match sealed {
-            Some(env) => env,
-            None if matches!(e.body, EventBody::Sealed { .. }) => {
-                Envelope::new(e.content.clone(), e.sig.clone(), e.cert.clone(), None)
-                    .expect("queued handshakes are v3 content")
-            }
-            None => Envelope::plain(e),
+    /// What goes out now for a queued event: its sealed copy for the current epoch, the
+    /// handshake it is, or itself. `None` while it waits for its group.
+    pub(crate) fn outgoing_envelope(&self, e: &Event) -> Option<Envelope> {
+        if matches!(e.body, EventBody::Sealed { .. }) {
+            return Envelope::new(e.content.clone(), e.sig.clone(), e.cert.clone(), None);
         }
+        if !(self.is_e2e(&e.space) && must_seal(&e.body)) {
+            return Some(Envelope::plain(e));
+        }
+        let (at, env) = self.sealed_copy(e)?;
+        (Some(at) == self.ready_epoch(&e.space)).then_some(env)
     }
 
     /// Signs MLS bytes into the Space's outbox, in order.
@@ -587,7 +658,7 @@ impl Engine {
         };
         let (add, remove) = owed;
         // Only packages whose verified leaf is one of the people we asked for.
-        let packages: Vec<Vec<u8>> = result
+        let records: Vec<KeyPackageRecord> = result
             .unwrap_or_default()
             .into_iter()
             .filter(|r| {
@@ -595,8 +666,14 @@ impl Engine {
                     l.identity == r.identity && l.device == r.device && add.contains(&l.identity)
                 })
             })
-            .map(|r| r.data)
             .collect();
+        let found: BTreeSet<&IdentityId> = records.iter().map(|r| &r.identity).collect();
+        if add.iter().any(|who| !found.contains(who)) {
+            // Someone can't be added yet (no device, or none with packages): messages
+            // don't wait for them; they'll read from whenever their commit lands.
+            self.net.mls.stuck.insert(space.to_string());
+        }
+        let packages: Vec<Vec<u8>> = records.into_iter().map(|r| r.data).collect();
         if packages.is_empty() && remove.is_empty() {
             self.net
                 .mls

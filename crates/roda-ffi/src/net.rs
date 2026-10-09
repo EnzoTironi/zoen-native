@@ -712,6 +712,12 @@ async fn session(
                     Ok(false) => {}
                     Err(e) => tracing_like(&format!("checkpoints: {e}")),
                 }
+                let sealed = ctx.engine().mls_seal_outbox();
+                match sealed {
+                    Ok(true) => if let Err(e) = flush(ctx, &mut sink, &mut sent).await { break Exit::Retry(e) },
+                    Ok(false) => {}
+                    Err(e) => tracing_like(&format!("sealing: {e}")),
+                }
                 let mut failed = None;
                 for (op, w) in reqs {
                     let id = next_id; next_id += 1;

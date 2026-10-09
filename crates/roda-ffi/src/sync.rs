@@ -237,7 +237,6 @@ impl Engine {
         body: EventBody,
     ) -> R<Event> {
         let creating = matches!(body, EventBody::SpaceCreated { .. });
-        let seal = self.is_e2e(space) && crate::mls::must_seal(&body);
         if !creating && !self.state.spaces.contains_key(space) {
             return Err(CoreError::NotFound {
                 what: t("Espaço", "Space"),
@@ -250,9 +249,6 @@ impl Engine {
             self.causal_head(space)?
         };
         let e = signer.sign_event(space, &client_id, at_ms, seen, body);
-        if seal {
-            self.seal_outgoing(&e)?;
-        }
         self.store.outbox_put(&e)?;
         if creating && !self.space_order.contains(&space.to_string()) {
             self.space_order.push(space.to_string());
@@ -345,6 +341,9 @@ impl Engine {
 
     /// The relay refused one of ours.
     pub fn reject(&mut self, client_id: &str, reason: &str, permanent: bool) -> bool {
+        // Written in the clear just before the Space went end-to-end: it waits for the
+        // group and goes out sealed, it doesn't fail.
+        let permanent = permanent && reason != roda_proto::SEAL_REQUIRED;
         let _ = self.store.outbox_note(client_id, reason, permanent);
         if !permanent {
             return false;
@@ -377,8 +376,14 @@ impl Engine {
             .unwrap_or_default()
             .into_iter()
             .filter(|p| !p.failed)
-            .map(|p| {
-                let mut env = self.outgoing_envelope(&p.event);
+            // Refused for being clear in a Space that went end-to-end: it waits until this
+            // device has caught up with that, then goes out sealed.
+            .filter(|p| {
+                p.last_error.as_deref() != Some(roda_proto::SEAL_REQUIRED)
+                    || self.is_e2e(&p.event.space)
+            })
+            .filter_map(|p| {
+                let mut env = self.outgoing_envelope(&p.event)?;
                 if !env.is_sealed() {
                     env.invite = self
                         .store
@@ -386,7 +391,7 @@ impl Engine {
                         .ok()
                         .flatten();
                 }
-                env
+                Some(env)
             })
             .collect()
     }
@@ -711,7 +716,49 @@ impl Engine {
                 what: t("pessoa", "person"),
             });
         }
-        self.create_synced_space("", SpaceKind::Direct, Privacy::Closed, &[who.to_string()])
+        self.create_synced_space("", SpaceKind::Direct, Privacy::EndToEnd, &[who.to_string()])
+    }
+
+    /// Makes a relay-readable chat or group end-to-end from here on (ADR 0027). Earlier
+    /// messages stay as they were; the relay reads nothing written after this.
+    pub fn encrypt_space(&mut self, space: &str) -> R<()> {
+        let me = self.me_id()?;
+        let s = self
+            .state
+            .spaces
+            .get(space)
+            .ok_or_else(|| CoreError::NotFound {
+                what: t("conversa", "chat"),
+            })?;
+        if s.privacy == Privacy::EndToEnd {
+            return Ok(());
+        }
+        let refuse = |pt: &str, en: &str| Err(CoreError::Invalid { reason: t(pt, en) });
+        if !self.net.synced.contains(space) {
+            return refuse(
+                "Esta conversa só existe neste aparelho.",
+                "This chat lives only on this device.",
+            );
+        }
+        if s.privacy == Privacy::Public || !matches!(s.kind, SpaceKind::Direct | SpaceKind::Group) {
+            return refuse(
+                "Espaços públicos continuam legíveis.",
+                "Public spaces stay readable.",
+            );
+        }
+        let role = s.members.iter().find(|(m, _)| *m == me).map(|(_, r)| *r);
+        let allowed = matches!(role, Some(Role::Owner | Role::Admin))
+            || (role == Some(Role::Member) && s.kind == SpaceKind::Direct);
+        if !allowed {
+            return Err(CoreError::Forbidden {
+                reason: t(
+                    "Só quem administra o grupo ativa a criptografia.",
+                    "Only the group's owners and admins can turn on encryption.",
+                ),
+            });
+        }
+        self.append(space, &me, EventBody::SpaceEncrypted)?;
+        Ok(())
     }
 
     pub fn add_member(&mut self, space: &str, who: &str) -> R<()> {

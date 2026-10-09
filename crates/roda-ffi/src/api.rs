@@ -303,11 +303,17 @@ impl RodaEngine {
         if title.is_empty() {
             return Err(invalid(t("Dê um nome ao grupo.", "Give the group a name.")));
         }
-        self.create_group_with(title.to_string(), member_ids, PrivacyDto::Closed)
+        self.create_group_with(title.to_string(), member_ids, PrivacyDto::EndToEnd)
     }
 
-    /// A group with a chosen privacy. `EndToEnd` groups are MLS groups: the relay orders
-    /// and stores ciphertext only (ADR 0026).
+    /// Turns on end-to-end encryption in a relay-readable chat or group (ADR 0027). There is
+    /// no way back: privacy only goes up.
+    pub fn encrypt_chat(&self, space_id: String) -> Result<(), CoreError> {
+        self.lock().encrypt_space(&space_id)
+    }
+
+    /// A group with a chosen privacy. `EndToEnd` (what `create_group` makes) is an MLS
+    /// group: the relay orders and stores ciphertext only (ADR 0026).
     pub fn create_group_with(
         &self,
         title: String,

@@ -177,8 +177,9 @@ fn usage() -> ! {
          init --name NAME --handle HANDLE [--relay URL]\n\
          whoami | status | chats | verify\n\
          people QUERY\n\
-         dm @HANDLE [TEXT]\n\
-         group TITLE @HANDLE... [--e2e]   --e2e: end-to-end (MLS), the relay holds ciphertext\n\
+         dm @HANDLE [TEXT]                end-to-end (MLS): the relay holds ciphertext\n\
+         group TITLE @HANDLE... [--readable]   end-to-end unless --readable\n\
+         encrypt CHAT                     make a relay-readable chat end-to-end, for good\n\
          keys CHAT                        an end-to-end chat's group: epoch, digest, members\n\
          send CHAT TEXT [--offline]      CHAT = @handle, title or space id\n\
          read CHAT\n\
@@ -387,10 +388,10 @@ async fn main() {
             println!("{space}");
         }
         "group" => {
-            let privacy = if cli.switch("--e2e") {
-                PrivacyDto::EndToEnd
-            } else {
+            let privacy = if cli.switch("--readable") {
                 PrivacyDto::Closed
+            } else {
+                PrivacyDto::EndToEnd
             };
             if cli.args.is_empty() {
                 usage();
@@ -449,6 +450,17 @@ async fn main() {
             }
             let _ = e.mark_read(space);
         }
+        "encrypt" => {
+            let space = chat(
+                &e,
+                cli.args
+                    .first()
+                    .map(String::as_str)
+                    .unwrap_or_else(|| usage()),
+            );
+            e.encrypt_chat(space).unwrap_or_else(|err| die(err));
+            e.wait_until_idle(timeout).await;
+        }
         "keys" => {
             let space = chat(
                 &e,
@@ -474,9 +486,13 @@ async fn main() {
                 } else {
                     "local"
                 };
+                let privacy = match s.privacy {
+                    PrivacyDto::EndToEnd => "e2e",
+                    PrivacyDto::Closed | PrivacyDto::Public => "readable",
+                };
                 println!(
-                    "{}\t{}\t{:?}\t{}\tunread={}\t{}",
-                    s.id, s.title, s.kind, where_, s.unread, s.last_preview
+                    "{}\t{}\t{:?}\t{}\t{}\tunread={}\t{}",
+                    s.id, s.title, s.kind, where_, privacy, s.unread, s.last_preview
                 );
             }
         }
