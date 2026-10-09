@@ -708,12 +708,12 @@ async fn a_message_queued_offline_survives_many_commits() {
 }
 
 /// ADR 0026, the ceiling: a member device that stops coming back stops holding pruning
-/// back once its last checkpoint is older than the ceiling (30 days; 8 s here). When it
+/// back once its last checkpoint is older than the ceiling (30 days; 30 s here). When it
 /// does come back, what it never fetched is gone: it asks for a fresh leaf, an admin takes
 /// its old one out and adds it again, and it reads from its new Welcome on.
 #[tokio::test]
 async fn a_device_away_past_the_ceiling_rejoins_from_a_new_welcome() {
-    let mut w = World::with_env("m2ceiling", &[("ZOEN_PRUNE_CEILING_SECS", "8")]).await;
+    let mut w = World::with_env("m2ceiling", &[("ZOEN_PRUNE_CEILING_SECS", "30")]).await;
     w.set_client_env("ZOEN_CHECKPOINT_EVERY", "4");
     // Devices in use say they are alive at every sync a second after their last checkpoint.
     w.set_client_env("ZOEN_CHECKPOINT_REFRESH_SECS", "1");
@@ -731,7 +731,9 @@ async fn a_device_away_past_the_ceiling_rejoins_from_a_new_welcome() {
 
     // Carla goes quiet past the ceiling. Ana and Bruno keep talking (and checkpointing):
     // her hold stops counting, so what she never fetched gets pruned.
-    std::thread::sleep(std::time::Duration::from_secs(9));
+    // Keep the active members checkpointing throughout Carla's absence. Sleeping past
+    // the ceiling here expires Bruno too; Ana can then prune a message he still needs,
+    // leaving his next send waiting for a rejoin while the admin is offline.
     let deadline = std::time::Instant::now() + std::time::Duration::from_secs(90);
     let mut i = 0;
     while !pruned_seqs(&w, &space).await.iter().any(|s| *s > carla_saw) {
