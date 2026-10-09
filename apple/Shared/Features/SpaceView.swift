@@ -303,18 +303,42 @@ struct SpaceView: View {
         .onGeometryChange(for: CGFloat.self) { $0.safeAreaInsets.top } action: { safeTop = $0 }
         // No veil, blur or fade anywhere: content runs crisp to the screen edge and only the
         // glass elements have a surface.
+        .overlay {
+            if headerMenu {
+                // Everything under the menu dims; a tap anywhere folds it back.
+                Color.black.opacity(0.18)
+                    .ignoresSafeArea()
+                    .onTapGesture { setHeaderMenu(false) }
+                    .transition(.opacity)
+                    .accessibilityHidden(true)
+            }
+        }
         .overlay(alignment: .top) {
             VStack(spacing: 8) {
                 if let space {
+                    let trial = HeaderMenuTrial.enabled
                     ChatTopBar(space: space, subtitle: subtitle(space), status: status(space),
                                onBack: { _ = model.pop() },
-                               onOpen: { model.go(.participants(spaceId)) })
+                               onOpen: {
+                                   if trial, let who = space.counterpart { setHeaderMenu(false); model.openProfile(who.id) }
+                                   else { model.go(.participants(spaceId)) }
+                               },
+                               onTitle: trial ? { setHeaderMenu(!headerMenu) } : nil,
+                               menuOpen: headerMenu)
+                    if headerMenu {
+                        HeaderMenuPanel(space: space, about: subtitle(space).isEmpty ? space.title : "\(space.title) · \(subtitle(space))") { pick in
+                            headerPick(pick)
+                        }
+                        .transition(.asymmetric(
+                            insertion: .scale(scale: 0.4, anchor: .top).combined(with: .opacity),
+                            removal: .scale(scale: 0.6, anchor: .top).combined(with: .opacity)))
+                    }
                 }
-                if let pinned { PinnedItemBar(item: pinned) { onOpenItem(pinned.id) } }
+                if let pinned, !headerMenu { PinnedItemBar(item: pinned) { onOpenItem(pinned.id) } }
             }
             .padding(.top, 2)
             .padding(.bottom, 6)
-            .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { chromeHeight = $0 }
+            .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { if !headerMenu { chromeHeight = $0 } }
         }
         #else
         .toolbar {
@@ -378,6 +402,30 @@ struct SpaceView: View {
         }
         let people = s.members.filter { $0.kind != .agent }.count
         return String(localized: "\(people) people")
+    }
+
+    /// Who answered in a message's thread (newest first, each once).
+    private func setHeaderMenu(_ open: Bool) {
+        guard open != headerMenu else { return }
+        open ? Haptics.open() : Haptics.selectionTick()
+        withAnimation(reduceMotionOn ? .easeInOut(duration: 0.2) : .spring(response: 0.42, dampingFraction: 0.8)) { headerMenu = open }
+    }
+
+    private var reduceMotionOn: Bool { UIAccessibility.isReduceMotionEnabled }
+
+    private func headerPick(_ pick: HeaderMenuPanel.Pick) {
+        setHeaderMenu(false)
+        switch pick {
+        case .members, .agents, .settings: model.go(.participants(spaceId))
+        case .files, .pages: model.go(.folder(spaceId))
+        case .mute: model.show(.init(kind: .info, text: String(localized: "Muted on this device.")))
+        }
+    }
+
+    private func threadFaces(_ root: String) -> [Persona] {
+        var seen = Set<String>(), out: [Persona] = []
+        for e in entries.reversed() where e.inThread == root && seen.insert(e.author.id).inserted { out.append(e.author) }
+        return out
     }
 
     private func reload() {
