@@ -177,6 +177,32 @@ async fn a_runaway_tool_a_memory_hog_and_a_snoop_are_all_stopped() {
 }
 
 #[tokio::test]
+async fn a_tool_sleeping_in_a_wasi_host_call_still_has_a_wall_deadline() {
+    let wasm = tier();
+    let bytes = tool_bytes("sleep");
+    let signed = manifest("sleep", "sleep", &bytes).sign(&publisher());
+    let tool = wasm.load(&signed, &bytes).unwrap();
+    let out = tokio::time::timeout(
+        Duration::from_secs(2),
+        wasm.run(
+            &tool,
+            Bytes::new(),
+            WasmLimits {
+                wall: Duration::from_millis(250),
+                ..Default::default()
+            },
+        ),
+    )
+    .await
+    .expect("the host call outlived the tool's deadline")
+    .unwrap();
+    assert_eq!(out.stopped, Some(Stopped::OutOfTime));
+    assert!(out.stdout_str().contains("sleeping"));
+    assert!(!out.stdout_str().contains("awake"));
+    assert!(out.elapsed < Duration::from_secs(2));
+}
+
+#[tokio::test]
 async fn nobody_can_swap_a_tools_code_under_its_signed_manifest() {
     let wasm = tier();
     let good = tool_bytes("word_count");
