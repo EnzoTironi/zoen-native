@@ -6,8 +6,8 @@ use roda_types::{Identity, IdentityKind};
 use sqlx::{PgPool, Postgres, Transaction};
 
 /// Holds the device row for request admission or delivery. Ordinary requests commit
-/// this short fence before work; Unlink keeps it through its revocation transaction.
-/// Only an account that has not registered yet may act without a device row.
+/// before work. Directory mutations keep the fence through their SQL transaction.
+/// Only an identity that has not registered yet may act without a device row.
 pub async fn authorize_device(
     pool: &PgPool,
     identity: &str,
@@ -15,17 +15,32 @@ pub async fn authorize_device(
     require_device: bool,
 ) -> Result<Option<Transaction<'static, Postgres>>, sqlx::Error> {
     let mut tx = pool.begin().await?;
-    sqlx::query("SET LOCAL lock_timeout = '5s'")
+    sqlx::query(
+        "SELECT set_config('lock_timeout', '5s', true), set_config('statement_timeout', '5s', true)",
+    )
         .execute(&mut *tx)
         .await?;
-    let active = sqlx::query_scalar::<_, bool>(
-        "SELECT identity = $1 AND revoked_at IS NULL FROM devices WHERE device = $2 FOR SHARE",
+    let enrolled = sqlx::query_as::<_, (bool, bool)>(
+        "SELECT identity = $1, revoked_at IS NOT NULL FROM devices WHERE device = $2 FOR SHARE",
     )
     .bind(identity)
     .bind(device)
     .fetch_optional(&mut *tx)
     .await?;
-    if active == Some(true) || (active.is_none() && !require_device) {
+    // A pending link polls as its own key until it opens its identity box. Enrollment
+    // can assign that key to the account before this provisional fetch completes.
+    let provisional = !require_device
+        && enrolled.is_none_or(|(_, revoked)| !revoked)
+        && (enrolled.is_none() || identity == device);
+    let unregistered = if provisional {
+        !sqlx::query_scalar::<_, bool>("SELECT EXISTS(SELECT 1 FROM identities WHERE id = $1)")
+            .bind(identity)
+            .fetch_one(&mut *tx)
+            .await?
+    } else {
+        false
+    };
+    if enrolled == Some((true, false)) || unregistered {
         Ok(Some(tx))
     } else {
         tx.rollback().await?;
@@ -58,47 +73,148 @@ pub async fn touch_device(
     identity: &str,
     device: &str,
     cert: &str,
-) -> Result<(), sqlx::Error> {
-    sqlx::query(
-        "INSERT INTO devices (device, identity, cert) VALUES ($1, $2, $3)
-         ON CONFLICT (device) DO UPDATE SET last_seen = now()",
+) -> Result<bool, sqlx::Error> {
+    let changed = sqlx::query(
+        "UPDATE devices SET last_seen = now()
+         WHERE device = $1 AND identity = $2 AND cert = $3 AND revoked_at IS NULL",
     )
     .bind(device)
     .bind(identity)
     .bind(cert)
     .execute(pool)
     .await?;
+    Ok(changed.rows_affected() == 1)
+}
+
+#[derive(Debug)]
+pub enum EnrollmentError {
+    InvalidCertificate,
+    Conflict,
+    Database(sqlx::Error),
+}
+
+impl std::fmt::Display for EnrollmentError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(match self {
+            Self::InvalidCertificate => "device certificate invalid",
+            Self::Conflict => "device is revoked or belongs to another account",
+            Self::Database(_) => "database unavailable",
+        })
+    }
+}
+
+impl std::error::Error for EnrollmentError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            Self::Database(e) => Some(e),
+            _ => None,
+        }
+    }
+}
+
+/// Enrolls a root-certified device after the caller has authorized either an active
+/// sponsor or backup recovery in this transaction. A certificate alone is insufficient.
+/// A retry may name the same active device; a revoked or conflicting row is never revived.
+pub async fn enroll_device(
+    tx: &mut Transaction<'_, Postgres>,
+    identity: &str,
+    device: &str,
+    cert: &str,
+) -> Result<(), EnrollmentError> {
+    if device.len() != 64
+        || !device.bytes().all(|b| b.is_ascii_hexdigit())
+        || !roda_log::verify_sig(identity, &roda_log::device_cert_message(device), cert)
+    {
+        return Err(EnrollmentError::InvalidCertificate);
+    }
+    let changed = sqlx::query(
+        "INSERT INTO devices (device, identity, cert) VALUES ($1, $2, $3)
+         ON CONFLICT (device) DO UPDATE SET last_seen = now()
+         WHERE devices.identity = excluded.identity AND devices.cert = excluded.cert
+           AND devices.revoked_at IS NULL",
+    )
+    .bind(device)
+    .bind(identity)
+    .bind(cert)
+    .execute(&mut **tx)
+    .await
+    .map_err(EnrollmentError::Database)?;
+    if changed.rows_affected() != 1 {
+        return Err(EnrollmentError::Conflict);
+    }
     Ok(())
 }
 
-pub async fn register(pool: &PgPool, profile: &Identity, handle: &str) -> Result<(), String> {
+/// First registration creates the identity and its first device atomically. Existing
+/// profile updates require an enrolled active device, held until the update commits.
+pub async fn register(
+    tx: &mut Transaction<'_, Postgres>,
+    profile: &Identity,
+    handle: &str,
+    device: &str,
+    cert: &str,
+    first: bool,
+) -> Result<(), String> {
     let kind = match profile.kind {
         IdentityKind::Person => "Person",
         IdentityKind::Agent => "Agent",
     };
     let json = serde_json::to_value(profile).map_err(|e| e.to_string())?;
-    let r = sqlx::query(
-        "INSERT INTO identities (id, handle, kind, owner, profile) VALUES ($1, $2, $3, $4, $5)
-         ON CONFLICT (id) DO UPDATE SET handle = excluded.handle, profile = excluded.profile, updated_at = now()",
-    )
-    .bind(&profile.id)
-    .bind(handle)
-    .bind(kind)
-    .bind(&profile.owner)
-    .bind(json)
-    .execute(pool)
-    .await;
-    match r {
-        Ok(_) => Ok(()),
-        Err(sqlx::Error::Database(e)) if e.constraint() == Some("identities_handle_key") => {
-            Err("handle_taken".into())
+    if first {
+        let created = sqlx::query(
+            "INSERT INTO identities (id, handle, kind, owner, profile) VALUES ($1, $2, $3, $4, $5)
+             ON CONFLICT (id) DO NOTHING",
+        )
+        .bind(&profile.id)
+        .bind(handle)
+        .bind(kind)
+        .bind(&profile.owner)
+        .bind(json)
+        .execute(&mut **tx)
+        .await
+        .map_err(directory_error)?;
+        if created.rows_affected() != 1 {
+            return Err("account already registered; link this device first".into());
         }
-        Err(sqlx::Error::Database(e)) if e.constraint() == Some("identities_owner_fkey") => {
-            Err("agent owner isn't registered".into())
+        enroll_device(tx, &profile.id, device, cert)
+            .await
+            .map_err(|e| e.to_string())?;
+    } else {
+        let active = sqlx::query_scalar::<_, bool>(
+            "SELECT identity = $1 AND revoked_at IS NULL FROM devices WHERE device = $2 FOR SHARE",
+        )
+        .bind(&profile.id)
+        .bind(device)
+        .fetch_optional(&mut **tx)
+        .await
+        .map_err(directory_error)?;
+        if active != Some(true) {
+            return Err("link this device first".into());
         }
-        Err(e) => {
-            tracing::error!(error = %e, "register failed");
-            Err("database unavailable".into())
+        sqlx::query(
+            "UPDATE identities SET handle = $2, profile = $3, updated_at = now() WHERE id = $1",
+        )
+        .bind(&profile.id)
+        .bind(handle)
+        .bind(json)
+        .execute(&mut **tx)
+        .await
+        .map_err(directory_error)?;
+    }
+    Ok(())
+}
+
+fn directory_error(e: sqlx::Error) -> String {
+    match &e {
+        sqlx::Error::Database(e) if e.constraint() == Some("identities_handle_key") => {
+            "handle_taken".into()
+        }
+        sqlx::Error::Database(e) if e.constraint() == Some("identities_owner_fkey") => {
+            "agent owner isn't registered".into()
+        }
+        _ => {
+            tracing::error!(error = %e, "directory write failed");
+            "database unavailable".into()
         }
     }
 }
@@ -378,15 +494,19 @@ pub async fn device_revoked(pool: &PgPool, device: &str) -> Result<bool, sqlx::E
 }
 
 /// Leaves a box; a second one under the same id is refused (they are one-time).
-pub async fn put_link_box(pool: &PgPool, id: &str, sealed: &[u8]) -> Result<bool, sqlx::Error> {
+pub async fn put_link_box(
+    tx: &mut Transaction<'_, Postgres>,
+    id: &str,
+    sealed: &[u8],
+) -> Result<bool, sqlx::Error> {
     sqlx::query("DELETE FROM link_boxes WHERE created_at < now() - interval '15 minutes'")
-        .execute(pool)
+        .execute(&mut **tx)
         .await?;
     let r =
         sqlx::query("INSERT INTO link_boxes (id, sealed) VALUES ($1, $2) ON CONFLICT DO NOTHING")
             .bind(id)
             .bind(sealed)
-            .execute(pool)
+            .execute(&mut **tx)
             .await?;
     Ok(r.rows_affected() == 1)
 }

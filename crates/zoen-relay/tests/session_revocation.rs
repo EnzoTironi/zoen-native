@@ -4,8 +4,8 @@ use async_trait::async_trait;
 use futures_util::{SinkExt, StreamExt};
 use roda_log::{Author, Signer};
 use roda_proto::{
-    auth_message, ClientFrame, Envelope, InviteCreated, Op, Reply, Sequenced, ServerFrame,
-    PROTOCOL_VERSION,
+    auth_message, ClientFrame, DeviceCertificate, Envelope, ErrorCode, InviteCreated, Op, Reply,
+    Sequenced, ServerFrame, PROTOCOL_VERSION,
 };
 use roda_types::{Identity, IdentityKind, Role};
 use sqlx::{postgres::PgPoolOptions, Connection, PgConnection};
@@ -134,7 +134,7 @@ async fn recv(socket: &mut Socket) -> Option<ServerFrame> {
     }
 }
 
-async fn connect(url: &str, author: &Author) -> Socket {
+async fn authenticate(url: &str, author: &Author) -> (Socket, ServerFrame) {
     let (mut socket, _) = tokio_tungstenite::connect_async(url).await.unwrap();
     send(
         &mut socket,
@@ -157,78 +157,158 @@ async fn connect(url: &str, author: &Author) -> Socket {
         },
     )
     .await;
-    assert!(matches!(
-        recv(&mut socket).await,
-        Some(ServerFrame::Ready { .. })
-    ));
+    let result = recv(&mut socket).await.expect("authentication result");
+    (socket, result)
+}
+
+async fn connect(url: &str, author: &Author) -> Socket {
+    let (mut socket, result) = authenticate(url, author).await;
+    assert!(matches!(result, ServerFrame::Ready { .. }), "{result:?}");
+    send(&mut socket, ClientFrame::Ping).await;
+    while !matches!(
+        recv(&mut socket).await.expect("caller closed"),
+        ServerFrame::Pong
+    ) {}
     socket
 }
 
-async fn stalled_operation_revocation(publish: bool) {
-    let admin_url = std::env::var("ZOEN_TEST_PG").expect("set ZOEN_TEST_PG");
-    let database = format!(
-        "zoen_t_read_revoke_{}",
-        hex::encode(Signer::generate().secret())[..12].to_string()
-    );
-    let mut admin = PgConnection::connect(&admin_url).await.unwrap();
-    sqlx::query(sqlx::AssertSqlSafe(format!("CREATE DATABASE {database}")))
-        .execute(&mut admin)
-        .await
-        .unwrap();
-    let url = format!("{}/{database}", admin_url.rsplit_once('/').unwrap().0);
-    let pool = PgPoolOptions::new()
-        .max_connections(1)
-        .acquire_timeout(Duration::from_secs(2))
-        .connect(&url)
-        .await
-        .unwrap();
-    sqlx::migrate!("./migrations").run(&pool).await.unwrap();
-    let auth_pool = || {
-        PgPoolOptions::new()
+struct TestRelay {
+    state: Arc<AppState>,
+    log: Arc<BlockedLog>,
+    ws_url: String,
+    server: tokio::task::JoinHandle<()>,
+    database: String,
+    admin: PgConnection,
+}
+
+impl TestRelay {
+    async fn new() -> Self {
+        let admin_url = std::env::var("ZOEN_TEST_PG").expect("set ZOEN_TEST_PG");
+        let database = format!(
+            "zoen_t_read_revoke_{}",
+            hex::encode(Signer::generate().secret())[..12].to_string()
+        );
+        let mut admin = PgConnection::connect(&admin_url).await.unwrap();
+        sqlx::query(sqlx::AssertSqlSafe(format!("CREATE DATABASE {database}")))
+            .execute(&mut admin)
+            .await
+            .unwrap();
+        let url = format!("{}/{database}", admin_url.rsplit_once('/').unwrap().0);
+        let pool = PgPoolOptions::new()
             .max_connections(1)
             .acquire_timeout(Duration::from_secs(2))
-            .connect_lazy(&url)
-            .unwrap()
-    };
-    let log = Arc::new(BlockedLog {
-        entered: Notify::new(),
-        cancelled: Notify::new(),
-        reading: AtomicBool::new(false),
-        release: Arc::new(Semaphore::new(0)),
-        saved: Arc::default(),
-        finished: Arc::default(),
-    });
-    let state = Arc::new(AppState {
-        analytics: analytics::Analytics::load(&pool).await.unwrap(),
-        pool,
-        session_auth: auth_pool(),
-        delivery_auth: auth_pool(),
-        log: log.clone(),
-        fanout: fanout::Fanout::local("read-revocation".into()),
-        limits: limits::Limits::from_spec("").unwrap(),
-        client_ip_header: None,
-        relay_name: "test-relay".into(),
-        metrics: metrics::Metrics::default(),
-        blobs: Arc::new(object_store::memory::InMemory::new()),
-        apple_app_ids: Vec::new(),
-        owner: ownership::NodeOwner::claim_all("read-revocation"),
-    });
-    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
-    let address = listener.local_addr().unwrap();
-    let app = zoen_relay::router(state.clone());
-    let server = tokio::spawn(async move {
-        axum::serve(
-            listener,
-            app.into_make_service_with_connect_info::<std::net::SocketAddr>(),
-        )
+            .connect(&url)
+            .await
+            .unwrap();
+        sqlx::migrate!("./migrations").run(&pool).await.unwrap();
+        let auth_pool = || {
+            PgPoolOptions::new()
+                .max_connections(1)
+                .acquire_timeout(Duration::from_secs(2))
+                .connect_lazy(&url)
+                .unwrap()
+        };
+        let log = Arc::new(BlockedLog {
+            entered: Notify::new(),
+            cancelled: Notify::new(),
+            reading: AtomicBool::new(false),
+            release: Arc::new(Semaphore::new(0)),
+            saved: Arc::default(),
+            finished: Arc::default(),
+        });
+        let state = Arc::new(AppState {
+            analytics: analytics::Analytics::load(&pool).await.unwrap(),
+            pool,
+            session_auth: auth_pool(),
+            delivery_auth: auth_pool(),
+            log: log.clone(),
+            fanout: fanout::Fanout::local("read-revocation".into()),
+            limits: limits::Limits::from_spec("").unwrap(),
+            client_ip_header: None,
+            relay_name: "test-relay".into(),
+            metrics: metrics::Metrics::default(),
+            blobs: Arc::new(object_store::memory::InMemory::new()),
+            apple_app_ids: Vec::new(),
+            owner: ownership::NodeOwner::claim_all("read-revocation"),
+        });
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let address = listener.local_addr().unwrap();
+        let app = zoen_relay::router(state.clone());
+        let server = tokio::spawn(async move {
+            axum::serve(
+                listener,
+                app.into_make_service_with_connect_info::<std::net::SocketAddr>(),
+            )
+            .await
+            .unwrap();
+        });
+        Self {
+            state,
+            log,
+            ws_url: format!("ws://{address}/v1/sync"),
+            server,
+            database,
+            admin,
+        }
+    }
+
+    async fn close(mut self) {
+        self.server.abort();
+        self.state.pool.close().await;
+        self.state.session_auth.close().await;
+        self.state.delivery_auth.close().await;
+        sqlx::query(sqlx::AssertSqlSafe(format!(
+            "DROP DATABASE {} WITH (FORCE)",
+            self.database
+        )))
+        .execute(&mut self.admin)
         .await
         .unwrap();
-    });
+    }
+}
+
+async fn request(socket: &mut Socket, id: u64, op: Op) -> Result<Reply, String> {
+    send(socket, ClientFrame::Req { id, op }).await;
+    loop {
+        if let ServerFrame::Res { id: got, result } = recv(socket).await.expect("caller closed") {
+            if got == id {
+                return result;
+            }
+        }
+    }
+}
+
+fn profile(author: &Author, handle: &str) -> Identity {
+    Identity {
+        id: author.identity.clone(),
+        kind: IdentityKind::Person,
+        name: "Ana".into(),
+        handle: handle.into(),
+        tint_hex: "#123456".into(),
+        glyph: None,
+        owner: None,
+        bio: String::new(),
+    }
+}
+
+fn link_op(author: &Author, id: &str) -> Op {
+    Op::DeliverLink {
+        id: id.into(),
+        sealed: vec![1],
+        device: Some(DeviceCertificate {
+            device: author.device.clone().unwrap(),
+            cert: author.cert.clone().unwrap(),
+        }),
+    }
+}
+
+async fn stalled_operation_revocation(publish: bool) {
+    let test = TestRelay::new().await;
+    let (state, log, ws_url) = (&test.state, &test.log, &test.ws_url);
     let root = Signer::generate();
     let first = Author::device(&root, Signer::generate());
     let lost = Author::device(&root, Signer::generate());
-    let ws_url = format!("ws://{address}/v1/sync");
-    let mut controller = connect(&ws_url, &first).await;
+    let mut controller = connect(ws_url, &first).await;
     send(
         &mut controller,
         ClientFrame::Req {
@@ -256,7 +336,10 @@ async fn stalled_operation_revocation(publish: bool) {
             break;
         }
     }
-    let mut target = connect(&ws_url, &lost).await;
+    request(&mut controller, 3, link_op(&lost, &Signer::generate().id()))
+        .await
+        .unwrap();
+    let mut target = connect(ws_url, &lost).await;
     let operation = if publish {
         ClientFrame::Publish {
             env: Envelope::plain(&lost.sign_event(
@@ -345,16 +428,7 @@ async fn stalled_operation_revocation(publish: bool) {
         );
     }
     let _ = controller.close(None).await;
-    server.abort();
-    state.pool.close().await;
-    state.session_auth.close().await;
-    state.delivery_auth.close().await;
-    sqlx::query(sqlx::AssertSqlSafe(format!(
-        "DROP DATABASE {database} WITH (FORCE)"
-    )))
-    .execute(&mut admin)
-    .await
-    .unwrap();
+    test.close().await;
 }
 
 #[tokio::test]
@@ -365,4 +439,316 @@ async fn a_stalled_sync_cannot_block_online_device_revocation() {
 #[tokio::test]
 async fn an_admitted_queued_publish_can_finish_without_blocking_revocation() {
     stalled_operation_revocation(true).await;
+}
+
+#[tokio::test]
+async fn an_unlinked_root_holder_cannot_return_with_a_fresh_certificate() {
+    let test = TestRelay::new().await;
+    let root = Signer::generate();
+    let primary = Author::device(&root, Signer::generate());
+    let lost = Author::device(&root, Signer::generate());
+    let mut controller = connect(&test.ws_url, &primary).await;
+    request(
+        &mut controller,
+        1,
+        Op::Register {
+            profile: profile(&primary, "ana"),
+        },
+    )
+    .await
+    .unwrap();
+    request(&mut controller, 2, link_op(&lost, &Signer::generate().id()))
+        .await
+        .unwrap();
+    let mut target = connect(&test.ws_url, &lost).await;
+    request(
+        &mut controller,
+        3,
+        Op::Unlink {
+            device: lost.device.clone().unwrap(),
+        },
+    )
+    .await
+    .unwrap();
+    // A linked device retains the root secret. Minting a valid new certificate and
+    // proving the new key now succeeds cryptographically, but grants no enrollment.
+    let fresh = Author::device(&root, Signer::generate());
+    let (mut attempted, result) = authenticate(&test.ws_url, &fresh).await;
+    assert!(
+        matches!(
+            result,
+            ServerFrame::Error {
+                code: ErrorCode::Unauthorized,
+                ..
+            }
+        ),
+        "{result:?}"
+    );
+    assert!(recv(&mut attempted).await.is_none());
+    assert!(
+        !zoen_relay::db::device_known(&test.state.pool, fresh.device.as_ref().unwrap())
+            .await
+            .unwrap()
+    );
+    while let Some(frame) = recv(&mut target).await {
+        assert!(matches!(
+            frame,
+            ServerFrame::Error {
+                code: ErrorCode::Unauthorized,
+                ..
+            }
+        ));
+    }
+    // Even an active sponsor cannot turn the old device's row back on.
+    let box_id = Signer::generate().id();
+    assert!(request(&mut controller, 4, link_op(&lost, &box_id))
+        .await
+        .is_err());
+    assert!(
+        zoen_relay::db::device_revoked(&test.state.pool, lost.device.as_ref().unwrap())
+            .await
+            .unwrap()
+    );
+    assert!(zoen_relay::db::take_link_box(&test.state.pool, &box_id)
+        .await
+        .unwrap()
+        .is_none());
+    // The surviving enrolled device can still change its own directory profile.
+    request(
+        &mut controller,
+        5,
+        Op::Register {
+            profile: profile(&primary, "ana_changed"),
+        },
+    )
+    .await
+    .unwrap();
+    let handle: String = sqlx::query_scalar("SELECT handle FROM identities WHERE id = $1")
+        .bind(root.id())
+        .fetch_one(&test.state.pool)
+        .await
+        .unwrap();
+    assert_eq!(handle, "ana_changed");
+    let _ = controller.close(None).await;
+    test.close().await;
+}
+
+#[tokio::test]
+async fn a_preopened_unregistered_socket_cannot_enroll_after_registration() {
+    let test = TestRelay::new().await;
+    let root = Signer::generate();
+    let first = Author::device(&root, Signer::generate());
+    let late = Author::device(&root, Signer::generate());
+    let (mut controller, first_ready) = authenticate(&test.ws_url, &first).await;
+    let (mut stale, late_ready) = authenticate(&test.ws_url, &late).await;
+    assert!(matches!(
+        first_ready,
+        ServerFrame::Ready {
+            registered: false,
+            ..
+        }
+    ));
+    assert!(matches!(
+        late_ready,
+        ServerFrame::Ready {
+            registered: false,
+            ..
+        }
+    ));
+    request(
+        &mut controller,
+        1,
+        Op::Register {
+            profile: profile(&first, "ana"),
+        },
+    )
+    .await
+    .unwrap();
+    send(
+        &mut stale,
+        ClientFrame::Req {
+            id: 2,
+            op: Op::Register {
+                profile: profile(&late, "hijacked"),
+            },
+        },
+    )
+    .await;
+    while let Some(frame) = recv(&mut stale).await {
+        assert!(matches!(
+            frame,
+            ServerFrame::Error {
+                code: ErrorCode::Unauthorized,
+                ..
+            }
+        ));
+    }
+    // This is also refused at the SQL creation boundary if identity registration wins
+    // after the unregistered request's admission check, before its INSERT executes.
+    let mut tx = test.state.pool.begin().await.unwrap();
+    assert!(zoen_relay::db::register(
+        &mut tx,
+        &profile(&late, "hijacked"),
+        "hijacked",
+        late.device.as_ref().unwrap(),
+        late.cert.as_ref().unwrap(),
+        true,
+    )
+    .await
+    .is_err());
+    tx.rollback().await.unwrap();
+    let mut tx = test.state.pool.begin().await.unwrap();
+    assert!(zoen_relay::db::register(
+        &mut tx,
+        &profile(&late, "hijacked"),
+        "hijacked",
+        late.device.as_ref().unwrap(),
+        late.cert.as_ref().unwrap(),
+        false,
+    )
+    .await
+    .is_err());
+    tx.rollback().await.unwrap();
+    let handle: String = sqlx::query_scalar("SELECT handle FROM identities WHERE id = $1")
+        .bind(root.id())
+        .fetch_one(&test.state.pool)
+        .await
+        .unwrap();
+    assert_eq!(handle, "ana");
+    assert!(
+        !zoen_relay::db::device_known(&test.state.pool, late.device.as_ref().unwrap())
+            .await
+            .unwrap()
+    );
+    let _ = controller.close(None).await;
+    test.close().await;
+}
+
+#[tokio::test]
+async fn enrollment_and_link_box_delivery_commit_or_rollback_together() {
+    let test = TestRelay::new().await;
+    let root = Signer::generate();
+    let first = Author::device(&root, Signer::generate());
+    let next = Author::device(&root, Signer::generate());
+    let mut controller = connect(&test.ws_url, &first).await;
+    request(
+        &mut controller,
+        1,
+        Op::Register {
+            profile: profile(&first, "ana"),
+        },
+    )
+    .await
+    .unwrap();
+    let box_id = Signer::generate().id();
+    let pending = Author::device(&next.key, next.key.clone());
+    let mut waiting = connect(&test.ws_url, &pending).await;
+    assert_eq!(
+        request(&mut waiting, 1, Op::FetchLink { id: box_id.clone() })
+            .await
+            .unwrap(),
+        Reply::Link(None)
+    );
+    request(&mut controller, 2, link_op(&next, &box_id))
+        .await
+        .unwrap();
+    // The link waiter authenticates as its own key, even after the sponsor enrolls
+    // that key under the account. It must still be able to fetch the identity box.
+    assert_eq!(
+        request(&mut waiting, 2, Op::FetchLink { id: box_id.clone() })
+            .await
+            .unwrap(),
+        Reply::Link(Some(vec![1]))
+    );
+    assert!(request(
+        &mut waiting,
+        3,
+        Op::Register {
+            profile: profile(&pending, "stolen")
+        }
+    )
+    .await
+    .is_err());
+    assert!(
+        !zoen_relay::db::is_registered(&test.state.pool, &pending.identity)
+            .await
+            .unwrap()
+    );
+    let _ = waiting.close(None).await;
+    let mut linked = connect(&test.ws_url, &next).await;
+    // Retry-safe enrollment keeps an already-active certificate, while duplicate box
+    // delivery aborts the whole transaction and cannot leave a third device enrolled.
+    let third = Author::device(&root, Signer::generate());
+    let occupied_id = Signer::generate().id();
+    request(
+        &mut controller,
+        3,
+        Op::DeliverLink {
+            id: occupied_id.clone(),
+            sealed: vec![1],
+            device: None,
+        },
+    )
+    .await
+    .unwrap();
+    assert!(request(&mut controller, 4, link_op(&third, &occupied_id))
+        .await
+        .is_err());
+    assert!(
+        !zoen_relay::db::device_known(&test.state.pool, third.device.as_ref().unwrap())
+            .await
+            .unwrap()
+    );
+    assert_eq!(
+        zoen_relay::db::take_link_box(&test.state.pool, &occupied_id)
+            .await
+            .unwrap(),
+        Some(vec![1])
+    );
+    let invalid_id = Signer::generate().id();
+    let bad_cert = Author::device(&Signer::generate(), Signer::generate());
+    assert!(request(&mut controller, 5, link_op(&bad_cert, &invalid_id))
+        .await
+        .is_err());
+    assert!(zoen_relay::db::take_link_box(&test.state.pool, &invalid_id)
+        .await
+        .unwrap()
+        .is_none());
+    assert!(
+        !zoen_relay::db::device_known(&test.state.pool, bad_cert.device.as_ref().unwrap())
+            .await
+            .unwrap()
+    );
+    // History manifests still work without a certificate and do not enroll any key.
+    let history_id = Signer::generate().id();
+    request(
+        &mut controller,
+        6,
+        Op::DeliverLink {
+            id: history_id.clone(),
+            sealed: vec![2],
+            device: None,
+        },
+    )
+    .await
+    .unwrap();
+    assert_eq!(
+        zoen_relay::db::take_link_box(&test.state.pool, &history_id)
+            .await
+            .unwrap(),
+        Some(vec![2])
+    );
+    let mut tx = test.state.pool.begin().await.unwrap();
+    zoen_relay::db::enroll_device(
+        &mut tx,
+        &root.id(),
+        next.device.as_ref().unwrap(),
+        next.cert.as_ref().unwrap(),
+    )
+    .await
+    .unwrap();
+    tx.commit().await.unwrap();
+    let _ = controller.close(None).await;
+    let _ = linked.close(None).await;
+    test.close().await;
 }
