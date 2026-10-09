@@ -57,7 +57,10 @@ class NativeJourneysTest {
         assertTrue(plan.sections.flatMap { it.lines }.isNotEmpty())
         assertTrue(plan.totalCents <= 150_000L)
         assertTrue(runBlocking { application.repository.query { it.timeline(chat.id) } }.any { it.author.isMe && (it.kind as? EntryKind.Message)?.text == prompt })
-        androidx.test.espresso.Espresso.closeSoftKeyboard()
+        scenario.onActivity { activity ->
+            activity.getSystemService(android.view.inputmethod.InputMethodManager::class.java)
+                .hideSoftInputFromWindow(activity.window.decorView.windowToken, 0)
+        }
         compose.onNodeWithTag("chat-timeline").performScrollToNode(hasTestTag("item:${item.id}"))
         compose.onNodeWithTag("item:${item.id}").performClick()
         val line = plan.sections.flatMap { it.lines }.first()
