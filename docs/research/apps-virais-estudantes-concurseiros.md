@@ -2,6 +2,8 @@
 
 *Pesquisa só na web pública, sem login e sem ferramenta paga. Dados coletados em 09/10/2026, por volta de 00h35 (horário de Brasília).*
 
+> **Ver também:** [Apps virais para estudantes e concurseiros fora do Brasil + Brilliant + ranking de crescimento de installs](./apps-virais-estudantes-global.md).
+
 ## Como ler este documento
 
 - **Ranking App Store BR**: posição na categoria Educação (ou em outra, quando indicada), tirada do feed público de charts da Apple (`itunes.apple.com/br/rss/...`) em 09/10/2026. É uma foto de um dia, e ranking muda diariamente. "Grossing" é o ranking por faturamento, o melhor indicador público de conversão paga.
