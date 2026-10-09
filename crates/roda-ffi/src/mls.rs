@@ -208,6 +208,16 @@ impl Engine {
             }
             EventBody::MemberRemoved { identity } => {
                 roster.remove(identity);
+                if self.me.as_deref() == Some(identity.as_str()) {
+                    // The relay stops sending this Space here, so the commit removing this
+                    // device never arrives: forget the group now.
+                    if let Err(err) = self
+                        .device()
+                        .and_then(|d| d.forget(&e.space).map_err(mls_err))
+                    {
+                        tracing_like(&format!("forgetting the group of {}: {err}", e.space));
+                    }
+                }
             }
             EventBody::SpaceEncrypted => {
                 *roster = self
@@ -243,20 +253,25 @@ impl Engine {
         if !device.has_group(space) || device.pending(space) {
             return None;
         }
-        // An owner or admin about to add someone (including adds still on their way to
-        // the relay) sends after the commit, so the newcomer reads it.
         let me = self.me.as_deref()?;
         let s = self.state.spaces.get(space)?;
+        let group = device.roster(space).ok()?;
+        // Nobody seals for a group that still holds someone the log removed: wait for the
+        // commit that takes them out.
+        if group.iter().any(|g| !s.members.iter().any(|(m, _)| m == g)) {
+            return None;
+        }
+        // An owner or admin about to add someone (including adds still on their way to
+        // the relay) sends after the commit, so the newcomer reads it.
         let runs_it = s
             .members
             .iter()
             .any(|(m, r)| m == me && matches!(r, Role::Owner | Role::Admin));
         let m = &self.net.mls;
-        if runs_it && !m.stuck.contains(space) {
-            let group = device.roster(space).ok()?;
-            if m.claiming.contains(space) || s.members.iter().any(|(who, _)| !group.contains(who)) {
-                return None;
-            }
+        let adding =
+            m.claiming.contains(space) || s.members.iter().any(|(who, _)| !group.contains(who));
+        if runs_it && adding && !m.stuck.contains(space) {
+            return None;
         }
         device.epoch(space).ok()
     }
@@ -636,6 +651,20 @@ impl Engine {
             return Ok(None);
         }
         if self.net.mls.claiming.contains(space) || self.net.mls.retry_at.contains_key(space) {
+            return Ok(None);
+        }
+        // Membership changes of ours still on their way: commit them all at once, after
+        // the relay has ordered them (a commit must never get ahead of its log entries).
+        let changing = self.net.pending.values().any(|s| s == space)
+            && self.store.outbox()?.iter().any(|p| {
+                p.event.space == space
+                    && !p.failed
+                    && matches!(
+                        p.event.body,
+                        EventBody::MemberAdded { .. } | EventBody::MemberRemoved { .. }
+                    )
+            });
+        if changing {
             return Ok(None);
         }
         let device = self.device()?;

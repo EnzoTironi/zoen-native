@@ -774,6 +774,46 @@ impl Engine {
         Ok(())
     }
 
+    /// Takes someone out of a chat. In an end-to-end chat they read nothing written after
+    /// the commit that removes them, and nobody seals a message before it lands.
+    pub fn remove_member(&mut self, space: &str, who: &str) -> R<()> {
+        let me = self.me_id()?;
+        let s = self
+            .state
+            .spaces
+            .get(space)
+            .ok_or_else(|| CoreError::NotFound {
+                what: t("conversa", "chat"),
+            })?;
+        let role_of = |id: &str| s.members.iter().find(|(m, _)| m == id).map(|(_, r)| *r);
+        let allowed = match (role_of(&me), role_of(who)) {
+            (_, None) => {
+                return Err(CoreError::NotFound {
+                    what: t("membro", "member"),
+                })
+            }
+            (Some(Role::Owner), _) => true,
+            (Some(Role::Admin), Some(target)) => target != Role::Owner,
+            _ => false,
+        };
+        if !allowed {
+            return Err(CoreError::Forbidden {
+                reason: t(
+                    "Só quem administra a conversa remove pessoas.",
+                    "Only the chat's owners and admins remove people.",
+                ),
+            });
+        }
+        self.append(
+            space,
+            &me,
+            EventBody::MemberRemoved {
+                identity: who.to_string(),
+            },
+        )?;
+        Ok(())
+    }
+
     pub fn leave_space(&mut self, space: &str) -> R<()> {
         let me = self.me_id()?;
         self.append(

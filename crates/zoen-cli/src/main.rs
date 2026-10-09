@@ -180,6 +180,7 @@ fn usage() -> ! {
          dm @HANDLE [TEXT]                end-to-end (MLS): the relay holds ciphertext\n\
          group TITLE @HANDLE... [--readable]   end-to-end unless --readable\n\
          encrypt CHAT                     make a relay-readable chat end-to-end, for good\n\
+         remove CHAT @HANDLE              take someone out (end-to-end: they read nothing after)\n\
          keys CHAT                        an end-to-end chat's group: epoch, digest, members\n\
          send CHAT TEXT [--offline]      CHAT = @handle, title or space id\n\
          read CHAT\n\
@@ -449,6 +450,23 @@ async fn main() {
                 println!("{}", line(&t));
             }
             let _ = e.mark_read(space);
+        }
+        "remove" => {
+            if cli.args.len() != 2 {
+                usage();
+            }
+            let space = chat(&e, &cli.args[0]);
+            let h = cli.args[1].trim_start_matches('@').to_string();
+            let who = e
+                .find_people(h.clone())
+                .await
+                .unwrap_or_else(|err| die(err))
+                .into_iter()
+                .find(|p| p.handle == h)
+                .unwrap_or_else(|| die(format!("@{h} isn't on Zoen")));
+            e.remove_member(space, who.id)
+                .unwrap_or_else(|err| die(err));
+            e.wait_until_idle(timeout).await;
         }
         "encrypt" => {
             let space = chat(

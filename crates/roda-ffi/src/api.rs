@@ -375,6 +375,10 @@ impl RodaEngine {
         self.lock().add_member(&space_id, &identity_id)
     }
 
+    pub fn remove_member(&self, space_id: String, identity_id: String) -> Result<(), CoreError> {
+        self.lock().remove_member(&space_id, &identity_id)
+    }
+
     pub fn leave_space(&self, space_id: String) -> Result<(), CoreError> {
         self.lock().leave_space(&space_id)
     }
