@@ -20,6 +20,7 @@ struct ConfirmMorphRow: View {
     @State private var armed = false
     @State private var done = false
     @State private var disarm: Task<Void, Never>?
+    @State private var armedAt = Date.distantPast
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     private let h: CGFloat = 52
 
@@ -48,6 +49,9 @@ struct ConfirmMorphRow: View {
                 .foregroundStyle(armed ? Color.white : Palette.danger)
                 .frame(maxWidth: armed ? .infinity : h, minHeight: h)
                 .background(armed ? Palette.danger : Palette.danger.opacity(0.12), in: .rect(cornerRadius: 16, style: .continuous))
+                .overlay(alignment: .bottom) {
+                    if armed && !done { FoldBackBar(seconds: ConfirmTiming.window).padding(.horizontal, 14).padding(.bottom, 6) }
+                }
                 .contentShape(.rect(cornerRadius: 16))
             }
             .buttonStyle(PressScaleStyle())
@@ -89,10 +93,14 @@ struct ConfirmMorphRow: View {
     private func arm() {
         Haptics.warning()
         armed = true
+        armedAt = .now
         disarm?.cancel()
         disarm = Task { @MainActor in
-            try? await Task.sleep(for: .seconds(5))
-            if !Task.isCancelled, armed, !done { armed = false }
+            try? await Task.sleep(for: .seconds(ConfirmTiming.window))
+            if !Task.isCancelled, armed, !done {
+                Haptics.selectionTick()
+                armed = false
+            }
         }
     }
 
@@ -103,6 +111,8 @@ struct ConfirmMorphRow: View {
     }
 
     private func fire() {
+        // A double tap shouldn't arm and confirm at once: the question has to be seen first.
+        guard Date.now.timeIntervalSince(armedAt) > ConfirmTiming.grace else { return }
         disarm?.cancel()
         Haptics.remove()
         done = true
@@ -129,6 +139,7 @@ struct ConfirmInPlaceButton: View {
     @State private var armed = false
     @State private var done = false
     @State private var disarm: Task<Void, Never>?
+    @State private var armedAt = Date.distantPast
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     private var spring: Animation {
@@ -166,6 +177,9 @@ struct ConfirmInPlaceButton: View {
                         }
                     }
                 }
+                .overlay(alignment: .bottom) {
+                    if armed && !done && !compact { FoldBackBar(seconds: ConfirmTiming.window).padding(.horizontal, 12).padding(.bottom, 5) }
+                }
                 .contentShape(.rect)
             }
             // In a List row (compact), only .borderless keeps the row from claiming the tap.
@@ -200,10 +214,14 @@ struct ConfirmInPlaceButton: View {
     private func arm() {
         Haptics.warning()
         armed = true
+        armedAt = .now
         disarm?.cancel()
         disarm = Task { @MainActor in
-            try? await Task.sleep(for: .seconds(5))
-            if !Task.isCancelled, armed, !done { armed = false }
+            try? await Task.sleep(for: .seconds(ConfirmTiming.window))
+            if !Task.isCancelled, armed, !done {
+                Haptics.selectionTick()
+                armed = false
+            }
         }
     }
 
@@ -214,6 +232,8 @@ struct ConfirmInPlaceButton: View {
     }
 
     private func fire() {
+        // A double tap shouldn't arm and confirm at once: the question has to be seen first.
+        guard Date.now.timeIntervalSince(armedAt) > ConfirmTiming.grace else { return }
         disarm?.cancel()
         Haptics.remove()
         done = true
@@ -228,5 +248,31 @@ private struct ConfirmButtonStyle: ViewModifier {
     var compact: Bool
     func body(content: Content) -> some View {
         if compact { content.buttonStyle(.borderless) } else { content.buttonStyle(PressScaleStyle()) }
+    }
+}
+
+enum ConfirmTiming {
+    /// How long an armed confirmation waits before folding back.
+    static let window: Double = 5
+    /// A second tap sooner than this after arming is the same tap, not a confirmation.
+    static let grace: Double = 0.35
+}
+
+/// A hairline that drains while an armed confirmation waits, so it's clear it will fold back.
+private struct FoldBackBar: View {
+    let seconds: Double
+    @State private var left: CGFloat = 1
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    var body: some View {
+        GeometryReader { g in
+            Capsule().fill(Color.white.opacity(0.45))
+                .frame(width: g.size.width * left, height: 2)
+                .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .frame(height: 2)
+        .opacity(reduceMotion ? 0 : 1)
+        .onAppear { withAnimation(.linear(duration: seconds)) { left = 0 } }
+        .accessibilityHidden(true)
     }
 }

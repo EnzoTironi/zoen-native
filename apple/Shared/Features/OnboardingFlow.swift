@@ -45,6 +45,8 @@ struct OnboardingFlow: View {
     enum Step: Int, CaseIterable { case hello, profile, areas, plan, agents, notifications, location, done }
 
     @State private var step: Step = .hello
+    /// Steps, copy and landing from the remote config for this install's source and arm.
+    @State private var route = OnboardingRoute()
     @State private var forward = true
     @State private var areas: [OnboardingArea] = []
     @State private var plan: ItemDetail?
@@ -118,6 +120,10 @@ struct OnboardingFlow: View {
         .background(InkPalette.paper.ignoresSafeArea())
         .environment(\.colorScheme, .light)
         .task {
+            // The flow for where this install came from (friend, Space link, campaign) and its
+            // experiment arm; the cached config answers at once, a fresh one comes next time.
+            route = OnboardingRoute(model.core.growthOnboardingPlan())
+            Task { await model.growthSync() }
             // Numbers keep their meaning from before the profile step existed; "profile" opens it.
             let raw = UserDefaults.standard.string(forKey: "RodaOnboardingStep") ?? ""
             if let st = raw == "profile" ? Step.profile : Int(raw).flatMap({ Step(rawValue: $0 >= 1 ? $0 + 1 : $0) }) {
@@ -127,7 +133,7 @@ struct OnboardingFlow: View {
             }
             // `-RodaOnboardingAuto YES`: plays the whole flow by itself (screen recordings, demos).
             if UserDefaults.standard.bool(forKey: "RodaOnboardingAuto") {
-                for _ in 0..<Step.allCases.count {
+                for _ in 0..<route.steps.count {
                     try? await Task.sleep(for: .seconds(step == .plan ? 3.4 : 2.8))
                     if step == .areas && areas.isEmpty {
                         for a in [OnboardingArea.trips, .food, .friends] {
@@ -160,15 +166,15 @@ struct OnboardingFlow: View {
             .accessibilityLabel("Back")
 
             HStack(spacing: 6) {
-                ForEach(Step.allCases, id: \.self) { s in
+                ForEach(route.steps, id: \.self) { s in
                     Capsule()
-                        .fill(s.rawValue <= step.rawValue ? Mascot.body : InkPalette.ink.opacity(0.12))
+                        .fill(position(s) <= position(step) ? Mascot.body : InkPalette.ink.opacity(0.12))
                         .frame(height: 5)
                 }
             }
             .animation(.spring(duration: 0.45, bounce: 0.3), value: step)
             .accessibilityElement()
-            .accessibilityLabel(String(localized: "Step \(step.rawValue + 1) of \(Step.allCases.count)"))
+            .accessibilityLabel(String(localized: "Step \(position(step) + 1) of \(route.steps.count)"))
 
             Button { finish() } label: { Text("Skip").font(.subheadline.weight(.semibold)) }
                 .buttonStyle(.plain)
@@ -217,7 +223,19 @@ struct OnboardingFlow: View {
         }
     }
 
+    private func position(_ s: Step) -> Int { route.steps.firstIndex(of: s) ?? s.rawValue }
+
     private var title: String {
+        if let remote = route.text("onboarding.\(step.id).title") { return remote }
+        return localTitle
+    }
+
+    private var subtitle: String? {
+        if let remote = route.text("onboarding.\(step.id).body") { return remote }
+        return localSubtitle
+    }
+
+    private var localTitle: String {
         switch step {
         case .hello: String(localized: "Hi, I’m Zoen.")
         case .profile: String(localized: "What should friends call you?")
@@ -230,7 +248,7 @@ struct OnboardingFlow: View {
         }
     }
 
-    private var subtitle: String? {
+    private var localSubtitle: String? {
         switch step {
         case .hello: String(localized: "I’m the app and the agent inside it. I turn chats into plans you control.")
         case .profile: nil
@@ -247,7 +265,21 @@ struct OnboardingFlow: View {
     private func controls(compact: Bool) -> some View {
         switch step {
         case .hello:
-            EmptyView()
+            if route.flow == "default" {
+                // Got here from a friend's or a Space link before installing? Pasting it is
+                // the private way to keep it: the person chooses, nothing is fingerprinted.
+                PasteButton(payloadType: URL.self) { urls in
+                    guard let url = urls.first else { return }
+                    Task { @MainActor in
+                        model.captureAcquisition(url)
+                        withAnimation(.snappy) { route = OnboardingRoute(model.core.growthOnboardingPlan()) }
+                    }
+                }
+                .labelStyle(.titleAndIcon)
+                .buttonBorderShape(.capsule)
+                .tint(InkPalette.ink.opacity(0.6))
+                .accessibilityHint(String(localized: "Paste the invite link you got"))
+            }
         case .profile:
             if !compact {
                 AvatarPhotoPicker(personaId: nil, pending: $pendingPhoto, size: 104,
@@ -364,9 +396,9 @@ struct OnboardingFlow: View {
     // MARK: actions
 
     private func go(_ delta: Int) {
-        guard var next = Step(rawValue: step.rawValue + delta) else { return }
+        guard var next = route.next(after: step, by: delta) else { return }
         // Demo builds and devices that already have an account skip the profile step.
-        if next == .profile && !model.sync.needsAccount, let skip = Step(rawValue: next.rawValue + delta) { next = skip }
+        if next == .profile && !model.sync.needsAccount, let skip = route.next(after: next, by: delta) { next = skip }
         forward = delta > 0
         withAnimation(.spring(duration: 0.45, bounce: 0.2)) { step = next }
     }
@@ -430,7 +462,12 @@ struct OnboardingFlow: View {
 
     private func finish() {
         UserDefaults.standard.set(true, forKey: "RodaOnboarded")
-        if let zid = model.zoenSpaceId() { model.go(.space(zid)) }
+        let route = route
+        Task { @MainActor in
+            // A friend's link lands in the chat with them, a Space link in the Space.
+            if await !model.land(route), let zid = model.zoenSpaceId() { model.go(.space(zid)) }
+            await model.growthSync()
+        }
         onFinish()
     }
 

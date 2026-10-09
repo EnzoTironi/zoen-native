@@ -133,6 +133,7 @@ pub async fn put(
     {
         Ok(_) => {
             st.metrics.blob_stored(n);
+            st.analytics.count("blobs_stored", 1);
             tracing::info!(sha = %&sha[..12], bytes = n, "blob stored");
             StatusCode::CREATED.into_response()
         }

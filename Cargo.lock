@@ -4434,6 +4434,7 @@ dependencies = [
  "tokio",
  "tokio-tungstenite 0.30.0",
  "uniffi",
+ "zoen-liveview",
 ]
 
 [[package]]
@@ -4501,6 +4502,9 @@ dependencies = [
  "prost",
  "roda-log",
  "roda-types",
+ "serde",
+ "serde_json",
+ "sha2 0.10.9",
 ]
 
 [[package]]
@@ -6895,11 +6899,13 @@ dependencies = [
  "opentelemetry-otlp",
  "opentelemetry_sdk",
  "postgresql_embedded",
+ "reqwest",
  "roda-log",
  "roda-mls",
  "roda-proto",
  "roda-types",
  "rusqlite",
+ "rustls",
  "serde",
  "serde_json",
  "sha2 0.10.9",

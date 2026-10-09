@@ -78,10 +78,10 @@ struct PlanItemView: View {
                 LineEditor(editing: e, onSave: { save($0) },
                            onRemove: e.lineId == nil ? nil : { remove(lineId: e.lineId!) })
             }
-            .presentationDetents([.height(e.lineId == nil ? 320 : 390)])
+            .zoenSheet([.height(e.lineId == nil ? 320 : 390)])
         }
         .sheet(isPresented: $showVersions) {
-            if let item { NavigationStack { VersionsView(item: item) } .presentationDetents([.medium, .large]) }
+            if let item { NavigationStack { VersionsView(item: item) } .zoenSheet([.medium, .large]) }
         }
         .task(id: model.revision) { item = try? model.core.item(itemId: itemId) }
         .sensoryFeedback(.success, trigger: bump)
@@ -334,12 +334,14 @@ struct LineEditor: View {
                 TextField("E.g. Kayak tour", text: $editing.text)
                     .focused($focus)
                     .accessibilityIdentifier("line-editor-text")
+                    .sheetItem(0)
             }
             Section("Cost") {
                 TextField("Amount", value: $editing.reais, format: .currency(code: AppLocale.currencyCode).locale(AppLocale.locale))
                     #if os(iOS)
                     .keyboardType(.decimalPad)
                     #endif
+                    .sheetItem(1)
             }
         }
         .navigationTitle(editing.lineId == nil ? String(localized: "Add") : String(localized: "Edit line"))
@@ -369,9 +371,15 @@ struct LineEditor: View {
                 )
                 .padding(.horizontal, 18)
                 .padding(.bottom, 8)
+                .sheetItem(2)
             }
         }
-        .onAppear { focus = onRemove == nil }
+        // The keyboard comes up once the sheet has landed: one smooth rise instead of two.
+        .task {
+            guard onRemove == nil else { return }
+            try? await Task.sleep(for: .seconds(0.38))
+            focus = true
+        }
     }
 }
 

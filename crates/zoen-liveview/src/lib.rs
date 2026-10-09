@@ -142,6 +142,18 @@ impl DeviceKey {
         }
     }
 
+    /// The same key again, from the secret half kept in the device's keychain.
+    pub fn from_secret(secret: [u8; 32]) -> Self {
+        DeviceKey {
+            secret: StaticSecret::from(secret),
+        }
+    }
+
+    /// The secret half, to keep in the device's keychain (never leaves the device).
+    pub fn secret(&self) -> [u8; 32] {
+        self.secret.to_bytes()
+    }
+
     pub fn public(&self) -> [u8; 32] {
         PublicKey::from(&self.secret).to_bytes()
     }
