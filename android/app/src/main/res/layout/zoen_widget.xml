@@ -1,16 +1,18 @@
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android" android:id="@+id/widget_root"
     android:layout_width="match_parent" android:layout_height="match_parent" android:orientation="vertical"
-    android:padding="16dp" android:gravity="center_vertical" android:background="@drawable/widget_background">
-    <TextView android:id="@+id/widget_eyebrow" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="@string/app_name" android:textColor="@color/widget_secondary" android:textSize="12sp" android:maxLines="1" />
-    <TextView android:id="@+id/widget_title" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="@string/widget_description" android:textColor="@color/widget_text" android:textStyle="bold" android:textSize="18sp" android:maxLines="2" />
-    <ImageView android:id="@+id/widget_photo" android:layout_width="match_parent" android:layout_height="70dp" android:scaleType="centerCrop" android:visibility="gone" android:importantForAccessibility="no" />
-    <ImageView android:id="@+id/widget_art" android:layout_width="match_parent" android:layout_height="70dp" android:scaleType="fitCenter" android:visibility="gone" android:importantForAccessibility="no" />
-    <TextView android:id="@+id/widget_value" android:layout_width="match_parent" android:layout_height="wrap_content" android:textColor="@color/widget_text" android:textSize="24sp" android:textStyle="bold" android:maxLines="2" />
-    <TextView android:id="@+id/widget_detail" android:layout_width="match_parent" android:layout_height="0dp" android:layout_weight="1" android:textColor="@color/widget_secondary" android:textSize="13sp" android:maxLines="4" />
-    <ProgressBar android:id="@+id/widget_progress" style="?android:attr/progressBarStyleHorizontal" android:layout_width="match_parent" android:layout_height="4dp" android:progressTint="@color/widget_accent" android:visibility="gone" />
-    <TextView android:id="@+id/widget_bars" android:layout_width="match_parent" android:layout_height="wrap_content" android:textColor="@color/widget_secondary" android:textSize="11sp" android:maxLines="1" />
-    <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="horizontal">
-        <Button android:id="@+id/widget_action_one" android:layout_width="0dp" android:layout_weight="1" android:layout_height="48dp" android:textColor="@color/widget_text" android:textSize="12sp" android:visibility="gone" />
-        <Button android:id="@+id/widget_action_two" android:layout_width="0dp" android:layout_weight="1" android:layout_height="48dp" android:textColor="@color/widget_text" android:textSize="12sp" android:visibility="gone" />
+    android:padding="16dp" android:background="@drawable/widget_background">
+    <LinearLayout android:id="@+id/widget_content" android:layout_width="match_parent" android:layout_height="0dp" android:layout_weight="1" android:orientation="vertical" android:gravity="center_vertical">
+        <TextView android:id="@+id/widget_eyebrow" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="@string/app_name" android:textColor="@color/widget_secondary" android:textSize="12sp" android:maxLines="1" android:includeFontPadding="false" android:ellipsize="end" />
+        <TextView android:id="@+id/widget_title" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="@string/widget_description" android:textColor="@color/widget_text" android:textStyle="bold" android:textSize="18sp" android:maxLines="2" android:includeFontPadding="false" android:ellipsize="end" />
+        <ImageView android:id="@+id/widget_photo" android:layout_width="match_parent" android:layout_height="70dp" android:scaleType="centerCrop" android:visibility="gone" android:importantForAccessibility="no" />
+        <ImageView android:id="@+id/widget_art" android:layout_width="match_parent" android:layout_height="70dp" android:scaleType="fitCenter" android:visibility="gone" android:importantForAccessibility="no" />
+        <TextView android:id="@+id/widget_value" android:layout_width="match_parent" android:layout_height="wrap_content" android:textColor="@color/widget_text" android:textSize="24sp" android:textStyle="bold" android:maxLines="2" android:includeFontPadding="false" android:ellipsize="end" />
+        <TextView android:id="@+id/widget_detail" android:layout_width="match_parent" android:layout_height="wrap_content" android:textColor="@color/widget_secondary" android:textSize="13sp" android:maxLines="4" android:includeFontPadding="false" android:ellipsize="end" />
+        <ProgressBar android:id="@+id/widget_progress" style="?android:attr/progressBarStyleHorizontal" android:layout_width="match_parent" android:layout_height="4dp" android:progressTint="@color/widget_accent" android:visibility="gone" />
+        <TextView android:id="@+id/widget_bars" android:layout_width="match_parent" android:layout_height="wrap_content" android:textColor="@color/widget_secondary" android:textSize="11sp" android:maxLines="1" android:includeFontPadding="false" android:ellipsize="end" />
+    </LinearLayout>
+    <LinearLayout android:id="@+id/widget_actions" android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="horizontal">
+        <Button android:id="@+id/widget_action_one" android:layout_width="0dp" android:layout_weight="1" android:layout_height="48dp" android:minWidth="48dp" android:padding="4dp" android:textColor="@color/widget_text" android:textSize="12sp" android:maxLines="1" android:includeFontPadding="false" android:ellipsize="end" android:visibility="gone" />
+        <Button android:id="@+id/widget_action_two" android:layout_width="0dp" android:layout_weight="1" android:layout_height="48dp" android:minWidth="48dp" android:padding="4dp" android:textColor="@color/widget_text" android:textSize="12sp" android:maxLines="1" android:includeFontPadding="false" android:ellipsize="end" android:visibility="gone" />
     </LinearLayout>
 </LinearLayout>

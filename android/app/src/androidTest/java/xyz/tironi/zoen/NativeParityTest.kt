@@ -2,8 +2,14 @@ package xyz.tironi.zoen
 
 import android.app.Notification
 import android.app.NotificationManager
+import android.content.res.Configuration
+import android.graphics.Rect
 import android.os.Build
+import android.util.SizeF
+import android.util.TypedValue
 import android.view.View
+import android.view.ViewGroup
+import android.widget.Button
 import android.widget.FrameLayout
 import android.widget.ImageView
 import android.widget.TextView
@@ -12,6 +18,7 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import java.io.File
 import java.util.UUID
+import kotlin.math.roundToInt
 import org.junit.Assert.*
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -156,18 +163,92 @@ class NativeParityTest {
             val space = core.spaces().first { it.counterpart?.handle == "zoen" }
             val item = core.installApp(space.id, "hike", "{}")
             val sample = checkNotNull(WidgetSnapshot.from(item))
+            val pet = checkNotNull(WidgetSnapshot.from(core.installApp(space.id, "pet", "{\"name\":\"Native pet\"}")))
             InstrumentationRegistry.getInstrumentation().runOnMainSync {
+                fun measure(view: View, size: SizeF) {
+                    val density = view.resources.displayMetrics.density
+                    view.measure(View.MeasureSpec.makeMeasureSpec((size.width * density).roundToInt(), View.MeasureSpec.EXACTLY),
+                        View.MeasureSpec.makeMeasureSpec((size.height * density).roundToInt(), View.MeasureSpec.EXACTLY))
+                    view.layout(0, 0, view.measuredWidth, view.measuredHeight)
+                }
+                fun assertInside(root: ViewGroup, child: View) {
+                    val bounds = Rect(0, 0, child.width, child.height)
+                    root.offsetDescendantRectToMyCoords(child, bounds)
+                    assertTrue("${child.resources.getResourceEntryName(child.id)} clipped: $bounds", bounds.left >= root.paddingLeft && bounds.top >= root.paddingTop &&
+                        bounds.right <= root.width - root.paddingRight && bounds.bottom <= root.height - root.paddingBottom)
+                }
+                val roomy = SizeF(320f, 420f)
+                val minimum = SizeF(160f, 180f)
                 WidgetSnapshot.Template.entries.forEachIndexed { index, template ->
                     val snapshot = sample.copy(template = template, title = "Native $template", value = "42", detail = "Shared state", rows = listOf(WidgetSnapshot.Row("Bring water", true)), bars = listOf(WidgetSnapshot.Bar("Rest", .5)), targetMs = System.currentTimeMillis() + 86_400_000, codes = listOf("SF", "TML"), places = listOf("San Francisco", "Tomales"), times = listOf("08:00", "09:00"), photo = if (template == WidgetSnapshot.Template.PHOTO) "hike-tomales" else null)
-                    val view = ZoenWidgetProvider.views(context, index, snapshot, false, false).apply(context, FrameLayout(context))
+                    val view = ZoenWidgetProvider.views(context, index, snapshot, false, false, roomy).apply(context, FrameLayout(context))
                     assertEquals(snapshot.title, view.findViewById<TextView>(R.id.widget_title).text.toString())
                     if (template == WidgetSnapshot.Template.PHOTO) assertEquals(View.VISIBLE, view.findViewById<ImageView>(R.id.widget_photo).visibility)
                     val private = snapshot.copy(sensitive = true, eyebrow = "Private eyebrow")
-                    val locked = ZoenWidgetProvider.views(context, index, private, true, false).apply(context, FrameLayout(context))
+                    val locked = ZoenWidgetProvider.views(context, index, private, true, false, roomy).apply(context, FrameLayout(context))
                     assertEquals(context.getString(R.string.app_name), locked.findViewById<TextView>(R.id.widget_title).text.toString())
                     assertEquals(context.getString(R.string.app_name), locked.findViewById<TextView>(R.id.widget_eyebrow).text.toString())
                     assertEquals("", locked.findViewById<TextView>(R.id.widget_detail).text.toString())
                     assertEquals(View.GONE, locked.findViewById<ImageView>(R.id.widget_photo).visibility)
+                    listOf(1f, 2f).forEach { fontScale ->
+                        val scaled = context.createConfigurationContext(Configuration(context.resources.configuration).apply { this.fontScale = fontScale })
+                        val actions = pet.actions.map { it.copy(label = if (it.tool == "pet_feed") "Comer" else "Cochilar") }
+                        val interactive = snapshot.copy(actions = actions, art = pet.art)
+                        val compact = ZoenWidgetProvider.views(scaled, index, interactive, false, false, minimum).apply(scaled, FrameLayout(scaled)) as ViewGroup
+                        measure(compact, minimum)
+                        val title = compact.findViewById<TextView>(R.id.widget_title)
+                        assertEquals(snapshot.title, title.text.toString())
+                        assertEquals(TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_SP, 16f, scaled.resources.displayMetrics), title.textSize, .01f)
+                        listOf(R.id.widget_title, R.id.widget_value, R.id.widget_progress, R.id.widget_bars).forEach { id ->
+                            val state = compact.findViewById<View>(id)
+                            assertEquals(View.VISIBLE, state.visibility)
+                            assertTrue(state.height > 0)
+                            assertInside(compact, state)
+                        }
+                        assertEquals(View.GONE, compact.findViewById<ImageView>(R.id.widget_photo).visibility)
+                        assertEquals(View.GONE, compact.findViewById<ImageView>(R.id.widget_art).visibility)
+                        listOf(R.id.widget_action_one, R.id.widget_action_two).forEachIndexed { actionIndex, id ->
+                            val button = compact.findViewById<Button>(id)
+                            assertEquals(actions[actionIndex].label, button.text.toString())
+                            assertEquals(actions[actionIndex].label, button.contentDescription.toString())
+                            assertTrue(button.isClickable && button.isEnabled)
+                            assertTrue(button.width >= (48 * scaled.resources.displayMetrics.density).roundToInt())
+                            assertEquals((48 * scaled.resources.displayMetrics.density).roundToInt(), button.height)
+                            assertTrue(button.layout.height <= button.height - button.compoundPaddingTop - button.compoundPaddingBottom)
+                            assertInside(compact, button)
+                        }
+                        val expandedSize = SizeF(480f, 640f)
+                        ZoenWidgetProvider.views(scaled, index, interactive, false, false, expandedSize).reapply(scaled, compact)
+                        measure(compact, expandedSize)
+                        assertEquals(TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_SP, 18f, scaled.resources.displayMetrics), title.textSize, .01f)
+                        assertEquals(2, title.maxLines)
+                        assertEquals(4, compact.findViewById<TextView>(R.id.widget_detail).maxLines)
+                        assertEquals((16 * scaled.resources.displayMetrics.density).toInt(), compact.paddingTop)
+                        assertEquals(View.VISIBLE, compact.findViewById<View>(if (template == WidgetSnapshot.Template.PHOTO) R.id.widget_photo else R.id.widget_art).visibility)
+                    }
+                }
+                assertTrue(pet.value.isNullOrBlank())
+                val petView = ZoenWidgetProvider.views(context, 20, pet, false, false, roomy).apply(context, FrameLayout(context)) as ViewGroup
+                measure(petView, roomy)
+                assertEquals(View.GONE, petView.findViewById<TextView>(R.id.widget_value).visibility)
+                val detail = petView.findViewById<TextView>(R.id.widget_detail)
+                assertEquals(View.VISIBLE, detail.visibility)
+                assertEquals(pet.detail, detail.text.toString())
+                assertEquals(detail.layout.height + detail.compoundPaddingTop + detail.compoundPaddingBottom, detail.height)
+                listOf(1f, 2f).forEach { fontScale ->
+                    val scaled = context.createConfigurationContext(Configuration(context.resources.configuration).apply { this.fontScale = fontScale })
+                    val compact = ZoenWidgetProvider.views(scaled, 20, pet, false, false, minimum).apply(scaled, FrameLayout(scaled)) as ViewGroup
+                    measure(compact, minimum)
+                    assertEquals(View.GONE, compact.findViewById<TextView>(R.id.widget_value).visibility)
+                    listOf(R.id.widget_title, R.id.widget_progress, R.id.widget_bars, R.id.widget_action_one, R.id.widget_action_two).forEach { id ->
+                        val state = compact.findViewById<View>(id)
+                        assertEquals(View.VISIBLE, state.visibility)
+                        assertInside(compact, state)
+                    }
+                    val hidden = ZoenWidgetProvider.views(scaled, 20, pet.copy(sensitive = true), true, false, minimum).apply(scaled, FrameLayout(scaled))
+                    listOf(R.id.widget_action_one, R.id.widget_action_two, R.id.widget_progress, R.id.widget_bars, R.id.widget_photo, R.id.widget_art).forEach { id ->
+                        assertEquals(View.GONE, hidden.findViewById<View>(id).visibility)
+                    }
                 }
             }
         } finally { core.destroy() }

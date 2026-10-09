@@ -8,12 +8,20 @@ import android.appwidget.AppWidgetProvider
 import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
+import android.graphics.Typeface
 import android.net.Uri
+import android.os.Build
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
+import android.text.StaticLayout
+import android.text.TextPaint
+import android.text.TextUtils
+import android.util.SizeF
+import android.util.TypedValue
 import android.view.View
 import android.widget.RemoteViews
+import androidx.core.os.BundleCompat
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -26,6 +34,11 @@ import xyz.tironi.zoen.data.AppState
 import xyz.tironi.zoen.miniapps.WidgetSnapshot
 
 class ZoenWidgetProvider : AppWidgetProvider() {
+    override fun onAppWidgetOptionsChanged(context: Context, manager: AppWidgetManager, id: Int, newOptions: Bundle) {
+        super.onAppWidgetOptionsChanged(context, manager, id, newOptions)
+        onUpdate(context, manager, intArrayOf(id))
+    }
+
     override fun onUpdate(context: Context, manager: AppWidgetManager, ids: IntArray) {
         val pending = goAsync()
         CoroutineScope(SupervisorJob() + Dispatchers.IO).launch {
@@ -156,11 +169,26 @@ class ZoenWidgetProvider : AppWidgetProvider() {
             else alarms.cancel(refreshIntent(context))
         }
 
-        fun views(context: Context, widgetId: Int, snapshot: WidgetSnapshot?, locked: Boolean, demo: Boolean): RemoteViews {
-            val views = RemoteViews(context.packageName, R.layout.zoen_widget)
+        fun views(context: Context, widgetId: Int, snapshot: WidgetSnapshot?, locked: Boolean, demo: Boolean, size: SizeF? = null): RemoteViews {
+            if (size != null) return contentViews(context, widgetId, snapshot, locked, demo, size)
+            val options = AppWidgetManager.getInstance(context).getAppWidgetOptions(widgetId)
+            if (Build.VERSION.SDK_INT >= 31) {
+                val sizes = BundleCompat.getParcelableArrayList(options, AppWidgetManager.OPTION_APPWIDGET_SIZES, SizeF::class.java)
+                if (!sizes.isNullOrEmpty()) return RemoteViews(sizes.distinct().take(16).associateWith { contentViews(context, widgetId, snapshot, locked, demo, it) })
+            }
+            fun dimension(key: String, fallback: Float) = options.getInt(key).takeIf { it > 0 }?.toFloat() ?: fallback
+            val minWidth = dimension(AppWidgetManager.OPTION_APPWIDGET_MIN_WIDTH, 180f)
+            val minHeight = dimension(AppWidgetManager.OPTION_APPWIDGET_MIN_HEIGHT, 240f)
+            val portrait = SizeF(minWidth, dimension(AppWidgetManager.OPTION_APPWIDGET_MAX_HEIGHT, minHeight))
+            val landscape = SizeF(dimension(AppWidgetManager.OPTION_APPWIDGET_MAX_WIDTH, minWidth), minHeight)
+            val portraitViews = contentViews(context, widgetId, snapshot, locked, demo, portrait)
+            return if (portrait == landscape) portraitViews else RemoteViews(contentViews(context, widgetId, snapshot, locked, demo, landscape), portraitViews)
+        }
+
+        private fun contentViews(context: Context, widgetId: Int, snapshot: WidgetSnapshot?, locked: Boolean, demo: Boolean, size: SizeF): RemoteViews {
             val hidden = snapshot == null || snapshot.sensitive && locked
-            views.setTextViewText(R.id.widget_title, if (hidden) context.getString(R.string.app_name) else snapshot!!.title)
-            views.setTextViewText(R.id.widget_eyebrow, if (hidden) context.getString(R.string.app_name) else if (demo) context.getString(R.string.demo) else snapshot?.eyebrow ?: context.getString(R.string.app_name))
+            val title = if (hidden) context.getString(R.string.app_name) else snapshot!!.title
+            val eyebrow = if (hidden) context.getString(R.string.app_name) else if (demo) context.getString(R.string.demo) else snapshot?.eyebrow ?: context.getString(R.string.app_name)
             val photo = if (hidden) null else when (snapshot?.photo) {
                 "hike-tomales" -> R.drawable.miniapp_hike_tomales
                 "hike-steep" -> R.drawable.miniapp_hike_steep
@@ -168,34 +196,65 @@ class ZoenWidgetProvider : AppWidgetProvider() {
                 else -> null
             }
             val art = if (hidden || photo != null) null else WidgetArt.bitmap(context, snapshot?.art)
-            views.setViewVisibility(R.id.widget_photo, if (photo == null) View.GONE else View.VISIBLE)
-            views.setViewVisibility(R.id.widget_art, if (art == null) View.GONE else View.VISIBLE)
-            photo?.let { views.setImageViewResource(R.id.widget_photo, it) }
-            art?.let { views.setImageViewBitmap(R.id.widget_art, it) }
-            views.setTextViewText(R.id.widget_value, if (hidden) context.getString(R.string.widget_choose) else when (snapshot!!.template) {
+            val value = if (hidden) context.getString(R.string.widget_choose) else when (snapshot!!.template) {
                 WidgetSnapshot.Template.COUNTDOWN, WidgetSnapshot.Template.PHOTO -> if (snapshot.targetMs != null) snapshot.remaining().let { context.getString(R.string.widget_countdown, it.days, it.hours, it.minutes) } else snapshot.value.orEmpty()
                 WidgetSnapshot.Template.TICKET -> snapshot.codes.joinToString(" → ")
                 else -> snapshot.value.orEmpty()
-            })
+            }
             val detail = if (hidden) "" else when (snapshot!!.template) {
                 WidgetSnapshot.Template.LIST -> snapshot.rows.joinToString("\n") { if (it.done) "✓ ${it.text}" else "○ ${it.text}" }
                 WidgetSnapshot.Template.TICKET -> snapshot.places.zip(snapshot.times).joinToString("\n") { (place, time) -> "$place · $time" }
                 else -> snapshot.detail.orEmpty()
             }
+            val bars = if (hidden) "" else snapshot!!.bars.joinToString(" · ") { "${it.label} ${(it.value * 100).toInt()}%" }
+            val actions = if (hidden || locked) emptyList() else snapshot!!.actions.take(2)
+            val metrics = context.resources.displayMetrics
+            fun textHeight(text: String, sp: Float, lines: Int, bold: Boolean = false): Float {
+                if (text.isBlank()) return 0f
+                val paint = TextPaint().apply {
+                    textSize = TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_SP, sp, metrics)
+                    typeface = if (bold) Typeface.DEFAULT_BOLD else Typeface.DEFAULT
+                }
+                return StaticLayout.Builder.obtain(text, 0, text.length, paint, ((size.width - 32).coerceAtLeast(1f) * metrics.density).toInt().coerceAtLeast(1))
+                    .setIncludePad(false).setMaxLines(lines).setEllipsize(TextUtils.TruncateAt.END).build().height / metrics.density
+            }
+            val normalHeight = 32 + 8 + textHeight(eyebrow, 12f, 1) + textHeight(title, 18f, 2, true) +
+                textHeight(value, 24f, 2, true) + textHeight(detail, 13f, 4) + textHeight(bars, 11f, 1) +
+                (if (photo != null || art != null) 70 else 0) +
+                (if (bars.isNotBlank()) 4 else 0) + (if (actions.isNotEmpty()) 48 else 0)
+            val compact = normalHeight > size.height
+            val views = RemoteViews(context.packageName, R.layout.zoen_widget)
+            val padding = ((if (compact) 8 else 16) * metrics.density).toInt()
+            views.setViewPadding(R.id.widget_root, padding, padding, padding, padding)
+            views.setInt(R.id.widget_title, "setMaxLines", if (compact) 1 else 2)
+            views.setInt(R.id.widget_value, "setMaxLines", if (compact) 1 else 2)
+            views.setInt(R.id.widget_detail, "setMaxLines", if (compact) 1 else 4)
+            views.setTextViewTextSize(R.id.widget_title, TypedValue.COMPLEX_UNIT_SP, if (compact) 16f else 18f)
+            views.setTextViewTextSize(R.id.widget_value, TypedValue.COMPLEX_UNIT_SP, if (compact) 16f else 24f)
+            views.setTextViewText(R.id.widget_title, title)
+            views.setContentDescription(R.id.widget_title, title)
+            views.setTextViewText(R.id.widget_eyebrow, eyebrow)
+            views.setViewVisibility(R.id.widget_eyebrow, if (compact) View.GONE else View.VISIBLE)
+            views.setViewVisibility(R.id.widget_photo, if (compact || photo == null) View.GONE else View.VISIBLE)
+            views.setViewVisibility(R.id.widget_art, if (compact || art == null) View.GONE else View.VISIBLE)
+            photo?.let { if (!compact) views.setImageViewResource(R.id.widget_photo, it) }
+            art?.let { if (!compact) views.setImageViewBitmap(R.id.widget_art, it) }
+            views.setTextViewText(R.id.widget_value, value)
+            views.setViewVisibility(R.id.widget_value, if (value.isBlank()) View.GONE else View.VISIBLE)
             views.setTextViewText(R.id.widget_detail, detail)
-            views.setViewVisibility(R.id.widget_detail, if (detail.isBlank()) View.GONE else View.VISIBLE)
+            views.setViewVisibility(R.id.widget_detail, if (detail.isBlank() || compact && (value.isNotBlank() || bars.isNotBlank())) View.GONE else View.VISIBLE)
             views.setViewVisibility(R.id.widget_progress, if (!hidden && snapshot!!.bars.isNotEmpty()) View.VISIBLE else View.GONE)
             snapshot?.bars?.firstOrNull()?.let { views.setProgressBar(R.id.widget_progress, 1000, (it.value * 1000).toInt(), false) }
-            views.setTextViewText(R.id.widget_bars, if (hidden) "" else snapshot!!.bars.joinToString(" · ") { "${it.label} ${(it.value * 100).toInt()}%" })
+            views.setTextViewText(R.id.widget_bars, bars)
             views.setViewVisibility(R.id.widget_bars, if (hidden || snapshot!!.bars.isEmpty()) View.GONE else View.VISIBLE)
             val link = if (hidden) "zoen://widgets" else snapshot!!.deepLink
             val open = Intent(context, MainActivity::class.java).setAction(Intent.ACTION_VIEW).setData(Uri.parse(link))
                 .addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP)
             views.setOnClickPendingIntent(R.id.widget_root, PendingIntent.getActivity(context, widgetId, open, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE))
-            val actions = if (hidden || locked) emptyList() else snapshot!!.actions.take(2)
             listOf(R.id.widget_action_one, R.id.widget_action_two).forEachIndexed { index, view ->
                 val action = actions.getOrNull(index)
                 views.setViewVisibility(view, if (action == null) View.GONE else View.VISIBLE)
+                views.setContentDescription(view, action?.label)
                 action?.let {
                     views.setTextViewText(view, it.label)
                     val intent = Intent(context, ZoenWidgetProvider::class.java).setAction(ACTION)
