@@ -242,7 +242,7 @@ class LauncherWidgetJourneyTest {
                     removeFromLauncher(checkNotNull(configuredTitle))
                     await("Launcher removes only the widget allocated by this test") { manager.getAppWidgetIds(provider).toSet() == initialIds }
                     await("Provider removes this deleted widget's selection") { !repository.preferences.contains("widget:$ownedId") && !repository.preferences.contains("widget-owner:$ownedId") }
-                    trace.put(JSONObject().put("cleanup", "removed through the launcher's exposed Remove action").put("widgetId", ownedId))
+                    trace.put(JSONObject().put("cleanup", "removed through the launcher's exposed Remove control").put("widgetId", ownedId))
                     capture("09-launcher-only-test-widget-removed")
                 }
             } catch (cleanup: Throwable) {
@@ -344,24 +344,56 @@ class LauncherWidgetJourneyTest {
     @Suppress("DEPRECATION")
     private fun removeFromLauncher(title: String) {
         val removeLabel = launcherStrings("remove_drop_target_label").single()
+        val moveLabels = launcherStrings("action_move")
         val root = checkNotNull(automation.rootInActiveWindow)
         var node: AccessibilityNodeInfo? = null
+        var moveNode: AccessibilityNodeInfo? = null
+        var moveAction: AccessibilityNodeInfo.AccessibilityAction? = null
         try {
-            node = root.findAccessibilityNodeInfosByViewId("${application.packageName}:id/widget_title").single { it.isVisibleToUser && it.text?.toString() == title }
-            repeat(12) {
+            check(root.packageName?.toString() == launcher) { "Only the actual launcher can remove the test widget" }
+            var remaining = 512
+            fun visit(candidate: AccessibilityNodeInfo) {
+                check(remaining-- > 0) { "Accessibility tree exceeds the bounded widget probe" }
+                if (candidate.isVisibleToUser && candidate.viewIdResourceName == "${application.packageName}:id/widget_title" && candidate.text?.toString() == title) {
+                    check(node == null) { "The test Item appears in more than one visible launcher widget" }
+                    node = AccessibilityNodeInfo.obtain(candidate)
+                }
+                for (index in 0 until candidate.childCount) {
+                    candidate.getChild(index)?.let { child -> try { visit(child) } finally { child.recycle() } }
+                }
+            }
+            // RemoteViews IDs belong to the provider, so the launcher's ID lookup can miss them.
+            visit(root)
+            check(node != null) { "Launcher exposes no visible title for the widget created by this test" }
+            for (depth in 0 until 12) {
                 val current = checkNotNull(node)
+                trace.put(JSONObject().put("cleanupAncestor", depth).put("class", current.className).put("actions", JSONArray(current.actionList.map { "${it.id}:${it.label}" })))
                 val action = current.actionList.singleOrNull { it.label?.toString() == removeLabel }
                 if (action != null) {
                     // Invoke the action advertised by this widget's actual launcher ancestor.
                     assertTrue("Launcher must remove its own selected widget", current.performAction(action.id))
                     return
                 }
+                if (moveNode == null) {
+                    current.actionList.singleOrNull { it.label?.toString() in moveLabels }?.let {
+                        moveNode = AccessibilityNodeInfo.obtain(current)
+                        moveAction = it
+                    }
+                }
                 node = current.parent
                 current.recycle()
-                check(node != null) { "Launcher exposes no Remove action for the widget created by this test" }
+                if (node == null) break
+                check(depth < 11) { "Launcher widget ancestry is unexpectedly deep" }
             }
-            error("Launcher widget ancestry is unexpectedly deep")
-        } finally { node?.recycle(); root.recycle() }
+            // Some launchers expose Move on the widget and Remove only during accessible drag.
+            trace.put(JSONObject().put("cleanupMoveAction", moveAction?.id).put("label", moveAction?.label).put("ownedTitle", title).put("uptimeMs", SystemClock.uptimeMillis()))
+            assertTrue("Launcher must start moving only its own selected widget", checkNotNull(moveNode) { "Launcher exposes neither Remove nor Move for the test widget" }.performAction(checkNotNull(moveAction).id))
+        } finally { node?.recycle(); moveNode?.recycle(); root.recycle() }
+        val remove = awaitNode("The launcher's Remove drop target for the selected widget") {
+            it.packageName == launcher && it.enabled && it.clickable && (it.text == removeLabel || it.description == removeLabel)
+        }
+        capture("09-launcher-accessible-remove-target")
+        touch(awaitNode("Launcher Remove target ready for touch") { it.packageName == launcher && it.enabled && it.clickable && it.text == remove.text && it.description == remove.description && it.className == remove.className })
     }
 
     private data class UiNode(val id: String?, val text: String?, val description: String?, val className: String?, val packageName: String?, val bounds: Rect, val visible: Boolean, val enabled: Boolean, val clickable: Boolean, val actions: List<String>, val children: List<UiNode>) {
