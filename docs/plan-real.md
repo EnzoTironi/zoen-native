@@ -146,7 +146,7 @@ storage seams. Each unit ends with the full journey suite green.
 | M2 end-to-end by default (DMs and groups; M1 Spaces upgrade one way) | done | `journey_m2::a_readable_group_becomes_end_to_end_and_never_goes_back`, `journey_m1` DMs now end-to-end, `privacy_only_goes_up`, `an_end_to_end_space_cannot_be_created_again_as_readable`, ADR 0027 |
 | M2 removal | done | `journey_m2::a_removed_member_reads_nothing_after_removal`, `a_removed_device_forgets_the_group_and_can_be_added_back`, ADR 0026 (Removal) |
 | M2 concurrent commits | done | `two_admins_online_make_one_commit_for_a_newcomer`, `admins_adding_at_once_under_a_publish_limit_converge`, `one_commit_per_epoch_and_each_welcome_follows_its_commit`, ADR 0026 |
-| M2 key package top-up | done | `key_packages_refill_when_they_run_low`, ADR 0026 |
+| M2 key package top-up | implemented; intermittent failure under investigation | `key_packages_refill_when_they_run_low`, ADR 0026; [current reliability gate](roadmap-status.md#reliability-work-from-this-audit) |
 | M2 linking/recovery | in open PRs 33 and 34; native UI pending | ADR 0045 on each branch; integrate with unique numbering and green journeys |
 | M3, M5, M6 | planned; agent sandbox components already exist | `zoen-agentd` tool modules are not yet a durable MLS/model runtime |
 | M7 | relay deployment exists; whole-stack deployment pending | local/staging infrastructure; agent and push integration remain |

@@ -64,13 +64,14 @@ integrating it; a green check alone does not establish product completeness.
 
 | PR | Scope | Validation / remaining integration gate |
 |---|---|---|
-| [33](https://github.com/EnzoTironi/zoen-native/pull/33) | Pruning ceiling, stale-device rejoin, linking, paginated encrypted history | Ten M2 journeys pass locally. CI at `daa4e47` had one full pass and one live-refill failure; `020aeac` captures notice/publication diagnostics. Native linking UI still needed |
-| [34](https://github.com/EnzoTironi/zoen-native/pull/34) | Encrypted password/recovery-key backup | Full Linux CI passes at `21070d5`; six backup journeys and ten M2 journeys pass locally on the combined tree. Native recovery UI and no-surviving-device protocol remain |
+| [33](https://github.com/EnzoTironi/zoen-native/pull/33) | Pruning ceiling, stale-device rejoin, linking, paginated encrypted history | Ten M2 journeys pass locally; both full Linux CI runs pass at `6d08daa`. Earlier live-refill failures and native linking UI remain integration gates |
+| [34](https://github.com/EnzoTironi/zoen-native/pull/34) | Encrypted password/recovery-key backup | Full Linux CI passes at `d5efc69`; six backup journeys and ten M2 journeys pass locally on the combined tree. Native recovery UI and no-surviving-device protocol remain |
 | [35](https://github.com/EnzoTironi/zoen-native/pull/35) | Real WASM sandbox | CI passes; integrate with the runtime after manifest/grant review |
 | [36](https://github.com/EnzoTironi/zoen-native/pull/36) | Fly Machines sandbox provider | CI passes; paid staging deployment and production egress policy still need their own proof |
 | [37](https://github.com/EnzoTironi/zoen-native/pull/37) | E2B research | CI passes; research informs design and does not implement the proposed live computer |
-| [38](https://github.com/EnzoTironi/zoen-native/pull/38) | Chat reading position and unread indicator | Three native XCTest journeys pass at `9ab80ca`; video and screenshots are attached. Shared Rust CI passed before the native-only additions; follow current checks |
-| [40](https://github.com/EnzoTironi/zoen-native/pull/40) | Welcome ordering and connection-time refill | Controlled before/after regressions and full Linux CI pass at `4c2f680`. The later intermittent refill failure on PR 33 remains a separate investigation |
+| [38](https://github.com/EnzoTironi/zoen-native/pull/38) | Chat reading position and unread indicator | Three native XCTest journeys pass at `9ab80ca`; video and screenshots are attached. Full Linux CI passes at `991b2fa`; its native source matches the verified head |
+| [39](https://github.com/EnzoTironi/zoen-native/pull/39) | Evidence-backed roadmap and completion gates | Documentation diff on PR 40. CI at `9678d38` failed live refill; diagnostic additions are covered by its current checks |
+| [40](https://github.com/EnzoTironi/zoen-native/pull/40) | Welcome ordering and connection-time refill | Controlled before/after regressions and full Linux CI pass at `ccb18c6`. Isolated refill and Clippy pass with diagnostics at `46807c1`; the intermittent failure remains an investigation |
 | [41](https://github.com/EnzoTironi/zoen-native/pull/41) | Native Android client | Rust and native CI pass. Live two-device relay sync and production encrypted media still need their own journey evidence |
 
 The initial linking and backup heads both used ADR number 0045. Backup now uses 0046
@@ -97,10 +98,14 @@ offline-message fixture also drains the sender's initial Welcome before taking t
 recipient offline through subsequent commits.
 
 A subsequent PR 33 CI run still failed live refill with seven packages after the watcher
-reported online and synced. Its other run at the same head passed. The next head captures
-low-stock receipt, generated batches, publication replies and session metrics before
-watcher cleanup; ten M2 journeys pass locally with these diagnostics. This intermittent
-failure remains an integration gate, even when an individual run passes.
+reported online and synced. Its other run at the same head passed. The failure recurred
+on [PR 39 at `9678d38`](https://github.com/EnzoTironi/zoen-native/actions/runs/37929949846).
+The diagnostic heads capture low-stock receipt, generated batches, publication replies
+and session metrics before watcher cleanup. PR 40 also records relay notice delivery
+counts and warns when its stock query fails. Ten M2 journeys pass locally on the recovery
+tree; an isolated refill journey passes on the messaging tree with both offline and live
+notices followed by successful publication. These are diagnostic results, not a root-cause
+fix. This intermittent failure remains an integration gate, even when a run passes.
 
 [PR 38's native evidence](https://github.com/EnzoTironi/zoen-native/pull/38#issuecomment-6080457241)
 covers the reading anchor during two arrivals, the capsule jump, automatic following at
