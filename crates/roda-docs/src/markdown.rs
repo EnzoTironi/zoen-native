@@ -259,10 +259,8 @@ fn top_level<'a>(node: &'a AstNode<'a>, lines: &[&str], out: &mut Vec<Unit>, ind
             }
         }
         NodeValue::List(list) => {
-            let mut number = list.start as u32;
-            for item in node.children() {
+            for (number, item) in (list.start as u32..).zip(node.children()) {
                 list_item(item, lines, out, indent, list.list_type, number);
-                number += 1;
             }
         }
         NodeValue::CodeBlock(cb) => {

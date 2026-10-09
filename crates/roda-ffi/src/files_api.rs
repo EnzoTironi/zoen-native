@@ -1,7 +1,7 @@
 //! Pages and files for the apps (ADR 0040).
 
 use crate::files::FileDto;
-use crate::pages::{PageBlockDto, PageDto};
+use crate::pages::{MarkdownFileDto, PageBlockDto, PageDto};
 use crate::{CoreError, ItemDetail, RodaEngine};
 
 #[uniffi::export]
@@ -19,6 +19,22 @@ impl RodaEngine {
     }
 
     /// A new, empty page with a title.
+    /// Many Markdown files at once (a folder, a picked batch). They go in together, so the
+    /// connection seals and sends them as one batch instead of waking up for each page.
+    /// Stops at the first file that can't be imported; the ones before it stay.
+    pub fn pages_import_markdown(
+        &self,
+        space_id: String,
+        files: Vec<MarkdownFileDto>,
+    ) -> Result<Vec<ItemDetail>, CoreError> {
+        let mut e = self.lock();
+        let mut ids = Vec::with_capacity(files.len());
+        for f in &files {
+            ids.push(e.page_import_markdown(&space_id, &f.path, &f.markdown)?);
+        }
+        ids.iter().map(|id| e.item(id)).collect()
+    }
+
     pub fn page_create(&self, space_id: String, title: String) -> Result<ItemDetail, CoreError> {
         let mut e = self.lock();
         let id = e.page_create(&space_id, &title)?;

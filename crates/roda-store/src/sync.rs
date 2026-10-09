@@ -16,6 +16,15 @@ pub struct Pending {
     pub failed: bool,
 }
 
+/// An outbox entry without its event.
+#[derive(Debug, Clone)]
+pub struct OutboxHead {
+    pub client_id: String,
+    pub space: String,
+    pub last_error: Option<String>,
+    pub failed: bool,
+}
+
 impl Store {
     pub(crate) fn migrate_sync(&self) -> Result<()> {
         self.conn.execute_batch(
@@ -83,6 +92,23 @@ impl Store {
             });
         }
         Ok(out)
+    }
+
+    /// What is waiting, without the events themselves (oldest first): cheap enough to call
+    /// after every write, then `outbox_get` only the entries that need work.
+    pub fn outbox_heads(&self) -> Result<Vec<OutboxHead>> {
+        let mut st = self.conn.prepare(
+            "SELECT client_id, space, last_error, failed FROM outbox ORDER BY created_ms, rowid",
+        )?;
+        let rows = st.query_map([], |r| {
+            Ok(OutboxHead {
+                client_id: r.get(0)?,
+                space: r.get(1)?,
+                last_error: r.get(2)?,
+                failed: r.get::<_, i64>(3)? != 0,
+            })
+        })?;
+        Ok(rows.collect::<std::result::Result<_, _>>()?)
     }
 
     pub fn outbox_get(&self, client_id: &str) -> Result<Option<Event>> {

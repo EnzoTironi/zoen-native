@@ -10,7 +10,7 @@
 mod profiles;
 mod sync;
 pub use profiles::ProfileKeyRow;
-pub use sync::Pending;
+pub use sync::{OutboxHead, Pending};
 
 use roda_types::{Event, Identity};
 use rusqlite::{params, Connection, OptionalExtension};

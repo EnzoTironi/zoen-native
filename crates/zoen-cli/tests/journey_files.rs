@@ -183,6 +183,23 @@ async fn pages_and_files_travel_byte_for_byte() {
         largest
     );
     assert!(differ.is_empty(), "these came back different: {differ:?}");
+    // Importing is the time from picking the files to every page sealed and accepted by the
+    // relay. Each page once cost 290-700 ms here (debug build): after every write the
+    // connection re-read and re-sealed the whole queue while holding the core, so a long
+    // import got slower page by page. Now the queue is read by its headers, sent entries are
+    // skipped before any sealing work, and a batch goes in under one lock (~170 ms per page
+    // in debug on a shared box, most of it per-message encryption). The budget leaves room
+    // for a busy machine; `ZOEN_IMPORT_BUDGET_MS` overrides it.
+    let per_page = import_ms / expected.len() as u128;
+    let budget: u128 = std::env::var("ZOEN_IMPORT_BUDGET_MS")
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(250);
+    println!("IMPORT: {per_page} ms per page (budget {budget} ms)");
+    assert!(
+        per_page <= budget,
+        "importing took {per_page} ms per page, over the {budget} ms budget"
+    );
     assert_eq!(
         std::fs::read_to_string(out_dir.join("plan.md")).unwrap(),
         PLAN
@@ -352,7 +369,7 @@ async fn pages_and_files_travel_byte_for_byte() {
     let new_blobs = blob_files(&blobs).len() - after_v1;
     println!("FILE: 12 MiB in {pieces} pieces; the new version uploaded {new_blobs} new piece(s)");
     assert!(
-        new_blobs >= 1 && new_blobs <= 2,
+        (1..=2).contains(&new_blobs),
         "only the changed piece(s) went up, not {new_blobs}"
     );
     let got2 = w.dir.join("bruno-video-v2.mp4");

@@ -15,7 +15,7 @@ mod files_api;
 mod media;
 mod pages;
 pub use files::FileDto;
-pub use pages::{PageBlockDto, PageDto, TextSpanDto};
+pub use pages::{MarkdownFileDto, PageBlockDto, PageDto, TextSpanDto};
 mod mls;
 mod net;
 mod profile;

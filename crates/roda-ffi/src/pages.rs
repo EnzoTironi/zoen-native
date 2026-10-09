@@ -46,6 +46,14 @@ pub struct PageBlockDto {
     pub spans: Vec<TextSpanDto>,
 }
 
+/// A Markdown file to import as a page.
+#[derive(Debug, Clone, PartialEq, uniffi::Record)]
+pub struct MarkdownFileDto {
+    /// Where it sits in the Space's files ("notes/trip.md").
+    pub path: String,
+    pub markdown: String,
+}
+
 #[derive(Debug, Clone, PartialEq, uniffi::Record)]
 pub struct PageDto {
     pub item_id: String,

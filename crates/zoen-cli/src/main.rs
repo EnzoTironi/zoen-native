@@ -16,8 +16,8 @@ use std::{
 };
 
 use roda_ffi::{
-    ConnectionDto, CoreListener, Delivery, EntryKind, PhotoChange, PrivacyDto, ProfileDto,
-    RodaEngine, SecretVault, SpaceKindDto,
+    ConnectionDto, CoreListener, Delivery, EntryKind, MarkdownFileDto, PhotoChange, PrivacyDto,
+    ProfileDto, RodaEngine, SecretVault, SpaceKindDto,
 };
 
 struct FileVault {
@@ -825,6 +825,7 @@ async fn main() {
                         usage();
                     }
                     let space = chat(&e, &cli.args[0]);
+                    let mut files = Vec::new();
                     for f in &cli.args[1..] {
                         let bytes = read_file(f);
                         let md = String::from_utf8(bytes)
@@ -841,9 +842,13 @@ async fn main() {
                                 .map(|n| n.to_string_lossy().into_owned())
                                 .unwrap_or_default(),
                         };
-                        let d = e
-                            .page_import_markdown(space.clone(), path.clone(), md)
-                            .unwrap_or_else(|err| die(format!("{f}: {err}")));
+                        files.push(MarkdownFileDto { path, markdown: md });
+                    }
+                    let paths: Vec<String> = files.iter().map(|f| f.path.clone()).collect();
+                    let items = e
+                        .pages_import_markdown(space.clone(), files)
+                        .unwrap_or_else(|err| die(format!("import: {err}")));
+                    for (d, path) in items.iter().zip(&paths) {
                         println!("{}\t{}", d.id, path);
                     }
                     e.wait_until_idle(timeout).await;

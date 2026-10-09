@@ -150,6 +150,7 @@ impl Engine {
         })
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn file_doc(
         &mut self,
         space: &str,

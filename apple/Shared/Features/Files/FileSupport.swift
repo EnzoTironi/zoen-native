@@ -56,9 +56,11 @@ enum FileSupport {
     }
 
     /// Adds files a person picked to a Space: Markdown becomes a page, the rest files.
+    /// All the Markdown goes in at once, so a folder of notes is sealed and sent as a batch.
     @MainActor
     static func importFiles(_ urls: [URL], into spaceId: String, model: AppModel) async -> [String] {
         var ids: [String] = []
+        var pages: [MarkdownFileDto] = []
         for url in urls {
             let scoped = url.startAccessingSecurityScopedResource()
             defer { if scoped { url.stopAccessingSecurityScopedResource() } }
@@ -66,15 +68,16 @@ enum FileSupport {
             let name = url.lastPathComponent
             let ext = url.pathExtension.lowercased()
             if ["md", "markdown"].contains(ext), let md = String(data: data, encoding: .utf8) {
-                if let it = model.perform({ try model.core.pageImportMarkdown(spaceId: spaceId, path: name, markdown: md) }) {
-                    ids.append(it.id)
-                }
+                pages.append(MarkdownFileDto(path: name, markdown: md))
                 continue
             }
             let thumb = await thumbnail(for: url)
             if let it = model.perform({ try model.core.fileAdd(spaceId: spaceId, path: name, name: name, mime: mime(for: url), bytes: data, thumbnail: thumb) }) {
                 ids.append(it.id)
             }
+        }
+        if !pages.isEmpty, let made = model.perform({ try model.core.pagesImportMarkdown(spaceId: spaceId, files: pages) }) {
+            ids.append(contentsOf: made.map(\.id))
         }
         return ids
     }
