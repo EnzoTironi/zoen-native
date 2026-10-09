@@ -109,9 +109,14 @@ storage seams. Each unit ends with the full journey suite green.
    37 KiB per connection (was 160), 0.58 ms of relay CPU per message + 45 µs per delivery,
    about 2,500 appends per FoundationDB core, p50 4–6 ms and p99 8–27 ms up to 2,000 msgs/s on
    one node; 1B users ≈ $470k/month at list prices (ADR 0022).
-9. **S9 owner-side sequencing.** The Space owner serializes appends per Space in memory, keeps
-   membership cached and commits bursts in one transaction: fewer FoundationDB operations per
-   message and no conflict retries in hot Spaces. Proof: the sweep before and after.
+9. **S9 owner-side sequencing. Done.** One in-memory queue and worker per active Space commits
+   batches of up to 64 envelopes in one transaction behind a head-validated cache (members,
+   kind, recent hashes); the head read stays the fence, so two relays on one Space stay correct.
+   Same harness, 406515f vs S9: relay CPU per message −35 to 45%, FoundationDB CPU −25 to 40%;
+   rate-4000 and fanout-128 now pass (were saturated); one hot Space with 16 senders goes from
+   collapse at 441 msgs/s (p50 12.9 s, 0.28 conflict retries per append) to 2,000/s at p50
+   5 ms and a 3,180/s ceiling with zero retries. Units now 0.37 ms per message + 30 µs per
+   delivery, 3,300 appends per FoundationDB core (ADR 0023).
 
 ## Where things stand
 
@@ -130,7 +135,7 @@ storage seams. Each unit ends with the full journey suite green.
 | S7 telemetry | done | `journey_telemetry` (two nodes, cross-node trace, 18 secrets absent from OTLP bytes and debug stdout), real otelcol-contrib run in roda-shots/real-s7, ADR 0021 |
 | S8 load generator | done | `scripts/bench-load.sh sweep` (10 scenarios, exact delivery counts, JSON per scenario in roda-shots/real-s8/final), ADR 0022 |
 | Local k3d cell | healthy with the collector | `scripts/local-cluster.sh up`, `journey`, `telemetry` (relay logs and traces reach the collector before and after it moves pods), roda-shots/local-cluster-s7 |
-| S9 owner-side sequencing | next | |
+| S9 owner-side sequencing | done | `log_store.rs` (7 contracts incl. two relays on one Space, duplicates in one batch), `sequencer::tests`, before/after sweep in roda-shots/real-s9, ADR 0023 |
 | M2, M3, M5, M6, M7 | planned below | |
 
 ## M1. Relay, real accounts, sync

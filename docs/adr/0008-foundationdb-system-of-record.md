@@ -21,6 +21,8 @@ costs a quarter and a risky cutover.
   versionstamp orders the outbox across Spaces.
 - Space ownership in sync becomes affinity (batching, membership cache, outbox forwarding),
   not the ordering authority. Two owners racing cause a conflict and a retry, never a fork.
+  ADR 0023 (S9) builds that affinity: the owner queues a Space's appends in memory and commits
+  them in batches behind a head-validated cache; FDB stays the authority.
 - Postgres stays for accounts, profiles, handles, the catalog, billing, FTS and pgvector.
 - A watch on `outbox_tick/{partition}` (atomic add per append) wakes the outbox forwarder, with
   a 250 ms poll as the fallback, because watches see one key, not new keys under a prefix.
