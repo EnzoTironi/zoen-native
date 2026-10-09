@@ -280,7 +280,7 @@ impl World {
         let deadline = std::time::Instant::now() + Duration::from_secs(30);
         loop {
             let out = self.zoen(who, &["sync"]);
-            if done(&out) {
+            if out.contains("connection=online synced=true") && done(&out) {
                 return out;
             }
             assert!(

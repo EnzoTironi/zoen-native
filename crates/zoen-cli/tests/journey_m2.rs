@@ -473,7 +473,7 @@ async fn admins_adding_at_once_under_a_publish_limit_converge() {
 async fn key_packages_refill_when_they_run_low() {
     // Fifty groups from one terminal in a minute or two: lift the per-IP connect and
     // lookup limits that would otherwise pace Ana, not what this journey is about.
-    let w = World::with_env(
+    let mut w = World::with_env(
         "m2kp",
         &[(
             "ZOEN_LIMITS",
@@ -481,6 +481,7 @@ async fn key_packages_refill_when_they_run_low() {
         )],
     )
     .await;
+    w.set_client_env("ZOEN_NET_DEBUG", "1");
     w.init("ana", "Ana");
     w.init("bruno", "Bruno");
     let bruno = w.id_of("bruno").await;
@@ -512,9 +513,13 @@ async fn key_packages_refill_when_they_run_low() {
     let mut watch = w.spawn_zoen_logged("bruno", &["watch", "--for", "120"], "bruno-watch.log");
     let mut ready = false;
     for _ in 0..300 {
-        ready = std::fs::read_to_string(&log_path)
-            .unwrap()
-            .contains("watching as @bruno");
+        let log = std::fs::read_to_string(&log_path).unwrap();
+        ready = log.contains("watching as @bruno")
+            && log
+                .lines()
+                .rev()
+                .find(|line| line.starts_with("[zoen-net] connection="))
+                .is_some_and(|line| line.contains("connection=online synced=true"));
         if ready || watch.try_wait().expect("watch status").is_some() {
             break;
         }
@@ -545,7 +550,13 @@ async fn key_packages_refill_when_they_run_low() {
         status.is_none(),
         "watcher exited before the refill assertion: {status:?}\n{log}"
     );
-    assert_eq!(stock, 32, "refilled while watching:\n{log}");
+    assert_eq!(
+        stock,
+        32,
+        "refilled while watching:\n{log}\n{}\n{}",
+        w.metrics(),
+        w.relay_log_text()
+    );
 
     // A group made from a refilled package opens like any other, and so do the old ones.
     w.zoen("ana", &["group", "Roda nova", "@bruno"]);
@@ -698,6 +709,7 @@ async fn a_message_queued_offline_survives_many_commits() {
     }
     let space = w.zoen("ana", &["group", "Fila", "@bruno"]);
     let space = space.trim().to_string();
+    w.sync_until("ana", |s| s.contains("pending=0"));
     w.sync_until("bruno", |s| s.contains("pending=0"));
     let (start, _) = keys(&w.zoen("bruno", &["keys", "Fila"]));
 
