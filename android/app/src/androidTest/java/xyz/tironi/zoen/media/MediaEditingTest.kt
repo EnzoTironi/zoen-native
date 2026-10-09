@@ -9,11 +9,13 @@ import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import com.tom_roush.pdfbox.android.PDFBoxResourceLoader
+import com.tom_roush.pdfbox.cos.COSName
 import com.tom_roush.pdfbox.pdmodel.PDDocument
 import com.tom_roush.pdfbox.pdmodel.PDPage
 import com.tom_roush.pdfbox.pdmodel.PDPageContentStream
 import com.tom_roush.pdfbox.pdmodel.common.PDRectangle
 import com.tom_roush.pdfbox.pdmodel.font.PDType1Font
+import com.tom_roush.pdfbox.pdmodel.graphics.image.PDImageXObject
 import com.tom_roush.pdfbox.text.PDFTextStripper
 import java.io.ByteArrayOutputStream
 import java.io.File
@@ -80,7 +82,7 @@ class MediaEditingTest {
             assertTrue(repository.query { it.verifyAll().all { report -> report.valid } })
             // Reopen the on-disk log through a separate FFI object, without using the UI cache.
             val database = File(wrapped.noBackupFilesDir, "core/demo-en.sqlite")
-            repository.query { it.destroy() }
+            repository.close()
             val reopened = RodaEngine.open(database.absolutePath, "en")
             try {
                 val old = reopened.fileBytes(reference.id, 1u)!!
@@ -90,7 +92,34 @@ class MediaEditingTest {
                 assertArrayEquals(old, reopened.fileBytes(reference.id, 1u)); assertArrayEquals(new, reopened.fileBytes(reference.id, null))
                 assertTrue(reopened.verifyAll().all { it.valid })
             } finally { reopened.destroy() }
-        } finally { repository.query { it.destroy() }; dir.deleteRecursively() }
+        } finally { repository.close(); dir.deleteRecursively(); context.deleteSharedPreferences("${dir.name}-zoen") }
+    }
+
+    @Test fun jpeg2000ScanKeepsItsOriginalImageStreamAndRendersAfterInk() = runBlocking {
+        val dir = folder()
+        PDFBoxResourceLoader.init(context)
+        try {
+            val input = File(dir, "scan.pdf")
+            InstrumentationRegistry.getInstrumentation().context.assets.open("jpx-scan.pdf").use { source -> input.outputStream().use(source::copyTo) }
+            fun imageBytes(bytes: ByteArray): ByteArray = PDDocument.load(bytes).use { document ->
+                val image = document.getPage(0).resources.getXObject(COSName.getPDFName("Im0")) as PDImageXObject
+                image.cosObject.createRawInputStream().use { it.readBytes() }
+            }
+            val original = input.readBytes()
+            val edited = DocumentMarkup.pdf(context, input, listOf(InkStroke(0, Color.RED, .03f, listOf(InkPoint(.2f, .5f), InkPoint(.8f, .5f)))))
+            assertArrayEquals(original, input.readBytes())
+            assertArrayEquals(imageBytes(original), imageBytes(edited))
+            val output = File(dir, "ink.pdf").apply { writeBytes(edited) }
+            NativePdf(output).use { pdf ->
+                val page = pdf.render(0, 200)
+                try {
+                    val scan = page.getPixel(100, 30)
+                    assertTrue("JPEG 2000 scan was lost", Color.green(scan) > Color.red(scan) + 60 && Color.green(scan) > Color.blue(scan) + 40)
+                    val ink = page.getPixel(100, 80)
+                    assertTrue("Ink did not render", Color.red(ink) > 180 && Color.green(ink) < 100)
+                } finally { page.recycle() }
+            }
+        } finally { dir.deleteRecursively() }
     }
 
     @Test fun pdfInkPreservesTextEveryPageAndTheOriginalVersionBytes() = runBlocking {
