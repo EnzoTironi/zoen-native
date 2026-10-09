@@ -573,6 +573,74 @@ fn refused(r: Result<Sequencing, zoen_relay::log::Reject>) -> String {
     }
 }
 
+async fn legacy_checkpoint_holds_upgrade_without_expiring_history() {
+    use foundationdb::{
+        tuple::{pack, unpack, Subspace},
+        Database,
+    };
+
+    let cell = roda_types::new_id("t");
+    let warm = store_on(&cell);
+    let ana = Author::root(Signer::generate());
+    let (space, genesis) = create(&warm, &ana).await;
+    let encrypted = landed(
+        warm.append(
+            &sign(&ana, &space, Some(genesis), EventBody::SpaceEncrypted),
+            true,
+        )
+        .await,
+    );
+    let key =
+        Subspace::all()
+            .subspace(&("zoen", &cell))
+            .pack(&("s", &space, "ck", &ana.identity, "*"));
+    let db = Database::new(std::env::var("FDB_CLUSTER_FILE").ok().as_deref()).unwrap();
+    db.run(|trx, _| {
+        let key = key.clone();
+        async move {
+            trx.set(&key, &pack(&(encrypted.seq as i64)));
+            Ok(())
+        }
+    })
+    .await
+    .unwrap();
+    let before = now_ms();
+    let cold = store_on(&cell);
+    let joining = sign(
+        &ana,
+        &space,
+        Some(Seen {
+            seq: encrypted.seq,
+            hash: encrypted.hash.clone(),
+        }),
+        EventBody::DeviceJoining {
+            device: "a".repeat(64),
+        },
+    );
+    assert!(matches!(
+        cold.append(&joining, true).await,
+        Ok(Sequencing::New { .. })
+    ));
+    let migrated = db
+        .run(|trx, _| {
+            let key = key.clone();
+            async move { trx.get(&key, false).await }
+        })
+        .await
+        .unwrap()
+        .unwrap();
+    let (seq, since): (i64, i64) = unpack(&migrated).unwrap();
+    assert_eq!(seq, encrypted.seq as i64);
+    assert!(
+        since >= before && since <= now_ms(),
+        "legacy hold starts its ceiling on upgrade"
+    );
+    let events = read_all(&cold, &space, 100).await;
+    assert_chain(&space, &events);
+    assert_eq!(events[1].env, encrypted.env);
+    cold.drop_cell().await.unwrap();
+}
+
 async fn run<F: Future<Output = ()>>(name: &str, f: F) {
     f.await;
     println!("ok  {name}");
@@ -620,6 +688,11 @@ fn main() {
         run(
             "duplicates in one batch get the one stored copy",
             duplicates_in_one_batch_get_the_one_stored_copy(),
+        )
+        .await;
+        run(
+            "legacy checkpoint holds upgrade without expiring history",
+            legacy_checkpoint_holds_upgrade_without_expiring_history(),
         )
         .await;
     });
