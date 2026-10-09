@@ -11,6 +11,8 @@ use std::sync::{Arc, Mutex, MutexGuard};
 
 mod api;
 mod files;
+mod growth;
+pub use growth::{AcquisitionDto, GrowthSyncDto, OnboardingPlanDto};
 mod files_api;
 mod media;
 mod pages;

@@ -1,0 +1,65 @@
+{
+  "version": 1,
+  "holdout": { "salt": "holdout-2026q4", "percent": 5 },
+  "flags": {
+    "onboarding_friend_v1": {
+      "salt": "onboarding_friend_v1",
+      "rollout": 100,
+      "experiment": true,
+      "guardrails": ["retention_d1", "crash_free", "send_latency"],
+      "variants": [
+        { "key": "control", "weight": 50 },
+        { "key": "direct", "weight": 50 }
+      ]
+    }
+  },
+  "copy": {},
+  "onboarding": {
+    "flows": {
+      "default": {
+        "steps": ["hello", "profile", "areas", "plan", "agents", "notifications", "location", "done"],
+        "landing": "home"
+      },
+      "friend_invite": {
+        "steps": ["hello", "profile", "done"],
+        "landing": "chat_with_inviter",
+        "copy": {
+          "onboarding.hello.title@pt": "@{target} te chamou pro Zoen.",
+          "onboarding.hello.title@en": "@{target} invited you to Zoen.",
+          "onboarding.hello.body@pt": "Escolhe seu nome e a conversa já abre.",
+          "onboarding.hello.body@en": "Pick your name and the chat opens right away.",
+          "onboarding.done.title@pt": "Pronto. Diz oi!",
+          "onboarding.done.title@en": "Done. Say hi!"
+        }
+      },
+      "space_link": {
+        "steps": ["hello", "profile", "done"],
+        "landing": "space",
+        "copy": {
+          "onboarding.hello.title@pt": "Te chamaram pra um Space.",
+          "onboarding.hello.title@en": "You’ve been invited to a Space.",
+          "onboarding.hello.body@pt": "Escolhe seu nome e você entra direto.",
+          "onboarding.hello.body@en": "Pick your name and you’re in."
+        }
+      },
+      "campaign_study": {
+        "steps": ["hello", "profile", "areas", "notifications", "done"],
+        "landing": "home",
+        "copy": {
+          "onboarding.hello.title@pt": "Estude com quem também está estudando.",
+          "onboarding.hello.title@en": "Study with people who are studying too."
+        }
+      }
+    },
+    "rules": [
+      {
+        "source": "friend",
+        "experiment": "onboarding_friend_v1",
+        "arms": { "control": "default", "direct": "friend_invite" }
+      },
+      { "source": "space", "flow": "space_link" },
+      { "campaign": "ads_concurso", "flow": "campaign_study" },
+      { "flow": "default" }
+    ]
+  }
+}

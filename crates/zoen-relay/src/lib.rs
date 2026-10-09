@@ -29,7 +29,7 @@ use axum::{
     extract::{DefaultBodyLimit, State, WebSocketUpgrade},
     http::StatusCode,
     response::IntoResponse,
-    routing::{get, put},
+    routing::{get, post, put},
     serve::ListenerExt,
     Router,
 };
@@ -104,6 +104,9 @@ pub fn router(state: Shared) -> Router {
         )
         .route("/admin", get(analytics::admin::page))
         .route("/admin/metrics", get(analytics::admin::metrics))
+        .route("/admin/config", put(analytics::config::put))
+        .route("/v1/config", get(analytics::config::get))
+        .route("/v1/report", post(analytics::config::report))
         .route("/healthz", get(healthz))
         .route("/readyz", get(readyz))
         .with_state(state)

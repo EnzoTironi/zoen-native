@@ -331,6 +331,10 @@ pub struct Report {
     pub engagement: serde_json::Value,
     pub reliability: serde_json::Value,
     pub series: Vec<serde_json::Value>,
+    /// Funnel and retention by acquisition source and by onboarding arm (ADR 0044).
+    pub acquisition: serde_json::Value,
+    /// Every running experiment, arm by arm, with guardrails (ADR 0044).
+    pub experiments: serde_json::Value,
     pub everyone_headline: serde_json::Value,
     pub not_yet_measured: Vec<&'static str>,
 }
@@ -352,7 +356,11 @@ fn headline(s: &DayStats) -> serde_json::Value {
 }
 
 /// Flushes nothing itself: callers flush first so the numbers include this node's counts.
-pub async fn report(pool: &PgPool, everyone: bool) -> anyhow::Result<Report> {
+pub async fn report(
+    pool: &PgPool,
+    everyone: bool,
+    config: &roda_proto::experiments::RemoteConfig,
+) -> anyhow::Result<Report> {
     rollup(pool).await?;
     let t = today();
     let live = Rolled {
@@ -469,7 +477,17 @@ pub async fn report(pool: &PgPool, everyone: bool) -> anyhow::Result<Report> {
         })
         .collect();
 
+    let (by_source, by_arm) = super::experiments::funnels(pool, config, everyone).await?;
+    let experiments = super::experiments::experiments(pool, config, everyone, &totals).await?;
+    let health_s = c("client_sessions");
+    let health_c = c("client_crashes");
+
     Ok(Report {
+        acquisition: serde_json::json!({
+            "by_source": by_source,
+            "by_onboarding_arm": by_arm,
+        }),
+        experiments,
         generated_for: now.day.clone(),
         population: if everyone {
             "everyone (QA/test accounts included)"
@@ -512,13 +530,12 @@ pub async fn report(pool: &PgPool, everyone: bool) -> anyhow::Result<Report> {
             "time_to_first_sync_ms_p50": percentile(&totals, "first_sync_ms", 0.5),
             "time_to_first_sync_ms_p95": percentile(&totals, "first_sync_ms", 0.95),
             "sends_failed_30d": send_failed,
+            "crash_free_sessions_pct_30d": (health_s > 0).then(|| ((1.0 - health_c as f64 / health_s as f64) * 10000.0).round() / 100.0),
+            "crash_free_note": "opt-in app health reports only",
             "send_failure_pct_30d": pct(Ratio { num: send_failed, den: send_ok + send_failed }),
         }),
         series,
-        not_yet_measured: vec![
-            "crash_free_sessions (needs opt-in client reports, ADR 0043 phase 2)",
-            "client-side send latency (relay-side latency is reported instead)",
-        ],
+        not_yet_measured: vec!["client-side send latency (relay-side latency is reported instead)"],
     })
 }
 
