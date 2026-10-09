@@ -32,7 +32,7 @@ use crate::{db, hub::Mailbox, limits, log::Sequencing, metrics::Metrics, Shared}
 const MAX_KEY_PACKAGE: usize = 4096;
 
 pub const MAX_FRAME: usize = 1024 * 1024;
-const MAX_ENVELOPE: usize = 90 * 1024;
+pub const MAX_ENVELOPE: usize = 90 * 1024;
 const SYNC_PAGE: usize = 500;
 
 struct Session {
@@ -1113,6 +1113,12 @@ impl Session {
         if env.stored_len() > MAX_ENVELOPE {
             Metrics::inc(&self.st.metrics.events_rejected);
             return self.send(reject("too_large", "too large", true)).await;
+        }
+        if !env.valid_invite() {
+            Metrics::inc(&self.st.metrics.events_rejected);
+            return self
+                .send(reject("invalid_invite", "invalid invite code", true))
+                .await;
         }
         if env.author() != self.identity || env.device().is_some_and(|d| d != self.device) {
             Metrics::inc(&self.st.metrics.events_rejected);

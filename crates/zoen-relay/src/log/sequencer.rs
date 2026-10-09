@@ -118,7 +118,7 @@ impl<B: Batcher> Sequencer<B> {
         let Ok(count) = self.count.clone().try_acquire_owned() else {
             return busy();
         };
-        let size = env.stored_len().saturating_add(512);
+        let size = env.retained_len().saturating_add(512);
         let Ok(bytes) = self
             .bytes
             .clone()
@@ -239,10 +239,10 @@ async fn work<B: Batcher>(
 /// `first`, then whatever is already queued, within the batch limits.
 fn take(rx: &mut mpsc::Receiver<Job>, first: Option<Job>) -> Option<Vec<Job>> {
     let mut batch: Vec<Job> = first.into_iter().collect();
-    let mut bytes: usize = batch.iter().map(|j| j.pending.env.stored_len()).sum();
+    let mut bytes: usize = batch.iter().map(|j| j.pending.env.retained_len()).sum();
     while batch.len() < MAX_BATCH && bytes < MAX_BATCH_BYTES {
         let Ok(job) = rx.try_recv() else { break };
-        bytes += job.pending.env.stored_len();
+        bytes += job.pending.env.retained_len();
         batch.push(job);
     }
     (!batch.is_empty()).then_some(batch)
@@ -458,6 +458,53 @@ mod tests {
                 .sum::<usize>(),
             SPACE_QUEUE + 1
         );
+    }
+
+    #[tokio::test]
+    async fn unsigned_invites_consume_bytes_while_batches_and_callers_are_stalled() {
+        use futures_util::FutureExt;
+        let rec = Arc::new(Recorder::default());
+        let author = Author::root(Signer::generate());
+        let mut env = envelope(&author, "one", 0);
+        env.invite = Some("x".repeat(1024 * 1024 - 1024));
+        assert!(env.verify().is_ok(), "invite bytes are unsigned");
+        assert!(env.stored_len() < 1024);
+        assert!(!env.valid_invite());
+        let size = env.retained_len() + 512;
+        let seq = Sequencer {
+            bytes: Arc::new(Semaphore::new(size * 2)),
+            ..Sequencer::new(rec.clone())
+        };
+        for space in ["one", "two"] {
+            let mut queued = envelope(&author, space, 0);
+            queued.invite = env.invite.clone();
+            assert!(seq
+                .append(queued, true, fence(space))
+                .now_or_never()
+                .is_none());
+        }
+        assert_eq!(
+            seq.bytes.available_permits(),
+            0,
+            "abandoned callers cannot release job bytes"
+        );
+        let r = seq
+            .append(env, true, fence("one"))
+            .now_or_never()
+            .unwrap()
+            .0
+            .unwrap_err();
+        assert!(!r.permanent && r.reason.contains("capacity"));
+        assert_eq!(seq.count.available_permits(), MAX_PENDING - 2);
+        rec.gate.add_permits(2);
+        tokio::time::timeout(Duration::from_secs(2), async {
+            while seq.count.available_permits() != MAX_PENDING {
+                tokio::task::yield_now().await;
+            }
+        })
+        .await
+        .unwrap();
+        assert_eq!(seq.bytes.available_permits(), size * 2);
     }
 
     #[tokio::test]

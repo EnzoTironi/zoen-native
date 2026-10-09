@@ -151,6 +151,30 @@ impl Store {
         Ok(())
     }
 
+    /// A refused creation cannot have any confirmed descendants. Fail its
+    /// entire queued Space atomically, including transport-only invite metadata.
+    pub fn outbox_refuse_space(&self, space: &str, error: &str) -> Result<()> {
+        self.conn.execute_batch("SAVEPOINT refuse_space")?;
+        let result = (|| -> Result<()> {
+            self.conn.execute(
+                "UPDATE outbox SET attempts = attempts + 1, last_error = ?2, failed = 1 WHERE space = ?1 AND NOT failed",
+                params![space, error],
+            )?;
+            self.conn.execute(
+                "DELETE FROM meta WHERE key IN (SELECT 'invite:' || client_id FROM outbox WHERE space = ?1)",
+                [space],
+            )?;
+            self.conn.execute_batch("RELEASE refuse_space")?;
+            Ok(())
+        })();
+        if result.is_err() {
+            let _ = self
+                .conn
+                .execute_batch("ROLLBACK TO refuse_space; RELEASE refuse_space");
+        }
+        result
+    }
+
     pub fn outbox_len(&self) -> Result<u64> {
         Ok(self
             .conn

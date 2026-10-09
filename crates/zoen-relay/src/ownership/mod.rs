@@ -1,11 +1,12 @@
 //! Persisted cell ownership, checked inside the log transaction (ADR 0018).
 
 pub mod forward;
+pub mod registry;
 
 use foundationdb::{
-    options::{StreamingMode, TransactionOption},
+    options::TransactionOption,
     tuple::{pack, unpack, Subspace},
-    Database, FdbBindingError, RangeOption, Transaction,
+    Database, FdbBindingError, Transaction,
 };
 use futures_util::future::try_join_all;
 use serde::{Deserialize, Serialize};
@@ -78,7 +79,7 @@ pub struct Lease {
 /// FDB versions normally advance at 1,000,000/s. This is a liveness setting,
 /// not a wall-clock promise. Database recovery can advance versions faster.
 pub const VERSIONS_PER_MS: i64 = 1_000;
-const MAX_NODES: usize = 4096;
+pub const MAX_NODES: usize = 4096;
 pub const STORE_TIMEOUT_MS: i32 = 2_000;
 
 pub fn bound_transaction(trx: &Transaction) -> Result<(), FdbBindingError> {
@@ -169,88 +170,64 @@ impl NodeOwner {
     }
 
     async fn maintain_in_store(&self) -> anyhow::Result<()> {
-        let (version, renewals, claims) = self
-            .db
-            .run(|trx, _| async move {
-                bound_transaction(&trx)?;
-                let version = trx.get_read_version().await?;
-                let until = version
-                    .checked_add(self.ttl_versions)
-                    .ok_or_else(|| corrupt("lease expiry overflow"))?;
-                let nodes = self.root.subspace(&("ownership", "nodes"));
-                trx.set(&nodes.pack(&self.node), &pack(&until));
-                let mut opt = RangeOption::from(nodes.range());
-                opt.limit = Some(MAX_NODES);
-                opt.mode = StreamingMode::WantAll;
-                let mut entries = Vec::new();
-                let mut iteration = 1;
-                loop {
-                    opt.limit = Some(MAX_NODES + 1 - entries.len());
-                    let page = trx.get_range(&opt, iteration, true).await?;
-                    let more = page.more();
-                    for entry in page.iter() {
-                        entries.push((entry.key().to_vec(), entry.value().to_vec()));
-                    }
-                    if entries.len() > MAX_NODES {
-                        return Err(corrupt("ownership registry limit reached"));
-                    }
-                    if !more {
-                        break;
-                    }
-                    let last = entries
-                        .last()
-                        .ok_or_else(|| corrupt("empty ownership registry page"))?;
-                    opt.begin = foundationdb::KeySelector::first_greater_than(last.0.clone());
-                    iteration += 1;
-                }
-                let mut live = Vec::new();
-                for (key, value) in &entries {
-                    let who: String = nodes.unpack(key).map_err(|e| corrupt(e.to_string()))?;
-                    let expiry: i64 = unpack(value).map_err(|e| corrupt(e.to_string()))?;
-                    if expiry > version {
-                        live.push(who);
-                    } else {
-                        // Protect cleanup against a heartbeat after this transaction's read version.
-                        trx.get(key, false).await?;
-                        trx.clear(key);
-                    }
-                }
-                let partitions = owned_partitions(&self.node, &live);
-                let leases =
-                    try_join_all(partitions.iter().map(|&p| lease_in(&trx, &self.root, p))).await?;
-                let mut renewals = 0usize;
-                let mut claims = 0usize;
-                for (p, old) in partitions.into_iter().zip(leases) {
-                    let token = match old.as_ref() {
-                        Some(l) if l.expires_version > version && l.fence.owner != self.node => {
-                            continue
-                        }
-                        Some(l) if l.expires_version > version => l.fence.token,
-                        Some(l) => l
-                            .fence
-                            .token
-                            .checked_add(1)
-                            .ok_or_else(|| corrupt("fencing token overflow"))?,
-                        None => 1,
+        // Commit cleanup independently of admission. One retry handles an expired
+        // overflow page; larger legacy registries continue their sweep next time.
+        for _ in 0..2 {
+            let result = self
+                .db
+                .run(|trx, _| async move {
+                    bound_transaction(&trx)?;
+                    let version = trx.get_read_version().await?;
+                    let until = version
+                        .checked_add(self.ttl_versions)
+                        .ok_or_else(|| corrupt("lease expiry overflow"))?;
+                    let Some(live) =
+                        registry::register_in(&trx, &self.root, &self.node, version, until).await?
+                    else {
+                        return Ok(None);
                     };
-                    if old
-                        .as_ref()
-                        .is_some_and(|l| l.expires_version > version && l.fence.owner == self.node)
-                    {
-                        renewals += 1;
-                    } else {
-                        claims += 1;
+                    let partitions = owned_partitions(&self.node, &live);
+                    let leases =
+                        try_join_all(partitions.iter().map(|&p| lease_in(&trx, &self.root, p)))
+                            .await?;
+                    let mut renewals = 0usize;
+                    let mut claims = 0usize;
+                    for (p, old) in partitions.into_iter().zip(leases) {
+                        let token = match old.as_ref() {
+                            Some(l)
+                                if l.expires_version > version && l.fence.owner != self.node =>
+                            {
+                                continue
+                            }
+                            Some(l) if l.expires_version > version => l.fence.token,
+                            Some(l) => l
+                                .fence
+                                .token
+                                .checked_add(1)
+                                .ok_or_else(|| corrupt("fencing token overflow"))?,
+                            None => 1,
+                        };
+                        if old.as_ref().is_some_and(|l| {
+                            l.expires_version > version && l.fence.owner == self.node
+                        }) {
+                            renewals += 1;
+                        } else {
+                            claims += 1;
+                        }
+                        trx.set(
+                            &lease_key(&self.root, p),
+                            &pack(&(self.node.as_str(), token, until)),
+                        );
                     }
-                    trx.set(
-                        &lease_key(&self.root, p),
-                        &pack(&(self.node.as_str(), token, until)),
-                    );
-                }
-                Ok((version, renewals, claims))
-            })
-            .await?;
-        tracing::debug!(node = %self.node, version, renewals, claims, "ownership maintenance committed");
-        Ok(())
+                    Ok(Some((version, renewals, claims)))
+                })
+                .await?;
+            if let Some((version, renewals, claims)) = result {
+                tracing::debug!(node = %self.node, version, renewals, claims, "ownership maintenance committed");
+                return Ok(());
+            }
+        }
+        anyhow::bail!("ownership registry limit reached; bounded cleanup committed")
     }
 
     async fn maintain_if_due(

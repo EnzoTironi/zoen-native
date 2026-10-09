@@ -1392,6 +1392,129 @@ fn unconfirmed_genesis_holds_its_descendants_across_retry_and_relaunch() {
     std::fs::remove_dir_all(dir).unwrap();
 }
 
+#[test]
+fn permanently_rejected_genesis_fails_descendants_atomically_across_relaunch() {
+    let dir =
+        std::env::temp_dir().join(format!("zoen-genesis-refusal-{}", roda_types::new_id("t")));
+    std::fs::create_dir_all(&dir).unwrap();
+    let path = dir.join("core.sqlite").to_string_lossy().to_string();
+    let vault: Arc<dyn SecretVault> = Arc::new(MemVault::default());
+    let (bad, good) = {
+        let e = RodaEngine::open(path.clone(), "en".into()).unwrap();
+        e.create_account(
+            "Ana".into(),
+            "ana".into(),
+            "http://127.0.0.1:9".into(),
+            vault.clone(),
+        )
+        .unwrap();
+        let good = e
+            .create_group_with("Keep queued".into(), vec![], PrivacyDto::Closed)
+            .unwrap();
+        e.send_message(good.clone(), "unrelated".into()).unwrap();
+        let bad = e
+            .create_group_with("x".repeat(100 * 1024), vec![], PrivacyDto::Closed)
+            .unwrap();
+        for text in ["first descendant", "second descendant"] {
+            e.send_message(bad.clone(), text.into()).unwrap();
+        }
+        let genesis = e
+            .lock()
+            .outbox_envelopes()
+            .into_iter()
+            .find(|env| env.space() == bad)
+            .unwrap();
+        assert!(
+            genesis.stored_len() > 90 * 1024,
+            "this creation is permanently too large for the relay"
+        );
+        let child = e
+            .lock()
+            .store
+            .outbox()
+            .unwrap()
+            .into_iter()
+            .find(|p| p.event.space == bad && p.event.seen.is_some())
+            .unwrap()
+            .event
+            .client_id;
+        let invite_key = format!("invite:{child}");
+        {
+            let engine = e.lock();
+            engine.store.set_meta(&invite_key, "0123456789").unwrap();
+            engine.store.conn().execute_batch("CREATE TEMP TRIGGER refuse_meta_delete BEFORE DELETE ON meta WHEN OLD.key LIKE 'invite:%' BEGIN SELECT RAISE(ABORT, 'injected write failure'); END;").unwrap();
+        }
+        assert!(!e
+            .lock()
+            .reject(genesis.client_id(), "too large", true, None));
+        {
+            let engine = e.lock();
+            assert!(engine.store.conn().is_autocommit());
+            assert!(engine
+                .store
+                .outbox()
+                .unwrap()
+                .iter()
+                .filter(|p| p.event.space == bad)
+                .all(|p| !p.failed));
+            assert_eq!(
+                engine.store.meta(&invite_key).unwrap().as_deref(),
+                Some("0123456789")
+            );
+            engine
+                .store
+                .conn()
+                .execute_batch("DROP TRIGGER refuse_meta_delete")
+                .unwrap();
+        }
+        assert!(e
+            .lock()
+            .reject(genesis.client_id(), "too large", true, None));
+        {
+            let engine = e.lock();
+            let queued = engine.store.outbox().unwrap();
+            let refused: Vec<_> = queued.iter().filter(|p| p.event.space == bad).collect();
+            assert_eq!(refused.len(), 3);
+            assert!(refused
+                .iter()
+                .all(|p| p.failed && p.last_error.as_deref() == Some("too large")));
+            assert!(queued
+                .iter()
+                .filter(|p| p.event.space == good)
+                .all(|p| !p.failed));
+            assert!(engine.store.meta(&invite_key).unwrap().is_none());
+            assert!(!engine.net.pending.values().any(|space| space == &bad));
+            assert!(!engine
+                .outbox_envelopes()
+                .iter()
+                .any(|env| env.space() == bad));
+        }
+        (bad, good)
+    };
+    let e = RodaEngine::open(path, "en".into()).unwrap();
+    e.unlock(vault).unwrap();
+    let engine = e.lock();
+    assert!(engine
+        .store
+        .outbox()
+        .unwrap()
+        .iter()
+        .filter(|p| p.event.space == bad)
+        .all(|p| p.failed));
+    assert!(!engine.net.pending.values().any(|space| space == &bad));
+    assert!(!engine
+        .outbox_envelopes()
+        .iter()
+        .any(|env| env.space() == bad));
+    assert!(engine
+        .outbox_envelopes()
+        .iter()
+        .any(|env| env.space() == good));
+    drop(engine);
+    drop(e);
+    std::fs::remove_dir_all(dir).unwrap();
+}
+
 /// A relay that hides one message and rehashes the chain around the gap shows this device
 /// a valid-looking chain, but the next author's causal link names the hidden event, so the
 /// device refuses the forged history instead of showing it.

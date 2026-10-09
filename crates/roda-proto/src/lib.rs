@@ -88,6 +88,12 @@ impl Envelope {
         cert: Option<String>,
         invite: Option<String>,
     ) -> Option<Self> {
+        if invite
+            .as_deref()
+            .is_some_and(|code| !valid_invite_code(code))
+        {
+            return None;
+        }
         let parsed = SignedContent::parse(&content)?;
         parsed.payload.as_ref()?;
         Some(Self {
@@ -270,6 +276,25 @@ impl Envelope {
     pub fn stored_len(&self) -> usize {
         self.content.len() + self.sig.len() + self.cert.as_ref().map_or(0, String::len)
     }
+
+    /// Payload retained while routing/queuing, including the unsigned invite.
+    pub fn retained_len(&self) -> usize {
+        self.stored_len()
+            .saturating_add(self.invite.as_ref().map_or(0, String::len))
+    }
+
+    pub fn valid_invite(&self) -> bool {
+        self.invite.as_deref().is_none_or(valid_invite_code)
+    }
+}
+
+/// Relay capabilities contain ten Crockford-base32 characters. Existing clients
+/// can send lowercase; surrounding formatting is normalized before publishing.
+pub fn valid_invite_code(code: &str) -> bool {
+    code.len() == 10
+        && code
+            .bytes()
+            .all(|c| b"0123456789ABCDEFGHJKMNPQRSTVWXYZ".contains(&c.to_ascii_uppercase()))
 }
 
 /// An envelope after the relay put it in the Space's order.
@@ -827,6 +852,29 @@ mod tests {
         .unwrap();
         event.sealed_wire = Some(original_hash);
         assert!(verify_author(&event).is_err());
+    }
+
+    #[test]
+    fn unsigned_invite_is_bounded_before_wire_admission() {
+        let mut env = fixture("genesis").env;
+        let signed_size = env.stored_len();
+        for code in ["0123456789", "abcdefghjk"] {
+            env.invite = Some(code.into());
+            assert!(env.valid_invite());
+            let wire = ClientFrame::Publish { env: env.clone() }.encode();
+            assert!(ClientFrame::decode(&wire).is_ok());
+            assert_eq!(env.retained_len(), signed_size + 10);
+        }
+        env.invite = Some("x".repeat(1024 * 1024 - 1024));
+        assert!(
+            env.verify().is_ok(),
+            "the signature doesn't cover the invite"
+        );
+        let wire = ClientFrame::Publish { env: env.clone() }.encode();
+        assert!(wire.len() < 1024 * 1024, "the attack fits a session frame");
+        assert!(!env.valid_invite());
+        assert!(ClientFrame::decode(&wire).is_err());
+        assert_eq!(env.retained_len(), signed_size + 1024 * 1024 - 1024);
     }
 
     #[test]

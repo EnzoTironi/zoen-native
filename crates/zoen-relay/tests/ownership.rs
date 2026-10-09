@@ -1,6 +1,11 @@
 //! Real relay processes, sockets, Postgres, FoundationDB and NATS. Run with the
 //! same service environment as log_store. This is correctness evidence, not load proof.
 
+#[path = "ownership/forwarding.rs"]
+mod forwarding;
+#[path = "ownership/registry.rs"]
+mod registry;
+
 use foundationdb::{
     tuple::{pack, Subspace},
     Database,
@@ -178,7 +183,7 @@ impl Device {
                 id: d.author.identity.clone(),
                 kind: IdentityKind::Person,
                 name: "Ownership journey".into(),
-                handle: "ownership".into(),
+                handle: format!("own{}", &d.author.identity[..8]),
                 tint_hex: "#123456".into(),
                 glyph: None,
                 owner: None,
@@ -405,6 +410,9 @@ async fn journey() {
     println!("ok  forwarded writes preserve MLS admission");
 
     let pool = PgPool::connect(&url).await.unwrap();
+    let target =
+        forwarding::audience(&db, &root, &mut device_b, b.port, &author, &alpha, &live).await;
+    forwarding::deadlines(&url, &author, &target).await;
     let stale = Arc::new(
         FdbLog::open_as(Some(&cluster), &db_name, &alpha, Duration::from_secs(1)).unwrap(),
     );
@@ -726,6 +734,7 @@ fn main() {
     tokio::runtime::Runtime::new().unwrap().block_on(async {
         journey().await;
         transaction_conflict().await;
+        registry::run().await;
     });
     drop(network);
 }

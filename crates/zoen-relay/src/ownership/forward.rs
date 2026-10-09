@@ -19,7 +19,10 @@ pub const MAX_REQUESTS: usize = 64;
 pub const MAX_BYTES: usize = 32 * 1024 * 1024;
 pub const SUBSCRIPTION_CAPACITY: usize = 32;
 pub const RPC_TIMEOUT: Duration = Duration::from_secs(2);
-const MAX_METADATA: usize = 256 * 1024;
+pub const RECEIVER_TIMEOUT: Duration = Duration::from_secs(6);
+// 64 hex characters plus JSON quotes/comma for each member and at most one
+// removed identity, plus the joined identity and fixed framing.
+const MAX_METADATA: usize = (crate::log::admission::MAX_MEMBERS as usize + 1) * 67 + 256;
 
 pub struct Forwarder {
     client: Client,
@@ -97,6 +100,10 @@ impl Forwarder {
     pub fn connected(&self) -> bool {
         self.client.connection_state() == async_nats::connection::State::Connected
     }
+    /// Available incoming/outgoing slots, for capacity monitoring.
+    pub fn available_requests(&self) -> usize {
+        self.count.available_permits()
+    }
     pub async fn connect(
         log: &Arc<FdbLog>,
         url: &str,
@@ -109,6 +116,10 @@ impl Forwarder {
             .request_timeout(Some(RPC_TIMEOUT))
             .connect(url)
             .await?;
+        anyhow::ensure!(
+            client.server_info().max_payload >= MAX_METADATA + crate::session::MAX_ENVELOPE + 1024,
+            "NATS max_payload is too small for the supported owner response"
+        );
         let prefix = subject_prefix(cell);
         let mut sub = client.subscribe(subject(&prefix, &log.owner.node)).await?;
         client.flush().await?;
@@ -143,56 +154,69 @@ impl Forwarder {
                 };
                 let Some(log) = weak.upgrade() else { break };
                 let (sender, pool) = (sender.clone(), pool.clone());
+                let deadline = tokio::time::Instant::now() + RECEIVER_TIMEOUT;
                 tokio::spawn(async move {
-                    let fence = msg
-                        .headers
-                        .as_ref()
-                        .and_then(|h| h.get(FENCE_HEADER))
-                        .and_then(|h| serde_json::from_str::<Request>(h.as_str()).ok());
-                    let response = if size > crate::session::MAX_FRAME + 1024 {
-                        encode(Err(Reject::no("invalid owner forwarding request")))
-                    } else if let Some(Request {
-                        fence,
-                        invite: Some(invite),
-                    }) = fence
-                    {
-                        let result = log
-                            .create_invite_fenced(
-                                &invite.who,
-                                &invite.space,
-                                invite.role,
-                                invite.max_uses,
-                                invite.ttl_secs,
-                                &invite.code,
-                                fence,
-                            )
-                            .await;
-                        let meta = match result {
-                            Ok(inv) => Answer::Invite {
-                                code: inv.code,
-                                expires_at_ms: inv.expires_at_ms,
-                            },
-                            Err(reason) => Answer::Rejected {
-                                reason,
-                                permanent: false,
-                            },
-                        };
-                        encode_parts(meta, None)
-                    } else {
-                        let result = match (fence, ClientFrame::decode(&msg.payload)) {
-                            (
-                                Some(Request {
+                    let response = tokio::time::timeout_at(deadline, async {
+                        let fence = msg
+                            .headers
+                            .as_ref()
+                            .and_then(|h| h.get(FENCE_HEADER))
+                            .and_then(|h| serde_json::from_str::<Request>(h.as_str()).ok());
+                        if size > crate::session::MAX_FRAME + 1024 {
+                            encode(Err(Reject::no("invalid owner forwarding request")))
+                        } else if let Some(Request {
+                            fence,
+                            invite: Some(invite),
+                        }) = fence
+                        {
+                            let result = log
+                                .create_invite_fenced(
+                                    &invite.who,
+                                    &invite.space,
+                                    invite.role,
+                                    invite.max_uses,
+                                    invite.ttl_secs,
+                                    &invite.code,
                                     fence,
-                                    invite: None,
-                                }),
-                                Ok(ClientFrame::Publish { env }),
-                            ) => admit(&log, &pool, env, fence).await,
-                            _ => Err(Reject::no("invalid owner forwarding request")),
-                        };
-                        encode(result)
-                    };
+                                )
+                                .await;
+                            let meta = match result {
+                                Ok(inv) => Answer::Invite {
+                                    code: inv.code,
+                                    expires_at_ms: inv.expires_at_ms,
+                                },
+                                Err(reason) => Answer::Rejected {
+                                    reason,
+                                    permanent: false,
+                                },
+                            };
+                            encode_parts(meta, None)
+                        } else {
+                            let result = match (fence, ClientFrame::decode(&msg.payload)) {
+                                (
+                                    Some(Request {
+                                        fence,
+                                        invite: None,
+                                    }),
+                                    Ok(ClientFrame::Publish { env }),
+                                ) => admit(&log, &pool, env, fence).await,
+                                _ => Err(Reject::no("invalid owner forwarding request")),
+                            };
+                            encode(result)
+                        }
+                    })
+                    .await
+                    .unwrap_or_else(|_| {
+                        encode(Err(Reject::retry(
+                            "owner forwarding deadline exceeded; outcome may be unknown",
+                        )))
+                    });
+                    // The same deadline covers the reply. A caller that sees no
+                    // answer retries its CID; queued jobs retain their own permits.
+                    let reply_deadline = deadline.min(tokio::time::Instant::now() + RPC_TIMEOUT);
                     let _ =
-                        tokio::time::timeout(RPC_TIMEOUT, sender.publish(reply, response)).await;
+                        tokio::time::timeout_at(reply_deadline, sender.publish(reply, response))
+                            .await;
                     drop(permits);
                 });
             }
@@ -275,6 +299,9 @@ impl Forwarder {
     }
 
     pub async fn append(&self, env: &Envelope, fence: &Fence) -> Result<Sequencing, Reject> {
+        if !env.valid_invite() {
+            return Err(Reject::no("invalid invite code"));
+        }
         let _count = self
             .count
             .clone()
@@ -318,24 +345,41 @@ async fn admit(
     env: Envelope,
     fence: Fence,
 ) -> Result<Sequencing, Reject> {
+    if env.stored_len() > crate::session::MAX_ENVELOPE {
+        return Err(Reject::no("too large"));
+    }
+    if !env.valid_invite() {
+        return Err(Reject::no("invalid invite code"));
+    }
     if env.verify().is_err() {
         return Err(Reject::no("invalid forwarded signature"));
     }
     // The cell bus is private, but a forwarded device is still checked at the owner.
-    if let Some(device) = env.device() {
-        let auth = crate::db::authorize_device(pool, env.author(), device, true)
+    let known = if let Some(device) = env.device() {
+        let mut auth = crate::db::authorize_device(pool, env.author(), device, true)
             .await
             .map_err(|_| Reject::unavailable())?
             .ok_or_else(|| Reject::no("forwarded device is not authorized"))?;
+        let known = match env.body() {
+            Some(EventBody::MemberAdded { identity, .. }) => {
+                // Keep this lookup in the authorization transaction. PostgreSQL
+                // terminates it even if a timed-out receiver drops its future.
+                sqlx::query("SELECT set_config('lock_timeout', '1s', true), set_config('statement_timeout', '1s', true)")
+                    .execute(&mut *auth).await.map_err(|_| Reject::unavailable())?;
+                sqlx::query_scalar::<_, bool>(
+                    "SELECT EXISTS(SELECT 1 FROM identities WHERE id = $1)",
+                )
+                .bind(identity)
+                .fetch_one(&mut *auth)
+                .await
+                .map_err(|_| Reject::unavailable())?
+            }
+            _ => true,
+        };
         auth.commit().await.map_err(|_| Reject::unavailable())?;
+        known
     } else {
         return Err(Reject::no("forwarded publish requires an enrolled device"));
-    }
-    let known = match env.body() {
-        Some(EventBody::MemberAdded { identity, .. }) => crate::db::is_registered(pool, &identity)
-            .await
-            .map_err(|_| Reject::unavailable())?,
-        _ => true,
     };
     log.append_fenced(&env, known, fence).await
 }
@@ -382,6 +426,18 @@ fn decode_parts(bytes: &[u8]) -> Result<(Answer, &[u8]), Reject> {
     }
     let meta = bytes.get(4..4 + size).ok_or_else(Reject::unavailable)?;
     let meta: Answer = serde_json::from_slice(meta).map_err(|_| Reject::unavailable())?;
+    if let Answer::New { audience, joined } = &meta {
+        if audience.len() > crate::log::admission::MAX_MEMBERS as usize + 1
+            || audience
+                .iter()
+                .any(|who| !crate::log::admission::identity_key(who))
+            || joined
+                .as_deref()
+                .is_some_and(|who| !crate::log::admission::identity_key(who))
+        {
+            return Err(Reject::unavailable());
+        }
+    }
     Ok((meta, &bytes[4 + size..]))
 }
 
@@ -400,5 +456,56 @@ fn decode(bytes: &[u8]) -> Result<Sequencing, Reject> {
         Answer::Duplicate => Ok(Sequencing::Duplicate { ev }),
         Answer::Invite { .. } => Err(Reject::unavailable()),
         Answer::Rejected { .. } => unreachable!(),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use roda_log::{Author, Signer};
+
+    #[test]
+    fn new_response_retains_audience_and_joined_at_supported_membership_sizes() {
+        let author = Author::root(Signer::generate());
+        let env = Envelope::plain(&author.sign_event(
+            "space",
+            "cid",
+            0,
+            None,
+            EventBody::SpaceCreated {
+                title: "Group".into(),
+                kind: roda_types::SpaceKind::Group,
+                privacy: roda_types::Privacy::Closed,
+            },
+        ));
+        for size in [
+            4_000,
+            crate::log::admission::MAX_MEMBERS as usize,
+            crate::log::admission::MAX_MEMBERS as usize + 1,
+        ] {
+            let audience: Vec<String> = (0..size).map(|i| format!("{i:064x}")).collect();
+            let joined = Some("f".repeat(64));
+            let bytes = encode(Ok(Sequencing::New {
+                ev: Sequenced {
+                    env: env.clone(),
+                    seq: 0,
+                    prev: roda_types::GENESIS_PREV.into(),
+                    hash: "h".into(),
+                },
+                audience: audience.clone(),
+                joined: joined.clone(),
+            }));
+            assert!(bytes.len() < crate::session::MAX_FRAME);
+            let Sequencing::New {
+                audience: decoded,
+                joined: decoded_joined,
+                ..
+            } = decode(&bytes).unwrap()
+            else {
+                panic!("new became a duplicate")
+            };
+            assert_eq!(decoded, audience);
+            assert_eq!(decoded_joined, joined);
+        }
     }
 }

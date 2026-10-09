@@ -362,7 +362,21 @@ impl Engine {
         }
         let permanent =
             permanent && reason != roda_proto::SEAL_REQUIRED && reason != roda_proto::STALE_SEAL;
-        let _ = self.store.outbox_note(client_id, reason, permanent);
+        let rejected_creation = if permanent {
+            self.store.outbox_get(client_id).ok().flatten().filter(|e| {
+                matches!(e.body, EventBody::SpaceCreated { .. }) && self.next_seq(&e.space) == 0
+            })
+        } else {
+            None
+        };
+        let noted = if let Some(creation) = rejected_creation {
+            self.store.outbox_refuse_space(&creation.space, reason)
+        } else {
+            self.store.outbox_note(client_id, reason, permanent)
+        };
+        if noted.is_err() {
+            return false;
+        }
         if !permanent {
             return false;
         }

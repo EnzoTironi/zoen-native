@@ -276,6 +276,9 @@ impl FdbLog {
         target_known: bool,
         fence: Fence,
     ) -> Result<Sequencing, Reject> {
+        if !env.valid_invite() {
+            return Err(Reject::no("invalid invite code"));
+        }
         if fence.owner != self.owner.node || fence.partition != ownership::partition_of(env.space())
         {
             return Err(Reject::retry("stale partition owner"));
@@ -318,6 +321,9 @@ impl FdbLog {
                         || !ownership::accepts(lease.as_ref(), fence, space, version)
                     {
                         return Ok(Err("stale partition owner"));
+                    }
+                    if !roda_proto::valid_invite_code(code) {
+                        return Ok(Err("invalid invite code"));
                     }
                     let mine = self.cell.role_in(&trx, space, who).await?;
                     if !matches!(mine, Some(Role::Owner | Role::Admin)) {
@@ -612,6 +618,10 @@ impl Cell {
         // Where each new entry of this batch sits in `results`, by dedupe key.
         let mut fresh: HashMap<&[u8], usize> = HashMap::new();
         let mut results = Vec::with_capacity(batch.len());
+        let unsupported_members = state
+            .members
+            .keys()
+            .any(|who| !super::admission::identity_key(who));
         for (i, p) in batch.iter().enumerate() {
             if !valid[i] {
                 results.push(Err(Reject::retry("stale partition owner")));
@@ -636,6 +646,12 @@ impl Cell {
                 continue;
             }
 
+            if unsupported_members {
+                results.push(Err(Reject::no(
+                    "stored membership contains an unsupported identity",
+                )));
+                continue;
+            }
             let invite_key = invite_keys[i].as_deref();
             let invite = invite_key
                 .and_then(|k| invites.get(k))
@@ -959,6 +975,9 @@ impl LogStore for FdbLog {
         fields(batch = tracing::field::Empty, attempts = tracing::field::Empty)
     )]
     async fn append(&self, env: &Envelope, target_known: bool) -> Result<Sequencing, Reject> {
+        if !env.valid_invite() {
+            return Err(Reject::no("invalid invite code"));
+        }
         if !self.forwarding_available() {
             return Err(Reject::retry("cell forwarding unavailable"));
         }
@@ -971,7 +990,9 @@ impl LogStore for FdbLog {
             .routing_bytes
             .clone()
             .try_acquire_many_owned(
-                env.stored_len().saturating_add(1024).min(u32::MAX as usize) as u32
+                env.retained_len()
+                    .saturating_add(1024)
+                    .min(u32::MAX as usize) as u32,
             )
             .map_err(|_| Reject::retry("relay routing capacity reached"))?;
         tokio::time::timeout(std::time::Duration::from_secs(6), async {
