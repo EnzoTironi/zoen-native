@@ -129,6 +129,8 @@ impl Net {
                 listener,
                 status: status_tx,
                 lang,
+                #[cfg(test)]
+                maintenance_work: None,
             },
             cmd_rx,
         ));
@@ -192,6 +194,8 @@ struct Ctx {
     listener: Option<Arc<dyn CoreListener>>,
     status: watch::Sender<NetStatus>,
     lang: crate::i18n::Lang,
+    #[cfg(test)]
+    maintenance_work: Option<Arc<dyn Fn() + Send + Sync>>,
 }
 
 impl Ctx {
@@ -365,6 +369,7 @@ fn settle(slot: &mut Option<tokio::time::Instant>, ok: bool) {
 }
 
 const PROFILE_TIMEOUT: Duration = Duration::from_secs(30);
+const MAINTENANCE_PERIOD: Duration = Duration::from_millis(50);
 
 async fn session(
     ctx: &Ctx,
@@ -484,7 +489,8 @@ async fn session(
     let mut waiting: HashMap<u64, Waiting> = HashMap::new();
     let mut next_id: u64 = 1;
     let mut dirty: HashSet<String> = HashSet::new();
-    let mut tick = tokio::time::interval(Duration::from_millis(50));
+    let tick = tokio::time::sleep(Duration::ZERO);
+    tokio::pin!(tick);
     let mut ping = tokio::time::interval(Duration::from_secs(25));
     let mut last_rx = tokio::time::Instant::now();
     let mut profiles_inflight: Option<tokio::time::Instant> = None;
@@ -681,7 +687,9 @@ async fn session(
                     if let Err(e) = send(&mut sink, &ClientFrame::Ephemeral { space, kind }).await { break Exit::Retry(e) }
                 }
             },
-            _ = tick.tick() => {
+            _ = &mut tick => {
+                #[cfg(test)]
+                if let Some(work) = &ctx.maintenance_work { work(); }
                 if profiles_inflight.is_none() {
                     let unknown = ctx.engine().take_unknown();
                     if !unknown.is_empty() {
@@ -774,6 +782,9 @@ async fn session(
                     if let Some(l) = &ctx.listener { l.on_change(spaces); }
                     ctx.notify_connection();
                 }
+                // A slow pass must leave time to drive the socket, rather than build a
+                // burst of overdue scans over the same pending work.
+                tick.as_mut().reset(tokio::time::Instant::now() + MAINTENANCE_PERIOD);
             }
             _ = ping.tick() => {
                 if last_rx.elapsed() > Duration::from_secs(60) { break Exit::Retry("relay went quiet".into()) }
@@ -1027,5 +1038,196 @@ pub async fn fetch_link_box(
             return Err("nobody linked this device in time".into());
         }
         tokio::time::sleep(Duration::from_millis(700)).await;
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::sync::{
+        atomic::{AtomicUsize, Ordering},
+        mpsc as channel,
+    };
+    use tokio_tungstenite::WebSocketStream;
+
+    type RelaySocket = WebSocketStream<tokio::net::TcpStream>;
+
+    async fn request(socket: &mut RelaySocket) -> ClientFrame {
+        loop {
+            let message = tokio::time::timeout(Duration::from_secs(5), socket.next())
+                .await
+                .expect("client stalled")
+                .expect("client closed")
+                .expect("client socket");
+            if let Message::Binary(bytes) = message {
+                return ClientFrame::decode(&bytes).expect("client frame");
+            }
+        }
+    }
+
+    async fn reply(socket: &mut RelaySocket, frame: ServerFrame) {
+        socket
+            .send(Message::Binary(frame.encode().into()))
+            .await
+            .unwrap();
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn a_control_notice_is_dispatched_between_slow_maintenance_passes() {
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        listener.set_nonblocking(true).unwrap();
+        let url = format!("ws://{}", listener.local_addr().unwrap());
+        let mut engine = Engine::open(":memory:").unwrap();
+        engine.create_account("Bruno", "bruno", &url).unwrap();
+        engine.set_registered(true).unwrap();
+        // This is a top-up of a device whose initial batch was already acknowledged.
+        let _ = engine.mls_key_packages_to_publish().unwrap();
+        engine.mls_key_packages_published(Ok(()));
+        assert!(engine.mls_settled(), "the fixture has no other MLS work");
+        let device = engine.net.account.as_ref().unwrap().device.clone();
+        let engine = Arc::new(Mutex::new(engine));
+        let (cmd, mut commands) = mpsc::unbounded_channel();
+        let (status, _) = watch::channel(NetStatus {
+            state: ConnState::Online,
+            synced: false,
+            error: None,
+            registered: true,
+        });
+        let passes = Arc::new(AtomicUsize::new(0));
+        let (maintenance_started, during_maintenance) = channel::channel();
+        let (notice_sent, notice_written) = channel::channel();
+        let notice_written = Mutex::new(notice_written);
+        // An independent executor puts the notice on the real socket while this
+        // session's sole worker is busy. No server task can drive its I/O for it.
+        let relay = std::thread::spawn(move || {
+            tokio::runtime::Builder::new_current_thread()
+                .enable_all()
+                .build()
+                .unwrap()
+                .block_on(async move {
+                    let listener = tokio::net::TcpListener::from_std(listener).unwrap();
+                    let (socket, _) = listener.accept().await.unwrap();
+                    let mut socket = tokio_tungstenite::accept_async(socket).await.unwrap();
+                    let ClientFrame::Hello { identity, .. } = request(&mut socket).await else {
+                        panic!("hello")
+                    };
+                    reply(
+                        &mut socket,
+                        ServerFrame::Challenge {
+                            nonce: "maintenance-test".into(),
+                            relay: "maintenance-test".into(),
+                            protocol: PROTOCOL_VERSION,
+                            capabilities: Vec::new(),
+                        },
+                    )
+                    .await;
+                    assert!(matches!(
+                        request(&mut socket).await,
+                        ClientFrame::Auth { .. }
+                    ));
+                    reply(
+                        &mut socket,
+                        ServerFrame::Ready {
+                            identity,
+                            registered: true,
+                        },
+                    )
+                    .await;
+                    assert!(matches!(
+                        request(&mut socket).await,
+                        ClientFrame::Sync { all: true, .. }
+                    ));
+                    reply(&mut socket, ServerFrame::SyncDone).await;
+                    during_maintenance
+                        .recv_timeout(Duration::from_secs(5))
+                        .unwrap();
+                    reply(
+                        &mut socket,
+                        ServerFrame::KeyPackagesLow {
+                            device,
+                            remaining: 7,
+                        },
+                    )
+                    .await;
+                    notice_sent.send(()).unwrap();
+                    loop {
+                        match request(&mut socket).await {
+                            ClientFrame::Req {
+                                id,
+                                op:
+                                    Op::PublishKeyPackages {
+                                        packages,
+                                        last_resort,
+                                    },
+                            } => {
+                                assert_eq!(
+                                    packages.len(),
+                                    25,
+                                    "the notice for 7 remaining packages requests the exact top-up to 32"
+                                );
+                                assert!(
+                                    last_resort.is_none(),
+                                    "the existing last-resort package is retained"
+                                );
+                                reply(
+                                    &mut socket,
+                                    ServerFrame::Res {
+                                        id,
+                                        result: Ok(Reply::Done),
+                                    },
+                                )
+                                .await;
+                                cmd.send(Cmd::Stop).unwrap();
+                                return;
+                            }
+                            ClientFrame::Req { id, .. } => {
+                                reply(
+                                    &mut socket,
+                                    ServerFrame::Res {
+                                        id,
+                                        result: Ok(Reply::Done),
+                                    },
+                                )
+                                .await
+                            }
+                            ClientFrame::Ping => reply(&mut socket, ServerFrame::Pong).await,
+                            _ => {}
+                        }
+                    }
+                })
+        });
+        let work_passes = passes.clone();
+        let work_engine = engine.clone();
+        let ctx = Ctx {
+            engine,
+            listener: None,
+            status,
+            lang: crate::i18n::Lang::En,
+            maintenance_work: Some(Arc::new(move || {
+                let pass = work_passes.fetch_add(1, Ordering::SeqCst) + 1;
+                if pass == 1 {
+                    return;
+                }
+                if pass == 2 {
+                    maintenance_started.send(()).unwrap();
+                    notice_written
+                        .lock()
+                        .unwrap()
+                        .recv_timeout(Duration::from_secs(5))
+                        .unwrap();
+                }
+                if pass == 3 {
+                    assert!(
+                        !lock(&work_engine).mls_settled(),
+                        "the queued low-stock notice must be dispatched before another slow pass"
+                    );
+                }
+                // Synchronous engine work exceeds the 50ms period on every later pass.
+                std::thread::sleep(MAINTENANCE_PERIOD * 2);
+            })),
+        };
+        let mut backoff = Duration::from_millis(500);
+        let _ = session(&ctx, &mut commands, &mut backoff).await;
+        relay.join().unwrap();
     }
 }
