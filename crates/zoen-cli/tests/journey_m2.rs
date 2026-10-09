@@ -543,9 +543,15 @@ async fn key_packages_refill_when_they_run_low() {
         tokio::time::sleep(std::time::Duration::from_millis(100)).await;
     }
     let status = watch.try_wait().expect("watch status");
+    let metrics = w.metrics();
     let _ = watch.kill();
     let _ = watch.wait();
     let log = std::fs::read_to_string(&log_path).unwrap();
+    if std::env::var_os("ZOEN_NET_DEBUG").is_some() {
+        for line in log.lines() {
+            eprintln!("[bruno] {line}");
+        }
+    }
     assert!(
         status.is_none(),
         "watcher exited before the refill assertion: {status:?}\n{log}"
@@ -554,7 +560,7 @@ async fn key_packages_refill_when_they_run_low() {
         stock,
         32,
         "refilled while watching:\n{log}\n{}\n{}",
-        w.metrics(),
+        metrics,
         w.relay_log_text()
     );
 
