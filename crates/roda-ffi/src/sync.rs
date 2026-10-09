@@ -347,7 +347,12 @@ impl Engine {
         }
         // Written in the clear just before the Space went end-to-end: it waits for the
         // group and goes out sealed, it doesn't fail.
-        let permanent = permanent && reason != roda_proto::SEAL_REQUIRED;
+        // Sealed before this device caught up with a commit: it seals again once it has.
+        if reason == roda_proto::STALE_SEAL {
+            self.mls_sealed_stale(client_id);
+        }
+        let permanent =
+            permanent && reason != roda_proto::SEAL_REQUIRED && reason != roda_proto::STALE_SEAL;
         let _ = self.store.outbox_note(client_id, reason, permanent);
         if !permanent {
             return false;

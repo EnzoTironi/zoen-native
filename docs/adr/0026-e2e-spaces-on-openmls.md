@@ -125,8 +125,9 @@ member device. `upto` is the chain position (seq, hash) as that member applied i
 `epoch_digest = SHA-256("zoen-checkpoint/1" ‖ group id ‖ epoch ‖ epoch_authenticator)`: only a
 member who holds the epoch's key schedule can compute it, and it reveals nothing about the
 secrets.
-- **When:** a device checkpoints after its own commit lands, after it joins, and after 256
-  sealed entries since its last checkpoint. Members who only apply someone else's commit don't
+- **When:** a device checkpoints after its own commit lands, after it joins, and once the log
+  is 256 entries past its last checkpoint (kept in the device database, so a reader that
+  restarts often still checkpoints; `ZOEN_CHECKPOINT_EVERY` overrides it for journeys). Members who only apply someone else's commit don't
   post one: the committer's and the joiners' checkpoints already pin that epoch, and the
   cadence keeps checkpoints at O(commits + messages/256), not O(members × commits).
 - Each device records its own digest per epoch. A checkpoint whose digest differs marks the
@@ -144,6 +145,39 @@ secrets.
   estimate, and the 30-day hot window becomes "until every member has it". New members don't
   need it (forward secrecy: they read from their Welcome on).
 
+### Pruning (built)
+The relay keeps, per end-to-end Space, what each member device holds:
+`("s", space, "ck", identity, device) -> upto.seq` from its latest checkpoint. Adding someone
+(and creating or encrypting the Space, for those already in) writes a hold for them at that
+seq under device `*`, cleared by their first checkpoint; a removal drops all of theirs. Once
+every current member holds something, the floor is the lowest hold, and the transaction of
+the checkpoint that raises it rewrites sealed entries below it (256 at most per transaction)
+as **stubs**: the same signed header and kind with the MLS bytes taken out, plus the
+original's wire hash, so the chain hash is unchanged. Clear control events are never touched.
+
+Members never read a stub (they are past it). A device added later reads the log from the
+start: a stub links by the original's wire hash, so it accepts it without the signature
+(which no longer covers the content), and the members' signed checkpoints after it pin the
+chain it built. A device can't publish a stub; only the relay makes them. Proof:
+`journey_m2::the_relay_prunes_what_every_member_holds` (both members' checkpoints pass the
+first message and it becomes a stub in FoundationDB; nothing at or above the lowest
+checkpoint goes; members still read and `verify` their history; nothing from Carla's
+addition on is pruned until she checkpoints; she links the chain over the stubs, joins from
+her Welcome, reads on and `verify` passes).
+
+Limits, on purpose for now:
+- A stub proves its place in the chain, not that the original was sealed: a relay that
+  rewrote a clear control event as a "stub" with its true wire hash would keep the chain
+  and the checkpoints valid, and a later joiner would miss that event. Confidentiality
+  doesn't move (MLS membership is the group, and the subset rule still refuses a group that
+  lists someone the log doesn't), but the joiner's view of past roles or removals could.
+  Fix when it matters: hash sealed envelopes as header plus the hash of the MLS bytes, so a
+  stub carries its proof. That changes the wire hash for new entries.
+- A member device that never comes back holds pruning in that Space forever. The 30-day
+  ceiling (ADR 0022) and asking for an update are the answer; not built.
+- A second device of a member has no hold of its own until linking (next step) gives it
+  one, as adding a member does.
+
 ## First journey (the M2 milestone)
 `journey_m2` (passing): Ana, Bruno and Carla sign up through the real CLI, relay, Postgres and
 FoundationDB, and each device publishes 33 key packages. Ana creates an E2E group with Bruno:
@@ -158,7 +192,8 @@ over ciphertext. Then Carla joins by invite; Ana's device commits her in (epoch 
 reads what is said after her Welcome and nothing before it.
 
 Later M2 steps, in order: removal (a removed member can't read what follows), concurrent
-commits and the relay's `stale_epoch`, pruning below checkpoints, linking a second device, the
+commits and the relay's `stale_epoch`, pruning below checkpoints (all three built), linking a
+second device, the
 app on the simulator with the Notification Service Extension sharing state.
 
 ### Not yet (tracked in the plan)
