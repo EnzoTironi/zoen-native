@@ -462,7 +462,13 @@ async fn session(
     let mut early: Vec<ServerFrame> = Vec::new();
     let relay_knows_me = loop {
         match recv(&mut stream).await {
-            Ok(ServerFrame::Ready { registered, .. }) => break registered,
+            Ok(ServerFrame::Ready {
+                identity: ready_identity,
+                registered,
+            }) if ready_identity == identity => break registered,
+            Ok(ServerFrame::Ready { .. }) => {
+                return Exit::Blocked("relay authenticated a different identity".into())
+            }
             Ok(ServerFrame::Error { code, message }) => return refused(code, message, backoff),
             Ok(f @ ServerFrame::Presence { .. }) if early.len() < 1024 => early.push(f),
             Ok(other) => return Exit::Retry(format!("unexpected {other:?}")),
@@ -479,6 +485,8 @@ async fn session(
         }
         let _ = ctx.engine().set_registered(true);
     }
+    ctx.engine()
+        .remember_authenticated_relay(&identity, &key.id(), &relay_url, &relay);
     *backoff = Duration::from_millis(500);
     ctx.engine().profiles_session_start(profiles);
     // Encrypted media moves over HTTP beside the socket, for as long as this session lives.
@@ -1142,6 +1150,70 @@ mod tests {
             hash,
             env,
         }
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn a_ready_for_another_identity_cannot_establish_report_credentials() {
+        let _ = rustls::crypto::ring::default_provider().install_default();
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let url = format!("ws://{}", listener.local_addr().unwrap());
+        let mut engine = Engine::open(":memory:").unwrap();
+        engine.create_account("Ana", "ana", &url).unwrap();
+        engine.set_registered(true).unwrap();
+        let engine = Arc::new(Mutex::new(engine));
+        let (_command, mut commands) = mpsc::unbounded_channel();
+        let (status, _) = watch::channel(NetStatus {
+            state: ConnState::Connecting,
+            synced: false,
+            error: None,
+            registered: true,
+        });
+        let ctx = Ctx {
+            engine: engine.clone(),
+            listener: None,
+            status,
+            lang: crate::i18n::Lang::En,
+            maintenance_work: None,
+        };
+        let client = async {
+            let mut backoff = Duration::from_millis(500);
+            let exit = session(&ctx, &mut commands, &mut backoff).await;
+            assert!(
+                matches!(exit, Exit::Blocked(ref error) if error == "relay authenticated a different identity")
+            );
+            assert!(ctx.engine().net.authenticated_relay.is_none());
+        };
+        let relay = async {
+            let (socket, _) = listener.accept().await.unwrap();
+            let mut socket = tokio_tungstenite::accept_async(socket).await.unwrap();
+            assert!(matches!(
+                request(&mut socket).await,
+                ClientFrame::Hello { .. }
+            ));
+            reply(
+                &mut socket,
+                ServerFrame::Challenge {
+                    nonce: "wrong-ready-test".into(),
+                    relay: "canonical-relay".into(),
+                    protocol: PROTOCOL_VERSION,
+                    capabilities: Vec::new(),
+                },
+            )
+            .await;
+            assert!(matches!(
+                request(&mut socket).await,
+                ClientFrame::Auth { .. }
+            ));
+            reply(
+                &mut socket,
+                ServerFrame::Ready {
+                    identity: "another-account".into(),
+                    registered: true,
+                },
+            )
+            .await;
+        };
+        tokio::join!(client, relay);
     }
 
     #[tokio::test(flavor = "current_thread")]

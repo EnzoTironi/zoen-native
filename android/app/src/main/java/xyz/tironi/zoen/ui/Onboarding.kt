@@ -195,7 +195,7 @@ fun Onboarding(model: ZoenViewModel, modifier: Modifier = Modifier, acquisitionL
                                 finished(landing ?: model.state.value.zoenChat?.id)
                                 model.repository.preferences.edit().putBoolean("onboarded", true).putString("areas", selected.joinToString(",")).commit()
                                 model.repository.refresh()
-                                model.repository.network { it.growthSync(null, false, 0u, 0u) }
+                                model.reportGrowthAfterOnboarding()
                             } finally { busy = false }
                         }
                     }

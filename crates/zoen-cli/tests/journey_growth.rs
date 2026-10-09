@@ -94,6 +94,8 @@ async fn source_picks_the_onboarding_and_metrics_split_by_source_and_arm() {
         &[
             ("ZOEN_ADMIN_TOKEN", TOKEN),
             ("ZOEN_METRICS_TEST_HANDLES", "qa_"),
+            // HTTP reports must use the authenticated challenge name, not the URL host.
+            ("ZOEN_RELAY_NAME", "growth-canonical-relay"),
             ("RUST_LOG", "debug,sqlx=info"),
         ],
     )

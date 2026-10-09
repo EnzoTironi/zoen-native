@@ -32,6 +32,14 @@ class ZoenViewModel(application: Application) : AndroidViewModel(application) {
     init { viewModelScope.launch { repository.errorEvents.collect { messages.send(Notice(it)) } } }
 
     fun boot(demo: Boolean) = viewModelScope.launch { repository.boot(demo) }
+    fun reportGrowthAfterOnboarding() {
+        val owner = state.value.account?.copy() ?: return
+        viewModelScope.launch {
+            xyz.tironi.zoen.growth.reportGrowthWhenRegistered(state, owner) {
+                repository.network { it.growthSync(owner.relayUrl, false, 0u, 0u) }
+            }
+        }
+    }
     fun launch(block: suspend () -> Unit) = viewModelScope.launch {
         try { block() }
         catch (e: Exception) {
