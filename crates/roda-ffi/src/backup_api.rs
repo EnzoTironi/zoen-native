@@ -499,9 +499,50 @@ impl RodaEngine {
         };
         let root = hex::decode(&header.identity_secret).map_err(|_| invalid("backup"))?;
         let agreement = hex::decode(&header.agreement_secret).map_err(|_| invalid("backup"))?;
+        let root_secret: [u8; 32] = root
+            .as_slice()
+            .try_into()
+            .map_err(|_| invalid("backup identity"))?;
+        let root_signer = roda_log::Signer::from_secret(&root_secret);
+        if root_signer.id() != s.identity {
+            return Err(invalid("backup identity"));
+        }
+        let device = roda_log::Signer::generate();
+        let author = roda_log::Author::device(&root_signer, device.clone());
+        let cert = author.cert.as_deref().expect("device certificate");
+        let configuration = s
+            .generation
+            .as_deref()
+            .ok_or_else(|| invalid("backup server does not support device recovery"))?;
+        let signature = device.sign(&roda_proto::backup_enroll_message(
+            &s.identity,
+            &device.id(),
+            cert,
+            configuration,
+        ));
+        let r = http
+            .post(format!("{base}/v1/backup/restore/enroll"))
+            .header("content-type", "application/json")
+            .body(
+                serde_json::json!({
+                    "handle": handle,
+                    "auth_key": auth,
+                    "generation": configuration,
+                    "device": device.id(),
+                    "cert": cert,
+                    "sig": signature,
+                })
+                .to_string(),
+            )
+            .send()
+            .await
+            .map_err(offline)?;
+        if !r.status().is_success() {
+            return Err(refused(r).await);
+        }
         {
             let mut e = self.lock();
-            let device = e.restore_snapshot(&header, &db)?;
+            let device = e.restore_snapshot(&header, &db, device)?;
             if !vault.save(VAULT_IDENTITY.into(), root)
                 || !vault.save(VAULT_DEVICE.into(), device.to_vec())
                 || !vault.save(VAULT_AGREEMENT.into(), agreement.clone())

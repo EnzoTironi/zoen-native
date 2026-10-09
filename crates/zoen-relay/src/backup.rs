@@ -14,6 +14,7 @@
 //!   DELETE /v1/backup                 (device-signed)
 //!   POST   /v1/backup/restore/start   {handle, blinded?} → {identity, mode, kdf, evaluated?}
 //!   POST   /v1/backup/restore/open    {handle, auth_key} → {wrapped_key, size}
+//!   POST   /v1/backup/restore/enroll  {handle, auth_key, generation, device, cert, sig}
 //!   GET    /v1/backup/restore/blob?handle=…   x-zoen-backup-auth: auth_key
 
 // Helpers return the refusal itself, ready to send; it's built once per request, never hot.
@@ -914,6 +915,53 @@ pub struct OpenResp {
     wrapped_key: String,
     size: i64,
     generation: Option<String>,
+}
+
+#[derive(Deserialize)]
+pub struct EnrollReq {
+    handle: String,
+    auth_key: String,
+    generation: String,
+    device: String,
+    cert: String,
+    sig: String,
+}
+
+/// A root certificate is necessary, but recovery authority must authorize its enrollment.
+pub async fn restore_enroll(
+    State(st): State<Shared>,
+    crate::ClientIp(ip): crate::ClientIp,
+    Json(req): Json<EnrollReq>,
+) -> Response {
+    let Some(handle) = roda_proto::normalize_handle(&req.handle) else {
+        return err(StatusCode::BAD_REQUEST, "bad handle");
+    };
+    if let Err(r) = restore_limit(&st, &ip, &handle) {
+        return r;
+    }
+    let (row, mut tx) = match authorize(&st, &handle, &req.auth_key, Some(&req.generation)).await {
+        Ok(authorized) => authorized,
+        Err(r) => return r,
+    };
+    if row.blob_bytes.is_none() {
+        return err(StatusCode::NOT_FOUND, "no backup yet");
+    }
+    if !verify_sig(
+        &req.device,
+        &roda_proto::backup_enroll_message(&row.identity, &req.device, &req.cert, &req.generation),
+        &req.sig,
+    ) {
+        return err(StatusCode::FORBIDDEN, "invalid device enrollment");
+    }
+    match crate::db::enroll_device(&mut tx, &row.identity, &req.device, &req.cert).await {
+        Ok(()) => {}
+        Err(crate::db::EnrollmentError::Database(_)) => return unavailable(),
+        Err(_) => return err(StatusCode::FORBIDDEN, "device enrollment refused"),
+    }
+    if tx.commit().await.is_err() {
+        return unavailable();
+    }
+    StatusCode::NO_CONTENT.into_response()
 }
 
 /// Checks `auth_key` against the vault; `Ok` resets the guess counter.

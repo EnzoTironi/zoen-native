@@ -109,6 +109,7 @@ pub fn router(state: Shared) -> Router {
         .route("/v1/backup", axum::routing::delete(backup::delete))
         .route("/v1/backup/restore/start", post(backup::restore_start))
         .route("/v1/backup/restore/open", post(backup::restore_open))
+        .route("/v1/backup/restore/enroll", post(backup::restore_enroll))
         .route("/v1/backup/restore/blob", get(backup::restore_blob))
         .route_layer(axum::middleware::from_fn_with_state(
             state.clone(),

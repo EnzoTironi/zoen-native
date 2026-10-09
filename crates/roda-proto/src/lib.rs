@@ -639,6 +639,16 @@ pub fn blob_put_message(sha256: &str, ts_ms: i64, relay: &str) -> Vec<u8> {
 /// Prefix followed by a 32-byte configuration generation and the encrypted backup.
 pub const BACKUP_UPLOAD_MAGIC: &[u8; 8] = b"ZOENBG1\0";
 
+/// Proof that a recovered device controls the key being enrolled for this backup.
+pub fn backup_enroll_message(
+    identity: &str,
+    device: &str,
+    cert: &str,
+    generation: &str,
+) -> Vec<u8> {
+    format!("{PROTOCOL}:backup-device-enroll:{identity}:{device}:{cert}:{generation}").into_bytes()
+}
+
 /// What a device signs for a backup write (ADR 0046): binds the operation, the identity,
 /// the body's hash and a timestamp to this relay.
 pub fn backup_message(

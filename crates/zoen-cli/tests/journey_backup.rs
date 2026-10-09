@@ -128,6 +128,116 @@ async fn restore_post(w: &World, path: &str, body: serde_json::Value) -> (u16, V
     backup_http(w, &[headers.as_bytes(), body.as_bytes()].concat()).await
 }
 
+#[tokio::test]
+async fn restore_enrollment_requires_current_recovery_authority_and_never_revives_revoked_keys() {
+    use roda_log::{Author, Signer};
+    use sha2::Sha256;
+
+    let w = world("backup_enrollment").await;
+    w.init("ana", "Ana");
+    let root_secret = std::fs::read(w.dir.join("ana/vault/zoen.identity.v1")).unwrap();
+    let root = Signer::from_secret(&root_secret.try_into().unwrap());
+    let out = w.zoen("ana", &["backup", "on", "--recovery-key"]);
+    let secret = out
+        .lines()
+        .find_map(|line| line.strip_prefix("recovery-key\t"))
+        .expect("recovery key");
+    let digits: String = secret.chars().filter(|c| c.is_ascii_digit()).collect();
+    let mut auth = [0u8; 32];
+    hkdf::Hkdf::<Sha256>::new(Some(b"zoen-backup-recovery-key-v1"), digits.as_bytes())
+        .expand(b"zoen-backup-auth-v1", &mut auth)
+        .unwrap();
+    let auth = hex::encode(auth);
+    let generation = w.scalar("SELECT generation FROM backup_vaults").await;
+    let device = Author::device(&root, Signer::generate());
+    let cert = device.cert.as_deref().unwrap();
+    let request = serde_json::json!({
+        "handle": "ana", "auth_key": auth, "generation": generation,
+        "device": device.key.id(), "cert": cert,
+        "sig": device.key.sign(&roda_proto::backup_enroll_message(
+            &root.id(), &device.key.id(), cert, &generation,
+        )),
+    });
+    let registered = format!(
+        "SELECT count(*) FROM devices WHERE device = '{}'",
+        device.key.id()
+    );
+    for (field, value, expected) in [
+        ("auth_key", "00".repeat(32), 403),
+        ("generation", "ee".repeat(32), 409),
+        ("sig", "00".repeat(64), 403),
+    ] {
+        let mut wrong = request.clone();
+        wrong[field] = value.into();
+        let (status, body) = restore_post(&w, "/v1/backup/restore/enroll", wrong).await;
+        assert_eq!(status, expected, "{field}: {body:?}");
+        assert_eq!(w.count(&registered).await, 0);
+    }
+    let mut wrong_certificate = request.clone();
+    let invalid_cert = "00".repeat(64);
+    wrong_certificate["cert"] = invalid_cert.clone().into();
+    wrong_certificate["sig"] = device
+        .key
+        .sign(&roda_proto::backup_enroll_message(
+            &root.id(),
+            &device.key.id(),
+            &invalid_cert,
+            &generation,
+        ))
+        .into();
+    assert_eq!(
+        restore_post(&w, "/v1/backup/restore/enroll", wrong_certificate)
+            .await
+            .0,
+        403
+    );
+    assert_eq!(w.count(&registered).await, 0);
+    for _ in 0..2 {
+        assert_eq!(
+            restore_post(&w, "/v1/backup/restore/enroll", request.clone())
+                .await
+                .0,
+            204,
+            "enrollment retries keep one active device",
+        );
+        assert_eq!(w.count(&registered).await, 1);
+    }
+    let socket =
+        RawClient::reconnect(&format!("http://127.0.0.1:{}", w.port), device.clone()).await;
+    drop(socket);
+    w.zoen("ana", &["unlink", &device.key.id()]);
+    assert_eq!(
+        restore_post(&w, "/v1/backup/restore/enroll", request.clone())
+            .await
+            .0,
+        403,
+        "replaying recovery cannot reactivate the revoked key",
+    );
+    w.zoen("ana", &["backup", "on", "--recovery-key"]);
+    let next = Author::device(&root, Signer::generate());
+    let cert = next.cert.as_deref().unwrap();
+    let stale = serde_json::json!({
+        "handle": "ana", "auth_key": auth, "generation": generation,
+        "device": next.key.id(), "cert": cert,
+        "sig": next.key.sign(&roda_proto::backup_enroll_message(
+            &root.id(), &next.key.id(), cert, &generation,
+        )),
+    });
+    assert_eq!(
+        restore_post(&w, "/v1/backup/restore/enroll", stale).await.0,
+        403
+    );
+    assert_eq!(
+        w.count(&format!(
+            "SELECT count(*) FROM devices WHERE device = '{}'",
+            next.key.id()
+        ))
+        .await,
+        0,
+        "rotating recovery authority invalidates its previous enrollment proof"
+    );
+}
+
 fn link_notebook(w: &World) {
     use std::io::BufRead;
     let mut child = w.spawn_zoen("ana-notebook", &["link-request", "--for", "120"]);
