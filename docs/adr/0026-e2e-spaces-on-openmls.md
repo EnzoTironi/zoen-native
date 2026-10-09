@@ -38,8 +38,10 @@ everything people say. Two questions shape it:
   is **sealed with XChaCha20-Poly1305 under a 32-byte state key** that lives in the SecretVault
   (Keychain) with the identity and device keys. The storage codec has no instance to hold a
   key, so `roda-mls` puts the key in a thread-local scope for exactly the span of each
-  (synchronous) OpenMLS call, and the codec fails closed outside one. Row keys (group ids,
-  labels) stay plaintext; they're Space ids the relay already knows.
+  (synchronous) OpenMLS call, and the codec fails closed outside one. The same codec encodes
+  row keys (group ids, key package refs), and lookups need them stable, so the nonce is
+  synthetic: HMAC-SHA256 of the plaintext under a second HKDF subkey (SIV). Keys and values
+  are both sealed; the database shows only which stored items are equal.
 
 ### Key packages
 - Devices publish a batch of key packages plus one last-resort package. The relay keeps them
@@ -64,7 +66,9 @@ order.
   checks the role), then a `Sealed::Commit` with the Add, and a `Sealed::Welcome` for the new
   devices right after it in the same log. Members apply a commit only if the roster it leaves
   equals the log's roster at that point, so a relay can't slip in a reader, and an add
-  without a commit fails closed (listed, but can't read). Removal is the mirror image.
+  without a commit fails closed (listed, but can't read). A Welcome whose roster disagrees
+  with the log is refused, and its key package is spent with it. The adder re-adds from a
+  fresh package; no one can retry the bad Welcome. Removal is the mirror image.
 - **Concurrent commits:** every member applies the first commit for the current epoch in log
   order and ignores later ones for an epoch already gone. The losing author sees its commit
   skipped, processes the winner, and re-proposes. The relay rejecting stale epochs early
