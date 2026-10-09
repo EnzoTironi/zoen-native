@@ -186,12 +186,26 @@ impl FlyMachinesProvider {
         .map(|_| ())
     }
 
-    /// The Machine's state as Fly reports it (`started`, `suspended`, `destroyed`, …).
+    /// The Machine's state; a confirmed 404 means destroyed. Other API failures remain errors.
     pub async fn state_of(&self, machine: &str) -> Result<String, SandboxError> {
-        let m = self
-            .call(reqwest::Method::GET, &format!("/machines/{machine}"), None)
+        let (status, text) = self
+            .response(reqwest::Method::GET, &format!("/machines/{machine}"), None)
             .await?;
-        Ok(m["state"].as_str().unwrap_or("").to_string())
+        if status == reqwest::StatusCode::NOT_FOUND {
+            return Ok("destroyed".into());
+        }
+        if !status.is_success() {
+            return Err(backend(format!(
+                "fly {status}: {}",
+                text.chars().take(300).collect::<String>()
+            )));
+        }
+        let m: serde_json::Value = serde_json::from_str(&text).map_err(backend)?;
+        m["state"]
+            .as_str()
+            .filter(|state| !state.is_empty())
+            .map(str::to_owned)
+            .ok_or_else(|| backend("fly: missing machine state"))
     }
 
     /// The Machine behind a lease (for journeys that check it's gone).
