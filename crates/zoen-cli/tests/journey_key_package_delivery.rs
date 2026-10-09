@@ -215,14 +215,13 @@ impl PgProxy {
                                     }
                                     // COMMIT is visible in Postgres, but the relay still awaits its
                                     // completion. Claims on other connections now precede its reply.
-                                    if header[0] == b'C' && body == b"COMMIT\0"
+                                    if header[0] == b'C'
+                                        && body == b"COMMIT\0"
+                                        && std::mem::take(&mut publication)
+                                        && gate.armed.swap(false, Ordering::SeqCst)
                                     {
-                                        if std::mem::take(&mut publication)
-                                            && gate.armed.swap(false, Ordering::SeqCst)
-                                        {
-                                            if let Some(tx) = gate.reached.lock().unwrap().take() { let _ = tx.send(()); }
-                                            gate.release.notified().await;
-                                        }
+                                        if let Some(tx) = gate.reached.lock().unwrap().take() { let _ = tx.send(()); }
+                                        gate.release.notified().await;
                                     }
                                     if client_write.write_all(&header).await.is_err() { break }
                                     if client_write.write_all(&body).await.is_err() { break }
