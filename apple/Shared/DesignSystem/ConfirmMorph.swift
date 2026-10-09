@@ -172,7 +172,9 @@ struct ConfirmInPlaceButton: View {
             .accessibilityLabel(Text(armed ? confirmTitle : title))
             .accessibilityIdentifier(armed ? "\(identifier)-confirm" : identifier)
 
-            if armed && !done {
+            // The compact pill sits in list rows, where a second button in the row muddles
+            // the taps: there, not tapping (it folds back on its own) is the cancel.
+            if armed && !done && !compact {
                 Button { cancel() } label: {
                     Image(systemName: "xmark")
                         .font(.system(size: 12, weight: .bold))

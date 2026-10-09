@@ -60,8 +60,9 @@ final class SheetConfirmJourneyTests: XCTestCase {
         let names = app.staticTexts.matching(NSPredicate(format: "label == 'Marina'"))
         XCTAssertTrue(names.firstMatch.waitForExistence(timeout: 20))
         sleep(2)
-        // Her latest message's name (the first one can sit under the top bar).
-        names.allElementsBoundByIndex.filter { $0.isHittable }.last?.tap()
+        // Her avatar (or name) on her latest message; the first one can sit under the top bar.
+        let faces = app.buttons.matching(NSPredicate(format: "label == 'Marina'")).allElementsBoundByIndex.filter { $0.isHittable }
+        if let face = faces.last { face.tap() } else { names.allElementsBoundByIndex.filter { $0.isHittable }.last?.tap() }
         let block = app.buttons["profile-block"]
         // The danger rows sit at the bottom of the sheet.
         for _ in 0..<4 where !block.isHittable { app.swipeUp() }

@@ -36,12 +36,12 @@ final class TileEditJourneyTests: XCTestCase {
         var app = launch(fresh: true)
         let first = app.descendants(matching: .any).matching(NSPredicate(format: "identifier BEGINSWITH 'home-tile-'")).firstMatch
         XCTAssertTrue(first.waitForExistence(timeout: 20), "Home shows mini-app cards")
-        sleep(2)
+        sleep(4) // let launch work settle so the hold reads as a hold, not a tap
         let before = names(app, "home-tile")
         XCTAssertGreaterThanOrEqual(before.count, 2, "at least two cards to reorder")
 
         // Long-press: edit mode, with a minus on every card and "Concluir".
-        tiles(app, "home-tile")[0].press(forDuration: 0.9)
+        tiles(app, "home-tile")[0].press(forDuration: 1.2)
         let done = app.buttons["home-tile-done"]
         XCTAssertTrue(done.waitForExistence(timeout: 4), "long-press enters edit mode")
         XCTAssertTrue(app.buttons["home-tile-remove-\(before[0])"].exists, "each card shows a minus")

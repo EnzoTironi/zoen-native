@@ -26,6 +26,7 @@ struct MessageSwipe: ViewModifier {
     @State private var locked: Bool?        // nil: undecided; true: horizontal; false: let go
     @State private var armed: MessageSwipeIntent?
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.accessibilityVoiceOverEnabled) private var voiceOver
 
     private var progress: CGFloat { min(1, abs(x) / Self.threshold) }
 
@@ -47,8 +48,7 @@ struct MessageSwipe: ViewModifier {
                     .padding(.leading, 6)
             }
             .simultaneousGesture(drag, isEnabled: enabled)
-            .accessibilityAction(named: Text("Reply")) { onIntent(.reply) }
-            .accessibilityAction(named: Text("Reply in thread")) { onIntent(.thread) }
+            .modifier(SwipeActionsForVoiceOver(on: voiceOver && enabled, onIntent: onIntent))
     }
 
     private func icon(_ name: String, active: Bool) -> some View {
@@ -92,6 +92,23 @@ struct MessageSwipe: ViewModifier {
                     onIntent(fire)
                 }
             }
+    }
+}
+
+/// Reply / Reply in thread as VoiceOver actions on the message. Only while VoiceOver runs:
+/// actions on the row turn it into one element, which would swallow the sender's name and
+/// the cards' buttons for everyone else (taps on the name stopped opening the profile).
+private struct SwipeActionsForVoiceOver: ViewModifier {
+    var on: Bool
+    var onIntent: (MessageSwipeIntent) -> Void
+    func body(content: Content) -> some View {
+        if on {
+            content
+                .accessibilityAction(named: Text("Reply")) { onIntent(.reply) }
+                .accessibilityAction(named: Text("Reply in thread")) { onIntent(.thread) }
+        } else {
+            content
+        }
     }
 }
 
