@@ -2,10 +2,10 @@ name: android
 
 on:
   pull_request:
-    paths: ["android/**", "crates/**", "Cargo.toml", "Cargo.lock", "scripts/build-android-core.sh", "scripts/*android-uniffi-callbacks.py", "scripts/test-android-device.sh", "scripts/ci-postgres.sh", ".github/workflows/android.yml"]
+    paths: ["android/**", "crates/**", "Cargo.toml", "Cargo.lock", "scripts/build-android-core.sh", "scripts/*android-uniffi-callbacks.py", "scripts/test-android-device.sh", "scripts/ci-postgres.sh", "scripts/test-ci-postgres.py", ".github/workflows/android.yml"]
   push:
     branches: [main]
-    paths: ["android/**", "crates/**", "Cargo.toml", "Cargo.lock", "scripts/build-android-core.sh", "scripts/*android-uniffi-callbacks.py", "scripts/test-android-device.sh", "scripts/ci-postgres.sh", ".github/workflows/android.yml"]
+    paths: ["android/**", "crates/**", "Cargo.toml", "Cargo.lock", "scripts/build-android-core.sh", "scripts/*android-uniffi-callbacks.py", "scripts/test-android-device.sh", "scripts/ci-postgres.sh", "scripts/test-ci-postgres.py", ".github/workflows/android.yml"]
 
 permissions:
   contents: read
@@ -53,7 +53,9 @@ jobs:
           python3 ../scripts/test-android-uniffi-callbacks.py
           ./gradlew :app:assembleDebug :app:testDebugUnitTest :app:lintDebug --max-workers=4
       - name: Runner PostgreSQL
-        run: scripts/ci-postgres.sh
+        run: |
+          python3 scripts/test-ci-postgres.py
+          scripts/ci-postgres.sh
       - name: Isolated relay for encrypted Android journeys
         run: |
           scripts/fdb.sh up

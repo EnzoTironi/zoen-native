@@ -43,7 +43,9 @@ jobs:
         run: cargo fmt --all --check
 
       - name: Runner PostgreSQL
-        run: scripts/ci-postgres.sh
+        run: |
+          python3 scripts/test-ci-postgres.py
+          scripts/ci-postgres.sh
 
       - name: FoundationDB and NATS
         run: |
