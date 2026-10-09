@@ -138,13 +138,11 @@ app on the simulator with the Notification Service Extension sharing state.
 ### Not yet (tracked in the plan)
 - Topping up key packages: today a device publishes once, and claims fall back to the
   last-resort package when the 32 run out. The relay will say "low" and the device refills.
-- An outbox message sealed more than 4 epochs before it is resent can't be opened by members
-  who are past that window. The device should re-seal on resend.
 - Several devices per identity: reconcile adds every device with packages, but linking a
   second device to existing groups is the multi-device step.
-- DMs and new groups stay Closed by default. `group --e2e` (CLI) and
-  `create_group_with(.., EndToEnd)` (app) choose E2E. Flipping the default changes M1
-  behavior (server-side agents, moderation), so it is a product decision for later.
+- Done since: DMs and new groups are end-to-end by default, M1 Spaces upgrade one way with
+  `SpaceEncrypted`, and messages are sealed at send time at the current epoch, which also
+  closes the "outbox older than 4 epochs" gap (ADR 0027).
 
 ## Consequences
 - The relay keeps seeing who talks in which Space, when and how much: author, device, Space,

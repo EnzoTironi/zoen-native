@@ -137,6 +137,7 @@ storage seams. Each unit ends with the full journey suite green.
 | Local k3d cell | healthy with the collector | `scripts/local-cluster.sh up`, `journey`, `telemetry` (relay logs and traces reach the collector before and after it moves pods), roda-shots/local-cluster-s7 |
 | S9 owner-side sequencing | done | `log_store.rs` (7 contracts incl. two relays on one Space, duplicates in one batch), `sequencer::tests`, before/after sweep in roda-shots/real-s9, ADR 0023 |
 | M2 first journey (E2E group, relay holds only ciphertext) | done | `journey_m2.rs` (key packages, commit + Welcome, messages both ways from a sealed device database, FoundationDB and Postgres scanned for text and hex, plaintext refused, agreeing checkpoints, a newcomer reads from her Welcome on), `roda-mls` tests, ADR 0026 |
+| M2 end-to-end by default (DMs and groups; M1 Spaces upgrade one way) | done | `journey_m2::a_readable_group_becomes_end_to_end_and_never_goes_back`, `journey_m1` DMs now end-to-end, `privacy_only_goes_up`, `an_end_to_end_space_cannot_be_created_again_as_readable`, ADR 0027 |
 | M2 rest, M3, M5, M6, M7 | planned below | |
 
 ## M1. Relay, real accounts, sync
@@ -203,9 +204,12 @@ Done: ADR 0026, `roda-mls` (device leaf, SIV-sealed state in the device database
 rule, checkpoints), relay admission for E2E Spaces and the `key_packages` directory, the client
 path (seal, open, reconcile, checkpoints) and `journey_m2`.
 
+Also done: end-to-end by default for DMs and groups, one-way upgrade of M1 Spaces
+(`SpaceEncrypted`), sealing at send time at the current epoch (ADR 0027).
+
 Next, in order: removal journey, concurrent commits and `stale_epoch`, key package top-up,
-re-sealing old outbox entries, checkpoint pruning, linking a second device, the app on the
-simulator with the Notification Service Extension sharing state, then the E2E default for DMs.
+checkpoint pruning, linking a second device, the app on the simulator with the Notification
+Service Extension sharing state.
 
 ## M3. Real agents
 
