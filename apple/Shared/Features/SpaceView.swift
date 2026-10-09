@@ -362,7 +362,11 @@ struct SpaceView: View {
                                    transcript: String(localized: "Leaving at eight! I'll bring snacks and the good thermos, can someone grab the map?"))
             model.perform { try model.core.sendMessage(spaceId: spaceId, text: ref.marker) }
         }
-        .onAppear { model.perform { try model.core.markRead(spaceId: spaceId) } }
+        .onAppear {
+            // Capture the opening unread boundary before markRead refreshes its count to zero.
+            reload()
+            model.perform { try model.core.markRead(spaceId: spaceId) }
+        }
         .sheet(isPresented: $backgroundPicker) {
             ChatBackgroundPicker(spaceId: spaceId, current: background, isLocal: backgroundState.isLocal)
         }
