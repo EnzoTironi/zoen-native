@@ -13,6 +13,7 @@
 
 use std::collections::{HashMap, HashSet};
 
+use roda_log::content::SealedKind;
 use roda_log::{chain_hash, content_hash_of, Author, Signer, SpaceLog};
 use roda_proto::{normalize_handle, Cursor, Envelope, Sequenced};
 use roda_types::*;
@@ -341,6 +342,9 @@ impl Engine {
 
     /// The relay refused one of ours.
     pub fn reject(&mut self, client_id: &str, reason: &str, permanent: bool) -> bool {
+        if permanent && self.mls_handshake_refused(client_id, reason) {
+            return false;
+        }
         // Written in the clear just before the Space went end-to-end: it waits for the
         // group and goes out sealed, it doesn't fail.
         let permanent = permanent && reason != roda_proto::SEAL_REQUIRED;
@@ -379,11 +383,15 @@ impl Engine {
     /// each Space's group for its epoch once: a long import stays linear, not quadratic.
     pub fn outbox_envelopes_except(&self, sent: &HashSet<String>) -> Vec<Envelope> {
         let mut ready = HashMap::new();
+        // A Welcome goes out only once its commit is in: sent together, a commit held back
+        // by the relay (rate limit) would let the Welcome arrive first and be refused.
+        let held = self.welcomes_behind_commits();
         self.store
             .outbox_heads()
             .unwrap_or_default()
             .into_iter()
             .filter(|p| !p.failed && !sent.contains(&p.client_id))
+            .filter(|p| !held.contains(&p.client_id))
             // Refused for being clear in a Space that went end-to-end: it waits until this
             // device has caught up with that, then goes out sealed.
             .filter(|p| {
@@ -402,6 +410,20 @@ impl Engine {
                 Some(env)
             })
             .collect()
+    }
+
+    /// Our queued Welcomes that wait behind a commit of ours still in the outbox.
+    fn welcomes_behind_commits(&self) -> HashSet<String> {
+        let mut committing: HashSet<String> = HashSet::new();
+        let mut held = HashSet::new();
+        for (client_id, space, kind) in self.store.outbox_handshakes().unwrap_or_default() {
+            if kind == SealedKind::Commit.name() {
+                committing.insert(space);
+            } else if kind == SealedKind::Welcome.name() && committing.contains(&space) {
+                held.insert(client_id);
+            }
+        }
+        held
     }
 
     pub fn outbox_len(&self) -> u64 {
@@ -769,14 +791,54 @@ impl Engine {
         Ok(())
     }
 
-    pub fn add_member(&mut self, space: &str, who: &str) -> R<()> {
+    pub fn add_member(&mut self, space: &str, who: &str, role: Role) -> R<()> {
         let me = self.me_id()?;
         self.append(
             space,
             &me,
             EventBody::MemberAdded {
                 identity: who.to_string(),
-                role: Role::Member,
+                role,
+            },
+        )?;
+        Ok(())
+    }
+
+    /// Takes someone out of a chat. In an end-to-end chat they read nothing written after
+    /// the commit that removes them, and nobody seals a message before it lands.
+    pub fn remove_member(&mut self, space: &str, who: &str) -> R<()> {
+        let me = self.me_id()?;
+        let s = self
+            .state
+            .spaces
+            .get(space)
+            .ok_or_else(|| CoreError::NotFound {
+                what: t("conversa", "chat"),
+            })?;
+        let role_of = |id: &str| s.members.iter().find(|(m, _)| m == id).map(|(_, r)| *r);
+        let allowed = match (role_of(&me), role_of(who)) {
+            (_, None) => {
+                return Err(CoreError::NotFound {
+                    what: t("membro", "member"),
+                })
+            }
+            (Some(Role::Owner), _) => true,
+            (Some(Role::Admin), Some(target)) => target != Role::Owner,
+            _ => false,
+        };
+        if !allowed {
+            return Err(CoreError::Forbidden {
+                reason: t(
+                    "Só quem administra a conversa remove pessoas.",
+                    "Only the chat's owners and admins remove people.",
+                ),
+            });
+        }
+        self.append(
+            space,
+            &me,
+            EventBody::MemberRemoved {
+                identity: who.to_string(),
             },
         )?;
         Ok(())

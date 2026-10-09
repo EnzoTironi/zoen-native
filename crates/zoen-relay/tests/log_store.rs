@@ -461,6 +461,118 @@ async fn end_to_end_spaces_hold_ciphertext_on_every_relay() {
     warm.drop_cell().await.unwrap();
 }
 
+/// ADR 0026: two admins add Carla at once. Both commits were made at the same epoch; the
+/// relay keeps the first, refuses the second and the Welcome that rode on it, and a cold
+/// relay knows the epoch too.
+async fn one_commit_per_epoch_and_each_welcome_follows_its_commit() {
+    use roda_mls::{sealed::state_key, Device};
+    use roda_proto::{Sealed, SealedKind, STALE_COMMIT};
+    let cell = roda_types::new_id("t");
+    let (warm, cold) = (store_on(&cell), store_on(&cell));
+    let people: Vec<Author> = (0..3)
+        .map(|_| Author::device(&Signer::generate(), Signer::generate()))
+        .collect();
+    let (ana, bruno, carla) = (&people[0], &people[1], &people[2]);
+    let dbs: Vec<rusqlite::Connection> = (0..3)
+        .map(|_| {
+            let mut c = rusqlite::Connection::open_in_memory().unwrap();
+            roda_mls::migrate(&mut c).unwrap();
+            c
+        })
+        .collect();
+    let device = |i: usize| {
+        let (a, secret) = (&people[i], people[i].key.secret());
+        let cert = a.cert.as_deref().unwrap();
+        Device::new(&dbs[i], state_key(&secret), &a.identity, secret, cert).unwrap()
+    };
+    let (d_ana, d_bruno, d_carla) = (device(0), device(1), device(2));
+    let space = roda_types::new_id("sp");
+    let handshake = |a: &Author, kind, data: Vec<u8>, seen: &Seen| {
+        let data = Sealed::new(kind, roda_mls::SUITE_ID, data);
+        let cid = roda_types::new_ulid(now_ms());
+        Envelope::sealed(a, &space, &cid, now_ms(), Some(seen), data)
+    };
+    let at = |ev: &Sequenced| Seen {
+        seq: ev.seq,
+        hash: ev.hash.clone(),
+    };
+
+    let created = EventBody::SpaceCreated {
+        title: "t".into(),
+        kind: SpaceKind::Group,
+        privacy: Privacy::EndToEnd,
+    };
+    let mut head = at(&landed(
+        warm.append(&sign(ana, &space, None, created), true).await,
+    ));
+    for (who, role) in [
+        (&bruno.identity, Role::Admin),
+        (&carla.identity, Role::Member),
+    ] {
+        let body = EventBody::MemberAdded {
+            identity: who.clone(),
+            role,
+        };
+        let env = sign(ana, &space, Some(head.clone()), body);
+        head = at(&landed(warm.append(&env, true).await));
+    }
+    let listed: std::collections::BTreeSet<String> =
+        people.iter().map(|p| p.identity.clone()).collect();
+
+    // Ana's device starts the group and adds Bruno: the commit takes epoch 0.
+    d_ana.create_group(&space).unwrap();
+    let none = Default::default();
+    let first = d_ana
+        .commit(&space, &d_bruno.key_packages(1, false).unwrap(), &none)
+        .unwrap();
+    let env = handshake(ana, SealedKind::Commit, first.commit.clone(), &head);
+    head = at(&landed(warm.append(&env, true).await));
+    let env = handshake(ana, SealedKind::Welcome, first.welcome.unwrap(), &head);
+    let welcome = landed(warm.append(&env, true).await);
+    head = at(&welcome);
+    d_ana.open(&space, &first.commit, &listed).unwrap();
+    let data = welcome.env.sealed_data().unwrap().1.to_vec();
+    assert!(d_bruno.join(&space, &data, &listed).unwrap());
+
+    // Both admins add Carla, both from epoch 1. Bruno's commit lands first.
+    let by_bruno = d_bruno
+        .commit(&space, &d_carla.key_packages(1, false).unwrap(), &none)
+        .unwrap();
+    let by_ana = d_ana
+        .commit(&space, &d_carla.key_packages(1, false).unwrap(), &none)
+        .unwrap();
+    let env = handshake(bruno, SealedKind::Commit, by_bruno.commit, &head);
+    head = at(&landed(warm.append(&env, true).await));
+    let env = handshake(ana, SealedKind::Commit, by_ana.commit.clone(), &head);
+    assert_eq!(refused(warm.append(&env, true).await), STALE_COMMIT);
+    let env = handshake(ana, SealedKind::Welcome, by_ana.welcome.unwrap(), &head);
+    assert_eq!(
+        refused(warm.append(&env, true).await),
+        "a welcome follows its own commit"
+    );
+    let env = handshake(bruno, SealedKind::Welcome, by_bruno.welcome.unwrap(), &head);
+    head = at(&landed(warm.append(&env, true).await));
+    // A relay that saw none of it reads the epoch from FoundationDB.
+    let env = handshake(ana, SealedKind::Commit, by_ana.commit, &head);
+    assert_eq!(refused(cold.append(&env, true).await), STALE_COMMIT);
+    warm.drop_cell().await.unwrap();
+}
+
+fn landed(r: Result<Sequencing, zoen_relay::log::Reject>) -> Sequenced {
+    match r {
+        Ok(Sequencing::New { ev, .. }) => ev,
+        Ok(_) => panic!("answered as a duplicate"),
+        Err(e) => panic!("refused: {}", e.reason),
+    }
+}
+
+fn refused(r: Result<Sequencing, zoen_relay::log::Reject>) -> String {
+    match r {
+        Err(e) => e.reason,
+        Ok(_) => panic!("admitted"),
+    }
+}
+
 async fn run<F: Future<Output = ()>>(name: &str, f: F) {
     f.await;
     println!("ok  {name}");
@@ -493,6 +605,11 @@ fn main() {
         run(
             "end-to-end spaces hold ciphertext on every relay",
             end_to_end_spaces_hold_ciphertext_on_every_relay(),
+        )
+        .await;
+        run(
+            "one commit per epoch, and each welcome follows its commit",
+            one_commit_per_epoch_and_each_welcome_follows_its_commit(),
         )
         .await;
         run(

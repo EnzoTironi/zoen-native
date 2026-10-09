@@ -77,6 +77,8 @@ pub trait LogStore: Send + Sync {
         limit: usize,
     ) -> Result<Vec<Sequenced>, StoreError>;
     async fn role(&self, space: &str, who: &str) -> Result<Option<Role>, StoreError>;
+    /// Where `who` was removed from `space`, if they were and haven't been added back.
+    async fn removed_at(&self, space: &str, who: &str) -> Result<Option<u64>, StoreError>;
     async fn members(&self, space: &str) -> Result<Vec<(String, Role)>, StoreError>;
     async fn spaces_of(&self, who: &str) -> Result<Vec<String>, StoreError>;
     /// Identities that share at least one Space with `who` (presence audience).

@@ -227,6 +227,15 @@ impl<'c> Device<'c> {
         self.with(|p| self.load(p, space).is_ok())
     }
 
+    /// Deletes this device's state for a group it was removed from: its secrets go, and
+    /// a later Welcome (if it is added back) starts it afresh.
+    pub fn forget(&self, space: &str) -> Result<(), MlsError> {
+        self.with(|p| match self.load(p, space) {
+            Ok(mut group) => group.delete(p.storage()).map_err(mls),
+            Err(_) => Ok(()),
+        })
+    }
+
     /// Starts the group for a new E2E Space, with this device as its only member.
     pub fn create_group(&self, space: &str) -> Result<(), MlsError> {
         self.with(|p| {
@@ -299,6 +308,15 @@ impl<'c> Device<'c> {
         self.with(|p| {
             self.load(p, space)
                 .is_ok_and(|g| g.pending_commit().is_some())
+        })
+    }
+
+    /// Drops this device's commit after the relay refused it (another commit took the
+    /// epoch). The winner arrives through the log; the device then commits again.
+    pub fn abandon(&self, space: &str) -> Result<(), MlsError> {
+        self.with(|p| {
+            let mut group = self.load(p, space)?;
+            group.clear_pending_commit(p.storage()).map_err(mls)
         })
     }
 
@@ -399,9 +417,13 @@ impl<'c> Device<'c> {
                 ProcessedMessageContent::StagedCommitMessage(staged) => {
                     check_roster(&group, &staged, roster)?;
                     group.merge_staged_commit(p, *staged).map_err(mls)?;
-                    Ok(Opened::Commit {
-                        epoch: group.epoch().as_u64(),
-                    })
+                    let epoch = group.epoch().as_u64();
+                    if !group.is_active() {
+                        // Our leaf was taken out (a removal, or a stranded leaf replaced):
+                        // the secrets go, and a later Welcome starts the group afresh.
+                        group.delete(p.storage()).map_err(mls)?;
+                    }
+                    Ok(Opened::Commit { epoch })
                 }
                 ProcessedMessageContent::OwnPendingCommit => self.merge_own(p, &mut group, roster),
                 // Our own PrivateMessage: undecryptable by its author. A commit of ours at the

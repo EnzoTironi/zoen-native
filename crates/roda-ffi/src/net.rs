@@ -505,8 +505,14 @@ async fn session(
                 match frame {
                     ServerFrame::Event { ev } => {
                         let space = ev.env.space().to_string();
+                        let commit = ev.env.sealed_kind() == Some(roda_log::content::SealedKind::Commit);
                         let r = ctx.engine().ingest(ev);
                         match r {
+                            Ingest::Confirmed if commit => {
+                                // Our commit is in: its Welcome, held until now, goes out.
+                                dirty.insert(space);
+                                if let Err(e) = flush(ctx, &mut sink, &mut sent).await { break Exit::Retry(e) }
+                            }
                             Ingest::Applied | Ingest::Confirmed => { dirty.insert(space); media_kick.notify_one(); }
                             Ingest::Duplicate => {}
                             Ingest::Gap { next } => {
@@ -624,6 +630,7 @@ async fn session(
                         }
                     }
                     ServerFrame::ProfileChanged { identity, .. } => ctx.engine().profile_changed(&identity),
+                    ServerFrame::KeyPackagesLow { device, remaining } => ctx.engine().mls_key_packages_low(&device, remaining),
                     ServerFrame::Pong => {}
                     ServerFrame::Error { message, .. } => tracing_like(&format!("relay: {message}")),
                     ServerFrame::Challenge { .. } | ServerFrame::Ready { .. } => {}
@@ -699,7 +706,7 @@ async fn session(
                     let publish = ctx.engine().mls_key_packages_to_publish();
                     if let Some((packages, last_resort)) = publish {
                         traffic.key_packages = Some(tokio::time::Instant::now() + PROFILE_TIMEOUT);
-                        reqs.push((Op::PublishKeyPackages { packages, last_resort: Some(last_resort) }, Waiting::KeyPackagesPublished));
+                        reqs.push((Op::PublishKeyPackages { packages, last_resort }, Waiting::KeyPackagesPublished));
                     }
                 }
                 let claim = ctx.engine().mls_to_claim();

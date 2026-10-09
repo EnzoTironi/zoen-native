@@ -111,6 +111,17 @@ impl Store {
         Ok(rows.collect::<std::result::Result<_, _>>()?)
     }
 
+    /// Queued MLS handshakes (Commit, Welcome) not failed, oldest first: (client id,
+    /// space, kind).
+    pub fn outbox_handshakes(&self) -> Result<Vec<(String, String, String)>> {
+        let mut st = self.conn.prepare(
+            "SELECT client_id, space, json_extract(json, '$.body.Sealed.kind') AS kind FROM outbox
+             WHERE NOT failed AND kind IN ('Commit', 'Welcome') ORDER BY created_ms, rowid",
+        )?;
+        let rows = st.query_map([], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)))?;
+        Ok(rows.collect::<std::result::Result<_, _>>()?)
+    }
+
     pub fn outbox_get(&self, client_id: &str) -> Result<Option<Event>> {
         let json: Option<String> = self
             .conn
