@@ -194,6 +194,10 @@ impl World {
         self.client_env.push((key.to_string(), value.to_string()));
     }
 
+    pub fn set_relay_env(&mut self, key: &str, value: &str) {
+        self.relay_env.push((key.to_string(), value.to_string()));
+    }
+
     /// Runs `zoen` as `who` against the relay node on `port`.
     pub fn zoen_at(&self, port: u16, who: &str, args: &[&str]) -> String {
         let out = debug(
