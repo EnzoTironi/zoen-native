@@ -69,10 +69,13 @@ handoff yet. The system design's two-second lease failover remains a target.
 
 A separate user-owned backend workstream is implementing persisted renewable leases,
 transaction fencing and bounded forwarding in [PR 43](https://github.com/EnzoTironi/zoen-native/pull/43).
-Its owner reports 42 passing core tests, two cluster controls and seven client journeys
-after fixing failures found by the first Linux run. Complete Linux CI and the isolated
-ownership journey are still being checked. These are workstream reports, not a fresh
-rerun by this audit, and do not close the production-cell or regional gates.
+At reviewed head `3fe1ef5`, [full Linux CI passes](https://github.com/EnzoTironi/zoen-native/actions/runs/37982274653),
+including nine ownership assertion groups, ten real-store journeys and seven session
+revocation tests. Its owner also reports 42 local core tests and nine client journeys
+passing. Local relay failures remain recorded: FDB startup returned 1031 and a short
+lease fixture lost renewal stability. The CI result is independently checked; the local
+results are workstream reports. They do not close workload, authenticated TLS, production-cell
+or regional recovery gates.
 
 The analytics hot path already batches counters in RAM every 15 seconds.
 Account/Space daily rows still accumulate in Postgres.
@@ -97,7 +100,7 @@ establish product completeness.
 | [40](https://github.com/EnzoTironi/zoen-native/pull/40) | Merged `076d69e3` | Welcome ordering, refill, catch-up and stale-rejection fixes | Integrated; controlled regressions pass; historical stock-7 cause remains unproven and repeatability remains required |
 | [41](https://github.com/EnzoTironi/zoen-native/pull/41) | Separate draft | Native Android client | Owned by another active chat; untouched by this audit; owner supplies live sync/media evidence |
 | [42](https://github.com/EnzoTironi/zoen-native/pull/42) | `d9ebb3e` | Temporary combined validation PR | Full Linux CI passes; 41 local FFI tests and focused CLI/FFI Clippy pass; unmerged, close after original feature integration |
-| [43](https://github.com/EnzoTironi/zoen-native/pull/43) | Separate backend draft | Renewable persisted bucket ownership, fencing and bounded forwarding | Owner reports core, cluster controls and client journeys passing after CI fixes; full Linux CI and isolated ownership proof pending |
+| [43](https://github.com/EnzoTironi/zoen-native/pull/43) | `3fe1ef5`, open | Renewable persisted bucket ownership, fencing and bounded forwarding | Full Linux CI passes, including nine ownership assertion groups; review/integration and workload, short-lease and authenticated TLS proof remain |
 | [44](https://github.com/EnzoTironi/zoen-native/pull/44) | `836910c` stacked on PR 38 | One Chats inbox, native header/pins/palette, Cards/List notifications and reusable web shell | Full Linux CI, iOS/macOS builds, 13 web checks and Mac/browser journeys pass; fresh iOS UI journeys pending. Web data remains a local sample preview |
 
 Backup uses ADR 0046 and linking uses ADR 0045. Existing backup migration bytes were
@@ -173,7 +176,7 @@ requests; a surviving authorized peer must still add the leaf. Immutable object 
 every upload attempt and an atomic pointer change preserve the previous backup when a
 replacement fails. Database locks, object operations and full requests have bounded
 waits; uncertain or failed cleanup still needs an operations-tested garbage collector.
-See [ADR 0046](adr/0046-encrypted-backup.md).
+See [ADR 0046](https://github.com/EnzoTironi/zoen-native/blob/08124f05bb4fbd6632df5f59eabc284831e36d6e/docs/adr/0046-encrypted-backup.md).
 
 **Production password recovery remains default off.** A vault key alone does not enable
 it. The explicit development opt-in is for tests and development only. Public activation
