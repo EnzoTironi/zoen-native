@@ -273,19 +273,24 @@ impl Session {
             .iter()
             .map(|k| (k.identity.clone(), k.device.clone()))
             .collect();
-        let Ok(stock) = db::key_package_stock(&self.st.pool, &devices).await else {
-            return;
+        let stock = match db::key_package_stock(&self.st.pool, &devices).await {
+            Ok(stock) => stock,
+            Err(error) => {
+                tracing::warn!(%error, "claimed key-package stock query failed");
+                return;
+            }
         };
         for (identity, device, left) in stock {
             if left < roda_proto::KEY_PACKAGES_LOW as i64 {
-                self.st.fanout.send(
-                    &[identity],
+                let delivered_here = self.st.fanout.send(
+                    std::slice::from_ref(&identity),
                     &ServerFrame::KeyPackagesLow {
-                        device,
+                        device: device.clone(),
                         remaining: left as u32,
                     },
                     None,
                 );
+                tracing::debug!(identity = %pseudo(&identity), device = %pseudo(&device), remaining = left, delivered_here, "low key-package notice");
             }
         }
     }
