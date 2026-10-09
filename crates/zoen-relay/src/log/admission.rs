@@ -43,16 +43,15 @@ pub enum Effect {
     Remove {
         identity: String,
     },
+    /// The Space becomes end-to-end (ADR 0027).
+    Encrypt,
     Nothing,
 }
 
 pub fn admit(env: &Envelope, f: &Facts) -> Result<Effect, Reject> {
     let body = env.body();
     let author = env.author();
-    if f.head.is_some() {
-        check_privacy(env, body.as_ref(), f.privacy)?;
-    }
-    let effect = match (&f.head, body) {
+    let effect = match (&f.head, body.clone()) {
         (None, Some(EventBody::SpaceCreated { kind, privacy, .. })) => {
             if kind == SpaceKind::Personal {
                 return Err(Reject::no("personal spaces stay on the device"));
@@ -118,6 +117,26 @@ pub fn admit(env: &Envelope, f: &Facts) -> Result<Effect, Reject> {
             }
             Effect::Remove { identity }
         }
+        (Some(_), Some(EventBody::SpaceEncrypted)) => {
+            if !matches!(f.kind, Some(SpaceKind::Direct | SpaceKind::Group)) {
+                return Err(Reject::no("only chats and groups become end-to-end"));
+            }
+            match f.privacy {
+                Some(Privacy::Closed) => {}
+                Some(Privacy::EndToEnd) => return Err(Reject::no("already end-to-end")),
+                _ => return Err(Reject::no("public spaces stay readable")),
+            }
+            // In a direct chat either person may; in a group, whoever runs it.
+            let allowed = match f.author_role {
+                Some(Role::Owner | Role::Admin) => true,
+                Some(Role::Member) => f.kind == Some(SpaceKind::Direct),
+                _ => false,
+            };
+            if !allowed {
+                return Err(Reject::no("only owners and admins turn on encryption"));
+            }
+            Effect::Encrypt
+        }
         (Some(_), Some(EventBody::Checkpoint { upto, .. })) => {
             if f.author_role.is_none() {
                 return Err(Reject::no("not a member of this space"));
@@ -137,6 +156,10 @@ pub fn admit(env: &Envelope, f: &Facts) -> Result<Effect, Reject> {
             Some(_) => Effect::Nothing,
         },
     };
+    // Who may write comes first: a non-member learns nothing about the Space.
+    if f.head.is_some() {
+        check_privacy(env, body.as_ref(), f.privacy)?;
+    }
     check_causal_link(env, f, &effect)?;
     Ok(effect)
 }
@@ -163,12 +186,11 @@ fn check_privacy(
                 EventBody::MemberAdded { .. }
                 | EventBody::MemberRemoved { .. }
                 | EventBody::ProfileKeyShared { .. }
+                | EventBody::SpaceEncrypted
                 | EventBody::Checkpoint { .. },
             ),
         ) => Ok(()),
-        (None, _) if e2e => Err(Reject::no(
-            "this space is end-to-end encrypted; seal the event",
-        )),
+        (None, _) if e2e => Err(Reject::no(roda_proto::SEAL_REQUIRED)),
         (None, _) => Ok(()),
     }
 }
@@ -287,6 +309,53 @@ mod tests {
                 .unwrap_err()
                 .reason,
             "not a member of this space"
+        );
+    }
+
+    #[test]
+    fn privacy_only_goes_up() {
+        let a = Author::root(Signer::generate());
+        let seen = Some(Seen {
+            seq: 3,
+            hash: "h3".into(),
+        });
+        let up = |f: &Facts| admit(&env(&a, seen.clone(), EventBody::SpaceEncrypted), f);
+        let closed = |kind, role| Facts {
+            kind: Some(kind),
+            privacy: Some(Privacy::Closed),
+            ..member_facts(role)
+        };
+        assert_eq!(
+            up(&closed(SpaceKind::Group, Role::Admin)).unwrap(),
+            Effect::Encrypt
+        );
+        assert_eq!(
+            up(&closed(SpaceKind::Direct, Role::Member)).unwrap(),
+            Effect::Encrypt
+        );
+        assert_eq!(
+            up(&closed(SpaceKind::Group, Role::Member))
+                .unwrap_err()
+                .reason,
+            "only owners and admins turn on encryption"
+        );
+        assert_eq!(
+            up(&closed(SpaceKind::Community, Role::Owner))
+                .unwrap_err()
+                .reason,
+            "only chats and groups become end-to-end"
+        );
+        assert_eq!(
+            up(&e2e_facts(Role::Owner)).unwrap_err().reason,
+            "already end-to-end"
+        );
+        let public = Facts {
+            privacy: Some(Privacy::Public),
+            ..member_facts(Role::Owner)
+        };
+        assert_eq!(
+            up(&public).unwrap_err().reason,
+            "public spaces stay readable"
         );
     }
 

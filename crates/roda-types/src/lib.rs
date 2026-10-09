@@ -426,6 +426,9 @@ pub enum EventBody {
         version: u64,
         shares: Vec<ProfileKeyShare>,
     },
+    /// A relay-readable Space becomes end-to-end from this entry on (ADR 0027). There is
+    /// no event for the other direction: a Space's privacy only ever goes up.
+    SpaceEncrypted,
     /// A member's statement about an end-to-end Space (ADR 0026): having applied the log
     /// through `upto`, its MLS group is at `epoch`, and `digest` is SHA-256 over a tag, the
     /// group id, the epoch and the epoch authenticator. Only members of that exact group can

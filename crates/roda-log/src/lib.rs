@@ -49,6 +49,8 @@ pub enum LogError {
     BrokenCausalLink { seq: u64 },
     #[error("o evento #{seq} não diz o que o autor já tinha visto")]
     MissingCausalLink { seq: u64 },
+    #[error("o evento #{seq} cria de novo um Espaço que já existe")]
+    Recreated { seq: u64 },
 }
 
 /// An Ed25519 signing key (identity root key or device key).
@@ -353,6 +355,15 @@ pub fn verify_causal_link(before: &[Event], e: &Event) -> Result<(), LogError> {
     }
 }
 
+/// What an event may be at its place in the log: causally linked, and never a second
+/// `SpaceCreated` (which would reset the Space's privacy, ADR 0027).
+fn verify_place(before: &[Event], e: &Event) -> Result<(), LogError> {
+    if !before.is_empty() && matches!(e.body, EventBody::SpaceCreated { .. }) {
+        return Err(LogError::Recreated { seq: e.seq });
+    }
+    verify_causal_link(before, e)
+}
+
 /// Full check of one event at its position: chain hash plus author signature.
 pub fn verify_event(e: &Event) -> Result<(), LogError> {
     if chain_hash(&e.space, e.seq, &e.prev, &wire_hash_of(e)) != e.hash {
@@ -459,7 +470,7 @@ impl SpaceLog {
             return Err(LogError::BrokenChain { seq: e.seq });
         }
         verify_event(&e)?;
-        verify_causal_link(&self.events, &e)?;
+        verify_place(&self.events, &e)?;
         self.events.push(e);
         Ok(self.events.last().expect("acabou de entrar"))
     }
@@ -481,7 +492,7 @@ impl SpaceLog {
                 return Err(LogError::BrokenChain { seq: e.seq });
             }
             verify_event(e)?;
-            verify_causal_link(&self.events[..i], e)?;
+            verify_place(&self.events[..i], e)?;
             prev = e.hash.clone();
         }
         Ok(())
@@ -942,6 +953,32 @@ mod tests {
         client.accept(a).unwrap();
         client.accept(b).unwrap();
         assert_eq!(client.head_hash(), relay.head_hash());
+    }
+
+    #[test]
+    fn an_end_to_end_space_cannot_be_created_again_as_readable() {
+        let me = Author::root(Signer::generate());
+        let created = |client_id: &str, privacy, seen| {
+            let body = EventBody::SpaceCreated {
+                title: "g".into(),
+                kind: SpaceKind::Group,
+                privacy,
+            };
+            me.sign_event("sp_g", client_id, 1, seen, body)
+        };
+        let mut relay = SpaceLog::new("sp_g");
+        let first = relay
+            .sequence(created("a", Privacy::EndToEnd, None))
+            .clone();
+        let seen = relay.head();
+        let again = relay.sequence(created("b", Privacy::Closed, seen)).clone();
+        assert_eq!(relay.verify().unwrap_err(), LogError::Recreated { seq: 1 });
+        let mut client = SpaceLog::new("sp_g");
+        client.accept(first).unwrap();
+        assert_eq!(
+            client.accept(again).unwrap_err(),
+            LogError::Recreated { seq: 1 }
+        );
     }
 
     #[test]

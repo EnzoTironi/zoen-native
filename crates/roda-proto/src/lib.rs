@@ -33,6 +33,9 @@ pub use roda_log::profile::DeviceSigned;
 
 /// The version this build speaks, and the oldest one it still accepts.
 pub const PROTOCOL_VERSION: u32 = 2;
+/// Why a relay refuses a clear event in an end-to-end Space. A client that wrote it before
+/// it learned the Space went end-to-end (ADR 0027) seals it and sends it again.
+pub const SEAL_REQUIRED: &str = "this space is end-to-end encrypted; seal the event";
 pub const MIN_PROTOCOL_VERSION: u32 = 2;
 /// Domain tag for what devices sign outside the log (login, blob uploads).
 pub const PROTOCOL: &str = "zoen-sync/2";

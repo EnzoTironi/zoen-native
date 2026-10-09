@@ -231,6 +231,17 @@ impl State {
                     s.members.retain(|(id, _)| id != identity);
                 }
             }
+            EventBody::SpaceEncrypted => {
+                if let Some(s) = self.spaces.get_mut(&e.space) {
+                    s.privacy = Privacy::EndToEnd;
+                    s.entries.push(entry(EntryBody::System {
+                        text: t(
+                            "Criptografia de ponta a ponta ativada. Só os membros leem as mensagens novas.",
+                            "End-to-end encryption is on. Only members can read new messages.",
+                        ),
+                    }));
+                }
+            }
             EventBody::MessagePosted { text, attaches, .. } => {
                 if let Some(s) = self.spaces.get_mut(&e.space) {
                     s.entries.push(entry(EntryBody::Message {
@@ -2920,6 +2931,10 @@ fn event_label(b: &EventBody) -> String {
             shares.len()
         ),
         EventBody::Sealed { kind } => tr!("Cifrado: {kind}", "Encrypted: {kind}"),
+        EventBody::SpaceEncrypted => t(
+            "Criptografia de ponta a ponta ativada",
+            "End-to-end encryption turned on",
+        ),
         EventBody::Checkpoint { epoch, .. } => {
             tr!(
                 "Ponto de verificação: época {epoch}",

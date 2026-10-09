@@ -69,6 +69,7 @@ struct SpaceState {
     head: Option<(u64, String)>,
     kind: Option<SpaceKind>,
     privacy: Option<Privacy>,
+    creator: String,
     members: BTreeMap<String, Role>,
     /// Hashes of the newest entries, by seq, so `seen` checks need no read.
     recent: BTreeMap<u64, String>,
@@ -271,10 +272,11 @@ impl Cell {
             return Ok(state);
         };
         if let Some(meta) = trx.get(&self.space_key(space, "meta"), true).await? {
-            let (kind, privacy, _): (String, String, String) =
+            let (kind, privacy, creator): (String, String, String) =
                 unpack(&meta).map_err(|e| custom(e.to_string()))?;
             state.kind = parse(&kind);
             state.privacy = parse(&privacy);
+            state.creator = creator;
         }
         state.members = self
             .members_in(trx, space, true)
@@ -453,6 +455,7 @@ impl Cell {
                     );
                     state.kind = Some(kind);
                     state.privacy = Some(privacy);
+                    state.creator = env.author().to_string();
                     self.put_member(trx, space, env.author(), Role::Owner);
                     state.members.insert(env.author().to_string(), Role::Owner);
                 }
@@ -476,6 +479,18 @@ impl Cell {
                     trx.clear(&self.root.pack(&("i", identity.as_str(), space)));
                     state.members.remove(&identity);
                     removed = Some(identity);
+                }
+                Effect::Encrypt => {
+                    let kind = state.kind.unwrap_or(SpaceKind::Group);
+                    trx.set(
+                        &self.space_key(space, "meta"),
+                        &pack(&(
+                            word(&kind),
+                            word(&Privacy::EndToEnd),
+                            state.creator.as_str(),
+                        )),
+                    );
+                    state.privacy = Some(Privacy::EndToEnd);
                 }
                 Effect::Nothing => {}
             }
