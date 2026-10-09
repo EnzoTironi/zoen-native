@@ -85,6 +85,11 @@ final class AppModel {
     private(set) var me: Persona?
     private(set) var spaces: [SpaceSummary] = []
     private(set) var requests: [AgentRequestDto] = []
+    /// Standing "always approve / always deny" decisions you gave your agents.
+    private(set) var standing: [StandingDecisionDto] = []
+    /// Revoked on screen, still undoable (see `revokeStanding`).
+    private(set) var pendingRevokes: Set<String> = []
+    @ObservationIgnored private var revokeTasks: [String: Task<Void, Never>] = [:]
     private(set) var agents: [AgentProfile] = []
     private(set) var mentions: [Mention] = []
     private(set) var stats: CoreStats?
@@ -139,6 +144,10 @@ final class AppModel {
     var working: [String: Persona] = [:]
     /// The notifications sheet (bell in the headers): mentions, tasks and approvals.
     var notificationsOpen = false
+    /// The approvals catch-up stack (bell with pending approvals).
+    var approvalsOpen = false
+    /// A mini-app flipping open from its tile (see MiniAppFlipHost).
+    var appFlip: AppFlip?
     /// New chat / group / join sheet (real accounts only).
     var newChatOpen = false
     /// Profile sheet (medium → large) opened from any avatar/name tap.
@@ -170,6 +179,9 @@ final class AppModel {
         }
         if d.bool(forKey: "RodaFreshStart") {
             try? core.eraseDevice(vault: sync.vault)
+            // Pins and their order are per device too: start from the default strip.
+            for k in ["RodaHomePins", "RodaHomeUnpinned", "RodaChatAppsUnpinned", "RodaChatTileOrder", "RodaPendingRevokes"] { d.removeObject(forKey: k) }
+            homePins = []; homeUnpinned = []; chatAppsUnpinned = []; chatTileOrder = []
             if SyncModel.mode == .demo { _ = try? core.seedDemoIfEmpty() }
         }
         if let spec = d.string(forKey: "RodaAccount"), core.account() == nil {
@@ -217,6 +229,7 @@ final class AppModel {
         me = try? core.me()
         spaces = core.spaces()
         requests = core.requests()
+        standing = core.standingDecisions()
         agents = core.agents()
         mentions = core.mentions()
         stats = core.stats()
@@ -229,6 +242,14 @@ final class AppModel {
 
     var pendingRequests: [AgentRequestDto] { requests.filter { $0.status == .pending || $0.status == .stale } }
     var pendingCount: Int { requests.filter { $0.status == .pending }.count }
+    /// What the approvals stack deals: pending requests from your own agents (only an
+    /// agent's owner decides), oldest first.
+    var approvalQueue: [AgentRequestDto] {
+        requests.filter { $0.status == .pending && $0.agent.isMine }.sorted { $0.openedMs < $1.openedMs }
+    }
+    func standing(for agentId: String, space: String? = nil) -> [StandingDecisionDto] {
+        standing.filter { $0.agent.id == agentId && (space == nil || $0.spaceId == space) && !pendingRevokes.contains($0.grantId) }
+    }
 
     func space(_ id: String) -> SpaceSummary? { spaces.first { $0.id == id } }
     func agentProfile(_ id: String) -> AgentProfile? { agents.first { $0.id == id } }
@@ -316,6 +337,74 @@ final class AppModel {
         }
     }
 
+    /// One swipe (or button) on the approvals stack. Messages go into the chats as signed
+    /// events; the stack shows its own undo toast, so no app toast here.
+    @discardableResult
+    func decide(_ requestId: String, _ decision: RequestDecision) -> DecideOutcome? {
+        perform { try core.decideRequest(requestId: requestId, decision: decision) }
+    }
+
+    /// One tap revokes, with "Desfazer" for a few seconds (like the rest of the app). The row
+    /// goes at once; the core only forgets the grant when the undo window closes.
+    func revokeStanding(_ s: StandingDecisionDto) {
+        let id = s.grantId
+        withAnimation(.snappy) { _ = pendingRevokes.insert(id) }
+        savePendingRevokes()
+        show(.init(kind: .revoked(grantId: id, agent: s.agent), text: String(localized: "\(s.agent.name) will ask again.")),
+             seconds: Self.revokeUndoSeconds)
+        revokeTasks[id]?.cancel()
+        revokeTasks[id] = Task { @MainActor [weak self] in
+            try? await Task.sleep(for: .seconds(Self.revokeUndoSeconds + 0.3))
+            guard !Task.isCancelled else { return }
+            self?.commitRevoke(id)
+        }
+    }
+
+    /// "Desfazer" on the revoke toast: the decision comes back as it was.
+    func restoreStanding(_ grantId: String) {
+        guard pendingRevokes.contains(grantId) else { return }
+        revokeTasks.removeValue(forKey: grantId)?.cancel()
+        Haptics.selectionTick()
+        withAnimation(.snappy) {
+            _ = pendingRevokes.remove(grantId)
+            toast = nil
+        }
+        savePendingRevokes()
+    }
+
+    /// Leaving the app (or the window closing) settles any revoke still waiting on its undo.
+    func commitPendingRevokes() {
+        for id in pendingRevokes { commitRevoke(id) }
+    }
+
+    private func commitRevoke(_ id: String) {
+        revokeTasks.removeValue(forKey: id)?.cancel()
+        guard pendingRevokes.contains(id) else { return }
+        _ = perform { try core.revokeStanding(grantId: id) }
+        pendingRevokes.remove(id)
+        savePendingRevokes()
+        standing = core.standingDecisions()
+    }
+
+    /// The pending revokes are written down as they happen, so a kill inside the undo window
+    /// still revokes: the next launch applies whatever is left (`applyPendingRevokesFromLastRun`).
+    private static let pendingRevokesKey = "RodaPendingRevokes"
+    private func savePendingRevokes() {
+        UserDefaults.standard.set(Array(pendingRevokes), forKey: Self.pendingRevokesKey)
+    }
+
+    func applyPendingRevokesFromLastRun() {
+        let d = UserDefaults.standard
+        let left = d.stringArray(forKey: Self.pendingRevokesKey) ?? []
+        guard !left.isEmpty else { return }
+        // A grant that is already gone (or a device that was erased) is fine: nothing to do.
+        for id in left where !pendingRevokes.contains(id) { try? core.revokeStanding(grantId: id) }
+        d.set(Array(pendingRevokes), forKey: Self.pendingRevokesKey)
+        standing = core.standingDecisions()
+    }
+
+    static let revokeUndoSeconds: Double = 5
+
     func approveAll(agent: Persona) {
         if let n = perform({ try core.approveAll(agentId: agent.id) }) {
             show(.init(kind: .agent(agent), text: n == 1 ? String(localized: "1 request approved.") : String(localized: "\(n) requests approved. (Simulated: nothing was really paid.)")))
@@ -368,6 +457,16 @@ final class AppModel {
 
     /// Mensagem do usuário → (talvez) o agente age. O plano vem do Foundation Models
     /// no aparelho ou do planejador local; o núcleo decide se o agente pode e assina.
+    /// Inline reply (quoted in the chat) or a reply in the message's thread.
+    @discardableResult
+    func sendReply(_ text: String, to entryId: String, thread: Bool, in spaceId: String) -> Bool {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return false }
+        guard perform({ try core.sendReply(spaceId: spaceId, text: trimmed, to: entryId, thread: thread) }) != nil else { return false }
+        Haptics.send()
+        return true
+    }
+
     func send(_ text: String, in spaceId: String) async {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
@@ -475,6 +574,54 @@ final class AppModel {
 
 
     /// Deep-link into a seeded space / screen (`-RodaOpen`). Called after showcase polish.
+    static let samplePage = """
+    # Roteiro: Paraty
+
+    Três dias de **barco**, trilha e *centro histórico*.
+
+    ## Antes de ir
+
+    - [x] Reservar a pousada
+    - [ ] Alugar o barco
+    - [ ] Comprar protetor
+
+    > Muitos lugares não aceitam cartão: leve dinheiro.
+
+    | Dia | Plano |
+    |-----|-------|
+    | 1   | Centro histórico |
+    | 2   | Barco pelas ilhas |
+
+    ```
+    saída: sexta 7h
+    ```
+    """
+
+    /// A small drawn PNG (a map-like doodle) to show Quick Look and Markup.
+    static func sampleImage(side: CGFloat = 900) -> Data {
+        let size = CGSize(width: side, height: side * 0.75)
+        #if canImport(UIKit)
+        let img = UIGraphicsImageRenderer(size: size).image { ctx in
+            UIColor(red: 0.85, green: 0.93, blue: 0.97, alpha: 1).setFill()
+            ctx.fill(CGRect(origin: .zero, size: size))
+            UIColor(red: 0.55, green: 0.78, blue: 0.45, alpha: 1).setFill()
+            UIBezierPath(ovalIn: CGRect(x: side * 0.1, y: side * 0.15, width: side * 0.45, height: side * 0.35)).fill()
+            UIBezierPath(ovalIn: CGRect(x: side * 0.6, y: side * 0.4, width: side * 0.25, height: side * 0.2)).fill()
+        }
+        return img.pngData() ?? Data()
+        #else
+        let img = NSImage(size: size)
+        img.lockFocus()
+        NSColor(red: 0.85, green: 0.93, blue: 0.97, alpha: 1).setFill()
+        NSRect(origin: .zero, size: size).fill()
+        NSColor(red: 0.55, green: 0.78, blue: 0.45, alpha: 1).setFill()
+        NSBezierPath(ovalIn: NSRect(x: side * 0.1, y: side * 0.15, width: side * 0.45, height: side * 0.35)).fill()
+        img.unlockFocus()
+        guard let tiff = img.tiffRepresentation, let rep = NSBitmapImageRep(data: tiff) else { return Data() }
+        return rep.representation(using: .png, properties: [:]) ?? Data()
+        #endif
+    }
+
     private func applyRodaOpen(_ d: UserDefaults) {
         guard let open = d.string(forKey: "RodaOpen") else { return }
         switch open {
@@ -487,6 +634,18 @@ final class AppModel {
             }
         case "zoen":
             if let id = zoenSpaceId() { go(.space(id)) }
+        case "new-page", "page-sample", "file-sample":
+            // Files and pages (ADR 0040) for UI journeys and proof videos.
+            guard let id = spaceId(titled: DemoSpace.paraty) else { break }
+            select(.files)
+            let made: ItemDetail? = switch open {
+            case "new-page": try? core.pageCreate(spaceId: id, title: "")
+            case "page-sample": try? core.pageImportMarkdown(spaceId: id, path: "roteiro.md", markdown: Self.samplePage)
+            default: try? core.fileAdd(spaceId: id, path: "mapa.png", name: "mapa.png", mime: "image/png",
+                                       bytes: Self.sampleImage(), thumbnail: Self.sampleImage(side: 120))
+            }
+            refresh()
+            if let made { push(.item(made.id)) }
         case "turma", "saturday", "crew":
             if let id = spaceId(titled: DemoSpace.saturdayCrew) { go(.space(id)) }
         case "coastal", "litoral", "viajantes":
@@ -499,6 +658,10 @@ final class AppModel {
             if let a = agents.first(where: { $0.persona.handle == "guia" }) {
                 select(.agents); push(.agent(a.id))
             }
+        case "aprovacoes", "approvals":
+            #if os(iOS)
+            approvalsOpen = true
+            #endif
         case "integridade":
             select(.you); push(.integrity)
         case "participantes":
@@ -509,7 +672,8 @@ final class AppModel {
             }
         case "pedido":
             if let r = requests.first(where: { $0.status == .pending }) {
-                openNotifications(); paths[.activity] = [.request(r.id)]
+                // The review screen itself, so the plain list (not the swipe stack).
+                notificationsOpen = true; paths[.activity] = [.request(r.id)]
             }
         default: break
         }
@@ -517,6 +681,7 @@ final class AppModel {
 
     func applyLaunchOptions() async {
         let d = UserDefaults.standard
+        applyPendingRevokesFromLastRun()
         if let tab = d.string(forKey: "RodaTab") {
             self.tab = switch tab {
             case "atividade", "activity": .activity
@@ -615,6 +780,14 @@ final class AppModel {
 
     /// Abre o mini-app em tela cheia. Da tela Conversas, entra no Espaço antes (voltar
     /// leva à conversa, onde o cartão mora).
+    /// Opens a mini-app from its tile with the flip: the tile turns over into the app, and
+    /// closing turns it back. Stays where you are (Home or the chat) underneath.
+    func flipOpenApp(_ itemId: String, from: CGRect, sourceKey: String, front: AnyView) {
+        guard appFlip == nil, appSheet == nil else { return }
+        if let item = try? core.item(itemId: itemId), item.app?.appId == "pet" { petTab = .care }
+        appFlip = AppFlip(itemId: itemId, from: from, sourceKey: sourceKey, front: front)
+    }
+
     func openApp(_ itemId: String, fromHome: Bool = false) {
         if fromHome, let item = try? core.item(itemId: itemId) {
             go(.space(item.spaceId))
@@ -722,6 +895,9 @@ final class AppModel {
                 HandDrawnAvatarAsset.saveGroup(s.id, assetName: asset)
             }
         }
+        #if DEBUG
+        seedShowcaseApprovals()
+        #endif
         // Keep an intentional `-RodaTab` (Spaces / Store investor shots).
         if UserDefaults.standard.string(forKey: "RodaTab") == nil { tab = .conversations }
         // Keep an intentional `-RodaOpen` navigation (investor chat shots).
@@ -730,6 +906,37 @@ final class AppModel {
         }
         revision &+= 1
     }
+
+    #if DEBUG
+    /// Debug showcase only: a few more of your agents' requests for the approvals stack
+    /// (the core seed already has Financeiro's three in Paraty). Each goes through the core
+    /// evaluator; one pairs with the Marina payment link so "Sempre aprovar" settles two.
+    private func seedShowcaseApprovals() {
+        guard let paraty = spaceId(titled: DemoSpace.paraty),
+              let turma = spaceId(titled: DemoSpace.saturdayCrew) else { return }
+        let product = spaces.first { $0.title == AppLocale.pick("Zoen · Produto", "Zoen · Product") }?.id
+        let asks: [(String?, String, String, String, String, String)] = [
+            (paraty, "financeiro",
+             AppLocale.pick("Mandar o roteiro de Paraty pro e-mail da Marina", "Email Marina the Paraty itinerary"),
+             AppLocale.pick("PDF com horários, endereços e o total por pessoa.", "PDF with times, addresses and the per-person total."),
+             AppLocale.pick("Marina, por e-mail", "Marina, by email"), "external"),
+            (turma, "zoen",
+             AppLocale.pick("Ler a agenda da Lúcia pra achar um horário", "Read Lucia's calendar to find a time"),
+             AppLocale.pick("Só livre/ocupado de sábado e domingo, pra marcar a trilha.", "Just free/busy for Saturday and Sunday, to set the hike."),
+             AppLocale.pick("Agenda da Lúcia", "Lucia's calendar"), "third_party_data"),
+            (product, "zoen",
+             AppLocale.pick("Instalar o gancho “Resumo diário” no Slack do time", "Install the “Daily digest” hook in the team Slack"),
+             AppLocale.pick("Todo dia às 18h, posta no #produto o que foi entregue e o que travou.", "Every day at 6 pm, posts to #product what shipped and what's stuck."),
+             AppLocale.pick("Canal #produto no Slack", "#product channel on Slack"), "external"),
+        ]
+        for (space, handle, title, detail, audience, action) in asks {
+            guard let space, !requests.contains(where: { $0.title == title }) else { continue }
+            _ = try? core.demoOpenRequest(spaceId: space, agentHandle: handle, title: title, detail: detail,
+                                          audience: audience, action: action, cents: 0)
+        }
+        refresh()
+    }
+    #endif
 
     func runStory(_ story: String) async {
         guard let turma = spaceId(titled: DemoSpace.saturdayCrew) else { return }
@@ -874,6 +1081,11 @@ final class AppModel {
     /// The bell: on iPhone a sheet over whatever you're on; on Mac the Activity pane.
     func openNotifications() {
         #if os(iOS)
+        // Approvals waiting: the catch-up stack. Otherwise the plain list.
+        if !approvalQueue.isEmpty {
+            approvalsOpen = true
+            return
+        }
         paths[.activity] = []
         notificationsOpen = true
         #else
@@ -904,6 +1116,19 @@ final class AppModel {
         homeUnpinned.insert(itemId)
         homePins.removeAll { $0 == itemId }
         saveHome()
+    }
+
+    /// Home edit mode: the strip's new order after a drag.
+    func setHomeOrder(_ ids: [String]) {
+        homePins = ids
+        saveHome()
+    }
+
+    /// Chat pins edit mode: tile order (tile ids are "<item>#<n>") and its persistence.
+    private(set) var chatTileOrder: [String] = UserDefaults.standard.stringArray(forKey: "RodaChatTileOrder") ?? []
+    func setChatTileOrder(_ ids: [String]) {
+        chatTileOrder = ids + chatTileOrder.filter { !ids.contains($0) }
+        UserDefaults.standard.set(chatTileOrder, forKey: "RodaChatTileOrder")
     }
 
     /// Moves a Home card one step left (-1) or right (+1).

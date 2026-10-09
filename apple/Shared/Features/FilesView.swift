@@ -1,5 +1,6 @@
 import SwiftUI
 import RodaCore
+import UniformTypeIdentifiers
 
 /// Arquivos (poster #067). No Roda, "arquivo" é um Item: versionado, assinado, com
 /// desfazer. Pastas = Espaços onde os Itens nasceram; Recentes = última versão.
@@ -49,9 +50,6 @@ struct FilesScreen: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
-                Label("Only on this device · \(model.stats?.events ?? 0) signed events", systemImage: "iphone")
-                    .font(.caption).foregroundStyle(Palette.textSecondary)
-                    .padding(.horizontal, 4)
                 SearchField(text: $query, prompt: "Search files, chats or people")
                 FilterPills(options: Scope.allCases, selection: $scope, label: \.label)
 
@@ -87,7 +85,40 @@ struct FilesScreen: View {
         .scrollEdgeEffectStyle(.soft, for: .top)
         .background(NightBackdrop())
         .navigationTitle("Files")
+        .toolbar {
+            ToolbarItem(placement: .primaryAction) {
+                Menu {
+                    ForEach(model.spaces.prefix(12), id: \.id) { space in
+                        Menu(space.title) {
+                            Button("New page", systemImage: "doc.badge.plus") { newPage(in: space.id) }
+                            Button("Add files", systemImage: "square.and.arrow.down") { importInto = space.id }
+                        }
+                    }
+                } label: {
+                    Label("Add", systemImage: "plus")
+                }
+                .accessibilityIdentifier("files.add")
+            }
+        }
+        .fileImporter(isPresented: Binding(get: { importInto != nil }, set: { if !$0 { importInto = nil } }),
+                      allowedContentTypes: [.item], allowsMultipleSelection: true) { result in
+            guard let space = importInto, case .success(let urls) = result else { return }
+            Task { @MainActor in
+                let ids = await FileSupport.importFiles(urls, into: space, model: model)
+                if ids.count == 1 { model.go(.item(ids[0])) }
+                if !ids.isEmpty { Haptics.commit() }
+            }
+        }
         .task(id: model.revision) { items = model.core.items() }
+    }
+
+    @State private var importInto: String?
+
+    private func newPage(in space: String) {
+        if let it = model.perform({ try model.core.pageCreate(spaceId: space, title: "") }) {
+            Haptics.action()
+            model.go(.item(it.id))
+        }
     }
 }
 
@@ -119,14 +150,39 @@ struct ItemFileRow: View {
     var body: some View {
         let last = item.versions.max { $0.number < $1.number }
         let who = last.map { $0.author.isMe ? String(localized: "you") : $0.author.name } ?? item.createdBy.name
-        FileRow(symbol: symbol, tint: tint,
-                title: item.title,
-                subtitle: String(localized: "v\(item.version) · edited by \(who) · \(RodaTime.relative(last?.atMs ?? 0))"))
+        if item.kindId == "page" || item.kindId == "file" {
+            HStack(spacing: 12) {
+                FileThumb(item: item, size: 34)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(item.title).font(.body.weight(.medium)).foregroundStyle(Palette.textPrimary).lineLimit(1)
+                    Text(subtitle(who: who, at: last?.atMs ?? 0)).font(.caption).foregroundStyle(Palette.textSecondary).lineLimit(1)
+                }
+                Spacer()
+                Image(systemName: "chevron.right").font(.caption.weight(.bold)).foregroundStyle(Palette.textTertiary)
+            }
+            .padding(.horizontal, 14)
+            .padding(.vertical, 12)
+            .contentShape(.rect)
+        } else {
+            FileRow(symbol: symbol, tint: tint,
+                    title: item.title,
+                    subtitle: String(localized: "v\(item.version) · edited by \(who) · \(RodaTime.relative(last?.atMs ?? 0))"))
+        }
+    }
+    private func subtitle(who: String, at: Int64) -> String {
+        if let f = item.file {
+            let size = ByteCountFormatter.string(fromByteCount: Int64(f.bytes), countStyle: .file)
+            return f.ready
+                ? String(localized: "v\(item.version) · \(size) · \(who) · \(RodaTime.relative(at))")
+                : String(localized: "Arriving… \(f.chunksHere) of \(f.chunks) parts")
+        }
+        return String(localized: "v\(item.version) · edited by \(who) · \(RodaTime.relative(at))")
     }
     private var symbol: String {
         switch item.kindId {
         case "plan": "map.fill"
         case "task": "checklist"
+        case "page": "doc.richtext"
         default: "doc.text.fill"
         }
     }
@@ -140,6 +196,7 @@ struct FolderView: View {
     @Environment(AppModel.self) private var model
     let spaceId: String
     @State private var items: [ItemDetail] = []
+    @State private var importing = false
     var body: some View {
         List {
             Section {
@@ -148,10 +205,25 @@ struct FolderView: View {
                         .listRowInsets(EdgeInsets())
                 }
             } footer: {
-                Text("Every version is a signed event in this Space’s log. Restoring creates a new version; nothing is deleted.")
+                Text("Every change is kept as a version. Restoring adds a new version; nothing is lost.")
             }
             Section {
+                Button("New page", systemImage: "doc.badge.plus") {
+                    if let it = model.perform({ try model.core.pageCreate(spaceId: spaceId, title: "") }) {
+                        Haptics.action()
+                        model.go(.item(it.id))
+                    }
+                }
+                .accessibilityIdentifier("folder.newPage")
+                Button("Add files", systemImage: "square.and.arrow.down") { importing = true }
                 Button("Open the chat", systemImage: "bubble.left.and.bubble.right") { model.go(.space(spaceId)) }
+            }
+        }
+        .fileImporter(isPresented: $importing, allowedContentTypes: [.item], allowsMultipleSelection: true) { result in
+            guard case .success(let urls) = result else { return }
+            Task { @MainActor in
+                let ids = await FileSupport.importFiles(urls, into: spaceId, model: model)
+                if !ids.isEmpty { Haptics.commit() }
             }
         }
         .navigationTitle(model.space(spaceId)?.title ?? String(localized: "Folder"))

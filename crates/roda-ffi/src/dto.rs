@@ -129,6 +129,24 @@ pub struct TimelineEntry {
     pub kind: EntryKind,
     /// Where this entry is on its way to the others.
     pub delivery: Delivery,
+    /// Inline reply: a quote of the message this one answers.
+    #[uniffi(default = None)]
+    pub reply_to: Option<ReplyQuote>,
+    /// Thread reply: the root message's id. The main timeline leaves these out and shows
+    /// `thread_replies` under the root instead.
+    #[uniffi(default = None)]
+    pub in_thread: Option<String>,
+    /// On a thread root: how many replies its thread has.
+    #[uniffi(default = 0)]
+    pub thread_replies: u32,
+}
+
+/// What an inline reply shows of the message it answers.
+#[derive(Debug, Clone, PartialEq, uniffi::Record)]
+pub struct ReplyQuote {
+    pub id: String,
+    pub author: Persona,
+    pub text: String,
 }
 
 /// `Local`: a Space that lives only on this device. `Sending`: signed and queued for the
@@ -193,6 +211,9 @@ pub struct ItemDetail {
     /// Pedidos de agentes ligados a linhas deste Item (linha → status).
     pub linked_requests: Vec<AgentRequestDto>,
     pub app: Option<AppStateDto>,
+    /// Folder path inside the Space for pages and files ("" at the top).
+    pub path: String,
+    pub file: Option<crate::files::FileDto>,
 }
 
 // ───────────────────────────── MCP Apps (mini-apps) ─────────────────────────────
@@ -336,6 +357,13 @@ pub struct AgentRequestDto {
     pub resolved_ms: Option<i64>,
     pub item_id: Option<String>,
     pub line_id: Option<String>,
+    /// What a standing decision on this request would cover (`roda_grants::standing_key`).
+    pub action_key: String,
+    /// False for red lines and irreversible actions: those always ask, so the stack
+    /// doesn't offer "always approve".
+    pub can_always_approve: bool,
+    /// Resolved by a standing decision ("always approve/deny") rather than one by one.
+    pub by_standing: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, uniffi::Record)]
@@ -386,6 +414,42 @@ pub struct PlanOutcome {
 pub struct ApproveOutcome {
     pub request: AgentRequestDto,
     pub message: String,
+}
+
+/// The four swipes on the approvals stack.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, uniffi::Enum)]
+pub enum RequestDecision {
+    /// Right: approve this one.
+    Approve,
+    /// Left: deny this one.
+    Deny,
+    /// Up: approve and keep approving this kind of action from this agent here.
+    AlwaysApprove,
+    /// Down: deny and keep denying this kind of action from this agent here.
+    AlwaysDeny,
+}
+
+#[derive(Debug, Clone, PartialEq, uniffi::Record)]
+pub struct DecideOutcome {
+    pub request: AgentRequestDto,
+    pub message: String,
+    /// The standing Grant a "Sempre" swipe issued (revocable from Permissions).
+    pub standing_grant_id: Option<String>,
+    /// Other pending requests the standing decision resolved right away.
+    pub also_resolved: u32,
+}
+
+/// A standing "always approve / always deny" an owner gave one of their agents.
+#[derive(Debug, Clone, PartialEq, uniffi::Record)]
+pub struct StandingDecisionDto {
+    pub grant_id: String,
+    pub agent: Persona,
+    pub space_id: String,
+    pub space_title: String,
+    pub action_key: String,
+    pub action_label: String,
+    pub allow: bool,
+    pub at_ms: i64,
 }
 
 #[derive(Debug, Clone, PartialEq, uniffi::Record)]

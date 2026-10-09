@@ -265,6 +265,7 @@ mod tests {
             message: format!("m{i}"),
             text: format!("text {i}"),
             attaches: None,
+            reply: None,
         };
         Envelope::plain(&author.sign_event(space, &format!("c{i:04}"), 0, None, body))
     }

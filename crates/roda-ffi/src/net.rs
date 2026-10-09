@@ -781,7 +781,7 @@ async fn register(sink: &mut Sink, stream: &mut Stream, profile: Identity) -> Re
 }
 
 async fn flush(ctx: &Ctx, sink: &mut Sink, sent: &mut HashSet<String>) -> Result<(), String> {
-    let envs = ctx.engine().outbox_envelopes();
+    let envs = ctx.engine().outbox_envelopes_except(sent);
     for env in envs {
         if sent.insert(env.client_id().to_string()) {
             send(sink, &ClientFrame::Publish { env }).await?;

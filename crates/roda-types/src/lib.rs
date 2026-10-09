@@ -13,6 +13,8 @@
 //! Tudo que acontece num Espaço vira um [`Event`] assinado no log daquele Espaço
 //! (ver `roda-log`). Nenhuma tela mostra o log; ele é a fonte da verdade.
 
+pub mod reply;
+pub use reply::ReplyRef;
 use serde::{Deserialize, Serialize};
 
 /// Chave pública Ed25519 em hex (32 bytes → 64 caracteres).
@@ -152,6 +154,10 @@ pub enum ItemKind {
     Note,
     /// Mini-app (MCP App): uma interface interativa cujo estado é este Item.
     App,
+    /// A Zoen page: blocks in a Loro document (ADR 0040).
+    Page,
+    /// A file: bytes in encrypted chunks on the relay (ADR 0040).
+    File,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
@@ -217,6 +223,47 @@ pub enum ItemContent {
     Text { text: String },
     Plan(PlanDoc),
     App(AppDoc),
+    Page(PageContent),
+    File(FileDoc),
+}
+
+/// One version of a page: the first carries a Loro snapshot, later ones the updates made
+/// since the previous version. Small payloads ride in the event (base64); large ones go to
+/// an encrypted blob.
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
+pub struct PageContent {
+    pub title: String,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub path: String,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub loro: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub blob: Option<ChunkRef>,
+}
+
+/// One encrypted piece of a file on the relay. `key` opens the copy stored under `blob`
+/// (sha256 of the ciphertext); `sha256` is the plaintext's hash.
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
+pub struct ChunkRef {
+    pub sha256: String,
+    pub bytes: u64,
+    pub blob: String,
+    pub key: String,
+}
+
+/// One version of a file: its bytes as content-defined chunks (a new version re-uses the
+/// chunks that didn't change), plus an optional preview made on the device.
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
+pub struct FileDoc {
+    pub name: String,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub path: String,
+    pub mime: String,
+    pub bytes: u64,
+    pub sha256: String,
+    pub chunks: Vec<ChunkRef>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub thumb: Option<ChunkRef>,
 }
 
 impl ItemContent {
@@ -225,6 +272,8 @@ impl ItemContent {
             ItemContent::Text { text } => text.lines().next().unwrap_or_default().to_string(),
             ItemContent::Plan(p) => p.title.clone(),
             ItemContent::App(a) => a.title.clone(),
+            ItemContent::Page(p) => p.title.clone(),
+            ItemContent::File(f) => f.name.clone(),
         }
     }
 }
@@ -295,6 +344,14 @@ pub enum Capability {
         capability: String,
         purpose: String,
         rule: String,
+    },
+    /// A standing decision on an agent's requests: "always approve" / "always deny" this
+    /// kind of action (`roda_grants::standing_key`) in the grant's scope. Issued by the
+    /// agent's owner from the approvals stack; revoking it (GrantRevoked) makes the agent
+    /// ask again. Red lines can't be always-approved (`standing_allow_permitted`).
+    Standing {
+        action: String,
+        allow: bool,
     },
 }
 
@@ -376,6 +433,10 @@ pub enum EventBody {
         message: ItemId,
         text: String,
         attaches: Option<ItemId>,
+        /// Inline reply or thread reply (see [`reply`]). Absent on plain messages, so their
+        /// bytes are exactly what older peers expect.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        reply: Option<ReplyRef>,
     },
     ItemCreated {
         item: ItemId,

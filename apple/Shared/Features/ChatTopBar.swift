@@ -13,6 +13,9 @@ struct ChatTopBar: View {
     var status: ChatStatus? = nil
     let onBack: () -> Void
     let onOpen: () -> Void
+    /// The title opens the header menu (the avatar keeps `onOpen`).
+    var onTitle: (() -> Void)? = nil
+    var menuOpen = false
     var onCall: (ZoenGlyph) -> Void = { _ in }
     @Environment(\.colorScheme) private var scheme
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -42,9 +45,10 @@ struct ChatTopBar: View {
                 .accessibilityLabel(Text("Back"))
                 .accessibilityIdentifier("zoenBack")
 
-                Button(action: onOpen) { title }
+                Button(action: onTitle ?? onOpen) { title }
                     .buttonStyle(TitlePress())
-                    .accessibilityHint(Text("Shows who's in this chat"))
+                    .accessibilityHint(onTitle == nil ? Text("Shows who's in this chat") : Text("Opens the chat menu"))
+                    .accessibilityIdentifier("chat-title")
                     // B centres the capsule itself under the island (the avatar hangs off
                     // its left); A centres the whole avatar + capsule group.
                     .offset(x: TitleVariant.current == .b ? -(Self.avatar - Self.overlap) / 2 : 0)
@@ -121,11 +125,27 @@ struct ChatTopBar: View {
                                 .transition(.push(from: .bottom))
                         }
                     }
+                    // Room for descenders (g, p, y) inside the clip the push transition needs.
+                    .padding(.bottom, 2)
                     .clipped()
+                    .padding(.bottom, -2)
                     .animation(.spring(duration: 0.4, bounce: 0.15), value: status?.id)
                 }
                 .lineLimit(1)
             }
+            .overlay(alignment: .trailing) {
+                if onTitle != nil {
+                    Image(systemName: "chevron.down")
+                        .font(.system(size: 10, weight: .bold))
+                        .foregroundStyle(Palette.textSecondary)
+                        .rotationEffect(.degrees(menuOpen ? 180 : 0))
+                        .animation(.spring(response: 0.35, dampingFraction: 0.7), value: menuOpen)
+                        .offset(x: 14)
+                        .accessibilityHidden(true)
+                }
+            }
+            // The chevron lives in this gap, clear of the title and the capsule's end.
+            .padding(.trailing, onTitle != nil ? 12 : 0)
             .frame(minWidth: TitleVariant.current == .b ? max(0, (Island.rect?.width ?? 0) - Self.overlap - 8 - 16) : 0, alignment: .leading)
             .padding(.leading, Self.overlap + 8)
             .padding(.trailing, 16)

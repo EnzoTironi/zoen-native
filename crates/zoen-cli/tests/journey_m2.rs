@@ -183,6 +183,7 @@ async fn an_end_to_end_group_leaves_the_relay_only_ciphertext() {
         message: "m".into(),
         text: "texto aberto".into(),
         attaches: None,
+        reply: None,
     };
     let refused = mallory.publish_body(space, seen, clear).await.unwrap_err();
     assert_eq!(refused, roda_proto::SEAL_REQUIRED);
@@ -219,8 +220,7 @@ async fn a_readable_group_becomes_end_to_end_and_never_goes_back() {
     w.zoen("ana", &["send", "Trilha", after]);
 
     // Bruno's clear message is refused, waits for his Welcome, and goes out sealed.
-    let s = w.zoen("bruno", &["sync"]);
-    assert!(s.contains("pending=0"), "{s}");
+    w.sync_until("bruno", |s| s.contains("pending=0"));
     let bruno = w.zoen("bruno", &["read", "Trilha"]);
     for text in [before, after, queued, "End-to-end encryption is on"] {
         assert!(bruno.contains(text), "{text:?} in\n{bruno}");
@@ -358,7 +358,7 @@ async fn two_admins_online_make_one_commit_for_a_newcomer() {
         w.spawn_zoen("ana", &["watch", "--for", "8"]),
         w.spawn_zoen("bruno", &["watch", "--for", "8"]),
     ];
-    std::thread::sleep(std::time::Duration::from_millis(2500));
+    w.wait_online(2);
     w.zoen("carla", &["join", &format!("zoen://join/{code}")]);
     for watcher in watchers {
         let out = watcher.wait_with_output().expect("watch");
@@ -507,7 +507,7 @@ async fn key_packages_refill_when_they_run_low() {
 
     // Online when one more group takes him under 8: he refills while it happens.
     let watch = w.spawn_zoen("bruno", &["watch", "--for", "25"]);
-    std::thread::sleep(std::time::Duration::from_millis(2000));
+    w.wait_online(1);
     w.zoen("ana", &["group", "Roda 49", "@bruno"]);
     let mut stock = 0;
     for _ in 0..200 {

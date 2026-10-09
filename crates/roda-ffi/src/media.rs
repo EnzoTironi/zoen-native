@@ -127,6 +127,7 @@ impl Engine {
             });
         }
         out.extend(self.wanted_profile_photos());
+        out.extend(self.wanted_item_blobs());
         out
     }
 

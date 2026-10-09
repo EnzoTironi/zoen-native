@@ -301,6 +301,7 @@ pub async fn run(conn: Conn, plan: Plan, mut rx: mpsc::Receiver<Publish>) -> any
                         message: roda_types::new_id("m"),
                         text: due_us.to_string(),
                         attaches: None,
+                        reply: None,
                     },
                 );
                 let env = Envelope::plain(&e);

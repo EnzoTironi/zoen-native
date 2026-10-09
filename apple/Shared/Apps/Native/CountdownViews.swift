@@ -5,6 +5,7 @@ import RodaCore
 struct CountdownSheet: View {
     @Environment(AppModel.self) private var model
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.miniAppClose) private var miniAppClose
     let item: ItemDetail
     let app: AppStateDto
 
@@ -68,7 +69,7 @@ struct CountdownSheet: View {
             #endif
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
-                    Button { dismiss() } label: { Image(systemName: "chevron.down") }.accessibilityLabel("Close")
+                    Button { (miniAppClose ?? { dismiss() })() } label: { Image(systemName: "chevron.down") }.accessibilityLabel("Close").accessibilityIdentifier("miniapp-close")
                 }
             }
         }

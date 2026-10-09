@@ -16,8 +16,8 @@ use std::{
 };
 
 use roda_ffi::{
-    ConnectionDto, CoreListener, Delivery, EntryKind, PhotoChange, PrivacyDto, ProfileDto,
-    RodaEngine, SecretVault, SpaceKindDto,
+    ConnectionDto, CoreListener, Delivery, EntryKind, MarkdownFileDto, PhotoChange, PrivacyDto,
+    ProfileDto, RodaEngine, SecretVault, SpaceKindDto,
 };
 
 struct FileVault {
@@ -194,7 +194,15 @@ fn usage() -> ! {
          photo CHAT --out FILE            save the chat's background photo\n\
          profile set [--name N] [--bio B] [--photo FILE | --no-photo]\n\
          profile show [@HANDLE] [--out FILE]   what this device can read (FILE = their photo)\n\
-         block @HANDLE | unblock @HANDLE"
+         block @HANDLE | unblock @HANDLE\n\
+         page import CHAT FILE... [--root DIR]  Markdown files as pages (path relative to DIR)\n\
+         page export ITEM --out FILE | page export-all CHAT --dir DIR\n\
+         page show ITEM | page check ITEM N | page add ITEM TEXT | page set ITEM N TEXT\n\
+         page new CHAT TITLE | pages CHAT\n\
+         file add CHAT FILE [--thumb PNG] [--path DIR] | files CHAT\n\
+         file get ITEM --out FILE [--version N] [--thumb-out PNG]\n\
+         file version ITEM FILE [--thumb PNG]\n\
+         versions ITEM | restore ITEM N      ITEM = id (prefix ok), path or title"
     );
     std::process::exit(2)
 }
@@ -259,6 +267,102 @@ fn chat(e: &RodaEngine, q: &str) -> String {
         .find(|s| s.id == q || s.title == q || (q.len() >= 6 && s.id.starts_with(q)))
         .map(|s| s.id.clone())
         .unwrap_or_else(|| die(format!("no chat matches {q:?}")))
+}
+
+/// Resolves an Item by id (prefix ok), folder path or title.
+fn item(e: &RodaEngine, q: &str) -> roda_ffi::ItemDetail {
+    let items = e.items();
+    items
+        .iter()
+        .find(|i| i.id == q)
+        .or_else(|| items.iter().find(|i| !i.path.is_empty() && i.path == q))
+        .or_else(|| items.iter().find(|i| q.len() >= 6 && i.id.starts_with(q)))
+        .or_else(|| items.iter().find(|i| i.title == q))
+        .cloned()
+        .unwrap_or_else(|| die(format!("no item matches {q:?}")))
+}
+
+/// Waits until this device has every piece of the page (or file) `id`.
+async fn ready(e: &RodaEngine, id: &str, timeout: u64) -> bool {
+    let deadline = tokio::time::Instant::now() + Duration::from_millis(timeout);
+    loop {
+        let ok = match e.item(id.to_string()) {
+            Ok(d) if d.kind_id == "page" => {
+                e.page(id.to_string()).map(|p| p.ready).unwrap_or(false)
+            }
+            Ok(d) => d.file.map(|f| f.ready).unwrap_or(true),
+            Err(_) => false,
+        };
+        if ok || tokio::time::Instant::now() >= deadline {
+            return ok;
+        }
+        tokio::time::sleep(Duration::from_millis(100)).await;
+    }
+}
+
+fn mime_of(path: &str) -> &'static str {
+    let ext = path.rsplit('.').next().unwrap_or("").to_ascii_lowercase();
+    match ext.as_str() {
+        "md" | "markdown" => "text/markdown",
+        "txt" => "text/plain",
+        "pdf" => "application/pdf",
+        "png" => "image/png",
+        "jpg" | "jpeg" => "image/jpeg",
+        "heic" => "image/heic",
+        "gif" => "image/gif",
+        "mp4" => "video/mp4",
+        "mov" => "video/quicktime",
+        "mp3" => "audio/mpeg",
+        "m4a" => "audio/mp4",
+        "zip" => "application/zip",
+        "csv" => "text/csv",
+        "json" => "application/json",
+        "docx" => "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        "xlsx" => "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        "pptx" => "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+        _ => "application/octet-stream",
+    }
+}
+
+fn read_file(path: &str) -> Vec<u8> {
+    std::fs::read(path).unwrap_or_else(|err| die(format!("{path}: {err}")))
+}
+
+fn write_file(path: &Path, bytes: &[u8]) {
+    if let Some(dir) = path.parent() {
+        let _ = std::fs::create_dir_all(dir);
+    }
+    std::fs::write(path, bytes).unwrap_or_else(|err| die(format!("{}: {err}", path.display())));
+}
+
+/// Applies one block change to a page and saves it as a version.
+fn edit_page(
+    e: &RodaEngine,
+    id: &str,
+    f: impl FnOnce(&mut Vec<roda_ffi::PageBlockDto>) -> Vec<String>,
+) {
+    let p = e.page(id.to_string()).unwrap_or_else(|err| die(err));
+    let mut blocks = p.blocks;
+    let changed_ids = f(&mut blocks);
+    let order: Vec<String> = blocks.iter().map(|b| b.id.clone()).collect();
+    let changed: Vec<_> = blocks
+        .into_iter()
+        .filter(|b| changed_ids.contains(&b.id))
+        .collect();
+    e.page_apply(id.to_string(), order, changed)
+        .unwrap_or_else(|err| die(err));
+    let saved = e
+        .page_commit(id.to_string(), String::new())
+        .unwrap_or_else(|err| die(err));
+    println!("{}", if saved { "saved" } else { "unchanged" });
+}
+
+fn new_block_id() -> String {
+    let n = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_nanos())
+        .unwrap_or(0);
+    format!("{:016x}", (n as u64) ^ ((std::process::id() as u64) << 40))
 }
 
 #[tokio::main(flavor = "multi_thread", worker_threads = 2)]
@@ -711,6 +815,322 @@ async fn main() {
             }
             e.set_typing(space, false);
             tokio::time::sleep(Duration::from_millis(200)).await;
+        }
+        "pages" | "files" => {
+            let space = chat(
+                &e,
+                cli.args
+                    .first()
+                    .map(String::as_str)
+                    .unwrap_or_else(|| usage()),
+            );
+            let kind = if cmd == "pages" { "page" } else { "file" };
+            for i in e
+                .items()
+                .into_iter()
+                .filter(|i| i.space_id == space && i.kind_id == kind)
+            {
+                let extra = match &i.file {
+                    Some(f) => format!("\t{} bytes\t{}/{} here", f.bytes, f.chunks_here, f.chunks),
+                    None => String::new(),
+                };
+                println!("{}\t{}\tv{}\t{}{}", i.id, i.path, i.version, i.title, extra);
+            }
+        }
+        "page" => {
+            if cli.args.is_empty() {
+                usage();
+            }
+            let sub = cli.args.remove(0);
+            match sub.as_str() {
+                "import" => {
+                    let root = cli.flag("--root").map(PathBuf::from);
+                    if cli.args.len() < 2 {
+                        usage();
+                    }
+                    let space = chat(&e, &cli.args[0]);
+                    let mut files = Vec::new();
+                    for f in &cli.args[1..] {
+                        let bytes = read_file(f);
+                        let md = String::from_utf8(bytes)
+                            .unwrap_or_else(|_| die(format!("{f}: not UTF-8 text")));
+                        let fp = PathBuf::from(f);
+                        let path = match &root {
+                            Some(r) => fp
+                                .strip_prefix(r)
+                                .unwrap_or(&fp)
+                                .to_string_lossy()
+                                .into_owned(),
+                            None => fp
+                                .file_name()
+                                .map(|n| n.to_string_lossy().into_owned())
+                                .unwrap_or_default(),
+                        };
+                        files.push(MarkdownFileDto { path, markdown: md });
+                    }
+                    let paths: Vec<String> = files.iter().map(|f| f.path.clone()).collect();
+                    let items = e
+                        .pages_import_markdown(space.clone(), files)
+                        .unwrap_or_else(|err| die(format!("import: {err}")));
+                    for (d, path) in items.iter().zip(&paths) {
+                        println!("{}\t{}", d.id, path);
+                    }
+                    e.wait_until_idle(timeout).await;
+                }
+                "new" => {
+                    if cli.args.len() < 2 {
+                        usage();
+                    }
+                    let space = chat(&e, &cli.args[0]);
+                    let d = e
+                        .page_create(space, cli.args[1..].join(" "))
+                        .unwrap_or_else(|err| die(err));
+                    e.wait_until_idle(timeout).await;
+                    println!("{}", d.id);
+                }
+                "export" => {
+                    let out = cli.flag("--out").unwrap_or_else(|| usage());
+                    let it = item(
+                        &e,
+                        cli.args
+                            .first()
+                            .map(String::as_str)
+                            .unwrap_or_else(|| usage()),
+                    );
+                    if !ready(&e, &it.id, timeout).await {
+                        die("the page is still arriving");
+                    }
+                    let md = e.page_markdown(it.id).unwrap_or_else(|err| die(err));
+                    write_file(Path::new(&out), md.as_bytes());
+                    println!("{} bytes", md.len());
+                }
+                "export-all" => {
+                    let dir = PathBuf::from(cli.flag("--dir").unwrap_or_else(|| usage()));
+                    let space = chat(
+                        &e,
+                        cli.args
+                            .first()
+                            .map(String::as_str)
+                            .unwrap_or_else(|| usage()),
+                    );
+                    let (mut n, mut bytes, mut missing) = (0, 0, 0);
+                    for i in e
+                        .items()
+                        .into_iter()
+                        .filter(|i| i.space_id == space && i.kind_id == "page")
+                    {
+                        if !ready(&e, &i.id, timeout).await {
+                            missing += 1;
+                            continue;
+                        }
+                        let md = e.page_markdown(i.id.clone()).unwrap_or_else(|err| die(err));
+                        let name = if i.path.is_empty() {
+                            format!("{}.md", i.id)
+                        } else {
+                            i.path.clone()
+                        };
+                        write_file(&dir.join(name), md.as_bytes());
+                        n += 1;
+                        bytes += md.len();
+                    }
+                    println!("{n} pages, {bytes} bytes, {missing} still arriving");
+                }
+                "show" => {
+                    let it = item(
+                        &e,
+                        cli.args
+                            .first()
+                            .map(String::as_str)
+                            .unwrap_or_else(|| usage()),
+                    );
+                    let p = e.page(it.id).unwrap_or_else(|err| die(err));
+                    println!(
+                        "{} (v{}{})",
+                        p.title,
+                        p.version,
+                        if p.unsaved { ", unsaved" } else { "" }
+                    );
+                    for (n, b) in p.blocks.iter().enumerate() {
+                        let mark = match b.kind.as_str() {
+                            "task" => {
+                                if b.checked {
+                                    "[x] "
+                                } else {
+                                    "[ ] "
+                                }
+                            }
+                            _ => "",
+                        };
+                        println!(
+                            "{}\t{}\t{mark}{}",
+                            n + 1,
+                            b.kind,
+                            b.text.replace('\u{2028}', " / ")
+                        );
+                    }
+                }
+                "check" => {
+                    if cli.args.len() < 2 {
+                        usage();
+                    }
+                    let it = item(&e, &cli.args[0]);
+                    let n: usize = cli.args[1].parse().unwrap_or_else(|_| usage());
+                    edit_page(&e, &it.id, |blocks| {
+                        let tasks: Vec<usize> = (0..blocks.len())
+                            .filter(|&i| blocks[i].kind == "task")
+                            .collect();
+                        let i = *tasks
+                            .get(n.wrapping_sub(1))
+                            .unwrap_or_else(|| die(format!("no task {n}")));
+                        blocks[i].checked = !blocks[i].checked;
+                        vec![blocks[i].id.clone()]
+                    });
+                    e.wait_until_idle(timeout).await;
+                }
+                "add" => {
+                    if cli.args.len() < 2 {
+                        usage();
+                    }
+                    let it = item(&e, &cli.args[0]);
+                    let text = cli.args[1..].join(" ");
+                    edit_page(&e, &it.id, |blocks| {
+                        let id = new_block_id();
+                        blocks.push(roda_ffi::PageBlockDto {
+                            id: id.clone(),
+                            kind: "paragraph".into(),
+                            level: 0,
+                            indent: 0,
+                            number: 0,
+                            checked: false,
+                            lang: String::new(),
+                            url: String::new(),
+                            alt: String::new(),
+                            text,
+                            spans: vec![],
+                        });
+                        vec![id]
+                    });
+                    e.wait_until_idle(timeout).await;
+                }
+                "set" => {
+                    if cli.args.len() < 3 {
+                        usage();
+                    }
+                    let it = item(&e, &cli.args[0]);
+                    let n: usize = cli.args[1].parse().unwrap_or_else(|_| usage());
+                    let text = cli.args[2..].join(" ");
+                    edit_page(&e, &it.id, |blocks| {
+                        let b = blocks
+                            .get_mut(n.wrapping_sub(1))
+                            .unwrap_or_else(|| die(format!("no block {n}")));
+                        b.text = text;
+                        b.spans.clear();
+                        vec![b.id.clone()]
+                    });
+                    e.wait_until_idle(timeout).await;
+                }
+                _ => usage(),
+            }
+        }
+        "file" => {
+            if cli.args.is_empty() {
+                usage();
+            }
+            let sub = cli.args.remove(0);
+            let thumb = cli.flag("--thumb").map(|p| read_file(&p));
+            match sub.as_str() {
+                "add" => {
+                    let dir = cli.flag("--path").unwrap_or_default();
+                    if cli.args.len() < 2 {
+                        usage();
+                    }
+                    let space = chat(&e, &cli.args[0]);
+                    let f = &cli.args[1];
+                    let name = Path::new(f)
+                        .file_name()
+                        .map(|n| n.to_string_lossy().into_owned())
+                        .unwrap_or_else(|| f.clone());
+                    let path = if dir.is_empty() {
+                        name.clone()
+                    } else {
+                        format!("{}/{name}", dir.trim_end_matches('/'))
+                    };
+                    let d = e
+                        .file_add(space, path, name, mime_of(f).into(), read_file(f), thumb)
+                        .unwrap_or_else(|err| die(err));
+                    e.wait_until_idle(timeout).await;
+                    let fi = d.file.unwrap_or_else(|| die("not a file"));
+                    println!("{}\t{} bytes\t{} pieces", d.id, fi.bytes, fi.chunks);
+                }
+                "version" => {
+                    if cli.args.len() < 2 {
+                        usage();
+                    }
+                    let it = item(&e, &cli.args[0]);
+                    let d = e
+                        .file_new_version(it.id, read_file(&cli.args[1]), thumb, String::new())
+                        .unwrap_or_else(|err| die(err));
+                    e.wait_until_idle(timeout).await;
+                    println!("v{}", d.version);
+                }
+                "get" => {
+                    let out = cli.flag("--out").unwrap_or_else(|| usage());
+                    let version: Option<u32> = cli.flag("--version").and_then(|v| v.parse().ok());
+                    let thumb_out = cli.flag("--thumb-out");
+                    let it = item(
+                        &e,
+                        cli.args
+                            .first()
+                            .map(String::as_str)
+                            .unwrap_or_else(|| usage()),
+                    );
+                    let deadline = tokio::time::Instant::now() + Duration::from_millis(timeout);
+                    let bytes = loop {
+                        if let Some(b) = e
+                            .file_bytes(it.id.clone(), version)
+                            .unwrap_or_else(|err| die(err))
+                        {
+                            break b;
+                        }
+                        if tokio::time::Instant::now() >= deadline {
+                            die("the file is still arriving");
+                        }
+                        tokio::time::sleep(Duration::from_millis(100)).await;
+                    };
+                    write_file(Path::new(&out), &bytes);
+                    if let Some(t) = thumb_out {
+                        let tb = e
+                            .file_thumbnail(it.id.clone())
+                            .unwrap_or_else(|err| die(err))
+                            .unwrap_or_else(|| die("no preview"));
+                        write_file(Path::new(&t), &tb);
+                    }
+                    println!("{} bytes", bytes.len());
+                }
+                _ => usage(),
+            }
+        }
+        "versions" => {
+            let it = item(
+                &e,
+                cli.args
+                    .first()
+                    .map(String::as_str)
+                    .unwrap_or_else(|| usage()),
+            );
+            for v in &it.versions {
+                println!("v{}\t{}\t{}", v.number, v.author.name, v.note);
+            }
+        }
+        "restore" => {
+            if cli.args.len() < 2 {
+                usage();
+            }
+            let it = item(&e, &cli.args[0]);
+            let n: u32 = cli.args[1].parse().unwrap_or_else(|_| usage());
+            let d = e.restore_version(it.id, n).unwrap_or_else(|err| die(err));
+            e.wait_until_idle(timeout).await;
+            println!("v{}", d.version);
         }
         _ => usage(),
     }

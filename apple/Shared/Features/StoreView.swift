@@ -855,10 +855,11 @@ extension AppModel {
 
 /// A hand-drawn rule across the full width (the collection scrim's top edge), boiling.
 struct InkRule: View {
+    @Environment(\.ambientPaused) private var ambientPaused
     var seed: UInt64 = 1
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     var body: some View {
-        TimelineView(.animation(minimumInterval: 1 / 8, paused: reduceMotion)) { tl in
+        TimelineView(.animation(minimumInterval: 1 / 8, paused: ambientPaused || reduceMotion)) { tl in
             let frame = reduceMotion ? 0 : Int(tl.date.timeIntervalSinceReferenceDate * 8) % 4
             Canvas { ctx, size in
                 var rng = InkRNG(seed &+ UInt64(frame) &* 31)

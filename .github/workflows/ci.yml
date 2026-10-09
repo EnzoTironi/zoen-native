@@ -55,6 +55,31 @@ jobs:
           done
           for _ in $(seq 1 30); do docker exec pg pg_isready -U zoen >/dev/null 2>&1 && break; sleep 1; done
 
+      - name: gVisor for the sandbox journeys (ADR 0028 P0)
+        run: |
+          # rootless runsc needs unprivileged user namespaces, which Ubuntu 24.04's AppArmor
+          # restricts by default.
+          sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
+          scripts/gvisor.sh up
+          eval "$(scripts/gvisor.sh env)"
+          echo "ZOEN_RUNSC=$ZOEN_RUNSC" >> "$GITHUB_ENV"
+          echo "ZOEN_SANDBOX_ROOTFS=$ZOEN_SANDBOX_ROOTFS" >> "$GITHUB_ENV"
+
+      - name: Firecracker for the microVM journeys (ADR 0028 P1)
+        run: |
+          # GitHub's Linux runners have /dev/kvm; the jailer (through sudo) gives each VMM its
+          # own device node, so the runner user doesn't need the kvm group.
+          test -e /dev/kvm
+          rustup target add x86_64-unknown-linux-musl
+          scripts/firecracker.sh up
+          scripts/firecracker.sh image
+          scripts/firecracker.sh cgroup
+          eval "$(scripts/firecracker.sh env)"
+          for v in ZOEN_FIRECRACKER ZOEN_JAILER ZOEN_VMLINUX ZOEN_GUEST_ROOTFS ZOEN_SANDBOX_CGROUP; do
+            echo "$v=${!v}" >> "$GITHUB_ENV"
+          done
+          echo "ZOEN_REQUIRE_FIRECRACKER=1" >> "$GITHUB_ENV"
+
       - name: Clippy
         run: cargo clippy --workspace --all-targets -- -D warnings
 

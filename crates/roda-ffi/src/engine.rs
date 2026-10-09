@@ -6,7 +6,9 @@
 
 use std::collections::HashMap;
 
-use roda_grants::{evaluate, Budget, Decision, Policy, Reason};
+use roda_grants::{
+    evaluate, standing_allow_permitted, standing_key, Budget, Decision, Policy, Reason,
+};
 use roda_log::{content_hash, Author, LogError, Signer, SpaceLog};
 use roda_store::Store;
 use roda_types::*;
@@ -69,6 +71,8 @@ pub(crate) enum EntryBody {
     Message {
         text: String,
         attaches: Option<ItemId>,
+        /// Inline reply / thread reply link (see `roda_types::reply`).
+        reply: Option<roda_types::ReplyRef>,
     },
     ItemEdited {
         item: ItemId,
@@ -242,11 +246,17 @@ impl State {
                     }));
                 }
             }
-            EventBody::MessagePosted { text, attaches, .. } => {
+            EventBody::MessagePosted {
+                text,
+                attaches,
+                reply,
+                ..
+            } => {
                 if let Some(s) = self.spaces.get_mut(&e.space) {
                     s.entries.push(entry(EntryBody::Message {
                         text: text.clone(),
                         attaches: attaches.clone(),
+                        reply: reply.clone(),
                     }));
                     s.last_at_ms = s.last_at_ms.max(e.at_ms);
                 }
@@ -418,6 +428,8 @@ pub struct Engine {
     pub(crate) policy: Policy,
     /// Account, outbox and relay bookkeeping (see `sync.rs`).
     pub(crate) net: crate::sync::NetState,
+    /// Open pages: Loro documents rebuilt from the log (see `pages.rs`).
+    pub(crate) pages: crate::pages::PageCache,
 }
 
 pub(crate) type R<T> = Result<T, CoreError>;
@@ -456,6 +468,7 @@ impl Engine {
             policy: Policy::default(),
             index_dirty: true,
             net: Default::default(),
+            pages: Default::default(),
         };
         engine.migrate_event_format()?;
         engine.migrate_mls()?;
@@ -465,6 +478,11 @@ impl Engine {
 
     /// Recarrega tudo do disco: reverifica cada log e reprojeta do zero.
     pub fn reload(&mut self) -> R<()> {
+        self.pages
+            .sessions
+            .lock()
+            .unwrap_or_else(|p| p.into_inner())
+            .clear();
         self.logs.clear();
         self.space_order.clear();
         self.identities.clear();
@@ -726,13 +744,45 @@ impl Engine {
             limit_cents: i64::MAX / 4,
             spent_cents: 0,
         });
-        evaluate(
+        let decision = evaluate(
             self.trust(agent, space),
             action,
             ai_cost,
             &budget,
             &self.policy,
-        )
+        );
+        // A standing decision from the owner settles what would otherwise be a request:
+        // "always deny" blocks it, "always approve" lets it run (never past a red line).
+        let Decision::Request(reason) = decision else {
+            return decision;
+        };
+        match self.standing(agent, space, action) {
+            Some((_, false)) => Decision::Block(Reason::StandingDeny),
+            Some((_, true)) if standing_allow_permitted(action, &self.policy) => Decision::Act {
+                undoable: matches!(action, ActionClass::Reversible),
+            },
+            _ => Decision::Request(reason),
+        }
+    }
+
+    /// The newest unrevoked standing decision for this agent, kind of action and Space.
+    fn standing(
+        &self,
+        agent: &str,
+        space: &str,
+        action: &ActionClass,
+    ) -> Option<(&GrantState, bool)> {
+        let key = standing_key(action);
+        self.state
+            .grants
+            .iter()
+            .rev()
+            .filter(|g| !g.revoked && g.grant.grantee.as_deref() == Some(agent))
+            .filter(|g| g.grant.scope == GrantScope::Space(space.to_string()))
+            .find_map(|g| match &g.grant.capability {
+                Capability::Standing { action, allow } if action == key => Some((g, *allow)),
+                _ => None,
+            })
     }
 
     fn personal_space(&self) -> Option<SpaceId> {
@@ -754,7 +804,7 @@ impl Engine {
 
     // ── conversões para DTO ──
 
-    fn card(&self, item: &str) -> Option<ItemCard> {
+    pub(crate) fn card(&self, item: &str) -> Option<ItemCard> {
         let it = self.state.items.get(item)?;
         let v = it.current();
         let (summary, total, budget, lines, done) = match &v.content {
@@ -770,6 +820,19 @@ impl Engine {
             }
             ItemContent::Text { text } => (text.clone(), None, None, 0, 0),
             ItemContent::App(_) => (String::new(), None, None, 0, 0),
+            ItemContent::Page(_) => {
+                let text = self.page_text(item);
+                let summary: String = text
+                    .lines()
+                    .skip(1)
+                    .find(|l| !l.trim().is_empty())
+                    .unwrap_or("")
+                    .chars()
+                    .take(160)
+                    .collect();
+                (summary, None, None, 0, 0)
+            }
+            ItemContent::File(f) => (f.mime.clone(), None, None, 0, 0),
         };
         Some(ItemCard {
             app: self.app_state_dto(it),
@@ -788,7 +851,7 @@ impl Engine {
 
     pub(crate) fn entry_dto(&self, e: &Entry) -> TimelineEntry {
         let kind = match &e.body {
-            EntryBody::Message { text, attaches } => EntryKind::Message {
+            EntryBody::Message { text, attaches, .. } => EntryKind::Message {
                 text: text.clone(),
                 card: attaches.as_deref().and_then(|i| self.card(i)),
             },
@@ -845,6 +908,7 @@ impl Engine {
                 background: spec.into(),
             },
         };
+        let (reply_to, in_thread) = self.reply_parts(e);
         TimelineEntry {
             id: e.id().to_string(),
             seq: e.seq,
@@ -852,13 +916,16 @@ impl Engine {
             at_ms: e.at_ms,
             kind,
             delivery: self.delivery(e),
+            reply_to,
+            in_thread,
+            thread_replies: 0,
         }
     }
 
     fn preview(&self, s: &SpaceState) -> (String, Option<Persona>) {
         for e in s.entries.iter().rev() {
             let text = match &e.body {
-                EntryBody::Message { text, attaches } => {
+                EntryBody::Message { text, attaches, .. } => {
                     match attaches.as_deref().and_then(|i| self.card(i)) {
                         Some(c) if text.is_empty() => format!("{} · {}", c.kind_label, c.title),
                         _ => text.clone(),
@@ -930,6 +997,17 @@ impl Engine {
             resolved_ms: r.resolved_ms,
             item_id: r.req.item.clone(),
             line_id: r.req.line.clone(),
+            action_key: standing_key(&r.req.action).into(),
+            can_always_approve: standing_allow_permitted(&r.req.action, &self.policy),
+            by_standing: r.resolved_ms.is_some_and(|at| {
+                let key = standing_key(&r.req.action);
+                self.state.grants.iter().any(|g| {
+                    g.at_ms <= at
+                        && g.grant.grantee.as_deref() == Some(r.req.agent.as_str())
+                        && g.grant.scope == GrantScope::Space(r.space.clone())
+                        && matches!(&g.grant.capability, Capability::Standing { action, .. } if action == key)
+                })
+            }),
         }
     }
 
@@ -1046,7 +1124,9 @@ impl Engine {
 
     pub fn timeline(&self, space: &str) -> R<Vec<TimelineEntry>> {
         let s = self.space_state(space)?;
-        Ok(s.entries.iter().map(|e| self.entry_dto(e)).collect())
+        let mut out: Vec<TimelineEntry> = s.entries.iter().map(|e| self.entry_dto(e)).collect();
+        crate::replies::count_thread_replies(&mut out);
+        Ok(out)
     }
 
     pub fn send_message(&mut self, space: &str, text: &str) -> R<TimelineEntry> {
@@ -1082,6 +1162,7 @@ impl Engine {
                 message: new_id("msg"),
                 text: text.to_string(),
                 attaches,
+                reply: None,
             },
         )?;
         let s = self.space_state(space)?;
@@ -1225,6 +1306,13 @@ impl Engine {
             ItemContent::Plan(p) => (Some(plan_to_dto(p)), None),
             ItemContent::Text { text } => (None, Some(text.clone())),
             ItemContent::App(_) => (None, None),
+            ItemContent::Page(_) => (None, Some(self.page_text(id))),
+            ItemContent::File(_) => (None, None),
+        };
+        let (path, file) = match &v.content {
+            ItemContent::Page(p) => (p.path.clone(), None),
+            ItemContent::File(f) => (f.path.clone(), Some(self.file_dto(f))),
+            _ => (String::new(), None),
         };
         let linked_requests = self
             .state
@@ -1264,6 +1352,8 @@ impl Engine {
                 .collect(),
             linked_requests,
             app: self.app_state_dto(it),
+            path,
+            file,
         })
     }
 
@@ -1486,6 +1576,11 @@ impl Engine {
         if !it.versions.iter().any(|v| v.number == version) {
             return Err(not_found(&t("versão", "version")));
         }
+        if it.kind == ItemKind::Page {
+            // A page's versions are Loro changes: restoring is a new change, not a copy.
+            self.page_restore(item, version, note)?;
+            return self.item(item);
+        }
         let space = it.space.clone();
         self.append(
             &space,
@@ -1692,6 +1787,186 @@ impl Engine {
             request: req,
             message,
         })
+    }
+
+    /// One swipe on the approvals stack. "Sempre" swipes also issue a standing Grant
+    /// (agent + kind of action + this Space) and settle the other pending requests it
+    /// covers; from then on `decide` applies it without asking.
+    pub fn decide_request(&mut self, id: &str, decision: RequestDecision) -> R<DecideOutcome> {
+        let r = self
+            .state
+            .requests
+            .get(id)
+            .cloned()
+            .ok_or_else(|| not_found("pedido"))?;
+        let (approve, standing) = match decision {
+            RequestDecision::Approve => (true, false),
+            RequestDecision::Deny => (false, false),
+            RequestDecision::AlwaysApprove => (true, true),
+            RequestDecision::AlwaysDeny => (false, true),
+        };
+        if standing && approve && !standing_allow_permitted(&r.req.action, &self.policy) {
+            return Err(CoreError::Forbidden {
+                reason: t(
+                    "Linha vermelha: isso sempre pede. Dá pra aprovar só esta vez.",
+                    "Red line: this always asks. You can approve just this once.",
+                ),
+            });
+        }
+        // Resolve first: it checks ownership and that the content is still current.
+        let out = self.resolve_request(id, approve)?;
+        let mut grant_id = None;
+        let mut also = 0u32;
+        if standing {
+            let me = self.me_id()?;
+            let grant = Grant {
+                id: new_id("gr"),
+                grantor: me.clone(),
+                grantee: Some(r.req.agent.clone()),
+                scope: GrantScope::Space(r.space.clone()),
+                capability: Capability::Standing {
+                    action: standing_key(&r.req.action).into(),
+                    allow: approve,
+                },
+                expires_at_ms: None,
+            };
+            grant_id = Some(grant.id.clone());
+            self.append(&r.space, &me, EventBody::GrantIssued { grant })?;
+            let key = standing_key(&r.req.action);
+            let covered: Vec<String> = self
+                .state
+                .request_order
+                .iter()
+                .filter_map(|rid| self.state.requests.get(rid))
+                .filter(|o| {
+                    o.status == ReqStatus::Pending
+                        && o.req.agent == r.req.agent
+                        && o.space == r.space
+                        && standing_key(&o.req.action) == key
+                        && (!approve
+                            || (standing_allow_permitted(&o.req.action, &self.policy)
+                                && self.request_is_current(&o.req)))
+                })
+                .map(|o| o.req.id.clone())
+                .collect();
+            for rid in covered {
+                if self.resolve_request(&rid, approve).is_ok() {
+                    also += 1;
+                }
+            }
+        }
+        let request = self
+            .state
+            .requests
+            .get(id)
+            .map(|r| self.request_dto(r))
+            .ok_or_else(|| not_found("pedido"))?;
+        Ok(DecideOutcome {
+            request,
+            message: out.message,
+            standing_grant_id: grant_id,
+            also_resolved: also,
+        })
+    }
+
+    /// Every standing decision you gave your agents (newest first), to show and revoke.
+    pub fn standing_decisions(&self) -> Vec<StandingDecisionDto> {
+        let Ok(me) = self.me_id() else { return vec![] };
+        self.state
+            .grants
+            .iter()
+            .rev()
+            .filter(|g| !g.revoked && g.grant.grantor == me)
+            .filter_map(|g| {
+                let Capability::Standing { action, allow } = &g.grant.capability else {
+                    return None;
+                };
+                let GrantScope::Space(space) = &g.grant.scope else {
+                    return None;
+                };
+                let agent = g.grant.grantee.as_deref()?;
+                Some(StandingDecisionDto {
+                    grant_id: g.grant.id.clone(),
+                    agent: self.persona(agent),
+                    space_id: space.clone(),
+                    space_title: self
+                        .state
+                        .spaces
+                        .get(space)
+                        .map(|s| s.title.clone())
+                        .unwrap_or_default(),
+                    action_key: action.clone(),
+                    action_label: standing_label(action),
+                    allow: *allow,
+                    at_ms: g.at_ms,
+                })
+            })
+            .collect()
+    }
+
+    /// Revokes a standing decision: the agent asks again next time.
+    pub fn revoke_standing(&mut self, grant_id: &str) -> R<()> {
+        let g = self
+            .state
+            .grants
+            .iter()
+            .find(|g| {
+                g.grant.id == grant_id
+                    && !g.revoked
+                    && matches!(g.grant.capability, Capability::Standing { .. })
+            })
+            .ok_or_else(|| not_found(&t("decisão", "decision")))?;
+        let GrantScope::Space(space) = g.grant.scope.clone() else {
+            return Err(CoreError::Invalid {
+                reason: t("escopo inválido", "invalid scope"),
+            });
+        };
+        let me = self.me_id()?;
+        if g.grant.grantor != me {
+            return Err(CoreError::Forbidden {
+                reason: t(
+                    "só quem decidiu pode revogar",
+                    "only whoever decided can revoke it",
+                ),
+            });
+        }
+        self.append(
+            &space,
+            &me,
+            EventBody::GrantRevoked {
+                grant: grant_id.into(),
+            },
+        )?;
+        Ok(())
+    }
+
+    /// Demonstration (showcase seed only): one of your agents asks for something, as if
+    /// it came from its run. Goes through the evaluator like any request.
+    pub fn demo_open_request(
+        &mut self,
+        space: &str,
+        agent_handle: &str,
+        title: &str,
+        detail: &str,
+        audience: &str,
+        action: ActionClass,
+    ) -> R<Option<String>> {
+        let agent = self
+            .identities
+            .values()
+            .find(|i| i.handle == agent_handle)
+            .map(|i| i.id.clone())
+            .ok_or_else(|| not_found(&t("agente", "agent")))?;
+        self.open_request_at(
+            space,
+            &agent,
+            now_ms(),
+            title,
+            detail,
+            audience,
+            action,
+            None,
+        )
     }
 
     pub fn approve_all(&mut self, agent: &str) -> R<u32> {
@@ -2052,6 +2327,8 @@ impl Engine {
                         .map(|l| format!("{} · {}", l.text, money(l.cost_cents)))
                         .unwrap_or(p.summary.clone()),
                     ItemContent::Text { text } => text.clone(),
+                    ItemContent::Page(_) => self.page_text(&it.id),
+                    ItemContent::File(f) => f.name.clone(),
                     ItemContent::App(a) => {
                         apps::headline(
                             &a.app,
@@ -2776,6 +3053,8 @@ pub(crate) fn kind_id(k: ItemKind) -> &'static str {
         ItemKind::Task => "task",
         ItemKind::Note => "note",
         ItemKind::App => "app",
+        ItemKind::Page => "page",
+        ItemKind::File => "file",
     }
 }
 
@@ -2785,6 +3064,8 @@ pub(crate) fn kind_label(k: ItemKind) -> &'static str {
         ItemKind::Task => ts("Tarefa", "Task"),
         ItemKind::Note => ts("Nota", "Note"),
         ItemKind::App => ts("Mini-app", "Mini-app"),
+        ItemKind::Page => ts("Página", "Page"),
+        ItemKind::File => ts("Arquivo", "File"),
     }
 }
 
@@ -2797,6 +3078,20 @@ fn action_label(a: &ActionClass) -> &'static str {
         ActionClass::Money { .. } => ts("Pagamento", "Payment"),
         ActionClass::PublicAudience => ts("Publicar", "Publish"),
         ActionClass::ThirdPartyData => ts("Dados de terceiros", "Third-party data"),
+    }
+}
+
+/// Plain words for a standing decision's kind of action (`roda_grants::standing_key`).
+pub(crate) fn standing_label(key: &str) -> String {
+    match key {
+        "reply" => t("responder", "replies"),
+        "reversible" => t("mudanças neste Espaço", "changes in this Space"),
+        "external" => t("enviar para fora do Zoen", "sending outside Zoen"),
+        "irreversible" => t("apagar de vez", "deleting for good"),
+        "money" => t("pagamentos", "payments"),
+        "public_audience" => t("publicar para mais gente", "posting to a wider audience"),
+        "third_party_data" => t("dados de outras pessoas", "other people's data"),
+        other => other.to_string(),
     }
 }
 
@@ -2828,6 +3123,10 @@ pub(crate) fn reason_label(r: &Reason, p: &Policy) -> String {
             "Orçamento do mês no fim (resta {})",
             "Monthly budget almost gone ({} left)",
             money(*remaining_cents)
+        ),
+        Reason::StandingDeny => t(
+            "Você escolheu sempre negar isso deste agente aqui",
+            "You chose to always deny this from this agent here",
         ),
     }
 }
@@ -2904,6 +3203,21 @@ fn event_label(b: &EventBody) -> String {
                 "Auto-approved: {}",
                 capability
             ),
+            Capability::Standing { action, allow } => {
+                if *allow {
+                    tr!(
+                        "Sempre aprovar: {}",
+                        "Always approve: {}",
+                        standing_label(action)
+                    )
+                } else {
+                    tr!(
+                        "Sempre negar: {}",
+                        "Always deny: {}",
+                        standing_label(action)
+                    )
+                }
+            }
         },
         EventBody::GrantRevoked { .. } => t("Concessão revogada", "Grant revoked"),
         EventBody::RequestOpened { request } => tr!("Pedido: {}", "Request: {}", request.title),

@@ -375,42 +375,55 @@ impl Engine {
 
     /// Envelopes still waiting for the relay, oldest first.
     pub fn outbox_envelopes(&self) -> Vec<Envelope> {
+        self.outbox_envelopes_except(&HashSet::new())
+    }
+
+    /// The outbox as envelopes, leaving out the ones already sent on this connection.
+    /// Called after every write, so it skips sent entries before any sealing work and asks
+    /// each Space's group for its epoch once: a long import stays linear, not quadratic.
+    pub fn outbox_envelopes_except(&self, sent: &HashSet<String>) -> Vec<Envelope> {
+        let mut ready = HashMap::new();
         // A Welcome goes out only once its commit is in: sent together, a commit held back
         // by the relay (rate limit) would let the Welcome arrive first and be refused.
-        let mut committing: HashSet<String> = HashSet::new();
+        let held = self.welcomes_behind_commits();
         self.store
-            .outbox()
+            .outbox_heads()
             .unwrap_or_default()
             .into_iter()
-            .filter(|p| !p.failed)
-            .filter(|p| match &p.event.body {
-                EventBody::Sealed { kind } if kind == SealedKind::Commit.name() => {
-                    committing.insert(p.event.space.clone());
-                    true
-                }
-                EventBody::Sealed { kind } if kind == SealedKind::Welcome.name() => {
-                    !committing.contains(&p.event.space)
-                }
-                _ => true,
-            })
+            .filter(|p| !p.failed && !sent.contains(&p.client_id))
+            .filter(|p| !held.contains(&p.client_id))
             // Refused for being clear in a Space that went end-to-end: it waits until this
             // device has caught up with that, then goes out sealed.
             .filter(|p| {
-                p.last_error.as_deref() != Some(roda_proto::SEAL_REQUIRED)
-                    || self.is_e2e(&p.event.space)
+                p.last_error.as_deref() != Some(roda_proto::SEAL_REQUIRED) || self.is_e2e(&p.space)
             })
             .filter_map(|p| {
-                let mut env = self.outgoing_envelope(&p.event)?;
+                let event = self.store.outbox_get(&p.client_id).ok().flatten()?;
+                let mut env = self.outgoing_envelope_with(&event, &mut ready)?;
                 if !env.is_sealed() {
                     env.invite = self
                         .store
-                        .meta(&format!("invite:{}", p.event.client_id))
+                        .meta(&format!("invite:{}", p.client_id))
                         .ok()
                         .flatten();
                 }
                 Some(env)
             })
             .collect()
+    }
+
+    /// Our queued Welcomes that wait behind a commit of ours still in the outbox.
+    fn welcomes_behind_commits(&self) -> HashSet<String> {
+        let mut committing: HashSet<String> = HashSet::new();
+        let mut held = HashSet::new();
+        for (client_id, space, kind) in self.store.outbox_handshakes().unwrap_or_default() {
+            if kind == SealedKind::Commit.name() {
+                committing.insert(space);
+            } else if kind == SealedKind::Welcome.name() && committing.contains(&space) {
+                held.insert(client_id);
+            }
+        }
+        held
     }
 
     pub fn outbox_len(&self) -> u64 {

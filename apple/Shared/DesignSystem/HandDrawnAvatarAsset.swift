@@ -200,6 +200,7 @@ enum HandDrawnLoopCache {
 
 /// Still in lists; animated WebP loop when large (>= 56 pt) and Reduce Motion is off.
 struct HandDrawnAvatarView: View {
+    @Environment(\.ambientPaused) private var ambientPaused
     let asset: HandDrawnAvatarAsset.Asset
     var size: CGFloat
     var animate: Bool = true
@@ -219,7 +220,7 @@ struct HandDrawnAvatarView: View {
     @ViewBuilder private var content: some View {
         let frames = wantsLoop ? HandDrawnLoopCache.frames(for: asset) : []
         if frames.count > 1 {
-            TimelineView(.periodic(from: .now, by: 0.1)) { ctx in
+            TimelineView(.animation(minimumInterval: 0.1, paused: ambientPaused)) { ctx in
                 let i = Int(ctx.date.timeIntervalSinceReferenceDate * 10) % frames.count
                 Image(decorative: frames[i], scale: 1).resizable().interpolation(.high).scaledToFill()
             }

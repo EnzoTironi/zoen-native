@@ -38,6 +38,7 @@ fn message(i: usize) -> EventBody {
         message: format!("m{i}"),
         text: format!("mensagem {i}"),
         attaches: None,
+        reply: None,
     }
 }
 

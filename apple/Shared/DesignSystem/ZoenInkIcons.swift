@@ -533,6 +533,7 @@ extension ZoenGlyph {
 /// The ink icon view: base + accent ink in the foreground style, optional marker wash and
 /// highlighter (selected). Draws on and plays its signature motion when selected or tapped.
 struct InkIcon: View {
+    @Environment(\.ambientPaused) private var ambientPaused
     let glyph: ZoenGlyph
     var direction: IconDirection = .shipping
     var selected = false
@@ -548,7 +549,7 @@ struct InkIcon: View {
     @State private var plays = 0
 
     var body: some View {
-        TimelineView(.animation(minimumInterval: 1 / 10, paused: !boil || reduceMotion)) { tl in
+        TimelineView(.animation(minimumInterval: 1 / 10, paused: ambientPaused || !boil || reduceMotion)) { tl in
             let frame = boil && !reduceMotion ? Int(tl.date.timeIntervalSinceReferenceDate * 10) % 4 + 1 : 0
             let art = glyph.art(direction)
             let pivot = art.map { UnitPoint(x: $0.pivot.x / 24, y: $0.pivot.y / 24) } ?? .center

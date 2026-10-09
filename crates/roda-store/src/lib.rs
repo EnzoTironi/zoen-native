@@ -10,7 +10,7 @@
 mod profiles;
 mod sync;
 pub use profiles::ProfileKeyRow;
-pub use sync::Pending;
+pub use sync::{OutboxHead, Pending};
 
 use roda_types::{Event, Identity};
 use rusqlite::{params, Connection, OptionalExtension};
@@ -145,6 +145,19 @@ impl Store {
             params![sha256, mime, bytes, at_ms],
         )?;
         Ok(())
+    }
+
+    /// Whether these bytes are on this device (without reading them).
+    pub fn has_media(&self, sha256: &str) -> Result<bool> {
+        Ok(self
+            .conn
+            .query_row(
+                "SELECT 1 FROM media WHERE sha256 = ?1",
+                [sha256],
+                |_| Ok(()),
+            )
+            .optional()?
+            .is_some())
     }
 
     pub fn media(&self, sha256: &str) -> Result<Option<(String, Vec<u8>)>> {
