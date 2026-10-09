@@ -1,0 +1,81 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>Zoen · métricas</title>
+<style>
+  :root { font-family: -apple-system, system-ui, sans-serif; color: #1d1b16; background: #faf7f0; }
+  body { max-width: 1040px; margin: 0 auto; padding: 24px; }
+  h1 { font-size: 22px; margin: 0 0 4px; }
+  .muted { color: #7a7466; font-size: 13px; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px; margin: 16px 0; }
+  .card { background: #fff; border: 1.5px solid #1d1b16; border-radius: 14px; padding: 14px 16px; }
+  .card.big { border-width: 2.5px; }
+  .k { font-size: 12px; text-transform: uppercase; letter-spacing: .04em; color: #7a7466; }
+  .v { font-size: 30px; font-weight: 700; margin-top: 4px; }
+  .big .v { font-size: 42px; }
+  table { border-collapse: collapse; width: 100%; font-size: 13px; background: #fff; }
+  td, th { border-bottom: 1px solid #e6e0d2; padding: 6px 8px; text-align: right; }
+  td:first-child, th:first-child { text-align: left; }
+  svg { width: 100%; height: 160px; background: #fff; border: 1.5px solid #1d1b16; border-radius: 14px; }
+  form { display: flex; gap: 8px; margin: 16px 0; }
+  input { flex: 1; padding: 8px; border-radius: 8px; border: 1.5px solid #1d1b16; }
+  button { padding: 8px 14px; border-radius: 8px; border: 1.5px solid #1d1b16; background: #ffd84d; font-weight: 600; }
+  h2 { font-size: 16px; margin: 24px 0 6px; }
+</style>
+</head>
+<body>
+<h1>Zoen · métricas</h1>
+<div class="muted">Só números agregados. Nenhum conteúdo, nenhum id. Dias em UTC.</div>
+<form id="f"><input id="t" type="password" placeholder="token de admin" autocomplete="off">
+<label class="muted"><input id="all" type="checkbox"> incluir contas de QA</label><button>Ver</button></form>
+<div id="out"></div>
+<script>
+const $ = (s) => document.querySelector(s);
+const fmt = (v, suf = "") => v === null || v === undefined ? "—" : (typeof v === "number" ? v.toLocaleString("pt-BR") : v) + suf;
+const card = (k, v, big) => `<div class="card${big ? " big" : ""}"><div class="k">${k}</div><div class="v">${v}</div></div>`;
+function line(series, key, label) {
+  const w = 1000, h = 160, p = 24, vals = series.map((d) => d[key] ?? 0), max = Math.max(1, ...vals);
+  const pts = vals.map((v, i) => `${p + (i * (w - 2 * p)) / Math.max(1, vals.length - 1)},${h - p - (v / max) * (h - 2 * p)}`).join(" ");
+  return `<h2>${label} · 30 dias (máx ${fmt(max)})</h2><svg viewBox="0 0 ${w} ${h}" preserveAspectRatio="none"><polyline fill="none" stroke="#1d1b16" stroke-width="3" points="${pts}"/></svg>`;
+}
+async function load() {
+  const token = sessionStorage.getItem("zoen-admin") || "";
+  if (!token) return;
+  const r = await fetch("/admin/metrics" + ($("#all").checked ? "?population=everyone" : ""), { headers: { Authorization: "Bearer " + token } });
+  if (!r.ok) { $("#out").textContent = "Erro " + r.status; return; }
+  const m = await r.json(), h = m.headline, g = m.growth, re = m.retention, e = m.engagement, rl = m.reliability;
+  let html = `<div class="muted">${m.population} · ${m.generated_for}</div><div class="grid">`
+    + card("Usuários ativos no mês (MAU)", fmt(h.mau), true)
+    + card("Mensagens por usuário ativo (mês)", fmt(h.messages_per_active_user.month), true)
+    + card("WAU", fmt(h.wau)) + card("DAU", fmt(h.dau)) + card("DAU/MAU", fmt(h.dau_over_mau))
+    + card("Mensagens por usuário (semana)", fmt(h.messages_per_active_user.week))
+    + card("Mensagens por usuário (dia)", fmt(h.messages_per_active_user.day))
+    + `</div><h2>Crescimento</h2><div class="grid">`
+    + card("Cadastros (30d)", fmt(g.signups_30d)) + card("Ativação: 1ª msg em 24h", fmt(g.activation_first_message_24h_pct, "%"))
+    + card("Ativação: ≥2 pessoas na 1ª semana", fmt(g.activation_2_people_week1_pct, "%"))
+    + card("Convites aceitos (30d)", fmt(g.invites_accepted_30d)) + card("K viral (30d)", fmt(g.viral_k_30d))
+    + card("Convidado: 1ª msg (mediana)", fmt(g.invited_time_to_first_message_median_s, " s"))
+    + `</div><h2>Retenção</h2><div class="grid">`
+    + card("D1", fmt(re.d1_pct, "%")) + card("D7", fmt(re.d7_pct, "%")) + card("D30", fmt(re.d30_pct, "%"))
+    + `</div><table><tr><th>Coorte (semanas atrás)</th><th>Tamanho</th>${[0,1,2,3,4].map((k) => `<th>Sem ${k}</th>`).join("")}</tr>`
+    + re.weekly_cohorts.sort((a, b) => b.cohort_weeks_ago - a.cohort_weeks_ago).map((c) => `<tr><td>${c.cohort_weeks_ago}</td><td>${c.size}</td>${[0,1,2,3,4].map((k) => `<td>${fmt(c.active_pct_by_week[k], c.active_pct_by_week[k] == null ? "" : "%")}</td>`).join("")}</tr>`).join("")
+    + `</table><h2>Uso</h2><div class="grid">`
+    + card("Sessões por DAU (hoje)", fmt(e.sessions_per_dau)) + card("Spaces ativos (hoje)", fmt(e.spaces_active_today))
+    + card("Membros médios", fmt(e.spaces_active_avg_members)) + card("Msgs de agentes por usuário (30d)", fmt(e.agent_messages_per_active_user_30d))
+    + card("Aprovações sim / não", fmt(e.approvals_approved_30d) + " / " + fmt(e.approvals_denied_30d))
+    + card("Mídias enviadas (30d)", fmt(e.media_blobs_30d))
+    + `</div><h2>Confiabilidade</h2><div class="grid">`
+    + card("Envio p50 / p95", fmt(rl.send_latency_ms_p50) + " / " + fmt(rl.send_latency_ms_p95) + " ms")
+    + card("1º sync p50 / p95", fmt(rl.time_to_first_sync_ms_p50) + " / " + fmt(rl.time_to_first_sync_ms_p95) + " ms")
+    + card("Envios recusados (30d)", fmt(rl.send_failure_pct_30d, "%"))
+    + `</div>` + line(m.series, "mau", "MAU") + line(m.series, "messages_per_sender", "Mensagens por remetente") + line(m.series, "dau", "DAU");
+  $("#out").innerHTML = html;
+}
+$("#f").addEventListener("submit", (ev) => { ev.preventDefault(); if ($("#t").value) sessionStorage.setItem("zoen-admin", $("#t").value); $("#t").value = ""; load(); });
+load();
+</script>
+</body>
+</html>

@@ -188,6 +188,10 @@ fn usage() -> ! {
          invite CHAT\n\
          join CODE\n\
          sync [--timeout MS]\n\
+         open LINK                        (before init: where this install came from)\n\
+         onboarding [--relay URL]         (the onboarding plan for that source and arm)\n\
+         growth-sync [--health S C]       (config + source/exposures/health report)\n\
+         variant FLAG\n\
          watch [--for SECONDS]\n\
          typing CHAT [--for SECONDS]\n\
          background CHAT --photo FILE     photo background for everyone (encrypted on the relay)\n\
@@ -389,6 +393,39 @@ async fn main() {
         dir: home.join("vault"),
     });
     let e = open(&home);
+
+    // Growth (ADR 0044): what a fresh install does before there is an account.
+    if cmd == "open" {
+        let link = cli.args.first().cloned().unwrap_or_else(|| usage());
+        let a = e.growth_capture_link(link);
+        println!(
+            "source={} campaign={} target={}",
+            a.kind,
+            a.campaign.unwrap_or_default(),
+            a.target.unwrap_or_default()
+        );
+        return;
+    }
+    if cmd == "onboarding" {
+        let relay = cli
+            .flag("--relay")
+            .or_else(|| std::env::var("ZOEN_RELAY").ok());
+        if relay.is_some() || e.account().is_some() {
+            let _ = e.growth_sync(relay, false, 0, 0).await;
+        }
+        let p = e.growth_onboarding_plan();
+        println!("flow={}", p.flow);
+        println!("steps={}", p.steps.join(","));
+        println!("landing={}", p.landing);
+        println!("target={}", p.landing_target.unwrap_or_default());
+        println!("experiment={}", p.experiment.unwrap_or_default());
+        let mut copy: Vec<_> = p.copy.into_iter().collect();
+        copy.sort();
+        for (k, v) in copy {
+            println!("copy.{k}={v}");
+        }
+        return;
+    }
 
     if cmd == "init" {
         let name = cli.flag("--name").unwrap_or_else(|| usage());
@@ -640,6 +677,35 @@ async fn main() {
             let space = e.join_invite(code).await.unwrap_or_else(|err| die(err));
             e.wait_until_idle(timeout).await;
             println!("{space}");
+        }
+        "growth-sync" => {
+            // zoen growth-sync [--health <sessions> <crashes>]
+            let (share, s, c) = match cli.args.iter().position(|a| a == "--health") {
+                Some(i) => (
+                    true,
+                    cli.args
+                        .get(i + 1)
+                        .and_then(|v| v.parse().ok())
+                        .unwrap_or(0),
+                    cli.args
+                        .get(i + 2)
+                        .and_then(|v| v.parse().ok())
+                        .unwrap_or(0),
+                ),
+                None => (false, 0, 0),
+            };
+            let r = e
+                .growth_sync(None, share, s, c)
+                .await
+                .unwrap_or_else(|err| die(err));
+            println!("config={} reported={}", r.config_version, r.reported);
+        }
+        "variant" => {
+            let flag = cli.args.first().cloned().unwrap_or_else(|| usage());
+            println!(
+                "{}",
+                e.growth_variant(flag).unwrap_or_else(|| "unknown".into())
+            );
         }
         "sync" => {
             let c = e.wait_until_idle(timeout).await;

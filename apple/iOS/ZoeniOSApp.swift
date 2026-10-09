@@ -13,9 +13,17 @@ struct ZoeniOSApp: App {
                 .tint(Palette.action)
                 .preferredColorScheme(AppModel.launchColorScheme)
                 .task { await model.applyLaunchOptions() }
+                // Friend, Space and campaign links: where this install came from (ADR 0044).
+                .onOpenURL { model.captureAcquisition($0) }
+                .onContinueUserActivity(NSUserActivityTypeBrowsingWeb) { a in
+                    if let url = a.webpageURL { model.captureAcquisition(url) }
+                }
         }
         // A revoke waiting on its "Desfazer" is settled before the app can be killed.
-        .onChange(of: phase) { _, p in if p != .active { model.commitPendingRevokes() } }
+        .onChange(of: phase) { _, p in
+            if p != .active { model.commitPendingRevokes() }
+            if p == .active { Task { await model.growthSync() } }
+        }
     }
 }
 

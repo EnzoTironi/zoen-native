@@ -10,6 +10,7 @@
 //! Membership is the only thing the relay must understand, because it decides who may
 //! write and who receives. Everything else is the clients' business.
 
+pub mod analytics;
 pub mod blobs;
 pub mod db;
 pub mod fanout;
@@ -28,7 +29,7 @@ use axum::{
     extract::{DefaultBodyLimit, State, WebSocketUpgrade},
     http::StatusCode,
     response::IntoResponse,
-    routing::{get, put},
+    routing::{get, post, put},
     serve::ListenerExt,
     Router,
 };
@@ -73,6 +74,8 @@ pub struct AppState {
     /// This node's Space-partition leases (S4). One process owns every partition until
     /// S5 brings a multi-node lease exchange over NATS.
     pub owner: ownership::NodeOwner,
+    /// Product metrics, counted without content (ADR 0043).
+    pub analytics: analytics::Analytics,
 }
 
 pub type Shared = Arc<AppState>;
@@ -99,6 +102,11 @@ pub fn router(state: Shared) -> Router {
             "/.well-known/apple-app-site-association",
             get(apple_app_site_association),
         )
+        .route("/admin", get(analytics::admin::page))
+        .route("/admin/metrics", get(analytics::admin::metrics))
+        .route("/admin/config", put(analytics::config::put))
+        .route("/v1/config", get(analytics::config::get))
+        .route("/v1/report", post(analytics::config::report))
         .route("/healthz", get(healthz))
         .route("/readyz", get(readyz))
         .with_state(state)
@@ -160,6 +168,7 @@ pub async fn build(cfg: &Config) -> anyhow::Result<(Router, Shared)> {
         partitions = ownership::PARTITION_COUNT,
         "space ownership ready (single node owns every partition)"
     );
+    let analytics = analytics::Analytics::load(&pool).await?;
     let state = Arc::new(AppState {
         pool,
         log: Arc::new(log),
@@ -175,7 +184,9 @@ pub async fn build(cfg: &Config) -> anyhow::Result<(Router, Shared)> {
         blobs,
         apple_app_ids: cfg.apple_app_ids.clone(),
         owner,
+        analytics,
     });
+    analytics::spawn(state.clone());
     let app = match cfg.metrics_bind {
         Some(_) => router(state.clone()),
         None => router(state.clone()).merge(metrics_router(state.clone())),
@@ -192,7 +203,8 @@ pub async fn serve(cfg: Config) -> anyhow::Result<()> {
     if let Some(bind) = cfg.metrics_bind {
         let listener = tokio::net::TcpListener::bind(bind).await?;
         tracing::info!(bind = %bind, "metrics listening");
-        tokio::spawn(async move { axum::serve(listener, metrics_router(state)).await });
+        let st = state.clone();
+        tokio::spawn(async move { axum::serve(listener, metrics_router(st)).await });
     }
     // Frames are small and latency is the product: no Nagle delay on any connection.
     let listener = tokio::net::TcpListener::bind(cfg.bind)
@@ -205,7 +217,13 @@ pub async fn serve(cfg: Config) -> anyhow::Result<()> {
         listener,
         app.into_make_service_with_connect_info::<std::net::SocketAddr>(),
     )
-    .with_graceful_shutdown(shutdown_signal())
+    .with_graceful_shutdown(async move {
+        shutdown_signal().await;
+        // What this node counted since its last flush, before it goes.
+        if let Err(e) = state.analytics.flush(&state.pool).await {
+            tracing::warn!(error = %e, "metrics flush at shutdown failed");
+        }
+    })
     .await?;
     Ok(())
 }
