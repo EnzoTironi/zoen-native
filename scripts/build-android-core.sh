@@ -15,6 +15,7 @@ done
 
 command -v cargo >/dev/null || { echo "Install stable Rust with rustup." >&2; exit 1; }
 command -v cargo-ndk >/dev/null || { echo "Install cargo-ndk: cargo install cargo-ndk --locked" >&2; exit 1; }
+command -v python3 >/dev/null || { echo "Install Python 3 to configure Android's UniFFI callbacks." >&2; exit 1; }
 SDK="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-}}"
 if [[ -z "$SDK" && "$(uname -s)" == Darwin ]]; then SDK="$HOME/Library/Android/sdk"; fi
 [[ -d "$SDK/ndk" ]] || { echo "Set ANDROID_HOME to an SDK with NDK 27 or newer installed." >&2; exit 1; }
@@ -32,6 +33,7 @@ case "$(uname -s)" in
 esac
 target/debug/uniffi-bindgen generate --library "$HOST_LIB" --language kotlin \
   --config android/uniffi.toml --out-dir "$OUT/kotlin" --no-format
+python3 scripts/fix-android-uniffi-callbacks.py "$OUT/kotlin"
 
 IFS=',' read -ra ABI_LIST <<< "$ABIS"
 NDK_ARGS=()

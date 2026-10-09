@@ -14,7 +14,7 @@ val buildRodaCore by tasks.registering(Exec::class) {
     commandLine("bash", "scripts/build-android-core.sh",
         if (coreProfile.get() == "release") "--release" else "--debug", "--abis=${coreAbis.get()}")
     inputs.files(fileTree("../../crates") { include("**/*.rs", "**/Cargo.toml", "**/*.html", "**/*.json") })
-    inputs.files("../../Cargo.toml", "../../Cargo.lock", "../uniffi.toml", "../../scripts/build-android-core.sh")
+    inputs.files("../../Cargo.toml", "../../Cargo.lock", "../uniffi.toml", "../../scripts/build-android-core.sh", "../../scripts/fix-android-uniffi-callbacks.py")
     inputs.property("abis", coreAbis)
     inputs.property("profile", coreProfile)
     outputs.dir(coreOutput)

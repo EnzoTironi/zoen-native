@@ -2,10 +2,10 @@ name: android
 
 on:
   pull_request:
-    paths: ["android/**", "crates/**", "Cargo.toml", "Cargo.lock", "scripts/build-android-core.sh", ".github/workflows/android.yml"]
+    paths: ["android/**", "crates/**", "Cargo.toml", "Cargo.lock", "scripts/build-android-core.sh", "scripts/*android-uniffi-callbacks.py", ".github/workflows/android.yml"]
   push:
     branches: [main]
-    paths: ["android/**", "crates/**", "Cargo.toml", "Cargo.lock", "scripts/build-android-core.sh", ".github/workflows/android.yml"]
+    paths: ["android/**", "crates/**", "Cargo.toml", "Cargo.lock", "scripts/build-android-core.sh", "scripts/*android-uniffi-callbacks.py", ".github/workflows/android.yml"]
 
 permissions:
   contents: read
@@ -49,7 +49,9 @@ jobs:
         run: cargo install cargo-ndk --locked
       - name: Build both ABIs, unit tests, and lint
         working-directory: android
-        run: ./gradlew :app:assembleDebug :app:testDebugUnitTest :app:lintDebug --max-workers=4
+        run: |
+          python3 ../scripts/test-android-uniffi-callbacks.py
+          ./gradlew :app:assembleDebug :app:testDebugUnitTest :app:lintDebug --max-workers=4
       - name: Isolated relay for encrypted Android journeys
         run: |
           docker run -d --name android-pg -p 5432:5432 -e POSTGRES_USER=zoen -e POSTGRES_HOST_AUTH_METHOD=trust postgres:17-alpine
