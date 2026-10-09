@@ -57,9 +57,11 @@ final class SheetConfirmJourneyTests: XCTestCase {
     @MainActor
     func testProfileBlockAsksInPlace() {
         let app = launch("paraty")
-        let marina = app.staticTexts["Marina"].firstMatch
-        XCTAssertTrue(marina.waitForExistence(timeout: 20))
-        marina.tap()
+        let names = app.staticTexts.matching(NSPredicate(format: "label == 'Marina'"))
+        XCTAssertTrue(names.firstMatch.waitForExistence(timeout: 20))
+        sleep(2)
+        // Her latest message's name (the first one can sit under the top bar).
+        names.allElementsBoundByIndex.filter { $0.isHittable }.last?.tap()
         let block = app.buttons["profile-block"]
         // The danger rows sit at the bottom of the sheet.
         for _ in 0..<4 where !block.isHittable { app.swipeUp() }

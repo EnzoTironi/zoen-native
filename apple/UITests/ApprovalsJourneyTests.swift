@@ -174,7 +174,8 @@ final class ApprovalsJourneyTests: XCTestCase {
         let sure = again.buttons["revoke-standing-confirm"].firstMatch
         XCTAssertTrue(sure.waitForExistence(timeout: 3), "revoking asks first, in place")
         XCTAssertFalse(again.staticTexts["Nenhuma ainda."].exists, "one tap alone doesn't revoke")
-        sure.tap()
+        sleep(1) // let the pill settle (it grows and the × slides in) before the second tap
+        again.buttons["revoke-standing-confirm"].firstMatch.tap()
         XCTAssertTrue(again.staticTexts["Nenhuma ainda."].waitForExistence(timeout: 5), "revoked: none left")
     }
 

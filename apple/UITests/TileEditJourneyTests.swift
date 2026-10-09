@@ -59,8 +59,12 @@ final class TileEditJourneyTests: XCTestCase {
         // Minus on the (now) second card → confirm → it's gone and the rest close the gap.
         let victim = moved[1]
         app.buttons["home-tile-remove-\(victim)"].tap()
-        let confirm = app.buttons["Tirar do Início"]
-        XCTAssertTrue(confirm.waitForExistence(timeout: 4), "removing asks first")
+        var confirm = app.buttons["home-tile-remove-confirm"].firstMatch
+        if !confirm.waitForExistence(timeout: 3) {
+            // The dialog's button (the dialog title repeats the words).
+            confirm = app.buttons.matching(NSPredicate(format: "label == 'Tirar do Início'")).allElementsBoundByIndex.filter { $0.isHittable }.last ?? confirm
+        }
+        XCTAssertTrue(confirm.exists, "removing asks first")
         confirm.tap()
         let gone = NSPredicate { _, _ in !self.names(app, "home-tile").contains(victim) }
         XCTAssertEqual(XCTWaiter().wait(for: [XCTNSPredicateExpectation(predicate: gone, object: nil)], timeout: 5), .completed, "the card is unpinned")
