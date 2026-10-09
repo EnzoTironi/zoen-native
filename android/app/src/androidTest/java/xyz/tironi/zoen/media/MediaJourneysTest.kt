@@ -4,6 +4,8 @@ import android.Manifest
 import android.content.Intent
 import android.graphics.Bitmap
 import android.graphics.Color
+import android.os.ParcelFileDescriptor
+import android.view.WindowManager
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createEmptyComposeRule
@@ -34,8 +36,10 @@ class MediaJourneysTest {
         finally { bitmap.recycle() }
     }
     private fun open(): ActivityScenario<MainActivity> {
+        for (command in listOf("input keyevent 224", "wm dismiss-keyguard")) ParcelFileDescriptor.AutoCloseInputStream(InstrumentationRegistry.getInstrumentation().uiAutomation.executeShellCommand(command)).use { it.readBytes() }
         application.repository.preferences.edit().putBoolean("demo", true).putBoolean("onboarded", true).commit()
         val scenario = ActivityScenario.launch<MainActivity>(Intent(application, MainActivity::class.java).putExtra("demo", true))
+        scenario.onActivity { it.window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON) }
         compose.waitUntil(30_000) { application.repository.state.value.ready && application.repository.state.value.me != null }
         return scenario
     }
