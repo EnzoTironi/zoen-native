@@ -471,7 +471,16 @@ async fn admins_adding_at_once_under_a_publish_limit_converge() {
 /// when the stock dips under 8, it refills right away. Every group still opens for him.
 #[tokio::test(flavor = "multi_thread")]
 async fn key_packages_refill_when_they_run_low() {
-    let w = World::new("m2kp").await;
+    // Fifty groups from one terminal in a minute or two: lift the per-IP connect and
+    // lookup limits that would otherwise pace Ana, not what this journey is about.
+    let w = World::with_env(
+        "m2kp",
+        &[(
+            "ZOEN_LIMITS",
+            "connect_ip=1000/m:1000,lookup_account=1000/m:1000",
+        )],
+    )
+    .await;
     w.init("ana", "Ana");
     w.init("bruno", "Bruno");
     let bruno = w.id_of("bruno").await;
@@ -497,16 +506,24 @@ async fn key_packages_refill_when_they_run_low() {
     assert_eq!(w.count(&sql).await, 8);
 
     // Online when one more group takes him under 8: he refills while it happens.
-    let watch = w.spawn_zoen("bruno", &["watch", "--for", "6"]);
-    std::thread::sleep(std::time::Duration::from_millis(1500));
+    let watch = w.spawn_zoen("bruno", &["watch", "--for", "25"]);
+    std::thread::sleep(std::time::Duration::from_millis(2000));
     w.zoen("ana", &["group", "Roda 49", "@bruno"]);
+    let mut stock = 0;
+    for _ in 0..200 {
+        stock = w.count(&sql).await;
+        if stock == 32 {
+            break;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+    }
+    assert_eq!(stock, 32, "refilled while watching");
     let out = watch.wait_with_output().expect("watch");
     assert!(
         out.status.success(),
         "{}",
         String::from_utf8_lossy(&out.stderr)
     );
-    assert_eq!(w.count(&sql).await, 32);
 
     // A group made from a refilled package opens like any other, and so do the old ones.
     w.zoen("ana", &["group", "Roda nova", "@bruno"]);

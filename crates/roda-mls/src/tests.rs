@@ -222,6 +222,10 @@ fn the_first_commit_wins_and_the_other_is_stale() {
     pair(&enzo, &marina, &both);
     let first = add(&marina, &bruno);
     let second = add(&enzo, &julia);
+    // Both were made at epoch 1: the relay sees that in the clear and keeps the first.
+    assert_eq!(commit_epoch(&first.commit), Some(1));
+    assert_eq!(commit_epoch(&second.commit), Some(1));
+    assert_eq!(commit_epoch(&marina.seal(SPACE, b"oi").unwrap()), None);
     let three = roster(&[&e, &m, &b]);
     for d in [&enzo, &marina] {
         assert_eq!(
@@ -241,6 +245,24 @@ fn the_first_commit_wins_and_the_other_is_stale() {
         enzo.checkpoint(SPACE).unwrap(),
         bruno.checkpoint(SPACE).unwrap()
     );
+    // The loser drops its commit and adds Julia again on top of the winner.
+    enzo.abandon(SPACE).unwrap();
+    assert!(!enzo.pending(SPACE));
+    let again = add(&enzo, &julia);
+    assert_eq!(commit_epoch(&again.commit), Some(2));
+    let four = roster(&[&e, &m, &b, &j]);
+    for d in [&enzo, &marina, &bruno] {
+        assert_eq!(
+            d.open(SPACE, &again.commit, &four).unwrap(),
+            Opened::Commit { epoch: 3 }
+        );
+    }
+    assert!(julia.join(SPACE, &again.welcome.unwrap(), &four).unwrap());
+    let hi = enzo.seal(SPACE, b"bem-vinda").unwrap();
+    assert!(matches!(
+        julia.open(SPACE, &hi, &four).unwrap(),
+        Opened::Application { plaintext, .. } if plaintext == b"bem-vinda"
+    ));
 }
 
 #[test]
