@@ -191,6 +191,7 @@ function OnlineMapView({ trail }: { trail: Trail }) {
   const map = useRef<maplibregl.Map | null>(null);
   const marker = useRef<maplibregl.Marker | null>(null);
   const ready = useRef(false);
+  const latestTrail = useRef(trail);
   const [failed, setFailed] = useState(false);
 
   const show = (t: Trail, animate: boolean) => {
@@ -214,16 +215,17 @@ function OnlineMapView({ trail }: { trail: Trail }) {
     const label = document.createElement('div'); label.className = 'marker'; pin.appendChild(label);
     marker.current = new maplibregl.Marker({ element: pin, anchor: 'bottom', offset: [0, -6] }).setLngLat(trail.trailhead).addTo(m);
     m.on('load', () => {
-      m.addSource('route', { type: 'geojson', data: { type: 'Feature', properties: {}, geometry: { type: 'LineString', coordinates: trail.line } } });
+      const current = latestTrail.current;
+      m.addSource('route', { type: 'geojson', data: { type: 'Feature', properties: {}, geometry: { type: 'LineString', coordinates: current.line } } });
       m.addLayer({ id: 'route-casing', type: 'line', source: 'route', paint: { 'line-color': '#ffffff', 'line-width': 9, 'line-opacity': 0.95 }, layout: { 'line-cap': 'round', 'line-join': 'round' } });
       m.addLayer({ id: 'route', type: 'line', source: 'route', paint: { 'line-color': '#3D7A28', 'line-width': 4.5 }, layout: { 'line-cap': 'round', 'line-join': 'round' } });
       ready.current = true;
-      show(trail, false);
+      show(current, false);
     });
     return () => { ready.current = false; map.current = null; marker.current = null; m.remove(); };
   }, [failed]);
 
-  useEffect(() => { show(trail, true); }, [trail.id]);
+  useEffect(() => { latestTrail.current = trail; show(trail, true); }, [trail]);
 
   return failed ? <OfflineMap trail={trail} /> : <div ref={el} className="map" data-map="online" aria-label={`Map of ${trail.name}`} role="img" />;
 }
