@@ -486,4 +486,11 @@ extension UINavigationController: @retroactive UIGestureRecognizerDelegate {
         guard gestureRecognizer === interactivePopGestureRecognizer else { return true }
         return viewControllers.count > 1 && transitionCoordinator == nil
     }
+
+    /// The edge swipe wins over the chat's own drags (drag-to-reply, the scroll view): they
+    /// wait for it to fail, which it does at once for a touch away from the edge.
+    public func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer,
+                                  shouldBeRequiredToFailBy other: UIGestureRecognizer) -> Bool {
+        gestureRecognizer === interactivePopGestureRecognizer && viewControllers.count > 1
+    }
 }

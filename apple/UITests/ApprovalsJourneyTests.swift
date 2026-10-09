@@ -187,6 +187,39 @@ final class ApprovalsJourneyTests: XCTestCase {
         XCTAssertFalse(row.exists, "and the agent will ask again")
     }
 
+    /// Revoke, then the app dies inside the "Desfazer" window: the revoke still holds next time.
+    @MainActor
+    func testRevokeThenKillStillRevokes() {
+        let app = launch()
+        denyUntil(app, contains: "Reservar a Pousada")
+        let pousada = topCard(app)
+        drag(app, dx: 0, dy: 420)
+        XCTAssertTrue(waitForNext(app, after: pousada))
+        XCTAssertTrue(app.staticTexts["Sempre negado"].waitForExistence(timeout: 4))
+        waitForCommit(app)
+        app.terminate()
+
+        func permissions() -> (XCUIApplication, XCUIElement, XCUIElement) {
+            let a = launch(fresh: false, open: "permissoes", showcase: false)
+            let row = a.descendants(matching: .any).matching(NSPredicate(format: "label CONTAINS 'Sempre negar'")).firstMatch
+            let none = a.staticTexts["Nenhuma ainda."]
+            XCTAssertTrue(a.navigationBars.firstMatch.waitForExistence(timeout: 20) || a.staticTexts["Ferramentas"].waitForExistence(timeout: 5))
+            for _ in 0..<6 where !row.exists && !none.exists { a.swipeUp() }
+            return (a, row, none)
+        }
+        let (again, row, none) = permissions()
+        XCTAssertTrue(row.waitForExistence(timeout: 3), "Permissões shows the standing deny")
+        again.buttons["revoke-standing"].firstMatch.tap()
+        XCTAssertTrue(again.buttons["toast-undo"].waitForExistence(timeout: 3), "the undo window is open")
+        // Killed before the five seconds are up.
+        again.terminate()
+
+        let (third, row3, none3) = permissions()
+        XCTAssertTrue(none3.waitForExistence(timeout: 5), "the revoke held across the kill")
+        XCTAssertFalse(row3.exists, "and the agent will ask again")
+        _ = third; _ = none
+    }
+
     @MainActor
     func testTapForDetailsThenDecideThere() {
         let app = launch()

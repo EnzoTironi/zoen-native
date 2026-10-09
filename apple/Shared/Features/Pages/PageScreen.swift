@@ -57,7 +57,7 @@ struct PageScreen: View {
             }
         }
         .sheet(isPresented: $showVersions) {
-            if let item { NavigationStack { VersoesView(item: item) } .presentationDetents([.medium, .large]) }
+            if let item { NavigationStack { VersoesView(item: item) } .zoenSheet([.medium, .large]) }
         }
         .alert("Link", isPresented: $linkPrompt) {
             TextField("Address", text: $linkText)
