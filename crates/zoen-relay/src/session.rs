@@ -32,7 +32,7 @@ use crate::{db, hub::Mailbox, limits, log::Sequencing, metrics::Metrics, Shared}
 const MAX_KEY_PACKAGE: usize = 4096;
 
 pub const MAX_FRAME: usize = 1024 * 1024;
-const MAX_ENVELOPE: usize = 90 * 1024;
+pub const MAX_ENVELOPE: usize = 90 * 1024;
 const SYNC_PAGE: usize = 500;
 
 struct Session {
@@ -1114,6 +1114,12 @@ impl Session {
             Metrics::inc(&self.st.metrics.events_rejected);
             return self.send(reject("too_large", "too large", true)).await;
         }
+        if !env.valid_invite() {
+            Metrics::inc(&self.st.metrics.events_rejected);
+            return self
+                .send(reject("invalid_invite", "invalid invite code", true))
+                .await;
+        }
         if env.author() != self.identity || env.device().is_some_and(|d| d != self.device) {
             Metrics::inc(&self.st.metrics.events_rejected);
             return self
@@ -1132,24 +1138,28 @@ impl Session {
         }
         let target_known = match env.body() {
             Some(EventBody::MemberAdded { identity, .. }) => {
-                db::is_registered(&self.st.pool, &identity)
-                    .await
-                    .unwrap_or(false)
+                match db::is_registered(&self.st.pool, &identity).await {
+                    Ok(known) => known,
+                    Err(_) => {
+                        Metrics::inc(&self.st.metrics.events_rejected);
+                        self.send(reject(
+                            "directory_unavailable",
+                            "directory unavailable",
+                            false,
+                        ))
+                        .await;
+                        return;
+                    }
+                }
             }
             _ => true,
         };
-        if !self.st.owner.may_append(env.space()) {
-            Metrics::inc(&self.st.metrics.events_rejected);
-            return self
-                .send(reject(
-                    "not_owner",
-                    "this relay does not own that Space's partition",
-                    false,
-                ))
-                .await;
-        }
         match self.st.log.append(&env, target_known).await {
-            Ok(Sequencing::Duplicate { ev }) => {
+            Ok(Sequencing::Duplicate {
+                ev,
+                audience,
+                joined,
+            }) => {
                 Metrics::inc(&self.st.metrics.events_duplicate);
                 span.record("outcome", "duplicate");
                 span.record("seq", ev.seq as i64);
@@ -1159,7 +1169,21 @@ impl Session {
                     seq: ev.seq,
                 })
                 .await;
-                self.send(ServerFrame::Event { ev }).await;
+                self.send(ServerFrame::Event { ev: ev.clone() }).await;
+                let space = ev.env.space().to_string();
+                let n = self
+                    .st
+                    .fanout
+                    .send(&audience, &ServerFrame::Event { ev }, self.hub_id);
+                span.record("audience", audience.len() as i64);
+                span.record("delivered_here", n as i64);
+                if let Some(identity) = joined.filter(|id| id != &self.identity) {
+                    self.st.fanout.send(
+                        std::slice::from_ref(&identity),
+                        &ServerFrame::Joined { space },
+                        None,
+                    );
+                }
             }
             Ok(Sequencing::New {
                 ev,

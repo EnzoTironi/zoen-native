@@ -527,16 +527,17 @@ async fn session(
                     ServerFrame::Event { ev } => {
                         let space = ev.env.space().to_string();
                         let client_id = ev.env.client_id().to_string();
-                        let commit = ev.env.sealed_kind() == Some(roda_log::content::SealedKind::Commit);
                         let r = ctx.engine().ingest(ev);
                         if r == Ingest::Confirmed { sent.remove(&client_id); }
                         match r {
-                            Ingest::Confirmed if commit => {
-                                // Our commit is in: its Welcome, held until now, goes out.
+                            Ingest::Confirmed => {
+                                // Release Welcomes behind commits and descendants behind
+                                // an offline genesis as soon as their predecessor lands.
                                 dirty.insert(space);
+                                media_kick.notify_one();
                                 if let Err(e) = flush(ctx, &mut sink, &mut sent).await { break Exit::Retry(e) }
                             }
-                            Ingest::Applied | Ingest::Confirmed => { dirty.insert(space); media_kick.notify_one(); }
+                            Ingest::Applied => { dirty.insert(space); media_kick.notify_one(); }
                             Ingest::Duplicate => {}
                             Ingest::Gap { next } => {
                                 let c = vec![roda_proto::Cursor { space, next_seq: next }];

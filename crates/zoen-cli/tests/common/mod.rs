@@ -180,11 +180,24 @@ impl World {
     }
 
     fn cmd_at(&self, port: u16, who: &str, args: &[&str]) -> Command {
+        let relay = format!("http://127.0.0.1:{port}");
+        // After init the CLI connects to its saved account, not ZOEN_RELAY.
+        // Move that fixture account too, so *_at really exercises the chosen node.
+        let db = self.dir.join(who).join("zoen.sqlite");
+        if db.exists() {
+            rusqlite::Connection::open(db)
+                .expect("client database")
+                .execute(
+                    "UPDATE meta SET value = json_set(value, '$.relay_url', ?1) WHERE key = 'account'",
+                    [&relay],
+                )
+                .expect("route client to relay");
+        }
         let mut c = Command::new(env!("CARGO_BIN_EXE_zoen"));
         c.arg("--home")
             .arg(self.dir.join(who))
             .args(args)
-            .env("ZOEN_RELAY", format!("http://127.0.0.1:{port}"))
+            .env("ZOEN_RELAY", relay)
             .envs(self.client_env.iter().map(|(k, v)| (k, v)));
         c
     }

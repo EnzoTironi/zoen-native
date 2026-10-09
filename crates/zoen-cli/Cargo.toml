@@ -21,6 +21,7 @@ roda-proto = { path = "../roda-proto" }
 roda-log = { path = "../roda-log" }
 roda-types = { path = "../roda-types" }
 serde_json = "1"
+rusqlite.workspace = true
 sqlx = { version = "0.9", default-features = false, features = ["runtime-tokio", "postgres"] }
 tokio-tungstenite = { version = "0.30", default-features = false, features = ["connect", "handshake", "rustls-tls-webpki-roots"] }
 futures-util = { version = "0.3", default-features = false, features = ["sink", "std"] }
