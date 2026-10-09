@@ -1,0 +1,67 @@
+# Visão do produto — anotações
+
+> Anotações de produto (Enzo + Grok Bot, 8–9 out 2026). Guiam decisões; não são promessas de escopo.
+
+## Tese
+
+Zoen é o "WhatsApp 2": um mensageiro privado onde, além de conversar, as pessoas usam e criam apps e agentes na hora. Comunicação, comunidade, trabalho e comércio no mesmo lugar, com privacidade e segurança de verdade.
+
+## Democratização
+
+- Todo mundo pode ter o próprio agente, de graça. Pequenos negócios (confeiteiras, barbeiros, lojinhas de bairro) saem da "corrente do WhatsApp" de atender tudo na mão: o agente responde, agenda, vende e cobra por eles.
+- Para quem só tem celular, Zoen é o computador no bolso: criar, vender e trabalhar sem precisar de um PC.
+- O Brasil é o mercado de entrada (WhatsApp com ~93% de penetração).
+- Responsabilidade: agente só lê conversas onde é membro declarado; ações sensíveis passam por aprovação; o sandbox nunca vê senhas.
+
+## Plataformas
+
+- iOS e macOS nativos hoje (SwiftUI).
+- Android em Kotlin/Jetpack Compose: o núcleo em Rust gera bindings Kotlin pelo mesmo UniFFI, então a lógica (criptografia, sync, arquivos, regras) vem pronta; o trabalho é a interface e as partes de plataforma (push, Keystore, passkeys, câmera).
+- Web com framework web de verdade, núcleo Rust via WebAssembly. Não é landing page: é a porta de entrada instantânea pelos links de convite. Onde precisar de algo nativo, convite para instalar o app.
+
+## Crescimento
+
+### Viralidade
+- Estudar os apps mais virais da App Store e do Google Play e reaproveitar formatos e estratégias de marketing já validados.
+- O gancho tem que ser o que o agente entrega de verdade, nunca promessa vazia.
+- Convites para Spaces e conversas abrem direto na web: a pessoa entra e já usa.
+
+### SEO no estilo n8n
+- Cada caso de uso, tipo de negócio e integração vira uma página indexável (ex.: "agente para barbearia", "agente que agenda pelo WhatsApp", "Canva + Zoen").
+- As páginas mostram o mini app/agente funcionando e levam direto para usar.
+
+### Parcerias win-win com apps grandes
+- Apps que já rodam dentro de mensageiros são parceiros naturais: Zoen traz distribuição e comunidades; eles trazem um caso de uso pronto.
+- Exemplos:
+  - **Ditto** (Popcorn AI Tech, região de São Francisco): namoro com IA via iMessage, sem app; um match e um encontro planejado toda quarta. Mais de 160 mil estudantes cadastrados e mais de 80 mil encontros (cofundador Allen Wang à CBS, ago/2026).
+  - **YouMatch** (Bulgária): mini app no Telegram, ~10–12 mil usuários, marca encontros a cada duas semanas com análise de personalidade.
+
+## Store e MCP Apps
+
+- MCP Apps é o padrão aberto lançado em 26/jan/2026 (com OpenAI e MCP-UI) para ferramentas devolverem telas interativas dentro da conversa. Já roda no Claude, ChatGPT, Goose e VS Code.
+- Implementar o padrão faz Zoen herdar de uma vez os apps desse ecossistema.
+- Prioridades para a Store: Canva, Figma, Hex, Amplitude, Asana, monday.com, Box (também Slack, Clay e Salesforce).
+- Encaixe:
+  - A tela HTML do app abre isolada dentro do card de mini app, com a animação de virar.
+  - Telas simples (formulários, listas, confirmações) são desenhadas nativamente; HTML é reserva.
+  - Ações que mudam algo passam pelos cards de aprovação de arrastar.
+  - Aviso claro de privacidade: um app de terceiro só vê o conteúdo se alguém do grupo autorizar, porque ele fica fora da nossa criptografia.
+- Os nossos próprios mini apps usam o mesmo padrão, então funcionam também fora do Zoen.
+
+## Comércio sem intermediário
+
+- Lojas publicam catálogos como MCP Apps: cardápio, produtos, agenda.
+- O cliente pede direto na conversa, sem intermediário tipo iFood e sem taxa sobre o pedido.
+- O agente da loja confirma, cobra e acompanha.
+
+## Publicidade
+
+- Anúncio direto para humanos é proibido.
+- Publicidade para bots: o anúncio precisa convencer o agente do usuário, que filtra notícias, spam e ofertas pelo que importa para a pessoa (como o filtro de spam do e-mail). Isso inverte o incentivo dos apps sociais.
+- Dentro das comunidades: um bannerzinho discreto com selo de "patrocinado", um canal novo e barato para lojas locais alcançarem o bairro.
+  - Em aberto: como isso convive com a regra de não anunciar para humanos (proposta: só em comunidades que optarem, sempre identificado, sem uso de conteúdo das conversas para segmentar).
+
+## Trabalho
+
+- A ontologia transforma conversa em trabalho organizado: pedidos, agenda, clientes, cobranças.
+- Empresas conectam suas bases de dados; agentes e apps operam os mesmos dados com permissões e auditoria.
