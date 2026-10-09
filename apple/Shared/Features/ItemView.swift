@@ -1,8 +1,22 @@
 import SwiftUI
 import RodaCore
 
-/// Tela 9: o Item (aqui, um plano). Editável; cada edição é uma versão com Desfazer.
+/// Opens an Item in the screen made for its kind.
 struct ItemView: View {
+    @Environment(AppModel.self) private var model
+    let itemId: String
+
+    var body: some View {
+        switch (try? model.core.item(itemId: itemId))?.kindId {
+        case "page": PageScreen(itemId: itemId)
+        case "file": FileScreen(itemId: itemId)
+        default: PlanItemView(itemId: itemId)
+        }
+    }
+}
+
+/// Tela 9: o Item (aqui, um plano). Editável; cada edição é uma versão com Desfazer.
+struct PlanItemView: View {
     @Environment(AppModel.self) private var model
     let itemId: String
 

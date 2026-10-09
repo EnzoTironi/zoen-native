@@ -378,6 +378,12 @@ impl Page {
         Ok(())
     }
 
+    /// A read-only copy as it was at `version`.
+    pub fn at(&self, version: &Frontiers) -> Result<Page, DocError> {
+        let doc = self.doc.fork_at(version).map_err(err)?;
+        Ok(Page { doc })
+    }
+
     /// Makes the content equal to what it was at `version` (as a new change).
     pub fn revert_to(&self, version: &Frontiers) -> Result<(), DocError> {
         self.doc.revert_to(version).map_err(err)?;

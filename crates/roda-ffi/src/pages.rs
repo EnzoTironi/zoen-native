@@ -349,6 +349,28 @@ impl Engine {
         })
     }
 
+    /// The page as it read at `version` (for looking back before restoring).
+    pub fn page_at(&self, item: &str, version: u32) -> R<PageDto> {
+        let mut dto = self.page(item)?;
+        self.with_page(item, |it, s| {
+            let Some(f) = s.frontiers.get(version.saturating_sub(1) as usize).cloned() else {
+                return Err(invalid("versão não encontrada", "version not found"));
+            };
+            let old = s.shadow.at(&f).map_err(doc_err)?;
+            dto.version = version;
+            dto.unsaved = false;
+            if let Some(ItemContent::Page(c)) = it
+                .versions
+                .get((version as usize).saturating_sub(1))
+                .map(|v| &v.content)
+            {
+                dto.title = c.title.clone();
+            }
+            dto.blocks = old.blocks().iter().map(block_dto).collect();
+            Ok(dto)
+        })
+    }
+
     /// Applies an editor's state to this device's copy (not saved as a version yet).
     pub fn page_apply(&self, item: &str, order: &[String], changed: &[PageBlockDto]) -> R<()> {
         self.with_page(item, |_, s| {

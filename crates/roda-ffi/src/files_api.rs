@@ -30,6 +30,11 @@ impl RodaEngine {
         self.lock().page(&item_id)
     }
 
+    /// The page as it read at an earlier version.
+    pub fn page_at(&self, item_id: String, version: u32) -> Result<PageDto, CoreError> {
+        self.lock().page_at(&item_id, version)
+    }
+
     /// Makes this device's copy match the editor: `order` lists every block id top to
     /// bottom; `changed` holds the blocks whose kind, text or formatting changed.
     pub fn page_apply(
