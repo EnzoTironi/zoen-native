@@ -84,7 +84,8 @@ Requirements, from Enzo's mandates:
     replacement configuration. The existing vault and object remain restorable.
   - `PUT /v1/backup/blob` has binary body `ZOENBG1\0 || generation[32] || sealed payload`.
     The payload is at most 64 MiB. The signature covers its generation too. Upload writes
-    an immutable object, then atomically activates its matching staged configuration or
+    an immutable object with a fresh server-generated key on every attempt, then
+    atomically activates its matching staged configuration or
     updates the matching active one. A stale device gets `409` and must configure backup
     again. Per-identity database locks serialize writes across relay nodes.
   - `DELETE /v1/backup` turns the backup off. It forgets the vault and the object.
@@ -99,7 +100,9 @@ Requirements, from Enzo's mandates:
   - **No existence oracle.** For a handle without a backup (or an unknown one), `start`
     answers like a password vault, with an evaluation under a key derived from the master
     key and the handle. Every `open` for it then fails the same way. The relay limits these
-    by IP and by handle.
+    by IP and by handle. Decoy identity/generation fields use a separate secret PRF,
+    independent of OPRF evaluations. A known account without backup keeps its public
+    identity. Failed authentication returns the same refusal regardless of generation.
 
 ### After a restore
 The device installs the restored tables, writes the root and agreement secrets to its vault,
@@ -114,9 +117,10 @@ like any new device of that person.
   backup cannot restore access after removal.
 - **Lost-device revocation.** The recovered account can use `unlink` to revoke the old
   device and remove its MLS leaves. Its key is refused at every backup write endpoint.
-- **Upgrade.** Existing generation-less vaults and their original object paths remain
-  readable. After restoring one, the device must configure backup again before upload.
-  Migration `0021` preserves `0020` and all existing backup objects.
+- **Upgrade.** Existing vaults and their original object paths remain readable.
+  Migrations `0021` and `0023` preserve `0020` and assign legacy wrappers an opaque
+  generation. A successful restore binds its verified key to that generation. Existing
+  devices without a stored generation must configure backup again before upload.
 - **Remaining recovery gate.** Joining waits for an authorized device that still has the
   group's MLS state. Recovery when no such device survives needs a protocol design and
   its own failure journey. The snapshot deliberately excludes old MLS state.

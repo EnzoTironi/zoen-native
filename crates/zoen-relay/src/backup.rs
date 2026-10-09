@@ -52,7 +52,7 @@ const MAX_SKEW_MS: i64 = 5 * 60 * 1000;
 
 /// The only code that touches a person's OPRF key. Staging seals keys under a master key
 /// from the environment ([`EnvVault`]); production swaps in an HSM or enclave behind the
-/// same three calls, and `k` never exists outside it.
+/// same calls, and `k` never exists outside it.
 pub trait Vault: Send + Sync {
     /// A fresh OPRF key for `identity`, sealed.
     fn new_key(&self, identity: &str) -> anyhow::Result<Vec<u8>>;
@@ -61,6 +61,8 @@ pub trait Vault: Send + Sync {
     /// Evaluation under a key that exists for no one (no backup, or unknown handle): the
     /// same for the same handle, so a restore can't tell "no backup" from "wrong password".
     fn evaluate_decoy(&self, handle: &str, blinded: &[u8; 32]) -> Option<[u8; 32]>;
+    /// Stable decoy fields from a separate secret PRF, independent of public evaluations.
+    fn decoy_metadata(&self, handle: &str) -> ([u8; 32], [u8; 32]);
 }
 
 pub struct EnvVault {
@@ -148,6 +150,16 @@ impl Vault for EnvVault {
         hk.expand(handle.as_bytes(), &mut wide).expect("64 bytes");
         point_mul(&Scalar::from_bytes_mod_order_wide(&wide), blinded)
     }
+
+    fn decoy_metadata(&self, handle: &str) -> ([u8; 32], [u8; 32]) {
+        let hk = hkdf::Hkdf::<Sha256>::new(Some(b"zoen-backup-decoy-metadata-v1"), &self.master);
+        let mut out = [0u8; 64];
+        hk.expand(handle.as_bytes(), &mut out).expect("64 bytes");
+        (
+            out[..32].try_into().expect("32 bytes"),
+            out[32..].try_into().expect("32 bytes"),
+        )
+    }
 }
 
 // ───────────────────────────── helpers ─────────────────────────────
@@ -167,9 +179,9 @@ fn ct_eq(a: &[u8], b: &[u8]) -> bool {
     a.len() == b.len() && a.iter().zip(b).fold(0u8, |acc, (x, y)| acc | (x ^ y)) == 0
 }
 
-fn object_key(identity: &str, sha: Option<&str>) -> ObjPath {
-    match sha {
-        Some(sha) => ObjPath::from(format!("backups/v2/{identity}/{sha}")),
+fn object_key(identity: &str, key: Option<&str>) -> ObjPath {
+    match key {
+        Some(key) => ObjPath::from(key),
         None => ObjPath::from(format!("backups/{identity}")),
     }
 }
@@ -404,7 +416,7 @@ pub async fn put_blob(State(st): State<Shared>, headers: HeaderMap, body: Bytes)
     let generation = hex::encode(&body[8..PREFIX]);
     let body = body.slice(PREFIX..);
     let active = match sqlx::query(
-        "SELECT generation, locked, blob_sha FROM backup_vaults WHERE identity = $1 FOR UPDATE",
+        "SELECT generation, locked, blob_key FROM backup_vaults WHERE identity = $1 FOR UPDATE",
     )
     .bind(&identity)
     .fetch_optional(&mut *tx)
@@ -437,7 +449,12 @@ pub async fn put_blob(State(st): State<Shared>, headers: HeaderMap, body: Bytes)
     }
     let sha = hex::encode(Sha256::digest(&body));
     let n = body.len();
-    let path = object_key(&identity, Some(&sha));
+    let mut object_id = [0u8; 32];
+    if getrandom::getrandom(&mut object_id).is_err() {
+        return unavailable();
+    }
+    let key = format!("backups/v2/{identity}/{}", hex::encode(object_id));
+    let path = object_key(&identity, Some(&key));
     if let Err(e) = st.blobs.put(&path, PutPayload::from_bytes(body)).await {
         tracing::warn!(error = %e, "backup put failed");
         return err(StatusCode::SERVICE_UNAVAILABLE, "storage unavailable");
@@ -445,10 +462,10 @@ pub async fn put_blob(State(st): State<Shared>, headers: HeaderMap, body: Bytes)
     let r = if let Some(setup) = setup {
         sqlx::query(
             "INSERT INTO backup_vaults (identity, mode, oprf_key, verifier, wrapped_key,
-                kdf, generation, blob_sha, blob_bytes) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
+                kdf, generation, blob_sha, blob_bytes, blob_key) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
              ON CONFLICT (identity) DO UPDATE SET mode = $2, oprf_key = $3, verifier = $4,
                 wrapped_key = $5, kdf = $6, generation = $7, blob_sha = $8, blob_bytes = $9,
-                guesses = 0, armed = false, locked = false, updated_at = now()",
+                blob_key = $10, guesses = 0, armed = false, locked = false, updated_at = now()",
         )
         .bind(&identity)
         .bind(setup.get::<String, _>("mode"))
@@ -459,16 +476,18 @@ pub async fn put_blob(State(st): State<Shared>, headers: HeaderMap, body: Bytes)
         .bind(&generation)
         .bind(&sha)
         .bind(n as i64)
+        .bind(&key)
         .execute(&mut *tx)
         .await
     } else {
         sqlx::query(
-            "UPDATE backup_vaults SET blob_sha = $2, blob_bytes = $3, updated_at = now()
+            "UPDATE backup_vaults SET blob_sha = $2, blob_bytes = $3, blob_key = $4, updated_at = now()
              WHERE identity = $1",
         )
         .bind(&identity)
         .bind(&sha)
         .bind(n as i64)
+        .bind(&key)
         .execute(&mut *tx)
         .await
     };
@@ -486,12 +505,8 @@ pub async fn put_blob(State(st): State<Shared>, headers: HeaderMap, body: Bytes)
         return unavailable();
     }
     if let Some(old) = active {
-        let old_sha: Option<String> = old.get("blob_sha");
-        let old_generation: Option<String> = old.get("generation");
-        let old_path = object_key(
-            &identity,
-            old_sha.as_deref().filter(|_| old_generation.is_some()),
-        );
+        let old_key: Option<String> = old.get("blob_key");
+        let old_path = object_key(&identity, old_key.as_deref());
         if old_path != path {
             let _ = st.blobs.delete(&old_path).await;
         }
@@ -506,12 +521,10 @@ pub async fn delete(State(st): State<Shared>, headers: HeaderMap, body: Bytes) -
         Ok(i) => i,
         Err(r) => return r,
     };
-    let old = match sqlx::query(
-        "DELETE FROM backup_vaults WHERE identity = $1 RETURNING blob_sha, generation",
-    )
-    .bind(&identity)
-    .fetch_optional(&mut *tx)
-    .await
+    let old = match sqlx::query("DELETE FROM backup_vaults WHERE identity = $1 RETURNING blob_key")
+        .bind(&identity)
+        .fetch_optional(&mut *tx)
+        .await
     {
         Ok(row) => row,
         Err(_) => return unavailable(),
@@ -531,14 +544,10 @@ pub async fn delete(State(st): State<Shared>, headers: HeaderMap, body: Bytes) -
         return unavailable();
     }
     if let Some(row) = old {
-        let sha: Option<String> = row.get("blob_sha");
-        let generation: Option<String> = row.get("generation");
+        let key: Option<String> = row.get("blob_key");
         let _ = st
             .blobs
-            .delete(&object_key(
-                &identity,
-                sha.as_deref().filter(|_| generation.is_some()),
-            ))
+            .delete(&object_key(&identity, key.as_deref()))
             .await;
     }
     StatusCode::NO_CONTENT.into_response()
@@ -555,7 +564,7 @@ struct VaultRow {
     kdf: serde_json::Value,
     locked: bool,
     blob_bytes: Option<i64>,
-    blob_sha: Option<String>,
+    blob_key: Option<String>,
     generation: Option<String>,
 }
 
@@ -566,7 +575,7 @@ async fn vault_by_handle(
     let mut tx = st.pool.begin().await.map_err(|_| unavailable())?;
     let row = sqlx::query(
         "SELECT v.identity, v.mode, v.oprf_key, v.verifier, v.wrapped_key, v.kdf, v.locked,
-                v.blob_bytes, v.blob_sha, v.generation
+                v.blob_bytes, v.blob_key, v.generation
          FROM backup_vaults v JOIN identities i ON i.id = v.identity
          WHERE i.handle = $1 FOR UPDATE OF v",
     )
@@ -584,7 +593,7 @@ async fn vault_by_handle(
             kdf: r.get("kdf"),
             locked: r.get("locked"),
             blob_bytes: r.get("blob_bytes"),
-            blob_sha: r.get("blob_sha"),
+            blob_key: r.get("blob_key"),
             generation: r.get("generation"),
         }),
         tx,
@@ -668,6 +677,18 @@ pub async fn restore_start(
         Ok(r) => r,
         Err(r) => return r,
     };
+    let decoy_identity: Option<String> = if row.is_none() {
+        match sqlx::query_scalar("SELECT id FROM identities WHERE handle = $1")
+            .bind(&handle)
+            .fetch_optional(&mut *tx)
+            .await
+        {
+            Ok(identity) => identity,
+            Err(_) => return unavailable(),
+        }
+    } else {
+        None
+    };
     let decoy = |st: &Shared| -> Response {
         // No backup here: answer exactly like a password vault would.
         let Some(v) = st.backup_vault.as_ref() else {
@@ -679,17 +700,13 @@ pub async fn restore_start(
         let Some(e) = v.evaluate_decoy(&handle, &b) else {
             return err(StatusCode::BAD_REQUEST, "bad point");
         };
-        let mut fake = [0u8; 32];
-        Sha256::new()
-            .chain_update(b"zoen-backup-decoy-identity")
-            .chain_update(handle.as_bytes())
-            .finalize_into((&mut fake).into());
+        let (fake, generation) = v.decoy_metadata(&handle);
         Json(StartResp {
-            identity: hex::encode(fake),
+            identity: decoy_identity.clone().unwrap_or_else(|| hex::encode(fake)),
             mode: "passphrase".into(),
             kdf: default_kdf(),
             evaluated: Some(hex::encode(e)),
-            generation: None,
+            generation: Some(hex::encode(generation)),
         })
         .into_response()
     };
@@ -758,16 +775,10 @@ async fn authorize(
     handle: &str,
     auth_key: &str,
     generation: Option<&str>,
-) -> Result<VaultRow, Response> {
+) -> Result<(VaultRow, Transaction<'static, Postgres>), Response> {
     let wrong = || err(StatusCode::FORBIDDEN, "wrong password or key");
     let (row, mut tx) = vault_by_handle(st, handle).await?;
     let Some(row) = row else { return Err(wrong()) };
-    if row.generation.as_deref() != generation {
-        return Err(err(
-            StatusCode::CONFLICT,
-            "backup configuration changed; restart restore",
-        ));
-    }
     if row.locked {
         return Err(locked_response());
     }
@@ -793,13 +804,18 @@ async fn authorize(
         tx.commit().await.map_err(|_| unavailable())?;
         return Err(if locked { locked_response() } else { wrong() });
     }
+    if row.generation.as_deref() != generation {
+        return Err(err(
+            StatusCode::CONFLICT,
+            "backup configuration changed; restart restore",
+        ));
+    }
     sqlx::query("UPDATE backup_vaults SET guesses = 0, armed = false WHERE identity = $1")
         .bind(&row.identity)
         .execute(&mut *tx)
         .await
         .map_err(|_| unavailable())?;
-    tx.commit().await.map_err(|_| unavailable())?;
-    Ok(row)
+    Ok((row, tx))
 }
 
 pub async fn restore_open(
@@ -814,15 +830,20 @@ pub async fn restore_open(
         return r;
     }
     match authorize(&st, &handle, &req.auth_key, req.generation.as_deref()).await {
-        Ok(row) => match row.blob_bytes {
-            Some(size) => Json(OpenResp {
-                wrapped_key: hex::encode(row.wrapped_key),
-                size,
-                generation: row.generation,
-            })
-            .into_response(),
-            None => err(StatusCode::NOT_FOUND, "no backup uploaded yet"),
-        },
+        Ok((row, tx)) => {
+            if tx.commit().await.is_err() {
+                return unavailable();
+            }
+            match row.blob_bytes {
+                Some(size) => Json(OpenResp {
+                    wrapped_key: hex::encode(row.wrapped_key),
+                    size,
+                    generation: row.generation,
+                })
+                .into_response(),
+                None => err(StatusCode::NOT_FOUND, "no backup uploaded yet"),
+            }
+        }
         Err(r) => r,
     }
 }
@@ -849,20 +870,22 @@ pub async fn restore_blob(
         .get("x-zoen-backup-auth")
         .and_then(|v| v.to_str().ok())
         .unwrap_or("");
-    let row = match authorize(&st, &handle, auth, q.generation.as_deref()).await {
+    let (row, tx) = match authorize(&st, &handle, auth, q.generation.as_deref()).await {
         Ok(r) => r,
         Err(r) => return r,
     };
     match st
         .blobs
-        .get(&object_key(
-            &row.identity,
-            row.blob_sha.as_deref().filter(|_| row.generation.is_some()),
-        ))
+        .get(&object_key(&row.identity, row.blob_key.as_deref()))
         .await
     {
         Ok(r) => match r.bytes().await {
-            Ok(b) => ([("content-type", "application/octet-stream")], b).into_response(),
+            Ok(b) => {
+                if tx.commit().await.is_err() {
+                    return unavailable();
+                }
+                ([("content-type", "application/octet-stream")], b).into_response()
+            }
             Err(_) => err(StatusCode::SERVICE_UNAVAILABLE, "storage unavailable"),
         },
         Err(object_store::Error::NotFound { .. }) => err(StatusCode::NOT_FOUND, "missing"),
