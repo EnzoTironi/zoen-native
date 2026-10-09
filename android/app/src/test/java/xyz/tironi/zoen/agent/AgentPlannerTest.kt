@@ -5,6 +5,9 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.test.runTest
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.put
+import kotlinx.serialization.json.putJsonArray
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
@@ -13,10 +16,10 @@ import org.junit.Test
 import xyz.tironi.zoen.core.*
 
 class AgentPlannerTest {
-    private class Model(var status: ModelStatus, val answer: String = PLAN, val wait: Long = 0) : OnDeviceModel {
+    private class Model(var status: ModelStatus, val answer: String = PLAN, val wait: Long = 0, val availabilityWait: Long = 0) : OnDeviceModel {
         var calls = 0
         var prompt = ""
-        override suspend fun check() = ModelAvailability(status)
+        override suspend fun check(): ModelAvailability { delay(availabilityWait); return ModelAvailability(status) }
         override suspend fun generate(prompt: String, maxTokens: Int): String { calls++; this.prompt = prompt; delay(wait); return answer }
         override fun download(): Flow<ModelAvailability> = flowOf(ModelAvailability(ModelStatus.Downloading, 1000), ModelAvailability(ModelStatus.Ready))
         override fun close() = Unit
@@ -88,6 +91,61 @@ class AgentPlannerTest {
         val draft = AgentPlanner(model).makeStarterPlan(listOf("Health", "Work"), "en")
         assertEquals(listOf("Health", "Work"), draft.plan.sections.map { it.title })
         assertTrue(draft.engineLabel.contains("timed out"))
+    }
+
+    @OptIn(ExperimentalCoroutinesApi::class)
+    @Test fun starterAvailabilityCheckSharesTheEightSecondDeadline() = runTest {
+        val model = Model(ModelStatus.Ready, availabilityWait = 60_000)
+        val started = testScheduler.currentTime
+        val draft = AgentPlanner(model).makeStarterPlan(listOf("Work"), "en")
+        assertEquals(8_000L, testScheduler.currentTime - started)
+        assertTrue(draft.engineLabel.contains("timed out"))
+        assertEquals(0, model.calls)
+    }
+
+    @OptIn(ExperimentalCoroutinesApi::class)
+    @Test fun waitingForAnotherInferenceSharesTheStarterDeadline() = runTest {
+        val model = Model(ModelStatus.Ready, wait = 20_000)
+        val planner = AgentPlanner(model)
+        val other = launch { planner.makePlan("Plan dinner", emptyList(), "en") }
+        yield()
+        val started = testScheduler.currentTime
+        val draft = planner.makeStarterPlan(listOf("Work"), "en")
+        assertEquals(8_000L, testScheduler.currentTime - started)
+        assertTrue(draft.engineLabel.contains("timed out"))
+        assertEquals(1, model.calls)
+        other.cancelAndJoin()
+    }
+
+    @Test fun everySelectedAreaGetsConcreteActionsInBothLanguages() = runTest {
+        for ((locale, areas) in listOf("en" to listOf("Travel", "Money", "Home", "Food", "Friends", "Work", "Wellbeing", "Family"),
+            "pt-BR" to listOf("Viagens", "Finanças", "Casa", "Comida", "Amigos", "Trabalho", "Bem-estar", "Família"))) {
+            val draft = AgentPlanner(Model(ModelStatus.Unavailable)).makeStarterPlan(areas, locale)
+            assertEquals(areas, draft.plan.sections.map { it.title })
+            assertTrue(draft.plan.sections.all { it.lines.size == 2 })
+            assertEquals(16, draft.plan.sections.flatMap { it.lines }.map { it.text }.distinct().size)
+            assertTrue(draft.plan.sections[0].lines.first().text.contains(if (locale == "en") "destination" else "destino"))
+            assertTrue(draft.plan.sections[1].lines.first().text.contains(if (locale == "en") "bills" else "contas"))
+        }
+    }
+
+    @Test fun modelStarterMustPreserveAllSelectedAreasAndTwoActions() = runTest {
+        val areas = listOf("Travel", "Money", "Home", "Food", "Friends", "Work", "Health", "Family")
+        val answer = buildJsonObject {
+            put("title", "Next two weeks"); put("summary", "Eight areas to begin.")
+            putJsonArray("sections") { areas.forEach { area -> add(buildJsonObject {
+                put("title", area)
+                putJsonArray("items") { repeat(2) { action -> add(buildJsonObject { put("text", "$area action ${action + 1}"); put("cost", 0) }) } }
+            }) } }
+        }.toString()
+        val model = Model(ModelStatus.Ready, answer)
+        val draft = AgentPlanner(model).makeStarterPlan(areas, "en")
+        assertEquals(areas, draft.plan.sections.map { it.title })
+        assertTrue(draft.engineLabel.contains("Gemini Nano"))
+        assertTrue(model.prompt.contains("exactly 8 sections"))
+        val invalid = AgentPlanner(Model(ModelStatus.Ready, answer.replace("Family", "Work"))).makeStarterPlan(areas, "en")
+        assertEquals(areas, invalid.plan.sections.map { it.title })
+        assertTrue(invalid.engineLabel.contains("invalid draft"))
     }
 
     @Test fun generatedCostsCannotOverrideBudgetOrInflateSmallAmounts() {

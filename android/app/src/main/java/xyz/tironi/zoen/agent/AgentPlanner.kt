@@ -55,18 +55,19 @@ class AgentPlanner(private val model: OnDeviceModel = GeminiNanoModel(), private
         }
     }
 
-    private suspend fun <T> generate(locale: String, prompt: String, timeoutMs: Long, tokens: Int, parse: (String) -> T): Pair<T?, String> = inference.withLock {
-        refreshAvailability()
-        if (availability.value.status != ModelStatus.Ready) return@withLock null to fallbackLabel(locale)
-        try {
-            val result = withTimeout(timeoutMs) { parse(model.generate(prompt, tokens)) }
-            result to pick(locale, "Zoen · Gemini Nano on device (no API cost)", "Zoen · Gemini Nano no aparelho (sem custo de API)")
-        } catch (e: Exception) {
-            if (e is CancellationException && e !is TimeoutCancellationException) throw e
-            val reason = if (e is TimeoutCancellationException) pick(locale, "on-device model timed out", "o modelo no aparelho demorou demais")
-                else pick(locale, "on-device model failed or returned an invalid draft", "o modelo no aparelho falhou ou devolveu um rascunho inválido")
-            null to pick(locale, "Zoen · local planner (deterministic fallback, no AI: $reason)", "Zoen · planejador local (fallback determinístico, sem IA: $reason)")
+    private suspend fun <T> generate(locale: String, prompt: String, timeoutMs: Long, tokens: Int, parse: (String) -> T): Pair<T?, String> = try {
+        withTimeout(timeoutMs) {
+            inference.withLock {
+                refreshAvailability()
+                if (availability.value.status != ModelStatus.Ready) null to fallbackLabel(locale)
+                else parse(model.generate(prompt, tokens)) to pick(locale, "Zoen · Gemini Nano on device (no API cost)", "Zoen · Gemini Nano no aparelho (sem custo de API)")
+            }
         }
+    } catch (e: Exception) {
+        if (e is CancellationException && e !is TimeoutCancellationException) throw e
+        val reason = if (e is TimeoutCancellationException) pick(locale, "on-device model timed out", "o modelo no aparelho demorou demais")
+            else pick(locale, "on-device model failed or returned an invalid draft", "o modelo no aparelho falhou ou devolveu um rascunho inválido")
+        null to pick(locale, "Zoen · local planner (deterministic fallback, no AI: $reason)", "Zoen · planejador local (fallback determinístico, sem IA: $reason)")
     }
 
     suspend fun makePlan(prompt: String, people: List<String>, locale: String, context: PlannerContext? = null): PlanDraft {
@@ -76,12 +77,23 @@ class AgentPlanner(private val model: OnDeviceModel = GeminiNanoModel(), private
     }
 
     suspend fun makeStarterPlan(areas: List<String>, locale: String): PlanDraft {
-        val prompt = pick(locale, "Make my first plan for ${areas.joinToString(", ")}. One short section per area, two concrete actions each.", "Monte meu primeiro plano de ${areas.joinToString(", ")}. Uma seção curta por área, duas ações concretas em cada.")
-        val (plan, label) = generate(locale, planPrompt(prompt, emptyList(), locale, null, null), 8_000, 900) { parsePlan(it, null) }
-        val fallback = PlanDto(pick(locale, "My first plan", "Meu primeiro plano"), pick(locale, "A few steps to begin.", "Alguns passos para começar."), null, areas.take(4).map { area ->
-            PlanSectionDto(area.take(64), listOf(
-                PlanLineDto("", pick(locale, "Choose one small goal", "Escolher uma meta pequena"), 0, false),
-                PlanLineDto("", pick(locale, "Reserve time this week", "Reservar um horário nesta semana"), 0, false)))
+        val selected = areas.filter(String::isNotBlank).map { it.take(64) }.distinct().take(8)
+            .ifEmpty { listOf(pick(locale, "Travel", "Viagens"), pick(locale, "Food", "Comida")) }
+        val prompt = """
+            Create a first editable plan in ${language(locale)} for the next two weeks.
+            Output ONLY JSON: {"title":"short title","summary":"one sentence","sections":[{"title":"area name","items":[{"text":"concrete action","cost":0}]}]}.
+            Use exactly ${selected.size} sections, in this order, with these exact titles: ${JsonArray(selected.map(::JsonPrimitive))}.
+            Use two specific, feasible actions per area. No invented places, people or reservations. No emoji.
+            cost is a nonnegative integer in whole ${if (portuguese(locale)) "reais" else "US dollars"}, at most 20000. Tasks that need no payment cost 0.
+        """.trimIndent()
+        val (plan, label) = generate(locale, prompt, 8_000, 1600) {
+            parsePlan(it, null, 8).also { draft ->
+                require(draft.sections.map { section -> folded(section.title) } == selected.map(::folded))
+                require(draft.sections.all { section -> section.lines.size == 2 })
+            }
+        }
+        val fallback = PlanDto(pick(locale, "Your next two weeks", "Suas próximas duas semanas"), pick(locale, "A first draft from what you picked. Edit anything.", "Um primeiro rascunho a partir do que você escolheu. Edite à vontade."), null, selected.map { area ->
+            PlanSectionDto(area, starterLines(area, locale).map { (text, dollars) -> PlanLineDto("", text, dollars * if (portuguese(locale)) 500 else 100, false) })
         }, 0)
         return PlanDraft(plan ?: fallback, label)
     }
@@ -116,6 +128,24 @@ class AgentPlanner(private val model: OnDeviceModel = GeminiNanoModel(), private
         fun fallbackLabel(locale: String) = pick(locale, "Zoen · local planner (deterministic fallback, no AI)", "Zoen · planejador local (fallback determinístico, sem IA)")
         private fun language(locale: String) = if (portuguese(locale)) "Brazilian Portuguese" else "English"
 
+        private fun starterLines(area: String, locale: String): List<Pair<String, Long>> {
+            val title = folded(area)
+            fun line(en: String, pt: String, cost: Long = 0) = pick(locale, en, pt) to cost
+            fun has(vararg words: String) = words.any(title::contains)
+            return when {
+                has("travel", "trip", "viage", "viagem", "feriado") -> listOf(line("Pick a destination and dates for the long weekend", "Escolher destino e datas do feriado"), line("Compare well-rated inns for two nights", "Comparar pousadas bem avaliadas para duas noites", 420))
+                has("money", "financ", "dinheiro", "grana") -> listOf(line("Review this month’s bills", "Revisar as contas do mês"), line("Set aside money for the trip fund", "Separar a reserva da viagem", 200))
+                has("home", "house", "casa", "lar") -> listOf(line("Fix the leaky kitchen tap", "Consertar a torneira da cozinha", 60), line("Deep clean on Saturday morning", "Faxina de sábado de manhã"))
+                has("food", "comida", "meal", "aliment", "culin", "cozinh") -> listOf(line("Dinner at home on Saturday for four", "Jantar em casa no sábado para quatro", 120), line("Write this week’s grocery list", "Escrever a lista de mercado da semana", 90))
+                has("friend", "amig", "amizade") -> listOf(line("Pick a date for the group hangout", "Marcar a data do encontro da turma"), line("Compare restaurants with room for six", "Comparar restaurantes com mesa para seis", 180))
+                has("work", "trabalho", "carreira") -> listOf(line("Block two focus mornings", "Bloquear duas manhãs de foco"), line("Prepare Thursday’s review", "Preparar a revisão de quinta"))
+                has("health", "wellbeing", "well-being", "wellness", "saude", "bem-estar") -> listOf(line("Schedule three walks this week", "Planejar três caminhadas nesta semana"), line("Book a check-up", "Marcar o check-up", 80))
+                has("family", "familia") -> listOf(line("Sunday lunch with the family", "Almoço de domingo com a família", 60), line("Call someone in the family", "Ligar para alguém da família"))
+                has("study", "estudo", "learn", "aprend") -> listOf(line("Reserve two study sessions this week", "Reservar dois horários de estudo nesta semana"), line("Review the hardest topic", "Revisar o assunto mais difícil"))
+                else -> listOf(line("Choose one small goal for $area", "Escolher uma meta pequena para $area"), line("Reserve time this week", "Reservar um horário nesta semana"))
+            }
+        }
+
         private fun planPrompt(prompt: String, people: List<String>, locale: String, budget: Long?, context: PlannerContext?) = """
             Turn this request into a concrete editable plan in ${language(locale)}.
             Output ONLY JSON: {"title":"short title","summary":"one sentence","sections":[{"title":"short heading","items":[{"text":"concrete action","cost":0}]}]}.
@@ -139,9 +169,9 @@ class AgentPlanner(private val model: OnDeviceModel = GeminiNanoModel(), private
             return field.content.also { require(it.isNotBlank() && it.length <= max) }
         }
 
-        fun parsePlan(response: String, budget: Long?): PlanDto {
+        fun parsePlan(response: String, budget: Long?, maxSections: Int = 4): PlanDto {
             val objectValue = objectFrom(response)
-            val sections = objectValue.getValue("sections").jsonArray.also { require(it.size in 1..4) }.map { element ->
+            val sections = objectValue.getValue("sections").jsonArray.also { require(it.size in 1..maxSections.coerceIn(1, 8)) }.map { element ->
                 val section = element.jsonObject
                 PlanSectionDto(section.shortText("title", 64), section.getValue("items").jsonArray.also { require(it.size in 1..4) }.map { item ->
                     val line = item.jsonObject
