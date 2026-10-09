@@ -211,14 +211,13 @@ pub async fn run(socket: WebSocket, st: Shared, ip: String) {
         })
         .await;
     drop(initial_authorization);
-    if registered {
-        if tokio::time::timeout(Duration::from_secs(5), s.go_online())
+    if registered
+        && tokio::time::timeout(Duration::from_secs(5), s.go_online())
             .await
             .is_err()
-        {
-            s.kick.notify_waiters();
-            s.kick.notify_one();
-        }
+    {
+        s.kick.notify_waiters();
+        s.kick.notify_one();
     }
     tracing::info!(identity = %pseudo(&identity), registered, "session ready");
 

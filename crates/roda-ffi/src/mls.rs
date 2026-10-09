@@ -1540,7 +1540,7 @@ mod tests {
             space,
             "pending",
             2,
-            log.head().as_ref(),
+            log.head(),
             EventBody::MessagePosted {
                 message: "message".into(),
                 text: "Still pending".into(),
