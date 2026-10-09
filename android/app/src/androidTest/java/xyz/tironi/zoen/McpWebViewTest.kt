@@ -27,7 +27,6 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import org.json.JSONArray
 import org.json.JSONObject
 import org.junit.Assert.*
 import org.junit.Assume.assumeTrue
@@ -203,14 +202,35 @@ class McpWebViewTest {
         return answer.get()
     }
     private fun touch(web: WebView, selector: String) {
-        val rect = JSONArray(evaluate(web, "(() => {const r=document.querySelector(${JSONObject.quote(selector)}).getBoundingClientRect();return [r.left+r.width/2,r.top+r.height/2,innerWidth]})()"))
+        val target = JSONObject(evaluate(web, """
+            (() => {
+              const target = document.querySelector(${JSONObject.quote(selector)});
+              if (!target) return {missing:true};
+              const rect = target.getBoundingClientRect();
+              const x = rect.left + rect.width / 2, y = rect.top + rect.height / 2;
+              const hit = document.elementFromPoint(x, y), viewport = window.visualViewport;
+              return {
+                x, y, width:innerWidth, height:innerHeight, dpr:devicePixelRatio,
+                rect:{left:rect.left, top:rect.top, width:rect.width, height:rect.height},
+                viewport:viewport ? {width:viewport.width, height:viewport.height, scale:viewport.scale, left:viewport.offsetLeft, top:viewport.offsetTop} : null,
+                receivesTouch:hit !== null && (hit === target || target.contains(hit)),
+                hit:hit?.outerHTML.slice(0,300) ?? null
+              };
+            })()
+        """.trimIndent()))
+        check(!target.optBoolean("missing")) { "The HTML touch target is missing: $selector" }
         val at = SystemClock.uptimeMillis()
         var x = 0f
         var y = 0f
         InstrumentationRegistry.getInstrumentation().runOnMainSync {
-            val scale = web.width / rect.getDouble(2)
-            x = (rect.getDouble(0) * scale).toFloat()
-            y = (rect.getDouble(1) * scale).toFloat()
+            val scale = web.width / target.getDouble("width")
+            x = (target.getDouble("x") * scale).toFloat()
+            y = (target.getDouble("y") * scale).toFloat()
+            target.put("nativeWidth", web.width).put("nativeHeight", web.height)
+                .put("nativeDensity", web.resources.displayMetrics.density).put("nativeTextZoom", web.settings.textZoom)
+                .put("nativeX", x).put("nativeY", y).put("cssToNativeScale", scale)
+            Log.i("McpWebViewTest", "Touch $selector: $target")
+            check(target.getBoolean("receivesTouch")) { "The HTML target is covered or hidden: $selector ($target)" }
             check(x.isFinite() && y.isFinite() && x in 0f..web.width.toFloat() && y in 0f..web.height.toFloat()) { "The HTML target is outside the visible WebView: $selector" }
             MotionEvent.obtain(at, at, MotionEvent.ACTION_DOWN, x, y, 0).also { web.dispatchTouchEvent(it); it.recycle() }
         }

@@ -3,8 +3,8 @@ html, body, #root { height: 100%; overflow: hidden; background: var(--z-bg); }
 .map { position: absolute; inset: 0; }
 .offline-map { background: #ECE8DA; }
 .offline-map > svg { display: block; width: 100%; height: 100%; touch-action: none; }
-.offline-controls { position: absolute; right: 12px; top: 40%; display: grid; overflow: hidden; border-radius: 12px; background: var(--z-surface); border: 1px solid var(--z-hairline); }
-.offline-controls button { width: 38px; height: 38px; font-size: 22px; }
+.offline-controls { position: absolute; right: 12px; top: calc(env(safe-area-inset-top) + 110px); display: grid; overflow: hidden; border-radius: 12px; background: var(--z-surface); border: 1px solid var(--z-hairline); }
+.offline-controls button { width: 48px; height: 48px; font-size: 22px; touch-action: manipulation; }
 .offline-controls button + button { border-top: 1px solid var(--z-hairline); }
 .offline-note { position: absolute; left: 16px; top: 44%; font-size: 11px; color: #5B6478; pointer-events: none; }
 .maplibregl-ctrl-attrib { font-size: 9px !important; opacity: .7; }
@@ -23,7 +23,8 @@ html, body, #root { height: 100%; overflow: hidden; background: var(--z-bg); }
 @keyframes pop { from { opacity: 0; transform: scale(.85); } to { opacity: 1; transform: scale(1); } }
 .marker { padding: 6px 12px; border-radius: 999px; background: var(--z-black); color: var(--z-on-black); font: 700 13px var(--z-font); box-shadow: 0 6px 18px rgba(0,0,0,.25); white-space: nowrap; transition: transform .45s var(--z-spring); }
 .marker::after { content: ''; position: absolute; left: 50%; bottom: -5px; width: 10px; height: 10px; background: inherit; transform: translateX(-50%) rotate(45deg); border-radius: 2px; z-index: -1; }
-.bottom { position: absolute; left: 0; right: 0; bottom: calc(env(safe-area-inset-bottom) + 14px); z-index: 5; }
+.bottom { position: absolute; left: 0; right: 0; bottom: calc(env(safe-area-inset-bottom) + 14px); z-index: 5; pointer-events: none; }
+.bottom button { pointer-events: auto; }
 .card { width: min(82vw, 340px); border-radius: 24px; padding: 8px; text-align: left; transition: transform .35s var(--z-spring), opacity .35s; }
 .card .ph { height: 128px; border-radius: 18px; overflow: hidden; }
 .card .meta { padding: 10px 6px 4px; }
@@ -58,3 +59,10 @@ html, body, #root { height: 100%; overflow: hidden; background: var(--z-bg); }
 .cmp th b { display: block; font: 700 15px var(--z-font); }
 .going { color: var(--z-action); font-weight: 700; }
 .toast { position: fixed; left: 50%; top: calc(env(safe-area-inset-top) + 64px); transform: translateX(-50%); z-index: 40; padding: 10px 16px; border-radius: 999px; font-weight: 600; font-size: 14px; animation: pop .3s var(--z-spring); }
+@media (max-height: 560px) {
+  .offline-controls { grid-template-columns: repeat(3, 48px); }
+  .offline-controls button + button { border-top: 0; border-left: 1px solid var(--z-hairline); }
+  .card { display: flex; align-items: center; gap: 8px; }
+  .card .ph { width: 72px; height: 72px; flex: none; }
+  .card .meta { min-width: 0; padding: 0; }
+}
