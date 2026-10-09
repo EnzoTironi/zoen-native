@@ -10,6 +10,7 @@ publish.workspace = true
 zoen-agentd = { path = "../zoen-agentd" }
 zoen-egress.workspace = true
 zoen-guestd = { path = "../zoen-guestd" }
+zoen-liveview.workspace = true
 roda-types.workspace = true
 serde.workspace = true
 serde_json.workspace = true

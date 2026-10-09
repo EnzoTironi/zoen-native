@@ -3,6 +3,8 @@
 # Linux with /dev/kvm only. Idempotent; pinned and checksummed; installs under .tools/firecracker.
 #   scripts/firecracker.sh up        download firecracker, jailer and the guest kernel
 #   scripts/firecracker.sh image     build zoen-guestd (static) and the guest root filesystem
+#   scripts/firecracker.sh browser-image   (sudo) the browser microVM's root filesystem: the base
+#                                    image plus Alpine's Chromium, fonts and NSS tools
 #   scripts/firecracker.sh cgroup    (sudo) create the cgroup VMs run under, with a total cap
 #   scripts/firecracker.sh sweep     kill every VM still in that cgroup
 #   scripts/firecracker.sh env       print the exports the journeys need
@@ -22,6 +24,11 @@ CURL_VERSION="8.22.0"
 CURL_SHA256="dfb02460ba2abe513087538f12a3cf79b74b64a5ea3787ce8ac0cdb11251f884"
 ALPINE_VERSION="3.24.2"
 ALPINE_SHA256="c5ca053cfe1d85c5b96dff8b9bc57045f7f184a30ffb6b65776409ca90388677"
+# apk, to install packages into the browser image; packages themselves are verified against
+# Alpine's signing keys (shipped in the minirootfs).
+APK_STATIC_VERSION="3.0.8-r0"
+APK_STATIC_SHA256="c8e2c88c13ba12a12269b79a3543e1190ff8c0ab0beb32b58cadfd5881c619e3"
+BROWSER_PACKAGES="chromium font-dejavu font-liberation nss-tools"
 
 up() {
   [[ "$(uname -s)" == Linux ]] || { echo "Firecracker runs on Linux only"; exit 1; }
@@ -77,6 +84,45 @@ image() {
   echo "guest image: $TOOLS/rootfs.ext4"
 }
 
+# The browser microVM's image: the base image's contents plus Chromium. Packages come from
+# Alpine's repositories for the same release, verified with Alpine's keys; root is needed for
+# the package scripts (fontconfig cache and the like) and file ownership.
+browser_image() {
+  image >/dev/null
+  local repo="https://dl-cdn.alpinelinux.org/alpine/v${ALPINE_VERSION%.*}"
+  if [[ ! -x "$TOOLS/apk.static" ]]; then
+    local t; t="$(mktemp -d)"
+    curl -fsSL -o "$t/apk.apk" "$repo/main/x86_64/apk-tools-static-$APK_STATIC_VERSION.apk"
+    echo "$APK_STATIC_SHA256  $t/apk.apk" | sha256sum -c - >/dev/null
+    tar xzf "$t/apk.apk" -C "$t" sbin/apk.static 2>/dev/null
+    install -m 0755 "$t/sbin/apk.static" "$TOOLS/apk.static"
+    rm -rf "$t"
+  fi
+  local bin="${CARGO_TARGET_DIR:-$ROOT/target}/x86_64-unknown-linux-musl/release/zoen-guestd"
+  local tmp; tmp="$(mktemp -d "$TOOLS/browser-build.XXXXXX")"
+  sudo mkdir -p "$tmp/root"
+  sudo tar xzf "$TOOLS/alpine.tar.gz" -C "$tmp/root"
+  # shellcheck disable=SC2086
+  sudo timeout -s KILL 900 "$TOOLS/apk.static" --root "$tmp/root" --keys-dir "$tmp/root/etc/apk/keys" \
+    -X "$repo/main" -X "$repo/community" --no-cache --quiet add $BROWSER_PACKAGES >/dev/null
+  sudo install -m 0755 "$bin" "$tmp/root/sbin/zoen-guestd"
+  sudo install -m 0755 "$TOOLS/curl" "$tmp/root/usr/bin/curl"
+  sudo mkdir -p "$tmp/root/work" "$tmp/root/run"
+  local chromium; chromium="$(sudo awk '/^P:chromium$/{f=1} f&&/^V:/{print $0; exit}' "$tmp/root/lib/apk/db/installed")"
+  sudo rm -rf "$tmp/root/var/cache/apk"/* "$tmp/root/usr/share/doc" "$tmp/root/usr/share/man"
+  local mib; mib=$(( $(sudo du -sm "$tmp/root" | cut -f1) * 5 / 4 + 64 ))
+  truncate -s "${mib}M" "$tmp/browser.ext4"
+  sudo "$(command -v mkfs.ext4 || echo /sbin/mkfs.ext4)" -q -F -L zoen-browser -d "$tmp/root" "$tmp/browser.ext4"
+  sudo chown "$(id -u):$(id -g)" "$tmp/browser.ext4"
+  mv "$tmp/browser.ext4" "$TOOLS/browser.ext4"
+  # Never delete through a mount (a leftover /dev or /proc bind would take the host's with it).
+  if findmnt -rno TARGET | grep -q "^$tmp"; then
+    echo "refusing to remove $tmp: something is mounted under it"; exit 1
+  fi
+  sudo rm -rf --one-file-system "$tmp"
+  echo "browser image: $TOOLS/browser.ext4 (${mib} MiB, chromium ${chromium#V:})"
+}
+
 # The parent cgroup every VMM goes under: cpu, memory and pids for its children, a cap on
 # the total (so no number of VMs can take the host down), owned by the caller so it can
 # remove VM cgroups without root.
@@ -109,6 +155,7 @@ env_exports() {
   echo "export ZOEN_VMLINUX=\"$TOOLS/vmlinux\""
   echo "export ZOEN_ALPINE_TGZ=\"$TOOLS/alpine.tar.gz\""
   echo "export ZOEN_GUEST_ROOTFS=\"$TOOLS/rootfs.ext4\""
+  if [[ -f "$TOOLS/browser.ext4" ]]; then echo "export ZOEN_BROWSER_ROOTFS=\"$TOOLS/browser.ext4\""; fi
   echo "export ZOEN_SANDBOX_CGROUP=\"$CGROUP\""
 }
 
@@ -121,9 +168,10 @@ measure() {
 case "${1:-}" in
   up) up ;;
   image) image ;;
+  browser-image) browser_image ;;
   cgroup) cgroup ;;
   sweep) sweep ;;
   env) env_exports ;;
   measure) shift; measure "$@" ;;
-  *) echo "usage: $0 up|image|cgroup|sweep|env|measure [runs]"; exit 2 ;;
+  *) echo "usage: $0 up|image|browser-image|cgroup|sweep|env|measure [runs]"; exit 2 ;;
 esac

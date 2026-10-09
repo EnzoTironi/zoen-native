@@ -6842,6 +6842,7 @@ dependencies = [
  "libc",
  "serde",
  "serde_json",
+ "zoen-liveview",
 ]
 
 [[package]]
@@ -6930,6 +6931,7 @@ dependencies = [
  "zoen-agentd",
  "zoen-egress",
  "zoen-guestd",
+ "zoen-liveview",
 ]
 
 [[package]]

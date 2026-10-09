@@ -6,6 +6,13 @@ options:
     macOS: "26.0"
   createIntermediateGroups: true
   developmentLanguage: en
+# Device: o build para o iPhone do Enzo com Apple ID grátis (Personal Team, sem conta paga).
+# Bundle id próprio, sem time fixo (escolhido no Xcode) e o relay de staging, porque o
+# iPhone não alcança o 127.0.0.1 do Mac. Ver docs/dev/instalar-no-iphone.md.
+configs:
+  Debug: debug
+  Release: release
+  Device: debug
 settings:
   base:
     SWIFT_VERSION: "6.0"
@@ -57,6 +64,7 @@ targets:
         NSContactsUsageDescription: "You pick one contact to share its name with a mini-app. Zoen never reads your address book."
         NSMicrophoneUsageDescription: "Hold the mic in a chat to record a voice message. Zoen only listens while you hold or lock it."
         NSSpeechRecognitionUsageDescription: "Zoen transcribes your voice messages on this iPhone so the chat can read them. The audio isn’t sent anywhere to be transcribed."
+        NSLocalNetworkUsageDescription: "Zoen connects to a Zoen server on your Wi-Fi when you're testing one there."
         NSAppTransportSecurity:
           NSAllowsLocalNetworking: true
         ZoenRelayURL: $(ZOEN_RELAY_URL)
@@ -64,6 +72,16 @@ targets:
       configs:
         Release:
           ZOEN_RELAY_URL: https://relay.tryzoen.com
+        # Personal Team: nenhuma capability paga (push, iCloud, App Groups, Associated
+        # Domains/passkeys, Keychain sharing). O app hoje não declara entitlements; se um
+        # dia declarar, deixe-os fora desta config e cheque Flags.personalDevice no código.
+        Device:
+          ZOEN_RELAY_URL: https://relay.tryzoen.com
+          PRODUCT_BUNDLE_IDENTIFIER: xyz.tironi.zoen.dev
+          DEVELOPMENT_TEAM: ""
+          CODE_SIGN_STYLE: Automatic
+          CODE_SIGN_ENTITLEMENTS: ""
+          SWIFT_ACTIVE_COMPILATION_CONDITIONS: DEBUG ZOEN_PERSONAL_DEVICE
       base:
         ZOEN_RELAY_URL: ""
         PRODUCT_BUNDLE_IDENTIFIER: xyz.tironi.zoen
@@ -130,3 +148,22 @@ targets:
     scheme:
       testTargets:
         - ZoenUITests
+schemes:
+  # O app no iPhone do Enzo com Apple ID grátis (config Device). Só o app, sem testes.
+  Zoen-Device:
+    build:
+      targets:
+        ZoeniOS: all
+    run:
+      config: Device
+      # Desligados; marque um em Product > Scheme > Edit Scheme > Arguments para usar.
+      commandLineArguments:
+        "-RodaDemo YES": false
+        "-RodaRelay http://SEU-MAC.local:8787": false
+        "-RodaRelay https://TROQUE.trycloudflare.com": false
+    profile:
+      config: Device
+    analyze:
+      config: Device
+    archive:
+      config: Device

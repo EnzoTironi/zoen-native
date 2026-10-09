@@ -10,7 +10,7 @@ pub mod provider;
 pub mod vsock;
 
 pub use jail::Limits;
-pub use provider::{AcquireTiming, FirecrackerProvider, Shape};
+pub use provider::{AcquireTiming, FirecrackerProvider, LiveView, Shape};
 
 use std::path::PathBuf;
 use std::time::Duration;
@@ -22,6 +22,9 @@ pub struct FirecrackerConfig {
     pub kernel: PathBuf,
     /// The guest root filesystem (ext4, read-only, `zoen-guestd` at `/sbin/zoen-guestd`).
     pub rootfs: PathBuf,
+    /// The browser microVM's root filesystem (the base plus Chromium); `None` turns the
+    /// browser tier off. `scripts/firecracker.sh browser-image`.
+    pub browser_rootfs: Option<PathBuf>,
     /// Templates, suspended snapshots and chroots. Must be on one filesystem with the files
     /// above for hard links (falls back to copies).
     pub work: PathBuf,
@@ -39,6 +42,8 @@ pub struct FirecrackerConfig {
     pub vmm_overhead_mib: u32,
     /// Paused VMs kept per shape.
     pub pool_size: usize,
+    /// Paused browser VMs kept per shape (each holds a running Chromium).
+    pub browser_pool_size: usize,
     pub boot_timeout: Duration,
 }
 
@@ -59,6 +64,7 @@ impl FirecrackerConfig {
             jailer: var("ZOEN_JAILER")?,
             kernel: var("ZOEN_VMLINUX")?,
             rootfs: var("ZOEN_GUEST_ROOTFS")?,
+            browser_rootfs: var("ZOEN_BROWSER_ROOTFS"),
             work,
             uid,
             gid,
@@ -68,6 +74,7 @@ impl FirecrackerConfig {
             cpu_quota_pct: 100,
             vmm_overhead_mib: 64,
             pool_size: 2,
+            browser_pool_size: 1,
             boot_timeout: Duration::from_secs(20),
         })
     }
