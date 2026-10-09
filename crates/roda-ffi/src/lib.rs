@@ -232,6 +232,10 @@ impl RodaEngine {
         self.lock().item(&item_id)
     }
 
+    pub fn item_at(&self, item_id: String, version: u32) -> Result<ItemDetail, CoreError> {
+        self.lock().item_at(&item_id, version)
+    }
+
     pub fn items(&self) -> Vec<ItemDetail> {
         self.lock().items()
     }

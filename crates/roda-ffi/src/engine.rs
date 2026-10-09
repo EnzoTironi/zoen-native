@@ -1374,6 +1374,44 @@ impl Engine {
         })
     }
 
+    pub fn item_at(&self, id: &str, number: u32) -> R<ItemDetail> {
+        let state = self.item_state(id)?;
+        let position = state
+            .versions
+            .iter()
+            .position(|v| v.number == number)
+            .ok_or_else(|| not_found(&t("versão", "version")))?;
+        let mut past = state.clone();
+        past.versions.truncate(position + 1);
+        let version = past.current();
+        let mut detail = self.item(id)?;
+        detail.version = version.number;
+        detail.title = version.content.title();
+        detail.plan = match &version.content {
+            ItemContent::Plan(plan) => Some(plan_to_dto(plan)),
+            _ => None,
+        };
+        detail.text = match &version.content {
+            ItemContent::Text { text } => Some(text.clone()),
+            ItemContent::Page(_) => Some(
+                self.page_at(id, number)?
+                    .blocks
+                    .iter()
+                    .map(|b| b.text.as_str())
+                    .collect::<Vec<_>>()
+                    .join("\n"),
+            ),
+            _ => None,
+        };
+        (detail.path, detail.file) = match &version.content {
+            ItemContent::Page(page) => (page.path.clone(), None),
+            ItemContent::File(file) => (file.path.clone(), Some(self.file_dto(file))),
+            _ => (String::new(), None),
+        };
+        detail.app = self.app_state_dto(&past);
+        Ok(detail)
+    }
+
     pub fn items(&self) -> Vec<ItemDetail> {
         let mut v: Vec<&ItemState> = self.state.items.values().collect();
         v.sort_by_key(|i| std::cmp::Reverse(i.current().at_ms));

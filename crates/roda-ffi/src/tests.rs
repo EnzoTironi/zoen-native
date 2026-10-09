@@ -526,6 +526,11 @@ fn rendered_file_versions_record_the_output_format_and_preserve_original_bytes()
     assert_eq!(encoded.version, 2);
     assert_eq!(encoded.file.as_ref().unwrap().name, "recording.m4a");
     assert_eq!(encoded.file.as_ref().unwrap().mime, "audio/mp4");
+    let preview = e.item_at(original.id.clone(), 1).unwrap();
+    assert_eq!(preview.file.as_ref().unwrap().mime, "audio/mpeg");
+    assert_eq!(preview.file.as_ref().unwrap().name, "recording.mp3");
+    assert_eq!(preview.version, 1);
+    assert_eq!(e.item(original.id.clone()).unwrap().version, 2);
     assert_eq!(
         e.file_bytes(original.id.clone(), Some(1)).unwrap(),
         Some(vec![1, 2, 3])
@@ -545,6 +550,29 @@ fn rendered_file_versions_record_the_output_format_and_preserve_original_bytes()
         )
         .is_err());
     assert!(e.verify_log(space.id).valid);
+}
+
+#[test]
+fn version_previews_show_historical_plans_and_pages_without_restoring_them() {
+    let e = seeded();
+    let plan = paraty_plan(&e);
+    let before = e.item_at(plan.id.clone(), 1).unwrap();
+    assert_eq!(before.plan.unwrap().total_cents, 134_800);
+    assert_eq!(e.item(plan.id.clone()).unwrap().version, 2);
+    assert!(e.item_at(plan.id, 0).is_err());
+    let space = find_space(&e, "Paraty com a Marina");
+    let page = e
+        .page_import_markdown(space.id, "notes.md".into(), "# Original\n\nBefore".into())
+        .unwrap();
+    let mut blocks = e.page(page.id.clone()).unwrap().blocks;
+    blocks[0].text = "Edited".into();
+    let order = blocks.iter().map(|b| b.id.clone()).collect();
+    e.page_apply(page.id.clone(), order, blocks).unwrap();
+    e.page_commit(page.id.clone(), "Edited".into()).unwrap();
+    let preview = e.item_at(page.id.clone(), 1).unwrap();
+    assert_eq!(preview.title, "Original");
+    assert!(preview.text.unwrap().contains("Before"));
+    assert_eq!(e.item(page.id).unwrap().title, "Edited");
 }
 
 #[test]
