@@ -192,7 +192,10 @@ impl Author {
             payload: Some(Payload::Sealed(sealed)),
         }
         .encode();
-        let sig = self.key.sign(content::signed_hash(&content).as_bytes());
+        let sig = self.key.sign(&content::signature_message(
+            &content,
+            &content::signed_hash(&content),
+        ));
         (content, sig)
     }
 }
@@ -373,7 +376,10 @@ pub fn verify_author(e: &Event) -> Result<(), LogError> {
     };
     let sig = parse_sig(&e.sig).ok_or(LogError::BadSignature { seq })?;
     signer
-        .verify(content_hash_of(e).as_bytes(), &sig)
+        .verify(
+            &content::signature_message(&e.content, &content_hash_of(e)),
+            &sig,
+        )
         .map_err(|_| LogError::BadSignature { seq })
 }
 

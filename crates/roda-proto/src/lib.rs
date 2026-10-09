@@ -236,7 +236,11 @@ impl Envelope {
             }
             None => self.author(),
         };
-        if verify_sig(signer, self.wire_hash().as_bytes(), &self.sig) {
+        if verify_sig(
+            signer,
+            &roda_log::content::signature_message(&self.content, &self.wire_hash()),
+            &self.sig,
+        ) {
             Ok(())
         } else {
             Err(LogError::BadSignature { seq: 0 })
@@ -743,9 +747,10 @@ mod tests {
         let mut bytes = env.content().to_vec();
         // A newer client's unknown length-delimited field 127 must remain signed.
         bytes.extend_from_slice(&[0xfa, 0x07, 0x03, b'n', b'e', b'w']);
-        let sig = author
-            .key
-            .sign(roda_log::content::signed_hash(&bytes).as_bytes());
+        let sig = author.key.sign(&roda_log::content::signature_message(
+            &bytes,
+            &roda_log::content::signed_hash(&bytes),
+        ));
         let full = Envelope::new(bytes, sig, None, None).unwrap();
         full.verify().unwrap();
         assert_eq!(full.parsed.v, roda_log::content::SEALED_CONTENT_VERSION);
@@ -769,6 +774,48 @@ mod tests {
             chain_hash("sp", 0, GENESIS_PREV, &full.wire_hash()),
             chain_hash("sp", 0, GENESIS_PREV, &stub.wire_hash())
         );
+    }
+
+    #[test]
+    fn version_four_signatures_cannot_be_downgraded_to_legacy_tag_five_stubs() {
+        let author = Author::root(roda_log::Signer::from_secret(&[39; 32]));
+        let full = Envelope::sealed(
+            &author,
+            "sp",
+            "authenticated-client-id",
+            3,
+            None,
+            Sealed::new(SealedKind::Application, 1, vec![1, 2, 3]),
+        );
+        full.verify().unwrap();
+        let original_hash = full.wire_hash();
+        let mut forged = full.parsed.clone();
+        forged.v = 3;
+        forged.client_id = "forged-client-id".to_string();
+        let Some(Payload::Sealed(sealed)) = &mut forged.payload else {
+            panic!("sealed fixture");
+        };
+        sealed.data.clear();
+        sealed.data_hash.clear();
+        let forged = Envelope::new(forged.encode(), full.sig.clone(), None, None)
+            .unwrap()
+            .with_legacy_pruned(Some(original_hash.clone()))
+            .unwrap();
+        assert!(forged.verify().is_err());
+
+        // The persisted Event path must reject the same opaque legacy hash replay.
+        let hash = chain_hash("sp", 0, GENESIS_PREV, &original_hash);
+        let mut event = event_from_content(
+            forged.content,
+            forged.sig,
+            None,
+            0,
+            GENESIS_PREV.to_string(),
+            hash,
+        )
+        .unwrap();
+        event.sealed_wire = Some(original_hash);
+        assert!(verify_author(&event).is_err());
     }
 
     #[test]
