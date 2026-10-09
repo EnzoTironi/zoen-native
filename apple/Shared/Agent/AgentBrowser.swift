@@ -173,6 +173,7 @@ struct AgentBrowserCard: View {
                 header(s, browser.phase)
                 thumbnail(browser, s)
                     .onTapGesture { Haptics.tap(); browser.screenOpen = true }
+                    .accessibilityElement(children: .ignore)
                     .accessibilityAddTraits(.isButton)
                     .accessibilityLabel(Text("Watch the screen"))
                     .accessibilityIdentifier("browser-live")
