@@ -11,6 +11,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import xyz.tironi.zoen.R
@@ -29,7 +30,7 @@ import xyz.tironi.zoen.pages.styledPageText
 private data class HistoricalContent(val item: ItemDetail, val page: PageDto?, val bytes: ByteArray?)
 
 @Composable
-fun VersionPreviewScreen(model: ZoenViewModel, id: String, number: UInt, back: () -> Unit) {
+fun VersionPreviewScreen(model: ZoenViewModel, id: String, number: UInt, back: () -> Unit, snackbar: SnackbarHostState?) {
     val context = LocalContext.current
     val content by produceState<HistoricalContent?>(null, id, number) {
         value = model.repository.query { core ->
@@ -40,7 +41,7 @@ fun VersionPreviewScreen(model: ZoenViewModel, id: String, number: UInt, back: (
     var confirm by remember { mutableStateOf(false) }
     var busy by remember { mutableStateOf(false) }
     val saved = stringResource(R.string.saved)
-    Scaffold(topBar = { ScreenBar(stringResource(R.string.page_preview_version, number.toInt()), back, actions = {
+    Scaffold(snackbarHost = { snackbar?.let { SnackbarHost(it, Modifier.testTag("app-snackbar")) } }, topBar = { ScreenBar(stringResource(R.string.page_preview_version, number.toInt()), back, actions = {
         if (content != null) IconButton(onClick = { model.launch {
             val historical = checkNotNull(content)
             val file = historical.item.file

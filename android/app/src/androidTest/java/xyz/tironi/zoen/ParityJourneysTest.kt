@@ -143,7 +143,11 @@ class ParityJourneysTest {
                 .singleOrNull()?.config?.contains(androidx.compose.ui.semantics.SemanticsProperties.Disabled) == false
         }
         capturePageHistory("historical-version-before-restore")
-        compose.onNodeWithText(application.getString(R.string.page_restore_version)).assertIsDisplayed().assertIsEnabled().performClick()
+        val restore = compose.onNodeWithText(application.getString(R.string.page_restore_version)).assertIsDisplayed().assertIsEnabled()
+        compose.onAllNodesWithTag("app-snackbar").assertCountEquals(1)
+        val noticeBounds = compose.onNodeWithTag("app-snackbar").fetchSemanticsNode().boundsInRoot
+        if (noticeBounds.height > 0) assertTrue("A visible snackbar must be above the restore button", noticeBounds.bottom <= restore.fetchSemanticsNode().boundsInRoot.top)
+        restore.performClick()
         try {
             compose.waitUntil(10_000) { compose.onAllNodes(isDialog()).fetchSemanticsNodes().size == 1 }
         } catch (failure: Throwable) {
@@ -156,6 +160,9 @@ class ParityJourneysTest {
         compose.onNode(hasText(application.getString(R.string.restore), substring = false) and hasClickAction() and hasAnyAncestor(isDialog())).performClick()
         compose.waitUntil(10_000) { application.repository.state.value.items.first { it.id == item.id }.version == 3u }
         assertEquals(original.blocks, runBlocking { application.repository.query { it.page(item.id) } }.blocks)
+        compose.waitUntil(10_000) { compose.onAllNodes(hasTestTag("page-block:${paragraph.id}") and hasText("Editable paragraph", substring = false)).fetchSemanticsNodes().size == 1 }
+        compose.onNodeWithTag("page-block:${paragraph.id}").assertTextContains("Editable paragraph")
+        capturePageHistory("historical-version-restored-v3")
     }
 
     @Test fun homeLongHoldRecordsAndReleaseSendsToZoenWithoutOpeningTheActionSheet() {

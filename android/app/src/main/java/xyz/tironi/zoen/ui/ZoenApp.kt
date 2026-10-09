@@ -127,7 +127,7 @@ fun ZoenApp(model: ZoenViewModel, deepLink: String?, consumed: () -> Unit) {
                 }
                 Scaffold(
                     modifier = Modifier.weight(1f),
-                    snackbarHost = { SnackbarHost(snackbar) },
+                    snackbarHost = { if (stack.lastOrNull() !is VersionPreview) SnackbarHost(snackbar, Modifier.testTag("app-snackbar")) },
                     bottomBar = {
                         if (!rail && stack.size == 1) NavigationBar {
                             Tab.entries.forEach { target ->
@@ -171,7 +171,7 @@ fun ZoenApp(model: ZoenViewModel, deepLink: String?, consumed: () -> Unit) {
                             entry<Appearance> { ChatAppearanceScreen(model, it.space, back) }
                             entry<Widgets> { xyz.tironi.zoen.widgets.WidgetsScreen(state, back) }
                             entry<Browser> { xyz.tironi.zoen.agent.AgentBrowserScreen(model.browser, back) }
-                            entry<VersionPreview> { VersionPreviewScreen(model, it.id, it.number, back) }
+                            entry<VersionPreview> { route -> VersionPreviewScreen(model, route.id, route.number, back, snackbar.takeIf { stack.lastOrNull() == route }) }
                         },
                     )
                 }
