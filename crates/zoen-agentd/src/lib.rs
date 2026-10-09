@@ -18,6 +18,7 @@ pub mod manifest;
 pub mod router;
 pub mod sandbox;
 pub mod session;
+pub mod wasm;
 
 pub use browser::{BrowserCall, BrowserTools};
 pub use manifest::{EgressRule, Needs, SecretBinding, SignedManifest, ToolManifest};
