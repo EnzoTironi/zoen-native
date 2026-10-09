@@ -628,6 +628,9 @@ pub fn blob_put_message(sha256: &str, ts_ms: i64, relay: &str) -> Vec<u8> {
     format!("{PROTOCOL}:blob-put:{relay}:{sha256}:{ts_ms}").into_bytes()
 }
 
+/// Prefix followed by a 32-byte configuration generation and the encrypted backup.
+pub const BACKUP_UPLOAD_MAGIC: &[u8; 8] = b"ZOENBG1\0";
+
 /// What a device signs for a backup write (ADR 0046): binds the operation, the identity,
 /// the body's hash and a timestamp to this relay.
 pub fn backup_message(

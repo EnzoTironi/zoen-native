@@ -76,20 +76,26 @@ Requirements, from Enzo's mandates:
 - **Writes from a certified device.** These carry `x-zoen-device`, `x-zoen-ts` and
   `x-zoen-sig`, signed over
   `zoen-sync/2:backup:{relay}:{identity}:{op}:{sha256(body)}:{ts}`. The relay checks the
-  device certificate against the identity.
-  - `POST /v1/backup/oprf {blinded}` → `{evaluated}`. Starts a password setup: makes a new
-    pending `k`.
-  - `PUT /v1/backup/vault {mode, verifier, wrapped_key, kdf}` activates the pending `k`
-    (password mode) or stores a recovery-key vault, and resets the counter. Changing the
-    password or switching modes is another `PUT`.
-  - `PUT /v1/backup/blob` (body: the sealed payload, ≤ 64 MiB).
+  active device against the directory. A database authorization lock prevents a write
+  from committing after unlink has completed.
+  - `POST /v1/backup/oprf {blinded, generation}` → `{evaluated}`. Starts a password setup.
+    The pending `k` belongs to that device and configuration generation.
+  - `PUT /v1/backup/vault {mode, verifier, wrapped_key, kdf, generation}` stages the
+    replacement configuration. The existing vault and object remain restorable.
+  - `PUT /v1/backup/blob` has binary body `ZOENBG1\0 || generation[32] || sealed payload`.
+    The payload is at most 64 MiB. The signature covers its generation too. Upload writes
+    an immutable object, then atomically activates its matching staged configuration or
+    updates the matching active one. A stale device gets `409` and must configure backup
+    again. Per-identity database locks serialize writes across relay nodes.
   - `DELETE /v1/backup` turns the backup off. It forgets the vault and the object.
 - **Restore (no device yet).**
   - `POST /v1/backup/restore/start {handle, blinded?}` → `{identity, mode, kdf,
-    evaluated?}`. The password mode counts a guess.
-  - `POST /v1/backup/restore/open {handle, auth_key}` → `{wrapped_key, size}`. A failed
-    open counts a guess.
-  - `GET /v1/backup/restore/blob?handle=…` with header `x-zoen-backup-auth: auth_key`.
+    evaluated?, generation}`. The password mode counts a guess.
+  - `POST /v1/backup/restore/open {handle, auth_key, generation}` → `{wrapped_key, size,
+    generation}`. A failed open counts a guess. Row locks keep checks and counters on
+    the same configuration; a rotation requires restarting restore.
+  - `GET /v1/backup/restore/blob?handle=…&generation=…` with header
+    `x-zoen-backup-auth: auth_key`.
   - **No existence oracle.** For a handle without a backup (or an unknown one), `start`
     answers like a password vault, with an evaluation under a key derived from the master
     key and the handle. Every `open` for it then fails the same way. The relay limits these
@@ -107,7 +113,10 @@ like any new device of that person.
   requests survive a relaunch; the relay still checks current membership, so a stale
   backup cannot restore access after removal.
 - **Lost-device revocation.** The recovered account can use `unlink` to revoke the old
-  device and remove its MLS leaves. The old device is then refused on reconnect.
+  device and remove its MLS leaves. Its key is refused at every backup write endpoint.
+- **Upgrade.** Existing generation-less vaults and their original object paths remain
+  readable. After restoring one, the device must configure backup again before upload.
+  Migration `0021` preserves `0020` and all existing backup objects.
 - **Remaining recovery gate.** Joining waits for an authorized device that still has the
   group's MLS state. Recovery when no such device survives needs a protocol design and
   its own failure journey. The snapshot deliberately excludes old MLS state.
@@ -135,5 +144,9 @@ like any new device of that person.
   admin, exchange new messages, revoke the lost phone and verify signed history;
 - a stale backup retains old history but cannot regain removed group membership;
 - the relay database holds no plaintext.
+- linked devices with different backup keys cannot overwrite the newer backup;
+- interrupted configuration keeps the previous copy restorable;
+- every backup write refuses a revoked device;
+- a generation-less backup restores and can be upgraded without losing its old copy.
 
 The backup decision was originally numbered 0045, also used by device linking. It is now 0046. The existing `0020_backups.sql` migration retains its historical comment so its SQLx checksum remains unchanged.
