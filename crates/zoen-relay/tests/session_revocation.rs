@@ -228,6 +228,8 @@ impl TestRelay {
             relay_name: "test-relay".into(),
             metrics: metrics::Metrics::default(),
             blobs: Arc::new(object_store::memory::InMemory::new()),
+            backup_vault: None,
+            backup_settings: Default::default(),
             apple_app_ids: Vec::new(),
         });
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();

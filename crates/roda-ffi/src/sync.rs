@@ -438,6 +438,16 @@ impl Engine {
                     return None;
                 }
                 let mut env = self.outgoing_envelope_with(&event, &mut ready)?;
+                if let Some(bytes) = env.recovery() {
+                    let reference = roda_log::recovery::RecoveryRef::parse(bytes)?;
+                    if !self
+                        .store
+                        .recovery_upload_confirmed(&reference.blob)
+                        .unwrap_or(false)
+                    {
+                        return None;
+                    }
+                }
                 if !env.is_sealed() {
                     env.invite = self
                         .store
@@ -589,6 +599,29 @@ impl Engine {
         let agreement = self.init_profile(&me.id, &me.name)?;
         self.seed_personal_agent(&me.id)?;
         Ok((root.secret(), device.secret(), agreement))
+    }
+
+    /// After a backup's tables land (ADR 0046): this device becomes a new device of the
+    /// restored identity, with its own key and certificate. The relay already knows the
+    /// identity, so it isn't registered again.
+    pub(crate) fn install_restored_account(
+        &mut self,
+        root: &Signer,
+        device: Signer,
+        relay_url: &str,
+    ) -> R<()> {
+        let author = Author::device(root, device.clone());
+        self.store.set_meta("me", &root.id())?;
+        self.save_account(AccountMeta {
+            identity: root.id(),
+            device: device.id(),
+            cert: author.cert.clone().unwrap_or_default(),
+            relay_url: relay_url.trim_end_matches('/').to_string(),
+            registered: true,
+        })?;
+        self.net.author = Some(author);
+        self.reload()?;
+        Ok(())
     }
 
     /// Your on-device Zoen (local agent, local DM) until the agent runtime takes over.

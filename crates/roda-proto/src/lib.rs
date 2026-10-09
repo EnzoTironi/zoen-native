@@ -175,6 +175,18 @@ impl Envelope {
         }
     }
 
+    pub fn recovery(&self) -> Option<&[u8]> {
+        // Legacy tag-5/v3 stubs authenticate their retained digest, not these
+        // surviving header fields. Recovery references were introduced in v4.
+        if self.parsed.v != 4 || self.legacy_pruned.is_some() {
+            return None;
+        }
+        match &self.parsed.payload {
+            Some(Payload::Sealed(s)) if !s.recovery.is_empty() => Some(&s.recovery),
+            _ => None,
+        }
+    }
+
     pub fn content(&self) -> &[u8] {
         &self.content
     }
@@ -664,6 +676,31 @@ pub fn blob_put_message(sha256: &str, ts_ms: i64, relay: &str) -> Vec<u8> {
     format!("{PROTOCOL}:blob-put:{relay}:{sha256}:{ts_ms}").into_bytes()
 }
 
+/// Prefix followed by a 32-byte configuration generation and the encrypted backup.
+pub const BACKUP_UPLOAD_MAGIC: &[u8; 8] = b"ZOENBG1\0";
+
+/// Proof that a recovered device controls the key being enrolled for this backup.
+pub fn backup_enroll_message(
+    identity: &str,
+    device: &str,
+    cert: &str,
+    generation: &str,
+) -> Vec<u8> {
+    format!("{PROTOCOL}:backup-device-enroll:{identity}:{device}:{cert}:{generation}").into_bytes()
+}
+
+/// What a device signs for a backup write (ADR 0046): binds the operation, the identity,
+/// the body's hash and a timestamp to this relay.
+pub fn backup_message(
+    relay: &str,
+    identity: &str,
+    op: &str,
+    body_sha256: &str,
+    ts_ms: i64,
+) -> Vec<u8> {
+    format!("{PROTOCOL}:backup:{relay}:{identity}:{op}:{body_sha256}:{ts_ms}").into_bytes()
+}
+
 /// Handles: 3–24 chars, lowercase letters, digits, `_` and `.`; must start with a letter.
 pub fn normalize_handle(raw: &str) -> Option<String> {
     let h = raw.trim().trim_start_matches('@').to_lowercase();
@@ -682,8 +719,38 @@ pub fn normalize_handle(raw: &str) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use roda_log::{chain_hash, SpaceLog};
+    use roda_log::{chain_hash, Signer, SpaceLog};
     use roda_types::GENESIS_PREV;
+
+    #[test]
+    fn recovery_reference_survives_pruning_and_cannot_be_substituted() {
+        let author = Author::root(Signer::generate());
+        let reference = roda_log::recovery::RecoveryRef {
+            version: 1,
+            epoch: 7,
+            blob: "aa".repeat(32),
+        };
+        let mut sealed = Sealed::new(SealedKind::Commit, 1, b"MLS ciphertext".to_vec());
+        sealed.recovery = reference.encode();
+        let full = Envelope::sealed(&author, "space", "commit", 1, None, sealed);
+        let stub = full.pruned().unwrap();
+        assert_eq!(stub.recovery(), full.recovery());
+        assert_eq!(stub.wire_hash(), full.wire_hash());
+        stub.verify().unwrap();
+        let mut changed = stub.parsed.clone();
+        let Some(Payload::Sealed(sealed)) = &mut changed.payload else {
+            unreachable!()
+        };
+        sealed.recovery = roda_log::recovery::RecoveryRef {
+            blob: "bb".repeat(32),
+            ..reference
+        }
+        .encode();
+        assert!(Envelope::new(changed.encode(), stub.sig, None, None)
+            .unwrap()
+            .verify()
+            .is_err());
+    }
 
     fn fixture(name: &str) -> Sequenced {
         let data: serde_json::Value = serde_json::from_str(include_str!(
@@ -750,6 +817,46 @@ mod tests {
         let mut bad = ev.env;
         bad.sig = "0".repeat(128);
         assert!(bad.verify().is_err());
+    }
+
+    #[test]
+    fn unauthenticated_legacy_stub_headers_cannot_authorize_recovery() {
+        let original = fixture("legacy_stub");
+        let mut content = original.env.parsed.clone();
+        let Some(Payload::Sealed(sealed)) = &mut content.payload else {
+            unreachable!()
+        };
+        sealed.kind = SealedKind::Commit as i32;
+        sealed.recovery = roda_log::recovery::RecoveryRef {
+            version: 1,
+            epoch: 7,
+            blob: "aa".repeat(32),
+        }
+        .encode();
+        let grafted = Envelope::new(
+            content.encode(),
+            original.env.sig.clone(),
+            original.env.cert.clone(),
+            None,
+        )
+        .unwrap()
+        .with_legacy_pruned(Some(original.env.legacy_pruned_hash().unwrap().into()))
+        .unwrap();
+        grafted.verify().unwrap();
+        assert_eq!(grafted.sig, original.env.sig);
+        assert_eq!(grafted.wire_hash(), original.env.wire_hash());
+        assert_eq!(grafted.sealed_kind(), Some(SealedKind::Commit));
+        assert!(grafted.recovery().is_none());
+        let modified = Sequenced {
+            env: grafted,
+            ..original.clone()
+        };
+        SpaceLog::from_events(
+            "sp_upgrade",
+            vec![stored_event(&fixture("genesis")), stored_event(&modified)],
+        )
+        .unwrap();
+        assert_eq!(Sequenced::decode(&modified.encode()).unwrap(), modified);
     }
 
     #[test]

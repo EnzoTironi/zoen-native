@@ -136,6 +136,7 @@ impl World {
             .env("ZOEN_FDB_CELL", &self.cell)
             .env("ZOEN_BLOB_DIR", self.dir.join("blobs"))
             .env_remove("ZOEN_NATS_URL")
+            .env_remove("ZOEN_DEV_ALLOW_UNAUTHENTICATED_PASSWORD_BACKUP")
             .stdout(log.try_clone().unwrap())
             .stderr(log);
         if let Some(url) = &self.nats {
@@ -172,6 +173,14 @@ impl World {
         if let Some(mut c) = self.relay.take() {
             let _ = c.kill();
             let _ = c.wait();
+        }
+    }
+
+    /// Updates the environment used on the next relay restart.
+    pub fn configure_relay_env(&mut self, name: &str, value: Option<&str>) {
+        self.relay_env.retain(|(key, _)| key != name);
+        if let Some(value) = value {
+            self.relay_env.push((name.into(), value.into()));
         }
     }
 

@@ -131,7 +131,7 @@ impl RodaEngine {
         self.account_dto()
     }
 
-    fn account_dto(&self) -> Option<AccountDto> {
+    pub(crate) fn account_dto(&self) -> Option<AccountDto> {
         let e = self.lock();
         let a = e.account()?.clone();
         let me = e.my_profile();
@@ -256,8 +256,8 @@ impl RodaEngine {
         self.stop_sync();
         {
             let mut e = self.lock();
-            e.net = Default::default();
             e.wipe()?;
+            e.net = Default::default();
         }
         vault.delete(VAULT_IDENTITY.into());
         vault.delete(VAULT_DEVICE.into());
