@@ -781,7 +781,7 @@ mod tests {
             .is_none());
         let mut changed = stub.content.clone();
         *changed.last_mut().unwrap() = b'x';
-        assert!(Envelope::new(changed, stub.sig, None, None)
+        assert!(Envelope::new(changed, stub.sig.clone(), None, None)
             .unwrap()
             .verify()
             .is_err());
