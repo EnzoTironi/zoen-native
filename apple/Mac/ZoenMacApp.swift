@@ -13,6 +13,7 @@ struct ZoenMacApp: App {
                 .preferredColorScheme(AppModel.launchColorScheme)
                 .frame(minWidth: 1080, minHeight: 680)
                 .task { await model.applyLaunchOptions() }
+                .onOpenURL { model.captureAcquisition($0) }
         }
         .windowToolbarStyle(.unified)
         .defaultSize(width: 1380, height: 860)

@@ -107,6 +107,10 @@ struct FlipCard<Front: View, Back: View>: View, Animatable {
             let angle = 180 * p
             let showBack = angle >= 90
             let corner = 24 + (54 - 24) * min(1, max(0, t))
+            let clamped = min(1, max(0, p))
+            // It lifts toward you mid-turn and the face dims as it goes edge-on: depth without blur.
+            let lift = 1 + 0.05 * sin(Double.pi * clamped)
+            let edgeShade = 0.28 * (1 - abs(cos(Double.pi * clamped)))
             ZStack {
                 front
                     .frame(width: from.width, height: from.height)
@@ -123,7 +127,9 @@ struct FlipCard<Front: View, Back: View>: View, Animatable {
                     .opacity(showBack ? 1 : 0)
             }
             .frame(width: w, height: h)
+            .overlay(Color.black.opacity(edgeShade).allowsHitTesting(false))
             .clipShape(.rect(cornerRadius: corner, style: .continuous))
+            .scaleEffect(lift)
             .shadow(color: .black.opacity(0.25 * sin(Double.pi * min(1, max(0, p)))), radius: 24, y: 14)
             .rotation3DEffect(.degrees(angle), axis: (x: 0, y: 1, z: 0), perspective: 0.45)
             .position(x: x, y: y)

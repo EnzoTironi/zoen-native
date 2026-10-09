@@ -22,6 +22,7 @@
 //! socket's: the relay writes through a bounded queue and disconnects a device that falls
 //! too far behind, which then resumes from its cursors.
 
+pub mod experiments;
 pub mod wire;
 
 use roda_log::content::{content_hash, decode_body, Payload, SignedContent};

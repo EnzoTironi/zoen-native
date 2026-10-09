@@ -11,7 +11,11 @@ use std::sync::{Arc, Mutex, MutexGuard};
 
 mod api;
 mod files;
+mod growth;
+pub use growth::{AcquisitionDto, GrowthSyncDto, OnboardingPlanDto};
 mod files_api;
+mod liveview;
+pub use liveview::{LiveViewDemoVm, LiveViewInput, LiveViewKey, LiveViewSession};
 mod media;
 mod pages;
 pub use files::FileDto;
