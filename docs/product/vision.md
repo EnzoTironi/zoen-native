@@ -82,6 +82,7 @@ Zoen é o "WhatsApp 2": um mensageiro privado onde, além de conversar, as pesso
 - Publicidade para bots: o anúncio precisa convencer o agente do usuário, que filtra notícias, spam e ofertas pelo que importa para a pessoa (como o filtro de spam do e-mail). Isso inverte o incentivo dos apps sociais.
 - Dentro das comunidades: um bannerzinho discreto com selo de "patrocinado", um canal novo e barato para lojas locais alcançarem o bairro.
   - Em aberto: como isso convive com a regra de não anunciar para humanos (proposta: só em comunidades que optarem, sempre identificado, sem uso de conteúdo das conversas para segmentar).
+- Conta por usuário (custo de IA e infraestrutura contra anúncio, comissão e bots para empresas): [research/unit-economics.md](../research/unit-economics.md). Resumo: só anúncio não cobre o cenário médio (US$ 0,047 de custo contra ~US$ 0,02 de anúncio por usuário por mês); quem fecha a conta é cobrar a empresa (Bot Pro, mensagens de empresa, comissão), nunca o consumidor.
 
 ## Trabalho
 
