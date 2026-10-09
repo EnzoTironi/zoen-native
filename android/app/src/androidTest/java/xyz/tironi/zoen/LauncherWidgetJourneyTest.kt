@@ -161,11 +161,16 @@ class LauncherWidgetJourneyTest {
 
             step("Touch the pinned widget on the actual launcher")
             home()
-            val pinned = awaitWidget(checkNotNull(configuredTitle))
+            val openDeadline = SystemClock.uptimeMillis() + 10_000
+            awaitWidget(checkNotNull(configuredTitle), openDeadline)
             capture("02-launcher-pinned-widget")
-            touch(pinned.title)
+            // A capture can outlive a launcher transition. Never reuse pin-preview coordinates.
+            touch(awaitWidget(checkNotNull(configuredTitle), openDeadline).title)
             val openedText = if (reconfigurable) listRow else petTitle
-            compose.waitUntil(10_000) { compose.onAllNodesWithText(openedText).fetchSemanticsNodes().isNotEmpty() }
+            compose.waitUntil(10_000) {
+                readUi()?.packageName == application.packageName &&
+                    compose.onAllNodesWithText(openedText).fetchSemanticsNodes(atLeastOneRootRequired = false).isNotEmpty()
+            }
             compose.onAllNodesWithText(openedText).onFirst().assertIsDisplayed()
             assertEquals(application.packageName, readUi()?.packageName)
             capture("03-widget-opens-native-miniapp")
@@ -193,7 +198,10 @@ class LauncherWidgetJourneyTest {
                 val edit = awaitNode("Launcher widget reconfigure control") { it.enabled && it.clickable && it.id == editId }
                 capture("04-launcher-widget-edit-control")
                 touch(edit)
-                compose.waitUntil(10_000) { compose.onAllNodesWithText(application.getString(R.string.widget_choose)).fetchSemanticsNodes().isNotEmpty() }
+                compose.waitUntil(10_000) {
+                    readUi()?.packageName == application.packageName &&
+                        compose.onAllNodesWithText(application.getString(R.string.widget_choose)).fetchSemanticsNodes(atLeastOneRootRequired = false).isNotEmpty()
+                }
                 instrumentation.runOnMainSync {
                     val configuration = ActivityLifecycleMonitorRegistry.getInstance().getActivitiesInStage(Stage.RESUMED).filterIsInstance<WidgetConfigurationActivity>().single()
                     assertEquals(widgetId, configuration.intent.getIntExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, AppWidgetManager.INVALID_APPWIDGET_ID))
@@ -217,14 +225,19 @@ class LauncherWidgetJourneyTest {
             val beforeFullness = JSONObject(before.app!!.viewJson).getDouble("fullness")
             val beforeSnapshot = checkNotNull(WidgetSnapshot.from(before))
             val feed = beforeSnapshot.actions.single { it.tool == "pet_feed" }
-            val petWidget = awaitWidget(petTitle)
+            val feedDeadline = SystemClock.uptimeMillis() + 10_000
+            val petWidget = awaitWidget(petTitle, feedDeadline)
             assertEquals(bars(beforeSnapshot), petWidget.bars?.text)
             val remoteFeed = checkNotNull(petWidget.actionOne)
             assertTrue("The native Feed label must match the signed snapshot", matchesLabel(remoteFeed.text, setOf(feed.label)))
             assertEquals(feed.label, remoteFeed.description)
             assertTrue(remoteFeed.enabled && remoteFeed.clickable)
             capture("06-launcher-pet-before-feed")
-            touch(remoteFeed)
+            val currentFeed = checkNotNull(awaitWidget(petTitle, feedDeadline).actionOne)
+            assertTrue(matchesLabel(currentFeed.text, setOf(feed.label)))
+            assertEquals(feed.label, currentFeed.description)
+            assertTrue(currentFeed.enabled && currentFeed.clickable)
+            touch(currentFeed)
             await("Feed creates exactly one signed version in the shared Rust engine") { repository.state.value.items.firstOrNull { it.id == pet.id }?.version == before.version + 1u }
             val after = runBlocking { repository.query { it.item(pet.id) } }
             val afterFullness = JSONObject(after.app!!.viewJson).getDouble("fullness")
@@ -240,7 +253,11 @@ class LauncherWidgetJourneyTest {
 
             step("Open Pet from the launcher and see the same updated native state")
             touch(awaitWidget(petTitle).title)
-            compose.waitUntil(10_000) { compose.onAllNodesWithText(petTitle).fetchSemanticsNodes().isNotEmpty() && compose.onAllNodesWithText("${afterFullness.toInt()}%").fetchSemanticsNodes().isNotEmpty() }
+            compose.waitUntil(10_000) {
+                readUi()?.packageName == application.packageName &&
+                    compose.onAllNodesWithText(petTitle).fetchSemanticsNodes(atLeastOneRootRequired = false).isNotEmpty() &&
+                    compose.onAllNodesWithText("${afterFullness.toInt()}%").fetchSemanticsNodes(atLeastOneRootRequired = false).isNotEmpty()
+            }
             compose.onAllNodesWithText(petTitle).onFirst().assertIsDisplayed()
             compose.onNodeWithText("${afterFullness.toInt()}%").assertIsDisplayed()
             capture("08-native-pet-matches-launcher-update")
@@ -295,7 +312,7 @@ class LauncherWidgetJourneyTest {
 
     private fun home() {
         assertTrue("System HOME action must succeed", automation.performGlobalAction(AccessibilityService.GLOBAL_ACTION_HOME))
-        await("The default launcher is foreground") { readUi()?.packageName == launcher }
+        await("The default launcher's home workspace is foreground") { readUi()?.let(::homeWorkspace) != null }
     }
 
     private fun launcherStrings(vararg names: String): Set<String> {
@@ -310,10 +327,10 @@ class LauncherWidgetJourneyTest {
 
     private fun matchesLabel(text: String?, labels: Set<String>) = text != null && labels.any { text.uppercase(launcherLocale) == it.uppercase(launcherLocale) }
 
-    private fun await(description: String, ready: () -> Boolean) {
-        val until = SystemClock.uptimeMillis() + 10_000
+    private fun await(description: String, until: Long = SystemClock.uptimeMillis() + 10_000, ready: () -> Boolean) {
         do {
-            if (ready()) return
+            if (SystemClock.uptimeMillis() >= until) break
+            if (ready() && SystemClock.uptimeMillis() <= until) return
             SystemClock.sleep(50)
         } while (SystemClock.uptimeMillis() < until)
         throw AssertionError("$stage: $description did not become ready within 10 seconds")
@@ -330,24 +347,48 @@ class LauncherWidgetJourneyTest {
         return checkNotNull(result)
     }
 
-    private data class WidgetUi(val title: UiNode, val bars: UiNode?, val actionOne: UiNode?)
+    private data class WidgetUi(val workspace: UiNode, val host: UiNode, val root: UiNode, val title: UiNode, val bars: UiNode?, val actionOne: UiNode?) {
+        fun geometry() = listOf(workspace.bounds, host.bounds, root.bounds, title.bounds, bars?.bounds, actionOne?.bounds)
+        fun toJson() = JSONObject().put("workspace", workspace.toJson()).put("host", host.toJson()).put("root", root.toJson()).put("title", title.toJson())
+    }
+
+    private fun homeWorkspace(root: UiNode): UiNode? {
+        if (root.packageName != launcher) return null
+        return root.descendants().singleOrNull {
+            it.id == "$launcher:id/workspace" && it.packageName == launcher && it.visible && it.enabled && !it.bounds.isEmpty
+        }
+    }
+
+    private fun UiNode.inside(parent: UiNode) = visible && enabled && !bounds.isEmpty && parent.bounds.contains(bounds)
 
     private fun findWidget(title: String): WidgetUi? {
         val root = readUi() ?: return null
-        if (root.packageName != launcher) return null
-        val roots = root.descendants().filter { it.visible && it.id == "${application.packageName}:id/widget_root" }
-        val widgets = roots.mapNotNull { widget ->
-            val children = widget.descendants()
-            val heading = children.singleOrNull { it.visible && it.id == "${application.packageName}:id/widget_title" && it.text == title } ?: return@mapNotNull null
-            WidgetUi(heading, children.singleOrNull { it.visible && it.id == "${application.packageName}:id/widget_bars" }, children.singleOrNull { it.visible && it.id == "${application.packageName}:id/widget_action_one" })
+        val workspace = homeWorkspace(root) ?: return null
+        // The pin dialog has an AppWidgetHostView too, but it is never a workspace child.
+        val hosts = workspace.descendants().filter {
+            it.packageName == launcher && it.className?.endsWith("AppWidgetHostView") == true && it.inside(workspace)
+        }
+        val widgets = hosts.flatMap { host ->
+            host.descendants().filter { it.id == "${application.packageName}:id/widget_root" && it.clickable && it.inside(host) }.mapNotNull { widget ->
+                val children = widget.descendants()
+                val heading = children.singleOrNull { it.id == "${application.packageName}:id/widget_title" && it.text == title && it.inside(widget) } ?: return@mapNotNull null
+                WidgetUi(workspace, host, widget, heading, children.singleOrNull { it.id == "${application.packageName}:id/widget_bars" && it.inside(widget) }, children.singleOrNull { it.id == "${application.packageName}:id/widget_action_one" && it.inside(widget) })
+            }
         }
         check(widgets.size <= 1) { "The test Item appears in more than one launcher widget" }
         return widgets.singleOrNull()
     }
 
-    private fun awaitWidget(title: String): WidgetUi {
+    private fun awaitWidget(title: String, until: Long = SystemClock.uptimeMillis() + 10_000): WidgetUi {
         var result: WidgetUi? = null
-        await("Launcher renders widget $title") { result = findWidget(title); result != null }
+        var previous: WidgetUi? = null
+        await("Launcher renders widget $title at stable workspace bounds", until) {
+            result = findWidget(title)
+            val settled = result != null && result?.geometry() == previous?.geometry()
+            previous = result
+            settled
+        }
+        trace.put(JSONObject().put("settledWidget", checkNotNull(result).toJson()).put("uptimeMs", SystemClock.uptimeMillis()))
         return checkNotNull(result)
     }
 
@@ -431,8 +472,10 @@ class LauncherWidgetJourneyTest {
     private fun readUi(): UiNode? {
         val root = automation.rootInActiveWindow ?: return null
         var remaining = 512
-        fun read(node: AccessibilityNodeInfo): UiNode {
+        fun read(node: AccessibilityNodeInfo): UiNode? {
             check(remaining-- > 0) { "Accessibility tree exceeds the bounded widget probe" }
+            // Window animation changes screen bounds before every cached accessibility node catches up.
+            if (!node.refresh()) return null
             val bounds = Rect().also(node::getBoundsInScreen)
             val children = (0 until node.childCount).mapNotNull { index -> node.getChild(index)?.let { child -> try { read(child) } finally { child.recycle() } } }
             return UiNode(node.viewIdResourceName, node.text?.toString(), node.contentDescription?.toString(), node.className?.toString(), node.packageName?.toString(), bounds, node.isVisibleToUser, node.isEnabled, node.isClickable, node.actionList.map { "${it.id}:${it.label}" }, children)
