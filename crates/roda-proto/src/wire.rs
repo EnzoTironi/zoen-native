@@ -265,6 +265,9 @@ pub struct PbEnvelope {
     pub cert: Option<String>,
     #[prost(string, optional, tag = "4")]
     pub invite: Option<String>,
+    /// A pruned sealed entry: the original's wire hash (`content` lost its MLS bytes).
+    #[prost(string, optional, tag = "5")]
+    pub pruned: Option<String>,
 }
 
 #[derive(Clone, PartialEq, Message)]
@@ -605,11 +608,14 @@ fn envelope_to(e: &Envelope) -> PbEnvelope {
         sig: e.sig.clone(),
         cert: e.cert.clone(),
         invite: e.invite.clone(),
+        pruned: e.pruned_wire().map(str::to_string),
     }
 }
 
 fn envelope_from(e: PbEnvelope) -> Result<Envelope, DecodeError> {
-    Envelope::new(e.content, e.sig, e.cert, e.invite).ok_or_else(|| bad("envelope content"))
+    Envelope::new(e.content, e.sig, e.cert, e.invite)
+        .map(|env| env.with_pruned(e.pruned))
+        .ok_or_else(|| bad("envelope content"))
 }
 
 fn ephemeral_to(space: &str, from: &str, k: &EphemeralKind) -> PbEphemeral {
@@ -787,6 +793,8 @@ impl ClientFrame {
                     pb_req::Op::ClaimKeyPackages(p) => Op::ClaimKeyPackages { ids: p.ids },
                 },
             },
+            // Only the relay prunes: a device can't hand it a stub.
+            F::Publish(e) if e.pruned.is_some() => return Err(bad("a pruned envelope")),
             F::Publish(e) => ClientFrame::Publish {
                 env: envelope_from(e)?,
             },
