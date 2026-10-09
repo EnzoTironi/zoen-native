@@ -75,13 +75,15 @@ HTML mini-apps require an Android System WebView provider supporting AndroidX We
 
 The Hike HTML bundle draws its local route map with SVG when map-tile access is denied. Pan, pinch zoom, zoom buttons and fit-to-route work without network access or a WebGL renderer. MapLibre initializes only after the MCP handshake confirms access to the declared tile host; unavailable online maps fall back to the same local route map.
 
-On supported devices, the planner uses Gemini Nano through ML Kit's on-device Prompt API. Availability, download progress and generation failures are visible. Structured results are validated before signed writes. Other devices use a clearly labeled deterministic local fallback. Emulator fallback tests do not demonstrate model generation on supported physical hardware. No remote AI API or key is silently substituted.
+On supported physical devices with initialized AICore, a downloaded model and a locked bootloader, the planner uses Gemini Nano through ML Kit's on-device Prompt API. Availability, download progress and generation failures are visible. Structured results are validated before signed writes. Other devices use a clearly labeled deterministic local fallback. Physical-device generation was not exercised; emulator fallback tests and successful release registration do not demonstrate model generation. See [ML Kit setup requirements](https://developers.google.com/ml-kit/genai/prompt/android/get-started). No remote AI API or key is silently substituted.
 
-Offline transcription uses Android's on-device recognizer where available. Recording/editing/playback remain available without a speech model; supported languages can request a native model download. The emulator does not provide a usable speech model.
+Offline transcription requires API 33+, Android's on-device recognizer and an installed language model. Word, filler and pause editing additionally require API 34+ and recognizer-provided word timestamps. Supported languages can request a native model download. Model-backed transcription was not exercised because the emulator has no usable model; recording, waveform cuts and playback work independently.
 
 Background messages use an opt-in foreground remote-messaging service with a visible connection notification and Stop control. Incoming messages and requests have private notifications and native deep links; active chats and muted people suppress alerts. This uses the existing relay. Android force-stop or restrictive power policies can suspend it, and the Rust outbox persists outgoing work. There is no FCM backend.
 
 Apple prototype placeholders—calls, passkey recovery, simulated external actions and the simulated browser guest—remain labeled placeholders. Native browser owner takeover uses the actual sealed frame/input core; its sample guest is debug-demo only.
+
+Home widget pinning, opening and signed Feed actions are exercised on the real launcher. Native Edit/reconfiguration requires API 31+ and launcher support; older Android versions retain pin/open/actions. See [Android widget configuration](https://developer.android.com/develop/ui/views/appwidgets/configuration).
 
 The Natural Earth globe data retains the source app's public-domain licensing.
 

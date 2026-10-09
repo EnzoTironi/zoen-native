@@ -8,8 +8,8 @@ The completion gate is functional coverage of the current Apple app, with Androi
 - [x] Frame: compare the current Apple features, Android screens, shared engine APIs, and tests.
 - [x] Design: isolate media, mini-app hosting, and agents in separate worktrees. Keep widgets, Android background connection, chat appearance, and integration in the primary checkout.
 - [x] Run the loop: implement and verify each functional unit on the real app, with model availability conditions recorded.
-- [x] Media: recording, transcription availability/error handling and word edits, audio edit/render, playback, PDF/image markup, video trim. Real model execution requires an installed language model.
-- [x] Agents: availability-aware on-device generation, contextual routing, encrypted browser takeover, complete profiles. Nano execution requires supported physical hardware.
+- [x] Media: recording, transcription availability/error handling and word edits, audio edit/render, playback, PDF/image markup, video trim. Model-backed transcription remains untested and requires API 33+ and an installed on-device language model; timed word/filler/pause editing requires API 34+ recognizer timestamps.
+- [x] Agents: availability-aware on-device generation, contextual routing, encrypted browser takeover, complete profiles. Physical Nano generation remains untested and requires supported hardware, initialized AICore, a downloaded model and a locked bootloader.
 - [x] Mini-apps: store/install, grants, secure HTML MCP host, snapshot templates, tile editing.
 - [x] Android: actual launcher widgets, background messaging notifications, shared chat appearance.
 - [x] End-to-end: two local real accounts, encrypted chat and attachments, offline outbox, restart.
@@ -37,6 +37,6 @@ Existing native navigation, onboarding, plans/versions/Undo, pages, search, appr
 
 Android notifications use the existing relay through a user-controlled foreground messaging connection. This adds Android background behavior without requiring a new push backend or cloud credentials.
 
-Complete matching API35 runs at `827f312` and `8739825` each pass all 48 native cases without failures or skips. The normal both-ABI debug/test/release build, R8, lint, all 73 JVM tests, signed release cold launch and committed-frame visual captures pass. The current Android9/15 and full Rust CI results are tracked in the [verification record](android.md) and [PR 41](https://github.com/EnzoTironi/zoen-native/pull/41).
+Complete matching API 35 runs at `827f312` and `8739825` each pass all 48 native cases without failures or skips. The normal both-ABI debug/test/release build, R8, lint, all 73 JVM tests, signed release cold launch and committed-frame visual captures pass. The current Android 9/15 and full Rust CI results are tracked in the [verification record](android.md) and [PR 41](https://github.com/EnzoTironi/zoen-native/pull/41).
 
 The append-only decisions are in [android-parity-decisions.tsv](android-parity-decisions.tsv).
