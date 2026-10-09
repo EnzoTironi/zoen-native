@@ -34,6 +34,8 @@ reqwest = { version = "0.13", default-features = false, features = ["rustls-no-p
 chacha20poly1305.workspace = true
 roda-docs.workspace = true
 hkdf.workspace = true
+curve25519-dalek.workspace = true
+argon2.workspace = true
 base64 = "0.22"
 fastcdc = "5"
 

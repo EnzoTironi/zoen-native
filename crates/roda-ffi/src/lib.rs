@@ -10,6 +10,9 @@
 use std::sync::{Arc, Mutex, MutexGuard};
 
 mod api;
+mod backup;
+mod backup_api;
+pub use backup_api::BackupStatusDto;
 mod files;
 mod files_api;
 mod media;

@@ -139,6 +139,11 @@ pub struct Limits {
     pub invite_account: Limiter,
     /// Uploaded blob kilobytes per device.
     pub blob_kib_device: Limiter,
+    /// Backup writes per device (ADR 0045).
+    pub backup_device: Limiter,
+    /// Restore requests per client IP and per handle (password guessing).
+    pub backup_restore_ip: Limiter,
+    pub backup_restore_handle: Limiter,
 }
 
 impl Limits {
@@ -156,6 +161,9 @@ impl Limits {
                 "blob_kib_device",
                 Quota::per_minute(100 * 1024, 200 * 1024),
             ),
+            backup_device: Limiter::new("backup_device", Quota::per_minute(10, 20)),
+            backup_restore_ip: Limiter::new("backup_restore_ip", Quota::per_hour(60, 60)),
+            backup_restore_handle: Limiter::new("backup_restore_handle", Quota::per_hour(30, 30)),
         }
     }
 
@@ -190,10 +198,13 @@ impl Limits {
             &mut self.lookup_account,
             &mut self.invite_account,
             &mut self.blob_kib_device,
+            &mut self.backup_device,
+            &mut self.backup_restore_ip,
+            &mut self.backup_restore_handle,
         ]
     }
 
-    fn all(&self) -> [&Limiter; 9] {
+    fn all(&self) -> [&Limiter; 12] {
         [
             &self.connect_ip,
             &self.register_ip,
@@ -204,6 +215,9 @@ impl Limits {
             &self.lookup_account,
             &self.invite_account,
             &self.blob_kib_device,
+            &self.backup_device,
+            &self.backup_restore_ip,
+            &self.backup_restore_handle,
         ]
     }
 

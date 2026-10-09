@@ -47,6 +47,10 @@ storage() {
 
 relay() {
   ensure_app "$RELAY"
+  # The backup vault's master key (ADR 0045). Generated once and never rotated by this script:
+  # losing it makes every password backup unopenable (recovery-key backups don't need it).
+  has_secret "$RELAY" ZOEN_BACKUP_VAULT_KEY \
+    || fly secrets set -a "$RELAY" --stage ZOEN_BACKUP_VAULT_KEY="$(openssl rand -hex 32)" >/dev/null
   (cd ../.. && fly deploy . -c infra/fly/relay.toml --dockerfile infra/fly/relay.Dockerfile -a "$RELAY" --ha=false --remote-only --yes)
   for h in "${HOSTS[@]}"; do fly certs show "$h" -a "$RELAY" >/dev/null 2>&1 || fly certs add "$h" -a "$RELAY" >/dev/null; done
 }

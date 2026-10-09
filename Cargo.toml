@@ -38,6 +38,8 @@ getrandom = "0.2"
 chacha20poly1305 = "0.11.0"
 x25519-dalek = { version = "2", features = ["static_secrets"] }
 hkdf = "0.12"
+curve25519-dalek = { version = "4", features = ["digest"] }
+argon2 = "0.5"
 rusqlite = { version = "0.37", features = ["bundled"] }
 uniffi = "0.32"
 prost = "0.14"
@@ -51,6 +53,12 @@ roda-docs = { path = "crates/roda-docs" }
 roda-mls = { path = "crates/roda-mls", default-features = false }
 zoen-egress = { path = "crates/zoen-egress" }
 zoen-liveview = { path = "crates/zoen-liveview" }
+
+# Backup passwords stretch with Argon2id (64 MiB, ADR 0045): unoptimized it takes seconds.
+[profile.dev.package.argon2]
+opt-level = 3
+[profile.dev.package.blake2]
+opt-level = 3
 
 [profile.release]
 opt-level = 3
