@@ -56,7 +56,7 @@ fun ConversationsScreen(model: ZoenViewModel, state: AppState, navigate: (NavKey
         .sortedByDescending { it.id in pinned || it.counterpart?.handle in pinned }
     val list: @Composable () -> Unit = {
         Scaffold(topBar = { HomeBar(stringResource(R.string.app_name), state, navigate, onStore = { store = true }) }, contentWindowInsets = WindowInsets(0, 0, 0, 0)) { padding ->
-            LazyColumn(Modifier.fillMaxSize().padding(padding), contentPadding = PaddingValues(bottom = 100.dp)) {
+            LazyColumn(Modifier.fillMaxSize().padding(padding).testTag("conversation-list"), contentPadding = PaddingValues(bottom = 100.dp)) {
                 item {
                     OutlinedTextField(query, { query = it }, Modifier.fillMaxWidth().padding(horizontal = 24.dp), singleLine = true, label = { Text(stringResource(R.string.search)) }, leadingIcon = { Icon(Icons.Rounded.Search, null) })
                 }

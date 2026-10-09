@@ -12,6 +12,7 @@ import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
@@ -65,7 +66,7 @@ fun ItemScreen(model: ZoenViewModel, state: AppState, id: String, navigate: (Nav
             item.app != null -> MiniAppScreen(model, state, item, Modifier.padding(padding), onClose = back)
             item.kindId == "page" -> key(id, restored) { xyz.tironi.zoen.pages.RichPageEditor(model, state, item, Modifier.padding(padding)) }
             item.file != null -> FileScreen(model, state, item, Modifier.padding(padding))
-            else -> LazyColumn(Modifier.padding(padding), contentPadding = PaddingValues(24.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+            else -> LazyColumn(Modifier.padding(padding).testTag("plan-lines"), contentPadding = PaddingValues(24.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
                 item {
                     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                         Icon(appIcon(item.kindId), null, Modifier.size(32.dp), tint = MaterialTheme.colorScheme.primary)
@@ -88,7 +89,7 @@ fun ItemScreen(model: ZoenViewModel, state: AppState, id: String, navigate: (Nav
                         items(section.lines, key = { it.id }) { line ->
                             Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow)) {
                                 Row(Modifier.fillMaxWidth().padding(8.dp), verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
-                                    Checkbox(line.done, onCheckedChange = { model.edit { it.togglePlanLine(id, line.id) } })
+                                    Checkbox(line.done, onCheckedChange = { model.edit { it.togglePlanLine(id, line.id) } }, modifier = Modifier.testTag("plan-line:${line.id}"))
                                     Column(Modifier.weight(1f)) { Text(line.text); if (line.costCents > 0) Text(formatMoney(line.costCents, model.repository.locale), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant) }
                                     IconButton(onClick = { lineToEdit = line }) { Icon(Icons.Rounded.Edit, stringResource(R.string.edit)) }
                                 }

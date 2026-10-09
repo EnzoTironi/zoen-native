@@ -48,6 +48,7 @@ class MediaJourneysTest {
         InstrumentationRegistry.getInstrumentation().uiAutomation.grantRuntimePermission(application.packageName, Manifest.permission.RECORD_AUDIO)
         val scenario = open()
         try {
+            compose.onNodeWithTag("conversation-list").performScrollToNode(hasTestTag("chat:zoen"))
             compose.onNodeWithTag("chat:zoen").performClick()
             val space = checkNotNull(application.repository.state.value.zoenChat).id
             val previous = application.repository.state.value.timelines[space].orEmpty().map { it.id }.toSet()
@@ -86,7 +87,7 @@ class MediaJourneysTest {
             val original = try { ByteArrayOutputStream().use { output -> bitmap.compress(Bitmap.CompressFormat.PNG, 100, output); output.toByteArray() } } finally { bitmap.recycle() }
             val name = "markup-${UUID.randomUUID()}.png"
             val item = runBlocking { application.repository.change { it.fileAdd(checkNotNull(application.repository.state.value.zoenChat).id, name, name, "image/png", original, null) } }
-            compose.onNodeWithText(application.getString(R.string.ask_zoen), useUnmergedTree = true).performClick()
+            compose.onNodeWithTag("home-plus").performClick()
             compose.onNodeWithText(application.getString(R.string.files), useUnmergedTree = true).performClick()
             compose.onNodeWithText(item.title, useUnmergedTree = true).performScrollTo().performClick()
             compose.waitUntil(15_000) { compose.onAllNodesWithTag("file-markup", useUnmergedTree = true).fetchSemanticsNodes().isNotEmpty() }

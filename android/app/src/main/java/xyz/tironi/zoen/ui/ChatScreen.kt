@@ -271,7 +271,7 @@ fun ChatScreen(model: ZoenViewModel, state: AppState, spaceId: String, navigate:
             AgentBrowserCard(model.browser, spaceId) { navigate(Browser) }
             Box(Modifier.weight(1f)) {
                 ChatBackdrop(model, space.id, state.revision, Modifier.fillMaxSize())
-                LazyColumn(state = list, modifier = Modifier.fillMaxSize(), contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                LazyColumn(state = list, modifier = Modifier.fillMaxSize().testTag("chat-timeline"), contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
                     items(timeline, key = { it.id }) { entry ->
                         Box(Modifier.testTag("timeline:${entry.id}").background(if (highlight == entry.id) MaterialTheme.colorScheme.secondaryContainer else androidx.compose.ui.graphics.Color.Transparent, RoundedCornerShape(16.dp))) {
                             TimelineRow(model, entry, navigate, onReply = { replyId = entry.id }, onThread = { navigate(Thread(spaceId, entry.id)) }, onQuote = { jumpTo = it })
