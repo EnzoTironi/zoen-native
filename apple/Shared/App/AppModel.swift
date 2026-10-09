@@ -180,7 +180,7 @@ final class AppModel {
         if d.bool(forKey: "RodaFreshStart") {
             try? core.eraseDevice(vault: sync.vault)
             // Pins and their order are per device too: start from the default strip.
-            for k in ["RodaHomePins", "RodaHomeUnpinned", "RodaChatAppsUnpinned", "RodaChatTileOrder"] { d.removeObject(forKey: k) }
+            for k in ["RodaHomePins", "RodaHomeUnpinned", "RodaChatAppsUnpinned", "RodaChatTileOrder", "RodaPendingRevokes"] { d.removeObject(forKey: k) }
             homePins = []; homeUnpinned = []; chatAppsUnpinned = []; chatTileOrder = []
             if SyncModel.mode == .demo { _ = try? core.seedDemoIfEmpty() }
         }
@@ -349,6 +349,7 @@ final class AppModel {
     func revokeStanding(_ s: StandingDecisionDto) {
         let id = s.grantId
         withAnimation(.snappy) { _ = pendingRevokes.insert(id) }
+        savePendingRevokes()
         show(.init(kind: .revoked(grantId: id, agent: s.agent), text: String(localized: "\(s.agent.name) will ask again.")),
              seconds: Self.revokeUndoSeconds)
         revokeTasks[id]?.cancel()
@@ -368,6 +369,7 @@ final class AppModel {
             _ = pendingRevokes.remove(grantId)
             toast = nil
         }
+        savePendingRevokes()
     }
 
     /// Leaving the app (or the window closing) settles any revoke still waiting on its undo.
@@ -380,6 +382,24 @@ final class AppModel {
         guard pendingRevokes.contains(id) else { return }
         _ = perform { try core.revokeStanding(grantId: id) }
         pendingRevokes.remove(id)
+        savePendingRevokes()
+        standing = core.standingDecisions()
+    }
+
+    /// The pending revokes are written down as they happen, so a kill inside the undo window
+    /// still revokes: the next launch applies whatever is left (`applyPendingRevokesFromLastRun`).
+    private static let pendingRevokesKey = "RodaPendingRevokes"
+    private func savePendingRevokes() {
+        UserDefaults.standard.set(Array(pendingRevokes), forKey: Self.pendingRevokesKey)
+    }
+
+    func applyPendingRevokesFromLastRun() {
+        let d = UserDefaults.standard
+        let left = d.stringArray(forKey: Self.pendingRevokesKey) ?? []
+        guard !left.isEmpty else { return }
+        // A grant that is already gone (or a device that was erased) is fine: nothing to do.
+        for id in left where !pendingRevokes.contains(id) { try? core.revokeStanding(grantId: id) }
+        d.set(Array(pendingRevokes), forKey: Self.pendingRevokesKey)
         standing = core.standingDecisions()
     }
 
@@ -601,6 +621,7 @@ final class AppModel {
 
     func applyLaunchOptions() async {
         let d = UserDefaults.standard
+        applyPendingRevokesFromLastRun()
         if let tab = d.string(forKey: "RodaTab") {
             self.tab = switch tab {
             case "atividade", "activity": .activity

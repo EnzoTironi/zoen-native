@@ -118,7 +118,7 @@ struct HikeChatCard: View {
                     Text(h.title).font(.body.weight(.semibold)).foregroundStyle(Palette.textPrimary)
                         .lineLimit(2).minimumScaleFactor(0.9).fixedSize(horizontal: false, vertical: true)
                     Text(h.status).font(.subheadline).foregroundStyle(Palette.textSecondary)
-                        .lineLimit(1).minimumScaleFactor(0.85)
+                        .lineLimit(2).fixedSize(horizontal: false, vertical: true)
                         .contentTransition(.numericText())
                 }
                 .layoutPriority(1)

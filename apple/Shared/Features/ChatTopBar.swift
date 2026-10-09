@@ -125,7 +125,10 @@ struct ChatTopBar: View {
                                 .transition(.push(from: .bottom))
                         }
                     }
+                    // Room for descenders (g, p, y) inside the clip the push transition needs.
+                    .padding(.bottom, 2)
                     .clipped()
+                    .padding(.bottom, -2)
                     .animation(.spring(duration: 0.4, bounce: 0.15), value: status?.id)
                 }
                 .lineLimit(1)
@@ -137,9 +140,12 @@ struct ChatTopBar: View {
                         .foregroundStyle(Palette.textSecondary)
                         .rotationEffect(.degrees(menuOpen ? 180 : 0))
                         .animation(.spring(response: 0.35, dampingFraction: 0.7), value: menuOpen)
-                        .offset(x: 12)
+                        .offset(x: 14)
+                        .accessibilityHidden(true)
                 }
             }
+            // The chevron lives in this gap, clear of the title and the capsule's end.
+            .padding(.trailing, onTitle != nil ? 12 : 0)
             .frame(minWidth: TitleVariant.current == .b ? max(0, (Island.rect?.width ?? 0) - Self.overlap - 8 - 16) : 0, alignment: .leading)
             .padding(.leading, Self.overlap + 8)
             .padding(.trailing, 16)
