@@ -8,6 +8,7 @@
 //! ("s", space, "log", seq)             -> Sequenced (the wire bytes)
 //! ("s", space, "dedupe", author, cid)  -> seq
 //! ("s", space, "m", identity)          -> role
+//! ("s", space, "gone", identity)       -> seq of their removal (until they're added back)
 //! ("i", identity, space)               -> ""            membership by identity
 //! ("inv", code_hash)                   -> (space, role, created_by, expires_ms, max_uses, uses)
 //! ```
@@ -471,12 +472,17 @@ impl Cell {
                         }
                     }
                     self.put_member(trx, space, &identity, role);
+                    trx.clear(&self.space_key(space, ("gone", identity.as_str())));
                     state.members.insert(identity.clone(), role);
                     joined = Some(identity);
                 }
                 Effect::Remove { identity } => {
                     trx.clear(&self.space_key(space, ("m", identity.as_str())));
                     trx.clear(&self.root.pack(&("i", identity.as_str(), space)));
+                    trx.set(
+                        &self.space_key(space, ("gone", identity.as_str())),
+                        &pack(&(seq as i64)),
+                    );
                     state.members.remove(&identity);
                     removed = Some(identity);
                 }
@@ -608,6 +614,24 @@ impl LogStore for FdbLog {
         self.cell
             .db
             .run(|trx, _| async move { self.cell.role_in(&trx, space, who).await })
+            .await
+            .map_err(store_err)
+    }
+
+    async fn removed_at(&self, space: &str, who: &str) -> Result<Option<u64>, StoreError> {
+        let key = self.cell.space_key(space, ("gone", who));
+        self.cell
+            .db
+            .run(|trx, _| {
+                let key = key.clone();
+                async move {
+                    Ok(trx
+                        .get(&key, true)
+                        .await?
+                        .and_then(|v| unpack::<i64>(&v).ok())
+                        .map(|seq| seq as u64))
+                }
+            })
             .await
             .map_err(store_err)
     }
