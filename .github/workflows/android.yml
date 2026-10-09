@@ -2,10 +2,10 @@ name: android
 
 on:
   pull_request:
-    paths: ["android/**", "crates/**", "Cargo.toml", "Cargo.lock", "scripts/build-android-core.sh", "scripts/*android-uniffi-callbacks.py", ".github/workflows/android.yml"]
+    paths: ["android/**", "crates/**", "Cargo.toml", "Cargo.lock", "scripts/build-android-core.sh", "scripts/*android-uniffi-callbacks.py", "scripts/test-android-device.sh", ".github/workflows/android.yml"]
   push:
     branches: [main]
-    paths: ["android/**", "crates/**", "Cargo.toml", "Cargo.lock", "scripts/build-android-core.sh", "scripts/*android-uniffi-callbacks.py", ".github/workflows/android.yml"]
+    paths: ["android/**", "crates/**", "Cargo.toml", "Cargo.lock", "scripts/build-android-core.sh", "scripts/*android-uniffi-callbacks.py", "scripts/test-android-device.sh", ".github/workflows/android.yml"]
 
 permissions:
   contents: read
@@ -76,7 +76,7 @@ jobs:
           arch: x86_64
           disable-animations: true
           working-directory: android
-          script: ./gradlew :app:connectedDebugAndroidTest --max-workers=4 -Pandroid.testInstrumentationRunnerArguments.zoenRelay=http://10.0.2.2:8787
+          script: ../scripts/test-android-device.sh --max-workers=4 -Pandroid.testInstrumentationRunnerArguments.zoenRelay=http://10.0.2.2:8787
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -85,3 +85,4 @@ jobs:
             android/app/build/outputs/apk/debug/*.apk
             android/app/build/reports/
             android/app/build/outputs/androidTest-results/
+            android/app/build/outputs/device-evidence/
