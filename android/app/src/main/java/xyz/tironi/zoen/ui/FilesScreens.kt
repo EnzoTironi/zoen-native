@@ -71,7 +71,7 @@ fun FilesScreen(model: ZoenViewModel, state: AppState, navigate: (NavKey) -> Uni
     Scaffold(topBar = { ScreenBar(state.spaces.firstOrNull { it.id == folder }?.title ?: stringResource(R.string.files), back, actions = {
         IconButton({ add = true }, enabled = state.spaces.isNotEmpty(), modifier = Modifier.testTag("files-add")) { Icon(Icons.Rounded.Add, stringResource(R.string.files_add)) }
     }) }) { padding ->
-        LazyColumn(Modifier.padding(padding).fillMaxSize(), contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        LazyColumn(Modifier.padding(padding).fillMaxSize().testTag("files-list"), contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             item { OutlinedTextField(query, { query = it }, Modifier.fillMaxWidth().testTag("files-search"), singleLine = true, label = { Text(stringResource(R.string.files_search)) }, leadingIcon = { Icon(Icons.Rounded.Search, null) }) }
             if (folder == null) {
                 item { LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) { items(FileScope.entries) { option ->

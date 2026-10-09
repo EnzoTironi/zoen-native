@@ -94,9 +94,8 @@ class MediaJourneysTest {
             val item = runBlocking { application.repository.change { it.fileAdd(checkNotNull(application.repository.state.value.zoenChat).id, name, name, "image/png", original, null) } }
             compose.onNodeWithTag("home-plus").performClick()
             compose.onNodeWithText(application.getString(R.string.files), useUnmergedTree = true).performClick()
-            compose.onNode(hasScrollToIndexAction() and hasAnyDescendant(hasTestTag("files-search")))
-                .performScrollToNode(hasText(item.title))
-            compose.onNodeWithText(item.title, useUnmergedTree = true).performClick()
+            compose.onNodeWithTag("files-list").performScrollToNode(hasText(item.title))
+            compose.onNodeWithText(item.title, useUnmergedTree = true).performScrollTo().assertIsDisplayed().performClick()
             compose.waitUntil(15_000) { compose.onAllNodesWithTag("file-markup", useUnmergedTree = true).fetchSemanticsNodes().isNotEmpty() }
             compose.onNodeWithTag("file-markup", useUnmergedTree = true).performScrollTo().performClick()
             compose.waitUntil(10_000) { compose.onAllNodesWithTag("markup-canvas").fetchSemanticsNodes().isNotEmpty() }
