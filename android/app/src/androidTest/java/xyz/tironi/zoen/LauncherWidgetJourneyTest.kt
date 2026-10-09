@@ -38,6 +38,7 @@ import org.junit.runner.RunWith
 import xyz.tironi.zoen.miniapps.WidgetSnapshot
 import xyz.tironi.zoen.widgets.WidgetConfigurationActivity
 import xyz.tironi.zoen.widgets.ZoenWidgetProvider
+import java.util.Locale
 import java.util.UUID
 
 /** The launcher owns allocation, pin acceptance, configuration, and every RemoteViews interaction. */
@@ -50,6 +51,7 @@ class LauncherWidgetJourneyTest {
     private val trace = JSONArray()
     private var stage = "setup"
     private var launcher = ""
+    private var launcherLocale = Locale.getDefault()
 
     @Test fun launcherPinsOpensReconfiguresAndFeedsTheSameSignedMiniApp() {
         check(BuildConfig.DEBUG) { "This journey requires the separate debug demo database" }
@@ -98,6 +100,7 @@ class LauncherWidgetJourneyTest {
             val homeActivity = checkNotNull(application.packageManager.resolveActivity(homeIntent, PackageManager.MATCH_DEFAULT_ONLY)).activityInfo
             await("The resolved HOME activity is actually foreground") { readUi()?.packageName == homeActivity.packageName }
             launcher = checkNotNull(readUi()?.packageName)
+            launcherLocale = application.packageManager.getResourcesForApplication(launcher).configuration.locales[0]
             assertEquals(homeActivity.packageName, launcher)
             val homePackages = application.packageManager.queryIntentActivities(homeIntent, PackageManager.MATCH_DEFAULT_ONLY).map { it.activityInfo.packageName }.toSet()
             assertTrue("The observed launcher must advertise a HOME activity", launcher in homePackages)
@@ -124,13 +127,28 @@ class LauncherWidgetJourneyTest {
             compose.onNodeWithTag("widget-pin:${initial.id}").performScrollTo().assertIsDisplayed().performTouchInput { click() }
             val addLabels = launcherStrings("add_to_home_screen", "add_to_home_screen_automatically")
             val accept = awaitNode("Launcher pin acceptance button") { node ->
-                node.enabled && node.clickable && (node.text in addLabels || node.id == "android:id/button1")
+                node.packageName == launcher && node.className == "android.widget.Button" && node.enabled && node.clickable && matchesLabel(node.text, addLabels)
             }
             assertEquals("The launcher must own the pin confirmation window", launcher, readUi()?.packageName)
-            assertTrue(awaitNode("Pin preview for the selected Item") { it.id == "${application.packageName}:id/widget_title" && it.text == configuredTitle }.visible)
+            if (Build.VERSION.SDK_INT >= 31) {
+                assertTrue(awaitNode("Pin preview for the selected Item") { it.id == "${application.packageName}:id/widget_title" && it.text == configuredTitle }.visible)
+            } else {
+                // Older Launcher3 renders RemoteViews into a bitmap, without exposing provider text nodes.
+                val cell = awaitNode("Launcher-owned raster widget preview cell") {
+                    it.packageName == launcher && it.id == "$launcher:id/widget_cell" && it.className == "com.android.launcher3.widget.WidgetCell"
+                }
+                val children = cell.descendants().filter { it.visible && it.packageName == launcher }
+                val providerLabel = manager.installedProviders.single { it.provider == provider }.loadLabel(application.packageManager)
+                assertEquals(providerLabel, children.single { it.id == "$launcher:id/widget_name" }.text)
+                val raster = children.single { it.id == "$launcher:id/widget_preview" }
+                assertTrue(raster.className == "android.view.View" || raster.className == "android.widget.ImageView")
+                assertFalse(raster.bounds.isEmpty)
+                assertTrue(cell.bounds.contains(raster.bounds))
+                trace.put(JSONObject().put("pinPreview", "launcher raster").put("provider", provider.flattenToString()).put("cell", cell.toJson()).put("raster", raster.toJson()))
+            }
             capture("01-launcher-pin-dialog")
             // Re-read the exposed target after the preview capture so popup animation cannot stale its bounds.
-            touch(awaitNode("Launcher pin button ready for touch") { it.enabled && it.clickable && it.text == accept.text && it.className == accept.className })
+            touch(awaitNode("Launcher pin button ready for touch") { it.packageName == launcher && it.enabled && it.clickable && it.text == accept.text && it.className == accept.className })
             await("A single launcher-allocated widget ID") { (manager.getAppWidgetIds(provider).toSet() - initialIds).size == 1 }
             createdId = (manager.getAppWidgetIds(provider).toSet() - initialIds).single()
             val widgetId = createdId
@@ -202,7 +220,8 @@ class LauncherWidgetJourneyTest {
             val petWidget = awaitWidget(petTitle)
             assertEquals(bars(beforeSnapshot), petWidget.bars?.text)
             val remoteFeed = checkNotNull(petWidget.actionOne)
-            assertEquals(feed.label, remoteFeed.text)
+            assertTrue("The native Feed label must match the signed snapshot", matchesLabel(remoteFeed.text, setOf(feed.label)))
+            assertEquals(feed.label, remoteFeed.description)
             assertTrue(remoteFeed.enabled && remoteFeed.clickable)
             capture("06-launcher-pet-before-feed")
             touch(remoteFeed)
@@ -283,6 +302,8 @@ class LauncherWidgetJourneyTest {
         val resources = application.packageManager.getResourcesForApplication(launcher)
         return names.mapNotNull { name -> resources.getIdentifier(name, "string", launcher).takeIf { it != 0 }?.let(resources::getString) }.toSet()
     }
+
+    private fun matchesLabel(text: String?, labels: Set<String>) = text != null && labels.any { text.uppercase(launcherLocale) == it.uppercase(launcherLocale) }
 
     private fun await(description: String, ready: () -> Boolean) {
         val until = SystemClock.uptimeMillis() + 10_000
@@ -368,14 +389,14 @@ class LauncherWidgetJourneyTest {
             for (depth in 0 until 12) {
                 val current = checkNotNull(node)
                 trace.put(JSONObject().put("cleanupAncestor", depth).put("class", current.className).put("actions", JSONArray(current.actionList.map { "${it.id}:${it.label}" })))
-                val action = current.actionList.singleOrNull { it.label?.toString() == removeLabel }
+                val action = current.actionList.singleOrNull { matchesLabel(it.label?.toString(), setOf(removeLabel)) }
                 if (action != null) {
                     // Invoke the action advertised by this widget's actual launcher ancestor.
                     assertTrue("Launcher must remove its own selected widget", current.performAction(action.id))
                     return
                 }
                 if (moveNode == null) {
-                    current.actionList.singleOrNull { it.label?.toString() in moveLabels }?.let {
+                    current.actionList.singleOrNull { matchesLabel(it.label?.toString(), moveLabels) }?.let {
                         moveNode = AccessibilityNodeInfo.obtain(current)
                         moveAction = it
                     }
@@ -390,7 +411,7 @@ class LauncherWidgetJourneyTest {
             assertTrue("Launcher must start moving only its own selected widget", checkNotNull(moveNode) { "Launcher exposes neither Remove nor Move for the test widget" }.performAction(checkNotNull(moveAction).id))
         } finally { node?.recycle(); moveNode?.recycle(); root.recycle() }
         val remove = awaitNode("The launcher's Remove drop target for the selected widget") {
-            it.packageName == launcher && it.enabled && it.clickable && (it.text == removeLabel || it.description == removeLabel)
+            it.packageName == launcher && it.enabled && it.clickable && (matchesLabel(it.text, setOf(removeLabel)) || matchesLabel(it.description, setOf(removeLabel)))
         }
         capture("09-launcher-accessible-remove-target")
         touch(awaitNode("Launcher Remove target ready for touch") { it.packageName == launcher && it.enabled && it.clickable && it.text == remove.text && it.description == remove.description && it.className == remove.className })
