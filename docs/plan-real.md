@@ -1,5 +1,9 @@
 # Making Zoen real: the plan
 
+Current implementation and completion gates are tracked in
+[roadmap-status.md](roadmap-status.md). The target is the complete product at one billion
+monthly users. Architecture descriptions below include work that is still planned.
+
 Zoen started as a native app over a seeded demo. This plan turns every surface into the
 real thing: accounts, sync, end-to-end encryption, agents, media, push, a store and a
 deployable server. Each milestone is a vertical slice that ends in an end-to-end journey on
@@ -92,9 +96,10 @@ storage seams. Each unit ends with the full journey suite green.
    staging FoundationDB on Fly; fdb-operator manifests for k8s (ADR 0008, 0011).
    **Encrypted profiles. Done** (slotted in after S3): Signal-style profile keys, sealed
    shares in Space logs, ciphertext-only storage on the relay, rotation on block (ADR 0016).
-4. **S4 ownership. Done.** Rendezvous placement over 4096 partitions, in-process
-   leases with fencing tokens, single node claims every partition at boot; multi-node
-   lease exchange waits on S5 (ADR 0018).
+4. **S4 ownership. Partial.** Rendezvous placement over 4096 partitions and in-process
+   leases with fencing tokens are implemented; each node claims every partition at boot.
+   Shared renewable leases, placement and failover are still required even though the S5
+   fan-out bus has landed (ADR 0018).
 5. **S5 fan-out bus. Done.** `Bus` trait with `LocalBus` and `NatsBus` (pseudonymous
    per-identity subjects, ping presence); two-node journey on NATS plus a no-bus control (ADR 0019).
 6. **S6 abuse controls. Done.** GCRA buckets per device, account and address (connect,
@@ -108,7 +113,8 @@ storage seams. Each unit ends with the full journey suite green.
    and memory from `/proc`; `scripts/bench-load.sh sweep` is the capacity record. Measured:
    37 KiB per connection (was 160), 0.58 ms of relay CPU per message + 45 µs per delivery,
    about 2,500 appends per FoundationDB core, p50 4–6 ms and p99 8–27 ms up to 2,000 msgs/s on
-   one node; 1B users ≈ $470k/month at list prices (ADR 0022).
+   one node. The ≈ $470k/month estimate for 1B users extrapolates those measurements and
+   excludes media and AI; TLS, long soaks and regional failures remain unmeasured (ADR 0022).
 9. **S9 owner-side sequencing. Done.** One in-memory queue and worker per active Space commits
    batches of up to 64 envelopes in one transaction behind a head-validated cache (members,
    kind, recent hashes); the head read stays the fence, so two relays on one Space stay correct.
@@ -129,7 +135,7 @@ storage seams. Each unit ends with the full journey suite green.
 | S3 FoundationDB log store | done | `log_store.rs` (5 contract tests on real FDB), all journeys on FDB, `log_bench` numbers in ADR 0008, journey-sim on protocol v2 |
 | S2 sortable ids | done | `roda-types` `ids_sort_by_creation_and_carry_their_time`, ADR 0017 |
 | Encrypted profiles | done | `journey_profiles.rs` (contact reads bio and photo, stranger sees the handle, Postgres holds only ciphertext, live change event, group join, block rotation, unblock), ADR 0016, docs/api-profile.md |
-| S4 space ownership | done | `ownership::` rendezvous + fencing tests, ADR 0018 |
+| S4 space ownership | in-process implementation; distributed handoff pending | `ownership::` rendezvous + fencing tests, `NodeOwner::claim_all`, ADR 0018 |
 | S5 fan-out bus | done | `journey_cluster` (2 relays over NATS + control), ADR 0019 |
 | S6 abuse controls | done | `journey_limits` (fast sender loses nothing, flood, caps), ADR 0020 |
 | S7 telemetry | done | `journey_telemetry` (two nodes, cross-node trace, 18 secrets absent from OTLP bytes and debug stdout), real otelcol-contrib run in roda-shots/real-s7, ADR 0021 |
@@ -141,7 +147,9 @@ storage seams. Each unit ends with the full journey suite green.
 | M2 removal | done | `journey_m2::a_removed_member_reads_nothing_after_removal`, `a_removed_device_forgets_the_group_and_can_be_added_back`, ADR 0026 (Removal) |
 | M2 concurrent commits | done | `two_admins_online_make_one_commit_for_a_newcomer`, `admins_adding_at_once_under_a_publish_limit_converge`, `one_commit_per_epoch_and_each_welcome_follows_its_commit`, ADR 0026 |
 | M2 key package top-up | done | `key_packages_refill_when_they_run_low`, ADR 0026 |
-| M2 rest, M3, M5, M6, M7 | planned below | |
+| M2 linking/recovery | in open PRs 33 and 34; native UI pending | ADR 0045 on each branch; integrate with unique numbering and green journeys |
+| M3, M5, M6 | planned; agent sandbox components already exist | `zoen-agentd` tool modules are not yet a durable MLS/model runtime |
+| M7 | relay deployment exists; whole-stack deployment pending | local/staging infrastructure; agent and push integration remain |
 
 ## M1. Relay, real accounts, sync
 
@@ -374,8 +382,9 @@ Designed and built after those:
 ## Needs Enzo
 
 ### Activates when the Apple developer account exists
-Enzo has no Apple developer account yet. Nothing waits on it: every milestone is proven in
-the simulator, and these pieces are built and gated off until the account exists.
+Real-device capabilities need a configured Apple developer team and credentials. Build and
+prove the local protocol and simulator paths first; enable the corresponding live checks
+when those capabilities are available.
 - Team ID: fills the `apple-app-site-association` file the relay already serves at
   `id.tryzoen.com` (404 until then, by design) and turns on passkey login and universal
   links. Until then, login is the device-held identity and device keys (ADR 0003).
@@ -390,8 +399,7 @@ the simulator, and these pieces are built and gated off until the account exists
 - The domain tryzoen.com is in place (Cloudflare DNS, ADR 0015).
 - Hosting with a card on file if the free tiers we try can't host Postgres plus the relay.
 - A model provider key for live agent runs (M3).
-- GitHub Actions billing: the repository is private and GitHub refuses to start jobs
-  ("recent account payments have failed or your spending limit needs to be increased").
-  `.github/workflows/ci.yml` is in place and runs the moment billing is fixed in
-  Settings → Billing & plans (the free 2,000 Linux minutes a month are enough) or the
-  repository goes public. Until then the same steps run on the box before every push.
+- GitHub Actions runs on the public repository; use current PR checks to establish CI
+  status. The earlier private-repository billing blocker no longer applies.
+- Production database backups and scheduled restore drills remain an operations gate:
+  measure RPO/RTO by restoring into a scratch cluster and alert when restoration fails.

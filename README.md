@@ -4,7 +4,11 @@
 
 > © 2026 Enzo Tironi. All rights reserved. Public for viewing only, not open source: see [LICENSE](LICENSE).
 
-The first working prototype of **Zoen**: the "week 4 demo" from the plan in [`docs/repensado.md`](docs/repensado.md), cut down to what can be built solidly now. A **Rust core** (the 5 primitives + a signed log) sits under a **100% SwiftUI** app for **iPhone and Mac**, with real Liquid Glass.
+**Zoen** combines a Rust core with a native SwiftUI app for iPhone and Mac. Real accounts,
+encrypted conversations and relay sync have replaced the original local-only prototype.
+The target is the complete product at one billion monthly users. See the
+[current roadmap and completion gates](docs/roadmap-status.md) for what is implemented,
+what is in open PRs and what still needs proof.
 
 The app and its built-in agent share one name, **Zoen**, the way Wabi's agent is called Wabi; the green furball mascot is Zoen's face. (The project started as "Roda": internal names such as the `roda-*` Rust crates, the `RodaCore` Swift package and the `-Roda…` launch flags keep that name for now, to avoid churn.)
 
@@ -73,7 +77,7 @@ The screens follow the original concept (the 133 reference posters), redrawn in 
   - All UI strings live in a String Catalog (`apple/Shared/Resources/Localizable.xcstrings`), English source + full pt-BR, with plural variants.
   - The Rust core speaks the device language too: demo data, agent messages, mini-app text, event labels and errors.
   - Money is formatted by locale (`$1,348` / `R$ 1.348`), and MCP Views get the locale in `hostContext`.
-  - Switching the device language restarts the demo story in that language. The database only ever holds the demo.
+  - Demo mode restarts its story when the language changes. Normal installs use real accounts and conversations; demo data is enabled explicitly with `-RodaDemo` or a `-RodaStory` launch flag.
 - **Mobile-first:** the iPhone is the design target.
   - Everything that matters is within thumb reach (the floating bar at the bottom, the fan opening above the thumb from the bottom-right +), respecting safe areas.
   - Screens were checked on the iPhone 17 Pro, on the smallest simulator installed (iPhone 17e) and with large accessibility text (AX-L).
@@ -91,21 +95,21 @@ The screens follow the original concept (the 133 reference posters), redrawn in 
 
 | Area | Status |
 |---|---|
-| Network (Zoen Sync), multi-device, offline/sync | **Doesn't exist yet.** Everything is local. The log already has `seq`/`prev`/signatures so the relay can take over ordering later. |
-| MLS / E2EE | **Not implemented.** The "End-to-end" pill shows the Space's *policy*; there's no encryption yet. |
+| Network (Zoen Sync), multi-device, offline/sync | Real relay sync, accounts, durable outbox and cursor catch-up exist. Device linking and encrypted history transfer are in PR 33; recovery is in PR 34. Native linking/recovery UI remains unfinished. |
+| MLS / E2EE | OpenMLS encrypts DMs and groups by default. Journeys check membership changes, concurrent commits, ciphertext-only relay storage and pruning. See ADRs 0026–0027. |
 | Marina, Lucas, Ana and their agents | **Simulated peers**: their keys were generated on this device for the demo. In the product, their events would arrive signed by their devices. |
 | Mini-apps: other members | In the demos, Marina's, Lucas's and Ana's mini-app actions and messages are **simulated** as if they came through sync. The donkey's "Emotes" only animate locally. There's no remote MCP transport: the MCP server is local, inside the core. Wabi's Book club, Trip, Bills, School and Live music don't exist yet. |
 | Approved payments and messages | **Simulated**: approving marks the plan line and the agent says "Simulated — no real payment or message". |
-| Private key | Stored in local SQLite (unencrypted). In the product: passkey + PRF and the Secure Enclave. |
-| Items | Whole version per event (simple). In the product: **Loro** (CRDT) with branches. |
+| Private key | The native account uses Keychain-backed identity storage; MLS device state is sealed. Passkey recovery and key transparency remain planned. |
+| Items | File and page editors use Loro documents. Full cross-device agent editing, memory/search and permission workflows remain roadmap gates. |
 | Communities › Discover / Create, Network | Shown only as a phase note: there's no public directory or moderation yet. "Yours" shows the demo's real groups. |
-| New chat, New group | Shown disabled ("soon"): the core doesn't expose Space creation to the UI yet. |
+| New chat, New group | Real account lookup and Space creation exist in the native app and CLI. Demo stories still use simulated peers. |
 | Permissions › who can trigger / history | Autonomy and tools are real (core); "who can trigger" shows the prototype's fixed rules. |
 | Invite | Creates a signed Grant and a link, but the invite web page/App Clip doesn't exist yet. |
 | Inline camera | The preview and shutter are real on an iPhone; **sending the photo isn't built yet** (it stays on the device and a toast says so). The Simulator has no camera, so the panel shows the mascot instead. |
 | Onboarding › location | **Stored preference only.** Zoen doesn't request location yet; it would ask iOS the first time a plan needs it. |
-| Onboarding › notifications | The iOS permission prompt is real; Zoen doesn't send push notifications yet (there's no server). |
-| Live, attachments, voice, Face ID, Live Activities | Out of scope for this cut. |
+| Onboarding › notifications | The iOS permission prompt is real; APNs delivery and the encrypted notification extension are still M5 work. |
+| Live, attachments, voice, Face ID, Live Activities | Voice recording/playback has a local path; remote photo/voice delivery and the remaining platform flows still need implementation and journeys. |
 | Product docs | `docs/repensado.md` and `docs/telas-referencia.md` are still in Portuguese. |
 
 ## Layout
