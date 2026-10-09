@@ -23,8 +23,9 @@ final class ChatReadingJourneyTests: XCTestCase {
     @MainActor
     func testReadingHistoryKeepsYourPlaceAndPillJumpsToNew() {
         let app = launch(fast: false)
-        let composer = app.textViews.firstMatch.exists ? app.textViews.firstMatch : app.textFields.firstMatch
-        XCTAssertTrue(composer.waitForExistence(timeout: 25), "the group chat opens")
+        let deadline = Date().addingTimeInterval(25)
+        while !(app.textViews.firstMatch.exists || app.textFields.firstMatch.exists), Date() < deadline { usleep(300_000) }
+        XCTAssertTrue(app.textViews.firstMatch.exists || app.textFields.firstMatch.exists, "the group chat opens")
         sleep(1)
         // Scroll back through the history, like reading an earlier part of the conversation.
         app.swipeDown(velocity: .slow)
