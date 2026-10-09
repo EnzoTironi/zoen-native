@@ -1046,7 +1046,6 @@ impl Engine {
             .space_order
             .iter()
             .filter_map(|id| self.space_summary(id).ok())
-            .filter(|s| s.kind != SpaceKindDto::Community || !s.members.is_empty() || true)
             .collect();
         out.sort_by_key(|s| std::cmp::Reverse(s.last_at_ms));
         out
