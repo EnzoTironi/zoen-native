@@ -11,7 +11,8 @@ final class ChatReadingJourneyTests: XCTestCase {
         app.launchArguments = ["-RodaDemo", "YES", "-RodaFreshStart", "YES", "-RodaResetDemo", "YES",
                                "-AppleLanguages", "(pt-BR)", "-RodaAppearance", "light",
                                "-RodaApprovalsExplained", "YES", "-RodaStory", "incoming",
-                               "-RodaIncomingFast", fast ? "YES" : "NO"]
+                               "-RodaIncomingFast", fast ? "YES" : "NO",
+                               "-RodaIncomingManual", fast ? "NO" : "YES"]
         app.launch()
         return app
     }
@@ -35,14 +36,18 @@ final class ChatReadingJourneyTests: XCTestCase {
         XCTAssertTrue(app.textViews.firstMatch.exists || app.textFields.firstMatch.exists, "the group chat opens")
         sleep(1)
         // Scroll back through the history, like reading an earlier part of the conversation.
-        app.swipeDown(velocity: .slow)
-        app.swipeDown(velocity: .slow)
+        let start = app.coordinate(withNormalizedOffset: CGVector(dx: 0.95, dy: 0.35))
+        let end = app.coordinate(withNormalizedOffset: CGVector(dx: 0.95, dy: 0.78))
+        start.press(forDuration: 0.05, thenDragTo: end)
+        start.press(forDuration: 0.05, thenDragTo: end)
         sleep(1)
         let anchor = app.staticTexts.allElementsBoundByIndex.first { $0.isHittable && $0.frame.minY > 220 && $0.label.count > 12 }
         XCTAssertNotNil(anchor, "a message is on screen while reading")
         let label = anchor!.label
         let before = anchor!.frame.minY
+        XCTAssertFalse(text(app, "guarda um lugar").exists, "incoming messages are held until after scrolling")
         capture("Reading history before new messages")
+        app.buttons["demo-incoming-trigger"].tap()
 
         let pill = app.buttons["new-messages-pill"]
         XCTAssertTrue(pill.waitForExistence(timeout: 20), "new messages wait behind a capsule")

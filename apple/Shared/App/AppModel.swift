@@ -946,6 +946,16 @@ final class AppModel {
     }
     #endif
 
+    func receiveIncomingStoryMessages() async {
+        guard SyncModel.mode == .demo,
+              let turma = spaceId(titled: DemoSpace.saturdayCrew) else { return }
+        perform { try core.demoMemberSay(spaceId: turma, memberHandle: "marina",
+                                         text: AppLocale.pick("chegando em 10 min", "there in 10 min")) }
+        try? await Task.sleep(for: .milliseconds(600))
+        perform { try core.demoMemberSay(spaceId: turma, memberHandle: "lucas",
+                                         text: AppLocale.pick("guarda um lugar pra mim", "save me a seat")) }
+    }
+
     func runStory(_ story: String) async {
         guard let turma = spaceId(titled: DemoSpace.saturdayCrew) else { return }
         func wait(_ s: Double) async { try? await Task.sleep(for: .seconds(s)) }
@@ -969,10 +979,9 @@ final class AppModel {
         // `incoming`: two friends write while you're reading further up (journey for the
         // "novas mensagens" pill: the chat must keep your place).
         case "incoming":
+            if d("RodaIncomingManual") { return }
             await wait(d("RodaIncomingFast") ? 2 : 5)
-            say("marina", AppLocale.pick("chegando em 10 min", "there in 10 min"))
-            await wait(0.6)
-            say("lucas", AppLocale.pick("guarda um lugar pra mim", "save me a seat"))
+            await receiveIncomingStoryMessages()
         case let s where s.hasPrefix("pet"):
             await send(AppLocale.pick("e se a gente adotasse um jumento pro grupo?", "what if we adopted a donkey for the group?"), in: turma)
             guard let pet = app("pet") else { return }

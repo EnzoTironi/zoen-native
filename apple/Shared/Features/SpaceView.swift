@@ -25,6 +25,9 @@ struct SpaceView: View {
     /// Set by `reload()` for the next scroll decision: did *I* just send something?
     @State private var appendedMine = false
     @State private var appendedOthers = 0
+    #if DEBUG
+    @State private var demoIncomingSent = false
+    #endif
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     /// Top of the composer bar, in global coordinates (the message fade ends there).
     @State private var composerTop: CGFloat = .infinity
@@ -231,6 +234,22 @@ struct SpaceView: View {
                 guard id == spaceId else { return }
                 followOrCount(1, proxy: proxy)
             }
+            #if DEBUG
+            .overlay(alignment: .topTrailing) {
+                if SyncModel.mode == .demo,
+                   UserDefaults.standard.bool(forKey: "RodaIncomingManual"),
+                   !demoIncomingSent {
+                    Button("Receive demo messages") {
+                        demoIncomingSent = true
+                        Task { await model.receiveIncomingStoryMessages() }
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .accessibilityIdentifier("demo-incoming-trigger")
+                    .padding(.top, chromeHeight + 8)
+                    .padding(.trailing, 14)
+                }
+            }
+            #endif
             .onDisappear { model.sync.stoppedTyping(spaceId) }
             .onChange(of: entries.count) { old, _ in
                 // Investor shots: `-RodaChatScrollTop` keeps the pin strip framed (don't jump to bottom).
