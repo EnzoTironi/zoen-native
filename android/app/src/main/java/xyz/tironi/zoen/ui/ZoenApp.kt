@@ -2,6 +2,8 @@ package xyz.tironi.zoen.ui
 
 import android.net.Uri
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.Chat
 import androidx.compose.material.icons.rounded.*
@@ -11,6 +13,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -180,20 +183,22 @@ fun ZoenApp(model: ZoenViewModel, deepLink: String?, consumed: () -> Unit) {
             }
         }
         if (quickActions) ModalBottomSheet(onDismissRequest = { quickActions = false }) {
-            Text(stringResource(R.string.app_name), Modifier.padding(horizontal = 24.dp, vertical = 8.dp), style = MaterialTheme.typography.headlineMedium)
-            val actions = listOf(
-                Triple(Icons.Rounded.AutoAwesome, R.string.ask_zoen, state.zoenChat?.let { Chat(it.id) }),
-                Triple(Icons.AutoMirrored.Rounded.Chat, R.string.new_chat, NewChat),
-                Triple(Icons.Rounded.GroupAdd, R.string.new_space, NewSpace),
-                Triple(Icons.Rounded.SmartToy, R.string.agents, Agents),
-                Triple(Icons.Rounded.FolderOpen, R.string.files, Files),
-                Triple(Icons.Rounded.PersonOutline, R.string.context, Context),
-                Triple(Icons.Rounded.Widgets, R.string.widgets, Widgets),
-            )
-            actions.forEach { (icon, label, route) ->
-                if (route != null) SettingsRow(icon, stringResource(label), onClick = { quickActions = false; navigate(route) })
+            Column(Modifier.fillMaxWidth().weight(1f, fill = false).verticalScroll(rememberScrollState()).testTag("quickActions")) {
+                Text(stringResource(R.string.app_name), Modifier.padding(horizontal = 24.dp, vertical = 8.dp), style = MaterialTheme.typography.headlineMedium)
+                val actions = listOf(
+                    Triple(Icons.Rounded.AutoAwesome, R.string.ask_zoen, state.zoenChat?.let { Chat(it.id) }),
+                    Triple(Icons.AutoMirrored.Rounded.Chat, R.string.new_chat, NewChat),
+                    Triple(Icons.Rounded.GroupAdd, R.string.new_space, NewSpace),
+                    Triple(Icons.Rounded.SmartToy, R.string.agents, Agents),
+                    Triple(Icons.Rounded.FolderOpen, R.string.files, Files),
+                    Triple(Icons.Rounded.PersonOutline, R.string.context, Context),
+                    Triple(Icons.Rounded.Widgets, R.string.widgets, Widgets),
+                )
+                actions.forEach { (icon, label, route) ->
+                    if (route != null) SettingsRow(icon, stringResource(label), onClick = { quickActions = false; navigate(route) })
+                }
+                Spacer(Modifier.height(24.dp))
             }
-            Spacer(Modifier.height(24.dp))
         }
     }
 }
