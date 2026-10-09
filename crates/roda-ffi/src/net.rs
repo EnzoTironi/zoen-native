@@ -1074,6 +1074,7 @@ mod tests {
 
     #[tokio::test(flavor = "current_thread")]
     async fn a_control_notice_is_dispatched_between_slow_maintenance_passes() {
+        let _ = rustls::crypto::ring::default_provider().install_default();
         let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
         listener.set_nonblocking(true).unwrap();
         let url = format!("ws://{}", listener.local_addr().unwrap());
