@@ -53,6 +53,11 @@ pub enum Effect {
         epoch: u64,
         device: String,
     },
+    /// A member device holds everything up to `upto` (ADR 0026: what pruning waits on).
+    Checkpoint {
+        device: String,
+        upto: u64,
+    },
     Nothing,
 }
 
@@ -156,7 +161,10 @@ pub fn admit(env: &Envelope, f: &Facts) -> Result<Effect, Reject> {
                     "checkpoint names a history this relay doesn't have",
                 ));
             }
-            Effect::Nothing
+            Effect::Checkpoint {
+                device: env.device().unwrap_or_default().to_string(),
+                upto: upto.seq,
+            }
         }
         (Some(_), _) => match f.author_role {
             None => return Err(Reject::no("not a member of this space")),
@@ -190,6 +198,12 @@ fn check_handshake(env: &Envelope, f: &Facts) -> Result<Option<Effect>, Reject> 
             }
             Ok(Some(Effect::Commit { epoch, device }))
         }
+        SealedKind::Application => match (&f.mls, roda_mls::application_epoch(data)) {
+            (Some((current, _)), Some(epoch)) if epoch != *current => {
+                Err(Reject::no(roda_proto::STALE_SEAL))
+            }
+            _ => Ok(None),
+        },
         SealedKind::Welcome => match &f.mls {
             Some((_, by)) if *by == device => Ok(None),
             _ => Err(Reject::no("a welcome follows its own commit")),
@@ -433,7 +447,10 @@ mod tests {
         // Readers are group members too, so they checkpoint.
         assert_eq!(
             admit(&env(&a, seen.clone(), checkpoint(2, "h2")), &at(Some("h2"))).unwrap(),
-            Effect::Nothing
+            Effect::Checkpoint {
+                device: String::new(),
+                upto: 2
+            }
         );
         for (body, facts) in [
             (checkpoint(2, "h2"), at(Some("other"))),

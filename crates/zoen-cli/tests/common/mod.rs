@@ -55,6 +55,7 @@ pub struct World {
     pub port: u16,
     pub nats: Option<String>,
     relay_env: Vec<(String, String)>,
+    client_env: Vec<(String, String)>,
     relay: Option<Child>,
     nodes: Vec<Child>,
 }
@@ -98,6 +99,7 @@ impl World {
                 .iter()
                 .map(|(k, v)| (k.to_string(), v.to_string()))
                 .collect(),
+            client_env: Vec::new(),
             relay: None,
             nodes: Vec::new(),
         };
@@ -182,8 +184,14 @@ impl World {
         c.arg("--home")
             .arg(self.dir.join(who))
             .args(args)
-            .env("ZOEN_RELAY", format!("http://127.0.0.1:{port}"));
+            .env("ZOEN_RELAY", format!("http://127.0.0.1:{port}"))
+            .envs(self.client_env.iter().map(|(k, v)| (k, v)));
         c
+    }
+
+    /// Environment every `zoen` of this world runs with (e.g. `ZOEN_CHECKPOINT_EVERY`).
+    pub fn set_client_env(&mut self, key: &str, value: &str) {
+        self.client_env.push((key.to_string(), value.to_string()));
     }
 
     /// Runs `zoen` as `who` against the relay node on `port`.

@@ -78,6 +78,15 @@ pub fn commit_epoch(data: &[u8]) -> Option<u64> {
     (msg.content_type() == ContentType::Commit).then(|| msg.epoch().as_u64())
 }
 
+/// The epoch an application message was sealed at, from its clear framing. `None` for
+/// anything else. The relay refuses one sealed at an epoch the group has left: members
+/// keep no past epochs, so nobody could open it.
+pub fn application_epoch(data: &[u8]) -> Option<u64> {
+    let msg = MlsMessageIn::tls_deserialize_exact(data).ok()?;
+    let msg = msg.try_into_protocol_message().ok()?;
+    (msg.content_type() == ContentType::Application).then(|| msg.epoch().as_u64())
+}
+
 pub(crate) fn validate_key_package(
     crypto: &RustCrypto,
     bytes: &[u8],
