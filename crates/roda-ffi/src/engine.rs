@@ -382,7 +382,9 @@ impl State {
             EventBody::UsageRecorded { agent, cents, .. } => {
                 self.usage.push((agent.clone(), *cents, e.at_ms));
             }
-            EventBody::ProfileKeyShared { .. } | EventBody::Unsupported { .. } => {}
+            EventBody::ProfileKeyShared { .. }
+            | EventBody::Checkpoint { .. }
+            | EventBody::Unsupported { .. } => {}
         }
     }
 }
@@ -2915,6 +2917,12 @@ fn event_label(b: &EventBody) -> String {
             "Profile key shared with {}",
             shares.len()
         ),
+        EventBody::Checkpoint { epoch, .. } => {
+            tr!(
+                "Ponto de verificação: época {epoch}",
+                "Checkpoint: epoch {epoch}"
+            )
+        }
         EventBody::Unsupported { kind } => tr!(
             "Evento de uma versão mais nova: {kind}",
             "Event from a newer version: {kind}"

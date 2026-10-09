@@ -167,6 +167,32 @@ impl Author {
             sealed_wire: None,
         }
     }
+
+    /// Signs MLS ciphertext for `space` (ADR 0026). The relay sees the framing (kind,
+    /// suite, author, device, `seen`) and orders it; the event inside is MLS's to open.
+    /// Returns the content bytes and the signature over their hash.
+    pub fn sign_sealed(
+        &self,
+        space: &str,
+        client_id: &str,
+        at_ms: i64,
+        seen: Option<&Seen>,
+        sealed: content::Sealed,
+    ) -> (Vec<u8>, String) {
+        let content = SignedContent {
+            v: EVENT_FORMAT as u32,
+            space: space.to_string(),
+            client_id: client_id.to_string(),
+            author: self.identity.clone(),
+            device: self.device.clone(),
+            at_ms,
+            seen: seen.map(Into::into),
+            payload: Some(Payload::Sealed(sealed)),
+        }
+        .encode();
+        let sig = self.key.sign(content::content_hash(&content).as_bytes());
+        (content, sig)
+    }
 }
 
 /// Rebuilds an event from what traveled: the author's exact bytes, the signature and

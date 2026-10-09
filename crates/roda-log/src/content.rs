@@ -87,6 +87,16 @@ pub enum SealedKind {
     Welcome = 3,
 }
 
+impl Sealed {
+    pub fn new(kind: SealedKind, suite: u32, data: Vec<u8>) -> Self {
+        Self {
+            kind: kind as i32,
+            suite,
+            data,
+        }
+    }
+}
+
 impl From<&Seen> for SeenLink {
     fn from(s: &Seen) -> Self {
         SeenLink {

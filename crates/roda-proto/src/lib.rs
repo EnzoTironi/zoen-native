@@ -25,7 +25,8 @@
 pub mod wire;
 
 use roda_log::content::{content_hash, decode_body, Payload, SignedContent};
-use roda_log::{event_from_content, verify_author, verify_sig, LogError};
+pub use roda_log::content::{Sealed, SealedKind};
+use roda_log::{event_from_content, verify_author, verify_sig, Author, LogError};
 use roda_types::{Event, EventBody, Identity, IdentityId, Role, Seen, SpaceId};
 
 pub use roda_log::profile::DeviceSigned;
@@ -83,6 +84,30 @@ impl Envelope {
             .expect("events carry v3 content")
     }
 
+    /// Wraps MLS ciphertext signed by `author`'s device.
+    pub fn sealed(
+        author: &Author,
+        space: &str,
+        client_id: &str,
+        at_ms: i64,
+        seen: Option<&Seen>,
+        sealed: Sealed,
+    ) -> Self {
+        let (content, sig) = author.sign_sealed(space, client_id, at_ms, seen, sealed);
+        Self::new(content, sig, author.cert.clone(), None).expect("sealed content parses")
+    }
+
+    /// The MLS bytes and their kind, for envelopes MLS opens.
+    pub fn sealed_data(&self) -> Option<(SealedKind, &[u8])> {
+        match &self.parsed.payload {
+            Some(Payload::Sealed(s)) => Some((
+                SealedKind::try_from(s.kind).unwrap_or(SealedKind::Unspecified),
+                &s.data,
+            )),
+            _ => None,
+        }
+    }
+
     pub fn content(&self) -> &[u8] {
         &self.content
     }
@@ -113,6 +138,11 @@ impl Envelope {
 
     pub fn is_sealed(&self) -> bool {
         matches!(self.parsed.payload, Some(Payload::Sealed(_)))
+    }
+
+    /// What a sealed envelope carries, from its clear framing (`None` when plain).
+    pub fn sealed_kind(&self) -> Option<SealedKind> {
+        self.sealed_data().map(|(kind, _)| kind)
     }
 
     /// The body, for envelopes the relay may read (`None` when sealed).

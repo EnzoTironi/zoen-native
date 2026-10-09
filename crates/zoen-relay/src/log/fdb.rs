@@ -35,7 +35,7 @@ use foundationdb::{
 use futures_util::future::{try_join3, try_join_all};
 use roda_log::chain_hash;
 use roda_proto::{Envelope, InviteCreated, Sequenced};
-use roda_types::{EventBody, Role, SpaceKind, GENESIS_PREV};
+use roda_types::{EventBody, Privacy, Role, SpaceKind, GENESIS_PREV};
 use sha2::{Digest, Sha256};
 use std::{
     collections::{BTreeMap, HashMap},
@@ -68,6 +68,7 @@ struct Cell {
 struct SpaceState {
     head: Option<(u64, String)>,
     kind: Option<SpaceKind>,
+    privacy: Option<Privacy>,
     members: BTreeMap<String, Role>,
     /// Hashes of the newest entries, by seq, so `seen` checks need no read.
     recent: BTreeMap<u64, String>,
@@ -75,6 +76,15 @@ struct SpaceState {
 
 /// Recent hashes kept per Space. Clients mostly cite the newest entries they saw.
 const RECENT: usize = 1024;
+
+/// The seqs an envelope's admission needs the chain hash of.
+fn cited(env: &Envelope) -> impl Iterator<Item = u64> {
+    let upto = match env.body() {
+        Some(EventBody::Checkpoint { upto, .. }) => Some(upto.seq),
+        _ => None,
+    };
+    env.seen().map(|s| s.seq).into_iter().chain(upto)
+}
 
 impl SpaceState {
     fn advance(&mut self, seq: u64, hash: &str) {
@@ -261,9 +271,10 @@ impl Cell {
             return Ok(state);
         };
         if let Some(meta) = trx.get(&self.space_key(space, "meta"), true).await? {
-            let (kind, _, _): (String, String, String) =
+            let (kind, privacy, _): (String, String, String) =
                 unpack(&meta).map_err(|e| custom(e.to_string()))?;
             state.kind = parse(&kind);
+            state.privacy = parse(&privacy);
         }
         state.members = self
             .members_in(trx, space, true)
@@ -323,11 +334,12 @@ impl Cell {
             _ => self.load(trx, space, head.clone()).await?,
         };
 
-        // `seen` hashes older than the cache keeps, fetched together.
+        // Chain hashes the batch cites (`seen`, a checkpoint's `upto`) older than the cache
+        // keeps, fetched together.
         let committed = head.as_ref().map(|(seq, _)| *seq);
         let mut old_seen: Vec<u64> = batch
             .iter()
-            .filter_map(|p| p.env.seen().map(|s| s.seq))
+            .flat_map(|p| cited(&p.env))
             .filter(|seq| committed.is_some_and(|h| *seq <= h) && !state.recent.contains_key(seq))
             .collect();
         old_seen.sort_unstable();
@@ -388,13 +400,23 @@ impl Cell {
                 facts.author_role = state.members.get(env.author()).copied();
                 facts.target_role = target.and_then(|t| state.members.get(&t).copied());
                 facts.member_count = state.members.len() as u32;
-                facts.seen_hash = env.seen().filter(|s| s.seq <= *h).and_then(|s| {
-                    state
-                        .recent
-                        .get(&s.seq)
-                        .or_else(|| old_hashes.get(&s.seq))
-                        .cloned()
-                });
+                facts.privacy = state.privacy;
+                let hash_at = |seq: u64| {
+                    (seq <= *h)
+                        .then(|| {
+                            state
+                                .recent
+                                .get(&seq)
+                                .or_else(|| old_hashes.get(&seq))
+                                .cloned()
+                        })
+                        .flatten()
+                };
+                facts.seen_hash = env.seen().and_then(|s| hash_at(s.seq));
+                facts.upto_hash = match env.body() {
+                    Some(EventBody::Checkpoint { upto, .. }) => hash_at(upto.seq),
+                    _ => None,
+                };
             }
             let effect = match admit(env, &facts) {
                 Ok(e) => e,
@@ -430,6 +452,7 @@ impl Cell {
                         &pack(&(word(&kind), word(&privacy), env.author())),
                     );
                     state.kind = Some(kind);
+                    state.privacy = Some(privacy);
                     self.put_member(trx, space, env.author(), Role::Owner);
                     state.members.insert(env.author().to_string(), Role::Owner);
                 }

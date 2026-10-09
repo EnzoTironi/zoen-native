@@ -426,6 +426,16 @@ pub enum EventBody {
         version: u64,
         shares: Vec<ProfileKeyShare>,
     },
+    /// A member's statement about an end-to-end Space (ADR 0026): having applied the log
+    /// through `upto`, its MLS group is at `epoch`, and `digest` is SHA-256 over a tag, the
+    /// group id, the epoch and the epoch authenticator. Only members of that exact group can
+    /// compute it, so members who were shown different groups (a forked relay) disagree in
+    /// public. The relay checks `upto` is on its chain and keeps the newest per member.
+    Checkpoint {
+        upto: Seen,
+        epoch: u64,
+        digest: String,
+    },
     /// A kind this build doesn't know yet (a newer client wrote it). The signed bytes are
     /// kept verbatim, so the event still verifies, syncs and chains; it just isn't shown.
     Unsupported {
