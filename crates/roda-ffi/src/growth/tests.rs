@@ -6,7 +6,7 @@ use std::{
     io::{Read, Write},
     net::{TcpListener, TcpStream},
     sync::{
-        atomic::{AtomicBool, AtomicUsize, Ordering},
+        atomic::{AtomicBool, Ordering},
         mpsc, Arc, Mutex,
     },
     thread,
@@ -44,7 +44,7 @@ struct CapturedReport {
 }
 
 struct RelayState {
-    refused: AtomicUsize,
+    refuse_next_report: AtomicBool,
     reports: Mutex<Vec<CapturedReport>>,
     hold: Mutex<Option<Hold>>,
 }
@@ -58,11 +58,11 @@ struct HttpRelay {
 }
 
 impl HttpRelay {
-    fn new(refusals: usize) -> Self {
+    fn new(refuse_next_report: bool) -> Self {
         let listener = TcpListener::bind("127.0.0.1:0").unwrap();
         let url = format!("http://{}", listener.local_addr().unwrap());
         let state = Arc::new(RelayState {
-            refused: AtomicUsize::new(refusals),
+            refuse_next_report: AtomicBool::new(refuse_next_report),
             reports: Mutex::new(Vec::new()),
             hold: Mutex::new(None),
         });
@@ -136,11 +136,8 @@ impl HttpRelay {
                         report: serde_json::from_slice(body).unwrap(),
                     });
                     let refused = worker_state
-                        .refused
-                        .fetch_update(Ordering::AcqRel, Ordering::Acquire, |remaining| {
-                            remaining.checked_sub(1)
-                        })
-                        .is_ok();
+                        .refuse_next_report
+                        .swap(false, Ordering::AcqRel);
                     (if valid && !refused { 200 } else { 401 }, b"{}".to_vec())
                 };
                 let hold = {
@@ -223,7 +220,7 @@ fn authenticate(engine: &RodaEngine) {
 
 #[tokio::test]
 async fn reports_defer_without_login_and_retain_pending_data_after_refusal() {
-    let relay = HttpRelay::new(1);
+    let relay = HttpRelay::new(true);
     let (engine, _) = account(&relay.url);
     engine.growth_capture_link("https://tryzoen.com/?utm_campaign=fixture".into());
     engine.mark_exposed("fixture", "treatment");
@@ -293,8 +290,8 @@ async fn reports_defer_without_login_and_retain_pending_data_after_refusal() {
 
 #[tokio::test]
 async fn report_binding_survives_profile_registration_but_not_relay_key_or_account_changes() {
-    let relay = HttpRelay::new(0);
-    let other = HttpRelay::new(0);
+    let relay = HttpRelay::new(false);
+    let other = HttpRelay::new(false);
     let (engine, vault) = account(&relay.url);
     authenticate(&engine);
     engine
@@ -356,7 +353,7 @@ async fn report_binding_survives_profile_registration_but_not_relay_key_or_accou
 
 #[tokio::test]
 async fn a_stale_config_response_cannot_overwrite_the_next_accounts_cache_or_report() {
-    let relay = HttpRelay::new(0);
+    let relay = HttpRelay::new(false);
     let (engine, vault) = account(&relay.url);
     authenticate(&engine);
     let (arrived, release) = relay.hold("/v1/config");
@@ -381,7 +378,7 @@ async fn a_stale_config_response_cannot_overwrite_the_next_accounts_cache_or_rep
 
 #[tokio::test]
 async fn an_accepted_report_keeps_source_and_exposures_that_arrived_in_flight() {
-    let relay = HttpRelay::new(0);
+    let relay = HttpRelay::new(false);
     let (engine, _) = account(&relay.url);
     authenticate(&engine);
     engine.mark_exposed("before", "control");
@@ -434,7 +431,7 @@ async fn an_accepted_report_keeps_source_and_exposures_that_arrived_in_flight() 
 
 #[tokio::test]
 async fn an_old_accounts_accepted_report_cannot_consume_the_new_accounts_metadata() {
-    let relay = HttpRelay::new(0);
+    let relay = HttpRelay::new(false);
     let (engine, vault) = account(&relay.url);
     authenticate(&engine);
     let old_device = engine.account().unwrap().device_id;
