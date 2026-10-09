@@ -79,7 +79,7 @@ final class BlockTag: NSObject, @unchecked Sendable {
 }
 
 /// The kinds a person can pick (slash menu, format bar).
-struct BlockChoice: Identifiable, Hashable {
+struct BlockChoice: Identifiable, Sendable {
     let id: String
     let title: LocalizedStringResource
     let symbol: String
@@ -247,14 +247,26 @@ enum PageMarker {
     }
 
     @MainActor
-    static func draw(_ size: CGSize, _ body: @escaping (CGContext) -> Void) -> PlatformImage {
+    static func draw(_ size: CGSize, _ body: (CGContext) -> Void) -> PlatformImage {
         #if canImport(UIKit)
         return UIGraphicsImageRenderer(size: size).image { body($0.cgContext) }
         #else
-        return NSImage(size: size, flipped: true) { _ in
-            if let ctx = NSGraphicsContext.current?.cgContext { body(ctx) }
-            return true
-        }
+        let scale: CGFloat = 2
+        guard let rep = NSBitmapImageRep(bitmapDataPlanes: nil, pixelsWide: Int(size.width * scale), pixelsHigh: Int(size.height * scale),
+                                         bitsPerSample: 8, samplesPerPixel: 4, hasAlpha: true, isPlanar: false,
+                                         colorSpaceName: .deviceRGB, bytesPerRow: 0, bitsPerPixel: 0),
+              let ctx = NSGraphicsContext(bitmapImageRep: rep) else { return NSImage(size: size) }
+        rep.size = size
+        NSGraphicsContext.saveGraphicsState()
+        // Top-left origin, like UIKit, so the drawing code is the same.
+        ctx.cgContext.translateBy(x: 0, y: size.height * scale)
+        ctx.cgContext.scaleBy(x: scale, y: -scale)
+        NSGraphicsContext.current = NSGraphicsContext(cgContext: ctx.cgContext, flipped: true)
+        body(ctx.cgContext)
+        NSGraphicsContext.restoreGraphicsState()
+        let image = NSImage(size: size)
+        image.addRepresentation(rep)
+        return image
         #endif
     }
 

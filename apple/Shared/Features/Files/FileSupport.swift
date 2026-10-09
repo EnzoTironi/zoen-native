@@ -130,6 +130,7 @@ struct QuickLookView: UIViewControllerRepresentable {
         }
     }
 
+    @MainActor
     final class Source: NSObject, QLPreviewControllerDataSource {
         var url: URL
         init(url: URL) { self.url = url }
@@ -157,21 +158,21 @@ final class MarkupPresenter: NSObject, QLPreviewControllerDataSource, QLPreviewC
         top.present(ql, animated: true)
     }
 
-    nonisolated func numberOfPreviewItems(in controller: QLPreviewController) -> Int { 1 }
+    func numberOfPreviewItems(in controller: QLPreviewController) -> Int { 1 }
 
-    nonisolated func previewController(_ controller: QLPreviewController, previewItemAt index: Int) -> QLPreviewItem {
-        MainActor.assumeIsolated { (url ?? URL(fileURLWithPath: "/")) as NSURL }
+    func previewController(_ controller: QLPreviewController, previewItemAt index: Int) -> QLPreviewItem {
+        (url ?? URL(fileURLWithPath: "/")) as NSURL
     }
 
-    nonisolated func previewController(_ controller: QLPreviewController, editingModeFor previewItem: QLPreviewItem) -> QLPreviewItemEditingMode {
+    func previewController(_ controller: QLPreviewController, editingModeFor previewItem: QLPreviewItem) -> QLPreviewItemEditingMode {
         .createCopy
     }
 
-    nonisolated func previewController(_ controller: QLPreviewController, didSaveEditedCopyOf previewItem: QLPreviewItem, at modifiedContentsURL: URL) {
+    func previewController(_ controller: QLPreviewController, didSaveEditedCopyOf previewItem: QLPreviewItem, at modifiedContentsURL: URL) {
         // Quick Look removes the copy after this returns: keep our own.
         let keep = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString + "-" + modifiedContentsURL.lastPathComponent)
         try? FileManager.default.copyItem(at: modifiedContentsURL, to: keep)
-        Task { @MainActor in self.onSave?(keep) }
+        onSave?(keep)
     }
 }
 #else

@@ -7,7 +7,8 @@ struct ItemView: View {
     let itemId: String
 
     var body: some View {
-        switch (try? model.core.item(itemId: itemId))?.kindId {
+        let kind = (try? model.core.item(itemId: itemId))?.kindId ?? ""
+        switch kind {
         case "page": PageScreen(itemId: itemId)
         case "file": FileScreen(itemId: itemId)
         default: PlanItemView(itemId: itemId)
