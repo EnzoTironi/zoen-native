@@ -20,6 +20,13 @@ final class ChatReadingJourneyTests: XCTestCase {
         app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH %@", prefix)).firstMatch
     }
 
+    @MainActor private func capture(_ name: String) {
+        let attachment = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
+        attachment.name = name
+        attachment.lifetime = .keepAlways
+        add(attachment)
+    }
+
     @MainActor
     func testReadingHistoryKeepsYourPlaceAndPillJumpsToNew() {
         let app = launch(fast: false)
@@ -35,6 +42,7 @@ final class ChatReadingJourneyTests: XCTestCase {
         XCTAssertNotNil(anchor, "a message is on screen while reading")
         let label = anchor!.label
         let before = anchor!.frame.minY
+        capture("Reading history before new messages")
 
         let pill = app.buttons["new-messages-pill"]
         XCTAssertTrue(pill.waitForExistence(timeout: 20), "new messages wait behind a capsule")
@@ -45,11 +53,13 @@ final class ChatReadingJourneyTests: XCTestCase {
         XCTAssertTrue(still.exists && still.isHittable, "the message you were reading stays on screen")
         XCTAssertEqual(still.frame.minY, before, accuracy: 6, "…in the same place (no jump)")
         XCTAssertFalse(text(app, "guarda um lugar").isHittable, "the new message hasn't pulled the chat down")
+        capture("Reading position held with two new messages")
 
         pill.tap()
         XCTAssertTrue(pill.waitForNonExistence(timeout: 4), "the capsule goes away")
         sleep(1)
         XCTAssertTrue(text(app, "guarda um lugar").isHittable, "tapping it lands on the latest message")
+        capture("Capsule jumps to the latest message")
     }
 
     @MainActor
@@ -60,5 +70,6 @@ final class ChatReadingJourneyTests: XCTestCase {
         sleep(1)
         XCTAssertTrue(newest.isHittable, "at the end of the chat it comes into view")
         XCTAssertFalse(app.buttons["new-messages-pill"].exists, "no capsule when you're already at the end")
+        capture("New messages visible at the end of the chat")
     }
 }
