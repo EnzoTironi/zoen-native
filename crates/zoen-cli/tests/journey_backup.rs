@@ -50,7 +50,7 @@ fn device_key(w: &World, who: &str) -> roda_log::Signer {
     roda_log::Signer::from_secret(&bytes.try_into().unwrap())
 }
 
-async fn signed_backup_write(
+fn signed_backup_request(
     w: &World,
     key: &roda_log::Signer,
     identity: &str,
@@ -58,9 +58,8 @@ async fn signed_backup_write(
     op: &str,
     path: &str,
     body: &[u8],
-) -> u16 {
+) -> Vec<u8> {
     use sha2::{Digest, Sha256};
-    use tokio::io::{AsyncReadExt, AsyncWriteExt};
     let ts = now_ms();
     let relay = format!("127.0.0.1:{}", w.port);
     let sig = key.sign(&roda_proto::backup_message(
@@ -74,24 +73,56 @@ async fn signed_backup_write(
         "{method} {path} HTTP/1.1\r\nHost: {relay}\r\nConnection: close\r\nContent-Type: application/json\r\nContent-Length: {}\r\nx-zoen-device: {}\r\nx-zoen-ts: {ts}\r\nx-zoen-sig: {sig}\r\n\r\n",
         body.len(), key.id(),
     );
-    let mut socket = tokio::net::TcpStream::connect(&relay).await.unwrap();
-    socket.write_all(headers.as_bytes()).await.unwrap();
-    socket.write_all(body).await.unwrap();
-    let mut response = Vec::new();
-    tokio::time::timeout(
-        std::time::Duration::from_secs(10),
-        socket.read_to_end(&mut response),
-    )
+    [headers.as_bytes(), body].concat()
+}
+
+async fn backup_http(w: &World, request: &[u8]) -> (u16, Vec<u8>) {
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+    let response = tokio::time::timeout(std::time::Duration::from_secs(10), async {
+        let mut socket = tokio::net::TcpStream::connect(("127.0.0.1", w.port))
+            .await
+            .unwrap();
+        socket.write_all(request).await.unwrap();
+        let mut response = Vec::new();
+        socket.read_to_end(&mut response).await.unwrap();
+        response
+    })
     .await
-    .unwrap()
     .unwrap();
-    std::str::from_utf8(&response)
+    let split = response
+        .windows(4)
+        .position(|b| b == b"\r\n\r\n")
+        .expect("HTTP response headers");
+    let status = std::str::from_utf8(&response[..split])
         .unwrap()
         .split_whitespace()
         .nth(1)
         .unwrap()
         .parse()
-        .unwrap()
+        .unwrap();
+    (status, response[split + 4..].to_vec())
+}
+
+async fn signed_backup_write(
+    w: &World,
+    key: &roda_log::Signer,
+    identity: &str,
+    method: &str,
+    op: &str,
+    path: &str,
+    body: &[u8],
+) -> u16 {
+    let request = signed_backup_request(w, key, identity, method, op, path, body);
+    backup_http(w, &request).await.0
+}
+
+async fn restore_post(w: &World, path: &str, body: serde_json::Value) -> (u16, Vec<u8>) {
+    let body = body.to_string();
+    let headers = format!(
+        "POST {path} HTTP/1.1\r\nHost: 127.0.0.1:{}\r\nConnection: close\r\nContent-Type: application/json\r\nContent-Length: {}\r\n\r\n",
+        w.port, body.len(),
+    );
+    backup_http(w, &[headers.as_bytes(), body.as_bytes()].concat()).await
 }
 
 fn link_notebook(w: &World) {
@@ -126,6 +157,145 @@ fn link_notebook(w: &World) {
         String::from_utf8_lossy(&result.stderr)
     );
     w.sync_until("ana-notebook", |s| s.contains("pending=0"));
+}
+
+#[tokio::test]
+async fn replayed_uploads_use_distinct_objects_and_survive_delayed_cleanup() {
+    let w = world("backup_replay").await;
+    w.init("ana", "Ana");
+    w.init("bruno", "Bruno");
+    w.zoen("ana", &["group", "Casa", "@bruno", "--readable"]);
+    let message = "história preservada depois de repetir o upload";
+    w.zoen("ana", &["send", "Casa", message]);
+    w.zoen("ana", &["backup", "on", "--password", PASSWORD]);
+    let identity = w.id_of("ana").await;
+    let key = device_key(&w, "ana");
+    let generation = w.scalar("SELECT generation FROM backup_vaults").await;
+    let sha = w.scalar("SELECT blob_sha FROM backup_vaults").await;
+    let original_key = w.scalar("SELECT blob_key FROM backup_vaults").await;
+    let sealed = std::fs::read(w.dir.join("blobs").join(original_key)).unwrap();
+    let body = [
+        roda_proto::BACKUP_UPLOAD_MAGIC.as_slice(),
+        hex::decode(&generation).unwrap().as_slice(),
+        sealed.as_slice(),
+    ]
+    .concat();
+    let request =
+        signed_backup_request(&w, &key, &identity, "PUT", "blob", "/v1/backup/blob", &body);
+    assert_eq!(backup_http(&w, &request).await.0, 201);
+    let first_key = w.scalar("SELECT blob_key FROM backup_vaults").await;
+    assert_eq!(backup_http(&w, &request).await.0, 201);
+    let second_key = w.scalar("SELECT blob_key FROM backup_vaults").await;
+    assert_ne!(first_key, second_key, "a replay reused an object path");
+    assert_eq!(w.scalar("SELECT blob_sha FROM backup_vaults").await, sha);
+    assert_eq!(
+        w.scalar("SELECT generation FROM backup_vaults").await,
+        generation
+    );
+    // A cloud DELETE issued for the first object may complete after the replay.
+    match std::fs::remove_file(w.dir.join("blobs").join(first_key)) {
+        Ok(()) => {}
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+        Err(e) => panic!("delayed cleanup failed: {e}"),
+    }
+    assert_eq!(
+        std::fs::read(w.dir.join("blobs").join(second_key)).unwrap(),
+        sealed
+    );
+    assert!(w
+        .zoen("ana-new", &["recover", "@ana", "--password", PASSWORD])
+        .contains("restored"));
+    assert!(w.zoen("ana-new", &["read", "Casa"]).contains(message));
+    assert!(!w.zoen("ana-new", &["verify"]).contains("BROKEN"));
+}
+
+#[tokio::test]
+async fn password_restore_metadata_does_not_identify_decoys() {
+    use sha2::{Digest, Sha256};
+    // Standard compressed Ristretto255 basepoint: also a valid blinded input.
+    const BASEPOINT: &str = "e2f2ae0a6abc4e71a884a961c500515f58e30b6aa582dd8db6a65945e08d2d76";
+    let w = world("backup_decoy_metadata").await;
+    w.init("ana", "Ana");
+    w.init("bruno", "Bruno");
+    w.zoen("ana", &["backup", "on", "--password", PASSWORD]);
+    let mut responses = Vec::new();
+    for handle in ["ana", "bruno", "carla"] {
+        let request = serde_json::json!({"handle": handle, "blinded": BASEPOINT});
+        let (status, body) = restore_post(&w, "/v1/backup/restore/start", request.clone()).await;
+        assert_eq!(status, 200, "{handle}: {}", String::from_utf8_lossy(&body));
+        let response: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        let (status, body) = restore_post(&w, "/v1/backup/restore/start", request).await;
+        assert_eq!(status, 200, "{handle}: {}", String::from_utf8_lossy(&body));
+        let repeated: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        assert_eq!(response, repeated, "metadata changed for {handle}");
+        assert_eq!(response["mode"], "passphrase");
+        let generation = response["generation"].as_str().expect("opaque generation");
+        assert_eq!(hex::decode(generation).unwrap().len(), 32);
+        let identity = response["identity"].as_str().unwrap();
+        assert_eq!(hex::decode(identity).unwrap().len(), 32);
+        let evaluated = hex::decode(response["evaluated"].as_str().unwrap()).unwrap();
+        assert_eq!(evaluated.len(), 32);
+        // OPRF evaluations are public. Hashing the evaluation at a chosen basepoint
+        // would make a decoy's metadata recognizable without knowing any secret.
+        let predictable_generation = hex::encode(
+            Sha256::new()
+                .chain_update(b"zoen-backup-decoy-generation")
+                .chain_update(&evaluated)
+                .finalize(),
+        );
+        assert_ne!(generation, predictable_generation, "{handle}");
+        let predictable_identity = hex::encode(
+            Sha256::new()
+                .chain_update(b"zoen-backup-decoy-identity")
+                .chain_update(&evaluated)
+                .finalize(),
+        );
+        assert_ne!(identity, predictable_identity, "{handle}");
+        responses.push(response);
+    }
+    assert_eq!(responses[0]["identity"], w.id_of("ana").await);
+    assert_eq!(responses[1]["identity"], w.id_of("bruno").await);
+    assert_eq!(responses[0]["kdf"], responses[1]["kdf"]);
+    assert_eq!(responses[0]["kdf"], responses[2]["kdf"]);
+    assert_ne!(responses[0]["generation"], responses[1]["generation"]);
+    assert_ne!(responses[1]["generation"], responses[2]["generation"]);
+}
+
+#[tokio::test]
+async fn wrong_restore_auth_and_generation_do_not_reveal_backup_existence() {
+    let w = world("backup_decoy_authorization").await;
+    w.init("ana", "Ana");
+    w.init("bruno", "Bruno");
+    w.zoen("ana", &["backup", "on", "--password", PASSWORD]);
+    let auth = "55".repeat(32);
+    let generation = "66".repeat(32);
+    let mut expected_open = None;
+    let mut expected_blob = None;
+    for handle in ["ana", "bruno", "carla"] {
+        let response = restore_post(
+            &w,
+            "/v1/backup/restore/open",
+            serde_json::json!({"handle": handle, "auth_key": auth, "generation": generation}),
+        )
+        .await;
+        assert_eq!(response.0, 403, "open revealed {handle}: {response:?}");
+        if let Some(expected) = &expected_open {
+            assert_eq!(&response, expected, "open revealed {handle}");
+        } else {
+            expected_open = Some(response);
+        }
+        let request = format!(
+            "GET /v1/backup/restore/blob?handle={handle}&generation={generation} HTTP/1.1\r\nHost: 127.0.0.1:{}\r\nConnection: close\r\nx-zoen-backup-auth: {auth}\r\n\r\n",
+            w.port,
+        );
+        let response = backup_http(&w, request.as_bytes()).await;
+        assert_eq!(response.0, 403, "blob revealed {handle}: {response:?}");
+        if let Some(expected) = &expected_blob {
+            assert_eq!(&response, expected, "blob revealed {handle}");
+        } else {
+            expected_blob = Some(response);
+        }
+    }
 }
 
 #[tokio::test]
@@ -233,37 +403,109 @@ async fn revoked_devices_are_refused_by_every_backup_write_endpoint() {
 
 #[tokio::test]
 async fn a_pre_generation_backup_still_restores_after_upgrade() {
-    let w = world("backup_legacy").await;
+    use sqlx::Connection;
+    let mut w = world("backup_legacy").await;
     w.init("ana", "Ana");
     w.zoen("ana", &["backup", "on", "--password", PASSWORD]);
     let identity = w.id_of("ana").await;
-    let sha = w.scalar("SELECT blob_sha FROM backup_vaults").await;
     let legacy_path = w.dir.join("blobs/backups").join(&identity);
+    let stored_key = w.scalar("SELECT blob_key FROM backup_vaults").await;
     let generated_path = w.dir.join("blobs/backups/v2").join(&identity);
-    let object = std::fs::read(generated_path.join(sha)).unwrap();
+    let object = std::fs::read(w.dir.join("blobs").join(stored_key)).unwrap();
     // The previous version stored one object directly at backups/{identity}.
     std::fs::remove_dir_all(&generated_path).unwrap();
     std::fs::write(&legacy_path, object).unwrap();
+    w.stop_relay();
+    let mut db = sqlx::postgres::PgConnection::connect(&w.db_url)
+        .await
+        .unwrap();
+    sqlx::raw_sql(
+        "DELETE FROM _sqlx_migrations WHERE version IN (21, 23);
+         DROP TABLE backup_setups;
+         ALTER TABLE backup_vaults DROP COLUMN generation, DROP COLUMN blob_key;
+         ALTER TABLE backup_pending DROP COLUMN generation, DROP COLUMN device;",
+    )
+    .execute(&mut db)
+    .await
+    .unwrap();
+    drop(db);
+    w.start_relay();
     assert_eq!(
-        w.count(
-            "WITH changed AS (UPDATE backup_vaults SET generation = NULL RETURNING identity)
-         SELECT count(*) FROM changed",
-        )
-        .await,
-        1
+        w.scalar("SELECT generation FROM backup_vaults").await.len(),
+        64
     );
     assert!(w
         .zoen("ana-new", &["recover", "@ana", "--password", PASSWORD])
         .contains("restored"));
-    let refused = w.try_zoen("ana-new", &["backup", "now"]).unwrap_err();
-    assert!(refused.contains("Set up backup again"), "{refused}");
-    // Re-enabling upgrades the copy only after the new upload is durable.
+    // The verified wrapper binds the restored key to its migrated generation.
+    assert!(w
+        .zoen("ana-new", &["backup", "now"])
+        .starts_with("backup on"));
     assert!(w
         .zoen("ana-new", &["backup", "on", "--password", PASSWORD])
         .starts_with("backup on"));
     assert!(w
         .zoen("ana-third", &["recover", "@ana", "--password", PASSWORD])
         .contains("restored"));
+}
+
+#[tokio::test]
+async fn a_generation_backup_still_restores_after_object_version_upgrade() {
+    use sqlx::Connection;
+    let mut w = world("backup_v2_upgrade").await;
+    w.init("ana", "Ana");
+    w.init("bruno", "Bruno");
+    w.zoen("ana", &["group", "Casa", "@bruno", "--readable"]);
+    let message = "história antes de migrar os objetos do backup";
+    w.zoen("ana", &["send", "Casa", message]);
+    w.zoen("ana", &["backup", "on", "--password", PASSWORD]);
+    let identity = w.id_of("ana").await;
+    let generation = w.scalar("SELECT generation FROM backup_vaults").await;
+    let sha = w.scalar("SELECT blob_sha FROM backup_vaults").await;
+    let current_key = w.scalar("SELECT blob_key FROM backup_vaults").await;
+    let old_key = format!("backups/v2/{identity}/{sha}");
+    w.stop_relay();
+    // Version 0021 named generation-bearing objects by their ciphertext digest.
+    std::fs::rename(
+        w.dir.join("blobs").join(current_key),
+        w.dir.join("blobs").join(&old_key),
+    )
+    .unwrap();
+    let mut db = sqlx::postgres::PgConnection::connect(&w.db_url)
+        .await
+        .unwrap();
+    sqlx::raw_sql(
+        "DELETE FROM _sqlx_migrations WHERE version = 23;
+         ALTER TABLE backup_vaults DROP COLUMN blob_key;",
+    )
+    .execute(&mut db)
+    .await
+    .unwrap();
+    drop(db);
+    w.start_relay();
+    assert_eq!(
+        w.scalar("SELECT blob_key FROM backup_vaults").await,
+        old_key
+    );
+    assert_eq!(
+        w.scalar("SELECT generation FROM backup_vaults").await,
+        generation
+    );
+    assert!(w
+        .zoen("ana-new", &["recover", "@ana", "--password", PASSWORD])
+        .contains("restored"));
+    assert!(w.zoen("ana-new", &["read", "Casa"]).contains(message));
+    assert!(w
+        .zoen("ana-new", &["backup", "now"])
+        .starts_with("backup on"));
+    assert_ne!(
+        w.scalar("SELECT blob_key FROM backup_vaults").await,
+        old_key
+    );
+    assert!(w
+        .zoen("ana-third", &["recover", "@ana", "--password", PASSWORD])
+        .contains("restored"));
+    assert!(w.zoen("ana-third", &["read", "Casa"]).contains(message));
 }
 
 #[tokio::test]
