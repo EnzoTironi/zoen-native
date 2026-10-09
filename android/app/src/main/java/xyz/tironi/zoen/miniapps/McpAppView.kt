@@ -40,6 +40,7 @@ fun McpAppView(
     onClose: () -> Unit = {},
     onFullscreen: () -> Unit = {},
 ) {
+    if (!MiniAppWebProviderGate(modifier)) return
     val context = LocalContext.current
     val configuration = LocalConfiguration.current
     val density = LocalDensity.current

@@ -71,6 +71,10 @@ Demo data uses a separate database, has a visible Demo label, and contains simul
 
 ## Platform conditions
 
+HTML mini-apps require an Android System WebView provider supporting AndroidX WebKit's `WEB_MESSAGE_LISTENER` and `MULTI_PROFILE` features. Zoen checks the installed provider, not the Android API level, and shows an update screen when either feature is unavailable. It never substitutes a shared WebView profile or an unrestricted JavaScript bridge. All seven native mini-apps remain available on Android 9 and later without the HTML host. See [AndroidX WebKit feature detection](https://developer.android.com/reference/androidx/webkit/WebViewFeature).
+
+The Hike HTML bundle draws its local route map with SVG when map-tile access is denied. Pan, pinch zoom, zoom buttons and fit-to-route work without network access or a WebGL renderer. MapLibre initializes only after the MCP handshake confirms access to the declared tile host; unavailable online maps fall back to the same local route map.
+
 On supported devices, the planner uses Gemini Nano through ML Kit's on-device Prompt API. Availability, download progress and generation failures are visible. Structured results are validated before signed writes. Other devices use a clearly labeled deterministic local fallback. Emulator fallback tests do not demonstrate model generation on supported physical hardware. No remote AI API or key is silently substituted.
 
 Offline transcription uses Android's on-device recognizer where available. Recording/editing/playback remain available without a speech model; supported languages can request a native model download. The emulator does not provide a usable speech model.
@@ -88,3 +92,5 @@ The device suites drive Compose, the actual Rust JNI library and Android system 
 For encrypted two-account and onboarding/background journeys, run an isolated local relay and pass `-Pandroid.testInstrumentationRunnerArguments.zoenRelay=http://10.0.2.2:8787` to `connectedDebugAndroidTest`. These tests create and clean up their own identities and never replace an existing real account. Without that argument they report a skip rather than pretend that demo peers test the network.
 
 CI builds both ABIs, runs JVM tests and lint, and exercises x86_64 Android 9 and Android 15 with an isolated real relay. APKs and reports are uploaded. The [parity record](../docs/dev/android-parity.md) records coverage and verification status; the [device verification record](../docs/dev/android.md) includes visual review evidence.
+
+The provider UI test runs on every device. Secure HTML journeys report a skip only when the installed provider lacks a required isolation feature; they otherwise require actual rendered HTML, Android touch events, and signed Rust state changes. A provider skip does not skip the native mini-app or other Android journeys.

@@ -12,6 +12,7 @@ import android.webkit.WebResourceResponse
 import android.webkit.WebSettings
 import android.webkit.WebView
 import android.webkit.WebViewClient
+import android.view.ViewGroup
 import androidx.webkit.JavaScriptReplyProxy
 import androidx.webkit.WebMessageCompat
 import androidx.webkit.WebViewCompat
@@ -123,7 +124,7 @@ class McpAppSession(
     }
 
     suspend fun prepare() {
-        check(WebViewFeature.isFeatureSupported(WebViewFeature.WEB_MESSAGE_LISTENER) && WebViewFeature.isFeatureSupported(WebViewFeature.MULTI_PROFILE)) { "Update Android System WebView to open this mini-app" }
+        MiniAppWebProvider.requireSupported()
         latest = gateway.item(itemId)
         val app = requireNotNull(latest!!.app)
         specs = gateway.specs()
@@ -150,7 +151,7 @@ class McpAppSession(
     @SuppressLint("SetJavaScriptEnabled")
     fun createWebView(context: Context): WebView {
         check(document.isNotEmpty())
-        check(WebViewFeature.isFeatureSupported(WebViewFeature.WEB_MESSAGE_LISTENER) && WebViewFeature.isFeatureSupported(WebViewFeature.MULTI_PROFILE)) { "Update Android System WebView to open this mini-app" }
+        MiniAppWebProvider.requireSupported()
         return WebView(context).also { web ->
             if (WebViewFeature.isFeatureSupported(WebViewFeature.MULTI_PROFILE)) {
                 MiniAppWebProfiles.prepare()
@@ -349,6 +350,7 @@ class McpAppSession(
         disposed = true; messages.close(); scope.cancel(); photos.clear()
         network.dispatcher.cancelAll(); network.connectionPool.evictAll(); network.dispatcher.executorService.shutdown()
         view?.apply {
+            (parent as? ViewGroup)?.removeView(this)
             stopLoading()
             if (WebViewFeature.isFeatureSupported(WebViewFeature.WEB_MESSAGE_LISTENER)) WebViewCompat.removeWebMessageListener(this, "zoenMcp")
             if (WebViewFeature.isFeatureSupported(WebViewFeature.MULTI_PROFILE)) {

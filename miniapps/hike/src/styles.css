@@ -1,6 +1,12 @@
 @import '@zoen/ui/tokens.css';
 html, body, #root { height: 100%; overflow: hidden; background: var(--z-bg); }
 .map { position: absolute; inset: 0; }
+.offline-map { background: #ECE8DA; }
+.offline-map > svg { display: block; width: 100%; height: 100%; touch-action: none; }
+.offline-controls { position: absolute; right: 12px; top: 40%; display: grid; overflow: hidden; border-radius: 12px; background: var(--z-surface); border: 1px solid var(--z-hairline); }
+.offline-controls button { width: 38px; height: 38px; font-size: 22px; }
+.offline-controls button + button { border-top: 1px solid var(--z-hairline); }
+.offline-note { position: absolute; left: 16px; top: 44%; font-size: 11px; color: #5B6478; pointer-events: none; }
 .maplibregl-ctrl-attrib { font-size: 9px !important; opacity: .7; }
 .maplibregl-ctrl-bottom-right { bottom: 250px !important; }
 .top { position: absolute; left: 12px; right: 12px; top: calc(env(safe-area-inset-top) + 10px); display: flex; justify-content: space-between; align-items: flex-start; gap: 10px; z-index: 5; pointer-events: none; }

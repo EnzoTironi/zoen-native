@@ -30,6 +30,7 @@ import kotlinx.coroutines.withContext
 import org.json.JSONArray
 import org.json.JSONObject
 import org.junit.Assert.*
+import org.junit.Assume.assumeTrue
 import org.junit.Test
 import org.junit.runner.RunWith
 import xyz.tironi.zoen.core.*
@@ -38,6 +39,7 @@ import xyz.tironi.zoen.miniapps.*
 @RunWith(AndroidJUnit4::class)
 class McpWebViewTest {
     @Test fun actualHtmlTouchChangesSignedRustStateAndNativeConfirmationControlsExternalCalls() {
+        assumeTrue("The installed WebView must support origin-scoped messaging and isolated profiles", MiniAppWebProvider.supported())
         val context = ApplicationProvider.getApplicationContext<ZoenApplication>()
         val folder = File(context.noBackupFilesDir, "web-test-${UUID.randomUUID()}").apply { mkdirs() }
         val core = RodaEngine.open(File(folder, "core.sqlite").absolutePath, "en")
@@ -109,6 +111,7 @@ class McpWebViewTest {
     }
 
     @Test fun bundledReactHikeWorksOfflineAndVotesThroughTheSameSignedProtocol() {
+        assumeTrue("The installed WebView must support origin-scoped messaging and isolated profiles", MiniAppWebProvider.supported())
         val context = ApplicationProvider.getApplicationContext<ZoenApplication>()
         val folder = File(context.noBackupFilesDir, "hike-web-test-${UUID.randomUUID()}").apply { mkdirs() }
         val core = RodaEngine.open(File(folder, "core.sqlite").absolutePath, "en")
@@ -148,15 +151,18 @@ class McpWebViewTest {
             waitUntil(30_000) {
                 val status = evaluate(web.get(), "JSON.stringify({ready:document.readyState,cards:document.querySelectorAll('.card').length,text:document.body?.innerText?.slice(0,200)})")
                 if (status != lastPageStatus) { Log.i("McpWebViewTest", "Hike page: $status"); lastPageStatus = status }
-                evaluate(web.get(), "document.querySelectorAll('.card').length") == "3"
+                evaluate(web.get(), "document.querySelectorAll('.card').length === 3 && Boolean(document.querySelector('.lead > .z-circle')) && Boolean(document.querySelector('[data-map=offline] > svg'))") == "true"
             }
-            val drawn = CountDownLatch(1)
-            InstrumentationRegistry.getInstrumentation().runOnMainSync {
-                web.get().postVisualStateCallback(1L, object : WebView.VisualStateCallback() {
-                    override fun onComplete(requestId: Long) { drawn.countDown() }
-                })
-            }
-            check(drawn.await(10, TimeUnit.SECONDS)) { "Hike DOM exists but its rendered frame is not ready" }
+            awaitFrame(web.get())
+            assertEquals("0", evaluate(web.get(), "document.querySelectorAll('.maplibregl-canvas').length"))
+            val originalMap = evaluate(web.get(), "document.querySelector('[data-map=offline] > svg > g').getAttribute('transform')")
+            touch(web.get(), ".offline-controls button")
+            waitUntil { evaluate(web.get(), "document.querySelector('[data-map=offline] > svg > g').getAttribute('transform')") != originalMap }
+            touch(web.get(), ".offline-controls button:last-child")
+            waitUntil { evaluate(web.get(), "document.querySelector('[data-map=offline] > svg > g').getAttribute('transform')") == originalMap }
+            awaitFrame(web.get())
+            val mapEvidence = File(context.getExternalFilesDir(null), "evidence/mcp-hike-offline-map.png").apply { parentFile!!.mkdirs() }
+            InstrumentationRegistry.getInstrumentation().uiAutomation.takeScreenshot().use { bitmap -> mapEvidence.outputStream().use { bitmap.compress(Bitmap.CompressFormat.PNG, 100, it) } }
             touch(web.get(), ".card")
             waitUntil { evaluate(web.get(), "Boolean(document.querySelector('.sticky button:last-child'))") == "true" }
             val before = core.item(item.id).version
@@ -164,6 +170,8 @@ class McpWebViewTest {
             waitUntil { core.item(item.id).version > before }
             val trails = JSONObject(core.item(item.id).app!!.viewJson).getJSONArray("trails")
             assertTrue((0 until trails.length()).any { trails.getJSONObject(it).getJSONArray("votes").length() > 0 })
+            waitUntil { evaluate(web.get(), "document.querySelector('.sticky button:last-child').textContent.startsWith('Voted')") == "true" }
+            awaitFrame(web.get())
             assertTrue(core.verifyAll().all { it.valid })
             val evidence = File(context.getExternalFilesDir(null), "evidence/mcp-hike-offline-vote.png").apply { parentFile!!.mkdirs() }
             InstrumentationRegistry.getInstrumentation().uiAutomation.takeScreenshot().use { bitmap -> evidence.outputStream().use { bitmap.compress(Bitmap.CompressFormat.PNG, 100, it) } }
@@ -196,14 +204,29 @@ class McpWebViewTest {
     }
     private fun touch(web: WebView, selector: String) {
         val rect = JSONArray(evaluate(web, "(() => {const r=document.querySelector(${JSONObject.quote(selector)}).getBoundingClientRect();return [r.left+r.width/2,r.top+r.height/2,innerWidth]})()"))
+        val at = SystemClock.uptimeMillis()
+        var x = 0f
+        var y = 0f
         InstrumentationRegistry.getInstrumentation().runOnMainSync {
             val scale = web.width / rect.getDouble(2)
-            val x = (rect.getDouble(0) * scale).toFloat()
-            val y = (rect.getDouble(1) * scale).toFloat()
-            val at = SystemClock.uptimeMillis()
+            x = (rect.getDouble(0) * scale).toFloat()
+            y = (rect.getDouble(1) * scale).toFloat()
+            check(x.isFinite() && y.isFinite() && x in 0f..web.width.toFloat() && y in 0f..web.height.toFloat()) { "The HTML target is outside the visible WebView: $selector" }
             MotionEvent.obtain(at, at, MotionEvent.ACTION_DOWN, x, y, 0).also { web.dispatchTouchEvent(it); it.recycle() }
-            MotionEvent.obtain(at, at + 60, MotionEvent.ACTION_UP, x, y, 0).also { web.dispatchTouchEvent(it); it.recycle() }
         }
+        SystemClock.sleep(60)
+        InstrumentationRegistry.getInstrumentation().runOnMainSync {
+            MotionEvent.obtain(at, SystemClock.uptimeMillis(), MotionEvent.ACTION_UP, x, y, 0).also { web.dispatchTouchEvent(it); it.recycle() }
+        }
+    }
+    private fun awaitFrame(web: WebView) {
+        val drawn = CountDownLatch(1)
+        InstrumentationRegistry.getInstrumentation().runOnMainSync {
+            web.postVisualStateCallback(1L, object : WebView.VisualStateCallback() {
+                override fun onComplete(requestId: Long) { drawn.countDown() }
+            })
+        }
+        check(drawn.await(10, TimeUnit.SECONDS)) { "HTML DOM exists but its rendered frame is not ready" }
     }
     private fun waitUntil(timeoutMs: Long = 10_000, condition: () -> Boolean) {
         val limit = SystemClock.uptimeMillis() + timeoutMs

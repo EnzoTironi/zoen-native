@@ -116,4 +116,7 @@
   <string name="miniapp_continue">Continuar</string>
   <string name="miniapp_pause">Pausar</string>
   <string name="miniapp_place">Lugar (opcional)</string>
+  <string name="miniapp_webview_update_title">Atualize o Android System WebView</string>
+  <string name="miniapp_webview_update_detail">Os miniapps HTML precisam de uma versão mais recente do Android System WebView. Atualize-o na loja de apps. Você pode continuar usando o Zoen e seus miniapps nativos.</string>
+  <string name="miniapp_webview_update">Atualizar WebView</string>
 </resources>

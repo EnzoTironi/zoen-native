@@ -10,6 +10,7 @@ import type { Member, PickedPhoto } from '@zoen/miniapp-sdk';
 import { TRAILS, byId, bounds, haversineMi, type Trail, type TrailId } from './trails';
 import { Photo } from './photos';
 import { L } from './i18n';
+import { OfflineMap } from './OfflineMap';
 
 interface HikeState {
   title: string; area: string; day: string; dayMs?: number;
@@ -40,7 +41,6 @@ const FILTERS: { id: Filter; label: string; test: (t: Trail) => boolean }[] = [
   { id: 'ocean', label: 'Ocean views', test: (t) => /ocean|bridge|city/i.test(t.bestFor + t.attributes.join(' ')) },
 ];
 
-const OFFLINE_STYLE: maplibregl.StyleSpecification = { version: 8, sources: {}, layers: [{ id: 'paper', type: 'background', paint: { 'background-color': '#ECE8DA' } }] };
 const ONLINE_STYLE = 'https://tiles.openfreemap.org/styles/liberty';
 
 /** Critically damped spring as an easing curve (no overshoot on the camera). */
@@ -175,11 +175,23 @@ function App() {
 // ── map ──
 
 function MapView({ trail }: { trail: Trail }) {
+  const [online, setOnline] = useState(false);
+  useEffect(() => {
+    let mounted = true;
+    zoen.ready().then(() => {
+      if (mounted) setOnline(zoen.capabilities.has('net:tiles.openfreemap.org') || new URLSearchParams(location.search).has('net'));
+    });
+    return () => { mounted = false; };
+  }, []);
+  return online ? <OnlineMapView trail={trail} /> : <OfflineMap trail={trail} />;
+}
+
+function OnlineMapView({ trail }: { trail: Trail }) {
   const el = useRef<HTMLDivElement>(null);
   const map = useRef<maplibregl.Map | null>(null);
   const marker = useRef<maplibregl.Marker | null>(null);
   const ready = useRef(false);
-  const online = zoen.capabilities.has('net:tiles.openfreemap.org') || new URLSearchParams(location.search).has('net');
+  const [failed, setFailed] = useState(false);
 
   const show = (t: Trail, animate: boolean) => {
     const m = map.current; if (!m || !ready.current) return;
@@ -191,8 +203,13 @@ function MapView({ trail }: { trail: Trail }) {
   };
 
   useEffect(() => {
-    const m = new maplibregl.Map({ container: el.current!, style: online ? ONLINE_STYLE : OFFLINE_STYLE, center: trail.trailhead, zoom: 11, attributionControl: online ? { compact: true } : false, pitchWithRotate: false, dragRotate: false });
+    if (failed || !el.current) return;
+    let m: maplibregl.Map;
+    try {
+      m = new maplibregl.Map({ container: el.current, style: ONLINE_STYLE, center: trail.trailhead, zoom: 11, attributionControl: { compact: true }, pitchWithRotate: false, dragRotate: false });
+    } catch { setFailed(true); return; }
     map.current = m;
+    m.on('error', () => { if (!ready.current) setFailed(true); });
     const pin = document.createElement('div');
     const label = document.createElement('div'); label.className = 'marker'; pin.appendChild(label);
     marker.current = new maplibregl.Marker({ element: pin, anchor: 'bottom', offset: [0, -6] }).setLngLat(trail.trailhead).addTo(m);
@@ -203,12 +220,12 @@ function MapView({ trail }: { trail: Trail }) {
       ready.current = true;
       show(trail, false);
     });
-    return () => m.remove();
-  }, []);
+    return () => { ready.current = false; map.current = null; marker.current = null; m.remove(); };
+  }, [failed]);
 
   useEffect(() => { show(trail, true); }, [trail.id]);
 
-  return <div ref={el} className="map" aria-label={`Map of ${trail.name}`} role="img" />;
+  return failed ? <OfflineMap trail={trail} /> : <div ref={el} className="map" data-map="online" aria-label={`Map of ${trail.name}`} role="img" />;
 }
 
 // ── detail (matched expansion from the card photo) ──

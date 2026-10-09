@@ -116,4 +116,7 @@
   <string name="miniapp_continue">Continue</string>
   <string name="miniapp_pause">Pause</string>
   <string name="miniapp_place">Place (optional)</string>
+  <string name="miniapp_webview_update_title">Update Android System WebView</string>
+  <string name="miniapp_webview_update_detail">HTML mini-apps need a newer Android System WebView. Update it in your app store. You can keep using Zoen and its native mini-apps.</string>
+  <string name="miniapp_webview_update">Update WebView</string>
 </resources>
