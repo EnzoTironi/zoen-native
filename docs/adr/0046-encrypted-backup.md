@@ -1,6 +1,6 @@
 # ADR 0046: Encrypted server backup
 
-Status: accepted (built in `feat/encrypted-backup`)
+Status: accepted as a development implementation; password recovery is not ready for public activation
 
 ## Context
 A phone that's lost, stolen or wiped takes the account with it. The identity key
@@ -47,10 +47,11 @@ Requirements, from Enzo's mandates:
      and `auth_key`.
    - **What the relay stores.** It keeps `sha256(auth_key)` (the verifier), `wrapped_key`,
      `k` sealed under the vault master key, the KDF parameters, and a guess counter.
-   - **Guess limit.** Each OPRF evaluation for a restore counts as one guess, and so does
+   - **Development guess limit.** Each OPRF evaluation for a restore counts as one guess, and so does
      each failed open. After **10** guesses without a success, the relay **destroys `k`**,
-     and the backup can never be opened, not even by Zoen. This is WhatsApp's HSM rule. A
-     correct password resets the counter.
+     and the current restore path cannot open the backup. A correct password resets the
+     counter. This unauthenticated ceremony is unsafe for public activation: an outsider
+     who knows a handle can exhaust all ten attempts without trying a password.
    - **Why a leaked database isn't enough.** Without `k` an attacker can't run an offline
      dictionary attack against the verifier or `wrapped_key`. `k` exists only sealed under
      the vault master key, so they would need both the database and the master key.
@@ -58,19 +59,29 @@ Requirements, from Enzo's mandates:
    groups of four. HKDF-SHA256 turns the digits into `wrap_key` and `auth_key`. The relay
    stores only the verifier and `wrapped_key`. With about 212 bits of entropy, the vault
    adds nothing, and this mode survives even the loss of the vault master key.
+   Failed authentication never spends a permanent guess counter or locks this mode.
+   Per-IP and per-handle network limits still apply. Correct key authentication also
+   clears a recovery-key lockout left by an older relay.
 
 ### The HSM boundary
-`zoen_relay::backup::Vault` is the only code that touches `k`. It has three operations:
-`new_key(identity) → sealed`, `evaluate(sealed, identity, blinded) → element` and
-`destroy`.
+`zoen_relay::backup::Vault` is the only code that touches `k`. It creates sealed keys,
+evaluates blinded points, and provides independent decoy evaluations and metadata.
 - **Staging.** The `EnvVault` implementation seals `k` with XChaCha20-Poly1305 under
   `ZOEN_BACKUP_VAULT_KEY` (a Fly secret), with the identity as AAD. The plaintext `k` lives
   only inside one `evaluate` call.
-- **Production.** The same trait gets an HSM or enclave implementation: AWS Nitro Enclaves
-  or CloudHSM, or a Signal-style SVR cluster with several enclaves for the counter and the
-  key. Then `k` never exists outside the hardware. Nothing else changes.
-- **Not configured.** Without a vault key, the password endpoints answer `503` and
-  recovery-key backups still work.
+- **Unfinished production gates.** Password restore needs independent, identity-bound
+  authorization before any real OPRF evaluation or destructive counter change. A surviving
+  device alone cannot provide lost-all-devices recovery. An enrolled, externally recoverable
+  factor and its recovery journeys remain to be designed and built. The HSM or enclave
+  implementation must enforce the key and counters across nodes and prove its destruction
+  semantics. Clearing a sealed key from a staging database does not erase historical copies.
+- **Default off.** A vault key alone never enables password setup, password uploads or
+  password restore. The current ceremony requires both `ZOEN_BACKUP_VAULT_KEY` and
+  `ZOEN_DEV_ALLOW_UNAUTHENTICATED_PASSWORD_BACKUP=1`. The latter is exclusively an explicit
+  opt-in for development and tests, not a production readiness flag. With it absent,
+  password requests answer `503` without evaluating or spending guesses. Existing snapshots
+  and keys are preserved, and recovery-key backups still work. Production activation
+  remains blocked by the independent recovery authorization and HSM gates above.
 
 ### Wire (HTTP on the relay, JSON unless stated)
 - **Writes from a certified device.** These carry `x-zoen-device`, `x-zoen-ts` and
@@ -91,9 +102,9 @@ Requirements, from Enzo's mandates:
   - `DELETE /v1/backup` turns the backup off. It forgets the vault and the object.
 - **Restore (no device yet).**
   - `POST /v1/backup/restore/start {handle, blinded?}` → `{identity, mode, kdf,
-    evaluated?, generation}`. The password mode counts a guess.
+    evaluated?, generation}`. The development password mode counts a guess.
   - `POST /v1/backup/restore/open {handle, auth_key, generation}` → `{wrapped_key, size,
-    generation}`. A failed open counts a guess. Row locks keep checks and counters on
+    generation}`. A failed development password open counts a guess. Row locks keep checks and counters on
     the same configuration; a rotation requires restarting restore.
   - `GET /v1/backup/restore/blob?handle=…&generation=…` with header
     `x-zoen-backup-auth: auth_key`.
@@ -132,9 +143,9 @@ like any new device of that person.
 - **Cost.** One object per person: a text history is a few MB, and media is excluded.
   Storage is about US$0.0001 per user per month on R2 or Tigris. The vault does one
   ristretto255 scalar multiplication per guess (about 50 µs).
-- **Loss.** Forget the password and use up 10 guesses, or lose the recovery key, and the
-  backup is gone. This is by design, the same as WhatsApp. The app has to say so plainly,
-  without jargon.
+- **Loss.** The development password ceremony can disable a backup after ten public
+  attempts and must remain gated. A recovery-key backup remains usable after bad attempts;
+  losing the 64-digit secret itself prevents recovery.
 - **Later.** The automatic schedule (daily on Wi-Fi), chunked uploads past 64 MiB, a media
   backup option, the HSM implementation, and a Signal-style SVR with distributed counters.
 
@@ -152,5 +163,9 @@ like any new device of that person.
 - interrupted configuration keeps the previous copy restorable;
 - every backup write refuses a revoked device;
 - a generation-less backup restores and can be upgraded without losing its old copy.
+- more than ten bad recovery-key attempts cannot lock a backup, and a correct key heals
+  lockout from an older relay;
+- a vault key without the development opt-in rejects password setup, upload and restore
+  while preserving an existing snapshot and counter.
 
 The backup decision was originally numbered 0045, also used by device linking. It is now 0046. The existing `0020_backups.sql` migration retains its historical comment so its SQLx checksum remains unchanged.

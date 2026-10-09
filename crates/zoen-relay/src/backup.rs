@@ -48,6 +48,27 @@ pub const MAX_GUESSES: i32 = 10;
 pub const MAX_BACKUP_BYTES: usize = 64 * 1024 * 1024;
 const MAX_SKEW_MS: i64 = 5 * 60 * 1000;
 
+#[derive(Clone, Debug, Default)]
+pub struct Settings {
+    /// Development only. Public password recovery currently lets any caller exhaust
+    /// another person's destructive guess counter. Production needs independent proof.
+    pub dev_allow_unauthenticated_password_backup: bool,
+}
+
+impl Settings {
+    pub fn from_env() -> anyhow::Result<Self> {
+        let dev_allow_unauthenticated_password_backup =
+            match std::env::var("ZOEN_DEV_ALLOW_UNAUTHENTICATED_PASSWORD_BACKUP").as_deref() {
+                Err(std::env::VarError::NotPresent) | Ok("0") => false,
+                Ok("1") => true,
+                _ => anyhow::bail!("ZOEN_DEV_ALLOW_UNAUTHENTICATED_PASSWORD_BACKUP must be 0 or 1"),
+            };
+        Ok(Self {
+            dev_allow_unauthenticated_password_backup,
+        })
+    }
+}
+
 // ───────────────────────────── the HSM boundary ─────────────────────────────
 
 /// The only code that touches a person's OPRF key. Staging seals keys under a master key
@@ -259,12 +280,22 @@ fn slow(wait: std::time::Duration) -> Response {
 }
 
 fn vault(st: &Shared) -> Result<&Arc<dyn Vault>, Response> {
+    if !st.backup_settings.dev_allow_unauthenticated_password_backup {
+        return Err(password_disabled());
+    }
     st.backup_vault.as_ref().ok_or_else(|| {
         err(
             StatusCode::SERVICE_UNAVAILABLE,
             "password backups are not configured on this relay",
         )
     })
+}
+
+fn password_disabled() -> Response {
+    err(
+        StatusCode::SERVICE_UNAVAILABLE,
+        "password backups are not configured for safe recovery on this relay",
+    )
 }
 
 // ───────────────────────────── device side ─────────────────────────────
@@ -282,12 +313,12 @@ pub struct OprfResp {
 
 /// Starts a password setup: a new pending OPRF key, evaluated on the device's blinded input.
 pub async fn oprf(State(st): State<Shared>, headers: HeaderMap, body: Bytes) -> Response {
-    let (identity, mut tx) = match signed_identity(&st, &headers, "oprf", &body).await {
-        Ok(i) => i,
-        Err(r) => return r,
-    };
     let vault = match vault(&st) {
         Ok(v) => v.clone(),
+        Err(r) => return r,
+    };
+    let (identity, mut tx) = match signed_identity(&st, &headers, "oprf", &body).await {
+        Ok(i) => i,
         Err(r) => return r,
     };
     let Ok(req) = serde_json::from_slice::<OprfReq>(&body) else {
@@ -353,6 +384,9 @@ pub async fn put_vault(State(st): State<Shared>, headers: HeaderMap, body: Bytes
     let oprf_key: Option<Vec<u8>> = match req.mode.as_str() {
         "recovery_key" => None,
         "passphrase" => {
+            if let Err(r) = vault(&st) {
+                return r;
+            }
             let pending: Option<Vec<u8>> = match sqlx::query_scalar(
                 "DELETE FROM backup_pending WHERE identity = $1 AND generation = $2
                     AND device = $3 RETURNING pending_key",
@@ -416,7 +450,7 @@ pub async fn put_blob(State(st): State<Shared>, headers: HeaderMap, body: Bytes)
     let generation = hex::encode(&body[8..PREFIX]);
     let body = body.slice(PREFIX..);
     let active = match sqlx::query(
-        "SELECT generation, locked, blob_key FROM backup_vaults WHERE identity = $1 FOR UPDATE",
+        "SELECT generation, mode, locked, blob_key FROM backup_vaults WHERE identity = $1 FOR UPDATE",
     )
     .bind(&identity)
     .fetch_optional(&mut *tx)
@@ -446,6 +480,16 @@ pub async fn put_blob(State(st): State<Shared>, headers: HeaderMap, body: Bytes)
             StatusCode::CONFLICT,
             "backup configuration changed; set it up again on this device",
         );
+    }
+    let mode = setup
+        .as_ref()
+        .or(active.as_ref())
+        .expect("matching setup or active vault")
+        .get::<String, _>("mode");
+    if mode == "passphrase" {
+        if let Err(r) = vault(&st) {
+            return r;
+        }
     }
     let sha = hex::encode(Sha256::digest(&body));
     let n = body.len();
@@ -691,8 +735,9 @@ pub async fn restore_start(
     };
     let decoy = |st: &Shared| -> Response {
         // No backup here: answer exactly like a password vault would.
-        let Some(v) = st.backup_vault.as_ref() else {
-            return err(StatusCode::NOT_FOUND, "no backup");
+        let v = match vault(st) {
+            Ok(v) => v,
+            Err(r) => return r,
         };
         let Some(b) = blinded else {
             return err(StatusCode::BAD_REQUEST, "bad point");
@@ -713,6 +758,11 @@ pub async fn restore_start(
     let Some(row) = row else {
         return decoy(&st);
     };
+    if row.mode != "recovery_key" {
+        if let Err(r) = vault(&st) {
+            return r;
+        }
+    }
     if row.locked && row.mode != "recovery_key" {
         return locked_response();
     }
@@ -778,7 +828,18 @@ async fn authorize(
 ) -> Result<(VaultRow, Transaction<'static, Postgres>), Response> {
     let wrong = || err(StatusCode::FORBIDDEN, "wrong password or key");
     let (row, mut tx) = vault_by_handle(st, handle).await?;
-    let Some(row) = row else { return Err(wrong()) };
+    let Some(row) = row else {
+        return Err(
+            if st.backup_settings.dev_allow_unauthenticated_password_backup {
+                wrong()
+            } else {
+                password_disabled()
+            },
+        );
+    };
+    if row.mode != "recovery_key" {
+        vault(st)?;
+    }
     if row.locked && row.mode != "recovery_key" {
         return Err(locked_response());
     }
