@@ -127,7 +127,7 @@ struct MacRootView: View {
         }
         .overlay(alignment: .bottom) {
             if let toast = model.toast {
-                ToastView(toast: toast, onUndo: { model.undo($0) }, onClose: { withAnimation { model.toast = nil } })
+                ToastView(toast: toast, onUndo: { model.undo($0) }, onRestore: { model.restoreStanding($0) }, onClose: { withAnimation { model.toast = nil } })
                     .frame(maxWidth: 560)
                     .padding(.bottom, 90)
                     .transition(.move(edge: .bottom).combined(with: .opacity))

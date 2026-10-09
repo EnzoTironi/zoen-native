@@ -250,6 +250,7 @@ enum InkClock {
 
 /// A hand-drawn, animated drawing: strokes as a function of elapsed time.
 struct InkDrawing: View {
+    @Environment(\.ambientPaused) private var ambientPaused
     var seed: UInt64 = 7
     var drawOn: Double = 1.1
     var fps: Double = 10
@@ -265,7 +266,7 @@ struct InkDrawing: View {
 
     var body: some View {
         let frozen = freezeAt ?? InkClock.freeze
-        TimelineView(.animation(minimumInterval: 1 / fps, paused: reduceMotion || frozen != nil || !onScreen)) { tl in
+        TimelineView(.animation(minimumInterval: 1 / fps, paused: ambientPaused || reduceMotion || frozen != nil || !onScreen)) { tl in
             let t: Double = frozen ?? (reduceMotion ? 0 : max(0, tl.date.timeIntervalSince(start)))
             let frame = reduceMotion ? 0 : Int(t * fps) % 4
             let progress = reduceMotion || drawOn <= 0 || frozen != nil ? 2 : t / drawOn
@@ -284,6 +285,7 @@ struct InkDrawing: View {
 /// A boiling ink outline (agent avatars, the agent orb). `loop` turns it into a ring
 /// that keeps drawing itself (the agent is working).
 struct InkOutline: View {
+    @Environment(\.ambientPaused) private var ambientPaused
     var corner: CGFloat = 0.3
     var color: Color = .white.opacity(0.6)
     var width: CGFloat = 0.045
@@ -293,7 +295,7 @@ struct InkOutline: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
-        TimelineView(.animation(minimumInterval: 1 / fps, paused: reduceMotion)) { tl in
+        TimelineView(.animation(minimumInterval: 1 / fps, paused: ambientPaused || reduceMotion)) { tl in
             let t = reduceMotion ? 0 : tl.date.timeIntervalSinceReferenceDate
             Canvas { ctx, size in
                 let frame = reduceMotion ? 0 : Int(t * fps) % 4
@@ -662,6 +664,7 @@ struct InkEmptyState: View {
 // MARK: - Unboxing reveal (the group's new donkey arrives in a hand-drawn box)
 
 struct UnboxingReveal: View {
+    @Environment(\.ambientPaused) private var ambientPaused
     let name: String
     var freezeAt: Double? = nil
     let onDone: () -> Void
@@ -672,7 +675,7 @@ struct UnboxingReveal: View {
     private static let length = 4.4
 
     var body: some View {
-        TimelineView(.animation(minimumInterval: 1 / 30, paused: reduceMotion || freezeAt != nil)) { tl in
+        TimelineView(.animation(minimumInterval: 1 / 30, paused: ambientPaused || reduceMotion || freezeAt != nil)) { tl in
             let t: Double = freezeAt ?? (reduceMotion ? 3.2 : tl.date.timeIntervalSince(start))
             let frame = reduceMotion ? 0 : Int(t * 10) % 4
             GeometryReader { g in

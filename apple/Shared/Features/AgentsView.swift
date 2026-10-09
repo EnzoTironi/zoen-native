@@ -152,6 +152,20 @@ struct AgentPermissionsView: View {
                 }
 
                 Section {
+                    let decisions = model.standing(for: agentId, space: spaceId)
+                    if decisions.isEmpty {
+                        Text("None yet.").font(.subheadline).foregroundStyle(Palette.textSecondary)
+                    }
+                    ForEach(decisions, id: \.grantId) { d in
+                        StandingDecisionRow(decision: d, showSpace: false)
+                    }
+                } header: {
+                    Text("Standing decisions")
+                } footer: {
+                    Text("Set by swiping up (always approve) or down (always deny) on an approval. Revoke one and the agent asks again.")
+                }
+
+                Section {
                     if let level {
                         Picker("Autonomy", selection: Binding(get: { level }, set: { new in
                             withAnimation(.snappy) {

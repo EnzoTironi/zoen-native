@@ -287,6 +287,7 @@ extension ZoenGlyph {
 
 /// v1 outline icons, kept for the before/after shots (`-RodaIconsV1 YES`).
 struct ZoenIconV1: View {
+    @Environment(\.ambientPaused) private var ambientPaused
     let glyph: ZoenGlyph
     var selected = false
     var size: CGFloat
@@ -303,7 +304,7 @@ struct ZoenIconV1: View {
     }
 
     var body: some View {
-        TimelineView(.animation(minimumInterval: 1 / 10, paused: !boil || reduceMotion)) { tl in
+        TimelineView(.animation(minimumInterval: 1 / 10, paused: ambientPaused || !boil || reduceMotion)) { tl in
             let frame = boil && !reduceMotion ? Int(tl.date.timeIntervalSinceReferenceDate * 10) % 4 + 1 : 0
             ZStack {
                 if selected {

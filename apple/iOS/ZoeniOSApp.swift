@@ -4,6 +4,7 @@ import RodaCore
 @main
 struct ZoeniOSApp: App {
     @State private var model = AppModel()
+    @Environment(\.scenePhase) private var phase
 
     var body: some Scene {
         WindowGroup {
@@ -13,6 +14,8 @@ struct ZoeniOSApp: App {
                 .preferredColorScheme(AppModel.launchColorScheme)
                 .task { await model.applyLaunchOptions() }
         }
+        // A revoke waiting on its "Desfazer" is settled before the app can be killed.
+        .onChange(of: phase) { _, p in if p != .active { model.commitPendingRevokes() } }
     }
 }
 
@@ -62,13 +65,16 @@ struct RootView: View {
             }
 
             if let toast = model.toast {
-                ToastView(toast: toast, onUndo: { model.undo($0) }, onClose: { withAnimation { model.toast = nil } })
+                ToastView(toast: toast, onUndo: { model.undo($0) }, onRestore: { model.restoreStanding($0) }, onClose: { withAnimation { model.toast = nil } })
                     .padding(.bottom, barVisible ? 96 : 84)
                     .transition(.move(edge: .bottom).combined(with: .opacity))
             }
         }
         .onGeometryChange(for: CGSize.self) { $0.size } action: { size = $0 }
         .animation(.spring(duration: 0.35), value: barVisible)
+        // Nothing under the approvals cover is visible: stop its ink/mascot/globe loops so
+        // the cards get the whole main thread (sheets below are outside this and keep theirs).
+        .environment(\.ambientPaused, model.approvalsOpen)
         .overlay {
             if onboarding || model.sync.needsAccount {
                 OnboardingFlow { withAnimation(.easeInOut(duration: 0.4)) { onboarding = false } }
@@ -79,8 +85,13 @@ struct RootView: View {
             if UserDefaults.standard.bool(forKey: "RodaTopBarWidths") { TopBarWidthSheet() }
             if UserDefaults.standard.bool(forKey: "RodaIconExplore") { IconExploreSheet() }
         }
+        .overlay {
+            if let flip = model.appFlip {
+                MiniAppFlipHost(flip: flip).id(flip.id)
+            }
+        }
         .environment(\.appZoom, zoom)
-        .sheet(item: Binding(get: { model.appSheet == nil ? model.appConfirm : nil }, set: { model.appConfirm = $0 })) { req in
+        .sheet(item: Binding(get: { model.appSheet == nil && model.appFlip == nil ? model.appConfirm : nil }, set: { model.appConfirm = $0 })) { req in
             AppConfirmSheet(request: req) { model.appConfirm = nil }
         }
         .sheet(isPresented: $model.newChatOpen) {
@@ -93,6 +104,9 @@ struct RootView: View {
         }
         .sheet(isPresented: $model.notificationsOpen) {
             NotificationsSheet().environment(model).environment(\.appZoom, zoom)
+        }
+        .fullScreenCover(isPresented: $model.approvalsOpen) {
+            ApprovalsStackView().environment(model).environment(\.appZoom, zoom)
         }
         .sheet(item: $model.appSheet) { ref in
             AppSheetHost(itemId: ref.id)

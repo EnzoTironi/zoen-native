@@ -16,11 +16,21 @@ struct SpaceView: View {
     @State private var safeTop: CGFloat = 0
     @State private var scrollPos = ScrollPosition(edge: .bottom)
     @State private var offsetY: CGFloat = 0
+    /// Top of the composer bar, in global coordinates (the message fade ends there).
+    @State private var composerTop: CGFloat = .infinity
     @Environment(\.dismiss) private var dismiss
     @FocusState private var composerFocused: Bool
     @State private var backgroundPicker = false
     /// A message a search result jumped to (briefly highlighted).
     @State private var highlighted: String?
+    /// Drag-left on a message: the composer answers it inline (quoted).
+    @State private var replyTo: TimelineEntry?
+    /// The header menu (HeaderMenu): the title grows into it.
+    @State private var headerMenu = false
+    /// Drag-right on a message (or its "N respostas"): its thread.
+    @State private var thread: ThreadRef?
+    /// The main timeline: thread replies live in their thread, not here.
+    private var visible: [TimelineEntry] { entries.filter { $0.inThread == nil } }
 
     private var space: SpaceSummary? { model.space(spaceId) }
     private var workingAgent: Persona? { model.working[spaceId] }
@@ -56,12 +66,31 @@ struct SpaceView: View {
                             .transition(.opacity)
                     }
                     if let space { SpaceHeaderCard(space: space).padding(.bottom, 12) }
-                    ForEach(Array(entries.enumerated()), id: \.element.id) { idx, entry in
+                    let shown = visible
+                    ForEach(Array(shown.enumerated()), id: \.element.id) { idx, entry in
                         EntryView(entry: entry,
-                                  previous: idx > 0 ? entries[idx - 1] : nil,
-                                  next: idx + 1 < entries.count ? entries[idx + 1] : nil,
+                                  previous: idx > 0 ? shown[idx - 1] : nil,
+                                  next: idx + 1 < shown.count ? shown[idx + 1] : nil,
                                   isDirect: space?.kind == .direct,
-                                  onOpenItem: onOpenItem)
+                                  onOpenItem: onOpenItem,
+                                  threadFaces: entry.threadReplies > 0 ? threadFaces(entry.id) : [],
+                                  onSwipe: { intent in
+                                      switch intent {
+                                      case .reply:
+                                          withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) { replyTo = entry }
+                                          composerFocused = true
+                                      case .thread:
+                                          thread = ThreadRef(id: entry.id)
+                                      }
+                                  },
+                                  onJump: { id in
+                                      withAnimation(.smooth(duration: 0.45)) { proxy.scrollTo(id, anchor: .center) }
+                                      withAnimation(.easeOut(duration: 0.25)) { highlighted = id }
+                                      Task { @MainActor in
+                                          try? await Task.sleep(for: .seconds(1.4))
+                                          withAnimation(.easeOut(duration: 0.6)) { highlighted = nil }
+                                      }
+                                  })
                             .background {
                                 if highlighted == entry.id {
                                     RoundedRectangle(cornerRadius: 18, style: .continuous)
@@ -101,8 +130,33 @@ struct SpaceView: View {
             .safeAreaPadding(.top, chromeHeight + 8)
             .scrollDismissesKeyboard(.interactively)
             .environment(\.chatBackdrop, !background.isNone)
+            // Messages fade out just above the composer instead of ghosting through its
+            // glass; the chat background (drawn below this mask) stays whole.
+            .mask {
+                GeometryReader { g in
+                    let fade: CGFloat = 28
+                    let cut = composerTop.isFinite ? max(0, composerTop - g.frame(in: .global).minY) : g.size.height
+                    VStack(spacing: 0) {
+                        Color.black.frame(height: max(0, cut - fade))
+                        LinearGradient(colors: [.black, .black.opacity(0)], startPoint: .top, endPoint: .bottom)
+                            .frame(height: min(fade, cut))
+                        Color.clear
+                    }
+                }
+                .ignoresSafeArea()
+            }
             .background(ChatBackdropView(background: background, spaceId: spaceId, layout: backgroundState.layout).ignoresSafeArea())
-            .safeAreaInset(edge: .bottom, spacing: 0) {
+            // A bar, not an inset: iOS 26 fades and blurs what scrolls under the composer,
+            // so message text doesn't ghost through its glass.
+            #if os(iOS)
+            .scrollEdgeEffectStyle(.soft, for: .bottom)
+            #endif
+            .safeAreaBar(edge: .bottom, spacing: 0) {
+              VStack(spacing: 6) {
+                if let r = replyTo {
+                    ReplyComposerBar(entry: r) { withAnimation(.spring(response: 0.3, dampingFraction: 0.85)) { replyTo = nil } }
+                        .transition(.move(edge: .bottom).combined(with: .opacity))
+                }
                 Composer(text: $draft,
                          placeholder: space?.counterpart?.kind == .agent ? String(localized: "What do you want to get done?") : String(localized: "Message"),
                          focused: $composerFocused,
@@ -112,8 +166,20 @@ struct SpaceView: View {
                     let text = draft
                     draft = ""
                     model.sync.stoppedTyping(spaceId)
-                    Task { await model.send(text, in: spaceId) }
+                    if let r = replyTo {
+                        withAnimation(.spring(response: 0.3, dampingFraction: 0.85)) { replyTo = nil }
+                        model.sendReply(text, to: r.id, thread: false, in: spaceId)
+                    } else {
+                        Task { await model.send(text, in: spaceId) }
+                    }
                 }
+              }
+              .animation(.spring(response: 0.35, dampingFraction: 0.85), value: replyTo?.id)
+              .onGeometryChange(for: CGFloat.self) { $0.frame(in: .global).minY } action: { composerTop = $0 }
+            }
+            .sheet(item: $thread) { t in
+                ThreadSheet(spaceId: spaceId, rootId: t.id)
+                    .presentationDetents([.large])
             }
             .onChange(of: draft) { _, text in model.sync.typingChanged(spaceId, text: text) }
             .onDisappear { model.sync.stoppedTyping(spaceId) }
@@ -199,9 +265,12 @@ struct SpaceView: View {
                 if top { scrollPos.scrollTo(edge: .top) } else { scrollPos.scrollTo(y: max(0, offsetY - up)) }
             }
             if top {
-                // Late tiles/images can still grow the content; re-pin once it settles.
-                try? await Task.sleep(for: .seconds(2))
-                withAnimation(.smooth(duration: 0.3)) { scrollPos.scrollTo(edge: .top) }
+                // Late tiles, images and app cards can still grow the content: keep re-pinning
+                // for a few seconds until nothing moves it any more.
+                for _ in 0..<6 {
+                    try? await Task.sleep(for: .seconds(1))
+                    withAnimation(.smooth(duration: 0.3)) { scrollPos.scrollTo(edge: .top) }
+                }
             }
         }
         .task {
@@ -234,18 +303,42 @@ struct SpaceView: View {
         .onGeometryChange(for: CGFloat.self) { $0.safeAreaInsets.top } action: { safeTop = $0 }
         // No veil, blur or fade anywhere: content runs crisp to the screen edge and only the
         // glass elements have a surface.
+        .overlay {
+            if headerMenu {
+                // Everything under the menu dims; a tap anywhere folds it back.
+                Color.black.opacity(0.18)
+                    .ignoresSafeArea()
+                    .onTapGesture { setHeaderMenu(false) }
+                    .transition(.opacity)
+                    .accessibilityHidden(true)
+            }
+        }
         .overlay(alignment: .top) {
             VStack(spacing: 8) {
                 if let space {
                     ChatTopBar(space: space, subtitle: subtitle(space), status: status(space),
                                onBack: { _ = model.pop() },
-                               onOpen: { model.go(.participants(spaceId)) })
+                               onOpen: {
+                                   setHeaderMenu(false)
+                                   if let who = space.counterpart { model.openProfile(who.id) } else { model.go(.participants(spaceId)) }
+                               },
+                               onTitle: { setHeaderMenu(!headerMenu) },
+                               menuOpen: headerMenu)
+                    if headerMenu {
+                        HeaderMenuPanel(space: space, about: subtitle(space).isEmpty ? space.title : "\(space.title) · \(subtitle(space))") { pick in
+                            headerPick(pick)
+                        }
+                        // Grows out of the title (not from nothing), folds back a touch quicker.
+                        .transition(.asymmetric(
+                            insertion: .scale(scale: 0.88, anchor: .top).combined(with: .offset(y: -12)).combined(with: .opacity),
+                            removal: .scale(scale: 0.95, anchor: .top).combined(with: .opacity)))
+                    }
                 }
-                if let pinned { PinnedItemBar(item: pinned) { onOpenItem(pinned.id) } }
+                if let pinned, !headerMenu { PinnedItemBar(item: pinned) { onOpenItem(pinned.id) } }
             }
             .padding(.top, 2)
             .padding(.bottom, 6)
-            .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { chromeHeight = $0 }
+            .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { if !headerMenu { chromeHeight = $0 } }
         }
         #else
         .toolbar {
@@ -309,6 +402,32 @@ struct SpaceView: View {
         }
         let people = s.members.filter { $0.kind != .agent }.count
         return String(localized: "\(people) people")
+    }
+
+    /// Who answered in a message's thread (newest first, each once).
+    private func setHeaderMenu(_ open: Bool) {
+        guard open != headerMenu else { return }
+        open ? Haptics.menuOpen() : Haptics.menuClose()
+        let anim: Animation = reduceMotionOn ? .easeInOut(duration: 0.2)
+            : open ? .spring(response: 0.38, dampingFraction: 0.84) : .spring(response: 0.26, dampingFraction: 0.95)
+        withAnimation(anim) { headerMenu = open }
+    }
+
+    private var reduceMotionOn: Bool { UIAccessibility.isReduceMotionEnabled }
+
+    private func headerPick(_ pick: HeaderMenuPanel.Pick) {
+        setHeaderMenu(false)
+        switch pick {
+        case .members, .agents, .settings: model.go(.participants(spaceId))
+        case .files, .pages: model.go(.folder(spaceId))
+        case .mute: model.show(.init(kind: .info, text: String(localized: "Muted on this device.")))
+        }
+    }
+
+    private func threadFaces(_ root: String) -> [Persona] {
+        var seen = Set<String>(), out: [Persona] = []
+        for e in entries.reversed() where e.inThread == root && seen.insert(e.author.id).inserted { out.append(e.author) }
+        return out
     }
 
     private func reload() {
@@ -381,6 +500,11 @@ struct EntryView: View {
     var next: TimelineEntry? = nil
     var isDirect: Bool
     var onOpenItem: (String) -> Void
+    var threadFaces: [Persona] = []
+    /// Drag left (reply) / right (thread); nil = no message gestures here.
+    var onSwipe: ((MessageSwipeIntent) -> Void)? = nil
+    /// Tap a quote: scroll to the message it answers.
+    var onJump: ((String) -> Void)? = nil
     @Environment(AppModel.self) private var model
 
     /// Same author within 5 minutes → continuation (no name).
@@ -405,12 +529,20 @@ struct EntryView: View {
             BackgroundChangeRow(author: entry.author, background: ChatBackground(dto: dto),
                                 spaceId: entry.id, layout: PhotoBackgroundLayout(dto: dto))
         case .message(let text, let card):
-            VStack(alignment: .trailing, spacing: 3) {
+            VStack(alignment: entry.author.isMe ? .trailing : .leading, spacing: 3) {
                 MessageRow(author: entry.author, text: text, card: card, atMs: entry.atMs,
-                           grouped: grouped, endsRun: endsRun, isDirect: isDirect, onOpenItem: onOpenItem)
+                           grouped: grouped && entry.replyTo == nil, endsRun: endsRun, isDirect: isDirect, onOpenItem: onOpenItem,
+                           quote: entry.replyTo, onQuote: { onJump?($0) })
+                    .modifier(MessageSwipe(enabled: onSwipe != nil) { onSwipe?($0) })
+                if entry.threadReplies > 0 {
+                    ThreadRepliesChip(count: entry.threadReplies, faces: threadFaces) { onSwipe?(.thread) }
+                        .padding(.leading, entry.author.isMe ? 0 : 44)
+                        .transition(.scale(scale: 0.6, anchor: .topLeading).combined(with: .opacity))
+                }
                 if entry.author.isMe { DeliveryMark(delivery: entry.delivery) }
             }
-            .padding(.top, grouped ? 0 : 10)
+            .frame(maxWidth: .infinity, alignment: entry.author.isMe ? .trailing : .leading)
+            .padding(.top, grouped && entry.replyTo == nil ? 0 : 10)
         case .itemEdited(let itemId, _, _, _, _) where (try? model.core.item(itemId: itemId))?.app != nil:
             // Mini-apps: cada toque atualiza o widget ao vivo (ponto vermelho e coração no
             // cartão); o histórico fica na folha, não enche a conversa.
@@ -456,6 +588,15 @@ struct DeliveryMark: View {
     }
 }
 
+private extension VerticalAlignment {
+    /// Where a sender's face sits beside a message: the text bubble's bottom when there is
+    /// one, otherwise the bottom of the row.
+    enum MessageFace: AlignmentID {
+        static func defaultValue(in d: ViewDimensions) -> CGFloat { d[.bottom] }
+    }
+    static let messageFace = VerticalAlignment(MessageFace.self)
+}
+
 struct MessageRow: View {
     let author: Persona
     let text: String
@@ -466,13 +607,18 @@ struct MessageRow: View {
     var endsRun: Bool = true
     let isDirect: Bool
     var onOpenItem: (String) -> Void
+    /// Inline reply: the message this one answers, quoted at the top of the bubble.
+    var quote: ReplyQuote? = nil
+    var onQuote: ((String) -> Void)? = nil
     @Environment(\.chatBackdrop) private var backdrop
 
     private static let face: CGFloat = 36
 
     var body: some View {
         let mine = author.isMe
-        HStack(alignment: .bottom, spacing: 8) {
+        // The face lines up with the run's last text bubble, not the bottom of a tall card
+        // under it (an agent's trail card pushed its face out of view).
+        HStack(alignment: .messageFace, spacing: 8) {
             if mine { Spacer(minLength: 48) }
             if !mine {
                 if endsRun || author.kind == .agent {
@@ -509,17 +655,25 @@ struct MessageRow: View {
                 }
                 if let voice = VoiceNoteRef.parse(text) {
                     VoiceBubble(ref: voice, mine: mine, grouped: grouped)
+                        .alignmentGuide(.messageFace) { $0[.bottom] }
                 } else if !text.isEmpty {
                     if author.kind == .agent && !mine, let plan = Itinerary(text) {
                         ItineraryCard(itinerary: plan)
                     } else {
                         // Me in black (4 pt corner bottom right); everyone else, agents
                         // included, in the same grey bubble (tight corner bottom left).
-                        Text(attributed(text))
-                            .font(.body)
-                            .foregroundStyle(mine ? Palette.myBubbleText : Palette.textPrimary)
-                            .padding(.horizontal, 14)
-                            .padding(.vertical, 9)
+                        VStack(alignment: .leading, spacing: 6) {
+                            if let quote {
+                                ReplyQuoteView(quote: quote, mine: mine)
+                                    .onTapGesture { onQuote?(quote.id) }
+                            }
+                            Text(attributed(text))
+                                .font(.body)
+                                .foregroundStyle(mine ? Palette.myBubbleText : Palette.textPrimary)
+                        }
+                            .padding(.horizontal, quote == nil ? 14 : 10)
+                            .padding(.top, quote == nil ? 9 : 8)
+                            .padding(.bottom, 9)
                             .background {
                                 if mine {
                                     UnevenRoundedRectangle(topLeadingRadius: 20, bottomLeadingRadius: 20, bottomTrailingRadius: grouped ? 20 : 4, topTrailingRadius: 20, style: .continuous)
@@ -531,6 +685,7 @@ struct MessageRow: View {
                             }
                             .shadow(color: .black.opacity(backdrop ? 0.1 : 0), radius: 1.5, y: 0.5)
                             .textSelection(.enabled)
+                            .alignmentGuide(.messageFace) { $0[.bottom] }
                         if mine && !grouped {
                             FirstBubbleFlourish(key: "\(author.id)-\(atMs)")
                         }
@@ -650,8 +805,9 @@ struct WorkingRow: View {
 }
 
 struct TypingDots: View {
+    @Environment(\.ambientPaused) private var ambientPaused
     var body: some View {
-        TimelineView(.animation) { ctx in
+        TimelineView(.animation(paused: ambientPaused)) { ctx in
             let t = ctx.date.timeIntervalSinceReferenceDate
             HStack(spacing: 4) {
                 ForEach(0..<3, id: \.self) { i in
