@@ -397,6 +397,16 @@ final class AppModel {
 
     /// Mensagem do usuário → (talvez) o agente age. O plano vem do Foundation Models
     /// no aparelho ou do planejador local; o núcleo decide se o agente pode e assina.
+    /// Inline reply (quoted in the chat) or a reply in the message's thread.
+    @discardableResult
+    func sendReply(_ text: String, to entryId: String, thread: Bool, in spaceId: String) -> Bool {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return false }
+        guard perform({ try core.sendReply(spaceId: spaceId, text: trimmed, to: entryId, thread: thread) }) != nil else { return false }
+        Haptics.send()
+        return true
+    }
+
     func send(_ text: String, in spaceId: String) async {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
