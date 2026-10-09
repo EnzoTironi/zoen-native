@@ -76,6 +76,7 @@ dependencies {
     implementation("net.java.dev.jna:jna:5.18.1@aar")
     implementation("androidx.webkit:webkit:1.16.0")
     implementation("androidx.exifinterface:exifinterface:1.4.2")
+    implementation("com.squareup.okhttp3:okhttp:5.5.0")
     implementation("com.google.mlkit:genai-prompt:1.0.0-beta2")
     implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.10.0")
     implementation("androidx.media3:media3-transformer:1.9.3")
