@@ -220,8 +220,16 @@ class ParityJourneysTest {
         open("zoen://chat/${chat.id}")
         compose.onNodeWithContentDescription(application.getString(R.string.more)).performClick()
         compose.onNodeWithText(application.getString(R.string.chat_appearance), substring = false).performClick()
+        compose.waitUntil(10_000) {
+            compose.onAllNodes(hasText(application.getString(R.string.save), substring = false) and isEnabled()).fetchSemanticsNodes().isNotEmpty()
+        }
         compose.onNodeWithText(application.getString(R.string.bg_mint), substring = false).performClick()
-        compose.onNodeWithText(application.getString(R.string.save), substring = false).performClick()
+        compose.onNodeWithTag("background:color:mint").assertIsSelected()
+        compose.onNodeWithText(application.getString(R.string.save), substring = false).assertIsEnabled().performClick()
+        compose.waitUntil(10_000) {
+            compose.onAllNodesWithTag("chat-appearance").fetchSemanticsNodes().isEmpty() &&
+                compose.onAllNodesWithTag("chat-timeline").fetchSemanticsNodes().isNotEmpty()
+        }
         val chosen = runBlocking { xyz.tironi.zoen.ui.ChatAppearanceStore.load(application.repository, chat.id) }
         assertEquals("color:mint", chosen.style)
         scenario.recreate()

@@ -157,9 +157,12 @@ fun ChatAppearanceScreen(model: ZoenViewModel, space: String, back: () -> Unit) 
         val ref = model.repository.change { it.putMedia(image.first, "image/jpeg", image.second.first.toUInt(), image.second.second.toUInt()) }
         background = background.copy(style = "photo", media = ref)
     } }
-    Scaffold(topBar = { ScreenBar(stringResource(R.string.chat_appearance), back, actions = {
+    Scaffold(modifier = Modifier.testTag("chat-appearance"), topBar = { ScreenBar(stringResource(R.string.chat_appearance), back, actions = {
         TextButton(enabled = loaded && !saving, onClick = { model.launch { saving = true; try { ChatAppearanceStore.save(model.repository, space, background, local); back() } finally { saving = false } } }) { Text(stringResource(R.string.save)) }
-    }) }) { padding -> LazyColumn(Modifier.padding(padding), contentPadding = PaddingValues(20.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
+    }) }) { padding ->
+        if (!loaded) {
+            Box(Modifier.fillMaxSize().padding(padding), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
+        } else LazyColumn(Modifier.padding(padding), contentPadding = PaddingValues(20.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
         item { Box(Modifier.fillMaxWidth().height(220.dp)) { BackgroundPreview(model, background, Modifier.matchParentSize()); Card(Modifier.align(Alignment.Center).padding(24.dp)) { Text(stringResource(R.string.chat_appearance_preview), Modifier.padding(20.dp)) } } }
         item { Row(verticalAlignment = Alignment.CenterVertically) { Column(Modifier.weight(1f)) { Text(stringResource(R.string.background_only_me)); Text(stringResource(R.string.background_shared_detail), style = MaterialTheme.typography.bodySmall) }; Switch(local, { local = it }) } }
         item { OutlinedButton(onClick = { background = ChatAppearanceStore.default() }, modifier = Modifier.testTag("background:default")) { Text(stringResource(R.string.background_default)) }; OutlinedButton(onClick = { picker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) }) { Text(stringResource(R.string.choose_photo)) } }
