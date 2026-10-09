@@ -110,6 +110,8 @@ struct PageTextView: UIViewRepresentable {
             if tv.isEditable, pt.y > tv.caretRect(for: tv.endOfDocument).maxY + 8 {
                 if !tv.isFirstResponder { _ = tv.becomeFirstResponder() }
                 tv.selectedRange = NSRange(location: tv.textStorage.length, length: 0)
+                // UITextView's own tap may place the caret after this one; end wins.
+                DispatchQueue.main.async { tv.selectedRange = NSRange(location: tv.textStorage.length, length: 0) }
                 return
             }
             guard let pos = tv.closestPosition(to: pt) else { return }
