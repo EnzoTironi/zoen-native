@@ -105,8 +105,16 @@ final class ChatReadingJourneyTests: XCTestCase {
 
     @MainActor
     func testAtTheEndNewMessagesJustAppear() {
-        let app = launch(fast: true)
+        let app = launch(fast: false)
+        let previous = text(app, "MapTap no grupo")
+        let visible = NSPredicate(format: "exists == true AND hittable == true")
+        expectation(for: visible, evaluatedWith: previous)
+        waitForExpectations(timeout: 15)
+        XCTAssertTrue(previous.isHittable, "the last existing message is visible before friends write")
         let newest = text(app, "guarda um lugar")
+        XCTAssertFalse(newest.exists, "incoming messages are held until the chat is at its end")
+        capture("At the end before new messages")
+        app.buttons["demo-incoming-trigger"].tap()
         XCTAssertTrue(newest.waitForExistence(timeout: 30), "the friend's message arrives")
         sleep(1)
         XCTAssertTrue(newest.isHittable, "at the end of the chat it comes into view")
