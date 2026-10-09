@@ -7,6 +7,9 @@ use roda_types::{EventBody, Privacy, Role, SpaceKind};
 
 use super::Reject;
 
+/// Current relay/fanout contract. Larger groups require a paginated delivery path.
+pub const MAX_MEMBERS: u32 = 5_000;
+
 /// What the append transaction read before deciding.
 #[derive(Debug, Default)]
 pub struct Facts {
@@ -58,10 +61,17 @@ pub enum Effect {
         device: String,
         upto: u64,
     },
+    /// One of the author's devices joins the group from this entry: pruning waits for it.
+    Hold {
+        device: String,
+    },
     Nothing,
 }
 
 pub fn admit(env: &Envelope, f: &Facts) -> Result<Effect, Reject> {
+    if f.member_count > MAX_MEMBERS {
+        return Err(Reject::no("space exceeds the supported member limit"));
+    }
     let body = env.body();
     let author = env.author();
     let effect = match (&f.head, body.clone()) {
@@ -76,6 +86,12 @@ pub fn admit(env: &Envelope, f: &Facts) -> Result<Effect, Reject> {
             return Err(Reject::no("space already exists"))
         }
         (Some(_), Some(EventBody::MemberAdded { identity, role })) => {
+            if !identity_key(&identity) {
+                return Err(Reject::no("not an identity key"));
+            }
+            if f.target_role.is_none() && f.member_count >= MAX_MEMBERS {
+                return Err(Reject::no("space member limit reached"));
+            }
             if !f.target_known {
                 return Err(Reject::no("that person isn't on Zoen yet"));
             }
@@ -121,6 +137,9 @@ pub fn admit(env: &Envelope, f: &Facts) -> Result<Effect, Reject> {
             }
         }
         (Some(_), Some(EventBody::MemberRemoved { identity })) => {
+            if !identity_key(&identity) {
+                return Err(Reject::no("not an identity key"));
+            }
             let allowed = identity == author
                 || matches!(f.author_role, Some(Role::Owner))
                 || (matches!(f.author_role, Some(Role::Admin))
@@ -166,6 +185,18 @@ pub fn admit(env: &Envelope, f: &Facts) -> Result<Effect, Reject> {
                 upto: upto.seq,
             }
         }
+        (Some(_), Some(EventBody::DeviceJoining { device })) => {
+            if f.author_role.is_none() {
+                return Err(Reject::no("not a member of this space"));
+            }
+            if f.privacy != Some(Privacy::EndToEnd) {
+                return Err(Reject::no("devices join groups of end-to-end spaces only"));
+            }
+            if device.len() != 64 || !device.bytes().all(|b| b.is_ascii_hexdigit()) {
+                return Err(Reject::no("not a device key"));
+            }
+            Effect::Hold { device }
+        }
         (Some(_), _) => match f.author_role {
             None => return Err(Reject::no("not a member of this space")),
             Some(Role::Reader) => return Err(Reject::no("readers can't write here")),
@@ -179,6 +210,10 @@ pub fn admit(env: &Envelope, f: &Facts) -> Result<Effect, Reject> {
     let effect = check_handshake(env, f).map(|e| e.unwrap_or(effect))?;
     check_causal_link(env, f, &effect)?;
     Ok(effect)
+}
+
+pub(crate) fn identity_key(identity: &str) -> bool {
+    identity.len() == 64 && identity.bytes().all(|b| b.is_ascii_hexdigit())
 }
 
 /// One commit per epoch, in log order: the relay reads the epoch from the clear framing and
@@ -235,7 +270,8 @@ fn check_privacy(
                 | EventBody::MemberRemoved { .. }
                 | EventBody::ProfileKeyShared { .. }
                 | EventBody::SpaceEncrypted
-                | EventBody::Checkpoint { .. },
+                | EventBody::Checkpoint { .. }
+                | EventBody::DeviceJoining { .. },
             ),
         ) => Ok(()),
         (None, _) if e2e => Err(Reject::no(roda_proto::SEAL_REQUIRED)),
@@ -498,6 +534,62 @@ mod tests {
         assert_eq!(
             admit(&env(&a, seen, msg()), &stranger).unwrap_err().reason,
             "not a member of this space"
+        );
+    }
+
+    #[test]
+    fn supported_membership_bounds_every_new_forwarding_audience() {
+        let author = Author::root(Signer::generate());
+        let seen = Some(Seen {
+            seq: 3,
+            hash: "h3".into(),
+        });
+        let add = env(
+            &author,
+            seen.clone(),
+            EventBody::MemberAdded {
+                identity: "c".repeat(64),
+                role: Role::Member,
+            },
+        );
+        let mut facts = Facts {
+            member_count: MAX_MEMBERS - 1,
+            ..member_facts(Role::Owner)
+        };
+        assert!(matches!(admit(&add, &facts), Ok(Effect::Add { .. })));
+        facts.member_count = MAX_MEMBERS;
+        assert_eq!(
+            admit(&add, &facts).unwrap_err().reason,
+            "space member limit reached"
+        );
+        facts.target_role = Some(Role::Reader);
+        assert!(
+            matches!(admit(&add, &facts), Ok(Effect::Add { .. })),
+            "role changes don't grow the audience"
+        );
+        let mut remove = env(
+            &author,
+            seen.clone(),
+            EventBody::MemberRemoved {
+                identity: "d".repeat(64),
+            },
+        );
+        assert!(matches!(admit(&remove, &facts), Ok(Effect::Remove { .. })));
+        remove = env(
+            &author,
+            seen,
+            EventBody::MemberRemoved {
+                identity: "unbounded".repeat(10_000),
+            },
+        );
+        assert_eq!(
+            admit(&remove, &facts).unwrap_err().reason,
+            "not an identity key"
+        );
+        facts.member_count = MAX_MEMBERS + 1;
+        assert_eq!(
+            admit(&add, &facts).unwrap_err().reason,
+            "space exceeds the supported member limit"
         );
     }
 

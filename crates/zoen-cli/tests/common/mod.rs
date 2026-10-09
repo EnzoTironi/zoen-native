@@ -180,11 +180,24 @@ impl World {
     }
 
     fn cmd_at(&self, port: u16, who: &str, args: &[&str]) -> Command {
+        let relay = format!("http://127.0.0.1:{port}");
+        // After init the CLI connects to its saved account, not ZOEN_RELAY.
+        // Move that fixture account too, so *_at really exercises the chosen node.
+        let db = self.dir.join(who).join("zoen.sqlite");
+        if db.exists() {
+            rusqlite::Connection::open(db)
+                .expect("client database")
+                .execute(
+                    "UPDATE meta SET value = json_set(value, '$.relay_url', ?1) WHERE key = 'account'",
+                    [&relay],
+                )
+                .expect("route client to relay");
+        }
         let mut c = Command::new(env!("CARGO_BIN_EXE_zoen"));
         c.arg("--home")
             .arg(self.dir.join(who))
             .args(args)
-            .env("ZOEN_RELAY", format!("http://127.0.0.1:{port}"))
+            .env("ZOEN_RELAY", relay)
             .envs(self.client_env.iter().map(|(k, v)| (k, v)));
         c
     }
@@ -192,6 +205,10 @@ impl World {
     /// Environment every `zoen` of this world runs with (e.g. `ZOEN_CHECKPOINT_EVERY`).
     pub fn set_client_env(&mut self, key: &str, value: &str) {
         self.client_env.push((key.to_string(), value.to_string()));
+    }
+
+    pub fn set_relay_env(&mut self, key: &str, value: &str) {
+        self.relay_env.push((key.to_string(), value.to_string()));
     }
 
     /// Runs `zoen` as `who` against the relay node on `port`.
@@ -280,7 +297,7 @@ impl World {
         let deadline = std::time::Instant::now() + Duration::from_secs(30);
         loop {
             let out = self.zoen(who, &["sync"]);
-            if done(&out) {
+            if out.contains("connection=online synced=true") && done(&out) {
                 return out;
             }
             assert!(
@@ -295,6 +312,45 @@ impl World {
         self.cmd(who, args)
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
+            .spawn()
+            .expect("spawn zoen")
+    }
+
+    /// Like `spawn_zoen`, with extra environment for this one process.
+    pub fn spawn_zoen_env(&self, who: &str, args: &[&str], env: &[(&str, &str)]) -> Child {
+        let mut c = self.cmd(who, args);
+        c.envs(env.iter().copied())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()
+            .expect("spawn zoen")
+    }
+
+    /// Every file under the relay's object store, by path.
+    pub fn blobs(&self) -> Vec<(PathBuf, Vec<u8>)> {
+        let mut out = vec![];
+        let mut stack = vec![self.dir.join("blobs")];
+        while let Some(d) = stack.pop() {
+            let Ok(rd) = std::fs::read_dir(&d) else {
+                continue;
+            };
+            for e in rd.flatten() {
+                if e.path().is_dir() {
+                    stack.push(e.path())
+                } else {
+                    out.push((e.path(), std::fs::read(e.path()).unwrap()))
+                }
+            }
+        }
+        out
+    }
+
+    /// A background client whose output is retained without filling an unread pipe.
+    pub fn spawn_zoen_logged(&self, who: &str, args: &[&str], log_name: &str) -> Child {
+        let log = std::fs::File::create(self.dir.join(log_name)).expect("client log");
+        self.cmd(who, args)
+            .stdout(log.try_clone().expect("clone client log"))
+            .stderr(log)
             .spawn()
             .expect("spawn zoen")
     }
@@ -442,6 +498,36 @@ pub struct RawClient {
 }
 
 impl RawClient {
+    pub async fn reconnect(relay: &str, author: Author) -> RawClient {
+        let url = format!("{}/v1/sync", relay.replace("http://", "ws://"));
+        let (ws, _) = tokio_tungstenite::connect_async(url).await.unwrap();
+        let mut c = RawClient { ws, author };
+        c.send(&ClientFrame::Hello {
+            protocol: PROTOCOL_VERSION,
+            capabilities: Vec::new(),
+            identity: c.identity(),
+            device: c.author.device.clone().unwrap(),
+            cert: c.author.cert.clone().unwrap(),
+        })
+        .await;
+        let ServerFrame::Challenge { nonce, relay, .. } = c.recv().await else {
+            panic!("challenge")
+        };
+        let sig = c.author.key.sign(&auth_message(&nonce, &relay));
+        c.send(&ClientFrame::Auth { sig }).await;
+        assert!(matches!(c.recv().await, ServerFrame::Ready { .. }));
+        c
+    }
+
+    pub async fn request(&mut self, op: Op) -> Result<roda_proto::Reply, String> {
+        self.send(&ClientFrame::Req { id: 1, op }).await;
+        loop {
+            if let ServerFrame::Res { id: 1, result } = self.recv().await {
+                return result;
+            }
+        }
+    }
+
     pub async fn connect(relay: &str, handle: &str) -> RawClient {
         Self::connect_registering(relay, handle).await.0
     }
@@ -515,7 +601,30 @@ impl RawClient {
             .unwrap();
     }
 
-    async fn recv(&mut self) -> ServerFrame {
+    /// A revoked socket may already be closed when its next operation is attempted.
+    pub async fn send_if_open(&mut self, f: &ClientFrame) -> bool {
+        self.ws
+            .send(Message::Binary(f.encode().into()))
+            .await
+            .is_ok()
+    }
+
+    pub async fn recv_or_close(&mut self) -> Option<ServerFrame> {
+        loop {
+            match tokio::time::timeout(Duration::from_secs(5), self.ws.next())
+                .await
+                .expect("socket did not respond or close")
+            {
+                Some(Ok(Message::Binary(bytes))) => {
+                    return Some(ServerFrame::decode(&bytes).unwrap())
+                }
+                None | Some(Err(_)) | Some(Ok(Message::Close(_))) => return None,
+                _ => {}
+            }
+        }
+    }
+
+    pub async fn recv(&mut self) -> ServerFrame {
         loop {
             match tokio::time::timeout(Duration::from_secs(5), self.ws.next())
                 .await
@@ -584,10 +693,10 @@ impl RawClient {
 
     /// Publishes bytes this client signed itself (any content a newer client could write).
     pub async fn publish_content(&mut self, content: Vec<u8>) -> Result<Sequenced, String> {
-        let sig = self
-            .author
-            .key
-            .sign(roda_log::content::content_hash(&content).as_bytes());
+        let sig = self.author.key.sign(&roda_log::content::signature_message(
+            &content,
+            &roda_log::content::signed_hash(&content),
+        ));
         let cert = self.author.cert.clone();
         self.publish_signed(content, sig, cert).await
     }

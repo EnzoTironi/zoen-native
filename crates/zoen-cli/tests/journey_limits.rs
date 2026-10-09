@@ -27,8 +27,9 @@ async fn a_fast_sender_is_slowed_down_and_loses_nothing() {
     w.init("ana", "Ana");
     w.init("bruno", "Bruno");
     w.zoen("ana", &["dm", "@bruno", "1"]);
+    // Queue a burst so command startup and catch-up cannot refill the bucket between sends.
     for n in 2..=6 {
-        w.zoen("ana", &["send", "@bruno", &n.to_string()]);
+        w.zoen("ana", &["send", "@bruno", &n.to_string(), "--offline"]);
     }
     // The bucket also paces the chat's commit, Welcome and checkpoint: wait it out.
     let s = w.zoen("ana", &["sync", "--timeout", "30000"]);

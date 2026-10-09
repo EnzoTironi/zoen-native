@@ -37,6 +37,7 @@ zoen-liveview.workspace = true
 hkdf.workspace = true
 base64 = "0.22"
 fastcdc = "5"
+hpke-rs = { version = "0.7", default-features = false, features = ["rustcrypto"] }
 
 [target.'cfg(target_os = "android")'.dependencies]
 webpki-roots = "1"

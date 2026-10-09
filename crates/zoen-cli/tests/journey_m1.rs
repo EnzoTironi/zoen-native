@@ -9,6 +9,41 @@
 mod common;
 use common::*;
 use roda_proto::SealedKind;
+use std::{path::PathBuf, process::Child, time::Duration};
+
+struct Watch {
+    child: Child,
+    log: PathBuf,
+}
+
+impl Watch {
+    async fn until(&mut self, expected: &str, observed: impl Fn(&str) -> bool) -> String {
+        let deadline = tokio::time::Instant::now() + Duration::from_secs(30);
+        loop {
+            let log = std::fs::read_to_string(&self.log).expect("watch log");
+            let status = self.child.try_wait().expect("watch status");
+            assert!(
+                status.is_none(),
+                "watch exited while waiting for {expected}: {status:?}\n{log}"
+            );
+            if observed(&log) {
+                return log;
+            }
+            assert!(
+                tokio::time::Instant::now() < deadline,
+                "watch never observed {expected}:\n{log}"
+            );
+            tokio::time::sleep(Duration::from_millis(50)).await;
+        }
+    }
+}
+
+impl Drop for Watch {
+    fn drop(&mut self) {
+        let _ = self.child.kill();
+        let _ = self.child.wait();
+    }
+}
 
 #[tokio::test]
 async fn dm_roundtrip_survives_relaunch_and_verifies() {
@@ -91,6 +126,15 @@ async fn offline_writes_flush_after_the_relay_comes_back() {
     assert_eq!(w.zoen("bruno", &["read", "@ana"]).trim(), "Ana: primeira");
 
     w.stop_relay();
+    let pending = |status: &str| {
+        status
+            .split_whitespace()
+            .find_map(|field| field.strip_prefix("pending="))
+            .expect("queue count")
+            .parse::<usize>()
+            .expect("numeric queue count")
+    };
+    let before = pending(&w.zoen("bruno", &["status", "--offline"]));
     let q = w.zoen(
         "bruno",
         &["send", "@ana", "escrita sem internet", "--offline"],
@@ -103,7 +147,7 @@ async fn offline_writes_flush_after_the_relay_comes_back() {
     );
     // Relaunching while offline keeps it queued (outbox survives the process).
     let status = w.zoen("bruno", &["status", "--offline"]);
-    assert!(status.contains("pending=1"), "{status}");
+    assert_eq!(pending(&status), before + 1, "{status}");
     // A group created and written in while offline: the message is signed on top of a
     // genesis the relay hasn't seen yet (its link is known in advance).
     w.zoen("bruno", &["group", "Ideias", "--offline"]);
@@ -112,9 +156,19 @@ async fn offline_writes_flush_after_the_relay_comes_back() {
     w.start_relay();
     let s = w.zoen("bruno", &["sync"]);
     assert!(s.contains("pending=0"), "{s}");
+    let errors: String = rusqlite::Connection::open(w.dir.join("bruno/zoen.sqlite"))
+        .unwrap()
+        .query_row(
+            "SELECT json_group_array(last_error) FROM outbox WHERE last_error IS NOT NULL",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap();
     assert_eq!(
         w.zoen("bruno", &["read", "Ideias"]).trim(),
-        "Bruno: anotar isso"
+        "Bruno: anotar isso",
+        "{s}\noutbox errors: {errors}\nfixture: {}",
+        w.dir.display()
     );
     assert!(!w.zoen("bruno", &["verify"]).contains("BROKEN"));
     assert_eq!(
@@ -155,19 +209,38 @@ async fn catch_up_after_being_away() {
 
 #[tokio::test]
 async fn typing_reaches_the_other_person_and_is_never_stored() {
-    let w = World::new("typing").await;
+    let mut w = World::new("typing").await;
+    w.set_client_env("ZOEN_NET_DEBUG", "1");
     w.init("ana", "Ana");
     w.init("bruno", "Bruno");
     w.zoen("ana", &["dm", "@bruno", "oi"]);
     w.zoen("bruno", &["sync"]);
     let before = w.events().await.len();
 
-    let watcher = w.spawn_zoen("bruno", &["watch", "--for", "6"]);
-    std::thread::sleep(std::time::Duration::from_millis(2500));
+    // Startup and the typing/sending CLI calls must not consume a fixed watcher
+    // lifetime. Start only after this listener caught up, and stop on receipt.
+    let mut watcher = Watch {
+        child: w.spawn_zoen_logged("bruno", &["watch"], "bruno-typing-watch.log"),
+        log: w.dir.join("bruno-typing-watch.log"),
+    };
+    watcher
+        .until("Bruno online and synced", |log| {
+            log.contains("watching as @bruno")
+                && log
+                    .lines()
+                    .rev()
+                    .find(|line| line.starts_with("[zoen-net] connection="))
+                    .is_some_and(|line| line.contains("connection=online synced=true"))
+        })
+        .await;
     w.zoen("ana", &["typing", "@bruno", "--for", "2"]);
     w.zoen("ana", &["send", "@bruno", "chegando!"]);
-    let out = watcher.wait_with_output().expect("watch");
-    let out = String::from_utf8_lossy(&out.stdout);
+    let out = watcher
+        .until("typing and the following message", |log| {
+            log.contains("[Ana] Ana is typing…") && log.contains("[Ana] Ana: chegando!")
+        })
+        .await;
+    drop(watcher);
     assert!(out.contains("[Ana] Ana is typing…"), "{out}");
     assert!(out.contains("[Ana] Ana: chegando!"), "{out}");
     assert_eq!(

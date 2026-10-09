@@ -405,6 +405,7 @@ impl State {
             }
             EventBody::ProfileKeyShared { .. }
             | EventBody::Checkpoint { .. }
+            | EventBody::DeviceJoining { .. }
             | EventBody::Sealed { .. }
             | EventBody::Unsupported { .. } => {}
         }
@@ -3378,6 +3379,10 @@ fn event_label(b: &EventBody) -> String {
                 "Checkpoint: epoch {epoch}"
             )
         }
+        EventBody::DeviceJoining { .. } => t(
+            "Um aparelho entrou na criptografia",
+            "A device joined the encryption",
+        ),
         EventBody::Unsupported { kind } => tr!(
             "Evento de uma versão mais nova: {kind}",
             "Event from a newer version: {kind}"
@@ -3449,6 +3454,65 @@ pub(crate) fn plan_to_dto(p: &PlanDoc) -> PlanDto {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn reopening_v3_history_and_pending_ciphertext_preserves_the_database() {
+        let fixture: serde_json::Value = serde_json::from_str(include_str!(
+            "../../roda-log/testdata/legacy-sealed-v3.json"
+        ))
+        .unwrap();
+        let read = |name: &str| {
+            roda_proto::Sequenced::decode(&hex::decode(fixture[name].as_str().unwrap()).unwrap())
+                .unwrap()
+        };
+        let path = std::env::temp_dir().join(format!("zoen-v3-upgrade-{}.db", new_id("test")));
+        let pending;
+        {
+            let e = Engine::open(path.to_str().unwrap()).unwrap();
+            for name in ["genesis", "legacy_full"] {
+                let ev = read(name);
+                e.store
+                    .append_event(
+                        &roda_log::event_from_content(
+                            ev.env.content().to_vec(),
+                            ev.env.sig,
+                            ev.env.cert,
+                            ev.seq,
+                            ev.prev,
+                            ev.hash,
+                        )
+                        .unwrap(),
+                    )
+                    .unwrap();
+            }
+            let old = read("legacy_full");
+            let mut content = roda_log::content::SignedContent::parse(old.env.content()).unwrap();
+            content.client_id = "queued-before-upgrade".into();
+            let bytes = content.encode();
+            let key = Signer::from_secret(&[34; 32]);
+            pending = roda_log::event_from_content(
+                bytes.clone(),
+                key.sign(roda_log::content::content_hash(&bytes).as_bytes()),
+                old.env.cert,
+                0,
+                String::new(),
+                String::new(),
+            )
+            .unwrap();
+            e.store.outbox_put(&pending).unwrap();
+        }
+        {
+            let e = Engine::open(path.to_str().unwrap()).unwrap();
+            assert_eq!(e.store.meta("event_format").unwrap().as_deref(), Some("3"));
+            assert_eq!(e.store.event_count().unwrap(), 2);
+            assert!(e.logs["sp_upgrade"].verify().is_ok());
+            assert_eq!(
+                e.store.outbox_get(&pending.client_id).unwrap(),
+                Some(pending)
+            );
+        }
+        std::fs::remove_file(path).unwrap();
+    }
 
     #[test]
     fn brl_formats_like_brazil() {

@@ -22,6 +22,7 @@ pub mod ownership;
 pub mod pseudonym;
 pub mod session;
 pub mod telemetry;
+pub mod transfer;
 
 use std::{net::SocketAddr, path::PathBuf, sync::Arc};
 
@@ -29,7 +30,7 @@ use axum::{
     extract::{DefaultBodyLimit, State, WebSocketUpgrade},
     http::StatusCode,
     response::IntoResponse,
-    routing::{get, post, put},
+    routing::{delete, get, post, put},
     serve::ListenerExt,
     Router,
 };
@@ -63,6 +64,10 @@ pub struct Config {
 
 pub struct AppState {
     pub pool: PgPool,
+    /// Separate bounded lanes keep durable delivery checks independent of admission
+    /// traffic. Ordinary requests release their admission fence before doing any work.
+    pub session_auth: PgPool,
+    pub delivery_auth: PgPool,
     pub log: Arc<dyn log::LogStore>,
     pub fanout: fanout::Fanout,
     pub limits: limits::Limits,
@@ -71,9 +76,6 @@ pub struct AppState {
     pub metrics: metrics::Metrics,
     pub blobs: Arc<dyn object_store::ObjectStore>,
     pub apple_app_ids: Vec<String>,
-    /// This node's Space-partition leases (S4). One process owns every partition until
-    /// S5 brings a multi-node lease exchange over NATS.
-    pub owner: ownership::NodeOwner,
     /// Product metrics, counted without content (ADR 0043).
     pub analytics: analytics::Analytics,
 }
@@ -98,6 +100,13 @@ pub fn router(state: Shared) -> Router {
                 .get(blobs::get)
                 .layer(DefaultBodyLimit::max(blobs::MAX_BLOB_BYTES + 1024)),
         )
+        .route(
+            "/v1/transfer/{id}/{n}",
+            put(transfer::put)
+                .get(transfer::get)
+                .layer(DefaultBodyLimit::max(transfer::MAX_CHUNK + 1024)),
+        )
+        .route("/v1/transfer/{id}", delete(transfer::delete))
         .route(
             "/.well-known/apple-app-site-association",
             get(apple_app_site_association),
@@ -152,26 +161,39 @@ pub fn metrics_router(state: Shared) -> Router {
 
 pub async fn build(cfg: &Config) -> anyhow::Result<(Router, Shared)> {
     let pool = connect(cfg).await?;
+    let auth_pool = || {
+        PgPoolOptions::new()
+            .min_connections(0)
+            .max_connections(cfg.max_db_connections.clamp(1, 16))
+            .acquire_timeout(std::time::Duration::from_secs(2))
+            .connect_lazy(&cfg.database_url)
+    };
+    let session_auth = auth_pool()?;
+    let delivery_auth = auth_pool()?;
     let (blobs, where_) = blobs::store_from_env(&cfg.blob_dir)?;
     tracing::info!(blobs = %where_, "blob store ready");
     let log = log::fdb::FdbLog::open(cfg.fdb_cluster_file.as_deref(), &cfg.fdb_cell)?;
     tracing::info!(cell = %cfg.fdb_cell, "log store ready (FoundationDB)");
-    let node = fanout::new_node_id();
+    let log = Arc::new(log);
+    let node = log.owner.node.clone();
     let fanout = match &cfg.nats_url {
         Some(url) => fanout::Fanout::nats(node.clone(), url, &cfg.fdb_cell).await?,
         None => fanout::Fanout::local(node.clone()),
     };
     tracing::info!(node = %node, bus = fanout.bus_kind(), "fan-out ready");
-    let owner = ownership::NodeOwner::claim_all(&node);
-    tracing::info!(
-        node = %owner.node,
-        partitions = ownership::PARTITION_COUNT,
-        "space ownership ready (single node owns every partition)"
-    );
+    if let Some(url) = &cfg.nats_url {
+        log.enable_forwarding(url, &cfg.fdb_cell, pool.clone())
+            .await?;
+    }
+    log.owner.maintain().await?;
+    log.start_renewal();
+    tracing::info!(node = %node, partitions = ownership::PARTITION_COUNT, "persisted space ownership ready");
     let analytics = analytics::Analytics::load(&pool).await?;
     let state = Arc::new(AppState {
         pool,
-        log: Arc::new(log),
+        session_auth,
+        delivery_auth,
+        log,
         fanout,
         limits: limits::Limits::from_spec(&cfg.limits)?,
         client_ip_header: cfg
@@ -183,7 +205,6 @@ pub async fn build(cfg: &Config) -> anyhow::Result<(Router, Shared)> {
         metrics: metrics::Metrics::default(),
         blobs,
         apple_app_ids: cfg.apple_app_ids.clone(),
-        owner,
         analytics,
     });
     analytics::spawn(state.clone());
@@ -312,7 +333,11 @@ async fn readyz(State(st): State<Shared>) -> impl IntoResponse {
         .fetch_one(&st.pool)
         .await
     {
-        Ok(_) => (StatusCode::OK, "ready"),
+        Ok(_) if st.log.ready().await => (StatusCode::OK, "ready"),
+        Ok(_) => (
+            StatusCode::SERVICE_UNAVAILABLE,
+            "cell ownership unavailable",
+        ),
         Err(_) => (StatusCode::SERVICE_UNAVAILABLE, "database unavailable"),
     }
 }

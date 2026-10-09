@@ -21,11 +21,17 @@ fn store() -> Arc<FdbLog> {
     store_on(&roda_types::new_id("t"))
 }
 
-/// Another relay on the same cell: its own sequencer and caches, the same keys.
+/// Another storage client of the same owner: separate sequencer/cache, shared keys.
+/// Distinct owners and failover are exercised by the ownership journey.
 fn store_on(cell: &str) -> Arc<FdbLog> {
     Arc::new(
-        FdbLog::open(std::env::var("FDB_CLUSTER_FILE").ok().as_deref(), cell)
-            .expect("FoundationDB"),
+        FdbLog::open_as(
+            std::env::var("FDB_CLUSTER_FILE").ok().as_deref(),
+            cell,
+            "log-contract",
+            std::time::Duration::from_secs(15),
+        )
+        .expect("FoundationDB"),
     )
 }
 
@@ -43,6 +49,7 @@ fn message(i: usize) -> EventBody {
 }
 
 async fn create(log: &FdbLog, a: &Author) -> (String, Seen) {
+    log.owner.maintain().await.expect("initialize ownership");
     let space = roda_types::new_id("sp");
     let body = EventBody::SpaceCreated {
         title: "t".into(),
@@ -57,7 +64,8 @@ async fn create(log: &FdbLog, a: &Author) -> (String, Seen) {
                 hash: ev.hash,
             },
         ),
-        _ => panic!("genesis refused"),
+        Err(r) => panic!("genesis refused: {}", r.reason),
+        _ => panic!("genesis answered as a duplicate"),
     }
 }
 
@@ -141,7 +149,7 @@ async fn a_retried_envelope_is_answered_with_the_stored_copy() {
     let Ok(Sequencing::New { ev: first, .. }) = log.append(&env, true).await else {
         panic!()
     };
-    let Ok(Sequencing::Duplicate { ev }) = log.append(&env, true).await else {
+    let Ok(Sequencing::Duplicate { ev, .. }) = log.append(&env, true).await else {
         panic!("not deduplicated")
     };
     assert_eq!((ev.seq, ev.hash), (first.seq, first.hash));
@@ -259,7 +267,7 @@ async fn invites_are_bounded_by_uses() {
     log.drop_cell().await.unwrap();
 }
 
-async fn two_relays_on_one_space_share_one_chain_and_one_membership() {
+async fn two_storage_clients_share_one_chain_and_one_membership() {
     let cell = roda_types::new_id("t");
     let relays = [store_on(&cell), store_on(&cell)];
     let ana = Arc::new(Author::root(Signer::generate()));
@@ -353,7 +361,7 @@ async fn duplicates_in_one_batch() {
                 new += 1;
                 stored.push((ev.seq, ev.hash));
             }
-            Ok(Sequencing::Duplicate { ev }) => stored.push((ev.seq, ev.hash)),
+            Ok(Sequencing::Duplicate { ev, .. }) => stored.push((ev.seq, ev.hash)),
             Err(r) => panic!("refused: {}", r.reason),
         }
     }
@@ -573,6 +581,74 @@ fn refused(r: Result<Sequencing, zoen_relay::log::Reject>) -> String {
     }
 }
 
+async fn legacy_checkpoint_holds_upgrade_without_expiring_history() {
+    use foundationdb::{
+        tuple::{pack, unpack, Subspace},
+        Database,
+    };
+
+    let cell = roda_types::new_id("t");
+    let warm = store_on(&cell);
+    let ana = Author::root(Signer::generate());
+    let (space, genesis) = create(&warm, &ana).await;
+    let encrypted = landed(
+        warm.append(
+            &sign(&ana, &space, Some(genesis), EventBody::SpaceEncrypted),
+            true,
+        )
+        .await,
+    );
+    let key =
+        Subspace::all()
+            .subspace(&("zoen", &cell))
+            .pack(&("s", &space, "ck", &ana.identity, "*"));
+    let db = Database::new(std::env::var("FDB_CLUSTER_FILE").ok().as_deref()).unwrap();
+    db.run(|trx, _| {
+        let key = key.clone();
+        async move {
+            trx.set(&key, &pack(&(encrypted.seq as i64)));
+            Ok(())
+        }
+    })
+    .await
+    .unwrap();
+    let before = now_ms();
+    let cold = store_on(&cell);
+    let joining = sign(
+        &ana,
+        &space,
+        Some(Seen {
+            seq: encrypted.seq,
+            hash: encrypted.hash.clone(),
+        }),
+        EventBody::DeviceJoining {
+            device: "a".repeat(64),
+        },
+    );
+    assert!(matches!(
+        cold.append(&joining, true).await,
+        Ok(Sequencing::New { .. })
+    ));
+    let migrated = db
+        .run(|trx, _| {
+            let key = key.clone();
+            async move { Ok(trx.get(&key, false).await?) }
+        })
+        .await
+        .unwrap()
+        .unwrap();
+    let (seq, since): (i64, i64) = unpack(&migrated).unwrap();
+    assert_eq!(seq, encrypted.seq as i64);
+    assert!(
+        since >= before && since <= now_ms(),
+        "legacy hold starts its ceiling on upgrade"
+    );
+    let events = read_all(&cold, &space, 100).await;
+    assert_chain(&space, &events);
+    assert_eq!(events[1].env, encrypted.env);
+    cold.drop_cell().await.unwrap();
+}
+
 async fn run<F: Future<Output = ()>>(name: &str, f: F) {
     f.await;
     println!("ok  {name}");
@@ -613,13 +689,18 @@ fn main() {
         )
         .await;
         run(
-            "two relays on one space share one chain and one membership",
-            two_relays_on_one_space_share_one_chain_and_one_membership(),
+            "two storage clients of one owner share one chain and one membership",
+            two_storage_clients_share_one_chain_and_one_membership(),
         )
         .await;
         run(
             "duplicates in one batch get the one stored copy",
             duplicates_in_one_batch_get_the_one_stored_copy(),
+        )
+        .await;
+        run(
+            "legacy checkpoint holds upgrade without expiring history",
+            legacy_checkpoint_holds_upgrade_without_expiring_history(),
         )
         .await;
     });
