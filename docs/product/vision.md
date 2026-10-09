@@ -48,6 +48,15 @@ Zoen é o "WhatsApp 2": um mensageiro privado onde, além de conversar, as pesso
   - Generalizável: um playbook repetível de "comunidade pronta para o criador".
   - Cuidado: usar só conteúdo público dele e pedir autorização antes de abrir para qualquer pessoa.
 
+### Curvas de crescimento e estratégia de nicho
+- Pesquisa completa, com fontes e gráficos: [Curvas de crescimento de redes sociais](../research/curvas-crescimento-redes.md).
+- Começar de nicho é a estratégia com mais evidência a favor (Facebook por campus, Discord por servidor de jogo, Twitch saindo do Justin.tv), desde que o nicho seja uma **rede atômica** (turma, curso, grupo de um concurso específico) e não uma categoria inteira.
+- Ordem recomendada: universitários por turma de calouros, concurseiros por concurso específico em paralelo, ENEM e cursinhos como ponte, depois gamers e criadores, e por fim abertura geral.
+- Meta de massa crítica por turma: ≥40–50% da turma ativa por semana em 2 semanas. Por campus: ≥25% dos alunos com conta antes de ir para o campus vizinho.
+- Esperar vales: depois do pico de lançamento, uma queda de 55–75% é normal (Threads, Clubhouse). Choques externos, como uma falha do líder, retêm 30–50% do ganho (Bluesky no Brasil em 2024, Mastodon).
+- Gringos: **Brasil primeiro, pronto para o mundo**. A densidade nasce aqui (custo de aquisição mais baixo; o Kwai gastou >R$ 7 bi para entrar no Brasil), mas o produto já sai em PT/EN/ES. Próximos passos: brasileiros no exterior e Portugal, depois América Latina hispânica, depois gamers e criadores internacionais (o caminho de Discord e Gartic), e por fim campi dos EUA num lançamento controlado no estilo Fizz. Gatilho: o playbook de turma funcionando em ≥3 campi.
+- Estar pronto para o próximo choque: onboarding em menos de 30 s, importação de grupos e capacidade para 10× de carga em 48 h.
+
 ### SEO no estilo n8n
 - Cada caso de uso, tipo de negócio e integração vira uma página indexável (ex.: "agente para barbearia", "agente que agenda pelo WhatsApp", "Canva + Zoen").
 - As páginas mostram o mini app/agente funcionando e levam direto para usar.
