@@ -39,6 +39,8 @@ Or open `android/` in Android Studio and run the `app` configuration. Rust and c
 
 The default flow creates a real local identity and connects it to `https://relay.tryzoen.com`, the same default relay as the Apple app. Connection settings in the profile step let a developer choose another relay. Debug builds allow HTTP for local development; release builds require HTTPS in onboarding.
 
+The current shared core requires relay protocol 4. The public endpoint advertised protocol 2 during verification on 2026-10-09 and requires the [documented relay upgrade](../docs/dev/android-relay-release.md) before the default connection can work. The isolated test relay runs the matching protocol-4 source.
+
 The Android emulator reaches a relay on your Mac at `http://10.0.2.2:8787`. Use the repository's existing `scripts/dev-stack.sh` to run the backend.
 
 The debug app has an explicit **Explore the demo** button. You can also start it with:
@@ -77,7 +79,7 @@ The Hike HTML bundle draws its local route map with SVG when map-tile access is 
 
 On supported physical devices with initialized AICore, a downloaded model and a locked bootloader, the planner uses Gemini Nano through ML Kit's on-device Prompt API. Availability, download progress and generation failures are visible. Structured results are validated before signed writes. Other devices use a clearly labeled deterministic local fallback. Physical-device generation was not exercised; emulator fallback tests and successful release registration do not demonstrate model generation. See [ML Kit setup requirements](https://developers.google.com/ml-kit/genai/prompt/android/get-started). No remote AI API or key is silently substituted.
 
-Offline transcription requires API 33+, Android's on-device recognizer and an installed language model. Word, filler and pause editing additionally require API 34+ and recognizer-provided word timestamps. Supported languages can request a native model download. Model-backed transcription was not exercised because the emulator has no usable model; recording, waveform cuts and playback work independently.
+Offline transcription requires API 33+, Android's on-device recognizer and an installed language model. Word, filler and pause editing additionally require API 34+ and recognizer-provided word timestamps. Supported languages can request a native model download. The emulator exercised recognition failure handling but did not produce a successful transcript; successful model-backed transcription remains unverified. Recording, waveform cuts and playback work independently.
 
 Background messages use an opt-in foreground remote-messaging service with a visible connection notification and Stop control. Incoming messages and requests have private notifications and native deep links; active chats and muted people suppress alerts. This uses the existing relay. Android force-stop or restrictive power policies can suspend it, and the Rust outbox persists outgoing work. There is no FCM backend.
 

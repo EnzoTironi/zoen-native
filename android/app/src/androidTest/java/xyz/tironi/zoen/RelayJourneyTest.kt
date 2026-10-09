@@ -41,6 +41,8 @@ class RelayJourneyTest {
             assertNotEquals(accountA.deviceId, accountB.deviceId)
             a.startSync(null); b.startSync(null)
             await { a.account()?.registered == true && b.account()?.registered == true && a.connection().synced && b.connection().synced }
+            assertTrue("The relay must accept the report signed for its authenticated name", a.growthSync(null, false, 0u, 0u).reported)
+            assertFalse("An accepted source report must not be sent twice", a.growthSync(null, false, 0u, 0u).reported)
             val found = a.findPeople(accountB.handle).single { it.id == accountB.identityId }
             val chat = a.startDirect(found.id)
             await { b.spaces().any { it.id == chat } && a.groupKeys(chat) != null && b.groupKeys(chat) != null }
