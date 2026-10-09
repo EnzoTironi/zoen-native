@@ -100,10 +100,22 @@ order.
   or admin device commits. That is the price of the guarantee, and it is visible as
   *Sending*.
 - **Concurrent commits:** every member applies the first commit for the current epoch in log
-  order and ignores later ones for an epoch already gone. The losing author sees its commit
-  skipped, processes the winner, and re-proposes. The relay rejecting stale epochs early
-  (`stale_epoch`, from the epoch in the clear MLS framing) is an optimization on top. It
-  saves log space, and correctness doesn't depend on it.
+  order and ignores later ones for an epoch already gone, so correctness never depends on
+  the relay. On top of that the relay grants **one commit per epoch**: it reads the epoch
+  from the commit's clear MLS framing (`roda_mls::commit_epoch`) and keeps
+  `("s", space, "mls") -> (next epoch, device of the last commit)`, reset to `(0, "")` when
+  the Space becomes end-to-end. A commit for any other epoch is refused with
+  `STALE_COMMIT` (`stale_epoch: ...`), and a Welcome is admitted only while the last commit
+  is its own device's, so a lost race leaves nothing in the log. The client sends a Welcome
+  only once its commit is in the log (a commit held back by a rate limit must not let its
+  Welcome overtake it). The losing device drops its commit and that commit's Welcome from
+  the outbox without showing a failure (`Device::abandon` clears the pending commit),
+  applies the winner, and reconciles again, usually to nothing. A Welcome refused because
+  another commit got in first leaves its newcomers with leaves they can't use: the committer
+  takes those leaves out and adds them afresh, and a device whose own leaf is taken out by a
+  commit deletes its group state, so the fresh Welcome starts it again.
+  To make races rare, Owner/Admin devices take turns: each waits 400 ms per admin ahead of
+  it in identity order before committing an owed change, and the first commits at once.
 - The relay **rejects any plaintext body outside the control set** in an E2E Space, so a
   buggy or old client can't leak into one.
 
@@ -151,10 +163,14 @@ app on the simulator with the Notification Service Extension sharing state.
 
 ### Not yet (tracked in the plan)
 - Topping up key packages: today a device publishes once, and claims fall back to the
-  last-resort package when the 32 run out. The relay will say "low" and the device refills.
+  last-resort package when the 32 run out. **Top-up:** when a claim leaves a device under
+  `KEY_PACKAGES_LOW` (8) single-use packages, the relay sends it `KeyPackagesLow` wherever
+  it is connected, and again at its next login if it was away; the device publishes enough
+  to get back to 32 (its last-resort one stays).
 - Several devices per identity: reconcile adds every device with packages, but linking a
   second device to existing groups is the multi-device step.
-- Done since: DMs and new groups are end-to-end by default, M1 Spaces upgrade one way with
+- Done since: concurrent commits (one commit per epoch at the relay, turns among admins),
+  key package top-up, removal, batching. Also: DMs and new groups are end-to-end by default, M1 Spaces upgrade one way with
   `SpaceEncrypted`, and messages are sealed at send time at the current epoch, which also
   closes the "outbox older than 4 epochs" gap (ADR 0027).
 

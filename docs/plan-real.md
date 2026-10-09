@@ -139,6 +139,8 @@ storage seams. Each unit ends with the full journey suite green.
 | M2 first journey (E2E group, relay holds only ciphertext) | done | `journey_m2.rs` (key packages, commit + Welcome, messages both ways from a sealed device database, FoundationDB and Postgres scanned for text and hex, plaintext refused, agreeing checkpoints, a newcomer reads from her Welcome on), `roda-mls` tests, ADR 0026 |
 | M2 end-to-end by default (DMs and groups; M1 Spaces upgrade one way) | done | `journey_m2::a_readable_group_becomes_end_to_end_and_never_goes_back`, `journey_m1` DMs now end-to-end, `privacy_only_goes_up`, `an_end_to_end_space_cannot_be_created_again_as_readable`, ADR 0027 |
 | M2 removal | done | `journey_m2::a_removed_member_reads_nothing_after_removal`, `a_removed_device_forgets_the_group_and_can_be_added_back`, ADR 0026 (Removal) |
+| M2 concurrent commits | done | `two_admins_online_make_one_commit_for_a_newcomer`, `admins_adding_at_once_under_a_publish_limit_converge`, `one_commit_per_epoch_and_each_welcome_follows_its_commit`, ADR 0026 |
+| M2 key package top-up | done | `key_packages_refill_when_they_run_low`, ADR 0026 |
 | M2 rest, M3, M5, M6, M7 | planned below | |
 
 ## M1. Relay, real accounts, sync
@@ -212,8 +214,10 @@ Also done: removal (`journey_m2::a_removed_member_reads_nothing_after_removal`: 
 member reads nothing after, their device forgets the group, and every message after the
 removal is sealed after its commit), one commit per batch of membership changes.
 
-Next, in order: concurrent commits and `stale_epoch`, key package top-up,
-checkpoint pruning, linking a second device, the app on the simulator with the Notification
+Also done: concurrent commits (one commit per epoch at the relay, admin turns, Welcomes held
+behind their commit, stranded leaves re-added) and key package top-up (`KeyPackagesLow`).
+
+Next, in order: checkpoint pruning, linking a second device, the app on the simulator with the Notification
 Service Extension sharing state.
 
 ## M3. Real agents
