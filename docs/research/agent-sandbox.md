@@ -97,6 +97,19 @@ KVM, 8 vCPUs, other agents' builds running), so these are upper bounds; bare met
 The restore number uses the memory file mapped privately (pages load on first touch), not
 userfaultfd; userfaultfd matters when memory files live on remote storage.
 
+Through `zoen-sandboxd` (jailer, cgroups, vsock; `cargo test -p zoen-sandboxd`, 2 vCPUs,
+256 MiB, same box):
+
+| What | Measured |
+|---|---|
+| Template build, once per shape (cold boot to `zoen-guestd` + full snapshot) | 1.8–2.6 s |
+| Acquire from the warm pool (resume + fresh entropy and clock) | 22–38 ms |
+| Exec round trip (`true`) in a warm VM | p50 3.2–3.5 ms |
+| HTTPS call with key injection from inside the VM (curl → vsock → proxy → origin) | p50 18 ms, first 71 ms |
+| Suspend (full snapshot of 256 MiB) / resume | 0.6–1.4 s / 54–61 ms |
+| CPU quota: guest burning 2 vCPUs under a one-core quota | 1.01–1.02 cores used, throttled |
+| VMM memory charged to its cgroup, idle small VM | 12–17 MiB of a 320 MiB cap |
+
 ## 5. Browser use
 
 ### Architectures
