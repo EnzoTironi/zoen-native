@@ -161,7 +161,9 @@ pub fn standing_key(action: &ActionClass) -> &'static str {
 pub fn standing_allow_permitted(action: &ActionClass, policy: &Policy) -> bool {
     match action {
         ActionClass::Money { cents } => *cents <= policy.money_ceiling_cents,
-        ActionClass::PublicAudience | ActionClass::ThirdPartyData | ActionClass::Irreversible => false,
+        ActionClass::PublicAudience | ActionClass::ThirdPartyData | ActionClass::Irreversible => {
+            false
+        }
         ActionClass::Reply | ActionClass::Reversible | ActionClass::External => true,
     }
 }

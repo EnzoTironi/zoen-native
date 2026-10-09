@@ -275,7 +275,11 @@ impl RodaEngine {
     }
 
     /// A swipe on the approvals stack: approve / deny / always approve / always deny.
-    pub fn decide_request(&self, request_id: String, decision: RequestDecision) -> Result<DecideOutcome, CoreError> {
+    pub fn decide_request(
+        &self,
+        request_id: String,
+        decision: RequestDecision,
+    ) -> Result<DecideOutcome, CoreError> {
         self.lock().decide_request(&request_id, decision)
     }
 
@@ -468,9 +472,14 @@ impl RodaEngine {
             "money" => A::Money { cents },
             "public_audience" => A::PublicAudience,
             "third_party_data" => A::ThirdPartyData,
-            other => return Err(CoreError::Invalid { reason: format!("unknown action {other}") }),
+            other => {
+                return Err(CoreError::Invalid {
+                    reason: format!("unknown action {other}"),
+                })
+            }
         };
-        self.lock().demo_open_request(&space_id, &agent_handle, &title, &detail, &audience, class)
+        self.lock()
+            .demo_open_request(&space_id, &agent_handle, &title, &detail, &audience, class)
     }
 
     /// Demonstração: mensagem de outro membro, como se tivesse chegado pela sincronização.

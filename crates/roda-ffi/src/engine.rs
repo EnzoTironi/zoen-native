@@ -6,7 +6,9 @@
 
 use std::collections::HashMap;
 
-use roda_grants::{evaluate, standing_allow_permitted, standing_key, Budget, Decision, Policy, Reason};
+use roda_grants::{
+    evaluate, standing_allow_permitted, standing_key, Budget, Decision, Policy, Reason,
+};
 use roda_log::{content_hash, Author, LogError, Signer, SpaceLog};
 use roda_store::Store;
 use roda_types::*;
@@ -743,7 +745,9 @@ impl Engine {
         );
         // A standing decision from the owner settles what would otherwise be a request:
         // "always deny" blocks it, "always approve" lets it run (never past a red line).
-        let Decision::Request(reason) = decision else { return decision };
+        let Decision::Request(reason) = decision else {
+            return decision;
+        };
         match self.standing(agent, space, action) {
             Some((_, false)) => Decision::Block(Reason::StandingDeny),
             Some((_, true)) if standing_allow_permitted(action, &self.policy) => Decision::Act {
@@ -754,7 +758,12 @@ impl Engine {
     }
 
     /// The newest unrevoked standing decision for this agent, kind of action and Space.
-    fn standing(&self, agent: &str, space: &str, action: &ActionClass) -> Option<(&GrantState, bool)> {
+    fn standing(
+        &self,
+        agent: &str,
+        space: &str,
+        action: &ActionClass,
+    ) -> Option<(&GrantState, bool)> {
         let key = standing_key(action);
         self.state
             .grants
@@ -1780,7 +1789,10 @@ impl Engine {
                 grantor: me.clone(),
                 grantee: Some(r.req.agent.clone()),
                 scope: GrantScope::Space(r.space.clone()),
-                capability: Capability::Standing { action: standing_key(&r.req.action).into(), allow: approve },
+                capability: Capability::Standing {
+                    action: standing_key(&r.req.action).into(),
+                    allow: approve,
+                },
                 expires_at_ms: None,
             };
             grant_id = Some(grant.id.clone());
@@ -1796,7 +1808,9 @@ impl Engine {
                         && o.req.agent == r.req.agent
                         && o.space == r.space
                         && standing_key(&o.req.action) == key
-                        && (!approve || (standing_allow_permitted(&o.req.action, &self.policy) && self.request_is_current(&o.req)))
+                        && (!approve
+                            || (standing_allow_permitted(&o.req.action, &self.policy)
+                                && self.request_is_current(&o.req)))
                 })
                 .map(|o| o.req.id.clone())
                 .collect();
@@ -1812,7 +1826,12 @@ impl Engine {
             .get(id)
             .map(|r| self.request_dto(r))
             .ok_or_else(|| not_found("pedido"))?;
-        Ok(DecideOutcome { request, message: out.message, standing_grant_id: grant_id, also_resolved: also })
+        Ok(DecideOutcome {
+            request,
+            message: out.message,
+            standing_grant_id: grant_id,
+            also_resolved: also,
+        })
     }
 
     /// Every standing decision you gave your agents (newest first), to show and revoke.
@@ -1824,14 +1843,23 @@ impl Engine {
             .rev()
             .filter(|g| !g.revoked && g.grant.grantor == me)
             .filter_map(|g| {
-                let Capability::Standing { action, allow } = &g.grant.capability else { return None };
-                let GrantScope::Space(space) = &g.grant.scope else { return None };
+                let Capability::Standing { action, allow } = &g.grant.capability else {
+                    return None;
+                };
+                let GrantScope::Space(space) = &g.grant.scope else {
+                    return None;
+                };
                 let agent = g.grant.grantee.as_deref()?;
                 Some(StandingDecisionDto {
                     grant_id: g.grant.id.clone(),
                     agent: self.persona(agent),
                     space_id: space.clone(),
-                    space_title: self.state.spaces.get(space).map(|s| s.title.clone()).unwrap_or_default(),
+                    space_title: self
+                        .state
+                        .spaces
+                        .get(space)
+                        .map(|s| s.title.clone())
+                        .unwrap_or_default(),
                     action_key: action.clone(),
                     action_label: standing_label(action),
                     allow: *allow,
@@ -1847,16 +1875,33 @@ impl Engine {
             .state
             .grants
             .iter()
-            .find(|g| g.grant.id == grant_id && !g.revoked && matches!(g.grant.capability, Capability::Standing { .. }))
+            .find(|g| {
+                g.grant.id == grant_id
+                    && !g.revoked
+                    && matches!(g.grant.capability, Capability::Standing { .. })
+            })
             .ok_or_else(|| not_found(&t("decisão", "decision")))?;
         let GrantScope::Space(space) = g.grant.scope.clone() else {
-            return Err(CoreError::Invalid { reason: t("escopo inválido", "invalid scope") });
+            return Err(CoreError::Invalid {
+                reason: t("escopo inválido", "invalid scope"),
+            });
         };
         let me = self.me_id()?;
         if g.grant.grantor != me {
-            return Err(CoreError::Forbidden { reason: t("só quem decidiu pode revogar", "only whoever decided can revoke it") });
+            return Err(CoreError::Forbidden {
+                reason: t(
+                    "só quem decidiu pode revogar",
+                    "only whoever decided can revoke it",
+                ),
+            });
         }
-        self.append(&space, &me, EventBody::GrantRevoked { grant: grant_id.into() })?;
+        self.append(
+            &space,
+            &me,
+            EventBody::GrantRevoked {
+                grant: grant_id.into(),
+            },
+        )?;
         Ok(())
     }
 
@@ -1877,7 +1922,16 @@ impl Engine {
             .find(|i| i.handle == agent_handle)
             .map(|i| i.id.clone())
             .ok_or_else(|| not_found(&t("agente", "agent")))?;
-        self.open_request_at(space, &agent, now_ms(), title, detail, audience, action, None)
+        self.open_request_at(
+            space,
+            &agent,
+            now_ms(),
+            title,
+            detail,
+            audience,
+            action,
+            None,
+        )
     }
 
     pub fn approve_all(&mut self, agent: &str) -> R<u32> {
@@ -3110,9 +3164,17 @@ fn event_label(b: &EventBody) -> String {
             ),
             Capability::Standing { action, allow } => {
                 if *allow {
-                    tr!("Sempre aprovar: {}", "Always approve: {}", standing_label(action))
+                    tr!(
+                        "Sempre aprovar: {}",
+                        "Always approve: {}",
+                        standing_label(action)
+                    )
                 } else {
-                    tr!("Sempre negar: {}", "Always deny: {}", standing_label(action))
+                    tr!(
+                        "Sempre negar: {}",
+                        "Always deny: {}",
+                        standing_label(action)
+                    )
                 }
             }
         },
