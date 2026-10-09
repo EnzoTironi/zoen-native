@@ -134,6 +134,14 @@ struct PgProxy {
     task: JoinHandle<()>,
 }
 
+fn describes_package_hash(body: &[u8]) -> bool {
+    let column = b"\0\x01package_hash\0";
+    // One named column followed by the 18-byte Postgres field description; bytea OID 17.
+    body.len() == column.len() + 18
+        && body.starts_with(column)
+        && body[column.len() + 6..column.len() + 10] == 17u32.to_be_bytes()
+}
+
 impl PgProxy {
     async fn new(database_url: &str) -> Self {
         let options = sqlx::postgres::PgConnectOptions::from_str(database_url).unwrap();
@@ -166,6 +174,9 @@ impl PgProxy {
                             let (mut server_read, mut server_write) = server.into_split();
                             let frontend = async { tokio::io::copy(&mut client_read, &mut server_write).await };
                             let backend = async {
+                                let mut receipt_column = false;
+                                let mut receipt_rows = 0usize;
+                                let mut publication = false;
                                 loop {
                                     let mut header = [0u8; 5];
                                     if server_read.read_exact(&mut header).await.is_err() { break }
@@ -173,13 +184,45 @@ impl PgProxy {
                                     assert!(length >= 4);
                                     let mut body = vec![0; length - 4];
                                     server_read.read_exact(&mut body).await.unwrap();
+                                    match header[0] {
+                                        b'T' => {
+                                            receipt_column = describes_package_hash(&body);
+                                            receipt_rows = 0;
+                                        }
+                                        b'n' => {
+                                            receipt_column = false;
+                                            receipt_rows = 0;
+                                        }
+                                        b'D' if receipt_column => receipt_rows += 1,
+                                        b'C' => {
+                                            // Only the publication receipt INSERT returns these hashes.
+                                            // Authorization and registration transactions also commit.
+                                            if receipt_rows > 0 && body.starts_with(b"INSERT 0 ") {
+                                                publication = true;
+                                            }
+                                            receipt_column = false;
+                                            receipt_rows = 0;
+                                            if matches!(body.as_slice(), b"BEGIN\0" | b"ROLLBACK\0") {
+                                                publication = false;
+                                            }
+                                        }
+                                        b'E' | b'Z' if header[0] == b'E' || body == b"I" => {
+                                            receipt_column = false;
+                                            receipt_rows = 0;
+                                            publication = false;
+                                        }
+                                        _ => {}
+                                    }
                                     // COMMIT is visible in Postgres, but the relay still awaits its
                                     // completion. Claims on other connections now precede its reply.
                                     if header[0] == b'C' && body == b"COMMIT\0"
-                                        && gate.armed.swap(false, Ordering::SeqCst)
                                     {
-                                        if let Some(tx) = gate.reached.lock().unwrap().take() { let _ = tx.send(()); }
-                                        gate.release.notified().await;
+                                        if std::mem::take(&mut publication)
+                                            && gate.armed.swap(false, Ordering::SeqCst)
+                                        {
+                                            if let Some(tx) = gate.reached.lock().unwrap().take() { let _ = tx.send(()); }
+                                            gate.release.notified().await;
+                                        }
                                     }
                                     if client_write.write_all(&header).await.is_err() { break }
                                     if client_write.write_all(&body).await.is_err() { break }
