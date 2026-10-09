@@ -103,6 +103,11 @@ struct SpaceView: View {
                             .id(entry.id)
                             .transition(.asymmetric(insertion: .scale(scale: 0.92, anchor: .bottom).combined(with: .opacity), removal: .opacity))
                     }
+                    if model.browser.session?.spaceId == spaceId {
+                        AgentBrowserCard()
+                            .id("agent-browser")
+                            .transition(.scale(scale: 0.94, anchor: .bottom).combined(with: .opacity))
+                    }
                     if let agent = workingAgent {
                         WorkingRow(agent: agent, label: model.planner.availability == .onDevice ? String(localized: "on device") : String(localized: "local planner"))
                             .id("working")
@@ -177,11 +182,25 @@ struct SpaceView: View {
               .animation(.spring(response: 0.35, dampingFraction: 0.85), value: replyTo?.id)
               .onGeometryChange(for: CGFloat.self) { $0.frame(in: .global).minY } action: { composerTop = $0 }
             }
+            #if os(iOS)
+            .fullScreenCover(isPresented: Bindable(model.browser).screenOpen) { LiveViewScreen() }
+            #else
+            .sheet(isPresented: Bindable(model.browser).screenOpen) { LiveViewScreen().frame(minWidth: 420, minHeight: 720) }
+            #endif
             .sheet(item: $thread) { t in
                 ThreadSheet(spaceId: spaceId, rootId: t.id)
                     .presentationDetents([.large])
             }
             .onChange(of: draft) { _, text in model.sync.typingChanged(spaceId, text: text) }
+            // The agent's browser card shows up (or asks for you): bring it into view.
+            .onChange(of: model.browser.phase) { _, _ in
+                guard model.browser.session?.spaceId == spaceId else { return }
+                withAnimation(.smooth(duration: 0.4)) { proxy.scrollTo("bottom", anchor: .bottom) }
+            }
+            .onChange(of: model.browser.session?.spaceId) { _, id in
+                guard id == spaceId else { return }
+                withAnimation(.smooth(duration: 0.4)) { proxy.scrollTo("bottom", anchor: .bottom) }
+            }
             .onDisappear { model.sync.stoppedTyping(spaceId) }
             .onChange(of: entries.count) { old, _ in
                 // Investor shots: `-RodaChatScrollTop` keeps the pin strip framed (don't jump to bottom).

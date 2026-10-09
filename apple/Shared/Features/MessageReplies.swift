@@ -58,6 +58,8 @@ struct MessageSwipe: ViewModifier {
             .foregroundStyle(active ? Color.white : Palette.textSecondary)
             .frame(width: 34, height: 34)
             .background(active ? Palette.action : Palette.textPrimary.opacity(0.08), in: .circle)
+            // A small pop when the pull counts, so the eye gets the tick the finger feels.
+            .scaleEffect(active ? 1.12 : 1)
             .animation(.spring(response: 0.25, dampingFraction: 0.6), value: active)
             .accessibilityHidden(true)
     }
@@ -85,8 +87,16 @@ struct MessageSwipe: ViewModifier {
                     armed = now
                 }
             }
-            .onEnded { _ in
-                let fire = locked == true ? armed : nil
+            .onEnded { v in
+                var fire = locked == true ? armed : nil
+                // A quick flick counts even short of the line (Telegram): most of the way
+                // there, and heading well past it.
+                if fire == nil, locked == true {
+                    let raw = v.translation.width, ahead = v.predictedEndTranslation.width
+                    if abs(raw) >= Self.threshold * 0.55, abs(ahead) >= Self.threshold * 1.8, (raw < 0) == (ahead < 0) {
+                        fire = raw < 0 ? .reply : .thread
+                    }
+                }
                 locked = nil
                 armed = nil
                 withAnimation(.spring(response: 0.32, dampingFraction: 0.72)) { x = 0; pull = 0 }

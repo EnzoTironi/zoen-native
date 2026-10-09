@@ -51,7 +51,7 @@ struct FileScreen: View {
             }
         }
         .sheet(isPresented: $showVersions) {
-            if let item { NavigationStack { VersoesView(item: item) } .presentationDetents([.medium, .large]) }
+            if let item { NavigationStack { VersoesView(item: item) } .zoenSheet([.medium, .large]) }
         }
         .sensoryFeedback(.success, trigger: savedBump)
         .task(id: model.revision) { reload() }

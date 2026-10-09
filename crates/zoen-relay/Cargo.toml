@@ -49,6 +49,9 @@ opentelemetry_sdk = { version = "0.33", default-features = false, features = ["t
 opentelemetry-otlp = { version = "0.33", default-features = false, features = ["trace", "logs", "http-proto", "reqwest-blocking-client", "internal-logs"] }
 tracing-opentelemetry = "0.34"
 opentelemetry-appender-tracing = "0.33"
+# Daily aggregate export to PostHog (analytics/export.rs); ring, like roda-ffi.
+reqwest = { version = "0.13", default-features = false, features = ["rustls-no-provider"] }
+rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12", "logging"] }
 
 [dev-dependencies]
 roda-mls = { workspace = true, features = ["device"] }

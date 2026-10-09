@@ -122,7 +122,7 @@ struct CommunitiesScreen: View {
         #endif
         .sheet(isPresented: $creating) {
             CreateSpaceSheet()
-                .presentationDetents([.height(280)])
+                .zoenSheet([.height(280)])
         }
         .sheet(isPresented: $joining) {
             NewChatSheet(mode: .join)

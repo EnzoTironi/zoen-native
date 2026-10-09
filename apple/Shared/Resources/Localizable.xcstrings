@@ -7570,7 +7570,7 @@
         "pt-BR": {
           "stringUnit": {
             "state": "translated",
-            "value": "Thread"
+            "value": "Respostas"
           }
         }
       }
@@ -7971,6 +7971,226 @@
           "stringUnit": {
             "state": "translated",
             "value": "Toda mudança fica guardada como versão. Restaurar cria uma nova versão; nada se perde."
+          }
+        }
+      }
+    },
+    "Booking Pousada Casa Azul": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Reservando a Pousada Casa Azul"
+          }
+        }
+      }
+    },
+    "%@ is using the browser": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ está usando o navegador"
+          }
+        }
+      }
+    },
+    "%@ needs you": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ precisa de você"
+          }
+        }
+      }
+    },
+    "%@ is waiting for you": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ está esperando você"
+          }
+        }
+      }
+    },
+    "You have the browser": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "O navegador está com você"
+          }
+        }
+      }
+    },
+    "Booking confirmed": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Reserva confirmada"
+          }
+        }
+      }
+    },
+    "Watch the screen": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ver a tela"
+          }
+        }
+      }
+    },
+    "%@. Only you can see this screen.": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@. Só você vê esta tela."
+          }
+        }
+      }
+    },
+    "The site is asking for your password. %@ doesn't type passwords: you sign in, then it carries on.": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "O site pede sua senha. %@ não digita senhas: você entra e ele continua."
+          }
+        }
+      }
+    },
+    "Take over": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Assumir"
+          }
+        }
+      }
+    },
+    "%@ is stopped while you use it.": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ fica parado enquanto você usa."
+          }
+        }
+      }
+    },
+    "You signed in and %@ finished: 2 nights, Oct 17 to 19.": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Você entrou e %@ terminou: 2 noites, de 17 a 19 de outubro."
+          }
+        }
+      }
+    },
+    "Paused": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Pausado"
+          }
+        }
+      }
+    },
+    "Live": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ao vivo"
+          }
+        }
+      }
+    },
+    "The agent's screen": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "A tela do agente"
+          }
+        }
+      }
+    },
+    "%@ is stopped while you use it, and can't see what you type.": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ fica parado enquanto você usa e não vê o que você digita."
+          }
+        }
+      }
+    },
+    "Your password for the site": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sua senha do site"
+          }
+        }
+      }
+    },
+    "Done, carry on": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Pronto, pode continuar"
+          }
+        }
+      }
+    },
+    "%@ needs your password to go on.": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ precisa da sua senha para seguir."
+          }
+        }
+      }
+    },
+    "Done. %@ confirmed the booking.": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Pronto. %@ confirmou a reserva."
+          }
+        }
+      }
+    },
+    "Back to the chat": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Voltar para a conversa"
+          }
+        }
+      }
+    },
+    "%lld items · %@": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld itens · %@"
           }
         }
       }

@@ -33,6 +33,9 @@ struct Session {
     kick: Arc<Notify>,
     /// The client's address, for per-IP limits.
     ip: String,
+    /// When the device logged in, for time to first sync.
+    started: std::time::Instant,
+    first_sync_done: bool,
 }
 
 fn nonce() -> String {
@@ -90,6 +93,8 @@ pub async fn run(socket: WebSocket, st: Shared, ip: String) {
         hub_id: None,
         kick: Arc::new(Notify::new()),
         ip,
+        started: std::time::Instant::now(),
+        first_sync_done: false,
     };
     // `ready` first: the client's handshake reads it before anything else.
     let _ = tx
@@ -306,6 +311,7 @@ impl Session {
         if self.hub_id.is_some() {
             return;
         }
+        self.st.analytics.session(&self.identity);
         let _ = db::touch_device(&self.st.pool, &self.identity, &self.device, &self.cert).await;
         // Packages claimed while this device was away: it refills as it comes back.
         let me = [(self.identity.clone(), self.device.clone())];
@@ -567,12 +573,15 @@ impl Session {
                 role,
                 max_uses,
                 ttl_secs,
-            } => Ok(Reply::Invite(
-                self.st
+            } => {
+                let invite = self
+                    .st
                     .log
                     .create_invite(&self.identity, &space, role, max_uses, ttl_secs)
-                    .await?,
-            )),
+                    .await?;
+                self.st.analytics.count("invites_created", 1);
+                Ok(Reply::Invite(invite))
+            }
             Op::PublishAgreementKey { public, signed } => {
                 if !roda_log::profile::verify_agreement(&self.identity, &public, &signed) {
                     return Err("agreement key isn't signed by this identity".into());
@@ -699,6 +708,53 @@ impl Session {
         }
     }
 
+    /// What the metrics learn from a sequenced envelope: its kind and who it went to,
+    /// never its content (sealed envelopes only say whether they're application data).
+    fn count_sequenced(
+        &self,
+        env: &roda_proto::Envelope,
+        ev: &roda_proto::Sequenced,
+        audience: &[String],
+        joined: Option<&str>,
+        started: std::time::Instant,
+    ) {
+        let a = &self.st.analytics;
+        a.count("publish_ok", 1);
+        a.latency("send_ms", started.elapsed());
+        let is_message = match ev.env.body() {
+            Some(EventBody::MessagePosted { .. }) => true,
+            Some(EventBody::SpaceCreated { kind, .. }) => {
+                a.count(
+                    &format!("spaces_created_{}", format!("{kind:?}").to_lowercase()),
+                    1,
+                );
+                false
+            }
+            Some(EventBody::RequestResolved { approved, .. }) => {
+                a.count(
+                    if approved {
+                        "approvals_approved"
+                    } else {
+                        "approvals_denied"
+                    },
+                    1,
+                );
+                false
+            }
+            _ => env.sealed_kind() == Some(roda_proto::SealedKind::Application),
+        };
+        if is_message {
+            a.message_sent(crate::analytics::SentMessage {
+                author: &self.identity,
+                space: env.space(),
+                audience,
+            });
+        }
+        if let (Some(_), Some(who)) = (&env.invite, joined) {
+            a.invite_accepted(who);
+        }
+    }
+
     #[tracing::instrument(
         name = "publish",
         skip_all,
@@ -714,9 +770,12 @@ impl Session {
         )
     )]
     async fn publish(&mut self, env: roda_proto::Envelope) {
+        let started = std::time::Instant::now();
         let span = tracing::Span::current();
+        let analytics = &self.st.analytics;
         let reject = |outcome: &'static str, reason: &str, permanent: bool| {
             span.record("outcome", outcome);
+            analytics.count("publish_rejected", 1);
             ServerFrame::Rejected {
                 space: env.space().to_string(),
                 client_id: env.client_id().to_string(),
@@ -788,6 +847,7 @@ impl Session {
             }) => {
                 Metrics::inc(&self.st.metrics.events_sequenced);
                 span.record("outcome", "sequenced");
+                self.count_sequenced(&env, &ev, &audience, joined.as_deref(), started);
                 span.record("seq", ev.seq as i64);
                 self.send(ServerFrame::Accepted {
                     space: env.space().to_string(),
@@ -885,6 +945,13 @@ impl Session {
         }
         span.record("events", sent as i64);
         self.send(ServerFrame::SyncDone).await;
+        self.st.analytics.synced(&self.identity);
+        if !self.first_sync_done {
+            self.first_sync_done = true;
+            self.st
+                .analytics
+                .latency("first_sync_ms", self.started.elapsed());
+        }
     }
 }
 
