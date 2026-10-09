@@ -12,6 +12,7 @@ members = [
   "crates/zoen-relay",
   "crates/zoen-cli",
   "crates/zoen-load",
+  "crates/zoen-agentd",
   "crates/zoen-egress",
   "tools/uniffi-bindgen",
 ]
