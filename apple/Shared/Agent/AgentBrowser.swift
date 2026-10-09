@@ -230,11 +230,16 @@ struct AgentBrowserCard: View {
         ZStack(alignment: .bottomLeading) {
             Rectangle().fill(Palette.surfaceMuted)
             if let f = browser.frame {
-                Image(decorative: f, scale: 2)
-                    .resizable()
-                    .scaledToFill()
-                    .frame(maxHeight: .infinity, alignment: .top)
-                    .transition(.opacity)
+                // The top of the page (where the site's header and the action are), full width.
+                GeometryReader { g in
+                    Image(decorative: f, scale: 2)
+                        .resizable()
+                        .scaledToFit()
+                        .frame(width: g.size.width)
+                        .frame(width: g.size.width, height: g.size.height, alignment: .top)
+                        .clipped()
+                }
+                .transition(.opacity)
             }
             SiteChip(site: s.site).padding(8)
         }
