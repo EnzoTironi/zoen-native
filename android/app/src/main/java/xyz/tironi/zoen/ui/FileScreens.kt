@@ -149,9 +149,11 @@ fun PageEditor(model: ZoenViewModel, state: AppState, item: ItemDetail, modifier
 @Composable
 fun FileScreen(model: ZoenViewModel, state: AppState, item: ItemDetail, modifier: Modifier = Modifier) {
     val file = checkNotNull(item.file)
-    val bytes by produceState<ByteArray?>(null, item.id, item.version, file.ready) { value = model.repository.query { it.fileBytes(item.id, null) } }
+    val loadedBytes by produceState<ByteArray?>(null, item.id, item.version, file.ready) { value = model.repository.query { it.fileBytes(item.id, null) } }
+    val bytes = loadedBytes
     val context = LocalContext.current
-    val local by produceState<File?>(null, item.id, item.version, bytes) { bytes?.let { value = MediaFiles.local(context, item.id, item.version, file.name, it) } }
+    val loadedLocal by produceState<File?>(null, item.id, item.version, bytes) { bytes?.let { value = MediaFiles.local(context, item.id, item.version, file.name, it) } }
+    val local = loadedLocal
     var editing by rememberSaveable(item.id) { mutableStateOf(false) }
     var markup by rememberSaveable(item.id) { mutableStateOf(false) }
     var trimming by rememberSaveable(item.id) { mutableStateOf(false) }
