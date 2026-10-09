@@ -227,6 +227,15 @@ impl<'c> Device<'c> {
         self.with(|p| self.load(p, space).is_ok())
     }
 
+    /// Deletes this device's state for a group it was removed from: its secrets go, and
+    /// a later Welcome (if it is added back) starts it afresh.
+    pub fn forget(&self, space: &str) -> Result<(), MlsError> {
+        self.with(|p| match self.load(p, space) {
+            Ok(mut group) => group.delete(p.storage()).map_err(mls),
+            Err(_) => Ok(()),
+        })
+    }
+
     /// Starts the group for a new E2E Space, with this device as its only member.
     pub fn create_group(&self, space: &str) -> Result<(), MlsError> {
         self.with(|p| {
