@@ -23,6 +23,9 @@ pub struct SandboxSpec {
     pub max_secs: u32,
     pub egress: Vec<EgressRule>,
     pub secrets: Vec<SecretBinding>,
+    /// The agent the tool works for: approval cards and `net:` Grants name it. `None` when the
+    /// owner runs the tool directly.
+    pub agent: Option<IdentityId>,
 }
 
 /// A running (or suspended) sandbox held for one owner's tool.

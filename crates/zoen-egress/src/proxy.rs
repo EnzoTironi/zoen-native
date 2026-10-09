@@ -11,7 +11,7 @@ use std::collections::HashMap;
 use std::net::{IpAddr, SocketAddr};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
-use tokio::io::{AsyncReadExt, AsyncWriteExt};
+use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 use tokio::net::{TcpListener, TcpStream};
 
 /// What one lease (one sandbox running one tool for one owner) may do.
@@ -316,9 +316,19 @@ impl Egress {
             };
             let me = self.clone();
             tokio::spawn(async move {
-                let _ = me.handle(conn).await;
+                let _ = me.handle(conn, None).await;
             });
         }
+    }
+
+    /// Serves one connection that already belongs to `lease`: the sandbox node agent knows
+    /// which VM a vsock connection came from, so the guest never holds a proxy credential.
+    /// Everything else (allowlist, approvals, secrets, rate limit, log) is the same.
+    pub async fn serve_stream<S>(self: Arc<Self>, conn: S, lease: &str) -> std::io::Result<()>
+    where
+        S: AsyncRead + AsyncWrite + Unpin + Send,
+    {
+        self.handle(conn, Some(lease)).await
     }
 
     fn record(&self, ctx: &Ctx, decision: Decision, up: u64, down: u64) {
@@ -336,9 +346,9 @@ impl Egress {
         });
     }
 
-    async fn refuse(
+    async fn refuse<S: AsyncWrite + Unpin>(
         &self,
-        conn: &mut TcpStream,
+        conn: &mut S,
         ctx: &Ctx,
         d: Decision,
         request: Option<&str>,
@@ -355,7 +365,10 @@ impl Egress {
         conn.shutdown().await
     }
 
-    async fn handle(self: Arc<Self>, mut conn: TcpStream) -> std::io::Result<()> {
+    async fn handle<S>(self: Arc<Self>, mut conn: S, preauth: Option<&str>) -> std::io::Result<()>
+    where
+        S: AsyncRead + AsyncWrite + Unpin + Send,
+    {
         let mut ctx = Ctx {
             lease: None,
             tool: None,
@@ -415,14 +428,16 @@ impl Egress {
                     .ok()
             })
             .and_then(|b| String::from_utf8(b).ok());
-        let Some((lease_id, token)) = auth.as_deref().and_then(|a| a.split_once(':')) else {
-            return self.refuse(&mut conn, &ctx, Decision::BadAuth, None).await;
+        let (lease_id, token) = match (preauth, auth.as_deref().and_then(|a| a.split_once(':'))) {
+            (Some(lease), _) => (lease, None),
+            (None, Some((lease, token))) => (lease, Some(token)),
+            (None, None) => return self.refuse(&mut conn, &ctx, Decision::BadAuth, None).await,
         };
         let policy = {
             let mut st = self.state.lock().unwrap();
             let max = self.config.max_requests_per_minute;
             match st.leases.get_mut(lease_id) {
-                Some(l) if ct_eq(l.policy.token.as_bytes(), token.as_bytes()) => {
+                Some(l) if token.is_none_or(|t| ct_eq(l.policy.token.as_bytes(), t.as_bytes())) => {
                     if l.window_start.elapsed() >= Duration::from_secs(60) {
                         l.window_start = Instant::now();
                         l.count = 0;
