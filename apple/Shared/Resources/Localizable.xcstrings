@@ -8234,6 +8234,136 @@
           }
         }
       }
+    },
+    "All chats": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Todas as conversas"
+          }
+        }
+      }
+    },
+    "Direct chats": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Conversas diretas"
+          }
+        }
+      }
+    },
+    "Groups": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Grupos"
+          }
+        }
+      }
+    },
+    "Filter chats": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Filtrar conversas"
+          }
+        }
+      }
+    },
+    "No chats in this filter": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Nenhuma conversa neste filtro"
+          }
+        }
+      }
+    },
+    "Community name": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Nome da comunidade"
+          }
+        }
+      }
+    },
+    "Join a chat": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Entrar em uma conversa"
+          }
+        }
+      }
+    },
+    "A chat for a club or neighbourhood. Invite members and manage permissions and shared resources inside the conversation.": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Uma conversa para um clube ou bairro. Convide membros e gerencie permissões e recursos compartilhados dentro da conversa."
+          }
+        }
+      }
+    },
+    "Cards": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Cartões"
+          }
+        }
+      }
+    },
+    "List": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Lista"
+          }
+        }
+      }
+    },
+    "No approval requests here yet": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Nenhum pedido de aprovação por aqui ainda"
+          }
+        }
+      }
+    },
+    "Requests appear here when your agents need a decision. Use List for mentions, tasks, and past requests.": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Os pedidos aparecem aqui quando seus agentes precisam de uma decisão. Use Lista para ver menções, tarefas e pedidos anteriores."
+          }
+        }
+      }
+    },
+    "View mentions, tasks, and approval history": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Veja menções, tarefas e o histórico de aprovações"
+          }
+        }
+      }
     }
   },
   "version": "1.0"

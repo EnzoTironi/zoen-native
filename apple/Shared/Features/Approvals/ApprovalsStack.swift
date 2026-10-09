@@ -86,6 +86,8 @@ enum ApprovalSwipe: CaseIterable, Identifiable {
 }
 
 struct ApprovalsStackView: View {
+    var showsClose = true
+    var onShowList: (() -> Void)? = nil
     @Environment(AppModel.self) private var model
     @Environment(\.dismiss) private var dismiss
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -149,8 +151,12 @@ struct ApprovalsStackView: View {
                 } else if !visible.isEmpty {
                     cards
                 } else if seenCards {
-                    AllCaughtUpView { close() }
+                    AllCaughtUpView(onClose: showsClose ? { close() } : nil)
                         .transition(.opacity.combined(with: .scale(scale: 0.96)))
+                } else {
+                    InkEmptyState(pose: .zen, title: String(localized: "No approval requests here yet"),
+                                  message: String(localized: "Requests appear here when your agents need a decision. Use List for mentions, tasks, and past requests."))
+                        .accessibilityIdentifier("approvals-empty")
                 }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -202,15 +208,17 @@ struct ApprovalsStackView: View {
 
     private var header: some View {
         HStack(spacing: 14) {
-            Button { if expanded { withAnimation(.spring(duration: 0.4)) { expanded = false } } else { close() } } label: {
-                ZoenIcon(.back, size: 18)
-                    .foregroundStyle(Palette.textPrimary)
-                    .frame(width: 44, height: 44)
-                    .glassEffect(.regular.interactive(), in: .circle)
+            if showsClose || expanded {
+                Button { if expanded { withAnimation(.spring(duration: 0.4)) { expanded = false } } else { close() } } label: {
+                    ZoenIcon(.back, size: 18)
+                        .foregroundStyle(Palette.textPrimary)
+                        .frame(width: 44, height: 44)
+                        .glassEffect(.regular.interactive(), in: .circle)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(expanded ? Text("Back to the cards") : Text("Close"))
+                .accessibilityIdentifier("approvals-back")
             }
-            .buttonStyle(.plain)
-            .accessibilityLabel(expanded ? Text("Back to the cards") : Text("Close"))
-            .accessibilityIdentifier("approvals-back")
 
             GeometryReader { geo in
                 ZStack(alignment: .leading) {
@@ -227,20 +235,28 @@ struct ApprovalsStackView: View {
             .accessibilityIdentifier("approvals-progress")
 
             Button {
-                close()
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
-                    model.setPath(.activity, [])
-                    model.notificationsOpen = true
+                if let onShowList {
+                    commitPending()
+                    onShowList()
+                } else {
+                    close()
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
+                        model.setPath(.activity, [])
+                        model.notificationsOpen = true
+                    }
                 }
             } label: {
-                Image(systemName: "list.bullet")
+                Label("List", systemImage: "list.bullet")
                     .font(.system(size: 16, weight: .semibold))
                     .foregroundStyle(Palette.textPrimary)
-                    .frame(width: 44, height: 44)
-                    .glassEffect(.regular.interactive(), in: .circle)
+                    .padding(.horizontal, 14)
+                    .frame(height: 44)
+                    .glassEffect(.regular.interactive(), in: .capsule)
             }
             .buttonStyle(.plain)
-            .accessibilityLabel(Text("All notifications"))
+            .disabled(flying != nil || stamping != nil)
+            .accessibilityHint(Text("View mentions, tasks, and approval history"))
+            .accessibilityIdentifier("notifications-list")
         }
         .padding(.horizontal, 18)
         .padding(.top, 6)
@@ -1177,7 +1193,7 @@ private struct AlwaysStamp: View {
 // MARK: - End state
 
 struct AllCaughtUpView: View {
-    var onClose: () -> Void
+    var onClose: (() -> Void)? = nil
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var shown = false
 
@@ -1206,12 +1222,14 @@ struct AllCaughtUpView: View {
             .opacity(shown || reduceMotion ? 1 : 0)
             .offset(y: shown || reduceMotion ? 0 : 12)
             Spacer(minLength: 0)
-            Button(action: onClose) {
-                Text("Done").font(.headline).frame(maxWidth: 220, minHeight: 50)
+            if let onClose {
+                Button(action: onClose) {
+                    Text("Done").font(.headline).frame(maxWidth: 220, minHeight: 50)
+                }
+                .buttonStyle(.glassProminent)
+                .tint(Palette.action)
+                .accessibilityIdentifier("approvals-done-button")
             }
-            .buttonStyle(.glassProminent)
-            .tint(Palette.action)
-            .accessibilityIdentifier("approvals-done-button")
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .accessibilityElement(children: .contain)

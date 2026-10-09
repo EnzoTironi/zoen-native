@@ -65,6 +65,7 @@ struct PlanItemView: View {
         #if os(iOS)
         .navigationBarTitleDisplayMode(.inline)
         #endif
+        #if os(iOS)
         .toolbar {
             ToolbarItemGroup(placement: .primaryAction) {
                 if let item {
@@ -73,6 +74,7 @@ struct PlanItemView: View {
                 }
             }
         }
+        #endif
         .sheet(item: $editing) { e in
             NavigationStack {
                 LineEditor(editing: e, onSave: { save($0) },
@@ -91,9 +93,22 @@ struct PlanItemView: View {
 
     private func header(_ item: ItemDetail) -> some View {
         VStack(alignment: .leading, spacing: 10) {
-            Text(item.spaceTitle)
-                .font(.caption.weight(.medium))
-                .foregroundStyle(Palette.textSecondary)
+            HStack {
+                Text(item.spaceTitle)
+                    .font(.caption.weight(.medium))
+                    .foregroundStyle(Palette.textSecondary)
+                #if os(macOS)
+                Spacer()
+                Button { showVersions = true } label: { Image(systemName: "clock.arrow.circlepath") }
+                    .buttonStyle(.plain)
+                    .help("Versions")
+                    .accessibilityLabel("Versions")
+                ShareLink(item: shareText(item)) { Image(systemName: "square.and.arrow.up") }
+                    .buttonStyle(.plain)
+                    .help("Share")
+                    .accessibilityLabel("Share")
+                #endif
+            }
 
             Text(item.title)
                 .font(.editorial(34))

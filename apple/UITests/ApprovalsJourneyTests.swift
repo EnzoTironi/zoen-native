@@ -71,6 +71,32 @@ final class ApprovalsJourneyTests: XCTestCase {
     }
 
     @MainActor
+    func testNotificationsDefaultToCardsAndListCanReturnWithoutDeciding() {
+        let app = launch()
+        let first = topCard(app)
+        let list = app.descendants(matching: .any)["notifications-list-view"].firstMatch
+        XCTAssertFalse(list.exists, "notifications start with approval cards")
+        keep(app, "notifications default to cards")
+
+        app.buttons["notifications-list"].tap()
+        XCTAssertTrue(list.waitForExistence(timeout: 10), "List explicitly opens the notification list")
+        XCTAssertTrue(app.buttons["notifications-cards"].waitForExistence(timeout: 5))
+        keep(app, "notifications explicit list")
+
+        app.buttons["notifications-cards"].tap()
+        XCTAssertEqual(topCard(app), first, "switching presentation does not decide a request")
+        XCTAssertFalse(list.exists, "Cards returns to the deck")
+        keep(app, "notifications return to cards")
+
+        app.buttons["approvals-back"].tap()
+        let bell = app.buttons.matching(NSPredicate(format: "label BEGINSWITH 'Notificações'")).firstMatch
+        XCTAssertTrue(bell.waitForExistence(timeout: 10))
+        bell.tap()
+        XCTAssertEqual(topCard(app), first, "the next bell opening defaults to the same undecided card")
+        XCTAssertFalse(list.exists)
+    }
+
+    @MainActor
     func testSwipeRightApprovesJustThisOnce() {
         let app = launch()
         let first = topCard(app)

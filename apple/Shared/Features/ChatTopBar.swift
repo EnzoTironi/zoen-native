@@ -1,17 +1,16 @@
 import SwiftUI
 import RodaCore
 
-#if os(iOS)
 /// The chat's top bar (v2, Muse-style): back, a horizontal title whose larger avatar overlaps
 /// the left end of the glass name capsule (live status as the subtitle), and one calls capsule
-/// on the right. Each piece is its own Liquid Glass (tinted like the bottom bar in dark mode)
-/// with its content on top. Deployment target is iOS 26, so there's no material fallback.
+/// on the right. iOS and Mac share these floating controls; the space around them is transparent.
 struct ChatTopBar: View {
     let space: SpaceSummary
     let subtitle: String
     /// Live status that replaces the subtitle while something is happening.
     var status: ChatStatus? = nil
     let onBack: () -> Void
+    var showsBack = true
     let onOpen: () -> Void
     /// The title opens the header menu (the avatar keeps `onOpen`).
     var onTitle: (() -> Void)? = nil
@@ -35,15 +34,20 @@ struct ChatTopBar: View {
         // Liquid Glass in one container; each piece's text and icons are the glass's content.
         GlassEffectContainer(spacing: 4) {
             TopBarLayout(gap: Self.gap) {
-                Button(action: onBack) {
-                    ZoenIcon(.back, size: 21)
-                        .foregroundStyle(Palette.textPrimary)
-                        .frame(width: Self.height, height: Self.height)
-                        .contentShape(.circle)
+                if showsBack {
+                    Button(action: onBack) {
+                        ZoenIcon(.back, size: 21)
+                            .foregroundStyle(Palette.textPrimary)
+                            .frame(width: Self.height, height: Self.height)
+                            .contentShape(.circle)
+                    }
+                    .buttonStyle(GlassPress(shape: .circle))
+                    .accessibilityLabel(Text("Back"))
+                    .accessibilityIdentifier("zoenBack")
+                } else {
+                    Color.clear.frame(width: Self.height, height: Self.height)
+                        .accessibilityHidden(true)
                 }
-                .buttonStyle(GlassPress(shape: .circle))
-                .accessibilityLabel(Text("Back"))
-                .accessibilityIdentifier("zoenBack")
 
                 Button(action: onTitle ?? onOpen) { title }
                     .buttonStyle(TitlePress())
@@ -166,7 +170,9 @@ struct TopGlass<S: InsettableShape>: ViewModifier {
     func body(content: Content) -> some View {
         content
             .glassEffect(interactive ? .regular.interactive() : .regular, in: shape)
+            #if os(iOS)
             .barEdge(shape, diffuse: false)
+            #endif
     }
 }
 
@@ -190,12 +196,16 @@ enum TitleVariant: String {
 @MainActor
 enum Island {
     static var rect: CGRect? {
+        #if os(iOS)
         guard let w = UIApplication.shared.connectedScenes.compactMap({ $0 as? UIWindowScene }).first,
               let win = w.windows.first(where: { $0.isKeyWindow }) ?? w.windows.first else { return nil }
         let top = win.safeAreaInsets.top, width = win.bounds.width
         guard top >= 59 else { return nil }
         let y: CGFloat = top >= 62 ? 14 : 11
         return CGRect(x: width / 2 - 63, y: y, width: 126, height: 37)
+        #else
+        return nil
+        #endif
     }
 }
 
@@ -358,8 +368,6 @@ private struct BackChrome: ViewModifier {
     }
 }
 
-#endif
-
 /// What's happening in the chat right now, the same for people and agents (no badge: the
 /// status just describes the activity). Groups name who; 1:1s don't need to.
 struct ChatStatus: Equatable {
@@ -432,7 +440,6 @@ struct TopBarWidthSheet: View {
 }
 #endif
 
-#if os(iOS)
 /// The title's face, one image only: the contact for a 1:1 (agent or person, drawn the same),
 /// or the group's own picture (a generated pen-and-paper default until one is set).
 struct TitleAvatar: View {
@@ -452,4 +459,3 @@ struct TitleAvatar: View {
         .clipShape(.circle)
     }
 }
-#endif

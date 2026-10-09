@@ -1,10 +1,32 @@
 {
   "name": "@zoen/ui",
   "version": "0.1.0",
-  "description": "Zoen UI kit for mini-apps: CSS tokens that match the native app, a few React components, hooks over @zoen/miniapp-sdk and a spring helper.",
+  "description": "Zoen React UI, with mini-app components and an independent application shell.",
   "type": "module",
   "main": "src/index.tsx",
+  "exports": {
+    ".": "./src/index.tsx",
+    "./tokens.css": "./src/tokens.css",
+    "./shell": "./src/shell.tsx",
+    "./shell.css": "./src/shell.css"
+  },
+  "scripts": {
+    "typecheck:shell": "tsc --noEmit -p preview/tsconfig.json",
+    "test:shell": "node --test preview/shell.test.mjs",
+    "build:preview": "node preview/build.mjs",
+    "preview": "node preview/build.mjs --serve"
+  },
   "license": "UNLICENSED",
   "private": true,
-  "peerDependencies": { "react": "^19" }
+  "peerDependencies": {
+    "react": "^19"
+  },
+  "devDependencies": {
+    "@types/react": "19.1.16",
+    "@types/react-dom": "19.1.9",
+    "esbuild": "0.25.10",
+    "react": "19.1.1",
+    "react-dom": "19.1.1",
+    "typescript": "5.9.2"
+  }
 }

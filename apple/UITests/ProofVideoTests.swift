@@ -81,16 +81,15 @@ final class ProofVideoTests: XCTestCase {
         get.tap()
         sleep(3)
 
-        app.buttons["Espaços"].firstMatch.tap()
-        let create = app.buttons["createSpace"].exists ? app.buttons["createSpace"] : app.buttons["createSpaceEmpty"]
-        XCTAssertTrue(create.waitForExistence(timeout: 8))
-        create.tap()
-        let name = app.textFields["spaceNameField"]
+        app.buttons["bar-conversations"].tap()
+        app.buttons["newChat"].tap()
+        app.buttons["Comunidade"].tap()
+        let name = app.textFields["communityNameField"]
         XCTAssertTrue(name.waitForExistence(timeout: 5))
         name.tap()
         name.typeText("Praia no feriado")
         sleep(1)
-        app.buttons["confirmCreateSpace"].tap()
+        app.buttons["confirmCreateCommunity"].tap()
         sleep(4)
 
         let composer = app.descendants(matching: .any)["composer"].firstMatch

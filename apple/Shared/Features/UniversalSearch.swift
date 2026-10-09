@@ -19,7 +19,7 @@ enum SearchScope: String, CaseIterable, Identifiable {
         case .messages: String(localized: "Messages")
         case .people: String(localized: "People")
         case .agents: String(localized: "Agents")
-        case .spaces: String(localized: "Spaces")
+        case .spaces: String(localized: "Chats")
         case .apps: String(localized: "Apps")
         case .files: String(localized: "Files")
         }

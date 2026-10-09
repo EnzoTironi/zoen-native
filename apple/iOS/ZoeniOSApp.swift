@@ -42,10 +42,12 @@ struct RootView: View {
         @Bindable var model = model
         ZStack(alignment: .bottom) {
             ForEach(AppTab.allCases, id: \.self) { t in
-                stack(for: t)
-                    .opacity(model.tab == t ? 1 : 0)
-                    .allowsHitTesting(model.tab == t)
-                    .accessibilityHidden(model.tab != t)
+                if t != .search || model.tab == .search {
+                    stack(for: t)
+                        .opacity(model.tab == t ? 1 : 0)
+                        .allowsHitTesting(model.tab == t)
+                        .accessibilityHidden(model.tab != t)
+                }
             }
 
             if barVisible {
@@ -136,7 +138,6 @@ struct RootView: View {
     private func root(_ t: AppTab) -> some View {
         switch t {
         case .conversations: ConversationsScreen()
-        case .communities: CommunitiesScreen()
         case .files: FilesScreen()
         case .activity: ActivityScreen()
         case .agents: AgentsLibraryScreen()
@@ -220,8 +221,8 @@ private struct PlainPopBack: ViewModifier {
     }
 }
 
-/// Floating bottom bar: Search circle · three-tab pill · slot for the + (see `RootView`).
-/// Tabs: Chats (where everything happens), Spaces (the shared communities) and Store (agents
+/// Floating bottom bar: Search circle · two-tab pill · slot for the + (see `RootView`).
+/// Tabs: Chats (direct conversations, groups, and communities) and Store (agents
 /// and mini-apps). Notifications and approvals live behind the bell in the headers.
 struct ZoenBottomBar: View {
     static let circle: CGFloat = 56
@@ -303,7 +304,6 @@ struct ZoenBottomBar: View {
 
                 HStack(spacing: 2) {
                     tab(.conversations, badge: model.spaces.reduce(0) { $0 + Int($1.unread) })
-                    tab(.communities)
                     tab(.store)
                 }
                 .padding(4)
@@ -380,6 +380,7 @@ struct ZoenBottomBar: View {
         .buttonStyle(IconPressStyle())
         .layoutPriority(showsLabel ? 1 : 0)
         .accessibilityLabel(badge > 0 ? "\(t.title), \(badge)" : t.title)
+        .accessibilityIdentifier("bar-\(t.rawValue)")
         .accessibilityAddTraits(on ? .isSelected : [])
         .accessibilityShowsLargeContentViewer {
             Label(t.title, systemImage: t.symbol)
@@ -392,7 +393,12 @@ struct NotificationsSheet: View {
     @Environment(AppModel.self) private var model
     var body: some View {
         NavigationStack(path: Binding(get: { model.path(.activity) }, set: { model.setPath(.activity, $0) })) {
-            ActivityScreen()
+            ActivityScreen(initialList: true, onShowCards: {
+                model.notificationsOpen = false
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
+                    model.openNotifications()
+                }
+            })
                 .navigationTitle(Text("Notifications"))
                 .navigationBarTitleDisplayMode(.inline)
                 .toolbar {

@@ -1,17 +1,18 @@
 import SwiftUI
 import RodaCore
 
-/// Start a chat with someone by their @, make a group, or join one with an invite code.
+/// Start a direct chat, group, or community, or join with an invite code.
 /// People search and invites go through the relay; the chat itself is created on this
 /// device first (signed, queued) and works offline.
 struct NewChatSheet: View {
     enum Mode: String, CaseIterable, Identifiable {
-        case chat, group, join
+        case chat, group, community, join
         var id: String { rawValue }
         var title: String {
             switch self {
             case .chat: String(localized: "Chat")
             case .group: String(localized: "Group")
+            case .community: String(localized: "Community")
             case .join: String(localized: "Join")
             }
         }
@@ -52,6 +53,7 @@ struct NewChatSheet: View {
 
                 switch mode {
                 case .chat, .group: peopleSection
+                case .community: communitySection
                 case .join: joinSection
                 }
 
@@ -60,7 +62,7 @@ struct NewChatSheet: View {
                 }
             }
             .formStyle(.grouped)
-            .navigationTitle(mode == .join ? String(localized: "Join a group") : String(localized: "New chat"))
+            .navigationTitle(mode == .join ? String(localized: "Join a chat") : String(localized: "New chat"))
             #if os(iOS)
             .navigationBarTitleDisplayMode(.inline)
             #endif
@@ -70,6 +72,13 @@ struct NewChatSheet: View {
                     ToolbarItem(placement: .confirmationAction) {
                         Button("Create") { createGroup() }
                             .disabled(working || picked.isEmpty || groupTitle.trimmingCharacters(in: .whitespaces).isEmpty)
+                    }
+                }
+                if mode == .community {
+                    ToolbarItem(placement: .confirmationAction) {
+                        Button("Create") { createCommunity() }
+                            .disabled(working || groupTitle.trimmingCharacters(in: .whitespaces).isEmpty)
+                            .accessibilityIdentifier("confirmCreateCommunity")
                     }
                 }
             }
@@ -82,6 +91,27 @@ struct NewChatSheet: View {
     }
 
     // MARK: people
+
+    private var communitySection: some View {
+        Section {
+            TextField(String(localized: "Community name"), text: $groupTitle)
+                .accessibilityIdentifier("communityNameField")
+        } footer: {
+            Text("A chat for a club or neighbourhood. Invite members and manage permissions and shared resources inside the conversation.")
+        }
+    }
+
+    private func createCommunity() {
+        working = true
+        defer { working = false }
+        do {
+            let id = try model.core.createCommunity(title: groupTitle.trimmingCharacters(in: .whitespaces))
+            model.refresh()
+            open(id)
+        } catch {
+            failure = (error as? CoreError)?.message ?? error.localizedDescription
+        }
+    }
 
     @ViewBuilder
     private var peopleSection: some View {
@@ -254,6 +284,7 @@ struct NewChatSheet: View {
     }
 
     private func open(_ spaceId: String) {
+        model.chatFilter = .all
         dismiss()
         Task { @MainActor in
             try? await Task.sleep(for: .milliseconds(350))

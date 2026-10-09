@@ -5,8 +5,8 @@ import RodaCore
 
 /// Live mini-apps of a chat as Wabi-style widget tiles, drawn by the same `SnapshotCard`
 /// renderer as Home (and WidgetKit). Two fit per row on iPhone; more scroll sideways.
-/// Tap opens the mini-app; long press offers Open, Share and Unpin. When you scroll back
-/// through older messages they fold into a compact chip row.
+/// Tap opens the mini-app; long press enters edit mode for reordering and unpinning.
+/// The strip stays above the chat's scrolling history.
 struct ChatPinStrip: View {
     @Environment(AppModel.self) private var model
     let apps: [ItemDetail]
@@ -36,6 +36,8 @@ struct ChatPinStrip: View {
             .padding(.bottom, compact ? 4 : 6)
             .animation(.spring(duration: 0.4, bounce: 0.15), value: compact)
             .onChange(of: compact) { _, c in if c { editing = false } }
+            .accessibilityElement(children: .contain)
+            .accessibilityIdentifier("chat-pinned-apps")
         }
     }
 
