@@ -11,5 +11,5 @@
     "skipLibCheck": true,
     "lib": ["ES2022", "DOM", "DOM.Iterable"]
   },
-  "include": ["../src/shell.tsx", "main.tsx", "styles.d.ts"]
+  "include": ["../src/shell.tsx", "*.tsx", "styles.d.ts"]
 }

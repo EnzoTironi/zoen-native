@@ -14,7 +14,8 @@ const result = await build({
   stdin: {
     contents: `export { ZoenShell, ShellIcon } from '@zoen/ui/shell';
       export { CommunityResources, InboxFilters, filterInbox, navigation, sampleChats } from './inbox';
-      export { SampleActivity, ActivityUpdates } from './activity';`,
+      export { SampleActivity, ActivityUpdates } from './activity';
+      export { DrawerFocusFixture, FocusFixtureFooter } from './focus-fixture';`,
     resolveDir: here,
     loader: 'ts',
   },
@@ -36,6 +37,8 @@ const {
   sampleChats,
   SampleActivity,
   ActivityUpdates,
+  DrawerFocusFixture,
+  FocusFixtureFooter,
 } = await import(pathToFileURL(outfile).href);
 const props = {
   navigation: [
@@ -216,6 +219,32 @@ test('explicit Activity List keeps every sample update and exposes Cards to retu
     assert.ok(html.includes(chat.title));
   }
   assert.equal(html.includes('class="preview-activity-cards"'), false);
+});
+
+test('the separate focus fixture uses the exported shell with a native summary footer', () => {
+  const html = renderToStaticMarkup(createElement(DrawerFocusFixture));
+  assert.match(html, /class="zs-shell/);
+  assert.match(html, /data-collapsed="true"/);
+  assert.match(html, /aria-label="Show chats"/);
+  assert.match(html, /<details open=""><summary>Host-slot disclosure<\/summary>/);
+  assert.match(html, /Negative tab button \(never in Tab order\)/);
+});
+
+test('the focus fixture can move the sole positive footer tab stop between roving buttons', () => {
+  for (const lastStop of ['a', 'b']) {
+    const html = renderToStaticMarkup(
+      createElement(FocusFixtureFooter, { lastStop, onLastStopChange() {} }),
+    );
+    assert.equal([...html.matchAll(/tabindex="0"/g)].length, 1);
+    assert.equal([...html.matchAll(/tabindex="-1"/g)].length, 2);
+    assert.match(
+      html,
+      new RegExp(
+        `tabindex="0" aria-pressed="true">Roving stop ${lastStop.toUpperCase()}<\\/button>`,
+      ),
+    );
+    assert.match(html, /tabindex="-1" class="focus-fixture-negative">Negative tab button/);
+  }
 });
 
 test('light, dark, and system colors agree with the native semantic Palette', async () => {

@@ -164,3 +164,23 @@ For visual review:
 
 Record desktop and narrow interactions and attach screenshots or video to the PR
 with `gh --attach`, as required by this repository's review workflow.
+
+## Drawer focus regression fixture
+
+The build also produces `http://127.0.0.1:4173/focus.html`. This separate page is
+outside the default preview navigation. It renders the actual exported shell with
+a host footer containing a native `details`/`summary`, two roving buttons, and an
+always-negative tab button at the end of the DOM order.
+
+At a viewport below 760 px, open **Show chats**. Focus starts at **Close chats**.
+Shift-Tab must reach **Roving stop A**, and Tab must wrap back to Close chats.
+Tab forward and confirm **Host-slot disclosure** receives focus before Roving
+stop A. The other rover and **Negative tab button (never in Tab order)** must be
+skipped. With A focused, Right Arrow selects and focuses B; clicking B also works.
+Tab from B must wrap to Close chats, and Shift-Tab must return to B. Escape must
+close the drawer and restore focus to Show chats. The footer status identifies
+the current last Tab stop.
+
+SSR checks cover the fixture's real shell/slot wiring and both roving states.
+Physical keyboard order, wrapping, and restoration need browser verification on
+this page. Capture that behavior for PR review with `gh --attach`.

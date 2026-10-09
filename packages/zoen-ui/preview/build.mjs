@@ -7,8 +7,12 @@ const here = dirname(fileURLToPath(import.meta.url));
 const out = join(here, 'dist');
 await mkdir(out, { recursive: true });
 await copyFile(join(here, 'index.html'), join(out, 'index.html'));
+await copyFile(join(here, 'focus.html'), join(out, 'focus.html'));
 const options = {
-  entryPoints: [join(here, 'main.tsx')],
+  entryPoints: {
+    main: join(here, 'main.tsx'),
+    focus: join(here, 'focus-main.tsx'),
+  },
   outdir: out,
   bundle: true,
   format: 'esm',
