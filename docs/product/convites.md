@@ -9,9 +9,14 @@
 >
 > **Atualizado em 9 out 2026, 02h30 (BRT), depois da revisão do Enzo:**
 > - todo usuário começa com **10 convites**, e mais convites saem em troca de feedback;
-> - quem traz **5 usuários ativos** ganha **1 mês do plano pago mais barato**;
+> - quem traz **5 usuários ativos** ganha **1 mês do plano Business**;
 > - **não existe "convidado por"** no perfil;
 > - **convites de ouro são só para o B2B** (negócios, criadores e donos de comunidade).
+>
+> **Atualizado em 9 out 2026, 03h02 (BRT):** o prêmio é **1 mês do plano Business a cada 5
+> ativos**, **sem teto** no lançamento (crescimento é a prioridade). O preço do Business ainda
+> está **TBD**; o custo por ativo trazido será recalculado quando o plano for precificado. A
+> proteção contra abuso continua na definição de "ativo". O teto pode voltar depois, com dados.
 >
 > As seções 0, 3 e 4 seguem essas decisões.
 
@@ -36,9 +41,9 @@
    - **o convidado chegando dentro de uma conversa**;
    - **as janelas de convite nos lançamentos.**
 
-   A recompensa é **1 mês do plano pago mais barato a cada 5 convidados ativos**. Os **convites de
-   ouro** ficam só para negócios, criadores e donos de comunidade. Quem convidou quem **nunca
-   aparece para outras pessoas**. Seções 3 e 4.
+   A recompensa é **1 mês do plano Business a cada 5 convidados ativos**, **sem teto** no
+   lançamento. Os **convites de ouro** ficam só para negócios, criadores e donos de comunidade.
+   Quem convidou quem **nunca aparece para outras pessoas**. Seções 3 e 4.
 
 ## 1. Desambiguação: qual "Instinct"
 
@@ -135,7 +140,7 @@ em quem já confiava no convidado.
 | Grupo funciona para quem não tem conta | **Copiar.** O link de um Space ou grupo abre na web e a pessoa participa na hora (ADR 0029) | É o mesmo "your friends don't even need Instinct" |
 | +15 convites por 2 dias no lançamento de um recurso social | **Copiar como "janela de convites"** a cada recurso que fica melhor com amigos | Concentra a viralidade nos picos de novidade |
 | Lançamentos em estágios ("peça para entrar no acesso antecipado") | **Copiar** para recursos novos e caros, como modelos premium e o navegador do agente | Dá a escassez onde existe custo real de computação |
-| Sem recompensa por indicação | **Mudar:** a cada **5 convidados ativos**, quem convidou ganha **1 mês do plano pago mais barato** (decisão do Enzo) | Sem portaria, a escassez de acesso não existe. O prêmio substitui o status |
+| Sem recompensa por indicação | **Mudar:** a cada **5 convidados ativos**, quem convidou ganha **1 mês do plano Business**, sem teto no lançamento (decisão do Enzo) | Sem portaria, a escassez de acesso não existe. O prêmio substitui o status; crescimento sem teto no começo |
 | Status social em volta do convite (gente se gabando dos convites que sobraram) | **Não copiar no perfil:** não existe "convidado por". Só a própria pessoa vê as estatísticas dos convites dela (decisão do Enzo) | Privacidade: quem convidou quem é grafo social, e não se expõe |
 | Termos: conta pessoal e intransferível | **Copiar.** Convites e prêmios ficam presos a quem convidou e a quem aceitou. Não valem para revenda | Evita o eBay |
 
@@ -173,33 +178,38 @@ em quem já confiava no convidado.
    definir). A quantidade depende do plano da empresa ou do criador e é liberada pela equipe para
    os parceiros de lançamento.
 
-### 4.2 Prêmio: 5 convidados ativos = 1 mês do plano pago mais barato
+### 4.2 Prêmio: 5 convidados ativos = 1 mês do plano Business
 
-- **Regra (decisão do Enzo):** quem traz **5 usuários** ganha **1 mês do nosso plano pago mais
-  barato**. O prêmio se repete a cada 5, mas o número total de convites é limitado pela cota (10
-  mais os liberados por feedback).
-- **O que é "usuário" (proposta nossa, para evitar fraude):** um convidado que
+- **Regra (decisão do Enzo, 9 out 2026, 03h02 BRT):** quem traz **5 usuários ativos** ganha **1
+  mês do plano Business**. O prêmio se repete a cada 5 (**10 ativos = 2 meses**, **15 = 3
+  meses**, e assim por diante), **sem teto** no lançamento: crescimento é a prioridade. O número
+  total de convites continua limitado pela cota (10 mais os liberados por feedback).
+- **O que é "usuário ativo" (proposta nossa, anti-fraude; é a proteção no lugar do teto):** um
+  convidado que
   1. aceitou um **convite pessoal** daquela pessoa;
   2. criou conta com **telefone verificado** que nunca foi usado no Zoen;
   3. tem um **dispositivo atestado** (App Attest no iOS, Play Integrity no Android; na web, a conta
      só conta depois de ligar um aparelho);
   4. **mandou mensagens em pelo menos 2 dias diferentes dentro de 14 dias** desde o cadastro, com
      pelo menos uma das mensagens para alguém **que não seja quem convidou**.
-- **Qual plano:** hoje o único plano pago desenhado é o **premium opcional** da
-  [conta por usuário](../research/unit-economics.md) (seção 16): preço sugerido de R$ 29,90 ou
-  US$ 9,99, com custo de ≈ **US$ 3,34 por assinante por mês**. Se surgir um plano mais barato, o
-  prêmio passa a ser ele.
-- **Custo de aquisição (conta nossa):** ≈ US$ 3,34 ÷ 5 ≈ **US$ 0,67 por usuário ativo trazido**,
-  pago uma vez. O plano grátis custa ≈ US$ 0,053 por usuário por mês. Isso fica bem abaixo de
-  qualquer aquisição paga, mas **é custo real** e precisa de teto: no máximo 2 meses de prêmio por
-  pessoa por trimestre (**hipótese**).
-- **O prêmio é para a pessoa, não sai em dinheiro, não se transfere e não se acumula além de 3
-  meses.** Quem já assina ganha 1 mês grátis na próxima cobrança.
+- **Qual plano:** o **plano Business**. Preço e custo por assinante ainda estão **TBD** (não
+  precificado). O premium opcional da [conta por usuário](../research/unit-economics.md) (seção
+  16) continua existindo para o consumidor; o prêmio de indicação é o Business, não o plano mais
+  barato.
+- **Custo de aquisição:** **recalcular quando o Business for precificado** (custo do mês de
+  Business ÷ 5 = custo por usuário ativo trazido). Até lá, qualquer número antigo baseado no
+  premium (≈ US$ 0,67) está **obsoleto**. O plano grátis custa ≈ US$ 0,053 por usuário por mês.
+- **Sem teto no lançamento (decisão do Enzo):** não há limite de meses grátis por trimestre ou por
+  pessoa. A proteção contra abuso fica na definição de "ativo" (telefone novo, dispositivo
+  atestado, mensagens em 2 ou mais dias). O teto **pode voltar depois**, com dados de custo e de
+  fraude.
+- **O prêmio é para a pessoa, não sai em dinheiro e não se transfere.** Quem já assina o Business
+  ganha 1 mês grátis na próxima cobrança; os meses ganhos se somam.
 - **Lojas:** um mês grátis de assinatura no iOS precisa passar pelas ferramentas da Apple (offer
   codes ou ofertas promocionais), ou o prêmio vale como crédito no plano comprado na web. É preciso
   checar com o jurídico e com a App Review antes de lançar.
-- Quem conectou o próprio ChatGPT usa os créditos dele. Para essa pessoa o plano pago ainda vale
-  pelos outros benefícios.
+- Quem conectou o próprio ChatGPT usa os créditos dele. Para essa pessoa o plano Business ainda
+  vale pelos outros benefícios.
 - **Privacidade (decisão do Enzo):** não existe "convidado por" no perfil nem em lugar nenhum
   visível para terceiros. A relação entre quem convidou e quem aceitou **fica privada**. Só a
   própria pessoa vê as estatísticas dela: convites restantes, aceitos, quantos já contam como
@@ -285,7 +295,7 @@ em quem já confiava no convidado.
 - **Retenção antes de K:** a meta da análise crítica continua (≥40% ativos na semana 4). K sem
   retenção é o caso Gas e Clubhouse ([curvas](../research/curvas-crescimento-redes.md)).
 - **Funil da cota:** quantas pessoas esgotam os 10 convites, quantas dão feedback para ganhar mais e quanto esse grupo convida depois.
-- **Custo do prêmio:** meses de plano dados ÷ usuários ativos trazidos (meta ≈ US$ 0,67 ou menos).
+- **Custo do prêmio:** meses de Business dados ÷ usuários ativos trazidos (**TBD** até o Business ser precificado; a meta antiga de ≈ US$ 0,67 era do premium e está obsoleta).
 - **Privacidade:** as métricas usam eventos pseudônimos (o mesmo padrão da telemetria, ADR 0021) e
   nunca o conteúdo de conversas.
 
@@ -301,17 +311,18 @@ concurso. O produto fica aberto, e a densidade continua sendo criada à mão, po
 
 Já decididas pelo Enzo em 9 out 2026:
 - **Cota:** 10 convites por pessoa, e mais em troca de feedback.
-- **Prêmio:** 1 mês do plano pago mais barato a cada 5 convidados ativos.
+- **Prêmio:** 1 mês do **plano Business** a cada 5 convidados ativos, **sem teto** no lançamento
+  (crescimento primeiro; o teto pode voltar com dados).
 - **"Convidado por":** não existe.
 - **Convites de ouro:** só para o B2B.
 
 Ainda em aberto:
 1. Quantos convites extras cada rodada de feedback libera (proposta: +5 a cada 14 dias) e se o
    feedback é uma conversa com o agente ou uma pesquisa curta.
-2. Confirmar a definição de usuário ativo (proposta: mensagens em 2 ou mais dias em 14) e o teto de
-   prêmio por trimestre.
-3. Qual é o "plano pago mais barato" no lançamento. Hoje existe só o premium sugerido (R$ 29,90).
-   Um plano menor mudaria o custo do prêmio.
+2. Confirmar a definição de usuário ativo (proposta: mensagens em 2 ou mais dias em 14; telefone
+   verificado e dispositivo atestado).
+3. **Precificar o plano Business** (preço e custo por assinante ainda TBD). Sem isso o custo por
+   ativo trazido não fecha.
 4. O que o convite de ouro dá ao convidado e ao dono do negócio (Bot Pro, créditos, destaque) e
    quantos cada plano B2B recebe.
 5. Como dar um mês grátis no iOS respeitando as regras de compra da Apple (offer codes ou crédito
