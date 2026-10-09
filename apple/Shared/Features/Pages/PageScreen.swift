@@ -1,5 +1,8 @@
 import SwiftUI
 import RodaCore
+import os
+
+private let log = Logger(subsystem: "xyz.tironi.zoen", category: "page")
 
 /// A page: Markdown you edit as it looks. Edits stay on this device for a moment and
 /// are saved as a version for everyone when you pause or leave.
@@ -178,6 +181,8 @@ struct PageScreen: View {
         let order = blocks.map(\.id)
         let changed = blocks.filter { synced[$0.id] != $0 }
         if changed.isEmpty && order == syncedOrder { return }
+        let start = ContinuousClock.now
+        defer { log.debug("apply \(changed.count) blocks in \(ContinuousClock.now - start, privacy: .public)") }
         do {
             try model.core.pageApply(itemId: itemId, order: order, changed: changed)
             synced = Dictionary(blocks.map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a })
@@ -190,7 +195,9 @@ struct PageScreen: View {
     private func commitNow() {
         applyTask?.cancel()
         commitTask?.cancel()
-        guard dirty else { return }
+        guard dirty else { log.debug("commit: nothing to save"); return }
+        let start = ContinuousClock.now
+        defer { log.debug("commit in \(ContinuousClock.now - start, privacy: .public), now v\(loadedVersion)") }
         applyNow()
         dirty = false
         if model.perform({ try model.core.pageCommit(itemId: itemId, note: "") }) == true {
