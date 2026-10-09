@@ -2,7 +2,7 @@
 
 Evidence reviewed on 2026-10-09, against `main` at `17999988` and work in PRs
 [#33](https://github.com/EnzoTironi/zoen-native/pull/33) through
-[#44](https://github.com/EnzoTironi/zoen-native/pull/44).
+[#45](https://github.com/EnzoTironi/zoen-native/pull/45).
 GitHub records PRs 33, 34, 35, 36, 37 and 40 as merged. The examined `main` tree
 does not contain PR 34's encrypted-backup implementation; reviewed PR 38 at `08124f0`
 restores that integration and has [passing full Linux CI](https://github.com/EnzoTironi/zoen-native/actions/runs/37973200217).
@@ -101,12 +101,13 @@ establish product completeness.
 | [36](https://github.com/EnzoTironi/zoen-native/pull/36) | Merged `334ea050` | Fly Machines sandbox provider | Integrated; paid staging and production egress proof remain gates |
 | [37](https://github.com/EnzoTironi/zoen-native/pull/37) | Merged `17999988` | E2B research | Integrated research; the live computer still needs implementation |
 | [38](https://github.com/EnzoTironi/zoen-native/pull/38) | `08124f0` | Chat reading position, unread indicator and restored reviewed backup integration | [Full Linux CI passes](https://github.com/EnzoTironi/zoen-native/actions/runs/37973200217); combined native UI proof with PR 44 remains pending |
-| [39](https://github.com/EnzoTironi/zoen-native/pull/39) | Documentation draft | Roadmap and all seven completion gates | Final statuses, attached chart and documentation-only diff after feature merges pending |
+| [39](https://github.com/EnzoTironi/zoen-native/pull/39) | Documentation/CI draft | Current roadmap evidence, all seven completion gates and Postgres CI image source | Local links, diff and chart checks pass; full CI reruns after replacing the rate-limited Docker Hub image source with the verified Docker ECR mirror |
 | [40](https://github.com/EnzoTironi/zoen-native/pull/40) | Merged `076d69e3` | Welcome ordering, refill, catch-up and stale-rejection fixes | Integrated; controlled regressions pass; historical stock-7 cause remains unproven and repeatability remains required |
 | [41](https://github.com/EnzoTironi/zoen-native/pull/41) | Separate draft | Native Android client | Owned by another active chat; untouched by this audit; owner supplies live sync/media evidence |
 | [42](https://github.com/EnzoTironi/zoen-native/pull/42) | `d9ebb3e` | Temporary combined validation PR | Full Linux CI passes; 41 local FFI tests and focused CLI/FFI Clippy pass; unmerged, close after original feature integration |
 | [43](https://github.com/EnzoTironi/zoen-native/pull/43) | `3fe1ef5`, draft | Renewable persisted bucket ownership, fencing and bounded forwarding | Full Linux CI passes, including nine ownership assertion groups; five source-review fixes and causal regressions are pending before integration. Workload, short-lease and authenticated TLS proof remain |
 | [44](https://github.com/EnzoTironi/zoen-native/pull/44) | `836910c` stacked on PR 38 | One Chats inbox, native header/pins/palette, Cards/List notifications and reusable web shell | Full Linux CI, iOS/macOS builds, 13 web checks and Mac/browser journeys pass; fresh iOS UI journeys pending. Web data remains a local sample preview |
+| [45](https://github.com/EnzoTironi/zoen-native/pull/45) | `dd75e8f`, draft, stacked on PR 42 | Recovery after every original MLS device is lost | Owner reports 102 layer tests, 21 backup journeys (including both peerless recovery modes), ten real-store contracts and Clippy passing at `59f14de`; fresh full CI, independent review and native recovery proof remain |
 
 Backup uses ADR 0046 and linking uses ADR 0045. Existing backup migration bytes were
 preserved; later migrations extend generations, object versions and package idempotency.
