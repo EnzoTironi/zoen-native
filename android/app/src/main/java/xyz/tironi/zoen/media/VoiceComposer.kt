@@ -37,7 +37,7 @@ import java.io.File
 import xyz.tironi.zoen.R
 import xyz.tironi.zoen.ZoenViewModel
 
-/** Home can drive the same recorder with monotonically increasing hold/release signals. */
+/** Home drives its own recording session with monotonically increasing hold/release signals. */
 @Composable
 fun VoiceComposer(
     model: ZoenViewModel,
@@ -54,7 +54,9 @@ fun VoiceComposer(
     onSent: () -> Unit = {},
 ) {
     val context = LocalContext.current
-    val session: VoiceSession = viewModel(key = "voice:$spaceId", factory = remember(context.applicationContext) { viewModelFactory { initializer { VoiceSession(context.applicationContext) } } })
+    // Home remains composed while a chat is open; it must not present the chat's recording or review.
+    val origin = if (!showTrigger) "home" else if (thread) "thread" else "chat"
+    val session: VoiceSession = viewModel(key = "voice:$origin:$spaceId", factory = remember(context.applicationContext) { viewModelFactory { initializer { VoiceSession(context.applicationContext) } } })
     val appState by model.state.collectAsStateWithLifecycle()
     val microphonePermission = stringResource(R.string.media_microphone_permission)
     val recording by session.recorder.state.collectAsStateWithLifecycle()
@@ -116,7 +118,7 @@ fun VoiceComposer(
         if (recording.phase != RecordingPhase.IDLE) {
             val width = (LocalConfiguration.current.screenWidthDp - 32).coerceIn(240, 380).dp
             Popup(alignment = Alignment.BottomEnd, offset = IntOffset(0, -with(density) { 60.dp.roundToPx() }), properties = PopupProperties(focusable = false)) {
-                Surface(Modifier.width(width), shape = RoundedCornerShape(20.dp), color = MaterialTheme.colorScheme.surfaceContainerHigh, tonalElevation = 6.dp, shadowElevation = 8.dp) {
+                Surface(Modifier.width(width).testTag("voice-recording"), shape = RoundedCornerShape(20.dp), color = MaterialTheme.colorScheme.surfaceContainerHigh, tonalElevation = 6.dp, shadowElevation = 8.dp) {
                     Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                             IconButton(onClick = { session.cancel() }, enabled = recording.phase != RecordingPhase.FINISHING) { Icon(Icons.Rounded.DeleteOutline, stringResource(R.string.media_delete_recording), tint = MaterialTheme.colorScheme.error) }

@@ -55,8 +55,12 @@ class MediaJourneysTest {
             compose.onNodeWithTag("voice-record").performClick()
             val timerPrefix = application.getString(R.string.media_recording_locked, "0:00").substringBefore("0:00")
             compose.waitUntil(20_000) { compose.onAllNodes(hasText(timerPrefix, substring = true) and !hasText("0:00", substring = true)).fetchSemanticsNodes().isNotEmpty() }
+            compose.onAllNodesWithTag("voice-recording").assertCountEquals(1)
+            compose.onAllNodesWithContentDescription(application.getString(R.string.media_stop_review)).assertCountEquals(1)
             compose.onNodeWithContentDescription(application.getString(R.string.media_stop_review)).performClick()
             compose.waitUntil(15_000) { compose.onAllNodesWithTag("voice-waveform").fetchSemanticsNodes().isNotEmpty() }
+            compose.onAllNodesWithTag("voice-recording").assertCountEquals(0)
+            compose.onAllNodesWithTag("voice-send").assertCountEquals(1)
             compose.onNodeWithText(application.getString(R.string.edit), substring = false).performClick()
             compose.onNodeWithTag("voice-waveform").performTouchInput { swipe(Offset(width * .2f, height * .5f), Offset(width * .6f, height * .5f), durationMillis = 400) }
             compose.onNodeWithTag("voice-cut-selection").performClick()
@@ -89,7 +93,9 @@ class MediaJourneysTest {
             val item = runBlocking { application.repository.change { it.fileAdd(checkNotNull(application.repository.state.value.zoenChat).id, name, name, "image/png", original, null) } }
             compose.onNodeWithTag("home-plus").performClick()
             compose.onNodeWithText(application.getString(R.string.files), useUnmergedTree = true).performClick()
-            compose.onNodeWithText(item.title, useUnmergedTree = true).performScrollTo().performClick()
+            compose.onNode(hasScrollToIndexAction() and hasAnyDescendant(hasTestTag("files-search")))
+                .performScrollToNode(hasText(item.title))
+            compose.onNodeWithText(item.title, useUnmergedTree = true).performClick()
             compose.waitUntil(15_000) { compose.onAllNodesWithTag("file-markup", useUnmergedTree = true).fetchSemanticsNodes().isNotEmpty() }
             compose.onNodeWithTag("file-markup", useUnmergedTree = true).performScrollTo().performClick()
             compose.waitUntil(10_000) { compose.onAllNodesWithTag("markup-canvas").fetchSemanticsNodes().isNotEmpty() }
