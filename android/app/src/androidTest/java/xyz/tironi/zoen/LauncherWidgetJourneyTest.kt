@@ -125,7 +125,7 @@ class LauncherWidgetJourneyTest {
             configuredTitle = if (reconfigurable) listTitle else petTitle
             step("Request and accept the launcher's real widget pin")
             compose.onNodeWithTag("widget-pin:${initial.id}").performScrollTo().assertIsDisplayed().performTouchInput { click() }
-            val addLabels = launcherStrings("add_to_home_screen", "add_to_home_screen_automatically")
+            val addLabels = launcherStrings("add_to_home_screen", "place_automatically")
             val accept = awaitNode("Launcher pin acceptance button") { node ->
                 node.packageName == launcher && node.className == "android.widget.Button" && node.enabled && node.clickable && matchesLabel(node.text, addLabels)
             }
@@ -300,7 +300,12 @@ class LauncherWidgetJourneyTest {
 
     private fun launcherStrings(vararg names: String): Set<String> {
         val resources = application.packageManager.getResourcesForApplication(launcher)
-        return names.mapNotNull { name -> resources.getIdentifier(name, "string", launcher).takeIf { it != 0 }?.let(resources::getString) }.toSet()
+        return names.mapNotNull { name ->
+            val id = resources.getIdentifier(name, "string", launcher)
+            val value = id.takeIf { it != 0 }?.let(resources::getString)
+            trace.put(JSONObject().put("launcherString", name).put("resourceId", id).put("value", value ?: JSONObject.NULL))
+            value
+        }.toSet()
     }
 
     private fun matchesLabel(text: String?, labels: Set<String>) = text != null && labels.any { text.uppercase(launcherLocale) == it.uppercase(launcherLocale) }
