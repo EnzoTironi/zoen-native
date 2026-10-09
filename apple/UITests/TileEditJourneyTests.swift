@@ -22,9 +22,10 @@ final class TileEditJourneyTests: XCTestCase {
             format: "identifier BEGINSWITH %@ AND NOT (identifier BEGINSWITH %@) AND identifier != %@",
             "\(prefix)-", "\(prefix)-remove", "\(prefix)-done"))
         let width = app.windows.firstMatch.frame.width
-        // Only the strip on screen (another copy of Home can sit off to the side).
+        // Only the strip on screen (another copy of Home can sit off to the side); a card the
+        // strip scrolled half out after a drop still counts.
         return q.allElementsBoundByIndex
-            .filter { $0.exists && $0.frame.width > 60 && $0.frame.minX > -8 && $0.frame.minX < width }
+            .filter { $0.exists && $0.frame.width > 60 && $0.frame.maxX > 8 && $0.frame.minX < width }
             .sorted { $0.frame.minX < $1.frame.minX }
     }
     @MainActor private func names(_ app: XCUIApplication, _ prefix: String) -> [String] {
