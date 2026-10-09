@@ -974,6 +974,9 @@ final class AppModel {
             return
         }
         #if DEBUG
+        if story == "incoming", SyncModel.mode == .demo {
+            perform { try core.markRead(spaceId: turma) }
+        }
         if ["unread", "unread-mixed"].contains(story), SyncModel.mode == .demo {
             perform { try core.markRead(spaceId: turma) }
             let prefix = story == "unread-mixed" ? "Mensagem mista não lida" : "Mensagem não lida"
