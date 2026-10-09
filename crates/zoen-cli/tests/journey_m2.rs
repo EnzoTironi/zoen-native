@@ -475,10 +475,13 @@ async fn key_packages_refill_when_they_run_low() {
     // lookup limits that would otherwise pace Ana, not what this journey is about.
     let mut w = World::with_env(
         "m2kp",
-        &[(
-            "ZOEN_LIMITS",
-            "connect_ip=1000/m:1000,lookup_account=1000/m:1000",
-        )],
+        &[
+            (
+                "ZOEN_LIMITS",
+                "connect_ip=1000/m:1000,lookup_account=1000/m:1000",
+            ),
+            ("RUST_LOG", "zoen_relay=debug"),
+        ],
     )
     .await;
     w.set_client_env("ZOEN_NET_DEBUG", "1");

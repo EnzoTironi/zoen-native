@@ -206,7 +206,7 @@ pub async fn put_key_packages(
     pool: &PgPool,
     identity: &str,
     device: &str,
-    packages: &[Vec<u8>],
+    packages: &[(Vec<u8>, i64)],
     last_resort: Option<&[u8]>,
 ) -> Result<bool, sqlx::Error> {
     let mut tx = pool.begin().await?;
@@ -215,6 +215,27 @@ pub async fn put_key_packages(
         .bind(format!("kp:{identity}:{device}"))
         .execute(&mut *tx)
         .await?;
+    sqlx::query(
+        "DELETE FROM key_package_publications WHERE identity = $1 AND device = $2
+         AND expires_at <= floor(extract(epoch FROM clock_timestamp()))",
+    )
+    .bind(identity)
+    .bind(device)
+    .execute(&mut *tx)
+    .await?;
+    let (data, expires): (Vec<_>, Vec<_>) = packages.iter().cloned().unzip();
+    let fresh: Vec<Vec<u8>> = sqlx::query_scalar(
+        "INSERT INTO key_package_publications (identity, device, package_hash, expires_at)
+         SELECT $1, $2, sha256(p.data), p.expires_at
+         FROM unnest($3::bytea[], $4::bigint[]) AS p(data, expires_at)
+         ON CONFLICT DO NOTHING RETURNING package_hash",
+    )
+    .bind(identity)
+    .bind(device)
+    .bind(&data)
+    .bind(&expires)
+    .fetch_all(&mut *tx)
+    .await?;
     let (stored,): (i64,) = sqlx::query_as(
         "SELECT count(*) FROM key_packages WHERE identity = $1 AND device = $2 AND NOT last_resort",
     )
@@ -222,15 +243,18 @@ pub async fn put_key_packages(
     .bind(device)
     .fetch_one(&mut *tx)
     .await?;
-    if stored + packages.len() as i64 > MAX_KEY_PACKAGES {
+    if stored + fresh.len() as i64 > MAX_KEY_PACKAGES {
         return Ok(false);
     }
     sqlx::query(
-        "INSERT INTO key_packages (identity, device, data) SELECT $1, $2, unnest($3::bytea[])",
+        "INSERT INTO key_packages (identity, device, data)
+         SELECT DISTINCT $1, $2, p.data FROM unnest($3::bytea[]) AS p(data)
+         WHERE sha256(p.data) = ANY($4::bytea[])",
     )
     .bind(identity)
     .bind(device)
-    .bind(packages)
+    .bind(&data)
+    .bind(&fresh)
     .execute(&mut *tx)
     .await?;
     if let Some(data) = last_resort {

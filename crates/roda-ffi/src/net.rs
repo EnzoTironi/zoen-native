@@ -433,16 +433,8 @@ async fn session(
             Err(e) => return Exit::Retry(e),
         }
     };
-    for f in early {
-        if let ServerFrame::Presence { identity, online } = f {
-            ctx.engine().set_presence(&identity, online);
-            if let Some(l) = &ctx.listener {
-                l.on_presence(identity, online);
-            }
-        }
-    }
     if !relay_knows_me || !registered {
-        if let Err(e) = register(&mut sink, &mut stream, profile).await {
+        if let Err(e) = register(&mut sink, &mut stream, profile, &mut early).await {
             return if e == "handle_taken" {
                 Exit::Blocked(e)
             } else {
@@ -488,6 +480,15 @@ async fn session(
     let mut profiles_inflight: Option<tokio::time::Instant> = None;
     let mut traffic = ProfileTraffic::default();
     let mut opening: Option<tokio::time::Instant> = None;
+
+    // Registration can receive low-stock notices, events and presence before its reply.
+    // Run them through the same ordered dispatcher as the following socket frames.
+    let mut stream = futures_util::stream::iter(
+        early
+            .into_iter()
+            .map(|f| Ok(Message::Binary(f.encode().into()))),
+    )
+    .chain(stream);
 
     let exit = loop {
         tokio::select! {
@@ -784,7 +785,12 @@ async fn session(
     exit
 }
 
-async fn register(sink: &mut Sink, stream: &mut Stream, profile: Identity) -> Result<(), String> {
+async fn register(
+    sink: &mut Sink,
+    stream: &mut Stream,
+    profile: Identity,
+    early: &mut Vec<ServerFrame>,
+) -> Result<(), String> {
     send(
         sink,
         &ClientFrame::Req {
@@ -797,7 +803,8 @@ async fn register(sink: &mut Sink, stream: &mut Stream, profile: Identity) -> Re
         match recv(stream).await? {
             ServerFrame::Res { id: 0, result } => return result.map(|_| ()),
             ServerFrame::Error { message, .. } => return Err(message),
-            _ => continue,
+            frame if early.len() < 1024 => early.push(frame),
+            _ => return Err("too many frames before the registration reply".into()),
         }
     }
 }
