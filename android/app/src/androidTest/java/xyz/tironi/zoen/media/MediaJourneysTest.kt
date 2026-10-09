@@ -6,6 +6,7 @@ import android.graphics.Bitmap
 import android.graphics.Color
 import android.net.Uri
 import android.os.ParcelFileDescriptor
+import android.os.SystemClock
 import android.view.WindowManager
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.test.*
@@ -66,9 +67,16 @@ class MediaJourneysTest {
             compose.onNodeWithTag("voice-waveform").performTouchInput { swipe(Offset(width * .2f, height * .5f), Offset(width * .6f, height * .5f), durationMillis = 400) }
             compose.onNodeWithTag("voice-cut-selection").performClick()
             compose.onNodeWithTag("voice-cut-summary").assertTextContains("1", substring = true)
+            val sendDeadline = SystemClock.elapsedRealtime() + 20_000
+            compose.waitUntil(20_000) { compose.onAllNodes(hasTestTag("voice-send") and isEnabled()).fetchSemanticsNodes().size == 1 }
+            compose.onNodeWithTag("voice-send").assertIsDisplayed().assertIsEnabled()
+            compose.waitForIdle()
+            compose.onNodeWithTag("voice-cut-summary").assertTextContains("1", substring = true)
             capture("voice-review-cut")
-            compose.onNodeWithTag("voice-send").performClick()
-            compose.waitUntil(20_000) { application.repository.state.value.timelines[space].orEmpty().any { it.id !in previous && (it.kind as? EntryKind.Message)?.text?.let(VoiceNoteRef::parse) != null } }
+            compose.onNodeWithTag("voice-send").assertIsEnabled().performClick()
+            val remainingSendTime = sendDeadline - SystemClock.elapsedRealtime()
+            assertTrue("Readiness and sending must share the original 20-second deadline", remainingSendTime > 0)
+            compose.waitUntil(remainingSendTime) { application.repository.state.value.timelines[space].orEmpty().any { it.id !in previous && (it.kind as? EntryKind.Message)?.text?.let(VoiceNoteRef::parse) != null } }
             val entry = application.repository.state.value.timelines[space].orEmpty().last { it.id !in previous && (it.kind as? EntryKind.Message)?.text?.let(VoiceNoteRef::parse) != null }
             val voice = checkNotNull(VoiceNoteRef.parse((entry.kind as EntryKind.Message).text))
             assertTrue(voice.ms >= 300)
