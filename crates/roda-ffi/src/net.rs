@@ -665,6 +665,12 @@ async fn session(
             _ = &mut tick => {
                 #[cfg(test)]
                 if let Some(work) = &ctx.maintenance_work { work(); }
+                if !ctx.status.borrow().synced {
+                    // Catch-up can replace the cached group's epoch and membership.
+                    // Keep offline plaintext intact until that ordered history lands.
+                    tick.as_mut().reset(tokio::time::Instant::now() + MAINTENANCE_PERIOD);
+                    continue;
+                }
                 if profiles_inflight.is_none() {
                     let unknown = ctx.engine().take_unknown();
                     if !unknown.is_empty() {
@@ -799,6 +805,9 @@ async fn register(
 }
 
 async fn flush(ctx: &Ctx, sink: &mut Sink, sent: &mut HashSet<String>) -> Result<(), String> {
+    if !ctx.status.borrow().synced {
+        return Ok(());
+    }
     let envs = ctx.engine().outbox_envelopes_except(sent);
     for env in envs {
         if sent.insert(env.client_id().to_string()) {
@@ -929,6 +938,12 @@ pub(crate) fn tracing_like(msg: &str) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use roda_log::{
+        chain_hash, content::InnerEvent, content::Sealed, content::SealedKind, Author, Signer,
+    };
+    use roda_mls::{sealed::state_key, Device, Opened, SUITE_ID};
+    use roda_proto::{Envelope, Sequenced};
+    use roda_types::{EventBody, Privacy, Seen, SpaceKind, GENESIS_PREV};
     use std::sync::{
         atomic::{AtomicUsize, Ordering},
         mpsc as channel,
@@ -955,6 +970,356 @@ mod tests {
             .send(Message::Binary(frame.encode().into()))
             .await
             .unwrap();
+    }
+
+    fn sequence(env: Envelope, head: &mut Option<Seen>) -> Sequenced {
+        let seq = head.as_ref().map_or(0, |h| h.seq + 1);
+        let prev = head
+            .as_ref()
+            .map_or_else(|| GENESIS_PREV.to_string(), |h| h.hash.clone());
+        let hash = chain_hash(env.space(), seq, &prev, &env.wire_hash());
+        *head = Some(Seen {
+            seq,
+            hash: hash.clone(),
+        });
+        Sequenced {
+            seq,
+            prev,
+            hash,
+            env,
+        }
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn queued_messages_wait_for_catch_up_and_use_the_current_epoch() {
+        let _ = rustls::crypto::ring::default_provider().install_default();
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let url = format!("ws://{}", listener.local_addr().unwrap());
+        let mut engine = Engine::open(":memory:").unwrap();
+        let (root_secret, device_secret, _) = engine.create_account("Ana", "ana", &url).unwrap();
+        engine.set_registered(true).unwrap();
+        let _ = engine.mls_key_packages_to_publish().unwrap();
+        engine.mls_key_packages_published(Ok(()));
+        let author = engine.net.author.clone().unwrap();
+        let space = "sp_initial_catch_up";
+        let mut head = None;
+        let genesis = sequence(
+            Envelope::plain(&author.sign_event(
+                space,
+                "created",
+                1,
+                None,
+                EventBody::SpaceCreated {
+                    title: "Offline messages".into(),
+                    kind: SpaceKind::Group,
+                    privacy: Privacy::EndToEnd,
+                },
+            )),
+            &mut head,
+        );
+        assert_eq!(engine.ingest(genesis), Ingest::Applied);
+        engine.create_mls_group(space).unwrap();
+
+        // A second enrolled leaf of the same identity can read both offline messages
+        // and supplies a genuine MLS commit that this session has not caught up with.
+        let peer_author = Author::device(&Signer::from_secret(&root_secret), Signer::generate());
+        let mut peer_store = rusqlite::Connection::open_in_memory().unwrap();
+        roda_mls::migrate(&mut peer_store).unwrap();
+        let peer_secret = peer_author.key.secret();
+        let peer = Device::new(
+            &peer_store,
+            state_key(&peer_secret),
+            &peer_author.identity,
+            peer_secret,
+            peer_author.cert.as_deref().unwrap(),
+        )
+        .unwrap();
+        let packages = peer.key_packages(1, false).unwrap();
+        let adding = Device::new(
+            engine.store.conn(),
+            state_key(&device_secret),
+            &author.identity,
+            device_secret,
+            author.cert.as_deref().unwrap(),
+        )
+        .unwrap()
+        .commit(space, &packages, &Default::default())
+        .unwrap();
+        let commit = sequence(
+            Envelope::sealed(
+                &author,
+                space,
+                "add-peer",
+                2,
+                head.as_ref(),
+                Sealed::new(SealedKind::Commit, SUITE_ID, adding.commit),
+            ),
+            &mut head,
+        );
+        assert_eq!(engine.ingest(commit), Ingest::Applied);
+        let roster = [author.identity.clone()].into_iter().collect();
+        let welcome = adding.welcome.unwrap();
+        assert!(peer.join(space, &welcome, &roster).unwrap());
+        let welcome = sequence(
+            Envelope::sealed(
+                &author,
+                space,
+                "welcome-peer",
+                3,
+                head.as_ref(),
+                Sealed::new(SealedKind::Welcome, SUITE_ID, welcome),
+            ),
+            &mut head,
+        );
+        assert_eq!(engine.ingest(welcome), Ingest::Applied);
+        assert_eq!(engine.mls_status(space).unwrap().0, 1);
+
+        let cached = engine
+            .append_synced(
+                space,
+                &author,
+                100,
+                EventBody::MessagePosted {
+                    message: "cached-message".into(),
+                    text: "Written offline, already sealed".into(),
+                    attaches: None,
+                    reply: None,
+                },
+            )
+            .unwrap();
+        assert!(engine.mls_seal_outbox().unwrap());
+        let cached_key = format!("mls.sealed:{}", cached.client_id);
+        let cached_copy = engine.store.meta(&cached_key).unwrap().unwrap();
+        let fresh = engine
+            .append_synced(
+                space,
+                &author,
+                101,
+                EventBody::MessagePosted {
+                    message: "plaintext-message".into(),
+                    text: "Written offline, still plaintext".into(),
+                    attaches: None,
+                    reply: None,
+                },
+            )
+            .unwrap();
+        let fresh_key = format!("mls.sealed:{}", fresh.client_id);
+        assert!(engine.store.meta(&fresh_key).unwrap().is_none());
+        let advance = peer.commit(space, &[], &Default::default()).unwrap();
+        assert!(matches!(
+            peer.open(space, &advance.commit, &roster).unwrap(),
+            Opened::Commit { epoch: 2 }
+        ));
+        let missed_commit = sequence(
+            Envelope::sealed(
+                &peer_author,
+                space,
+                "missed-commit",
+                102,
+                head.as_ref(),
+                Sealed::new(SealedKind::Commit, SUITE_ID, advance.commit),
+            ),
+            &mut head,
+        );
+        let engine = Arc::new(Mutex::new(engine));
+        let (cmd, mut commands) = mpsc::unbounded_channel();
+        let (status, _) = watch::channel(NetStatus {
+            state: ConnState::Connecting,
+            synced: false,
+            error: None,
+            registered: true,
+        });
+        let (maintenance, mut maintenance_started) = mpsc::unbounded_channel();
+        let ctx = Ctx {
+            engine: engine.clone(),
+            listener: None,
+            status,
+            lang: crate::i18n::Lang::En,
+            maintenance_work: Some(Arc::new(move || {
+                let _ = maintenance.send(());
+            })),
+        };
+        let client = async {
+            let mut backoff = Duration::from_millis(500);
+            assert!(matches!(
+                session(&ctx, &mut commands, &mut backoff).await,
+                Exit::Stop
+            ));
+        };
+        let relay = async {
+            let (socket, _) = listener.accept().await.unwrap();
+            let mut socket = tokio_tungstenite::accept_async(socket).await.unwrap();
+            let ClientFrame::Hello { identity, .. } = request(&mut socket).await else {
+                panic!("hello")
+            };
+            reply(
+                &mut socket,
+                ServerFrame::Challenge {
+                    nonce: "catch-up-test".into(),
+                    relay: "catch-up-test".into(),
+                    protocol: PROTOCOL_VERSION,
+                    capabilities: Vec::new(),
+                },
+            )
+            .await;
+            assert!(matches!(
+                request(&mut socket).await,
+                ClientFrame::Auth { .. }
+            ));
+            reply(
+                &mut socket,
+                ServerFrame::Ready {
+                    identity,
+                    registered: true,
+                },
+            )
+            .await;
+            assert!(matches!(
+                request(&mut socket).await,
+                ClientFrame::Sync { all: true, .. }
+            ));
+            // Wait for a real maintenance turn before the FIFO request marker.
+            // Its arrival proves the initial flush and explicit Flush have completed;
+            // no sleep is used to infer the absence of a publication.
+            maintenance_started.recv().await.unwrap();
+            cmd.send(Cmd::Flush).unwrap();
+            let (marker, marked) = oneshot::channel();
+            let marker_box = "11".repeat(32);
+            cmd.send(Cmd::Req {
+                op: Op::FetchLink {
+                    id: marker_box.clone(),
+                },
+                reply: marker,
+            })
+            .unwrap();
+            loop {
+                match request(&mut socket).await {
+                    ClientFrame::Publish { .. } => {
+                        panic!("an offline write overtook the initial catch-up")
+                    }
+                    ClientFrame::Req {
+                        id,
+                        op: Op::FetchLink { id: link },
+                    } if link == marker_box => {
+                        reply(
+                            &mut socket,
+                            ServerFrame::Res {
+                                id,
+                                result: Ok(Reply::Link(None)),
+                            },
+                        )
+                        .await;
+                        break;
+                    }
+                    ClientFrame::Ping => reply(&mut socket, ServerFrame::Pong).await,
+                    other => panic!("maintenance sent {other:?} before catch-up"),
+                }
+            }
+            assert!(matches!(marked.await.unwrap(), Ok(Reply::Link(None))));
+            {
+                let engine = lock(&engine);
+                assert_eq!(engine.outbox_len(), 2);
+                assert_eq!(engine.store.meta(&cached_key).unwrap(), Some(cached_copy));
+                assert!(engine.store.meta(&fresh_key).unwrap().is_none());
+                assert!(engine.store.outbox_handshakes().unwrap().is_empty());
+                assert_eq!(engine.mls_status(space).unwrap().0, 1);
+            }
+            reply(&mut socket, ServerFrame::Event { ev: missed_commit }).await;
+            reply(&mut socket, ServerFrame::SyncDone).await;
+            let mut readable = HashSet::new();
+            while readable.len() < 2 {
+                match request(&mut socket).await {
+                    ClientFrame::Publish { env }
+                        if env.sealed_kind() == Some(SealedKind::Application) =>
+                    {
+                        assert!(ctx.status.borrow().synced);
+                        let original = [&cached, &fresh]
+                            .into_iter()
+                            .find(|event| event.client_id == env.client_id())
+                            .expect("only the two queued messages are published");
+                        let (_, bytes) = env.sealed_data().unwrap();
+                        assert_eq!(roda_mls::application_epoch(bytes), Some(2));
+                        let Opened::Application { plaintext, .. } =
+                            peer.open(space, bytes, &roster).unwrap()
+                        else {
+                            panic!("the peer must read the message at the caught-up epoch")
+                        };
+                        let inner = InnerEvent::decode(&plaintext).unwrap();
+                        assert_eq!(inner.content, original.content);
+                        assert_eq!(inner.sig, original.sig);
+                        assert!(readable.insert(env.client_id().to_string()));
+                        let ev = sequence(env, &mut head);
+                        reply(&mut socket, ServerFrame::Event { ev }).await;
+                    }
+                    ClientFrame::Req { id, .. } => {
+                        reply(
+                            &mut socket,
+                            ServerFrame::Res {
+                                id,
+                                result: Ok(Reply::Done),
+                            },
+                        )
+                        .await;
+                    }
+                    ClientFrame::Ping => reply(&mut socket, ServerFrame::Pong).await,
+                    ClientFrame::Publish { .. } => {}
+                    other => panic!("unexpected {other:?}"),
+                }
+            }
+            // A response ordered after both event echoes confirms that the client
+            // applied them and cleared their pending records before stopping.
+            let (marker, marked) = oneshot::channel();
+            let marker_box = "22".repeat(32);
+            cmd.send(Cmd::Req {
+                op: Op::FetchLink {
+                    id: marker_box.clone(),
+                },
+                reply: marker,
+            })
+            .unwrap();
+            loop {
+                match request(&mut socket).await {
+                    ClientFrame::Req {
+                        id,
+                        op: Op::FetchLink { id: link },
+                    } if link == marker_box => {
+                        reply(
+                            &mut socket,
+                            ServerFrame::Res {
+                                id,
+                                result: Ok(Reply::Link(None)),
+                            },
+                        )
+                        .await;
+                        break;
+                    }
+                    ClientFrame::Req { id, .. } => {
+                        reply(
+                            &mut socket,
+                            ServerFrame::Res {
+                                id,
+                                result: Ok(Reply::Done),
+                            },
+                        )
+                        .await
+                    }
+                    ClientFrame::Ping => reply(&mut socket, ServerFrame::Pong).await,
+                    ClientFrame::Publish { .. } => {}
+                    other => panic!("unexpected {other:?}"),
+                }
+            }
+            assert!(matches!(marked.await.unwrap(), Ok(Reply::Link(None))));
+            let engine = lock(&engine);
+            assert!(!engine.net.pending.contains_key(&cached.client_id));
+            assert!(!engine.net.pending.contains_key(&fresh.client_id));
+            engine.logs[space].verify().unwrap();
+            cmd.send(Cmd::Stop).unwrap();
+        };
+        tokio::time::timeout(Duration::from_secs(10), async {
+            tokio::join!(client, relay)
+        })
+        .await
+        .expect("catch-up ordering stalled");
     }
 
     #[tokio::test(flavor = "current_thread")]
