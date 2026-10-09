@@ -23,6 +23,19 @@ Zoen é o "WhatsApp 2": um mensageiro privado onde, além de conversar, as pesso
 
 ## Crescimento
 
+### Aberto para todos + playbook de convites do Instinct (decisão de 9 out 2026)
+- **O Zoen abre para todo mundo desde o primeiro dia.** Não há portaria, lista de espera nem código para entrar.
+- Copiamos do **Instinct** (o assistente de IA de Noah Shinn) o que fez o produto crescer 10–11% ao dia sem gastar com marketing, mas **sem a portaria**:
+  - o convite é um gesto pessoal que você pede ao próprio agente;
+  - o convidado chega dentro de uma conversa com quem convidou;
+  - **10 convites pessoais por pessoa**, com mais liberados em troca de feedback (uma conversa curta ou pesquisa no app);
+  - **a cada 5 convidados ativos, 1 mês do plano pago mais barato** para quem convidou (ativo, na nossa proposta: telefone novo verificado, dispositivo atestado e mensagens em 2 ou mais dias dentro de 14);
+  - **sem "convidado por"** no perfil: quem convidou quem fica privado, e só a pessoa vê as próprias estatísticas;
+  - **convites de ouro só para o B2B** (negócios, criadores e donos de comunidade);
+  - **janelas de convite** de 48 h em cada lançamento social.
+- Sugestões a partir dos contatos só pelo seletor do sistema, uma pessoa por vez e sem guardar números de quem não usa o Zoen (Apple 5.1.2, LGPD). Há limites antispam e o prêmio só sai com o convidado ativo. O K é medido por coorte, sempre depois da retenção.
+- Detalhes, fontes e números: [convites.md](convites.md).
+
 ### Viralidade
 - Estudar os apps mais virais da App Store e do Google Play e reaproveitar formatos e estratégias de marketing já validados.
 - O gancho tem que ser o que o agente entrega de verdade, nunca promessa vazia.
@@ -51,7 +64,7 @@ Zoen é o "WhatsApp 2": um mensageiro privado onde, além de conversar, as pesso
 ### Curvas de crescimento e estratégia de nicho
 - Pesquisa completa, com fontes e gráficos: [Curvas de crescimento de redes sociais](../research/curvas-crescimento-redes.md).
 - Começar de nicho é a estratégia com mais evidência a favor (Facebook por campus, Discord por servidor de jogo, Twitch saindo do Justin.tv), desde que o nicho seja uma **rede atômica** (turma, curso, grupo de um concurso específico) e não uma categoria inteira.
-- Ordem recomendada: universitários por turma de calouros, concurseiros por concurso específico em paralelo, ENEM e cursinhos como ponte, depois gamers e criadores, e por fim abertura geral.
+- Ordem recomendada: universitários por turma de calouros, concurseiros por concurso específico em paralelo, ENEM e cursinhos como ponte, depois gamers e criadores, e por fim abertura geral. *(Atualizado em 9 out 2026: o produto abre para todos desde o início; a ordem de nichos passa a ser onde concentramos energia, como janelas de convite, embaixadores e Spaces prontos, e não uma portaria. Ver [convites.md](convites.md).)*
 - Meta de massa crítica por turma: ≥40–50% da turma ativa por semana em 2 semanas. Por campus: ≥25% dos alunos com conta antes de ir para o campus vizinho.
 - Esperar vales: depois do pico de lançamento, uma queda de 55–75% é normal (Threads, Clubhouse). Choques externos, como uma falha do líder, retêm 30–50% do ganho (Bluesky no Brasil em 2024, Mastodon).
 - Gringos: **Brasil primeiro, pronto para o mundo**. A densidade nasce aqui (custo de aquisição mais baixo; o Kwai gastou >R$ 7 bi para entrar no Brasil), mas o produto já sai em PT/EN/ES. Próximos passos: brasileiros no exterior e Portugal, depois América Latina hispânica, depois gamers e criadores internacionais (o caminho de Discord e Gartic), e por fim campi dos EUA num lançamento controlado no estilo Fizz. Gatilho: o playbook de turma funcionando em ≥3 campi.
