@@ -661,6 +661,60 @@ async fn ten_wrong_passwords_lock_a_backup_for_good() {
 }
 
 #[tokio::test]
+async fn recovery_key_survives_bad_attempts_and_heals_legacy_lockout() {
+    let w = world("backup_rk_lockout").await;
+    w.init("ana", "Ana");
+    let out = w.zoen("ana", &["backup", "on", "--recovery-key"]);
+    let key = out
+        .lines()
+        .find_map(|line| line.strip_prefix("recovery-key\t"))
+        .expect("recovery key");
+    let generation = w.scalar("SELECT generation FROM backup_vaults").await;
+    let object = w.scalar("SELECT blob_key FROM backup_vaults").await;
+    for attempt in 0..12 {
+        let (status, body) = restore_post(
+            &w,
+            "/v1/backup/restore/open",
+            serde_json::json!({
+                "handle": "ana", "auth_key": "55".repeat(32), "generation": generation,
+            }),
+        )
+        .await;
+        assert_eq!(status, 403, "attempt {attempt}: {body:?}");
+    }
+    assert_eq!(
+        w.count(
+            "SELECT count(*) FROM backup_vaults WHERE guesses = 0 AND NOT armed AND NOT locked"
+        )
+        .await,
+        1
+    );
+    assert_eq!(w.scalar("SELECT blob_key FROM backup_vaults").await, object);
+    assert!(w
+        .zoen("ana-new", &["recover", "@ana", "--recovery-key", key])
+        .contains("restored"));
+    assert_eq!(
+        w.count(
+            "WITH changed AS (UPDATE backup_vaults SET locked = true, guesses = 10, armed = true
+             RETURNING identity) SELECT count(*) FROM changed"
+        )
+        .await,
+        1
+    );
+    assert!(w
+        .zoen("ana-third", &["recover", "@ana", "--recovery-key", key])
+        .contains("restored"));
+    assert_eq!(
+        w.count(
+            "SELECT count(*) FROM backup_vaults WHERE guesses = 0 AND NOT armed AND NOT locked"
+        )
+        .await,
+        1,
+        "the correct key must heal lockout left by an older relay"
+    );
+}
+
+#[tokio::test]
 async fn a_recovery_key_restores_without_the_vault() {
     let w = world("backup_rk").await;
     w.init("davi", "Davi");

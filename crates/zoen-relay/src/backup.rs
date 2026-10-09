@@ -713,7 +713,7 @@ pub async fn restore_start(
     let Some(row) = row else {
         return decoy(&st);
     };
-    if row.locked {
+    if row.locked && row.mode != "recovery_key" {
         return locked_response();
     }
     match row.mode.as_str() {
@@ -779,13 +779,18 @@ async fn authorize(
     let wrong = || err(StatusCode::FORBIDDEN, "wrong password or key");
     let (row, mut tx) = vault_by_handle(st, handle).await?;
     let Some(row) = row else { return Err(wrong()) };
-    if row.locked {
+    if row.locked && row.mode != "recovery_key" {
         return Err(locked_response());
     }
     let ok = hex::decode(auth_key)
         .ok()
         .is_some_and(|k| ct_eq(&Sha256::digest(&k), &row.verifier));
     if !ok {
+        // A random 64-digit key already resists guessing. Public failed attempts must
+        // never destroy someone else's ability to recover with that key.
+        if row.mode == "recovery_key" {
+            return Err(wrong());
+        }
         // The open after an evaluation is that evaluation's guess; any other failed open
         // costs one, so skipping the OPRF step never buys free guesses.
         let armed: bool = sqlx::query_scalar(
@@ -810,11 +815,13 @@ async fn authorize(
             "backup configuration changed; restart restore",
         ));
     }
-    sqlx::query("UPDATE backup_vaults SET guesses = 0, armed = false WHERE identity = $1")
-        .bind(&row.identity)
-        .execute(&mut *tx)
-        .await
-        .map_err(|_| unavailable())?;
+    sqlx::query(
+        "UPDATE backup_vaults SET guesses = 0, armed = false, locked = false WHERE identity = $1",
+    )
+    .bind(&row.identity)
+    .execute(&mut *tx)
+    .await
+    .map_err(|_| unavailable())?;
     Ok((row, tx))
 }
 
