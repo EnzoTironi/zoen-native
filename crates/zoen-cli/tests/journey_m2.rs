@@ -651,3 +651,54 @@ async fn the_relay_prunes_what_every_member_holds() {
     let v = w.zoen("carla", &["verify"]);
     assert!(!v.contains("BROKEN"), "carla: {v}");
 }
+
+/// ADR 0027: a message written offline is sealed when it goes out, at the epoch the group is
+/// at then, so it arrives readable however many commits happened meanwhile (MLS keeps only a
+/// few past epochs; sealing at write time would have lost it past 4).
+#[tokio::test]
+async fn a_message_queued_offline_survives_many_commits() {
+    let w = World::new("m2queue").await;
+    let people = [
+        ("ana", "Ana"),
+        ("bruno", "Bruno"),
+        ("carla", "Carla"),
+        ("dora", "Dora"),
+        ("eva", "Eva"),
+        ("fabio", "Fabio"),
+        ("gabi", "Gabi"),
+    ];
+    for (h, n) in people {
+        w.init(h, n);
+    }
+    let space = w.zoen("ana", &["group", "Fila", "@bruno"]);
+    let space = space.trim().to_string();
+    w.sync_until("bruno", |s| s.contains("pending=0"));
+    let (start, _) = keys(&w.zoen("bruno", &["keys", "Fila"]));
+
+    let queued = "escrito sem rede: tucano-fila-longa";
+    let q = w.zoen("bruno", &["send", "Fila", queued, "--offline"]);
+    assert!(q.starts_with("queued"), "{q}");
+
+    // Five commits while Bruno is away.
+    for (h, _) in &people[2..] {
+        w.zoen("ana", &["add", "Fila", &format!("@{h}")]);
+        w.sync_until("ana", |s| s.contains("pending=0"));
+    }
+    let (now, _) = keys(&w.zoen("ana", &["keys", "Fila"]));
+    assert!(now >= start + 5, "epoch {start} -> {now}");
+
+    // He comes back: catches up through every commit, then seals and sends.
+    w.sync_until("bruno", |s| s.contains("pending=0"));
+    let (be, _) = keys(&w.zoen("bruno", &["keys", "Fila"]));
+    assert_eq!(be, now);
+    for (h, _) in people.iter().filter(|(h, _)| *h != "bruno") {
+        w.sync_until(h, |s| s.contains("pending=0"));
+        let read = w.zoen(h, &["read", "Fila"]);
+        assert!(read.contains(queued), "{h}:\n{read}");
+    }
+    // And the relay only ever saw it sealed.
+    let stored = w.events_in(&space).await;
+    assert!(stored
+        .iter()
+        .all(|ev| !matches!(ev.env.body(), Some(EventBody::MessagePosted { .. }))));
+}

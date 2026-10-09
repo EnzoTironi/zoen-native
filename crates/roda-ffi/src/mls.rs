@@ -85,6 +85,9 @@ pub struct MlsNet {
     claiming: HashSet<SpaceId>,
     retry_at: HashMap<SpaceId, Instant>,
     checkpoint_due: HashSet<SpaceId>,
+    /// Spaces where the relay said a message was sealed at an epoch the group has left, with
+    /// the epoch this device was at: nothing is sealed there until a commit moves it on.
+    behind: HashMap<SpaceId, u64>,
     /// Where this device's last checkpoint in each Space reached (`upto.seq`), from the
     /// device database; it survives restarts so a reader still checkpoints.
     checkpointed_at: HashMap<SpaceId, u64>,
@@ -324,6 +327,10 @@ impl Engine {
             .iter()
             .any(|(m, r)| m == me && matches!(r, Role::Owner | Role::Admin));
         let m = &self.net.mls;
+        let epoch = device.epoch(space).ok()?;
+        if m.behind.get(space) == Some(&epoch) {
+            return None;
+        }
         let adding =
             m.claiming.contains(space) || s.members.iter().any(|(who, _)| !group.contains(who));
         if runs_it && adding && !m.stuck.contains(space) {
@@ -1038,6 +1045,17 @@ impl Engine {
             .unwrap_or(0);
         self.net.mls.checkpointed_at.insert(space.to_string(), at);
         at
+    }
+
+    /// The relay refused a message sealed at an epoch the group has left: this device is
+    /// behind a commit it hasn't applied yet. It stops sealing in that Space until it has.
+    pub(crate) fn mls_sealed_stale(&mut self, client_id: &str) {
+        let Some(space) = self.net.pending.get(client_id).cloned() else {
+            return;
+        };
+        if let Some(epoch) = self.device().ok().and_then(|d| d.epoch(&space).ok()) {
+            self.net.mls.behind.insert(space, epoch);
+        }
     }
 
     /// Posts the checkpoints this device owes. `true` when it queued any.

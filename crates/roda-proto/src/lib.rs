@@ -41,6 +41,9 @@ pub const KEY_PACKAGES_LOW: u32 = 8;
 /// Why a relay refuses a commit: another one already took its epoch (ADR 0026). The author
 /// drops it, applies the winner from the log, and commits again if anything is still owed.
 pub const STALE_COMMIT: &str = "stale_epoch: another commit took this epoch";
+/// Why a relay refuses a message sealed at an epoch the group has left (a device that
+/// sealed before catching up). It waits, catches up, and seals again at the new epoch.
+pub const STALE_SEAL: &str = "stale_epoch: sealed at an epoch the group has left";
 pub const MIN_PROTOCOL_VERSION: u32 = 2;
 /// Domain tag for what devices sign outside the log (login, blob uploads).
 pub const PROTOCOL: &str = "zoen-sync/2";

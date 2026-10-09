@@ -221,6 +221,9 @@ Also done: checkpoint pruning (`journey_m2::the_relay_prunes_what_every_member_h
 entries below every member device's checkpoint become stubs that keep the chain; holds for
 newly added members; a later joiner links over the stubs).
 
+Also done: the outbox across many epochs (`a_message_queued_offline_survives_many_commits`;
+the relay refuses stale-epoch seals so a device that flushed before catching up seals again).
+
 Next, in order: linking a second device, the app on the simulator with the Notification
 Service Extension sharing state.
 

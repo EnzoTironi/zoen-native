@@ -198,6 +198,12 @@ fn check_handshake(env: &Envelope, f: &Facts) -> Result<Option<Effect>, Reject> 
             }
             Ok(Some(Effect::Commit { epoch, device }))
         }
+        SealedKind::Application => match (&f.mls, roda_mls::application_epoch(data)) {
+            (Some((current, _)), Some(epoch)) if epoch != *current => {
+                Err(Reject::no(roda_proto::STALE_SEAL))
+            }
+            _ => Ok(None),
+        },
         SealedKind::Welcome => match &f.mls {
             Some((_, by)) if *by == device => Ok(None),
             _ => Err(Reject::no("a welcome follows its own commit")),
