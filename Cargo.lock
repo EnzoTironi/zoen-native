@@ -6800,6 +6800,7 @@ dependencies = [
 name = "zoen-cli"
 version = "0.1.0"
 dependencies = [
+ "async-nats",
  "futures-util",
  "getrandom 0.2.17",
  "hex",
@@ -6810,6 +6811,7 @@ dependencies = [
  "roda-proto",
  "roda-types",
  "serde_json",
+ "sha2 0.10.9",
  "sqlx",
  "tokio",
  "tokio-tungstenite 0.30.0",

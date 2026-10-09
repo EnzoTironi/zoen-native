@@ -473,14 +473,18 @@ async fn admins_adding_at_once_under_a_publish_limit_converge() {
 async fn key_packages_refill_when_they_run_low() {
     // Fifty groups from one terminal in a minute or two: lift the per-IP connect and
     // lookup limits that would otherwise pace Ana, not what this journey is about.
-    let w = World::with_env(
+    let mut w = World::with_env(
         "m2kp",
-        &[(
-            "ZOEN_LIMITS",
-            "connect_ip=1000/m:1000,lookup_account=1000/m:1000",
-        )],
+        &[
+            (
+                "ZOEN_LIMITS",
+                "connect_ip=1000/m:1000,lookup_account=1000/m:1000",
+            ),
+            ("RUST_LOG", "zoen_relay=debug"),
+        ],
     )
     .await;
+    w.set_client_env("ZOEN_NET_DEBUG", "1");
     w.init("ana", "Ana");
     w.init("bruno", "Bruno");
     let bruno = w.id_of("bruno").await;
@@ -506,8 +510,32 @@ async fn key_packages_refill_when_they_run_low() {
     assert_eq!(w.count(&sql).await, 8);
 
     // Online when one more group takes him under 8: he refills while it happens.
-    let watch = w.spawn_zoen("bruno", &["watch", "--for", "25"]);
-    w.wait_online(1);
+    // Wait for this client's catch-up, rather than a session count that can still include
+    // the preceding sync. Keep it alive until the assertion; 120 s is only a failsafe.
+    let log_path = w.dir.join("bruno-watch.log");
+    let mut watch = w.spawn_zoen_logged("bruno", &["watch", "--for", "120"], "bruno-watch.log");
+    let mut ready = false;
+    for _ in 0..300 {
+        let log = std::fs::read_to_string(&log_path).unwrap();
+        ready = log.contains("watching as @bruno")
+            && log
+                .lines()
+                .rev()
+                .find(|line| line.starts_with("[zoen-net] connection="))
+                .is_some_and(|line| line.contains("connection=online synced=true"));
+        if ready || watch.try_wait().expect("watch status").is_some() {
+            break;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+    }
+    if !ready {
+        let _ = watch.kill();
+        let _ = watch.wait();
+        panic!(
+            "Bruno never finished starting the watcher:\n{}",
+            std::fs::read_to_string(&log_path).unwrap()
+        );
+    }
     w.zoen("ana", &["group", "Roda 49", "@bruno"]);
     let mut stock = 0;
     for _ in 0..200 {
@@ -517,12 +545,26 @@ async fn key_packages_refill_when_they_run_low() {
         }
         tokio::time::sleep(std::time::Duration::from_millis(100)).await;
     }
-    assert_eq!(stock, 32, "refilled while watching");
-    let out = watch.wait_with_output().expect("watch");
+    let status = watch.try_wait().expect("watch status");
+    let metrics = w.metrics();
+    let _ = watch.kill();
+    let _ = watch.wait();
+    let log = std::fs::read_to_string(&log_path).unwrap();
+    if std::env::var_os("ZOEN_NET_DEBUG").is_some() {
+        for line in log.lines() {
+            eprintln!("[bruno] {line}");
+        }
+    }
     assert!(
-        out.status.success(),
-        "{}",
-        String::from_utf8_lossy(&out.stderr)
+        status.is_none(),
+        "watcher exited before the refill assertion: {status:?}\n{log}"
+    );
+    assert_eq!(
+        stock,
+        32,
+        "refilled while watching:\n{log}\n{}\n{}",
+        metrics,
+        w.relay_log_text()
     );
 
     // A group made from a refilled package opens like any other, and so do the old ones.
@@ -672,6 +714,7 @@ async fn a_message_queued_offline_survives_many_commits() {
     }
     let space = w.zoen("ana", &["group", "Fila", "@bruno"]);
     let space = space.trim().to_string();
+    w.sync_until("ana", |s| s.contains("pending=0"));
     w.sync_until("bruno", |s| s.contains("pending=0"));
     let (start, _) = keys(&w.zoen("bruno", &["keys", "Fila"]));
 
