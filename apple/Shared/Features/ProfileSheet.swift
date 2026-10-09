@@ -51,7 +51,6 @@ struct ProfileSheet: View {
         ScrollView {
             VStack(spacing: 18) {
                 hero(p)
-                    .sheetItem(0)
                 if p.kind == .agent && p.handle != "zoen" {
                     Button {
                         Haptics.tap()
