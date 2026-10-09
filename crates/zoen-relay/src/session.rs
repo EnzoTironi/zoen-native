@@ -1,7 +1,13 @@
 //! One WebSocket = one authenticated device.
 
 use crate::pseudonym::pseudo;
-use std::{sync::Arc, time::Duration};
+use std::{
+    sync::{
+        atomic::{AtomicBool, Ordering},
+        Arc, OnceLock,
+    },
+    time::Duration,
+};
 
 use axum::extract::ws::{Message, WebSocket};
 use futures_util::{SinkExt, StreamExt};
@@ -31,11 +37,19 @@ struct Session {
     cert: String,
     hub_id: Option<u64>,
     kick: Arc<Notify>,
+    revoked: Arc<AtomicBool>,
+    require_device: Arc<AtomicBool>,
     /// The client's address, for per-IP limits.
     ip: String,
     /// When the device logged in, for time to first sync.
     started: std::time::Instant,
     first_sync_done: bool,
+}
+
+struct DeliveryAuthorization {
+    identity: String,
+    device: String,
+    require_device: Arc<AtomicBool>,
 }
 
 fn nonce() -> String {
@@ -61,17 +75,51 @@ pub async fn run(socket: WebSocket, st: Shared, ip: String) {
     Metrics::inc(&st.metrics.connections);
     let (mut sink, mut stream) = socket.split();
     let (tx, mut rx) = mpsc::channel::<ServerFrame>(1024);
+    let credentials = Arc::new(OnceLock::<DeliveryAuthorization>::new());
+    let writer_credentials = credentials.clone();
+    let revoked = Arc::new(AtomicBool::new(false));
+    let writer_revoked = revoked.clone();
+    let kick = Arc::new(Notify::new());
+    let writer_kick = kick.clone();
+    let delivery_auth = st.delivery_auth.clone();
     let writer = tokio::spawn(async move {
         while let Some(frame) = rx.recv().await {
-            if sink
-                .send(Message::Binary(frame.encode().into()))
+            if writer_revoked.load(Ordering::Acquire) {
+                break;
+            }
+            // Even when a node misses the bus invalidation, the durable row fences
+            // every delivery against revocation. Hold it until the bytes are sent.
+            let authorization = if let Some(auth) = writer_credentials.get() {
+                match db::authorize_device(
+                    &delivery_auth,
+                    &auth.identity,
+                    &auth.device,
+                    auth.require_device.load(Ordering::Acquire),
+                )
                 .await
-                .is_err()
-            {
+                {
+                    Ok(Some(tx)) => Some(tx),
+                    _ => {
+                        writer_revoked.store(true, Ordering::Release);
+                        writer_kick.notify_one();
+                        break;
+                    }
+                }
+            } else {
+                None
+            };
+            let sent = tokio::time::timeout(
+                Duration::from_secs(5),
+                sink.send(Message::Binary(frame.encode().into())),
+            )
+            .await;
+            drop(authorization);
+            if !matches!(sent, Ok(Ok(()))) {
+                writer_kick.notify_one();
                 break;
             }
         }
-        let _ = sink.close().await;
+        let _ = tokio::time::timeout(Duration::from_secs(1), sink.close()).await;
     });
 
     let Some(LoggedIn {
@@ -84,6 +132,48 @@ pub async fn run(socket: WebSocket, st: Shared, ip: String) {
         return finish(writer, tx).await;
     };
 
+    if registered
+        && db::touch_device(&st.pool, &identity, &device, &cert)
+            .await
+            .is_err()
+    {
+        let _ = tx
+            .send(ServerFrame::error(
+                ErrorCode::Unavailable,
+                "database unavailable",
+            ))
+            .await;
+        return finish(writer, tx).await;
+    }
+    let initial_authorization =
+        match db::authorize_device(&st.session_auth, &identity, &device, registered).await {
+            Ok(Some(tx)) => tx,
+            Ok(None) => {
+                let _ = tx
+                    .send(ServerFrame::error(
+                        ErrorCode::Unauthorized,
+                        "this device was unlinked",
+                    ))
+                    .await;
+                return finish(writer, tx).await;
+            }
+            Err(_) => {
+                let _ = tx
+                    .send(ServerFrame::error(
+                        ErrorCode::Unavailable,
+                        "database unavailable",
+                    ))
+                    .await;
+                return finish(writer, tx).await;
+            }
+        };
+    let require_device = Arc::new(AtomicBool::new(registered));
+    let _ = credentials.set(DeliveryAuthorization {
+        identity: identity.clone(),
+        device: device.clone(),
+        require_device: require_device.clone(),
+    });
+
     let mut s = Session {
         st: st.clone(),
         tx: tx.clone(),
@@ -91,7 +181,9 @@ pub async fn run(socket: WebSocket, st: Shared, ip: String) {
         device,
         cert,
         hub_id: None,
-        kick: Arc::new(Notify::new()),
+        kick,
+        revoked,
+        require_device,
         ip,
         started: std::time::Instant::now(),
         first_sync_done: false,
@@ -106,15 +198,21 @@ pub async fn run(socket: WebSocket, st: Shared, ip: String) {
     if registered {
         s.go_online().await;
     }
+    drop(initial_authorization);
     tracing::info!(identity = %pseudo(&identity), registered, "session ready");
 
     // ── frames ──
     let kick = s.kick.clone();
+    let mut refresh = tokio::time::interval(Duration::from_secs(5));
+    let mut idle_deadline = tokio::time::Instant::now() + Duration::from_secs(90);
     loop {
         tokio::select! {
-            frame = tokio::time::timeout(Duration::from_secs(90), recv_frame(&mut stream)) => {
+            frame = tokio::time::timeout_at(idle_deadline, recv_frame(&mut stream)) => {
                 match frame {
-                    Ok(Some(f)) => s.handle(f).await,
+                    Ok(Some(f)) => {
+                        idle_deadline = tokio::time::Instant::now() + Duration::from_secs(90);
+                        if !s.handle(f).await { break; }
+                    },
                     Ok(None) => break,
                     Err(_) => { tracing::info!(identity = %pseudo(&identity), "idle timeout"); break }
                 }
@@ -122,6 +220,9 @@ pub async fn run(socket: WebSocket, st: Shared, ip: String) {
             _ = kick.notified() => {
                 tracing::warn!(identity = %pseudo(&identity), "session too slow, disconnecting so it resyncs");
                 break;
+            }
+            _ = refresh.tick() => {
+                if !s.still_authorized().await { break; }
             }
         }
     }
@@ -317,13 +418,14 @@ impl Session {
             return;
         }
         self.st.analytics.session(&self.identity);
-        let _ = db::touch_device(&self.st.pool, &self.identity, &self.device, &self.cert).await;
         let was_online = self.st.fanout.is_online(&self.identity).await;
         self.hub_id = Some(self.st.fanout.add(
             &self.identity,
             Mailbox {
                 tx: self.tx.clone(),
                 kick: self.kick.clone(),
+                device: self.device.clone(),
+                revoked: self.revoked.clone(),
             },
         ));
         // Attach before reading stock: a claim racing the snapshot then reaches this
@@ -374,12 +476,59 @@ impl Session {
         l.publish_account.check(&self.identity)
     }
 
-    async fn handle(&mut self, f: ClientFrame) {
+    async fn still_authorized(&self) -> bool {
+        if self.revoked.load(Ordering::Acquire) {
+            return false;
+        }
+        match db::authorize_device(
+            &self.st.session_auth,
+            &self.identity,
+            &self.device,
+            self.require_device.load(Ordering::Acquire),
+        )
+        .await
+        {
+            Ok(Some(tx)) => {
+                drop(tx);
+                true
+            }
+            _ => {
+                self.revoked.store(true, Ordering::Release);
+                self.kick.notify_one();
+                false
+            }
+        }
+    }
+
+    async fn handle(&mut self, f: ClientFrame) -> bool {
+        if self.revoked.load(Ordering::Acquire) {
+            return false;
+        }
         let registered = self.hub_id.is_some();
+        let mut authorization = match db::authorize_device(
+            &self.st.session_auth,
+            &self.identity,
+            &self.device,
+            registered,
+        )
+        .await
+        {
+            Ok(Some(tx)) => tx,
+            _ => {
+                self.revoked.store(true, Ordering::Release);
+                self.kick.notify_one();
+                return false;
+            }
+        };
         match f {
             ClientFrame::Ping => self.send(ServerFrame::Pong).await,
             ClientFrame::Req { id, op } => {
                 let refill = matches!(&op, Op::PublishKeyPackages { .. });
+                let unlinked = match &op {
+                    Op::Unlink { device } => Some(device.clone()),
+                    _ => None,
+                };
+                let registering = matches!(&op, Op::Register { .. });
                 let span = tracing::info_span!(
                     "request",
                     op = op.name(),
@@ -388,7 +537,10 @@ impl Session {
                 );
                 let result = match self.st.limits.request_device.check(&self.device) {
                     Ok(()) => {
-                        let r = self.request(op, registered).instrument(span.clone()).await;
+                        let r = self
+                            .request(op, registered, &mut authorization)
+                            .instrument(span.clone())
+                            .await;
                         span.record("outcome", if r.is_ok() { "ok" } else { "refused" });
                         r
                     }
@@ -398,12 +550,25 @@ impl Session {
                     }
                 };
                 let refill = refill && result.is_ok();
+                if authorization.commit().await.is_err() {
+                    return false;
+                }
+                if result.is_ok() {
+                    if registering {
+                        self.require_device.store(true, Ordering::Release);
+                        self.go_online().await;
+                    }
+                    if let Some(device) = unlinked {
+                        self.st.fanout.revoke_device(&self.identity, &device).await;
+                    }
+                }
                 self.send(ServerFrame::Res { id, result }).await;
-                // Claims before this reply may have reached a client still publishing.
-                // A fresh snapshot after the reply covers them without reusing a stale count.
+                // Reconcile claims after the publication acknowledgment, when the client
+                // has cleared its in-flight batch and can act on the current stock.
                 if refill {
                     self.send_key_package_stock().await;
                 }
+                return !self.revoked.load(Ordering::Acquire);
             }
             _ if !registered => {
                 self.send(ServerFrame::error(ErrorCode::Other, "register first"))
@@ -417,6 +582,9 @@ impl Session {
                     .await
             }
         }
+        // Read-only fences are released explicitly; the output lane checks again at send.
+        let _ = authorization.rollback().await;
+        !self.revoked.load(Ordering::Acquire)
     }
 
     #[tracing::instrument(
@@ -452,7 +620,12 @@ impl Session {
         Metrics::inc(&self.st.metrics.ephemeral_forwarded);
     }
 
-    async fn request(&mut self, op: Op, registered: bool) -> Result<Reply, String> {
+    async fn request(
+        &mut self,
+        op: Op,
+        registered: bool,
+        authorization: &mut sqlx::Transaction<'_, sqlx::Postgres>,
+    ) -> Result<Reply, String> {
         let pool = &self.st.pool;
         match op {
             Op::Register { mut profile } => {
@@ -490,7 +663,9 @@ impl Session {
                         .map_err(limits::slow_down)?;
                 }
                 db::register(pool, &profile, &handle).await?;
-                self.go_online().await;
+                db::touch_device_in(authorization, &self.identity, &self.device, &self.cert)
+                    .await
+                    .map_err(|e| e.to_string())?;
                 Ok(Reply::Registered(profile))
             }
             Op::FetchLink { id } => {
@@ -527,7 +702,7 @@ impl Session {
                     .map_err(|e| e.to_string())?,
             )),
             Op::Unlink { device } => {
-                if !db::revoke_device(pool, &self.identity, &device)
+                if !db::revoke_device(authorization, &self.identity, &device)
                     .await
                     .map_err(|e| e.to_string())?
                 {

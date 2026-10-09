@@ -3,7 +3,35 @@
 
 use roda_proto::{AgreementKeyRecord, DeviceSigned, KeyPackageRecord, SealedProfile};
 use roda_types::{Identity, IdentityKind};
-use sqlx::PgPool;
+use sqlx::{PgPool, Postgres, Transaction};
+
+/// Holds the device row through an operation or delivery. Revocation's UPDATE waits
+/// for earlier authorized work, and every later acquisition observes the revocation.
+/// Only an account that has not registered yet may act without a device row.
+pub async fn authorize_device(
+    pool: &PgPool,
+    identity: &str,
+    device: &str,
+    require_device: bool,
+) -> Result<Option<Transaction<'static, Postgres>>, sqlx::Error> {
+    let mut tx = pool.begin().await?;
+    sqlx::query("SET LOCAL lock_timeout = '5s'")
+        .execute(&mut *tx)
+        .await?;
+    let active = sqlx::query_scalar::<_, bool>(
+        "SELECT identity = $1 AND revoked_at IS NULL FROM devices WHERE device = $2 FOR SHARE",
+    )
+    .bind(identity)
+    .bind(device)
+    .fetch_optional(&mut *tx)
+    .await?;
+    if active == Some(true) || (active.is_none() && !require_device) {
+        Ok(Some(tx))
+    } else {
+        tx.rollback().await?;
+        Ok(None)
+    }
+}
 
 pub async fn is_registered(pool: &PgPool, id: &str) -> Result<bool, sqlx::Error> {
     Ok(
@@ -39,6 +67,24 @@ pub async fn touch_device(
     .bind(identity)
     .bind(cert)
     .execute(pool)
+    .await?;
+    Ok(())
+}
+
+pub async fn touch_device_in(
+    tx: &mut Transaction<'_, Postgres>,
+    identity: &str,
+    device: &str,
+    cert: &str,
+) -> Result<(), sqlx::Error> {
+    sqlx::query(
+        "INSERT INTO devices (device, identity, cert) VALUES ($1, $2, $3)
+         ON CONFLICT (device) DO UPDATE SET last_seen = now()",
+    )
+    .bind(device)
+    .bind(identity)
+    .bind(cert)
+    .execute(&mut **tx)
     .await?;
     Ok(())
 }
@@ -407,23 +453,21 @@ pub async fn device_linked(
 /// Unlinks one of `identity`'s devices and drops its key packages. `false` if it isn't
 /// theirs (or already unlinked).
 pub async fn revoke_device(
-    pool: &PgPool,
+    tx: &mut Transaction<'_, Postgres>,
     identity: &str,
     device: &str,
 ) -> Result<bool, sqlx::Error> {
-    let mut tx = pool.begin().await?;
     let r = sqlx::query(
         "UPDATE devices SET revoked_at = now() WHERE identity = $1 AND device = $2 AND revoked_at IS NULL",
     )
     .bind(identity)
     .bind(device)
-    .execute(&mut *tx)
+    .execute(&mut **tx)
     .await?;
     sqlx::query("DELETE FROM key_packages WHERE identity = $1 AND device = $2")
         .bind(identity)
         .bind(device)
-        .execute(&mut *tx)
+        .execute(&mut **tx)
         .await?;
-    tx.commit().await?;
     Ok(r.rows_affected() == 1)
 }
