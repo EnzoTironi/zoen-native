@@ -56,7 +56,7 @@ async fn an_end_to_end_group_leaves_the_relay_only_ciphertext() {
     // Each device published its key packages when it signed up: 32 plus a last-resort one.
     assert_eq!(w.count("SELECT count(*) FROM key_packages").await, 3 * 33);
 
-    let space = w.zoen("ana", &["group", "Cofre", "@bruno", "--e2e"]);
+    let space = w.zoen("ana", &["group", "Cofre", "@bruno"]);
     let space = space.trim();
     // Ana's device claimed one of Bruno's packages and committed him into the group.
     assert_eq!(
@@ -112,10 +112,10 @@ async fn an_end_to_end_group_leaves_the_relay_only_ciphertext() {
         );
     }
 
-    // A client writing plaintext into the group is refused.
+    // A stranger can't write into the group, and learns nothing about it.
     let mut mallory = RawClient::connect(&w.relay_url(), "mallory").await;
     let refused = mallory.publish_message(space, "texto aberto").await;
-    assert!(refused.contains("end-to-end"), "{refused}");
+    assert!(refused.contains("not a member"), "{refused}");
 
     // ── members agree on the group ──
     let (ae, ad) = keys(&w.zoen("ana", &["keys", "Cofre"]));
@@ -169,5 +169,104 @@ async fn an_end_to_end_group_leaves_the_relay_only_ciphertext() {
     assert!(!pg.contains(later));
     for ev in w.events_in(space).await {
         assert!(!String::from_utf8_lossy(ev.env.content()).contains("daqui pra frente"));
+    }
+
+    // ── a member without MLS: listed, can't read, can't write in the clear ──
+    let code = w.zoen("ana", &["invite", "Cofre"]);
+    let code = code.split('\t').next().unwrap().trim().to_string();
+    let joined = mallory.join(space, &code).await.expect("joins by invite");
+    let seen = Some(roda_types::Seen {
+        seq: joined.seq,
+        hash: joined.hash.clone(),
+    });
+    let clear = EventBody::MessagePosted {
+        message: "m".into(),
+        text: "texto aberto".into(),
+        attaches: None,
+    };
+    let refused = mallory.publish_body(space, seen, clear).await.unwrap_err();
+    assert_eq!(refused, roda_proto::SEAL_REQUIRED);
+    // She has no key packages, so no commit can add her, and nobody's messages wait for her.
+    let after = "seguimos sem esperar quem não tem chaves";
+    w.zoen("ana", &["send", "Cofre", after]);
+    assert!(w.zoen("bruno", &["read", "Cofre"]).contains(after));
+    let (ae, _) = keys(&w.zoen("ana", &["keys", "Cofre"]));
+    assert_eq!(ae, 2, "no commit for someone without packages");
+}
+
+/// ADR 0027: a relay-readable group from M1 keeps working, becomes end-to-end on request,
+/// and can't be turned back.
+#[tokio::test]
+async fn a_readable_group_becomes_end_to_end_and_never_goes_back() {
+    let w = World::new("m2up").await;
+    w.init("ana", "Ana");
+    w.init("bruno", "Bruno");
+    let space = w.zoen("ana", &["group", "Trilha", "@bruno", "--readable"]);
+    let space = space.trim();
+    let before = "combinado antes: tucano-antes";
+    w.zoen("ana", &["send", "Trilha", before]);
+    assert!(w.zoen("bruno", &["read", "Trilha"]).contains(before));
+    assert!(w.zoen("bruno", &["chats"]).contains("\treadable\t"));
+
+    // Bruno writes offline, before he hears about the upgrade.
+    let queued = "escrito antes de saber: tucano-fila";
+    let q = w.zoen("bruno", &["send", "Trilha", queued, "--offline"]);
+    assert!(q.starts_with("queued"), "{q}");
+
+    w.zoen("ana", &["encrypt", "Trilha"]);
+    assert!(w.zoen("ana", &["chats"]).contains("\te2e\t"));
+    let after = "depois da troca: tucano-depois";
+    w.zoen("ana", &["send", "Trilha", after]);
+
+    // Bruno's clear message is refused, waits for his Welcome, and goes out sealed.
+    let s = w.zoen("bruno", &["sync"]);
+    assert!(s.contains("pending=0"), "{s}");
+    let bruno = w.zoen("bruno", &["read", "Trilha"]);
+    for text in [before, after, queued, "End-to-end encryption is on"] {
+        assert!(bruno.contains(text), "{text:?} in\n{bruno}");
+    }
+    assert!(w.zoen("bruno", &["chats"]).contains("\te2e\t"));
+    assert!(w.zoen("ana", &["read", "Trilha"]).contains(queued));
+    let (ae, ad) = keys(&w.zoen("ana", &["keys", "Trilha"]));
+    let (be, bd) = keys(&w.zoen("bruno", &["keys", "Trilha"]));
+    assert_eq!((ae, &ad), (be, &bd));
+    assert_eq!(ae, 1);
+
+    // What was said in the clear stays as it was; nothing after the upgrade is readable.
+    let stored = w.events_in(space).await;
+    let text = |ev: &roda_proto::Sequenced| String::from_utf8_lossy(ev.env.content()).to_string();
+    assert!(stored.iter().any(|ev| text(ev).contains("tucano-antes")));
+    let pg = postgres_text(&w).await;
+    for n in ["tucano-fila", "tucano-depois"] {
+        assert!(
+            stored.iter().all(|ev| !text(ev).contains(n)),
+            "FoundationDB holds {n}"
+        );
+        assert!(!pg.contains(n), "Postgres holds {n}");
+    }
+
+    // No way back: not by recreating the Space, not by "upgrading" again.
+    let code = w.zoen("ana", &["invite", "Trilha"]);
+    let code = code.split('\t').next().unwrap().trim().to_string();
+    let mut mallory = RawClient::connect(&w.relay_url(), "mallory").await;
+    let joined = mallory.join(space, &code).await.expect("joins by invite");
+    let seen = Some(roda_types::Seen {
+        seq: joined.seq,
+        hash: joined.hash.clone(),
+    });
+    let recreate = EventBody::SpaceCreated {
+        title: "Trilha".into(),
+        kind: roda_types::SpaceKind::Group,
+        privacy: roda_types::Privacy::Closed,
+    };
+    let refused = mallory.publish_body(space, seen.clone(), recreate).await;
+    assert_eq!(refused.unwrap_err(), "space already exists");
+    let again = mallory
+        .publish_body(space, seen, EventBody::SpaceEncrypted)
+        .await;
+    assert_eq!(again.unwrap_err(), "already end-to-end");
+    for who in ["ana", "bruno"] {
+        let v = w.zoen(who, &["verify"]);
+        assert!(!v.contains("BROKEN"), "{who}: {v}");
     }
 }
