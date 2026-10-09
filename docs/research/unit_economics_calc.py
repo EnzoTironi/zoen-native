@@ -1,5 +1,14 @@
 # Zoen unit economics calculator. Prices: vendor pages fetched 2026-10-09.
 models = {  # name: (input $/M, cached input $/M, output $/M)
+ "GLM-5.3-Flash (Z.ai) [PADRÃO]": (0.15, 0.03, 0.50),
+ "GLM-5.3-FlashX (Z.ai)": (0.37, 0.075, 1.25),
+ "GLM-4.7-FlashX (Z.ai)": (0.07, 0.01, 0.40),
+ "GLM-4.7-Flash (Z.ai, grátis)": (0.0, 0.0, 0.0),
+ "Qwen-Flash (Alibaba, internacional)": (0.05, 0.01, 0.40),
+ "MiniMax-M3 (<=512k)": (0.30, 0.06, 1.20),
+ "Kimi K3 (Moonshot)": (3.00, 0.30, 15.00),
+ "GPT-6 Sol (OpenAI, premium)": (2.00, 0.20, 10.00),
+ "Claude Sonnet 5 (Anthropic, premium)": (2.00, 0.20, 10.00),
  "GPT-6 Luna (OpenAI)": (0.10, 0.01, 0.50),
  "GPT-5 nano (OpenAI)": (0.05, 0.005, 0.40),
  "Claude Haiku 5.5 (Anthropic, <=100k)": (0.10, 0.01, 0.50),
@@ -105,3 +114,32 @@ for n,w in mixes.items():
     ah=sum(w[r]*reg_tot[(r,'alto')][0] for r in w); th=sum(w[r]*reg_tot[(r,'alto')][1] for r in w)
     print(f"| {n} | ${am:.4f} | ${tm:.3f} | ${ah:.3f} | ${th:.3f} |")
 print("Meta FB ARPU 4Q23 per month:", {k:round(v/3,2) for k,v in {"US&C":68.44,"Europe":23.14,"APAC":5.52,"RoW":4.50}.items()})
+
+
+# ---- GLM default, premium tier, self-hosting (added 2026-10-09) ----
+def per_call(m, tin, tout, cached=True):
+    i,c,o = models[m]
+    return (tin*(1-CACHE_SHARE)*i + tin*CACHE_SHARE*c + tout*o)/1e6 if cached else (tin*i+tout*o)/1e6
+INFRA = {"baixo":0.002,"médio":0.010,"alto":0.029}; SMS = {"baixo":0.0,"médio":0.0055,"alto":0.0}
+glm="GLM-5.3-Flash (Z.ai) [PADRÃO]"
+ai = {"baixo":5*per_call(glm,1500,300), "médio":150*per_call(glm,1500,300), "alto":150*per_call(glm,4000,800)}
+print("\nCusto por MAU com GLM-5.3-Flash como padrão:")
+for k in ai: print(f"  {k}: IA ${ai[k]:.4f} + infra ${INFRA[k]} + SMS ${SMS[k]} = ${ai[k]+INFRA[k]+SMS[k]:.4f}")
+# Premium: 10 heavy calls/day on a top model, cached, + base
+for m in ("GPT-6 Sol (OpenAI, premium)","Claude Sonnet 5 (Anthropic, premium)","GLM-5.3 (Z.ai)" if "GLM-5.3 (Z.ai)" in models else "Gemini 3.8 Flash (a partir de 1/1/2027)"):
+    for calls in (300, 600):
+        c = calls*per_call(m,4000,800)
+        print(f"  premium {m} {calls} chamadas pesadas/mês: ${c:.2f}")
+BRL=5.0168  # USD/BRL ECB 2026-10-08
+for label,price_usd,fee in (("BR R$29,90 IAP 1º ano (21%+5%)",29.90/BRL,0.26),("BR R$29,90 IAP após 1 ano (10%+5%)",29.90/BRL,0.15),("EUA US$9,99 IAP padrão 30%",9.99,0.30),("EUA US$9,99 Small Business 15%",9.99,0.15)):
+    net=price_usd*(1-fee); cost=300*per_call("GPT-6 Sol (OpenAI, premium)",4000,800)+0.053
+    print(f"  {label}: líquido ${net:.2f}, custo (300 chamadas Sol + base) ${cost:.2f}, margem {100*(net-cost)/net:.0f}%")
+# Self-hosting GLM-5.3-Flash W4A16 on 4xH100 (TP=4), community benchmark: 689-1161 output tok/s at c=32, 8k in/1k out
+for gpu_h in (2.69, 3.99):
+    for tps in (689, 1161):
+        for util in (1.0, 0.5):
+            req_per_h = tps/1024*3600*util
+            per_req = 4*gpu_h/req_per_h        # one 8k/1k request
+            light = per_req*(1500+300)/(8192+1024)  # scale by total tokens (approximation)
+            print(f"  self-host H100 ${gpu_h}/h, {tps} tok/s, util {util:.0%}: por chamada leve ${light:.5f}, 150/mês ${150*light:.3f}")
+print("  API GLM-5.3-Flash chamada leve c/ cache:", round(per_call(glm,1500,300),6))
