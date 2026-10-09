@@ -129,9 +129,7 @@ pub async fn enroll_device(
     }
     let changed = sqlx::query(
         "INSERT INTO devices (device, identity, cert) VALUES ($1, $2, $3)
-         ON CONFLICT (device) DO UPDATE SET last_seen = now()
-         WHERE devices.identity = excluded.identity AND devices.cert = excluded.cert
-           AND devices.revoked_at IS NULL",
+         ON CONFLICT (device) DO NOTHING",
     )
     .bind(device)
     .bind(identity)
@@ -139,8 +137,23 @@ pub async fn enroll_device(
     .execute(&mut **tx)
     .await
     .map_err(EnrollmentError::Database)?;
-    if changed.rows_affected() != 1 {
-        return Err(EnrollmentError::Conflict);
+    if changed.rows_affected() == 0 {
+        // Recovery already holds the vault row. An ordinary backup write holds the
+        // device FOR SHARE before acquiring that vault row, so a retry must share
+        // this existing row too rather than update it and reverse the lock order.
+        let active = sqlx::query_scalar::<_, i32>(
+            "SELECT 1 FROM devices WHERE device = $1 AND identity = $2 AND cert = $3
+               AND revoked_at IS NULL FOR SHARE",
+        )
+        .bind(device)
+        .bind(identity)
+        .bind(cert)
+        .fetch_optional(&mut **tx)
+        .await
+        .map_err(EnrollmentError::Database)?;
+        if active.is_none() {
+            return Err(EnrollmentError::Conflict);
+        }
     }
     Ok(())
 }
