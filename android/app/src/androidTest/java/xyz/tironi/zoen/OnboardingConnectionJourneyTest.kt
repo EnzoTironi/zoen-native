@@ -86,7 +86,10 @@ class OnboardingConnectionJourneyTest {
             val peerAccount = peer.createAccount("Native Peer", "op_$suffix", relay, peerVault)
             peer.startSync(null)
             compose.waitUntil(30_000) { peer.account()?.registered == true && peer.connection().synced }
-            val direct = runBlocking { repository.network { it.startDirect(peerAccount.identityId) } }
+            val discovered = runBlocking {
+                repository.network { it.findPeople(peerAccount.handle).single { person -> person.id == peerAccount.identityId } }
+            }
+            val direct = runBlocking { repository.network { it.startDirect(discovered.id) } }
             compose.waitUntil(30_000) { peer.spaces().any { it.id == direct } && peer.groupKeys(direct) != null }
             scenario.moveToState(Lifecycle.State.CREATED)
             assertFalse(repository.appVisible)
