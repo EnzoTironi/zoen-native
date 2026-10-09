@@ -1,4 +1,4 @@
-//! Pages (ADR 0025): a Loro document per page, its history in the Space log.
+//! Pages (ADR 0027): a Loro document per page, its history in the Space log.
 //!
 //! Version 1 of a page carries a snapshot; every later version carries the Loro updates
 //! made since the previous one. Payloads over 48 KB go to an encrypted blob instead of the

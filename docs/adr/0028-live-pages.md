@@ -1,6 +1,6 @@
-# ADR 0026: Live pages: documents that people and agents keep up to date together
+# ADR 0028: Live pages: documents that people and agents keep up to date together
 
-Status: proposed (2026-10-08). Depends on ADR 0025 (editor, Loro), 0027 (dynamic UI), 0014
+Status: proposed (2026-10-08). Depends on ADR 0027 (editor, Loro), 0029 (dynamic UI), 0014
 (memory, files and knowledge as Items), 0013 (hooks), the agent runtime ADR (zoen-agentd on
 Rig) and the approvals API (`docs/api-approvals.md`, branch `ui/approvals-swipe`).
 
@@ -34,7 +34,7 @@ keys included, and sent it out. Export must carry the user's data and definition
 runtime.
 
 ## Decision
-A **live page** is a Page (ADR 0025) that lives in a Space, where some blocks are bound to
+A **live page** is a Page (ADR 0027) that lives in a Space, where some blocks are bound to
 data and kept fresh by members or agents.
 
 ### Blocks
@@ -46,7 +46,7 @@ The page body is the native WYSIWYG editor's block tree. A **live block** is a b
   - a **message** range or thread;
   - a **file**;
   - an **agent section**, meaning prose an agent maintains from a skill and instructions.
-- `view`: how it looks, a declarative Zoen View (ADR 0027) such as a metric tile, table,
+- `view`: how it looks, a declarative Zoen View (ADR 0029) such as a metric tile, table,
   chart, task list, message excerpt, or the agent's formatted text.
 - `refresh`: one of
   - "on change": re-derive when the source Item gets a new version;
@@ -146,7 +146,7 @@ asks for confirmation (ADR 0014).
   and Desfazer.
 
 ## First slice
-1. `ItemKind::Page` on Loro with the native editor (ADR 0025 phase 1).
+1. `ItemKind::Page` on Loro with the native editor (ADR 0027 phase 1).
 2. Two live block sources:
    - **Tarefas deste Espaço**, computed on the device, no agent;
    - **Métrica**, bound to an `ontology/metrics/*` Item with a golden value, kept by an agent

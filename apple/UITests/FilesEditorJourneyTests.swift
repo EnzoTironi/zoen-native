@@ -1,6 +1,6 @@
 import XCTest
 
-/// Pages and files as a person uses them (ADR 0025), paced for the proof video.
+/// Pages and files as a person uses them (ADR 0027), paced for the proof video.
 /// pt-BR, light. Each step asserts what the person sees.
 final class FilesEditorJourneyTests: XCTestCase {
     @MainActor

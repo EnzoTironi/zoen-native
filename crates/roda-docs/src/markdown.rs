@@ -1,4 +1,4 @@
-//! Markdown in and out (ADR 0025 §3).
+//! Markdown in and out (ADR 0027 §3).
 //!
 //! Import splits the source into blocks by line. Every byte of the source belongs to exactly
 //! one block (its `src` plus the blank lines after it, `tail`), or to the page's leading

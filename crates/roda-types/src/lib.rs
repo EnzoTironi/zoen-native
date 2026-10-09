@@ -152,9 +152,9 @@ pub enum ItemKind {
     Note,
     /// Mini-app (MCP App): uma interface interativa cujo estado é este Item.
     App,
-    /// A Zoen page: blocks in a Loro document (ADR 0025).
+    /// A Zoen page: blocks in a Loro document (ADR 0027).
     Page,
-    /// A file: bytes in encrypted chunks on the relay (ADR 0025).
+    /// A file: bytes in encrypted chunks on the relay (ADR 0027).
     File,
 }
 

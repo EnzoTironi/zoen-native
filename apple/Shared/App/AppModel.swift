@@ -536,7 +536,7 @@ final class AppModel {
         case "zoen":
             if let id = zoenSpaceId() { go(.space(id)) }
         case "new-page", "page-sample", "file-sample":
-            // Files and pages (ADR 0025) for UI journeys and proof videos.
+            // Files and pages (ADR 0027) for UI journeys and proof videos.
             guard let id = spaceId(titled: DemoSpace.paraty) else { break }
             select(.files)
             let made: ItemDetail? = switch open {

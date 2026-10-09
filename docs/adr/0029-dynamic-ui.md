@@ -1,11 +1,11 @@
-# ADR 0027: Dynamic UI: native declarative views first, MCP Apps HTML in a sandbox second
+# ADR 0029: Dynamic UI: native declarative views first, MCP Apps HTML in a sandbox second
 
 Status: proposed (2026-10-08). Extends the mini-app host (`docs/mini-apps.md`, MCP Apps
 `2026-01-26` already implemented in `crates/roda-ffi/src/apps.rs` and the sandboxed WKWebView).
 
 ## Context
 Enzo wants MCP-Apps-style dynamic UI wherever Zoen is dynamic:
-- live page blocks (ADR 0026);
+- live page blocks (ADR 0028);
 - agent replies;
 - Store apps;
 - approval card details;
@@ -72,7 +72,7 @@ Three tiers, picked by the host in this order.
   Item version re-renders it with animated diffs: numbers roll, rows slide, and Reduce Motion
   turns this into a fade.
 - **Where.**
-  - live page blocks (ADR 0026);
+  - live page blocks (ADR 0028);
   - agent replies (the agent returns a view inline instead of a wall of text);
   - approval card details (the tool declares a view for its proposal; tapping a card opens it);
   - Store app tiles and chat live tiles;
@@ -133,7 +133,7 @@ These are added to the ADR 0013 catalog:
    - `Stack`, `Card`, `Text`, `Metric`, `Table`, `Chart`, `TaskList`, `Button`, `Toggle`;
    - `Progress`, `Avatar`, `FileCard`, `Callout`, `Approval`.
 2. Used in three places:
-   - the ADR 0026 metric and task live blocks;
+   - the ADR 0028 metric and task live blocks;
    - one agent reply ("Quanto gastamos esse mês?" answered with a `Metric` + `Chart` view);
    - the approval card detail for a page suggestion.
 3. Actions go through Cedar. One action needs confirmation and shows the native card.

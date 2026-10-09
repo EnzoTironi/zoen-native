@@ -1,4 +1,4 @@
-//! Pages and files (ADR 0025), as two people see them through the relay.
+//! Pages and files (ADR 0027), as two people see them through the relay.
 //!
 //! Ana imports Markdown as pages; Bruno, on his own device, exports them and gets the
 //! same bytes back. Edits change only the lines they touch. A 12 MB file travels in
