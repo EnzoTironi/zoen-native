@@ -1112,6 +1112,24 @@ impl Engine {
         })
     }
 
+    pub fn member_roles(&self, space: &str) -> R<Vec<MemberRoleDto>> {
+        Ok(self
+            .space_state(space)?
+            .members
+            .iter()
+            .map(|(identity, role)| MemberRoleDto {
+                identity_id: identity.clone(),
+                role: match role {
+                    Role::Owner => "owner",
+                    Role::Admin => "admin",
+                    Role::Member => "member",
+                    Role::Reader => "reader",
+                }
+                .into(),
+            })
+            .collect())
+    }
+
     pub fn mark_read(&self, space: &str) -> R<()> {
         let s = self.space_state(space)?;
         // Max, not last: my own pending messages sit at the end with no relay seq yet.

@@ -69,6 +69,20 @@ fn lock(e: &Shared) -> std::sync::MutexGuard<'_, Engine> {
 }
 
 /// The relay's HTTP base (blobs): `wss://x` → `https://x`, no trailing slash.
+pub(crate) fn http_client(timeout: Duration) -> Result<reqwest::Client, reqwest::Error> {
+    let builder = reqwest::Client::builder().timeout(timeout);
+    #[cfg(target_os = "android")]
+    let builder = {
+        let roots =
+            rustls::RootCertStore::from_iter(webpki_roots::TLS_SERVER_ROOTS.iter().cloned());
+        let tls = rustls::ClientConfig::builder()
+            .with_root_certificates(roots)
+            .with_no_client_auth();
+        builder.tls_backend_preconfigured(tls)
+    };
+    builder.build()
+}
+
 pub fn http_base(relay: &str) -> String {
     let base = relay.trim_end_matches('/');
     if let Some(rest) = base.strip_prefix("wss://") {
@@ -812,19 +826,7 @@ async fn media_worker(
     key: roda_log::Signer,
     kick: Arc<tokio::sync::Notify>,
 ) {
-    let builder = reqwest::Client::builder().timeout(Duration::from_secs(60));
-    // Match the WebSocket transport's WebPKI roots on Android. The platform verifier
-    // requires a JVM context; this core is loaded through UniFFI/JNA, without JNI setup.
-    #[cfg(target_os = "android")]
-    let builder = {
-        let roots =
-            rustls::RootCertStore::from_iter(webpki_roots::TLS_SERVER_ROOTS.iter().cloned());
-        let tls = rustls::ClientConfig::builder()
-            .with_root_certificates(roots)
-            .with_no_client_auth();
-        builder.tls_backend_preconfigured(tls)
-    };
-    let Ok(http) = builder.build() else {
+    let Ok(http) = http_client(Duration::from_secs(60)) else {
         tracing_like("media: no HTTP client");
         return;
     };

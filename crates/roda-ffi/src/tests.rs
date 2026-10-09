@@ -482,6 +482,24 @@ fn explicit_install_rejects_invalid_inputs_before_creating_any_item() {
 }
 
 #[test]
+fn member_roles_match_the_shared_membership_projection() {
+    let e = seeded();
+    let space = find_space(&e, "Paraty com a Marina");
+    let roles = e.member_roles(space.id.clone()).unwrap();
+    assert_eq!(roles.len(), space.members.len());
+    assert!(roles
+        .iter()
+        .all(|r| space.members.iter().any(|m| m.id == r.identity_id)));
+    assert!(roles
+        .iter()
+        .all(|r| ["owner", "admin", "member", "reader"].contains(&r.role.as_str())));
+    assert!(roles
+        .iter()
+        .any(|r| r.identity_id == e.me().unwrap().id && r.role == "owner"));
+    assert!(e.member_roles("missing".into()).is_err());
+}
+
+#[test]
 fn rendered_file_versions_record_the_output_format_and_preserve_original_bytes() {
     let e = seeded();
     let space = find_space(&e, "Paraty com a Marina");

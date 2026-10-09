@@ -202,9 +202,7 @@ impl RodaEngine {
             .or_else(|| account.as_ref().map(|a| a.relay_url.clone()))
             .ok_or_else(|| invalid("no relay".into()))?;
         let base = crate::net::http_base(&relay);
-        let http = reqwest::Client::builder()
-            .timeout(std::time::Duration::from_secs(15))
-            .build()
+        let http = crate::net::http_client(std::time::Duration::from_secs(15))
             .map_err(|e| invalid(e.to_string()))?;
 
         let mut req = http.get(format!("{base}/v1/config"));

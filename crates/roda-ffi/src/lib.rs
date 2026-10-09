@@ -141,6 +141,10 @@ impl RodaEngine {
         self.lock().space_summary(&space_id)
     }
 
+    pub fn member_roles(&self, space_id: String) -> Result<Vec<MemberRoleDto>, CoreError> {
+        self.lock().member_roles(&space_id)
+    }
+
     pub fn timeline(&self, space_id: String) -> Result<Vec<TimelineEntry>, CoreError> {
         self.lock().timeline(&space_id)
     }
