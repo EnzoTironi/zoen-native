@@ -24,13 +24,18 @@ final class SpacesJourneyTests: XCTestCase {
         let name = app.textFields["communityNameField"]
         XCTAssertTrue(name.waitForExistence(timeout: 5))
         name.tap()
-        let title = "Trail Club \(Int(Date().timeIntervalSince1970) % 10_000)"
+        let title = "Trail Club and Coastal Travelers Community \(Int(Date().timeIntervalSince1970) % 10_000)"
         name.typeText(title)
 
         app.buttons["confirmCreateCommunity"].tap()
 
         let back = app.buttons["zoenBack"]
         XCTAssertTrue(back.waitForExistence(timeout: 10), "the new community opens as a conversation")
+        let chatTitle = app.buttons["chat-title"]
+        let voiceCall = app.buttons["Voice call"]
+        XCTAssertTrue(chatTitle.exists && voiceCall.exists)
+        XCTAssertLessThanOrEqual(chatTitle.frame.maxX + 4, voiceCall.frame.minX,
+                                 "a long community title leaves room for the call controls")
         back.tap()
 
         let row = app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", title)).firstMatch
