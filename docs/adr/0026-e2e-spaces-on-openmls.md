@@ -85,11 +85,37 @@ order.
   first commit for the epoch wins (below), so several admins reconciling at once converge.
   A device's own commit comes back from the relay as its own message: at the current epoch
   with a commit pending it merges it, and anything else is stale.
+- **Batching:** a device doesn't reconcile while membership events of its own for that Space
+  are still on their way to the relay. Creating a group with five people is one commit and
+  one Welcome, never five epochs, and a commit never gets ahead of the log entries it
+  depends on.
+- **Removal:** after a `MemberRemoved` lands, **no device seals** for that Space until the
+  commit taking the person out has landed too. This applies to every member, not only the
+  admin who will commit, because a message sealed one epoch early is readable by the person
+  just removed. The relay stops sending the Space to them, but serves their catch-up
+  *through* their own removal (`("s", space, "gone", identity) -> seq`, cleared if they are
+  added back). Their device sees the removal and deletes the group (`Device::forget`). It
+  never receives the commit, it keeps no secrets, and a later Welcome starts it fresh. A
+  member leaving on their own is removed the same way: the group holds sends until an owner
+  or admin device commits. That is the price of the guarantee, and it is visible as
+  *Sending*.
 - **Concurrent commits:** every member applies the first commit for the current epoch in log
-  order and ignores later ones for an epoch already gone. The losing author sees its commit
-  skipped, processes the winner, and re-proposes. The relay rejecting stale epochs early
-  (`stale_epoch`, from the epoch in the clear MLS framing) is an optimization on top. It
-  saves log space, and correctness doesn't depend on it.
+  order and ignores later ones for an epoch already gone, so correctness never depends on
+  the relay. On top of that the relay grants **one commit per epoch**: it reads the epoch
+  from the commit's clear MLS framing (`roda_mls::commit_epoch`) and keeps
+  `("s", space, "mls") -> (next epoch, device of the last commit)`, reset to `(0, "")` when
+  the Space becomes end-to-end. A commit for any other epoch is refused with
+  `STALE_COMMIT` (`stale_epoch: ...`), and a Welcome is admitted only while the last commit
+  is its own device's, so a lost race leaves nothing in the log. The client sends a Welcome
+  only once its commit is in the log (a commit held back by a rate limit must not let its
+  Welcome overtake it). The losing device drops its commit and that commit's Welcome from
+  the outbox without showing a failure (`Device::abandon` clears the pending commit),
+  applies the winner, and reconciles again, usually to nothing. A Welcome refused because
+  another commit got in first leaves its newcomers with leaves they can't use: the committer
+  takes those leaves out and adds them afresh, and a device whose own leaf is taken out by a
+  commit deletes its group state, so the fresh Welcome starts it again.
+  To make races rare, Owner/Admin devices take turns: each waits 400 ms per admin ahead of
+  it in identity order before committing an owed change, and the first commits at once.
 - The relay **rejects any plaintext body outside the control set** in an E2E Space, so a
   buggy or old client can't leak into one.
 
@@ -99,8 +125,9 @@ member device. `upto` is the chain position (seq, hash) as that member applied i
 `epoch_digest = SHA-256("zoen-checkpoint/1" ‖ group id ‖ epoch ‖ epoch_authenticator)`: only a
 member who holds the epoch's key schedule can compute it, and it reveals nothing about the
 secrets.
-- **When:** a device checkpoints after its own commit lands, after it joins, and after 256
-  sealed entries since its last checkpoint. Members who only apply someone else's commit don't
+- **When:** a device checkpoints after its own commit lands, after it joins, and once the log
+  is 256 entries past its last checkpoint (kept in the device database, so a reader that
+  restarts often still checkpoints; `ZOEN_CHECKPOINT_EVERY` overrides it for journeys). Members who only apply someone else's commit don't
   post one: the committer's and the joiners' checkpoints already pin that epoch, and the
   cadence keeps checkpoints at O(commits + messages/256), not O(members × commits).
 - Each device records its own digest per epoch. A checkpoint whose digest differs marks the
@@ -118,6 +145,39 @@ secrets.
   estimate, and the 30-day hot window becomes "until every member has it". New members don't
   need it (forward secrecy: they read from their Welcome on).
 
+### Pruning (built)
+The relay keeps, per end-to-end Space, what each member device holds:
+`("s", space, "ck", identity, device) -> upto.seq` from its latest checkpoint. Adding someone
+(and creating or encrypting the Space, for those already in) writes a hold for them at that
+seq under device `*`, cleared by their first checkpoint; a removal drops all of theirs. Once
+every current member holds something, the floor is the lowest hold, and the transaction of
+the checkpoint that raises it rewrites sealed entries below it (256 at most per transaction)
+as **stubs**: the same signed header and kind with the MLS bytes taken out, plus the
+original's wire hash, so the chain hash is unchanged. Clear control events are never touched.
+
+Members never read a stub (they are past it). A device added later reads the log from the
+start: a stub links by the original's wire hash, so it accepts it without the signature
+(which no longer covers the content), and the members' signed checkpoints after it pin the
+chain it built. A device can't publish a stub; only the relay makes them. Proof:
+`journey_m2::the_relay_prunes_what_every_member_holds` (both members' checkpoints pass the
+first message and it becomes a stub in FoundationDB; nothing at or above the lowest
+checkpoint goes; members still read and `verify` their history; nothing from Carla's
+addition on is pruned until she checkpoints; she links the chain over the stubs, joins from
+her Welcome, reads on and `verify` passes).
+
+Limits, on purpose for now:
+- A stub proves its place in the chain, not that the original was sealed: a relay that
+  rewrote a clear control event as a "stub" with its true wire hash would keep the chain
+  and the checkpoints valid, and a later joiner would miss that event. Confidentiality
+  doesn't move (MLS membership is the group, and the subset rule still refuses a group that
+  lists someone the log doesn't), but the joiner's view of past roles or removals could.
+  Fix when it matters: hash sealed envelopes as header plus the hash of the MLS bytes, so a
+  stub carries its proof. That changes the wire hash for new entries.
+- A member device that never comes back holds pruning in that Space forever. The 30-day
+  ceiling (ADR 0022) and asking for an update are the answer; not built.
+- A second device of a member has no hold of its own until linking (next step) gives it
+  one, as adding a member does.
+
 ## First journey (the M2 milestone)
 `journey_m2` (passing): Ana, Bruno and Carla sign up through the real CLI, relay, Postgres and
 FoundationDB, and each device publishes 33 key packages. Ana creates an E2E group with Bruno:
@@ -132,15 +192,20 @@ over ciphertext. Then Carla joins by invite; Ana's device commits her in (epoch 
 reads what is said after her Welcome and nothing before it.
 
 Later M2 steps, in order: removal (a removed member can't read what follows), concurrent
-commits and the relay's `stale_epoch`, pruning below checkpoints, linking a second device, the
+commits and the relay's `stale_epoch`, pruning below checkpoints (all three built), linking a
+second device, the
 app on the simulator with the Notification Service Extension sharing state.
 
 ### Not yet (tracked in the plan)
 - Topping up key packages: today a device publishes once, and claims fall back to the
-  last-resort package when the 32 run out. The relay will say "low" and the device refills.
+  last-resort package when the 32 run out. **Top-up:** when a claim leaves a device under
+  `KEY_PACKAGES_LOW` (8) single-use packages, the relay sends it `KeyPackagesLow` wherever
+  it is connected, and again at its next login if it was away; the device publishes enough
+  to get back to 32 (its last-resort one stays).
 - Several devices per identity: reconcile adds every device with packages, but linking a
   second device to existing groups is the multi-device step.
-- Done since: DMs and new groups are end-to-end by default, M1 Spaces upgrade one way with
+- Done since: concurrent commits (one commit per epoch at the relay, turns among admins),
+  key package top-up, removal, batching. Also: DMs and new groups are end-to-end by default, M1 Spaces upgrade one way with
   `SpaceEncrypted`, and messages are sealed at send time at the current epoch, which also
   closes the "outbox older than 4 epochs" gap (ADR 0027).
 

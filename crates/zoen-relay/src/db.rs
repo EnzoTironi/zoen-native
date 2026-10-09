@@ -248,6 +248,28 @@ pub async fn put_key_packages(
     Ok(true)
 }
 
+/// Single-use key packages each device has left, for devices that have published (they
+/// hold a last-resort one). A device that never published isn't listed: it publishes a
+/// full set on its own.
+pub async fn key_package_stock(
+    pool: &PgPool,
+    devices: &[(String, String)],
+) -> Result<Vec<(String, String, i64)>, sqlx::Error> {
+    let (ids, devs): (Vec<String>, Vec<String>) = devices.iter().cloned().unzip();
+    sqlx::query_as(
+        "SELECT d.identity, d.device,
+                (SELECT count(*) FROM key_packages k
+                 WHERE k.identity = d.identity AND k.device = d.device AND NOT k.last_resort)
+         FROM unnest($1::text[], $2::text[]) AS d(identity, device)
+         WHERE EXISTS (SELECT 1 FROM key_packages k
+                       WHERE k.identity = d.identity AND k.device = d.device AND k.last_resort)",
+    )
+    .bind(&ids)
+    .bind(&devs)
+    .fetch_all(pool)
+    .await
+}
+
 /// One key package per device of each identity: the oldest single-use one, taken (deleted)
 /// in the same statement, or else the device's last-resort one, left in place. Concurrent
 /// claimers skip each other's rows, so no single-use package is handed out twice.

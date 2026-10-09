@@ -53,8 +53,13 @@ could never read it. So:
   packages don't hold anything up (`stuck`).
 - A message is always sealed at the group's **current epoch**. The sealed copy records its
   epoch, and a copy from an older epoch is sealed again before it goes out. This also closes
-  ADR 0026's "outbox older than 4 epochs" gap. The relay dedupes by (author, client id), so a
-  re-sealed message that already landed is not stored twice.
+  ADR 0026's "outbox older than 4 epochs" gap. "Current" is the group's, not the device's:
+  a device back from offline may still be behind a commit when it flushes, so the relay
+  refuses a message sealed at an epoch the group has left (`STALE_SEAL`, from the clear
+  framing) and the device seals again once it has applied the commit
+  (`journey_m2::a_message_queued_offline_survives_many_commits`: five commits while Bruno is
+  offline; everyone, including the five newcomers, reads what he queued).
+  The relay dedupes by (author, client id), so a re-sealed message that already landed is not stored twice.
 - A clear message refused with `SEAL_REQUIRED` (written just before the device learned of an
   upgrade) is not a failure. It waits until the device has applied `SpaceEncrypted` and has
   the group, then goes out sealed. Nothing is lost and nothing is sent in the clear twice.

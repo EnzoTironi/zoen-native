@@ -262,11 +262,49 @@ impl Session {
         let _ = self.tx.send(f).await;
     }
 
+    /// Tells each claimed device that's running low, wherever it is connected.
+    async fn key_packages_low(&self, claimed: &[roda_proto::KeyPackageRecord]) {
+        let devices: Vec<(String, String)> = claimed
+            .iter()
+            .map(|k| (k.identity.clone(), k.device.clone()))
+            .collect();
+        let Ok(stock) = db::key_package_stock(&self.st.pool, &devices).await else {
+            return;
+        };
+        for (identity, device, left) in stock {
+            if left < roda_proto::KEY_PACKAGES_LOW as i64 {
+                self.st.fanout.send(
+                    &[identity],
+                    &ServerFrame::KeyPackagesLow {
+                        device,
+                        remaining: left as u32,
+                    },
+                    None,
+                );
+            }
+        }
+    }
+
     async fn go_online(&mut self) {
         if self.hub_id.is_some() {
             return;
         }
         let _ = db::touch_device(&self.st.pool, &self.identity, &self.device, &self.cert).await;
+        // Packages claimed while this device was away: it refills as it comes back.
+        let me = [(self.identity.clone(), self.device.clone())];
+        if let Ok(stock) = db::key_package_stock(&self.st.pool, &me).await {
+            for (_, device, left) in stock {
+                if left < roda_proto::KEY_PACKAGES_LOW as i64 {
+                    let _ = self
+                        .tx
+                        .send(ServerFrame::KeyPackagesLow {
+                            device,
+                            remaining: left as u32,
+                        })
+                        .await;
+                }
+            }
+        }
         let was_online = self.st.fanout.is_online(&self.identity).await;
         self.hub_id = Some(self.st.fanout.add(
             &self.identity,
@@ -539,11 +577,11 @@ impl Session {
                     .check(&self.identity)
                     .map_err(limits::slow_down)?;
                 let ids: Vec<String> = ids.into_iter().take(50).collect();
-                Ok(Reply::KeyPackages(
-                    db::claim_key_packages(pool, &ids)
-                        .await
-                        .map_err(|e| e.to_string())?,
-                ))
+                let claimed = db::claim_key_packages(pool, &ids)
+                    .await
+                    .map_err(|e| e.to_string())?;
+                self.key_packages_low(&claimed).await;
+                Ok(Reply::KeyPackages(claimed))
             }
             Op::GetProfiles { ids } => {
                 let ids: Vec<String> = ids.into_iter().take(500).collect();
@@ -718,34 +756,44 @@ impl Session {
                 ))
                 .await;
         };
-        let mut plan: Vec<(String, u64)> = cursors
-            .into_iter()
-            .filter(|c| mine.contains(&c.space))
-            .map(|c| (c.space, c.next_seq))
-            .collect();
+        // (space, from, through): a member reads to the head; someone removed reads up to
+        // and including their removal, so their device learns of it, and nothing after.
+        let mut plan: Vec<(String, u64, Option<u64>)> = Vec::new();
+        for c in cursors {
+            if mine.contains(&c.space) {
+                plan.push((c.space, c.next_seq, None));
+            } else if let Ok(Some(gone)) = self.st.log.removed_at(&c.space, &self.identity).await {
+                if c.next_seq <= gone {
+                    plan.push((c.space, c.next_seq, Some(gone)));
+                }
+            }
+        }
         if all {
             for s in &mine {
-                if !plan.iter().any(|(p, _)| p == s) {
-                    plan.push((s.clone(), 0));
+                if !plan.iter().any(|(p, ..)| p == s) {
+                    plan.push((s.clone(), 0, None));
                 }
             }
         }
         let span = tracing::Span::current();
         span.record("spaces", plan.len() as i64);
         let mut sent = 0usize;
-        for (space, mut next) in plan {
+        for (space, mut next, through) in plan {
             loop {
                 let Ok(page) = self.st.log.read(&space, next, SYNC_PAGE).await else {
                     break;
                 };
                 let n = page.len();
                 for ev in page {
+                    if through.is_some_and(|last| ev.seq > last) {
+                        break;
+                    }
                     next = ev.seq + 1;
                     Metrics::inc(&self.st.metrics.sync_events_sent);
                     sent += 1;
                     self.send(ServerFrame::Event { ev }).await;
                 }
-                if n < SYNC_PAGE {
+                if n < SYNC_PAGE || through.is_some_and(|last| next > last) {
                     break;
                 }
             }

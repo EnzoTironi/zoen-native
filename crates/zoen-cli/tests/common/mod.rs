@@ -55,6 +55,7 @@ pub struct World {
     pub port: u16,
     pub nats: Option<String>,
     relay_env: Vec<(String, String)>,
+    client_env: Vec<(String, String)>,
     relay: Option<Child>,
     nodes: Vec<Child>,
 }
@@ -98,6 +99,7 @@ impl World {
                 .iter()
                 .map(|(k, v)| (k.to_string(), v.to_string()))
                 .collect(),
+            client_env: Vec::new(),
             relay: None,
             nodes: Vec::new(),
         };
@@ -182,8 +184,14 @@ impl World {
         c.arg("--home")
             .arg(self.dir.join(who))
             .args(args)
-            .env("ZOEN_RELAY", format!("http://127.0.0.1:{port}"));
+            .env("ZOEN_RELAY", format!("http://127.0.0.1:{port}"))
+            .envs(self.client_env.iter().map(|(k, v)| (k, v)));
         c
+    }
+
+    /// Environment every `zoen` of this world runs with (e.g. `ZOEN_CHECKPOINT_EVERY`).
+    pub fn set_client_env(&mut self, key: &str, value: &str) {
+        self.client_env.push((key.to_string(), value.to_string()));
     }
 
     /// Runs `zoen` as `who` against the relay node on `port`.
@@ -242,6 +250,45 @@ impl World {
         let mut out = String::new();
         s.read_to_string(&mut out).unwrap();
         out
+    }
+
+    /// Authenticated sessions the relay has online now.
+    pub fn sessions_online(&self) -> u64 {
+        self.metrics()
+            .lines()
+            .find_map(|l| l.strip_prefix("zoen_relay_sessions_online "))
+            .and_then(|v| v.trim().parse::<f64>().ok())
+            .unwrap_or(0.0) as u64
+    }
+
+    /// Waits until at least `n` sessions are online (e.g. spawned watchers are connected).
+    pub fn wait_online(&self, n: u64) {
+        let deadline = std::time::Instant::now() + Duration::from_secs(30);
+        while self.sessions_online() < n {
+            assert!(
+                std::time::Instant::now() < deadline,
+                "{n} sessions never came online (have {})",
+                self.sessions_online()
+            );
+            std::thread::sleep(Duration::from_millis(200));
+        }
+    }
+
+    /// Runs `zoen sync` for `who` until its output satisfies `done` (30 s at most): the
+    /// device converges over several round trips, and how many depends on timing.
+    pub fn sync_until(&self, who: &str, done: impl Fn(&str) -> bool) -> String {
+        let deadline = std::time::Instant::now() + Duration::from_secs(30);
+        loop {
+            let out = self.zoen(who, &["sync"]);
+            if done(&out) {
+                return out;
+            }
+            assert!(
+                std::time::Instant::now() < deadline,
+                "{who} never got there: {out}"
+            );
+            std::thread::sleep(Duration::from_millis(300));
+        }
     }
 
     pub fn spawn_zoen(&self, who: &str, args: &[&str]) -> Child {

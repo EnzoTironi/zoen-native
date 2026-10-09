@@ -220,8 +220,7 @@ async fn a_readable_group_becomes_end_to_end_and_never_goes_back() {
     w.zoen("ana", &["send", "Trilha", after]);
 
     // Bruno's clear message is refused, waits for his Welcome, and goes out sealed.
-    let s = w.zoen("bruno", &["sync"]);
-    assert!(s.contains("pending=0"), "{s}");
+    w.sync_until("bruno", |s| s.contains("pending=0"));
     let bruno = w.zoen("bruno", &["read", "Trilha"]);
     for text in [before, after, queued, "End-to-end encryption is on"] {
         assert!(bruno.contains(text), "{text:?} in\n{bruno}");
@@ -270,4 +269,436 @@ async fn a_readable_group_becomes_end_to_end_and_never_goes_back() {
         let v = w.zoen(who, &["verify"]);
         assert!(!v.contains("BROKEN"), "{who}: {v}");
     }
+}
+
+/// A removed member reads nothing written after their removal, their device forgets the
+/// group, and nobody seals a message before the commit that takes them out.
+#[tokio::test]
+async fn a_removed_member_reads_nothing_after_removal() {
+    let w = World::new("m2rm").await;
+    for (h, n) in [("ana", "Ana"), ("bruno", "Bruno"), ("carla", "Carla")] {
+        w.init(h, n);
+    }
+    let space = w.zoen("ana", &["group", "Cofre", "@bruno", "@carla"]);
+    let space = space.trim();
+    let before = "todos leem isto";
+    w.zoen("ana", &["send", "Cofre", before]);
+    for who in ["bruno", "carla"] {
+        assert!(w.zoen(who, &["read", "Cofre"]).contains(before), "{who}");
+    }
+
+    w.zoen("ana", &["remove", "Cofre", "@bruno"]);
+    let after = "sem o Bruno: tucano-depois";
+    w.zoen("ana", &["send", "Cofre", after]);
+    let reply = "combinado, só nós: tucano-resposta";
+    w.zoen("carla", &["send", "Cofre", reply]);
+
+    let carla = w.zoen("carla", &["read", "Cofre"]);
+    assert!(carla.contains(after) && carla.contains(reply), "{carla}");
+    let bruno = w.zoen("bruno", &["read", "Cofre"]);
+    assert!(bruno.contains(before), "{bruno}");
+    assert!(!bruno.contains("tucano"), "{bruno}");
+    // Bruno's device forgot the group's secrets.
+    assert!(w.try_zoen("bruno", &["keys", "Cofre"]).is_err());
+    let (ae, ad) = keys(&w.zoen("ana", &["keys", "Cofre"]));
+    let (ce, cd) = keys(&w.zoen("carla", &["keys", "Cofre"]));
+    assert_eq!((ae, &ad), (ce, &cd));
+    assert_eq!(ae, 2, "the add, then the removal");
+
+    // In the relay's order: the removal, the commit, and only then messages sealed for the
+    // smaller group.
+    let stored = w.events_in(space).await;
+    let removed = stored
+        .iter()
+        .position(|ev| matches!(ev.env.body(), Some(EventBody::MemberRemoved { .. })))
+        .expect("the removal");
+    let commit = stored
+        .iter()
+        .skip(removed)
+        .position(|ev| ev.env.sealed_kind() == Some(roda_proto::SealedKind::Commit))
+        .map(|i| i + removed)
+        .expect("the removal's commit");
+    let messages_after: Vec<usize> = stored
+        .iter()
+        .enumerate()
+        .skip(removed)
+        .filter(|(_, ev)| ev.env.sealed_kind() == Some(roda_proto::SealedKind::Application))
+        .map(|(i, _)| i)
+        .collect();
+    assert_eq!(messages_after.len(), 2, "Ana's and Carla's");
+    assert!(messages_after.iter().all(|i| *i > commit));
+    for who in ["ana", "bruno", "carla"] {
+        let v = w.zoen(who, &["verify"]);
+        assert!(!v.contains("BROKEN"), "{who}: {v}");
+    }
+}
+
+/// Two admins are online when someone joins by invite: both owe the commit that adds her.
+/// They take turns (identity order), and the relay grants each epoch to one commit only, so
+/// the group gets exactly one commit for her and everyone ends up in the same epoch.
+#[tokio::test(flavor = "multi_thread")]
+async fn two_admins_online_make_one_commit_for_a_newcomer() {
+    let w = World::new("m2race").await;
+    for (h, n) in [
+        ("ana", "Ana"),
+        ("bruno", "Bruno"),
+        ("carla", "Carla"),
+        ("dora", "Dora"),
+    ] {
+        w.init(h, n);
+    }
+    let space = w.zoen("ana", &["group", "Ninho", "@dora"]);
+    let space = space.trim();
+    w.zoen("ana", &["add", "Ninho", "@bruno", "--admin"]);
+    assert!(w.zoen("bruno", &["chats"]).contains("Ninho"));
+    let code = w.zoen("ana", &["invite", "Ninho"]);
+    let code = code.trim();
+
+    let watchers = [
+        w.spawn_zoen("ana", &["watch", "--for", "8"]),
+        w.spawn_zoen("bruno", &["watch", "--for", "8"]),
+    ];
+    w.wait_online(2);
+    w.zoen("carla", &["join", &format!("zoen://join/{code}")]);
+    for watcher in watchers {
+        let out = watcher.wait_with_output().expect("watch");
+        let stderr = String::from_utf8_lossy(&out.stderr);
+        assert!(out.status.success(), "{stderr}");
+    }
+
+    let hello = "cheguei no ninho: tucano-oi";
+    w.zoen("carla", &["send", "Ninho", hello]);
+    for who in ["ana", "bruno", "dora"] {
+        assert!(w.zoen(who, &["read", "Ninho"]).contains(hello), "{who}");
+    }
+    let (epoch, digest) = keys(&w.zoen("ana", &["keys", "Ninho"]));
+    assert_eq!(epoch, 3, "Dora, Bruno, then Carla");
+    for who in ["bruno", "carla", "dora"] {
+        assert_eq!(
+            keys(&w.zoen(who, &["keys", "Ninho"])),
+            (epoch, digest.clone()),
+            "{who}"
+        );
+    }
+
+    let stored = w.events_in(space).await;
+    let joined = stored
+        .iter()
+        .position(|ev| match ev.env.body() {
+            // Joining by invite: the newcomer adds herself.
+            Some(EventBody::MemberAdded { identity, .. }) => identity == ev.env.author(),
+            _ => false,
+        })
+        .expect("Carla's join");
+    let commits = stored
+        .iter()
+        .skip(joined)
+        .filter(|ev| ev.env.sealed_kind() == Some(roda_proto::SealedKind::Commit))
+        .count();
+    assert_eq!(commits, 1, "one commit for Carla");
+    for who in ["ana", "bruno", "carla", "dora"] {
+        let v = w.zoen(who, &["verify"]);
+        assert!(!v.contains("BROKEN"), "{who}: {v}");
+    }
+}
+
+/// Two admins add people at once under a tight publish limit, so commits and Welcomes are
+/// held back and race: a Welcome can land behind the other admin's commit (refused: the
+/// newcomer's leaf is then taken out and she's added again), or a commit can lose its epoch
+/// (dropped with its Welcome, then made again). Whatever happened, everyone ends in one
+/// group and reads everyone.
+#[tokio::test(flavor = "multi_thread")]
+async fn admins_adding_at_once_under_a_publish_limit_converge() {
+    // One publish every 6 s per device, two at once.
+    let w = World::with_env("m2limit", &[("ZOEN_LIMITS", "publish_device=10/m:2")]).await;
+    for (h, n) in [
+        ("ana", "Ana"),
+        ("bruno", "Bruno"),
+        ("carla", "Carla"),
+        ("dora", "Dora"),
+        ("eva", "Eva"),
+    ] {
+        w.init(h, n);
+    }
+    let t = ["--timeout", "60000"];
+    w.zoen("ana", &["group", "Ninho", "@dora", t[0], t[1]]);
+    w.zoen("ana", &["add", "Ninho", "@bruno", "--admin", t[0], t[1]]);
+    w.zoen("ana", &["sync", t[0], t[1]]);
+    assert!(w.zoen("bruno", &["chats"]).contains("Ninho"));
+    // Both buckets refill, then both admins add someone at the same moment.
+    std::thread::sleep(std::time::Duration::from_secs(13));
+    let ana = w.spawn_zoen("ana", &["add", "Ninho", "@carla", t[0], t[1]]);
+    w.zoen("bruno", &["add", "Ninho", "@eva", t[0], t[1]]);
+    let out = ana.wait_with_output().expect("ana");
+    assert!(
+        out.status.success(),
+        "{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    for who in ["ana", "bruno", "ana", "bruno"] {
+        w.zoen(who, &["sync", t[0], t[1]]);
+    }
+
+    for (who, text) in [
+        ("carla", "cheguei: tucano-carla"),
+        ("eva", "cheguei: tucano-eva"),
+    ] {
+        w.zoen(who, &["send", "Ninho", text]);
+        w.zoen(who, &["sync", t[0], t[1]]);
+        for reader in ["ana", "bruno", "carla", "dora", "eva"] {
+            assert!(
+                w.zoen(reader, &["read", "Ninho"]).contains(text),
+                "{reader} reads {who}"
+            );
+        }
+    }
+    let (epoch, digest) = keys(&w.zoen("ana", &["keys", "Ninho"]));
+    for who in ["bruno", "carla", "dora", "eva"] {
+        assert_eq!(
+            keys(&w.zoen(who, &["keys", "Ninho"])),
+            (epoch, digest.clone()),
+            "{who}"
+        );
+    }
+    for who in ["ana", "bruno", "carla", "dora", "eva"] {
+        let v = w.zoen(who, &["verify"]);
+        assert!(!v.contains("BROKEN"), "{who}: {v}");
+    }
+}
+
+/// Bruno's device keeps 32 single-use key packages on the relay; every group that adds him
+/// uses one. Away while 25 groups take him in, his device refills as it comes back; online
+/// when the stock dips under 8, it refills right away. Every group still opens for him.
+#[tokio::test(flavor = "multi_thread")]
+async fn key_packages_refill_when_they_run_low() {
+    // Fifty groups from one terminal in a minute or two: lift the per-IP connect and
+    // lookup limits that would otherwise pace Ana, not what this journey is about.
+    let w = World::with_env(
+        "m2kp",
+        &[(
+            "ZOEN_LIMITS",
+            "connect_ip=1000/m:1000,lookup_account=1000/m:1000",
+        )],
+    )
+    .await;
+    w.init("ana", "Ana");
+    w.init("bruno", "Bruno");
+    let bruno = w.id_of("bruno").await;
+    let sql =
+        format!("SELECT count(*) FROM key_packages WHERE identity = '{bruno}' AND NOT last_resort");
+    assert_eq!(w.count(&sql).await, 32);
+
+    // Bruno is away: 25 groups claim 25 of his packages.
+    for i in 0..25 {
+        w.zoen("ana", &["group", &format!("Roda {i}"), "@bruno"]);
+    }
+    assert_eq!(w.count(&sql).await, 7);
+    // He comes back: the relay says he's low, his device publishes 25 more.
+    w.zoen("bruno", &["sync"]);
+    assert_eq!(w.count(&sql).await, 32);
+
+    // Down to 8 while he isn't looking: nothing to do yet.
+    for i in 25..49 {
+        w.zoen("ana", &["group", &format!("Roda {i}"), "@bruno"]);
+    }
+    assert_eq!(w.count(&sql).await, 8);
+    w.zoen("bruno", &["sync"]);
+    assert_eq!(w.count(&sql).await, 8);
+
+    // Online when one more group takes him under 8: he refills while it happens.
+    let watch = w.spawn_zoen("bruno", &["watch", "--for", "25"]);
+    w.wait_online(1);
+    w.zoen("ana", &["group", "Roda 49", "@bruno"]);
+    let mut stock = 0;
+    for _ in 0..200 {
+        stock = w.count(&sql).await;
+        if stock == 32 {
+            break;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+    }
+    assert_eq!(stock, 32, "refilled while watching");
+    let out = watch.wait_with_output().expect("watch");
+    assert!(
+        out.status.success(),
+        "{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+
+    // A group made from a refilled package opens like any other, and so do the old ones.
+    w.zoen("ana", &["group", "Roda nova", "@bruno"]);
+    for chat in ["Roda nova", "Roda 0", "Roda 24", "Roda 49"] {
+        let text = format!("oi na {chat}: tucano");
+        w.zoen("ana", &["send", chat, &text]);
+        assert!(w.zoen("bruno", &["read", chat]).contains(&text), "{chat}");
+    }
+    let v = w.zoen("bruno", &["verify"]);
+    assert!(!v.contains("BROKEN"), "{v}");
+}
+
+/// The seqs of the relay's stored entries for `space` that are pruned stubs, checking each
+/// one is a sealed entry with no MLS bytes left.
+async fn pruned_seqs(w: &World, space: &str) -> Vec<u64> {
+    w.events_in(space)
+        .await
+        .iter()
+        .filter(|ev| ev.env.is_pruned())
+        .map(|ev| {
+            let (_, data) = ev
+                .env
+                .sealed_data()
+                .expect("only sealed entries are pruned");
+            assert!(data.is_empty(), "a stub keeps no ciphertext");
+            ev.seq
+        })
+        .collect()
+}
+
+/// ADR 0026: the relay prunes ciphertext every member already holds. Members keep their
+/// history, someone added later holds pruning back until she checkpoints, and she still
+/// links the whole chain, joins from her Welcome and reads on.
+#[tokio::test]
+async fn the_relay_prunes_what_every_member_holds() {
+    let mut w = World::new("m2prune").await;
+    // Checkpoints every 4 entries instead of 256, so a few messages reach pruning.
+    w.set_client_env("ZOEN_CHECKPOINT_EVERY", "4");
+    for (h, n) in [("ana", "Ana"), ("bruno", "Bruno"), ("carla", "Carla")] {
+        w.init(h, n);
+    }
+    let space = w.zoen("ana", &["group", "Poda", "@bruno"]);
+    let space = space.trim().to_string();
+    let early = "antes da poda: tucano-velho";
+    w.zoen("ana", &["send", "Poda", early]);
+    assert!(w.zoen("bruno", &["read", "Poda"]).contains(early));
+    let first = w
+        .events_in(&space)
+        .await
+        .iter()
+        .find(|ev| ev.env.sealed_kind() == Some(roda_proto::SealedKind::Application))
+        .map(|ev| ev.seq)
+        .expect("the first message is in the log");
+
+    // Both talk, read and checkpoint; once both checkpoints pass it, the first message goes.
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(60);
+    let mut i = 0;
+    while !pruned_seqs(&w, &space).await.contains(&first) {
+        assert!(std::time::Instant::now() < deadline, "nothing was pruned");
+        for who in ["ana", "bruno"] {
+            w.zoen(who, &["send", "Poda", &format!("{who} {i}")]);
+        }
+        for who in ["ana", "bruno"] {
+            w.sync_until(who, |s| s.contains("pending=0"));
+        }
+        i += 1;
+    }
+
+    // Only below what both members' devices hold: their latest checkpoints.
+    let stored = w.events_in(&space).await;
+    let mut reached: std::collections::HashMap<String, u64> = Default::default();
+    for ev in &stored {
+        if let Some(EventBody::Checkpoint { upto, .. }) = ev.env.body() {
+            let at = reached.entry(ev.env.author().to_string()).or_default();
+            *at = (*at).max(upto.seq);
+        }
+    }
+    assert_eq!(reached.len(), 2, "both checkpointed: {reached:?}");
+    let floor = *reached.values().min().unwrap();
+    let pruned = pruned_seqs(&w, &space).await;
+    assert!(
+        pruned.iter().all(|s| *s < floor),
+        "{pruned:?} below {floor}"
+    );
+    // Control events stay as they were.
+    assert!(stored
+        .iter()
+        .filter(|ev| ev.env.body().is_some())
+        .all(|ev| !ev.env.is_pruned()));
+
+    // Members keep their history: it's on their devices.
+    for who in ["ana", "bruno"] {
+        assert!(w.zoen(who, &["read", "Poda"]).contains(early), "{who}");
+        let v = w.zoen(who, &["verify"]);
+        assert!(!v.contains("BROKEN"), "{who}: {v}");
+    }
+
+    // Carla is added: nothing from her addition on is pruned until she checkpoints.
+    w.zoen("ana", &["add", "Poda", "@carla"]);
+    let added = w
+        .events_in(&space)
+        .await
+        .iter()
+        .rev()
+        .find(|ev| matches!(ev.env.body(), Some(EventBody::MemberAdded { .. })))
+        .map(|ev| ev.seq)
+        .unwrap();
+    for i in 0..3 {
+        for who in ["ana", "bruno"] {
+            w.zoen(who, &["send", "Poda", &format!("{who} sem a Carla {i}")]);
+            w.sync_until(who, |s| s.contains("pending=0"));
+        }
+    }
+    let held = pruned_seqs(&w, &space).await;
+    assert!(held.iter().all(|s| *s < added), "{held:?} vs {added}");
+
+    // She links the chain over the stubs, joins from her Welcome and reads on.
+    w.sync_until("carla", |s| s.contains("pending=0"));
+    assert!(w.zoen("carla", &["chats"]).contains("Poda"));
+    let late = "depois da poda: tucano-novo";
+    w.zoen("ana", &["send", "Poda", late]);
+    let carla = w.zoen("carla", &["read", "Poda"]);
+    assert!(carla.contains(late), "{carla}");
+    assert!(!carla.contains(early), "{carla}");
+    let v = w.zoen("carla", &["verify"]);
+    assert!(!v.contains("BROKEN"), "carla: {v}");
+}
+
+/// ADR 0027: a message written offline is sealed when it goes out, at the epoch the group is
+/// at then, so it arrives readable however many commits happened meanwhile (MLS keeps only a
+/// few past epochs; sealing at write time would have lost it past 4).
+#[tokio::test]
+async fn a_message_queued_offline_survives_many_commits() {
+    let w = World::new("m2queue").await;
+    let people = [
+        ("ana", "Ana"),
+        ("bruno", "Bruno"),
+        ("carla", "Carla"),
+        ("dora", "Dora"),
+        ("eva", "Eva"),
+        ("fabio", "Fabio"),
+        ("gabi", "Gabi"),
+    ];
+    for (h, n) in people {
+        w.init(h, n);
+    }
+    let space = w.zoen("ana", &["group", "Fila", "@bruno"]);
+    let space = space.trim().to_string();
+    w.sync_until("bruno", |s| s.contains("pending=0"));
+    let (start, _) = keys(&w.zoen("bruno", &["keys", "Fila"]));
+
+    let queued = "escrito sem rede: tucano-fila-longa";
+    let q = w.zoen("bruno", &["send", "Fila", queued, "--offline"]);
+    assert!(q.starts_with("queued"), "{q}");
+
+    // Five commits while Bruno is away.
+    for (h, _) in &people[2..] {
+        w.zoen("ana", &["add", "Fila", &format!("@{h}")]);
+        w.sync_until("ana", |s| s.contains("pending=0"));
+    }
+    let (now, _) = keys(&w.zoen("ana", &["keys", "Fila"]));
+    assert!(now >= start + 5, "epoch {start} -> {now}");
+
+    // He comes back: catches up through every commit, then seals and sends.
+    w.sync_until("bruno", |s| s.contains("pending=0"));
+    let (be, _) = keys(&w.zoen("bruno", &["keys", "Fila"]));
+    assert_eq!(be, now);
+    for (h, _) in people.iter().filter(|(h, _)| *h != "bruno") {
+        w.sync_until(h, |s| s.contains("pending=0"));
+        let read = w.zoen(h, &["read", "Fila"]);
+        assert!(read.contains(queued), "{h}:\n{read}");
+    }
+    // And the relay only ever saw it sealed.
+    let stored = w.events_in(&space).await;
+    assert!(stored
+        .iter()
+        .all(|ev| !matches!(ev.env.body(), Some(EventBody::MessagePosted { .. }))));
 }

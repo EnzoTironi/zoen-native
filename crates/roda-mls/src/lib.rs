@@ -9,8 +9,10 @@
 //!   leaves in the group is listed in the log, so a relay can't slip a reader in.
 //! - A sender can't decrypt its own application messages ([`Opened::Own`]). It keeps what it
 //!   sent, as every client already does.
-//! - State lives in the device's SQLite database, every value sealed with a state key from
-//!   the SecretVault ([`sealed`]).
+//! - State lives in the device's SQLite database, every value sealed with a state key
+//!   derived from the device secret ([`sealed`]).
+//! - The relay reads one thing: the epoch a commit was made at ([`commit_epoch`]), from the
+//!   clear MLS framing, so it can refuse a commit that lost the race for its epoch.
 //! - [`Device::checkpoint`] gives the epoch and the digest members sign into `Checkpoint`
 //!   events, so members can tell when they were shown different groups.
 
@@ -65,6 +67,24 @@ pub fn key_package_leaf(bytes: &[u8]) -> Result<Leaf, MlsError> {
         kp.leaf_node().credential(),
         kp.leaf_node().signature_key().as_slice(),
     )
+}
+
+/// The epoch a sealed commit was made at, from the clear framing of its PrivateMessage.
+/// `None` for anything that isn't a commit. The relay sequences at most one commit per
+/// epoch with this; it never needs a key.
+pub fn commit_epoch(data: &[u8]) -> Option<u64> {
+    let msg = MlsMessageIn::tls_deserialize_exact(data).ok()?;
+    let msg = msg.try_into_protocol_message().ok()?;
+    (msg.content_type() == ContentType::Commit).then(|| msg.epoch().as_u64())
+}
+
+/// The epoch an application message was sealed at, from its clear framing. `None` for
+/// anything else. The relay refuses one sealed at an epoch the group has left: members
+/// keep no past epochs, so nobody could open it.
+pub fn application_epoch(data: &[u8]) -> Option<u64> {
+    let msg = MlsMessageIn::tls_deserialize_exact(data).ok()?;
+    let msg = msg.try_into_protocol_message().ok()?;
+    (msg.content_type() == ContentType::Application).then(|| msg.epoch().as_u64())
 }
 
 pub(crate) fn validate_key_package(

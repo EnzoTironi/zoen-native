@@ -178,6 +178,14 @@ pub struct PbKeyPackages {
 }
 
 #[derive(Clone, PartialEq, Message)]
+pub struct PbKeyPackagesLow {
+    #[prost(string, tag = "1")]
+    pub device: String,
+    #[prost(uint32, tag = "2")]
+    pub remaining: u32,
+}
+
+#[derive(Clone, PartialEq, Message)]
 pub struct PbProfileChanged {
     #[prost(string, tag = "1")]
     pub identity: String,
@@ -257,6 +265,9 @@ pub struct PbEnvelope {
     pub cert: Option<String>,
     #[prost(string, optional, tag = "4")]
     pub invite: Option<String>,
+    /// A pruned sealed entry: the original's wire hash (`content` lost its MLS bytes).
+    #[prost(string, optional, tag = "5")]
+    pub pruned: Option<String>,
 }
 
 #[derive(Clone, PartialEq, Message)]
@@ -305,7 +316,7 @@ pub mod pb_ephemeral {
 pub struct PbServerFrame {
     #[prost(
         oneof = "pb_server_frame::F",
-        tags = "1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13"
+        tags = "1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14"
     )]
     pub f: Option<pb_server_frame::F>,
 }
@@ -341,6 +352,8 @@ pub mod pb_server_frame {
         Error(PbError),
         #[prost(message, tag = "13")]
         ProfileChanged(PbProfileChanged),
+        #[prost(message, tag = "14")]
+        KeyPackagesLow(PbKeyPackagesLow),
     }
 }
 
@@ -595,11 +608,14 @@ fn envelope_to(e: &Envelope) -> PbEnvelope {
         sig: e.sig.clone(),
         cert: e.cert.clone(),
         invite: e.invite.clone(),
+        pruned: e.pruned_wire().map(str::to_string),
     }
 }
 
 fn envelope_from(e: PbEnvelope) -> Result<Envelope, DecodeError> {
-    Envelope::new(e.content, e.sig, e.cert, e.invite).ok_or_else(|| bad("envelope content"))
+    Envelope::new(e.content, e.sig, e.cert, e.invite)
+        .map(|env| env.with_pruned(e.pruned))
+        .ok_or_else(|| bad("envelope content"))
 }
 
 fn ephemeral_to(space: &str, from: &str, k: &EphemeralKind) -> PbEphemeral {
@@ -777,6 +793,8 @@ impl ClientFrame {
                     pb_req::Op::ClaimKeyPackages(p) => Op::ClaimKeyPackages { ids: p.ids },
                 },
             },
+            // Only the relay prunes: a device can't hand it a stub.
+            F::Publish(e) if e.pruned.is_some() => return Err(bad("a pruned envelope")),
             F::Publish(e) => ClientFrame::Publish {
                 env: envelope_from(e)?,
             },
@@ -899,6 +917,12 @@ impl ServerFrame {
                     version: *version,
                 })
             }
+            ServerFrame::KeyPackagesLow { device, remaining } => {
+                F::KeyPackagesLow(PbKeyPackagesLow {
+                    device: device.clone(),
+                    remaining: *remaining,
+                })
+            }
             ServerFrame::Joined { space } => F::Joined(space.clone()),
             ServerFrame::SyncDone => F::SyncDone(PbEmpty {}),
             ServerFrame::Pong => F::Pong(PbEmpty {}),
@@ -1008,6 +1032,10 @@ impl ServerFrame {
             F::ProfileChanged(p) => ServerFrame::ProfileChanged {
                 identity: p.identity,
                 version: p.version,
+            },
+            F::KeyPackagesLow(k) => ServerFrame::KeyPackagesLow {
+                device: k.device,
+                remaining: k.remaining,
             },
             F::Joined(space) => ServerFrame::Joined { space },
             F::SyncDone(_) => ServerFrame::SyncDone,
@@ -1194,6 +1222,10 @@ mod tests {
             ServerFrame::ProfileChanged {
                 identity: "i".into(),
                 version: 4,
+            },
+            ServerFrame::KeyPackagesLow {
+                device: "d".into(),
+                remaining: 3,
             },
             ServerFrame::Joined { space: "sp".into() },
             ServerFrame::SyncDone,

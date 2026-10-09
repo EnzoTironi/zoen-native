@@ -8,6 +8,11 @@
 //! ("s", space, "log", seq)             -> Sequenced (the wire bytes)
 //! ("s", space, "dedupe", author, cid)  -> seq
 //! ("s", space, "m", identity)          -> role
+//! ("s", space, "gone", identity)       -> seq of their removal (until they're added back)
+//! ("s", space, "mls")                  -> (next commit epoch, device of the last commit)
+//! ("s", space, "ck", identity, device) -> seq a member device holds up to (end-to-end only;
+//!                                         device "*" = added, no checkpoint yet)
+//! ("s", space, "pruned")               -> first seq not pruned
 //! ("i", identity, space)               -> ""            membership by identity
 //! ("inv", code_hash)                   -> (space, role, created_by, expires_ms, max_uses, uses)
 //! ```
@@ -24,6 +29,11 @@
 //! finds a different head and reloads. That lets every other read under the Space be a
 //! snapshot read. A commit with an unknown result retries into the dedupe keys and answers
 //! `Duplicate`.
+//!
+//! Pruning (ADR 0026) is the one rewrite: once every current member has checkpointed, a
+//! sealed entry below the lowest checkpoint is held by every member device, and its stored
+//! bytes become a stub without the MLS data (same header, same chain hash). It happens in
+//! the transaction of the checkpoint that moves the floor, a bounded batch at a time.
 
 use async_trait::async_trait;
 use foundationdb::{
@@ -70,13 +80,24 @@ struct SpaceState {
     kind: Option<SpaceKind>,
     privacy: Option<Privacy>,
     creator: String,
+    mls: Option<(u64, String)>,
     members: BTreeMap<String, Role>,
+    /// End-to-end only: what each member device holds, by (identity, device).
+    holds: BTreeMap<(String, String), u64>,
+    /// First seq not pruned.
+    pruned: u64,
     /// Hashes of the newest entries, by seq, so `seen` checks need no read.
     recent: BTreeMap<u64, String>,
 }
 
 /// Recent hashes kept per Space. Clients mostly cite the newest entries they saw.
 const RECENT: usize = 1024;
+
+/// The device name of a member's hold from when they were added until they checkpoint.
+const ADDED: &str = "*";
+
+/// Entries one transaction prunes at most; the next checkpoint goes on from there.
+const PRUNE_BATCH: usize = 256;
 
 /// The seqs an envelope's admission needs the chain hash of.
 fn cited(env: &Envelope) -> impl Iterator<Item = u64> {
@@ -88,6 +109,23 @@ fn cited(env: &Envelope) -> impl Iterator<Item = u64> {
 }
 
 impl SpaceState {
+    /// Where pruning may go up to (exclusive): the lowest seq a current member device
+    /// holds, once every current member holds something. `None` while anyone is missing.
+    fn prune_floor(&self) -> Option<u64> {
+        if self.privacy != Some(Privacy::EndToEnd) || self.members.is_empty() {
+            return None;
+        }
+        let all_hold = self.members.keys().all(|m| {
+            self.holds
+                .range((m.clone(), String::new())..)
+                .next()
+                .is_some_and(|((who, _), _)| who == m)
+        });
+        all_hold
+            .then(|| self.holds.values().copied().min())
+            .flatten()
+    }
+
     fn advance(&mut self, seq: u64, hash: &str) {
         self.head = Some((seq, hash.to_string()));
         self.recent.insert(seq, hash.to_string());
@@ -278,11 +316,26 @@ impl Cell {
             state.privacy = parse(&privacy);
             state.creator = creator;
         }
+        if let Some(v) = trx.get(&self.space_key(space, "mls"), true).await? {
+            let (next, device): (i64, String) = unpack(&v).map_err(|e| custom(e.to_string()))?;
+            state.mls = Some((next as u64, device));
+        }
         state.members = self
             .members_in(trx, space, true)
             .await?
             .into_iter()
             .collect();
+        let holds = self.space_range(space, "ck");
+        for (k, v) in Self::scan(trx, holds.range(), usize::MAX, true).await? {
+            let (who, device): (String, String) =
+                holds.unpack(&k).map_err(|e| custom(e.to_string()))?;
+            let at: i64 = unpack(&v).map_err(|e| custom(e.to_string()))?;
+            state.holds.insert((who, device), at as u64);
+        }
+        if let Some(v) = trx.get(&self.space_key(space, "pruned"), true).await? {
+            let at: i64 = unpack(&v).map_err(|e| custom(e.to_string()))?;
+            state.pruned = at as u64;
+        }
         state.advance(seq, &hash);
         Ok(state)
     }
@@ -403,6 +456,7 @@ impl Cell {
                 facts.target_role = target.and_then(|t| state.members.get(&t).copied());
                 facts.member_count = state.members.len() as u32;
                 facts.privacy = state.privacy;
+                facts.mls = state.mls.clone();
                 let hash_at = |seq: u64| {
                     (seq <= *h)
                         .then(|| {
@@ -456,6 +510,10 @@ impl Cell {
                     state.kind = Some(kind);
                     state.privacy = Some(privacy);
                     state.creator = env.author().to_string();
+                    if privacy == Privacy::EndToEnd {
+                        self.put_mls(trx, space, &mut state, 0, String::new());
+                        self.put_hold(trx, space, &mut state, env.author(), ADDED, seq);
+                    }
                     self.put_member(trx, space, env.author(), Role::Owner);
                     state.members.insert(env.author().to_string(), Role::Owner);
                 }
@@ -471,13 +529,24 @@ impl Cell {
                         }
                     }
                     self.put_member(trx, space, &identity, role);
+                    trx.clear(&self.space_key(space, ("gone", identity.as_str())));
                     state.members.insert(identity.clone(), role);
+                    if state.privacy == Some(Privacy::EndToEnd) {
+                        // Their Welcome comes after this: nothing from here on is pruned
+                        // until they checkpoint.
+                        self.put_hold(trx, space, &mut state, &identity, ADDED, seq);
+                    }
                     joined = Some(identity);
                 }
                 Effect::Remove { identity } => {
                     trx.clear(&self.space_key(space, ("m", identity.as_str())));
                     trx.clear(&self.root.pack(&("i", identity.as_str(), space)));
+                    trx.set(
+                        &self.space_key(space, ("gone", identity.as_str())),
+                        &pack(&(seq as i64)),
+                    );
                     state.members.remove(&identity);
+                    self.drop_holds(trx, space, &mut state, &identity);
                     removed = Some(identity);
                 }
                 Effect::Encrypt => {
@@ -491,6 +560,30 @@ impl Cell {
                         )),
                     );
                     state.privacy = Some(Privacy::EndToEnd);
+                    self.put_mls(trx, space, &mut state, 0, String::new());
+                    let members: Vec<String> = state.members.keys().cloned().collect();
+                    for m in members {
+                        self.put_hold(trx, space, &mut state, &m, ADDED, seq);
+                    }
+                }
+                Effect::Commit { epoch, device } => {
+                    self.put_mls(trx, space, &mut state, epoch + 1, device);
+                }
+                Effect::Checkpoint { device, upto } => {
+                    if state.privacy == Some(Privacy::EndToEnd) && !device.is_empty() {
+                        let who = env.author().to_string();
+                        let had = state.holds.get(&(who.clone(), device.clone())).copied();
+                        if had.is_none_or(|h| h < upto) {
+                            self.put_hold(trx, space, &mut state, &who, &device, upto);
+                        }
+                        if state
+                            .holds
+                            .remove(&(who.clone(), ADDED.to_string()))
+                            .is_some()
+                        {
+                            trx.clear(&self.space_key(space, ("ck", who.as_str(), ADDED)));
+                        }
+                    }
                 }
                 Effect::Nothing => {}
             }
@@ -508,7 +601,84 @@ impl Cell {
                 trx.set(&head_key, &pack(&(*seq as i64, hash.as_str())));
             }
         }
+        self.prune(trx, space, &mut state).await?;
         Ok((results, state))
+    }
+
+    /// Prunes sealed entries below the floor every current member device has reached, a
+    /// batch at a time. Stubs keep the header and the chain hash, so `seen` and checkpoint
+    /// checks and dedupe answers still work, and a later joiner can still link the chain.
+    async fn prune(
+        &self,
+        trx: &Transaction,
+        space: &str,
+        state: &mut SpaceState,
+    ) -> Result<(), FdbBindingError> {
+        let Some(floor) = state.prune_floor() else {
+            return Ok(());
+        };
+        if floor <= state.pruned {
+            return Ok(());
+        }
+        let begin = self.space_key(space, ("log", state.pruned as i64));
+        let end = self.space_key(space, ("log", floor as i64));
+        let rows = Self::scan(trx, (begin, end), PRUNE_BATCH, true).await?;
+        let mut next = floor;
+        if rows.len() == PRUNE_BATCH {
+            let last = rows.last().map(|(k, _)| k.clone()).unwrap_or_default();
+            let log = self.space_range(space, "log");
+            let (seq,): (i64,) = log.unpack(&last).map_err(|e| custom(e.to_string()))?;
+            next = seq as u64 + 1;
+        }
+        for (k, v) in rows {
+            let ev = Sequenced::decode(&v).map_err(|e| custom(e.to_string()))?;
+            if let Some(stub) = ev.env.pruned() {
+                let stub = Sequenced { env: stub, ..ev };
+                trx.set(&k, &stub.encode());
+            }
+        }
+        trx.set(&self.space_key(space, "pruned"), &pack(&(next as i64)));
+        state.pruned = next;
+        Ok(())
+    }
+
+    fn put_hold(
+        &self,
+        trx: &Transaction,
+        space: &str,
+        state: &mut SpaceState,
+        who: &str,
+        device: &str,
+        at: u64,
+    ) {
+        trx.set(
+            &self.space_key(space, ("ck", who, device)),
+            &pack(&(at as i64)),
+        );
+        state
+            .holds
+            .insert((who.to_string(), device.to_string()), at);
+    }
+
+    fn drop_holds(&self, trx: &Transaction, space: &str, state: &mut SpaceState, who: &str) {
+        let range = self.root.subspace(&("s", space, "ck", who));
+        trx.clear_subspace_range(&range);
+        state.holds.retain(|(w, _), _| w != who);
+    }
+
+    fn put_mls(
+        &self,
+        trx: &Transaction,
+        space: &str,
+        state: &mut SpaceState,
+        next: u64,
+        device: String,
+    ) {
+        trx.set(
+            &self.space_key(space, "mls"),
+            &pack(&(next as i64, device.as_str())),
+        );
+        state.mls = Some((next, device));
     }
 
     fn put_member(&self, trx: &Transaction, space: &str, who: &str, role: Role) {
@@ -608,6 +778,24 @@ impl LogStore for FdbLog {
         self.cell
             .db
             .run(|trx, _| async move { self.cell.role_in(&trx, space, who).await })
+            .await
+            .map_err(store_err)
+    }
+
+    async fn removed_at(&self, space: &str, who: &str) -> Result<Option<u64>, StoreError> {
+        let key = self.cell.space_key(space, ("gone", who));
+        self.cell
+            .db
+            .run(|trx, _| {
+                let key = key.clone();
+                async move {
+                    Ok(trx
+                        .get(&key, true)
+                        .await?
+                        .and_then(|v| unpack::<i64>(&v).ok())
+                        .map(|seq| seq as u64))
+                }
+            })
             .await
             .map_err(store_err)
     }
