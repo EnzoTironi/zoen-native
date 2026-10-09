@@ -1,12 +1,18 @@
 package xyz.tironi.zoen
 
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import androidx.test.core.app.ApplicationProvider
+import java.io.File
+import java.util.UUID
 import org.json.JSONObject
 import org.junit.Assert.*
 import org.junit.Test
 import org.junit.runner.RunWith
 import xyz.tironi.zoen.miniapps.McpPayload
 import xyz.tironi.zoen.miniapps.WidgetSnapshot
+import xyz.tironi.zoen.miniapps.MiniAppSnapshots
+import xyz.tironi.zoen.core.RodaEngine
+import xyz.tironi.zoen.core.AppCallStatus
 
 @RunWith(AndroidJUnit4::class)
 class McpSecurityTest {
@@ -23,5 +29,23 @@ class McpSecurityTest {
         assertNull(WidgetSnapshot.decode(json().put("accentHex", "red;evil").toString()))
         assertNull(WidgetSnapshot.decode(json().put("template", "photo").put("photo", "https://evil.example/a.jpg").toString()))
         assertNull(WidgetSnapshot.decode(json().put("template", "ticket").toString()))
+    }
+
+    @Test fun publishedWidgetCannotHideNewerSignedSharedState() {
+        val context = ApplicationProvider.getApplicationContext<ZoenApplication>()
+        val folder = File(context.noBackupFilesDir, "widget-test-${UUID.randomUUID()}").apply { mkdirs() }
+        val core = RodaEngine.open(File(folder, "core.sqlite").absolutePath, "en")
+        try {
+            core.seedDemoIfEmpty()
+            val space = core.spaces().first { it.counterpart?.handle == "zoen" }
+            val item = core.installApp(space.id, "pet", "{\"name\":\"Snapshot donkey\"}")
+            assertTrue(MiniAppSnapshots.publish(item, JSONObject().put("template", "stat").put("title", "Old UI view").put("value", "7").put("accentHex", "#3D7A28").put("symbol", "pawprint.fill")))
+            assertEquals("Old UI view", WidgetSnapshot.from(item)?.title)
+            assertEquals(AppCallStatus.DONE, core.appCallTool(item.id, "pet_feed", "{}", false).status)
+            val changed = core.item(item.id)
+            assertTrue(changed.version > item.version)
+            assertNotEquals("Old UI view", WidgetSnapshot.from(changed)?.title)
+            assertTrue(core.verifyAll().all { it.valid })
+        } finally { MiniAppSnapshots.clear(); core.destroy(); folder.deleteRecursively() }
     }
 }

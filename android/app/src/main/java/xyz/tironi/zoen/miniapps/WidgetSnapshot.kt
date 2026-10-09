@@ -108,7 +108,7 @@ data class WidgetSnapshot(
 
         fun from(item: ItemDetail): WidgetSnapshot? {
             val app = item.app ?: return null
-            return MiniAppSnapshots.overrides[item.id]?.let { decode(it, item.id) }
+            return MiniAppSnapshots.overrides[item.id]?.takeIf { it.version == item.version }?.let { decode(it.json, item.id) }
                 ?: decode(app.snapshotJson, item.id)
         }
 
@@ -122,10 +122,11 @@ data class WidgetSnapshot(
 }
 
 object MiniAppSnapshots {
-    internal val overrides = ConcurrentHashMap<String, String>()
+    internal data class Published(val version: UInt, val json: String)
+    internal val overrides = ConcurrentHashMap<String, Published>()
     fun publish(item: ItemDetail, json: JSONObject): Boolean {
         val snapshot = WidgetSnapshot.published(item, json) ?: return false
-        overrides[item.id] = snapshot.toJson()
+        overrides[item.id] = Published(item.version, snapshot.toJson())
         return true
     }
     fun clear() { overrides.clear() }

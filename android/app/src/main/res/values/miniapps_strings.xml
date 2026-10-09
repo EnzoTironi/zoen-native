@@ -110,4 +110,9 @@
   <string name="miniapp_pin_home">Pin to Chats</string>
   <string name="miniapp_unpin_home">Unpin from Chats</string>
   <string name="miniapp_target_date">Target date</string>
+  <string name="miniapp_latitude">Latitude</string>
+  <string name="miniapp_longitude">Longitude</string>
+  <string name="miniapp_no_scores">No scores yet</string>
+  <string name="miniapp_continue">Continue</string>
+  <string name="miniapp_pause">Pause</string>
 </resources>

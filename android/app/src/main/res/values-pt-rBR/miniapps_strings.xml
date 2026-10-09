@@ -110,4 +110,9 @@
   <string name="miniapp_pin_home">Fixar em Chats</string>
   <string name="miniapp_unpin_home">Desafixar de Chats</string>
   <string name="miniapp_target_date">Data de destino</string>
+  <string name="miniapp_latitude">Latitude</string>
+  <string name="miniapp_longitude">Longitude</string>
+  <string name="miniapp_no_scores">Sem pontos ainda</string>
+  <string name="miniapp_continue">Continuar</string>
+  <string name="miniapp_pause">Pausar</string>
 </resources>

@@ -18,11 +18,13 @@ import androidx.webkit.WebViewCompat
 import androidx.webkit.WebViewFeature
 import androidx.webkit.ProfileStore
 import java.io.ByteArrayInputStream
-import java.net.InetAddress
+import java.net.Proxy
 import java.net.URL
 import java.util.TimeZone
 import java.util.UUID
-import javax.net.ssl.HttpsURLConnection
+import okhttp3.CookieJar
+import okhttp3.OkHttpClient
+import okhttp3.Request
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -100,6 +102,11 @@ class McpAppSession(
     private var sentState = ""
     var modelContext: JSONObject = JSONObject(); private set
     private val photos = MiniAppPhotoVault()
+    private val network = OkHttpClient.Builder().followRedirects(false).followSslRedirects(false)
+        .proxy(Proxy.NO_PROXY).cookieJar(CookieJar.NO_COOKIES)
+        .connectTimeout(8, java.util.concurrent.TimeUnit.SECONDS).readTimeout(8, java.util.concurrent.TimeUnit.SECONDS)
+        .callTimeout(12, java.util.concurrent.TimeUnit.SECONDS)
+        .dns(MiniAppDns({ grantedHosts })).build()
 
     init {
         scope.launch {
@@ -145,9 +152,11 @@ class McpAppSession(
         check(document.isNotEmpty())
         check(WebViewFeature.isFeatureSupported(WebViewFeature.WEB_MESSAGE_LISTENER) && WebViewFeature.isFeatureSupported(WebViewFeature.MULTI_PROFILE)) { "Update Android System WebView to open this mini-app" }
         return WebView(context).also { web ->
-            MiniAppWebProfiles.prepare()
-            WebViewCompat.setProfile(web, profileName)
-            WebViewCompat.getProfile(web).cookieManager.setAcceptCookie(false)
+            if (WebViewFeature.isFeatureSupported(WebViewFeature.MULTI_PROFILE)) {
+                MiniAppWebProfiles.prepare()
+                WebViewCompat.setProfile(web, profileName)
+                WebViewCompat.getProfile(web).cookieManager.setAcceptCookie(false)
+            } else error("Update Android System WebView to open this mini-app")
             MiniAppWebProfiles.live.add(profileName)
             view = web
             web.setBackgroundColor(android.graphics.Color.TRANSPARENT)
@@ -161,6 +170,7 @@ class McpAppSession(
                 @Suppress("DEPRECATION")
                 allowUniversalAccessFromFileURLs = false
                 domStorageEnabled = false
+                @Suppress("DEPRECATION")
                 databaseEnabled = false
                 javaScriptCanOpenWindowsAutomatically = false
                 setSupportMultipleWindows(false)
@@ -198,11 +208,11 @@ class McpAppSession(
                 override fun onReceivedSslError(view: WebView, handler: SslErrorHandler, error: android.net.http.SslError) { handler.cancel() }
                 override fun onRenderProcessGone(view: WebView, detail: RenderProcessGoneDetail): Boolean { onError("The mini-app stopped. Close it and open it again."); dispose(); return true }
             }
-            WebViewCompat.addWebMessageListener(web, "zoenMcp", setOf(origin)) { _, message, sourceOrigin, isMainFrame, reply ->
+            if (WebViewFeature.isFeatureSupported(WebViewFeature.WEB_MESSAGE_LISTENER)) WebViewCompat.addWebMessageListener(web, "zoenMcp", setOf(origin)) { _, message, sourceOrigin, isMainFrame, reply ->
                 if (disposed || message.type != WebMessageCompat.TYPE_STRING || !MiniAppSandbox.acceptsOrigin(sourceOrigin.toString(), origin, isMainFrame)) return@addWebMessageListener
                 val parsed = McpPayload.parse(message.data ?: return@addWebMessageListener) ?: return@addWebMessageListener
                 if (!messages.trySend(parsed to reply).isSuccess && parsed.id != null) reply.postMessage(JSONObject().put("jsonrpc", "2.0").put("id", parsed.id).put("error", JSONObject().put("code", -32001).put("message", "Too many pending requests")).toString())
-            }
+            } else error("Update Android System WebView to open this mini-app")
             web.loadUrl(mainUrl)
         }
     }
@@ -216,25 +226,18 @@ class McpAppSession(
             require(MiniAppSandbox.allowedNetwork(address, grantedHosts))
             require(kotlinx.coroutines.runBlocking { gateway.allowed(itemId, "net:${URL(address).host.lowercase()}") })
             val target = URL(address)
-            val resolved = InetAddress.getAllByName(target.host)
-            require(resolved.isNotEmpty() && resolved.all(MiniAppSandbox::publicAddress))
-            val connection = target.openConnection() as HttpsURLConnection
-            try {
-                connection.instanceFollowRedirects = false
-                connection.connectTimeout = 8_000; connection.readTimeout = 8_000
-                connection.setRequestProperty("Accept", "*/*")
-                connection.setRequestProperty("User-Agent", "ZoenMiniApp/0.1 Android")
-                val code = connection.responseCode
-                if (code in 300..399) {
-                    address = URL(target, connection.getHeaderField("Location") ?: error("No redirect target")).toExternalForm()
+            val request = Request.Builder().url(address).get().header("Accept", "*/*").header("User-Agent", "ZoenMiniApp/0.1 Android").build()
+            network.newCall(request).execute().use { response ->
+                if (response.code in 300..399) {
+                    address = URL(target, response.header("Location") ?: error("No redirect target")).toExternalForm()
                     return@repeat
                 }
-                require(code in 200..299 && connection.contentLengthLong <= 8_388_608)
-                val bytes = connection.inputStream.use { it.readBounded(8_388_608) }
+                require(response.code in 200..299 && response.body.contentLength() <= 8_388_608)
+                val bytes = response.body.byteStream().use { it.readBounded(8_388_608) }
                 require(bytes.size <= 8_388_608)
-                val mime = connection.contentType?.substringBefore(';') ?: "application/octet-stream"
+                val mime = response.body.contentType()?.let { "${it.type}/${it.subtype}" } ?: "application/octet-stream"
                 return WebResourceResponse(mime, "UTF-8", 200, "OK", mapOf("Access-Control-Allow-Origin" to origin, "Cache-Control" to "no-store"), ByteArrayInputStream(bytes))
-            } finally { connection.disconnect() }
+            }
         }
         blocked()
     }.getOrElse { blocked() }
@@ -322,6 +325,7 @@ class McpAppSession(
                     if (decision == MiniAppConsent.DENY) { error(id, -32003, "You did not allow it"); return }
                     gateway.grant(itemId, cap, purpose, decision == MiniAppConsent.ALWAYS)
                 }
+                if (!active || disposed || !gateway.allowed(itemId, cap)) { error(id, -32003, "This mini-app is not active or its access was revoked"); return }
                 val result = native(cap, params)
                 respond(id, photos.captureResult(cap, result))
             } else error(id, -32601, "Method not found: ${message.method}")
@@ -329,6 +333,7 @@ class McpAppSession(
     }
 
     fun update(item: ItemDetail, newLocale: String, newDark: Boolean, newWidth: Float, newFontScale: Float, newMembers: JSONArray) {
+        require(item.id == itemId)
         latest = item; locale = newLocale; dark = newDark; width = newWidth; members = newMembers; fontScale = newFontScale
         view?.settings?.textZoom = (fontScale * 100).toInt().coerceIn(80, 200)
         if (initialized) {
@@ -342,10 +347,15 @@ class McpAppSession(
         if (disposed) return
         if (initialized) deliver(JSONObject().put("jsonrpc", "2.0").put("id", 1_000_001).put("method", "ui/resource-teardown").put("params", JSONObject().put("reason", "Mini-app closed")))
         disposed = true; messages.close(); scope.cancel(); photos.clear()
+        network.dispatcher.cancelAll(); network.connectionPool.evictAll(); network.dispatcher.executorService.shutdown()
         view?.apply {
-            stopLoading(); WebViewCompat.removeWebMessageListener(this, "zoenMcp")
-            val profile = WebViewCompat.getProfile(this)
-            profile.cookieManager.removeAllCookies(null); profile.webStorage.deleteAllData(); clearCache(true)
+            stopLoading()
+            if (WebViewFeature.isFeatureSupported(WebViewFeature.WEB_MESSAGE_LISTENER)) WebViewCompat.removeWebMessageListener(this, "zoenMcp")
+            if (WebViewFeature.isFeatureSupported(WebViewFeature.MULTI_PROFILE)) {
+                val profile = WebViewCompat.getProfile(this)
+                profile.cookieManager.removeAllCookies(null); profile.webStorage.deleteAllData()
+            }
+            clearCache(true)
             clearHistory(); removeAllViews(); destroy()
             MiniAppWebProfiles.live.remove(profileName)
         }
@@ -388,7 +398,7 @@ class McpAppSession(
     private fun notify(method: String, params: JSONObject) = deliver(JSONObject().put("jsonrpc", "2.0").put("method", method).put("params", params))
     private fun respond(id: Any, result: Any) = deliver(JSONObject().put("jsonrpc", "2.0").put("id", id).put("result", result))
     private fun error(id: Any, code: Int, message: String) = deliver(JSONObject().put("jsonrpc", "2.0").put("id", id).put("error", JSONObject().put("code", code).put("message", message.take(2_000))))
-    private fun deliver(message: JSONObject) { if (!disposed) proxy?.postMessage(message.toString()) }
+    private fun deliver(message: JSONObject) { if (!disposed && WebViewFeature.isFeatureSupported(WebViewFeature.WEB_MESSAGE_LISTENER)) proxy?.postMessage(message.toString()) }
     companion object { const val PROTOCOL = "2026-01-26" }
 }
 
@@ -398,7 +408,9 @@ private object MiniAppWebProfiles {
     fun prepare() {
         if (cleaned) return
         cleaned = true
-        val store = ProfileStore.getInstance()
-        store.allProfileNames.filter { it.startsWith("zoen-miniapp-") && it !in live }.forEach { name -> runCatching { store.deleteProfile(name) } }
+        if (WebViewFeature.isFeatureSupported(WebViewFeature.MULTI_PROFILE)) {
+            val store = ProfileStore.getInstance()
+            store.allProfileNames.filter { it.startsWith("zoen-miniapp-") && it !in live }.forEach { name -> runCatching { store.deleteProfile(name) } }
+        }
     }
 }

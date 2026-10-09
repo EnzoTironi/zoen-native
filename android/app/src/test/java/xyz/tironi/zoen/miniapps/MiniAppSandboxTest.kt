@@ -23,7 +23,7 @@ class MiniAppSandboxTest {
         assertTrue(MiniAppSandbox.csp(setOf("tiles.openfreemap.org")).contains("connect-src https://tiles.openfreemap.org"))
     }
     @Test fun networkDnsAnswersMustBePublicAddresses() {
-        listOf("127.0.0.1", "10.0.2.2", "192.168.1.1", "172.16.1.1", "169.254.169.254", "100.64.0.1", "::1", "fc00::1", "fe80::1").forEach { assertFalse(it, MiniAppSandbox.publicAddress(java.net.InetAddress.getByName(it))) }
+        listOf("127.0.0.1", "10.0.2.2", "192.168.1.1", "172.16.1.1", "169.254.169.254", "100.64.0.1", "198.51.100.1", "203.0.113.1", "::1", "fc00::1", "fe80::1", "2001:db8::1", "2002:7f00:1::1", "64:ff9b::a00:201").forEach { assertFalse(it, MiniAppSandbox.publicAddress(java.net.InetAddress.getByName(it))) }
         assertTrue(MiniAppSandbox.publicAddress(java.net.InetAddress.getByName("8.8.8.8")))
         assertTrue(MiniAppSandbox.publicAddress(java.net.InetAddress.getByName("2001:4860:4860::8888")))
     }

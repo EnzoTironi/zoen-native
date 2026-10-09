@@ -50,12 +50,14 @@ object MiniAppSandbox {
     fun publicAddress(address: java.net.InetAddress): Boolean {
         if (address.isAnyLocalAddress || address.isLoopbackAddress || address.isLinkLocalAddress || address.isSiteLocalAddress || address.isMulticastAddress) return false
         val bytes = address.address.map { it.toInt() and 255 }
-        fun ipv4(b: List<Int>): Boolean = b[0] in 1..223 && b[0] !in setOf(10, 127) && !(b[0] == 100 && b[1] in 64..127) && !(b[0] == 169 && b[1] == 254) && !(b[0] == 172 && b[1] in 16..31) && !(b[0] == 192 && b[1] in setOf(0, 168)) && !(b[0] == 198 && b[1] in 18..19)
+        fun ipv4(b: List<Int>): Boolean = b[0] in 1..223 && b[0] !in setOf(10, 127) && !(b[0] == 100 && b[1] in 64..127) && !(b[0] == 169 && b[1] == 254) && !(b[0] == 172 && b[1] in 16..31) && !(b[0] == 192 && b[1] in setOf(0, 168)) && !(b[0] == 192 && b[1] == 88 && b[2] == 99) && !(b[0] == 198 && (b[1] in 18..19 || b[1] == 51 && b[2] == 100)) && !(b[0] == 203 && b[1] == 0 && b[2] == 113)
         if (bytes.size == 4) return ipv4(bytes)
         if (bytes.size != 16) return false
         val mapped = bytes.take(10).all { it == 0 } && bytes[10] == 255 && bytes[11] == 255
         val nat64 = bytes.take(12) == listOf(0,100,255,155,0,0,0,0,0,0,0,0)
-        return if (mapped || nat64) ipv4(bytes.takeLast(4)) else bytes[0] in 32..63
+        if (mapped || nat64) return ipv4(bytes.takeLast(4))
+        if (bytes[0] !in 32..63 || bytes[0] == 32 && bytes[1] == 2) return false
+        return !(bytes.take(4) in listOf(listOf(32,1,0,0), listOf(32,1,13,184), listOf(32,1,0,2)))
     }
     private val domains = Regex("(?=.{1,253}$)([a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\\.)+[a-z]{2,63}")
     fun validDomain(host: String): Boolean = domains.matches(host) && !host.endsWith(".local") && !host.endsWith(".localhost") && !host.endsWith(".internal") && !host.endsWith(".invalid")

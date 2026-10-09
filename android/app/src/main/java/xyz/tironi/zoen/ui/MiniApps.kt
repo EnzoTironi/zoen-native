@@ -1,7 +1,6 @@
 package xyz.tironi.zoen.ui
 
 import androidx.compose.foundation.Canvas
-import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -15,25 +14,22 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.Path
-import androidx.compose.ui.graphics.drawscope.Stroke
-import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.withContext
 import org.json.JSONArray
 import org.json.JSONObject
-import java.text.NumberFormat
 import xyz.tironi.zoen.R
 import xyz.tironi.zoen.ZoenViewModel
 import xyz.tironi.zoen.core.*
 import xyz.tironi.zoen.data.AppState
 import xyz.tironi.zoen.miniapps.McpAppView
+import xyz.tironi.zoen.miniapps.NativeHike
+import xyz.tironi.zoen.miniapps.MiniAppPins
+import xyz.tironi.zoen.miniapps.NativeGlobe
 
 val nativeMiniApps = setOf("pet", "poll", "list", "hike", "maptap", "recipe", "countdown")
 
@@ -99,9 +95,9 @@ private fun NativeMiniAppScreen(model: ZoenViewModel, state: AppState, item: Ite
                 "poll" -> PollApp(data, action, Modifier.weight(1f))
                 "list" -> ListApp(data, action, Modifier.weight(1f))
                 "recipe" -> RecipeApp(data, action, Modifier.weight(1f))
-                "maptap" -> MapTapApp(data, state.me?.name.orEmpty(), action, Modifier.weight(1f))
-                "hike" -> HikeApp(data, action, Modifier.weight(1f))
-                "countdown" -> CountdownApp(data, Modifier.weight(1f))
+                "maptap" -> MapTapApp(data, state, action, Modifier.weight(1f))
+                "hike" -> NativeHike(model, state, item, data, action, Modifier.weight(1f))
+                "countdown" -> CountdownApp(model, item, data, Modifier.weight(1f))
                 else -> EmptyState(app.name, app.headline)
             }
         }
@@ -128,6 +124,9 @@ private fun PetApp(data: JSONObject, action: AppAction, modifier: Modifier) {
     var rename by remember { mutableStateOf(false) }
     var name by rememberSaveable { mutableStateOf("") }
     var dash by rememberSaveable { mutableStateOf(false) }
+    var emote by remember { mutableStateOf<String?>(null) }
+    val emoteLabel = stringResource(R.string.miniapp_emotes)
+    LaunchedEffect(emote) { if (emote != null) { delay(1_800); emote = null } }
     val asleep = data.optBoolean("asleep")
     val released = data.optBoolean("released")
     LazyColumn(modifier, contentPadding = PaddingValues(24.dp), verticalArrangement = Arrangement.spacedBy(18.dp)) {
@@ -136,6 +135,10 @@ private fun PetApp(data: JSONObject, action: AppAction, modifier: Modifier) {
                 PixelDonkey(Modifier.fillMaxWidth().height(180.dp), asleep)
                 Text(data.optString("name"), style = MaterialTheme.typography.displaySmall)
                 Text(data.optString("mood"), color = MaterialTheme.colorScheme.onSurfaceVariant)
+                if (emote != null) Text(emote.orEmpty(), style = MaterialTheme.typography.displayMedium)
+                Row(Modifier.semantics { contentDescription = emoteLabel }) {
+                    listOf("❤️", "🥕", "😂", "🫶", "😴").forEach { emoji -> TextButton(onClick = { emote = emoji }, enabled = !asleep && !released) { Text(emoji, style = MaterialTheme.typography.headlineSmall) } }
+                }
             }
         }
         item { Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.tertiaryContainer)) {
@@ -158,8 +161,8 @@ private fun PetApp(data: JSONObject, action: AppAction, modifier: Modifier) {
         }
         item { AppLog(data) }
         val best = data.optJSONObject("dash")?.optJSONObject("best")
-        if (best != null) item { best.keys().asSequence().toList().sortedByDescending { best.optJSONObject(it)?.optInt("meters") ?: 0 }.forEach { person ->
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) { Text(person); Text(stringResource(R.string.score, best.optJSONObject(person)?.optInt("meters") ?: 0)) }
+        if (best != null && best.length() > 0) item { Text(stringResource(R.string.miniapp_leaderboard), style = MaterialTheme.typography.titleLarge); best.keys().asSequence().toList().sortedByDescending { best.optJSONObject(it)?.optInt("meters") ?: 0 }.forEachIndexed { rank, person ->
+            Row(Modifier.fillMaxWidth().padding(vertical = 8.dp), horizontalArrangement = Arrangement.SpaceBetween) { Text("${rank + 1}. $person"); Text(stringResource(R.string.score, best.optJSONObject(person)?.optInt("meters") ?: 0)) }
         } }
     }
     if (rename) AlertDialog(onDismissRequest = { rename = false }, title = { Text(stringResource(R.string.rename)) }, text = { OutlinedTextField(name, { name = it.take(18) }, label = { Text(stringResource(R.string.name)) }) }, confirmButton = { TextButton(onClick = { rename = false; action("pet_rename", JSONObject().put("name", name)) }, enabled = name.isNotBlank()) { Text(stringResource(R.string.save)) } }, dismissButton = { TextButton(onClick = { rename = false }) { Text(stringResource(R.string.cancel)) } })
@@ -229,6 +232,7 @@ private fun ListApp(data: JSONObject, action: AppAction, modifier: Modifier) {
             OutlinedTextField(text, { text = it }, Modifier.weight(1f), placeholder = { Text(stringResource(R.string.add_item)) })
             FilledIconButton(onClick = { action("list_add", JSONObject().put("text", text)); text = "" }, enabled = text.isNotBlank()) { Icon(Icons.Rounded.Add, stringResource(R.string.add_item)) }
         } }
+        item { OutlinedButton(onClick = { action("list_send_whatsapp", JSONObject()) }, Modifier.fillMaxWidth()) { Icon(Icons.Rounded.Share, null); Spacer(Modifier.width(8.dp)); Text(stringResource(R.string.miniapp_send_whatsapp)) } }
         item { AppLog(data) }
     }
 }
@@ -247,16 +251,16 @@ private fun RecipeApp(data: JSONObject, action: AppAction, modifier: Modifier) {
         item { Icon(Icons.Rounded.Restaurant, null, Modifier.size(48.dp), tint = MaterialTheme.colorScheme.tertiary); Text(data.optString("title"), style = MaterialTheme.typography.displaySmall); Text(data.optString("subtitle"), color = MaterialTheme.colorScheme.onSurfaceVariant) }
         item { Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             Text(stringResource(R.string.servings), Modifier.weight(1f))
-            OutlinedIconButton(onClick = { action("recipe_servings", JSONObject().put("servings", servings - 1)) }, enabled = servings > 1) { Icon(Icons.Rounded.Remove, null) }
+            OutlinedIconButton(onClick = { action("recipe_servings", JSONObject().put("servings", servings - 1)) }, enabled = servings > 1) { Icon(Icons.Rounded.Remove, stringResource(R.string.miniapp_servings_less)) }
             Text(servings.toString(), style = MaterialTheme.typography.titleLarge)
-            OutlinedIconButton(onClick = { action("recipe_servings", JSONObject().put("servings", servings + 1)) }, enabled = servings < 12) { Icon(Icons.Rounded.Add, null) }
+            OutlinedIconButton(onClick = { action("recipe_servings", JSONObject().put("servings", servings + 1)) }, enabled = servings < 12) { Icon(Icons.Rounded.Add, stringResource(R.string.miniapp_servings_more)) }
         } }
         item { SectionLabel(stringResource(R.string.ingredients)) }
         items(ingredients, key = { it.optString("id") }) { ingredient ->
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Checkbox(ingredient.optBoolean("done"), onCheckedChange = { action("recipe_check", JSONObject().put("id", ingredient.optString("id"))) })
                 val quantity = ingredient.optDouble("qty") * servings / data.optInt("baseServings", 2).coerceAtLeast(1)
-                Text(NumberFormat.getNumberInstance().format(quantity) + " " + ingredient.optString("unit") + " " + ingredient.optString("name"))
+                Text(recipeAmount(quantity, ingredient.optString("unit")) + " " + ingredient.optString("name"), textDecoration = if (ingredient.optBoolean("done")) TextDecoration.LineThrough else null)
             }
         }
         if (cooking == null) item { Button(onClick = { action("recipe_cook", JSONObject().put("step", 0)) }, Modifier.fillMaxWidth()) { Text(stringResource(R.string.cook)) } }
@@ -268,97 +272,124 @@ private fun RecipeApp(data: JSONObject, action: AppAction, modifier: Modifier) {
                 if (step != null) {
                     val seconds = step.optLong("minutes", 0) * 60
                     if (seconds > 0) OutlinedButton(onClick = { timerEnd = System.currentTimeMillis() + seconds * 1000 }) { Icon(Icons.Rounded.Timer, null); Spacer(Modifier.width(8.dp)); Text(if (remaining > 0) "${remaining / 60}:${(remaining % 60).toString().padStart(2, '0')}" else "${seconds / 60} min") }
-                    Button(onClick = { action("recipe_cook", JSONObject().put("step", currentStep + 1)); timerEnd = 0 }) { Text(stringResource(R.string.next_step)) }
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        OutlinedButton(onClick = { action("recipe_cook", JSONObject().put("step", currentStep - 1)) }, enabled = currentStep > 0) { Text(stringResource(R.string.miniapp_back_step)) }
+                        Button(onClick = { action("recipe_cook", JSONObject().put("step", currentStep + 1)); timerEnd = 0 }) { Text(stringResource(if (currentStep + 1 >= steps.size) R.string.miniapp_finish_cooking else R.string.next_step)) }
+                    }
                 }
+                if (step == null) OutlinedButton(onClick = { action("recipe_cook", JSONObject().put("step", 0)) }) { Text(stringResource(R.string.retry)) }
             }
         } }
+        if (timerEnd > 0) item { Card { Row(Modifier.fillMaxWidth().padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
+            Column(Modifier.weight(1f)) {
+                Text("${remaining / 60}:${(remaining % 60).toString().padStart(2, '0')}", style = MaterialTheme.typography.titleLarge)
+                Text(stringResource(if (remaining == 0L) R.string.miniapp_timer_done else R.string.miniapp_kitchen_timer), style = MaterialTheme.typography.bodySmall)
+            }
+            IconButton(onClick = { timerEnd = 0 }) { Icon(Icons.Rounded.Close, stringResource(R.string.miniapp_timer_stop)) }
+        } } }
         if (cooking == null) items(steps) { step -> Text(step.optString("text"), color = MaterialTheme.colorScheme.onSurfaceVariant) }
         item { AppLog(data) }
     }
 }
 
 @Composable
-private fun MapTapApp(data: JSONObject, me: String, action: AppAction, modifier: Modifier) {
+private fun MapTapApp(data: JSONObject, state: AppState, action: AppAction, modifier: Modifier) {
+    val me = state.me?.name.orEmpty()
     val places = data.rows("places")
     val guesses = data.optJSONObject("guesses")?.optJSONObject(me) ?: JSONObject()
-    var round by rememberSaveable { mutableIntStateOf(0) }
+    var round by rememberSaveable(me) { mutableIntStateOf((0 until places.size).firstOrNull { guesses.isNull(it.toString()) } ?: places.lastIndex.coerceAtLeast(0)) }
+    var board by rememberSaveable(me) { mutableStateOf(guesses.length() >= places.size && places.isNotEmpty()) }
     var lat by rememberSaveable { mutableFloatStateOf(0f) }
     var lon by rememberSaveable { mutableFloatStateOf(0f) }
     var selected by rememberSaveable { mutableStateOf(false) }
     val guess = guesses.optJSONObject(round.toString())
     val place = places.getOrNull(round)
+    val latitude = stringResource(R.string.miniapp_latitude)
+    val longitude = stringResource(R.string.miniapp_longitude)
     LazyColumn(modifier, contentPadding = PaddingValues(24.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
-        item { Text("MapTap", style = MaterialTheme.typography.displaySmall); Text("${round + 1}/${places.size}", color = MaterialTheme.colorScheme.onSurfaceVariant) }
-        if (place != null) item { Text(place.optString("name"), style = MaterialTheme.typography.headlineMedium); Text(place.optString("hint"), color = MaterialTheme.colorScheme.onSurfaceVariant) }
-        item { WorldMap(lat, lon, selected, Modifier.fillMaxWidth().aspectRatio(1.8f)) { latitude, longitude -> lat = latitude; lon = longitude; selected = true } }
-        if (guess == null) {
-            item { Text(stringResource(R.string.map_hint), style = MaterialTheme.typography.bodySmall); Text("${"%.1f".format(lat)}°, ${"%.1f".format(lon)}°") }
-            item { Slider(lat, { lat = it; selected = true }, valueRange = -90f..90f, modifier = Modifier.semantics { contentDescription = "Latitude" }); Slider(lon, { lon = it; selected = true }, valueRange = -180f..180f, modifier = Modifier.semantics { contentDescription = "Longitude" }) }
-            item { Button(onClick = { action("maptap_guess", JSONObject().put("round", round).put("lat", lat).put("lon", lon)) }, enabled = selected, modifier = Modifier.fillMaxWidth()) { Text(stringResource(R.string.guess)) } }
-        } else item { Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer)) { Column(Modifier.fillMaxWidth().padding(20.dp)) { Text("${guess.optInt("points")} pts", style = MaterialTheme.typography.headlineMedium); Text("${guess.optInt("km")} km · ${place?.optString("country").orEmpty()}"); if (round < places.lastIndex) TextButton(onClick = { round++; selected = false; lat = 0f; lon = 0f }) { Text(stringResource(R.string.next_step)) } } } }
+        item {
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                Text("MapTap", Modifier.weight(1f), style = MaterialTheme.typography.headlineLarge)
+                TextButton(onClick = { board = !board }) { Text(stringResource(if (board) R.string.play else R.string.miniapp_leaderboard)) }
+            }
+        }
+        if (board) {
+            val all = data.optJSONObject("guesses") ?: JSONObject()
+            val players = all.keys().asSequence().map { name -> name to (all.optJSONObject(name) ?: JSONObject()) }.toList()
+                .sortedByDescending { (_, rounds) -> rounds.keys().asSequence().sumOf { rounds.optJSONObject(it)?.optInt("points") ?: 0 } }
+            items(players, key = { it.first }) { (name, rounds) ->
+                val points = rounds.keys().asSequence().sumOf { rounds.optJSONObject(it)?.optInt("points") ?: 0 }
+                val person = state.me?.takeIf { it.name == name } ?: state.spaces.flatMap { it.members }.firstOrNull { it.name == name }
+                Card { Row(Modifier.fillMaxWidth().padding(16.dp), horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Text((players.indexOfFirst { it.first == name } + 1).toString(), style = MaterialTheme.typography.labelLarge)
+                    Avatar(person, size = 32)
+                    Column(Modifier.weight(1f)) { Text(name, style = MaterialTheme.typography.titleMedium); Text("${rounds.length()}/${places.size}", style = MaterialTheme.typography.labelSmall) }
+                    Text(stringResource(R.string.miniapp_score_points, points), style = MaterialTheme.typography.labelLarge)
+                } }
+            }
+            if (players.isEmpty()) item { Text(stringResource(R.string.miniapp_no_scores)) }
+        } else {
+            item { Text("${round + 1}/${places.size}", color = MaterialTheme.colorScheme.onSurfaceVariant) }
+            if (place != null) item { Text(place.optString("name"), style = MaterialTheme.typography.headlineMedium); Text(place.optString("hint"), color = MaterialTheme.colorScheme.onSurfaceVariant) }
+            item {
+                NativeGlobe(
+                    guess = if (guess != null) Offset(guess.optDouble("lon").toFloat(), guess.optDouble("lat").toFloat()) else if (selected) Offset(lon, lat) else null,
+                    actual = if (guess != null && place != null) Offset(place.optDouble("lon").toFloat(), place.optDouble("lat").toFloat()) else null,
+                    modifier = Modifier.fillMaxWidth().aspectRatio(1f),
+                ) { latitudeValue, longitudeValue -> lat = latitudeValue; lon = longitudeValue; selected = true }
+            }
+            if (guess == null) {
+                item { Text(stringResource(R.string.map_hint), style = MaterialTheme.typography.bodySmall); Text("${"%.1f".format(lat)}°, ${"%.1f".format(lon)}°") }
+                item { Slider(lat, { lat = it; selected = true }, valueRange = -90f..90f, modifier = Modifier.semantics { contentDescription = latitude }); Slider(lon, { lon = it; selected = true }, valueRange = -180f..180f, modifier = Modifier.semantics { contentDescription = longitude }) }
+                item { Button(onClick = { action("maptap_guess", JSONObject().put("round", round).put("lat", lat).put("lon", lon)) }, enabled = selected, modifier = Modifier.fillMaxWidth()) { Text(stringResource(R.string.guess)) } }
+            } else item { Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer)) { Column(Modifier.fillMaxWidth().padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Text(stringResource(R.string.miniapp_score_points, guess.optInt("points")), style = MaterialTheme.typography.headlineMedium)
+                Text("${guess.optInt("km")} km · ${place?.optString("country").orEmpty()}")
+                Button(onClick = { if (round < places.lastIndex) { round++; selected = false; lat = 0f; lon = 0f } else board = true }) { Text(stringResource(if (round < places.lastIndex) R.string.next_step else R.string.miniapp_leaderboard)) }
+            } } }
+        }
         item { AppLog(data) }
     }
 }
 
 @Composable
-private fun WorldMap(lat: Float, lon: Float, selected: Boolean, modifier: Modifier, choose: (Float, Float) -> Unit) {
-    val context = LocalContext.current
-    val land by produceState<List<List<Offset>>>(emptyList()) {
-        value = withContext(Dispatchers.IO) {
-            val json = JSONArray(context.assets.open("land110.json").bufferedReader().use { it.readText() })
-            (0 until json.length()).map { i ->
-                val coordinates = json.getJSONArray(i)
-                (0 until coordinates.length() - 1 step 2).map { j -> Offset((coordinates.getDouble(j).toFloat() + 180) / 360, (90 - coordinates.getDouble(j + 1).toFloat()) / 180) }
-            }
-        }
-    }
-    val water = MaterialTheme.colorScheme.secondaryContainer
-    val fill = MaterialTheme.colorScheme.primary.copy(alpha = .42f)
-    val ink = MaterialTheme.colorScheme.primary
-    Canvas(modifier.pointerInput(Unit) { detectTapGestures { choose((90 - it.y / size.height * 180).coerceIn(-90f, 90f), (it.x / size.width * 360 - 180).coerceIn(-180f, 180f)) } }) {
-        drawRoundRect(water, cornerRadius = androidx.compose.ui.geometry.CornerRadius(18.dp.toPx()))
-        for (x in 1..5) drawLine(ink.copy(alpha = .1f), Offset(size.width * x / 6, 0f), Offset(size.width * x / 6, size.height))
-        for (y in 1..3) drawLine(ink.copy(alpha = .1f), Offset(0f, size.height * y / 4), Offset(size.width, size.height * y / 4))
-        land.forEach { polygon ->
-            val path = Path().apply { polygon.forEachIndexed { i, point -> if (i == 0) moveTo(point.x * size.width, point.y * size.height) else lineTo(point.x * size.width, point.y * size.height) }; close() }
-            drawPath(path, fill); drawPath(path, ink.copy(alpha = .65f), style = Stroke(1f))
-        }
-        if (selected) {
-            val point = Offset((lon + 180) / 360 * size.width, (90 - lat) / 180 * size.height)
-            drawCircle(Color.White, 7.dp.toPx(), point); drawCircle(ink, 4.dp.toPx(), point)
-        }
-    }
-}
-
-@Composable
-private fun HikeApp(data: JSONObject, action: AppAction, modifier: Modifier) {
-    val trails = data.rows("trails")
-    val decided = !data.isNull("decided")
-    LazyColumn(modifier, contentPadding = PaddingValues(24.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-        item { Icon(Icons.Rounded.Terrain, null, Modifier.size(64.dp), tint = MaterialTheme.colorScheme.primary); Text(data.optString("title"), style = MaterialTheme.typography.displaySmall); Text(data.optString("day") + " · " + data.optString("area"), color = MaterialTheme.colorScheme.onSurfaceVariant) }
-        items(trails, key = { it.optString("id") }) { trail ->
-            Card(onClick = { action("hike_vote", JSONObject().put("trail", trail.optString("id"))) }, enabled = !decided) {
-                Column(Modifier.fillMaxWidth().padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) { Text(trail.optString("name"), style = MaterialTheme.typography.titleLarge); Text("${trail.optJSONArray("votes")?.length() ?: 0} " + stringResource(R.string.vote), color = MaterialTheme.colorScheme.primary); if (data.optString("decided") == trail.optString("id")) Icon(Icons.Rounded.CheckCircle, stringResource(R.string.done), tint = MaterialTheme.colorScheme.primary) }
-            }
-        }
-        if (!decided) item { Button(onClick = { action("hike_decide", JSONObject()) }, enabled = trails.any { (it.optJSONArray("votes")?.length() ?: 0) > 0 }, modifier = Modifier.fillMaxWidth()) { Text(stringResource(R.string.hike_decide)) } }
-        items(data.rows("itinerary")) { row -> Text(row.optString("time") + " · " + row.optString("text")) }
-        item { AppLog(data) }
-    }
-}
-
-@Composable
-private fun CountdownApp(data: JSONObject, modifier: Modifier) {
+private fun CountdownApp(model: ZoenViewModel, item: ItemDetail, data: JSONObject, modifier: Modifier) {
     var now by remember { mutableLongStateOf(System.currentTimeMillis()) }
     LaunchedEffect(Unit) { while (true) { delay(1000); now = System.currentTimeMillis() } }
-    val seconds = ((data.optLong("target") - now) / 1000).coerceAtLeast(0)
-    Column(modifier.fillMaxWidth().padding(32.dp), verticalArrangement = Arrangement.spacedBy(24.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-        ZoenMascot(Modifier.size(200.dp), animated = true, pose = 6)
-        Text(data.optString("title"), style = MaterialTheme.typography.displaySmall)
-        if (!data.isNull("place")) Text(data.optString("place"), color = MaterialTheme.colorScheme.onSurfaceVariant)
-        Text(stringResource(R.string.days_left, (seconds / 86400).toInt()), style = MaterialTheme.typography.headlineMedium)
-        Text("${seconds / 3600 % 24} : ${seconds / 60 % 60} : ${seconds % 60}", style = MaterialTheme.typography.titleLarge)
+    val target = data.optLong("target")
+    val seconds = ((target - now) / 1000).coerceAtLeast(0)
+    val pins = remember(model.repository.preferences) { MiniAppPins(model.repository.preferences) }
+    var pinned by remember(item.id) { mutableStateOf(item.id !in pins.hidden()) }
+    LazyColumn(modifier, contentPadding = PaddingValues(24.dp), verticalArrangement = Arrangement.spacedBy(24.dp)) {
+        item { Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.tertiaryContainer)) {
+            Column(Modifier.fillMaxWidth().padding(20.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                ZoenMascot(Modifier.fillMaxWidth().height(180.dp), animated = true, pose = 6)
+                Text(data.optString("title"), style = MaterialTheme.typography.headlineLarge)
+                if (!data.isNull("place")) Text(data.optString("place"), style = MaterialTheme.typography.titleLarge)
+                Text(java.text.DateFormat.getDateTimeInstance(java.text.DateFormat.FULL, java.text.DateFormat.SHORT).format(java.util.Date(target)), color = MaterialTheme.colorScheme.onTertiaryContainer)
+            }
+        } }
+        item {
+            val values = listOf(seconds / 86400 to R.string.miniapp_days, seconds / 3600 % 24 to R.string.miniapp_hours, seconds / 60 % 60 to R.string.miniapp_minutes, seconds % 60 to R.string.miniapp_seconds)
+            val columns = if (androidx.compose.ui.platform.LocalDensity.current.fontScale > 1.3f) 2 else 4
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) { values.chunked(columns).forEach { row ->
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) { row.forEach { (value, label) ->
+                    Card(Modifier.weight(1f)) { Column(Modifier.fillMaxWidth().padding(vertical = 16.dp), horizontalAlignment = Alignment.CenterHorizontally) { Text(value.toString(), style = MaterialTheme.typography.headlineMedium); Text(stringResource(label), style = MaterialTheme.typography.labelSmall) } }
+                } }
+            } }
+        }
+        item { OutlinedButton(onClick = { pinned = !pinned; if (pinned) pins.show(item.id) else pins.hide(item.id); model.launch { model.repository.refresh() } }, Modifier.fillMaxWidth()) { Icon(Icons.Rounded.PushPin, null); Spacer(Modifier.width(8.dp)); Text(stringResource(if (pinned) R.string.miniapp_unpin_home else R.string.miniapp_pin_home)) } }
+        item { AppLog(data) }
     }
+}
+
+private fun recipeAmount(quantity: Double, unit: String): String {
+    if (unit == "ml") return "${kotlin.math.round(quantity / 10).toInt() * 10} ml"
+    val whole = quantity.toInt(); val fraction = quantity - whole
+    val part = when { fraction < .13 -> ""; fraction < .38 -> "¼"; fraction < .63 -> "½"; fraction < .88 -> "¾"; else -> "" }
+    val number = if (fraction >= .88) (whole + 1).toString() else if (whole == 0 && part.isNotEmpty()) part else "$whole$part"
+    val plural = if (quantity > 1.13) when (unit) { "colher" -> "colheres"; "maço" -> "maços"; "bunch" -> "bunches"; else -> unit } else unit
+    return "$number $plural"
 }
 
 @Composable

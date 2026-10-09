@@ -14,22 +14,32 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import kotlin.math.abs
 import xyz.tironi.zoen.R
 
 @Composable
 fun DonkeyDash(onClose: () -> Unit, onScore: (Int, Int) -> Unit) {
     var running by remember { mutableStateOf(false) }
+    var paused by remember { mutableStateOf(false) }
     var ended by remember { mutableStateOf(false) }
     var elapsed by remember { mutableFloatStateOf(0f) }
     var height by remember { mutableFloatStateOf(0f) }
     var velocity by remember { mutableFloatStateOf(0f) }
     var carrots by remember { mutableIntStateOf(0) }
     var collectedAt by remember { mutableIntStateOf(-1) }
-    LaunchedEffect(running) {
-        if (!running) return@LaunchedEffect
+    val owner = LocalLifecycleOwner.current
+    DisposableEffect(owner) {
+        val observer = LifecycleEventObserver { _, event -> if (event == Lifecycle.Event.ON_STOP && running) paused = true }
+        owner.lifecycle.addObserver(observer)
+        onDispose { owner.lifecycle.removeObserver(observer) }
+    }
+    LaunchedEffect(running, paused) {
+        if (!running || paused) return@LaunchedEffect
         var last = withFrameNanos { it }
-        while (running) {
+        while (running && !paused) {
             val now = withFrameNanos { it }
             val dt = ((now - last) / 1_000_000_000f).coerceIn(0f, .04f)
             last = now
@@ -43,7 +53,7 @@ fun DonkeyDash(onClose: () -> Unit, onScore: (Int, Int) -> Unit) {
             } else if (abs(rockX - 115) < 15 && height > 35 && collectedAt != cycle) { carrots++; collectedAt = cycle }
         }
     }
-    val jump: () -> Unit = { if (running && height == 0f) velocity = 310f }
+    val jump: () -> Unit = { if (running && !paused && height == 0f) velocity = 310f }
     Column(Modifier.verticalScroll(rememberScrollState()).padding(24.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
         Text(stringResource(R.string.dash), style = MaterialTheme.typography.headlineMedium)
         Text(stringResource(R.string.dash_hint), color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -62,8 +72,11 @@ fun DonkeyDash(onClose: () -> Unit, onScore: (Int, Int) -> Unit) {
             drawRect(Color(0xFF6D7766), Offset(rock, floor - 24 * scale), Size(22 * scale, 24 * scale))
             drawOval(Color(0xFFE9A03B), Offset(rock - 45 * scale, floor - 70 * scale), Size(10 * scale, 20 * scale))
         }
-        if (!running) Button(onClick = { elapsed = 0f; height = 0f; velocity = 0f; carrots = 0; collectedAt = -1; ended = false; running = true }, Modifier.fillMaxWidth()) { Text(stringResource(if (ended) R.string.retry else R.string.start)) }
-        else Button(onClick = jump, Modifier.fillMaxWidth()) { Text(stringResource(R.string.jump)) }
+        if (!running) Button(onClick = { elapsed = 0f; height = 0f; velocity = 0f; carrots = 0; collectedAt = -1; ended = false; paused = false; running = true }, Modifier.fillMaxWidth()) { Text(stringResource(if (ended) R.string.retry else R.string.start)) }
+        else {
+            Button(onClick = jump, Modifier.fillMaxWidth(), enabled = !paused) { Text(stringResource(R.string.jump)) }
+            OutlinedButton(onClick = { paused = !paused }, Modifier.fillMaxWidth()) { Text(stringResource(if (paused) R.string.miniapp_continue else R.string.miniapp_pause)) }
+        }
         TextButton(onClick = onClose) { Text(stringResource(R.string.close)) }
     }
 }

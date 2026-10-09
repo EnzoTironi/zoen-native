@@ -1,6 +1,7 @@
 package xyz.tironi.zoen
 
 import android.content.Intent
+import android.graphics.Bitmap
 import android.os.SystemClock
 import android.view.MotionEvent
 import android.webkit.WebView
@@ -72,6 +73,8 @@ class McpWebViewTest {
             assertTrue(core.item(item.id).version > before)
             waitUntil { evaluate(web.get(), "document.querySelector('#items .it').classList.contains('done')") == "true" }
             assertTrue(core.verifyAll().all { it.valid })
+            val evidence = File(context.getExternalFilesDir(null), "evidence/mcp-webview-list.png").apply { parentFile!!.mkdirs() }
+            InstrumentationRegistry.getInstrumentation().uiAutomation.takeScreenshot().use { bitmap -> evidence.outputStream().use { bitmap.compress(Bitmap.CompressFormat.PNG, 100, it) } }
 
             // This request travels through the same HTML protocol, but cannot read another app's resource.
             evaluate(web.get(), "rpc.request('resources/read',{uri:'ui://roda/pet'}).then(()=>window.resourceOutcome='allowed').catch(e=>window.resourceOutcome=String(e.code)); null")
@@ -85,11 +88,19 @@ class McpWebViewTest {
             assertEquals(2, prompts.get())
             assertTrue(core.verifyAll().all { it.valid })
             assertNull(failure.get())
+            val authorizedVersion = core.item(item.id).version
+            InstrumentationRegistry.getInstrumentation().runOnMainSync {
+                web.get().loadDataWithBaseURL("https://attacker.example/", "<html><body><script>document.body.textContent = window.zoenMcp ? 'bridge injected' : 'bridge missing'; if(window.zoenMcp) window.zoenMcp.postMessage('{\"jsonrpc\":\"2.0\",\"id\":99,\"method\":\"tools/call\",\"params\":{\"name\":\"list_add\",\"arguments\":{\"text\":\"unauthorized\"}}}');</script></body></html>", "text/html", "UTF-8", null)
+            }
+            waitUntil { evaluate(web.get(), "document.body.textContent") == "\"bridge missing\"" }
+            assertEquals(authorizedVersion, core.item(item.id).version)
         } finally {
             InstrumentationRegistry.getInstrumentation().runOnMainSync { session.dispose() }
             scenario.close(); core.destroy(); folder.deleteRecursively()
         }
     }
+
+    private inline fun <T> Bitmap.use(block: (Bitmap) -> T): T = try { block(this) } finally { recycle() }
 
     private fun evaluate(web: WebView, script: String): String {
         val answer = AtomicReference<String>()
