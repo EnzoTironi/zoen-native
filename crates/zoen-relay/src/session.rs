@@ -296,6 +296,16 @@ impl Session {
         }
         self.st.analytics.session(&self.identity);
         let _ = db::touch_device(&self.st.pool, &self.identity, &self.device, &self.cert).await;
+        let was_online = self.st.fanout.is_online(&self.identity).await;
+        self.hub_id = Some(self.st.fanout.add(
+            &self.identity,
+            Mailbox {
+                tx: self.tx.clone(),
+                kick: self.kick.clone(),
+            },
+        ));
+        // Attach before reading stock: a claim racing the snapshot then reaches this
+        // mailbox, or is reflected in the query. Reading first can lose both signals.
         // Packages claimed while this device was away: it refills as it comes back.
         let me = [(self.identity.clone(), self.device.clone())];
         if let Ok(stock) = db::key_package_stock(&self.st.pool, &me).await {
@@ -311,14 +321,6 @@ impl Session {
                 }
             }
         }
-        let was_online = self.st.fanout.is_online(&self.identity).await;
-        self.hub_id = Some(self.st.fanout.add(
-            &self.identity,
-            Mailbox {
-                tx: self.tx.clone(),
-                kick: self.kick.clone(),
-            },
-        ));
         if let Ok(co) = self.st.log.co_members(&self.identity).await {
             if !was_online {
                 self.st.fanout.send(
