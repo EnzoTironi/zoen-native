@@ -71,22 +71,28 @@ integrating it; a green check alone does not establish product completeness.
 | [37](https://github.com/EnzoTironi/zoen-native/pull/37) | E2B research | CI passes; research informs design and does not implement the proposed live computer |
 | [38](https://github.com/EnzoTironi/zoen-native/pull/38) | Chat reading position and unread indicator | Fails the same key-package refill journey; simulator evidence belongs to the UX changes |
 
-Both PR 33 and PR 34 use ADR number 0045. Allocate a unique number when combining them
-and verify migration numbering against the combined tree.
+The initial linking and backup heads both used ADR number 0045. Backup now uses 0046
+in PR 34; its existing migration bytes were preserved. Verify migration numbering and
+recovery behavior against the combined linking/backup tree before integration.
 
 ### Reliability work from this audit
 
 [PR 40](https://github.com/EnzoTironi/zoen-native/pull/40) fixes a sender publishing its
 first encrypted message while the recipient's Welcome is still queued. A controlled
 network journey fails on the original code and passes with the fix, including recipient
-delivery and signed-history verification. All three rate-limit journeys pass locally;
-the PR's full workspace CI remains the integration gate.
+delivery and signed-history verification. All three rate-limit journeys pass locally.
+The [full workspace CI](https://github.com/EnzoTironi/zoen-native/actions/runs/37905323963)
+also passes, including the required Linux sandbox journeys. The repair is now included
+in PRs 33, 34 and 38 for their own validation. PR 33's stale-device fixture was corrected
+to keep active peers checkpointing throughout the absent device's pruning window; that
+real relay journey passes locally. Combined-tree and native UI checks remain completion
+gates.
 
 The Grok computer also holds an unpublished `ux/audit-p2` patch across 14 Swift files.
 It was saved before further work; it still needs review, simulator validation and a PR.
 The conversation confirms that some native flows are designed UI awaiting their backing
-implementation, including the displayed agent browser. Track those against the product
-gates rather than treating every placeholder as a regression.
+implementation, including the displayed agent browser. Track these flows against their
+product completion gates.
 
 ## Execution order and acceptance gates
 
