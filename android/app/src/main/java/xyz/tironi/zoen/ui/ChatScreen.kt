@@ -127,14 +127,23 @@ fun ChatScreen(model: ZoenViewModel, state: AppState, spaceId: String, navigate:
         val target = jumpTo ?: return@LaunchedEffect
         val original = allEntries.firstOrNull { it.id == target } ?: return@LaunchedEffect
         val index = timeline.indexOfFirst { it.id == (original.inThread ?: target) }
-        if (index >= 0) { list.animateScrollToItem(index); highlight = original.inThread ?: target; jumpTo = null }
+        if (index >= 0) {
+            // Navigation can compose this effect inside its current measure pass.
+            withFrameNanos { }
+            list.animateScrollToItem(index)
+            highlight = original.inThread ?: target
+            jumpTo = null
+        }
     }
     LaunchedEffect(highlight) { if (highlight != null) { delay(1800); highlight = null } }
     LaunchedEffect(spaceId, timeline.size) {
         if (timeline.isNotEmpty()) {
             val atBottom = list.layoutInfo.visibleItemsInfo.lastOrNull()?.index?.let { it >= previousCount - 2 } ?: true
             if (firstLoad || (timeline.size > previousCount && (atBottom || timeline.last().author.isMe))) {
-                if (focusMessage == null && jumpTo == null && highlight == null) list.scrollToItem(timeline.lastIndex)
+                if (focusMessage == null && jumpTo == null && highlight == null) {
+                    // Position the updated timeline in its next layout instead of forcing one here.
+                    list.requestScrollToItem(timeline.lastIndex)
+                }
                 firstLoad = false
             }
             previousCount = timeline.size
