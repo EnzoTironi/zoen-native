@@ -43,7 +43,12 @@ Notes:
   not covered [F4]. Rule for us: template snapshots hold no secrets and no started user-space
   RNG consumers; every per-sandbox secret is minted after restore.
 - **SMT.** Firecracker's production guide recommends disabling SMT on hosts because it enables
-  cross-tenant speculation side channels [F3]. That halves the thread count per host.
+  cross-tenant speculation side channels [F3]. That halves the thread count per host. Linux
+  core scheduling (`PR_SCHED_CORE`, kernel 5.14+) is the middle path: tasks with different
+  cookies never share a core at the same time. The kernel docs say it mitigates some, not all,
+  cross-HT attacks: kernel contexts on siblings (IRQ, syscall, VMEXIT) are not protected, MDS
+  between user and kernel mode and L1TF guest attacks remain, and it can cost throughput
+  through forced idle, so measure [LX1]. Zoen uses it (ADR 0028, section 6b).
 - **Kubernetes sandbox orchestration exists upstream.** `kubernetes-sigs/agent-sandbox`
   (Apache-2.0) adds `Sandbox`, `SandboxTemplate`, `SandboxClaim` and `SandboxWarmPool` over
   gVisor or Kata pods [AS1]. It is the k8s-native path, but a pod per sandbox inherits pod
@@ -136,16 +141,17 @@ Assumptions (ours, to be replaced by measurements in phases 1 and 2):
 - **Browser sandbox:** 2 GiB allocated, about 1.5 GiB effective, vCPU 2:1. AX102 ≈ 60,
   m7i.metal-24xl ≈ 190.
 - **Utilization:** fleets sized for peak run at about 60% on average.
-- Excludes egress, proxies, engineers, and SMT-off (which would cut CPU capacity in half
-  where CPU is the bottleneck: browsers).
+- SMT on with core scheduling, assumed at 80% of full SMT throughput until P1 measures it;
+  VMs get vCPUs in pairs. SMT off halves the threads.
+- Excludes egress, engineers, and residential proxies (not used in v1).
 
-| | At 100% packing | At 60% utilization | Provider equivalent |
-|---|---|---|---|
-| Code sandbox-hour, Hetzner AX102 | $0.0041 | **$0.0069** | E2B $0.067, Modal $0.095 (≈10–14×) |
-| Code sandbox-hour, AWS m7i.metal-24xl | $0.0151 | **$0.025** | |
-| Browser-hour, Hetzner AX102 | $0.0069 | **$0.0115** | Steel $0.08–0.10, Cloudflare $0.09, Browserbase $0.10–0.12 (≈8–10×) |
-| Browser-hour, AWS m7i.metal-24xl | $0.0255 | **$0.042** | |
-| WASM tool call (5 ms CPU) | ≈ $0.00000002 | | |
+| | At 100% packing | At 60% utilization | SMT off, 60% | Provider equivalent |
+|---|---|---|---|---|
+| Code sandbox-hour, Hetzner AX102 (100 per host, memory-bound) | $0.0041 | **$0.0069** | $0.0108 | E2B $0.067, Modal $0.095 (≈10×) |
+| Code sandbox-hour, AWS m7i.metal-24xl (307 per host) | $0.0158 | **$0.026** | $0.042 | |
+| Browser-hour, Hetzner AX102 (51 per host) | $0.0081 | **$0.0135** | $0.0216 | Steel $0.08–0.10, Cloudflare $0.09, Browserbase $0.10–0.12 (≈6–9×) |
+| Browser-hour, AWS m7i.metal-24xl (153 per host) | $0.0316 | **$0.053** | $0.084 | |
+| WASM tool call (5 ms CPU) | ≈ $0.00000002 | | | |
 
 Fly shared-cpu-1x 1 GB at $0.0082/h is close to our Hetzner number, which is why Fly Machines
 are the right staging backend (section 7) but not the production one: Fly gives a shared vCPU,
@@ -174,14 +180,14 @@ Results:
 |---|---|
 | Code sandbox-hours per day | 500k (avg 20.8k concurrent, peak 41.7k) |
 | Browser-hours per day | 417k (avg 17.4k concurrent, peak 34.7k) |
-| Hosts, Hetzner AX102 | ≈ 1,190 → **≈ $361k/month** |
-| Hosts, AWS m7i.metal-24xl on demand | ≈ 376 → **≈ $1.33M/month** |
+| Hosts, Hetzner AX102 (SMT on, core scheduling) | ≈ 1,320 → **≈ $398k/month** (SMT off: ≈ 2,080 → $629k) |
+| Hosts, AWS m7i.metal-24xl on demand | ≈ 435 → **≈ $1.54M/month** (SMT off: ≈ 694 → $2.45M) |
 | WASM tier | ≈ 5B calls/day → **≈ $2.7k/month** of CPU |
 | Snapshot storage (R2-class at $0.015/GB-month, from cost-model.md) | ≈ $15k/month |
 | Same hours bought from E2B + Browserbase | ≈ **$2.25M/month** |
-| Per DAU per month (Hetzner / AWS / providers) | $0.0007 / $0.0027 / $0.0045 |
-| Per agent user per month | $0.0036 / $0.013 / $0.022 |
-| **Counterfactual without escalation** (every agent user gets a microVM for 10 min/day) | ≈ 16.7k AX102 hosts → **≈ $5.0M/month**, 14× more |
+| Per DAU per month (Hetzner / AWS / providers) | $0.0008 / $0.0031 / $0.0045 |
+| Per agent user per month | $0.0040 / $0.015 / $0.022 |
+| **Counterfactual without escalation** (every agent user gets a microVM for 10 min/day) | ≈ 16.7k AX102 hosts → **≈ $5.0M/month**, about 13× more |
 
 These are capacity costs only; model calls are owner-paid (see cost-model.md) and are larger.
 One provider cannot host 1,200 servers on demand in one region; at that point we buy across
@@ -195,6 +201,8 @@ OpenTofu modules per provider.
 - [F1] Firecracker specification: https://github.com/firecracker-microvm/firecracker/blob/main/SPECIFICATION.md
 - [F2] Firecracker snapshot support: https://github.com/firecracker-microvm/firecracker/blob/main/docs/snapshotting/snapshot-support.md
 - [F3] Firecracker production host setup (jailer, seccomp, disable SMT): https://github.com/firecracker-microvm/firecracker/blob/main/docs/prod-host-setup.md
+- [AP1] App Review Guidelines 5.4 (VPN apps) and 2.4.2: https://developer.apple.com/app-store/review/guidelines/
+- [LX1] Linux core scheduling: https://www.kernel.org/doc/html/latest/admin-guide/hw-vuln/core-scheduling.html
 - [F4] Random for clones / VMGenID: https://github.com/firecracker-microvm/firecracker/blob/main/docs/snapshotting/random-for-clones.md
 - [F5] PCIe in Firecracker 1.13: https://github.com/firecracker-microvm/firecracker/issues/5133 ; VFIO: https://github.com/firecracker-microvm/firecracker/pull/5870 , https://github.com/firecracker-microvm/firecracker/issues/5679
 - [CH1] Cloud Hypervisor README: https://github.com/cloud-hypervisor/cloud-hypervisor ; snapshot: https://github.com/cloud-hypervisor/cloud-hypervisor/blob/main/docs/snapshot_restore.md
