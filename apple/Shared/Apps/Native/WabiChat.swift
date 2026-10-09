@@ -263,6 +263,8 @@ struct AppSheetHost: View {
                 InkEmptyState(pose: .roar, title: String(localized: "Mini-app unavailable"))
             }
         }
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("miniapp-sheet")
         .appZoomDestination(itemId, zoom)
         .presentationDragIndicator(.visible)
         .onAppear { model.markAppSeen(itemId) }

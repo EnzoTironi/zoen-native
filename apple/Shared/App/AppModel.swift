@@ -174,6 +174,9 @@ final class AppModel {
         }
         if d.bool(forKey: "RodaFreshStart") {
             try? core.eraseDevice(vault: sync.vault)
+            // Pins and their order are per device too: start from the default strip.
+            for k in ["RodaHomePins", "RodaHomeUnpinned", "RodaChatAppsUnpinned", "RodaChatTileOrder"] { d.removeObject(forKey: k) }
+            homePins = []; homeUnpinned = []; chatAppsUnpinned = []; chatTileOrder = []
             if SyncModel.mode == .demo { _ = try? core.seedDemoIfEmpty() }
         }
         if let spec = d.string(forKey: "RodaAccount"), core.account() == nil {
@@ -974,6 +977,19 @@ final class AppModel {
         homeUnpinned.insert(itemId)
         homePins.removeAll { $0 == itemId }
         saveHome()
+    }
+
+    /// Home edit mode: the strip's new order after a drag.
+    func setHomeOrder(_ ids: [String]) {
+        homePins = ids
+        saveHome()
+    }
+
+    /// Chat pins edit mode: tile order (tile ids are "<item>#<n>") and its persistence.
+    private(set) var chatTileOrder: [String] = UserDefaults.standard.stringArray(forKey: "RodaChatTileOrder") ?? []
+    func setChatTileOrder(_ ids: [String]) {
+        chatTileOrder = ids + chatTileOrder.filter { !ids.contains($0) }
+        UserDefaults.standard.set(chatTileOrder, forKey: "RodaChatTileOrder")
     }
 
     /// Moves a Home card one step left (-1) or right (+1).

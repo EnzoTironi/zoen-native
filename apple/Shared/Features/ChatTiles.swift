@@ -12,56 +12,69 @@ struct ChatPinStrip: View {
     let apps: [ItemDetail]
     var compact = false
     @State private var avail: CGFloat = 402
-    /// Starts on the first tile and stays there while tiles load in (the strip used to drift
-    /// a tile to the right when one arrived late).
-    @State private var leadingTile: Int? = 0
+    /// Jiggle edit mode (long-press a tile): drag to reorder, minus to unpin.
+    @State private var editing = false
 
     private var side: CGFloat { min(170, max(140, (avail - 34) / 2)) }
 
+    /// One tile of a mini-app ("<item>#<n>": a hike shows several).
+    struct Tile: Identifiable { let id: String; let item: ItemDetail; let snap: WidgetSnapshot }
+
     var body: some View {
-        let tiles = apps.flatMap { item in ChatTiles.tiles(for: item).map { (item: item, snap: $0) } }
-        if !tiles.isEmpty { row(tiles) }
+        let raw = apps.flatMap { item in ChatTiles.tiles(for: item).enumerated().map { Tile(id: "\(item.id)#\($0.offset)", item: item, snap: $0.element) } }
+        let order = model.chatTileOrder
+        let tiles = raw.enumerated().sorted { a, b in
+            let ia = order.firstIndex(of: a.element.id) ?? (order.count + a.offset)
+            let ib = order.firstIndex(of: b.element.id) ?? (order.count + b.offset)
+            return ia < ib
+        }.map(\.element)
+        if !tiles.isEmpty {
+            Group {
+                if compact { chips(tiles) } else { editable(tiles) }
+            }
+            .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { avail = $0 }
+            .padding(.bottom, compact ? 4 : 6)
+            .animation(.spring(duration: 0.4, bounce: 0.15), value: compact)
+            .onChange(of: compact) { _, c in if c { editing = false } }
+        }
     }
 
-    private func row(_ tiles: [(item: ItemDetail, snap: WidgetSnapshot)]) -> some View {
-        ScrollViewReader { proxy in
-            ScrollView(.horizontal) {
-                HStack(spacing: compact ? 8 : 10) {
-                    ForEach(Array(tiles.enumerated()), id: \.offset) { i, t in
-                        Button { Haptics.open(); model.openApp(t.item.id) } label: {
-                            if compact { chip(t.snap) } else {
-                                SnapshotCard(snap: t.snap, side: side, live: true, corner: 24, height: (side / 1.06).rounded())
-                            }
-                        }
+    private func editable(_ tiles: [Tile]) -> some View {
+        EditableTileStrip(
+            items: tiles, tileWidth: side, spacing: 10, margin: 12, idPrefix: "pin-tile",
+            editing: $editing,
+            title: { $0.snap.title },
+            open: { t in Haptics.open(); model.openApp(t.item.id) },
+            openFrom: { t, frame, front in model.flipOpenApp(t.item.id, from: frame, sourceKey: "pin-tile-\(t.id)", front: front) },
+            move: { ids in model.setChatTileOrder(ids) },
+            remove: { t in model.unpinChatApp(t.item.id) },
+            removeTitle: { t in String(localized: "Unpin “\(t.snap.title)” from the top of the chat?") },
+            removeMessage: "The mini-app stays in the chat as a card.",
+            removeAction: "Unpin",
+            scrollToEnd: UserDefaults.standard.bool(forKey: "RodaPinScroll")
+        ) { t in
+            SnapshotCard(snap: t.snap, side: side, live: true, corner: 24, height: (side / 1.06).rounded())
+        }
+        // A horizontal ScrollView is greedy vertically; the row is exactly as tall as a tile.
+        .fixedSize(horizontal: false, vertical: true)
+    }
+
+    private func chips(_ tiles: [Tile]) -> some View {
+        ScrollView(.horizontal) {
+            HStack(spacing: 8) {
+                ForEach(tiles) { t in
+                    Button { Haptics.open(); model.openApp(t.item.id) } label: { chip(t.snap) }
                         .buttonStyle(PressScaleStyle())
-                        // The long-press preview is the tile itself, not a white platter around it.
-                        .menuPreviewShape(.rect(cornerRadius: compact ? 18 : 24, style: .continuous))
+                        .menuPreviewShape(.rect(cornerRadius: 18, style: .continuous))
                         .contextMenu { menu(t.item, t.snap) }
                         .accessibilityHint(Text("Opens the mini-app"))
-                        .id(i)
-                    }
-                }
-                .scrollTargetLayout()
-                .padding(.horizontal, 12)
-            }
-            .scrollTargetBehavior(.viewAligned)
-            .scrollPosition(id: $leadingTile, anchor: .leading)
-            .scrollIndicators(.hidden)
-            .scrollClipDisabled()
-            .background(Color.clear)
-            // A horizontal ScrollView is greedy vertically; the row is exactly as tall as a tile.
-            .fixedSize(horizontal: false, vertical: true)
-            .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { avail = $0 }
-            .task(id: tiles.count) {
-                // Screenshots: show the last tile (`-RodaPinScroll YES`).
-                if UserDefaults.standard.bool(forKey: "RodaPinScroll"), tiles.count > 2 {
-                    try? await Task.sleep(for: .milliseconds(700))
-                    withAnimation(.snappy) { proxy.scrollTo(tiles.count - 1, anchor: .trailing) }
                 }
             }
+            .padding(.horizontal, 12)
         }
-        .padding(.bottom, compact ? 4 : 6)
-        .animation(.spring(duration: 0.4, bounce: 0.15), value: compact)
+        .scrollIndicators(.hidden)
+        .scrollClipDisabled()
+        .fixedSize(horizontal: false, vertical: true)
     }
 
     /// Compact form: a glass chip with a thumbnail and the tile's title.
