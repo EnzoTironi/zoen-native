@@ -419,6 +419,7 @@ mod tests {
             message: "m".into(),
             text: "oi".into(),
             attaches: None,
+            reply: None,
         }
     }
 

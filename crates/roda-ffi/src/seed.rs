@@ -66,6 +66,7 @@ fn msg(text: &str) -> EventBody {
         message: new_id("msg"),
         text: text.into(),
         attaches: None,
+        reply: None,
     }
 }
 
@@ -329,6 +330,7 @@ pub(crate) fn seed(e: &mut Engine) -> Result<(), CoreError> {
                 "Daily summary: 2 shipped, 1 pending (Mac icon).",
             ),
             attaches: Some(summary),
+            reply: None,
         },
     )?;
     e.append_at(
@@ -465,6 +467,7 @@ pub(crate) fn seed(e: &mut Engine) -> Result<(), CoreError> {
                 "Got it. I created the task and I'll remind you on Monday.",
             ),
             attaches: Some(task),
+            reply: None,
         },
     )?;
     e.append_at(
@@ -683,7 +686,7 @@ pub(crate) fn seed(e: &mut Engine) -> Result<(), CoreError> {
             ),
         },
     )?;
-    e.append_at(&paraty, &zoen, at(187), EventBody::MessagePosted { message: new_id("msg"), text: t(&t("Montei o plano: ônibus, 2 noites na Casa Azul e escuna. R$ 1.348 de R$ 1.500 · sobra R$ 152.", "Here's the plan: bus, 2 nights at Casa Azul and a schooner. $1,348 of $1,500 · $152 left."), "Here's the plan: bus, 2 nights at Casa Azul and a schooner. $1,348 of $1,500 · $152 left."), attaches: Some(plan_item.clone()) })?;
+    e.append_at(&paraty, &zoen, at(187), EventBody::MessagePosted { message: new_id("msg"), text: t(&t("Montei o plano: ônibus, 2 noites na Casa Azul e escuna. R$ 1.348 de R$ 1.500 · sobra R$ 152.", "Here's the plan: bus, 2 nights at Casa Azul and a schooner. $1,348 of $1,500 · $152 left."), "Here's the plan: bus, 2 nights at Casa Azul and a schooner. $1,348 of $1,500 · $152 left."), attaches: Some(plan_item.clone()), reply: None })?;
     e.append_at(
         &paraty,
         &zoen,
@@ -749,6 +752,7 @@ pub(crate) fn seed(e: &mut Engine) -> Result<(), CoreError> {
                 "And I added a countdown for the trip.",
             ),
             attaches: Some(trip.clone()),
+            reply: None,
         },
     )?;
 
@@ -983,6 +987,7 @@ fn seed_turma_apps(
                 "Found three good trails for Saturday, with maps and photos. Compare and vote: once it’s locked in, I’ll plan the day and the rides.",
             ),
             attaches: Some(hike.clone()),
+            reply: None,
         },
     )?;
     e.append_at(
@@ -1080,6 +1085,7 @@ fn seed_turma_apps(
                 "I adopted a donkey for the group. Take care of him!",
             ),
             attaches: Some(pet.clone()),
+            reply: None,
         },
     )?;
 
@@ -1140,6 +1146,7 @@ fn seed_turma_apps(
                 "MapTap for the group — 5 places, closest guess wins.",
             ),
             attaches: Some(maptap),
+            reply: None,
         },
     )?;
 
@@ -1242,6 +1249,7 @@ fn seed_coastal_hike(
                 "Locked in the Praia do Sono trail for Saturday (good tide). The scoreboard stays pinned at the top.",
             ),
             attaches: Some(hike),
+            reply: None,
         },
     )?;
     Ok(())

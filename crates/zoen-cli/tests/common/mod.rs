@@ -493,6 +493,7 @@ impl RawClient {
                 message: "m".into(),
                 text: text.into(),
                 attaches: None,
+                reply: None,
             },
         );
         self.publish(Envelope::plain(&e)).await
@@ -508,6 +509,7 @@ impl RawClient {
                 message: "m".into(),
                 text: text.into(),
                 attaches: None,
+                reply: None,
             },
         );
         let mut forged = SignedContent::parse(&e.content).unwrap();
