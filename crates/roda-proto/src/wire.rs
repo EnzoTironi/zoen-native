@@ -178,6 +178,14 @@ pub struct PbKeyPackages {
 }
 
 #[derive(Clone, PartialEq, Message)]
+pub struct PbKeyPackagesLow {
+    #[prost(string, tag = "1")]
+    pub device: String,
+    #[prost(uint32, tag = "2")]
+    pub remaining: u32,
+}
+
+#[derive(Clone, PartialEq, Message)]
 pub struct PbProfileChanged {
     #[prost(string, tag = "1")]
     pub identity: String,
@@ -341,6 +349,8 @@ pub mod pb_server_frame {
         Error(PbError),
         #[prost(message, tag = "13")]
         ProfileChanged(PbProfileChanged),
+        #[prost(message, tag = "14")]
+        KeyPackagesLow(PbKeyPackagesLow),
     }
 }
 
@@ -899,6 +909,12 @@ impl ServerFrame {
                     version: *version,
                 })
             }
+            ServerFrame::KeyPackagesLow { device, remaining } => {
+                F::KeyPackagesLow(PbKeyPackagesLow {
+                    device: device.clone(),
+                    remaining: *remaining,
+                })
+            }
             ServerFrame::Joined { space } => F::Joined(space.clone()),
             ServerFrame::SyncDone => F::SyncDone(PbEmpty {}),
             ServerFrame::Pong => F::Pong(PbEmpty {}),
@@ -1008,6 +1024,10 @@ impl ServerFrame {
             F::ProfileChanged(p) => ServerFrame::ProfileChanged {
                 identity: p.identity,
                 version: p.version,
+            },
+            F::KeyPackagesLow(k) => ServerFrame::KeyPackagesLow {
+                device: k.device,
+                remaining: k.remaining,
             },
             F::Joined(space) => ServerFrame::Joined { space },
             F::SyncDone(_) => ServerFrame::SyncDone,
@@ -1194,6 +1214,10 @@ mod tests {
             ServerFrame::ProfileChanged {
                 identity: "i".into(),
                 version: 4,
+            },
+            ServerFrame::KeyPackagesLow {
+                device: "d".into(),
+                remaining: 3,
             },
             ServerFrame::Joined { space: "sp".into() },
             ServerFrame::SyncDone,

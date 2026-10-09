@@ -9,6 +9,7 @@
 //! ("s", space, "dedupe", author, cid)  -> seq
 //! ("s", space, "m", identity)          -> role
 //! ("s", space, "gone", identity)       -> seq of their removal (until they're added back)
+//! ("s", space, "mls")                  -> (next commit epoch, device of the last commit)
 //! ("i", identity, space)               -> ""            membership by identity
 //! ("inv", code_hash)                   -> (space, role, created_by, expires_ms, max_uses, uses)
 //! ```
@@ -71,6 +72,7 @@ struct SpaceState {
     kind: Option<SpaceKind>,
     privacy: Option<Privacy>,
     creator: String,
+    mls: Option<(u64, String)>,
     members: BTreeMap<String, Role>,
     /// Hashes of the newest entries, by seq, so `seen` checks need no read.
     recent: BTreeMap<u64, String>,
@@ -279,6 +281,10 @@ impl Cell {
             state.privacy = parse(&privacy);
             state.creator = creator;
         }
+        if let Some(v) = trx.get(&self.space_key(space, "mls"), true).await? {
+            let (next, device): (i64, String) = unpack(&v).map_err(|e| custom(e.to_string()))?;
+            state.mls = Some((next as u64, device));
+        }
         state.members = self
             .members_in(trx, space, true)
             .await?
@@ -404,6 +410,7 @@ impl Cell {
                 facts.target_role = target.and_then(|t| state.members.get(&t).copied());
                 facts.member_count = state.members.len() as u32;
                 facts.privacy = state.privacy;
+                facts.mls = state.mls.clone();
                 let hash_at = |seq: u64| {
                     (seq <= *h)
                         .then(|| {
@@ -457,6 +464,9 @@ impl Cell {
                     state.kind = Some(kind);
                     state.privacy = Some(privacy);
                     state.creator = env.author().to_string();
+                    if privacy == Privacy::EndToEnd {
+                        self.put_mls(trx, space, &mut state, 0, String::new());
+                    }
                     self.put_member(trx, space, env.author(), Role::Owner);
                     state.members.insert(env.author().to_string(), Role::Owner);
                 }
@@ -497,6 +507,10 @@ impl Cell {
                         )),
                     );
                     state.privacy = Some(Privacy::EndToEnd);
+                    self.put_mls(trx, space, &mut state, 0, String::new());
+                }
+                Effect::Commit { epoch, device } => {
+                    self.put_mls(trx, space, &mut state, epoch + 1, device);
                 }
                 Effect::Nothing => {}
             }
@@ -515,6 +529,21 @@ impl Cell {
             }
         }
         Ok((results, state))
+    }
+
+    fn put_mls(
+        &self,
+        trx: &Transaction,
+        space: &str,
+        state: &mut SpaceState,
+        next: u64,
+        device: String,
+    ) {
+        trx.set(
+            &self.space_key(space, "mls"),
+            &pack(&(next as i64, device.as_str())),
+        );
+        state.mls = Some((next, device));
     }
 
     fn put_member(&self, trx: &Transaction, space: &str, who: &str, role: Role) {

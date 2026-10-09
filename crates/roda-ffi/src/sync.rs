@@ -13,6 +13,7 @@
 
 use std::collections::{HashMap, HashSet};
 
+use roda_log::content::SealedKind;
 use roda_log::{chain_hash, content_hash_of, Author, Signer, SpaceLog};
 use roda_proto::{normalize_handle, Cursor, Envelope, Sequenced};
 use roda_types::*;
@@ -341,6 +342,9 @@ impl Engine {
 
     /// The relay refused one of ours.
     pub fn reject(&mut self, client_id: &str, reason: &str, permanent: bool) -> bool {
+        if permanent && self.mls_handshake_refused(client_id, reason) {
+            return false;
+        }
         // Written in the clear just before the Space went end-to-end: it waits for the
         // group and goes out sealed, it doesn't fail.
         let permanent = permanent && reason != roda_proto::SEAL_REQUIRED;
@@ -371,11 +375,24 @@ impl Engine {
 
     /// Envelopes still waiting for the relay, oldest first.
     pub fn outbox_envelopes(&self) -> Vec<Envelope> {
+        // A Welcome goes out only once its commit is in: sent together, a commit held back
+        // by the relay (rate limit) would let the Welcome arrive first and be refused.
+        let mut committing: HashSet<String> = HashSet::new();
         self.store
             .outbox()
             .unwrap_or_default()
             .into_iter()
             .filter(|p| !p.failed)
+            .filter(|p| match &p.event.body {
+                EventBody::Sealed { kind } if kind == SealedKind::Commit.name() => {
+                    committing.insert(p.event.space.clone());
+                    true
+                }
+                EventBody::Sealed { kind } if kind == SealedKind::Welcome.name() => {
+                    !committing.contains(&p.event.space)
+                }
+                _ => true,
+            })
             // Refused for being clear in a Space that went end-to-end: it waits until this
             // device has caught up with that, then goes out sealed.
             .filter(|p| {
@@ -761,14 +778,14 @@ impl Engine {
         Ok(())
     }
 
-    pub fn add_member(&mut self, space: &str, who: &str) -> R<()> {
+    pub fn add_member(&mut self, space: &str, who: &str, role: Role) -> R<()> {
         let me = self.me_id()?;
         self.append(
             space,
             &me,
             EventBody::MemberAdded {
                 identity: who.to_string(),
-                role: Role::Member,
+                role,
             },
         )?;
         Ok(())

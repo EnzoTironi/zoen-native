@@ -311,6 +311,15 @@ impl<'c> Device<'c> {
         })
     }
 
+    /// Drops this device's commit after the relay refused it (another commit took the
+    /// epoch). The winner arrives through the log; the device then commits again.
+    pub fn abandon(&self, space: &str) -> Result<(), MlsError> {
+        self.with(|p| {
+            let mut group = self.load(p, space)?;
+            group.clear_pending_commit(p.storage()).map_err(mls)
+        })
+    }
+
     /// Joins from a Welcome found in `space`'s log. `Ok(false)` when it isn't for this
     /// device. The group's roster must equal `roster` (the log's members), or nothing is
     /// joined.
@@ -408,9 +417,13 @@ impl<'c> Device<'c> {
                 ProcessedMessageContent::StagedCommitMessage(staged) => {
                     check_roster(&group, &staged, roster)?;
                     group.merge_staged_commit(p, *staged).map_err(mls)?;
-                    Ok(Opened::Commit {
-                        epoch: group.epoch().as_u64(),
-                    })
+                    let epoch = group.epoch().as_u64();
+                    if !group.is_active() {
+                        // Our leaf was taken out (a removal, or a stranded leaf replaced):
+                        // the secrets go, and a later Welcome starts the group afresh.
+                        group.delete(p.storage()).map_err(mls)?;
+                    }
+                    Ok(Opened::Commit { epoch })
                 }
                 ProcessedMessageContent::OwnPendingCommit => self.merge_own(p, &mut group, roster),
                 // Our own PrivateMessage: undecryptable by its author. A commit of ours at the

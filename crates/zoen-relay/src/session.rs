@@ -262,11 +262,49 @@ impl Session {
         let _ = self.tx.send(f).await;
     }
 
+    /// Tells each claimed device that's running low, wherever it is connected.
+    async fn key_packages_low(&self, claimed: &[roda_proto::KeyPackageRecord]) {
+        let devices: Vec<(String, String)> = claimed
+            .iter()
+            .map(|k| (k.identity.clone(), k.device.clone()))
+            .collect();
+        let Ok(stock) = db::key_package_stock(&self.st.pool, &devices).await else {
+            return;
+        };
+        for (identity, device, left) in stock {
+            if left < roda_proto::KEY_PACKAGES_LOW as i64 {
+                self.st.fanout.send(
+                    &[identity],
+                    &ServerFrame::KeyPackagesLow {
+                        device,
+                        remaining: left as u32,
+                    },
+                    None,
+                );
+            }
+        }
+    }
+
     async fn go_online(&mut self) {
         if self.hub_id.is_some() {
             return;
         }
         let _ = db::touch_device(&self.st.pool, &self.identity, &self.device, &self.cert).await;
+        // Packages claimed while this device was away: it refills as it comes back.
+        let me = [(self.identity.clone(), self.device.clone())];
+        if let Ok(stock) = db::key_package_stock(&self.st.pool, &me).await {
+            for (_, device, left) in stock {
+                if left < roda_proto::KEY_PACKAGES_LOW as i64 {
+                    let _ = self
+                        .tx
+                        .send(ServerFrame::KeyPackagesLow {
+                            device,
+                            remaining: left as u32,
+                        })
+                        .await;
+                }
+            }
+        }
         let was_online = self.st.fanout.is_online(&self.identity).await;
         self.hub_id = Some(self.st.fanout.add(
             &self.identity,
@@ -539,11 +577,11 @@ impl Session {
                     .check(&self.identity)
                     .map_err(limits::slow_down)?;
                 let ids: Vec<String> = ids.into_iter().take(50).collect();
-                Ok(Reply::KeyPackages(
-                    db::claim_key_packages(pool, &ids)
-                        .await
-                        .map_err(|e| e.to_string())?,
-                ))
+                let claimed = db::claim_key_packages(pool, &ids)
+                    .await
+                    .map_err(|e| e.to_string())?;
+                self.key_packages_low(&claimed).await;
+                Ok(Reply::KeyPackages(claimed))
             }
             Op::GetProfiles { ids } => {
                 let ids: Vec<String> = ids.into_iter().take(500).collect();

@@ -26,6 +26,9 @@ pub struct Facts {
     pub privacy: Option<Privacy>,
     /// Hash stored at a `Checkpoint`'s `upto.seq`, when that seq exists.
     pub upto_hash: Option<String>,
+    /// The MLS epoch the next commit must be made at, and the device whose commit took the
+    /// last one. `None` for a group older than this record: its next commit sets it.
+    pub mls: Option<(u64, String)>,
 }
 
 /// What an admitted envelope changes besides the log.
@@ -45,6 +48,11 @@ pub enum Effect {
     },
     /// The Space becomes end-to-end (ADR 0027).
     Encrypt,
+    /// An MLS commit took `epoch`; the next must be made at `epoch + 1` (ADR 0026).
+    Commit {
+        epoch: u64,
+        device: String,
+    },
     Nothing,
 }
 
@@ -160,8 +168,34 @@ pub fn admit(env: &Envelope, f: &Facts) -> Result<Effect, Reject> {
     if f.head.is_some() {
         check_privacy(env, body.as_ref(), f.privacy)?;
     }
+    let effect = check_handshake(env, f).map(|e| e.unwrap_or(effect))?;
     check_causal_link(env, f, &effect)?;
     Ok(effect)
+}
+
+/// One commit per epoch, in log order: the relay reads the epoch from the clear framing and
+/// refuses a commit that lost the race, so members never see two. A Welcome belongs to the
+/// last commit, which must be from the same device; after a refused commit there is none.
+fn check_handshake(env: &Envelope, f: &Facts) -> Result<Option<Effect>, Reject> {
+    let Some((kind, data)) = env.sealed_data() else {
+        return Ok(None);
+    };
+    let device = env.device().unwrap_or(env.author()).to_string();
+    match kind {
+        SealedKind::Commit => {
+            let epoch = roda_mls::commit_epoch(data)
+                .ok_or_else(|| Reject::no("a sealed commit that isn't an MLS commit"))?;
+            if f.mls.as_ref().is_some_and(|(next, _)| *next != epoch) {
+                return Err(Reject::no(roda_proto::STALE_COMMIT));
+            }
+            Ok(Some(Effect::Commit { epoch, device }))
+        }
+        SealedKind::Welcome => match &f.mls {
+            Some((_, by)) if *by == device => Ok(None),
+            _ => Err(Reject::no("a welcome follows its own commit")),
+        },
+        _ => Ok(None),
+    }
 }
 
 /// An end-to-end Space takes ciphertext plus the few clear events the relay must read to

@@ -36,6 +36,11 @@ pub const PROTOCOL_VERSION: u32 = 2;
 /// Why a relay refuses a clear event in an end-to-end Space. A client that wrote it before
 /// it learned the Space went end-to-end (ADR 0027) seals it and sends it again.
 pub const SEAL_REQUIRED: &str = "this space is end-to-end encrypted; seal the event";
+/// Under this many single-use key packages the relay asks the device to publish more.
+pub const KEY_PACKAGES_LOW: u32 = 8;
+/// Why a relay refuses a commit: another one already took its epoch (ADR 0026). The author
+/// drops it, applies the winner from the log, and commits again if anything is still owed.
+pub const STALE_COMMIT: &str = "stale_epoch: another commit took this epoch";
 pub const MIN_PROTOCOL_VERSION: u32 = 2;
 /// Domain tag for what devices sign outside the log (login, blob uploads).
 pub const PROTOCOL: &str = "zoen-sync/2";
@@ -476,6 +481,13 @@ pub enum ServerFrame {
     ProfileChanged {
         identity: IdentityId,
         version: u64,
+    },
+    /// One of your devices is running out of single-use MLS key packages (ADR 0026): it
+    /// should publish more. Sent at login and after a claim leaves it under
+    /// [`KEY_PACKAGES_LOW`]. Other devices of the identity ignore it.
+    KeyPackagesLow {
+        device: String,
+        remaining: u32,
     },
     /// You were added to a Space: sync it from the start.
     Joined {

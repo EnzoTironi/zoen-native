@@ -50,12 +50,17 @@ const META_PUBLISHED: &str = "mls.key_packages";
 const CHECKPOINT_EVERY: u64 = 256;
 /// How long to wait before claiming again for someone who had no key packages.
 const CLAIM_RETRY: Duration = Duration::from_secs(5);
+/// How long each admin waits behind the one before it (by identity order) before
+/// committing a change, so a group's admins rarely race for the same epoch.
+const ADMIN_STAGGER: Duration = Duration::from_millis(400);
 
 /// MLS bookkeeping beside the network state.
 #[derive(Default)]
 pub struct MlsNet {
     /// Key packages generated and on their way to the relay.
-    publishing: Option<(Vec<Vec<u8>>, Vec<u8>)>,
+    publishing: Option<(Vec<Vec<u8>>, Option<Vec<u8>>)>,
+    /// Single-use packages the relay says this device should add (it's running low).
+    top_up: usize,
     /// Who each end-to-end Space's confirmed log lists, and as what.
     rosters: HashMap<SpaceId, BTreeMap<IdentityId, Role>>,
     /// Spaces whose group may owe a commit (membership changed, a commit landed or was
@@ -67,6 +72,10 @@ pub struct MlsNet {
     sealed_since_checkpoint: HashMap<SpaceId, u64>,
     /// Spaces where someone listed had no key packages: messages stop waiting for them.
     stuck: HashSet<SpaceId>,
+    /// When this device's turn to commit comes, behind the admins before it.
+    turn_at: HashMap<SpaceId, Instant>,
+    /// Spaces where this device already waited its turn.
+    waited: HashSet<SpaceId>,
 }
 
 /// Events the relay reads even in an end-to-end Space: what it orders and authorizes by.
@@ -84,6 +93,31 @@ fn stays_clear(body: &EventBody) -> bool {
 
 fn sealed_meta(client_id: &str) -> String {
     format!("mls.sealed:{client_id}")
+}
+
+/// Who a queued Welcome of ours is for, until it lands.
+fn welcome_meta(client_id: &str) -> String {
+    format!("mls.welcome:{client_id}")
+}
+
+/// People in our group whose Welcome the relay refused: they hold (or will hold, once the
+/// commit lands) a leaf they can never use, so the group takes it out and adds them again.
+fn rewelcome_meta(space: &str) -> String {
+    format!("mls.rewelcome:{space}")
+}
+
+fn identity_set(v: Option<String>) -> BTreeSet<IdentityId> {
+    v.map(|v| {
+        v.split(',')
+            .filter(|s| !s.is_empty())
+            .map(str::to_string)
+            .collect()
+    })
+    .unwrap_or_default()
+}
+
+fn join_set(set: &BTreeSet<IdentityId>) -> String {
+    set.iter().cloned().collect::<Vec<_>>().join(",")
 }
 
 fn digest_meta(space: &str, epoch: u64) -> String {
@@ -361,7 +395,7 @@ impl Engine {
     }
 
     /// Signs MLS bytes into the Space's outbox, in order.
-    fn queue_handshake(&mut self, space: &str, kind: SealedKind, data: Vec<u8>) -> R<()> {
+    fn queue_handshake(&mut self, space: &str, kind: SealedKind, data: Vec<u8>) -> R<String> {
         let author = self
             .net
             .author
@@ -389,9 +423,11 @@ impl Engine {
         )
         .map_err(storage)?;
         self.store.outbox_put(&e)?;
-        self.net.pending.insert(client_id, space.to_string());
+        self.net
+            .pending
+            .insert(client_id.clone(), space.to_string());
         self.net.wake();
-        Ok(())
+        Ok(client_id)
     }
 
     /// A sealed entry the relay sequenced: opened (or kept sealed) and logged in one
@@ -531,6 +567,7 @@ impl Engine {
             self.net.pending.remove(&client_id);
             let _ = self.store.outbox_remove(&client_id);
             let _ = self.store.meta_delete(&sealed_meta(&client_id));
+            let _ = self.store.meta_delete(&welcome_meta(&client_id));
             if let Some(s) = self.state.spaces.get_mut(&space) {
                 for entry in s.entries.iter_mut().filter(|x| x.client_id == client_id) {
                     entry.seq = e.seq;
@@ -571,19 +608,37 @@ impl Engine {
 
     // ── work for the network task ──
 
-    /// This device's key packages, until the relay has them.
-    pub fn mls_key_packages_to_publish(&mut self) -> Option<(Vec<Vec<u8>>, Vec<u8>)> {
+    /// This device's key packages, until the relay has them: the first full set with a
+    /// last-resort one, then top-ups when the relay says the stock is low.
+    pub fn mls_key_packages_to_publish(&mut self) -> Option<(Vec<Vec<u8>>, Option<Vec<u8>>)> {
         let device_id = self.net.account.as_ref()?.device.clone();
-        if self.store.meta(META_PUBLISHED).ok().flatten() == Some(device_id) {
-            return None;
-        }
         if self.net.mls.publishing.is_none() {
+            let first = self.store.meta(META_PUBLISHED).ok().flatten() != Some(device_id);
             let device = self.device().ok()?;
-            let mut packages = device.key_packages(KEY_PACKAGES, true).ok()?;
-            let last_resort = packages.pop()?;
-            self.net.mls.publishing = Some((packages, last_resort));
+            if first {
+                let mut packages = device.key_packages(KEY_PACKAGES, true).ok()?;
+                let last_resort = packages.pop()?;
+                self.net.mls.publishing = Some((packages, Some(last_resort)));
+            } else if self.net.mls.top_up > 0 {
+                let packages = device.key_packages(self.net.mls.top_up, false).ok()?;
+                self.net.mls.top_up = 0;
+                self.net.mls.publishing = Some((packages, None));
+            }
         }
         self.net.mls.publishing.clone()
+    }
+
+    /// The relay says this device has `remaining` single-use packages left: refill to
+    /// [`KEY_PACKAGES`]. Notices for the identity's other devices are theirs.
+    pub fn mls_key_packages_low(&mut self, device: &str, remaining: u32) {
+        let mine = self
+            .net
+            .account
+            .as_ref()
+            .is_some_and(|a| a.device == device);
+        if mine && self.net.mls.publishing.is_none() {
+            self.net.mls.top_up = KEY_PACKAGES.saturating_sub(remaining as usize);
+        }
     }
 
     pub fn mls_key_packages_published(&mut self, result: Result<(), String>) {
@@ -596,6 +651,67 @@ impl Engine {
             }
             Err(e) => tracing_like(&format!("key packages refused: {e}")),
         }
+    }
+
+    /// One of this device's handshakes was refused for good: a commit that lost its epoch
+    /// (`STALE_COMMIT`), or a Welcome whose commit isn't the last one any more. Neither is
+    /// anything the person wrote, so it isn't shown as failed: a lost commit is dropped with
+    /// its Welcome, the winner arrives from the log, and the group is checked again.
+    /// `false` when `client_id` isn't a handshake.
+    pub(crate) fn mls_handshake_refused(&mut self, client_id: &str, reason: &str) -> bool {
+        let Some(e) = self.store.outbox().ok().and_then(|o| {
+            o.into_iter()
+                .map(|p| p.event)
+                .find(|e| e.client_id == client_id)
+        }) else {
+            return false;
+        };
+        let EventBody::Sealed { kind } = &e.body else {
+            return false;
+        };
+        tracing_like(&format!("{kind} in {} refused: {reason}", e.space));
+        if kind == SealedKind::Commit.name() {
+            // Its Welcome, held behind it, has no commit to follow any more.
+            let orphans: Vec<String> = self
+                .store
+                .outbox()
+                .unwrap_or_default()
+                .into_iter()
+                .map(|p| p.event)
+                .filter(|o| {
+                    o.space == e.space
+                        && matches!(&o.body, EventBody::Sealed { kind } if kind == SealedKind::Welcome.name())
+                })
+                .map(|o| o.client_id)
+                .collect();
+            for id in orphans {
+                let _ = self.store.outbox_remove(&id);
+                let _ = self.store.meta_delete(&welcome_meta(&id));
+                self.net.pending.remove(&id);
+            }
+            if let Err(err) = self
+                .device()
+                .and_then(|d| d.abandon(&e.space).map_err(mls_err))
+            {
+                tracing_like(&format!("dropping the commit in {}: {err}", e.space));
+            }
+        } else if kind == SealedKind::Welcome.name() {
+            // Its commit landed but another got in before the Welcome: the newcomers' leaves
+            // are in our group with no way in, so they get taken out and added afresh.
+            let key = welcome_meta(client_id);
+            let stranded = identity_set(self.store.meta(&key).ok().flatten());
+            let _ = self.store.meta_delete(&key);
+            if !stranded.is_empty() {
+                let key = rewelcome_meta(&e.space);
+                let mut all = identity_set(self.store.meta(&key).ok().flatten());
+                all.extend(stranded);
+                let _ = self.store.set_meta(&key, &join_set(&all));
+            }
+        }
+        let _ = self.store.outbox_remove(client_id);
+        self.net.pending.remove(client_id);
+        self.net.mls.dirty.insert(e.space);
+        true
     }
 
     /// The next group that owes a commit adding someone: claim their key packages. Groups
@@ -614,8 +730,27 @@ impl Engine {
             self.net.mls.retry_at.remove(&s);
             self.net.mls.dirty.insert(s);
         }
+        let turn: Vec<SpaceId> = self
+            .net
+            .mls
+            .turn_at
+            .iter()
+            .filter(|(_, at)| **at <= now)
+            .map(|(s, _)| s.clone())
+            .collect();
+        for s in turn {
+            self.net.mls.turn_at.remove(&s);
+            self.net.mls.waited.insert(s.clone());
+            self.net.mls.dirty.insert(s);
+        }
         let dirty: Vec<SpaceId> = self.net.mls.dirty.iter().cloned().collect();
         for space in dirty {
+            self.settle_rewelcome(&space);
+            if let Some(turn) = self.admin_turn(&space) {
+                self.net.mls.dirty.remove(&space);
+                self.net.mls.turn_at.insert(space, now + turn);
+                continue;
+            }
             match self.owed(&space) {
                 Ok(Some((add, remove))) if add.is_empty() => {
                     self.net.mls.dirty.remove(&space);
@@ -638,6 +773,52 @@ impl Engine {
             }
         }
         None
+    }
+
+    /// How long this device waits before committing an owed change in `space`: one stagger
+    /// per admin ahead of it in identity order. `None` once it has waited, when it is first,
+    /// or when nothing is owed.
+    fn admin_turn(&mut self, space: &str) -> Option<Duration> {
+        if !matches!(self.owed(space), Ok(Some(_))) {
+            self.net.mls.waited.remove(space);
+            return None;
+        }
+        if self.net.mls.waited.contains(space) || self.net.mls.turn_at.contains_key(space) {
+            return None;
+        }
+        let me = self.me.as_deref()?;
+        let roster = self.net.mls.rosters.get(space)?;
+        let ahead = roster
+            .iter()
+            .filter(|(id, r)| matches!(r, Role::Owner | Role::Admin) && id.as_str() < me)
+            .count() as u32;
+        (ahead > 0).then(|| ADMIN_STAGGER * ahead)
+    }
+
+    /// People waiting for a fresh add whose old leaf is gone from our group: from here on
+    /// they're simply listed and missing, and the next reconcile adds them. Nothing settles
+    /// while our own commit is still on its way.
+    fn settle_rewelcome(&mut self, space: &str) {
+        let key = rewelcome_meta(space);
+        let waiting = identity_set(self.store.meta(&key).ok().flatten());
+        if waiting.is_empty() {
+            return;
+        }
+        let Ok(device) = self.device() else {
+            return;
+        };
+        if device.pending(space) {
+            return;
+        }
+        let Ok(group) = device.roster(space).map_err(mls_err) else {
+            return;
+        };
+        let left: BTreeSet<_> = waiting.intersection(&group).cloned().collect();
+        let _ = if left.is_empty() {
+            self.store.meta_delete(&key)
+        } else {
+            self.store.set_meta(&key, &join_set(&left))
+        };
     }
 
     /// What `space`'s group owes: (identities to add, identities to remove), when this
@@ -674,7 +855,9 @@ impl Engine {
         let group = device.roster(space).map_err(mls_err)?;
         let listed: BTreeSet<IdentityId> = roster.keys().cloned().collect();
         let add: BTreeSet<_> = listed.difference(&group).cloned().collect();
-        let remove: BTreeSet<_> = group.difference(&listed).cloned().collect();
+        let mut remove: BTreeSet<_> = group.difference(&listed).cloned().collect();
+        let stranded = identity_set(self.store.meta(&rewelcome_meta(space))?);
+        remove.extend(stranded.intersection(&group).cloned());
         Ok((!add.is_empty() || !remove.is_empty()).then_some((add, remove)))
     }
 
@@ -723,7 +906,14 @@ impl Engine {
         let c = self.device()?.commit(space, add, remove).map_err(mls_err)?;
         self.queue_handshake(space, SealedKind::Commit, c.commit)?;
         if let Some(w) = c.welcome {
-            self.queue_handshake(space, SealedKind::Welcome, w)?;
+            let welcome = self.queue_handshake(space, SealedKind::Welcome, w)?;
+            let newcomers: BTreeSet<IdentityId> = add
+                .iter()
+                .filter_map(|kp| roda_mls::key_package_leaf(kp).ok())
+                .map(|l| l.identity)
+                .collect();
+            self.store
+                .set_meta(&welcome_meta(&welcome), &join_set(&newcomers))?;
         }
         Ok(())
     }
@@ -765,7 +955,13 @@ impl Engine {
         let published = self.net.account.as_ref().is_none_or(|a| {
             self.store.meta(META_PUBLISHED).ok().flatten().as_deref() == Some(a.device.as_str())
         });
-        published && m.dirty.is_empty() && m.claiming.is_empty() && m.checkpoint_due.is_empty()
+        published
+            && m.publishing.is_none()
+            && m.top_up == 0
+            && m.dirty.is_empty()
+            && m.claiming.is_empty()
+            && m.turn_at.is_empty()
+            && m.checkpoint_due.is_empty()
     }
 
     /// The group as this device has it: epoch, checkpoint digest and members.

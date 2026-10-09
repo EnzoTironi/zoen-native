@@ -372,7 +372,13 @@ impl RodaEngine {
     }
 
     pub fn add_member(&self, space_id: String, identity_id: String) -> Result<(), CoreError> {
-        self.lock().add_member(&space_id, &identity_id)
+        self.lock()
+            .add_member(&space_id, &identity_id, Role::Member)
+    }
+
+    /// Adds someone who can also add, remove and commit for the group.
+    pub fn add_admin(&self, space_id: String, identity_id: String) -> Result<(), CoreError> {
+        self.lock().add_member(&space_id, &identity_id, Role::Admin)
     }
 
     pub fn remove_member(&self, space_id: String, identity_id: String) -> Result<(), CoreError> {
