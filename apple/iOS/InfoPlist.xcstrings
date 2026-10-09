@@ -56,6 +56,23 @@
         }
       }
     },
+    "NSLocalNetworkUsageDescription": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Zoen connects to a Zoen server on your Wi-Fi when you're testing one there."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "O Zoen se conecta a um servidor do Zoen na sua rede Wi-Fi quando você está testando um ali."
+          }
+        }
+      }
+    },
     "NSLocationWhenInUseUsageDescription": {
       "extractionState": "manual",
       "localizations": {
