@@ -6,6 +6,14 @@
 >
 > Regras: números só com fonte; o que não achei está marcado **não encontrado**; suposições
 > nossas estão marcadas como **hipótese**.
+>
+> **Atualizado em 9 out 2026, 02h30 (BRT), depois da revisão do Enzo:**
+> - todo usuário começa com **10 convites**, e mais convites saem em troca de feedback;
+> - quem traz **5 usuários ativos** ganha **1 mês do plano pago mais barato**;
+> - **não existe "convidado por"** no perfil;
+> - **convites de ouro são só para o B2B** (negócios, criadores e donos de comunidade).
+>
+> As seções 0, 3 e 4 seguem essas decisões.
 
 ## 0. Resumo
 
@@ -22,10 +30,15 @@
    chegar a alguns milhares, cresceu 1–2%, depois 6–9% e então **10–11% ao dia**, com **US$ 0 em
    marketing**. Convites foram revendidos no eBay por US$ 93 a US$ 300. Passou de 100 mil
    usuários segundo a The Information, citada pela PYMNTS. Seção 2.
-4. **Para o Zoen.** O que se copia não é a portaria. São quatro coisas: **escassez do
-   presente**, **convite como gesto pessoal**, **o convidado chegando dentro de algo** e **janelas
-   de convite nos lançamentos**. O Zoen aberto troca "convite para entrar" por "**convite que
-   dá algo aos dois lados**". Seções 3 e 4.
+4. **Para o Zoen (decidido pelo Enzo).** O produto é aberto e não tem portaria. Do Instinct copiamos:
+   - **a cota de convites:** 10 por pessoa, com mais convites liberados em troca de feedback;
+   - **o convite como gesto pessoal**, pedido ao próprio agente;
+   - **o convidado chegando dentro de uma conversa**;
+   - **as janelas de convite nos lançamentos.**
+
+   A recompensa é **1 mês do plano pago mais barato a cada 5 convidados ativos**. Os **convites de
+   ouro** ficam só para negócios, criadores e donos de comunidade. Quem convidou quem **nunca
+   aparece para outras pessoas**. Seções 3 e 4.
 
 ## 1. Desambiguação: qual "Instinct"
 
@@ -116,46 +129,83 @@ em quem já confiava no convidado.
 | Do Instinct | No Zoen aberto | Por quê |
 |---|---|---|
 | Portaria (sem convite, não entra) | **Não copiar.** Qualquer pessoa entra direto pelo app ou pela web | Decisão do Enzo. Portaria também deu revenda e frustração |
-| 5 convites escassos | **Copiar a escassez no presente, não no acesso.** "Convites de ouro" limitados que dão benefícios aos dois lados | Mantém o gesto deliberado ("escolhi você") sem bloquear ninguém |
+| 5 convites por pessoa | **Copiar a cota, com mais folga: 10 convites por pessoa.** Para ganhar mais, a pessoa dá feedback (decisão do Enzo) | A cota faz cada convite ser uma escolha ("escolhi você"). O pedido de feedback transforma quem mais convida em fonte de aprendizado |
 | Pedir o link ao próprio assistente | **Copiar.** "Zoen, me dá um convite para a Ana" gera o link na conversa com o agente | É natural num app com agente, e o pedido já diz para quem é o convite |
 | "Todo novo usuário chega por um amigo ou parente" | **Copiar como padrão.** O link abre a conversa com quem convidou, e o agente de quem convidou recebe a pessoa | O primeiro momento é com alguém conhecido, não uma tela vazia |
 | Grupo funciona para quem não tem conta | **Copiar.** O link de um Space ou grupo abre na web e a pessoa participa na hora (ADR 0029) | É o mesmo "your friends don't even need Instinct" |
 | +15 convites por 2 dias no lançamento de um recurso social | **Copiar como "janela de convites"** a cada recurso que fica melhor com amigos | Concentra a viralidade nos picos de novidade |
 | Lançamentos em estágios ("peça para entrar no acesso antecipado") | **Copiar** para recursos novos e caros, como modelos premium e o navegador do agente | Dá a escassez onde existe custo real de computação |
-| Sem recompensa por indicação | **Mudar:** recompensa pequena, para os dois lados, paga só quando o convidado fica ativo | Sem portaria, a escassez de acesso não existe; o presente substitui o status |
-| Termos: conta pessoal e intransferível | **Copiar.** O convite de ouro tem um destinatário só e não vale para revenda | Evita o eBay |
+| Sem recompensa por indicação | **Mudar:** a cada **5 convidados ativos**, quem convidou ganha **1 mês do plano pago mais barato** (decisão do Enzo) | Sem portaria, a escassez de acesso não existe. O prêmio substitui o status |
+| Status social em volta do convite (gente se gabando dos convites que sobraram) | **Não copiar no perfil:** não existe "convidado por". Só a própria pessoa vê as estatísticas dos convites dela (decisão do Enzo) | Privacidade: quem convidou quem é grafo social, e não se expõe |
+| Termos: conta pessoal e intransferível | **Copiar.** Convites e prêmios ficam presos a quem convidou e a quem aceitou. Não valem para revenda | Evita o eBay |
 
 ## 4. Proposta para o Zoen
 
-### 4.1 Três tipos de convite
+### 4.1 Tipos de convite
 
-1. **Link de conversa ou Space (ilimitado, aberto).** Todo chat e todo Space tem um link. Ele abre
-   **direto na conversa na web**, sem landing page, e a pessoa lê e responde em segundos (ADR 0029).
-   O pedido para instalar o app só aparece quando algo precisa do nativo, como notificações ou o
-   agente local. Não dá prêmio a ninguém: o valor está em entrar na conversa.
-2. **Convite pessoal (ilimitado, com limite antispam).** "Zoen, convida a Ana." O link abre uma DM
-   com quem convidou, e o agente dele já dá as boas-vindas ("A Ana chegou!"). Prêmio pequeno para os
-   dois quando a Ana fica ativa.
-3. **Convite de ouro (escasso: 5 por pessoa, hipótese).** É a cópia direta dos 5 do Instinct, mas
-   como **presente**: quem recebe ganha **créditos de modelos premium** e um visual exclusivo (borda
-   desenhada à mão no avatar, selo "convidado por Enzo"). Quem dá também ganha créditos quando o
-   convidado fica ativo. Ganha-se mais em janelas de convite e com uso real, nunca com compra.
+1. **Link de conversa ou Space (aberto, gerido pelos admins).** Todo chat e todo Space tem um link.
+   Ele abre **direto na conversa na web**, sem landing page, e a pessoa lê e responde em segundos
+   (ADR 0029). O pedido para instalar o app só aparece quando algo precisa do nativo, como
+   notificações ou o agente local. **Proposta nossa:** esse link não gasta a cota de 10 e não conta
+   para o prêmio, porque é entrada num grupo e não indicação pessoal. Tem limite de entradas por
+   hora, controlado pelos admins.
+2. **Convite pessoal (10 por pessoa; decisão do Enzo).** "Zoen, convida a Ana." O link abre uma DM
+   com quem convidou, e o agente dele já dá as boas-vindas ("A Ana chegou!"). Todo usuário começa
+   com **10**:
+   - **Um convite só é gasto quando é aceito.** Link que expira ou é revogado devolve o convite
+     (proposta nossa, como o "used up" do Instinct).
+   - **Mais convites em troca de feedback.** Quando os 10 acabam, o Zoen oferece mais em troca de
+     uma conversa curta com o agente do Zoen ou uma pesquisa de 3 a 5 perguntas dentro do app.
+     **Proposta nossa:** +5 convites por rodada de feedback, no máximo uma rodada a cada 14 dias.
+     O feedback precisa ter conteúdo (respostas em branco ou genéricas não liberam), e as respostas
+     vão para a fila de pesquisa com usuários, sem o conteúdo de conversas.
+   - Isso respeita a regra 3.2.2(x) da Apple: o feedback é dentro do app, nunca uma avaliação na
+     App Store, e não trava nenhuma função do app. Só libera convites extras.
+3. **Convite de ouro (só para o B2B; decisão do Enzo).** Para **negócios, criadores e donos de
+   comunidade**, não para usuários comuns. Exemplos:
+   - a confeiteira chama clientes para o bot da loja;
+   - um criador como o Alexor Mods abre a comunidade dele;
+   - o dono de um Space de concurso chama a turma.
 
-### 4.2 Benefícios, ligados à conta de IA
+   Com o convite de ouro, o convidado chega já dentro do Space ou do bot com algum benefício (por
+   exemplo, créditos de modelos premium dentro daquela comunidade). O dono ganha ferramentas do lado
+   empresa, como um período de **Bot Pro** ou destaque na loja (**proposta nossa**; valores a
+   definir). A quantidade depende do plano da empresa ou do criador e é liberada pela equipe para
+   os parceiros de lançamento.
 
-Combina com a decisão de usar GLM Flash e modelos da mesma faixa por padrão e deixar os melhores
-modelos no premium:
+### 4.2 Prêmio: 5 convidados ativos = 1 mês do plano pago mais barato
 
-- O benefício natural é **acesso temporário aos modelos premium** (por exemplo, N pedidos ou 30 dias,
-  o que vier primeiro), e não dinheiro.
-- **Teto de custo (hipótese):** pela [conta por usuário](../research/unit-economics.md), o usuário
-  gratuito custa cerca de US$ 0,047 por mês no cenário médio, com teto de nuvem de ~US$ 0,03. Um
-  convite de ouro aceito pode custar no máximo **US$ 0,20 por lado em créditos**, ou seja, cerca de
-  US$ 0,40 por usuário ativo adquirido, bem abaixo de qualquer custo de aquisição pago. Validar com
-  dados.
-- Quem conectou a própria conta do ChatGPT já usa os créditos dele. Para essa pessoa o prêmio vira
-  algo visual ou do agente (temas, voz, mais automações), não tokens.
-- Não há recompensa em dinheiro nem "convide 10 e ganhe". Prêmio por volume atrai fraude e spam.
+- **Regra (decisão do Enzo):** quem traz **5 usuários** ganha **1 mês do nosso plano pago mais
+  barato**. O prêmio se repete a cada 5, mas o número total de convites é limitado pela cota (10
+  mais os liberados por feedback).
+- **O que é "usuário" (proposta nossa, para evitar fraude):** um convidado que
+  1. aceitou um **convite pessoal** daquela pessoa;
+  2. criou conta com **telefone verificado** que nunca foi usado no Zoen;
+  3. tem um **dispositivo atestado** (App Attest no iOS, Play Integrity no Android; na web, a conta
+     só conta depois de ligar um aparelho);
+  4. **mandou mensagens em pelo menos 2 dias diferentes dentro de 14 dias** desde o cadastro, com
+     pelo menos uma das mensagens para alguém **que não seja quem convidou**.
+- **Qual plano:** hoje o único plano pago desenhado é o **premium opcional** da
+  [conta por usuário](../research/unit-economics.md) (seção 16): preço sugerido de R$ 29,90 ou
+  US$ 9,99, com custo de ≈ **US$ 3,34 por assinante por mês**. Se surgir um plano mais barato, o
+  prêmio passa a ser ele.
+- **Custo de aquisição (conta nossa):** ≈ US$ 3,34 ÷ 5 ≈ **US$ 0,67 por usuário ativo trazido**,
+  pago uma vez. O plano grátis custa ≈ US$ 0,053 por usuário por mês. Isso fica bem abaixo de
+  qualquer aquisição paga, mas **é custo real** e precisa de teto: no máximo 2 meses de prêmio por
+  pessoa por trimestre (**hipótese**).
+- **O prêmio é para a pessoa, não sai em dinheiro, não se transfere e não se acumula além de 3
+  meses.** Quem já assina ganha 1 mês grátis na próxima cobrança.
+- **Lojas:** um mês grátis de assinatura no iOS precisa passar pelas ferramentas da Apple (offer
+  codes ou ofertas promocionais), ou o prêmio vale como crédito no plano comprado na web. É preciso
+  checar com o jurídico e com a App Review antes de lançar.
+- Quem conectou o próprio ChatGPT usa os créditos dele. Para essa pessoa o plano pago ainda vale
+  pelos outros benefícios.
+- **Privacidade (decisão do Enzo):** não existe "convidado por" no perfil nem em lugar nenhum
+  visível para terceiros. A relação entre quem convidou e quem aceitou **fica privada**. Só a
+  própria pessoa vê as estatísticas dela: convites restantes, aceitos, quantos já contam como
+  ativos e quanto falta para o próximo mês grátis. O convidado não vê quem mais aquela pessoa
+  convidou. O vínculo é guardado só para calcular o prêmio, com o mínimo de dados, e é apagado
+  depois de 90 dias (**proposta nossa**).
 
 ### 4.3 O convidado chega "dentro de algo"
 
@@ -172,7 +222,7 @@ modelos no premium:
 ### 4.4 Janelas de convite
 
 - A cada recurso que fica melhor com amigos (um agente que marca encontros entre agentes, widgets de
-  casal, salas de estudo), abrir **48 h com convites de ouro extras**, como os +15 do Trusted Person.
+  casal, salas de estudo), abrir **48 h com convites pessoais extras** (por exemplo +5), como os +15 do Trusted Person. Para parceiros B2B, a janela libera convites de ouro.
 - No calendário brasileiro: começo de semestre (calouros), publicação de edital (concurseiros, na
   ideia do agente que avisa o edital em
   [apps-virais-estudantes-concurseiros.md](../research/apps-virais-estudantes-concurseiros.md)) e
@@ -208,17 +258,17 @@ modelos no premium:
 
 ### 4.6 Limites antispam e antifraude
 
+- **A cota é o primeiro limite:** 10 convites pessoais, e mais só com feedback.
 - **Limites por conta e por dispositivo** com os mesmos baldes GCRA do relay (ADR 0020). Proposta
-  inicial (hipótese): até 20 convites pessoais por dia e no máximo 1 convite por destinatário por
-  remetente a cada 30 dias. Links de Space ficam a cargo dos admins.
-- **Convite de ouro:** uso único, validade de 14 dias, revogável e preso ao primeiro telefone que o
-  aceitar.
-- **O prêmio só sai quando o convidado fica ativo** (hipótese: telefone verificado e atividade em 3
-  dias diferentes nos primeiros 7), com atestado do dispositivo (App Attest no iOS, Play Integrity
-  no Android). Contas de fazenda não rendem nada.
-- **Sem mercado paralelo:** como entrar é grátis, um convite de ouro só vale pelos créditos, que
-  ficam presos a quem aceitou. A UI avisa que ninguém vende convite e que o código de verificação
-  nunca deve ser repassado.
+  inicial (hipótese): até 10 links pessoais gerados por dia e no máximo 1 convite por destinatário
+  por remetente a cada 30 dias.
+- **Links pessoais:** uso único, validade de 14 dias, revogáveis e presos ao primeiro telefone que
+  os aceitar. Links de Space ficam a cargo dos admins.
+- **Prêmio só com convidado ativo**, pela definição da 4.2: telefone novo, dispositivo atestado e
+  mensagens em 2 ou mais dias em 14, com pelo menos uma para alguém além de quem convidou. Contas de
+  fazenda que só falam entre si são detectadas pelo padrão e não contam.
+- **Sem mercado paralelo:** entrar é grátis, e o prêmio fica preso a quem convidou. A UI avisa que
+  ninguém vende convite e que o código de verificação nunca deve ser repassado.
 - **Menores (ECA Digital):** sem prêmio por indicação para menores de 18 e sem sugestões baseadas em
   contatos para eles. Space com menores segue as regras de proteção da visão (seção de comunidades).
 
@@ -228,13 +278,14 @@ modelos no premium:
   usuário ativo (i), links abertos, contas ou dispositivos web criados, convidados ativos na
   semana 1 e na semana 4, e convidados que convidam de novo.
 - **K = i × c**, em que c é a conversão até ficar ativo. Medir separado por tipo (conversa, pessoal,
-  ouro) e por nicho (turma, concurso, gamer, pequeno negócio). Medir também o **tempo de ciclo**
+  ouro B2B) e por nicho (turma, concurso, gamer, pequeno negócio). Medir também o **tempo de ciclo**
   (dias entre entrar e convidar alguém que fica ativo): K com ciclo curto cresce mais rápido que K
   alto com ciclo longo.
-- **Métrica no estilo do Instinct:** a fração da base ativa que gastou um convite de ouro bem-sucedido
-  hoje. O Instinct relata ~10% ao dia. É um termômetro de boca a boca que dá para comparar.
+- **Métrica no estilo do Instinct:** a fração da base ativa que teve um convite pessoal aceito hoje. O Instinct relata ~10% ao dia. É um termômetro de boca a boca que dá para comparar.
 - **Retenção antes de K:** a meta da análise crítica continua (≥40% ativos na semana 4). K sem
   retenção é o caso Gas e Clubhouse ([curvas](../research/curvas-crescimento-redes.md)).
+- **Funil da cota:** quantas pessoas esgotam os 10 convites, quantas dão feedback para ganhar mais e quanto esse grupo convida depois.
+- **Custo do prêmio:** meses de plano dados ÷ usuários ativos trazidos (meta ≈ US$ 0,67 ou menos).
 - **Privacidade:** as métricas usam eventos pseudônimos (o mesmo padrão da telemetria, ADR 0021) e
   nunca o conteúdo de conversas.
 
@@ -243,17 +294,28 @@ modelos no premium:
 A [pesquisa de curvas](../research/curvas-crescimento-redes.md) recomendava nicho primeiro e abertura
 geral no fim. Com a decisão de abrir desde o início, o nicho deixa de ser uma portaria e vira
 **onde a gente coloca energia**: janelas de convite, embaixadores e Spaces prontos por turma e por
-concurso. O produto fica aberto, e a densidade continua sendo criada à mão, por rede atômica. Os
-convites de ouro e as janelas são o jeito de ter a escassez do Instinct sem fechar a porta.
+concurso. O produto fica aberto, e a densidade continua sendo criada à mão, por rede atômica. A cota de
+10, as janelas e os convites de ouro do B2B são o jeito de ter a escassez do Instinct sem fechar a porta.
 
 ## 5. Perguntas em aberto
 
-1. Quantos convites de ouro por pessoa (5, como o Instinct, ou 3) e com que frequência renovar?
-2. O prêmio é só crédito de modelo premium ou também visual (borda, selo)?
-3. Mostrar publicamente "convidado por" no perfil? É ótimo para status, mas expõe o grafo social.
-   Proposta: opcional e desligado por padrão.
-4. Convites de ouro para pequenos negócios (um mês de Bot Pro)? É bom para o lado B2B, mas o custo é
-   outro.
+Já decididas pelo Enzo em 9 out 2026:
+- **Cota:** 10 convites por pessoa, e mais em troca de feedback.
+- **Prêmio:** 1 mês do plano pago mais barato a cada 5 convidados ativos.
+- **"Convidado por":** não existe.
+- **Convites de ouro:** só para o B2B.
+
+Ainda em aberto:
+1. Quantos convites extras cada rodada de feedback libera (proposta: +5 a cada 14 dias) e se o
+   feedback é uma conversa com o agente ou uma pesquisa curta.
+2. Confirmar a definição de usuário ativo (proposta: mensagens em 2 ou mais dias em 14) e o teto de
+   prêmio por trimestre.
+3. Qual é o "plano pago mais barato" no lançamento. Hoje existe só o premium sugerido (R$ 29,90).
+   Um plano menor mudaria o custo do prêmio.
+4. O que o convite de ouro dá ao convidado e ao dono do negócio (Bot Pro, créditos, destaque) e
+   quantos cada plano B2B recebe.
+5. Como dar um mês grátis no iOS respeitando as regras de compra da Apple (offer codes ou crédito
+   no plano da web).
 
 ## Fontes
 

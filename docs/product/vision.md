@@ -28,7 +28,10 @@ Zoen é o "WhatsApp 2": um mensageiro privado onde, além de conversar, as pesso
 - Copiamos do **Instinct** (o assistente de IA de Noah Shinn) o que fez o produto crescer 10–11% ao dia sem gastar com marketing, mas **sem a portaria**:
   - o convite é um gesto pessoal que você pede ao próprio agente;
   - o convidado chega dentro de uma conversa com quem convidou;
-  - **convites de ouro** escassos (5 por pessoa, hipótese) como presente, com créditos de modelos premium para os dois lados quando o convidado fica ativo;
+  - **10 convites pessoais por pessoa**, com mais liberados em troca de feedback (uma conversa curta ou pesquisa no app);
+  - **a cada 5 convidados ativos, 1 mês do plano pago mais barato** para quem convidou (ativo, na nossa proposta: telefone novo verificado, dispositivo atestado e mensagens em 2 ou mais dias dentro de 14);
+  - **sem "convidado por"** no perfil: quem convidou quem fica privado, e só a pessoa vê as próprias estatísticas;
+  - **convites de ouro só para o B2B** (negócios, criadores e donos de comunidade);
   - **janelas de convite** de 48 h em cada lançamento social.
 - Sugestões a partir dos contatos só pelo seletor do sistema, uma pessoa por vez e sem guardar números de quem não usa o Zoen (Apple 5.1.2, LGPD). Há limites antispam e o prêmio só sai com o convidado ativo. O K é medido por coorte, sempre depois da retenção.
 - Detalhes, fontes e números: [convites.md](convites.md).
