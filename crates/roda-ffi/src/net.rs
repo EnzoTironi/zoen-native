@@ -17,7 +17,7 @@ use std::{
 use futures_util::{SinkExt, StreamExt};
 use roda_proto::{
     auth_message, blob_put_message, ClientFrame, EphemeralKind, ErrorCode, Op, Reply, ServerFrame,
-    CAPABILITIES, PROTOCOL_VERSION,
+    CAPABILITIES, MIN_PROTOCOL_VERSION, PROTOCOL_VERSION,
 };
 use roda_types::Identity;
 use tokio::sync::{mpsc, oneshot, watch};
@@ -406,8 +406,16 @@ async fn session(
             nonce,
             relay,
             capabilities,
+            protocol,
             ..
-        }) => (nonce, relay, capabilities.iter().any(|c| c == "profiles")),
+        }) if protocol >= MIN_PROTOCOL_VERSION => {
+            (nonce, relay, capabilities.iter().any(|c| c == "profiles"))
+        }
+        Ok(ServerFrame::Challenge { protocol, .. }) => {
+            return Exit::Blocked(format!(
+                "relay protocol {protocol} needs an upgrade before encrypted histories can sync"
+            ))
+        }
         Ok(ServerFrame::Error { code, message }) => return refused(code, message, backoff),
         Ok(other) => return Exit::Retry(format!("unexpected {other:?}")),
         Err(e) => return Exit::Retry(e),
@@ -435,16 +443,8 @@ async fn session(
             Err(e) => return Exit::Retry(e),
         }
     };
-    for f in early {
-        if let ServerFrame::Presence { identity, online } = f {
-            ctx.engine().set_presence(&identity, online);
-            if let Some(l) = &ctx.listener {
-                l.on_presence(identity, online);
-            }
-        }
-    }
     if !relay_knows_me || !registered {
-        if let Err(e) = register(&mut sink, &mut stream, profile).await {
+        if let Err(e) = register(&mut sink, &mut stream, profile, &mut early).await {
             return if e == "handle_taken" {
                 Exit::Blocked(e)
             } else {
@@ -490,6 +490,15 @@ async fn session(
     let mut profiles_inflight: Option<tokio::time::Instant> = None;
     let mut traffic = ProfileTraffic::default();
     let mut opening: Option<tokio::time::Instant> = None;
+
+    // Registration can receive low-stock notices, events and presence before its reply.
+    // Run them through the same ordered dispatcher as the following socket frames.
+    let mut stream = futures_util::stream::iter(
+        early
+            .into_iter()
+            .map(|f| Ok(Message::Binary(f.encode().into()))),
+    )
+    .chain(stream);
 
     let exit = loop {
         tokio::select! {
@@ -786,7 +795,12 @@ async fn session(
     exit
 }
 
-async fn register(sink: &mut Sink, stream: &mut Stream, profile: Identity) -> Result<(), String> {
+async fn register(
+    sink: &mut Sink,
+    stream: &mut Stream,
+    profile: Identity,
+    early: &mut Vec<ServerFrame>,
+) -> Result<(), String> {
     send(
         sink,
         &ClientFrame::Req {
@@ -799,7 +813,8 @@ async fn register(sink: &mut Sink, stream: &mut Stream, profile: Identity) -> Re
         match recv(stream).await? {
             ServerFrame::Res { id: 0, result } => return result.map(|_| ()),
             ServerFrame::Error { message, .. } => return Err(message),
-            _ => continue,
+            frame if early.len() < 1024 => early.push(frame),
+            _ => return Err("too many frames before the registration reply".into()),
         }
     }
 }
@@ -962,7 +977,17 @@ pub async fn fetch_link_box(
     )
     .await?;
     let (nonce, relay) = match recv(&mut stream).await? {
-        ServerFrame::Challenge { nonce, relay, .. } => (nonce, relay),
+        ServerFrame::Challenge {
+            nonce,
+            relay,
+            protocol,
+            ..
+        } if protocol >= MIN_PROTOCOL_VERSION => (nonce, relay),
+        ServerFrame::Challenge { protocol, .. } => {
+            return Err(format!(
+                "relay protocol {protocol} needs an upgrade before linking"
+            ))
+        }
         ServerFrame::Error { message, .. } => return Err(message),
         other => return Err(format!("unexpected {other:?}")),
     };

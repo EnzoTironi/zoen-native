@@ -594,6 +594,11 @@ impl Engine {
         if ev.seq > next {
             return Ingest::Gap { next };
         }
+        // Opened/own events persist their inner signature. Authenticate the outer
+        // envelope too before replacing it with that inner event or changing MLS state.
+        if let Err(err) = ev.env.verify() {
+            return Ingest::Invalid(err.to_string());
+        }
         if ev.env.is_pruned() {
             return self.ingest_pruned(ev);
         }
@@ -743,19 +748,7 @@ impl Engine {
     /// stub hashes and verifies like the original (header plus the MLS bytes' hash).
     fn ingest_pruned(&mut self, ev: Sequenced) -> Ingest {
         let space = ev.env.space().to_string();
-        if self.device().is_ok_and(|d| d.has_group(&space)) {
-            // History this device never fetched is gone: it was away past the relay's
-            // ceiling and its group state can't catch up. It forgets the group and asks
-            // for a fresh leaf; a new Welcome brings it back from here on.
-            if let Err(err) = self
-                .device()
-                .and_then(|d| d.forget(&space).map_err(mls_err))
-            {
-                tracing_like(&format!("forgetting the group of {space}: {err}"));
-            }
-            self.net.mls.rejoin.insert(space.clone());
-        }
-        let e = match event_from_content(
+        let mut e = match event_from_content(
             ev.env.content().to_vec(),
             ev.env.sig.clone(),
             ev.env.cert.clone(),
@@ -766,6 +759,7 @@ impl Engine {
             Ok(e) => e,
             Err(err) => return Ingest::Invalid(err.to_string()),
         };
+        e.sealed_wire = ev.env.legacy_pruned_hash().map(str::to_string);
         let log = self
             .logs
             .entry(space.clone())
@@ -776,9 +770,31 @@ impl Engine {
             }
             return Ingest::Invalid(err.to_string());
         }
-        if let Err(err) = self.store.append_event(&e) {
-            let _ = self.reload();
-            return Ingest::Invalid(err.to_string());
+        // No MLS state changes until the stub's signature and chain are accepted.
+        // Forgetting a stale group and persisting the verified stub commit together.
+        let stored = (|| -> R<bool> {
+            let tx = self.store.conn().unchecked_transaction().map_err(storage)?;
+            let forgot = match self.device_on(&tx) {
+                Ok(device) if device.has_group(&space) => {
+                    device.forget(&space).map_err(mls_err)?;
+                    true
+                }
+                _ => false,
+            };
+            self.store.append_event(&e).map_err(storage)?;
+            tx.commit().map_err(storage)?;
+            Ok(forgot)
+        })();
+        let forgot = match stored {
+            Ok(forgot) => forgot,
+            Err(err) => {
+                let _ = self.reload();
+                return Ingest::Invalid(err.to_string());
+            }
+        };
+        if forgot {
+            // History this device never fetched is gone; a fresh Welcome is needed.
+            self.net.mls.rejoin.insert(space.clone());
         }
         let _ = self.store.set_synced(&space);
         self.net.synced.insert(space);
@@ -1481,4 +1497,156 @@ fn inner_event(ev: &Sequenced, plaintext: &[u8], from: &Leaf) -> Option<Event> {
 
 pub(crate) fn must_seal(body: &EventBody) -> bool {
     !stays_clear(body)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use roda_log::{chain_hash, Author};
+
+    #[test]
+    fn rejected_outer_signature_keeps_the_own_event_pending() {
+        let mut engine = Engine::open(":memory:").unwrap();
+        engine
+            .create_account("Ana", "ana", "http://relay.test")
+            .unwrap();
+        let author = engine.net.author.clone().unwrap();
+        let space = "sp_own_outer_auth";
+        let mut log = SpaceLog::new(space);
+        let genesis = log
+            .sequence(author.sign_event(
+                space,
+                "created",
+                1,
+                None,
+                EventBody::SpaceCreated {
+                    title: "Outer signature".into(),
+                    kind: SpaceKind::Group,
+                    privacy: Privacy::EndToEnd,
+                },
+            ))
+            .clone();
+        assert_eq!(
+            engine.ingest(Sequenced {
+                seq: genesis.seq,
+                prev: genesis.prev.clone(),
+                hash: genesis.hash.clone(),
+                env: Envelope::plain(&genesis),
+            }),
+            Ingest::Applied
+        );
+        engine.create_mls_group(space).unwrap();
+        let own = author.sign_event(
+            space,
+            "pending",
+            2,
+            log.head(),
+            EventBody::MessagePosted {
+                message: "message".into(),
+                text: "Still pending".into(),
+                attaches: None,
+                reply: None,
+            },
+        );
+        engine.store.outbox_put(&own).unwrap();
+        engine
+            .net
+            .pending
+            .insert(own.client_id.clone(), space.into());
+        let mut env = Envelope::sealed(
+            &author,
+            space,
+            &own.client_id,
+            own.at_ms,
+            own.seen.as_ref(),
+            Sealed::new(SealedKind::Application, SUITE_ID, vec![1, 2, 3]),
+        );
+        let hash = chain_hash(space, 1, &genesis.hash, &env.wire_hash());
+        env.sig = "00".repeat(64);
+        let group_before = engine.mls_status(space).unwrap();
+        let count_before = engine.store.event_count().unwrap();
+        assert!(matches!(
+            engine.ingest(Sequenced {
+                seq: 1,
+                prev: genesis.hash,
+                hash,
+                env,
+            }),
+            Ingest::Invalid(_)
+        ));
+        assert_eq!(
+            engine.store.outbox_get(&own.client_id).unwrap(),
+            Some(own.clone())
+        );
+        assert!(engine.net.pending.contains_key(&own.client_id));
+        assert_eq!(engine.logs[space].next_seq(), 1);
+        assert_eq!(engine.store.event_count().unwrap(), count_before);
+        assert_eq!(engine.mls_status(space), Some(group_before));
+    }
+
+    #[test]
+    fn rejected_pruned_history_preserves_the_mls_group() {
+        let mut engine = Engine::open(":memory:").unwrap();
+        engine
+            .create_account("Ana", "ana", "http://relay.test")
+            .unwrap();
+        let author: Author = engine.net.author.clone().unwrap();
+        let space = "sp_pruned_auth";
+        let mut log = SpaceLog::new(space);
+        let genesis = log
+            .sequence(author.sign_event(
+                space,
+                "created",
+                1,
+                None,
+                EventBody::SpaceCreated {
+                    title: "Verified history".into(),
+                    kind: SpaceKind::Group,
+                    privacy: Privacy::EndToEnd,
+                },
+            ))
+            .clone();
+        assert_eq!(
+            engine.ingest(Sequenced {
+                seq: genesis.seq,
+                prev: genesis.prev.clone(),
+                hash: genesis.hash.clone(),
+                env: Envelope::plain(&genesis),
+            }),
+            Ingest::Applied,
+        );
+        engine.create_mls_group(space).unwrap();
+        let group_before = engine.mls_status(space).unwrap();
+        let full = Envelope::sealed(
+            &author,
+            space,
+            "missed-ciphertext",
+            2,
+            log.head().as_ref(),
+            Sealed::new(SealedKind::Application, SUITE_ID, vec![1, 2, 3]),
+        );
+        let valid = Sequenced {
+            seq: 1,
+            prev: genesis.hash.clone(),
+            hash: chain_hash(space, 1, &genesis.hash, &full.wire_hash()),
+            env: full.pruned().unwrap(),
+        };
+        let mut bad_signature = valid.clone();
+        bad_signature.env.sig = "00".repeat(64);
+        let mut bad_chain = valid.clone();
+        bad_chain.hash = "00".repeat(32);
+        let stored_before = engine.store.event_count().unwrap();
+        for invalid in [bad_signature, bad_chain] {
+            assert!(matches!(engine.ingest(invalid), Ingest::Invalid(_)));
+            assert_eq!(engine.mls_status(space), Some(group_before.clone()));
+            assert!(!engine.net.mls.rejoin.contains(space));
+            assert_eq!(engine.store.event_count().unwrap(), stored_before);
+            assert_eq!(engine.logs[space].next_seq(), 1);
+        }
+        assert_eq!(engine.ingest(valid), Ingest::Applied);
+        assert!(engine.mls_status(space).is_none());
+        assert!(engine.net.mls.rejoin.contains(space));
+        assert_eq!(engine.store.event_count().unwrap(), stored_before + 1);
+        engine.logs[space].verify().unwrap();
+    }
 }

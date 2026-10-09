@@ -203,6 +203,10 @@ impl World {
         self.client_env.push((key.to_string(), value.to_string()));
     }
 
+    pub fn set_relay_env(&mut self, key: &str, value: &str) {
+        self.relay_env.push((key.to_string(), value.to_string()));
+    }
+
     /// Runs `zoen` as `who` against the relay node on `port`.
     pub fn zoen_at(&self, port: u16, who: &str, args: &[&str]) -> String {
         let out = debug(
@@ -593,6 +597,29 @@ impl RawClient {
             .unwrap();
     }
 
+    /// A revoked socket may already be closed when its next operation is attempted.
+    pub async fn send_if_open(&mut self, f: &ClientFrame) -> bool {
+        self.ws
+            .send(Message::Binary(f.encode().into()))
+            .await
+            .is_ok()
+    }
+
+    pub async fn recv_or_close(&mut self) -> Option<ServerFrame> {
+        loop {
+            match tokio::time::timeout(Duration::from_secs(5), self.ws.next())
+                .await
+                .expect("socket did not respond or close")
+            {
+                Some(Ok(Message::Binary(bytes))) => {
+                    return Some(ServerFrame::decode(&bytes).unwrap())
+                }
+                None | Some(Err(_)) | Some(Ok(Message::Close(_))) => return None,
+                _ => {}
+            }
+        }
+    }
+
     pub async fn recv(&mut self) -> ServerFrame {
         loop {
             match tokio::time::timeout(Duration::from_secs(5), self.ws.next())
@@ -662,10 +689,10 @@ impl RawClient {
 
     /// Publishes bytes this client signed itself (any content a newer client could write).
     pub async fn publish_content(&mut self, content: Vec<u8>) -> Result<Sequenced, String> {
-        let sig = self
-            .author
-            .key
-            .sign(roda_log::content::signed_hash(&content).as_bytes());
+        let sig = self.author.key.sign(&roda_log::content::signature_message(
+            &content,
+            &roda_log::content::signed_hash(&content),
+        ));
         let cert = self.author.cert.clone();
         self.publish_signed(content, sig, cert).await
     }

@@ -182,7 +182,7 @@ impl Author {
         sealed: content::Sealed,
     ) -> (Vec<u8>, String) {
         let content = SignedContent {
-            v: EVENT_FORMAT as u32,
+            v: content::SEALED_CONTENT_VERSION,
             space: space.to_string(),
             client_id: client_id.to_string(),
             author: self.identity.clone(),
@@ -192,7 +192,10 @@ impl Author {
             payload: Some(Payload::Sealed(sealed)),
         }
         .encode();
-        let sig = self.key.sign(content::signed_hash(&content).as_bytes());
+        let sig = self.key.sign(&content::signature_message(
+            &content,
+            &content::signed_hash(&content),
+        ));
         (content, sig)
     }
 }
@@ -251,7 +254,40 @@ pub fn sha256_hex(bytes: &[u8]) -> String {
 /// The hash the author signed: over the exact content bytes for clear events, over the
 /// header and the hash of the MLS bytes for sealed ones (`content::signed_hash`).
 pub fn content_hash_of(e: &Event) -> String {
-    content::signed_hash(&e.content)
+    if let Some(original) = legacy_stub_hash(e) {
+        return original.to_string();
+    }
+    signed_content_hash(&e.content, &e.sig)
+}
+
+/// Select the signed hash without changing any legacy chain links. M2 briefly emitted
+/// a pruning hash with v3; accept that variant only with its authentic signature.
+pub fn signed_content_hash(bytes: &[u8], sig: &str) -> String {
+    let hash = content::signed_hash(bytes);
+    if let Some(c) = SignedContent::parse(bytes) {
+        if c.v == 3 && matches!(c.payload, Some(Payload::Sealed(_))) {
+            let signer = c.device.as_deref().unwrap_or(&c.author);
+            if !verify_sig(signer, hash.as_bytes(), sig) {
+                if let Some(previous) = content::unversioned_sealed_hash(bytes) {
+                    if verify_sig(signer, previous.as_bytes(), sig) {
+                        return previous;
+                    }
+                }
+            }
+        }
+    }
+    hash
+}
+
+fn legacy_stub_hash(e: &Event) -> Option<&str> {
+    let c = SignedContent::parse(&e.content)?;
+    if c.v != 3
+        || !matches!(c.payload, Some(Payload::Sealed(s)) if s.data.is_empty() && s.data_hash.is_empty())
+    {
+        return None;
+    }
+    let original = e.sealed_wire.as_deref()?;
+    (original.len() == 64 && original.bytes().all(|b| b.is_ascii_hexdigit())).then_some(original)
 }
 
 /// What traveled: the sealed envelope's hash, or the content hash for plaintext.
@@ -340,7 +376,10 @@ pub fn verify_author(e: &Event) -> Result<(), LogError> {
     };
     let sig = parse_sig(&e.sig).ok_or(LogError::BadSignature { seq })?;
     signer
-        .verify(content_hash_of(e).as_bytes(), &sig)
+        .verify(
+            &content::signature_message(&e.content, &content_hash_of(e)),
+            &sig,
+        )
         .map_err(|_| LogError::BadSignature { seq })
 }
 
