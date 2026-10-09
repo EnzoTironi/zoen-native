@@ -109,9 +109,14 @@ storage seams. Each unit ends with the full journey suite green.
    37 KiB per connection (was 160), 0.58 ms of relay CPU per message + 45 µs per delivery,
    about 2,500 appends per FoundationDB core, p50 4–6 ms and p99 8–27 ms up to 2,000 msgs/s on
    one node; 1B users ≈ $470k/month at list prices (ADR 0022).
-9. **S9 owner-side sequencing.** The Space owner serializes appends per Space in memory, keeps
-   membership cached and commits bursts in one transaction: fewer FoundationDB operations per
-   message and no conflict retries in hot Spaces. Proof: the sweep before and after.
+9. **S9 owner-side sequencing. Done.** One in-memory queue and worker per active Space commits
+   batches of up to 64 envelopes in one transaction behind a head-validated cache (members,
+   kind, recent hashes); the head read stays the fence, so two relays on one Space stay correct.
+   Same harness, 406515f vs S9: relay CPU per message −35 to 45%, FoundationDB CPU −25 to 40%;
+   rate-4000 and fanout-128 now pass (were saturated); one hot Space with 16 senders goes from
+   collapse at 441 msgs/s (p50 12.9 s, 0.28 conflict retries per append) to 2,000/s at p50
+   5 ms and a 3,180/s ceiling with zero retries. Units now 0.37 ms per message + 30 µs per
+   delivery, 3,300 appends per FoundationDB core (ADR 0023).
 
 ## Where things stand
 
@@ -130,8 +135,10 @@ storage seams. Each unit ends with the full journey suite green.
 | S7 telemetry | done | `journey_telemetry` (two nodes, cross-node trace, 18 secrets absent from OTLP bytes and debug stdout), real otelcol-contrib run in roda-shots/real-s7, ADR 0021 |
 | S8 load generator | done | `scripts/bench-load.sh sweep` (10 scenarios, exact delivery counts, JSON per scenario in roda-shots/real-s8/final), ADR 0022 |
 | Local k3d cell | healthy with the collector | `scripts/local-cluster.sh up`, `journey`, `telemetry` (relay logs and traces reach the collector before and after it moves pods), roda-shots/local-cluster-s7 |
-| S9 owner-side sequencing | next | |
-| M2, M3, M5, M6, M7 | planned below | |
+| S9 owner-side sequencing | done | `log_store.rs` (7 contracts incl. two relays on one Space, duplicates in one batch), `sequencer::tests`, before/after sweep in roda-shots/real-s9, ADR 0023 |
+| M2 first journey (E2E group, relay holds only ciphertext) | done | `journey_m2.rs` (key packages, commit + Welcome, messages both ways from a sealed device database, FoundationDB and Postgres scanned for text and hex, plaintext refused, agreeing checkpoints, a newcomer reads from her Welcome on), `roda-mls` tests, ADR 0026 |
+| M2 end-to-end by default (DMs and groups; M1 Spaces upgrade one way) | done | `journey_m2::a_readable_group_becomes_end_to_end_and_never_goes_back`, `journey_m1` DMs now end-to-end, `privacy_only_goes_up`, `an_end_to_end_space_cannot_be_created_again_as_readable`, ADR 0027 |
+| M2 rest, M3, M5, M6, M7 | planned below | |
 
 ## M1. Relay, real accounts, sync
 
@@ -175,10 +182,13 @@ Shape:
   order is the MLS epoch order. A commit for a stale epoch is rejected with `stale_epoch` and
   the client rebases (re-proposes after processing the winner). Application messages are
   `Payload::Sealed` (MLS PrivateMessage); the relay sees author, device, Space and size.
-- Welcomes go to the added devices' mailboxes on the relay and are deleted on fetch.
-- Membership stays checkable by the relay: membership changes carry a signed public
-  `MemberAdded`/`MemberRemoved` envelope alongside the commit, and the relay rejects a commit
-  whose roster disagrees.
+- Welcomes are sealed entries in the Space's own log right after their commit (ADR 0026), so
+  ordering, catch-up and pruning are the log's; no separate mailbox.
+- Membership stays checkable by the relay: membership changes are signed public
+  `MemberAdded`/`MemberRemoved` events, and every member refuses a commit or Welcome that
+  leaves someone in the group the log doesn't list (the subset rule, ADR 0026).
+- Member-signed checkpoints (`Checkpoint { upto, epoch, digest }`) catch a forked Space and
+  later let the relay prune ciphertext every member already has.
 - History: new members read from their join onward (forward secrecy). Closed (relay-readable)
   Spaces stay for communities.
 - Device secrets: the Ed25519 secrets are wrapped by a Secure Enclave P-256 key
@@ -189,6 +199,17 @@ Shape:
 Proof: CLI journeys where the relay's Postgres has no plaintext anywhere, a removed member
 can't read anything after removal, a second device reads new messages, and the simulator
 journey passes unchanged on top.
+
+Done: ADR 0026, `roda-mls` (device leaf, SIV-sealed state in the device database, subset
+rule, checkpoints), relay admission for E2E Spaces and the `key_packages` directory, the client
+path (seal, open, reconcile, checkpoints) and `journey_m2`.
+
+Also done: end-to-end by default for DMs and groups, one-way upgrade of M1 Spaces
+(`SpaceEncrypted`), sealing at send time at the current epoch (ADR 0027).
+
+Next, in order: removal journey, concurrent commits and `stale_epoch`, key package top-up,
+checkpoint pruning, linking a second device, the app on the simulator with the Notification
+Service Extension sharing state.
 
 ## M3. Real agents
 

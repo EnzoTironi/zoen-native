@@ -1,6 +1,7 @@
 //! The FoundationDB log store's contract, against a real cluster
 //! (`eval "$(scripts/fdb.sh env)"`): gapless chains under concurrent writers, complete
-//! catch-up past FoundationDB's partial batches, idempotent retries and atomic membership.
+//! catch-up past FoundationDB's partial batches, idempotent retries and atomic membership,
+//! also when two relays write one Space and when one batch carries duplicates (ADR 0023).
 
 use std::{future::Future, sync::Arc};
 
@@ -17,9 +18,13 @@ fn now_ms() -> i64 {
 }
 
 fn store() -> Arc<FdbLog> {
-    let cell = roda_types::new_id("t");
+    store_on(&roda_types::new_id("t"))
+}
+
+/// Another relay on the same cell: its own sequencer and caches, the same keys.
+fn store_on(cell: &str) -> Arc<FdbLog> {
     Arc::new(
-        FdbLog::open(std::env::var("FDB_CLUSTER_FILE").ok().as_deref(), &cell)
+        FdbLog::open(std::env::var("FDB_CLUSTER_FILE").ok().as_deref(), cell)
             .expect("FoundationDB"),
     )
 }
@@ -254,6 +259,208 @@ async fn invites_are_bounded_by_uses() {
     log.drop_cell().await.unwrap();
 }
 
+async fn two_relays_on_one_space_share_one_chain_and_one_membership() {
+    let cell = roda_types::new_id("t");
+    let relays = [store_on(&cell), store_on(&cell)];
+    let ana = Arc::new(Author::root(Signer::generate()));
+    let (space, genesis) = create(&relays[0], &ana).await;
+    let mut tasks = Vec::new();
+    for w in 0..8 {
+        let log = relays[w % 2].clone();
+        let (a, space, genesis) = (ana.clone(), space.clone(), genesis.clone());
+        tasks.push(tokio::spawn(async move {
+            for i in 0..40 {
+                let env = sign(&a, &space, Some(genesis.clone()), message(w * 100 + i));
+                assert!(matches!(
+                    log.append(&env, true).await,
+                    Ok(Sequencing::New { .. })
+                ));
+            }
+        }));
+    }
+    for t in tasks {
+        t.await.unwrap();
+    }
+    let events = read_all(&relays[1], &space, 1000).await;
+    assert_eq!(events.len(), 321);
+    assert_chain(&space, &events);
+
+    // Both relays now hold a warm cache of the Space. A change through one must bind the
+    // other.
+    let bruno = Author::root(Signer::generate());
+    let add = EventBody::MemberAdded {
+        identity: bruno.identity.clone(),
+        role: Role::Member,
+    };
+    relays[0]
+        .append(&sign(&ana, &space, Some(genesis.clone()), add), true)
+        .await
+        .unwrap();
+    assert!(
+        relays[1]
+            .append(
+                &sign(&bruno, &space, Some(genesis.clone()), message(1)),
+                true
+            )
+            .await
+            .is_ok(),
+        "the other relay sees the new member"
+    );
+    let remove = EventBody::MemberRemoved {
+        identity: bruno.identity.clone(),
+    };
+    relays[1]
+        .append(&sign(&ana, &space, Some(genesis.clone()), remove), true)
+        .await
+        .unwrap();
+    let r = relays[0]
+        .append(&sign(&bruno, &space, Some(genesis), message(2)), true)
+        .await;
+    assert!(
+        r.is_err_and(|r| r.reason.contains("not a member")),
+        "and the removal"
+    );
+    assert_chain(&space, &read_all(&relays[0], &space, 1000).await);
+    relays[0].drop_cell().await.unwrap();
+}
+
+async fn duplicates_in_one_batch_get_the_one_stored_copy() {
+    // On a single-threaded runtime the Space's worker can't run until every copy below is
+    // queued, so they meet in one batch every time.
+    tokio::task::spawn_blocking(|| {
+        tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap()
+            .block_on(duplicates_in_one_batch())
+    })
+    .await
+    .unwrap();
+}
+
+async fn duplicates_in_one_batch() {
+    let log = store();
+    let a = Arc::new(Author::root(Signer::generate()));
+    let (space, genesis) = create(&log, &a).await;
+    // Each copy is queued on its first poll, and `join_all` polls them all before yielding.
+    let twin = sign(&a, &space, Some(genesis.clone()), message(0));
+    let copies = futures_util::future::join_all((0..16).map(|_| log.append(&twin, true))).await;
+    let mut new = 0;
+    let mut stored = Vec::new();
+    for c in copies {
+        match c {
+            Ok(Sequencing::New { ev, .. }) => {
+                new += 1;
+                stored.push((ev.seq, ev.hash));
+            }
+            Ok(Sequencing::Duplicate { ev }) => stored.push((ev.seq, ev.hash)),
+            Err(r) => panic!("refused: {}", r.reason),
+        }
+    }
+    assert_eq!(new, 1, "one copy is sequenced");
+    assert!(
+        stored.windows(2).all(|w| w[0] == w[1]),
+        "every copy answers with it"
+    );
+    let events = read_all(&log, &space, 1000).await;
+    assert_eq!(events.len(), 2);
+    assert_chain(&space, &events);
+    log.drop_cell().await.unwrap();
+}
+
+/// ADR 0026 at the store: the privacy is part of the Space state, so a relay that never
+/// saw the creation still refuses plaintext, and a checkpoint naming an entry long out of
+/// the cache is checked against the stored chain.
+async fn end_to_end_spaces_hold_ciphertext_on_every_relay() {
+    let cell = roda_types::new_id("t");
+    let (warm, cold) = (store_on(&cell), store_on(&cell));
+    let ana = Author::device(&Signer::generate(), Signer::generate());
+    let space = roda_types::new_id("sp");
+    let body = EventBody::SpaceCreated {
+        title: "t".into(),
+        kind: SpaceKind::Group,
+        privacy: Privacy::EndToEnd,
+    };
+    let Ok(Sequencing::New { ev, .. }) = warm.append(&sign(&ana, &space, None, body), true).await
+    else {
+        panic!("genesis refused");
+    };
+    let genesis = Seen {
+        seq: ev.seq,
+        hash: ev.hash,
+    };
+    let seal = |seen: &Seen| {
+        let data = roda_proto::Sealed::new(roda_proto::SealedKind::Application, 3, vec![9; 48]);
+        Envelope::sealed(
+            &ana,
+            &space,
+            &roda_types::new_ulid(now_ms()),
+            now_ms(),
+            Some(seen),
+            data,
+        )
+    };
+    for _ in 0..3 {
+        assert!(matches!(
+            warm.append(&seal(&genesis), true).await,
+            Ok(Sequencing::New { .. })
+        ));
+    }
+    let r = cold
+        .append(&sign(&ana, &space, Some(genesis.clone()), message(0)), true)
+        .await;
+    assert!(
+        r.is_err_and(|r| r.reason.contains("end-to-end")),
+        "a cold relay refuses plaintext"
+    );
+    assert!(matches!(
+        cold.append(&seal(&genesis), true).await,
+        Ok(Sequencing::New { .. })
+    ));
+
+    let checkpoint = |upto: Seen| EventBody::Checkpoint {
+        upto,
+        epoch: 0,
+        digest: "d".into(),
+    };
+    let fresh = store_on(&cell);
+    let ok = fresh
+        .append(
+            &sign(
+                &ana,
+                &space,
+                Some(genesis.clone()),
+                checkpoint(genesis.clone()),
+            ),
+            true,
+        )
+        .await;
+    assert!(
+        matches!(ok, Ok(Sequencing::New { .. })),
+        "an old upto is read from the chain"
+    );
+    let forged = Seen {
+        seq: 0,
+        hash: "f".repeat(64),
+    };
+    let r = fresh
+        .append(
+            &sign(&ana, &space, Some(genesis.clone()), checkpoint(forged)),
+            true,
+        )
+        .await;
+    assert!(
+        r.is_err_and(|r| r.reason.contains("checkpoint")),
+        "and must match it"
+    );
+
+    let events = read_all(&warm, &space, 100).await;
+    assert_eq!(events.len(), 6);
+    assert_chain(&space, &events);
+    assert_eq!(events.iter().filter(|e| e.env.is_sealed()).count(), 4);
+    warm.drop_cell().await.unwrap();
+}
+
 async fn run<F: Future<Output = ()>>(name: &str, f: F) {
     f.await;
     println!("ok  {name}");
@@ -283,6 +490,21 @@ fn main() {
         )
         .await;
         run("invites are bounded by uses", invites_are_bounded_by_uses()).await;
+        run(
+            "end-to-end spaces hold ciphertext on every relay",
+            end_to_end_spaces_hold_ciphertext_on_every_relay(),
+        )
+        .await;
+        run(
+            "two relays on one space share one chain and one membership",
+            two_relays_on_one_space_share_one_chain_and_one_membership(),
+        )
+        .await;
+        run(
+            "duplicates in one batch get the one stored copy",
+            duplicates_in_one_batch_get_the_one_stored_copy(),
+        )
+        .await;
     });
     drop(network);
 }

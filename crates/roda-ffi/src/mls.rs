@@ -1,0 +1,780 @@
+//! # End-to-end Spaces on this device (ADR 0026)
+//!
+//! An end-to-end Space is relay-ordered like any other, but the relay holds ciphertext:
+//!
+//! - **Writing:** an event that isn't membership or a checkpoint is signed as usual and
+//!   queued in the clear on the device (shown as *Sending*). It is sealed when it goes
+//!   out, as an MLS application message inside an outer envelope the device signs too, at
+//!   the group's current epoch, and only once the group is ready: this device has it, has
+//!   no commit in flight, and owes no commit adding someone it has packages for. So the
+//!   first message of a new chat reaches the person it was written to, and a message
+//!   queued while the group moved on is sealed again for the new epoch. The sealed copy is
+//!   kept, so a relaunch in the same epoch resends the same bytes.
+//! - **Upgrading:** a relay-readable chat becomes end-to-end with `SpaceEncrypted`. The
+//!   author's device starts the group when the relay confirms it, and reconciles everyone
+//!   in. History before it stays as it was; nothing after it is readable to the relay.
+//! - **Reading:** sealed entries are opened in log order, in one SQLite transaction with
+//!   the log append, so group state and log never disagree. The device log keeps the inner
+//!   signed event of each message it opened (bound to the chain by the outer hash), and
+//!   the outer envelope of everything it keeps sealed: handshakes, and ciphertext from
+//!   before it joined. Either way the chain and every signature re-verify from disk.
+//! - **Membership:** the log decides who's in; MLS follows. An owner or admin's device
+//!   reconciles: whoever the log lists that the group lacks is added with claimed key
+//!   packages, whoever the group holds that the log doesn't list is removed, in one
+//!   commit. Members apply a commit only if it leaves no unlisted reader.
+//! - **Checkpoints:** after its commit lands, after joining, and every 256 sealed entries,
+//!   a device posts its epoch digest. A member whose digest for the same epoch differs
+//!   was shown another group: the Space is marked as forked.
+
+use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
+use std::time::{Duration, Instant};
+
+use roda_log::content::{InnerEvent, Sealed, SealedKind};
+use roda_log::{event_from_content, SpaceLog};
+use roda_mls::{sealed::state_key, Device, Leaf, MlsError, Opened, SUITE_ID};
+use roda_proto::{Envelope, KeyPackageRecord, Sequenced};
+use roda_types::*;
+use rusqlite::Connection;
+
+use crate::engine::Engine;
+use crate::i18n::t;
+use crate::net::tracing_like;
+use crate::sync::Ingest;
+use crate::CoreError;
+
+type R<T> = Result<T, CoreError>;
+
+/// Single-use key packages a device keeps on the relay, beside its last-resort one.
+const KEY_PACKAGES: usize = 32;
+const META_PUBLISHED: &str = "mls.key_packages";
+const CHECKPOINT_EVERY: u64 = 256;
+/// How long to wait before claiming again for someone who had no key packages.
+const CLAIM_RETRY: Duration = Duration::from_secs(5);
+
+/// MLS bookkeeping beside the network state.
+#[derive(Default)]
+pub struct MlsNet {
+    /// Key packages generated and on their way to the relay.
+    publishing: Option<(Vec<Vec<u8>>, Vec<u8>)>,
+    /// Who each end-to-end Space's confirmed log lists, and as what.
+    rosters: HashMap<SpaceId, BTreeMap<IdentityId, Role>>,
+    /// Spaces whose group may owe a commit (membership changed, a commit landed or was
+    /// refused, a claim came back).
+    dirty: HashSet<SpaceId>,
+    claiming: HashSet<SpaceId>,
+    retry_at: HashMap<SpaceId, Instant>,
+    checkpoint_due: HashSet<SpaceId>,
+    sealed_since_checkpoint: HashMap<SpaceId, u64>,
+    /// Spaces where someone listed had no key packages: messages stop waiting for them.
+    stuck: HashSet<SpaceId>,
+}
+
+/// Events the relay reads even in an end-to-end Space: what it orders and authorizes by.
+fn stays_clear(body: &EventBody) -> bool {
+    matches!(
+        body,
+        EventBody::SpaceCreated { .. }
+            | EventBody::MemberAdded { .. }
+            | EventBody::MemberRemoved { .. }
+            | EventBody::ProfileKeyShared { .. }
+            | EventBody::SpaceEncrypted
+            | EventBody::Checkpoint { .. }
+    )
+}
+
+fn sealed_meta(client_id: &str) -> String {
+    format!("mls.sealed:{client_id}")
+}
+
+fn digest_meta(space: &str, epoch: u64) -> String {
+    format!("mls.digest:{space}:{epoch}")
+}
+
+fn fork_meta(space: &str) -> String {
+    format!("mls.fork:{space}")
+}
+
+fn storage(e: impl std::fmt::Display) -> CoreError {
+    CoreError::Storage {
+        message: e.to_string(),
+    }
+}
+
+fn mls_err(e: MlsError) -> CoreError {
+    CoreError::Invalid {
+        reason: e.to_string(),
+    }
+}
+
+/// Folds a log's membership: the creator owns it, then adds and removals in order.
+fn fold_roster<'a>(events: impl Iterator<Item = &'a Event>) -> BTreeMap<IdentityId, Role> {
+    let mut roster = BTreeMap::new();
+    for e in events {
+        match &e.body {
+            EventBody::SpaceCreated { .. } => {
+                roster.insert(e.author.clone(), Role::Owner);
+            }
+            EventBody::MemberAdded { identity, role } => {
+                roster.insert(identity.clone(), *role);
+            }
+            EventBody::MemberRemoved { identity } => {
+                roster.remove(identity);
+            }
+            _ => {}
+        }
+    }
+    roster
+}
+
+impl Engine {
+    /// Whether `space` is relay-ordered and end-to-end encrypted.
+    pub(crate) fn is_e2e(&self, space: &str) -> bool {
+        self.net.synced.contains(space)
+            && self
+                .state
+                .spaces
+                .get(space)
+                .is_some_and(|s| s.privacy == Privacy::EndToEnd && s.kind != SpaceKind::Personal)
+    }
+
+    /// This device as an MLS client over `conn` (the store, or a transaction on it).
+    fn device_on<'c>(&self, conn: &'c Connection) -> R<Device<'c>> {
+        let (Some(author), Some(acct)) = (&self.net.author, &self.net.account) else {
+            return Err(CoreError::Forbidden {
+                reason: t("Entre na sua conta primeiro.", "Sign in first."),
+            });
+        };
+        let secret = author.key.secret();
+        Device::new(conn, state_key(&secret), &acct.identity, secret, &acct.cert).map_err(mls_err)
+    }
+
+    fn device(&self) -> R<Device<'_>> {
+        self.device_on(self.store.conn())
+    }
+
+    /// Creates this device's tables for MLS state. Runs at every open.
+    pub(crate) fn migrate_mls(&mut self) -> R<()> {
+        roda_mls::migrate(self.store.conn_mut()).map_err(mls_err)
+    }
+
+    /// Rebuilds the membership cache from the verified logs and re-checks every group.
+    pub(crate) fn reload_mls(&mut self) {
+        let spaces: Vec<SpaceId> = self
+            .net
+            .synced
+            .iter()
+            .filter(|s| self.is_e2e(s))
+            .cloned()
+            .collect();
+        self.net.mls.rosters.clear();
+        for space in spaces {
+            let roster = self
+                .logs
+                .get(&space)
+                .map(|l| fold_roster(l.events().iter()))
+                .unwrap_or_default();
+            self.net.mls.rosters.insert(space.clone(), roster);
+            if let Ok(Some(reason)) = self.store.meta(&fork_meta(&space)) {
+                if let Some(s) = self.state.spaces.get_mut(&space) {
+                    s.integrity_error = Some(reason);
+                }
+            }
+            self.net.mls.dirty.insert(space);
+        }
+    }
+
+    fn roster(&self, space: &str) -> BTreeSet<IdentityId> {
+        self.net
+            .mls
+            .rosters
+            .get(space)
+            .map(|r| r.keys().cloned().collect())
+            .unwrap_or_default()
+    }
+
+    /// A membership event landed in an end-to-end Space's confirmed log.
+    pub(crate) fn mls_membership_changed(&mut self, e: &Event) {
+        if !self.is_e2e(&e.space) {
+            return;
+        }
+        let roster = self.net.mls.rosters.entry(e.space.clone()).or_default();
+        match &e.body {
+            EventBody::SpaceCreated { .. } => {
+                roster.insert(e.author.clone(), Role::Owner);
+            }
+            EventBody::MemberAdded { identity, role } => {
+                roster.insert(identity.clone(), *role);
+                self.net.mls.stuck.remove(&e.space);
+            }
+            EventBody::MemberRemoved { identity } => {
+                roster.remove(identity);
+            }
+            EventBody::SpaceEncrypted => {
+                *roster = self
+                    .logs
+                    .get(&e.space)
+                    .map(|l| fold_roster(l.events().iter()))
+                    .unwrap_or_default();
+                if self.me.as_deref() == Some(e.author.as_str()) {
+                    let started = self.device().and_then(|d| match d.has_group(&e.space) {
+                        true => Ok(()),
+                        false => d.create_group(&e.space).map_err(mls_err),
+                    });
+                    if let Err(err) = started {
+                        tracing_like(&format!("starting the group of {}: {err}", e.space));
+                    }
+                }
+            }
+            _ => return,
+        }
+        self.net.mls.dirty.insert(e.space.clone());
+    }
+
+    /// The group for a Space this device just created (it's the only member).
+    pub(crate) fn create_mls_group(&mut self, space: &str) -> R<()> {
+        self.device()?.create_group(space).map_err(mls_err)?;
+        self.net.mls.dirty.insert(space.to_string());
+        Ok(())
+    }
+
+    /// The epoch to seal `space`'s messages at, once its group is ready for them.
+    fn ready_epoch(&self, space: &str) -> Option<u64> {
+        let device = self.device().ok()?;
+        if !device.has_group(space) || device.pending(space) {
+            return None;
+        }
+        // An owner or admin about to add someone (including adds still on their way to
+        // the relay) sends after the commit, so the newcomer reads it.
+        let me = self.me.as_deref()?;
+        let s = self.state.spaces.get(space)?;
+        let runs_it = s
+            .members
+            .iter()
+            .any(|(m, r)| m == me && matches!(r, Role::Owner | Role::Admin));
+        let m = &self.net.mls;
+        if runs_it && !m.stuck.contains(space) {
+            let group = device.roster(space).ok()?;
+            if m.claiming.contains(space) || s.members.iter().any(|(who, _)| !group.contains(who)) {
+                return None;
+            }
+        }
+        device.epoch(space).ok()
+    }
+
+    /// The sealed copy of a queued event: the epoch it was sealed at, and the envelope.
+    fn sealed_copy(&self, e: &Event) -> Option<(u64, Envelope)> {
+        let v = self.store.meta(&sealed_meta(&e.client_id)).ok().flatten()?;
+        let mut parts = v.splitn(3, ':');
+        let epoch = parts.next()?.parse().ok()?;
+        let content = hex::decode(parts.next()?).ok()?;
+        let env = Envelope::new(content, parts.next()?.to_string(), e.cert.clone(), None)?;
+        Some((epoch, env))
+    }
+
+    /// Seals every queued message whose group is ready and that has no copy for the
+    /// group's current epoch. `true` when something new can go out.
+    pub fn mls_seal_outbox(&mut self) -> R<bool> {
+        if self.net.pending.is_empty() {
+            return Ok(false);
+        }
+        let queued: Vec<Event> = self
+            .store
+            .outbox()?
+            .into_iter()
+            .filter(|p| !p.failed)
+            .map(|p| p.event)
+            .filter(|e| self.is_e2e(&e.space) && must_seal(&e.body))
+            .collect();
+        let mut ready: HashMap<SpaceId, Option<u64>> = HashMap::new();
+        let mut sealed = false;
+        for e in queued {
+            let epoch = *ready
+                .entry(e.space.clone())
+                .or_insert_with(|| self.ready_epoch(&e.space));
+            let Some(epoch) = epoch else { continue };
+            if self.sealed_copy(&e).is_some_and(|(at, _)| at == epoch) {
+                continue;
+            }
+            self.seal_outgoing(&e, epoch)?;
+            sealed = true;
+        }
+        Ok(sealed)
+    }
+
+    fn seal_outgoing(&mut self, e: &Event, epoch: u64) -> R<()> {
+        let author = self
+            .net
+            .author
+            .clone()
+            .ok_or_else(|| CoreError::Forbidden {
+                reason: t("Entre na sua conta primeiro.", "Sign in first."),
+            })?;
+        let inner = InnerEvent {
+            content: e.content.clone(),
+            sig: e.sig.clone(),
+        };
+        let data = self
+            .device()?
+            .seal(&e.space, &inner.encode())
+            .map_err(mls_err)?;
+        let outer = Envelope::sealed(
+            &author,
+            &e.space,
+            &e.client_id,
+            e.at_ms,
+            e.seen.as_ref(),
+            Sealed::new(SealedKind::Application, SUITE_ID, data),
+        );
+        self.store.set_meta(
+            &sealed_meta(&e.client_id),
+            &format!("{epoch}:{}:{}", hex::encode(outer.content()), outer.sig),
+        )?;
+        Ok(())
+    }
+
+    /// What goes out now for a queued event: its sealed copy for the current epoch, the
+    /// handshake it is, or itself. `None` while it waits for its group.
+    pub(crate) fn outgoing_envelope(&self, e: &Event) -> Option<Envelope> {
+        if matches!(e.body, EventBody::Sealed { .. }) {
+            return Envelope::new(e.content.clone(), e.sig.clone(), e.cert.clone(), None);
+        }
+        if !(self.is_e2e(&e.space) && must_seal(&e.body)) {
+            return Some(Envelope::plain(e));
+        }
+        let (at, env) = self.sealed_copy(e)?;
+        (Some(at) == self.ready_epoch(&e.space)).then_some(env)
+    }
+
+    /// Signs MLS bytes into the Space's outbox, in order.
+    fn queue_handshake(&mut self, space: &str, kind: SealedKind, data: Vec<u8>) -> R<()> {
+        let author = self
+            .net
+            .author
+            .clone()
+            .ok_or_else(|| CoreError::Forbidden {
+                reason: t("Entre na sua conta primeiro.", "Sign in first."),
+            })?;
+        let at_ms = crate::engine::now_ms();
+        let client_id = new_ulid(at_ms);
+        let seen = self.logs.get(space).and_then(|l| l.head());
+        let (content, sig) = author.sign_sealed(
+            space,
+            &client_id,
+            at_ms,
+            seen.as_ref(),
+            Sealed::new(kind, SUITE_ID, data),
+        );
+        let e = event_from_content(
+            content,
+            sig,
+            author.cert.clone(),
+            0,
+            String::new(),
+            String::new(),
+        )
+        .map_err(storage)?;
+        self.store.outbox_put(&e)?;
+        self.net.pending.insert(client_id, space.to_string());
+        self.net.wake();
+        Ok(())
+    }
+
+    /// A sealed entry the relay sequenced: opened (or kept sealed) and logged in one
+    /// transaction with the group state it changes.
+    pub(crate) fn ingest_sealed(&mut self, ev: Sequenced) -> Ingest {
+        let space = ev.env.space().to_string();
+        let next = self.logs.get(&space).map(|l| l.next_seq()).unwrap_or(0);
+        if ev.seq < next {
+            return Ingest::Duplicate;
+        }
+        if ev.seq > next {
+            return Ingest::Gap { next };
+        }
+        let Some((kind, data)) = ev.env.sealed_data().map(|(k, d)| (k, d.to_vec())) else {
+            return Ingest::Invalid("not sealed".into());
+        };
+        let client_id = ev.env.client_id().to_string();
+        let own = self.net.pending.contains_key(&client_id);
+        let roster = self.roster(&space);
+        let own_copy = if own && kind == SealedKind::Application {
+            self.store.outbox().ok().and_then(|o| {
+                o.into_iter()
+                    .map(|p| p.event)
+                    .find(|e| e.client_id == client_id)
+            })
+        } else {
+            None
+        };
+
+        let conn = self.store.conn();
+        let tx = match conn.unchecked_transaction() {
+            Ok(tx) => tx,
+            Err(e) => return Ingest::Invalid(e.to_string()),
+        };
+        let device = match self.device_on(&tx) {
+            Ok(d) => d,
+            Err(e) => return Ingest::Invalid(e.to_string()),
+        };
+        let mut opened: Option<Event> = own_copy;
+        let mut landed: Option<(u64, bool)> = None; // (epoch, joined)
+        match kind {
+            SealedKind::Application if opened.is_none() => {
+                match device.open(&space, &data, &roster) {
+                    Ok(Opened::Application { plaintext, from }) => {
+                        match inner_event(&ev, &plaintext, &from) {
+                            Some(e) => opened = Some(e),
+                            None => tracing_like(&format!(
+                                "sealed message in {space} doesn't match its envelope; kept sealed"
+                            )),
+                        }
+                    }
+                    Ok(_) => {}
+                    Err(e) => tracing_like(&format!("can't open a message in {space}: {e}")),
+                }
+            }
+            SealedKind::Application => {}
+            SealedKind::Commit => match device.open(&space, &data, &roster) {
+                Ok(Opened::Commit { epoch }) => landed = Some((epoch, false)),
+                Ok(_) => {}
+                Err(e) => tracing_like(&format!("refused a commit in {space}: {e}")),
+            },
+            SealedKind::Welcome if !device.has_group(&space) => {
+                match device.join(&space, &data, &roster) {
+                    Ok(true) => landed = device.epoch(&space).ok().map(|ep| (ep, true)),
+                    Ok(false) => {}
+                    Err(e) => tracing_like(&format!("refused a welcome in {space}: {e}")),
+                }
+            }
+            SealedKind::Welcome | SealedKind::Unspecified => {}
+        }
+        let digest = landed.and_then(|_| device.checkpoint(&space).ok());
+        drop(device);
+
+        let e = match opened {
+            Some(mut inner) => {
+                inner.seq = ev.seq;
+                inner.prev = ev.prev.clone();
+                inner.hash = ev.hash.clone();
+                inner.sealed_wire = Some(ev.env.wire_hash());
+                inner
+            }
+            None => match event_from_content(
+                ev.env.content().to_vec(),
+                ev.env.sig.clone(),
+                ev.env.cert.clone(),
+                ev.seq,
+                ev.prev.clone(),
+                ev.hash.clone(),
+            ) {
+                Ok(e) => e,
+                Err(err) => return Ingest::Invalid(err.to_string()),
+            },
+        };
+        let log = self
+            .logs
+            .entry(space.clone())
+            .or_insert_with(|| SpaceLog::new(space.clone()));
+        if let Err(err) = log.accept(e.clone()) {
+            if log.is_empty() {
+                self.logs.remove(&space);
+            }
+            return Ingest::Invalid(err.to_string()); // the transaction rolls back
+        }
+        let mut stored = self.store.append_event(&e).map_err(storage);
+        if let Some((epoch, digest)) = &digest {
+            stored = stored.and_then(|_| {
+                self.store
+                    .set_meta(&digest_meta(&space, *epoch), digest)
+                    .map_err(storage)
+            });
+        }
+        if let Err(err) = stored.and_then(|_| tx.commit().map_err(storage)) {
+            let _ = self.reload();
+            return Ingest::Invalid(err.to_string());
+        }
+
+        let _ = self.store.set_synced(&space);
+        self.net.synced.insert(space.clone());
+        let m = &mut self.net.mls;
+        if landed.is_some() {
+            m.dirty.insert(space.clone());
+        }
+        if matches!(landed, Some((_, true))) || (own && landed.is_some()) {
+            m.checkpoint_due.insert(space.clone());
+        }
+        if kind == SealedKind::Commit && landed.is_none() {
+            // Refused or stale: the group may still owe this Space a commit.
+            m.dirty.insert(space.clone());
+        }
+        let count = m.sealed_since_checkpoint.entry(space.clone()).or_default();
+        *count += 1;
+        if *count >= CHECKPOINT_EVERY && self.device().is_ok_and(|d| d.has_group(&space)) {
+            self.net.mls.checkpoint_due.insert(space.clone());
+        }
+
+        if own {
+            self.net.pending.remove(&client_id);
+            let _ = self.store.outbox_remove(&client_id);
+            let _ = self.store.meta_delete(&sealed_meta(&client_id));
+            if let Some(s) = self.state.spaces.get_mut(&space) {
+                for entry in s.entries.iter_mut().filter(|x| x.client_id == client_id) {
+                    entry.seq = e.seq;
+                    entry.hash = e.hash.clone();
+                }
+            }
+            return Ingest::Confirmed;
+        }
+        self.state.apply(&e);
+        self.index_dirty = true;
+        self.note_unknown(&e);
+        Ingest::Applied
+    }
+
+    /// Another member's checkpoint: if this device was at that epoch and computed a
+    /// different digest, the two were shown different groups.
+    pub(crate) fn compare_checkpoint(&mut self, e: &Event) {
+        let EventBody::Checkpoint { epoch, digest, .. } = &e.body else {
+            return;
+        };
+        if self.me.as_deref() == Some(e.author.as_str()) {
+            return;
+        }
+        let Ok(Some(mine)) = self.store.meta(&digest_meta(&e.space, *epoch)) else {
+            return;
+        };
+        if mine != *digest {
+            let reason = t(
+                "Membros veem grupos diferentes nesta conversa (possível bifurcação do servidor).",
+                "Members see different groups in this chat (the server may have forked it).",
+            );
+            let _ = self.store.set_meta(&fork_meta(&e.space), &reason);
+            if let Some(s) = self.state.spaces.get_mut(&e.space) {
+                s.integrity_error = Some(reason);
+            }
+        }
+    }
+
+    // ── work for the network task ──
+
+    /// This device's key packages, until the relay has them.
+    pub fn mls_key_packages_to_publish(&mut self) -> Option<(Vec<Vec<u8>>, Vec<u8>)> {
+        let device_id = self.net.account.as_ref()?.device.clone();
+        if self.store.meta(META_PUBLISHED).ok().flatten() == Some(device_id) {
+            return None;
+        }
+        if self.net.mls.publishing.is_none() {
+            let device = self.device().ok()?;
+            let mut packages = device.key_packages(KEY_PACKAGES, true).ok()?;
+            let last_resort = packages.pop()?;
+            self.net.mls.publishing = Some((packages, last_resort));
+        }
+        self.net.mls.publishing.clone()
+    }
+
+    pub fn mls_key_packages_published(&mut self, result: Result<(), String>) {
+        match result {
+            Ok(()) => {
+                if let Some(a) = &self.net.account {
+                    let _ = self.store.set_meta(META_PUBLISHED, &a.device);
+                }
+                self.net.mls.publishing = None;
+            }
+            Err(e) => tracing_like(&format!("key packages refused: {e}")),
+        }
+    }
+
+    /// The next group that owes a commit adding someone: claim their key packages. Groups
+    /// that only owe removals commit right here.
+    pub fn mls_to_claim(&mut self) -> Option<(SpaceId, Vec<IdentityId>)> {
+        let now = Instant::now();
+        let ready: Vec<SpaceId> = self
+            .net
+            .mls
+            .retry_at
+            .iter()
+            .filter(|(_, at)| **at <= now)
+            .map(|(s, _)| s.clone())
+            .collect();
+        for s in ready {
+            self.net.mls.retry_at.remove(&s);
+            self.net.mls.dirty.insert(s);
+        }
+        let dirty: Vec<SpaceId> = self.net.mls.dirty.iter().cloned().collect();
+        for space in dirty {
+            match self.owed(&space) {
+                Ok(Some((add, remove))) if add.is_empty() => {
+                    self.net.mls.dirty.remove(&space);
+                    if let Err(e) = self.commit_now(&space, &[], &remove) {
+                        tracing_like(&format!("removal commit in {space}: {e}"));
+                    }
+                }
+                Ok(Some((add, _))) => {
+                    self.net.mls.dirty.remove(&space);
+                    self.net.mls.claiming.insert(space.clone());
+                    return Some((space, add.into_iter().collect()));
+                }
+                Ok(None) => {
+                    self.net.mls.dirty.remove(&space);
+                }
+                Err(e) => {
+                    self.net.mls.dirty.remove(&space);
+                    tracing_like(&format!("group check in {space}: {e}"));
+                }
+            }
+        }
+        None
+    }
+
+    /// What `space`'s group owes: (identities to add, identities to remove), when this
+    /// device may commit and has nothing out already.
+    fn owed(&self, space: &str) -> R<Option<(BTreeSet<IdentityId>, BTreeSet<IdentityId>)>> {
+        let me = self.me_id()?;
+        let Some(roster) = self.net.mls.rosters.get(space) else {
+            return Ok(None);
+        };
+        if !matches!(roster.get(&me), Some(Role::Owner | Role::Admin)) {
+            return Ok(None);
+        }
+        if self.net.mls.claiming.contains(space) || self.net.mls.retry_at.contains_key(space) {
+            return Ok(None);
+        }
+        let device = self.device()?;
+        if !device.has_group(space) || device.pending(space) {
+            return Ok(None);
+        }
+        let group = device.roster(space).map_err(mls_err)?;
+        let listed: BTreeSet<IdentityId> = roster.keys().cloned().collect();
+        let add: BTreeSet<_> = listed.difference(&group).cloned().collect();
+        let remove: BTreeSet<_> = group.difference(&listed).cloned().collect();
+        Ok((!add.is_empty() || !remove.is_empty()).then_some((add, remove)))
+    }
+
+    /// Key packages for a group's newcomers came back: commit them (and any removals).
+    pub fn mls_claimed(&mut self, space: &str, result: Result<Vec<KeyPackageRecord>, String>) {
+        self.net.mls.claiming.remove(space);
+        let owed = match self.owed(space) {
+            Ok(Some(o)) => o,
+            _ => return,
+        };
+        let (add, remove) = owed;
+        // Only packages whose verified leaf is one of the people we asked for.
+        let records: Vec<KeyPackageRecord> = result
+            .unwrap_or_default()
+            .into_iter()
+            .filter(|r| {
+                roda_mls::key_package_leaf(&r.data).is_ok_and(|l: Leaf| {
+                    l.identity == r.identity && l.device == r.device && add.contains(&l.identity)
+                })
+            })
+            .collect();
+        let found: BTreeSet<&IdentityId> = records.iter().map(|r| &r.identity).collect();
+        if add.iter().any(|who| !found.contains(who)) {
+            // Someone can't be added yet (no device, or none with packages): messages
+            // don't wait for them; they'll read from whenever their commit lands.
+            self.net.mls.stuck.insert(space.to_string());
+        }
+        let packages: Vec<Vec<u8>> = records.into_iter().map(|r| r.data).collect();
+        if packages.is_empty() && remove.is_empty() {
+            self.net
+                .mls
+                .retry_at
+                .insert(space.to_string(), Instant::now() + CLAIM_RETRY);
+            return;
+        }
+        if let Err(e) = self.commit_now(space, &packages, &remove) {
+            tracing_like(&format!("commit in {space}: {e}"));
+            self.net
+                .mls
+                .retry_at
+                .insert(space.to_string(), Instant::now() + CLAIM_RETRY);
+        }
+    }
+
+    fn commit_now(&mut self, space: &str, add: &[Vec<u8>], remove: &BTreeSet<IdentityId>) -> R<()> {
+        let c = self.device()?.commit(space, add, remove).map_err(mls_err)?;
+        self.queue_handshake(space, SealedKind::Commit, c.commit)?;
+        if let Some(w) = c.welcome {
+            self.queue_handshake(space, SealedKind::Welcome, w)?;
+        }
+        Ok(())
+    }
+
+    /// Posts the checkpoints this device owes. `true` when it queued any.
+    pub fn mls_checkpoints(&mut self) -> R<bool> {
+        let due: Vec<SpaceId> = self.net.mls.checkpoint_due.drain().collect();
+        let mut queued = false;
+        for space in due {
+            let Some(upto) = self.logs.get(&space).and_then(|l| l.head()) else {
+                continue;
+            };
+            let (epoch, digest) = match self
+                .device()
+                .and_then(|d| d.checkpoint(&space).map_err(mls_err))
+            {
+                Ok(c) => c,
+                Err(_) => continue,
+            };
+            let me = self.me_id()?;
+            self.append(
+                &space,
+                &me,
+                EventBody::Checkpoint {
+                    upto,
+                    epoch,
+                    digest,
+                },
+            )?;
+            self.net.mls.sealed_since_checkpoint.insert(space, 0);
+            queued = true;
+        }
+        Ok(queued)
+    }
+
+    /// Nothing MLS-side left to do right now (the CLI waits for this before exiting).
+    pub fn mls_settled(&self) -> bool {
+        let m = &self.net.mls;
+        let published = self.net.account.as_ref().is_none_or(|a| {
+            self.store.meta(META_PUBLISHED).ok().flatten().as_deref() == Some(a.device.as_str())
+        });
+        published && m.dirty.is_empty() && m.claiming.is_empty() && m.checkpoint_due.is_empty()
+    }
+
+    /// The group as this device has it: epoch, checkpoint digest and members.
+    pub fn mls_status(&self, space: &str) -> Option<(u64, String, Vec<IdentityId>)> {
+        let device = self.device().ok()?;
+        let (epoch, digest) = device.checkpoint(space).ok()?;
+        let members = device.roster(space).ok()?.into_iter().collect();
+        Some((epoch, digest, members))
+    }
+}
+
+/// The inner event of an opened message, if it is exactly what its envelope says: same
+/// Space, client id, author, device, time and `seen`, sent by that author's MLS leaf.
+fn inner_event(ev: &Sequenced, plaintext: &[u8], from: &Leaf) -> Option<Event> {
+    let inner = InnerEvent::decode(plaintext)?;
+    let e = event_from_content(
+        inner.content,
+        inner.sig,
+        ev.env.cert.clone(),
+        0,
+        String::new(),
+        String::new(),
+    )
+    .ok()?;
+    let env = &ev.env;
+    let same = e.space == env.space()
+        && e.client_id == env.client_id()
+        && e.author == env.author()
+        && e.device.as_deref() == env.device()
+        && e.at_ms == env.at_ms()
+        && e.seen == env.seen()
+        && from.identity == e.author
+        && Some(from.device.as_str()) == e.device.as_deref()
+        && !stays_clear(&e.body)
+        && !matches!(e.body, EventBody::Sealed { .. });
+    same.then_some(e)
+}
+
+pub(crate) fn must_seal(body: &EventBody) -> bool {
+    !stays_clear(body)
+}

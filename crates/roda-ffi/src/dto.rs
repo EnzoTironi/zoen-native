@@ -31,6 +31,15 @@ pub enum SpaceKindDto {
     Community,
 }
 
+/// An end-to-end chat's MLS group as this device has it. Members compare `digest` for
+/// the same `epoch` to know they share one group (ADR 0026).
+#[derive(Debug, Clone, PartialEq, uniffi::Record)]
+pub struct GroupKeysDto {
+    pub epoch: u64,
+    pub digest: String,
+    pub members: Vec<String>,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, uniffi::Enum)]
 pub enum PrivacyDto {
     EndToEnd,

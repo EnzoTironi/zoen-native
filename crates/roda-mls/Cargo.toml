@@ -1,0 +1,30 @@
+[package]
+name = "roda-mls"
+description = "End-to-end Spaces: OpenMLS groups whose leaves are Zoen devices (ADR 0026)"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[features]
+default = ["device"]
+# Groups and their sealed SQLite state. Without it, only key package and leaf checks
+# (what the relay needs).
+device = ["dep:openmls_basic_credential", "dep:openmls_sqlite_storage", "dep:rusqlite",
+  "dep:chacha20poly1305", "dep:hkdf", "dep:hmac", "dep:serde", "dep:serde_json", "dep:sha2"]
+
+[dependencies]
+roda-log.workspace = true
+openmls = "0.9.1"
+openmls_rust_crypto = "0.6"
+hex.workspace = true
+thiserror.workspace = true
+openmls_basic_credential = { version = "0.6", optional = true }
+openmls_sqlite_storage = { version = "0.3", optional = true }
+rusqlite = { workspace = true, optional = true }
+chacha20poly1305 = { workspace = true, optional = true }
+hkdf = { workspace = true, optional = true }
+hmac = { version = "0.12", optional = true }
+serde = { workspace = true, optional = true }
+serde_json = { workspace = true, optional = true }
+sha2 = { workspace = true, optional = true }

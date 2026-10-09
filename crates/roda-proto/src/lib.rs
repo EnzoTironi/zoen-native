@@ -25,13 +25,17 @@
 pub mod wire;
 
 use roda_log::content::{content_hash, decode_body, Payload, SignedContent};
-use roda_log::{event_from_content, verify_author, verify_sig, LogError};
+pub use roda_log::content::{Sealed, SealedKind};
+use roda_log::{event_from_content, verify_author, verify_sig, Author, LogError};
 use roda_types::{Event, EventBody, Identity, IdentityId, Role, Seen, SpaceId};
 
 pub use roda_log::profile::DeviceSigned;
 
 /// The version this build speaks, and the oldest one it still accepts.
 pub const PROTOCOL_VERSION: u32 = 2;
+/// Why a relay refuses a clear event in an end-to-end Space. A client that wrote it before
+/// it learned the Space went end-to-end (ADR 0027) seals it and sends it again.
+pub const SEAL_REQUIRED: &str = "this space is end-to-end encrypted; seal the event";
 pub const MIN_PROTOCOL_VERSION: u32 = 2;
 /// Domain tag for what devices sign outside the log (login, blob uploads).
 pub const PROTOCOL: &str = "zoen-sync/2";
@@ -83,6 +87,30 @@ impl Envelope {
             .expect("events carry v3 content")
     }
 
+    /// Wraps MLS ciphertext signed by `author`'s device.
+    pub fn sealed(
+        author: &Author,
+        space: &str,
+        client_id: &str,
+        at_ms: i64,
+        seen: Option<&Seen>,
+        sealed: Sealed,
+    ) -> Self {
+        let (content, sig) = author.sign_sealed(space, client_id, at_ms, seen, sealed);
+        Self::new(content, sig, author.cert.clone(), None).expect("sealed content parses")
+    }
+
+    /// The MLS bytes and their kind, for envelopes MLS opens.
+    pub fn sealed_data(&self) -> Option<(SealedKind, &[u8])> {
+        match &self.parsed.payload {
+            Some(Payload::Sealed(s)) => Some((
+                SealedKind::try_from(s.kind).unwrap_or(SealedKind::Unspecified),
+                &s.data,
+            )),
+            _ => None,
+        }
+    }
+
     pub fn content(&self) -> &[u8] {
         &self.content
     }
@@ -113,6 +141,11 @@ impl Envelope {
 
     pub fn is_sealed(&self) -> bool {
         matches!(self.parsed.payload, Some(Payload::Sealed(_)))
+    }
+
+    /// What a sealed envelope carries, from its clear framing (`None` when plain).
+    pub fn sealed_kind(&self) -> Option<SealedKind> {
+        self.sealed_data().map(|(kind, _)| kind)
     }
 
     /// The body, for envelopes the relay may read (`None` when sealed).
@@ -284,6 +317,16 @@ pub enum Op {
     GetProfiles {
         ids: Vec<IdentityId>,
     },
+    /// Publishes MLS key packages for this device (ADR 0026). Each must name this identity
+    /// and device; `last_resort` replaces the device's previous one.
+    PublishKeyPackages {
+        packages: Vec<Vec<u8>>,
+        last_resort: Option<Vec<u8>>,
+    },
+    /// Takes one key package for each device of each identity, to add them to a group.
+    ClaimKeyPackages {
+        ids: Vec<IdentityId>,
+    },
 }
 
 impl Op {
@@ -299,6 +342,8 @@ impl Op {
             Op::AgreementKeys { .. } => "agreement_keys",
             Op::PutProfile { .. } => "put_profile",
             Op::GetProfiles { .. } => "get_profiles",
+            Op::PublishKeyPackages { .. } => "publish_key_packages",
+            Op::ClaimKeyPackages { .. } => "claim_key_packages",
         }
     }
 }
@@ -334,6 +379,16 @@ pub enum Reply {
     Done,
     AgreementKeys(Vec<AgreementKeyRecord>),
     SealedProfiles(Vec<SealedProfile>),
+    KeyPackages(Vec<KeyPackageRecord>),
+}
+
+/// One device's MLS key package, as claimed. Members re-check the leaf inside; the relay's
+/// check only keeps junk out of the table.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct KeyPackageRecord {
+    pub identity: IdentityId,
+    pub device: String,
+    pub data: Vec<u8>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]

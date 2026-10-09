@@ -127,6 +127,8 @@ FoundationDB keyspace (tuple layer, one directory per cell):
 Ordering. An append reads `head/{space}`, writes `log/{space}/{seq+1}`, the new head, the
 dedupe key and an outbox entry under a versionstamp, in one transaction. FDB's conflict
 detection on the head key serializes appends within a Space, so no sequencer service exists.
+Inside the owning relay, appends to a Space queue in memory and commit in batches of up to 64
+behind a head-validated cache of its members (ADR 0023); the head read is still the fence.
 Sequence numbers stay dense per Space (clients detect gaps, the hash chain needs the
 predecessor); the versionstamp orders the outbox across Spaces. Partition ownership in sync
 is an affinity for batching and caches, never the ordering authority: two owners racing

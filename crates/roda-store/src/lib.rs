@@ -63,6 +63,15 @@ impl Store {
         Ok(s)
     }
 
+    /// The device database, for state that commits with the log (MLS groups, ADR 0026).
+    pub fn conn(&self) -> &Connection {
+        &self.conn
+    }
+
+    pub fn conn_mut(&mut self) -> &mut Connection {
+        &mut self.conn
+    }
+
     pub fn in_memory() -> Result<Self> {
         let s = Self {
             conn: Connection::open_in_memory()?,

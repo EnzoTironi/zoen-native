@@ -8,7 +8,7 @@
 
 mod common;
 use common::*;
-use roda_types::EventBody;
+use roda_proto::SealedKind;
 
 #[tokio::test]
 async fn dm_roundtrip_survives_relaunch_and_verifies() {
@@ -23,7 +23,7 @@ async fn dm_roundtrip_survives_relaunch_and_verifies() {
     w.zoen("ana", &["dm", "@bruno", "oi Bruno, tudo bem?"]);
     let chats = w.zoen("bruno", &["chats"]);
     assert!(
-        chats.contains("Ana\tDirect\trelay\tunread=1\toi Bruno, tudo bem?"),
+        chats.contains("Ana\tDirect\trelay\te2e\tunread=1\toi Bruno, tudo bem?"),
         "{chats}"
     );
 
@@ -39,8 +39,9 @@ async fn dm_roundtrip_survives_relaunch_and_verifies() {
     assert!(!w.zoen("bruno", &["verify"]).contains("BROKEN"));
     assert_eq!(
         w.events().await.len(),
-        6,
-        "SpaceCreated, MemberAdded, a profile key share each way, 2 messages"
+        10,
+        "SpaceCreated, MemberAdded, a profile key share each way, the commit and Welcome, \
+         a checkpoint each, 2 sealed messages"
     );
 }
 
@@ -50,7 +51,7 @@ async fn group_and_invite_code() {
     for (h, n) in [("ana", "Ana"), ("bruno", "Bruno"), ("carla", "Carla")] {
         w.init(h, n);
     }
-    w.zoen("ana", &["group", "Trilha sábado", "@bruno"]);
+    w.zoen("ana", &["group", "Trilha sábado", "@bruno", "--readable"]);
     w.zoen("ana", &["send", "Trilha sábado", "bora fazer trilha?"]);
     assert!(w
         .zoen("bruno", &["read", "Trilha sábado"])
@@ -74,7 +75,8 @@ async fn group_and_invite_code() {
         ana.trim(),
         "Ana: bora fazer trilha?\nCarla: cheguei! eu levo lanche\nBruno: fechado"
     );
-    // Carla joined late and still gets the whole history of the (Closed, M1) group.
+    // Carla joined late and still gets the whole history of the relay-readable group.
+    // (In an end-to-end group she reads from her Welcome on: journey_m2.)
     let carla = w.zoen("carla", &["read", "Trilha sábado"]);
     assert_eq!(carla, ana);
 }
@@ -124,7 +126,7 @@ async fn offline_writes_flush_after_the_relay_comes_back() {
         w.events()
             .await
             .iter()
-            .filter(|e| matches!(e.env.body(), Some(EventBody::MessagePosted { .. })))
+            .filter(|e| e.env.sealed_kind() == Some(SealedKind::Application))
             .count(),
         3
     );
