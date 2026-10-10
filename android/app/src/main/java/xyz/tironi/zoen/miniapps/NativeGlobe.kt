@@ -137,9 +137,15 @@ fun NativeGlobe(guess: Offset? = null, actual: Offset? = null, modifier: Modifie
     val selected = guess?.takeIf { it.x.isFinite() && it.y.isFinite() }?.let { GlobePoint(it.y.coerceIn(-90f, 90f).toDouble(), OrthographicGlobe.longitude(it.x.toDouble())) }
     val answer = actual?.takeIf { it.x.isFinite() && it.y.isFinite() }?.let { GlobePoint(it.y.coerceIn(-90f, 90f).toDouble(), OrthographicGlobe.longitude(it.x.toDouble())) }
     val arc = remember { Animatable(0f) }
-    LaunchedEffect(answer) {
+    LaunchedEffect(answer, motion) {
         if (answer == null) { arc.snapTo(0f); return@LaunchedEffect }
         val target = OrthographicGlobe.slerp(selected ?: answer, answer, .5)
+        if (!motion) {
+            latitude = target.lat.toFloat()
+            longitude = OrthographicGlobe.longitude(target.lon).toFloat()
+            arc.snapTo(1f)
+            return@LaunchedEffect
+        }
         val fromLat = latitude; val fromLon = longitude
         val delta = OrthographicGlobe.longitude(target.lon - fromLon).toFloat()
         coroutineScope {

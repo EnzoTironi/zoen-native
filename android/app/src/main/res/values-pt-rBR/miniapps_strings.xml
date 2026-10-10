@@ -106,6 +106,24 @@
   <string name="miniapp_seconds">SEG</string>
   <string name="miniapp_emotes">Enviar uma reação</string>
   <string name="miniapp_leaderboard">Placar</string>
+  <string name="pet_care">Cuidar</string>
+  <string name="pet_meet">Conheça %1$s!</string>
+  <string name="pet_reveal_detail">O novo membro do grupo. Cuidem dele juntos.</string>
+  <string name="pet_reveal_close">Fechar a apresentação</string>
+  <string name="pet_group_leaderboard">Placar do grupo</string>
+  <plurals name="pet_dash_run_count">
+    <item quantity="one">Donkey Dash · %1$d corrida</item>
+    <item quantity="other">Donkey Dash · %1$d corridas</item>
+  </plurals>
+  <plurals name="dash_carrot_count">
+    <item quantity="one">%1$d cenoura</item>
+    <item quantity="other">%1$d cenouras</item>
+  </plurals>
+  <plurals name="dash_distance">
+    <item quantity="one">%1$d metro</item>
+    <item quantity="other">%1$d metros</item>
+  </plurals>
+  <string name="pet_no_runs">Ninguém correu ainda. A primeira corrida define o recorde.</string>
   <string name="miniapp_score_points">%1$d pontos</string>
   <string name="miniapp_pin_home">Fixar em Chats</string>
   <string name="miniapp_unpin_home">Desafixar de Chats</string>

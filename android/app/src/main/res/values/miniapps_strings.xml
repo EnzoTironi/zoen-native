@@ -106,6 +106,24 @@
   <string name="miniapp_seconds">SEC</string>
   <string name="miniapp_emotes">Send an emote</string>
   <string name="miniapp_leaderboard">Leaderboard</string>
+  <string name="pet_care">Care</string>
+  <string name="pet_meet">Meet %1$s!</string>
+  <string name="pet_reveal_detail">The group’s new member. Look after him together.</string>
+  <string name="pet_reveal_close">Closes the reveal</string>
+  <string name="pet_group_leaderboard">Group leaderboard</string>
+  <plurals name="pet_dash_run_count">
+    <item quantity="one">Donkey Dash · %1$d run</item>
+    <item quantity="other">Donkey Dash · %1$d runs</item>
+  </plurals>
+  <plurals name="dash_carrot_count">
+    <item quantity="one">%1$d carrot</item>
+    <item quantity="other">%1$d carrots</item>
+  </plurals>
+  <plurals name="dash_distance">
+    <item quantity="one">%1$d metre</item>
+    <item quantity="other">%1$d metres</item>
+  </plurals>
+  <string name="pet_no_runs">Nobody has run yet. The first run sets the record.</string>
   <string name="miniapp_score_points">%1$d points</string>
   <string name="miniapp_pin_home">Pin to Chats</string>
   <string name="miniapp_unpin_home">Unpin from Chats</string>

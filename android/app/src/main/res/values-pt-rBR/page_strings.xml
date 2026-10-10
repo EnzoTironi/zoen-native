@@ -23,4 +23,14 @@
     <string name="page_preview_version">Ver versão %1$d</string>
     <string name="page_restore_version">Restaurar esta versão</string>
     <string name="page_line_break">Quebra de linha</string>
+    <string name="page_copy_draft">Copiar texto do rascunho</string>
+    <string name="page_keep_draft">Guardar arquivo criptografado</string>
+    <string name="page_discard_draft">Descartar rascunho</string>
+    <string name="page_discard_question">Descartar este rascunho?</string>
+    <string name="page_discard_detail">Guarde uma cópia primeiro. Isso remove apenas o rascunho neste dispositivo. A página atual e suas versões salvas são mantidas.</string>
+    <string name="page_recovery_detail">Não foi possível aplicar este rascunho. Guarde uma cópia ou descarte-o para continuar editando.</string>
+    <string name="page_recovery_before_restore">Guarde ou descarte o rascunho recuperado antes de restaurar uma versão.</string>
+    <string name="page_draft_copied">Texto do rascunho copiado.</string>
+    <string name="page_draft_unreadable">Não foi possível abrir o rascunho salvo. Ele foi mantido neste dispositivo.</string>
+    <string name="page_draft_save_failed">Não foi possível guardar o rascunho neste dispositivo. Guarde uma cópia ou tente novamente.</string>
 </resources>

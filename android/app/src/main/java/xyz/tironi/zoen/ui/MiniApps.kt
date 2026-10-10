@@ -1,8 +1,6 @@
 package xyz.tironi.zoen.ui
 
 import androidx.compose.foundation.Canvas
-import androidx.compose.animation.core.Animatable
-import androidx.compose.animation.core.tween
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -12,8 +10,8 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
-import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
@@ -22,7 +20,6 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.IntOffset
 import kotlinx.coroutines.delay
 import org.json.JSONArray
 import org.json.JSONObject
@@ -97,7 +94,7 @@ private fun NativeMiniAppScreen(model: ZoenViewModel, state: AppState, item: Ite
         Column(Modifier.fillMaxHeight().widthIn(max = 720.dp).fillMaxWidth()) {
             if (busy) LinearProgressIndicator(Modifier.fillMaxWidth())
             when (app.appId) {
-                "pet" -> PetApp(item.id, data, action, Modifier.weight(1f))
+                "pet" -> PetApp(model.repository.preferences, item.id, data, action, Modifier.weight(1f))
                 "poll" -> PollApp(data, action, Modifier.weight(1f))
                 "list" -> ListApp(data, action, Modifier.weight(1f))
                 "recipe" -> RecipeApp(data, action, Modifier.weight(1f))
@@ -122,91 +119,8 @@ private fun NativeMiniAppScreen(model: ZoenViewModel, state: AppState, item: Ite
 }
 
 @Composable
-private fun AppLog(data: JSONObject) {
-    data.rows("log").take(6).forEach { log -> Text(log.optString("who") + " " + log.optString("what"), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(vertical = 4.dp)) }
-}
-
-@Composable
-private fun PetApp(itemId: String, data: JSONObject, action: AppAction, modifier: Modifier) {
-    var rename by remember { mutableStateOf(false) }
-    var name by rememberSaveable { mutableStateOf("") }
-    var dash by rememberSaveable { mutableStateOf(false) }
-    val floating = remember(itemId) { mutableStateListOf<Pair<Long, String>>() }
-    var nextEmote by remember(itemId) { mutableLongStateOf(0) }
-    val haptics = rememberZoenHaptics()
-    val fullness = data.optDouble("fullness", 0.0)
-    var previousFullness by remember(itemId) { mutableDoubleStateOf(fullness) }
-    var eatingSince by remember(itemId) { mutableStateOf<Long?>(null) }
-    LaunchedEffect(itemId, fullness) {
-        if (fullness > previousFullness + .01) eatingSince = android.os.SystemClock.uptimeMillis()
-        previousFullness = fullness
-    }
-    val emoteLabel = stringResource(R.string.miniapp_emotes)
-    val asleep = data.optBoolean("asleep")
-    val released = data.optBoolean("released")
-    LazyColumn(modifier, contentPadding = PaddingValues(24.dp), verticalArrangement = Arrangement.spacedBy(18.dp)) {
-        item {
-            Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
-                Box(Modifier.fillMaxWidth().height(180.dp), contentAlignment = Alignment.Center) {
-                    PixelDonkey(Modifier.fillMaxSize(), asleep, released, eatingSince = eatingSince)
-                    floating.forEach { emote -> key(emote.first) { FloatingPetEmote(emote.second) { floating.remove(emote) } } }
-                }
-                Text(data.optString("name"), style = MaterialTheme.typography.displaySmall)
-                Text(data.optString("mood"), color = MaterialTheme.colorScheme.onSurfaceVariant)
-                Row(Modifier.semantics { contentDescription = emoteLabel }) {
-                    listOf("❤️", "🥕", "😂", "🫶", "😴").forEach { emoji -> TextButton(onClick = {
-                        haptics.perform(ZoenFeedback.Selection); floating.add(nextEmote++ to emoji)
-                    }, enabled = !asleep && !released) { Text(emoji, style = MaterialTheme.typography.headlineSmall) } }
-                }
-            }
-        }
-        item { Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.tertiaryContainer)) {
-            Column(Modifier.fillMaxWidth().padding(20.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-                listOf("fullness" to R.string.food, "joy" to R.string.mood, "energy" to R.string.rest).forEach { (key, label) ->
-                    val progress = (data.optDouble(key, 0.0) / 100).toFloat().coerceIn(0f, 1f)
-                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) { Text(stringResource(label)); Text("${(progress * 100).toInt()}%", style = MaterialTheme.typography.labelMedium) }
-                    LinearProgressIndicator(progress = { progress }, modifier = Modifier.fillMaxWidth())
-                }
-            }
-        } }
-        if (!released) {
-            item { Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                FilledTonalButton(onClick = { action("pet_feed", JSONObject()) }, enabled = !asleep, modifier = Modifier.weight(1f)) { Text(stringResource(R.string.feed)) }
-                FilledTonalButton(onClick = { action(if (asleep) "pet_wake" else "pet_nap", JSONObject()) }, modifier = Modifier.weight(1f)) { Text(stringResource(if (asleep) R.string.wake else R.string.nap)) }
-                FilledTonalButton(onClick = { action("pet_play", JSONObject()) }, enabled = !asleep, modifier = Modifier.weight(1f)) { Text(stringResource(R.string.play)) }
-            } }
-            item { OutlinedButton(onClick = { dash = true }, Modifier.fillMaxWidth(), enabled = !asleep) { Icon(Icons.Rounded.SportsEsports, null); Spacer(Modifier.width(8.dp)); Text(stringResource(R.string.dash)) } }
-            item { Row { TextButton(onClick = { name = data.optString("name"); rename = true }) { Text(stringResource(R.string.rename)) }; Spacer(Modifier.weight(1f)); TextButton(onClick = { action("pet_release", JSONObject()) }) { Text(stringResource(R.string.release_pet), color = MaterialTheme.colorScheme.error) } } }
-        }
-        item { AppLog(data) }
-        val best = data.optJSONObject("dash")?.optJSONObject("best")
-        if (best != null && best.length() > 0) item { Text(stringResource(R.string.miniapp_leaderboard), style = MaterialTheme.typography.titleLarge); best.keys().asSequence().toList().sortedByDescending { best.optJSONObject(it)?.optInt("meters") ?: 0 }.forEachIndexed { rank, person ->
-            Row(Modifier.fillMaxWidth().padding(vertical = 8.dp), horizontalArrangement = Arrangement.SpaceBetween) { Text("${rank + 1}. $person"); Text(stringResource(R.string.score, best.optJSONObject(person)?.optInt("meters") ?: 0)) }
-        } }
-    }
-    if (rename) AlertDialog(onDismissRequest = { rename = false }, title = { Text(stringResource(R.string.rename)) }, text = { OutlinedTextField(name, { name = it.take(18) }, label = { Text(stringResource(R.string.name)) }) }, confirmButton = { TextButton(onClick = { rename = false; action("pet_rename", JSONObject().put("name", name)) }, enabled = name.isNotBlank()) { Text(stringResource(R.string.save)) } }, dismissButton = { TextButton(onClick = { rename = false }) { Text(stringResource(R.string.cancel)) } })
-    if (dash) androidx.compose.ui.window.Dialog(onDismissRequest = { dash = false }, properties = androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false)) {
-        Surface(Modifier.widthIn(max = 720.dp).fillMaxWidth().padding(16.dp), shape = MaterialTheme.shapes.extraLarge) { DonkeyDash(onClose = { dash = false }, onScore = { meters, carrots -> action("pet_dash_score", JSONObject().put("meters", meters).put("carrots", carrots)) }) }
-    }
-}
-
-@Composable
-fun PixelDonkey(modifier: Modifier = Modifier, asleep: Boolean = false, faded: Boolean = false, live: Boolean = true, eatingSince: Long? = null) {
-    ZoenPetSprite(modifier, asleep, faded, live, eatingSince)
-}
-
-@Composable
-private fun FloatingPetEmote(emoji: String, finished: () -> Unit) {
-    val motion = rememberMotionEnabled()
-    val progress = remember { Animatable(0f) }
-    val close by rememberUpdatedState(finished)
-    val density = androidx.compose.ui.platform.LocalDensity.current.density
-    LaunchedEffect(motion) {
-        if (motion) progress.animateTo(1f, tween(1_500)) else delay(1_500)
-        close()
-    }
-    Text(emoji, Modifier.offset { IntOffset(0, (-90 * density * progress.value).toInt()) }.alpha(1 - progress.value),
-        style = MaterialTheme.typography.displayMedium)
+internal fun AppLog(data: JSONObject, color: Color = MaterialTheme.colorScheme.onSurfaceVariant) {
+    data.rows("log").take(6).forEach { log -> Text(log.optString("who") + " " + log.optString("what"), style = MaterialTheme.typography.bodySmall, color = color, modifier = Modifier.padding(vertical = 4.dp)) }
 }
 
 @Composable

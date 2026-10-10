@@ -76,7 +76,7 @@ internal class MascotCanvasView(context: Context) : View(context) {
 
     private fun canAnimate() = moving && active && isAttachedToWindow && hasWindowFocus() && windowVisibility == VISIBLE && isShown && getGlobalVisibleRect(visibleRect)
     private fun schedule() {
-        if (!scheduled && canAnimate()) {
+        if (!scheduled && !framePending && canAnimate()) {
             if (lastTick == 0L) lastTick = SystemClock.uptimeMillis()
             scheduled = true
             // The rig and boiling lines use the original 12 fps body / 10 fps head cadence.

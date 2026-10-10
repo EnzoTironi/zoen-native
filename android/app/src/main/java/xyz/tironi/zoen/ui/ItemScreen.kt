@@ -41,6 +41,7 @@ fun ItemScreen(model: ZoenViewModel, state: AppState, id: String, navigate: (Nav
     val saved = stringResource(R.string.saved)
     val pendingSync = stringResource(R.string.page_pending_sync)
     val draftSaved = stringResource(R.string.page_draft_saved)
+    val draftRecovery = stringResource(R.string.page_recovery_before_restore)
     DisposableEffect(id) { model.viewingItem(id); onDispose { model.viewingItem(null) } }
     if (item == null) {
         Scaffold(topBar = { ScreenBar(stringResource(R.string.files), back) }) { padding -> EmptyState(stringResource(R.string.unavailable), stringResource(R.string.unavailable_detail), Modifier.padding(padding)) }
@@ -49,7 +50,12 @@ fun ItemScreen(model: ZoenViewModel, state: AppState, id: String, navigate: (Nav
     Scaffold(topBar = {
         ScreenBar(item.title, back, actions = {
             if (item.app != null) MiniAppDetailsButton(model, state, item)
-            IconButton(onClick = { focus.clearFocus(force = true); model.launch { model.pageSaves.flush(id); versions = true } }) { Icon(Icons.Rounded.History, stringResource(R.string.versions)) }
+            IconButton(onClick = { focus.clearFocus(force = true); model.launch {
+                try { model.pageSaves.flush(id) } catch (error: Exception) {
+                    model.notify(if (error is CoreException.Stale) draftRecovery else error.message.orEmpty())
+                }
+                versions = true
+            } }) { Icon(Icons.Rounded.History, stringResource(R.string.versions)) }
             IconButton(onClick = {
                 model.launch {
                     model.pageSaves.flush(id)
@@ -118,7 +124,8 @@ fun ItemScreen(model: ZoenViewModel, state: AppState, id: String, navigate: (Nav
                 ListItem(modifier = Modifier.clickable { versions = false; navigate(VersionPreview(id, version.number)) }, headlineContent = { Text(stringResource(R.string.version, version.number.toInt())) }, supportingContent = {
                     Text(version.note + "\n" + version.author.name + " · " + DateFormat.getDateTimeInstance(DateFormat.SHORT, DateFormat.SHORT).format(Date(version.atMs)))
                 }, leadingContent = { Icon(if (version.isUndo) Icons.Rounded.Undo else Icons.Rounded.History, null) }, trailingContent = {
-                    if (version.number != item.version) TextButton(onClick = { restore = version.number }) { Text(stringResource(R.string.restore)) }
+                    if (version.number != item.version) TextButton(onClick = { restore = version.number },
+                        enabled = item.kindId != "page" || model.pageSaves.canRestore(id)) { Text(stringResource(R.string.restore)) }
                     else Icon(Icons.Rounded.Check, stringResource(R.string.saved))
                 })
             }

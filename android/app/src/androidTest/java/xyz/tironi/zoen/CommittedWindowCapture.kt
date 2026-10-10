@@ -23,6 +23,7 @@ internal object CommittedWindowCapture {
         val started = AtomicBoolean()
         val cancelled = AtomicBoolean()
         val status = AtomicInteger(-1)
+        val attempts = mutableListOf<Int>()
         val failure = AtomicReference<Throwable?>()
         var bitmap: Bitmap? = null
         var commit: Runnable? = null
@@ -38,8 +39,16 @@ internal object CommittedWindowCapture {
                     try {
                         PixelCopy.request(activity.window, pixels, { result ->
                             status.set(result)
-                            if (cancelled.get()) pixels.recycle()
-                            finished.countDown()
+                            attempts.add(result)
+                            if (cancelled.get()) {
+                                pixels.recycle()
+                                finished.countDown()
+                            } else if (result in listOf(PixelCopy.ERROR_TIMEOUT, PixelCopy.ERROR_SOURCE_NO_DATA)
+                                && attempts.size < 3 && SystemClock.uptimeMillis() < deadline) {
+                                started.set(false)
+                                if (Build.VERSION.SDK_INT >= 29) decor.viewTreeObserver.registerFrameCommitCallback(checkNotNull(commit))
+                                decor.postInvalidateOnAnimation()
+                            } else finished.countDown()
                         }, Handler(activity.mainLooper))
                     } catch (error: Exception) { failure.set(error); finished.countDown() }
                 }
@@ -57,7 +66,8 @@ internal object CommittedWindowCapture {
                 "The foreground app frame did not commit and copy within the evidence deadline"
             }
             failure.get()?.let { throw it }
-            check(status.get() == PixelCopy.SUCCESS) { "Window PixelCopy failed: ${status.get()}" }
+            Evidence.outputFile(directory, "$name-frame-copy.txt").writeText("PixelCopy statuses: $attempts; deadline: 10000 ms\n")
+            check(status.get() == PixelCopy.SUCCESS) { "Window PixelCopy failed: $attempts" }
             Evidence.outputFile(directory, "$name.png").outputStream().use {
                 check(checkNotNull(bitmap).compress(Bitmap.CompressFormat.PNG, 100, it))
             }

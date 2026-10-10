@@ -21,6 +21,7 @@ class PageSaveCoordinator {
         val gate = Mutex()
         var generation = 0L
         var restoring = false
+        var draftRecovery = false
         var editor: Editor? = null
     }
 
@@ -28,6 +29,8 @@ class PageSaveCoordinator {
     private fun session(id: String) = sessions.getOrPut(id) { Session() }
 
     fun generation(id: String): Long = session(id).generation
+    fun draftRecovery(id: String, required: Boolean) { session(id).draftRecovery = required }
+    fun canRestore(id: String): Boolean = !session(id).draftRecovery
 
     fun register(id: String, token: Any, save: suspend () -> Unit, pause: (Boolean) -> Unit,
                  restored: (Long, PageRestoreResult?, String?) -> Unit) {
@@ -57,6 +60,7 @@ class PageSaveCoordinator {
     internal suspend fun <T> restore(id: String, action: suspend (publish: (PageRestoreResult) -> Unit) -> T): T {
         val session = session(id)
         return session.gate.withLock {
+            check(!session.draftRecovery) { "Keep or discard the recovered draft before restoring a version" }
             // Once the core accepts a restore, cancellation cannot abandon the local draft handoff.
             withContext(NonCancellable) {
                 session.restoring = true

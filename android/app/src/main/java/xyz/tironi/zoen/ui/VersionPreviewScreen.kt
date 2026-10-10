@@ -54,7 +54,8 @@ fun VersionPreviewScreen(model: ZoenViewModel, id: String, number: UInt, back: (
         } }) { Icon(Icons.Rounded.Share, stringResource(R.string.share)) }
     }) }, bottomBar = {
         Surface(tonalElevation = 2.dp) { Row(Modifier.fillMaxWidth().navigationBarsPadding().padding(16.dp), horizontalArrangement = Arrangement.End) {
-            Button(enabled = content != null && !busy, onClick = { confirm = true }) { Text(stringResource(R.string.page_restore_version)) }
+            if (content?.page != null && !model.pageSaves.canRestore(id)) Text(stringResource(R.string.page_recovery_before_restore), Modifier.weight(1f), style = MaterialTheme.typography.bodySmall)
+            Button(enabled = content != null && !busy && (content?.page == null || model.pageSaves.canRestore(id)), onClick = { confirm = true }) { Text(stringResource(R.string.page_restore_version)) }
         } }
     }) { padding ->
         val historical = content

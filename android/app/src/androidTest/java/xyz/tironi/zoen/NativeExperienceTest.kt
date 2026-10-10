@@ -1,6 +1,5 @@
 package xyz.tironi.zoen
 
-import android.graphics.Bitmap
 import android.view.View
 import android.view.ViewGroup
 import androidx.activity.ComponentActivity
@@ -70,7 +69,16 @@ class NativeExperienceTest {
             compose.activity.currentFocus?.let { view ->
                 compose.activity.getSystemService(android.view.inputmethod.InputMethodManager::class.java)
                     .hideSoftInputFromWindow(view.windowToken, 0)
+                view.clearFocus()
             }
+        }
+        compose.waitUntil(10_000) {
+            var visible = true
+            instrumentation.runOnMainSync {
+                visible = androidx.core.view.ViewCompat.getRootWindowInsets(compose.activity.window.decorView)
+                    ?.isVisible(androidx.core.view.WindowInsetsCompat.Type.ime()) ?: true
+            }
+            !visible
         }
         compose.onNodeWithTag("chat-timeline").performScrollToNode(hasText(text))
         compose.onNodeWithText(text).assertIsDisplayed()
@@ -152,11 +160,22 @@ class NativeExperienceTest {
                 collect(compose.activity.window.decorView)
             }
             assertEquals(8, views.size)
-            compose.onNodeWithTag("native-globe").assertIsDisplayed()
+            Evidence.outputFile("experience", "snapshot-gallery-semantics.txt").writeText(
+                compose.onAllNodes(isRoot(), useUnmergedTree = true).printToString(maxDepth = Int.MAX_VALUE))
+            CommittedWindowCapture.save(compose.activity, "experience", "native-snapshot-art-static")
+            compose.onNodeWithTag("native-globe", useUnmergedTree = true).assertIsDisplayed()
             shell("settings put global animator_duration_scale 1")
             fun times(): List<Double> { var value = emptyList<Double>(); instrumentation.runOnMainSync { value = views.map { it.animationTimeSeconds } }; return value }
             fun scheduled(): List<Boolean> { var value = emptyList<Boolean>(); instrumentation.runOnMainSync { value = views.map { it.hasScheduledFrame } }; return value }
-            awaitNative(3_000) { times().all { it > 1.1 } }
+            try {
+                awaitNative(3_000) { times().all { it > 1.1 } }
+            } catch (failure: AssertionError) {
+                instrumentation.runOnMainSync {
+                    Evidence.outputFile("experience", "snapshot-start-failure.txt").writeText(
+                        views.mapIndexed { i, view -> "$i ${view.clockDiagnostics}" }.joinToString("\n"))
+                }
+                throw failure
+            }
             assertTrue(scheduled().all { it })
             CommittedWindowCapture.save(compose.activity, "experience", "native-snapshot-art-live")
             instrumentation.runOnMainSync { views.forEach { it.visibility = View.INVISIBLE } }
@@ -165,7 +184,19 @@ class NativeExperienceTest {
             assertEquals(hidden, times())
             assertTrue(scheduled().none { it })
             instrumentation.runOnMainSync { views.forEach { it.visibility = View.VISIBLE } }
-            awaitNative(2_000) { times().zip(hidden).all { (now, before) -> now > before + .2 } }
+            try {
+                awaitNative(2_000) { times().zip(hidden).all { (now, before) -> now > before + .2 } }
+            } catch (failure: AssertionError) {
+                instrumentation.runOnMainSync {
+                    Evidence.outputFile("experience", "snapshot-resume-failure.txt").writeText(
+                        views.mapIndexed { i, view ->
+                            "$i hidden=${hidden[i]} time=${view.animationTimeSeconds} scheduled=${view.hasScheduledFrame} " +
+                                "shown=${view.isShown} focus=${view.hasWindowFocus()} visibility=${view.visibility} " +
+                                "window=${view.windowVisibility} size=${view.width}x${view.height}"
+                        }.joinToString("\n"))
+                }
+                throw failure
+            }
             shell("settings put global animator_duration_scale 0")
             awaitNative(2_000) { scheduled().none { it } }
             val stopped = times()
@@ -183,6 +214,9 @@ class NativeExperienceTest {
     private fun awaitNative(timeout: Long, condition: () -> Boolean) {
         val deadline = android.os.SystemClock.elapsedRealtime() + timeout
         while (!condition()) {
+            // Settings and lifecycle changes must cross the Compose frame clock before
+            // polling the independent, real-time Android Canvas clock.
+            compose.mainClock.advanceTimeByFrame()
             assertTrue("Native animation did not reach its required state within $timeout ms", android.os.SystemClock.elapsedRealtime() < deadline)
             java.lang.Thread.sleep(10)
         }
@@ -195,7 +229,6 @@ class NativeExperienceTest {
     }
     private fun shell(command: String): String = android.os.ParcelFileDescriptor.AutoCloseInputStream(instrumentation.uiAutomation.executeShellCommand(command)).use { it.readBytes().toString(Charsets.UTF_8) }
     private fun capture(name: String) {
-        val image = checkNotNull(instrumentation.uiAutomation.takeScreenshot())
-        Evidence.outputFile("experience", "$name.png").outputStream().use { assertTrue(image.compress(Bitmap.CompressFormat.PNG, 100, it)) }; image.recycle()
+        CommittedWindowCapture.save(compose.activity, "experience", name)
     }
 }

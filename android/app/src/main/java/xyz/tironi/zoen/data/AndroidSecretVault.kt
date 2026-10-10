@@ -57,6 +57,9 @@ class AndroidSecretVault(context: Context, namespace: String = "keys") : SecretV
     }
 
     @Synchronized
+    fun storedCiphertext(key: String): ByteArray = file(key).readFully()
+
+    @Synchronized
     override fun save(key: String, value: ByteArray): Boolean {
         val target = file(key)
         var stream: java.io.FileOutputStream? = null

@@ -22,7 +22,10 @@ import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.CustomAccessibilityAction
+import androidx.compose.ui.semantics.customActions
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.unit.dp
@@ -63,8 +66,11 @@ fun DonkeyDash(onClose: () -> Unit, onScore: (Int, Int) -> Unit) {
         if (before.phase == DashState.Phase.Running && game != before) haptics.perform(ZoenFeedback.Selection)
     }
     val description = stringResource(R.string.dash)
-    val meters = stringResource(R.string.score, game.distance.toInt())
-    val carrots = stringResource(R.string.dash_carrots, game.carrots)
+    val meters = pluralStringResource(R.plurals.dash_distance, game.distance.toInt(), game.distance.toInt())
+    val carrots = pluralStringResource(R.plurals.dash_carrot_count, game.carrots, game.carrots)
+    val jumpLabel = stringResource(R.string.jump)
+    val pauseLabel = stringResource(if (game.phase == DashState.Phase.Paused) R.string.miniapp_continue else R.string.miniapp_pause)
+    val togglePause = { game = if (game.phase == DashState.Phase.Paused) game.resume() else game.pause() }
     val textPaint = remember { Paint(Paint.ANTI_ALIAS_FLAG).apply { typeface = android.graphics.Typeface.MONOSPACE } }
     Column(Modifier.verticalScroll(rememberScrollState()).padding(24.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
         Text(description, style = MaterialTheme.typography.headlineMedium)
@@ -73,7 +79,14 @@ fun DonkeyDash(onClose: () -> Unit, onScore: (Int, Int) -> Unit) {
         Text(carrots, style = MaterialTheme.typography.titleMedium)
         Canvas(Modifier.widthIn(max = 480.dp).fillMaxWidth().aspectRatio(320f / 220f)
             .testTag("dash-canvas").onSizeChanged { width = it.width / density.toDouble() }
-            .semantics { contentDescription = description; stateDescription = "$meters. $carrots" }
+            .semantics {
+                contentDescription = description; stateDescription = "$meters. $carrots"
+                customActions = buildList {
+                    if (game.phase == DashState.Phase.Running) add(CustomAccessibilityAction(jumpLabel) { jump(); true })
+                    if (game.phase == DashState.Phase.Running || game.phase == DashState.Phase.Paused)
+                        add(CustomAccessibilityAction(pauseLabel) { togglePause(); true })
+                }
+            }
             .pointerInput(game.phase) { detectTapGestures { jump() } }) {
             val k = density
             val w = size.width / k; val h = size.height / k; val ground = h * .66f
@@ -122,7 +135,7 @@ fun DonkeyDash(onClose: () -> Unit, onScore: (Int, Int) -> Unit) {
             Button(jump, Modifier.fillMaxWidth().testTag("dash-start")) { Text(stringResource(if (game.phase == DashState.Phase.Over) R.string.retry else R.string.start)) }
         } else {
             Button(jump, Modifier.fillMaxWidth().testTag("dash-jump"), enabled = game.phase == DashState.Phase.Running) { Text(stringResource(R.string.jump)) }
-            OutlinedButton(onClick = { game = if (game.phase == DashState.Phase.Paused) game.resume() else game.pause() },
+            OutlinedButton(onClick = togglePause,
                 Modifier.fillMaxWidth().testTag(if (game.phase == DashState.Phase.Paused) "dash-continue" else "dash-pause")) {
                 Text(stringResource(if (game.phase == DashState.Phase.Paused) R.string.miniapp_continue else R.string.miniapp_pause))
             }

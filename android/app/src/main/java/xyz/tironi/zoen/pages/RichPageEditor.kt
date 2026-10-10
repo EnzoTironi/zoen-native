@@ -14,6 +14,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.unit.dp
@@ -27,20 +28,29 @@ import xyz.tironi.zoen.R
 import xyz.tironi.zoen.ZoenViewModel
 import xyz.tironi.zoen.core.*
 import xyz.tironi.zoen.data.AppState
+import xyz.tironi.zoen.data.FileAccess
 import xyz.tironi.zoen.ui.EmptyState
+import xyz.tironi.zoen.ui.keepSnackbarAbove
 
 @Composable
 fun RichPageEditor(model: ZoenViewModel, state: AppState, item: ItemDetail, modifier: Modifier = Modifier) {
     val owner = state.me?.id ?: return
+    val context = LocalContext.current
+    val unreadableDraft = stringResource(R.string.page_draft_unreadable)
+    val draftSaveFailed = stringResource(R.string.page_draft_save_failed)
+    val draftCopied = stringResource(R.string.page_draft_copied)
     var page by remember(owner, item.id) { mutableStateOf<PageDto?>(null) }
     var pageReload by remember(owner, item.id) { mutableIntStateOf(0) }
     LaunchedEffect(owner, item.id, state.revision, pageReload) { page = model.repository.query { it.page(item.id) } }
     val draftKey = model.repository.localKey("pageDraft", item.id, owner)
-    val draftStore = remember(owner, item.id) { PageDraftStore(model.repository.vault, model.repository.localKey("encryptedPageDraft", item.id, owner)) }
+    val encryptedKey = model.repository.localKey("encryptedPageDraft", item.id, owner)
+    val draftStore = remember(owner, item.id) { PageDraftStore(model.repository.vault, encryptedKey) }
     val loadedDraft = remember(owner, item.id) { runCatching { draftStore.load(model.repository.preferences, draftKey) } }
     var draft by remember(owner, item.id) { mutableStateOf(loadedDraft.getOrNull()) }
     var draftReadable by remember(owner, item.id) { mutableStateOf(loadedDraft.isSuccess) }
-    var saveError by remember(owner, item.id) { mutableStateOf(loadedDraft.exceptionOrNull()?.message) }
+    var recoveryRequired by remember(owner, item.id) { mutableStateOf(false) }
+    var discardDraft by rememberSaveable(owner, item.id) { mutableStateOf(false) }
+    var saveError by remember(owner, item.id) { mutableStateOf(if (loadedDraft.isFailure) unreadableDraft else null) }
     var deferred by remember(owner, item.id) { mutableStateOf(false) }
     val editorToken = remember(owner, item.id) { Any() }
     var generation by remember(owner, item.id) { mutableLongStateOf(model.pageSaves.generation(item.id)) }
@@ -57,10 +67,24 @@ fun RichPageEditor(model: ZoenViewModel, state: AppState, item: ItemDetail, modi
     var historyRevision by remember { mutableIntStateOf(0) }
     var history by remember(owner, item.id) { mutableStateOf(PageEditHistory()) }
     val saved = stringResource(R.string.saved)
+    val recoveryBeforeRestore = stringResource(R.string.page_recovery_before_restore)
+    LaunchedEffect(owner, item.id, draftReadable, recoveryRequired) {
+        model.pageSaves.draftRecovery(item.id, !draftReadable || recoveryRequired)
+    }
+    fun failed(error: Exception) {
+        saveError = when {
+            !draftReadable && draft == null -> unreadableDraft
+            error is CoreException.Stale -> error.reason
+            error is CoreException.Invalid -> error.reason
+            error is CoreException.Storage -> error.reason
+            else -> error.message
+        }
+        if (error is CoreException.Stale) recoveryRequired = true
+    }
     val current = page
     if (current == null) { Box(modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator() }; return }
     if (!current.ready) { EmptyState(stringResource(R.string.page_not_ready), "", modifier); return }
-    val editable = current.canEdit && draftReadable && !restorePaused
+    val editable = current.canEdit && draftReadable && !recoveryRequired && !restorePaused
     val rendered = compositionPage ?: current
     val blocks = remember(rendered, draft) { draft?.let { PageEditing.decode(it.content, PageEditing.decode(it.base).orEmpty()) } ?: rendered.blocks }
     fun persist(next: List<PageBlockDto>) {
@@ -68,7 +92,9 @@ fun RichPageEditor(model: ZoenViewModel, state: AppState, item: ItemDetail, modi
         val nextDraft = PageDraft(PageEditing.encode(next), draft?.base ?: PageEditing.encode(rendered.blocks),
             draft?.context ?: rendered.editContext, (draft?.revision ?: 0) + 1)
         draft = nextDraft
-        runCatching { draftStore.save(nextDraft) }.onFailure { saveError = it.message; model.notify(it.message.orEmpty()) }
+        runCatching { draftStore.save(nextDraft) }.onFailure {
+            draftReadable = false; saveError = draftSaveFailed; model.notify(draftSaveFailed)
+        }
     }
     fun change(next: List<PageBlockDto>, editKey: String? = null) {
         if (!editable || next == blocks) return
@@ -78,6 +104,7 @@ fun RichPageEditor(model: ZoenViewModel, state: AppState, item: ItemDetail, modi
     val active = blocks.firstOrNull { it.id == selected }
     val save: suspend (Boolean) -> Unit = { commit ->
         model.pageSaves.save(item.id, editorToken, generation) {
+            check(!recoveryRequired && draftReadable) { recoveryBeforeRestore }
             var savingDraft = draft ?: return@save
             if (draftReadable && composingBlocks.isEmpty() && model.state.value.me?.id == owner) {
                 if (savingDraft.context.isEmpty()) {
@@ -140,7 +167,9 @@ fun RichPageEditor(model: ZoenViewModel, state: AppState, item: ItemDetail, modi
     val latestSave by rememberUpdatedState(save)
     val lifecycle = LocalLifecycleOwner.current.lifecycle
     DisposableEffect(owner, item.id, lifecycle) {
-        val flush: suspend () -> Unit = { latestSave(true) }
+        val flush: suspend () -> Unit = {
+            try { latestSave(true) } catch (error: Exception) { if (error is CancellationException) throw error; failed(error); throw error }
+        }
         model.pageSaves.register(item.id, editorToken, flush, pause = { paused ->
             restorePaused = paused
             if (paused) { menu = null; linking = false }
@@ -152,6 +181,7 @@ fun RichPageEditor(model: ZoenViewModel, state: AppState, item: ItemDetail, modi
                     page = it.page
                     draft = it.draft
                     draftReadable = it.draftStored
+                    recoveryRequired = false
                     deferred = it.page.unsaved && it.page.pendingSync
                     composingBlocks = emptySet(); compositionPage = null
                     selected = null; range = TextRange.Zero; typingMarks = emptyMap()
@@ -164,14 +194,14 @@ fun RichPageEditor(model: ZoenViewModel, state: AppState, item: ItemDetail, modi
         lifecycle.addObserver(observer)
         onDispose { lifecycle.removeObserver(observer); model.launch { try { flush() } finally { model.pageSaves.unregister(item.id, editorToken) } } }
     }
-    LaunchedEffect(draft?.revision, composingBlocks, restorePaused) {
-        if (draft != null && composingBlocks.isEmpty() && !restorePaused) try { delay(400); latestSave(false); delay(3600); latestSave(true) }
-        catch (error: Exception) { if (error is CancellationException) throw error; saveError = error.message; model.notify(error.message ?: saved) }
+    LaunchedEffect(draft?.revision, composingBlocks, restorePaused, draftReadable, recoveryRequired) {
+        if (draft != null && draftReadable && !recoveryRequired && composingBlocks.isEmpty() && !restorePaused) try { delay(400); latestSave(false); delay(3600); latestSave(true) }
+        catch (error: Exception) { if (error is CancellationException) throw error; failed(error); model.notify(saveError ?: saved) }
     }
     LaunchedEffect(current.pendingSync, state.revision) {
         if (deferred && !current.pendingSync && current.canEdit) {
             deferred = false
-            try { latestSave(true) } catch (error: Exception) { if (error is CancellationException) throw error; saveError = error.message }
+            try { latestSave(true) } catch (error: Exception) { if (error is CancellationException) throw error; failed(error) }
         }
     }
     val renderedGeneration = generation
@@ -183,6 +213,37 @@ fun RichPageEditor(model: ZoenViewModel, state: AppState, item: ItemDetail, modi
         }
     }
     Column(modifier.fillMaxSize().imePadding()) {
+        if (!draftReadable || recoveryRequired) {
+            Surface(color = MaterialTheme.colorScheme.errorContainer) {
+                Column(Modifier.fillMaxWidth().padding(12.dp).testTag("page-recovery-actions")) {
+                    Text(stringResource(R.string.page_recovery_detail), style = MaterialTheme.typography.bodySmall)
+                    FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        if (draft != null) TextButton(onClick = {
+                            if (model.state.value.me?.id == owner) {
+                                context.getSystemService(android.content.ClipboardManager::class.java).setPrimaryClip(
+                                    android.content.ClipData.newPlainText(item.title, blocks.joinToString("\n\n") { it.text }))
+                                model.notify(draftCopied)
+                            }
+                        }, Modifier.testTag("page-copy-draft")) { Text(stringResource(R.string.page_copy_draft)) }
+                        else TextButton(onClick = { model.launch {
+                            check(model.state.value.me?.id == owner)
+                            FileAccess.shareFile(context, "${item.title}.zoen-draft", "application/octet-stream",
+                                model.repository.vault.storedCiphertext(encryptedKey))
+                        } }, Modifier.testTag("page-keep-draft")) { Text(stringResource(R.string.page_keep_draft)) }
+                        TextButton(onClick = { discardDraft = true }, enabled = !busy && composingBlocks.isEmpty(),
+                            modifier = Modifier.testTag("page-discard-draft")) { Text(stringResource(R.string.page_discard_draft)) }
+                        if (!recoveryRequired) TextButton(onClick = { model.launch {
+                            try {
+                                check(model.state.value.me?.id == owner)
+                                if (draft != null) draftStore.save(checkNotNull(draft))
+                                else draft = draftStore.load(model.repository.preferences, draftKey)
+                                draftReadable = true; saveError = null
+                            } catch (error: Exception) { failed(error) }
+                        } }) { Text(stringResource(R.string.retry)) }
+                    }
+                }
+            }
+        }
         Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 8.dp), verticalAlignment = Alignment.CenterVertically) {
             IconButton(onClick = { history.undo(blocks)?.let { persist(it) }; typingMarks = emptyMap(); historyRevision++ }, enabled = editable && historyRevision > 0 && history.canUndo) { Icon(Icons.AutoMirrored.Rounded.Undo, stringResource(R.string.undo)) }
             IconButton(onClick = { history.redo(blocks)?.let { persist(it) }; typingMarks = emptyMap(); historyRevision++ }, enabled = editable && historyRevision > 0 && history.canRedo) { Icon(Icons.AutoMirrored.Rounded.Redo, stringResource(R.string.page_redo)) }
@@ -223,7 +284,7 @@ fun RichPageEditor(model: ZoenViewModel, state: AppState, item: ItemDetail, modi
             }
             if (editable) item { TextButton(onClick = { val block = PageEditing.blank(); change(blocks + block); selected = block.id }) { Icon(Icons.Rounded.Add, null); Spacer(Modifier.width(8.dp)); Text(stringResource(R.string.add_block)) } }
         }
-        Surface(tonalElevation = 2.dp) {
+        Surface(modifier = Modifier.keepSnackbarAbove(), tonalElevation = 2.dp) {
             Row(Modifier.fillMaxWidth().navigationBarsPadding().padding(horizontal = 20.dp, vertical = 12.dp), horizontalArrangement = Arrangement.End, verticalAlignment = Alignment.CenterVertically) {
                 val status = saveError ?: current.saveError ?: if (!editable) stringResource(R.string.read_only) else if (current.pendingSync) stringResource(R.string.page_pending_sync) else if (draft != null) stringResource(R.string.page_draft_saved) else saved
                 Text(status, Modifier.weight(1f), style = MaterialTheme.typography.labelSmall,
@@ -235,13 +296,32 @@ fun RichPageEditor(model: ZoenViewModel, state: AppState, item: ItemDetail, modi
                             latestSave(true)
                         } catch (error: Exception) {
                             if (error is CancellationException) throw error
-                            saveError = error.message
+                            failed(error)
                         } finally { busy = false }
                     }
                 }) { Text(stringResource(R.string.save)) }
             }
         }
     }
+    if (discardDraft) AlertDialog(onDismissRequest = { discardDraft = false },
+        title = { Text(stringResource(R.string.page_discard_question)) },
+        text = { Text(stringResource(R.string.page_discard_detail)) },
+        confirmButton = { TextButton(enabled = !busy, onClick = {
+            discardDraft = false; busy = true
+            model.launch {
+                try {
+                    model.pageSaves.save(item.id, editorToken, generation) {
+                        val fresh = model.repository.query { core -> check(core.me()?.id == owner); core.page(item.id) }
+                        draftStore.replaceAfterRestore(model.repository.preferences, draftKey, null)
+                        page = fresh; draft = null; draftReadable = true; recoveryRequired = false
+                        saveError = fresh.saveError; selected = null; typingMarks = emptyMap()
+                        history = PageEditHistory(); historyRevision = 0
+                        model.pageSaves.draftRecovery(item.id, false)
+                    }
+                } catch (error: Exception) { failed(error) } finally { busy = false }
+            }
+        }) { Text(stringResource(R.string.page_discard_draft)) } },
+        dismissButton = { TextButton(onClick = { discardDraft = false }) { Text(stringResource(R.string.cancel)) } })
     menu?.let { id ->
         val block = blocks.firstOrNull { it.id == id }
         if (block != null && editable) AlertDialog(onDismissRequest = { menu = null }, title = { Text(stringResource(R.string.format)) }, text = {

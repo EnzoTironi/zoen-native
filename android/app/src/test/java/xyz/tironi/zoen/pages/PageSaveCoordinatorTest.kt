@@ -17,6 +17,20 @@ import kotlin.time.Duration.Companion.seconds
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class PageSaveCoordinatorTest {
+    @Test fun recoveredDraftBlocksRestoreUntilExplicitlyResolved() = runTest(timeout = 3.seconds) {
+        val coordinator = PageSaveCoordinator()
+        var writes = 0
+        coordinator.draftRecovery("page", true)
+        try {
+            coordinator.restore("page") { writes++ }
+            fail("A restore must not replace an unresolved draft")
+        } catch (_: IllegalStateException) { }
+        assertEquals(0, writes)
+        coordinator.draftRecovery("page", false)
+        coordinator.restore("page") { writes++ }
+        assertEquals(1, writes)
+    }
+
     private fun page(text: String, pending: Boolean = false, error: String? = null) = PageDto(
         itemId = "page", spaceId = "space", title = "Notes", path = "notes.md", version = 2u,
         ready = true, unsaved = pending, pendingSync = pending, saveError = error, canEdit = true,

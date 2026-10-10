@@ -62,6 +62,9 @@ internal class NativeArtCanvasView(context: Context) : View(context) {
     private var framePending = false
     internal val animationTimeSeconds get() = elapsed / 1000.0
     internal val hasScheduledFrame get() = scheduled || framePending
+    internal val clockDiagnostics get() = "time=$animationTimeSeconds live=$live motion=$motion active=$active " +
+        "scheduled=$scheduled framePending=$framePending shown=$isShown focus=${hasWindowFocus()} " +
+        "visibility=$visibility window=$windowVisibility size=${width}x$height"
     private val frameFinished = Runnable { framePending = false; updateClock() }
     private val scrollListener = ViewTreeObserver.OnScrollChangedListener { updateClock() }
     private val tick = Runnable {
@@ -84,7 +87,7 @@ internal class NativeArtCanvasView(context: Context) : View(context) {
     private fun canAnimate() = live && motion && active && isAttachedToWindow && hasWindowFocus() && windowVisibility == VISIBLE && isShown && getGlobalVisibleRect(visibleRect)
     private fun updateClock() {
         if (!canAnimate()) { pause(); return }
-        if (!scheduled) {
+        if (!scheduled && !framePending) {
             if (lastTick == 0L) lastTick = SystemClock.uptimeMillis()
             scheduled = true
             postDelayed(tick, if (art == null) 50L else 100L)
@@ -96,7 +99,11 @@ internal class NativeArtCanvasView(context: Context) : View(context) {
     override fun onSizeChanged(w: Int, h: Int, oldw: Int, oldh: Int) { super.onSizeChanged(w, h, oldw, oldh); updateClock() }
     override fun onWindowFocusChanged(hasWindowFocus: Boolean) { super.onWindowFocusChanged(hasWindowFocus); updateClock() }
     override fun onWindowVisibilityChanged(visibility: Int) { super.onWindowVisibilityChanged(visibility); updateClock() }
-    override fun onVisibilityChanged(changedView: View, visibility: Int) { super.onVisibilityChanged(changedView, visibility); updateClock() }
+    override fun onVisibilityChanged(changedView: View, visibility: Int) {
+        super.onVisibilityChanged(changedView, visibility)
+        if (visibility == VISIBLE) invalidate()
+        updateClock()
+    }
     override fun onDraw(canvas: Canvas) {
         super.onDraw(canvas)
         removeCallbacks(tick); removeCallbacks(frameFinished); scheduled = false
@@ -130,7 +137,7 @@ internal class NativeArtCanvasView(context: Context) : View(context) {
             }
             if (eating) {
                 val len = (5 - (eat / .4).toInt()).coerceAtLeast(0)
-                val cx = left + 27 * scale; val cy = top + 13 * scale
+                val cx = left + 26 * scale; val cy = top + 11 * scale
                 paint.color = 0xFFF58A2C.toInt()
                 canvas.drawRect(cx, cy, cx + len * scale + .3f, cy + scale + .3f, paint)
                 if (len > 0) {
@@ -143,6 +150,18 @@ internal class NativeArtCanvasView(context: Context) : View(context) {
                     canvas.drawRect(cx - .5f * scale, cy + 3 * scale, cx + .2f * scale, cy + 3.7f * scale, paint)
                     paint.color = 0x99F58A2C.toInt()
                     canvas.drawRect(cx + 1.5f * scale, cy + 4 * scale, cx + 2.1f * scale, cy + 4.6f * scale, paint)
+                }
+            }
+            if (asleep) {
+                val density = resources.displayMetrics.density
+                paint.color = android.graphics.Color.WHITE
+                paint.typeface = android.graphics.Typeface.create(android.graphics.Typeface.MONOSPACE, android.graphics.Typeface.BOLD)
+                for (i in 0..2) {
+                    val phase = if (animated) (t * .5 + i / 3.0) % 1 else i / 3.0
+                    paint.textSize = (10 + i * 4) * density
+                    paint.alpha = ((1 - phase) * 255).toInt()
+                    canvas.drawText("z", width - 32 * density + (i * 7 + phase * 6).toFloat() * density,
+                        (36 - phase * 22 - i * 6).toFloat() * density, paint)
                 }
             }
         }

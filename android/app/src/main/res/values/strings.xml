@@ -224,7 +224,6 @@
   <string name="dash">Donkey Dash</string>
   <string name="dash_hint">Tap to jump over the cacti. Collect carrots.</string>
   <string name="start">Start</string>
-  <string name="score">%1$d metres</string>
   <string name="hike_vote">Choose a trail</string>
   <string name="hike_decide">Confirm trail</string>
   <string name="encrypted_group">Encrypted group</string>
@@ -251,7 +250,6 @@
     <item quantity="one">%d new message</item>
     <item quantity="other">%d new messages</item>
   </plurals>
-  <string name="dash_carrots">%1$d carrots</string>
   <string name="dash_carrot_toast">You got %1$d carrots!</string>
   <string name="dash_jump_toast">Nice jump!</string>
 </resources>

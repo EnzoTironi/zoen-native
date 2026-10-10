@@ -13,6 +13,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
@@ -120,6 +121,8 @@ fun ZoenApp(model: ZoenViewModel, deepLink: String?, consumed: () -> Unit) {
             val split = maxWidth >= 840.dp
             val largeNavigationText = LocalConfiguration.current.fontScale > 1.5f
             val navigationHeight = if (largeNavigationText) 112.dp else 80.dp
+            val snackbarClearance = remember { SnackbarClearance() }
+            val density = LocalDensity.current
             Row {
                 if (rail) NavigationRail(modifier = Modifier.fillMaxHeight(), header = {
                     ZoenMascot(Modifier.padding(top = 12.dp).size(64.dp))
@@ -136,7 +139,8 @@ fun ZoenApp(model: ZoenViewModel, deepLink: String?, consumed: () -> Unit) {
                 }
                 Scaffold(
                     modifier = Modifier.weight(1f),
-                    snackbarHost = { if (stack.lastOrNull() !is VersionPreview) SnackbarHost(snackbar, Modifier.testTag("app-snackbar")) },
+                    snackbarHost = { if (stack.lastOrNull() !is VersionPreview) SnackbarHost(snackbar,
+                        Modifier.padding(bottom = with(density) { snackbarClearance.bottomPx.toDp() }).testTag("app-snackbar")) },
                     bottomBar = {
                         if (!rail && stack.size == 1) NavigationBar(modifier = Modifier.heightIn(min = navigationHeight), containerColor = MaterialTheme.colorScheme.surface, tonalElevation = 0.dp) {
                             Tab.main.forEachIndexed { index, target ->
@@ -156,7 +160,7 @@ fun ZoenApp(model: ZoenViewModel, deepLink: String?, consumed: () -> Unit) {
                     },
                     contentWindowInsets = WindowInsets(0, 0, 0, 0),
                 ) { padding ->
-                    NavDisplay(
+                    CompositionLocalProvider(LocalSnackbarClearance provides snackbarClearance) { NavDisplay(
                         modifier = Modifier.fillMaxSize().padding(padding), backStack = stack, onBack = back,
                         entryProvider = entryProvider {
                             entry<Home> {
@@ -191,7 +195,7 @@ fun ZoenApp(model: ZoenViewModel, deepLink: String?, consumed: () -> Unit) {
                             entry<Browser> { xyz.tironi.zoen.agent.AgentBrowserScreen(model.browser, back) }
                             entry<VersionPreview> { route -> VersionPreviewScreen(model, route.id, route.number, back, snackbar.takeIf { stack.lastOrNull() == route }) }
                         },
-                    )
+                    ) }
                 }
             }
         }

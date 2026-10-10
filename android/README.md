@@ -33,13 +33,13 @@ Run on a connected device from the repository root:
 scripts/run-android.sh -PandroidAbis=arm64-v8a
 ```
 
-Or open `android/` in Android Studio and run the `app` configuration. Rust and cargo-ndk must be on Android Studio's PATH. For a release build, run `./gradlew :app:assembleRelease -PcoreProfile=release`. Configure your own release signing before distributing the unsigned release APK. No signing keys are included.
+Or open `android/` in Android Studio and run the `app` configuration. Rust and cargo-ndk must be on Android Studio's PATH. The shared Rust core defaults to its optimized release profile. Debug-only development builds can use `-PcoreProfile=dev`; release APKs reject that profile. For a release build, run `./gradlew :app:assembleRelease -PcoreProfile=release`. Configure your own release signing before distributing the unsigned release APK. No signing keys are included.
 
 ## Accounts and demo
 
 The default flow creates a real local identity and connects it to `https://relay.tryzoen.com`, the same default relay as the Apple app. Connection settings in the profile step let a developer choose another relay. Debug builds allow HTTP for local development; release builds require HTTPS in onboarding.
 
-The current shared core requires relay protocol 4. The public endpoint advertised protocol 2 during verification on 2026-10-09 and requires the [documented relay upgrade](../docs/dev/android-relay-release.md) before the default connection can work. The isolated test relay runs the matching protocol-4 source.
+The current shared core requires relay protocol 4, `key-package-claim-receipts` and a valid server claim clock. The public endpoint advertised protocol 2 during the anonymous verification on 2026-10-10 at 18:23 UTC and requires the [documented relay upgrade](../docs/dev/android-relay-release.md) before the default connection can work. The isolated test relay runs the matching protocol-4 source.
 
 The Android emulator reaches a relay on your Mac at `http://10.0.2.2:8787`. Use the repository's existing `scripts/dev-stack.sh` to run the backend.
 

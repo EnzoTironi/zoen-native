@@ -23,4 +23,14 @@
     <string name="page_preview_version">Preview version %1$d</string>
     <string name="page_restore_version">Restore this version</string>
     <string name="page_line_break">Line break</string>
+    <string name="page_copy_draft">Copy draft text</string>
+    <string name="page_keep_draft">Keep encrypted draft file</string>
+    <string name="page_discard_draft">Discard draft</string>
+    <string name="page_discard_question">Discard this draft?</string>
+    <string name="page_discard_detail">Keep a copy first. This removes only the draft on this device. The current page and its saved versions are kept.</string>
+    <string name="page_recovery_detail">This draft could not be applied. Keep a copy or discard it to continue editing.</string>
+    <string name="page_recovery_before_restore">Keep or discard the recovered draft before restoring a version.</string>
+    <string name="page_draft_copied">Draft text copied.</string>
+    <string name="page_draft_unreadable">The saved draft could not be opened. It has been kept on this device.</string>
+    <string name="page_draft_save_failed">Could not save the draft on this device. Keep a copy or try again.</string>
 </resources>
