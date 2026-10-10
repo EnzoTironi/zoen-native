@@ -112,10 +112,8 @@ class RecoveryJourneyTest {
                 deleted.restoreBackup(relay, account.handle, secret, vaults.getValue("deleted"))
                 fail("The deleted backup must not restore on a fresh device")
             } catch (missing: CoreException.Invalid) {
-                // A relay with password recovery disabled uses a refusal instead of a
-                // password decoy for a missing vault, so it does not disclose accounts.
-                assertTrue(missing.reason, missing.reason.contains("We couldn't find a backup") ||
-                    missing.reason == "Password backup isn't available on this server yet.")
+                // Missing backups use the password privacy fallback, disabled on this relay.
+                assertEquals("Password backup isn't available on this server yet.", missing.reason)
             }
             assertNull(deleted.account())
             Evidence.outputFile("recovery", "recovery-link-receipt.txt").writeText(

@@ -10,6 +10,7 @@ import java.security.KeyStore
 import java.security.cert.CertificateFactory
 import java.security.cert.X509Certificate
 import java.security.spec.PKCS8EncodedKeySpec
+import java.util.Locale
 import java.util.UUID
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
@@ -51,22 +52,16 @@ class RecoveryTlsTest {
         server.soTimeout = 10_000
         server.enabledProtocols = arrayOf("TLSv1.2")
         server.enabledCipherSuites = arrayOf("TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256")
-        var refusedAlert = "No rejection alert received"
         val executor = Executors.newSingleThreadExecutor()
-        val handshake = executor.submit<Boolean> {
+        val handshake = executor.submit<SSLHandshakeException?> {
             (server.accept() as SSLSocket).use { socket ->
                 socket.soTimeout = 5_000
                 socket.startHandshake()
             }
             (server.accept() as SSLSocket).use { socket ->
                 socket.soTimeout = 5_000
-                try { socket.startHandshake(); false }
-                catch (refused: SSLHandshakeException) {
-                    val message = generateSequence<Throwable>(refused) { it.cause }
-                        .joinToString("\n") { it.toString() }.lowercase()
-                    refusedAlert = message
-                    "certificate" in message || "unknown_ca" in message || "unknown ca" in message
-                }
+                try { socket.startHandshake(); null }
+                catch (refused: SSLHandshakeException) { refused }
             }
         }
         val namespace = "tls-recovery-${UUID.randomUUID()}"
@@ -98,12 +93,25 @@ class RecoveryTlsTest {
             } catch (refused: CoreException.Invalid) {
                 assertTrue(refused.reason, refused.reason.contains("Can't reach the server right now."))
             }
-            val rejected = handshake.get(10, TimeUnit.SECONDS)
-            assertTrue("The tested TLS fixture must receive a certificate-rejection alert: $refusedAlert", rejected)
+            // Android 9 wraps the native alert in a generic "Handshake failed" exception.
+            val causes = generateSequence<Throwable>(handshake.get(10, TimeUnit.SECONDS)) { it.cause }
+                .take(8).toList()
+            val diagnostics = causes.joinToString("\n") {
+                "${it.javaClass.name}: ${it.message.orEmpty().take(2_048)}"
+            }.ifEmpty { "TLS handshake succeeded" }
+            val certificateAlert = causes.any {
+                val message = it.message.orEmpty().take(2_048).lowercase(Locale.ROOT).replace('_', ' ')
+                "alert" in message && (
+                    "unknown ca" in message || "bad certificate" in message ||
+                        "certificate unknown" in message || "unsupported certificate" in message
+                    )
+            }
+            assertTrue("The tested TLS fixture must receive a certificate-rejection alert:\n$diagnostics", certificateAlert)
             assertNull(core.account())
             Evidence.outputFile("recovery", "untrusted-tls-receipt.txt").writeText(
                 "PASS: restore before sync reached a real loopback TLS server, rejected its untrusted certificate, " +
-                    "returned the typed error and left the device without an account.\nServer alert:\n$refusedAlert\n"
+                    "returned the typed error and left the device without an account.\n" +
+                    "Fixture handshake:\n$diagnostics\n"
             )
         } finally {
             server.close()
