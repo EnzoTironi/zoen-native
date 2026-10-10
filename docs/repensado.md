@@ -1,5 +1,8 @@
 # Repensado do zero: pessoas, comunidades e agentes
 
+Este documento registra a visão e o plano original, com decisões que evoluíram. O nome confirmado do produto e do agente é Zoen. O [roadmap atual](roadmap-status.md) substitui o cronograma do protótipo como critério de conclusão; [páginas vivas](product/live-pages.md) detalha a referência atual de edição e colaboração. Nomes técnicos antigos seguem a [migração de nomenclatura](dev/naming.md).
+
+
 > Um redesenho a partir dos 133 posters de tironi.xyz, agora com **todas as decisões tomadas**.
 > Critério: **máximo de elegância e máximo de ambição.** O alvo final é jogar na liga de WhatsApp, iMessage, Slack e Ando, com o menor conjunto de ideias capaz de gerar tudo isso.
 > Referências como **#063** apontam para `img/063-*.png`. Fatos externos foram checados na web em 07/10/2026; o que não pude confirmar está marcado com *(a verificar)*.
@@ -9,14 +12,14 @@
 
 ## 0. Resumo
 
-- **Produto:** **Roda** (alternativas: *Junto*, *Mesa*). É um app novo e nativo da Apple. O motor é o núcleo em Rust que nasce do signal-rust. **Zoen** é o agente padrão que vem junto (e pode ser renomeado).
+- **Produto:** **Zoen**. É um app novo e nativo da Apple. O motor é o núcleo em Rust que nasce do signal-rust. **Zoen** é o agente padrão que vem junto (e pode ser renomeado).
 - **Tese:** a conversa é onde o trabalho e a vida acontecem, e agentes são membros dela com a mesma dignidade das pessoas. Tudo que nasce ali é seu: versionado, compartilhável e portátil.
 - **Momento mágico:** em menos de 60 segundos, sem cadastro, você fala uma frase, o seu agente transforma isso em algo concreto dentro da conversa, e você chama alguém com um link (App Clip no iPhone, navegador no resto).
 - **5 primitivos:** Identidade, Espaço, Membro, Item e Concessão, todos registrados num **log de eventos assinado** por Espaço. **133 telas viram 20.**
 - **Cliente:** 100% Swift/SwiftUI para iOS 26+ e macOS 26+, com Liquid Glass de verdade. O núcleo Rust fica por baixo via UniFFI. Web só como visualizador de convite. Android em 2027, com Compose sobre o mesmo núcleo.
 - **Protocolos em camadas:**
   - **Espaços privados:** MLS (OpenMLS).
-  - **Escala:** protocolo próprio, o "Roda Sync" (eventos assinados, sequenciados por Espaço).
+  - **Escala:** protocolo próprio, o "Zoen Sync" (eventos assinados, sequenciados por Espaço).
   - **Camada pública, depois:** AT Protocol (Bluesky). Nostr/Marmot fica como saída de soberania.
 - **Escala:** relay em Rust, ordem por Espaço com dono definido por hash consistente (como os Channel Servers do Slack), NATS para entrega por interesse, Postgres particionado e, depois, FoundationDB. São Paulo primeiro.
 - **Segurança:** MLS com caminho para pós-quântico, key transparency (AKD), aparelhos com chave própria, backup cifrado por passkey, agentes declarados como leitores e message franking para denúncias.
@@ -36,8 +39,8 @@ O Enzo delegou todas as decisões. Elas estão tomadas abaixo, cada uma com o po
 | D3 | **Soberania invisível:** passkey + chaves por baixo, sem "chave privada" na UI. Exportar/assinador ficam em Avançado | Soberania é garantia, não onboarding | Os usuários avançados forem um segmento relevante → expor um "modo soberano" |
 | D4 | **Agentes em E2EE:** Espaços privados são E2EE (MLS), e o agente é um **membro-leitor declarado**. O runtime decifra em memória na nossa nuvem, com enclaves em 2027 e a opção "só agentes locais" | Honestidade sobre quem lê é o diferencial frente a Ando e Slack, que leem tudo | A qualidade dos agentes cair por falta de contexto, ou enclaves com GPU ficarem baratos antes |
 | D5 | **Preço:** Grátis (R$ 3/mês de IA inclusos, 5 GB) · **Plus R$ 29/mês ou R$ 290/ano** (R$ 15 de IA, 100 GB, Ao vivo com agentes) · **Max R$ 79/mês** (R$ 50 de IA) · **Equipes R$ 39/pessoa** (R$ 15 de IA por pessoa, num pool) · recargas de R$ 20/R$ 50 · criadores pagam **8%** · **zero anúncios** | Cobrar por pessoa com orçamento de IA embutido é previsível (a filosofia do Ando) e protege a margem | A margem bruta ficar abaixo de 60%, ou a conversão para Plus ficar abaixo de 3% em 90 dias |
-| D6 | **Casa e nome:** produto novo, **Roda** (alternativas: **Junto**, **Mesa**). O signal-rust vira o motor. **Zoen** vira o agente padrão (renomeável) e é a ponte com os usuários atuais do tryzoen | "Roda" (roda de conversa) é humano, curto, global e combina com o logo de anéis; o Zoen ganha o papel que já sabe fazer | A marca ou o domínio estiverem indisponíveis (INPI/USPTO/.app) *(a verificar)* |
-| D7 | **Protocolos:** MLS (OpenMLS, MIT) para privados · **Roda Sync** próprio para escala · **AT Protocol** para a camada pública (fase 4) · Nostr/Marmot como ponte opcional | Cada camada usa o protocolo que é o melhor naquilo (ver §Protocolos) | O Marmot amadurecer (spec estável, auditoria) → avaliar grupos soberanos via Nostr |
+| D6 | **Casa e nome:** produto novo, **Zoen**. O signal-rust vira o motor. **Zoen** vira o agente padrão (renomeável) e é a ponte com os usuários atuais do tryzoen | O nome Zoen é humano, curto, global e combina com o logo de anéis; o Zoen ganha o papel que já sabe fazer | A marca ou o domínio estiverem indisponíveis (INPI/USPTO/.app) *(a verificar)* |
+| D7 | **Protocolos:** MLS (OpenMLS, MIT) para privados · **Zoen Sync** próprio para escala · **AT Protocol** para a camada pública (fase 4) · Nostr/Marmot como ponte opcional | Cada camada usa o protocolo que é o melhor naquilo (ver §Protocolos) | O Marmot amadurecer (spec estável, auditoria) → avaliar grupos soberanos via Nostr |
 | D8 | **Servidor em Rust** (tokio/axum), com os mesmos crates do cliente | Segurança de memória ao lidar com entrada hostil, latência sem GC e tipos compartilhados | Contratação em Rust virar gargalo (improvável no Brasil, que tem comunidade Rust ativa) |
 | D9 | **Armazenamento:** Postgres particionado por Espaço → **FoundationDB** quando passar de ~30 mil escritas/s sustentadas ou ~10 TB quentes. Segmentos frios vão para object storage | Postgres é simples hoje; FDB dá ordem transacional por Espaço (versionstamps) sem um serviço sequenciador | A operação do FDB pesar demais → ScyllaDB (o caminho do Discord) |
 | D10 | **Comunidades em 3 níveis:** 🔒 Privado E2EE (até 1.000 membros) · 🛡️ Fechada (legível pelo servidor, para moderar) · 🌐 Pública | O MLS não escala com conforto para 100 mil membros, e moderar exige ler | Split/Partial Commits do MLS maturarem → subir o limite do E2EE |
@@ -230,7 +233,7 @@ Em Você › Configurações › **Avançado**, fechado por padrão: provedor de
 ## 4. Como construir: arquitetura e tecnologias
 
 ### Princípio: os mesmos primitivos do pixel ao disco
-- O **núcleo em Rust** implementa Identidade, Espaço, Membro, Item, Concessão e o log de Eventos **uma vez**. Ele roda no cliente Apple (iOS/macOS via UniFFI), na web de convite (WASM), no Android em 2027, no servidor e no runtime de agentes.
+- O **núcleo em Rust** implementa Identidade, Espaço, Membro, Item, Concessão e o log de Eventos **uma vez**. Ele roda no cliente Apple (iOS/macOS via UniFFI), na web de convite (WASM), no Android, com o cliente nativo já em revisão em 2026, no servidor e no runtime de agentes.
 - O servidor é um **relay**: ordena, guarda e distribui eventos, sem regra de negócio duplicada.
 - Um agente é **um cliente como outro qualquer**: tem Identidade, entra em Espaços como Membro e usa a mesma API.
 
@@ -441,7 +444,7 @@ Cada área traz a escolha para o v1, a evolução, se é comprar ou construir, e
 **Fluxo de dados:** o núcleo é a única fonte de verdade (SQLite num **App Group** compartilhado com as extensões). Ele emite fluxos de mudança (callbacks UniFFI viram `AsyncStream`) para stores `@Observable`. Não usamos Core Data nem SwiftData, porque duas fontes de verdade são o caminho certo para bugs de sync.
 
 ### Estrutura do app
-- **Shells por plataforma:** `RodaiOS` (TabView com 4 abas + aba de busca) e `RodaMac` (NavigationSplitView em 3 colunas: Espaços | conversa | Item/inspetor).
+- **Shells por plataforma:** `ZoeniOS` (TabView com 4 abas + aba de busca) e `ZoenMac` (NavigationSplitView em 3 colunas: Espaços | conversa | Item/inspetor).
 - **Código compartilhado:** cerca de 85% da UI em pacotes SwiftUI comuns.
 - **Extensões:**
   - **Notification Service:** decifra pushes E2EE.
@@ -619,7 +622,7 @@ O **custo dominante é a IA, não o chat**. Por isso o orçamento por agente é 
 **Backups:** a chave raiz e o arquivo de histórico são cifrados com a chave derivada do **PRF da passkey** e sincronizados pelo iCloud Keychain. Há um código de recuperação opcional e, depois, um cofre com HSM no estilo dos backups E2EE do WhatsApp.
 
 **Agentes dentro de Espaços E2EE**
-- O agente é membro MLS com folha própria e é **declarado na UI** ("Financeiro lê esta conversa · roda em Roda Cloud").
+- O agente é membro MLS com folha própria e é **declarado na UI** ("Financeiro lê esta conversa · roda em Zoen Cloud").
 - A chave do agente fica no runtime, embrulhada por KMS. A decifragem acontece em memória por tarefa, sem logs de conteúdo, e a memória do agente é gravada **como Itens cifrados no seu Espaço**.
 - Provedores de modelo externos operam com contratos de retenção zero e lista permitida por Espaço.
 - **2027:** runtime em **enclaves** (AWS Nitro + GPUs com computação confidencial, com atestação remota).
@@ -715,7 +718,7 @@ Uma comunidade 🛡️ pode ter canais 🔒 dentro dela (por exemplo, "staff" ou
 
 ### Veredito para o nosso desenho em camadas
 1. **Espaços privados → MLS via OpenMLS.** ✅ Confirmado. Não usamos Signal Protocol (AGPL e grupos mais fracos) nem Matrix (o MLS não foi entregue e a federação é complexa).
-2. **Transporte e escala → protocolo próprio simples ("Roda Sync").** ✅ Confirmado. São eventos assinados em protobuf sobre WebSocket, sequenciados por Espaço; as mensagens MLS viajam dentro do envelope. O formato pode seguir a forma de payload do Marmot onde for barato, para deixar a porta aberta.
+2. **Transporte e escala → protocolo próprio simples ("Zoen Sync").** ✅ Confirmado. São eventos assinados em protobuf sobre WebSocket, sequenciados por Espaço; as mensagens MLS viajam dentro do envelope. O formato pode seguir a forma de payload do Marmot onde for barato, para deixar a porta aberta.
 3. **Camada pública → AT Protocol (fase 4)**, com Nostr como ponte opcional.
    - ⚠️ **Correção da visão "Nostr ou ATProto":** a pesquisa favorece o **ATProto** para o feed público. Ele tem feeds customizados, moderação componível (labelers), identidade migrável (DID/PDS) e público real. O Nostr ganha em simplicidade e em identidade por chave, mas perde em moderação e descoberta.
    - Fica assim: **ATProto para presença pública; Nostr/Marmot como "saída de soberania"** para grupos privados sem servidor, quando o Marmot amadurecer.
@@ -778,7 +781,7 @@ Uma comunidade 🛡️ pode ter canais 🔒 dentro dela (por exemplo, "staff" ou
 
 ### Workspace Rust (`roda/`)
 ```
-roda/
+zoen-native/
 ├─ crates/
 │  ├─ roda-types      # Identidade, Espaço, Membro, Item, Concessão, Evento (prost/protobuf)
 │  ├─ roda-crypto     # chaves, assinaturas, embrulho por PRF, hashing, padding
@@ -788,7 +791,7 @@ roda/
 │  ├─ roda-store      # SQLite/SQLCipher, migrações, FTS5, sqlite-vec
 │  ├─ roda-crdt       # Loro: Itens, versões, bifurcar, diff, juntar
 │  ├─ roda-sync       # cliente: outbox, cursores, WebSocket, retomada
-│  ├─ roda-ffi        # UniFFI → Swift Package RodaCore (e Kotlin em 2027)
+│  ├─ roda-ffi        # UniFFI → Swift Package RodaCore (e Kotlin no port Android de 2026)
 │  └─ roda-wasm       # web de convite
 ├─ services/
 │  ├─ relay           # gateway WebSocket + dono de Espaço (axum/tokio)
@@ -796,17 +799,17 @@ roda/
 │  ├─ agents          # runtime (workflows), MCP, gateway de modelos, medição
 │  ├─ media           # pré-assinatura, cotas
 │  └─ directory       # key transparency (AKD), usernames
-└─ tools/  loadgen · xtask · spec (protocolo Roda Sync, aberto)
+└─ tools/  loadgen · xtask · spec (protocolo Zoen Sync, aberto)
 ```
 
-### Módulos SwiftUI (`RodaApple/`)
+### Módulos SwiftUI (`apple/`)
 ```
-RodaApple/
-├─ Apps/      RodaiOS · RodaMac · RodaClip
+apple/
+├─ Apps/      ZoeniOS · ZoenMac · ZoenClip
 ├─ Extensions/ NotificationService · Share · Widgets(+LiveActivities) · Intents
 └─ Packages/
    ├─ RodaCore        # bindings UniFFI + atores e AsyncStreams
-   ├─ RodaModel       # stores @Observable sobre o núcleo
+   ├─ AppModel       # stores @Observable sobre o núcleo
    ├─ DesignSystem    # GlassTabBar, Composer, AgentAvatar, RequestCard, UndoToast, BudgetRing, PrivacyPill
    ├─ Features/       Conversations · Space · Item · Activity · You · Onboarding · Invite
    ├─ System/         Passkeys · SecureEnclave · Push · Intents · Spotlight · LiveActivities
@@ -850,13 +853,13 @@ RodaApple/
 
 ## 12. Como isso se encaixa no Zoen e no signal-rust (decidido)
 
-**Decisão (D6):** **Roda** é a casa, o **signal-rust é o motor** e o **Zoen é o primeiro agente**.
+**Decisão (D6):** **Zoen** é o produto, o **signal-rust é o motor** e o **Zoen é o primeiro agente**.
 
 **Zoen (EnzoTironi/tryzoen)**
-- O companion 1:1 vira o agente padrão do Roda e o momento mágico. Metas e Ideias viram Itens (tarefa e nota), Library vira Você › Itens e Activity vira a aba Atividade.
-- As integrações de Telegram e WhatsApp continuam como **pontes de aquisição**: fale com o Zoen pelo WhatsApp e migre para o Roda quando quiser grupos ou documentos.
+- O companion 1:1 vira o agente padrão do Zoen e o momento mágico. Metas e Ideias viram Itens (tarefa e nota), Library vira Você › Itens e Activity vira a aba Atividade.
+- As integrações de Telegram e WhatsApp continuam como **pontes de aquisição**: fale com o Zoen pelo WhatsApp e migre para o Zoen quando quiser grupos ou documentos.
 - O PR 211 (Zoen Night + Liquid Glass) vira a base do DesignSystem nativo, agora em SwiftUI.
-- O tryzoen (Next.js) segue no ar até a migração. Sua landing vira a landing do Roda, com "Zoen incluso".
+- O tryzoen (Next.js) segue no ar até a migração. Sua landing vira a landing do Zoen, com "Zoen incluso".
 
 **signal-rust (EnzoTironi/signal-rust)**
 - Vira o repositório do núcleo (`roda/`). O plano do PR #34 era Nostr-first com Flutter.

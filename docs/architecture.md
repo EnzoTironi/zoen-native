@@ -1,7 +1,8 @@
-# Zoen architecture (the real one)
+# Zoen architecture
 
-This is how Zoen works now that chats leave the device. The product thinking behind it is
-in [repensado.md](repensado.md); decisions with their trade-offs are in [adr/](adr/).
+The integrated source baseline is `main` at `e051f97`, reviewed on 10 October 2026. The [roadmap](roadmap-status.md) distinguishes that tree from current native/Android/agent PRs and their verification. Decisions and compatibility rules live in [adr/](adr/). Legacy package names below identify existing source; their [Zoen migration](dev/naming.md) is tracked separately.
+
+The domain type `Space` is a conversation and its permissions/resources. It does not imply a separate Spaces inbox. The unified Chats UI is under review in PR 44.
 
 ```
  iPhone / Mac app (SwiftUI)                         zoen-relay (Rust, axum + tokio)
@@ -11,7 +12,7 @@ in [repensado.md](repensado.md); decisions with their trade-offs are in [adr/](a
  │ RodaEngine (roda-ffi)    │ ◄──────────────────►  │   hub: online devices, fan-out│
  │   projection · grants    │      ← ServerFrame    │ log: LogStore (one FDB txn    │
  │   net task (tokio)       │                       │   per append: admit + chain)  │
- │ roda-store (SQLite)      │                       │ FoundationDB: Space logs,     │
+ │ roda-store (SQLite)      │                       │ FoundationDB: logs and leases,│
  │   events · outbox · FTS5 │                       │   heads, dedupe, members,     │
  │ Keychain: device key     │                       │   invites                     │
  └──────────────────────────┘                       │ Postgres: identities, handles,│
@@ -59,16 +60,14 @@ forwarded to online members, never written anywhere (see ADR 0005).
 ## Local vs relay Spaces
 
 A Space is **local** (sequenced on the device, the way everything worked before) or **synced**
-(sequenced by the relay). Your personal Space and the DM with your own Zoen agent stay local
-until the agent runtime exists (milestone 3). DMs and groups with people are synced. The
+(sequenced by the relay). Your personal conversation and the DM with your own Zoen agent use the local runtime while full agent membership and execution are being completed (milestone 3). DMs and groups with people are synced. The
 same `Event` type and verification code serve both.
 
 ## Accounts
 
 No email or password. Creating an account makes two Ed25519 keys on the device: the identity
 (root) key and this device's key, plus a certificate (identity signs device), and an X25519
-agreement key for receiving profile keys. All three secrets go to the Keychain through the
-`SecretVault` callback; SQLite only has public data. The relay learns your @handle the
+agreement key for receiving profile keys. Private account keys pass through the platform vault via `SecretVault`. SQLite also holds encrypted MLS state, local projections and user content; key storage does not make every database field ciphertext. The relay learns your @handle the
 first time it's reachable. See ADR 0003.
 
 ## Profiles
@@ -109,13 +108,10 @@ scripts/nats.sh up && eval "$(scripts/nats.sh env)"
 ZOEN_TEST_PG=postgres://user@host/postgres cargo test -p zoen-cli -p zoen-relay
 ```
 
-## What's next (milestones)
+## Implemented foundations and remaining work
 
-2. MLS (OpenMLS): `Payload::Sealed` already exists in the protocol; the relay stores opaque
-   ciphertext and checks only envelope signatures and membership proposals.
-3. Agent runtime as an MLS member, model gateway, Grants for tool calls.
-4. Media: client-side encrypted blobs in S3-compatible storage. Photo backgrounds already
-   work this way (ADR 0007); voice notes and files come next.
-5. Push: APNs gateway + Notification Service Extension.
-6. Store/catalog API.
-7. Deploy: Dockerfile, Fly.io, metrics and alerts.
+OpenMLS encrypted direct/group conversations, encrypted blobs/profiles, explicit device enrollment, encrypted backup/history and peerless recovery are implemented. FoundationDB now persists renewable ownership leases and checks fencing tokens inside append transactions. Cross-node requests use bounded NATS forwarding. See [ADR 0018](adr/0018-space-ownership.md), [ADR 0045](adr/0045-linking-devices.md), [ADR 0046](adr/0046-encrypted-backup.md) and [ADR 0047](adr/0047-mls-peerless-recovery.md).
+
+Loro-backed page editing keeps a confirmed shadow document and an editable local document. Signed Item versions carry updates; large payloads use encrypted blobs. Live block bindings, agent-maintained sections, comments and complete page collaboration still need implementation and verification. See [live pages](product/live-pages.md).
+
+The remaining runtime includes authenticated agent membership, model/tool execution and durable approval/usage handling. Apple photo/voice transport, push, catalog, functional browser enrollment/messaging, community moderation and commerce remain product gates. Cell placement, regional recovery, production TLS capacity and measured costs remain operating gates. The [roadmap](roadmap-status.md) is the current evidence ledger.

@@ -8,6 +8,8 @@ core (`roda-ffi`), generated into Swift by UniFFI (`RodaCore`). Nothing in the s
 path is a stub. The Debug showcase seeds three extra requests (`seedShowcaseApprovals`,
 `#if DEBUG` only).
 
+This API describes the integrated core at main `e051f97`. Durable proposal storage, repeated decisions and accepted-chain reconciliation are being updated in [PR 46](https://github.com/EnzoTironi/zoen-native/pull/46). The latest published head is `54b9192`; its reconciliation fixes and fresh service regressions must be reviewed before they define the shipped contract. See [roadmap status](roadmap-status.md).
+
 ## Calls
 
 ```swift

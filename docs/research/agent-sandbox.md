@@ -1,5 +1,7 @@
 # Research: where Zoen agents run code and drive browsers
 
+> Research snapshot. Figures, availability and source references retain their original review date. Current implementation and completion gates are in [roadmap status](../roadmap-status.md).
+
 Date: 2026-10-08. Sources were read on that date; prices change, so every number links to the
 page it came from. The decision lives in [ADR 0028](../adr/0028-agent-sandbox.md).
 

@@ -1,5 +1,7 @@
 # ADR 0003: No passwords: an identity key and a key per device, in the Keychain
 
+Identity and device keys remain separate. Current enrollment/revocation is in [ADR 0045](0045-linking-devices.md); encrypted backup authority and recovery are in [ADR 0046](0046-encrypted-backup.md) and [ADR 0047](0047-mls-peerless-recovery.md). Hardware-bound/passkey implementation still needs proof.
+
 Status: accepted (milestone 1)
 
 ## Decision

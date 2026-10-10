@@ -2,6 +2,8 @@
 
 Zoen creates live mini-apps inside a group. Each one's state is a **versioned Item in the Rust core**. Every tap becomes a signed version, everyone sees the same state and who did what, and the agent comments on what matters (a record, a new name, a closed poll).
 
+Reviewed against main `e051f97` on 10 October 2026. Native widget pinning and Cards/List shell work are in [PR 44](https://github.com/EnzoTironi/zoen-native/pull/44), with [current native evidence](https://github.com/EnzoTironi/zoen-native/pull/44#issuecomment-6098239059). Built-in examples and remote MCP/catalog completion are separate; see [roadmap status](roadmap-status.md).
+
 ## What's there
 
 | Mini-app | How it opens in the chat | UI | State in the core |
@@ -60,7 +62,7 @@ The choice of mini-app comes from **Foundation Models on device** (`@Generable`,
 - **`tool-result` is re-sent on every new Item version** (live shared state). The spec sends one per execution.
 - **Native apps.** The donkey, MapTap and Dinner are drawn in SwiftUI inside Zoen. Their tools, state and Grants are the same as the MCP server's, and the donkey also has an HTML View for other hosts. MapTap and Dinner have no MCP View (`has_view = false`).
 - **Simulated.**
-  - Nothing leaves the device: "Send on WhatsApp" is a simulation.
+  - "Send on WhatsApp" in the built-in demonstration is a simulation. This statement does not describe real encrypted relay messaging or file/blob transport.
   - In the demos, Marina's, Lucas's and Ana's messages and actions are simulated as if they arrived through sync (`demo_member_*`, signed with their identity in the local log).
   - The donkey's "Emotes" only animate locally.
 

@@ -8,6 +8,8 @@ Style reference implementation:
 - CLI: `zoen-assets/pipeline/zoen_art.py`
 - docs: `zoen-assets/pipeline/README.md`
 
+This is the visual/product policy. Android parity work is still changing in the owner's checkout and is not certified by earlier Android CI. Use the [version ledger](roadmap-status.md#version-ledger) and actual attached visual journeys.
+
 ## 1. What the user sees
 
 | Who | Default picture | "Gerar" (Generate) |

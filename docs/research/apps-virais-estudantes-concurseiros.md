@@ -1,5 +1,7 @@
 # Apps virais para universitários e concurseiros no Brasil
 
+> Research snapshot. Figures, availability and source references retain their original review date. Current implementation and completion gates are in [roadmap status](../roadmap-status.md).
+
 *Pesquisa só na web pública, sem login e sem ferramenta paga. Dados coletados em 09/10/2026, por volta de 00h35 (horário de Brasília).*
 
 > **Ver também:** [Apps virais para estudantes e concurseiros fora do Brasil + Brilliant + ranking de crescimento de installs](./apps-virais-estudantes-global.md).

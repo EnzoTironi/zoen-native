@@ -1,5 +1,7 @@
 # ADR 0001: The relay is a Rust service on Postgres
 
+The relay service remains Rust. Log storage now uses FoundationDB under [ADR 0008](0008-foundationdb-system-of-record.md); PostgreSQL stores directory/account state. This initial decision is historical for log storage.
+
 Status: accepted (milestone 1)
 
 ## Context

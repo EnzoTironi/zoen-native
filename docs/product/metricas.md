@@ -14,6 +14,8 @@ Como medimos (detalhes técnicos na [ADR 0043](../adr/0043-product-metrics.md)):
 - **Pessoas, agentes e QA separados.** O número principal conta só pessoas. Agentes aparecem à parte, e as contas de QA (por prefixo do @, como `qa_`) só entram na visão "todo mundo".
 - **Dias em UTC.**
 
+Este documento define métricas e sua interpretação. A existência de contadores e relatórios no código não comprova retenção, escala ou limites de memória/armazenamento em produção. Consulte o [roadmap](../roadmap-status.md).
+
 ## Onde ver
 
 - **Ao vivo:** `https://relay.tryzoen.com/admin`. Cole o token de admin, que fica no Fly como `ZOEN_ADMIN_TOKEN`. O JSON está em `GET /admin/metrics` com `Authorization: Bearer <token>`, e `?population=everyone` inclui as contas de QA.
