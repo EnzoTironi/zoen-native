@@ -79,7 +79,7 @@ class MediaJourneysTest {
             compose.onNodeWithTag("chat:zoen").performClick()
             val space = checkNotNull(application.repository.state.value.zoenChat).id
             spaceId = space
-            val previous = application.repository.state.value.timelines[space].orEmpty().map { it.id }.toSet()
+            val previous = runBlocking { application.repository.query { it.timeline(space).map { entry -> entry.id }.toSet() } }
             compose.onNodeWithTag("voice-record").performClick()
             val timerPrefix = application.getString(R.string.media_recording_locked, "0:00").substringBefore("0:00")
             compose.waitUntil(20_000) { compose.onAllNodes(hasText(timerPrefix, substring = true) and !hasText("0:00", substring = true)).fetchSemanticsNodes().isNotEmpty() }

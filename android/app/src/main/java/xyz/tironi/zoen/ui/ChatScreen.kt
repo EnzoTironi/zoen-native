@@ -80,7 +80,7 @@ fun ChatScreen(model: ZoenViewModel, state: AppState, spaceId: String, navigate:
     val timeline = allEntries.filter { it.inThread == null && (it.kind as? EntryKind.ItemEdited)?.itemId !in appIds }
     val list = rememberLazyListState()
     var firstLoad by rememberSaveable(spaceId) { mutableStateOf(true) }
-    var previousCount by remember(spaceId) { mutableIntStateOf(0) }
+    var previousCount by rememberSaveable(spaceId) { mutableIntStateOf(0) }
     var replyId by rememberSaveable(spaceId) { mutableStateOf<String?>(null) }
     val draftKey = model.repository.localKey("draft", spaceId, state.me?.id.orEmpty())
     var draft by remember(draftKey) { mutableStateOf(model.repository.preferences.getString(draftKey, "").orEmpty()) }
@@ -141,8 +141,8 @@ fun ChatScreen(model: ZoenViewModel, state: AppState, spaceId: String, navigate:
             val atBottom = list.layoutInfo.visibleItemsInfo.lastOrNull()?.index?.let { it >= previousCount - 2 } ?: true
             if (firstLoad || (timeline.size > previousCount && (atBottom || timeline.last().author.isMe))) {
                 if (focusMessage == null && jumpTo == null && highlight == null) {
-                    // Position the updated timeline in its next layout instead of forcing one here.
-                    list.requestScrollToItem(timeline.lastIndex)
+                    withFrameNanos { }
+                    list.scrollToItem(timeline.lastIndex)
                 }
                 firstLoad = false
             }

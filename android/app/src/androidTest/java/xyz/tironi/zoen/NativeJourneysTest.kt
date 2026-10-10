@@ -1,6 +1,7 @@
 package xyz.tironi.zoen
 
 import android.content.Intent
+import android.graphics.Bitmap
 import android.os.ParcelFileDescriptor
 import android.view.WindowManager
 import androidx.compose.ui.test.*
@@ -39,6 +40,12 @@ class NativeJourneysTest {
         compose.waitForIdle()
     }
     @After fun close() { scenario.close() }
+
+    private fun captureChatViewport(name: String) {
+        val bitmap = checkNotNull(InstrumentationRegistry.getInstrumentation().uiAutomation.takeScreenshot())
+        try { Evidence.outputFile("navigation", "$name.png").outputStream().use { bitmap.compress(Bitmap.CompressFormat.PNG, 100, it) } }
+        finally { bitmap.recycle() }
+    }
 
     @Test fun createsAPlanThroughTheComposerAndKeepsItAfterRecreation() {
         val prompt = "Android weekend trip up to $1,500"
@@ -84,8 +91,43 @@ class NativeJourneysTest {
         compose.onNodeWithText(application.getString(R.string.approve), substring = false).performClick()
         compose.onNode(isDialog()).assertExists()
         compose.onAllNodesWithText(application.getString(R.string.approve), substring = false).onLast().performClick()
-        compose.waitUntil(10_000) { application.repository.state.value.requests.first { it.id == request.id }.status == RequestStatus.APPROVED }
+        compose.waitUntil(10_000) {
+            application.repository.state.value.requests.first { it.id == request.id }.status == RequestStatus.APPROVED &&
+                compose.onAllNodesWithText(application.getString(R.string.status_approved)).fetchSemanticsNodes().isNotEmpty()
+        }
         compose.onNodeWithText(application.getString(R.string.status_approved)).assertExists()
+    }
+
+    @Test fun chatKeepsReadingPositionAndFollowsNewMessagesAfterRecreation() {
+        val space = checkNotNull(application.repository.state.value.zoenChat).id
+        val texts = (1..8).map { index -> ("Viewport message $index: " + "Keep this conversation readable across Android recreation. ".repeat(3)).trim() }
+        val ids = runBlocking { application.repository.change { core ->
+            texts.forEach { core.sendMessage(space, it) }
+            val entries = core.timeline(space)
+            texts.map { text -> entries.single { (it.kind as? EntryKind.Message)?.text == text }.id }
+        } }
+        compose.onNodeWithTag("conversation-list").performScrollToNode(hasTestTag("chat:zoen"))
+        compose.onNodeWithTag("chat:zoen").performClick()
+        fun awaitEntry(id: String) {
+            compose.waitUntil(10_000) { compose.onAllNodesWithTag("timeline:$id").fetchSemanticsNodes().size == 1 }
+            compose.onNodeWithTag("timeline:$id").assertIsDisplayed()
+        }
+        awaitEntry(ids.last())
+        compose.onNodeWithTag("chat-timeline").performScrollToNode(hasTestTag("timeline:${ids.first()}"))
+        compose.onNodeWithTag("timeline:${ids.first()}").assertIsDisplayed()
+        scenario.recreate()
+        awaitEntry(ids.first())
+        captureChatViewport("chat-reading-after-recreation")
+        val latest = "New message after restoring the historical reading position"
+        val latestId = runBlocking { application.repository.change { core ->
+            core.sendMessage(space, latest)
+            core.timeline(space).single { (it.kind as? EntryKind.Message)?.text == latest }.id
+        } }
+        awaitEntry(latestId)
+        scenario.recreate()
+        awaitEntry(latestId)
+        captureChatViewport("chat-latest-after-recreation")
+        assertTrue(runBlocking { application.repository.query { it.verifyAll().all { report -> report.valid } } })
     }
 
     @Test fun searchFindsThePersistedStory() {
