@@ -4,6 +4,104 @@ use roda_log::{chain_hash, SpaceLog};
 use roda_proto::Sequenced;
 use roda_types::{EventBody, Privacy, SpaceKind};
 
+#[test]
+fn recovery_inspection_follows_commits_forgets_rollbacks_and_storage_failures() {
+    let mut engine = Engine::open(":memory:").unwrap();
+    engine
+        .create_account("Ana", "ana", "http://relay.test")
+        .unwrap();
+    let space = "recovery-inspection";
+    assert_eq!(
+        engine.recovery_group_state(space).unwrap(),
+        GroupState::Missing
+    );
+    engine.device().unwrap().create_group(space).unwrap();
+    assert_eq!(
+        engine.recovery_group_state(space).unwrap(),
+        GroupState::Ready
+    );
+    engine.device().unwrap().forget(space).unwrap();
+    assert_eq!(
+        engine.recovery_group_state(space).unwrap(),
+        GroupState::Missing
+    );
+    engine.store.conn().execute_batch("BEGIN").unwrap();
+    engine.device().unwrap().create_group(space).unwrap();
+    assert_eq!(
+        engine.recovery_group_state(space).unwrap(),
+        GroupState::Ready
+    );
+    engine.store.conn().execute_batch("ROLLBACK").unwrap();
+    assert_eq!(
+        engine.recovery_group_state(space).unwrap(),
+        GroupState::Missing
+    );
+    engine.device().unwrap().create_group(space).unwrap();
+    assert_eq!(
+        engine.recovery_group_state(space).unwrap(),
+        GroupState::Ready
+    );
+    engine
+        .store
+        .conn()
+        .execute_batch("ALTER TABLE openmls_group_data RENAME TO unavailable_group_data")
+        .unwrap();
+    assert!(engine.recovery_group_state(space).is_err());
+    engine
+        .store
+        .conn()
+        .execute_batch("ALTER TABLE unavailable_group_data RENAME TO openmls_group_data")
+        .unwrap();
+    assert_eq!(
+        engine.recovery_group_state(space).unwrap(),
+        GroupState::Ready
+    );
+}
+
+#[test]
+fn recovery_inspection_tracks_held_commits_and_rejects_corrupted_storage() {
+    let mut engine = Engine::open(":memory:").unwrap();
+    engine
+        .create_account("Ana", "ana", "http://relay.test")
+        .unwrap();
+    let space = "recovery-inspection-held";
+    engine.device().unwrap().create_group(space).unwrap();
+    assert_eq!(
+        engine.recovery_group_state(space).unwrap(),
+        GroupState::Ready
+    );
+    engine
+        .store
+        .conn()
+        .execute(
+            "INSERT INTO mls_recovery_pending (space, commit_hash) VALUES (?1, ?2)",
+            rusqlite::params![space, vec![0u8; 32]],
+        )
+        .unwrap();
+    assert_eq!(
+        engine.recovery_group_state(space).unwrap(),
+        GroupState::Pending
+    );
+    engine
+        .store
+        .conn()
+        .execute("DELETE FROM mls_recovery_pending WHERE space = ?1", [space])
+        .unwrap();
+    assert_eq!(
+        engine.recovery_group_state(space).unwrap(),
+        GroupState::Ready
+    );
+    engine
+        .store
+        .conn()
+        .execute(
+            "UPDATE openmls_group_data SET group_data = zeroblob(length(group_data))",
+            [],
+        )
+        .unwrap();
+    assert!(engine.recovery_group_state(space).is_err());
+}
+
 fn ordered(engine: &Engine, env: Envelope) -> Sequenced {
     let (seq, prev) = engine
         .logs

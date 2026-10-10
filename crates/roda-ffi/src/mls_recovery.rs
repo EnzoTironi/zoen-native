@@ -168,18 +168,16 @@ impl Engine {
     }
 
     /// Downloads are bounded and requested one at a time, only for missing groups.
-    pub(crate) fn wanted_recovery_contexts(&self) -> Vec<ContextRef> {
+    pub(crate) fn wanted_recovery_contexts(&mut self) -> Vec<ContextRef> {
         if self.net.profiles.agreement.is_none() {
             return Vec::new();
         }
-        let Ok(device) = self.device() else {
-            return Vec::new();
-        };
-        self.net
+        let candidates: Vec<_> = self
+            .net
             .synced
             .iter()
             .filter(|s| self.can_recover(s))
-            .filter_map(|s| self.recovery_context(s).map(|r| (s, r)))
+            .filter_map(|s| self.recovery_context(s).map(|r| (s.clone(), r)))
             .filter(|(_, r)| {
                 self.store
                     .recovery_blob(&r.space, &r.blob)
@@ -187,9 +185,45 @@ impl Engine {
                     .flatten()
                     .is_none()
             })
-            .filter(|(space, _)| !device.has_group(space))
+            .collect();
+        candidates
+            .into_iter()
+            .filter(|(space, _)| {
+                matches!(self.recovery_group_state(space), Ok(GroupState::Missing))
+            })
             .map(|(_, reference)| reference)
             .collect()
+    }
+
+    /// Reuse authenticated classifications while the exclusively locked database is
+    /// unchanged. Writes and schema changes invalidate them; transactions never cache.
+    fn recovery_group_state(&mut self, space: &str) -> R<GroupState> {
+        let leaf = self.device()?.leaf().clone();
+        let conn = self.store.conn();
+        if !conn.is_autocommit() {
+            self.net.mls.recovery_checked_generation = None;
+            self.net.mls.recovery_checked.clear();
+            return self.device()?.group_state(space).map_err(invalid);
+        }
+        let generation = (
+            conn.total_changes(),
+            conn.pragma_query_value(None, "schema_version", |r| r.get::<_, i64>(0))
+                .map_err(invalid)?,
+            leaf,
+        );
+        if self.net.mls.recovery_checked_generation.as_ref() != Some(&generation) {
+            self.net.mls.recovery_checked.clear();
+            self.net.mls.recovery_checked_generation = Some(generation);
+        }
+        if let Some(state) = self.net.mls.recovery_checked.get(space) {
+            return Ok(*state);
+        }
+        let state = self.device()?.group_state(space).map_err(invalid)?;
+        self.net
+            .mls
+            .recovery_checked
+            .insert(space.to_string(), state);
+        Ok(state)
     }
 
     pub(crate) fn recovery_context_arrived(&self, reference: &ContextRef, bytes: &[u8]) -> bool {
@@ -263,8 +297,7 @@ impl Engine {
     }
 
     fn try_mls_recovery(&mut self, space: &str) -> R<bool> {
-        let device = self.device()?;
-        let state = device.group_state(space).map_err(invalid)?;
+        let state = self.recovery_group_state(space)?;
         if state == GroupState::Pending {
             return Ok(false);
         }

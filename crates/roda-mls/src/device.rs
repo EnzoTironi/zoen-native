@@ -49,6 +49,11 @@ pub enum GroupState {
     Ready,
 }
 
+pub struct CommittedGroup {
+    pub epoch: u64,
+    pub identities: BTreeSet<String>,
+}
+
 fn commit_bytes(bundle: &CommitMessageBundle) -> Result<Commit, MlsError> {
     Ok(Commit {
         commit: bundle.commit().to_bytes().map_err(mls)?,
@@ -842,6 +847,27 @@ impl<'c> Device<'c> {
 
     pub fn epoch(&self, space: &str) -> Result<u64, MlsError> {
         self.with(|p| Ok(self.load(p, space)?.epoch().as_u64()))
+    }
+
+    /// Epoch and identities from one authenticated read, with no unconfirmed commit.
+    pub fn committed_group(&self, space: &str) -> Result<Option<CommittedGroup>, MlsError> {
+        if self.recovery_pending(space) {
+            return Ok(None);
+        }
+        self.with(|p| {
+            let group = match self.load(p, space) {
+                Ok(group) => group,
+                Err(MlsError::NoGroup) => return Ok(None),
+                Err(error) => return Err(error),
+            };
+            if group.pending_commit().is_some() {
+                return Ok(None);
+            }
+            Ok(Some(CommittedGroup {
+                epoch: group.epoch().as_u64(),
+                identities: identities(&group)?,
+            }))
+        })
     }
 
     /// `(epoch, digest)` for a `Checkpoint`: SHA-256 over a tag, the group id, the epoch and

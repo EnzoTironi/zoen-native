@@ -134,6 +134,8 @@ pub struct MlsNet {
     /// it has caught up with the log.
     rejoin: HashSet<SpaceId>,
     pub(crate) recovery_retry_at: HashMap<SpaceId, Instant>,
+    pub(crate) recovery_checked_generation: Option<(u64, i64, Leaf)>,
+    pub(crate) recovery_checked: HashMap<SpaceId, roda_mls::GroupState>,
 }
 
 /// Events the relay reads even in an end-to-end Space: what it orders and authorizes by.
@@ -429,9 +431,10 @@ impl Engine {
     /// The epoch to seal `space`'s messages at, once its group is ready for them.
     pub(crate) fn ready_epoch(&self, space: &str) -> Option<u64> {
         let device = self.device().ok()?;
-        if !device.has_group(space) || device.pending(space) || device.needs_reconciliation(space) {
+        if device.needs_reconciliation(space) {
             return None;
         }
+        let committed = device.committed_group(space).ok()??;
         // The commit can land before its Welcome is accepted (e.g. under a publish
         // limit). The new member cannot open messages that overtake that Welcome.
         if self
@@ -445,7 +448,7 @@ impl Engine {
         }
         let me = self.me.as_deref()?;
         let s = self.state.spaces.get(space)?;
-        let group = device.roster(space).ok()?;
+        let group = committed.identities;
         // Nobody seals for a group that still holds someone the log removed: wait for the
         // commit that takes them out.
         if group.iter().any(|g| !s.members.iter().any(|(m, _)| m == g)) {
@@ -458,7 +461,7 @@ impl Engine {
             .iter()
             .any(|(m, r)| m == me && matches!(r, Role::Owner | Role::Admin));
         let m = &self.net.mls;
-        let epoch = device.epoch(space).ok()?;
+        let epoch = committed.epoch;
         if m.behind.get(space) == Some(&epoch) {
             return None;
         }
@@ -467,7 +470,7 @@ impl Engine {
         if runs_it && adding && !m.stuck.contains(space) {
             return None;
         }
-        device.epoch(space).ok()
+        Some(epoch)
     }
 
     /// The epoch a queued event was sealed at, without reading its sealed bytes.

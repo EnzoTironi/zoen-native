@@ -70,8 +70,12 @@ fn committed_leaves_wait_for_the_commit_and_follow_confirmed_membership() {
     let both = roster(&[&e, &m]);
     assert_eq!(enzo.group_state(SPACE).unwrap(), GroupState::Missing);
     assert!(enzo.committed_leaves(SPACE).unwrap().is_none());
+    assert!(enzo.committed_group(SPACE).unwrap().is_none());
     enzo.create_group(SPACE).unwrap();
     assert_eq!(enzo.group_state(SPACE).unwrap(), GroupState::Ready);
+    let initial = enzo.committed_group(SPACE).unwrap().unwrap();
+    assert_eq!(initial.epoch, 0);
+    assert_eq!(initial.identities, BTreeSet::from([e.id()]));
     assert_eq!(
         enzo.committed_leaves(SPACE)
             .unwrap()
@@ -83,12 +87,16 @@ fn committed_leaves_wait_for_the_commit_and_follow_confirmed_membership() {
     let added = add(&enzo, &marina);
     assert_eq!(enzo.group_state(SPACE).unwrap(), GroupState::Pending);
     assert!(enzo.committed_leaves(SPACE).unwrap().is_none());
+    assert!(enzo.committed_group(SPACE).unwrap().is_none());
     assert_eq!(
         enzo.open(SPACE, &added.commit, &both, enzo.leaf()).unwrap(),
         Opened::Commit { epoch: 1 }
     );
     assert_eq!(enzo.group_state(SPACE).unwrap(), GroupState::Ready);
     let committed = enzo.committed_leaves(SPACE).unwrap().unwrap();
+    let confirmed = enzo.committed_group(SPACE).unwrap().unwrap();
+    assert_eq!(confirmed.epoch, 1);
+    assert_eq!(confirmed.identities, BTreeSet::from([e.id(), m.id()]));
     assert_eq!(committed, enzo.leaves(SPACE).unwrap());
     assert_eq!(
         committed.keys().cloned().collect::<BTreeSet<_>>(),
@@ -103,12 +111,16 @@ fn committed_leaves_wait_for_the_commit_and_follow_confirmed_membership() {
     let removed = enzo.commit(SPACE, &[], &BTreeSet::from([m.id()])).unwrap();
     assert_eq!(enzo.group_state(SPACE).unwrap(), GroupState::Pending);
     assert!(enzo.committed_leaves(SPACE).unwrap().is_none());
+    assert!(enzo.committed_group(SPACE).unwrap().is_none());
     assert_eq!(
         enzo.open(SPACE, &removed.commit, &roster(&[&e]), enzo.leaf())
             .unwrap(),
         Opened::Commit { epoch: 2 }
     );
     assert_eq!(enzo.group_state(SPACE).unwrap(), GroupState::Ready);
+    let removed = enzo.committed_group(SPACE).unwrap().unwrap();
+    assert_eq!(removed.epoch, 2);
+    assert_eq!(removed.identities, BTreeSet::from([e.id()]));
     assert_eq!(
         enzo.committed_leaves(SPACE)
             .unwrap()
@@ -125,6 +137,7 @@ fn committed_leaves_wait_for_the_commit_and_follow_confirmed_membership() {
     );
     enzo.forget(SPACE).unwrap();
     assert_eq!(enzo.group_state(SPACE).unwrap(), GroupState::Missing);
+    assert!(enzo.committed_group(SPACE).unwrap().is_none());
 }
 
 #[test]
@@ -144,6 +157,10 @@ fn provider_read_and_processing_failures_remain_storage_errors_and_allow_retry()
     ));
     assert!(matches!(
         marina.committed_leaves(SPACE),
+        Err(MlsError::Storage(_))
+    ));
+    assert!(matches!(
+        marina.committed_group(SPACE),
         Err(MlsError::Storage(_))
     ));
     assert!(matches!(
