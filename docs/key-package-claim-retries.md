@@ -76,7 +76,8 @@ tests must measure receipt rate, retained bytes, lock waits, and GC backlog.
 
 ## Completion and evidence
 
-The CLI group command now requires actual settled sync before printing success. An
+The online CLI group command now requires actual settled sync before printing success.
+Explicit `--offline` still creates and queues a local group for later synchronization. An
 empty event outbox is insufficient while a claim, scheduled MLS retry, commit/Welcome,
 or recovery upload is unfinished. The default CLI deadline remains eight seconds;
 expiration returns a failure and preserves local work. Public Apple/Android idle-wait
