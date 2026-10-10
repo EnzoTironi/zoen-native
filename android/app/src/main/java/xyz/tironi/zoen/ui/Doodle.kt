@@ -65,7 +65,10 @@ internal class NativeArtCanvasView(context: Context) : View(context) {
     internal val clockDiagnostics get() = "time=$animationTimeSeconds live=$live motion=$motion active=$active " +
         "scheduled=$scheduled framePending=$framePending shown=$isShown focus=${hasWindowFocus()} " +
         "visibility=$visibility window=$windowVisibility size=${width}x$height"
-    private val frameFinished = Runnable { framePending = false; updateClock() }
+    private val frameCommit = NativeFrameCommit(this, { framePending && canAnimate() }) {
+        framePending = false
+        updateClock()
+    }
     private val scrollListener = ViewTreeObserver.OnScrollChangedListener { updateClock() }
     private val tick = Runnable {
         scheduled = false
@@ -93,9 +96,9 @@ internal class NativeArtCanvasView(context: Context) : View(context) {
             postDelayed(tick, if (art == null) 50L else 100L)
         }
     }
-    fun pause() { removeCallbacks(tick); removeCallbacks(frameFinished); scheduled = false; framePending = false; lastTick = 0 }
-    override fun onAttachedToWindow() { super.onAttachedToWindow(); viewTreeObserver.addOnScrollChangedListener(scrollListener); updateClock() }
-    override fun onDetachedFromWindow() { pause(); viewTreeObserver.removeOnScrollChangedListener(scrollListener); super.onDetachedFromWindow() }
+    fun pause() { removeCallbacks(tick); frameCommit.cancel(); scheduled = false; framePending = false; lastTick = 0 }
+    override fun onAttachedToWindow() { super.onAttachedToWindow(); frameCommit.attach(); viewTreeObserver.addOnScrollChangedListener(scrollListener); updateClock() }
+    override fun onDetachedFromWindow() { pause(); frameCommit.detach(); viewTreeObserver.removeOnScrollChangedListener(scrollListener); super.onDetachedFromWindow() }
     override fun onSizeChanged(w: Int, h: Int, oldw: Int, oldh: Int) { super.onSizeChanged(w, h, oldw, oldh); updateClock() }
     override fun onWindowFocusChanged(hasWindowFocus: Boolean) { super.onWindowFocusChanged(hasWindowFocus); updateClock() }
     override fun onWindowVisibilityChanged(visibility: Int) { super.onWindowVisibilityChanged(visibility); updateClock() }
@@ -106,9 +109,8 @@ internal class NativeArtCanvasView(context: Context) : View(context) {
     }
     override fun onDraw(canvas: Canvas) {
         super.onDraw(canvas)
-        removeCallbacks(tick); removeCallbacks(frameFinished); scheduled = false
-        framePending = canAnimate()
-        if (framePending) {
+        removeCallbacks(tick); scheduled = false
+        if (canAnimate()) {
             val now = SystemClock.uptimeMillis()
             if (lastTick != 0L) elapsed += now - lastTick
             lastTick = now
@@ -166,6 +168,6 @@ internal class NativeArtCanvasView(context: Context) : View(context) {
             }
         }
         canvas.restoreToCount(saved)
-        if (framePending) post(frameFinished)
+        if (!framePending) updateClock()
     }
 }

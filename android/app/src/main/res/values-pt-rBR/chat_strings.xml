@@ -2,7 +2,10 @@
     <string name="chat_mark_read">Marcar como lido</string>
     <string name="chat_pinned_plan">Fixado: %1$s</string>
     <string name="chat_plan_count">%1$d itens · %2$s</string>
-    <string name="chat_people_count">%1$d pessoas</string>
+    <plurals name="chat_people_count">
+        <item quantity="one">%1$d pessoa</item>
+        <item quantity="other">%1$d pessoas</item>
+    </plurals>
     <string name="chat_online">online</string>
     <string name="chat_processing">%1$s está pensando…</string>
     <string name="chat_building">%1$s está criando…</string>

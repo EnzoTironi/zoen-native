@@ -4,7 +4,6 @@ import android.content.Context
 import android.graphics.BitmapFactory
 import android.graphics.ImageDecoder
 import android.graphics.drawable.AnimatedImageDrawable
-import android.provider.Settings
 import android.widget.ImageView
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.clickable
@@ -29,6 +28,7 @@ import androidx.lifecycle.compose.currentStateAsState
 import org.json.JSONObject
 import xyz.tironi.zoen.R
 import xyz.tironi.zoen.core.Persona
+import xyz.tironi.zoen.ui.rememberMotionEnabled
 
 data class AvatarAsset(val id: String, val name: String, val kind: String, val tags: List<String>)
 
@@ -98,13 +98,14 @@ object AvatarArt {
 fun AvatarDrawing(asset: AvatarAsset, size: Int, animate: Boolean = true, modifier: Modifier = Modifier) {
     val context = LocalContext.current
     val lifecycle by LocalLifecycleOwner.current.lifecycle.currentStateAsState()
-    val moving = animate && size >= 56 && lifecycle.isAtLeast(Lifecycle.State.STARTED) && Settings.Global.getFloat(context.contentResolver, Settings.Global.ANIMATOR_DURATION_SCALE, 1f) > 0f
+    val moving = animate && size >= 56 && rememberMotionEnabled()
     val still = remember(asset.id) { context.assets.open("avatars/stills/${asset.name}.png").use(BitmapFactory::decodeStream) }
     if (moving) {
         val drawable = remember(asset.id) { ImageDecoder.decodeDrawable(ImageDecoder.createSource(context.assets, "avatars/loops/${asset.name}.webp")) }
-        DisposableEffect(drawable) { (drawable as? AnimatedImageDrawable)?.start(); onDispose { (drawable as? AnimatedImageDrawable)?.stop() } }
-        AndroidView(factory = { ImageView(it).apply { scaleType = ImageView.ScaleType.CENTER_CROP; contentDescription = asset.name } },
-            update = { it.setImageDrawable(drawable) }, modifier = modifier.size(size.dp).clip(CircleShape))
+        DisposableEffect(drawable) { onDispose { (drawable as? AnimatedImageDrawable)?.stop() } }
+        AndroidView(factory = { AvatarLoopView(it).apply { scaleType = ImageView.ScaleType.CENTER_CROP; contentDescription = asset.name } },
+            update = { it.updatePlayback(drawable, lifecycle.isAtLeast(Lifecycle.State.RESUMED)) },
+            modifier = modifier.size(size.dp).clip(CircleShape))
     } else if (still != null) Image(still.asImageBitmap(), asset.name, modifier.size(size.dp).clip(CircleShape), contentScale = ContentScale.Crop)
 }
 

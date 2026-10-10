@@ -125,6 +125,10 @@ class ParityJourneysTest {
             compose.onAllNodesWithText(plan.title).onFirst().assertIsDisplayed()
             compose.onNodeWithContentDescription(application.getString(R.string.back)).performClick()
             compose.waitUntil(10_000) { compose.onAllNodesWithTag(tile).fetchSemanticsNodes().isNotEmpty() }
+            val edit = compose.onNodeWithTag(tile).fetchSemanticsNode().config[androidx.compose.ui.semantics.SemanticsActions.CustomActions]
+                .first { it.label == application.getString(R.string.edit) }
+            compose.runOnIdle { assertTrue(edit.action()) }
+            compose.onNodeWithText(application.getString(R.string.done)).assertIsDisplayed().performClick()
             val unpin = compose.onNodeWithTag(tile).fetchSemanticsNode().config[androidx.compose.ui.semantics.SemanticsActions.CustomActions]
                 .first { it.label == application.getString(R.string.unpin) }
             compose.runOnIdle { assertTrue(unpin.action()) }

@@ -64,6 +64,7 @@ import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.LiveRegionMode
+import androidx.compose.ui.semantics.Role
 import xyz.tironi.zoen.ui.ink.ZoenGlyph
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
@@ -238,12 +239,14 @@ fun ChatScreen(model: ZoenViewModel, state: AppState, spaceId: String, navigate:
     }
     Scaffold(
         topBar = {
-            TopAppBar(title = {
-                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            val enlargedText = LocalDensity.current.fontScale >= 1.5f
+            val participants = stringResource(R.string.participants)
+            val identity: @Composable () -> Unit = {
+                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                     if (space.counterpart != null) Avatar(space.counterpart, size = 40, onClick = { navigate(if (space.counterpart!!.kind == PersonaKind.AGENT) Agent(space.counterpart!!.id) else Person(space.counterpart!!.id)) }, contact = true, working = working[spaceId] != null)
                     else SpaceAvatar(space, size = 40, onClick = { navigate(Participants(space.id)) })
-                    Column {
-                        Text(space.title, style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    Column(Modifier.weight(1f).clickable(role = Role.Button, onClickLabel = participants) { navigate(Participants(space.id)) }) {
+                        Text(space.title, style = MaterialTheme.typography.titleMedium, maxLines = if (enlargedText) Int.MAX_VALUE else 1, overflow = TextOverflow.Ellipsis)
                         val remote = state.remoteActivity[spaceId]
                         val name = working[spaceId] ?: state.typing[spaceId]?.let { id -> space.members.firstOrNull { it.id == id }?.name } ?: remote?.let { activity -> space.members.firstOrNull { it.id == activity.identity }?.name }
                         val status = when {
@@ -251,28 +254,32 @@ fun ChatScreen(model: ZoenViewModel, state: AppState, spaceId: String, navigate:
                             state.typing[spaceId] != null -> stringResource(R.string.person_typing, name.orEmpty())
                             remote != null -> stringResource(when (remote.kind) { "building" -> R.string.chat_building; "call" -> R.string.chat_call; else -> R.string.chat_processing }, name.orEmpty())
                             space.counterpart?.id in state.online -> stringResource(R.string.chat_online)
-                            space.counterpart == null -> stringResource(R.string.chat_people_count, space.members.count { it.kind == PersonaKind.PERSON })
+                            space.counterpart == null -> space.members.count { it.kind == PersonaKind.PERSON }.let { pluralStringResource(R.plurals.chat_people_count, it, it) }
                             else -> ""
                         }
-                        if (status.isNotBlank()) Text(status, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
+                        if (status.isNotBlank()) Text(status, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = if (enlargedText) Int.MAX_VALUE else 1)
                     }
                 }
-            }, navigationIcon = { InkIconButton(ZoenGlyph.Back, stringResource(R.string.back), { navigationHaptics.perform(ZoenFeedback.Dismiss); back() }) }, actions = {
-                val callsComing = stringResource(R.string.calls_coming)
-                IconButton(onClick = { model.notify(callsComing) }) { Icon(Icons.Rounded.Call, stringResource(R.string.voice_call)) }
-                IconButton(onClick = { model.notify(callsComing) }) { Icon(Icons.Rounded.VideoCall, stringResource(R.string.video_call)) }
-                IconButton(onClick = { overflow = true }) { Icon(Icons.Rounded.MoreVert, stringResource(R.string.more)) }
-                DropdownMenu(overflow, onDismissRequest = { overflow = false }) {
-                    DropdownMenuItem(text = { Text(stringResource(R.string.participants)) }, onClick = { overflow = false; navigate(Participants(space.id)) }, leadingIcon = { Icon(Icons.Rounded.Groups, null) })
-                    DropdownMenuItem(text = { Text(stringResource(R.string.files)) }, onClick = { overflow = false; navigate(Folder(space.id)) }, leadingIcon = { Icon(Icons.Rounded.Folder, null) })
-                    DropdownMenuItem(text = { Text(stringResource(R.string.chat_appearance)) }, onClick = { overflow = false; navigate(Appearance(space.id)) }, leadingIcon = { Icon(Icons.Rounded.Palette, null) })
-                    DropdownMenuItem(text = { Text(stringResource(R.string.signed_log)) }, onClick = { overflow = false; navigate(History) }, leadingIcon = { Icon(Icons.Rounded.VerifiedUser, null) })
-                    if (BuildConfig.DEBUG && state.demo) DropdownMenuItem(text = { Text(stringResource(R.string.agent_browser_start)) }, onClick = {
-                        overflow = false
-                        space.members.firstOrNull { it.kind == PersonaKind.AGENT && it.isMine }?.let { model.browser.startDemo(space.id, it, model.repository.locale); navigate(Browser) }
-                    }, leadingIcon = { Icon(Icons.Rounded.Language, null) })
-                }
-            })
+            }
+            Column(Modifier.background(MaterialTheme.colorScheme.surface)) {
+                TopAppBar(title = { if (!enlargedText) identity() }, navigationIcon = { InkIconButton(ZoenGlyph.Back, stringResource(R.string.back), { navigationHaptics.perform(ZoenFeedback.Dismiss); back() }) }, actions = {
+                    val callsComing = stringResource(R.string.calls_coming)
+                    IconButton(onClick = { model.notify(callsComing) }) { Icon(Icons.Rounded.Call, stringResource(R.string.voice_call)) }
+                    IconButton(onClick = { model.notify(callsComing) }) { Icon(Icons.Rounded.VideoCall, stringResource(R.string.video_call)) }
+                    IconButton(onClick = { overflow = true }) { Icon(Icons.Rounded.MoreVert, stringResource(R.string.more)) }
+                    DropdownMenu(overflow, onDismissRequest = { overflow = false }) {
+                        DropdownMenuItem(text = { Text(stringResource(R.string.participants)) }, onClick = { overflow = false; navigate(Participants(space.id)) }, leadingIcon = { Icon(Icons.Rounded.Groups, null) })
+                        DropdownMenuItem(text = { Text(stringResource(R.string.files)) }, onClick = { overflow = false; navigate(Folder(space.id)) }, leadingIcon = { Icon(Icons.Rounded.Folder, null) })
+                        DropdownMenuItem(text = { Text(stringResource(R.string.chat_appearance)) }, onClick = { overflow = false; navigate(Appearance(space.id)) }, leadingIcon = { Icon(Icons.Rounded.Palette, null) })
+                        DropdownMenuItem(text = { Text(stringResource(R.string.signed_log)) }, onClick = { overflow = false; navigate(History) }, leadingIcon = { Icon(Icons.Rounded.VerifiedUser, null) })
+                        if (BuildConfig.DEBUG && state.demo) DropdownMenuItem(text = { Text(stringResource(R.string.agent_browser_start)) }, onClick = {
+                            overflow = false
+                            space.members.firstOrNull { it.kind == PersonaKind.AGENT && it.isMine }?.let { model.browser.startDemo(space.id, it, model.repository.locale); navigate(Browser) }
+                        }, leadingIcon = { Icon(Icons.Rounded.Language, null) })
+                    }
+                })
+                if (enlargedText) Box(Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, bottom = 12.dp)) { identity() }
+            }
         },
         bottomBar = {
             Surface(color = MaterialTheme.colorScheme.surface) {

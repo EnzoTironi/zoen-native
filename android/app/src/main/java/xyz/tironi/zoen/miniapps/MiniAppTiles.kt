@@ -34,6 +34,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.CustomAccessibilityAction
 import androidx.compose.ui.semantics.customActions
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
@@ -68,6 +69,7 @@ fun MiniAppTileStrip(
     var remove by remember { mutableStateOf<MiniAppTile?>(null) }
     var flip by remember { mutableStateOf<AppFlip?>(null) }
     val haptics = rememberZoenHaptics()
+    val motion = rememberMotionEnabled()
     val density = LocalDensity.current
     DisposableEffect(preferences, scope) {
         val listener = android.content.SharedPreferences.OnSharedPreferenceChangeListener { _, key -> if (key?.startsWith("miniapps.") == true) revision++ }
@@ -92,6 +94,7 @@ fun MiniAppTileStrip(
     val moveRight = stringResource(R.string.miniapp_move_right)
     val unpin = stringResource(R.string.unpin)
     val open = stringResource(R.string.miniapp_open)
+    val edit = stringResource(R.string.edit)
     fun move(tile: MiniAppTile, distance: Int) {
         val ids = tiles.map { it.key }.toMutableList()
         val from = ids.indexOf(tile.key)
@@ -113,8 +116,8 @@ fun MiniAppTileStrip(
                 val shared = Modifier.onGloballyPositioned { bounds = it.boundsInWindow() }
                     .testTag("miniapp-tile:${tile.key}")
                     .alpha(if (flip?.item?.id == tile.item.id) 0f else 1f)
-                    .graphicsLayer { translationX = drag; scaleX = if (dragging) 1.05f else 1f; scaleY = scaleX }
-                    .combinedClickable(hapticFeedbackEnabled = false, onClick = {
+                    .graphicsLayer { translationX = drag; scaleX = if (dragging && motion) 1.05f else 1f; scaleY = scaleX }
+                    .combinedClickable(role = Role.Button, onClickLabel = open, onLongClickLabel = edit, hapticFeedbackEnabled = false, onClick = {
                         if (!editing) {
                             haptics.perform(ZoenFeedback.Open)
                             if (tile.item.plan != null || compact || bounds == Rect.Zero) onOpenItem(tile.item.id) else flip = AppFlip(tile.item, bounds, tile.snapshot)
@@ -128,7 +131,12 @@ fun MiniAppTileStrip(
                             else if (drag < -threshold && index > 0) { move(tile, -1); drag = 0f }
                         }
                     }.semantics {
-                        customActions = listOf(CustomAccessibilityAction(moveLeft) { move(tile, -1); true }, CustomAccessibilityAction(moveRight) { move(tile, 1); true }, CustomAccessibilityAction(unpin) { remove = tile; true })
+                        customActions = buildList {
+                            add(CustomAccessibilityAction(edit) { editing = true; haptics.perform(ZoenFeedback.PickUp); true })
+                            if (index > 0) add(CustomAccessibilityAction(moveLeft) { move(tile, -1); true })
+                            if (index < tiles.lastIndex) add(CustomAccessibilityAction(moveRight) { move(tile, 1); true })
+                            add(CustomAccessibilityAction(unpin) { remove = tile; true })
+                        }
                     }
                 Column(shared.width(if (compact) 170.dp else 180.dp)) {
                     if (compact) AssistChip(onClick = {

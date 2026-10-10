@@ -53,7 +53,10 @@ internal class MascotCanvasView(context: Context) : View(context) {
     internal val hasScheduledFrame get() = scheduled || framePending
     private var scheduled = false
     private var framePending = false
-    private val frameFinished = Runnable { framePending = false; if (canAnimate()) schedule() else pause() }
+    private val frameCommit = NativeFrameCommit(this, { framePending && canAnimate() }) {
+        framePending = false
+        if (canAnimate()) schedule() else pause()
+    }
     private val scrollListener = ViewTreeObserver.OnScrollChangedListener { if (canAnimate()) schedule() else pause() }
     private val tick = Runnable {
         scheduled = false
@@ -83,9 +86,9 @@ internal class MascotCanvasView(context: Context) : View(context) {
             postDelayed(tick, if (head) 100L else 83L)
         }
     }
-    fun pause() { removeCallbacks(tick); removeCallbacks(frameFinished); scheduled = false; framePending = false; lastTick = 0 }
-    override fun onAttachedToWindow() { super.onAttachedToWindow(); viewTreeObserver.addOnScrollChangedListener(scrollListener); schedule() }
-    override fun onDetachedFromWindow() { pause(); viewTreeObserver.removeOnScrollChangedListener(scrollListener); super.onDetachedFromWindow() }
+    fun pause() { removeCallbacks(tick); frameCommit.cancel(); scheduled = false; framePending = false; lastTick = 0 }
+    override fun onAttachedToWindow() { super.onAttachedToWindow(); frameCommit.attach(); viewTreeObserver.addOnScrollChangedListener(scrollListener); schedule() }
+    override fun onDetachedFromWindow() { pause(); frameCommit.detach(); viewTreeObserver.removeOnScrollChangedListener(scrollListener); super.onDetachedFromWindow() }
     override fun onSizeChanged(w: Int, h: Int, oldw: Int, oldh: Int) { super.onSizeChanged(w, h, oldw, oldh); schedule() }
     override fun onWindowFocusChanged(hasWindowFocus: Boolean) { super.onWindowFocusChanged(hasWindowFocus); if (hasWindowFocus) schedule() else pause() }
     override fun onWindowVisibilityChanged(visibility: Int) {
@@ -99,9 +102,8 @@ internal class MascotCanvasView(context: Context) : View(context) {
 
     override fun onDraw(canvas: Canvas) {
         super.onDraw(canvas)
-        removeCallbacks(tick); removeCallbacks(frameFinished); scheduled = false
-        framePending = canAnimate()
-        if (framePending) {
+        removeCallbacks(tick); scheduled = false
+        if (canAnimate()) {
             val now = SystemClock.uptimeMillis()
             if (lastTick != 0L) { val delta = now - lastTick; elapsed += delta; entrance += delta }
             lastTick = now
@@ -124,6 +126,6 @@ internal class MascotCanvasView(context: Context) : View(context) {
             progress, if (head) 0.5 else 0.6)
         canvas.restoreToCount(saved)
         renderedFrames++
-        if (framePending) post(frameFinished)
+        if (!framePending) schedule()
     }
 }
