@@ -88,6 +88,12 @@ impl Envelope {
         cert: Option<String>,
         invite: Option<String>,
     ) -> Option<Self> {
+        if invite
+            .as_deref()
+            .is_some_and(|code| !valid_invite_code(code))
+        {
+            return None;
+        }
         let parsed = SignedContent::parse(&content)?;
         parsed.payload.as_ref()?;
         Some(Self {
@@ -165,6 +171,18 @@ impl Envelope {
                 SealedKind::try_from(s.kind).unwrap_or(SealedKind::Unspecified),
                 &s.data,
             )),
+            _ => None,
+        }
+    }
+
+    pub fn recovery(&self) -> Option<&[u8]> {
+        // Legacy tag-5/v3 stubs authenticate their retained digest, not these
+        // surviving header fields. Recovery references were introduced in v4.
+        if self.parsed.v != 4 || self.legacy_pruned.is_some() {
+            return None;
+        }
+        match &self.parsed.payload {
+            Some(Payload::Sealed(s)) if !s.recovery.is_empty() => Some(&s.recovery),
             _ => None,
         }
     }
@@ -270,6 +288,25 @@ impl Envelope {
     pub fn stored_len(&self) -> usize {
         self.content.len() + self.sig.len() + self.cert.as_ref().map_or(0, String::len)
     }
+
+    /// Payload retained while routing/queuing, including the unsigned invite.
+    pub fn retained_len(&self) -> usize {
+        self.stored_len()
+            .saturating_add(self.invite.as_ref().map_or(0, String::len))
+    }
+
+    pub fn valid_invite(&self) -> bool {
+        self.invite.as_deref().is_none_or(valid_invite_code)
+    }
+}
+
+/// Relay capabilities contain ten Crockford-base32 characters. Existing clients
+/// can send lowercase; surrounding formatting is normalized before publishing.
+pub fn valid_invite_code(code: &str) -> bool {
+    code.len() == 10
+        && code
+            .bytes()
+            .all(|c| b"0123456789ABCDEFGHJKMNPQRSTVWXYZ".contains(&c.to_ascii_uppercase()))
 }
 
 /// An envelope after the relay put it in the Space's order.
@@ -682,8 +719,38 @@ pub fn normalize_handle(raw: &str) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use roda_log::{chain_hash, SpaceLog};
+    use roda_log::{chain_hash, Signer, SpaceLog};
     use roda_types::GENESIS_PREV;
+
+    #[test]
+    fn recovery_reference_survives_pruning_and_cannot_be_substituted() {
+        let author = Author::root(Signer::generate());
+        let reference = roda_log::recovery::RecoveryRef {
+            version: 1,
+            epoch: 7,
+            blob: "aa".repeat(32),
+        };
+        let mut sealed = Sealed::new(SealedKind::Commit, 1, b"MLS ciphertext".to_vec());
+        sealed.recovery = reference.encode();
+        let full = Envelope::sealed(&author, "space", "commit", 1, None, sealed);
+        let stub = full.pruned().unwrap();
+        assert_eq!(stub.recovery(), full.recovery());
+        assert_eq!(stub.wire_hash(), full.wire_hash());
+        stub.verify().unwrap();
+        let mut changed = stub.parsed.clone();
+        let Some(Payload::Sealed(sealed)) = &mut changed.payload else {
+            unreachable!()
+        };
+        sealed.recovery = roda_log::recovery::RecoveryRef {
+            blob: "bb".repeat(32),
+            ..reference
+        }
+        .encode();
+        assert!(Envelope::new(changed.encode(), stub.sig, None, None)
+            .unwrap()
+            .verify()
+            .is_err());
+    }
 
     fn fixture(name: &str) -> Sequenced {
         let data: serde_json::Value = serde_json::from_str(include_str!(
@@ -750,6 +817,46 @@ mod tests {
         let mut bad = ev.env;
         bad.sig = "0".repeat(128);
         assert!(bad.verify().is_err());
+    }
+
+    #[test]
+    fn unauthenticated_legacy_stub_headers_cannot_authorize_recovery() {
+        let original = fixture("legacy_stub");
+        let mut content = original.env.parsed.clone();
+        let Some(Payload::Sealed(sealed)) = &mut content.payload else {
+            unreachable!()
+        };
+        sealed.kind = SealedKind::Commit as i32;
+        sealed.recovery = roda_log::recovery::RecoveryRef {
+            version: 1,
+            epoch: 7,
+            blob: "aa".repeat(32),
+        }
+        .encode();
+        let grafted = Envelope::new(
+            content.encode(),
+            original.env.sig.clone(),
+            original.env.cert.clone(),
+            None,
+        )
+        .unwrap()
+        .with_legacy_pruned(Some(original.env.legacy_pruned_hash().unwrap().into()))
+        .unwrap();
+        grafted.verify().unwrap();
+        assert_eq!(grafted.sig, original.env.sig);
+        assert_eq!(grafted.wire_hash(), original.env.wire_hash());
+        assert_eq!(grafted.sealed_kind(), Some(SealedKind::Commit));
+        assert!(grafted.recovery().is_none());
+        let modified = Sequenced {
+            env: grafted,
+            ..original.clone()
+        };
+        SpaceLog::from_events(
+            "sp_upgrade",
+            vec![stored_event(&fixture("genesis")), stored_event(&modified)],
+        )
+        .unwrap();
+        assert_eq!(Sequenced::decode(&modified.encode()).unwrap(), modified);
     }
 
     #[test]
@@ -852,6 +959,29 @@ mod tests {
         .unwrap();
         event.sealed_wire = Some(original_hash);
         assert!(verify_author(&event).is_err());
+    }
+
+    #[test]
+    fn unsigned_invite_is_bounded_before_wire_admission() {
+        let mut env = fixture("genesis").env;
+        let signed_size = env.stored_len();
+        for code in ["0123456789", "abcdefghjk"] {
+            env.invite = Some(code.into());
+            assert!(env.valid_invite());
+            let wire = ClientFrame::Publish { env: env.clone() }.encode();
+            assert!(ClientFrame::decode(&wire).is_ok());
+            assert_eq!(env.retained_len(), signed_size + 10);
+        }
+        env.invite = Some("x".repeat(1024 * 1024 - 1024));
+        assert!(
+            env.verify().is_ok(),
+            "the signature doesn't cover the invite"
+        );
+        let wire = ClientFrame::Publish { env: env.clone() }.encode();
+        assert!(wire.len() < 1024 * 1024, "the attack fits a session frame");
+        assert!(!env.valid_invite());
+        assert!(ClientFrame::decode(&wire).is_err());
+        assert_eq!(env.retained_len(), signed_size + 1024 * 1024 - 1024);
     }
 
     #[test]

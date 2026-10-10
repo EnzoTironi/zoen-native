@@ -21,7 +21,7 @@ use tokio_tungstenite::{tungstenite::Message, MaybeTlsStream, WebSocketStream};
 use zoen_relay::{
     analytics, fanout, limits,
     log::{InviteInfo, LogStore, Reject, Sequencing, StoreError},
-    metrics, ownership, AppState,
+    metrics, AppState,
 };
 
 struct BlockedLog {
@@ -231,7 +231,6 @@ impl TestRelay {
             backup_vault: None,
             backup_settings: Default::default(),
             apple_app_ids: Vec::new(),
-            owner: ownership::NodeOwner::claim_all("read-revocation"),
         });
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
         let address = listener.local_addr().unwrap();

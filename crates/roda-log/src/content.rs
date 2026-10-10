@@ -78,6 +78,10 @@ pub struct Sealed {
     /// Only in a pruned stub (ADR 0026): SHA-256 of the MLS bytes the relay took out.
     #[prost(bytes = "vec", tag = "4")]
     pub data_hash: Vec<u8>,
+    /// Signed reference to an encrypted recovery context blob for the next epoch.
+    /// Kept when the encrypted MLS commit bytes are pruned.
+    #[prost(bytes = "vec", tag = "5")]
+    pub recovery: Vec<u8>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, prost::Enumeration)]
@@ -131,6 +135,7 @@ impl Sealed {
             suite,
             data,
             data_hash: Vec::new(),
+            recovery: Vec::new(),
         }
     }
 

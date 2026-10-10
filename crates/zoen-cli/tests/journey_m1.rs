@@ -156,9 +156,19 @@ async fn offline_writes_flush_after_the_relay_comes_back() {
     w.start_relay();
     let s = w.zoen("bruno", &["sync"]);
     assert!(s.contains("pending=0"), "{s}");
+    let errors: String = rusqlite::Connection::open(w.dir.join("bruno/zoen.sqlite"))
+        .unwrap()
+        .query_row(
+            "SELECT json_group_array(last_error) FROM outbox WHERE last_error IS NOT NULL",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap();
     assert_eq!(
         w.zoen("bruno", &["read", "Ideias"]).trim(),
-        "Bruno: anotar isso"
+        "Bruno: anotar isso",
+        "{s}\noutbox errors: {errors}\nfixture: {}",
+        w.dir.display()
     );
     assert!(!w.zoen("bruno", &["verify"]).contains("BROKEN"));
     assert_eq!(
@@ -299,22 +309,52 @@ async fn photo_background_travels_encrypted() {
         "Bruno has exactly Ana's photo"
     );
 
-    let mut stored = vec![];
-    let mut stack = vec![w.dir.join("blobs")];
-    while let Some(d) = stack.pop() {
-        for e in std::fs::read_dir(&d).unwrap().flatten() {
-            if e.path().is_dir() {
-                stack.push(e.path())
-            } else {
-                stored.push(std::fs::read(e.path()).unwrap())
+    use sha2::{Digest, Sha256};
+    let store = roda_store::Store::open(w.dir.join("ana/zoen.sqlite").to_str().unwrap()).unwrap();
+    let mut photos = Vec::new();
+    let mut contexts = std::collections::HashSet::new();
+    for space in store.space_ids().unwrap() {
+        let events = store.events(&space).unwrap();
+        roda_log::SpaceLog::from_events(space.clone(), events.clone()).unwrap();
+        for event in events {
+            if let roda_types::EventBody::BackgroundSet { background } = event.body {
+                if let Some(media) = background.media {
+                    photos.push(media);
+                }
+            }
+        }
+        for event in w.events_in(&space).await {
+            event.env.verify().unwrap();
+            if let Some(reference) = event
+                .env
+                .recovery()
+                .and_then(roda_log::recovery::RecoveryRef::parse)
+            {
+                contexts.insert(reference.blob);
             }
         }
     }
-    assert_eq!(stored.len(), 1, "one encrypted copy on the relay");
-    let blob = &stored[0];
-    assert!(
-        !blob.windows(21).any(|x| x == b"ZOEN-PLAINTEXT-MARKER"),
-        "the relay never sees the plaintext"
-    );
+    assert_eq!(photos.len(), 1, "one authenticated photo reference");
+    let reference = &photos[0];
+    assert_eq!(reference.sha256, hex::encode(Sha256::digest(&photo)));
+    let address = reference.blob.as_ref().expect("encrypted photo address");
+    let stored = w.blobs();
+    let copies: Vec<_> = stored
+        .iter()
+        .filter(|(_, bytes)| hex::encode(Sha256::digest(bytes)) == *address)
+        .collect();
+    assert_eq!(copies.len(), 1, "one encrypted photo copy on the relay");
+    for (_, bytes) in &stored {
+        let hash = hex::encode(Sha256::digest(bytes));
+        assert!(
+            hash == *address || contexts.contains(&hash),
+            "an unexpected or duplicate photo object: {hash}"
+        );
+        assert!(
+            !bytes.windows(21).any(|x| x == b"ZOEN-PLAINTEXT-MARKER"),
+            "the relay never sees the plaintext"
+        );
+    }
+    let blob = &copies[0].1;
     assert_ne!(blob.len(), photo.len());
 }

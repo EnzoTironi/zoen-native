@@ -15,6 +15,10 @@ path = "src/main.rs"
 name = "log_store"
 harness = false
 
+[[test]]
+name = "ownership"
+harness = false
+
 [features]
 default = []
 # Dev only: download and run a private Postgres so a laptop needs no brew/apt.

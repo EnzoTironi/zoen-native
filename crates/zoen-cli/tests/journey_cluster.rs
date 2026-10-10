@@ -69,7 +69,15 @@ async fn live_traffic_crosses_nodes_through_nats() {
 #[tokio::test]
 async fn without_a_bus_nothing_live_crosses_nodes() {
     let mut w = World::new("nobus").await;
-    let b = two_people_on_two_nodes(&mut w);
+    w.init("ana", "Ana");
+    w.init("bruno", "Bruno");
+    w.zoen("ana", &["dm", "@bruno", "oi Bruno"]);
+    let b = w.start_node();
+    let status = w.zoen_at(b, "bruno", &["status"]);
+    assert!(
+        status.contains(&format!("relay=http://127.0.0.1:{b}")),
+        "{status}"
+    );
 
     let watcher = w.spawn_zoen_at(b, "bruno", &["watch", "--for", "6"]);
     sleep(Duration::from_millis(2500));
@@ -77,6 +85,12 @@ async fn without_a_bus_nothing_live_crosses_nodes() {
     let out = watch_output(watcher);
     assert!(!out.contains("is typing"), "{out}");
     assert!(!out.contains("Ana is online"), "{out}");
+    let log = w.relay_log_text();
+    assert_eq!(
+        log.matches("bus=\"local\"").count() + log.matches("bus=local").count(),
+        2,
+        "{log}"
+    );
     assert!(w
         .zoen_at(b, "bruno", &["read", "@ana"])
         .contains("Ana: oi Bruno"));
