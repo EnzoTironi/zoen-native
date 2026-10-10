@@ -12,6 +12,7 @@ import {
   type InboxFilter,
 } from './inbox';
 import { SampleActivity } from './activity';
+import { SampleChatPins } from './pins';
 import '@zoen/ui/shell.css';
 import './preview.css';
 
@@ -295,7 +296,7 @@ function DestinationContent({
 function Preview() {
   const [destination, setDestination] = useState<Destination>('chats');
   const [chats, setChats] = useState(sampleChats);
-  const [selectedId, setSelectedId] = useState('studio');
+  const [selectedId, setSelectedId] = useState('marina');
   const [query, setQuery] = useState('');
   const [filter, setFilter] = useState<InboxFilter>('all');
   const [theme, setTheme] = useState<ShellTheme>(readTheme);
@@ -358,6 +359,7 @@ function Preview() {
       title={destination === 'chats' ? (selected?.title ?? 'Chats') : ''}
       onNewChat={newChat}
       sidebarFilters={<InboxFilters selected={filter} onChange={setFilter} />}
+      pinnedContent={destination === 'chats' && selected?.id === 'marina' && !query.trim() ? <SampleChatPins /> : undefined}
       headerActions={
         destination === 'chats' ? (
           <span className="preview-label" aria-label="Local shell preview">

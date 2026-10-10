@@ -172,6 +172,48 @@ body {
   display: flex;
   flex-direction: column;
 }
+.preview-pin-detail {
+  width: min(540px, calc(100% - 32px));
+  max-height: calc(100% - 48px);
+  padding: 24px;
+  border: 1px solid var(--zs-border);
+  border-radius: 24px;
+  background: var(--zs-surface);
+  color: var(--zs-ink);
+  box-shadow: var(--zs-shadow);
+  pointer-events: auto;
+}
+.preview-pin-detail::backdrop {
+  background: #00000040;
+}
+.preview-pin-detail form {
+  float: right;
+}
+.preview-pin-detail form button {
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  border: 1px solid var(--zs-border);
+  border-radius: 50%;
+  background: var(--zs-surface-muted);
+  color: var(--zs-ink);
+  cursor: pointer;
+}
+.preview-pin-detail ul {
+  padding: 0;
+  list-style: none;
+}
+.preview-pin-detail li {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 12px 0;
+  border-bottom: 1px solid var(--zs-border);
+}
+.preview-pin-detail li strong {
+  flex-shrink: 0;
+}
 .preview-messages {
   width: 100%;
   max-width: 780px;

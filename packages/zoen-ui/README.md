@@ -58,6 +58,14 @@ transparent overlay inside the content. It reserves no layout row, so messages
 can scroll behind it. Hosts with their own content heading can omit `title` and
 actions or choose their own initial content inset.
 
+Pass a `ShellPinnedCards` row through `pinnedContent` to hold plan summaries and
+mini-app widgets above the conversation. Each `ShellPinnedCard` takes a title,
+summary, optional illustration, and `onOpen` handler. The row has a transparent
+background and scrolls horizontally on narrow screens; messages scroll beneath
+it. The shell reserves initial reading space for one row of cards. The Marina
+conversation in the preview includes sample plan and countdown cards with local
+detail dialogs; they do not read or edit an authenticated Live Page.
+
 The rail is 64 px and the secondary panel occupies 280 px. Hiding the
 panel returns its width to the content. Below 760 px, the rail stays 64 px and the
 panel opens as a modal drawer. Escape, the close button, the backdrop, and selecting

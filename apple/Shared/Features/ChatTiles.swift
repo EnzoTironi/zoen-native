@@ -10,6 +10,7 @@ import RodaCore
 struct ChatPinStrip: View {
     @Environment(AppModel.self) private var model
     let apps: [ItemDetail]
+    var onOpenItem: (String) -> Void
     var compact = false
     @State private var avail: CGFloat = 402
     /// Jiggle edit mode (long-press a tile): drag to reorder, minus to unpin.
@@ -46,8 +47,11 @@ struct ChatPinStrip: View {
             items: tiles, tileWidth: side, spacing: 10, margin: 12, idPrefix: "pin-tile",
             editing: $editing,
             title: { $0.snap.title },
-            open: { t in Haptics.open(); model.openApp(t.item.id) },
-            openFrom: { t, frame, front in model.flipOpenApp(t.item.id, from: frame, sourceKey: "pin-tile-\(t.id)", front: front) },
+            open: { t in Haptics.open(); open(t.item) },
+            openFrom: { t, frame, front in
+                if t.item.plan != nil { onOpenItem(t.item.id) }
+                else { model.flipOpenApp(t.item.id, from: frame, sourceKey: "pin-tile-\(t.id)", front: front) }
+            },
             move: { ids in model.setChatTileOrder(ids) },
             remove: { t in model.unpinChatApp(t.item.id) },
             removeTitle: { t in String(localized: "Unpin “\(t.snap.title)” from the top of the chat?") },
@@ -65,7 +69,7 @@ struct ChatPinStrip: View {
         ScrollView(.horizontal) {
             HStack(spacing: 8) {
                 ForEach(tiles) { t in
-                    Button { Haptics.open(); model.openApp(t.item.id) } label: { chip(t.snap) }
+                    Button { Haptics.open(); open(t.item) } label: { chip(t.snap) }
                         .buttonStyle(PressScaleStyle())
                         .menuPreviewShape(.rect(cornerRadius: 18, style: .continuous))
                         .contextMenu { menu(t.item, t.snap) }
@@ -96,9 +100,16 @@ struct ChatPinStrip: View {
     }
 
     @ViewBuilder private func menu(_ item: ItemDetail, _ s: WidgetSnapshot) -> some View {
-        Button { model.openApp(item.id) } label: { Label { Text("Open") } icon: { ZoenGlyph.chevron.menuImage } }
-        ShareLink(item: "\(s.title) · \(s.deepLink)") { Label { Text("Share") } icon: { ZoenGlyph.share.menuImage } }
+        Button { open(item) } label: { Label { Text("Open") } icon: { ZoenGlyph.chevron.menuImage } }
+        ShareLink(item: item.plan == nil ? "\(s.title) · \(s.deepLink)" : "\(s.title) · \(s.detail ?? "")") {
+            Label { Text("Share") } icon: { ZoenGlyph.share.menuImage }
+        }
         Button { withAnimation(.snappy) { model.unpinChatApp(item.id) } } label: { Label { Text("Unpin") } icon: { ZoenGlyph.pin.menuImage } }
+    }
+
+    private func open(_ item: ItemDetail) {
+        if item.plan != nil { onOpenItem(item.id) }
+        else { model.openApp(item.id) }
     }
 }
 
@@ -107,6 +118,14 @@ struct ChatPinStrip: View {
 @MainActor
 enum ChatTiles {
     static func tiles(for item: ItemDetail) -> [WidgetSnapshot] {
+        if let plan = item.plan {
+            let count = plan.sections.flatMap(\.lines).count
+            var snap = WidgetSnapshot(id: item.id, appId: "plan", template: .caption,
+                                      title: item.title, accentHex: "#3D7A28", symbol: "list.bullet",
+                                      art: "notepad", deepLink: "zoen://app/\(item.id)")
+            snap.detail = String(localized: "\(count) items · \(Money.format(plan.totalCents))")
+            return snap.validated().map { [$0] } ?? []
+        }
         guard let app = item.app else { return [] }
         if app.appId == "hike" { return hike(item, app) }
         return WidgetSnapshot.from(item).map { [$0] } ?? []

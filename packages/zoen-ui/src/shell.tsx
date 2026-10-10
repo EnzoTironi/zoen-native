@@ -146,6 +146,28 @@ export interface ShellChatItem<Id extends string = string> {
   readonly unreadCount?: number;
 }
 
+export function ShellPinnedCards({ children, label = 'Pinned cards' }: {
+  readonly children: ReactNode;
+  readonly label?: string;
+}) {
+  return <div className="zs-pinned-cards" role="group" aria-label={label}>{children}</div>;
+}
+
+export function ShellPinnedCard({ title, summary, art, onOpen }: {
+  readonly title: string;
+  readonly summary: string;
+  readonly art?: ReactNode;
+  readonly onOpen: () => void;
+}) {
+  return (
+    <button type="button" className="zs-pinned-card" onClick={onOpen}>
+      <strong>{title}</strong>
+      <span>{summary}</span>
+      {art && <span className="zs-pinned-card-art" aria-hidden="true">{art}</span>}
+    </button>
+  );
+}
+
 export interface ZoenShellProps<
   NavigationId extends string = string,
   ChatId extends string = string,
@@ -168,6 +190,7 @@ export interface ZoenShellProps<
   readonly searchInputRef?: Ref<HTMLInputElement>;
   readonly globalSearchShortcut?: boolean;
   readonly headerActions?: ReactNode;
+  readonly pinnedContent?: ReactNode;
   readonly sidebarFilters?: ReactNode;
   readonly sidebarFooter?: ReactNode;
   readonly emptySidebar?: ReactNode;
@@ -382,6 +405,7 @@ export function ZoenShell<NavigationId extends string, ChatId extends string>({
   searchInputRef,
   globalSearchShortcut = false,
   headerActions,
+  pinnedContent,
   sidebarFilters,
   sidebarFooter,
   emptySidebar = 'No chats to show.',
@@ -675,7 +699,7 @@ export function ZoenShell<NavigationId extends string, ChatId extends string>({
             </nav>
             {sidebarFooter && <div className="zs-sidebar-footer">{sidebarFooter}</div>}
           </aside>
-          <main id={contentId} className="zs-content" tabIndex={-1} inert={modalOpen}>
+          <main id={contentId} className="zs-content" data-pinned={pinnedContent ? 'true' : undefined} tabIndex={-1} inert={modalOpen}>
             {(title || headerActions) && (
               <div className="zs-content-context">
                 {title && (
@@ -686,6 +710,7 @@ export function ZoenShell<NavigationId extends string, ChatId extends string>({
                 {headerActions && <div className="zs-context-actions">{headerActions}</div>}
               </div>
             )}
+            {pinnedContent && <div className="zs-content-pins">{pinnedContent}</div>}
             <div className="zs-content-body">{children}</div>
           </main>
         </div>

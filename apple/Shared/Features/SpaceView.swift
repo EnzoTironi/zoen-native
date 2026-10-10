@@ -9,7 +9,6 @@ struct SpaceView: View {
 
     @State private var entries: [TimelineEntry] = []
     @State private var draft = ""
-    @State private var pinned: ItemDetail?
     @State private var pinnedApps: [ItemDetail] = []
     /// The floating title, plan and widgets reserve room for the initial reading position.
     @State private var chromeHeight: CGFloat = 0
@@ -391,7 +390,6 @@ struct SpaceView: View {
                             removal: .scale(scale: 0.95, anchor: .top).combined(with: .opacity)))
                     }
                 }
-                if let pinned, !headerMenu { PinnedItemBar(item: pinned) { onOpenItem(pinned.id) } }
                 pinnedAppStrip
             }
             .padding(.top, headerTopPadding)
@@ -419,7 +417,7 @@ struct SpaceView: View {
     @ViewBuilder
     private var pinnedAppStrip: some View {
         if !pinnedApps.isEmpty {
-            ChatPinStrip(apps: pinnedApps)
+            ChatPinStrip(apps: pinnedApps, onOpenItem: onOpenItem)
                 .padding(.vertical, 8)
                 .clipped()
                 .transition(.opacity)
@@ -514,10 +512,13 @@ struct SpaceView: View {
 
     private func reload() {
         let new = (try? model.core.timeline(spaceId: spaceId)) ?? []
-        pinned = model.core.items().first { $0.spaceId == spaceId && $0.plan != nil }
+        let plan = model.core.items().first {
+            $0.spaceId == spaceId && $0.plan != nil && !model.chatAppsUnpinned.contains($0.id)
+        }
         // Live mini-apps of this chat, newest first (the hike leads when there is one).
-        let apps = model.liveApps.filter { $0.spaceId == spaceId && $0.app != nil && !model.chatAppsUnpinned.contains($0.id) }
+        let liveApps = model.liveApps.filter { $0.spaceId == spaceId && $0.app != nil && !model.chatAppsUnpinned.contains($0.id) }
             .sorted { ($0.app?.appId == "hike" ? 1 : 0, $0.versions.first?.atMs ?? 0) > ($1.app?.appId == "hike" ? 1 : 0, $1.versions.first?.atMs ?? 0) }
+        let apps = (plan.map { [$0] } ?? []) + liveApps.filter { $0.id != plan?.id }
         let firstLoad = entries.isEmpty
         if apps != pinnedApps {
             if firstLoad || apps.map(\.id) == pinnedApps.map(\.id) {
@@ -557,38 +558,6 @@ struct SpaceView: View {
             }
         }
         if !new.isEmpty { try? model.core.markRead(spaceId: spaceId) }
-    }
-}
-
-/// Item fixado no topo da conversa (poster #015: "Lançamento de outubro").
-struct PinnedItemBar: View {
-    let item: ItemDetail
-    var onOpen: () -> Void
-    var body: some View {
-        Button(action: onOpen) {
-            HStack(spacing: 10) {
-                ZoenIcon(.pin, size: 15).foregroundStyle(Palette.action)
-                VStack(alignment: .leading, spacing: 0) {
-                    Text(item.title).font(.subheadline.weight(.semibold)).foregroundStyle(Palette.textPrimary).lineLimit(1)
-                    Text(meta).font(.caption2).foregroundStyle(Palette.textSecondary).lineLimit(1)
-                }
-                Spacer()
-                ZoenIcon(.chevron, size: 13).foregroundStyle(Palette.textTertiary)
-            }
-            .padding(.horizontal, 14)
-            .padding(.vertical, 8)
-            .glassEffect(.regular.interactive(), in: .rect(cornerRadius: 16))
-            .padding(.horizontal, 12)
-            .padding(.bottom, 4)
-        }
-        .buttonStyle(.plain)
-        .accessibilityLabel("Pinned: \(item.title)")
-    }
-    private var meta: String {
-        let lines = item.plan?.sections.flatMap(\.lines) ?? []
-        let total = lines.reduce(Int64(0)) { $0 + $1.costCents }
-        if lines.isEmpty { return Money.format(total) }
-        return String(localized: "\(lines.count) items · \(Money.format(total))")
     }
 }
 
