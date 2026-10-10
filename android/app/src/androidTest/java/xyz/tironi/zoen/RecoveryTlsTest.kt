@@ -4,19 +4,21 @@ import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import java.io.File
-import java.io.IOException
 import java.net.InetAddress
 import java.security.KeyFactory
 import java.security.KeyStore
 import java.security.cert.CertificateFactory
+import java.security.cert.X509Certificate
 import java.security.spec.PKCS8EncodedKeySpec
 import java.util.UUID
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
 import javax.net.ssl.KeyManagerFactory
 import javax.net.ssl.SSLContext
+import javax.net.ssl.SSLHandshakeException
 import javax.net.ssl.SSLServerSocket
 import javax.net.ssl.SSLSocket
+import javax.net.ssl.X509TrustManager
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
 import org.junit.Assert.*
@@ -47,12 +49,20 @@ class RecoveryTlsTest {
         val tls = SSLContext.getInstance("TLS").apply { init(managers.keyManagers, null, null) }
         val server = tls.serverSocketFactory.createServerSocket(0, 1, InetAddress.getByName("127.0.0.1")) as SSLServerSocket
         server.soTimeout = 10_000
+        server.enabledProtocols = arrayOf("TLSv1.2")
         val executor = Executors.newSingleThreadExecutor()
         val handshake = executor.submit<Boolean> {
             (server.accept() as SSLSocket).use { socket ->
                 socket.soTimeout = 5_000
+                socket.startHandshake()
+            }
+            (server.accept() as SSLSocket).use { socket ->
+                socket.soTimeout = 5_000
                 try { socket.startHandshake(); false }
-                catch (_: IOException) { true }
+                catch (refused: SSLHandshakeException) {
+                    val message = refused.message.orEmpty().lowercase()
+                    "certificate" in message || "unknown_ca" in message || "unknown ca" in message
+                }
             }
         }
         val namespace = "tls-recovery-${UUID.randomUUID()}"
@@ -60,6 +70,21 @@ class RecoveryTlsTest {
         val vault = AndroidSecretVault(context, "$namespace-vault")
         val core = RodaEngine.open(File(folder, "account.sqlite").absolutePath, "en")
         try {
+            val fixtureTrust = object : X509TrustManager {
+                override fun getAcceptedIssuers(): Array<X509Certificate> = arrayOf(certificate as X509Certificate)
+                override fun checkClientTrusted(chain: Array<out X509Certificate>, authType: String) = error("No client certificate")
+                override fun checkServerTrusted(chain: Array<out X509Certificate>, authType: String) {
+                    require(chain.size == 1 && chain[0].encoded.contentEquals(certificate.encoded))
+                    chain[0].checkValidity()
+                }
+            }
+            val control = SSLContext.getInstance("TLS").apply { init(null, arrayOf(fixtureTrust), null) }
+            (control.socketFactory.createSocket("127.0.0.1", server.localPort) as SSLSocket).use { socket ->
+                socket.soTimeout = 5_000
+                socket.enabledProtocols = arrayOf("TLSv1.2")
+                socket.sslParameters = socket.sslParameters.apply { endpointIdentificationAlgorithm = "HTTPS" }
+                socket.startHandshake()
+            }
             assertNull(core.account())
             try {
                 withTimeout(15_000) {
@@ -69,7 +94,7 @@ class RecoveryTlsTest {
             } catch (refused: CoreException.Invalid) {
                 assertTrue(refused.reason, refused.reason.contains("Can't reach the server right now."))
             }
-            assertTrue("The actual TLS handshake must be rejected", handshake.get(10, TimeUnit.SECONDS))
+            assertTrue("The tested TLS fixture must receive a certificate-rejection alert", handshake.get(10, TimeUnit.SECONDS))
             assertNull(core.account())
             Evidence.outputFile("recovery", "untrusted-tls-receipt.txt").writeText(
                 "PASS: restore before sync reached a real loopback TLS server, rejected its untrusted certificate, " +

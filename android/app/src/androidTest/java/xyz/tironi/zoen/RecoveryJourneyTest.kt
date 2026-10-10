@@ -96,8 +96,22 @@ class RecoveryJourneyTest {
             assertTrue(recovered.verifyAll().all { it.valid })
             assertTrue(b.verifyAll().all { it.valid })
             recovered.unlinkDevice(account.deviceId)
+            val lost = open("a")
+            assertTrue(lost.unlock(vaults.getValue("a")))
+            lost.startSync(null)
+            await { lost.connection().error?.contains("unlinked") == true }
+            assertFalse(lost.connection().synced)
+            close("a")
             recovered.backupTurnOff(vaults.getValue("recovered"))
             assertFalse(recovered.backupStatus().enabled)
+            val deleted = open("deleted")
+            try {
+                deleted.restoreBackup(relay, account.handle, secret, vaults.getValue("deleted"))
+                fail("The deleted backup must not restore on a fresh device")
+            } catch (missing: CoreException.Invalid) {
+                assertTrue(missing.reason, missing.reason.contains("We couldn't find a backup"))
+            }
+            assertNull(deleted.account())
             Evidence.outputFile("recovery", "recovery-link-receipt.txt").writeText(
                 "PASS: fresh recovery device, encrypted history, bidirectional peer messages, " +
                     "Keystore reopen, linked history, linked peer messages, old device unlink and backup deletion.\n"

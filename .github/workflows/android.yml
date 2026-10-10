@@ -79,6 +79,10 @@ jobs:
           disable-animations: true
           working-directory: android
           script: |
+            ../scripts/test-android-device.sh --max-workers=4 -Pandroid.testInstrumentationRunnerArguments.class=xyz.tironi.zoen.RecoveryTlsTest
+            mkdir -p app/build/outputs/cold-process-tls
+            cp -R app/build/outputs/androidTest-results app/build/outputs/cold-process-tls/results
+            cp -R app/build/outputs/device-evidence app/build/outputs/cold-process-tls/evidence
             ../scripts/test-android-device.sh --max-workers=4 -Pandroid.testInstrumentationRunnerArguments.zoenRelay=http://10.0.2.2:8787
             python3 ../scripts/test-android-rich-page.py
       - uses: actions/upload-artifact@v4
@@ -90,6 +94,7 @@ jobs:
             android/app/build/reports/
             android/app/build/outputs/androidTest-results/
             android/app/build/outputs/device-evidence/
+            android/app/build/outputs/cold-process-tls/
       - name: Publish native test results
         uses: actions/upload-artifact@v4
         if: always()
