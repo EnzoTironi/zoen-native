@@ -5,7 +5,7 @@
 use std::fmt;
 
 use roda_grants::{evaluate_permission, Policy};
-use roda_log::{agent_owner, Author, Signer};
+use roda_log::{agent_owner, Author, Signer, SpaceLog};
 use roda_mls::Leaf;
 use roda_proto::Sequenced;
 use roda_store::{Store, MAX_MEMORY_IMAGE_BYTES};
@@ -170,6 +170,15 @@ pub struct ReplyFacts {
     frontier: NativeFrontier,
     expires_at_ms: Option<i64>,
     text: Zeroizing<String>,
+}
+
+/// A bounded scan of authenticated native history. The cursor is retained
+/// inside the complete device image, so activation can bind it to run creation.
+pub struct ReplyDiscovery {
+    pub replies: Vec<ReplyFacts>,
+    pub examined: u16,
+    pub complete: bool,
+    pub changed: bool,
 }
 
 impl fmt::Debug for ReplyFacts {
@@ -341,6 +350,93 @@ impl DeviceCore {
 
     pub fn reply(&self, space: &str, trigger: &str, at_ms: i64) -> Result<ReplyFacts> {
         self.extract(space, trigger, at_ms)
+    }
+
+    /// Applied native position only. This is not a current relay head or grant.
+    pub fn retained_head(&self, space: &str) -> Result<Option<Seen>> {
+        if !self.usable {
+            return Err(NativeError::History);
+        }
+        Ok(self.engine.logs.get(space).and_then(SpaceLog::head))
+    }
+
+    pub fn discover_replies(&mut self, space: &str, at_ms: i64) -> Result<ReplyDiscovery> {
+        if !self.usable || space.is_empty() || space.len() > 256 || at_ms < 0 {
+            return Err(NativeError::History);
+        }
+        let key = format!("runtime.reply-scan/1/{space}");
+        let cursor = self
+            .engine
+            .store
+            .meta(&key)
+            .map_err(|_| NativeError::Storage)?;
+        let cursor: Option<Seen> = cursor
+            .map(|value| {
+                if value.len() > 256 {
+                    return Err(NativeError::History);
+                }
+                serde_json::from_str(&value).map_err(|_| NativeError::History)
+            })
+            .transpose()?;
+        let log = self.engine.logs.get(space).ok_or(NativeError::History)?;
+        let from = match &cursor {
+            Some(cursor) => {
+                let index = usize::try_from(cursor.seq).map_err(|_| NativeError::History)?;
+                if log
+                    .events()
+                    .get(index)
+                    .is_none_or(|event| event.seq != cursor.seq || event.hash != cursor.hash)
+                {
+                    return Err(NativeError::History);
+                }
+                index.checked_add(1).ok_or(NativeError::History)?
+            }
+            None => 0,
+        };
+        let mut replies = Vec::new();
+        let mut examined = 0u16;
+        let mut through = cursor;
+        for event in log.events().iter().skip(from).take(MAX_BATCH) {
+            if event.author == self.owner
+                && matches!(
+                    &event.body,
+                    EventBody::MessagePosted {
+                        attaches: None,
+                        reply: None,
+                        ..
+                    }
+                )
+            {
+                match self.extract(space, &event.hash, at_ms) {
+                    Ok(facts) => replies.push(facts),
+                    Err(NativeError::Permission) => {}
+                    Err(error) => return Err(error),
+                }
+            }
+            examined += 1;
+            through = Some(Seen {
+                seq: event.seq,
+                hash: event.hash.clone(),
+            });
+            if replies.len() == 16 {
+                break;
+            }
+        }
+        let complete = through.as_ref() == log.head().as_ref();
+        if examined > 0 {
+            let value = serde_json::to_string(&through.ok_or(NativeError::History)?)
+                .map_err(|_| NativeError::Storage)?;
+            if self.engine.store.set_meta(&key, &value).is_err() {
+                self.usable = false;
+                return Err(NativeError::Storage);
+            }
+        }
+        Ok(ReplyDiscovery {
+            replies,
+            examined,
+            complete,
+            changed: examined > 0,
+        })
     }
 
     pub fn refresh(&self, original: &ReplyIntent, at_ms: i64) -> Result<ReplyFacts> {

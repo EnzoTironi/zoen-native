@@ -24,6 +24,35 @@ pub(crate) fn custody(
 }
 
 pub(crate) async fn provision(runtime: &RuntimeAuthority, agent: &str, device: &str) {
+    assert_eq!(provision_packages(runtime, agent, device).await.len(), 8);
+}
+
+pub(crate) fn add_device(
+    custody: &mut NativeCustody,
+    agent: Identity,
+    owner: Identity,
+    certificate: String,
+    secret: [u8; 32],
+) {
+    let credential = Credential {
+        agent,
+        owner,
+        certificate,
+        secret: Zeroizing::new(secret),
+    };
+    credential.unlocked().unwrap();
+    let principal = credential.principal();
+    assert!(custody
+        .credentials
+        .insert((principal.agent, principal.device), credential)
+        .is_none());
+}
+
+pub(crate) async fn provision_packages(
+    runtime: &RuntimeAuthority,
+    agent: &str,
+    device: &str,
+) -> Vec<Vec<u8>> {
     let custody = runtime.native.as_ref().unwrap();
     let credential = custody.credential(agent, device).unwrap();
     let mut core =
@@ -69,6 +98,41 @@ pub(crate) async fn provision(runtime: &RuntimeAuthority, agent: &str, device: &
         .release_native_device(&principal, &fence)
         .await
         .unwrap();
+    packages
+}
+
+pub(crate) async fn expire_abandoned_stage(runtime: &RuntimeAuthority, agent: &str, device: &str) {
+    // Explicit version-clock fixture cut, not elapsed retention or a wire fault.
+    let trx = runtime.execution.transaction().await.unwrap();
+    let key = runtime
+        .execution
+        .root
+        .pack(&("native-device", agent, device, "stage"));
+    let value = trx.get(&key, false).await.unwrap().unwrap();
+    let mut stage: serde_json::Value = serde_json::from_slice(&value).unwrap();
+    stage["expires"] = serde_json::json!(trx.get_read_version().await.unwrap() - 61_000_000);
+    trx.set(&key, &serde_json::to_vec(&stage).unwrap());
+    trx.commit().await.unwrap();
+    let principal = runtime
+        .native
+        .as_ref()
+        .unwrap()
+        .credential(agent, device)
+        .unwrap()
+        .principal();
+    runtime
+        .execution
+        .collect_native_stage(&principal)
+        .await
+        .unwrap();
+}
+
+pub(crate) async fn reply_original(runtime: &RuntimeAuthority, run: &str) -> (String, String) {
+    super::runs::testing::original(runtime, run).await
+}
+
+pub(crate) async fn reply_fences(runtime: &RuntimeAuthority, run: &str) {
+    super::runs::testing::fences(runtime, run).await;
 }
 
 pub(crate) async fn storage_cuts(runtime: &RuntimeAuthority, agent: &str, device: &str) {

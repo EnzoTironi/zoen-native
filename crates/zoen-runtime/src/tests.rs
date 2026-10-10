@@ -4,6 +4,7 @@ mod failure_cuts;
 mod financial;
 mod http;
 mod journeys;
+mod retained;
 mod stores;
 use super::*;
 use roda_log::{Author, Signer};
@@ -21,18 +22,26 @@ struct World {
     http: http::Provider,
     owner: Author,
     agents: Vec<Author>,
+    agent_roots: Vec<Signer>,
     signed: SignedOwnerPolicy,
     policy_digest: String,
     admin: String,
     database: String,
     config_namespace: String,
     db_url: String,
+    relay_cell: Option<String>,
 }
 impl World {
     async fn new() -> Self {
         Self::with_initial_workers(1, false).await
     }
     async fn with_initial_workers(workers: usize, competing_namespaces: bool) -> Self {
+        Self::build(workers, competing_namespaces, false).await
+    }
+    async fn with_relay() -> Self {
+        Self::build(1, false, true).await
+    }
+    async fn build(workers: usize, competing_namespaces: bool, relay: bool) -> Self {
         let admin = std::env::var("ZOEN_TEST_PG").expect("real Postgres fixture required");
         let database = format!("zoen_authority_{}", &Signer::generate().id()[..16]);
         let mut connection = PgConnection::connect(&admin).await.unwrap();
@@ -55,7 +64,8 @@ impl World {
             } else {
                 namespace.clone()
             };
-            let initial = config(&db_url, &candidate, &http.base);
+            let mut initial = config(&db_url, &candidate, &http.base);
+            initial.relay_cell = relay.then(|| candidate.clone());
             openers.push(tokio::spawn(async move {
                 (candidate, RuntimeAuthority::open(initial).await)
             }));
@@ -84,10 +94,13 @@ impl World {
         let owner = Author::device(&Signer::generate(), Signer::generate());
         register(&runtime.finance.pool, &owner, None, "owner").await;
         let mut agents = Vec::new();
+        let mut agent_roots = Vec::new();
         for handle in ["agent_one", "agent_two"] {
-            let agent = Author::device(&Signer::generate(), Signer::generate());
+            let root = Signer::generate();
+            let agent = Author::device(&root, Signer::generate());
             register(&runtime.finance.pool, &agent, Some(&owner), handle).await;
             agents.push(agent);
+            agent_roots.push(root);
         }
         let (year, month, _, end) = runtime.finance.current_period().await;
         let signed = roda_log::owner_budget::sign(
@@ -116,12 +129,14 @@ impl World {
             http,
             owner,
             agents,
+            agent_roots,
             signed,
             policy_digest,
             admin,
             database,
-            config_namespace: namespace,
+            config_namespace: namespace.clone(),
             db_url,
+            relay_cell: relay.then(|| namespace.clone()),
         }
     }
     async fn step(&self, agent: usize) -> VerifiedStep {
@@ -193,15 +208,9 @@ impl World {
             .unwrap()
     }
     async fn reopen(&self) -> Arc<RuntimeAuthority> {
-        let runtime = Arc::new(
-            RuntimeAuthority::open(config(
-                &self.db_url,
-                &self.config_namespace,
-                &self.http.base,
-            ))
-            .await
-            .unwrap(),
-        );
+        let mut reopened_config = config(&self.db_url, &self.config_namespace, &self.http.base);
+        reopened_config.relay_cell = self.relay_cell.clone();
+        let runtime = Arc::new(RuntimeAuthority::open(reopened_config).await.unwrap());
         // Test continuity retained outside the two store snapshots. This proves
         // process reopening, not a production nonrollback restore witness.
         runtime.continuity.store(true, Ordering::SeqCst);
@@ -243,6 +252,7 @@ fn config(url: &str, namespace: &str, base: &str) -> RuntimeConfig {
         postgres_url: url.into(),
         fdb_cluster_file: std::env::var("FDB_CLUSTER_FILE").ok(),
         namespace: namespace.into(),
+        relay_cell: None,
         evidence_key: [71; 32],
         price: PriceProfile {
             version: "fixture-price-v1".into(),

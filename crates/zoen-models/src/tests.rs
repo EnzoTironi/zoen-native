@@ -225,3 +225,30 @@ fn reply() -> Value {
 mod dispatch;
 mod privacy;
 mod provider;
+
+#[tokio::test]
+async fn preflight_matches_actual_dispatch_without_admission_or_http() {
+    let fixture = Fixture::json(reply()).await;
+    let gateway = ModelGateway::new(config(&fixture.base)).unwrap();
+    let request = request();
+    let authority = TestAuthority::default();
+    let frozen = gateway.preflight(&request).unwrap();
+    assert!(frozen.context == request.context);
+    assert!(frozen.descriptor.encoded_request_bytes <= frozen.descriptor.max_request_bytes);
+    assert_eq!(authority.calls.load(Ordering::SeqCst), 0);
+    assert_eq!(fixture.connections.load(Ordering::SeqCst), 0);
+    gateway.complete(request.clone(), &authority).await.unwrap();
+    assert_eq!(fixture.connections.load(Ordering::SeqCst), 1);
+    assert_eq!(
+        authority
+            .accepted
+            .lock()
+            .unwrap()
+            .get(&request.context.attempt_id),
+        Some(&frozen.request_digest)
+    );
+    let repeated = gateway.preflight(&request).unwrap();
+    assert_eq!(repeated.request_digest, frozen.request_digest);
+    assert_eq!(authority.calls.load(Ordering::SeqCst), 1);
+    assert_eq!(fixture.connections.load(Ordering::SeqCst), 1);
+}

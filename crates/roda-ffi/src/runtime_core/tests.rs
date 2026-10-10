@@ -221,6 +221,56 @@ impl Fixture {
 }
 
 #[test]
+fn bounded_discovery_cursor_survives_complete_image() {
+    let mut fixture = Fixture::new();
+    fixture.grant("discovery-owner-trust", Some(1000));
+    for index in 0..17 {
+        fixture.message(&format!("Retained request {index}"));
+    }
+    let first = fixture.core.discover_replies(SPACE, 400).unwrap();
+    assert_eq!(first.replies.len(), 16);
+    assert!(first.changed && !first.complete && first.examined <= 64);
+    let first_triggers: Vec<_> = first
+        .replies
+        .iter()
+        .map(|facts| facts.intent().trigger().to_string())
+        .collect();
+    let image = fixture.core.image().unwrap();
+    let mut reopened = DeviceCore::restore(image, fixture.credential()).unwrap();
+    let second = reopened.discover_replies(SPACE, 400).unwrap();
+    assert_eq!(second.replies.len(), 1);
+    assert!(second.changed && second.complete);
+    assert!(!first_triggers.contains(&second.replies[0].intent().trigger().to_string()));
+    let repeated = reopened.discover_replies(SPACE, 400).unwrap();
+    assert!(repeated.replies.is_empty() && repeated.complete && !repeated.changed);
+    assert_eq!(repeated.examined, 0);
+}
+
+#[test]
+fn discovery_refuses_cursor_outside_verified_history() {
+    let mut fixture = Fixture::new();
+    fixture.grant("discovery-owner-trust", Some(1000));
+    fixture.message("Actual verified owner request");
+    fixture
+        .core
+        .engine
+        .store
+        .set_meta(
+            &format!("runtime.reply-scan/1/{SPACE}"),
+            &serde_json::to_string(&Seen {
+                seq: u64::MAX,
+                hash: "fabricated".into(),
+            })
+            .unwrap(),
+        )
+        .unwrap();
+    assert!(matches!(
+        fixture.core.discover_replies(SPACE, 400),
+        Err(NativeError::History)
+    ));
+}
+
+#[test]
 fn actual_owner_opening_survives_complete_image_and_pins_original_input() {
     let mut fixture = Fixture::new();
     fixture.grant("explicit-owner-trust", Some(1000));

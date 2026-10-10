@@ -9,7 +9,7 @@ use crate::{
     hash, RuntimeError,
 };
 
-const LEASE_VERSIONS: i64 = 60_000_000;
+pub(super) const LEASE_VERSIONS: i64 = 60_000_000;
 const STAGE_VERSIONS: i64 = 120_000_000;
 const ORPHAN_RETENTION_VERSIONS: i64 = 60_000_000;
 const RETIRED_RETENTION_VERSIONS: i64 = 60_000_000;
@@ -40,8 +40,8 @@ struct Retired {
 // Constructed only after known bounded staging commits, never deserialized.
 #[cfg_attr(test, derive(Clone))]
 pub(super) struct Staged {
-    previous: Option<Root>,
-    root: Root,
+    pub(super) previous: Option<Root>,
+    pub(super) root: Root,
 }
 
 impl Staged {
@@ -52,6 +52,7 @@ impl Staged {
             previous: self.previous.clone(),
             target: self.root.clone(),
             fence: fence.clone(),
+            effects: hash(b"native-root-only/1"),
         }
     }
 }
@@ -71,7 +72,7 @@ fn decode<T: for<'de> Deserialize<'de>>(value: &[u8]) -> Result<T, RuntimeError>
     serde_json::from_slice(value).map_err(|_| RuntimeError::InvalidBinding)
 }
 
-async fn bounded_rows(
+pub(super) async fn bounded_rows(
     trx: &Transaction,
     mut range: foundationdb::RangeOption<'static>,
     max_rows: usize,
@@ -110,7 +111,7 @@ impl Execution {
         ))
     }
 
-    fn native_lease(&self, principal: &Principal) -> Vec<u8> {
+    pub(super) fn native_lease(&self, principal: &Principal) -> Vec<u8> {
         self.root.pack(&(
             "device",
             principal.agent.as_str(),
@@ -136,7 +137,7 @@ impl Execution {
         ))
     }
 
-    fn native_references(&self, root: &Root) -> foundationdb::tuple::Subspace {
+    pub(super) fn native_references(&self, root: &Root) -> foundationdb::tuple::Subspace {
         self.root.subspace(&(
             "native-reference",
             root.context.principal.agent.as_str(),
@@ -145,7 +146,7 @@ impl Execution {
         ))
     }
 
-    async fn native_root(
+    pub(super) async fn native_root(
         &self,
         trx: &Transaction,
         principal: &Principal,
@@ -406,7 +407,7 @@ impl Execution {
         Ok(staged.root)
     }
 
-    async fn native_activation(
+    pub(super) async fn native_activation(
         &self,
         trx: &Transaction,
         staged: &Staged,
