@@ -286,6 +286,30 @@ impl DeviceCore {
         Ok(NativeImage(Zeroizing::new(bytes)))
     }
 
+    /// Retains the matching private OpenMLS material before a host publishes
+    /// these public packages. A host must activate this image before delivery.
+    pub fn key_packages(&mut self, count: usize) -> Result<(Vec<Vec<u8>>, NativeImage)> {
+        if !self.usable {
+            return Err(NativeError::History);
+        }
+        if !(1..=32).contains(&count) {
+            return Err(NativeError::Bounds);
+        }
+        let result = (|| {
+            let packages = self
+                .engine
+                .device()
+                .map_err(|_| NativeError::Credential)?
+                .key_packages(count, false)
+                .map_err(|_| NativeError::Storage)?;
+            Ok((packages, self.image()?))
+        })();
+        if result.is_err() {
+            self.usable = false;
+        }
+        result
+    }
+
     /// Partial ingestion never permits a partial activation: on error the cloud
     /// actor must discard this workspace and reload its committed capsule.
     pub fn ingest(&mut self, batch: Vec<Sequenced>) -> Result<NativeImage> {

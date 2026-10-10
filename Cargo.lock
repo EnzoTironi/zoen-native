@@ -7900,6 +7900,7 @@ dependencies = [
  "foundationdb",
  "getrandom 0.2.17",
  "hex",
+ "roda-ffi",
  "roda-log",
  "roda-types",
  "serde",
@@ -7908,6 +7909,7 @@ dependencies = [
  "sqlx",
  "thiserror 2.0.21",
  "tokio",
+ "zeroize",
  "zoen-models",
  "zoen-relay",
 ]
