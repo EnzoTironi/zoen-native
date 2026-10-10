@@ -1,5 +1,72 @@
 use super::*;
 
+pub(super) async fn other_namespace_cannot_refund_dispatched_hold() {
+    let w = World::new().await;
+    let step = Arc::new(w.step(0).await);
+    w.http.paused.store(true, Ordering::SeqCst);
+    let runtime = w.runtime.clone();
+    let retained = step.clone();
+    let paid = tokio::spawn(async move { runtime.complete_verified(&retained).await });
+    w.http.wait().await;
+    assert_eq!(w.balance().await.held_units, 13);
+
+    let other_namespace = roda_types::new_id("other_authority");
+    let other = RuntimeAuthority::open(config(&w.db_url, &other_namespace, &w.http.base)).await;
+    let rejected = match other {
+        Err(error) => {
+            assert_eq!(error, RuntimeError::DeploymentMismatch);
+            true
+        }
+        Ok(other) => {
+            // Exercise the source-reviewed failure against actual stores, not an
+            // invented closure. Both runtimes have explicit test-only continuity.
+            other.continuity.store(true, Ordering::SeqCst);
+            other.execution.seed(&step, &other.custody).await.unwrap();
+            assert!(other.complete_verified(&step).await.is_err());
+            let binding = other
+                .execution
+                .prepared_binding(&step.request.context.attempt_id, &other.custody)
+                .await
+                .unwrap();
+            let proof = other
+                .execution
+                .close_before_dispatch(&step, &binding, &other.custody, &other)
+                .await
+                .unwrap()
+                .unwrap();
+            assert_eq!(
+                other.finance.release(proof, &other).await.unwrap(),
+                FinancialState::Released
+            );
+            let trx = other.execution.db.create_trx().unwrap();
+            let (begin, end) = other.execution.root.range();
+            trx.clear_range(&begin, &end);
+            trx.commit().await.unwrap();
+            other.finance.pool.close().await;
+            false
+        }
+    };
+    w.http.release.notify_one();
+    let (_, state) = paid.await.unwrap().unwrap();
+    let balance = w.balance().await;
+    let sends = w.http.sends.load(Ordering::SeqCst);
+    println!("cross-namespace observed: rejected={rejected}, paid={state:?}, held={}, spent={}, sends={sends}", balance.held_units, balance.spent_units);
+    w.finish().await;
+    assert!(
+        rejected,
+        "another namespace reopened the same financial database and refunded an admitted call"
+    );
+    assert_eq!(state, FinancialState::Settled { units: 6 });
+    assert_eq!(
+        balance,
+        PeriodBalance {
+            held_units: 0,
+            spent_units: 6
+        }
+    );
+    assert_eq!(sends, 1);
+}
+
 pub(super) async fn expired_policy_cannot_finish_admission() {
     let mut w = World::new().await;
     let now: i64 =

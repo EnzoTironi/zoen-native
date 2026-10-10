@@ -97,6 +97,54 @@ impl Finance {
                 .await?,
         })
     }
+    pub async fn bind_deployment(
+        &self,
+        namespace: &str,
+        key_digest: &str,
+        db: &foundationdb::Database,
+        root: &foundationdb::tuple::Subspace,
+    ) -> Result<String, RuntimeError> {
+        let mut tx = self.begin().await?;
+        // Serialize only startup pairing. Ordinary finance and HTTP calls do
+        // not take this table lock. Both store commits must be known successes.
+        sqlx::query("LOCK TABLE runtime_deployment_binding IN EXCLUSIVE MODE")
+            .execute(&mut *tx)
+            .await?;
+        let old: Option<(String, String, String)> = sqlx::query_as(
+            "SELECT namespace,key_digest,witness FROM runtime_deployment_binding WHERE singleton",
+        )
+        .fetch_optional(&mut *tx)
+        .await?;
+        let witness = if let Some((old_namespace, old_key, witness)) = old {
+            if old_namespace != namespace || old_key != key_digest {
+                return Err(RuntimeError::DeploymentMismatch);
+            }
+            crate::execution::Execution::verify_deployment(db, root, &witness).await?;
+            witness
+        } else {
+            sqlx::query("LOCK TABLE runtime_attempts IN SHARE MODE")
+                .execute(&mut *tx)
+                .await?;
+            let retained: bool =
+                sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM runtime_attempts)")
+                    .fetch_one(&mut *tx)
+                    .await?;
+            if retained {
+                return Err(RuntimeError::DeploymentMismatch);
+            }
+            let mut bytes = [0; 32];
+            getrandom::getrandom(&mut bytes).map_err(|_| RuntimeError::Unavailable)?;
+            let witness = hex::encode(bytes);
+            crate::execution::Execution::create_deployment(db, root, &witness).await?;
+            sqlx::query("INSERT INTO runtime_deployment_binding(namespace,key_digest,witness) VALUES ($1,$2,$3)")
+                .bind(namespace).bind(key_digest).bind(&witness).execute(&mut *tx).await?;
+            witness
+        };
+        // A failed/unknown SQL commit leaves a possibly orphaned FDB marker.
+        // Open never adopts an orphan, creates a second pairing or grants work.
+        tx.commit().await?;
+        Ok(witness)
+    }
     async fn begin(&self) -> Result<Transaction<'static, Postgres>, RuntimeError> {
         let mut tx = self.pool.begin().await?;
         sqlx::query("SELECT set_config('lock_timeout','2s',true),set_config('statement_timeout','2s',true),set_config('idle_in_transaction_session_timeout','5s',true)")

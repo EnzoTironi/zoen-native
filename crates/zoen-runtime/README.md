@@ -5,7 +5,18 @@ dispatch protocol. Public `run_model` and `cancel_model` remain closed with
 `CoreAuthorityUnavailable` until they load a genuine retained certified MLS/core
 step. Verified steps have no public constructor, deserializer or injected verifier.
 The host owns the process-wide FoundationDB network. Apply the relay migrations,
-including `0025_model_financial_authority.sql`, before opening the library.
+including `0025_model_financial_authority.sql` and
+`0026_runtime_deployment_binding.sql`, before opening the library.
+
+One Postgres financial database is paired with one execution namespace and
+evidence-key fingerprint. An immutable SQL singleton and an independent FDB
+marker retain that pairing. Open refuses another namespace/key, a missing or
+different FDB marker, or any unbound retained attempts. Every execution
+transaction reads the pinned marker with conflicts. Initial pairing requires
+empty stores and known bounded commits; an orphan after an uncertain commit
+needs explicit reconciliation and is never silently adopted. Matching workers
+can reopen concurrently. This marker identifies stores only: it does not prove
+nonrollback continuity or permit paid work/refunds after restore.
 
 ## Dispatch and finance
 
@@ -75,6 +86,13 @@ unavailability, reconciliation, out-of-order acknowledgements, declared restore
 refusal and sealed-store canaries. Suppressed acknowledgements follow actual
 commits; they do not prove DB wire-level commit-unknown behavior. Declared restore
 tests do not detect rollback automatically.
+
+Store-pairing journeys reproduce the unsafe cross-namespace refund with real
+paused HTTP, then verify the rejection and complete charge. Concurrent initial
+opens and reopens, changed keys/markers, immutable SQL pairing, unbound legacy
+attempts, and an actual deferred SQL commit failure are exercised. That failure
+leaves the independently committed FDB marker orphaned and closed. It is a real
+commit rejection, not DB wire-level commit-unknown testing.
 
 The real core/MLS loader, chunked device capsule and custody, worker/JetStream
 recovery, typed tool approval/resume, signed output/usage, external continuity

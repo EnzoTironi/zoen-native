@@ -1,4 +1,5 @@
 //! Real service primitives; seeded core scopes are not certified MLS integration.
+mod deployment;
 mod failure_cuts;
 mod financial;
 mod http;
@@ -29,6 +30,9 @@ struct World {
 }
 impl World {
     async fn new() -> Self {
+        Self::with_initial_workers(1, false).await
+    }
+    async fn with_initial_workers(workers: usize, competing_namespaces: bool) -> Self {
         let admin = std::env::var("ZOEN_TEST_PG").expect("real Postgres fixture required");
         let database = format!("zoen_authority_{}", &Signer::generate().id()[..16]);
         let mut connection = PgConnection::connect(&admin).await.unwrap();
@@ -44,11 +48,38 @@ impl World {
             .unwrap();
         let http = http::Provider::new().await;
         let namespace = roda_types::new_id("authority");
-        let runtime = Arc::new(
-            RuntimeAuthority::open(config(&db_url, &namespace, &http.base))
-                .await
-                .unwrap(),
+        let mut openers = Vec::new();
+        for _ in 0..workers {
+            let candidate = if competing_namespaces {
+                roda_types::new_id("authority")
+            } else {
+                namespace.clone()
+            };
+            let initial = config(&db_url, &candidate, &http.base);
+            openers.push(tokio::spawn(async move {
+                (candidate, RuntimeAuthority::open(initial).await)
+            }));
+        }
+        let mut successful = Vec::new();
+        for opener in openers {
+            let (candidate, result) = opener.await.unwrap();
+            match result {
+                Ok(runtime) => successful.push((candidate, runtime)),
+                Err(error) => {
+                    assert!(competing_namespaces);
+                    assert_eq!(error, RuntimeError::DeploymentMismatch);
+                }
+            }
+        }
+        assert_eq!(
+            successful.len(),
+            if competing_namespaces { 1 } else { workers }
         );
+        let (namespace, runtime) = successful.remove(0);
+        let runtime = Arc::new(runtime);
+        for (_, worker) in successful {
+            worker.finance.pool.close().await;
+        }
         pool.close().await;
         let owner = Author::device(&Signer::generate(), Signer::generate());
         register(&runtime.finance.pool, &owner, None, "owner").await;

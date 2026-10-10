@@ -1,5 +1,23 @@
 use super::*;
 pub(super) async fn run() {
+    failure_cuts::other_namespace_cannot_refund_dispatched_hold().await;
+    println!("authority journey: another FDB namespace cannot refund an in-flight paid hold PASS");
+    deployment::matching_workers_and_immutable_pairing().await;
+    println!(
+        "authority journey: matching workers reopen, immutable pairing refuses changed keys PASS"
+    );
+    deployment::changed_marker_closes_open_and_execution().await;
+    println!(
+        "authority journey: missing or changed FDB pairing refuses open, dispatch and closure PASS"
+    );
+    deployment::orphaned_marker_is_not_adopted().await;
+    println!("authority journey: orphaned FDB pairing is not silently adopted by SQL PASS");
+    deployment::unbound_attempts_cannot_be_reassigned().await;
+    println!(
+        "authority journey: unbound retained SQL attempts cannot be assigned a new FDB store PASS"
+    );
+    deployment::failed_initial_sql_commit_keeps_orphan_closed().await;
+    println!("authority journey: failed initial SQL commit leaves FDB pairing orphan closed PASS");
     let w = World::new().await;
     let step = w.step(0).await;
     assert_eq!(

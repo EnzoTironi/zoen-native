@@ -40,6 +40,8 @@ pub enum RuntimeError {
     InvalidPolicy,
     #[error("unsupported finite price profile")]
     InvalidProfile,
+    #[error("runtime deployment does not match the financial database")]
+    DeploymentMismatch,
     #[error("conflicting immutable binding")]
     InvalidBinding,
     #[error("runtime authority denied")]
@@ -112,15 +114,17 @@ impl RuntimeAuthority {
         let db = Arc::new(Database::new(config.fdb_cluster_file.as_deref())?);
         let gateway =
             ModelGateway::new(config.gateway).map_err(|_| RuntimeError::InvalidProfile)?;
+        let finance = finance::Finance::connect(&config.postgres_url).await?;
+        let root = Subspace::from_bytes(foundationdb::tuple::pack(&(
+            "zoen-runtime-v1",
+            config.namespace.as_str(),
+        )));
+        let witness = finance
+            .bind_deployment(&config.namespace, &hash(&config.evidence_key), &db, &root)
+            .await?;
         Ok(Self {
-            finance: finance::Finance::connect(&config.postgres_url).await?,
-            execution: execution::Execution::new(
-                db,
-                Subspace::from_bytes(foundationdb::tuple::pack(&(
-                    "zoen-runtime-v1",
-                    config.namespace.as_str(),
-                ))),
-            ),
+            finance,
+            execution: execution::Execution::new(db, root, witness),
             custody: custody::Custody::new(config.evidence_key, config.namespace),
             gateway,
             price: config.price,
@@ -387,6 +391,7 @@ impl DispatchAuthority for Session<'_> {
             RuntimeError::Denied
             | RuntimeError::OverBudget
             | RuntimeError::InvalidBinding
+            | RuntimeError::DeploymentMismatch
             | RuntimeError::InvalidPolicy
             | RuntimeError::InvalidProfile => AdmissionError::Denied,
             _ => AdmissionError::Unavailable,
