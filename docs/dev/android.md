@@ -1,6 +1,6 @@
 # Android verification
 
-The port uses Kotlin/Compose and the real Rust JNI library. The [product review](android-product-review.md) records the current visual and navigation corrections against the SwiftUI source. The earlier engine and lifecycle record below covers source `1753725`, including shared `main` at `893ab99`. [PR 41 checks](https://github.com/EnzoTironi/zoen-native/pull/41/checks) publish full Rust and Android 9/15 results for the current PR head. Hardware requirements and the public relay release dependency are recorded separately.
+The port uses Kotlin/Compose and the real Rust JNI library. The [current native experience and upstream references](android-native-experience.md) record procedural artwork, platform haptics, reduced motion, reading behavior and current iOS/backend commits. The [product review](android-product-review.md) retains the earlier corrections. The verification sections below are historical records of their named commits. [PR 41 checks](https://github.com/EnzoTironi/zoen-native/pull/41/checks) publish full Rust and Android 9/15 results for the current PR head. Hardware requirements and the public relay release dependency are recorded separately.
 
 ## Product correction — 2026-10-10
 

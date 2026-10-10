@@ -42,19 +42,24 @@ class NativeExperienceTest {
             ZoenTheme { ChatScreen(model, state.copy(keyMissing = locked), space, {}, {}) }
         }
         val text = "A real signed send with platform feedback"
-        compose.onNodeWithTag("composer").performTextInput(text)
+        compose.onNodeWithTag("composer").performClick().performTextReplacement(text)
+        compose.onNodeWithTag("composer").assertTextEquals(text)
+        compose.onNodeWithTag("send").assertIsEnabled()
         fun sends() = shell("logcat -d -v brief -s ZoenFeedback:D *:S").lineSequence().count { "Send effect=" in it }
         val before = sends()
         compose.runOnIdle { locked = true }
         compose.onNodeWithTag("send").assertIsNotEnabled()
+        compose.onNodeWithTag("composer").performImeAction()
+        compose.waitForIdle()
         assertEquals(before, sends())
+        assertFalse(repository.state.value.timelines[space].orEmpty().any { (it.kind as? xyz.tironi.zoen.core.EntryKind.Message)?.text == text })
         compose.runOnIdle { locked = false }
         compose.onNodeWithTag("send").performClick()
         compose.waitUntil(10_000) { repository.state.value.timelines[space].orEmpty().any { (it.kind as? xyz.tironi.zoen.core.EntryKind.Message)?.text == text } }
         compose.waitUntil(2_000) { sends() == before + 1 }
         assertEquals(before + 1, sends())
         assertTrue(runBlocking { repository.query { it.verifyLog(space).valid } })
-        Evidence.outputFile("experience", "haptic-dispatch-receipt.txt").writeText("PASS: disabled send requests none; one View.performHapticFeedback after signed storage.\n" + shell("logcat -d -v brief -s ZoenFeedback:D *:S"))
+        Evidence.outputFile("experience", "haptic-dispatch-receipt.txt").writeText("PASS: disabled send and IME send store no message and request no feedback; one View.performHapticFeedback after signed storage.\n" + shell("logcat -d -v brief -s ZoenFeedback:D *:S"))
         compose.waitUntil(10_000) {
             compose.onAllNodesWithTag("composer").fetchSemanticsNodes().singleOrNull()
                 ?.config?.get(androidx.compose.ui.semantics.SemanticsProperties.EditableText)?.text == ""

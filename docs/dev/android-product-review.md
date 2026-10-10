@@ -1,6 +1,6 @@
 # Native Android product review
 
-The first Android pass covered shared-core workflows but changed visible product structure. Passing behavioral tests did not establish visual parity. The current iOS app was built and run on a fresh iPhone simulator for direct comparison with Android. The current runtime and SwiftUI source define the reference; older poster screenshots are historical evidence.
+The first Android pass covered shared-core workflows but changed visible product structure. Passing behavioral tests did not establish visual parity. An iOS build was run on a fresh iPhone simulator for direct comparison with Android. The [current native experience and upstream reference record](android-native-experience.md) supersedes the historical checks below and records the newer iOS reading and unified-inbox changes.
 
 ## Corrections
 
@@ -18,7 +18,7 @@ The first Android pass covered shared-core workflows but changed visible product
 
 ## Original artwork
 
-The approximate Kotlin mascot was removed. Original SwiftUI `Mascot`/`Ink` Canvas frames are exported as transparent PNG and lossless animated WebP, with source and asset hashes in [android-mascot-assets.json](android-mascot-assets.json). Native `ImageDecoder` displays eight-second loops at 12 fps, pauses off the active lifecycle and uses PNG when system animation is disabled. These loops reuse the original artwork and motion; they do not reproduce the unbounded procedural renderer or its stroke-by-stroke entrance. `scripts/android-mascot-export.swift` is compiled alongside the original design system, called from a simulator task, and its Documents export is processed by `scripts/encode-android-mascot.py`. Temporary iOS app changes were restored.
+The app now draws the original mascot and ink glyphs procedurally with Android Canvas and Path. The [art manifest](android-mascot-assets.json) records their original sources. Independent executables run the original Swift equations and export reference vectors for 98 mascot frames and all 35 glyphs; Kotlin geometry tests compare the native rig and brush rendering against those vectors. Motion continues beyond eight seconds, pauses with visibility/lifecycle and honors live reduced motion. Raster loops from the earlier `6b7e450` correction remain review references under `build/`; they are no longer packaged as the app's mascot renderer.
 
 ## Verification of the corrected app
 
@@ -28,7 +28,7 @@ Normal ARM64/x86_64 debug, instrumentation and minified release builds, lint and
 
 Historical source `161c487` passed 53 cases at both viewport sizes. Earlier visual-navigation fixtures failed 51/53 before adapting their real Search/Files paths. CI at `bc0feca` passed 52/53 on Android 15: an accepted touch never triggered the List confirmation. The current MCP harness uses Android's touchscreen command and asserts trusted HTML clicks while retaining native confirmation, origin isolation and signed-state checks. The initial 54-case phone run at `1a15dee` failed launcher pinning because the reported button bounds were below the physical screen during animation. The `0a1b354` follow-up failed a profile tap during keyboard resize. The harness now requires fully visible, stable launcher controls and a dismissed keyboard before the profile CTA. Original deadlines remain unchanged. Failed recordings, screenshots, APKs and logs are retained. The first final phone receipt also exposed an outdated recorder regex expecting 53; the raw native output already passed all 54 and the original parser receipt is preserved.
 
-Current-head CI acceptance requires 54 passing cases on Android 15 and 52 passes with only the two documented HTML-provider skips on Android 9. [PR 41 checks](https://github.com/EnzoTironi/zoen-native/pull/41/checks) publish those results. Native/visual evidence is separate from successful physical model execution and the shared public relay rollout.
+Current-head CI acceptance requires 61 passing cases on Android 15 and 59 passes with only the two documented HTML-provider skips on Android 9, plus a separate cold-process TLS check and formatting repeats. [PR 41 checks](https://github.com/EnzoTironi/zoen-native/pull/41/checks) publish those results. Native/visual evidence is separate from successful physical model execution and the shared public relay rollout.
 
 The `1c91fb8` CI run passed Android 9 (52 passes and the same two provider skips), but Android 15 passed 53/54: the Activity appearance/recreation journey hit a detached `AndroidViewHolder` snapshot callback with a null handler. The mascot's delegated drawable state was being read inside the native view update. The lifecycle follow-up reads its value in composition and passes the completed drawable into the native view; the original journey and all deadlines remain unchanged. The failed XML/logs are retained. Five local baseline repeats did not reproduce this intermittent CI failure, so they are not claimed as a deterministic reproduction. Fresh checks are required for the follow-up.
 

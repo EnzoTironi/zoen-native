@@ -1,6 +1,6 @@
 # Android parity and verification
 
-The completion gate includes the visible product structure and functional coverage of the current Apple app, with Android equivalents for system APIs. A capability is complete only when it is wired into the app and its real behavior has been exercised. Model availability and system permissions are explicit platform conditions, as they are on Apple. Passing builds alone does not establish feature or visual parity. The [product review](android-product-review.md) records corrections against the current SwiftUI source.
+The completion gate includes the visible product structure and functional coverage of the current Apple app, with Android equivalents for system APIs. A capability is complete only when it is wired into the app and its real behavior has been exercised. Model availability and system permissions are explicit platform conditions, as they are on Apple. Passing builds alone does not establish feature or visual parity. The [current native experience and upstream reference record](android-native-experience.md) supersedes the historical source-specific checks below; the [product review](android-product-review.md) preserves the earlier corrections.
 
 ## Work sequence
 

@@ -215,7 +215,7 @@ fun ChatScreen(model: ZoenViewModel, state: AppState, spaceId: String, navigate:
     }
     val sendHaptics = rememberZoenHaptics()
     val send: () -> Unit = {
-        if (draft.isNotBlank() && !sending) {
+        if (draft.isNotBlank() && !sending && !state.keyMissing) {
             val text = draft
             val reply = replyId
             sending = true
@@ -523,6 +523,7 @@ fun ThreadScreen(model: ZoenViewModel, state: AppState, space: String, root: Str
     var replyTo by rememberSaveable(root) { mutableStateOf(root) }
     var sending by remember { mutableStateOf(false) }
     val threadHaptics = rememberZoenHaptics()
+    val motion = rememberMotionEnabled()
     Scaffold(topBar = { ScreenBar(stringResource(R.string.replies), back) }, bottomBar = {
         Row(Modifier.navigationBarsPadding().imePadding().padding(16.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             OutlinedTextField(text, { text = it }, Modifier.weight(1f), placeholder = { Text(stringResource(R.string.reply)) }, maxLines = 4,
@@ -531,12 +532,12 @@ fun ThreadScreen(model: ZoenViewModel, state: AppState, space: String, root: Str
             else FilledIconButton(onClick = {
                 val draft = text; val target = replyTo; sending = true
                 model.launch { try { model.send(space, draft, target, true, onStored = { threadHaptics.perform(ZoenFeedback.Send) }); if (text == draft) text = ""; replyTo = root } finally { sending = false } }
-            }, enabled = text.isNotBlank() && !sending) { Icon(Icons.AutoMirrored.Rounded.Send, stringResource(R.string.send)) }
+            }, enabled = text.isNotBlank() && !sending && !state.keyMissing) { ZoenIcon(ZoenGlyph.Send, stringResource(R.string.send)) }
         }
     }) { padding -> LazyColumn(Modifier.padding(padding), state = list, contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
         items(entries, key = { it.id }) { entry -> TimelineRow(model, entry, navigate, onReply = { replyTo = entry.id }, onThread = null, onQuote = { id ->
             val index = entries.indexOfFirst { it.id == id }
-            if (index >= 0) model.launch { list.animateScrollToItem(index) } else navigate(Chat(space, id))
+            if (index >= 0) model.launch { if (motion) list.animateScrollToItem(index) else list.scrollToItem(index) } else navigate(Chat(space, id))
         }) }
     } }
 }

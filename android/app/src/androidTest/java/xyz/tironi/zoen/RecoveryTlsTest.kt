@@ -62,7 +62,8 @@ class RecoveryTlsTest {
                 socket.soTimeout = 5_000
                 try { socket.startHandshake(); false }
                 catch (refused: SSLHandshakeException) {
-                    val message = refused.message.orEmpty().lowercase()
+                    val message = generateSequence<Throwable>(refused) { it.cause }
+                        .joinToString("\n") { it.toString() }.lowercase()
                     refusedAlert = message
                     "certificate" in message || "unknown_ca" in message || "unknown ca" in message
                 }
@@ -102,7 +103,7 @@ class RecoveryTlsTest {
             assertNull(core.account())
             Evidence.outputFile("recovery", "untrusted-tls-receipt.txt").writeText(
                 "PASS: restore before sync reached a real loopback TLS server, rejected its untrusted certificate, " +
-                    "returned the typed error and left the device without an account.\n"
+                    "returned the typed error and left the device without an account.\nServer alert:\n$refusedAlert\n"
             )
         } finally {
             server.close()
