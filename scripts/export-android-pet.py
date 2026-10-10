@@ -1,9 +1,13 @@
 #!/usr/bin/env python3
 """Export the original Swift pet pixels and palette for native Android rendering."""
 import hashlib
+import argparse
 from pathlib import Path
 import re
 root = Path(__file__).resolve().parents[1]
+parser = argparse.ArgumentParser(description=__doc__)
+parser.add_argument('--check', action='store_true', help='Verify generated pixels without rewriting them')
+args = parser.parse_args()
 source = root / 'apple/Shared/Apps/Native/PetViews.swift'
 text = source.read_text().split('struct PetSprite:', 1)[0]
 def rows(name):
@@ -28,5 +32,10 @@ lines += ["        '" + key + "' to 0xFF" + value.upper() + 'L,' for key, value 
 lines += ['    )', '    private fun eyesClosed(rows: List<String>) = rows.mapIndexed { y, row ->',
     '        when (y) { 6 -> row.replace(\'E\', \'G\'); 7 -> row.replace(\'E\', \'O\').replace(\'H\', \'O\'); else -> row }', '    }', '}', '']
 target = root / 'android/app/src/main/java/xyz/tironi/zoen/ui/GeneratedPetArt.kt'
-target.write_text('\n'.join(lines))
+generated = '\n'.join(lines)
+if args.check:
+    if not target.is_file() or target.read_text() != generated:
+        raise SystemExit('Original pet pixels changed; run scripts/export-android-pet.py and review the native rendering')
+else:
+    target.write_text(generated)
 print(str(target.relative_to(root)))

@@ -172,6 +172,15 @@ for fixture in ["ink-swift-reference.json.gz", "ink-icons-swift-reference.json.g
             source = subprocess.run(["git", "show", refs[name] + ":" + path], cwd=root, capture_output=True, check=True).stdout
             hashes[name] = hashlib.sha256(source).hexdigest()
         sources[path] = {"fixture_sha256": expected, "upstream_sha256": hashes, "matches": all(value == expected for value in hashes.values())}
+pet_source = "apple/Shared/Apps/Native/PetViews.swift"
+pet_expected = re.search(r'const val sourceSha256 = "([a-f0-9]{64})"',
+                        (root / "android/app/src/main/java/xyz/tironi/zoen/ui/GeneratedPetArt.kt").read_text())[1]
+pet_hashes = {name: hashlib.sha256(subprocess.run(["git", "show", refs[name] + ":" + pet_source], cwd=root,
+              capture_output=True, check=True).stdout).hexdigest() for name in ["main", *reviewed_ios]}
+sources[pet_source] = {"fixture_sha256": pet_expected, "upstream_sha256": pet_hashes,
+                       "matches": all(value == pet_expected for value in pet_hashes.values())}
+pet_generated = subprocess.run(["python3", str(root / "scripts/export-android-pet.py"), "--check"],
+                               cwd=root, capture_output=True, text=True)
 
 report = {
     "checked_at_utc": datetime.datetime.now(datetime.timezone.utc).isoformat(),
@@ -196,6 +205,7 @@ report = {
         "integration_requirement": "Retain the Android branch's shared-core additions when merging newer upstream work; an unmerged candidate does not yet contain them.",
     },
     "original_art_sources": sources,
+    "generated_pet_matches_original_source": pet_generated.returncode == 0,
     "ios_review_behaviors_adapted": ["unified inbox with kind filters", "preserve reading position", "count incoming root messages", "first unread excludes own and system events", "pinned apps outside scrolling history", "pinned plans share validated mini-app cards and local pin controls", "approval cards and list", "four approval gestures with a 4.5-second pre-commit undo window"],
     "pending_backend": {
         "pr": "https://github.com/EnzoTironi/zoen-native/pull/46",
@@ -215,5 +225,5 @@ report = {
 args.output.parent.mkdir(parents=True, exist_ok=True)
 args.output.write_text(json.dumps(report, indent=2) + "\n")
 print(json.dumps({"report": str(args.output), "latest_main_is_ancestor": current_backend, "remote_heads": refs, "art_sources_match": all(value["matches"] for value in sources.values())}, indent=2))
-if not current_backend or not all(value["matches"] for value in sources.values()) or any(ios_changes.values()) or changed_signatures or changed_types or unreviewed_interfaces or incompatible_candidates:
+if not current_backend or not all(value["matches"] for value in sources.values()) or pet_generated.returncode or any(ios_changes.values()) or changed_signatures or changed_types or unreviewed_interfaces or incompatible_candidates:
     raise SystemExit("Upstream changed: integrate main, review the changed Apple flows, verify original art and adapt incompatible facade signatures before claiming parity")
