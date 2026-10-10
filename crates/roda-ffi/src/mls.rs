@@ -492,8 +492,8 @@ impl Engine {
             .ok()
     }
 
-    /// The sealed copy of a queued event: the epoch it was sealed at, and the envelope.
-    fn sealed_copy(&self, e: &Event) -> Option<(u64, Envelope)> {
+    /// The historical sealed copy, without filtering by the group's current epoch.
+    pub(crate) fn sealed_copy(&self, e: &Event) -> Option<(u64, Envelope)> {
         let v = self.store.meta(&sealed_meta(&e.client_id)).ok().flatten()?;
         let mut parts = v.splitn(3, ':');
         let epoch = parts.next()?.parse().ok()?;

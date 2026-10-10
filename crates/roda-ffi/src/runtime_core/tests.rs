@@ -1,14 +1,16 @@
+use super::publication::{MAX_PUBLISH_BYTES, MAX_REPLY_BYTES};
 use super::*;
 use roda_log::{
     chain_hash,
-    content::{Sealed, SealedKind},
+    content::{InnerEvent, Sealed, SealedKind},
     SpaceLog,
 };
-use roda_proto::{Envelope, KeyPackageClaimClock, KeyPackageRecord};
+use roda_proto::{ClientFrame, Envelope, KeyPackageClaimClock, KeyPackageRecord};
 
 const SPACE: &str = "certified-owner-agent-direct";
 
 struct Fixture {
+    space: String,
     owner: Engine,
     core: DeviceCore,
     owner_profile: Identity,
@@ -58,6 +60,10 @@ impl Fixture {
     }
 
     fn new() -> Self {
+        Self::new_in(SPACE)
+    }
+
+    fn new_in(space_id: &str) -> Self {
         let owner_root = Signer::generate();
         let owner_author = Author::device(&owner_root, Signer::generate());
         let owner_profile = profile(&owner_root, IdentityKind::Person);
@@ -100,6 +106,7 @@ impl Fixture {
             .init_profile(&agent_profile.id, &agent_profile.name)
             .unwrap();
         let mut fixture = Self {
+            space: space_id.into(),
             owner,
             core,
             owner_profile,
@@ -126,10 +133,10 @@ impl Fixture {
             }],
             std::slice::from_ref(&fixture.agent_profile.id),
         );
-        fixture.owner.create_mls_group(SPACE).unwrap();
+        fixture.owner.create_mls_group(space_id).unwrap();
         let clock = KeyPackageClaimClock::from_server_ms(crate::engine::now_ms()).unwrap();
         let (space, targets, operation) = fixture.owner.mls_to_claim(Some(clock)).unwrap().unwrap();
-        assert_eq!(space, SPACE);
+        assert_eq!(space, space_id);
         assert_eq!(targets, vec![fixture.agent_profile.id.clone()]);
         let package = fixture
             .core
@@ -140,7 +147,7 @@ impl Fixture {
             .unwrap()
             .remove(0);
         fixture.owner.mls_claimed(
-            SPACE,
+            space_id,
             &operation,
             Ok(vec![KeyPackageRecord {
                 identity: fixture.agent_profile.id.clone(),
@@ -163,14 +170,14 @@ impl Fixture {
                 assert!(handshakes < 12);
             }
         }
-        assert!(fixture.core.engine.ready_epoch(SPACE).is_some());
+        assert!(fixture.core.engine.ready_epoch(space_id).is_some());
         fixture
     }
 
     fn clear(&mut self, body: EventBody) -> String {
         let author = self.owner.net.author.as_ref().unwrap();
-        let seen = self.owner.logs.get(SPACE).and_then(SpaceLog::head);
-        let event = author.sign_event(SPACE, &new_id("clear"), 100, seen, body);
+        let seen = self.owner.logs.get(&self.space).and_then(SpaceLog::head);
+        let event = author.sign_event(&self.space, &new_id("clear"), 100, seen, body);
         let frame = ordered(&self.owner, Envelope::plain(&event));
         assert_eq!(self.owner.ingest(frame.clone()), Ingest::Applied);
         self.core.ingest(vec![frame.clone()]).unwrap();
@@ -180,7 +187,7 @@ impl Fixture {
     fn encrypted(&mut self, body: EventBody, at_ms: i64) -> String {
         let author = self.owner.net.author.clone().unwrap();
         self.owner
-            .append_synced(SPACE, &author, at_ms, body)
+            .append_synced(&self.space, &author, at_ms, body)
             .unwrap();
         self.owner.mls_seal_outbox().unwrap();
         let frames = self.owner.outbox_envelopes();
@@ -198,7 +205,7 @@ impl Fixture {
                     id: id.into(),
                     grantor: self.owner_profile.id.clone(),
                     grantee: Some(self.agent_profile.id.clone()),
-                    scope: GrantScope::Space(SPACE.into()),
+                    scope: GrantScope::Space(self.space.clone()),
                     capability: Capability::Trust(TrustLevel::Listen),
                     expires_at_ms: expiry,
                 },
@@ -244,6 +251,1013 @@ fn bounded_discovery_cursor_survives_complete_image() {
     let repeated = reopened.discover_replies(SPACE, 400).unwrap();
     assert!(repeated.replies.is_empty() && repeated.complete && !repeated.changed);
     assert_eq!(repeated.examined, 0);
+}
+
+#[test]
+fn prepared_reply_preserves_exact_native_outbox_through_cold_restore_and_confirmation() {
+    let mut fixture = Fixture::new();
+    fixture.grant("publication-owner-trust", Some(1000));
+    let trigger = fixture.message("Original reply request");
+    let facts = fixture.core.reply(SPACE, &trigger, 400).unwrap();
+    let original = facts.intent().clone();
+    let frontier = facts.frontier().clone();
+    let prepared = fixture
+        .core
+        .prepare_reply(&original, "Retained model result\n", 500)
+        .unwrap();
+    assert_eq!(prepared.facts().intent(), &original);
+    assert_eq!(prepared.facts().frontier(), &frontier);
+    assert_eq!(prepared.facts().expires_at_ms(), Some(1000));
+    let envelope = prepared.envelope().clone();
+    envelope.verify().unwrap();
+    assert!(envelope.is_sealed() && !envelope.is_pruned());
+    assert_eq!(envelope.author(), fixture.agent_profile.id);
+    assert_eq!(envelope.device(), Some(fixture.agent_device.id().as_str()));
+    assert_eq!(envelope.cert.as_ref(), Some(&fixture.agent_cert));
+    let wire = ClientFrame::Publish {
+        env: envelope.clone(),
+    }
+    .encode();
+    let mut cold = DeviceCore::restore(
+        NativeImage::decode_bounded(prepared.image().as_bytes().to_vec()).unwrap(),
+        fixture.credential(),
+    )
+    .unwrap();
+    let pending = cold.engine.store.outbox().unwrap();
+    assert_eq!(pending.len(), 1);
+    assert_eq!(pending[0].event.client_id, envelope.client_id());
+    assert_eq!(
+        roda_log::content_hash_of(&pending[0].event),
+        prepared.event_digest()
+    );
+    assert!(matches!(
+        &pending[0].event.body,
+        EventBody::MessagePosted { message, text, attaches: None, reply: None }
+            if message == prepared.message() && text == "Retained model result\n"
+    ));
+    assert_eq!(cold.engine.outbox_envelopes(), vec![envelope.clone()]);
+    assert_eq!(
+        ClientFrame::Publish {
+            env: cold.engine.outbox_envelopes().remove(0)
+        }
+        .encode(),
+        wire
+    );
+    let frame = ordered(&fixture.owner, envelope);
+    assert_eq!(fixture.owner.ingest(frame.clone()), Ingest::Applied);
+    let received = fixture.owner.logs[SPACE].events().last().unwrap();
+    assert!(matches!(
+        &received.body,
+        EventBody::MessagePosted { message, text, attaches: None, reply: None }
+            if message == prepared.message() && text == "Retained model result\n"
+    ));
+    cold.ingest(vec![frame.clone()]).unwrap();
+    assert_eq!(cold.engine.store.outbox_len().unwrap(), 0);
+    assert_eq!(cold.retained_head(SPACE).unwrap().unwrap().hash, frame.hash);
+    assert!(cold.engine.logs[SPACE]
+        .events()
+        .iter()
+        .all(|event| !matches!(event.body, EventBody::UsageRecorded { .. })));
+    println!("JOURNEY prepared reply keeps certified sealed wire and own pending effect in complete cold image; actual accepted echo clears outbox without native usage charge");
+}
+
+fn colliding_native_reply(fixture: &Fixture, prepared: &PreparedReply) -> Envelope {
+    let fork = DeviceCore::restore(
+        NativeImage::decode_bounded(prepared.image().as_bytes().to_vec()).unwrap(),
+        fixture.credential(),
+    )
+    .unwrap();
+    let original = prepared.envelope();
+    let author = fork.engine.net.author.as_ref().unwrap();
+    let event = author.sign_event(
+        SPACE,
+        original.client_id(),
+        original.at_ms(),
+        original.seen(),
+        EventBody::MessagePosted {
+            message: new_id("different-message"),
+            text: "Different native result".into(),
+            attaches: None,
+            reply: None,
+        },
+    );
+    let bytes = fork
+        .engine
+        .device()
+        .unwrap()
+        .seal(
+            SPACE,
+            &InnerEvent {
+                content: event.content,
+                sig: event.sig,
+            }
+            .encode(),
+        )
+        .unwrap();
+    Envelope::sealed(
+        author,
+        SPACE,
+        original.client_id(),
+        original.at_ms(),
+        original.seen().as_ref(),
+        Sealed::new(SealedKind::Application, roda_mls::SUITE_ID, bytes),
+    )
+}
+
+#[test]
+fn generic_ingest_refuses_colliding_ciphertext_plaintext_pruning_and_changed_header() {
+    for case in ["ciphertext", "plaintext", "pruned", "timestamp"] {
+        let mut fixture = Fixture::new();
+        fixture.grant("echo-original-trust", None);
+        let trigger = fixture.message("Original source request");
+        let original = fixture
+            .core
+            .reply(SPACE, &trigger, 400)
+            .unwrap()
+            .intent()
+            .clone();
+        let prepared = fixture
+            .core
+            .prepare_reply(&original, "Original native result", 500)
+            .unwrap();
+        let committed = prepared.image().as_bytes().to_vec();
+        let expected = prepared.envelope().clone();
+        let author = fixture.core.engine.net.author.as_ref().unwrap();
+        let envelope = match case {
+            "ciphertext" => colliding_native_reply(&fixture, &prepared),
+            "plaintext" => Envelope::plain(
+                &fixture
+                    .core
+                    .engine
+                    .store
+                    .outbox_get(expected.client_id())
+                    .unwrap()
+                    .unwrap(),
+            ),
+            "pruned" => expected.pruned().unwrap(),
+            "timestamp" => Envelope::sealed(
+                author,
+                SPACE,
+                expected.client_id(),
+                expected.at_ms() + 1,
+                expected.seen().as_ref(),
+                Sealed::new(
+                    SealedKind::Application,
+                    roda_mls::SUITE_ID,
+                    expected.sealed_data().unwrap().1.to_vec(),
+                ),
+            ),
+            _ => unreachable!(),
+        };
+        envelope.verify().unwrap();
+        assert_eq!(envelope.client_id(), expected.client_id());
+        assert_eq!(envelope.author(), expected.author());
+        assert_eq!(envelope.device(), expected.device());
+        assert_ne!(envelope, expected);
+        if case == "pruned" {
+            assert_eq!(envelope.wire_hash(), expected.wire_hash());
+        }
+        let frame = ordered(&fixture.owner, envelope);
+        if case == "ciphertext" {
+            assert_eq!(fixture.owner.ingest(frame.clone()), Ingest::Applied);
+            let actual = fixture.owner.logs[SPACE].events().last().unwrap();
+            assert!(
+                matches!(&actual.body, EventBody::MessagePosted { text, .. } if text == "Different native result")
+            );
+            assert!(crate::mls_opening::opened_leaf(&fixture.owner.store, actual).is_some());
+        }
+        let before = fixture.core.engine.logs[SPACE].head();
+        assert!(
+            matches!(fixture.core.ingest(vec![frame]), Err(NativeError::History)),
+            "{case}"
+        );
+        assert!(fixture.core.image().is_err());
+        assert_eq!(fixture.core.engine.logs[SPACE].head(), before);
+        assert_eq!(fixture.core.engine.store.outbox_len().unwrap(), 1);
+        let cold = DeviceCore::restore(
+            NativeImage::decode_bounded(committed).unwrap(),
+            fixture.credential(),
+        )
+        .unwrap();
+        assert_eq!(cold.engine.outbox_envelopes(), vec![expected]);
+    }
+    println!("JOURNEY generic facade refuses a different genuinely opened MLS result with valid same CID/device, signed plaintext, same-hash pruned frame and signed changed timestamp before own confirmation");
+}
+
+#[test]
+fn own_echo_requires_valid_original_inner_and_historical_sealing_copy() {
+    for case in [
+        "missing-copy",
+        "bad-copy",
+        "changed-inner",
+        "signed-inner",
+        "missing-reference",
+        "missing-native-pending",
+    ] {
+        let mut fixture = Fixture::new();
+        fixture.grant("copy-original-trust", None);
+        let trigger = fixture.message("Retained source request");
+        let original = fixture
+            .core
+            .reply(SPACE, &trigger, 400)
+            .unwrap()
+            .intent()
+            .clone();
+        let prepared = fixture
+            .core
+            .prepare_reply(&original, "Retained native output", 500)
+            .unwrap();
+        let committed = prepared.image().as_bytes().to_vec();
+        let envelope = prepared.envelope().clone();
+        let key = format!("mls.sealed:{}", envelope.client_id());
+        match case {
+            "missing-copy" => fixture.core.engine.store.meta_delete(&key).unwrap(),
+            "bad-copy" => fixture
+                .core
+                .engine
+                .store
+                .set_meta(&key, "wrong:copy:signature")
+                .unwrap(),
+            "changed-inner" => {
+                let mut pending = fixture
+                    .core
+                    .engine
+                    .store
+                    .outbox_get(envelope.client_id())
+                    .unwrap()
+                    .unwrap();
+                if let EventBody::MessagePosted { text, .. } = &mut pending.body {
+                    *text = "Altered retained inner view".into();
+                }
+                fixture
+                    .core
+                    .engine
+                    .store
+                    .outbox_remove(envelope.client_id())
+                    .unwrap();
+                fixture.core.engine.store.outbox_put(&pending).unwrap();
+            }
+            "signed-inner" => {
+                let pending = fixture.core.engine.net.author.as_ref().unwrap().sign_event(
+                    SPACE,
+                    envelope.client_id(),
+                    envelope.at_ms(),
+                    envelope.seen(),
+                    EventBody::MessagePosted {
+                        message: prepared.message().into(),
+                        text: "Another genuinely signed native inner".into(),
+                        attaches: None,
+                        reply: None,
+                    },
+                );
+                roda_log::verify_author(&pending).unwrap();
+                assert_ne!(roda_log::content_hash_of(&pending), prepared.event_digest());
+                fixture
+                    .core
+                    .engine
+                    .store
+                    .outbox_remove(envelope.client_id())
+                    .unwrap();
+                fixture.core.engine.store.outbox_put(&pending).unwrap();
+                fixture.core =
+                    DeviceCore::restore(fixture.core.image().unwrap(), fixture.credential())
+                        .unwrap();
+                let roundtrip = fixture
+                    .core
+                    .engine
+                    .store
+                    .outbox_get(envelope.client_id())
+                    .unwrap()
+                    .unwrap();
+                assert_eq!(roundtrip, pending);
+                assert_eq!(
+                    fixture.core.engine.sealed_copy(&roundtrip).unwrap().1,
+                    envelope
+                );
+            }
+            "missing-reference" => fixture
+                .core
+                .engine
+                .store
+                .meta_delete(&super::reference::reference_key(envelope.client_id()))
+                .unwrap(),
+            "missing-native-pending" => {
+                fixture.core.engine.net.pending.remove(envelope.client_id());
+            }
+            _ => unreachable!(),
+        }
+        let frame = ordered(&fixture.owner, envelope.clone());
+        let before = fixture.core.engine.logs[SPACE].head();
+        assert!(
+            matches!(fixture.core.ingest(vec![frame]), Err(NativeError::History)),
+            "{case}"
+        );
+        assert!(fixture.core.image().is_err());
+        assert_eq!(fixture.core.engine.logs[SPACE].head(), before);
+        let cold = DeviceCore::restore(
+            NativeImage::decode_bounded(committed).unwrap(),
+            fixture.credential(),
+        )
+        .unwrap();
+        assert_eq!(cold.engine.outbox_envelopes(), vec![envelope]);
+    }
+    println!("JOURNEY missing/malformed copy, altered view, another genuinely signed inner after real store roundtrip, missing original reference and inconsistent pending map refuse before confirmation");
+}
+
+#[test]
+fn lost_sync_marker_or_scope_cannot_downgrade_a_retained_sealed_reply() {
+    for case in ["sync-marker", "scope", "both"] {
+        let mut fixture = Fixture::new();
+        fixture.grant("marker-original-trust", None);
+        let trigger = fixture.message("Original marker request");
+        let original = fixture
+            .core
+            .reply(SPACE, &trigger, 400)
+            .unwrap()
+            .intent()
+            .clone();
+        let prepared = fixture
+            .core
+            .prepare_reply(&original, "Exact sealed output", 500)
+            .unwrap();
+        let key = super::reference::reference_key(prepared.envelope().client_id());
+        let reference = fixture.core.engine.store.meta(&key).unwrap().unwrap();
+        if case != "scope" {
+            fixture
+                .core
+                .engine
+                .store
+                .conn()
+                .execute("DELETE FROM synced_spaces WHERE space = ?1", [SPACE])
+                .unwrap();
+            fixture.core =
+                DeviceCore::restore(fixture.core.image().unwrap(), fixture.credential()).unwrap();
+            assert!(!fixture.core.engine.net.synced.contains(SPACE));
+        }
+        if case != "sync-marker" {
+            fixture.core.engine.state.spaces.remove(SPACE);
+        }
+        assert!(!fixture.core.engine.is_e2e(SPACE));
+        let pending = fixture
+            .core
+            .engine
+            .store
+            .outbox_get(prepared.envelope().client_id())
+            .unwrap()
+            .unwrap();
+        let plain = Envelope::plain(&pending);
+        plain.verify().unwrap();
+        let before = fixture.core.engine.logs[SPACE].head();
+        assert!(
+            matches!(
+                fixture.core.ingest(vec![ordered(&fixture.owner, plain)]),
+                Err(NativeError::History)
+            ),
+            "{case}"
+        );
+        assert!(fixture.core.image().is_err());
+        assert_eq!(fixture.core.engine.logs[SPACE].head(), before);
+        assert_eq!(fixture.core.engine.store.outbox_len().unwrap(), 1);
+        assert_eq!(
+            fixture.core.engine.store.meta(&key).unwrap().as_deref(),
+            Some(reference.as_str())
+        );
+    }
+    println!("JOURNEY actual persisted sync-marker loss and missing current scope projection cannot turn the original sealed Application into an accepted signed plaintext echo; original reference survives");
+}
+
+#[test]
+fn exact_old_epoch_echo_survives_real_commit_cold_restore_and_replay() {
+    let mut fixture = Fixture::new();
+    fixture.grant("historical-trust", None);
+    let trigger = fixture.message("Original history");
+    let original = fixture
+        .core
+        .reply(SPACE, &trigger, 400)
+        .unwrap()
+        .intent()
+        .clone();
+    let prepared = fixture
+        .core
+        .prepare_reply(&original, "Historical native result", 500)
+        .unwrap();
+    let envelope = prepared.envelope().clone();
+    let prior_epoch = fixture.core.engine.ready_epoch(SPACE).unwrap();
+    let commit = fixture
+        .owner
+        .device()
+        .unwrap()
+        .commit(SPACE, &[], &Default::default())
+        .unwrap();
+    let commit_envelope = Envelope::sealed(
+        fixture.owner.net.author.as_ref().unwrap(),
+        SPACE,
+        "actual-epoch-advance",
+        600,
+        fixture.owner.logs[SPACE].head().as_ref(),
+        Sealed::new(SealedKind::Commit, roda_mls::SUITE_ID, commit.commit),
+    );
+    let commit_frame = ordered(&fixture.owner, commit_envelope);
+    assert_eq!(fixture.owner.ingest(commit_frame.clone()), Ingest::Applied);
+    fixture.core.ingest(vec![commit_frame]).unwrap();
+    assert_eq!(
+        fixture.core.engine.ready_epoch(SPACE),
+        Some(prior_epoch + 1)
+    );
+    assert!(fixture.core.engine.outbox_envelopes().is_empty());
+    let pending = fixture
+        .core
+        .engine
+        .store
+        .outbox_get(envelope.client_id())
+        .unwrap()
+        .unwrap();
+    assert_eq!(
+        fixture.core.engine.sealed_copy(&pending).unwrap(),
+        (prior_epoch, envelope.clone())
+    );
+    let mut cold =
+        DeviceCore::restore(fixture.core.image().unwrap(), fixture.credential()).unwrap();
+    let client_id = envelope.client_id().to_string();
+    let reference_key = super::reference::reference_key(&client_id);
+    let reference = cold.engine.store.meta(&reference_key).unwrap().unwrap();
+    let accepted = ordered(&fixture.owner, envelope);
+    assert_eq!(fixture.owner.ingest(accepted.clone()), Ingest::Applied);
+    assert!(
+        matches!(&fixture.owner.logs[SPACE].events().last().unwrap().body, EventBody::MessagePosted { text, .. } if text == "Historical native result")
+    );
+    let receipt = cold
+        .receive_reply(&original, &client_id, vec![accepted.clone()])
+        .unwrap();
+    assert_eq!(receipt.original(), &original);
+    assert_eq!(receipt.message(), prepared.message());
+    assert_eq!(receipt.event_digest(), prepared.event_digest());
+    assert_eq!(receipt.accepted().hash, accepted.hash);
+    assert_eq!(cold.engine.store.outbox_len().unwrap(), 0);
+    assert_eq!(
+        cold.engine.store.meta(&reference_key).unwrap().as_deref(),
+        Some(reference.as_str())
+    );
+    let event = cold.engine.logs[SPACE].events().last().unwrap();
+    assert!(crate::mls_opening::own_echo(
+        &cold.engine.store,
+        event,
+        cold.engine.net.account.as_ref().unwrap()
+    ));
+    assert_eq!(roda_log::content_hash_of(event), prepared.event_digest());
+    let mut replay = DeviceCore::restore(
+        NativeImage::decode_bounded(receipt.image().as_bytes().to_vec()).unwrap(),
+        fixture.credential(),
+    )
+    .unwrap();
+    let repeated = replay
+        .receive_reply(&original, &client_id, vec![accepted.clone()])
+        .unwrap();
+    assert_eq!(repeated.accepted(), receipt.accepted());
+    assert_eq!(replay.engine.store.outbox_len().unwrap(), 0);
+    assert_eq!(
+        replay.retained_head(SPACE).unwrap().unwrap().hash,
+        accepted.hash
+    );
+    println!("JOURNEY real native commit advances epoch without resealing the pending output; historical exact signed copy confirms after cold restore and unchanged replay creates no new outbox");
+}
+
+#[test]
+fn native_receipt_survives_revocation_expiry_and_cold_replay_without_new_effects() {
+    let mut fixture = Fixture::new();
+    fixture.grant("receipt-original-trust", Some(1000));
+    let trigger = fixture.message("Original receipt source");
+    let original = fixture
+        .core
+        .reply(SPACE, &trigger, 400)
+        .unwrap()
+        .intent()
+        .clone();
+    let prepared = fixture
+        .core
+        .prepare_reply(&original, "Original accepted native result", 500)
+        .unwrap();
+    let client_id = prepared.envelope().client_id().to_string();
+    let key = super::reference::reference_key(&client_id);
+    let reference = fixture.core.engine.store.meta(&key).unwrap().unwrap();
+    let accepted = ordered(&fixture.owner, prepared.envelope().clone());
+    assert_eq!(fixture.owner.ingest(accepted.clone()), Ingest::Applied);
+    let first = fixture
+        .core
+        .receive_reply(&original, &client_id, vec![accepted.clone()])
+        .unwrap();
+    assert_eq!(first.accepted().hash, accepted.hash);
+    assert_eq!(fixture.core.engine.store.outbox_len().unwrap(), 0);
+    assert!(fixture
+        .core
+        .engine
+        .store
+        .meta(&format!("mls.sealed:{client_id}"))
+        .unwrap()
+        .is_none());
+    fixture.encrypted(
+        EventBody::GrantRevoked {
+            grant: "receipt-original-trust".into(),
+        },
+        1100,
+    );
+    assert!(matches!(
+        fixture.core.refresh(&original, 1200),
+        Err(NativeError::Permission)
+    ));
+    let before = fixture.core.image().unwrap();
+    let mut cold = DeviceCore::restore(
+        NativeImage::decode_bounded(before.as_bytes().to_vec()).unwrap(),
+        fixture.credential(),
+    )
+    .unwrap();
+    let receipt = cold
+        .receive_reply(&original, &client_id, vec![accepted.clone()])
+        .unwrap();
+    assert_eq!(receipt.original(), &original);
+    assert_eq!(receipt.message(), prepared.message());
+    assert_eq!(receipt.event_digest(), prepared.event_digest());
+    assert_eq!(receipt.accepted(), first.accepted());
+    assert_eq!(receipt.image().as_bytes(), before.as_bytes());
+    assert_eq!(
+        cold.engine.store.meta(&key).unwrap().as_deref(),
+        Some(reference.as_str())
+    );
+    assert_eq!(cold.engine.store.outbox_len().unwrap(), 0);
+    assert!(cold.engine.logs[SPACE]
+        .events()
+        .iter()
+        .all(|e| !matches!(e.body, EventBody::UsageRecorded { .. })));
+    let mut changed = original.clone();
+    changed.grant_digest = "00".repeat(32);
+    assert!(matches!(
+        cold.receive_reply(&changed, &client_id, vec![]),
+        Err(NativeError::History)
+    ));
+    assert!(cold.image().is_err());
+    println!("JOURNEY exact retained receipt survives accepted native grant revoke/expiry and cold replay without provider/image changes, new outbox or usage; a different original refuses");
+}
+
+#[test]
+fn receipt_refuses_different_duplicate_opening_and_missing_original_reference() {
+    for case in [
+        "duplicate-ciphertext",
+        "pruned-duplicate",
+        "changed-opening",
+        "missing-reference",
+        "changed-message",
+        "changed-digest",
+        "future-reference",
+    ] {
+        let mut fixture = Fixture::new();
+        fixture.grant("duplicate-original-trust", None);
+        let trigger = fixture.message("Original duplicate source");
+        let original = fixture
+            .core
+            .reply(SPACE, &trigger, 400)
+            .unwrap()
+            .intent()
+            .clone();
+        let prepared = fixture
+            .core
+            .prepare_reply(&original, "Exact native original output", 500)
+            .unwrap();
+        let client_id = prepared.envelope().client_id().to_string();
+        let key = super::reference::reference_key(&client_id);
+        let different = colliding_native_reply(&fixture, &prepared);
+        let accepted = ordered(&fixture.owner, prepared.envelope().clone());
+        assert_eq!(fixture.owner.ingest(accepted.clone()), Ingest::Applied);
+        fixture
+            .core
+            .receive_reply(&original, &client_id, vec![accepted.clone()])
+            .unwrap();
+        let committed = fixture.core.image().unwrap();
+        let mut replay = accepted.clone();
+        match case {
+            "duplicate-ciphertext" => {
+                replay.env = different;
+            }
+            "pruned-duplicate" => {
+                replay.env = replay.env.pruned().unwrap();
+            }
+            "changed-opening" => {
+                let opening_key = format!("runtime.mls-opening.v1/{}", accepted.hash);
+                let opening = fixture
+                    .core
+                    .engine
+                    .store
+                    .meta(&opening_key)
+                    .unwrap()
+                    .unwrap();
+                fixture
+                    .core
+                    .engine
+                    .store
+                    .set_meta(&opening_key, &opening.replace("OwnRetainedEcho", "Opaque"))
+                    .unwrap();
+            }
+            "missing-reference" => fixture.core.engine.store.meta_delete(&key).unwrap(),
+            "changed-message" | "changed-digest" | "future-reference" => {
+                let json = fixture.core.engine.store.meta(&key).unwrap().unwrap();
+                let changed = match case {
+                    "changed-message" => json.replace(prepared.message(), "different-message"),
+                    "changed-digest" => json.replace(prepared.event_digest(), &"00".repeat(32)),
+                    "future-reference" => json.replace("\"version\":1", "\"version\":2"),
+                    _ => unreachable!(),
+                };
+                assert_ne!(json, changed);
+                fixture.core.engine.store.set_meta(&key, &changed).unwrap();
+            }
+            _ => unreachable!(),
+        }
+        fixture.core =
+            DeviceCore::restore(fixture.core.image().unwrap(), fixture.credential()).unwrap();
+        assert!(
+            matches!(
+                fixture
+                    .core
+                    .receive_reply(&original, &client_id, vec![replay]),
+                Err(NativeError::History)
+            ),
+            "{case}"
+        );
+        assert!(fixture.core.image().is_err());
+        let mut good = DeviceCore::restore(committed, fixture.credential()).unwrap();
+        assert_eq!(
+            good.receive_reply(&original, &client_id, vec![accepted])
+                .unwrap()
+                .event_digest(),
+            prepared.event_digest()
+        );
+    }
+    println!("JOURNEY receipt replay refuses another signed ciphertext or pruned duplicate, opaque opening, missing/future reference and changed original message/digest after actual cold store roundtrip");
+}
+
+#[test]
+fn actual_maximum_text_reference_is_bounded_and_oversized_fields_refuse() {
+    let extreme_space = "\0".repeat(256);
+    let mut fixture = Fixture::new_in(&extreme_space);
+    fixture.grant(&"\0".repeat(256), None);
+    let trigger = fixture.message("Bounded original source");
+    let original = fixture
+        .core
+        .reply(&extreme_space, &trigger, 400)
+        .unwrap()
+        .intent()
+        .clone();
+    let text = "🧬".repeat(super::publication::MAX_REPLY_BYTES / 4);
+    let prepared = fixture.core.prepare_reply(&original, &text, 500).unwrap();
+    let client_id = prepared.envelope().client_id().to_string();
+    let key = super::reference::reference_key(&client_id);
+    let json = fixture.core.engine.store.meta(&key).unwrap().unwrap();
+    let wire = ClientFrame::Publish {
+        env: prepared.envelope().clone(),
+    }
+    .encode();
+    assert!(json.len() <= super::reference::MAX_REFERENCE_BYTES);
+    assert!(wire.len() <= super::publication::MAX_PUBLISH_BYTES);
+    let mut cold = DeviceCore::restore(
+        NativeImage::decode_bounded(prepared.image().as_bytes().to_vec()).unwrap(),
+        fixture.credential(),
+    )
+    .unwrap();
+    let accepted = ordered(&fixture.owner, prepared.envelope().clone());
+    assert_eq!(fixture.owner.ingest(accepted.clone()), Ingest::Applied);
+    let receipt = cold
+        .receive_reply(&original, &client_id, vec![accepted])
+        .unwrap();
+    assert_eq!(receipt.event_digest(), prepared.event_digest());
+    assert!(
+        matches!(&cold.engine.logs[&extreme_space].events().last().unwrap().body, EventBody::MessagePosted { text: actual, .. } if actual == &text)
+    );
+    cold.engine
+        .store
+        .set_meta(&key, &" ".repeat(super::reference::MAX_REFERENCE_BYTES + 1))
+        .unwrap();
+    assert!(matches!(
+        cold.receive_reply(&original, &client_id, vec![]),
+        Err(NativeError::Bounds)
+    ));
+    assert!(cold.image().is_err());
+    let mut oversized = Fixture::new();
+    oversized.grant(&"g".repeat(257), None);
+    let trigger = oversized.message("Oversized original field");
+    let original = oversized
+        .core
+        .reply(SPACE, &trigger, 400)
+        .unwrap()
+        .intent()
+        .clone();
+    let before = oversized.core.image().unwrap();
+    assert!(matches!(
+        oversized
+            .core
+            .prepare_reply(&original, "Unpublished output", 500),
+        Err(NativeError::Bounds)
+    ));
+    assert!(oversized.core.image().is_err());
+    assert_eq!(
+        DeviceCore::restore(before, oversized.credential())
+            .unwrap()
+            .engine
+            .store
+            .outbox_len()
+            .unwrap(),
+        0
+    );
+    println!("JOURNEY actual 32768-byte UTF-8 reply with 256-byte JSON-escaped Space/grant fields produces reference_json={} publish={} image={} bytes; 135169-byte metadata and 257-byte field refuse without adopting or truncating", json.len(), wire.len(), prepared.image().as_bytes().len());
+}
+
+#[test]
+fn receipt_delta_preserves_other_pending_and_refuses_real_new_join_or_row_changes() {
+    let mut fixture = Fixture::new();
+    fixture.grant("delta-original-trust", None);
+    let trigger = fixture.message("Original delta source");
+    let original = fixture
+        .core
+        .reply(SPACE, &trigger, 400)
+        .unwrap()
+        .intent()
+        .clone();
+    let prepared = fixture
+        .core
+        .prepare_reply(&original, "Original delta output", 500)
+        .unwrap();
+    let client_id = prepared.envelope().client_id().to_string();
+    let before = fixture.core.snapshot_outbox().unwrap();
+    let author = fixture.core.engine.net.author.clone().unwrap();
+    let joining = fixture
+        .core
+        .engine
+        .append_synced(
+            SPACE,
+            &author,
+            600,
+            EventBody::DeviceJoining {
+                device: fixture.agent_device.id(),
+            },
+        )
+        .unwrap();
+    roda_log::verify_author(&joining).unwrap();
+    assert!(matches!(
+        fixture.core.verify_receipt_delta(&before, &client_id),
+        Err(NativeError::History)
+    ));
+    let surviving = fixture
+        .core
+        .engine
+        .store
+        .outbox_get(&joining.client_id)
+        .unwrap()
+        .unwrap();
+    let accepted = ordered(&fixture.owner, prepared.envelope().clone());
+    assert_eq!(fixture.owner.ingest(accepted.clone()), Ingest::Applied);
+    fixture
+        .core
+        .receive_reply(&original, &client_id, vec![accepted])
+        .unwrap();
+    assert_eq!(
+        fixture
+            .core
+            .engine
+            .store
+            .outbox_get(&joining.client_id)
+            .unwrap(),
+        Some(surviving.clone())
+    );
+    let before = fixture.core.snapshot_outbox().unwrap();
+    fixture
+        .core
+        .engine
+        .store
+        .outbox_note(&joining.client_id, "changed retry state", false)
+        .unwrap();
+    assert!(matches!(
+        fixture.core.verify_receipt_delta(&before, &client_id),
+        Err(NativeError::History)
+    ));
+    fixture
+        .core
+        .engine
+        .store
+        .outbox_remove(&joining.client_id)
+        .unwrap();
+    fixture.core.engine.net.pending.remove(&joining.client_id);
+    assert!(matches!(
+        fixture.core.verify_receipt_delta(&before, &client_id),
+        Err(NativeError::History)
+    ));
+    let before = fixture.core.snapshot_outbox().unwrap();
+    fixture
+        .core
+        .engine
+        .store
+        .set_meta("mls.sealed:orphan-metadata", "1:00:00")
+        .unwrap();
+    assert!(matches!(
+        fixture.core.verify_receipt_delta(&before, &client_id),
+        Err(NativeError::History)
+    ));
+    println!("JOURNEY explicit delta-check refuses a separately generated genuinely signed joining event, retry-row change, unrelated removal and new orphan sealing metadata; actual target receipt preserves an existing other pending exactly");
+}
+
+#[test]
+fn later_colliding_echo_invalidates_an_entire_partially_ingested_batch() {
+    let mut fixture = Fixture::new();
+    fixture.grant("batch-original-trust", None);
+    let trigger = fixture.message("Original batch source");
+    let original = fixture
+        .core
+        .reply(SPACE, &trigger, 400)
+        .unwrap()
+        .intent()
+        .clone();
+    let prepared = fixture
+        .core
+        .prepare_reply(&original, "Exact batch output", 500)
+        .unwrap();
+    let committed = prepared.image().as_bytes().to_vec();
+    let different = colliding_native_reply(&fixture, &prepared);
+    let author = fixture.owner.net.author.clone().unwrap();
+    let (epoch, digest) = fixture.owner.device().unwrap().checkpoint(SPACE).unwrap();
+    let preceding = author.sign_event(
+        SPACE,
+        "preceding-native-checkpoint",
+        600,
+        fixture.owner.logs[SPACE].head(),
+        EventBody::Checkpoint {
+            upto: fixture.owner.logs[SPACE].head().unwrap(),
+            epoch,
+            digest,
+        },
+    );
+    let first = ordered(&fixture.owner, Envelope::plain(&preceding));
+    assert_eq!(fixture.owner.ingest(first.clone()), Ingest::Applied);
+    let second = ordered(&fixture.owner, different);
+    assert!(matches!(
+        fixture.core.ingest(vec![first.clone(), second]),
+        Err(NativeError::History)
+    ));
+    assert!(fixture.core.image().is_err());
+    assert_eq!(
+        fixture.core.engine.logs[SPACE].head().unwrap().hash,
+        first.hash
+    );
+    let cold = DeviceCore::restore(
+        NativeImage::decode_bounded(committed).unwrap(),
+        fixture.credential(),
+    )
+    .unwrap();
+    assert_eq!(
+        cold.engine.outbox_envelopes(),
+        vec![prepared.envelope().clone()]
+    );
+    assert_ne!(cold.engine.logs[SPACE].head().unwrap().hash, first.hash);
+    println!("JOURNEY a colliding own echo after an applied entry poisons the whole scratch batch; cold prior image keeps its earlier frontier and exact pending output");
+}
+
+#[test]
+fn preparation_refuses_expired_replaced_revoked_and_reader_authority() {
+    for case in ["expired", "replaced", "revoked", "reader"] {
+        let mut fixture = Fixture::new();
+        fixture.grant("publication-original-trust", Some(1000));
+        let trigger = fixture.message("Original retained request");
+        let original = fixture
+            .core
+            .reply(SPACE, &trigger, 400)
+            .unwrap()
+            .intent()
+            .clone();
+        match case {
+            "expired" => {}
+            "replaced" => {
+                fixture.grant("publication-replacement-trust", None);
+            }
+            "revoked" => {
+                fixture.encrypted(
+                    EventBody::GrantRevoked {
+                        grant: "publication-original-trust".into(),
+                    },
+                    450,
+                );
+            }
+            "reader" => {
+                fixture.clear(EventBody::MemberAdded {
+                    identity: fixture.agent_profile.id.clone(),
+                    role: Role::Reader,
+                });
+            }
+            _ => unreachable!(),
+        }
+        let before = fixture.core.image().unwrap();
+        let at_ms = if case == "expired" { 1000 } else { 500 };
+        assert!(matches!(
+            fixture
+                .core
+                .prepare_reply(&original, "Retained output", at_ms),
+            Err(NativeError::Permission)
+        ));
+        assert_eq!(fixture.core.engine.store.outbox_len().unwrap(), 0);
+        assert!(matches!(fixture.core.image(), Err(NativeError::History)));
+        let restored = DeviceCore::restore(before, fixture.credential()).unwrap();
+        assert_eq!(restored.engine.store.outbox_len().unwrap(), 0);
+    }
+    println!("JOURNEY native reply preparation refuses actual expiry, replacement, revocation and reader role; failed scratch images cannot activate");
+}
+
+#[test]
+fn preparation_bounds_text_and_never_reseals_an_existing_pending_reply() {
+    let mut fixture = Fixture::new();
+    fixture.grant("publication-bounded-trust", None);
+    let trigger = fixture.message("Original bounded request");
+    let original = fixture
+        .core
+        .reply(SPACE, &trigger, 400)
+        .unwrap()
+        .intent()
+        .clone();
+    let before = fixture.core.image().unwrap().as_bytes().to_vec();
+    for text in [
+        String::new(),
+        " \n\t".into(),
+        "x".repeat(MAX_REPLY_BYTES + 1),
+    ] {
+        let mut scratch = DeviceCore::restore(
+            NativeImage::decode_bounded(before.clone()).unwrap(),
+            fixture.credential(),
+        )
+        .unwrap();
+        assert!(matches!(
+            scratch.prepare_reply(&original, &text, 500),
+            Err(NativeError::Bounds)
+        ));
+        assert_eq!(scratch.engine.store.outbox_len().unwrap(), 0);
+        assert!(matches!(scratch.image(), Err(NativeError::History)));
+    }
+    let text = "é".repeat(MAX_REPLY_BYTES / 2);
+    let prepared = fixture.core.prepare_reply(&original, &text, 500).unwrap();
+    let wire = ClientFrame::Publish {
+        env: prepared.envelope().clone(),
+    }
+    .encode();
+    assert!(wire.len() <= MAX_PUBLISH_BYTES);
+    assert!(prepared.envelope().content().len() <= MAX_EVENT_BYTES);
+    let image = prepared.image().as_bytes().to_vec();
+    let mut cold = DeviceCore::restore(
+        NativeImage::decode_bounded(image.clone()).unwrap(),
+        fixture.credential(),
+    )
+    .unwrap();
+    assert!(matches!(
+        cold.prepare_reply(&original, "Second output", 501),
+        Err(NativeError::NotReady)
+    ));
+    assert!(matches!(cold.image(), Err(NativeError::History)));
+    let restored = DeviceCore::restore(
+        NativeImage::decode_bounded(image).unwrap(),
+        fixture.credential(),
+    )
+    .unwrap();
+    assert_eq!(restored.engine.store.outbox_len().unwrap(), 1);
+    assert_eq!(
+        ClientFrame::Publish {
+            env: restored.engine.outbox_envelopes().remove(0)
+        }
+        .encode(),
+        wire
+    );
+    println!("JOURNEY real 32 KiB UTF-8 reply fits native wire/image bounds; empty, oversized and repeated pending preparation refuse without resealing");
+}
+
+#[test]
+fn failed_reply_sealing_discards_scratch_and_preserves_committed_image() {
+    let mut fixture = Fixture::new();
+    fixture.grant("publication-sealing-trust", None);
+    let trigger = fixture.message("Original sealing request");
+    let original = fixture
+        .core
+        .reply(SPACE, &trigger, 400)
+        .unwrap()
+        .intent()
+        .clone();
+    let before = fixture.core.image().unwrap();
+    fixture.core.engine.store.conn().execute_batch(
+        "CREATE TRIGGER fail_reply_seal BEFORE INSERT ON meta WHEN NEW.key LIKE 'mls.sealed:%' BEGIN SELECT RAISE(ABORT,'injected sealed outbox failure'); END;"
+    ).unwrap();
+    assert!(matches!(
+        fixture
+            .core
+            .prepare_reply(&original, "Output requiring durable sealing", 500),
+        Err(NativeError::Storage)
+    ));
+    assert!(matches!(fixture.core.image(), Err(NativeError::History)));
+    let mut restored = DeviceCore::restore(before, fixture.credential()).unwrap();
+    assert_eq!(restored.engine.store.outbox_len().unwrap(), 0);
+    let prepared = restored
+        .prepare_reply(&original, "Output requiring durable sealing", 500)
+        .unwrap();
+    prepared.envelope().verify().unwrap();
+    println!("JOURNEY real sealed outbox write failure poisons scratch after native append; prior committed image remains usable with no loose native effect");
 }
 
 #[test]
@@ -432,33 +1446,14 @@ fn own_echo_is_context_only_and_mismatching_mls_sender_cannot_refresh() {
         .unwrap()
         .intent()
         .clone();
-    let author = fixture.core.engine.net.author.clone().unwrap();
-    fixture
+    let prepared = fixture
         .core
-        .engine
-        .append_synced(
-            SPACE,
-            &author,
-            450,
-            EventBody::MessagePosted {
-                message: new_id("message"),
-                text: "Agent's retained own reply".into(),
-                attaches: None,
-                reply: None,
-            },
-        )
+        .prepare_reply(&original, "Agent's retained own reply", 450)
         .unwrap();
-    fixture.core.engine.mls_seal_outbox().unwrap();
-    let mut own = None;
-    for envelope in fixture.core.engine.outbox_envelopes() {
-        let frame = ordered(&fixture.owner, envelope);
-        assert_eq!(fixture.owner.ingest(frame.clone()), Ingest::Applied);
-        fixture.core.ingest(vec![frame.clone()]).unwrap();
-        if frame.env.sealed_kind() == Some(SealedKind::Application) {
-            own = Some(frame.hash);
-        }
-    }
-    let own = own.unwrap();
+    let frame = ordered(&fixture.owner, prepared.envelope().clone());
+    assert_eq!(fixture.owner.ingest(frame.clone()), Ingest::Applied);
+    fixture.core.ingest(vec![frame.clone()]).unwrap();
+    let own = frame.hash;
     assert!(matches!(
         fixture.core.reply(SPACE, &own, 500),
         Err(NativeError::Permission)

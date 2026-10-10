@@ -41,6 +41,12 @@ pub enum NativeError {
 
 type Result<T> = std::result::Result<T, NativeError>;
 
+mod publication;
+mod receipt;
+mod reference;
+pub use publication::PreparedReply;
+pub use receipt::AcceptedReply;
+
 /// Inert plaintext image. A successful parse does not authenticate its origin.
 /// The private cloud loader must first authenticate the entire custody capsule.
 pub struct NativeImage(Zeroizing<Vec<u8>>);
@@ -333,6 +339,10 @@ impl DeviceCore {
             return Err(NativeError::Bounds);
         }
         for entry in batch {
+            if let Err(error) = self.guard_pending_echo(&entry) {
+                self.usable = false;
+                return Err(error);
+            }
             match self.engine.ingest(entry) {
                 Ingest::Applied | Ingest::Confirmed | Ingest::Duplicate => {}
                 Ingest::Gap { .. } | Ingest::Invalid(_) => {

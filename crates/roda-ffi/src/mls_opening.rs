@@ -101,6 +101,26 @@ pub(crate) fn own_echo(store: &Store, event: &Event, account: &crate::sync::Acco
             .is_some_and(|record| matches!(record.outcome, OpeningOutcome::OwnRetainedEcho))
 }
 
+pub(crate) fn exact_own_echo(
+    store: &Store,
+    event: &Event,
+    account: &crate::sync::AccountMeta,
+    expected: &Envelope,
+) -> bool {
+    let Some(retained) = retained_application(store, event) else {
+        return false;
+    };
+    let envelope = STANDARD
+        .decode(&retained.content)
+        .ok()
+        .and_then(|content| Envelope::new(content, retained.sig, retained.cert, None));
+    event.author == account.identity
+        && event.device.as_deref() == Some(account.device.as_str())
+        && event.cert.as_deref() == Some(account.cert.as_str())
+        && matches!(retained.outcome, OpeningOutcome::OwnRetainedEcho)
+        && envelope.as_ref() == Some(expected)
+}
+
 fn retained_application(store: &Store, event: &Event) -> Option<StoredOpening> {
     let json = store.meta(&key(&event.hash)).ok()??;
     if json.len() > 131072 {
