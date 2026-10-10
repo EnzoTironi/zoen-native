@@ -10,7 +10,10 @@
 
 mod markdown;
 
-use std::collections::HashMap;
+#[cfg(test)]
+mod apply_tests;
+
+use std::collections::{HashMap, HashSet};
 
 use loro::{
     Container, ExpandType, ExportMode, LoroDoc, LoroMap, LoroMovableList, LoroText, LoroValue,
@@ -153,6 +156,36 @@ impl Block {
     pub fn plain_text(&self) -> String {
         self.runs.iter().map(|r| r.text.as_str()).collect()
     }
+
+    /// SHA-256 of the visible kind, exact text and normalized marks. Source spelling,
+    /// run segmentation and the block's identity are not content.
+    pub fn content_hash(&self) -> String {
+        #[derive(Serialize)]
+        struct Content {
+            kind: Kind,
+            text: String,
+            spans: Vec<Span>,
+        }
+        let kind = match &self.kind {
+            Kind::Heading { level, .. } => Kind::Heading {
+                level: *level,
+                setext: false,
+            },
+            kind => kind.clone(),
+        };
+        let bytes = serde_json::to_vec(&Content {
+            kind,
+            text: self.plain_text(),
+            spans: canonical_spans(&self.runs),
+        })
+        .expect("page content serializes");
+        hex::encode(
+            Sha256::new()
+                .chain_update(b"zoen-page-block-content-v1\0")
+                .chain_update(bytes)
+                .finalize(),
+        )
+    }
 }
 
 fn new_id() -> String {
@@ -209,7 +242,7 @@ pub struct BlockEdit {
     pub spans: Vec<Span>,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
 pub struct Span {
     pub start: u32,
     pub end: u32,
@@ -217,6 +250,11 @@ pub struct Span {
     pub key: String,
     pub value: String,
 }
+
+/// Maximum formatting ranges accepted for one block edit.
+pub const MAX_SPANS_PER_BLOCK: usize = 16_384;
+const MAX_BLOCK_ID_BYTES: usize = 128;
+const MAX_SPAN_VALUE_BYTES: usize = 8_192;
 
 impl Default for Page {
     fn default() -> Self {
@@ -246,9 +284,25 @@ impl Page {
         Ok(p)
     }
 
-    /// Applies updates (or a snapshot) made anywhere.
+    /// Applies complete updates (or a snapshot) made anywhere. Missing dependencies
+    /// refuse the entire import, including any changes that could apply on their own.
     pub fn import(&self, bytes: &[u8]) -> Result<(), DocError> {
-        self.doc.import(bytes).map_err(err)?;
+        let staged = self.doc.fork();
+        let from = staged.oplog_vv();
+        let status = staged.import(bytes).map_err(err)?;
+        if status.pending.is_some_and(|pending| !pending.is_empty()) {
+            return Err(DocError("page update has missing dependencies".into()));
+        }
+        if staged.oplog_vv() == from {
+            return Ok(());
+        }
+        // Re-export only complete changes. The original already has every dependency
+        // in `from`, and never receives Loro's pending queue from the staging copy.
+        let delta = staged.export(ExportMode::updates(&from)).map_err(err)?;
+        let status = self.doc.import(&delta).map_err(err)?;
+        if status.pending.is_some_and(|pending| !pending.is_empty()) {
+            return Err(DocError("page update has missing dependencies".into()));
+        }
         Ok(())
     }
 
@@ -289,6 +343,30 @@ impl Page {
             .collect()
     }
 
+    /// SHA-256 of ordered block identities and semantic content, independent of CRDT
+    /// history and original Markdown spelling.
+    pub fn content_hash(&self) -> String {
+        let blocks: Vec<_> = self
+            .blocks()
+            .into_iter()
+            .map(|b| (b.id.clone(), b.content_hash()))
+            .collect();
+        let bytes = serde_json::to_vec(&blocks).expect("page content serializes");
+        hex::encode(
+            Sha256::new()
+                .chain_update(b"zoen-page-content-v1\0")
+                .chain_update(bytes)
+                .finalize(),
+        )
+    }
+
+    pub fn block_hash(&self, id: &str) -> Option<String> {
+        self.blocks()
+            .into_iter()
+            .find(|b| b.id == id)
+            .map(|b| b.content_hash())
+    }
+
     pub fn title(&self) -> String {
         let blocks = self.blocks();
         blocks
@@ -319,26 +397,35 @@ impl Page {
 
     /// Makes the page match an editor's state: `order` is every block id top to bottom;
     /// `changed` carries the blocks whose kind or text changed (new ids are created).
+    /// Validate and stage first, so a refused edit cannot change the original page.
+    /// For a stale editor, call this on `at(observed_frontiers)` and merge its updates.
     pub fn apply(&self, order: &[String], changed: &[BlockEdit]) -> Result<(), DocError> {
-        let list = self.blocks_list();
-        let ids = |l: &LoroMovableList| -> Vec<String> {
-            (0..l.len())
-                .map(|i| match l.get(i) {
-                    Some(ValueOrContainer::Container(Container::Map(m))) => get_str(&m, "id"),
-                    _ => String::new(),
-                })
-                .collect()
+        validate_apply(&block_ids(&self.blocks_list()), order, changed)?;
+        let staged = Page {
+            doc: self.doc.fork(),
         };
+        let before = staged.content_hash();
+        let from = staged.version();
+        staged.apply_validated(order, changed)?;
+        if staged.content_hash() == before {
+            return Ok(());
+        }
+        let delta = staged.doc.export(ExportMode::updates(&from)).map_err(err)?;
+        self.import(&delta)
+    }
+
+    fn apply_validated(&self, order: &[String], changed: &[BlockEdit]) -> Result<(), DocError> {
+        let list = self.blocks_list();
         // Delete blocks no longer present.
         let keep: std::collections::HashSet<&String> = order.iter().collect();
-        let current = ids(&list);
+        let current = block_ids(&list);
         for i in (0..current.len()).rev() {
             if !keep.contains(&current[i]) {
                 list.delete(i, 1).map_err(err)?;
             }
         }
         // Insert new ones at the end, then move everything into place.
-        let mut known: std::collections::HashSet<String> = ids(&list).into_iter().collect();
+        let mut known: std::collections::HashSet<String> = block_ids(&list).into_iter().collect();
         let by_id: HashMap<&str, &BlockEdit> = changed.iter().map(|b| (b.id.as_str(), b)).collect();
         for id in order {
             if !known.contains(id) {
@@ -356,7 +443,7 @@ impl Page {
             }
         }
         for (want, id) in order.iter().enumerate() {
-            let now = ids(&list);
+            let now = block_ids(&list);
             if now.get(want) == Some(id) {
                 continue;
             }
@@ -378,7 +465,8 @@ impl Page {
         Ok(())
     }
 
-    /// A read-only copy as it was at `version`.
+    /// An independent copy as it was at `version`. Editing it only changes the copy;
+    /// its generated updates can then be merged without replacing unseen blocks.
     pub fn at(&self, version: &Frontiers) -> Result<Page, DocError> {
         let doc = self.doc.fork_at(version).map_err(err)?;
         Ok(Page { doc })
@@ -390,6 +478,105 @@ impl Page {
         self.doc.commit();
         Ok(())
     }
+}
+
+fn block_ids(list: &LoroMovableList) -> Vec<String> {
+    (0..list.len())
+        .map(|i| match list.get(i) {
+            Some(ValueOrContainer::Container(Container::Map(m))) => get_str(&m, "id"),
+            _ => String::new(),
+        })
+        .collect()
+}
+
+fn validate_ids(ids: &[String]) -> Result<HashSet<&str>, DocError> {
+    let mut seen = HashSet::new();
+    for id in ids {
+        if id.trim().is_empty() || id.len() > MAX_BLOCK_ID_BYTES {
+            return Err(DocError("invalid block id".into()));
+        }
+        if !seen.insert(id.as_str()) {
+            return Err(DocError("duplicate block id".into()));
+        }
+    }
+    Ok(seen)
+}
+
+fn validate_apply(
+    current: &[String],
+    order: &[String],
+    changed: &[BlockEdit],
+) -> Result<(), DocError> {
+    let current = validate_ids(current)?;
+    let order_ids = validate_ids(order)?;
+    let mut edited = HashSet::new();
+    for edit in changed {
+        if !order_ids.contains(edit.id.as_str()) {
+            return Err(DocError("changed block is not in the order".into()));
+        }
+        if !edited.insert(edit.id.as_str()) {
+            return Err(DocError("duplicate changed block".into()));
+        }
+        validate_spans(edit)?;
+    }
+    if order_ids
+        .iter()
+        .any(|id| !current.contains(id) && !edited.contains(id))
+    {
+        return Err(DocError("new block requires its content".into()));
+    }
+    Ok(())
+}
+
+fn validate_spans(edit: &BlockEdit) -> Result<(), DocError> {
+    if edit.spans.len() > MAX_SPANS_PER_BLOCK {
+        return Err(DocError("too many formatting spans".into()));
+    }
+    let mut offsets = HashSet::new();
+    for span in &edit.spans {
+        if span.start > span.end {
+            return Err(DocError("reversed formatting span".into()));
+        }
+        if !MARKS.iter().any(|(key, _)| *key == span.key) {
+            return Err(DocError("unknown formatting mark".into()));
+        }
+        if span.value.len() > MAX_SPAN_VALUE_BYTES {
+            return Err(DocError("formatting value is too large".into()));
+        }
+        offsets.insert(span.start as usize);
+        offsets.insert(span.end as usize);
+    }
+    offsets.remove(&0);
+    let mut pos = 0;
+    for c in edit.text.chars() {
+        pos += c.len_utf16();
+        offsets.remove(&pos);
+    }
+    if !offsets.is_empty() {
+        return Err(DocError(
+            "formatting span is not on a UTF-16 scalar boundary".into(),
+        ));
+    }
+    Ok(())
+}
+
+fn canonical_spans(runs: &[Run]) -> Vec<Span> {
+    let mut spans = spans_of(runs);
+    spans.retain(|span| span.start < span.end);
+    spans.sort_by(|a, b| {
+        (&a.key, a.start, a.end, &a.value).cmp(&(&b.key, b.start, b.end, &b.value))
+    });
+    let mut merged: Vec<Span> = Vec::new();
+    for span in spans {
+        if let Some(last) = merged.last_mut() {
+            if last.key == span.key && last.value == span.value && last.end == span.start {
+                last.end = span.end;
+                continue;
+            }
+        }
+        merged.push(span);
+    }
+    merged
 }
 
 fn get_str(m: &LoroMap, key: &str) -> String {
