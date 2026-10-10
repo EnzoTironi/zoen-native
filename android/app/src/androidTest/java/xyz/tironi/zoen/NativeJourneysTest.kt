@@ -131,7 +131,8 @@ class NativeJourneysTest {
     }
 
     @Test fun searchFindsThePersistedStory() {
-        compose.onNodeWithContentDescription(application.getString(R.string.search)).performClick()
+        compose.onNodeWithTag("home-plus").performClick()
+        compose.onNode(hasText(application.getString(R.string.search)) and hasAnyAncestor(hasTestTag("quickActions")), useUnmergedTree = true).performClick()
         compose.onNodeWithTag("search").performTextInput("Paraty")
         val result = hasText("Paraty", substring = true) and hasClickAction() and !hasSetTextAction()
         compose.waitUntil(10_000) { compose.onAllNodes(result).fetchSemanticsNodes().isNotEmpty() }
