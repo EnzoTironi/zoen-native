@@ -8,17 +8,23 @@ import android.graphics.Path
 import xyz.tironi.zoen.miniapps.GlobePoint
 import xyz.tironi.zoen.miniapps.OrthographicGlobe
 import xyz.tironi.zoen.ui.drawPixelDonkey
+import xyz.tironi.zoen.ui.ink.DoodleArt
+import xyz.tironi.zoen.ui.ink.InkCanvasRenderer
 import kotlin.math.hypot
 
 internal object WidgetArt {
     private val cached = mutableMapOf<String, Bitmap>()
     @Synchronized fun bitmap(context: Context, art: String?): Bitmap? {
-        if (art !in setOf("pet", "pet.asleep", "pet.gone", "globe")) return null
+        val doodle = DoodleArt.entries.find { it.name.equals(art, true) }
+        if (doodle == null && art !in setOf("pet", "pet.asleep", "pet.gone", "globe")) return null
         return cached.getOrPut(checkNotNull(art)) {
             val bitmap = Bitmap.createBitmap(192, 162, Bitmap.Config.ARGB_8888)
             val canvas = Canvas(bitmap)
             val paint = Paint(Paint.ANTI_ALIAS_FLAG)
-            if (art == "globe") {
+            if (doodle != null) {
+                InkCanvasRenderer().render(doodle.strokes(4.0), canvas, bitmap.width, bitmap.height,
+                    doodle.seed, 0, 2.0, 1.0)
+            } else if (art == "globe") {
                 val center = GlobePoint(25.0, 10.0)
                 val circle = Path().apply { addCircle(96f, 81f, 74f, Path.Direction.CW) }
                 paint.color = 0xFF234756.toInt(); canvas.drawPath(circle, paint); canvas.clipPath(circle)
@@ -38,8 +44,8 @@ internal object WidgetArt {
                 }
             } else {
                 drawPixelDonkey(art == "pet.asleep") { x, y, w, h, color ->
-                    paint.color = color.toInt(); paint.alpha = if (art == "pet.gone") 110 else (color ushr 24).toInt()
-                    canvas.drawRect(x * 6f, y * 6f, (x + w) * 6f, (y + h) * 6f, paint)
+                    paint.color = color.toInt(); paint.alpha = if (art == "pet.gone") 89 else (color ushr 24).toInt()
+                    canvas.drawRect(6 + x * 6f, 15 + y * 6f, 6 + (x + w) * 6f + .3f, 15 + (y + h) * 6f + .3f, paint)
                 }
             }
             bitmap

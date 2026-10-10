@@ -1,6 +1,5 @@
 package xyz.tironi.zoen.miniapps
 
-import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
@@ -14,7 +13,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
@@ -27,6 +25,8 @@ import kotlinx.coroutines.delay
 import xyz.tironi.zoen.R
 import xyz.tironi.zoen.ui.PixelDonkey
 import xyz.tironi.zoen.ui.appIcon
+import xyz.tironi.zoen.ui.ZoenDoodle
+import xyz.tironi.zoen.ui.ink.DoodleArt
 
 /** All seven templates render natively; arbitrary HTML can only publish this validated DTO. */
 @Composable
@@ -38,7 +38,14 @@ fun SnapshotCard(snapshot: WidgetSnapshot, modifier: Modifier = Modifier, live: 
     var now by remember { mutableLongStateOf(System.currentTimeMillis()) }
     LaunchedEffect(snapshot.targetMs, live) { if (live && snapshot.targetMs != null) while (true) { now = System.currentTimeMillis(); delay(60_000) } }
     val spoken = listOfNotNull(snapshot.title, snapshot.value, snapshot.detail, snapshot.eyebrow).joinToString(". ")
-    Box(modifier.clip(RoundedCornerShape(24.dp)).background(Brush.verticalGradient(listOf(accent.copy(alpha = if (darkArt) .3f else .17f), background)))
+    val artColors = when (snapshot.art) {
+        "trip" -> listOf(Color(0xFFF9B67A), Color(0xFFE9846B), Color(0xFF3B6C8F))
+        "hike" -> listOf(Color(0xFFDDEFD2), Color(0xFFB9DDB0))
+        "pot" -> listOf(Color(0xFFFBE3C8), Color(0xFFF4B98A))
+        "globe" -> listOf(Color.Black, Color.Black)
+        else -> listOf(accent.copy(alpha = if (darkArt) .3f else .17f), background)
+    }
+    Box(modifier.clip(RoundedCornerShape(24.dp)).background(Brush.verticalGradient(artColors))
         .semantics(mergeDescendants = true) { contentDescription = spoken }) {
         if (snapshot.template == WidgetSnapshot.Template.PHOTO) {
             Image(painterResource(when (snapshot.photo) {
@@ -72,12 +79,12 @@ fun SnapshotCard(snapshot: WidgetSnapshot, modifier: Modifier = Modifier, live: 
                     if (snapshot.targetMs != null) SnapshotCountdown(snapshot, now, ink)
                 }
                 WidgetSnapshot.Template.COUNTDOWN -> {
-                    SnapshotArt(snapshot, accent, Modifier.weight(1f).fillMaxWidth())
+                    SnapshotArt(snapshot, accent, Modifier.weight(1f).fillMaxWidth(), live)
                     Text(snapshot.title, style = MaterialTheme.typography.titleSmall, color = ink, maxLines = 1, overflow = TextOverflow.Ellipsis)
                     SnapshotCountdown(snapshot, now, ink)
                 }
                 WidgetSnapshot.Template.PROGRESS -> {
-                    SnapshotArt(snapshot, accent, Modifier.weight(1f).fillMaxWidth())
+                    SnapshotArt(snapshot, accent, Modifier.weight(1f).fillMaxWidth(), live)
                     Text(snapshot.title, style = MaterialTheme.typography.titleSmall, color = ink, maxLines = 1, overflow = TextOverflow.Ellipsis)
                     snapshot.bars.take(3).forEach { bar ->
                         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -95,7 +102,7 @@ fun SnapshotCard(snapshot: WidgetSnapshot, modifier: Modifier = Modifier, live: 
                     } }
                 }
                 WidgetSnapshot.Template.STAT -> {
-                    SnapshotArt(snapshot, accent, Modifier.weight(1f).fillMaxWidth())
+                    SnapshotArt(snapshot, accent, Modifier.weight(1f).fillMaxWidth(), live)
                     Row(verticalAlignment = Alignment.Bottom, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         snapshot.value?.let { Text(it, style = MaterialTheme.typography.headlineMedium, color = ink, fontWeight = FontWeight.Bold, maxLines = 1) }
                         Text(snapshot.title, style = MaterialTheme.typography.titleSmall, color = ink, maxLines = 2, overflow = TextOverflow.Ellipsis)
@@ -103,7 +110,7 @@ fun SnapshotCard(snapshot: WidgetSnapshot, modifier: Modifier = Modifier, live: 
                     snapshot.detail?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = ink.copy(alpha = .75f), maxLines = 1, overflow = TextOverflow.Ellipsis) }
                 }
                 WidgetSnapshot.Template.CAPTION -> {
-                    SnapshotArt(snapshot, accent, Modifier.weight(1f).fillMaxWidth())
+                    SnapshotArt(snapshot, accent, Modifier.weight(1f).fillMaxWidth(), live)
                     Text(snapshot.title, style = MaterialTheme.typography.titleMedium, color = ink, maxLines = 2, overflow = TextOverflow.Ellipsis)
                     snapshot.detail?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = ink.copy(alpha = .75f), maxLines = 2, overflow = TextOverflow.Ellipsis) }
                 }
@@ -126,15 +133,12 @@ private fun SnapshotCountdown(snapshot: WidgetSnapshot, now: Long, ink: Color) {
 }
 
 @Composable
-private fun SnapshotArt(snapshot: WidgetSnapshot, accent: Color, modifier: Modifier) {
+private fun SnapshotArt(snapshot: WidgetSnapshot, accent: Color, modifier: Modifier, live: Boolean) {
     when (snapshot.art) {
-        "pet", "pet.asleep", "pet.gone" -> PixelDonkey(modifier, snapshot.art == "pet.asleep")
-        "globe" -> Canvas(modifier) {
-            val radius = size.minDimension * .42f
-            drawCircle(Color(0xFF45919C), radius, style = Stroke(3.dp.toPx()))
-            drawOval(Color(0xFF72AD7B), topLeft = androidx.compose.ui.geometry.Offset(size.width / 2 - radius / 2, size.height / 2 - radius), size = androidx.compose.ui.geometry.Size(radius, radius * 2), style = Stroke(2.dp.toPx()))
-            drawLine(Color(0xFF72AD7B), androidx.compose.ui.geometry.Offset(size.width/2-radius, size.height/2), androidx.compose.ui.geometry.Offset(size.width/2+radius, size.height/2), 2.dp.toPx())
-        }
+        "pet", "pet.asleep", "pet.gone" -> PixelDonkey(modifier, snapshot.art == "pet.asleep", snapshot.art == "pet.gone", live)
+        "globe" -> NativeGlobe(modifier = modifier, interactive = false, spin = live)
+        "pot", "ballot", "notepad", "trip", "hike" -> ZoenDoodle(
+            DoodleArt.entries.single { it.name.equals(snapshot.art, true) }, modifier, live)
         else -> Box(modifier, contentAlignment = Alignment.Center) { Icon(appIcon(snapshot.appId), null, Modifier.size(52.dp), tint = accent) }
     }
 }

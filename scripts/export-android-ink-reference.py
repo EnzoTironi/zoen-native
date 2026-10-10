@@ -36,6 +36,7 @@ struct Path {
 types = hand_source[hand_source.index("struct InkRNG {"):hand_source.index("enum Ink {")]
 geometry = "enum Ink {\n" + hand_source[hand_source.index("    static func catmull("):hand_source.index("/// `-RodaFreezeArt")]
 rig = mascot_source[mascot_source.index("enum MascotPose:"):mascot_source.index("struct MascotView:")]
+doodles = hand_source[hand_source.index("enum Doodle {"):hand_source.index("struct DoodleView:")]
 export = r"""
 func point(_ p: CGPoint) -> [Double] { [Double(p.x), Double(p.y)] }
 func color(_ c: Color?) -> Any { c.map { [$0.rgb, $0.alpha] as [Any] } ?? NSNull() }
@@ -66,14 +67,20 @@ let geometry: [String: Any] = ["points": p.map(point), "catmull": catmull.map(po
     "closed_catmull": Ink.catmull(p, closed: true).map(point),
     "linear": Ink.linear(p, closed: true).map(point), "trimmed": trimmed.map(point), "ribbon": rendered.points.map(point)]
 var seed = InkRNG(0xffffffffffffffff)
-let document: [String: Any] = ["frames": frames, "geometry": geometry, "rng": (0..<16).map { _ in seed.unit() }]
+var doodleFrames: [[String: Any]] = []
+for (name, doodle) in [("pot", Doodle.pot), ("ballot", Doodle.ballot), ("notepad", Doodle.notepad), ("trip", Doodle.trip), ("hike", Doodle.hike)] {
+    for t in times + [2.999, 3.001, 4.0] {
+        doodleFrames.append(["name": name, "time": t, "seed": doodle.seed, "strokes": doodle.strokes(t).map(stroke)])
+    }
+}
+let document: [String: Any] = ["frames": frames, "doodles": doodleFrames, "geometry": geometry, "rng": (0..<16).map { _ in seed.unit() }]
 let data = try JSONSerialization.data(withJSONObject: document, options: [.sortedKeys])
 FileHandle.standardOutput.write(data)
 """
 with tempfile.TemporaryDirectory(prefix="zoen-ink-reference-") as directory:
     source = Path(directory) / "reference.swift"
     executable = Path(directory) / "reference"
-    source.write_text(support + types + geometry + rig + export)
+    source.write_text(support + types + geometry + rig + doodles + export)
     subprocess.run(["swiftc", "-O", str(source), "-o", str(executable)], check=True)
     result = subprocess.run([str(executable)], check=True, capture_output=True)
 
@@ -82,4 +89,4 @@ document["sources"] = {str(p.relative_to(root)): hashlib.sha256(p.read_bytes()).
 target = root / "android/app/src/test/resources/ink-swift-reference.json.gz"
 target.parent.mkdir(parents=True, exist_ok=True)
 target.write_bytes(gzip.compress(json.dumps(document, separators=(",", ":"), sort_keys=True).encode(), mtime=0))
-print(f"{len(document['frames'])} original Swift frames; {target.stat().st_size} compressed bytes; {target.relative_to(root)}")
+print(f"{len(document['frames'])} mascot and {len(document['doodles'])} doodle frames from original Swift; {target.stat().st_size} compressed bytes; {target.relative_to(root)}")

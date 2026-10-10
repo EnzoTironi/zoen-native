@@ -23,6 +23,8 @@ import org.junit.Test
 import org.junit.runner.RunWith
 import xyz.tironi.zoen.theme.ZoenTheme
 import xyz.tironi.zoen.ui.*
+import xyz.tironi.zoen.miniapps.SnapshotCard
+import xyz.tironi.zoen.miniapps.WidgetSnapshot
 
 @RunWith(AndroidJUnit4::class)
 class NativeExperienceTest {
@@ -79,42 +81,110 @@ class NativeExperienceTest {
     @Test fun proceduralMascotRunsPastEightSecondsAndPausesForLifecycleVisibilityAndLiveReducedMotion() {
         val originalScale = shell("settings get global animator_duration_scale").trim()
         try {
-            shell("settings put global animator_duration_scale 1")
+            shell("settings put global animator_duration_scale 0")
             compose.setContent { ZoenTheme { Box(Modifier.fillMaxSize()) { ZoenMascot(Modifier.size(240.dp), pose = MascotPose.Map) } } }
             lateinit var mascot: MascotCanvasView
             compose.runOnIdle { mascot = checkNotNull(findMascot(compose.activity.window.decorView)) }
             fun time(): Double { var value = 0.0; instrumentation.runOnMainSync { value = mascot.animationTimeSeconds }; return value }
             fun scheduled(): Boolean { var value = false; instrumentation.runOnMainSync { value = mascot.hasScheduledFrame }; return value }
-            compose.waitUntil(12_000) { time() > 8.4 }
+            shell("settings put global animator_duration_scale 1")
+            awaitNative(12_000) { time() > 8.4 }
             val before = time()
             assertTrue("The procedural rig must run beyond the former eight second loop", before > 8.4)
             assertTrue(scheduled())
             capture("procedural-map-long-running")
-            compose.runOnIdle { mascot.visibility = View.INVISIBLE }
+            instrumentation.runOnMainSync { mascot.visibility = View.INVISIBLE }
             val hidden = time()
             java.lang.Thread.sleep(350)
             assertEquals(hidden, time(), 0.0)
             assertFalse(scheduled())
-            compose.runOnIdle { mascot.visibility = View.VISIBLE }
-            compose.waitUntil(2_000) { time() > hidden + .2 }
+            instrumentation.runOnMainSync { mascot.visibility = View.VISIBLE }
+            awaitNative(2_000) { time() > hidden + .2 }
             compose.activityRule.scenario.moveToState(Lifecycle.State.STARTED)
+            awaitNative(2_000) { !scheduled() }
             val paused = time()
             java.lang.Thread.sleep(350)
             assertEquals(paused, time(), 0.0)
             assertFalse(scheduled())
             compose.activityRule.scenario.moveToState(Lifecycle.State.RESUMED)
-            compose.waitUntil(2_000) { time() > paused + .2 }
+            awaitNative(2_000) { time() > paused + .2 }
             shell("settings put global animator_duration_scale 0")
-            compose.waitUntil(2_000) { !scheduled() }
+            awaitNative(2_000) { !scheduled() }
             val reduced = time()
             java.lang.Thread.sleep(350)
             assertEquals(reduced, time(), 0.0)
             capture("reduced-motion-static-map")
             shell("settings put global animator_duration_scale 1")
-            compose.waitUntil(2_000) { time() > reduced + .2 }
+            awaitNative(2_000) { time() > reduced + .2 }
             Evidence.outputFile("experience", "mascot-lifecycle-receipt.txt").writeText("PASS: time=$before (>8 s), hidden pause, resumed phase, lifecycle pause, live animation-scale=0 pause and resume.\n")
+            instrumentation.runOnMainSync { mascot.visibility = View.INVISIBLE }
         } finally {
             if (originalScale == "null") shell("settings delete global animator_duration_scale") else shell("settings put global animator_duration_scale $originalScale")
+        }
+    }
+
+    @Test fun everySnapshotArtRendersNativelyAndLiveArtPausesWhenHiddenAndMotionIsDisabled() {
+        val originalScale = shell("settings get global animator_duration_scale").trim()
+        var show by mutableStateOf(true)
+        val arts = listOf("notepad", "pot", "ballot", "trip", "hike", "pet", "pet.asleep", "pet.gone", "globe")
+        val views = mutableListOf<NativeArtCanvasView>()
+        try {
+            shell("settings put global animator_duration_scale 0")
+            compose.setContent {
+                ZoenTheme {
+                    if (show) Column(Modifier.fillMaxSize().padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        arts.chunked(3).forEach { row ->
+                            Row(Modifier.weight(1f), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                row.forEach { art ->
+                                    val snapshot = checkNotNull(WidgetSnapshot.decode("""{"id":"art-$art","appId":"list","template":"caption","title":"$art","accentHex":"#5CC79E","symbol":"checklist","art":"$art","deepLink":"zoen://app/art-$art"}"""))
+                                    SnapshotCard(snapshot, Modifier.weight(1f).fillMaxHeight())
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            compose.runOnIdle {
+                fun collect(view: View) {
+                    if (view is NativeArtCanvasView) views.add(view)
+                    if (view is ViewGroup) for (index in 0 until view.childCount) collect(view.getChildAt(index))
+                }
+                collect(compose.activity.window.decorView)
+            }
+            assertEquals(8, views.size)
+            compose.onNodeWithTag("native-globe").assertIsDisplayed()
+            shell("settings put global animator_duration_scale 1")
+            fun times(): List<Double> { var value = emptyList<Double>(); instrumentation.runOnMainSync { value = views.map { it.animationTimeSeconds } }; return value }
+            fun scheduled(): List<Boolean> { var value = emptyList<Boolean>(); instrumentation.runOnMainSync { value = views.map { it.hasScheduledFrame } }; return value }
+            awaitNative(3_000) { times().all { it > 1.1 } }
+            assertTrue(scheduled().all { it })
+            CommittedWindowCapture.save(compose.activity, "experience", "native-snapshot-art-live")
+            instrumentation.runOnMainSync { views.forEach { it.visibility = View.INVISIBLE } }
+            val hidden = times()
+            java.lang.Thread.sleep(350)
+            assertEquals(hidden, times())
+            assertTrue(scheduled().none { it })
+            instrumentation.runOnMainSync { views.forEach { it.visibility = View.VISIBLE } }
+            awaitNative(2_000) { times().zip(hidden).all { (now, before) -> now > before + .2 } }
+            shell("settings put global animator_duration_scale 0")
+            awaitNative(2_000) { scheduled().none { it } }
+            val stopped = times()
+            java.lang.Thread.sleep(350)
+            assertEquals(stopped, times())
+            CommittedWindowCapture.save(compose.activity, "experience", "native-snapshot-art-reduced-motion")
+            Evidence.outputFile("experience", "snapshot-art-receipt.txt").writeText("PASS: all nine snapshot arts, eight original Canvas sprites/doodles plus the land-data globe; live draw-on and native clocks, hidden pause/resume, reduced-motion freeze.\n")
+        } finally {
+            instrumentation.runOnMainSync { show = false }
+            compose.waitForIdle()
+            if (originalScale == "null") shell("settings delete global animator_duration_scale") else shell("settings put global animator_duration_scale $originalScale")
+        }
+    }
+
+    private fun awaitNative(timeout: Long, condition: () -> Boolean) {
+        val deadline = android.os.SystemClock.elapsedRealtime() + timeout
+        while (!condition()) {
+            assertTrue("Native animation did not reach its required state within $timeout ms", android.os.SystemClock.elapsedRealtime() < deadline)
+            java.lang.Thread.sleep(10)
         }
     }
 

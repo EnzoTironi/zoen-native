@@ -172,14 +172,8 @@ private fun PetApp(data: JSONObject, action: AppAction, modifier: Modifier) {
 }
 
 @Composable
-fun PixelDonkey(modifier: Modifier = Modifier, asleep: Boolean = false) {
-    Canvas(modifier.semantics { contentDescription = "Donkey" }) {
-        val scale = minOf(size.width / 32, size.height / 27)
-        val left = (size.width - 32 * scale) / 2
-        val top = (size.height - 27 * scale) / 2
-        fun block(x: Int, y: Int, w: Int, h: Int, color: Color) = drawRect(color, Offset(left + x * scale, top + y * scale), Size(w * scale, h * scale))
-        drawPixelDonkey(asleep) { x, y, width, height, color -> block(x, y, width, height, Color(color)) }
-    }
+fun PixelDonkey(modifier: Modifier = Modifier, asleep: Boolean = false, faded: Boolean = false, live: Boolean = true) {
+    ZoenPetSprite(modifier, asleep, faded, live)
 }
 
 @Composable

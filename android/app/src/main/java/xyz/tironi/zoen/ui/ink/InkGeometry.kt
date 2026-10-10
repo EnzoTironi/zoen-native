@@ -23,6 +23,7 @@ internal object InkPalette {
     val sky = InkColor(0x9ccbff)
     val lilac = InkColor(0xc3b2ff)
     val blush = InkColor(0xffb8aa)
+    val steam = InkColor(0xa79fae)
 }
 
 // The same SplitMix64 sequence as apple/Shared/DesignSystem/HandDrawn.swift.
@@ -54,6 +55,7 @@ internal data class InkStroke(
         })
     }
     fun faded(value: Double) = copy(opacity = opacity * value)
+    fun moved(x: Double, y: Double) = copy(points = points.map { InkPoint(it.x + x, it.y + y) })
 
     companion object {
         fun ellipse(cx: Double, cy: Double, rx: Double, ry: Double, fill: InkColor? = null,

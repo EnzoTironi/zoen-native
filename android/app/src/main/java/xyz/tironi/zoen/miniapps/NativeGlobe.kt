@@ -1,6 +1,10 @@
 package xyz.tironi.zoen.miniapps
 
 import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.gestures.detectDragGestures
@@ -34,6 +38,9 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.customActions
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.LocalLifecycleOwner
+import xyz.tironi.zoen.ui.rememberMotionEnabled
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.coroutineScope
@@ -108,13 +115,21 @@ internal object OrthographicGlobe {
 
 /** Offset values use x=longitude and y=latitude, in degrees. */
 @Composable
-fun NativeGlobe(guess: Offset? = null, actual: Offset? = null, modifier: Modifier = Modifier, onGuess: (lat: Float, lon: Float) -> Unit = { _, _ -> }) {
+fun NativeGlobe(guess: Offset? = null, actual: Offset? = null, modifier: Modifier = Modifier,
+                interactive: Boolean = true, spin: Boolean = false, onGuess: (lat: Float, lon: Float) -> Unit = { _, _ -> }) {
     val context = LocalContext.current
     val haptics = LocalHapticFeedback.current
     val choose by rememberUpdatedState(onGuess)
     var latitude by rememberSaveable { mutableFloatStateOf(25f) }
     var longitude by rememberSaveable { mutableFloatStateOf(10f) }
-    val center = GlobePoint(latitude.toDouble(), longitude.toDouble())
+    val lifecycle by LocalLifecycleOwner.current.lifecycle.currentStateFlow.collectAsState()
+    val motion = rememberMotionEnabled()
+    val rotation = if (spin && motion && lifecycle.isAtLeast(Lifecycle.State.RESUMED)) {
+        val turn by rememberInfiniteTransition(label = "snapshot globe").animateFloat(0f, 360f,
+            infiniteRepeatable(tween(120_000, easing = LinearEasing)), label = "longitude")
+        turn
+    } else 0f
+    val center = GlobePoint(latitude.toDouble(), OrthographicGlobe.longitude((longitude + rotation).toDouble()))
     val contours by produceState<List<List<GlobePoint>>?>(null, context.applicationContext) {
         value = try { withContext(Dispatchers.IO) { context.assets.open("world/land110.json").bufferedReader().use { OrthographicGlobe.land(it.readText()) } } }
         catch (e: Exception) { if (e is CancellationException) throw e; emptyList() }
@@ -144,7 +159,7 @@ fun NativeGlobe(guess: Offset? = null, actual: Offset? = null, modifier: Modifie
     val west = stringResource(R.string.globe_west); val east = stringResource(R.string.globe_east)
     val north = stringResource(R.string.globe_north); val south = stringResource(R.string.globe_south)
     val selectCenter = stringResource(R.string.globe_select_center)
-    val canChoose = answer == null && !contours.isNullOrEmpty()
+    val canChoose = interactive && answer == null && !contours.isNullOrEmpty()
     Box(modifier.fillMaxWidth().aspectRatio(1f), contentAlignment = Alignment.Center) {
         Canvas(Modifier.matchParentSize().testTag("native-globe").semantics {
             contentDescription = description

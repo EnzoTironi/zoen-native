@@ -1,7 +1,6 @@
 package xyz.tironi.zoen
 
 import android.content.Intent
-import android.graphics.Bitmap
 import android.net.Uri
 import android.os.Build
 import android.view.WindowManager
@@ -48,9 +47,9 @@ class ParityJourneysTest {
         Evidence.outputFile("pages", "$name.txt").writeText(
             compose.onAllNodes(isRoot(), useUnmergedTree = true).printToString(maxDepth = Int.MAX_VALUE)
         )
-        val bitmap = InstrumentationRegistry.getInstrumentation().uiAutomation.takeScreenshot() ?: return
-        try { Evidence.outputFile("pages", "$name.png").outputStream().use { bitmap.compress(Bitmap.CompressFormat.PNG, 100, it) } }
-        finally { bitmap.recycle() }
+        lateinit var activity: MainActivity
+        scenario.onActivity { activity = it }
+        CommittedWindowCapture.save(activity, "pages", name)
     }
 
     @Test fun filesAreAPrimaryDestinationAndFolderBackReturnsToFiles() {
