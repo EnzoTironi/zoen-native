@@ -20,13 +20,17 @@ impl FreshClaim {
 }
 pub(crate) struct DirectoryGuard {
     tx: Transaction<'static, Postgres>,
+    valid_until_ms: i64,
 }
 pub(crate) struct DispatchPermit {
-    _private: (),
+    expires: std::time::Instant,
 }
 impl DispatchPermit {
-    pub fn consume(self) -> zoen_models::Admission {
-        zoen_models::Admission::Fresh
+    pub fn consume(self) -> Result<zoen_models::Admission, RuntimeError> {
+        if std::time::Instant::now() >= self.expires {
+            return Err(RuntimeError::Denied);
+        }
+        Ok(zoen_models::Admission::Fresh)
     }
 }
 
@@ -41,8 +45,21 @@ impl DirectoryGuard {
             .bind(nonce)
             .execute(&mut *self.tx)
             .await?;
+        // Anchor the monotonic deadline before the SQL clock request, so query
+        // and commit latency consume the window rather than extend permission.
+        let observed = std::time::Instant::now();
+        let now = Finance::clock(&mut self.tx).await?;
+        let remaining = self
+            .valid_until_ms
+            .checked_sub(now)
+            .filter(|remaining| *remaining > 0)
+            .ok_or(RuntimeError::Denied)?;
+        let window = std::time::Duration::from_millis(remaining as u64)
+            .min(std::time::Duration::from_secs(2));
         self.tx.commit().await?;
-        Ok(DispatchPermit { _private: () })
+        Ok(DispatchPermit {
+            expires: observed + window,
+        })
     }
     #[cfg(test)]
     pub async fn rollback(self) -> Result<(), RuntimeError> {
@@ -398,7 +415,12 @@ impl Finance {
         {
             return Err(RuntimeError::OverBudget);
         }
-        Ok(DirectoryGuard { tx })
+        Ok(DirectoryGuard {
+            tx,
+            valid_until_ms: policy
+                .expires_at_ms
+                .min(period(policy.year, policy.month)?.1),
+        })
     }
     pub async fn capture(
         &self,

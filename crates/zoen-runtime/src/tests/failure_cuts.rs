@@ -1,5 +1,95 @@
 use super::*;
 
+pub(super) async fn expired_policy_cannot_finish_admission() {
+    let mut w = World::new().await;
+    let now: i64 =
+        sqlx::query_scalar("SELECT floor(extract(epoch FROM clock_timestamp()) * 1000)::BIGINT")
+            .fetch_one(&w.runtime.finance.pool)
+            .await
+            .unwrap();
+    let mut policy = w.signed.policy.clone();
+    policy.version += 1;
+    policy.previous_digest = Some(w.policy_digest.clone());
+    policy.expires_at_ms = now + 2500;
+    w.signed = roda_log::owner_budget::sign(&w.owner, policy).unwrap();
+    w.policy_digest = w.runtime.install_policy(w.signed.clone()).await.unwrap();
+    let step = w.step(0).await;
+    let binding = w.binding(&step);
+    w.runtime
+        .execution
+        .prepare(&step, &binding, &w.runtime.custody)
+        .await
+        .unwrap();
+    w.runtime.finance.reserve(&binding).await.unwrap();
+    let claim = w.runtime.finance.claim(&binding).await.unwrap().unwrap();
+    let guard = w.runtime.finance.guard(&binding).await.unwrap();
+    let admission = w
+        .runtime
+        .execution
+        .admit_once(&step, claim, &binding, &w.runtime.custody)
+        .await
+        .unwrap();
+    // Wait against the real SQL clock, without synthesizing an expired proof or
+    // altering a live signed policy. The guard transaction remains open.
+    sqlx::query("SELECT pg_sleep(GREATEST(0.0, ($1::BIGINT - floor(extract(epoch FROM clock_timestamp()) * 1000)) / 1000.0) + 0.025)")
+        .bind(w.signed.policy.expires_at_ms)
+        .execute(&w.runtime.finance.pool).await.unwrap();
+    assert!(matches!(
+        guard.finish(admission).await,
+        Err(RuntimeError::Denied)
+    ));
+    assert!(
+        w.runtime
+            .execution
+            .has_admission(&binding.context.attempt_id)
+            .await
+    );
+    assert_eq!(
+        w.count("SELECT count(*) FROM runtime_admission_witnesses")
+            .await,
+        0
+    );
+    assert_eq!(w.http.sends.load(Ordering::SeqCst), 0);
+    assert_eq!(w.balance().await.held_units, 13);
+    assert!(w.runtime.complete_verified(&step).await.is_err());
+    assert_eq!(w.http.sends.load(Ordering::SeqCst), 0);
+    w.finish().await;
+}
+
+pub(super) async fn delayed_permit_use_cannot_send() {
+    let w = World::new().await;
+    let step = w.step(0).await;
+    let binding = w.binding(&step);
+    w.runtime
+        .execution
+        .prepare(&step, &binding, &w.runtime.custody)
+        .await
+        .unwrap();
+    w.runtime.finance.reserve(&binding).await.unwrap();
+    let claim = w.runtime.finance.claim(&binding).await.unwrap().unwrap();
+    let guard = w.runtime.finance.guard(&binding).await.unwrap();
+    let admission = w
+        .runtime
+        .execution
+        .admit_once(&step, claim, &binding, &w.runtime.custody)
+        .await
+        .unwrap();
+    let permit = guard.finish(admission).await.unwrap();
+    // A worker paused after the known SQL commit must not keep a timeless permit.
+    tokio::time::sleep(Duration::from_millis(2050)).await;
+    assert_eq!(permit.consume(), Err(RuntimeError::Denied));
+    assert_eq!(
+        w.count("SELECT count(*) FROM runtime_admission_witnesses")
+            .await,
+        1
+    );
+    assert_eq!(w.http.sends.load(Ordering::SeqCst), 0);
+    assert_eq!(w.balance().await.held_units, 13);
+    assert!(w.runtime.complete_verified(&step).await.is_err());
+    assert_eq!(w.http.sends.load(Ordering::SeqCst), 0);
+    w.finish().await;
+}
+
 pub(super) async fn reservation_ack_lost_reuses_one_hold() {
     let w = World::new().await;
     let step = w.step(0).await;
@@ -144,7 +234,7 @@ pub(super) async fn admission_tombstone_race_and_old_worker() {
         match admitted {
             Ok(admission) => {
                 assert!(!matches!(closed, Ok(Some(_))));
-                guard.finish(admission).await.unwrap().consume();
+                guard.finish(admission).await.unwrap().consume().unwrap();
                 assert!(w
                     .runtime
                     .execution
@@ -229,7 +319,7 @@ pub(super) async fn both_admission_closure_orderings() {
                 .admit_once(&step, claim, &binding, &w.runtime.custody)
                 .await
                 .unwrap();
-            guard.finish(admission).await.unwrap().consume();
+            guard.finish(admission).await.unwrap().consume().unwrap();
             assert!(w
                 .runtime
                 .execution

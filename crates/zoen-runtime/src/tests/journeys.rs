@@ -48,6 +48,12 @@ pub(super) async fn run() {
     println!("authority journey: suppressed claim ACK cannot resend, permanent closure releases once PASS");
     failure_cuts::admission_and_guard_reply_losses_keep_hold().await;
     println!("authority journey: suppressed admission or guard ACK sends zero, keeps hold PASS");
+    failure_cuts::expired_policy_cannot_finish_admission().await;
+    println!("authority journey: signed policy expires during admission, zero send and hold retained PASS");
+    failure_cuts::delayed_permit_use_cannot_send().await;
+    println!(
+        "authority journey: delayed permit consumption sends zero and retains admitted hold PASS"
+    );
     failure_cuts::admission_tombstone_race_and_old_worker().await;
     println!("authority journey: 12 real admission/tombstone races exclude unsafe release PASS");
     failure_cuts::both_admission_closure_orderings().await;

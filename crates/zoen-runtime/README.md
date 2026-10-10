@@ -28,6 +28,10 @@ committing its SQL witness and ending the guard. Only this known-fresh sequence
 produces a transient permit for one gateway transport. No SQL directory lock
 spans HTTP latency. Reads, replay, reopen and uncertain commits cannot recreate
 claims or permits. Both run and certified-device fences guard execution writes.
+Guard finish rechecks signed budget expiry using the actual SQL clock. The
+consuming permit has a conservative monotonic deadline, at most two seconds
+from that observation and no later than the policy deadline. A paused worker
+cannot consume an expired permit; the admitted hold remains pending.
 
 Cancellation releases only after a permanent fenced FDB pre-dispatch tombstone
 defeats old admission. Admitted and unknown outcomes retain holds. Restore

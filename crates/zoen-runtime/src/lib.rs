@@ -380,7 +380,7 @@ impl DispatchAuthority for Session<'_> {
                 .admitted
                 .lock()
                 .map_err(|_| RuntimeError::Unavailable)? = Some(binding);
-            Ok(permit.consume())
+            permit.consume()
         }
         .await;
         result.map_err(|e| match e {
