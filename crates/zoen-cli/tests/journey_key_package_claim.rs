@@ -756,15 +756,17 @@ async fn legacy_claim_reply_loss_causally_spends_an_extra_package() {
     let mut proxy = ClaimProxy::new(w.port, Boundary::Reply).await;
     let mut first_client = RawClient::connect(&proxy.url, "ana").await;
     let author = first_client.author.clone();
-    first_client
-        .send(&ClientFrame::Req {
-            id: 1,
-            op: Op::ClaimKeyPackages {
-                ids: vec![bruno.account.identity_id.clone()],
-                operation_id: None,
-            },
-        })
-        .await;
+    assert!(
+        first_client
+            .send_if_open(&ClientFrame::Req {
+                id: 1,
+                op: Op::ClaimKeyPackages {
+                    ids: vec![bruno.account.identity_id.clone()],
+                    operation_id: None,
+                },
+            })
+            .await
+    );
     assert!(matches!(
         proxy.next().await,
         Observed::Request {
