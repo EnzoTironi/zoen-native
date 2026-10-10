@@ -734,7 +734,7 @@ impl RawClient {
         self.publish_env(env).await
     }
 
-    async fn publish_env(&mut self, env: Envelope) -> Result<Sequenced, String> {
+    pub async fn publish_env(&mut self, env: Envelope) -> Result<Sequenced, String> {
         let client_id = env.client_id().to_string();
         self.send(&ClientFrame::Publish { env }).await;
         loop {

@@ -152,7 +152,7 @@ pub(crate) struct ItemState {
 }
 
 impl ItemState {
-    fn current(&self) -> &Version {
+    pub(crate) fn current(&self) -> &Version {
         self.versions.last().expect("item sempre tem v1")
     }
 }
@@ -171,6 +171,7 @@ pub(crate) struct RequestState {
     pub opened_ms: i64,
     pub status: ReqStatus,
     pub resolved_ms: Option<i64>,
+    pub resolution: Option<RequestResolution>,
 }
 
 #[derive(Clone, Debug)]
@@ -194,7 +195,10 @@ pub(crate) struct State {
 }
 
 impl State {
-    pub(crate) fn apply(&mut self, e: &Event) {
+    pub(crate) fn apply(&mut self, e: &Event, identities: &HashMap<IdentityId, Identity>) {
+        if !self.approval_event_valid(e, identities) {
+            return;
+        }
         let entry = |body| Entry {
             hash: e.hash.clone(),
             client_id: e.client_id.clone(),
@@ -359,11 +363,21 @@ impl State {
                 });
             }
             EventBody::GrantRevoked { grant } => {
-                for g in self.grants.iter_mut().filter(|g| &g.grant.id == grant) {
+                for g in self
+                    .grants
+                    .iter_mut()
+                    .filter(|g| &g.grant.id == grant && g.grant.grantor == e.author)
+                {
                     g.revoked = true;
                 }
             }
             EventBody::RequestOpened { request } => {
+                if let Some(p) = &request.proposal {
+                    if p.ai_cost_cents > 0 {
+                        self.usage
+                            .push((request.agent.clone(), p.ai_cost_cents, e.at_ms));
+                    }
+                }
                 self.request_order.push(request.id.clone());
                 self.requests.insert(
                     request.id.clone(),
@@ -373,6 +387,7 @@ impl State {
                         opened_ms: e.at_ms,
                         status: ReqStatus::Pending,
                         resolved_ms: None,
+                        resolution: None,
                     },
                 );
                 if let Some(s) = self.spaces.get_mut(&e.space) {
@@ -382,8 +397,15 @@ impl State {
                 }
             }
             EventBody::RequestResolved {
-                request, approved, ..
+                request,
+                approved,
+                resolution,
+                ..
             } => {
+                let original = self.requests[request].clone();
+                if let Some(receipt) = resolution {
+                    self.apply_resolution(e, &original, *approved, receipt);
+                }
                 self.resolved_order.push(request.clone());
                 if let Some(r) = self.requests.get_mut(request) {
                     r.status = if *approved {
@@ -392,6 +414,7 @@ impl State {
                         ReqStatus::Denied
                     };
                     r.resolved_ms = Some(e.at_ms);
+                    r.resolution = resolution.clone();
                 }
                 if let Some(s) = self.spaces.get_mut(&e.space) {
                     s.entries.push(entry(EntryBody::RequestResolved {
@@ -505,7 +528,7 @@ impl Engine {
             match SpaceLog::from_events(space.clone(), events.clone()) {
                 Ok(log) => {
                     for e in log.events() {
-                        self.state.apply(e);
+                        self.state.apply(e, &self.identities);
                     }
                     self.logs.insert(space.clone(), log);
                 }
@@ -602,9 +625,16 @@ impl Engine {
             .or_insert_with(|| SpaceLog::new(space));
         let client_id = new_ulid(at_ms);
         let seen = log.head();
-        let event = log
-            .sequence(signer.sign_event(space, &client_id, at_ms, seen, body))
-            .clone();
+        let signed = signer.sign_event(space, &client_id, at_ms, seen, body);
+        if !self.state.approval_event_valid(&signed, &self.identities) {
+            return Err(CoreError::Invalid {
+                reason: t(
+                    "pedido, decisão ou uso não autorizado",
+                    "unauthorized request, decision or usage",
+                ),
+            });
+        }
+        let event = log.sequence(signed).clone();
         if let Err(e) = self.store.append_event(&event) {
             // Mantém memória e disco iguais: desfaz o append em memória recarregando.
             self.reload()?;
@@ -613,7 +643,7 @@ impl Engine {
         if is_new {
             self.space_order.push(space.to_string());
         }
-        self.state.apply(&event);
+        self.state.apply(&event, &self.identities);
         self.index_dirty = true;
         Ok(event)
     }
@@ -699,6 +729,7 @@ impl Engine {
             .iter()
             .rev()
             .filter(|g| !g.revoked && g.grant.grantee.as_deref() == Some(agent))
+            .filter(|g| Some(g.grant.grantor.as_str()) == owner.as_deref())
             .filter(|g| g.grant.scope == GrantScope::Space(space.to_string()))
             .find_map(|g| match g.grant.capability {
                 Capability::Trust(l) => Some(l),
@@ -715,12 +746,14 @@ impl Engine {
     /// Orçamento do mês. `None` quando o orçamento não vive neste aparelho
     /// (agente de outra pessoa: quem é dono paga).
     pub(crate) fn budget(&self, agent: &str) -> Option<Budget> {
+        let owner = self.identities.get(agent)?.owner.as_deref()?;
         let limit = self
             .state
             .grants
             .iter()
             .rev()
             .filter(|g| !g.revoked && g.grant.grantee.as_deref() == Some(agent))
+            .filter(|g| g.grant.grantor == owner)
             .find_map(|g| match g.grant.capability {
                 Capability::MonthlyBudget { cents } => Some(cents),
                 _ => None,
@@ -731,15 +764,20 @@ impl Engine {
             .usage
             .iter()
             .filter(|(a, _, at)| a == agent && month_key(*at) == month)
-            .map(|(_, c, _)| c)
-            .sum();
+            .fold(0i64, |spent, (_, cents, _)| spent.saturating_add(*cents));
         Some(Budget {
             limit_cents: limit,
             spent_cents: spent,
         })
     }
 
-    fn decide(&self, agent: &str, space: &str, action: &ActionClass, ai_cost: i64) -> Decision {
+    pub(crate) fn decide(
+        &self,
+        agent: &str,
+        space: &str,
+        action: &ActionClass,
+        ai_cost: i64,
+    ) -> Decision {
         // Agente de outra pessoa sem orçamento local: o dono dele decide o orçamento.
         let budget = self.budget(agent).unwrap_or(Budget {
             limit_cents: i64::MAX / 4,
@@ -767,18 +805,22 @@ impl Engine {
     }
 
     /// The newest unrevoked standing decision for this agent, kind of action and Space.
-    fn standing(
+    pub(crate) fn standing(
         &self,
         agent: &str,
         space: &str,
         action: &ActionClass,
     ) -> Option<(&GrantState, bool)> {
         let key = standing_key(action);
+        let owner = self.identities.get(agent)?.owner.as_deref()?;
+        let now = now_ms();
         self.state
             .grants
             .iter()
             .rev()
             .filter(|g| !g.revoked && g.grant.grantee.as_deref() == Some(agent))
+            .filter(|g| g.grant.expires_at_ms.is_none_or(|at| at > now))
+            .filter(|g| g.grant.grantor == owner)
             .filter(|g| g.grant.scope == GrantScope::Space(space.to_string()))
             .find_map(|g| match &g.grant.capability {
                 Capability::Standing { action, allow } if action == key => Some((g, *allow)),
@@ -996,7 +1038,7 @@ impl Engine {
             status,
             opened_ms: r.opened_ms,
             resolved_ms: r.resolved_ms,
-            item_id: r.req.item.clone(),
+            item_id: r.req.item.clone().or_else(|| r.resolution.as_ref().and_then(|r| r.created_item.clone())),
             line_id: r.req.line.clone(),
             action_key: standing_key(&r.req.action).into(),
             can_always_approve: standing_allow_permitted(&r.req.action, &self.policy),
@@ -1013,20 +1055,10 @@ impl Engine {
     }
 
     fn request_is_current(&self, req: &AgentRequest) -> bool {
-        match (&req.item, &req.line) {
-            (Some(item), Some(line)) => self
-                .state
-                .items
-                .get(item)
-                .and_then(|it| match &it.current().content {
-                    ItemContent::Plan(p) => p.line(line).map(|l| {
-                        roda_grants::approval_still_valid(&req.content_hash, &Self::line_hash(l))
-                    }),
-                    _ => None,
-                })
-                .unwrap_or(false),
-            _ => true,
-        }
+        self.state
+            .requests
+            .get(&req.id)
+            .is_some_and(|r| self.state.request_is_current(req, &r.space))
     }
 
     // ───────────────────────────── API pública ─────────────────────────────
@@ -1178,14 +1210,32 @@ impl Engine {
         text: &str,
         ai_cost_cents: i64,
     ) -> R<TimelineEntry> {
+        if !self.state.writer(space, agent)
+            || !self
+                .identities
+                .get(agent)
+                .is_some_and(|a| a.kind == IdentityKind::Agent && a.owner.is_some())
+        {
+            return Err(CoreError::Forbidden {
+                reason: t(
+                    "Agente sem permissão para escrever.",
+                    "Agent is not allowed to write.",
+                ),
+            });
+        }
+        if ai_cost_cents < 0 {
+            return Err(CoreError::Invalid {
+                reason: t("custo de IA negativo", "negative AI cost"),
+            });
+        }
         match self.decide(agent, space, &ActionClass::Reply, ai_cost_cents) {
             Decision::Block(r) => Err(CoreError::Forbidden {
                 reason: reason_label(&r, &self.policy),
             }),
-            _ => {
-                let e = self.post_as(space, agent, text, None)?;
+            _ => self.atomic_agent_action(|engine| {
+                let e = engine.post_as(space, agent, text, None)?;
                 if ai_cost_cents > 0 {
-                    self.append(
+                    engine.append(
                         space,
                         agent,
                         EventBody::UsageRecorded {
@@ -1196,7 +1246,7 @@ impl Engine {
                     )?;
                 }
                 Ok(e)
-            }
+            }),
         }
     }
 
@@ -1220,78 +1270,42 @@ impl Engine {
                 ),
             });
         }
+        if ai_cost_cents < 0 {
+            return Err(CoreError::Invalid {
+                reason: t("custo de IA negativo", "negative AI cost"),
+            });
+        }
         let doc = plan_from_dto(plan);
         if doc.sections.iter().all(|s| s.lines.is_empty()) {
             return Err(CoreError::Invalid {
                 reason: t("plano vazio", "empty plan"),
             });
         }
-        let decision = self.decide(agent, space, &ActionClass::Reversible, ai_cost_cents);
-        let agent_name = self.persona(agent).name;
-        match decision {
-            Decision::Block(reason) => Ok(PlanOutcome {
-                kind: DecisionKind::Block,
-                item: None,
-                message: reason_label(&reason, &self.policy),
-            }),
-            Decision::Request(reason) => {
-                // Sugerir: o plano fica como proposta em Atividade.
-                let req = AgentRequest {
-                    id: new_id("rq"),
-                    agent: agent.into(),
-                    title: tr!("Criar o plano “{}”", "Create the plan “{}”", doc.title),
-                    detail: prompt.into(),
-                    audience: t("Este Espaço", "This Space"),
-                    action: ActionClass::Reversible,
-                    content_hash: content_hash(&doc),
-                    item: None,
-                    line: None,
-                };
-                self.append(space, agent, EventBody::RequestOpened { request: req })?;
-                Ok(PlanOutcome { kind: DecisionKind::Request, item: None, message: tr!("{agent_name} preparou uma proposta e pediu sua aprovação em Atividade · {}", "{agent_name} drafted a proposal and asked for your approval in Activity · {}", reason_label(&reason, &self.policy)) })
-            }
-            Decision::Act { .. } => {
-                let item = new_id("it");
-                let total = doc.total_cents();
-                let budget = doc.budget_cents;
-                let title = doc.title.clone();
-                self.append(
-                    space,
-                    agent,
-                    EventBody::ItemCreated {
-                        item: item.clone(),
-                        kind: ItemKind::Plan,
-                        content: ItemContent::Plan(doc),
-                        origin: tr!(
-                            "{engine_label} · a partir de “{prompt}”",
-                            "{engine_label} · from “{prompt}”"
-                        ),
-                    },
-                )?;
-                let text = match budget {
-                    Some(b) if total <= b => tr!("Montei “{title}”: {} de {} · sobra {}. Toque para editar.", "Here’s “{title}”: {} of {} · {} left. Tap to edit.", money(total), money(b), money(b - total)),
-                    Some(b) => tr!("Montei “{title}”, mas deu {} — passou {} do teto de {}. Quer que eu corte algo?", "Here’s “{title}”, but it came to {} — {} over the {} cap. Want me to cut something?", money(total), money(total - b), money(b)),
-                    None => tr!("Montei “{title}” · total {}. Toque para editar.", "Here’s “{title}” · total {}. Tap to edit.", money(total)),
-                };
-                self.post_as(space, agent, &text, Some(item.clone()))?;
-                if ai_cost_cents > 0 {
-                    self.append(
-                        space,
-                        agent,
-                        EventBody::UsageRecorded {
-                            agent: agent.into(),
-                            cents: ai_cost_cents,
-                            what: "plano".into(),
-                        },
-                    )?;
-                }
-                Ok(PlanOutcome {
-                    kind: DecisionKind::ActWithUndo,
-                    item: Some(self.item(&item)?),
-                    message: text,
-                })
-            }
-        }
+        let total = doc.total_cents();
+        let title = doc.title.clone();
+        let message = match doc.budget_cents {
+            Some(b) if total <= b => tr!("Montei “{title}”: {} de {} · sobra {}. Toque para editar.", "Here’s “{title}”: {} of {} · {} left. Tap to edit.", money(total), money(b), money(b - total)),
+            Some(b) => tr!("Montei “{title}”, mas deu {} — passou {} do teto de {}. Quer que eu corte algo?", "Here’s “{title}”, but it came to {} — {} over the {} cap. Want me to cut something?", money(total), money(total - b), money(b)),
+            None => tr!("Montei “{title}” · total {}. Toque para editar.", "Here’s “{title}” · total {}. Tap to edit.", money(total)),
+        };
+        let proposal = ItemProposal {
+            item: new_id("it"),
+            kind: ItemKind::Plan,
+            content: ItemContent::Plan(doc),
+            origin: tr!(
+                "{engine_label} · a partir de “{prompt}”",
+                "{engine_label} · from “{prompt}”"
+            ),
+            message,
+            ai_cost_cents,
+        };
+        self.propose_item(
+            space,
+            agent,
+            prompt,
+            tr!("Criar o plano “{title}”", "Create the plan “{title}”"),
+            proposal,
+        )
     }
 
     pub fn item(&self, id: &str) -> R<ItemDetail> {
@@ -1684,6 +1698,7 @@ impl Engine {
                     content_hash,
                     item: link.as_ref().map(|l| l.0.clone()),
                     line: link.map(|l| l.1),
+                    proposal: None,
                 };
                 let id = req.id.clone();
                 self.append_at(
@@ -1695,99 +1710,6 @@ impl Engine {
                 Ok(Some(id))
             }
         }
-    }
-
-    pub fn resolve_request(&mut self, id: &str, approve: bool) -> R<ApproveOutcome> {
-        let me = self.me_id()?;
-        let r = self
-            .state
-            .requests
-            .get(id)
-            .cloned()
-            .ok_or_else(|| not_found("pedido"))?;
-        if r.status != ReqStatus::Pending {
-            return Err(CoreError::Invalid {
-                reason: t(
-                    "este pedido já foi resolvido",
-                    "this request was already resolved",
-                ),
-            });
-        }
-        if self
-            .identities
-            .get(&r.req.agent)
-            .and_then(|a| a.owner.clone())
-            .as_deref()
-            != Some(me.as_str())
-        {
-            return Err(CoreError::Forbidden {
-                reason: t(
-                    "só o dono do agente aprova os pedidos dele",
-                    "only the agent’s owner can approve its requests",
-                ),
-            });
-        }
-        if approve && !self.request_is_current(&r.req) {
-            return Err(CoreError::Stale { reason: t("O plano mudou depois do pedido. A aprovação vale só para o conteúdo exato — peça de novo.", "The plan changed after the request. Approval only covers the exact content — ask again.") });
-        }
-        self.append(
-            &r.space,
-            &me,
-            EventBody::RequestResolved {
-                request: id.into(),
-                approved: approve,
-                content_hash: r.req.content_hash.clone(),
-            },
-        )?;
-        let agent = r.req.agent.clone();
-        let message = if approve {
-            // Executa o que foi aprovado. Pagamento/envio de verdade não existem neste
-            // protótipo: o agente marca a linha do plano e diz que foi simulado.
-            if let (Some(item), Some(line)) = (&r.req.item, &r.req.line) {
-                if let Ok(it) = self.item_state(item) {
-                    if let ItemContent::Plan(mut doc) = it.current().content.clone() {
-                        if let Some(l) = doc.line_mut(line) {
-                            l.done = true;
-                            let note = tr!("{}: feito", "{}: done", r.req.title);
-                            self.append(
-                                &r.space,
-                                &agent,
-                                EventBody::ItemVersioned {
-                                    item: item.clone(),
-                                    content: ItemContent::Plan(doc),
-                                    note,
-                                },
-                            )?;
-                        }
-                    }
-                }
-            }
-            let text = tr!(
-                "Feito: {}. (Simulação — nenhum pagamento ou envio real neste protótipo.)",
-                "Done: {}. (Simulated — no real payment or message in this prototype.)",
-                r.req.title.to_lowercase_first()
-            );
-            let _ = self.post_as(&r.space, &agent, &text, None);
-            text
-        } else {
-            let text = tr!(
-                "Ok, não vou {}.",
-                "Ok, I won’t {}.",
-                r.req.title.to_lowercase_first()
-            );
-            let _ = self.post_as(&r.space, &agent, &text, None);
-            text
-        };
-        let req = self
-            .state
-            .requests
-            .get(id)
-            .map(|r| self.request_dto(r))
-            .ok_or_else(|| not_found("pedido"))?;
-        Ok(ApproveOutcome {
-            request: req,
-            message,
-        })
     }
 
     /// One swipe on the approvals stack. "Sempre" swipes also issue a standing Grant
@@ -1814,25 +1736,15 @@ impl Engine {
                 ),
             });
         }
-        // Resolve first: it checks ownership and that the content is still current.
-        let out = self.resolve_request(id, approve)?;
+        let out = self.resolve_request_inner(id, approve, standing)?;
         let mut grant_id = None;
         let mut also = 0u32;
         if standing {
-            let me = self.me_id()?;
-            let grant = Grant {
-                id: new_id("gr"),
-                grantor: me.clone(),
-                grantee: Some(r.req.agent.clone()),
-                scope: GrantScope::Space(r.space.clone()),
-                capability: Capability::Standing {
-                    action: standing_key(&r.req.action).into(),
-                    allow: approve,
-                },
-                expires_at_ms: None,
-            };
-            grant_id = Some(grant.id.clone());
-            self.append(&r.space, &me, EventBody::GrantIssued { grant })?;
+            grant_id = self.state.requests[id]
+                .resolution
+                .as_ref()
+                .and_then(|r| r.standing_grant.as_ref())
+                .map(|g| g.id.clone());
             let key = standing_key(&r.req.action);
             let covered: Vec<String> = self
                 .state
@@ -1851,9 +1763,8 @@ impl Engine {
                 .map(|o| o.req.id.clone())
                 .collect();
             for rid in covered {
-                if self.resolve_request(&rid, approve).is_ok() {
-                    also += 1;
-                }
+                self.resolve_request(&rid, approve)?;
+                also += 1;
             }
         }
         let request = self
@@ -2264,11 +2175,19 @@ impl Engine {
                     ),
                     _ => continue,
                 };
-                let cost = evs[i + 1..].iter().take(3).find_map(|n| match &n.body {
-                    EventBody::UsageRecorded {
-                        agent: a, cents, ..
-                    } if a == agent && n.author == agent => Some(*cents),
+                let proposal_cost = match &e.body {
+                    EventBody::RequestOpened { request } => {
+                        request.proposal.as_ref().map(|p| p.ai_cost_cents)
+                    }
                     _ => None,
+                };
+                let cost = proposal_cost.or_else(|| {
+                    evs[i + 1..].iter().take(3).find_map(|n| match &n.body {
+                        EventBody::UsageRecorded {
+                            agent: a, cents, ..
+                        } if a == agent && n.author == agent => Some(*cents),
+                        _ => None,
+                    })
                 });
                 out.push(AgentActivityDto {
                     label,
@@ -2277,6 +2196,33 @@ impl Engine {
                     space_title: title.clone(),
                     at_ms: e.at_ms,
                     cost_cents: cost,
+                });
+            }
+        }
+        for r in self
+            .state
+            .requests
+            .values()
+            .filter(|r| r.req.agent == agent && r.status == ReqStatus::Approved)
+        {
+            if let Some(item) = r
+                .resolution
+                .as_ref()
+                .and_then(|receipt| receipt.created_item.as_ref())
+                .and_then(|id| self.state.items.get(id))
+            {
+                out.push(AgentActivityDto {
+                    label: t("Criou", "Created"),
+                    detail: item.current().content.title(),
+                    space_id: r.space.clone(),
+                    space_title: self
+                        .state
+                        .spaces
+                        .get(&r.space)
+                        .map(|s| s.title.clone())
+                        .unwrap_or_default(),
+                    at_ms: r.resolved_ms.unwrap_or(r.opened_ms),
+                    cost_cents: None,
                 });
             }
         }
@@ -2461,9 +2407,11 @@ impl Engine {
 
     fn device_grants_for(&self, item: &str) -> impl Iterator<Item = &GrantState> {
         let grantee = format!("app:{item}");
+        let me = self.me.as_deref();
         let now = now_ms();
         self.state.grants.iter().rev().filter(move |g| {
             !g.revoked
+                && Some(g.grant.grantor.as_str()) == me
                 && g.grant.grantee.as_deref() == Some(grantee.as_str())
                 && g.grant.expires_at_ms.map(|e| e > now).unwrap_or(true)
                 && matches!(g.grant.capability, Capability::Device { .. })
@@ -2717,7 +2665,9 @@ impl Engine {
                 "unknown tool: {start_tool}"
             ),
         })?;
-        let args: Value = serde_json::from_str(args_json).unwrap_or(json!({}));
+        let args: Value = serde_json::from_str(args_json).map_err(|err| CoreError::Invalid {
+            reason: err.to_string(),
+        })?;
         let agent_name = self.persona(agent).name;
         let (title, state) = apps::create(spec.id, &args, &agent_name, now_ms())
             .map_err(|reason| CoreError::Invalid { reason })?;
@@ -2727,74 +2677,37 @@ impl Engine {
             title: title.clone(),
             state_json: state.to_string(),
         };
-        match self.decide(agent, space, &ActionClass::Reversible, 0) {
-            Decision::Block(reason) => Ok(PlanOutcome {
-                kind: DecisionKind::Block,
-                item: None,
-                message: reason_label(&reason, &self.policy),
-            }),
-            Decision::Request(reason) => {
-                let req = AgentRequest {
-                    id: new_id("rq"),
-                    agent: agent.into(),
-                    title: tr!(
-                        "Criar o mini-app “{title}”",
-                        "Create the mini-app “{title}”"
-                    ),
-                    detail: prompt.into(),
-                    audience: t("Este Espaço", "This Space"),
-                    action: ActionClass::Reversible,
-                    content_hash: content_hash(&doc),
-                    item: None,
-                    line: None,
-                };
-                self.append(space, agent, EventBody::RequestOpened { request: req })?;
-                Ok(PlanOutcome { kind: DecisionKind::Request, item: None, message: tr!("{agent_name} preparou um mini-app e pediu sua aprovação em Atividade · {}", "{agent_name} prepared a mini-app and asked for your approval in Activity · {}", reason_label(&reason, &self.policy)) })
-            }
-            Decision::Act { .. } => {
-                let item = new_id("it");
-                self.append(
-                    space,
-                    agent,
-                    EventBody::ItemCreated {
-                        item: item.clone(),
-                        kind: ItemKind::App,
-                        content: ItemContent::App(doc),
-                        origin: tr!(
-                            "{engine_label} · {} · a partir de “{prompt}”",
-                            "{engine_label} · {} · from “{prompt}”",
-                            spec.resource_uri
-                        ),
-                    },
-                )?;
-                // A Concessão do mini-app: agir (reversível) só neste Item, emitida por você.
-                let me = self.me_id()?;
-                let grant = Grant {
-                    id: new_id("gr"),
-                    grantor: me.clone(),
-                    grantee: Some(format!("app:{item}")),
-                    scope: GrantScope::Item(item.clone()),
-                    capability: Capability::Trust(TrustLevel::Act),
-                    expires_at_ms: None,
-                };
-                self.append(space, &me, EventBody::GrantIssued { grant })?;
-                let text = match spec.id {
-                    "pet" => t("Ele mora aqui agora. Dá para dar comida, jogar a Corrida do Jumento e revezar quem cuida dele.", "He lives here now. You can feed him, play Donkey Dash and take turns looking after him."),
-                    "maptap" => t("MapTap. Os mesmos lugares para todo mundo. Um toque cada.", "MapTap. Same places for everyone. One tap each."),
-                    "recipe" => tr!("Salvei a {}: vegetariana, 35 minutos, dá para ajustar as porções.", "Saved the {}: vegetarian, 35 minutes, servings adjustable.", title.to_lowercase_first()),
-                    "hike" => t("Separei três trilhas boas pra sábado, com mapa e fotos. Comparem e votem: quando fechar, eu monto o roteiro com as caronas.", "Found three good trails for Saturday, with maps and photos. Compare and vote: once it’s locked in, I’ll plan the day and the rides."),
-                    "countdown" => t("Contagem regressiva criada.", "Countdown’s up."),
-                    "poll" => t("Abri uma enquete. Quando fechar, a vencedora entra no plano.", "Poll’s open. When it closes, the winner goes into the plan."),
-                    _ => tr!("Criei a lista “{title}”. Marquem o que vocês levam.", "Made the list “{title}”. Check off what you’re bringing."),
-                };
-                self.post_as(space, agent, &text, Some(item.clone()))?;
-                Ok(PlanOutcome {
-                    kind: DecisionKind::ActWithUndo,
-                    item: Some(self.item(&item)?),
-                    message: text,
-                })
-            }
-        }
+        let message = match spec.id {
+            "pet" => t("Ele mora aqui agora. Dá para dar comida, jogar a Corrida do Jumento e revezar quem cuida dele.", "He lives here now. You can feed him, play Donkey Dash and take turns looking after him."),
+            "maptap" => t("MapTap. Os mesmos lugares para todo mundo. Um toque cada.", "MapTap. Same places for everyone. One tap each."),
+            "recipe" => tr!("Salvei a {}: vegetariana, 35 minutos, dá para ajustar as porções.", "Saved the {}: vegetarian, 35 minutes, servings adjustable.", title.to_lowercase_first()),
+            "hike" => t("Separei três trilhas boas pra sábado, com mapa e fotos. Comparem e votem: quando fechar, eu monto o roteiro com as caronas.", "Found three good trails for Saturday, with maps and photos. Compare and vote: once it’s locked in, I’ll plan the day and the rides."),
+            "countdown" => t("Contagem regressiva criada.", "Countdown’s up."),
+            "poll" => t("Abri uma enquete. Quando fechar, a vencedora entra no plano.", "Poll’s open. When it closes, the winner goes into the plan."),
+            _ => tr!("Criei a lista “{title}”. Marquem o que vocês levam.", "Made the list “{title}”. Check off what you’re bringing."),
+        };
+        let proposal = ItemProposal {
+            item: new_id("it"),
+            kind: ItemKind::App,
+            content: ItemContent::App(doc),
+            origin: tr!(
+                "{engine_label} · {} · a partir de “{prompt}”",
+                "{engine_label} · {} · from “{prompt}”",
+                spec.resource_uri
+            ),
+            message,
+            ai_cost_cents: 0,
+        };
+        self.propose_item(
+            space,
+            agent,
+            prompt,
+            tr!(
+                "Criar o mini-app “{title}”",
+                "Create the mini-app “{title}”"
+            ),
+            proposal,
+        )
     }
 
     /// `tools/call` vindo da interface de um mini-app. Toda chamada passa pelo avaliador

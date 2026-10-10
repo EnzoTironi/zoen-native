@@ -411,6 +411,51 @@ pub struct AgentRequest {
     /// Opcional: a linha de plano que este pedido executa.
     pub item: Option<ItemId>,
     pub line: Option<String>,
+    /// Exact reversible output, retained while the owner decides and across restarts.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub proposal: Option<Box<ItemProposal>>,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
+pub struct ItemProposal {
+    pub item: ItemId,
+    pub kind: ItemKind,
+    pub content: ItemContent,
+    pub origin: String,
+    pub message: String,
+    /// Model usage incurred preparing this proposal, charged when it is opened.
+    pub ai_cost_cents: i64,
+}
+
+impl AgentRequest {
+    pub fn proposal_hash(&self, space: &str) -> Option<String> {
+        use sha2::{Digest, Sha256};
+        let proposal = self.proposal.as_ref()?;
+        let bytes = serde_json::to_vec(&(
+            "zoen.item-proposal.v1",
+            space,
+            &self.id,
+            &self.agent,
+            &self.title,
+            &self.detail,
+            &self.audience,
+            &self.action,
+            proposal,
+        ))
+        .expect("an item proposal serializes");
+        Some(hex::encode(Sha256::digest(bytes)))
+    }
+}
+
+/// The owner's signed receipt. Its output is derived from the original proposal;
+/// resolution cannot substitute different content or charge model usage again.
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
+pub struct RequestResolution {
+    pub message: String,
+    pub created_item: Option<ItemId>,
+    pub ai_cost_cents: i64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub standing_grant: Option<Grant>,
 }
 
 // ───────────────────────────── Evento (substrato) ─────────────────────────────
@@ -468,6 +513,8 @@ pub enum EventBody {
         request: RequestId,
         approved: bool,
         content_hash: String,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        resolution: Option<RequestResolution>,
     },
     /// Uso de IA de um agente (debitado do orçamento do dono).
     UsageRecorded {
@@ -731,10 +778,26 @@ mod tests {
                 content_hash: "h".into(),
                 item: None,
                 line: None,
+                proposal: None,
             },
         };
         let json = serde_json::to_string(&body).unwrap();
         let back: EventBody = serde_json::from_str(&json).unwrap();
         assert_eq!(body, back);
+    }
+
+    #[test]
+    fn historical_request_and_resolution_bytes_are_preserved() {
+        for bytes in [
+            r#"{"RequestOpened":{"request":{"id":"rq_1","agent":"ab","title":"Reservar","detail":"2 noites","audience":"Pousada","action":{"Money":{"cents":42000}},"content_hash":"h","item":null,"line":null}}}"#,
+            r#"{"RequestResolved":{"request":"rq_1","approved":true,"content_hash":"h"}}"#,
+        ] {
+            let event: EventBody = serde_json::from_str(bytes).unwrap();
+            assert_eq!(
+                serde_json::to_string(&event).unwrap(),
+                bytes,
+                "new optional fields must not alter historical signed body bytes"
+            );
+        }
     }
 }

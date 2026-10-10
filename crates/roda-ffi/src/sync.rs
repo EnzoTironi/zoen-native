@@ -20,7 +20,7 @@ use roda_types::*;
 use serde::{Deserialize, Serialize};
 
 use crate::dto::Delivery;
-use crate::engine::{Engine, Entry};
+use crate::engine::{Engine, Entry, State};
 use crate::i18n::t;
 use crate::CoreError;
 
@@ -49,6 +49,8 @@ pub struct NetState {
     pub synced: HashSet<SpaceId>,
     /// client_id → Space, for events in the outbox.
     pub pending: HashMap<String, SpaceId>,
+    /// Spaces whose pending resolutions overlay their ordered approval state.
+    pub(crate) optimistic_approvals: HashSet<SpaceId>,
     /// client_id → why the relay refused it.
     pub failed: HashMap<String, String>,
     /// Identities seen in logs whose profile this device doesn't have yet.
@@ -125,6 +127,7 @@ impl Engine {
         }
         self.net.synced = self.store.synced_spaces()?.into_iter().collect();
         self.net.pending.clear();
+        self.net.optimistic_approvals.clear();
         self.net.failed.clear();
         self.net.profiles.forget_shared();
 
@@ -151,7 +154,7 @@ impl Engine {
                     self.net
                         .failed
                         .insert(e.client_id.clone(), p.last_error.unwrap_or_default());
-                    self.state.apply(&e);
+                    self.state.apply(&e, &self.identities);
                 }
                 continue;
             }
@@ -163,7 +166,10 @@ impl Engine {
             self.net
                 .pending
                 .insert(e.client_id.clone(), e.space.clone());
-            self.state.apply(&e);
+            if matches!(e.body, EventBody::RequestResolved { .. }) {
+                self.net.optimistic_approvals.insert(e.space.clone());
+            }
+            self.state.apply(&e, &self.identities);
         }
         self.recompute_unknown();
         self.reload_mls();
@@ -187,6 +193,71 @@ impl Engine {
         self.net.unknown = unknown;
     }
 
+    pub(crate) fn approval_projection_needs_replay(&self, e: &Event) -> bool {
+        self.net.optimistic_approvals.contains(&e.space)
+            && matches!(
+                e.body,
+                EventBody::RequestOpened { .. }
+                    | EventBody::RequestResolved { .. }
+                    | EventBody::MemberAdded { .. }
+                    | EventBody::MemberRemoved { .. }
+                    | EventBody::GrantIssued { .. }
+                    | EventBody::GrantRevoked { .. }
+                    | EventBody::ItemCreated { .. }
+                    | EventBody::ItemVersioned { .. }
+                    | EventBody::ItemReverted { .. }
+            )
+    }
+
+    /// Reconcile only when an ordered dependency can invalidate an optimistic decision.
+    /// Use the verified log cache; do not reload keys, MLS state or open page sessions.
+    pub(crate) fn reproject_approval_overlay(&mut self) -> R<()> {
+        let mut order = self.store.space_ids()?;
+        let pending = self.store.outbox()?;
+        let mut state = State::default();
+        let mut confirmed = HashSet::new();
+        for space in &order {
+            if let Some(log) = self.logs.get(space) {
+                for e in log.events() {
+                    confirmed.insert(e.client_id.clone());
+                    state.apply(e, &self.identities);
+                }
+            } else if let Some(broken) = self.state.spaces.get(space) {
+                let mut broken = broken.clone();
+                broken.entries.clear();
+                state.spaces.insert(space.clone(), broken);
+            }
+        }
+        let mut optimistic = HashSet::new();
+        for p in pending {
+            let e = p.event;
+            if confirmed.contains(&e.client_id) {
+                continue;
+            }
+            if p.failed {
+                if matches!(e.body, EventBody::MessagePosted { .. })
+                    && state.spaces.contains_key(&e.space)
+                {
+                    state.apply(&e, &self.identities);
+                }
+                continue;
+            }
+            if matches!(e.body, EventBody::SpaceCreated { .. }) && !order.contains(&e.space) {
+                order.push(e.space.clone());
+            }
+            if matches!(e.body, EventBody::RequestResolved { .. }) {
+                optimistic.insert(e.space.clone());
+            }
+            state.apply(&e, &self.identities);
+        }
+        self.state = state;
+        self.space_order = order;
+        self.net.optimistic_approvals = optimistic;
+        self.index_dirty = true;
+        self.recompute_unknown();
+        Ok(())
+    }
+
     pub(crate) fn note_unknown(&mut self, e: &Event) {
         if !self.identities.contains_key(&e.author) {
             self.net.unknown.insert(e.author.clone());
@@ -199,9 +270,10 @@ impl Engine {
     }
 
     pub(crate) fn delivery(&self, e: &Entry) -> Delivery {
-        if self.net.failed.contains_key(&e.client_id) {
+        let source = e.client_id.strip_suffix(":result").unwrap_or(&e.client_id);
+        if self.net.failed.contains_key(source) {
             Delivery::Failed
-        } else if self.net.pending.contains_key(&e.client_id) {
+        } else if self.net.pending.contains_key(source) {
             Delivery::Sending
         } else if self.net.synced.contains(&e.space) {
             Delivery::Sent
@@ -214,7 +286,7 @@ impl Engine {
     /// for a Space this device created and the relay hasn't confirmed yet, the genesis link
     /// it will get (the creator's `SpaceCreated` always lands at seq 0, so its chain hash is
     /// known before it's sent).
-    fn causal_head(&self, space: &str) -> R<Option<Seen>> {
+    pub fn causal_head(&self, space: &str) -> R<Option<Seen>> {
         if let Some(head) = self.logs.get(space).and_then(SpaceLog::head) {
             return Ok(Some(head));
         }
@@ -251,12 +323,23 @@ impl Engine {
             self.causal_head(space)?
         };
         let e = signer.sign_event(space, &client_id, at_ms, seen, body);
+        if !self.state.approval_event_valid(&e, &self.identities) {
+            return Err(CoreError::Invalid {
+                reason: t(
+                    "pedido, decisão ou uso não autorizado",
+                    "unauthorized request, decision or usage",
+                ),
+            });
+        }
         self.store.outbox_put(&e)?;
         if creating && !self.space_order.contains(&space.to_string()) {
             self.space_order.push(space.to_string());
         }
         self.net.pending.insert(client_id, space.to_string());
-        self.state.apply(&e);
+        if matches!(e.body, EventBody::RequestResolved { .. }) {
+            self.net.optimistic_approvals.insert(space.to_string());
+        }
+        self.state.apply(&e, &self.identities);
         self.index_dirty = true;
         self.note_unknown(&e);
         self.note_profile_event(&e);
@@ -310,10 +393,29 @@ impl Engine {
         if !self.space_order.contains(&space) {
             self.space_order.push(space.clone());
         }
-        if self.net.pending.remove(&e.client_id).is_some() {
+        let replay_approval = self.approval_projection_needs_replay(&e);
+        let own = self.net.pending.remove(&e.client_id).is_some();
+        if own {
             let _ = self.store.outbox_remove(&e.client_id);
+        }
+        if replay_approval {
+            if let Err(err) = self.reproject_approval_overlay() {
+                let _ = self.reload();
+                return Ingest::Invalid(err.to_string());
+            }
+            self.note_profile_event(&e);
+            return if own {
+                Ingest::Confirmed
+            } else {
+                Ingest::Applied
+            };
+        }
+        if own {
             if let Some(s) = self.state.spaces.get_mut(&space) {
-                for entry in s.entries.iter_mut().filter(|x| x.client_id == e.client_id) {
+                for entry in s.entries.iter_mut().filter(|x| {
+                    x.client_id == e.client_id
+                        || x.client_id.strip_suffix(":result") == Some(e.client_id.as_str())
+                }) {
                     entry.seq = e.seq;
                     entry.hash = e.hash.clone();
                 }
@@ -323,11 +425,11 @@ impl Engine {
                 || matches!(e.body, EventBody::MemberAdded { .. })
                     && !self.is_member_of(&space, &e.author)
             {
-                self.state.apply(&e);
+                self.state.apply(&e, &self.identities);
             }
             return Ingest::Confirmed;
         }
-        self.state.apply(&e);
+        self.state.apply(&e, &self.identities);
         self.index_dirty = true;
         self.note_unknown(&e);
         self.note_profile_event(&e);
@@ -493,6 +595,7 @@ impl Engine {
     /// Directory entries from the relay: handles and public keys. A person's name and bio
     /// come from their encrypted profile when this device holds the key, else the @handle.
     pub fn put_profiles(&mut self, profiles: Vec<Identity>) -> R<()> {
+        let mut reproject_agents = false;
         for mut p in profiles {
             if p.id.len() != 64 {
                 continue;
@@ -501,6 +604,11 @@ impl Engine {
             if self.signers.contains_key(&p.id) || self.me.as_deref() == Some(p.id.as_str()) {
                 continue;
             }
+            reproject_agents |= p.kind == IdentityKind::Agent
+                && self
+                    .identities
+                    .get(&p.id)
+                    .is_none_or(|old| old.kind != p.kind || old.owner != p.owner);
             self.overlay_profile(&mut p);
             self.store.put_identity(&p, None)?;
             if !self.identities.contains_key(&p.id) {
@@ -509,6 +617,9 @@ impl Engine {
             self.net.unknown.remove(&p.id);
             self.identities.insert(p.id.clone(), p);
             self.index_dirty = true;
+        }
+        if reproject_agents {
+            self.reload()?;
         }
         Ok(())
     }
