@@ -76,7 +76,8 @@ struct SnapshotCard: View {
         case "pot":
             LinearGradient(colors: [Color(hex: "#FBE3C8"), Color(hex: "#F4B98A")], startPoint: .top, endPoint: .bottom)
         default:
-            LinearGradient(colors: [accent.opacity(0.22), InkPalette.paper], startPoint: .top, endPoint: .bottom)
+            InkPalette.paper
+                .overlay(LinearGradient(colors: [accent.opacity(0.22), .clear], startPoint: .top, endPoint: .bottom))
         }
     }
 

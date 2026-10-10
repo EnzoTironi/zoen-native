@@ -1,23 +1,39 @@
 import SwiftUI
 import RodaCore
 
-private struct MacSearchFocusKey: FocusedValueKey {
-    typealias Value = @MainActor () -> Void
+private struct MacSearchCommands: Equatable {
+    let scope: UUID
+    let query: Binding<String>
+    let field: FocusState<Bool>.Binding
+    let sidebar: Binding<Bool>
+    let reduceMotion: Bool
+
+    static func == (lhs: Self, rhs: Self) -> Bool {
+        lhs.scope == rhs.scope && lhs.reduceMotion == rhs.reduceMotion
+    }
+
+    @MainActor func focus() {
+        withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.22), completionCriteria: .removed) {
+            sidebar.wrappedValue = true
+        } completion: {
+            field.wrappedValue = true
+        }
+    }
+
+    @MainActor func reset() {
+        query.wrappedValue = ""
+        field.wrappedValue = false
+    }
 }
 
-private struct MacSearchResetKey: FocusedValueKey {
-    typealias Value = @MainActor () -> Void
+private struct MacSearchCommandsKey: FocusedValueKey {
+    typealias Value = MacSearchCommands
 }
 
 private extension FocusedValues {
-    var focusMacSearch: MacSearchFocusKey.Value? {
-        get { self[MacSearchFocusKey.self] }
-        set { self[MacSearchFocusKey.self] = newValue }
-    }
-
-    var resetMacSearch: MacSearchResetKey.Value? {
-        get { self[MacSearchResetKey.self] }
-        set { self[MacSearchResetKey.self] = newValue }
+    var macSearch: MacSearchCommands? {
+        get { self[MacSearchCommandsKey.self] }
+        set { self[MacSearchCommandsKey.self] = newValue }
     }
 }
 
@@ -25,8 +41,7 @@ private extension FocusedValues {
 struct ZoenMacApp: App {
     @State private var model = AppModel()
     @AppStorage("RodaAppearance") private var appearance = "system"
-    @FocusedValue(\.resetMacSearch) private var resetSearch
-    @FocusedValue(\.focusMacSearch) private var focusSearch
+    @FocusedValue(\.macSearch) private var searchCommands
 
     private var colorScheme: ColorScheme? {
         switch appearance {
@@ -57,14 +72,15 @@ struct ZoenMacApp: App {
                     .disabled(model.sync.account == nil && SyncModel.mode != .demo)
             }
             CommandMenu("Zoen") {
-                Button("Search") { focusSearch?() }
+                Button("Search") { searchCommands?.focus() }
                     .keyboardShortcut("f", modifiers: .command)
+                    .disabled(searchCommands == nil)
                 Button("Back") { _ = model.pop() }
                     .keyboardShortcut("[", modifiers: .command)
                     .disabled(model.path(.conversations).isEmpty)
-                Button("Chat with Zoen") { resetSearch?(); if let id = model.zoenSpaceId() { model.go(.space(id)) } }
+                Button("Chat with Zoen") { searchCommands?.reset(); if let id = model.zoenSpaceId() { model.go(.space(id)) } }
                     .keyboardShortcut("0", modifiers: .command)
-                Button("Activity") { resetSearch?(); model.select(.activity) }
+                Button("Activity") { searchCommands?.reset(); model.select(.activity) }
                     .keyboardShortcut("1", modifiers: .command)
                 Button("Create and more") { withAnimation(.spring(duration: 0.45, bounce: 0.28)) { model.radialOpen.toggle() } }
                     .keyboardShortcut("k", modifiers: .command)
@@ -82,6 +98,8 @@ struct MacRootView: View {
     @AppStorage("RodaAppearance") private var appearance = "system"
     @State private var search = ""
     @FocusState private var searchFocused: Bool
+    @State private var searchCommandScope = UUID()
+    @FocusState private var inspectorCloseFocused: Bool
     @State private var lastChat: String?
     @State private var onboarding = OnboardingFlow.shouldShow
 
@@ -111,13 +129,36 @@ struct MacRootView: View {
         .background(Palette.background)
         .ignoresSafeArea(.container, edges: .top)
         .toolbarBackground(.hidden, for: .windowToolbar)
-        .focusedSceneValue(\.focusMacSearch, { setSidebar(true); searchFocused = true })
-        .focusedSceneValue(\.resetMacSearch, { search = ""; searchFocused = false })
-        .inspector(isPresented: Binding(get: { model.inspectorItem != nil }, set: { if !$0 { model.inspectorItem = nil } })) {
+        .focusedSceneValue(\.macSearch, MacSearchCommands(scope: searchCommandScope, query: $search,
+                                                       field: $searchFocused, sidebar: $sidebarExpanded,
+                                                       reduceMotion: reduceMotion))
+        .inspector(isPresented: Binding(get: { model.inspectorItem != nil }, set: { if !$0 { closeInspector() } })) {
             if let id = model.inspectorItem {
-                NavigationStack { ItemView(itemId: id) }
-                    .inspectorColumnWidth(min: 360, ideal: 440, max: 560)
+                VStack(spacing: 0) {
+                    HStack {
+                        Spacer()
+                        Button { closeInspector() } label: {
+                            Image(systemName: "xmark")
+                                .frame(width: 28, height: 28)
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel(Text("Close details"))
+                        .accessibilityIdentifier("mac-inspector-close")
+                        .help("Close details (Esc)")
+                        .keyboardShortcut(.cancelAction)
+                        .focused($inspectorCloseFocused)
+                        .onAppear { inspectorCloseFocused = true }
+                    }
+                    .padding(.horizontal, 12)
+                    .padding(.top, 8)
+                    NavigationStack { ItemView(itemId: id) }
+                }
+                .inspectorColumnWidth(min: 360, ideal: 440, max: 560)
+                .onExitCommand { closeInspector() }
             }
+        }
+        .onChange(of: model.inspectorItem) { _, id in
+            if id == nil { inspectorCloseFocused = false }
         }
         .overlay(alignment: .bottom) {
             if let toast = model.toast {
@@ -138,10 +179,9 @@ struct MacRootView: View {
             ProfileSheet(personaId: ref.id).environment(model)
         }
         .onKeyPress(.escape) {
-            guard model.radialOpen else { return .ignored }
-            withAnimation(reduceMotion ? nil : .spring(duration: 0.35)) { model.radialOpen = false }
-            return .handled
+            dismissTransientPresentation() ? .handled : .ignored
         }
+        .onExitCommand { _ = dismissTransientPresentation() }
         .onAppear {
             if model.macSelection == nil, let first = model.spaceId(titled: DemoSpace.paraty) ?? model.spaces.first?.id {
                 model.macSelection = .space(first)
@@ -177,6 +217,23 @@ struct MacRootView: View {
         }
     }
 
+    private func closeInspector() {
+        inspectorCloseFocused = false
+        model.inspectorItem = nil
+    }
+
+    private func dismissTransientPresentation() -> Bool {
+        if model.radialOpen {
+            withAnimation(reduceMotion ? nil : .spring(duration: 0.35)) { model.radialOpen = false }
+            return true
+        }
+        if model.inspectorItem != nil {
+            closeInspector()
+            return true
+        }
+        return false
+    }
+
     private var rail: some View {
         @Bindable var model = model
         return VStack(spacing: 6) {
@@ -209,7 +266,7 @@ struct MacRootView: View {
                 .overlay(alignment: .topTrailing) {
                     if badge > 0 {
                         Text(badge > 99 ? "99+" : "\(badge)")
-                            .font(.system(size: 9, weight: .bold))
+                            .font(.system(size: 10, weight: .bold))
                             .foregroundStyle(.white)
                             .padding(.horizontal, 4).padding(.vertical, 2)
                             .background(Palette.action, in: .capsule)
@@ -245,6 +302,7 @@ struct MacRootView: View {
             TextField("Search", text: $search)
                 .textFieldStyle(.plain)
                 .focused($searchFocused)
+                .onDisappear { searchFocused = false }
                 .accessibilityIdentifier("mac-search-field")
             if !search.isEmpty {
                 Button { search = "" } label: { Image(systemName: "xmark.circle.fill") }
@@ -385,6 +443,9 @@ struct MacRootView: View {
     }
 
     private func setSidebar(_ expanded: Bool) {
+        if !expanded {
+            searchFocused = false
+        }
         withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.22)) { sidebarExpanded = expanded }
     }
 
@@ -459,7 +520,7 @@ private struct MacAppearanceControl: View {
                     let theme = mode(at: position + slot)
                     Button { select(theme) } label: {
                         Color.clear
-                            .frame(width: slot == 0 ? 28 : 18, height: 40)
+                            .frame(width: slot == 0 ? 28 : 20, height: 40)
                             .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
@@ -477,7 +538,7 @@ private struct MacAppearanceControl: View {
                 }
             }
         }
-        .frame(width: 64, height: 40)
+        .frame(width: 68, height: 40)
         .clipped()
         .accessibilityElement(children: .contain)
         .accessibilityLabel(Text("Appearance"))

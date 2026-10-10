@@ -790,8 +790,12 @@ final class AppModel {
     /// closing turns it back. Stays where you are (Home or the chat) underneath.
     func flipOpenApp(_ itemId: String, from: CGRect, sourceKey: String, front: AnyView) {
         guard appFlip == nil, appSheet == nil else { return }
+        #if os(macOS)
+        openApp(itemId)
+        #else
         if let item = try? core.item(itemId: itemId), item.app?.appId == "pet" { petTab = .care }
         appFlip = AppFlip(itemId: itemId, from: from, sourceKey: sourceKey, front: front)
+        #endif
     }
 
     func openApp(_ itemId: String, fromHome: Bool = false) {
