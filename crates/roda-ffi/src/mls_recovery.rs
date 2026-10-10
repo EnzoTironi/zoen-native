@@ -3,7 +3,7 @@
 
 use roda_log::content::{Sealed, SealedKind};
 use roda_log::recovery::{self, RecoveryRef};
-use roda_mls::{recovery::verify_group_info, Commit, SUITE_ID};
+use roda_mls::{recovery::verify_group_info, Commit, GroupState, SUITE_ID};
 use roda_proto::Envelope;
 use roda_types::{Event, Role};
 use serde::{Deserialize, Serialize};
@@ -168,26 +168,62 @@ impl Engine {
     }
 
     /// Downloads are bounded and requested one at a time, only for missing groups.
-    pub(crate) fn wanted_recovery_contexts(&self) -> Vec<ContextRef> {
+    pub(crate) fn wanted_recovery_contexts(&mut self) -> Vec<ContextRef> {
         if self.net.profiles.agreement.is_none() {
             return Vec::new();
         }
-        let Ok(device) = self.device() else {
-            return Vec::new();
-        };
-        self.net
+        let candidates: Vec<_> = self
+            .net
             .synced
             .iter()
-            .filter(|s| self.can_recover(s) && !device.has_group(s))
-            .filter_map(|s| self.recovery_context(s))
-            .filter(|r| {
+            .filter(|s| self.can_recover(s))
+            .filter_map(|s| self.recovery_context(s).map(|r| (s.clone(), r)))
+            .filter(|(_, r)| {
                 self.store
                     .recovery_blob(&r.space, &r.blob)
                     .ok()
                     .flatten()
                     .is_none()
             })
+            .collect();
+        candidates
+            .into_iter()
+            .filter(|(space, _)| {
+                matches!(self.recovery_group_state(space), Ok(GroupState::Missing))
+            })
+            .map(|(_, reference)| reference)
             .collect()
+    }
+
+    /// Reuse authenticated classifications while the exclusively locked database is
+    /// unchanged. Writes and schema changes invalidate them; transactions never cache.
+    fn recovery_group_state(&mut self, space: &str) -> R<GroupState> {
+        let leaf = self.device()?.leaf().clone();
+        let conn = self.store.conn();
+        if !conn.is_autocommit() {
+            self.net.mls.recovery_checked_generation = None;
+            self.net.mls.recovery_checked.clear();
+            return self.device()?.group_state(space).map_err(invalid);
+        }
+        let generation = (
+            conn.total_changes(),
+            conn.pragma_query_value(None, "schema_version", |r| r.get::<_, i64>(0))
+                .map_err(invalid)?,
+            leaf,
+        );
+        if self.net.mls.recovery_checked_generation.as_ref() != Some(&generation) {
+            self.net.mls.recovery_checked.clear();
+            self.net.mls.recovery_checked_generation = Some(generation);
+        }
+        if let Some(state) = self.net.mls.recovery_checked.get(space) {
+            return Ok(*state);
+        }
+        let state = self.device()?.group_state(space).map_err(invalid)?;
+        self.net
+            .mls
+            .recovery_checked
+            .insert(space.to_string(), state);
+        Ok(state)
     }
 
     pub(crate) fn recovery_context_arrived(&self, reference: &ContextRef, bytes: &[u8]) -> bool {
@@ -221,14 +257,24 @@ impl Engine {
             .filter(|s| self.can_recover(s))
             .cloned()
             .collect();
+        if spaces.is_empty() {
+            return Ok(false);
+        }
+        let pending: std::collections::HashSet<String> = self
+            .store
+            .outbox_handshakes()?
+            .into_iter()
+            .map(|(_, space, _)| space)
+            .collect();
         let mut error = None;
         for space in spaces {
-            if self
-                .net
-                .mls
-                .recovery_retry_at
-                .get(&space)
-                .is_some_and(|at| *at > Instant::now())
+            if pending.contains(&space)
+                || self
+                    .net
+                    .mls
+                    .recovery_retry_at
+                    .get(&space)
+                    .is_some_and(|at| *at > Instant::now())
             {
                 continue;
             }
@@ -251,19 +297,11 @@ impl Engine {
     }
 
     fn try_mls_recovery(&mut self, space: &str) -> R<bool> {
-        if self
-            .store
-            .outbox_handshakes()?
-            .iter()
-            .any(|(_, s, _)| s == space)
-        {
+        let state = self.recovery_group_state(space)?;
+        if state == GroupState::Pending {
             return Ok(false);
         }
-        let device = self.device()?;
-        if device.pending(space) {
-            return Ok(false);
-        }
-        if device.has_group(space) {
+        if state == GroupState::Ready {
             // New and upgraded groups need a context even if nobody is being added.
             if self.recovery_context(space).is_none()
                 && self.ready_epoch(space).is_some()

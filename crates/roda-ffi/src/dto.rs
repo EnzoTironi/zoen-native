@@ -31,6 +31,13 @@ pub enum SpaceKindDto {
     Community,
 }
 
+#[derive(Debug, Clone, PartialEq, uniffi::Record)]
+pub struct MemberRoleDto {
+    pub identity_id: String,
+    /// owner, admin, member, reader
+    pub role: String,
+}
+
 /// An end-to-end chat's MLS group as this device has it. Members compare `digest` for
 /// the same `epoch` to know they share one group (ADR 0026).
 #[derive(Debug, Clone, PartialEq, uniffi::Record)]

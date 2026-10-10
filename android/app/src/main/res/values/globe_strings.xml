@@ -1,0 +1,12 @@
+<resources>
+    <string name="globe_description">Globe. Drag to rotate and tap to place your guess. Accessibility actions rotate the globe or select its center.</string>
+    <string name="globe_center">Center: %1$.1f latitude, %2$.1f longitude</string>
+    <string name="globe_guess">Your guess: %1$.1f latitude, %2$.1f longitude</string>
+    <string name="globe_answer">Answer: %1$.1f latitude, %2$.1f longitude</string>
+    <string name="globe_west">Rotate west</string>
+    <string name="globe_east">Rotate east</string>
+    <string name="globe_north">Rotate north</string>
+    <string name="globe_south">Rotate south</string>
+    <string name="globe_select_center">Place guess at center</string>
+    <string name="globe_error">Couldn’t load the map</string>
+</resources>

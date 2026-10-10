@@ -1,0 +1,1317 @@
+{
+  "version": "avatars-v1",
+  "preset": "v1-vivid",
+  "style": "zoen-ink-wash/1+v1-vivid",
+  "displayPointSize": 64,
+  "scales": {
+    "1x": 64,
+    "2x": 128,
+    "3x": 192
+  },
+  "heroPx": 1024,
+  "loopPx": 192,
+  "darkModeMultiply": [
+    0.86,
+    0.84,
+    0.8
+  ],
+  "loopFps": 10,
+  "loopFrames": 3,
+  "circleSafe": {
+    "agent": 0.43,
+    "group": 0.44,
+    "unit": "subject radius / canvas width"
+  },
+  "notes": "Hand-drawn set for AGENTS and GROUPS/Spaces only. People use their own photos; no-photo fallback is a monogram (UI).",
+  "assets": [
+    {
+      "id": "agent-furball-wave",
+      "kind": "agent",
+      "tags": [
+        "mascot",
+        "assistant",
+        "general"
+      ],
+      "colors": {
+        "dominant": "#ECF5CB",
+        "accent": "#ECF5CB",
+        "tint": "#BF6740",
+        "backdrop": "#D9825B"
+      },
+      "boil": {
+        "frames": 3,
+        "fps": 10
+      },
+      "preset": "v1-vivid",
+      "style": "zoen-ink-wash/1+v1-vivid",
+      "seed": 7056,
+      "name": "AgentFurballWave",
+      "files": {
+        "still": "AgentFurballWave",
+        "hero": "Heroes/AgentFurballWave.webp",
+        "loop": "Loops/AgentFurballWave.webp"
+      }
+    },
+    {
+      "id": "agent-furball-reader",
+      "kind": "agent",
+      "tags": [
+        "mascot",
+        "research",
+        "reading"
+      ],
+      "colors": {
+        "dominant": "#F4EFE7",
+        "accent": "#DCF0B1",
+        "tint": "#468AB9",
+        "backdrop": "#8DB7D4"
+      },
+      "boil": {
+        "frames": 3,
+        "fps": 10
+      },
+      "preset": "v1-vivid",
+      "style": "zoen-ink-wash/1+v1-vivid",
+      "seed": 2481,
+      "name": "AgentFurballReader",
+      "files": {
+        "still": "AgentFurballReader",
+        "hero": "Heroes/AgentFurballReader.webp",
+        "loop": "Loops/AgentFurballReader.webp"
+      }
+    },
+    {
+      "id": "agent-furball-headphones",
+      "kind": "agent",
+      "tags": [
+        "mascot",
+        "music",
+        "podcast"
+      ],
+      "colors": {
+        "dominant": "#F2F6D6",
+        "accent": "#DE5955",
+        "tint": "#BF4740",
+        "backdrop": "#E5A4A0"
+      },
+      "boil": {
+        "frames": 3,
+        "fps": 10
+      },
+      "preset": "v1-vivid",
+      "style": "zoen-ink-wash/1+v1-vivid",
+      "seed": 5282,
+      "name": "AgentFurballHeadphones",
+      "files": {
+        "still": "AgentFurballHeadphones",
+        "hero": "Heroes/AgentFurballHeadphones.webp",
+        "loop": "Loops/AgentFurballHeadphones.webp"
+      }
+    },
+    {
+      "id": "agent-robot-chef",
+      "kind": "agent",
+      "tags": [
+        "chef",
+        "recipes",
+        "cooking"
+      ],
+      "colors": {
+        "dominant": "#F0EEEA",
+        "accent": "#F4DFBC",
+        "tint": "#84619E",
+        "backdrop": "#9B7FB0"
+      },
+      "boil": {
+        "frames": 3,
+        "fps": 10
+      },
+      "preset": "v1-vivid",
+      "style": "zoen-ink-wash/1+v1-vivid",
+      "seed": 3401,
+      "name": "AgentRobotChef",
+      "files": {
+        "still": "AgentRobotChef",
+        "hero": "Heroes/AgentRobotChef.webp",
+        "loop": "Loops/AgentRobotChef.webp"
+      }
+    },
+    {
+      "id": "agent-owl-tutor",
+      "kind": "agent",
+      "tags": [
+        "tutor",
+        "school",
+        "learning"
+      ],
+      "colors": {
+        "dominant": "#F7F2E4",
+        "accent": "#EDC09B",
+        "tint": "#709C63",
+        "backdrop": "#A8C3A0"
+      },
+      "boil": {
+        "frames": 3,
+        "fps": 10
+      },
+      "preset": "v1-vivid",
+      "style": "zoen-ink-wash/1+v1-vivid",
+      "seed": 9583,
+      "name": "AgentOwlTutor",
+      "files": {
+        "still": "AgentOwlTutor",
+        "hero": "Heroes/AgentOwlTutor.webp",
+        "loop": "Loops/AgentOwlTutor.webp"
+      }
+    },
+    {
+      "id": "agent-fox-traveler",
+      "kind": "agent",
+      "tags": [
+        "travel",
+        "trips",
+        "planner"
+      ],
+      "colors": {
+        "dominant": "#F4E2BE",
+        "accent": "#EFC59D",
+        "tint": "#709C63",
+        "backdrop": "#A8C3A0"
+      },
+      "boil": {
+        "frames": 3,
+        "fps": 10
+      },
+      "preset": "v1-vivid",
+      "style": "zoen-ink-wash/1+v1-vivid",
+      "seed": 3466,
+      "name": "AgentFoxTraveler",
+      "files": {
+        "still": "AgentFoxTraveler",
+        "hero": "Heroes/AgentFoxTraveler.webp",
+        "loop": "Loops/AgentFoxTraveler.webp"
+      }
+    },
+    {
+      "id": "agent-octopus-coder",
+      "kind": "agent",
+      "tags": [
+        "coding",
+        "developer",
+        "tech"
+      ],
+      "colors": {
+        "dominant": "#F1E0FA",
+        "accent": "#F1E0FA",
+        "tint": "#60959F",
+        "backdrop": "#6F9FA8"
+      },
+      "boil": {
+        "frames": 3,
+        "fps": 10
+      },
+      "preset": "v1-vivid",
+      "style": "zoen-ink-wash/1+v1-vivid",
+      "seed": 6875,
+      "name": "AgentOctopusCoder",
+      "files": {
+        "still": "AgentOctopusCoder",
+        "hero": "Heroes/AgentOctopusCoder.webp",
+        "loop": "Loops/AgentOctopusCoder.webp"
+      }
+    },
+    {
+      "id": "agent-piggy-bank",
+      "kind": "agent",
+      "tags": [
+        "finance",
+        "budget",
+        "money"
+      ],
+      "colors": {
+        "dominant": "#FAE0EA",
+        "accent": "#FAE0EA",
+        "tint": "#709C63",
+        "backdrop": "#A8C3A0"
+      },
+      "boil": {
+        "frames": 3,
+        "fps": 10
+      },
+      "preset": "v1-vivid",
+      "style": "zoen-ink-wash/1+v1-vivid",
+      "seed": 2351,
+      "name": "AgentPiggyBank",
+      "files": {
+        "still": "AgentPiggyBank",
+        "hero": "Heroes/AgentPiggyBank.webp",
+        "loop": "Loops/AgentPiggyBank.webp"
+      }
+    },
+    {
+      "id": "agent-frog-fitness",
+      "kind": "agent",
+      "tags": [
+        "fitness",
+        "workout",
+        "health"
+      ],
+      "colors": {
+        "dominant": "#F5F3E5",
+        "accent": "#DCEB84",
+        "tint": "#60959F",
+        "backdrop": "#6F9FA8"
+      },
+      "boil": {
+        "frames": 3,
+        "fps": 10
+      },
+      "preset": "v1-vivid",
+      "style": "zoen-ink-wash/1+v1-vivid",
+      "seed": 3644,
+      "name": "AgentFrogFitness",
+      "files": {
+        "still": "AgentFrogFitness",
+        "hero": "Heroes/AgentFrogFitness.webp",
+        "loop": "Loops/AgentFrogFitness.webp"
+      }
+    },
+    {
+      "id": "agent-calendar-buddy",
+      "kind": "agent",
+      "tags": [
+        "calendar",
+        "schedule",
+        "planning"
+      ],
+      "colors": {
+        "dominant": "#E7F3F3",
+        "accent": "#E7F3F3",
+        "tint": "#709C63",
+        "backdrop": "#A8C3A0"
+      },
+      "boil": {
+        "frames": 3,
+        "fps": 10
+      },
+      "preset": "v1-vivid",
+      "style": "zoen-ink-wash/1+v1-vivid",
+      "seed": 4408,
+      "name": "AgentCalendarBuddy",
+      "files": {
+        "still": "AgentCalendarBuddy",
+        "hero": "Heroes/AgentCalendarBuddy.webp",
+        "loop": "Loops/AgentCalendarBuddy.webp"
+      }
+    },
+    {
+      "id": "agent-coffee-cup",
+      "kind": "agent",
+      "tags": [
+        "assistant",
+        "morning",
+        "daily"
+      ],
+      "colors": {
+        "dominant": "#F8E9D4",
+        "accent": "#F8E9D4",
+        "tint": "#468AB9",
+        "backdrop": "#8DB7D4"
+      },
+      "boil": {
+        "frames": 3,
+        "fps": 10
+      },
+      "preset": "v1-vivid",
+      "style": "zoen-ink-wash/1+v1-vivid",
+      "seed": 687,
+      "name": "AgentCoffeeCup",
+      "files": {
+        "still": "AgentCoffeeCup",
+        "hero": "Heroes/AgentCoffeeCup.webp",
+        "loop": "Loops/AgentCoffeeCup.webp"
+      }
+    },
+    {
+      "id": "agent-cat-detective",
+      "kind": "agent",
+      "tags": [
+        "research",
+        "search",
+        "facts"
+      ],
+      "colors": {
+        "dominant": "#EBAD83",
+        "accent": "#EBAD83",
+        "tint": "#84619E",
+        "backdrop": "#9B7FB0"
+      },
+      "boil": {
+        "frames": 3,
+        "fps": 10
+      },
+      "preset": "v1-vivid",
+      "style": "zoen-ink-wash/1+v1-vivid",
+      "seed": 9347,
+      "name": "AgentCatDetective",
+      "files": {
+        "still": "AgentCatDetective",
+        "hero": "Heroes/AgentCatDetective.webp",
+        "loop": "Loops/AgentCatDetective.webp"
+      }
+    },
+    {
+      "id": "agent-potted-plant",
+      "kind": "agent",
+      "tags": [
+        "wellness",
+        "garden",
+        "habits"
+      ],
+      "colors": {
+        "dominant": "#F4DBBD",
+        "accent": "#F4DBBD",
+        "tint": "#709C63",
+        "backdrop": "#A8C3A0"
+      },
+      "boil": {
+        "frames": 3,
+        "fps": 10
+      },
+      "preset": "v1-vivid",
+      "style": "zoen-ink-wash/1+v1-vivid",
+      "seed": 7972,
+      "name": "AgentPottedPlant",
+      "files": {
+        "still": "AgentPottedPlant",
+        "hero": "Heroes/AgentPottedPlant.webp",
+        "loop": "Loops/AgentPottedPlant.webp"
+      }
+    },
+    {
+      "id": "agent-turtle-writer",
+      "kind": "agent",
+      "tags": [
+        "writing",
+        "editor",
+        "notes"
+      ],
+      "colors": {
+        "dominant": "#E8F2EF",
+        "accent": "#F4F0BE",
+        "tint": "#BF4740",
+        "backdrop": "#E5A4A0"
+      },
+      "boil": {
+        "frames": 3,
+        "fps": 10
+      },
+      "preset": "v1-vivid",
+      "style": "zoen-ink-wash/1+v1-vivid",
+      "seed": 2329,
+      "name": "AgentTurtleWriter",
+      "files": {
+        "still": "AgentTurtleWriter",
+        "hero": "Heroes/AgentTurtleWriter.webp",
+        "loop": "Loops/AgentTurtleWriter.webp"
+      }
+    },
+    {
+      "id": "agent-bee-tasks",
+      "kind": "agent",
+      "tags": [
+        "tasks",
+        "productivity",
+        "todo"
+      ],
+      "colors": {
+        "dominant": "#ECF1E9",
+        "accent": "#F1E6AC",
+        "tint": "#468AB9",
+        "backdrop": "#8DB7D4"
+      },
+      "boil": {
+        "frames": 3,
+        "fps": 10
+      },
+      "preset": "v1-vivid",
+      "style": "zoen-ink-wash/1+v1-vivid",
+      "seed": 9938,
+      "name": "AgentBeeTasks",
+      "files": {
+        "still": "AgentBeeTasks",
+        "hero": "Heroes/AgentBeeTasks.webp",
+        "loop": "Loops/AgentBeeTasks.webp"
+      }
+    },
+    {
+      "id": "agent-penguin-weather",
+      "kind": "agent",
+      "tags": [
+        "weather",
+        "forecast"
+      ],
+      "colors": {
+        "dominant": "#E8F2EF",
+        "accent": "#EC9788",
+        "tint": "#468AB9",
+        "backdrop": "#8DB7D4"
+      },
+      "boil": {
+        "frames": 3,
+        "fps": 10
+      },
+      "preset": "v1-vivid",
+      "style": "zoen-ink-wash/1+v1-vivid",
+      "seed": 5102,
+      "name": "AgentPenguinWeather",
+      "files": {
+        "still": "AgentPenguinWeather",
+        "hero": "Heroes/AgentPenguinWeather.webp",
+        "loop": "Loops/AgentPenguinWeather.webp"
+      }
+    },
+    {
+      "id": "agent-lightbulb-ideas",
+      "kind": "agent",
+      "tags": [
+        "ideas",
+        "brainstorm",
+        "creative"
+      ],
+      "colors": {
+        "dominant": "#F2EEB1",
+        "accent": "#F8FAE0",
+        "tint": "#BF4740",
+        "backdrop": "#E5A4A0"
+      },
+      "boil": {
+        "frames": 3,
+        "fps": 10
+      },
+      "preset": "v1-vivid",
+      "style": "zoen-ink-wash/1+v1-vivid",
+      "seed": 5662,
+      "name": "AgentLightbulbIdeas",
+      "files": {
+        "still": "AgentLightbulbIdeas",
+        "hero": "Heroes/AgentLightbulbIdeas.webp",
+        "loop": "Loops/AgentLightbulbIdeas.webp"
+      }
+    },
+    {
+      "id": "agent-rocket-news",
+      "kind": "agent",
+      "tags": [
+        "news",
+        "launch",
+        "updates"
+      ],
+      "colors": {
+        "dominant": "#ECF1E9",
+        "accent": "#EFE19F",
+        "tint": "#468AB9",
+        "backdrop": "#8DB7D4"
+      },
+      "boil": {
+        "frames": 3,
+        "fps": 10
+      },
+      "preset": "v1-vivid",
+      "style": "zoen-ink-wash/1+v1-vivid",
+      "seed": 9816,
+      "name": "AgentRocketNews",
+      "files": {
+        "still": "AgentRocketNews",
+        "hero": "Heroes/AgentRocketNews.webp",
+        "loop": "Loops/AgentRocketNews.webp"
+      }
+    },
+    {
+      "id": "agent-dog-courier",
+      "kind": "agent",
+      "tags": [
+        "email",
+        "messages",
+        "inbox"
+      ],
+      "colors": {
+        "dominant": "#F3F1E7",
+        "accent": "#F7E8CC",
+        "tint": "#709C63",
+        "backdrop": "#A8C3A0"
+      },
+      "boil": {
+        "frames": 3,
+        "fps": 10
+      },
+      "preset": "v1-vivid",
+      "style": "zoen-ink-wash/1+v1-vivid",
+      "seed": 9736,
+      "name": "AgentDogCourier",
+      "files": {
+        "still": "AgentDogCourier",
+        "hero": "Heroes/AgentDogCourier.webp",
+        "loop": "Loops/AgentDogCourier.webp"
+      }
+    },
+    {
+      "id": "agent-teapot-calm",
+      "kind": "agent",
+      "tags": [
+        "meditation",
+        "calm",
+        "mindfulness"
+      ],
+      "colors": {
+        "dominant": "#F9EFE2",
+        "accent": "#F8DED4",
+        "tint": "#70A659",
+        "backdrop": "#7FAF6B"
+      },
+      "boil": {
+        "frames": 3,
+        "fps": 10
+      },
+      "preset": "v1-vivid",
+      "style": "zoen-ink-wash/1+v1-vivid",
+      "seed": 5583,
+      "name": "AgentTeapotCalm",
+      "files": {
+        "still": "AgentTeapotCalm",
+        "hero": "Heroes/AgentTeapotCalm.webp",
+        "loop": "Loops/AgentTeapotCalm.webp"
+      }
+    },
+    {
+      "id": "agent-alarm-clock",
+      "kind": "agent",
+      "tags": [
+        "reminders",
+        "time",
+        "alarms"
+      ],
+      "colors": {
+        "dominant": "#E7F3F3",
+        "accent": "#EED098",
+        "tint": "#709C63",
+        "backdrop": "#A8C3A0"
+      },
+      "boil": {
+        "frames": 3,
+        "fps": 10
+      },
+      "preset": "v1-vivid",
+      "style": "zoen-ink-wash/1+v1-vivid",
+      "seed": 2089,
+      "name": "AgentAlarmClock",
+      "files": {
+        "still": "AgentAlarmClock",
+        "hero": "Heroes/AgentAlarmClock.webp",
+        "loop": "Loops/AgentAlarmClock.webp"
+      }
+    },
+    {
+      "id": "agent-bear-doctor",
+      "kind": "agent",
+      "tags": [
+        "health",
+        "doctor",
+        "care"
+      ],
+      "colors": {
+        "dominant": "#F9EDD7",
+        "accent": "#F9EDD7",
+        "tint": "#84619E",
+        "backdrop": "#9B7FB0"
+      },
+      "boil": {
+        "frames": 3,
+        "fps": 10
+      },
+      "preset": "v1-vivid",
+      "style": "zoen-ink-wash/1+v1-vivid",
+      "seed": 2021,
+      "name": "AgentBearDoctor",
+      "files": {
+        "still": "AgentBearDoctor",
+        "hero": "Heroes/AgentBearDoctor.webp",
+        "loop": "Loops/AgentBearDoctor.webp"
+      }
+    },
+    {
+      "id": "agent-hedgehog-shopper",
+      "kind": "agent",
+      "tags": [
+        "shopping",
+        "deals",
+        "groceries"
+      ],
+      "colors": {
+        "dominant": "#F8F2E2",
+        "accent": "#E78A70",
+        "tint": "#70A659",
+        "backdrop": "#7FAF6B"
+      },
+      "boil": {
+        "frames": 3,
+        "fps": 10
+      },
+      "preset": "v1-vivid",
+      "style": "zoen-ink-wash/1+v1-vivid",
+      "seed": 4350,
+      "name": "AgentHedgehogShopper",
+      "files": {
+        "still": "AgentHedgehogShopper",
+        "hero": "Heroes/AgentHedgehogShopper.webp",
+        "loop": "Loops/AgentHedgehogShopper.webp"
+      }
+    },
+    {
+      "id": "agent-moon-sleep",
+      "kind": "agent",
+      "tags": [
+        "sleep",
+        "night",
+        "bedtime"
+      ],
+      "colors": {
+        "dominant": "#E7F3F3",
+        "accent": "#F8F3D1",
+        "tint": "#84619E",
+        "backdrop": "#9B7FB0"
+      },
+      "boil": {
+        "frames": 3,
+        "fps": 10
+      },
+      "preset": "v1-vivid",
+      "style": "zoen-ink-wash/1+v1-vivid",
+      "seed": 8744,
+      "name": "AgentMoonSleep",
+      "files": {
+        "still": "AgentMoonSleep",
+        "hero": "Heroes/AgentMoonSleep.webp",
+        "loop": "Loops/AgentMoonSleep.webp"
+      }
+    },
+    {
+      "id": "group-beach-trip",
+      "kind": "group",
+      "tags": [
+        "trip",
+        "beach",
+        "vacation",
+        "summer"
+      ],
+      "colors": {
+        "dominant": "#E1F5F9",
+        "accent": "#F2BCAC",
+        "tint": "#70A659",
+        "backdrop": "#7FAF6B"
+      },
+      "boil": {
+        "frames": 3,
+        "fps": 10
+      },
+      "preset": "v1-vivid",
+      "style": "zoen-ink-wash/1+v1-vivid",
+      "seed": 1320,
+      "name": "GroupBeachTrip",
+      "files": {
+        "still": "GroupBeachTrip",
+        "hero": "Heroes/GroupBeachTrip.webp",
+        "loop": "Loops/GroupBeachTrip.webp"
+      }
+    },
+    {
+      "id": "group-soccer-ball",
+      "kind": "group",
+      "tags": [
+        "soccer",
+        "football",
+        "sports",
+        "team"
+      ],
+      "colors": {
+        "dominant": "#E8F2F2",
+        "accent": "#D1EBA5",
+        "tint": "#84619E",
+        "backdrop": "#9B7FB0"
+      },
+      "boil": {
+        "frames": 3,
+        "fps": 10
+      },
+      "preset": "v1-vivid",
+      "style": "zoen-ink-wash/1+v1-vivid",
+      "seed": 1050,
+      "name": "GroupSoccerBall",
+      "files": {
+        "still": "GroupSoccerBall",
+        "hero": "Heroes/GroupSoccerBall.webp",
+        "loop": "Loops/GroupSoccerBall.webp"
+      }
+    },
+    {
+      "id": "group-family-dinner",
+      "kind": "group",
+      "tags": [
+        "family",
+        "dinner",
+        "home"
+      ],
+      "colors": {
+        "dominant": "#ECF1E9",
+        "accent": "#F3DAB8",
+        "tint": "#468AB9",
+        "backdrop": "#8DB7D4"
+      },
+      "boil": {
+        "frames": 3,
+        "fps": 10
+      },
+      "preset": "v1-vivid",
+      "style": "zoen-ink-wash/1+v1-vivid",
+      "seed": 5318,
+      "name": "GroupFamilyDinner",
+      "files": {
+        "still": "GroupFamilyDinner",
+        "hero": "Heroes/GroupFamilyDinner.webp",
+        "loop": "Loops/GroupFamilyDinner.webp"
+      }
+    },
+    {
+      "id": "group-study-desk",
+      "kind": "group",
+      "tags": [
+        "study",
+        "school",
+        "university"
+      ],
+      "colors": {
+        "dominant": "#F0EEEA",
+        "accent": "#F5E7C0",
+        "tint": "#709C63",
+        "backdrop": "#A8C3A0"
+      },
+      "boil": {
+        "frames": 3,
+        "fps": 10
+      },
+      "preset": "v1-vivid",
+      "style": "zoen-ink-wash/1+v1-vivid",
+      "seed": 112,
+      "name": "GroupStudyDesk",
+      "files": {
+        "still": "GroupStudyDesk",
+        "hero": "Heroes/GroupStudyDesk.webp",
+        "loop": "Loops/GroupStudyDesk.webp"
+      }
+    },
+    {
+      "id": "group-guitar-music",
+      "kind": "group",
+      "tags": [
+        "music",
+        "band",
+        "guitar"
+      ],
+      "colors": {
+        "dominant": "#F3E3B8",
+        "accent": "#F3E3B8",
+        "tint": "#70A659",
+        "backdrop": "#7FAF6B"
+      },
+      "boil": {
+        "frames": 3,
+        "fps": 10
+      },
+      "preset": "v1-vivid",
+      "style": "zoen-ink-wash/1+v1-vivid",
+      "seed": 3828,
+      "name": "GroupGuitarMusic",
+      "files": {
+        "still": "GroupGuitarMusic",
+        "hero": "Heroes/GroupGuitarMusic.webp",
+        "loop": "Loops/GroupGuitarMusic.webp"
+      }
+    },
+    {
+      "id": "group-work-laptop",
+      "kind": "group",
+      "tags": [
+        "work",
+        "team",
+        "office"
+      ],
+      "colors": {
+        "dominant": "#BFD6DC",
+        "accent": "#F3E4B8",
+        "tint": "#BF9440",
+        "backdrop": "#E3B55B"
+      },
+      "boil": {
+        "frames": 3,
+        "fps": 10
+      },
+      "preset": "v1-vivid",
+      "style": "zoen-ink-wash/1+v1-vivid",
+      "seed": 1777,
+      "name": "GroupWorkLaptop",
+      "files": {
+        "still": "GroupWorkLaptop",
+        "hero": "Heroes/GroupWorkLaptop.webp",
+        "loop": "Loops/GroupWorkLaptop.webp"
+      }
+    },
+    {
+      "id": "group-camping-tent",
+      "kind": "group",
+      "tags": [
+        "camping",
+        "outdoors",
+        "friends"
+      ],
+      "colors": {
+        "dominant": "#807871",
+        "accent": "#F0C9A0",
+        "tint": "#468AB9",
+        "backdrop": "#8DB7D4"
+      },
+      "boil": {
+        "frames": 3,
+        "fps": 10
+      },
+      "preset": "v1-vivid",
+      "style": "zoen-ink-wash/1+v1-vivid",
+      "seed": 207,
+      "name": "GroupCampingTent",
+      "files": {
+        "still": "GroupCampingTent",
+        "hero": "Heroes/GroupCampingTent.webp",
+        "loop": "Loops/GroupCampingTent.webp"
+      }
+    },
+    {
+      "id": "group-party-balloons",
+      "kind": "group",
+      "tags": [
+        "party",
+        "celebration",
+        "friends"
+      ],
+      "colors": {
+        "dominant": "#F6F1E4",
+        "accent": "#F0B8A3",
+        "tint": "#84619E",
+        "backdrop": "#9B7FB0"
+      },
+      "boil": {
+        "frames": 3,
+        "fps": 10
+      },
+      "preset": "v1-vivid",
+      "style": "zoen-ink-wash/1+v1-vivid",
+      "seed": 5447,
+      "name": "GroupPartyBalloons",
+      "files": {
+        "still": "GroupPartyBalloons",
+        "hero": "Heroes/GroupPartyBalloons.webp",
+        "loop": "Loops/GroupPartyBalloons.webp"
+      }
+    },
+    {
+      "id": "group-book-club",
+      "kind": "group",
+      "tags": [
+        "books",
+        "reading",
+        "club"
+      ],
+      "colors": {
+        "dominant": "#CEC6BA",
+        "accent": "#F0CBA3",
+        "tint": "#84619E",
+        "backdrop": "#9B7FB0"
+      },
+      "boil": {
+        "frames": 3,
+        "fps": 10
+      },
+      "preset": "v1-vivid",
+      "style": "zoen-ink-wash/1+v1-vivid",
+      "seed": 6017,
+      "name": "GroupBookClub",
+      "files": {
+        "still": "GroupBookClub",
+        "hero": "Heroes/GroupBookClub.webp",
+        "loop": "Loops/GroupBookClub.webp"
+      }
+    },
+    {
+      "id": "group-gym",
+      "kind": "group",
+      "tags": [
+        "gym",
+        "fitness",
+        "training"
+      ],
+      "colors": {
+        "dominant": "#F7F0E3",
+        "accent": "#F6D8C8",
+        "tint": "#84619E",
+        "backdrop": "#9B7FB0"
+      },
+      "boil": {
+        "frames": 3,
+        "fps": 10
+      },
+      "preset": "v1-vivid",
+      "style": "zoen-ink-wash/1+v1-vivid",
+      "seed": 8819,
+      "name": "GroupGym",
+      "files": {
+        "still": "GroupGym",
+        "hero": "Heroes/GroupGym.webp",
+        "loop": "Loops/GroupGym.webp"
+      }
+    },
+    {
+      "id": "group-pets",
+      "kind": "group",
+      "tags": [
+        "pets",
+        "dogs",
+        "cats"
+      ],
+      "colors": {
+        "dominant": "#EAF0EE",
+        "accent": "#E4815A",
+        "tint": "#70A659",
+        "backdrop": "#7FAF6B"
+      },
+      "boil": {
+        "frames": 3,
+        "fps": 10
+      },
+      "preset": "v1-vivid",
+      "style": "zoen-ink-wash/1+v1-vivid",
+      "seed": 8272,
+      "name": "GroupPets",
+      "files": {
+        "still": "GroupPets",
+        "hero": "Heroes/GroupPets.webp",
+        "loop": "Loops/GroupPets.webp"
+      }
+    },
+    {
+      "id": "group-city-skyline",
+      "kind": "group",
+      "tags": [
+        "city",
+        "neighborhood",
+        "local"
+      ],
+      "colors": {
+        "dominant": "#ECF1E9",
+        "accent": "#EFDCAF",
+        "tint": "#60959F",
+        "backdrop": "#6F9FA8"
+      },
+      "boil": {
+        "frames": 3,
+        "fps": 10
+      },
+      "preset": "v1-vivid",
+      "style": "zoen-ink-wash/1+v1-vivid",
+      "seed": 1244,
+      "name": "GroupCitySkyline",
+      "files": {
+        "still": "GroupCitySkyline",
+        "hero": "Heroes/GroupCitySkyline.webp",
+        "loop": "Loops/GroupCitySkyline.webp"
+      }
+    },
+    {
+      "id": "group-houseplants",
+      "kind": "group",
+      "tags": [
+        "plants",
+        "garden",
+        "home"
+      ],
+      "colors": {
+        "dominant": "#7F7771",
+        "accent": "#EFBA9D",
+        "tint": "#84619E",
+        "backdrop": "#9B7FB0"
+      },
+      "boil": {
+        "frames": 3,
+        "fps": 10
+      },
+      "preset": "v1-vivid",
+      "style": "zoen-ink-wash/1+v1-vivid",
+      "seed": 40,
+      "name": "GroupHouseplants",
+      "files": {
+        "still": "GroupHouseplants",
+        "hero": "Heroes/GroupHouseplants.webp",
+        "loop": "Loops/GroupHouseplants.webp"
+      }
+    },
+    {
+      "id": "group-board-games",
+      "kind": "group",
+      "tags": [
+        "games",
+        "board games",
+        "fun"
+      ],
+      "colors": {
+        "dominant": "#E8F2EF",
+        "accent": "#F3E0B5",
+        "tint": "#468AB9",
+        "backdrop": "#8DB7D4"
+      },
+      "boil": {
+        "frames": 3,
+        "fps": 10
+      },
+      "preset": "v1-vivid",
+      "style": "zoen-ink-wash/1+v1-vivid",
+      "seed": 6138,
+      "name": "GroupBoardGames",
+      "files": {
+        "still": "GroupBoardGames",
+        "hero": "Heroes/GroupBoardGames.webp",
+        "loop": "Loops/GroupBoardGames.webp"
+      }
+    },
+    {
+      "id": "group-cooking",
+      "kind": "group",
+      "tags": [
+        "cooking",
+        "recipes",
+        "food"
+      ],
+      "colors": {
+        "dominant": "#E8EFF2",
+        "accent": "#EECE97",
+        "tint": "#84619E",
+        "backdrop": "#9B7FB0"
+      },
+      "boil": {
+        "frames": 3,
+        "fps": 10
+      },
+      "preset": "v1-vivid",
+      "style": "zoen-ink-wash/1+v1-vivid",
+      "seed": 8795,
+      "name": "GroupCooking",
+      "files": {
+        "still": "GroupCooking",
+        "hero": "Heroes/GroupCooking.webp",
+        "loop": "Loops/GroupCooking.webp"
+      }
+    },
+    {
+      "id": "group-road-trip",
+      "kind": "group",
+      "tags": [
+        "road trip",
+        "travel",
+        "friends"
+      ],
+      "colors": {
+        "dominant": "#F7E9CE",
+        "accent": "#F7E9CE",
+        "tint": "#70A659",
+        "backdrop": "#7FAF6B"
+      },
+      "boil": {
+        "frames": 3,
+        "fps": 10
+      },
+      "preset": "v1-vivid",
+      "style": "zoen-ink-wash/1+v1-vivid",
+      "seed": 2289,
+      "name": "GroupRoadTrip",
+      "files": {
+        "still": "GroupRoadTrip",
+        "hero": "Heroes/GroupRoadTrip.webp",
+        "loop": "Loops/GroupRoadTrip.webp"
+      }
+    },
+    {
+      "id": "group-mountain-hike",
+      "kind": "group",
+      "tags": [
+        "hiking",
+        "mountains",
+        "outdoors"
+      ],
+      "colors": {
+        "dominant": "#F8F9E2",
+        "accent": "#F2DFB0",
+        "tint": "#BF4740",
+        "backdrop": "#E5A4A0"
+      },
+      "boil": {
+        "frames": 3,
+        "fps": 10
+      },
+      "preset": "v1-vivid",
+      "style": "zoen-ink-wash/1+v1-vivid",
+      "seed": 8190,
+      "name": "GroupMountainHike",
+      "files": {
+        "still": "GroupMountainHike",
+        "hero": "Heroes/GroupMountainHike.webp",
+        "loop": "Loops/GroupMountainHike.webp"
+      }
+    },
+    {
+      "id": "group-coffee-friends",
+      "kind": "group",
+      "tags": [
+        "friends",
+        "coffee",
+        "chat"
+      ],
+      "colors": {
+        "dominant": "#E9F1EF",
+        "accent": "#F0C5A6",
+        "tint": "#709C63",
+        "backdrop": "#A8C3A0"
+      },
+      "boil": {
+        "frames": 3,
+        "fps": 10
+      },
+      "preset": "v1-vivid",
+      "style": "zoen-ink-wash/1+v1-vivid",
+      "seed": 7373,
+      "name": "GroupCoffeeFriends",
+      "files": {
+        "still": "GroupCoffeeFriends",
+        "hero": "Heroes/GroupCoffeeFriends.webp",
+        "loop": "Loops/GroupCoffeeFriends.webp"
+      }
+    },
+    {
+      "id": "group-picnic",
+      "kind": "group",
+      "tags": [
+        "picnic",
+        "weekend",
+        "friends"
+      ],
+      "colors": {
+        "dominant": "#F3CFC5",
+        "accent": "#F1E8AC",
+        "tint": "#84619E",
+        "backdrop": "#9B7FB0"
+      },
+      "boil": {
+        "frames": 3,
+        "fps": 10
+      },
+      "preset": "v1-vivid",
+      "style": "zoen-ink-wash/1+v1-vivid",
+      "seed": 4583,
+      "name": "GroupPicnic",
+      "files": {
+        "still": "GroupPicnic",
+        "hero": "Heroes/GroupPicnic.webp",
+        "loop": "Loops/GroupPicnic.webp"
+      }
+    },
+    {
+      "id": "group-birthday-cake",
+      "kind": "group",
+      "tags": [
+        "birthday",
+        "celebration",
+        "family"
+      ],
+      "colors": {
+        "dominant": "#EFEEEB",
+        "accent": "#EC9F8D",
+        "tint": "#BF9440",
+        "backdrop": "#E3B55B"
+      },
+      "boil": {
+        "frames": 3,
+        "fps": 10
+      },
+      "preset": "v1-vivid",
+      "style": "zoen-ink-wash/1+v1-vivid",
+      "seed": 6037,
+      "name": "GroupBirthdayCake",
+      "files": {
+        "still": "GroupBirthdayCake",
+        "hero": "Heroes/GroupBirthdayCake.webp",
+        "loop": "Loops/GroupBirthdayCake.webp"
+      }
+    },
+    {
+      "id": "group-bike-ride",
+      "kind": "group",
+      "tags": [
+        "cycling",
+        "bike",
+        "sports"
+      ],
+      "colors": {
+        "dominant": "#E9F1EF",
+        "accent": "#E3A193",
+        "tint": "#709C63",
+        "backdrop": "#A8C3A0"
+      },
+      "boil": {
+        "frames": 3,
+        "fps": 10
+      },
+      "preset": "v1-vivid",
+      "style": "zoen-ink-wash/1+v1-vivid",
+      "seed": 1303,
+      "name": "GroupBikeRide",
+      "files": {
+        "still": "GroupBikeRide",
+        "hero": "Heroes/GroupBikeRide.webp",
+        "loop": "Loops/GroupBikeRide.webp"
+      }
+    },
+    {
+      "id": "group-video-games",
+      "kind": "group",
+      "tags": [
+        "gaming",
+        "video games",
+        "friends"
+      ],
+      "colors": {
+        "dominant": "#F2E8EE",
+        "accent": "#F0E3A5",
+        "tint": "#84619E",
+        "backdrop": "#9B7FB0"
+      },
+      "boil": {
+        "frames": 3,
+        "fps": 10
+      },
+      "preset": "v1-vivid",
+      "style": "zoen-ink-wash/1+v1-vivid",
+      "seed": 9427,
+      "name": "GroupVideoGames",
+      "files": {
+        "still": "GroupVideoGames",
+        "hero": "Heroes/GroupVideoGames.webp",
+        "loop": "Loops/GroupVideoGames.webp"
+      }
+    }
+  ]
+}

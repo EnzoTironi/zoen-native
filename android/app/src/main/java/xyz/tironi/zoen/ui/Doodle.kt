@@ -1,0 +1,171 @@
+package xyz.tironi.zoen.ui
+
+import android.content.Context
+import android.graphics.Canvas
+import android.graphics.Rect
+import android.graphics.Paint
+import android.os.SystemClock
+import android.view.View
+import android.view.ViewTreeObserver
+import androidx.compose.runtime.*
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.viewinterop.AndroidView
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
+import xyz.tironi.zoen.ui.ink.DoodleArt
+import xyz.tironi.zoen.ui.ink.InkCanvasRenderer
+import kotlin.math.sin
+import kotlin.math.abs
+import kotlin.math.floor
+
+@Composable
+internal fun ZoenDoodle(art: DoodleArt, modifier: Modifier = Modifier, live: Boolean = true) {
+    SnapshotArtView(art, modifier, live)
+}
+
+@Composable
+internal fun ZoenPetSprite(modifier: Modifier, asleep: Boolean, faded: Boolean, live: Boolean, eatingSince: Long?) {
+    SnapshotArtView(null, modifier.semantics { contentDescription = "Donkey" }, live, asleep, faded, eatingSince)
+}
+
+@Composable
+private fun SnapshotArtView(art: DoodleArt?, modifier: Modifier, live: Boolean, asleep: Boolean = false, faded: Boolean = false, eatingSince: Long? = null) {
+    val motion = rememberMotionEnabled()
+    val owner = LocalLifecycleOwner.current
+    var active by remember(owner) { mutableStateOf(owner.lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)) }
+    DisposableEffect(owner) {
+        val observer = LifecycleEventObserver { _, _ -> active = owner.lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED) }
+        owner.lifecycle.addObserver(observer)
+        onDispose { owner.lifecycle.removeObserver(observer) }
+    }
+    AndroidView(factory = { NativeArtCanvasView(it) }, modifier = modifier,
+        update = { it.configure(art, live, motion, active, asleep, faded, eatingSince) }, onRelease = { it.pause() })
+}
+
+internal class NativeArtCanvasView(context: Context) : View(context) {
+    private val renderer = InkCanvasRenderer()
+    private val paint = Paint()
+    private val visibleRect = Rect()
+    private var art: DoodleArt? = DoodleArt.Notepad
+    private var asleep = false
+    private var faded = false
+    private var eatingSince: Long? = null
+    private var live = false
+    private var motion = false
+    private var active = false
+    private var elapsed = 0L
+    private var lastTick = 0L
+    private var scheduled = false
+    private var framePending = false
+    internal val animationTimeSeconds get() = elapsed / 1000.0
+    internal val hasScheduledFrame get() = scheduled || framePending
+    internal val clockDiagnostics get() = "time=$animationTimeSeconds live=$live motion=$motion active=$active " +
+        "scheduled=$scheduled framePending=$framePending shown=$isShown focus=${hasWindowFocus()} " +
+        "visibility=$visibility window=$windowVisibility size=${width}x$height"
+    private val frameFinished = Runnable { framePending = false; updateClock() }
+    private val scrollListener = ViewTreeObserver.OnScrollChangedListener { updateClock() }
+    private val tick = Runnable {
+        scheduled = false
+        if (canAnimate()) {
+            framePending = true
+            invalidate()
+        } else pause()
+    }
+
+    init { importantForAccessibility = IMPORTANT_FOR_ACCESSIBILITY_NO }
+    fun configure(art: DoodleArt?, live: Boolean, motion: Boolean, active: Boolean, asleep: Boolean, faded: Boolean, eatingSince: Long?) {
+        if (this.art != art) { elapsed = 0; lastTick = 0 }
+        this.art = art; this.live = live; this.motion = motion; this.active = active
+        this.asleep = asleep; this.faded = faded
+        this.eatingSince = eatingSince
+        invalidate()
+        updateClock()
+    }
+    private fun canAnimate() = live && motion && active && isAttachedToWindow && hasWindowFocus() && windowVisibility == VISIBLE && isShown && getGlobalVisibleRect(visibleRect)
+    private fun updateClock() {
+        if (!canAnimate()) { pause(); return }
+        if (!scheduled && !framePending) {
+            if (lastTick == 0L) lastTick = SystemClock.uptimeMillis()
+            scheduled = true
+            postDelayed(tick, if (art == null) 50L else 100L)
+        }
+    }
+    fun pause() { removeCallbacks(tick); removeCallbacks(frameFinished); scheduled = false; framePending = false; lastTick = 0 }
+    override fun onAttachedToWindow() { super.onAttachedToWindow(); viewTreeObserver.addOnScrollChangedListener(scrollListener); updateClock() }
+    override fun onDetachedFromWindow() { pause(); viewTreeObserver.removeOnScrollChangedListener(scrollListener); super.onDetachedFromWindow() }
+    override fun onSizeChanged(w: Int, h: Int, oldw: Int, oldh: Int) { super.onSizeChanged(w, h, oldw, oldh); updateClock() }
+    override fun onWindowFocusChanged(hasWindowFocus: Boolean) { super.onWindowFocusChanged(hasWindowFocus); updateClock() }
+    override fun onWindowVisibilityChanged(visibility: Int) { super.onWindowVisibilityChanged(visibility); updateClock() }
+    override fun onVisibilityChanged(changedView: View, visibility: Int) {
+        super.onVisibilityChanged(changedView, visibility)
+        if (visibility == VISIBLE) invalidate()
+        updateClock()
+    }
+    override fun onDraw(canvas: Canvas) {
+        super.onDraw(canvas)
+        removeCallbacks(tick); removeCallbacks(frameFinished); scheduled = false
+        framePending = canAnimate()
+        if (framePending) {
+            val now = SystemClock.uptimeMillis()
+            if (lastTick != 0L) elapsed += now - lastTick
+            lastTick = now
+        } else pause()
+        val t = if (!live) 4.0 else if (motion) elapsed / 1000.0 else 0.0
+        val frame = if (motion) (t * 10).toInt() % 4 else 0
+        val progress = if (!live || !motion) 2.0 else t / 1.1
+        val saved = canvas.save()
+        val doodle = art
+        if (doodle != null) {
+            if (motion) { val scale = (1 + .014 * sin(t * 2.1)).toFloat(); canvas.scale(scale, scale, width / 2f, height / 2f) }
+            renderer.render(doodle.strokes(t), canvas, width, height, doodle.seed, frame, progress, 1.0)
+        } else {
+            val scale = (floor(minOf(width / 30.0, height / 22.0) * 2) / 2).coerceAtLeast(1.0).toFloat()
+            val left = (width - 26 * scale) / 2 - scale * 2
+            var top = (height - 22 * scale) / 2
+            val animated = live && motion
+            val eat = eatingSince?.let { (SystemClock.uptimeMillis() - it) / 1000.0 } ?: 99.0
+            val eating = animated && !asleep && eat >= 0 && eat < 1.6
+            if (animated) top += (if (asleep) sin(t * 1.4) * scale * .4 else if (eating) {
+                if ((eat / .2).toInt() % 2 == 1) scale.toDouble() else 0.0
+            } else -abs(sin(t * 3.2)) * scale * 1.5).toFloat()
+            drawPixelDonkey(asleep, animated && t % 3.9 > 3.75) { x, y, w, h, color ->
+                paint.color = color.toInt(); paint.alpha = if (faded) 89 else 255
+                canvas.drawRect(left + x * scale, top + y * scale, left + (x + w) * scale + .3f, top + (y + h) * scale + .3f, paint)
+            }
+            if (eating) {
+                val len = (5 - (eat / .4).toInt()).coerceAtLeast(0)
+                val cx = left + 26 * scale; val cy = top + 11 * scale
+                paint.color = 0xFFF58A2C.toInt()
+                canvas.drawRect(cx, cy, cx + len * scale + .3f, cy + scale + .3f, paint)
+                if (len > 0) {
+                    paint.color = 0xFF5DB04B.toInt()
+                    canvas.drawRect(cx + len * scale, cy - scale, cx + (len + 1) * scale + .3f, cy + .3f, paint)
+                    canvas.drawRect(cx + len * scale, cy + scale, cx + (len + 1) * scale + .3f, cy + 2 * scale + .3f, paint)
+                }
+                if ((eat / .2).toInt() % 2 == 1) {
+                    paint.color = 0xCCF58A2C.toInt()
+                    canvas.drawRect(cx - .5f * scale, cy + 3 * scale, cx + .2f * scale, cy + 3.7f * scale, paint)
+                    paint.color = 0x99F58A2C.toInt()
+                    canvas.drawRect(cx + 1.5f * scale, cy + 4 * scale, cx + 2.1f * scale, cy + 4.6f * scale, paint)
+                }
+            }
+            if (asleep) {
+                val density = resources.displayMetrics.density
+                paint.color = android.graphics.Color.WHITE
+                paint.typeface = android.graphics.Typeface.create(android.graphics.Typeface.MONOSPACE, android.graphics.Typeface.BOLD)
+                for (i in 0..2) {
+                    val phase = if (animated) (t * .5 + i / 3.0) % 1 else i / 3.0
+                    paint.textSize = (10 + i * 4) * density
+                    paint.alpha = ((1 - phase) * 255).toInt()
+                    canvas.drawText("z", width - 32 * density + (i * 7 + phase * 6).toFloat() * density,
+                        (36 - phase * 22 - i * 6).toFloat() * density, paint)
+                }
+            }
+        }
+        canvas.restoreToCount(saved)
+        if (framePending) post(frameFinished)
+    }
+}

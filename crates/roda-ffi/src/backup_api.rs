@@ -46,12 +46,7 @@ fn offline(e: impl std::fmt::Display) -> CoreError {
 }
 
 fn http() -> Result<reqwest::Client, CoreError> {
-    // Restore runs before any sync session has installed the TLS provider.
-    let _ = rustls::crypto::ring::default_provider().install_default();
-    reqwest::Client::builder()
-        .timeout(Duration::from_secs(120))
-        .build()
-        .map_err(offline)
+    crate::net::http_client(Duration::from_secs(120)).map_err(offline)
 }
 
 /// Turns a relay refusal into words for people.

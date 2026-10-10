@@ -1,0 +1,112 @@
+name: android
+
+on:
+  pull_request:
+    paths: ["android/**", "crates/**", "Cargo.toml", "Cargo.lock", "scripts/build-android-core.sh", "scripts/check-android-upstream.py", "scripts/*android-uniffi-callbacks.py", "scripts/test-android-device.sh", "scripts/test-android-rich-page.py", "scripts/ci-postgres.sh", "scripts/test-ci-postgres.py", ".github/workflows/android.yml"]
+  push:
+    branches: [main]
+    paths: ["android/**", "crates/**", "Cargo.toml", "Cargo.lock", "scripts/build-android-core.sh", "scripts/check-android-upstream.py", "scripts/*android-uniffi-callbacks.py", "scripts/test-android-device.sh", "scripts/test-android-rich-page.py", "scripts/ci-postgres.sh", "scripts/test-ci-postgres.py", ".github/workflows/android.yml"]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: android-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  native:
+    name: native (Android ${{ matrix.api }})
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        api: [28, 35]
+    env:
+      CARGO_PROFILE_DEV_DEBUG: "0"
+      CARGO_BUILD_JOBS: "4"
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+      - uses: android-actions/setup-android@v3
+        with:
+          packages: platform-tools
+          log-accepted-android-sdk-licenses: false
+      - name: SDK and NDK
+        run: sdkmanager "platforms;android-36" "build-tools;36.0.0" "ndk;27.1.12297006"
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-linux-android,x86_64-linux-android
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+      - uses: gradle/actions/setup-gradle@v4
+      - name: Verify current backend and reviewed interface references
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 scripts/check-android-upstream.py --fetch --output android/app/build/outputs/android-upstream.json
+      - name: UniFFI Android build tool
+        run: cargo install cargo-ndk --locked
+      - name: Build both ABIs, unit tests, and lint
+        working-directory: android
+        run: |
+          python3 ../scripts/test-android-uniffi-callbacks.py
+          ./gradlew :app:assembleDebug :app:testDebugUnitTest :app:lintDebug --max-workers=4
+      - name: Runner PostgreSQL
+        run: |
+          python3 scripts/test-ci-postgres.py
+          scripts/ci-postgres.sh
+      - name: Isolated relay for encrypted Android journeys
+        run: |
+          scripts/fdb.sh up
+          eval "$(scripts/fdb.sh env)"
+          cargo build -q -p zoen-relay
+          DATABASE_URL="$ZOEN_TEST_PG" ZOEN_BLOB_DIR="$RUNNER_TEMP/android-blobs" \
+            nohup target/debug/zoen-relay --bind 0.0.0.0:8787 > "$RUNNER_TEMP/android-relay.log" 2>&1 &
+          for _ in $(seq 1 30); do curl -fsS http://127.0.0.1:8787/healthz && break; sleep 1; done
+          curl -fsS http://127.0.0.1:8787/healthz
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - name: Native Android journeys
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: ${{ matrix.api }}
+          target: google_apis
+          arch: x86_64
+          disable-animations: true
+          working-directory: android
+          script: |
+            ../scripts/test-android-device.sh --max-workers=4 -Pandroid.testInstrumentationRunnerArguments.class=xyz.tironi.zoen.RecoveryTlsTest
+            mkdir -p app/build/outputs/cold-process-tls
+            cp -R app/build/outputs/androidTest-results app/build/outputs/cold-process-tls/results
+            cp -R app/build/outputs/device-evidence app/build/outputs/cold-process-tls/evidence
+            ../scripts/test-android-device.sh --max-workers=4 -Pandroid.testInstrumentationRunnerArguments.zoenRelay=http://10.0.2.2:8787
+            python3 ../scripts/test-android-rich-page.py
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: zoen-android-${{ matrix.api }}
+          path: |
+            android/app/build/outputs/apk/debug/*.apk
+            android/app/build/reports/
+            android/app/build/outputs/androidTest-results/
+            android/app/build/outputs/device-evidence/
+            android/app/build/outputs/cold-process-tls/
+            android/app/build/outputs/android-upstream.json
+      - name: Publish native test results
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: zoen-android-${{ matrix.api }}-results
+          path: |
+            android/app/build/outputs/androidTest-results/
+            android/app/build/outputs/device-evidence/**/pages/rich-formatting-*
+            android/app/build/outputs/device-evidence/rich-page-stress/

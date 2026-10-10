@@ -1,0 +1,45 @@
+{
+  "renderer": "Native Android Canvas with the original procedural Swift rig ported to Kotlin",
+  "poses": [
+    "wave",
+    "phone",
+    "map",
+    "run",
+    "juggle",
+    "walk",
+    "zen",
+    "roar",
+    "shield",
+    "coin",
+    "cheer"
+  ],
+  "heads": [
+    "pout",
+    "smirk",
+    "working"
+  ],
+  "fps": {
+    "body": 12,
+    "head": 10
+  },
+  "timeline": "Unbounded procedural time; no eight-second raster loop",
+  "motion_settings": "Live Android animator duration scale; lifecycle, window focus and visibility pause",
+  "verification": {
+    "original_swift_frames": 98,
+    "timestamps_seconds": [
+      0,
+      0.37,
+      2.3,
+      3.78,
+      8.001,
+      10.3,
+      63.25
+    ],
+    "geometry_tolerance": 1e-12,
+    "fixture": "android/app/src/test/resources/ink-swift-reference.json.gz"
+  },
+  "source_files": {
+    "apple/Shared/DesignSystem/Mascot.swift": "bf2c6c587f694586b6735a9bc9504f5ff07e93befd1bbfe0f0b5006e53b429a3",
+    "apple/Shared/DesignSystem/HandDrawn.swift": "e6481c1a4ff73a18459dbfcc19434391188c169174babcf959baa05f53e0b76c"
+  }
+}

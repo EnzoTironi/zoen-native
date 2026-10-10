@@ -1,0 +1,76 @@
+# Android verification
+
+The port uses Kotlin/Compose and the real Rust JNI library. The [current native experience and upstream references](android-native-experience.md) record procedural artwork, platform haptics, reduced motion, reading behavior and current iOS/backend commits. The [product review](android-product-review.md) retains the earlier corrections. The verification sections below are historical records of their named commits. [PR 41 checks](https://github.com/EnzoTironi/zoen-native/pull/41/checks) publish full Rust and Android 9/15 results for the current PR head. Hardware requirements and the public relay release dependency are recorded separately.
+
+## Product correction — 2026-10-10
+
+Production source `6b7e450` restores the original mascot artwork and motion, English/Portuguese onboarding, all joined conversations, app ordering, neutral palette and chat/card hierarchy. Android uses native navigation, permission prompts, adaptive sizing and lifecycle/reduced-motion behavior. Direct iOS runtime references and Android screenshots are described in the [product review](android-product-review.md). Both complete native suites pass 54/54 with no failures or skips, using identical APKs; both-ABI builds, R8, lint, 77 JVM tests and 16 KB alignment pass. The signed non-debuggable release cold-starts in 624 ms in one emulator sample. The original Files regression and new same-test-APK community regression are retained. Earlier failures remain labeled by source. Physical model execution and the public relay rollout remain separate dependencies.
+
+## Local checks — 2026-10-09
+
+| Check | Evidence |
+|---|---|
+| Shared core | All 57 `roda-ffi` tests pass; formatting and strict Clippy over all targets pass. Coverage includes catalog installation, typed media versions, immutable historical content, shutdown/reopening, refused genesis, canonical relay signing and account changes during config/report requests. |
+| JVM | All 77 tests pass in 12 suites, with zero failures, errors or skips. Coverage includes structured generation, routing/context, Unicode search, page editing, onboarding, optional reporting enrollment/ownership/cancellation, MCP boundaries, snapshots, media edits and globe geometry. |
+| Combined build | The normal ARM64/x86_64 debug, instrumentation APK and minified release builds, R8, lint and JVM tests pass. Native build tasks are retained, the Rust profile is release, and matching generated bindings configure all 17 native callbacks. |
+| Complete device run | Matching app/test APKs pass all 52 native cases with zero failures or skips at both 320 × 640 pixels/density 160 (58.30 seconds) and 720 × 1600 pixels/density 280 (66.93 seconds). Complete uncut recordings are 58.10 and 66.81 seconds respectively, with matching encoded dimensions. They include actual launcher pin/open/Edit/Feed/owned cleanup, encrypted delivery and attachments, background notification handback, signed page restoration, image ink, exact microphone playback after rotation, retained thread ownership and restored historical reading position. |
+| Chat lifecycle | The same real-repository regression fails against the prior Set implementation and passes with screen-owned subscriptions on the same emulator. Retired-screen cleanup preserves the replacement timeline; duplicate registration, unknown-owner cleanup, unrelated chats and final-owner release are checked. The microphone journey targets the exact newly sent note before/after recreation and during playback, within its original deadlines. Pre-send IDs come from the durable core so initial observation cannot mistake an older note for the new recording. |
+| Chat viewport | Separate same-test-APK regressions cover recreation and an unloaded timeline during subscription handover. The controlled handover test restores a real chat successfully, then fails when the previous app measures the transiently unloaded timeline as empty; the corrected app preserves historical and latest positions and follows a new own message. The saved test APK is identical for baseline and treatment, with the original ten-second deadline. Chat renders its list only when the timeline is loaded. |
+| Speech source lifetime | The same native regression fails against the prior cancellation cleanup and passes with PCM file creation, use and synchronous deletion inside one IO scope. Cancelling one transcription removes only its source; a concurrent transcription and the original recording retain their bytes. Cancelling the second source leaves only the original recording. This establishes file ownership, without claiming successful model-backed recognition. |
+| Isolated relay | Independent Android identities exchange encrypted messages, a chunked attachment, a new typed version and an encrypted photo background. Restart and offline outbox recovery pass against the existing PostgreSQL/FoundationDB backend at protocol 4. The actual JNI journey also requires the HTTP report to be accepted using the authenticated signing name, then verifies that its source is not reported twice. |
+| Native core/system integration | Private account erasure, batch Markdown/image content URIs and thumbnails, rich page/history reopening, all seven RemoteViews templates and notification preview/read/mute/visible-chat behavior pass. Widget checks exercise 160 × 180 dp at font scales 1 and 2, Portuguese action labels, 48 dp buttons and compact-to-expanded reapplication. |
+| Media and voice | Actual image ink produces signed v2, preserves original v1 bytes and survives activity recreation. Android image/PDF rendering, codecs and trims pass. Microphone review visibly removes one waveform cut before an enabled Send; the edited AAC is signed, delivered and played. Recognition failure handling passes; a successful transcript is not established. |
+| Agents and permissions | Context/routing, labeled fallback, encrypted profiles and native browser takeover pass. Native globe interaction, complete signed audit verification and scoped standing/device grant persistence/revocation pass. |
+| HTML MCP | Real Android touch updates HTML List and bundled React Hike, live DOM and signed Rust versions. Offline map pan/zoom/fit and voting pass. The committed Hike window visibly shows “Voted · 1”. Cross-app and foreign-origin access are denied; irreversible calls require native confirmation. |
+| Release/package | All six packaged ARM64/x86_64 libraries have at least 16 KB LOAD alignment, and unsigned and signed APKs pass 16 KB ZIP alignment. The exact ML Kit registrar constructor and component method remain in the R8 mapping; only an unused synthetic field is removed. Unsigned release SHA256 is `485d339e3ceb41d51e5760ce96cb24d810e5fe0ed892d4def1f98a3d83428f06` (57,065,502 bytes). Both engine libraries contain Hike bundle `8307eacf13a2f4e7d5154bb3bb163d9f764fd76c738ffa1c355e80e50159d292`. A development-key copy cold-starts in 409 ms as a non-debuggable app, with matching installed hash, an absent process before launch and no registrar or native-loading error. |
+
+The native suites also exercise all eight onboarding areas, separate threads and quotes, pinned plans, stationary Home voice hold/release, page autosave/history, shared chat appearance and all seven catalog apps. All six stationary-hold/accessibility gesture cases and all six native media/codec cases pass. Notification links are consumable on cold/warm handback, and voice reviews retain their original thread ownership.
+
+## CI acceptance
+
+The workflows use the runner's installed PostgreSQL 16 with real TCP authentication, FoundationDB and NATS. Android CI builds both ABIs, runs JVM tests/lint and drives the actual x86_64 Android 9 and Android 15 apps with a matching isolated relay. Full Rust CI includes real canonical-name growth, ownership/backpressure, sandbox and browser journeys. Complete Rust CI at `e4ae67a` passes all 269 tests with zero failures or ignored cases and strict Rust 1.99 Clippy. Android follow-ups do not change Rust or relay production source. Reports and captures are published on [PR 41 checks](https://github.com/EnzoTironi/zoen-native/pull/41/checks).
+
+Acceptance requires 53 passing native cases with no skips on the capable Android 15 provider. The stock Android 9 provider lacks the required HTML isolation features: only its two HTML cases may skip, while the other 51 cases, provider update UI, all seven native mini-apps and actual launcher journey must pass. At `376d11b`, Android 9 passed 47 cases, skipped those two cases and failed an immediate post-approval UI assertion after the engine had approved the request; the fixture now waits for the rendered label within its original deadline. Android 15 passed 49 cases and failed voice visibility after recreation, with the note still present in observed and durable timelines. A regression reproduces historical reading-position loss with the previous app and passes with the corrected app using the exact same test APK. At `e4ae67a`, Android 9 passes 49 cases with those two provider skips; Android 15 passes 49 and fails both historical and exact-voice viewport restoration. Saved counters and one frame did not cover a subscription gap after the first non-empty layout. The new controlled handover regression fails on that prior app and passes on the corrected app with the identical test APK. Both fresh local 52-case viewport runs pass. Native Edit is recorded as unsupported on API 28 without skipping the rest of its launcher journey.
+
+Earlier failures remain in the [append-only audit](android-parity-decisions.tsv): the launcher pin-preview race, post-recreation chat timeout and stale-screen subscription cleanup, disabled voice Send fixture, optional report 401, PostgreSQL configuration lexer and cached statistics poll, and owned FoundationDB admission/coordinator interruptions. The final fixture requires a settled home-workspace host, fresh native bounds and the original deadlines; it keeps actual touch, signed-version and owned-cleanup assertions. Reporting now uses the authenticated relay name and retains refused or newly captured metadata across account changes.
+
+## Reproduce
+
+Use JDK 17, SDK 36, NDK 27.1.12297006 and `cargo-ndk`. ARM64 and x86_64 libraries are built from the same source as their generated bindings.
+
+```bash
+cargo test --locked -q -p roda-ffi
+cargo clippy --locked -p roda-ffi --all-targets -- -D warnings
+cd android
+./gradlew :app:assembleDebug :app:assembleDebugAndroidTest :app:assembleRelease \
+  :app:testDebugUnitTest :app:lintDebug -PcoreProfile=release
+# In another terminal, from the repository root:
+# scripts/dev-stack.sh
+../scripts/test-android-device.sh \
+  -Pandroid.testInstrumentationRunnerArguments.zoenRelay=http://10.0.2.2:8787
+```
+
+The relay argument is required for the two-identity and onboarding/background cases. They create and clean up their own accounts and refuse to replace an existing real account. Without the argument they report a skip; demo peers do not establish network delivery.
+
+App and instrumentation APKs are separate packages and must be installed separately by manual installers. The complete local recording verifies both installed APK hashes against the build before starting instrumentation and waits for screenrecord to finalize its MP4 before export. Captures use AGP's additional instrumentation output directory. The CI collector validates PNG signatures, copies captures before test app removal and preserves the test exit status.
+
+Repeated full-suite runs share the local relay's per-IP registration bucket. One full-resolution recapture at `1522f5d` reached its default ten-registration burst: seven registration refusals and repeated unregistered sessions explain the 45-second enrollment timeout. The failure is retained. Restarting only the owned relay with the same default limits and preserved data produces the complete 51-case pass; public limits are unchanged. The recorder now specifies its actual output size explicitly. Both complete 52-case runs at `1753725` finish with zero registration refusals.
+
+Hike uses Android's frame-commit callback and PixelCopy to capture the actual submitted Window within the original ten-second draw deadline. Its full-display capture, render metadata, trusted touch trace and signed version are retained alongside the committed image.
+
+## Visual evidence
+
+[PR 41](https://github.com/EnzoTironi/zoen-native/pull/41) contains visually reviewed running-app screenshots and videos uploaded with `gh --attach`. The `1753725` evidence includes complete uncut 52-case recordings at both viewport sizes, the exact new voice note visible after recreation on the small display, historical and latest reading positions retained after recreation, the signed non-debuggable release cold start, actual Hike voting and the home-screen widget after signed Feed. Prior captures and the failing CI viewport remain labeled by source; earlier phone/tablet, Portuguese/dark-mode, large-text, plans/history, media and catalog evidence is preserved.
+
+Generated APKs, videos, screenshots and logs remain in ignored build directories. Source decisions and platform conditions stay in Git.
+
+## Platform and release conditions
+
+- Gemini Nano generation requires supported physical hardware, initialized AICore, a downloaded model and a locked bootloader. Availability/download/error handling and labeled deterministic fallback are implemented. Physical Nano generation was not exercised; emulator fallback and release registration are not generation evidence. See [ML Kit setup requirements](https://developers.google.com/ml-kit/genai/prompt/android/get-started).
+- On-device speech requires API 33+, Android's on-device recognizer and an installed language model. Word, filler and pause editing additionally require API 34+ and recognizer timestamps. The emulator exercises recognition failure handling without producing a successful transcript. Recording, waveform cuts, saving and playback work independently.
+- The public default relay advertised protocol 2 in the latest unauthenticated certificate-only Hello; the shared core requires protocol 4. Default real-account release requires the [documented existing relay upgrade](android-relay-release.md). No public account was created and no public deployment was performed during source verification.
+- Background delivery uses a user-enabled remote-messaging foreground service with a visible Stop control. Android force-stop and power policy apply. Isolated relay results do not establish a public rollout result, and there is no FCM backend.
+- Native widget Edit/reconfiguration requires API 31+ and a supporting launcher. Pin/open/signed Feed/owned removal remain required on older versions. Existing widgets and account ownership are preserved. See [Android widget configuration](https://developer.android.com/develop/ui/views/appwidgets/configuration).
+- Apple prototype placeholders—calls, passkey recovery, simulated external actions and debug browser guest—remain identified placeholders. The same source has seven actual catalog apps; fake listings do not count as working apps.
+
+See the [feature parity record](android-parity.md), [decisions](android-parity-decisions.tsv), [relay release proposal](android-relay-release.md) and [Android README](../../android/README.md).

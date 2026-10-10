@@ -438,7 +438,7 @@ pub(crate) type R<T> = Result<T, CoreError>;
 impl From<roda_store::StoreError> for CoreError {
     fn from(e: roda_store::StoreError) -> Self {
         CoreError::Storage {
-            message: e.to_string(),
+            reason: e.to_string(),
         }
     }
 }
@@ -1047,7 +1047,6 @@ impl Engine {
             .space_order
             .iter()
             .filter_map(|id| self.space_summary(id).ok())
-            .filter(|s| s.kind != SpaceKindDto::Community || !s.members.is_empty() || true)
             .collect();
         out.sort_by_key(|s| std::cmp::Reverse(s.last_at_ms));
         out
@@ -1111,6 +1110,24 @@ impl Engine {
             pending_requests: pending,
             event_count: self.logs.get(id).map(|l| l.len() as u64).unwrap_or(0),
         })
+    }
+
+    pub fn member_roles(&self, space: &str) -> R<Vec<MemberRoleDto>> {
+        Ok(self
+            .space_state(space)?
+            .members
+            .iter()
+            .map(|(identity, role)| MemberRoleDto {
+                identity_id: identity.clone(),
+                role: match role {
+                    Role::Owner => "owner",
+                    Role::Admin => "admin",
+                    Role::Member => "member",
+                    Role::Reader => "reader",
+                }
+                .into(),
+            })
+            .collect())
     }
 
     pub fn mark_read(&self, space: &str) -> R<()> {
@@ -1356,6 +1373,44 @@ impl Engine {
             path,
             file,
         })
+    }
+
+    pub fn item_at(&self, id: &str, number: u32) -> R<ItemDetail> {
+        let state = self.item_state(id)?;
+        let position = state
+            .versions
+            .iter()
+            .position(|v| v.number == number)
+            .ok_or_else(|| not_found(&t("versão", "version")))?;
+        let mut past = state.clone();
+        past.versions.truncate(position + 1);
+        let version = past.current();
+        let mut detail = self.item(id)?;
+        detail.version = version.number;
+        detail.title = version.content.title();
+        detail.plan = match &version.content {
+            ItemContent::Plan(plan) => Some(plan_to_dto(plan)),
+            _ => None,
+        };
+        detail.text = match &version.content {
+            ItemContent::Text { text } => Some(text.clone()),
+            ItemContent::Page(_) => Some(
+                self.page_at(id, number)?
+                    .blocks
+                    .iter()
+                    .map(|b| b.text.as_str())
+                    .collect::<Vec<_>>()
+                    .join("\n"),
+            ),
+            _ => None,
+        };
+        (detail.path, detail.file) = match &version.content {
+            ItemContent::Page(page) => (page.path.clone(), None),
+            ItemContent::File(file) => (file.path.clone(), Some(self.file_dto(file))),
+            _ => (String::new(), None),
+        };
+        detail.app = self.app_state_dto(&past);
+        Ok(detail)
     }
 
     pub fn items(&self) -> Vec<ItemDetail> {
@@ -2797,6 +2852,74 @@ impl Engine {
         }
     }
 
+    pub fn install_app(&mut self, space: &str, app_id: &str, args_json: &str) -> R<ItemDetail> {
+        let me = self.me_id()?;
+        if !self.is_member(space, &me) {
+            return Err(CoreError::Forbidden {
+                reason: t(
+                    "você não é membro deste Espaço",
+                    "you are not a member of this Space",
+                ),
+            });
+        }
+        let spec = apps::specs()
+            .into_iter()
+            .find(|spec| spec.id == app_id)
+            .ok_or_else(|| CoreError::Invalid {
+                reason: t("mini-app desconhecido", "unknown mini-app"),
+            })?;
+        let args: Value = serde_json::from_str(args_json).map_err(|_| CoreError::Invalid {
+            reason: t("argumentos inválidos", "invalid arguments"),
+        })?;
+        if !args.is_object() {
+            return Err(CoreError::Invalid {
+                reason: t("argumentos inválidos", "invalid arguments"),
+            });
+        }
+        let (title, state) = apps::create(spec.id, &args, &self.persona(&me).name, now_ms())
+            .map_err(|reason| CoreError::Invalid { reason })?;
+        let item = new_id("it");
+        self.append(
+            space,
+            &me,
+            EventBody::ItemCreated {
+                item: item.clone(),
+                kind: ItemKind::App,
+                content: ItemContent::App(AppDoc {
+                    app: spec.id.into(),
+                    resource_uri: spec.resource_uri.into(),
+                    title,
+                    state_json: state.to_string(),
+                }),
+                origin: t("Instalado por você", "Installed by you"),
+            },
+        )?;
+        self.append(
+            space,
+            &me,
+            EventBody::GrantIssued {
+                grant: Grant {
+                    id: new_id("gr"),
+                    grantor: me.clone(),
+                    grantee: Some(format!("app:{item}")),
+                    scope: GrantScope::Item(item.clone()),
+                    capability: Capability::Trust(TrustLevel::Act),
+                    expires_at_ms: None,
+                },
+            },
+        )?;
+        self.post_as(
+            space,
+            &me,
+            &t(
+                "Mini-app adicionado a este Espaço.",
+                "Mini-app added to this Space.",
+            ),
+            Some(item.clone()),
+        )?;
+        self.item(&item)
+    }
+
     /// `tools/call` vindo da interface de um mini-app. Toda chamada passa pelo avaliador
     /// de Concessões: reversível roda (e vira versão do Item); irreversível ou externo
     /// volta como `NeedsConfirmation` e só roda com `confirmed = true` (a folha nativa).
@@ -3010,7 +3133,7 @@ impl Engine {
             .conn()
             .unchecked_transaction()
             .map_err(|e| CoreError::Storage {
-                message: e.to_string(),
+                reason: e.to_string(),
             })?;
         self.store.wipe()?;
         self.store.wipe_sync()?;
@@ -3023,7 +3146,7 @@ impl Engine {
             crate::sync::EVENT_FORMAT_VALUE,
         )?;
         tx.commit().map_err(|e| CoreError::Storage {
-            message: e.to_string(),
+            reason: e.to_string(),
         })?;
         self.reload()
     }

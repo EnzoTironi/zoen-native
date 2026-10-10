@@ -1,0 +1,10 @@
+<resources>
+    <string name="chat_mark_read">Marcar como lido</string>
+    <string name="chat_pinned_plan">Fixado: %1$s</string>
+    <string name="chat_plan_count">%1$d itens · %2$s</string>
+    <string name="chat_people_count">%1$d pessoas</string>
+    <string name="chat_online">online</string>
+    <string name="chat_processing">%1$s está pensando…</string>
+    <string name="chat_building">%1$s está criando…</string>
+    <string name="chat_call">%1$s está em uma chamada</string>
+</resources>

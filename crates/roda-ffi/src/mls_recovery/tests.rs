@@ -4,6 +4,104 @@ use roda_log::{chain_hash, SpaceLog};
 use roda_proto::Sequenced;
 use roda_types::{EventBody, Privacy, SpaceKind};
 
+#[test]
+fn recovery_inspection_follows_commits_forgets_rollbacks_and_storage_failures() {
+    let mut engine = Engine::open(":memory:").unwrap();
+    engine
+        .create_account("Ana", "ana", "http://relay.test")
+        .unwrap();
+    let space = "recovery-inspection";
+    assert_eq!(
+        engine.recovery_group_state(space).unwrap(),
+        GroupState::Missing
+    );
+    engine.device().unwrap().create_group(space).unwrap();
+    assert_eq!(
+        engine.recovery_group_state(space).unwrap(),
+        GroupState::Ready
+    );
+    engine.device().unwrap().forget(space).unwrap();
+    assert_eq!(
+        engine.recovery_group_state(space).unwrap(),
+        GroupState::Missing
+    );
+    engine.store.conn().execute_batch("BEGIN").unwrap();
+    engine.device().unwrap().create_group(space).unwrap();
+    assert_eq!(
+        engine.recovery_group_state(space).unwrap(),
+        GroupState::Ready
+    );
+    engine.store.conn().execute_batch("ROLLBACK").unwrap();
+    assert_eq!(
+        engine.recovery_group_state(space).unwrap(),
+        GroupState::Missing
+    );
+    engine.device().unwrap().create_group(space).unwrap();
+    assert_eq!(
+        engine.recovery_group_state(space).unwrap(),
+        GroupState::Ready
+    );
+    engine
+        .store
+        .conn()
+        .execute_batch("ALTER TABLE openmls_group_data RENAME TO unavailable_group_data")
+        .unwrap();
+    assert!(engine.recovery_group_state(space).is_err());
+    engine
+        .store
+        .conn()
+        .execute_batch("ALTER TABLE unavailable_group_data RENAME TO openmls_group_data")
+        .unwrap();
+    assert_eq!(
+        engine.recovery_group_state(space).unwrap(),
+        GroupState::Ready
+    );
+}
+
+#[test]
+fn recovery_inspection_tracks_held_commits_and_rejects_corrupted_storage() {
+    let mut engine = Engine::open(":memory:").unwrap();
+    engine
+        .create_account("Ana", "ana", "http://relay.test")
+        .unwrap();
+    let space = "recovery-inspection-held";
+    engine.device().unwrap().create_group(space).unwrap();
+    assert_eq!(
+        engine.recovery_group_state(space).unwrap(),
+        GroupState::Ready
+    );
+    engine
+        .store
+        .conn()
+        .execute(
+            "INSERT INTO mls_recovery_pending (space, commit_hash) VALUES (?1, ?2)",
+            rusqlite::params![space, vec![0u8; 32]],
+        )
+        .unwrap();
+    assert_eq!(
+        engine.recovery_group_state(space).unwrap(),
+        GroupState::Pending
+    );
+    engine
+        .store
+        .conn()
+        .execute("DELETE FROM mls_recovery_pending WHERE space = ?1", [space])
+        .unwrap();
+    assert_eq!(
+        engine.recovery_group_state(space).unwrap(),
+        GroupState::Ready
+    );
+    engine
+        .store
+        .conn()
+        .execute(
+            "UPDATE openmls_group_data SET group_data = zeroblob(length(group_data))",
+            [],
+        )
+        .unwrap();
+    assert!(engine.recovery_group_state(space).is_err());
+}
+
 fn ordered(engine: &Engine, env: Envelope) -> Sequenced {
     let (seq, prev) = engine
         .logs
@@ -141,6 +239,28 @@ fn staged_recovery(path: &str, space: &str) -> StagedRecovery {
         baseline,
         context_blob,
     }
+}
+
+#[test]
+fn a_staged_recovery_checkpoint_does_not_mean_the_peer_has_admitted_the_device() {
+    let space = "recovery-admission";
+    let fixture = staged_recovery(":memory:", space);
+    let mut recovered = fixture.engine;
+    let mut peer = fixture.peer_engine;
+    for frame in &fixture.baseline {
+        assert_eq!(peer.ingest(frame.clone()), Ingest::Applied);
+    }
+    assert!(recovered.mls_status(space).is_some());
+    assert!(recovered.device().unwrap().recovery_pending(space));
+    assert_ne!(recovered.mls_status(space), peer.mls_status(space));
+    let external = Envelope::plain(&recovered.store.outbox().unwrap()[0].event);
+    let reference = RecoveryRef::parse(external.recovery().unwrap()).unwrap();
+    recovered.upload_done(&reference.blob);
+    let frame = ordered(&peer, external);
+    assert_eq!(peer.ingest(frame.clone()), Ingest::Applied);
+    assert_eq!(recovered.ingest(frame), Ingest::Confirmed);
+    assert!(!recovered.device().unwrap().recovery_pending(space));
+    assert_eq!(recovered.mls_status(space), peer.mls_status(space));
 }
 
 #[test]
@@ -397,7 +517,12 @@ fn a_removal_during_held_recovery_survives_restart_and_repairs_before_sealing() 
         .unwrap()
         .seal(space, b"held after restart")
         .is_err());
-    assert!(engine.mls_to_claim().is_none());
+    assert!(engine
+        .mls_to_claim(Some(
+            roda_proto::KeyPackageClaimClock::from_server_ms(crate::engine::now_ms()).unwrap()
+        ))
+        .unwrap()
+        .is_none());
     let repairs = engine.store.outbox().unwrap();
     assert_eq!(
         repairs.len(),
@@ -465,7 +590,12 @@ fn agreement_lookup_finishes_before_the_engine_requests_one_shot_key_packages() 
         assert_eq!(engine.ingest(ordered(&engine, env)), Ingest::Applied);
     }
     engine.create_mls_group(space).unwrap();
-    assert!(engine.mls_to_claim().is_none());
+    assert!(engine
+        .mls_to_claim(Some(
+            roda_proto::KeyPackageClaimClock::from_server_ms(crate::engine::now_ms()).unwrap()
+        ))
+        .unwrap()
+        .is_none());
     assert!(engine.take_need_agreement().contains(&identity));
     assert_eq!(engine.outbox_len(), 0);
     let (public, signed) = peer.agreement_to_publish().unwrap();
@@ -477,10 +607,14 @@ fn agreement_lookup_finishes_before_the_engine_requests_one_shot_key_packages() 
         }],
         std::slice::from_ref(&identity),
     );
-    assert_eq!(
-        engine.mls_to_claim(),
-        Some((space.into(), vec![identity.clone()]))
-    );
+    let (claimed_space, targets, operation) = engine
+        .mls_to_claim(Some(
+            roda_proto::KeyPackageClaimClock::from_server_ms(crate::engine::now_ms()).unwrap(),
+        ))
+        .unwrap()
+        .unwrap();
+    assert_eq!(claimed_space, space);
+    assert_eq!(targets, vec![identity.clone()]);
     let package = peer
         .device()
         .unwrap()
@@ -489,6 +623,7 @@ fn agreement_lookup_finishes_before_the_engine_requests_one_shot_key_packages() 
         .remove(0);
     engine.mls_claimed(
         space,
+        &operation,
         Ok(vec![roda_proto::KeyPackageRecord {
             identity,
             device: peer.net.account.as_ref().unwrap().device.clone(),

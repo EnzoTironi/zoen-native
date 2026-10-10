@@ -13,6 +13,15 @@ protocol PageTextHost: AnyObject {
     var pageStorage: NSTextStorage { get }
     var pageSelection: NSRange { get set }
     var pageTypingAttributes: [NSAttributedString.Key: Any] { get set }
+    var pageHasMarkedText: Bool { get }
+    func pageEndComposition()
+    func pageViewport() -> PageViewport?
+    func pageRestoreViewport(_ viewport: PageViewport)
+}
+
+struct PageViewport {
+    var index: Int
+    var offset: CGPoint
 }
 
 /// The editor's state and behaviour, shared by the iPhone and the Mac.
@@ -34,7 +43,15 @@ final class PageEditorController {
     private(set) var tick = 0
     private(set) var strongTick = 0
 
-    @ObservationIgnored weak var host: PageTextHost?
+    @ObservationIgnored weak var host: PageTextHost? {
+        didSet {
+            if let pendingBlocks {
+                self.pendingBlocks = nil
+                load(pendingBlocks)
+            }
+        }
+    }
+    @ObservationIgnored private var pendingBlocks: [PageBlockDto]?
     /// Called (debounced by the screen) whenever the text changed.
     @ObservationIgnored var onEdit: (() -> Void)?
     /// The last paragraph has no character to carry its tag when empty.
@@ -44,20 +61,108 @@ final class PageEditorController {
 
     // MARK: loading and reading
 
-    func load(_ blocks: [PageBlockDto], keepSelection: Bool = false) {
-        guard let host else { return }
+    var isComposing: Bool { host?.pageHasMarkedText == true }
+
+    func finishComposition() { host?.pageEndComposition() }
+
+    @discardableResult func load(_ blocks: [PageBlockDto], keepSelection: Bool = false) -> Bool {
+        guard let host else { pendingBlocks = blocks; return true }
+        guard !host.pageHasMarkedText else { return false }
         let sel = host.pageSelection
+        let before = self.blocks()
+        if keepSelection, before == blocks { return true }
+        let start = anchor(at: sel.location)
+        let end = anchor(at: NSMaxRange(sel))
+        let viewport = host.pageViewport()
+        let visible = viewport.flatMap { anchor(at: $0.index) }
         let s = PageText.build(blocks)
         trailingTag = blocks.last.map { BlockTag($0) } ?? BlockTag(kind: "heading", level: 1)
         applying = true
         host.pageStorage.setAttributedString(s)
         applying = false
         let len = host.pageStorage.length
-        host.pageSelection = keepSelection
-            ? NSRange(location: min(sel.location, len), length: 0)
-            : NSRange(location: len, length: 0)
+        if keepSelection {
+            let a = resolve(start, oldOrder: before.map(\.id)) ?? min(sel.location, len)
+            let b = resolve(end, oldOrder: before.map(\.id)) ?? a
+            host.pageSelection = NSRange(location: min(a, b), length: abs(b - a))
+            if let viewport, let index = resolve(visible, oldOrder: before.map(\.id)) {
+                host.pageRestoreViewport(PageViewport(index: index, offset: viewport.offset))
+            }
+        } else {
+            host.pageSelection = NSRange(location: len, length: 0)
+        }
         refreshTyping()
         updateState()
+        return true
+    }
+
+    private struct Anchor {
+        let id: String
+        let offset: Int
+        let text: String
+    }
+
+    private func anchor(at location: Int) -> Anchor? {
+        guard let host else { return nil }
+        let paragraph = paragraphRange(at: min(location, host.pageStorage.length))
+        let tag = tag(at: paragraph)
+        let range = textRange(paragraph, tag: tag)
+        return Anchor(id: tag.id, offset: min(max(0, location - range.location), range.length),
+                      text: (host.pageStorage.string as NSString).substring(with: range))
+    }
+
+    private func resolve(_ anchor: Anchor?, oldOrder: [String]) -> Int? {
+        guard let host, let anchor else { return nil }
+        let paragraphs = PageText.paragraphs(host.pageStorage)
+        let ranges = Dictionary(paragraphs.map { (tag(at: $0).id, $0) }, uniquingKeysWith: { first, _ in first })
+        if let paragraph = ranges[anchor.id] {
+            let range = textRange(paragraph, tag: tag(at: paragraph))
+            let text = (host.pageStorage.string as NSString).substring(with: range)
+            return range.location + Self.remapOffset(anchor.offset, from: anchor.text, to: text)
+        }
+        guard let index = oldOrder.firstIndex(of: anchor.id) else { return nil }
+        for id in oldOrder.dropFirst(index + 1) {
+            if let paragraph = ranges[id] { return textRange(paragraph, tag: tag(at: paragraph)).location }
+        }
+        for id in oldOrder.prefix(index).reversed() {
+            if let paragraph = ranges[id] { return NSMaxRange(textRange(paragraph, tag: tag(at: paragraph))) }
+        }
+        return 0
+    }
+
+    private static func remapOffset(_ offset: Int, from old: String, to new: String) -> Int {
+        let a = Array(old.utf16), b = Array(new.utf16)
+        let target = min(max(0, offset), a.count)
+        var removed = Set<Int>(), inserted = Set<Int>()
+        for change in b.difference(from: a) {
+            switch change {
+            case .remove(let index, _, _): removed.insert(index)
+            case .insert(let index, _, _): inserted.insert(index)
+            }
+        }
+        var oldIndex = 0, newIndex = 0
+        var mapped = b.count
+        while oldIndex < a.count || newIndex < b.count {
+            let oldStart = oldIndex, newStart = newIndex
+            while oldIndex < a.count, removed.contains(oldIndex) { oldIndex += 1 }
+            while newIndex < b.count, inserted.contains(newIndex) { newIndex += 1 }
+            if target < oldIndex {
+                mapped = newStart + min(target - oldStart, newIndex - newStart)
+                break
+            }
+            // At an insertion boundary, retain the caret after the inserted text.
+            if target == oldIndex {
+                mapped = newIndex
+                break
+            }
+            guard oldIndex < a.count, newIndex < b.count else { break }
+            oldIndex += 1
+            newIndex += 1
+        }
+        var result = min(max(0, mapped), b.count)
+        if result > 0, result < b.count, (0xD800...0xDBFF).contains(b[result - 1]),
+           (0xDC00...0xDFFF).contains(b[result]) { result -= 1 }
+        return result
     }
 
     /// Every block, top to bottom, as the core wants them back.
@@ -174,7 +279,7 @@ final class PageEditorController {
     }
 
     private func returnKey(range: NSRange, para: NSRange, tag: BlockTag, text: NSRange) -> Bool {
-        guard let host else { return true }
+        guard let host, editable else { return false }
         let s = host.pageStorage
         let ns = s.string as NSString
         if tag.kind == "code" {
@@ -233,7 +338,7 @@ final class PageEditorController {
 
     /// Splits the paragraph at `loc`: the text after it moves into a new block.
     private func insertBlockBreak(at loc: Int, newTag: BlockTag, carry: Bool) {
-        guard let host else { return }
+        guard let host, editable else { return }
         let s = host.pageStorage
         let para = paragraphRange(at: loc)
         let old = tag(at: para)
@@ -267,13 +372,13 @@ final class PageEditorController {
 
     /// After any change: fix tags, markers and styles of the touched paragraphs.
     func textDidChange(edited range: NSRange?) {
-        guard let host, !applying else { return }
+        guard let host, editable, !applying else { return }
         normalize(around: range ?? host.pageSelection)
         edited()
     }
 
     private func normalize(around range: NSRange) {
-        guard let host else { return }
+        guard let host, editable else { return }
         let s = host.pageStorage
         let ns = s.string as NSString
         let from = paragraphRange(at: max(0, range.location - 1))
@@ -319,7 +424,7 @@ final class PageEditorController {
 
     /// Redraws numbered markers after items were added, removed or moved.
     private func renumber() {
-        guard let host else { return }
+        guard let host, editable else { return }
         let s = host.pageStorage
         guard s.length > 0 else { return }
         var counter = NumberCounter()
@@ -338,6 +443,7 @@ final class PageEditorController {
     }
 
     private func edited() {
+        guard editable else { return }
         updateState()
         onEdit?()
     }
@@ -426,7 +532,7 @@ final class PageEditorController {
 
     /// Turns the block under the cursor into `choice` (clearing a "/query" first).
     func choose(_ choice: BlockChoice) {
-        guard let host else { return }
+        guard let host, editable else { return }
         let p = paragraphRange(at: host.pageSelection.location)
         if slashQuery != nil {
             let t = tag(at: p)
@@ -442,7 +548,7 @@ final class PageEditorController {
     }
 
     func setKind(_ choice: BlockChoice, at para: NSRange) {
-        guard let host else { return }
+        guard let host, editable else { return }
         let s = host.pageStorage
         let old = tag(at: para)
         var t = BlockTag(id: old.id, kind: choice.kind, level: choice.level,
@@ -487,7 +593,7 @@ final class PageEditorController {
 
     /// Bold, italic, strikethrough, code: on the selection, or for what's typed next.
     func toggleMark(_ name: String, value: String? = nil) {
-        guard let host, let key = NSAttributedString.Key.markKeys.first(where: { $0.1 == name })?.0 else { return }
+        guard let host, editable, let key = NSAttributedString.Key.markKeys.first(where: { $0.1 == name })?.0 else { return }
         let sel = host.pageSelection
         if sel.length == 0 {
             var typing = host.pageTypingAttributes
@@ -526,7 +632,7 @@ final class PageEditorController {
 
     func setLink(_ url: String) {
         let trimmed = url.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard let host else { return }
+        guard let host, editable else { return }
         if trimmed.isEmpty {
             if host.pageSelection.length > 0 {
                 applying = true
@@ -562,7 +668,7 @@ final class PageEditorController {
 
     /// Moves list items in or out a level.
     func indent(_ delta: Int) {
-        guard let host else { return }
+        guard let host, editable else { return }
         let p = paragraphRange(at: host.pageSelection.location)
         let t = tag(at: p)
         guard t.isListItem else { return }
