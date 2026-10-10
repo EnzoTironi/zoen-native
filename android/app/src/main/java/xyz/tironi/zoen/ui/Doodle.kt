@@ -58,18 +58,17 @@ internal class NativeArtCanvasView(context: Context) : View(context) {
     private var elapsed = 0L
     private var lastTick = 0L
     private var scheduled = false
+    private var framePending = false
     internal val animationTimeSeconds get() = elapsed / 1000.0
-    internal val hasScheduledFrame get() = scheduled
+    internal val hasScheduledFrame get() = scheduled || framePending
+    private val frameFinished = Runnable { framePending = false; updateClock() }
     private val scrollListener = ViewTreeObserver.OnScrollChangedListener { updateClock() }
     private val tick = Runnable {
         scheduled = false
         if (canAnimate()) {
-            val now = SystemClock.uptimeMillis()
-            if (lastTick != 0L) elapsed += now - lastTick
-            lastTick = now
+            framePending = true
             invalidate()
-            updateClock()
-        }
+        } else pause()
     }
 
     init { importantForAccessibility = IMPORTANT_FOR_ACCESSIBILITY_NO }
@@ -89,7 +88,7 @@ internal class NativeArtCanvasView(context: Context) : View(context) {
             postDelayed(tick, if (art == null) 50L else 100L)
         }
     }
-    fun pause() { removeCallbacks(tick); scheduled = false; lastTick = 0 }
+    fun pause() { removeCallbacks(tick); removeCallbacks(frameFinished); scheduled = false; framePending = false; lastTick = 0 }
     override fun onAttachedToWindow() { super.onAttachedToWindow(); viewTreeObserver.addOnScrollChangedListener(scrollListener); updateClock() }
     override fun onDetachedFromWindow() { pause(); viewTreeObserver.removeOnScrollChangedListener(scrollListener); super.onDetachedFromWindow() }
     override fun onSizeChanged(w: Int, h: Int, oldw: Int, oldh: Int) { super.onSizeChanged(w, h, oldw, oldh); updateClock() }
@@ -98,6 +97,13 @@ internal class NativeArtCanvasView(context: Context) : View(context) {
     override fun onVisibilityChanged(changedView: View, visibility: Int) { super.onVisibilityChanged(changedView, visibility); updateClock() }
     override fun onDraw(canvas: Canvas) {
         super.onDraw(canvas)
+        removeCallbacks(tick); removeCallbacks(frameFinished); scheduled = false
+        framePending = canAnimate()
+        if (framePending) {
+            val now = SystemClock.uptimeMillis()
+            if (lastTick != 0L) elapsed += now - lastTick
+            lastTick = now
+        } else pause()
         val t = if (!live) 4.0 else if (motion) elapsed / 1000.0 else 0.0
         val frame = if (motion) (t * 10).toInt() % 4 else 0
         val progress = if (!live || !motion) 2.0 else t / 1.1
@@ -118,6 +124,6 @@ internal class NativeArtCanvasView(context: Context) : View(context) {
             }
         }
         canvas.restoreToCount(saved)
-        updateClock()
+        if (framePending) post(frameFinished)
     }
 }

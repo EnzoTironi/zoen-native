@@ -50,18 +50,17 @@ internal class MascotCanvasView(context: Context) : View(context) {
     internal var renderedFrames = 0L
         private set
     internal val animationTimeSeconds get() = elapsed / 1000.0
-    internal val hasScheduledFrame get() = scheduled
+    internal val hasScheduledFrame get() = scheduled || framePending
     private var scheduled = false
+    private var framePending = false
+    private val frameFinished = Runnable { framePending = false; if (canAnimate()) schedule() else pause() }
     private val scrollListener = ViewTreeObserver.OnScrollChangedListener { if (canAnimate()) schedule() else pause() }
     private val tick = Runnable {
         scheduled = false
         if (canAnimate()) {
-            val now = SystemClock.uptimeMillis()
-            if (lastTick != 0L) { val delta = now - lastTick; elapsed += delta; entrance += delta }
+            framePending = true
             invalidate()
-            lastTick = now
-            schedule()
-        }
+        } else pause()
     }
 
     init { importantForAccessibility = IMPORTANT_FOR_ACCESSIBILITY_NO }
@@ -84,7 +83,7 @@ internal class MascotCanvasView(context: Context) : View(context) {
             postDelayed(tick, if (head) 100L else 83L)
         }
     }
-    fun pause() { removeCallbacks(tick); scheduled = false; lastTick = 0 }
+    fun pause() { removeCallbacks(tick); removeCallbacks(frameFinished); scheduled = false; framePending = false; lastTick = 0 }
     override fun onAttachedToWindow() { super.onAttachedToWindow(); viewTreeObserver.addOnScrollChangedListener(scrollListener); schedule() }
     override fun onDetachedFromWindow() { pause(); viewTreeObserver.removeOnScrollChangedListener(scrollListener); super.onDetachedFromWindow() }
     override fun onSizeChanged(w: Int, h: Int, oldw: Int, oldh: Int) { super.onSizeChanged(w, h, oldw, oldh); schedule() }
@@ -100,7 +99,13 @@ internal class MascotCanvasView(context: Context) : View(context) {
 
     override fun onDraw(canvas: Canvas) {
         super.onDraw(canvas)
-        if (canAnimate()) schedule() else pause()
+        removeCallbacks(tick); removeCallbacks(frameFinished); scheduled = false
+        framePending = canAnimate()
+        if (framePending) {
+            val now = SystemClock.uptimeMillis()
+            if (lastTick != 0L) { val delta = now - lastTick; elapsed += delta; entrance += delta }
+            lastTick = now
+        } else pause()
         val t = if (moving) animationTimeSeconds else 0.0
         val strokes = if (head) MascotArt.head(t, mood) else MascotArt.strokes(pose, t)
         val progress = if (!moving || head) 2.0 else t / 0.9
@@ -119,5 +124,6 @@ internal class MascotCanvasView(context: Context) : View(context) {
             progress, if (head) 0.5 else 0.6)
         canvas.restoreToCount(saved)
         renderedFrames++
+        if (framePending) post(frameFinished)
     }
 }
