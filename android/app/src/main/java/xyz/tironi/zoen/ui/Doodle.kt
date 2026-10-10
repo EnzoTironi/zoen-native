@@ -27,12 +27,12 @@ internal fun ZoenDoodle(art: DoodleArt, modifier: Modifier = Modifier, live: Boo
 }
 
 @Composable
-internal fun ZoenPetSprite(modifier: Modifier, asleep: Boolean, faded: Boolean, live: Boolean) {
-    SnapshotArtView(null, modifier.semantics { contentDescription = "Donkey" }, live, asleep, faded)
+internal fun ZoenPetSprite(modifier: Modifier, asleep: Boolean, faded: Boolean, live: Boolean, eatingSince: Long?) {
+    SnapshotArtView(null, modifier.semantics { contentDescription = "Donkey" }, live, asleep, faded, eatingSince)
 }
 
 @Composable
-private fun SnapshotArtView(art: DoodleArt?, modifier: Modifier, live: Boolean, asleep: Boolean = false, faded: Boolean = false) {
+private fun SnapshotArtView(art: DoodleArt?, modifier: Modifier, live: Boolean, asleep: Boolean = false, faded: Boolean = false, eatingSince: Long? = null) {
     val motion = rememberMotionEnabled()
     val owner = LocalLifecycleOwner.current
     var active by remember(owner) { mutableStateOf(owner.lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)) }
@@ -42,7 +42,7 @@ private fun SnapshotArtView(art: DoodleArt?, modifier: Modifier, live: Boolean, 
         onDispose { owner.lifecycle.removeObserver(observer) }
     }
     AndroidView(factory = { NativeArtCanvasView(it) }, modifier = modifier,
-        update = { it.configure(art, live, motion, active, asleep, faded) }, onRelease = { it.pause() })
+        update = { it.configure(art, live, motion, active, asleep, faded, eatingSince) }, onRelease = { it.pause() })
 }
 
 internal class NativeArtCanvasView(context: Context) : View(context) {
@@ -52,6 +52,7 @@ internal class NativeArtCanvasView(context: Context) : View(context) {
     private var art: DoodleArt? = DoodleArt.Notepad
     private var asleep = false
     private var faded = false
+    private var eatingSince: Long? = null
     private var live = false
     private var motion = false
     private var active = false
@@ -72,10 +73,11 @@ internal class NativeArtCanvasView(context: Context) : View(context) {
     }
 
     init { importantForAccessibility = IMPORTANT_FOR_ACCESSIBILITY_NO }
-    fun configure(art: DoodleArt?, live: Boolean, motion: Boolean, active: Boolean, asleep: Boolean, faded: Boolean) {
+    fun configure(art: DoodleArt?, live: Boolean, motion: Boolean, active: Boolean, asleep: Boolean, faded: Boolean, eatingSince: Long?) {
         if (this.art != art) { elapsed = 0; lastTick = 0 }
         this.art = art; this.live = live; this.motion = motion; this.active = active
         this.asleep = asleep; this.faded = faded
+        this.eatingSince = eatingSince
         invalidate()
         updateClock()
     }
@@ -117,10 +119,31 @@ internal class NativeArtCanvasView(context: Context) : View(context) {
             val left = (width - 26 * scale) / 2 - scale * 2
             var top = (height - 22 * scale) / 2
             val animated = live && motion
-            if (animated) top += (if (asleep) sin(t * 1.4) * scale * .4 else -abs(sin(t * 3.2)) * scale * 1.5).toFloat()
+            val eat = eatingSince?.let { (SystemClock.uptimeMillis() - it) / 1000.0 } ?: 99.0
+            val eating = animated && !asleep && eat >= 0 && eat < 1.6
+            if (animated) top += (if (asleep) sin(t * 1.4) * scale * .4 else if (eating) {
+                if ((eat / .2).toInt() % 2 == 1) scale.toDouble() else 0.0
+            } else -abs(sin(t * 3.2)) * scale * 1.5).toFloat()
             drawPixelDonkey(asleep, animated && t % 3.9 > 3.75) { x, y, w, h, color ->
                 paint.color = color.toInt(); paint.alpha = if (faded) 89 else 255
                 canvas.drawRect(left + x * scale, top + y * scale, left + (x + w) * scale + .3f, top + (y + h) * scale + .3f, paint)
+            }
+            if (eating) {
+                val len = (5 - (eat / .4).toInt()).coerceAtLeast(0)
+                val cx = left + 27 * scale; val cy = top + 13 * scale
+                paint.color = 0xFFF58A2C.toInt()
+                canvas.drawRect(cx, cy, cx + len * scale + .3f, cy + scale + .3f, paint)
+                if (len > 0) {
+                    paint.color = 0xFF5DB04B.toInt()
+                    canvas.drawRect(cx + len * scale, cy - scale, cx + (len + 1) * scale + .3f, cy + .3f, paint)
+                    canvas.drawRect(cx + len * scale, cy + scale, cx + (len + 1) * scale + .3f, cy + 2 * scale + .3f, paint)
+                }
+                if ((eat / .2).toInt() % 2 == 1) {
+                    paint.color = 0xCCF58A2C.toInt()
+                    canvas.drawRect(cx - .5f * scale, cy + 3 * scale, cx + .2f * scale, cy + 3.7f * scale, paint)
+                    paint.color = 0x99F58A2C.toInt()
+                    canvas.drawRect(cx + 1.5f * scale, cy + 4 * scale, cx + 2.1f * scale, cy + 4.6f * scale, paint)
+                }
             }
         }
         canvas.restoreToCount(saved)

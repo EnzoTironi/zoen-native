@@ -31,6 +31,12 @@ internal object OriginalPetArt {
         "...OGO..OGO....OGO..OGO...",
         "...OKO..OKO....OKO..OKO...",
     )
+    val walking = side + listOf(
+        "....OGO.OGO.....OGO.OGO...",
+        "....OGO.OGO.....OGO.OGO...",
+        "....OGO.OGO.....OGO.OGO...",
+        "....OKO.OKO.....OKO.OKO...",
+    )
     val front = side + legs
     val sleeping = listOf(".".repeat(width), ".".repeat(width), ".".repeat(width)) + eyesClosed(side) + "...OOOO.........OOOO......"
     val blinking = eyesClosed(front)

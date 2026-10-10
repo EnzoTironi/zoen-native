@@ -222,7 +222,7 @@
   <string name="guess">Cravar palpite</string>
   <string name="map_hint">Toque no mapa para escolher um lugar</string>
   <string name="dash">Corrida do Jumento</string>
-  <string name="dash_hint">Toque para pular as pedras. Pegue cenouras.</string>
+  <string name="dash_hint">Toque para pular os cactos. Pegue cenouras.</string>
   <string name="start">Começar</string>
   <string name="score">%1$d metros</string>
   <string name="hike_vote">Escolher uma trilha</string>
@@ -251,4 +251,7 @@
     <item quantity="one">%d mensagem nova</item>
     <item quantity="other">%d mensagens novas</item>
   </plurals>
+  <string name="dash_carrots">%1$d cenouras</string>
+  <string name="dash_carrot_toast">Você pegou %1$d cenouras!</string>
+  <string name="dash_jump_toast">Belo salto!</string>
 </resources>
