@@ -580,6 +580,7 @@ impl RawClient {
             panic!()
         };
         let profile = Identity {
+            owner_proof: None,
             id: root.id(),
             kind: IdentityKind::Person,
             name: "Mallory".into(),

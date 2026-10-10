@@ -16,6 +16,7 @@
 //! The author does not sign its own `seq`/`prev`: those are assigned by the relay after
 //! the fact, which is what makes offline-first sending with a total order per Space work.
 
+pub mod agent_owner;
 pub mod content;
 pub mod profile;
 pub mod recovery;

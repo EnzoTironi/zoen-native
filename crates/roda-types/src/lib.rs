@@ -95,6 +95,15 @@ pub enum IdentityKind {
     Agent,
 }
 
+/// An owner's certified device authorizes one agent identity. The proof grants no
+/// Space membership, spending budget or tool capability by itself.
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
+pub struct AgentOwnerProof {
+    pub device: String,
+    pub cert: String,
+    pub signature: String,
+}
+
 /// Uma Identidade: um par de chaves com nome e rosto.
 /// Pessoa e agente são o mesmo objeto; o agente tem, a mais, um dono.
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
@@ -111,6 +120,8 @@ pub struct Identity {
     pub owner: Option<IdentityId>,
     /// Uma linha sobre o agente/pessoa.
     pub bio: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub owner_proof: Option<Box<AgentOwnerProof>>,
 }
 
 // ───────────────────────────── Espaço & Membro ─────────────────────────────
@@ -736,5 +747,13 @@ mod tests {
         let json = serde_json::to_string(&body).unwrap();
         let back: EventBody = serde_json::from_str(&json).unwrap();
         assert_eq!(body, back);
+    }
+
+    #[test]
+    fn historical_identity_bytes_are_unchanged_without_an_owner_proof() {
+        let legacy = r##"{"id":"agent","kind":"Agent","name":"Agent","handle":"agent","tint_hex":"#fff","glyph":null,"owner":"person","bio":""}"##;
+        let profile: Identity = serde_json::from_str(legacy).unwrap();
+        assert!(profile.owner_proof.is_none());
+        assert_eq!(serde_json::to_string(&profile).unwrap(), legacy);
     }
 }

@@ -74,6 +74,7 @@ impl Conn {
             id: 1,
             op: Op::Register {
                 profile: Identity {
+                    owner_proof: None,
                     id: root.id(),
                     kind: IdentityKind::Person,
                     name: String::new(),

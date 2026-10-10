@@ -491,7 +491,14 @@ impl Engine {
         self.signers.clear();
         self.state = State::default();
         self.index_dirty = true;
+        self.me = self.store.meta("me")?;
         for (identity, secret) in self.store.identities()? {
+            if secret.is_none()
+                && self.me.as_deref() != Some(identity.id.as_str())
+                && !roda_log::agent_owner::profile_authorized(&identity)
+            {
+                continue;
+            }
             if let Some(secret) = secret {
                 self.signers
                     .insert(identity.id.clone(), Signer::from_secret(&secret));
@@ -499,7 +506,6 @@ impl Engine {
             self.identity_order.push(identity.id.clone());
             self.identities.insert(identity.id.clone(), identity);
         }
-        self.me = self.store.meta("me")?;
         for space in self.store.space_ids()? {
             let events = self.store.events(&space)?;
             match SpaceLog::from_events(space.clone(), events.clone()) {
