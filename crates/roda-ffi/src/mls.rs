@@ -1258,71 +1258,75 @@ impl Engine {
         for space in dirty {
             self.settle_rewelcome(&space);
             self.settle_joins(&space);
+            let owed = match self.owed(&space) {
+                Ok(Some(owed)) => owed,
+                Ok(None) => {
+                    self.net.mls.waited.remove(&space);
+                    self.net.mls.dirty.remove(&space);
+                    continue;
+                }
+                Err(error) => {
+                    self.net.mls.waited.remove(&space);
+                    self.net.mls.dirty.remove(&space);
+                    tracing_like(&format!("group check in {space}: {error}"));
+                    continue;
+                }
+            };
             if let Some(turn) = self.admin_turn(&space) {
                 self.net.mls.dirty.remove(&space);
                 self.net.mls.turn_at.insert(space, now + turn);
                 continue;
             }
-            match self.owed(&space) {
-                Ok(Some(owed)) if owed.adds_nobody() => {
-                    self.net.mls.dirty.remove(&space);
-                    if let Err(e) = self.commit_now(&space, &[], &owed.remove) {
-                        tracing_like(&format!("removal commit in {space}: {e}"));
-                        self.net
-                            .mls
-                            .retry_at
-                            .insert(space.clone(), now + CLAIM_RETRY);
-                    }
+            if owed.adds_nobody() {
+                self.net.mls.dirty.remove(&space);
+                if let Err(e) = self.commit_now(&space, &[], &owed.remove) {
+                    tracing_like(&format!("removal commit in {space}: {e}"));
+                    self.net
+                        .mls
+                        .retry_at
+                        .insert(space.clone(), now + CLAIM_RETRY);
                 }
-                Ok(Some(owed)) => {
-                    let Some(clock) = claim_clock else {
-                        unsupported = true;
-                        continue;
-                    };
-                    // Resolve recovery recipients before consuming one-shot key
-                    // packages. A pending agreement lookup must not spend a package
-                    // and then fail commit_now before staging the handshake.
-                    if self.recovery_recipients(&space).is_err() {
-                        continue;
-                    }
-                    let device = self
-                        .account()
-                        .ok_or_else(|| storage("no account"))?
-                        .device
-                        .clone();
-                    let epoch = self.device()?.epoch(&space).map_err(mls_err)?;
-                    let saved = self.load_claim(&space)?;
-                    let claim = match saved {
-                        Some(c) if c.device == device && c.epoch == epoch && c.intent == owed => c,
-                        _ => {
-                            let c = ClaimOperation {
-                                operation_id: claim_operation(clock)?,
-                                device,
-                                epoch,
-                                targets: owed.to_claim(),
-                                intent: owed,
-                                records: None,
-                            };
-                            self.save_claim(&space, &c)?;
-                            c
-                        }
-                    };
-                    self.net.mls.dirty.remove(&space);
-                    if let Some(records) = claim.records {
-                        self.mls_claimed(&space, &claim.operation_id, Ok(records));
-                        continue;
-                    }
-                    self.net.mls.claiming.insert(space.clone());
-                    return Ok(Some((space, claim.targets, claim.operation_id)));
-                }
-                Ok(None) => {
-                    self.net.mls.dirty.remove(&space);
-                }
-                Err(e) => {
-                    self.net.mls.dirty.remove(&space);
-                    tracing_like(&format!("group check in {space}: {e}"));
-                }
+                continue;
             }
+            let Some(clock) = claim_clock else {
+                unsupported = true;
+                continue;
+            };
+            // Resolve recovery recipients before consuming one-shot key
+            // packages. A pending agreement lookup must not spend a package
+            // and then fail commit_now before staging the handshake.
+            if self.recovery_recipients(&space).is_err() {
+                continue;
+            }
+            let device = self
+                .account()
+                .ok_or_else(|| storage("no account"))?
+                .device
+                .clone();
+            let epoch = self.device()?.epoch(&space).map_err(mls_err)?;
+            let saved = self.load_claim(&space)?;
+            let claim = match saved {
+                Some(c) if c.device == device && c.epoch == epoch && c.intent == owed => c,
+                _ => {
+                    let c = ClaimOperation {
+                        operation_id: claim_operation(clock)?,
+                        device,
+                        epoch,
+                        targets: owed.to_claim(),
+                        intent: owed,
+                        records: None,
+                    };
+                    self.save_claim(&space, &c)?;
+                    c
+                }
+            };
+            self.net.mls.dirty.remove(&space);
+            if let Some(records) = claim.records {
+                self.mls_claimed(&space, &claim.operation_id, Ok(records));
+                continue;
+            }
+            self.net.mls.claiming.insert(space.clone());
+            return Ok(Some((space, claim.targets, claim.operation_id)));
         }
         if unsupported {
             return Err(CoreError::Invalid {
@@ -1355,13 +1359,9 @@ impl Engine {
     }
 
     /// How long this device waits before committing an owed change in `space`: one stagger
-    /// per admin ahead of it in identity order. `None` once it has waited, when it is first,
-    /// or when nothing is owed.
+    /// per admin ahead of it in identity order. Called after determining an owed change;
+    /// `None` once it has waited or when it is first.
     fn admin_turn(&mut self, space: &str) -> Option<Duration> {
-        if !matches!(self.owed(space), Ok(Some(_))) {
-            self.net.mls.waited.remove(space);
-            return None;
-        }
         if self.net.mls.waited.contains(space) || self.net.mls.turn_at.contains_key(space) {
             return None;
         }
@@ -1429,7 +1429,8 @@ impl Engine {
         let joins = self.joins(space);
         let stranded = identity_set(self.store.meta(&rewelcome_meta(space))?);
         let revoked = self.revoked_devices();
-        let reconciling = self.device()?.needs_reconciliation(space);
+        let device = self.device()?;
+        let reconciling = device.needs_reconciliation(space);
         let for_me = |name: &String| admin || split_leaf(name).is_some_and(|(id, _)| id == me);
         if !admin
             && !reconciling
@@ -1468,11 +1469,9 @@ impl Engine {
         if handshaking {
             return Ok(None);
         }
-        let device = self.device()?;
-        if !device.has_group(space) || device.pending(space) {
+        let Some(leaves) = device.committed_leaves(space).map_err(mls_err)? else {
             return Ok(None);
-        }
-        let leaves = device.leaves(space).map_err(mls_err)?;
+        };
         let group: BTreeSet<IdentityId> = leaves.keys().map(|(id, _)| id.clone()).collect();
         let mut owed = Owed::default();
         if admin || reconciling {
