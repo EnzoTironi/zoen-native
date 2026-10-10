@@ -35,7 +35,13 @@ that transaction. Such an agent is omitted from directory discovery until it has
 valid proof. Directory reads also check the profile against its SQL id, kind and
 owner, so a historical JSON mismatch cannot invent a different principal.
 
-The core verifies remote Agent profiles before storing them and pins known ownership.
+The core verifies remote Agent profiles before storing them and pins verified ownership.
+Unsigned historical remote cache rows cannot establish that pin. On reload they are
+omitted from agents and trust decisions and requested again when referenced by a log.
+An authenticated directory correction may replace their false kind or owner before
+the first valid ownership proof establishes a binding. Subsequent owner, proof, or
+kind changes are refused, including after restart. Local identities held by this
+device remain protected from directory replacement.
 The native `authorize_agent` contract produces a proof from an unlocked owner device.
 The optional `agent_owner_proof_v1` capability lets an agent runtime detect supporting
 relays before it provisions an identity; the relay enforces authorization even when
