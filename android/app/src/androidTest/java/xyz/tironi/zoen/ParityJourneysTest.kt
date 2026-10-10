@@ -121,8 +121,12 @@ class ParityJourneysTest {
         open("zoen://chat/$space")
         compose.waitUntil(10_000) { compose.onAllNodesWithTag("chat-pinned-plan").fetchSemanticsNodes().isNotEmpty() }
         compose.onNodeWithText("Native separate thread").assertDoesNotExist()
-        compose.onNodeWithTag("quote:$root").performScrollTo().performClick()
+        compose.onNodeWithTag("chat-timeline").performScrollToNode(hasTestTag("quote:$root"))
+        compose.onNodeWithTag("quote:$root").assertIsDisplayed()
+        capturePageHistory("chat-inline-quote-before-jump")
+        compose.onNodeWithTag("quote:$root").performClick()
         compose.onNodeWithTag("timeline:$root").assertIsDisplayed()
+        capturePageHistory("chat-quote-jump-to-original")
         compose.onNodeWithTag("timeline:$root").performTouchInput { swipeLeft() }
         compose.onNodeWithTag("reply-target:$root").assertExists()
         compose.onNodeWithContentDescription(application.getString(R.string.cancel)).performClick()

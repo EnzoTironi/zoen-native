@@ -55,6 +55,19 @@ class NativeExperienceTest {
         assertEquals(before + 1, sends())
         assertTrue(runBlocking { repository.query { it.verifyLog(space).valid } })
         Evidence.outputFile("experience", "haptic-dispatch-receipt.txt").writeText("PASS: disabled send requests none; one View.performHapticFeedback after signed storage.\n" + shell("logcat -d -v brief -s ZoenFeedback:D *:S"))
+        compose.waitUntil(10_000) {
+            compose.onAllNodesWithTag("composer").fetchSemanticsNodes().singleOrNull()
+                ?.config?.get(androidx.compose.ui.semantics.SemanticsProperties.EditableText)?.text == ""
+        }
+        compose.runOnIdle {
+            compose.activity.currentFocus?.let { view ->
+                compose.activity.getSystemService(android.view.inputmethod.InputMethodManager::class.java)
+                    .hideSoftInputFromWindow(view.windowToken, 0)
+            }
+        }
+        compose.onNodeWithTag("chat-timeline").performScrollToNode(hasText(text))
+        compose.onNodeWithText(text).assertIsDisplayed()
+        compose.waitForIdle()
         capture("signed-send-native-feedback")
     }
 
