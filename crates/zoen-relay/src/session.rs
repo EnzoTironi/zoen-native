@@ -985,16 +985,28 @@ impl Session {
                 }
                 Ok(Reply::Done)
             }
-            Op::ClaimKeyPackages { ids } => {
+            Op::ClaimKeyPackages { ids, operation_id } => {
                 self.st
                     .limits
                     .lookup_account
                     .check(&self.identity)
                     .map_err(limits::slow_down)?;
-                let ids: Vec<String> = ids.into_iter().take(50).collect();
-                let claimed = db::claim_key_packages(pool, &ids)
+                let claimed = if let Some(operation) = operation_id {
+                    crate::key_package_claims::claim(
+                        pool,
+                        &self.identity,
+                        &self.device,
+                        &operation,
+                        &ids,
+                    )
                     .await
-                    .map_err(|e| e.to_string())?;
+                    .map_err(|e| e.to_string())?
+                } else {
+                    let ids: Vec<String> = ids.into_iter().take(50).collect();
+                    db::claim_key_packages(pool, &ids)
+                        .await
+                        .map_err(|e| e.to_string())?
+                };
                 self.key_packages_low(&claimed).await;
                 Ok(Reply::KeyPackages(claimed))
             }

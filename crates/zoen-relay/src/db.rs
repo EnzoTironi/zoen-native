@@ -3,7 +3,7 @@
 
 use roda_proto::{AgreementKeyRecord, DeviceSigned, KeyPackageRecord, SealedProfile};
 use roda_types::{Identity, IdentityKind};
-use sqlx::{PgPool, Postgres, Transaction};
+use sqlx::{PgConnection, PgPool, Postgres, Transaction};
 
 /// Holds the device row for request admission or delivery. Ordinary requests commit
 /// before work. Directory mutations keep the fence through their SQL transaction.
@@ -539,6 +539,14 @@ pub async fn claim_key_packages(
     pool: &PgPool,
     ids: &[String],
 ) -> Result<Vec<KeyPackageRecord>, sqlx::Error> {
+    let mut connection = pool.acquire().await?;
+    claim_key_packages_on(&mut connection, ids).await
+}
+
+pub(crate) async fn claim_key_packages_on(
+    connection: &mut PgConnection,
+    ids: &[String],
+) -> Result<Vec<KeyPackageRecord>, sqlx::Error> {
     let rows: Vec<(String, String, Vec<u8>)> = sqlx::query_as(
         "WITH active_devices AS (
              SELECT DISTINCT k.identity, k.device FROM key_packages k
@@ -560,7 +568,7 @@ pub async fn claim_key_packages(
            AND NOT EXISTS (SELECT 1 FROM taken t WHERE t.identity = k.identity AND t.device = k.device)",
     )
     .bind(ids)
-    .fetch_all(pool)
+    .fetch_all(connection)
     .await?;
     Ok(rows
         .into_iter()

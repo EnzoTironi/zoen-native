@@ -32,9 +32,10 @@ use std::time::{Duration, Instant};
 use roda_log::content::{InnerEvent, Sealed, SealedKind};
 use roda_log::{event_from_content, SpaceLog};
 use roda_mls::{leaf_name, sealed::state_key, Device, Leaf, MlsError, Opened, SUITE_ID};
-use roda_proto::{Envelope, KeyPackageRecord, Sequenced};
+use roda_proto::{Envelope, KeyPackageRecord, Sequenced, KEY_PACKAGE_CLAIM_EXPIRED};
 use roda_types::*;
 use rusqlite::Connection;
+use serde::{Deserialize, Serialize};
 
 use crate::engine::Engine;
 use crate::i18n::t;
@@ -146,6 +147,21 @@ fn rewelcome_meta(space: &str) -> String {
     format!("mls.rewelcome:{space}")
 }
 
+fn claim_meta(space: &str) -> String {
+    format!("mls.claim:{space}")
+}
+
+/// Persisted before a destructive relay request, then with its exact reply before MLS
+/// staging. Removing it shares the transaction that stages the commit and Welcome.
+#[derive(Serialize, Deserialize)]
+struct ClaimOperation {
+    operation_id: String,
+    device: String,
+    epoch: u64,
+    intent: Owed,
+    records: Option<Vec<KeyPackageRecord>>,
+}
+
 fn identity_set(v: Option<String>) -> BTreeSet<IdentityId> {
     v.map(|v| {
         v.split(',')
@@ -178,7 +194,7 @@ fn joins_meta(space: &str) -> String {
 
 /// What a group owes, as one commit: identities to add (every device of theirs), single
 /// devices to add (identity already in), and removals (identities or leaf names).
-#[derive(Default, Debug)]
+#[derive(Default, Debug, Clone, PartialEq, Serialize, Deserialize)]
 struct Owed {
     add: BTreeSet<IdentityId>,
     add_devices: BTreeSet<(IdentityId, String)>,
@@ -1186,7 +1202,10 @@ impl Engine {
 
     /// The next group that owes a commit adding someone: claim their key packages. Groups
     /// that only owe removals commit right here.
-    pub fn mls_to_claim(&mut self) -> Option<(SpaceId, Vec<IdentityId>)> {
+    pub fn mls_to_claim(
+        &mut self,
+        receipts_supported: bool,
+    ) -> R<Option<(SpaceId, Vec<IdentityId>, String)>> {
         let now = Instant::now();
         let ready: Vec<SpaceId> = self
             .net
@@ -1234,15 +1253,45 @@ impl Engine {
                     }
                 }
                 Ok(Some(owed)) => {
+                    if !receipts_supported {
+                        return Err(CoreError::Invalid {
+                            reason: "This relay does not support durable key-package claims; upgrade it before adding chat members.".into(),
+                        });
+                    }
                     // Resolve recovery recipients before consuming one-shot key
                     // packages. A pending agreement lookup must not spend a package
                     // and then fail commit_now before staging the handshake.
                     if self.recovery_recipients(&space).is_err() {
                         continue;
                     }
+                    let device = self
+                        .account()
+                        .ok_or_else(|| storage("no account"))?
+                        .device
+                        .clone();
+                    let epoch = self.device()?.epoch(&space).map_err(mls_err)?;
+                    let saved = self.load_claim(&space)?;
+                    let claim = match saved {
+                        Some(c) if c.device == device && c.epoch == epoch && c.intent == owed => c,
+                        _ => {
+                            let c = ClaimOperation {
+                                operation_id: new_ulid(crate::engine::now_ms()),
+                                device,
+                                epoch,
+                                intent: owed,
+                                records: None,
+                            };
+                            self.save_claim(&space, &c)?;
+                            c
+                        }
+                    };
                     self.net.mls.dirty.remove(&space);
+                    if let Some(records) = claim.records {
+                        self.mls_claimed(&space, &claim.operation_id, Ok(records));
+                        continue;
+                    }
                     self.net.mls.claiming.insert(space.clone());
-                    return Some((space, owed.to_claim()));
+                    return Ok(Some((space, claim.intent.to_claim(), claim.operation_id)));
                 }
                 Ok(None) => {
                     self.net.mls.dirty.remove(&space);
@@ -1253,7 +1302,29 @@ impl Engine {
                 }
             }
         }
-        None
+        Ok(None)
+    }
+
+    fn load_claim(&self, space: &str) -> R<Option<ClaimOperation>> {
+        self.store
+            .meta(&claim_meta(space))?
+            .map(|data| serde_json::from_str(&data).map_err(storage))
+            .transpose()
+    }
+
+    fn save_claim(&self, space: &str, claim: &ClaimOperation) -> R<()> {
+        self.store.set_meta(
+            &claim_meta(space),
+            &serde_json::to_string(claim).map_err(storage)?,
+        )?;
+        Ok(())
+    }
+
+    /// A socket may close after a committed claim and before its reply. Only its volatile
+    /// in-flight marker is cleared; the next session retries the persisted operation.
+    pub(crate) fn mls_claims_disconnected(&mut self) {
+        let interrupted: Vec<_> = self.net.mls.claiming.drain().collect();
+        self.net.mls.dirty.extend(interrupted);
     }
 
     /// How long this device waits before committing an owed change in `space`: one stagger
@@ -1417,12 +1488,57 @@ impl Engine {
     }
 
     /// Key packages for a group's newcomers came back: commit them (and any removals).
-    pub fn mls_claimed(&mut self, space: &str, result: Result<Vec<KeyPackageRecord>, String>) {
+    pub fn mls_claimed(
+        &mut self,
+        space: &str,
+        operation: &str,
+        result: Result<Vec<KeyPackageRecord>, String>,
+    ) {
         self.net.mls.claiming.remove(space);
+        let mut claim = match self.load_claim(space) {
+            Ok(Some(c)) if c.operation_id == operation => c,
+            _ => {
+                self.net.mls.dirty.insert(space.to_string());
+                return;
+            }
+        };
+        let records = match result {
+            Ok(records) => {
+                claim.records = Some(records.clone());
+                if let Err(error) = self.save_claim(space, &claim) {
+                    tracing_like(&format!("saving key-package claim in {space}: {error}"));
+                    self.net
+                        .mls
+                        .retry_at
+                        .insert(space.to_string(), Instant::now() + CLAIM_RETRY);
+                    return;
+                }
+                records
+            }
+            Err(error) => {
+                if error == KEY_PACKAGE_CLAIM_EXPIRED {
+                    let _ = self.store.meta_delete(&claim_meta(space));
+                }
+                tracing_like(&format!("key-package claim in {space}: {error}"));
+                self.net
+                    .mls
+                    .retry_at
+                    .insert(space.to_string(), Instant::now() + CLAIM_RETRY);
+                return;
+            }
+        };
         let owed = match self.owed(space) {
             Ok(Some(o)) => o,
-            _ => return,
+            _ => {
+                self.net.mls.dirty.insert(space.to_string());
+                return;
+            }
         };
+        if owed != claim.intent {
+            // A membership change while the reply was in flight is a new operation.
+            self.net.mls.dirty.insert(space.to_string());
+            return;
+        }
         let Owed {
             add,
             add_devices,
@@ -1430,8 +1546,7 @@ impl Engine {
         } = owed;
         // Only packages whose verified leaf is one of the people (or devices) we asked for,
         // and never a device whose old leaf is still in (it goes first).
-        let records: Vec<KeyPackageRecord> = result
-            .unwrap_or_default()
+        let records: Vec<KeyPackageRecord> = records
             .into_iter()
             .filter(|r| {
                 roda_mls::key_package_leaf(&r.data).is_ok_and(|l: Leaf| {
@@ -1458,13 +1573,15 @@ impl Engine {
             .any(|(id, dev)| !devices_found.contains(&(id.as_str(), dev.as_str())));
         let packages: Vec<Vec<u8>> = records.into_iter().map(|r| r.data).collect();
         if packages.is_empty() && remove.is_empty() {
+            // A recorded empty response will never acquire a newly published package.
+            let _ = self.store.meta_delete(&claim_meta(space));
             self.net
                 .mls
                 .retry_at
                 .insert(space.to_string(), Instant::now() + CLAIM_RETRY);
             return;
         }
-        if let Err(e) = self.commit_now(space, &packages, &remove) {
+        if let Err(e) = self.commit_with_claim(space, &packages, &remove, Some(operation)) {
             tracing_like(&format!("commit in {space}: {e}"));
             self.net
                 .mls
@@ -1485,6 +1602,16 @@ impl Engine {
         add: &[Vec<u8>],
         remove: &BTreeSet<IdentityId>,
     ) -> R<()> {
+        self.commit_with_claim(space, add, remove, None)
+    }
+
+    fn commit_with_claim(
+        &mut self,
+        space: &str,
+        add: &[Vec<u8>],
+        remove: &BTreeSet<IdentityId>,
+        operation: Option<&str>,
+    ) -> R<()> {
         let recipients = self.recovery_recipients(space)?;
         let tx = self.store.conn().unchecked_transaction().map_err(storage)?;
         let c = self
@@ -1502,6 +1629,14 @@ impl Engine {
                 .collect();
             self.store
                 .set_meta(&welcome_meta(&welcome.client_id), &join_set(&newcomers))?;
+        }
+        if let Some(operation) = operation {
+            if self
+                .load_claim(space)?
+                .is_some_and(|c| c.operation_id == operation)
+            {
+                self.store.meta_delete(&claim_meta(space))?;
+            }
         }
         tx.commit().map_err(storage)?;
         self.queued_recovery_commit(events);
@@ -1585,6 +1720,7 @@ impl Engine {
             && m.top_up == 0
             && m.dirty.is_empty()
             && m.claiming.is_empty()
+            && m.retry_at.is_empty()
             && m.turn_at.is_empty()
             && m.checkpoint_due.is_empty()
             && m.rejoin.is_empty()

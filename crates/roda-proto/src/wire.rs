@@ -108,7 +108,7 @@ pub mod pb_req {
         #[prost(message, tag = "11")]
         PublishKeyPackages(PbPublishKeyPackages),
         #[prost(message, tag = "12")]
-        ClaimKeyPackages(PbIds),
+        ClaimKeyPackages(PbClaimKeyPackages),
         #[prost(message, tag = "13")]
         DeliverLink(PbLinkBox),
         #[prost(string, tag = "14")]
@@ -172,6 +172,14 @@ pub struct PbPublishKeyPackages {
     pub packages: Vec<Vec<u8>>,
     #[prost(bytes = "vec", optional, tag = "2")]
     pub last_resort: Option<Vec<u8>>,
+}
+
+#[derive(Clone, PartialEq, Message)]
+pub struct PbClaimKeyPackages {
+    #[prost(string, repeated, tag = "1")]
+    pub ids: Vec<String>,
+    #[prost(string, optional, tag = "2")]
+    pub operation_id: Option<String>,
 }
 
 #[derive(Clone, PartialEq, Message)]
@@ -810,8 +818,11 @@ impl ClientFrame {
                         packages: packages.clone(),
                         last_resort: last_resort.clone(),
                     }),
-                    Op::ClaimKeyPackages { ids } => {
-                        pb_req::Op::ClaimKeyPackages(PbIds { ids: ids.clone() })
+                    Op::ClaimKeyPackages { ids, operation_id } => {
+                        pb_req::Op::ClaimKeyPackages(PbClaimKeyPackages {
+                            ids: ids.clone(),
+                            operation_id: operation_id.clone(),
+                        })
                     }
                     Op::DeliverLink { id, sealed, device } => pb_req::Op::DeliverLink(PbLinkBox {
                         id: id.clone(),
@@ -891,7 +902,10 @@ impl ClientFrame {
                         packages: p.packages,
                         last_resort: p.last_resort,
                     },
-                    pb_req::Op::ClaimKeyPackages(p) => Op::ClaimKeyPackages { ids: p.ids },
+                    pb_req::Op::ClaimKeyPackages(p) => Op::ClaimKeyPackages {
+                        ids: p.ids,
+                        operation_id: p.operation_id,
+                    },
                     pb_req::Op::DeliverLink(b) => Op::DeliverLink {
                         id: b.id,
                         sealed: b.sealed,
@@ -1471,6 +1485,7 @@ mod tests {
                 id: 10,
                 op: Op::ClaimKeyPackages {
                     ids: vec!["a".into()],
+                    operation_id: None,
                 },
             },
             ClientFrame::Req {
@@ -1558,6 +1573,39 @@ mod tests {
             result: Ok(Reply::Profiles(vec![agent])),
         };
         assert_eq!(ServerFrame::decode(&response.encode()).unwrap(), response);
+    }
+
+    #[test]
+    fn legacy_claim_is_byte_compatible_and_receipt_id_round_trips() {
+        let legacy = [
+            0x1a, 0x09, 0x08, 0x01, 0x62, 0x05, 0x0a, 0x03, b'b', b'o', b'b',
+        ];
+        let frame = ClientFrame::Req {
+            id: 1,
+            op: Op::ClaimKeyPackages {
+                ids: vec!["bob".into()],
+                operation_id: None,
+            },
+        };
+        assert_eq!(ClientFrame::decode(&legacy).unwrap(), frame);
+        assert_eq!(frame.encode(), legacy);
+        let durable = ClientFrame::Req {
+            id: 1,
+            op: Op::ClaimKeyPackages {
+                ids: vec!["bob".into()],
+                operation_id: Some("01K75MYBPQ0000000000000001".into()),
+            },
+        };
+        assert_eq!(ClientFrame::decode(&durable.encode()).unwrap(), durable);
+        // Protocol 4 alone carries no promise of receipt support.
+        let hello = ClientFrame::Hello {
+            protocol: 4,
+            capabilities: Vec::new(),
+            identity: "i".into(),
+            device: "d".into(),
+            cert: "c".into(),
+        };
+        assert_eq!(ClientFrame::decode(&hello.encode()).unwrap(), hello);
     }
 
     #[test]

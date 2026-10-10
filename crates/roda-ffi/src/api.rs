@@ -136,6 +136,29 @@ pub fn normalize_code(raw: &str) -> String {
 }
 
 impl RodaEngine {
+    fn sync_idle(&self, connection: &ConnectionDto) -> bool {
+        connection.state == "online" && connection.synced && connection.pending == 0 && {
+            let engine = self.lock();
+            engine.net.unknown.is_empty()
+                && engine.uploads_pending() == 0
+                && engine.profiles_settled()
+                && engine.mls_settled()
+        }
+    }
+
+    /// Rust CLI contract; no new exported ABI. A deadline is not completion, including
+    /// a scheduled MLS retry with an empty event outbox.
+    pub async fn wait_until_settled(&self, timeout_ms: u64) -> Result<ConnectionDto, CoreError> {
+        let connection = self.wait_until_idle(timeout_ms).await;
+        if self.sync_idle(&connection) {
+            Ok(connection)
+        } else {
+            Err(invalid(connection.error.unwrap_or_else(|| {
+                "Sync did not finish before the deadline; queued work is saved for retry.".into()
+            })))
+        }
+    }
+
     pub(crate) fn account_dto_pub(&self) -> Option<AccountDto> {
         self.account_dto()
     }
@@ -602,13 +625,7 @@ impl RodaEngine {
         let deadline = tokio::time::Instant::now() + Duration::from_millis(timeout_ms);
         loop {
             let c = self.connection();
-            let idle = c.state == "online" && c.synced && c.pending == 0 && {
-                let e = self.lock();
-                e.net.unknown.is_empty()
-                    && e.uploads_pending() == 0
-                    && e.profiles_settled()
-                    && e.mls_settled()
-            };
+            let idle = self.sync_idle(&c);
             if idle || tokio::time::Instant::now() >= deadline {
                 return c;
             }
