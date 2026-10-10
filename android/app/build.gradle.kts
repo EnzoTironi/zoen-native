@@ -62,8 +62,9 @@ android {
 kotlin { jvmToolchain(17) }
 tasks.named("preBuild") { dependsOn(buildRodaCore) }
 tasks.matching { it.name == "preReleaseBuild" }.configureEach {
+    val selectedCoreProfile = coreProfile.get()
     doFirst {
-        require(coreProfile.get() == "release") { "Release APKs require coreProfile=release" }
+        require(selectedCoreProfile == "release") { "Release APKs require coreProfile=release" }
     }
 }
 
