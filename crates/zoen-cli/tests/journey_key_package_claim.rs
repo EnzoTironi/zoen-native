@@ -383,7 +383,7 @@ async fn empty_claim_schedules_work_and_cannot_look_idle_before_retry() {
             })
             .await
             .unwrap(),
-        Reply::Done
+        Reply::Registered(profile) if profile.id == bruno.account.identity_id
     ));
     let secret = bruno
         .vault
