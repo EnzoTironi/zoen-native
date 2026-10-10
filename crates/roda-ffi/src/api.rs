@@ -54,6 +54,15 @@ pub struct AccountDto {
 }
 
 #[derive(Debug, Clone, PartialEq, uniffi::Record)]
+pub struct AgentAuthorizationDto {
+    pub owner_id: String,
+    pub agent_id: String,
+    pub device_id: String,
+    pub certificate: String,
+    pub signature: String,
+}
+
+#[derive(Debug, Clone, PartialEq, uniffi::Record)]
 pub struct ConnectionDto {
     /// "offline", "connecting" or "online".
     pub state: String,
@@ -438,6 +447,25 @@ impl RodaEngine {
     /// Whether this chat goes through the relay (vs. living only on this device).
     pub fn is_synced(&self, space_id: String) -> bool {
         self.lock().net.synced.contains(&space_id)
+    }
+
+    /// Authorizes this agent identity from the unlocked owner device. First
+    /// registration checks this device's enrollment; this grants no tool or budget.
+    pub fn authorize_agent(&self, agent_id: String) -> Result<AgentAuthorizationDto, CoreError> {
+        let e = self.lock();
+        let owner_id = e
+            .account()
+            .ok_or_else(|| invalid("create or unlock an account first"))?
+            .identity
+            .clone();
+        let proof = e.authorize_agent(&agent_id)?;
+        Ok(AgentAuthorizationDto {
+            owner_id,
+            agent_id,
+            device_id: proof.device,
+            certificate: proof.cert,
+            signature: proof.signature,
+        })
     }
 
     /// A person's profile as this device can read it: name, bio and photo for contacts
