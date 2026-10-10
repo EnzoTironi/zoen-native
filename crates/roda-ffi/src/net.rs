@@ -16,8 +16,9 @@ use std::{
 
 use futures_util::{SinkExt, StreamExt};
 use roda_proto::{
-    auth_message, blob_put_message, ClientFrame, EphemeralKind, ErrorCode, Op, Reply, ServerFrame,
-    CAPABILITIES, MIN_PROTOCOL_VERSION, PROTOCOL_VERSION,
+    auth_message, blob_put_message, ClientFrame, EphemeralKind, ErrorCode, KeyPackageClaimClock,
+    Op, Reply, ServerFrame, CAPABILITIES, KEY_PACKAGE_CLAIM_TTL_MS, MIN_PROTOCOL_VERSION,
+    PROTOCOL_VERSION,
 };
 use roda_types::Identity;
 use tokio::sync::{mpsc, oneshot, watch};
@@ -135,7 +136,10 @@ impl Net {
         });
         {
             let poke_tx = cmd_tx.clone();
-            lock(&engine).net.poke = Some(Box::new(move || {
+            let mut engine = lock(&engine);
+            // stop_sync cancels its runtime; its dispatcher may not reach normal cleanup.
+            engine.mls_claims_disconnected();
+            engine.net.poke = Some(Box::new(move || {
                 let _ = poke_tx.send(Cmd::Flush);
             }));
         }
@@ -361,7 +365,10 @@ enum Waiting {
     SealedProfiles(Vec<String>),
     KeyPackagesPublished,
     /// Key packages claimed for this Space's newcomers.
-    Claimed(String),
+    Claimed {
+        space: String,
+        operation: String,
+    },
     /// Our devices, as the relay lists them.
     Devices,
     /// Nothing to do with the answer (a message to another device of ours).
@@ -394,6 +401,25 @@ fn settle(slot: &mut Option<tokio::time::Instant>, ok: bool) {
 }
 
 const PROFILE_TIMEOUT: Duration = Duration::from_secs(30);
+struct ClaimClockSample {
+    clock: KeyPackageClaimClock,
+    sampled: tokio::time::Instant,
+}
+
+impl ClaimClockSample {
+    fn new(clock: KeyPackageClaimClock) -> Self {
+        Self {
+            clock,
+            sampled: tokio::time::Instant::now(),
+        }
+    }
+
+    fn fresh(&self) -> Option<KeyPackageClaimClock> {
+        (self.sampled.elapsed() < Duration::from_millis(KEY_PACKAGE_CLAIM_TTL_MS as u64))
+            .then_some(self.clock)
+    }
+}
+
 const MAINTENANCE_PERIOD: Duration = Duration::from_millis(50);
 
 async fn session(
@@ -431,16 +457,27 @@ async fn session(
     if let Err(e) = send(&mut sink, &hello).await {
         return Exit::Retry(e);
     }
-    let (nonce, relay, profiles) = match recv(&mut stream).await {
+    let (nonce, relay, profiles, advertised_clock) = match recv(&mut stream).await {
         Ok(ServerFrame::Challenge {
             nonce,
             relay,
             capabilities,
             protocol,
-            ..
-        }) if protocol >= MIN_PROTOCOL_VERSION => {
-            (nonce, relay, capabilities.iter().any(|c| c == "profiles"))
-        }
+            server_time_ms,
+        }) if protocol >= MIN_PROTOCOL_VERSION => (
+            nonce,
+            relay,
+            capabilities.iter().any(|c| c == "profiles"),
+            capabilities
+                .iter()
+                .any(|c| c == roda_proto::KEY_PACKAGE_CLAIM_CAPABILITY)
+                .then(|| {
+                    server_time_ms
+                        .and_then(KeyPackageClaimClock::from_server_ms)
+                        .map(ClaimClockSample::new)
+                })
+                .flatten(),
+        ),
         Ok(ServerFrame::Challenge { protocol, .. }) => {
             return Exit::Blocked(format!(
                 "relay protocol {protocol} needs an upgrade before encrypted histories can sync"
@@ -479,6 +516,10 @@ async fn session(
             Err(e) => return Exit::Retry(e),
         }
     };
+    // A Challenge sample belongs to this authenticated socket only. A later Pong
+    // cannot enable a capability or clock that its Challenge did not advertise.
+    let clock_negotiated = advertised_clock.is_some();
+    let mut claim_clock = advertised_clock;
     if !relay_knows_me || !registered {
         if let Err(e) = register(&mut sink, &mut stream, profile, &mut early).await {
             return if e == "handle_taken" {
@@ -531,6 +572,7 @@ async fn session(
     let mut profiles_inflight: Option<tokio::time::Instant> = None;
     let mut traffic = ProfileTraffic::default();
     let mut opening: Option<tokio::time::Instant> = None;
+    let mut claim_refusal_reported = false;
 
     // Registration can receive low-stock notices, events and presence before its reply.
     // Run them through the same ordered dispatcher as the following socket frames.
@@ -691,13 +733,13 @@ async fn session(
                                 ctx.engine().mls_key_packages_published(result.map(|_| ()));
                                 settle(&mut traffic.key_packages, ok);
                             }
-                            Some(Waiting::Claimed(space)) => {
+                            Some(Waiting::Claimed { space, operation }) => {
                                 let packages = match result {
                                     Ok(Reply::KeyPackages(list)) => Ok(list),
                                     Ok(other) => Err(format!("unexpected {other:?}")),
                                     Err(e) => Err(e),
                                 };
-                                ctx.engine().mls_claimed(&space, packages);
+                                ctx.engine().mls_claimed(&space, &operation, packages);
                                 if let Err(e) = flush(ctx, &mut sink, &mut sent).await { break Exit::Retry(e) }
                             }
                             None => {}
@@ -706,7 +748,11 @@ async fn session(
                     ServerFrame::ProfileChanged { identity, .. } => ctx.engine().profile_changed(&identity),
                     ServerFrame::KeyPackagesLow { device, remaining } => ctx.engine().mls_key_packages_low(&device, remaining),
                     ServerFrame::DeviceMessage { from, to, sealed } => ctx.engine().device_message(&from, &to, &sealed),
-                    ServerFrame::Pong => {}
+                    ServerFrame::Pong { server_time_ms } => {
+                        if clock_negotiated {
+                            claim_clock = server_time_ms.and_then(KeyPackageClaimClock::from_server_ms).map(ClaimClockSample::new);
+                        }
+                    }
                     ServerFrame::Error { message, .. } => tracing_like(&format!("relay: {message}")),
                     ServerFrame::Challenge { .. } | ServerFrame::Ready { .. } => {}
                 }
@@ -804,9 +850,21 @@ async fn session(
                     Ok(false) => {}
                     Err(e) => tracing_like(&format!("group recovery: {e}")),
                 }
-                let claim = ctx.engine().mls_to_claim();
-                if let Some((space, ids)) = claim {
-                    reqs.push((Op::ClaimKeyPackages { ids }, Waiting::Claimed(space)));
+                let claim = ctx.engine().mls_to_claim(claim_clock.as_ref().and_then(ClaimClockSample::fresh));
+                match claim {
+                    Ok(Some((space, ids, operation))) => reqs.push((
+                        Op::ClaimKeyPackages { ids, operation_id: Some(operation.clone()) },
+                        Waiting::Claimed { space, operation },
+                    )),
+                    Ok(None) => {},
+                    Err(error) if !claim_refusal_reported => {
+                        let message = error.to_string();
+                        tracing_like(&message);
+                        ctx.set(|s| s.error = Some(message.clone()));
+                        if let Some(listener) = &ctx.listener { listener.on_error(message); }
+                        claim_refusal_reported = true;
+                    }
+                    Err(_) => {},
                 }
                 let checkpoints = ctx.engine().mls_checkpoints();
                 match checkpoints {
@@ -846,6 +904,8 @@ async fn session(
             }
         }
     };
+    // Include unsent claims if writing a batch failed before their waiting entry existed.
+    ctx.engine().mls_claims_disconnected();
     for (_, w) in waiting {
         if let Waiting::External(tx) = w {
             let _ = tx.send(Err("offline".into()));
@@ -1182,6 +1242,19 @@ pub async fn fetch_link_box(
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn an_unrefreshed_receipt_clock_expires_without_advancing_its_timestamp() {
+        let clock = roda_proto::KeyPackageClaimClock::from_server_ms(1_800_000_000_000).unwrap();
+        let mut sample = super::ClaimClockSample::new(clock);
+        sample.sampled -=
+            std::time::Duration::from_millis(roda_proto::KEY_PACKAGE_CLAIM_TTL_MS as u64 / 2);
+        assert_eq!(sample.fresh(), Some(clock));
+        sample.sampled -= std::time::Duration::from_millis(
+            roda_proto::KEY_PACKAGE_CLAIM_TTL_MS as u64 / 2 + 1_000,
+        );
+        assert_eq!(sample.fresh(), None);
+    }
+
     use super::*;
     use roda_log::{
         chain_hash, content::InnerEvent, content::Sealed, content::SealedKind, Author, Signer,
@@ -1533,6 +1606,7 @@ mod tests {
                     relay: "catch-up-test".into(),
                     protocol: PROTOCOL_VERSION,
                     capabilities: Vec::new(),
+                    server_time_ms: None,
                 },
             )
             .await;
@@ -1576,7 +1650,15 @@ mod tests {
                             )
                             .await;
                         }
-                        ClientFrame::Ping => reply(&mut socket, ServerFrame::Pong).await,
+                        ClientFrame::Ping => {
+                            reply(
+                                &mut socket,
+                                ServerFrame::Pong {
+                                    server_time_ms: None,
+                                },
+                            )
+                            .await
+                        }
                         ClientFrame::Publish { .. } => {}
                         other => panic!("unexpected {other:?}"),
                     }
@@ -1662,7 +1744,15 @@ mod tests {
                             .await;
                             break;
                         }
-                        ClientFrame::Ping => reply(&mut socket, ServerFrame::Pong).await,
+                        ClientFrame::Ping => {
+                            reply(
+                                &mut socket,
+                                ServerFrame::Pong {
+                                    server_time_ms: None,
+                                },
+                            )
+                            .await
+                        }
                         other => panic!("maintenance sent {other:?} before catch-up"),
                     }
                 }
@@ -1730,7 +1820,15 @@ mod tests {
                         )
                         .await;
                     }
-                    ClientFrame::Ping => reply(&mut socket, ServerFrame::Pong).await,
+                    ClientFrame::Ping => {
+                        reply(
+                            &mut socket,
+                            ServerFrame::Pong {
+                                server_time_ms: None,
+                            },
+                        )
+                        .await
+                    }
                     ClientFrame::Publish { .. } => {}
                     other => panic!("unexpected {other:?}"),
                 }
@@ -1772,7 +1870,15 @@ mod tests {
                         )
                         .await
                     }
-                    ClientFrame::Ping => reply(&mut socket, ServerFrame::Pong).await,
+                    ClientFrame::Ping => {
+                        reply(
+                            &mut socket,
+                            ServerFrame::Pong {
+                                server_time_ms: None,
+                            },
+                        )
+                        .await
+                    }
                     ClientFrame::Publish { .. } => {}
                     other => panic!("unexpected {other:?}"),
                 }
@@ -1841,6 +1947,7 @@ mod tests {
                             relay: "maintenance-test".into(),
                             protocol: PROTOCOL_VERSION,
                             capabilities: Vec::new(),
+                    server_time_ms: None,
                         },
                     )
                     .await;
@@ -1913,7 +2020,7 @@ mod tests {
                                 )
                                 .await
                             }
-                            ClientFrame::Ping => reply(&mut socket, ServerFrame::Pong).await,
+                            ClientFrame::Ping => reply(&mut socket, ServerFrame::Pong { server_time_ms: None }).await,
                             _ => {}
                         }
                     }
