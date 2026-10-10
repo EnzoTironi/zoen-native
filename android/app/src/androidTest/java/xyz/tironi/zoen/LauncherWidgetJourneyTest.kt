@@ -339,10 +339,15 @@ class LauncherWidgetJourneyTest {
     private fun awaitNode(description: String, matches: (UiNode) -> Boolean): UiNode {
         var result: UiNode? = null
         await(description) {
-            val matchesNow = readUi()?.descendants()?.filter { it.visible && matches(it) }.orEmpty()
+            val root = readUi()
+            val matchesNow = if (root == null) emptyList() else root.descendants().filter {
+                it.visible && !it.bounds.isEmpty && root.bounds.contains(it.bounds) && matches(it)
+            }
             check(matchesNow.size <= 1) { "$description is ambiguous: ${matchesNow.map { it.toJson() }}" }
-            result = matchesNow.singleOrNull()
-            result != null
+            val candidate = matchesNow.singleOrNull()
+            val stable = candidate != null && candidate.bounds == result?.bounds
+            result = candidate
+            stable
         }
         return checkNotNull(result)
     }
