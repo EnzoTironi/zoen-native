@@ -7890,6 +7890,28 @@ dependencies = [
 ]
 
 [[package]]
+name = "zoen-runtime"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "chacha20poly1305 0.11.0",
+ "chrono",
+ "foundationdb",
+ "getrandom 0.2.17",
+ "hex",
+ "roda-log",
+ "roda-types",
+ "serde",
+ "serde_json",
+ "sha2 0.10.9",
+ "sqlx",
+ "thiserror 2.0.21",
+ "tokio",
+ "zoen-models",
+ "zoen-relay",
+]
+
+[[package]]
 name = "zoen-sandboxd"
 version = "0.1.0"
 dependencies = [

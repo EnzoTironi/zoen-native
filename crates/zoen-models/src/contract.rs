@@ -79,7 +79,21 @@ pub struct ModelRequest {
     pub max_output_tokens: u64,
 }
 
-/// No content or credential is passed to the authority. The digest binds the
+/// Validated gateway metadata used to match a frozen runtime pricing profile.
+/// Byte counts describe transport bounds; they are not estimated token usage.
+#[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DispatchDescriptor {
+    pub operation: Operation,
+    pub endpoint: String,
+    pub model: String,
+    pub credential_ref: String,
+    pub encoded_request_bytes: u64,
+    pub max_request_bytes: u64,
+    pub max_response_bytes: u64,
+    pub requested_output_tokens: u64,
+}
+
+/// No content or secret credential is passed to the authority. The digest binds the
 /// complete canonical request and gateway configuration, including limits,
 /// profile, credential reference and pinned price version.
 #[derive(Clone, PartialEq, Eq)]
@@ -87,6 +101,7 @@ pub struct DispatchRequest {
     pub context: AttemptContext,
     pub request_digest: String,
     pub profile: &'static str,
+    pub descriptor: DispatchDescriptor,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -191,6 +206,7 @@ private_debug!(
     ToolDefinition,
     ModelRequest,
     DispatchRequest,
+    DispatchDescriptor,
     ReportedUsage,
     UsageEvidence,
     ProviderReceipt,

@@ -18,6 +18,7 @@
 
 pub mod agent_owner;
 pub mod content;
+pub mod owner_budget;
 pub mod profile;
 pub mod recovery;
 
