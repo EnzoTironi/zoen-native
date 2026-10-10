@@ -1,0 +1,9 @@
+{
+  "name": "@zoen/hig-audit",
+  "private": true,
+  "description": "Pinned source-pattern auditor; findings require review against current Apple guidance and runtime evidence.",
+  "dependencies": {
+    "hig-doctor": "2.0.3",
+    "typescript": "5.9.3"
+  }
+}

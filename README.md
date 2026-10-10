@@ -50,6 +50,8 @@ Run `scripts/dev-stack.sh` in a separate terminal; it remains attached to the re
 
 ## Documentation
 
+HIG release acceptance and current verification gaps are tracked in the [HIG matrix](docs/product/hig-compliance.md). The [local source auditor](tools/hig-audit/README.md) is advisory.
+
 Start with the [documentation index](docs/README.md), [current roadmap](docs/roadmap-status.md), [architecture](docs/architecture.md) and [system design](docs/system-design.md). ADRs explain decisions. Research and dated audits record their original evidence; they do not define current completion.
 
 The product and built-in agent are both Zoen. Technical `roda-*`, `RodaCore` and related identifiers remain in packages, generated bindings, build tasks and compatibility formats. The [naming migration](docs/dev/naming.md) lists their replacements and the checks required to preserve stored data and signed history; that migration is unfinished.

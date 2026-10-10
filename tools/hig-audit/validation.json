@@ -1,0 +1,175 @@
+{
+  "reviewed_on": "2026-10-10",
+  "source_commit": "5e2055877b83ec23930f4db7b062d0d3f725fa5a",
+  "cli_version": "2.0.3",
+  "core_version": "0.1.3",
+  "typescript_version": "5.9.3",
+  "tool_tests": {
+    "passed": 232,
+    "failed": 0,
+    "runtime": {
+      "bun": "1.3.14",
+      "node": "v26.11.0"
+    }
+  },
+  "npm_integrity": "sha512-YmAIgDogzBObKpR2KS4itY91x583BLAAAOUL1FoasPI9sPVOIxr71kdyn731xbGzigSyZG6IDdE+ziVH9ZVpOA==",
+  "published_bundle_sha256": "0610463370f664a32bf97b8c7da170141f65cf7da5422260d2552b786acab33e",
+  "matches_reviewed_source_bundle": true,
+  "hig_snapshot": "2025-02-02",
+  "upstream_benchmark_examples": 27,
+  "scope": "Source-pattern calibration, not compiled or runtime accessibility proof. Hand-labeled known cases and known blind spots, independent of the upstream 27-example benchmark.",
+  "cases": [
+    {
+      "case": "bare-tap.swift",
+      "classification": "concern",
+      "rule": "swift/on-tap-gesture-without-traits",
+      "reason": "A gesture-only action is not a native keyboard-operable button.",
+      "source_sha256": "79d1d670db990d375aae41ef7b006728b8feb280432ebd4814134fb815935fbd",
+      "actual_concerns": [
+        "swift/on-tap-gesture-without-traits"
+      ],
+      "totals": {
+        "concerns": 1,
+        "positives": 0,
+        "patterns": 1
+      },
+      "source": "import SwiftUI\nstruct BareTap: View { var body: some View { Text(\"Open\").onTapGesture { open() } }; func open() {} }\n"
+    },
+    {
+      "case": "trait-only-tap.swift",
+      "classification": "blind-spot",
+      "rule": "swift/on-tap-gesture-without-traits",
+      "reason": "Button trait alone does not implement keyboard activation or a default accessible action.",
+      "source_sha256": "5232c8fde7c6094fcad93f0b8cc94901a2f17c456970e7b998a1d6bd019913c5",
+      "actual_concerns": [],
+      "totals": {
+        "concerns": 0,
+        "positives": 1,
+        "patterns": 1
+      },
+      "source": "import SwiftUI\nstruct TraitTap: View { var body: some View { Text(\"Open\").onTapGesture { open() }.accessibilityAddTraits(.isButton) }; func open() {} }\n"
+    },
+    {
+      "case": "native-button.swift",
+      "classification": "clean",
+      "rule": "swift/on-tap-gesture-without-traits",
+      "reason": "Native Button provides ordinary keyboard and accessibility activation.",
+      "source_sha256": "825a9a07b82f1ad1f62f4ccdfaa98db6523d6ea395b04601469a4c1d2e4f3888",
+      "actual_concerns": [],
+      "totals": {
+        "concerns": 0,
+        "positives": 0,
+        "patterns": 1
+      },
+      "source": "import SwiftUI\nstruct NativeButton: View { var body: some View { Button(\"Open\", action: open) }; func open() {} }\n"
+    },
+    {
+      "case": "parent-label.swift",
+      "classification": "false-positive-candidate",
+      "rule": "swift/image-without-a11y",
+      "reason": "The parent native button has an explicit label; the icon is its label content.",
+      "source_sha256": "b0720c854e58486e1b590066c5cbda70a4386ef3b04500e422b9664a71eec159",
+      "actual_concerns": [
+        "swift/image-without-a11y"
+      ],
+      "totals": {
+        "concerns": 1,
+        "positives": 1,
+        "patterns": 1
+      },
+      "source": "import SwiftUI\nstruct CloseButton: View { var body: some View { Button(action: close) { Image(systemName: \"xmark\") }.accessibilityLabel(\"Close\") }; func close() {} }\n"
+    },
+    {
+      "case": "motion-unused.swift",
+      "classification": "blind-spot",
+      "rule": null,
+      "reason": "Declaring Reduce Motion without using it cannot make the animation compliant.",
+      "source_sha256": "46bd7ddd33b109fea443778b877c049dacd90739a154a4b1117b2888088598de",
+      "actual_concerns": [],
+      "totals": {
+        "concerns": 0,
+        "positives": 1,
+        "patterns": 0
+      },
+      "source": "import SwiftUI\nstruct Moving: View { @Environment(\\.accessibilityReduceMotion) private var reduceMotion; @State private var expanded = false; var body: some View { Text(\"Open\").scaleEffect(expanded ? 2 : 1).animation(.spring(), value: expanded) } }\n"
+    },
+    {
+      "case": "bad-web.tsx",
+      "classification": "concern",
+      "rule": "web/div-with-on-click-no-role",
+      "reason": "Clickable div omits role, tab index and keyboard behavior.",
+      "source_sha256": "881ab4bd80888324481446791c1a3566a189fdf3381a90073b74c51013b6ad73",
+      "actual_concerns": [
+        "web/div-with-on-click-no-role"
+      ],
+      "totals": {
+        "concerns": 1,
+        "positives": 0,
+        "patterns": 0
+      },
+      "source": "export const Bad = () => <div onClick={() => openPanel()}>Open</div>;\n"
+    },
+    {
+      "case": "good-web.tsx",
+      "classification": "clean",
+      "rule": "web/div-with-on-click-no-role",
+      "reason": "Native HTML button has keyboard behavior.",
+      "source_sha256": "a59c2b541255a8a7bcf4f82f85fb265275a448beeb01d7422f5e74aacb2cef34",
+      "actual_concerns": [],
+      "totals": {
+        "concerns": 0,
+        "positives": 0,
+        "patterns": 1
+      },
+      "source": "export const Good = () => <button type=\"button\" onClick={() => openPanel()}>Open</button>;\n"
+    },
+    {
+      "case": "nested-aside.tsx",
+      "classification": "false-positive-candidate",
+      "rule": "web/div-as-nav-header-class",
+      "reason": "A labeled aside and heading already provide semantics; a nested layout div is not a missing landmark.",
+      "source_sha256": "3b4f48ae4e28273140b94dbbe2258b4669f8067ded0dd2b7e80197e7c99c3ebc",
+      "actual_concerns": [
+        "web/div-as-nav-header-class"
+      ],
+      "totals": {
+        "concerns": 1,
+        "positives": 1,
+        "patterns": 2
+      },
+      "source": "export const Chats = () => <aside aria-label=\"Chats\"><div className=\"sidebar-header\"><h2>Chats</h2></div></aside>;\n"
+    },
+    {
+      "case": "bad-focus.css",
+      "classification": "concern",
+      "rule": "css/outline-none",
+      "reason": "The only keyboard focus indicator is removed.",
+      "source_sha256": "502b9484cf93cab057780204217b7d4a1383e83588259d934b689169ce3ae78b",
+      "actual_concerns": [
+        "css/outline-none"
+      ],
+      "totals": {
+        "concerns": 1,
+        "positives": 1,
+        "patterns": 0
+      },
+      "source": "button:focus-visible { outline: none; }\n"
+    },
+    {
+      "case": "replacement-focus.css",
+      "classification": "false-positive-candidate",
+      "rule": "css/outline-none",
+      "reason": "The containing control has a visible replacement focus ring; actual contrast/visibility still requires rendering.",
+      "source_sha256": "eb0e83b93c5403cc4af4009ca63d3beb9b8fafe73f181aa135e90a6e972b72d9",
+      "actual_concerns": [
+        "css/outline-none"
+      ],
+      "totals": {
+        "concerns": 1,
+        "positives": 1,
+        "patterns": 0
+      },
+      "source": ".search:focus-within { box-shadow: 0 0 0 3px #246b25; }\n.search input:focus-visible { outline: none; }\n"
+    }
+  ]
+}

@@ -43,6 +43,7 @@ Technical identifiers inherited from the old project name are tracked in the [Zo
 ## Product and design
 
 - [Convites: o playbook do Instinct e como o Zoen vai usar](product/convites.md)
+- [HIG acceptance and verification matrix](product/hig-compliance.md)
 - [Live pages: behavior and completion contract](product/live-pages.md)
 - [Métricas do Zoen](product/metricas.md)
 - [UX audit: animations, haptics and micro-interactions](product/ux-audit.md)
