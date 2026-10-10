@@ -29,7 +29,7 @@ head = git("rev-parse", "HEAD").stdout.strip()
 # Updating these references requires reviewing the new Apple flows and their Android equivalents.
 reviewed_ios = {
     "ux/audit-p1": "07a04de9434cd3e7d26ba30be00b5722360b9754",
-    "codex/desktop-web-chat-shell": "c9d6f8b6511c4203011b394a985147d3b0dc6d2d",
+    "codex/desktop-web-chat-shell": "309930df563230cf223b37e15d5f8c7e53982377",
     "codex/roadmap-integration": "d9ebb3ed0208c52ce84600078e933213b2cdc905",
 }
 ios_changes = {
@@ -166,12 +166,23 @@ for path in sorted(root.parent.iterdir()):
 sources = {}
 for fixture in ["ink-swift-reference.json.gz", "ink-icons-swift-reference.json.gz"]:
     document = json.loads(gzip.decompress((root / "android/app/src/test/resources" / fixture).read_bytes()))
+    variants = {}
+    if fixture == "ink-icons-swift-reference.json.gz":
+        equivalence = json.loads((root / "android/app/src/test/resources/ink-icons-source-equivalence.json").read_text())
+        corpus_hash = hashlib.sha256(json.dumps(document["icons"], separators=(",", ":"), sort_keys=True).encode()).hexdigest()
+        if corpus_hash != equivalence["reference_icons_sha256"]:
+            raise SystemExit("The verified Swift source equivalence does not match the committed icon corpus")
+        variants = equivalence["source_variants"]
     for path, expected in document["sources"].items():
+        accepted = set(variants.get(path, [expected]))
+        if expected not in accepted:
+            raise SystemExit("Verified source variants must retain the original fixture source: " + path)
         hashes = {}
         for name in ["main", "ux/audit-p1", "codex/desktop-web-chat-shell"]:
             source = subprocess.run(["git", "show", refs[name] + ":" + path], cwd=root, capture_output=True, check=True).stdout
             hashes[name] = hashlib.sha256(source).hexdigest()
-        sources[path] = {"fixture_sha256": expected, "upstream_sha256": hashes, "matches": all(value == expected for value in hashes.values())}
+        sources[path] = {"fixture_sha256": expected, "verified_equivalent_sha256": sorted(accepted - {expected}),
+                         "upstream_sha256": hashes, "matches": all(value in accepted for value in hashes.values())}
 pet_source = "apple/Shared/Apps/Native/PetViews.swift"
 pet_expected = re.search(r'const val sourceSha256 = "([a-f0-9]{64})"',
                         (root / "android/app/src/main/java/xyz/tironi/zoen/ui/GeneratedPetArt.kt").read_text())[1]

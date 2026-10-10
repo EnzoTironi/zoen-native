@@ -43,9 +43,9 @@ fun SnapshotCard(snapshot: WidgetSnapshot, modifier: Modifier = Modifier, live: 
         "hike" -> listOf(Color(0xFFDDEFD2), Color(0xFFB9DDB0))
         "pot" -> listOf(Color(0xFFFBE3C8), Color(0xFFF4B98A))
         "globe" -> listOf(Color.Black, Color.Black)
-        else -> listOf(accent.copy(alpha = if (darkArt) .3f else .17f), background)
+        else -> listOf(accent.copy(alpha = if (darkArt) .3f else .22f), Color.Transparent)
     }
-    Box(modifier.clip(RoundedCornerShape(24.dp)).background(Brush.verticalGradient(artColors))
+    Box(modifier.clip(RoundedCornerShape(24.dp)).background(background).background(Brush.verticalGradient(artColors))
         .semantics(mergeDescendants = true) { contentDescription = spoken }) {
         if (snapshot.template == WidgetSnapshot.Template.PHOTO) {
             Image(painterResource(when (snapshot.photo) {
