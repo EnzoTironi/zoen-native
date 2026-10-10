@@ -22,6 +22,115 @@ pub(crate) struct DirectoryGuard {
     tx: Transaction<'static, Postgres>,
     valid_until_ms: i64,
 }
+
+pub(crate) struct NativeDirectoryGuard {
+    tx: Transaction<'static, Postgres>,
+    owner: String,
+    agent: String,
+    device: String,
+    certificate_digest: String,
+    #[cfg(test)]
+    ack_cut: NativeAckCut,
+}
+
+#[cfg(test)]
+enum NativeAckCut {
+    Normal,
+    Suppressed,
+    Delayed,
+}
+
+/// One known SQL maintenance admission. Only NativeDirectoryGuard constructs
+/// it in production; reads, replay and uncertain commits cannot recover it.
+/// It cannot authorize a provider send and is neither Clone nor Deserialize.
+pub(crate) struct NativeActivation {
+    scope: crate::native::ActivationScope,
+    expires: std::time::Instant,
+}
+
+impl NativeActivation {
+    pub(crate) fn check(
+        &self,
+        expected: &crate::native::ActivationScope,
+    ) -> Result<(), RuntimeError> {
+        if &self.scope != expected {
+            return Err(RuntimeError::InvalidBinding);
+        }
+        if std::time::Instant::now() >= self.expires {
+            return Err(RuntimeError::Denied);
+        }
+        Ok(())
+    }
+
+    pub(crate) fn consume(
+        self,
+        expected: &crate::native::ActivationScope,
+    ) -> Result<(), RuntimeError> {
+        self.check(expected)
+    }
+
+    #[cfg(test)]
+    pub(crate) fn fixture(scope: crate::native::ActivationScope) -> Self {
+        Self {
+            scope,
+            expires: std::time::Instant::now() + std::time::Duration::from_secs(2),
+        }
+    }
+}
+
+impl NativeDirectoryGuard {
+    #[cfg(test)]
+    pub(crate) fn suppress_known_ack(mut self) -> Self {
+        self.ack_cut = NativeAckCut::Suppressed;
+        self
+    }
+
+    #[cfg(test)]
+    pub(crate) fn delay_known_ack(mut self) -> Self {
+        self.ack_cut = NativeAckCut::Delayed;
+        self
+    }
+
+    pub(crate) async fn commit(self) -> Result<(), RuntimeError> {
+        self.tx.commit().await?;
+        Ok(())
+    }
+
+    pub(crate) async fn authorize(
+        mut self,
+        scope: crate::native::ActivationScope,
+    ) -> Result<NativeActivation, RuntimeError> {
+        if !scope.matches_directory(
+            &self.owner,
+            &self.agent,
+            &self.device,
+            &self.certificate_digest,
+        ) {
+            return Err(RuntimeError::InvalidBinding);
+        }
+        // Query and ACK latency consume the window. A dead/idle-terminated
+        // connection fails before any FDB activation can start.
+        let observed = std::time::Instant::now();
+        Finance::clock(&mut self.tx).await?;
+        self.tx.commit().await?;
+        // Explicit test cuts after a known real SQL commit. Neither cut claims
+        // database wire-level commit-unknown behavior.
+        #[cfg(test)]
+        match self.ack_cut {
+            NativeAckCut::Normal => {}
+            NativeAckCut::Suppressed => return Err(RuntimeError::Unavailable),
+            NativeAckCut::Delayed => {
+                tokio::time::sleep(std::time::Duration::from_millis(2200)).await
+            }
+        }
+        let admission = NativeActivation {
+            scope,
+            expires: observed + std::time::Duration::from_secs(2),
+        };
+        admission.check(&admission.scope)?;
+        Ok(admission)
+    }
+}
 pub(crate) struct DispatchPermit {
     expires: std::time::Instant,
 }
@@ -219,7 +328,7 @@ impl Finance {
         owner: &Identity,
         device: &str,
         certificate: &str,
-    ) -> Result<Transaction<'static, Postgres>, RuntimeError> {
+    ) -> Result<NativeDirectoryGuard, RuntimeError> {
         let mut tx = self.begin().await?;
         Self::device(&mut tx, &agent.id, device, certificate).await?;
         for expected in [agent, owner] {
@@ -250,7 +359,15 @@ impl Finance {
         {
             return Err(RuntimeError::Denied);
         }
-        Ok(tx)
+        Ok(NativeDirectoryGuard {
+            tx,
+            owner: owner.id.clone(),
+            agent: agent.id.clone(),
+            device: device.into(),
+            certificate_digest: crate::hash(certificate.as_bytes()),
+            #[cfg(test)]
+            ack_cut: NativeAckCut::Normal,
+        })
     }
     async fn lock_period(
         tx: &mut Transaction<'_, Postgres>,

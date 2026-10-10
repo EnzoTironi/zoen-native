@@ -44,6 +44,33 @@ struct Root {
     manifest_digest: String,
 }
 
+/// Inert exact target of one device maintenance admission. This is separate
+/// from model admission and contains neither a Space grant nor a run permit.
+#[derive(Clone, PartialEq, Eq)]
+pub(crate) struct ActivationScope {
+    namespace: Vec<u8>,
+    deployment: String,
+    previous: Option<Root>,
+    target: Root,
+    fence: crate::execution::Fence,
+}
+
+impl ActivationScope {
+    pub(crate) fn matches_directory(
+        &self,
+        owner: &str,
+        agent: &str,
+        device: &str,
+        certificate_digest: &str,
+    ) -> bool {
+        let principal = &self.target.context.principal;
+        principal.owner == owner
+            && principal.agent == agent
+            && principal.device == device
+            && principal.certificate_digest == certificate_digest
+    }
+}
+
 #[derive(Serialize, Deserialize)]
 struct Chunk {
     digest: String,
@@ -360,8 +387,18 @@ impl NativeCustody {
                 &credential.certificate,
             )
             .await?;
-        let root = runtime.execution.activate_native(staged, fence).await?;
-        guard.commit().await?;
+        #[cfg(test)]
+        if runtime.fault.load(std::sync::atomic::Ordering::SeqCst) == 14 {
+            runtime.native_cut_entered.notify_one();
+            runtime.native_cut_resume.notified().await;
+        }
+        let admission = guard
+            .authorize(staged.scope(&runtime.execution, fence))
+            .await?;
+        let root = runtime
+            .execution
+            .activate_native(staged, fence, admission)
+            .await?;
         Ok(NativeInspection {
             generation: root.context.generation,
             image_bytes: root.context.image_bytes,

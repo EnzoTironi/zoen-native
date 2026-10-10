@@ -35,8 +35,25 @@ The capsule domain and key are separate from financial evidence custody.
 One stage pin per device bounds unfinished staging. Each bounded transaction
 checks the real device fence. Only a complete ready stage can atomically replace
 the exact previous root; root and pin reads conflict with activation and GC.
-Unknown/failed commits return no live workspace or execution permission. Device
-maintenance creates no model run. Expired abandoned stages can be collected.
+
+Maintenance is admitted at a known successful SQL directory commit, before the
+FDB root write. That commit returns a private consuming proof bound to the full
+execution namespace, deployment witness, owner/Agent/device/certificate digest,
+complete target root, exact prior root and device lease holder/token. Its
+monotonic two-second window starts before the final SQL clock query and commit;
+SQL query/ACK latency consumes that window. FDB checks it before opening the
+activation transaction and consumes it immediately before the only commit.
+A dead, timed-out or uncertain SQL transaction returns no proof and cannot
+advance the root. A root read cannot recover the proof.
+
+A revocation committed before maintenance admission denies it. A maintenance
+already admitted at the known SQL commit can finish in its finite window even
+if revocation commits afterward; subsequent calls are denied. This is admission
+semantics, not cross-store atomicity or retroactive cancellation. The local
+deadline bounds actor use; it cannot guarantee when an uncertain FDB commit
+becomes durable. Unknown/failed commits return no live workspace or execution
+permission, and have no automatic retry. This proof cannot authorize paid
+dispatch, a Space action or a fabricated run. Expired abandoned stages can be collected.
 Committed older generations are retained for a version-clock window and while
 referenced; at most 16 retired generations may coexist. A full retention budget
 refuses activation instead of evicting potentially needed evidence. These FDB
@@ -114,6 +131,15 @@ conflicts. It creates no paid run or provider send. It does not prove a live rel
 join or managed key service. Forced version-clock retirement and known-reply
 suppression are explicit fixture cuts. Native C1's joined encrypted reply journeys
 remain separate from this maintenance slice.
+
+Maintenance admission tests use real SQL/FDB and two isolated device scenarios:
+15 target/scope substitutions, suppression/delay of a known SQL commit ACK,
+actual post-ACK expiry, and both revocation orderings. The public repack pauses
+past the original five-second SQL idle timeout; the revocation commits before
+resume, and the failed SQL admission must leave the root unchanged. This
+reproduced generation 3 -> 4 on the pre-fix source. The post-admission scenario
+checks the explicitly supported finite completion followed by refusal of new
+calls. The ACK cuts do not test database wire-level commit-unknown behavior.
 
 On macOS, Cargo's runner may omit the external FoundationDB client from its
 dynamic library path. Build with `--lib --no-run`, then run that exact test

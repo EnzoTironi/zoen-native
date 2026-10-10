@@ -127,6 +127,10 @@ pub struct RuntimeAuthority {
     continuity: Arc<AtomicBool>,
     #[cfg(test)]
     fault: std::sync::atomic::AtomicU8,
+    #[cfg(test)]
+    native_cut_entered: tokio::sync::Notify,
+    #[cfg(test)]
+    native_cut_resume: tokio::sync::Notify,
 }
 
 impl RuntimeAuthority {
@@ -158,6 +162,10 @@ impl RuntimeAuthority {
             continuity: Arc::new(AtomicBool::new(false)),
             #[cfg(test)]
             fault: std::sync::atomic::AtomicU8::new(0),
+            #[cfg(test)]
+            native_cut_entered: tokio::sync::Notify::new(),
+            #[cfg(test)]
+            native_cut_resume: tokio::sync::Notify::new(),
         })
     }
     pub async fn install_policy(&self, signed: SignedOwnerPolicy) -> Result<String, RuntimeError> {

@@ -1,7 +1,9 @@
 use foundationdb::{options::StreamingMode, Transaction};
 use serde::{Deserialize, Serialize};
 
-use super::{PreparedImage, Principal, Root, CHUNK_BYTES, MANIFEST_BYTES, MAX_CHUNKS};
+use super::{
+    ActivationScope, PreparedImage, Principal, Root, CHUNK_BYTES, MANIFEST_BYTES, MAX_CHUNKS,
+};
 use crate::{
     execution::{Execution, Fence, Lease},
     hash, RuntimeError,
@@ -36,9 +38,22 @@ struct Retired {
 }
 
 // Constructed only after known bounded staging commits, never deserialized.
+#[cfg_attr(test, derive(Clone))]
 pub(super) struct Staged {
     previous: Option<Root>,
     root: Root,
+}
+
+impl Staged {
+    pub(super) fn scope(&self, execution: &Execution, fence: &Fence) -> ActivationScope {
+        ActivationScope {
+            namespace: execution.root.bytes().to_vec(),
+            deployment: execution.deployment.clone(),
+            previous: self.previous.clone(),
+            target: self.root.clone(),
+            fence: fence.clone(),
+        }
+    }
 }
 
 fn encode<T: Serialize>(value: &T) -> Result<Vec<u8>, RuntimeError> {
@@ -378,8 +393,13 @@ impl Execution {
         &self,
         staged: Staged,
         device_fence: &Fence,
+        admission: crate::finance::NativeActivation,
     ) -> Result<Root, RuntimeError> {
-        let trx = self.native_activation(&staged, device_fence).await?;
+        let scope = staged.scope(self, device_fence);
+        admission.check(&scope)?;
+        let trx = self.transaction().await?;
+        self.native_activation(&trx, &staged, device_fence).await?;
+        admission.consume(&scope)?;
         // No automatic retry may recover an activation as a live workspace or
         // capability after an uncertain commit.
         trx.commit().await.map_err(|_| RuntimeError::Unavailable)?;
@@ -388,11 +408,11 @@ impl Execution {
 
     async fn native_activation(
         &self,
+        trx: &Transaction,
         staged: &Staged,
         device_fence: &Fence,
-    ) -> Result<Transaction, RuntimeError> {
-        let trx = self.transaction().await?;
-        let stage = self.stage_scope(&trx, staged, device_fence).await?;
+    ) -> Result<(), RuntimeError> {
+        let stage = self.stage_scope(trx, staged, device_fence).await?;
         if stage.state != StageState::Ready {
             return Err(RuntimeError::Denied);
         }
@@ -409,7 +429,7 @@ impl Execution {
         let principal = &staged.root.context.principal;
         if let Some(previous) = &staged.previous {
             let retained = bounded_rows(
-                &trx,
+                trx,
                 foundationdb::RangeOption::from(self.native_retired(principal).range()),
                 MAX_RETIRED,
                 8192,
@@ -435,7 +455,7 @@ impl Execution {
         trx.set(&self.native_key(principal, "root"), &encode(&staged.root)?);
         trx.clear(&self.native_key(principal, "stage"));
         // GC reads these same root/pin keys and conflicts with activation.
-        Ok(trx)
+        Ok(())
     }
 
     pub(super) async fn collect_native_stage(
@@ -603,7 +623,11 @@ pub(super) async fn test_cuts(
         assert!(!bytes.windows(32).any(|w| w == [73; 32]));
     }
     drop(trx);
-    let pending = execution.native_activation(&staged, &fence).await.unwrap();
+    let pending = execution.transaction().await.unwrap();
+    execution
+        .native_activation(&pending, &staged, &fence)
+        .await
+        .unwrap();
     let concurrent = execution.transaction().await.unwrap();
     concurrent.set(
         &execution.native_key(principal, "root"),
@@ -624,13 +648,16 @@ pub(super) async fn test_cuts(
         .unwrap();
     let takeover = execution.acquire_native_device(principal).await.unwrap();
     assert!(takeover.token > fence.token);
+    let check = execution.transaction().await.unwrap();
     assert!(matches!(
-        execution.native_activation(&staged, &fence).await,
+        execution.native_activation(&check, &staged, &fence).await,
         Err(RuntimeError::Denied)
     ));
     assert!(
         matches!(
-            execution.native_activation(&staged, &takeover).await,
+            execution
+                .native_activation(&check, &staged, &takeover)
+                .await,
             Err(RuntimeError::Denied)
         ),
         "new holder cannot adopt an old holder's staged workspace"
@@ -685,7 +712,11 @@ pub(super) async fn test_cuts(
         .await
         .unwrap();
     let expected = next.root.clone();
-    let activated = execution.activate_native(next, &takeover).await.unwrap();
+    let admission = crate::finance::NativeActivation::fixture(next.scope(execution, &takeover));
+    let activated = execution
+        .activate_native(next, &takeover, admission)
+        .await
+        .unwrap();
     // Suppress a known committed activation reply and reload the durable root;
     // there is no recreated live dispatch capability.
     drop(activated);

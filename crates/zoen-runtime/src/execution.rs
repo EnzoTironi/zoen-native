@@ -8,9 +8,9 @@ use std::sync::Arc;
 pub(crate) struct Execution {
     pub(super) db: Arc<Database>,
     pub(super) root: Subspace,
-    deployment: String,
+    pub(super) deployment: String,
 }
-#[derive(Clone)]
+#[derive(Clone, PartialEq, Eq)]
 pub(crate) struct Fence {
     pub holder: String,
     pub token: i64,
