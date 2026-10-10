@@ -4,6 +4,8 @@
 //! FoundationDB (`eval "$(scripts/fdb.sh env)"`).
 
 use std::{
+    fs::File,
+    io::{Read, Seek, SeekFrom},
     net::TcpListener,
     path::PathBuf,
     process::{Child, Command, Stdio},
@@ -34,12 +36,41 @@ pub fn relay_bin() -> PathBuf {
     PathBuf::from(env!("CARGO_BIN_EXE_zoen")).with_file_name("zoen-relay")
 }
 
-fn free_port() -> u16 {
-    TcpListener::bind("127.0.0.1:0")
-        .unwrap()
-        .local_addr()
-        .unwrap()
-        .port()
+struct PortReservation {
+    port: u16,
+    _lock: File,
+}
+
+impl PortReservation {
+    fn acquire(mut preferred: Option<u16>) -> Self {
+        let dir = std::env::temp_dir().join("zoen-journey-port-locks-v1");
+        std::fs::create_dir_all(&dir).expect("port lock directory");
+        for _ in 0..1000 {
+            let (port, _socket) = match preferred.take() {
+                Some(port) => (port, None),
+                None => {
+                    let listener = TcpListener::bind("127.0.0.1:0").expect("candidate port");
+                    let port = listener.local_addr().unwrap().port();
+                    (port, Some(listener))
+                }
+            };
+            // Keep the same inode: unlinking a released lock file would let another
+            // process lock a new file while a previous contender holds the old one.
+            let lock = File::options()
+                .read(true)
+                .write(true)
+                .create(true)
+                .truncate(false)
+                .open(dir.join(format!("{port}.lock")))
+                .expect("port lock file");
+            match lock.try_lock() {
+                Ok(()) => return Self { port, _lock: lock },
+                Err(std::fs::TryLockError::WouldBlock) => {}
+                Err(error) => panic!("port reservation failed: {error:?}"),
+            }
+        }
+        panic!("could not reserve a journey port");
+    }
 }
 
 fn rand_hex(n: usize) -> String {
@@ -57,7 +88,10 @@ pub struct World {
     relay_env: Vec<(String, String)>,
     client_env: Vec<(String, String)>,
     relay: Option<Child>,
+    relay_name: String,
     nodes: Vec<Child>,
+    // A stopped relay still owns its port until this World and all its children end.
+    ports: Vec<PortReservation>,
 }
 
 impl World {
@@ -78,6 +112,20 @@ impl World {
     }
 
     pub async fn new_with(name: &str, nats: Option<String>, env: &[(&str, &str)]) -> World {
+        Self::new_with_reservation(name, nats, env, PortReservation::acquire(None)).await
+    }
+
+    /// A controlled allocator candidate for cross-process isolation journeys.
+    pub async fn new_preferring_port(name: &str, port: u16) -> World {
+        Self::new_with_reservation(name, None, &[], PortReservation::acquire(Some(port))).await
+    }
+
+    async fn new_with_reservation(
+        name: &str,
+        nats: Option<String>,
+        env: &[(&str, &str)],
+        reservation: PortReservation,
+    ) -> World {
         let admin = std::env::var("ZOEN_TEST_PG")
             .expect("set ZOEN_TEST_PG=postgres://user@host:port/postgres");
         let db = format!("zoen_t_{name}_{}", rand_hex(4));
@@ -93,7 +141,7 @@ impl World {
             dir,
             db_url: format!("{base}/{db}"),
             cell: db,
-            port: free_port(),
+            port: reservation.port,
             nats,
             relay_env: env
                 .iter()
@@ -101,7 +149,9 @@ impl World {
                 .collect(),
             client_env: Vec::new(),
             relay: None,
+            relay_name: String::new(),
             nodes: Vec::new(),
+            ports: vec![reservation],
         };
         w.start_relay();
         w
@@ -111,51 +161,118 @@ impl World {
         format!("http://127.0.0.1:{}", self.port)
     }
 
+    pub fn relay_name(&self) -> &str {
+        &self.relay_name
+    }
+
     pub fn start_relay(&mut self) {
-        let child = self.spawn_relay(self.port, "relay.log");
+        self.try_start_relay()
+            .unwrap_or_else(|error| panic!("{error}"));
+    }
+
+    pub fn try_start_relay(&mut self) -> Result<(), String> {
+        assert!(
+            self.relay.is_none(),
+            "this World's relay is already running"
+        );
+        let (child, relay_name) = self.spawn_relay(self.port, "relay.log")?;
         self.relay = Some(child);
+        self.relay_name = relay_name;
+        Ok(())
     }
 
     /// Another relay node on the same Postgres, cell and bus; returns its port.
     pub fn start_node(&mut self) -> u16 {
-        let port = free_port();
-        let child = self.spawn_relay(port, &format!("relay-{port}.log"));
+        let reservation = PortReservation::acquire(None);
+        let port = reservation.port;
+        let (child, _) = self
+            .spawn_relay(port, &format!("relay-{port}.log"))
+            .unwrap_or_else(|error| panic!("{error}"));
         self.nodes.push(child);
+        self.ports.push(reservation);
         port
     }
 
-    fn spawn_relay(&self, port: u16, log_name: &str) -> Child {
+    fn spawn_relay(&self, port: u16, log_name: &str) -> Result<(Child, String), String> {
+        let path = self.dir.join(log_name);
         let log = std::fs::OpenOptions::new()
             .create(true)
             .append(true)
-            .open(self.dir.join(log_name))
+            .open(&path)
             .unwrap();
+        let start = log.metadata().unwrap().len();
+        let relay_name = format!("journey-{}", rand_hex(16));
+        let output = || -> String {
+            let mut bytes = Vec::new();
+            let read = File::open(&path).and_then(|mut file| {
+                file.seek(SeekFrom::Start(start))?;
+                file.read_to_end(&mut bytes)
+            });
+            match read {
+                Ok(_) => String::from_utf8_lossy(&bytes).into_owned(),
+                Err(error) => format!("could not read relay output: {error}"),
+            }
+        };
         let mut cmd = Command::new(relay_bin());
-        cmd.args(["--bind", &format!("127.0.0.1:{port}")])
-            .env("DATABASE_URL", &self.db_url)
-            .env("ZOEN_FDB_CELL", &self.cell)
-            .env("ZOEN_BLOB_DIR", self.dir.join("blobs"))
-            .env_remove("ZOEN_NATS_URL")
-            .env_remove("ZOEN_DEV_ALLOW_UNAUTHENTICATED_PASSWORD_BACKUP")
-            .stdout(log.try_clone().unwrap())
-            .stderr(log);
+        cmd.args([
+            "--bind",
+            &format!("127.0.0.1:{port}"),
+            "--relay-name",
+            &relay_name,
+        ])
+        .env("DATABASE_URL", &self.db_url)
+        .env("ZOEN_FDB_CELL", &self.cell)
+        .env("ZOEN_BLOB_DIR", self.dir.join("blobs"))
+        .env_remove("ZOEN_NATS_URL")
+        .env_remove("ZOEN_DEV_ALLOW_UNAUTHENTICATED_PASSWORD_BACKUP")
+        .stdout(log.try_clone().unwrap())
+        .stderr(log);
         if let Some(url) = &self.nats {
             cmd.env("ZOEN_NATS_URL", url);
         }
         cmd.envs(self.relay_env.iter().map(|(k, v)| (k, v)));
-        let mut child = cmd.spawn().expect("start relay");
+        let mut child = cmd
+            .spawn()
+            .map_err(|error| format!("start relay: {error}"))?;
         for _ in 0..100 {
-            if std::net::TcpStream::connect(("127.0.0.1", port)).is_ok() {
-                return child;
+            match child.try_wait() {
+                Ok(Some(status)) => {
+                    let _ = child.wait();
+                    return Err(format!(
+                        "relay child {} exited with {status} before listening on :{port}; {}\n{}",
+                        child.id(),
+                        path.display(),
+                        output()
+                    ));
+                }
+                Ok(None) => {}
+                Err(error) => {
+                    let _ = child.kill();
+                    let _ = child.wait();
+                    return Err(format!(
+                        "relay child status: {error}; {}\n{}",
+                        path.display(),
+                        output()
+                    ));
+                }
+            }
+            // Only this spawn can emit its token after successfully binding. An
+            // unrelated listener, or a previous successful restart, is not readiness.
+            let listening = output()
+                .lines()
+                .any(|line| line.contains("zoen-relay listening") && line.contains(&relay_name));
+            if listening && std::net::TcpStream::connect(("127.0.0.1", port)).is_ok() {
+                return Ok((child, relay_name));
             }
             std::thread::sleep(Duration::from_millis(50));
         }
         let _ = child.kill();
         let _ = child.wait();
-        panic!(
-            "relay didn't start; see {}",
-            self.dir.join(log_name).display()
-        );
+        Err(format!(
+            "relay didn't start; {}\n{}",
+            path.display(),
+            output()
+        ))
     }
 
     pub fn relay_log_text(&self) -> String {
@@ -364,6 +481,20 @@ impl World {
             .expect("spawn zoen")
     }
 
+    pub fn spawn_zoen_logged_streams(
+        &self,
+        who: &str,
+        args: &[&str],
+        stdout_name: &str,
+        stderr_name: &str,
+    ) -> Child {
+        self.cmd(who, args)
+            .stdout(std::fs::File::create(self.dir.join(stdout_name)).expect("client stdout"))
+            .stderr(std::fs::File::create(self.dir.join(stderr_name)).expect("client stderr"))
+            .spawn()
+            .expect("spawn zoen")
+    }
+
     pub fn init(&self, handle: &str, name: &str) {
         let out = self.zoen(handle, &["init", "--name", name, "--handle", handle]);
         assert!(out.contains("registered"), "{out}");
@@ -458,6 +589,8 @@ impl Drop for World {
             let _ = c.kill();
             let _ = c.wait();
         }
+        // Release reservations only after every child was reaped.
+        self.ports.clear();
         // Keep the database and homes of a failed journey for a post-mortem.
         if std::thread::panicking() {
             eprintln!(

@@ -63,6 +63,71 @@ fn pair(enzo: &Device, marina: &Device, both: &BTreeSet<String>) -> Vec<u8> {
 }
 
 #[test]
+fn committed_leaves_wait_for_the_commit_and_follow_confirmed_membership() {
+    let (e, m) = (Person::new(), Person::new());
+    let (ce, cm) = (db(), db());
+    let (enzo, marina) = (e.open(&ce), m.open(&cm));
+    let both = roster(&[&e, &m]);
+    assert_eq!(enzo.group_state(SPACE).unwrap(), GroupState::Missing);
+    assert!(enzo.committed_leaves(SPACE).unwrap().is_none());
+    enzo.create_group(SPACE).unwrap();
+    assert_eq!(enzo.group_state(SPACE).unwrap(), GroupState::Ready);
+    assert_eq!(
+        enzo.committed_leaves(SPACE)
+            .unwrap()
+            .unwrap()
+            .into_keys()
+            .collect::<BTreeSet<_>>(),
+        BTreeSet::from([(e.id(), e.device.id())])
+    );
+    let added = add(&enzo, &marina);
+    assert_eq!(enzo.group_state(SPACE).unwrap(), GroupState::Pending);
+    assert!(enzo.committed_leaves(SPACE).unwrap().is_none());
+    assert_eq!(
+        enzo.open(SPACE, &added.commit, &both, enzo.leaf()).unwrap(),
+        Opened::Commit { epoch: 1 }
+    );
+    assert_eq!(enzo.group_state(SPACE).unwrap(), GroupState::Ready);
+    let committed = enzo.committed_leaves(SPACE).unwrap().unwrap();
+    assert_eq!(committed, enzo.leaves(SPACE).unwrap());
+    assert_eq!(
+        committed.keys().cloned().collect::<BTreeSet<_>>(),
+        BTreeSet::from([(e.id(), e.device.id()), (m.id(), m.device.id())])
+    );
+    assert!(marina.join(SPACE, &added.welcome.unwrap(), &both).unwrap());
+    let message = enzo.seal(SPACE, b"after the confirmed add").unwrap();
+    assert!(
+        matches!(marina.open(SPACE, &message, &both, enzo.leaf()).unwrap(),
+                     Opened::Application { plaintext, .. } if plaintext == b"after the confirmed add")
+    );
+    let removed = enzo.commit(SPACE, &[], &BTreeSet::from([m.id()])).unwrap();
+    assert_eq!(enzo.group_state(SPACE).unwrap(), GroupState::Pending);
+    assert!(enzo.committed_leaves(SPACE).unwrap().is_none());
+    assert_eq!(
+        enzo.open(SPACE, &removed.commit, &roster(&[&e]), enzo.leaf())
+            .unwrap(),
+        Opened::Commit { epoch: 2 }
+    );
+    assert_eq!(enzo.group_state(SPACE).unwrap(), GroupState::Ready);
+    assert_eq!(
+        enzo.committed_leaves(SPACE)
+            .unwrap()
+            .unwrap()
+            .keys()
+            .cloned()
+            .collect::<BTreeSet<_>>(),
+        BTreeSet::from([(e.id(), e.device.id())])
+    );
+    assert_eq!(
+        committed.len(),
+        2,
+        "an inspection does not cache later mutations"
+    );
+    enzo.forget(SPACE).unwrap();
+    assert_eq!(enzo.group_state(SPACE).unwrap(), GroupState::Missing);
+}
+
+#[test]
 fn provider_read_and_processing_failures_remain_storage_errors_and_allow_retry() {
     let (e, m) = (Person::new(), Person::new());
     let (ce, cm) = (db(), db());
@@ -74,11 +139,24 @@ fn provider_read_and_processing_failures_remain_storage_errors_and_allow_retry()
     cm.execute_batch("ALTER TABLE openmls_group_data RENAME TO unavailable_group_data")
         .unwrap();
     assert!(matches!(
+        marina.group_state(SPACE),
+        Err(MlsError::Storage(_))
+    ));
+    assert!(matches!(
+        marina.committed_leaves(SPACE),
+        Err(MlsError::Storage(_))
+    ));
+    assert!(matches!(
         marina.open(SPACE, &bytes, &both, enzo.leaf()),
         Err(MlsError::Storage(_))
     ));
     cm.execute_batch("ALTER TABLE unavailable_group_data RENAME TO openmls_group_data")
         .unwrap();
+    assert_eq!(marina.group_state(SPACE).unwrap(), GroupState::Ready);
+    assert_eq!(
+        marina.committed_leaves(SPACE).unwrap().unwrap(),
+        marina.leaves(SPACE).unwrap()
+    );
     assert_eq!(marina.checkpoint(SPACE).unwrap(), before);
     cm.execute_batch(
         "CREATE TRIGGER fail_processing BEFORE INSERT ON openmls_group_data
@@ -221,6 +299,7 @@ fn removal_during_external_recovery_holds_both_peers_until_the_removal_commit() 
     let both = roster(&[&e, &m]);
     let context = pair(&old, &removed, &both);
     let external = recovered.recover(SPACE, &context, &both).unwrap();
+    assert!(recovered.committed_leaves(SPACE).unwrap().is_none());
     let current = roster(&[&e]);
     ce.execute_batch("CREATE TRIGGER fail_reconcile BEFORE INSERT ON mls_recovery_reconcile BEGIN SELECT RAISE(ABORT, 'injected reconciliation write failure'); END;").unwrap();
     assert!(matches!(
@@ -244,6 +323,15 @@ fn removal_during_external_recovery_holds_both_peers_until_the_removal_commit() 
     for device in [&old, &recovered] {
         assert!(!device.recovery_pending(SPACE));
         assert!(device.needs_reconciliation(SPACE));
+        assert!(
+            device
+                .committed_leaves(SPACE)
+                .unwrap()
+                .unwrap()
+                .keys()
+                .any(|(identity, _)| identity == &m.id()),
+            "confirmed recovery leaves remain available for the removal reconciliation"
+        );
         assert!(device
             .seal(SPACE, b"must not reach the removed member")
             .is_err());
@@ -397,6 +485,7 @@ fn recovery_marker_survives_reopen_and_failed_staging_rolls_back_the_group() {
         .recover(SPACE, &context, &both)
         .unwrap();
     let reopened = fresh.open(&restored);
+    assert_eq!(reopened.group_state(SPACE).unwrap(), GroupState::Pending);
     assert!(reopened.pending(SPACE));
     assert!(reopened.seal(SPACE, b"held after restart").is_err());
     assert!(reopened
@@ -404,6 +493,7 @@ fn recovery_marker_survives_reopen_and_failed_staging_rolls_back_the_group() {
         .is_err());
     assert!(reopened.pending(SPACE));
     reopened.abandon(SPACE).unwrap();
+    assert_eq!(reopened.group_state(SPACE).unwrap(), GroupState::Missing);
     assert!(!reopened.has_group(SPACE));
     assert!(!reopened.pending(SPACE));
     let retry = reopened.recover(SPACE, &context, &both).unwrap();
@@ -411,6 +501,7 @@ fn recovery_marker_survives_reopen_and_failed_staging_rolls_back_the_group() {
     reopened
         .confirm_recovery(SPACE, &retry.commit, &both)
         .unwrap();
+    assert_eq!(reopened.group_state(SPACE).unwrap(), GroupState::Ready);
     assert!(!reopened.pending(SPACE));
     assert!(reopened.seal(SPACE, b"confirmed").is_ok());
 }

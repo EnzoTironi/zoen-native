@@ -9,7 +9,7 @@ use sqlx::{Connection, PgConnection};
 
 async fn barrier(client: &mut RawClient) {
     assert!(client.send_if_open(&ClientFrame::Ping).await);
-    while !matches!(client.recv().await, ServerFrame::Pong) {}
+    while !matches!(client.recv().await, ServerFrame::Pong { .. }) {}
 }
 
 async fn refused_or_closed(client: &mut RawClient) {

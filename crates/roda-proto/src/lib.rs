@@ -42,6 +42,11 @@ pub const PROTOCOL_VERSION: u32 = 4;
 pub const SEAL_REQUIRED: &str = "this space is end-to-end encrypted; seal the event";
 /// Under this many single-use key packages the relay asks the device to publish more.
 pub const KEY_PACKAGES_LOW: u32 = 8;
+/// A connected relay must negotiate this before a client relies on claim replay.
+pub const KEY_PACKAGE_CLAIM_CAPABILITY: &str = "key-package-claim-receipts";
+/// A claim id is never reused once this retry window expires, even after receipt GC.
+pub const KEY_PACKAGE_CLAIM_TTL_MS: i64 = 24 * 60 * 60 * 1000;
+pub const KEY_PACKAGE_CLAIM_EXPIRED: &str = "key_package_claim_expired";
 /// Why a relay refuses a commit: another one already took its epoch (ADR 0026). The author
 /// drops it, applies the winner from the log, and commits again if anything is still owed.
 pub const STALE_COMMIT: &str = "stale_epoch: another commit took this epoch";
@@ -54,7 +59,39 @@ pub const MIN_PROTOCOL_VERSION: u32 = 4;
 /// This stays stable across handshake upgrades; changing it would change signed bytes.
 pub const PROTOCOL: &str = "zoen-sync/2";
 /// Optional features; each side announces its own and uses the intersection.
-pub const CAPABILITIES: &[&str] = &["blobs", "invites", "presence", "profiles"];
+pub const CAPABILITIES: &[&str] = &[
+    "blobs",
+    "invites",
+    "presence",
+    "profiles",
+    KEY_PACKAGE_CLAIM_CAPABILITY,
+];
+
+/// A database-clock sample from the authenticated, receipt-capable relay connection.
+/// This value is never extrapolated using the device's wall clock.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct KeyPackageClaimClock(i64);
+
+impl KeyPackageClaimClock {
+    pub fn from_server_ms(time: i64) -> Option<Self> {
+        (1..=0xFFFF_FFFF_FFFF).contains(&time).then_some(Self(time))
+    }
+
+    pub fn milliseconds(self) -> i64 {
+        self.0
+    }
+}
+
+/// Canonical uppercase ULIDs only: no prefixes, aliases or overflowing leading bits.
+pub fn key_package_claim_time_ms(operation: &str) -> Option<i64> {
+    if operation.len() != 26
+        || !matches!(operation.as_bytes().first(), Some(b'0'..=b'7'))
+        || operation.bytes().any(|c| c.is_ascii_lowercase())
+    {
+        return None;
+    }
+    roda_types::id_time_ms(operation)
+}
 
 /// The capabilities both sides have, in our order.
 pub fn negotiate(theirs: &[String]) -> Vec<String> {
@@ -427,6 +464,8 @@ pub enum Op {
     /// Takes one key package for each device of each identity, to add them to a group.
     ClaimKeyPackages {
         ids: Vec<IdentityId>,
+        /// Absent in legacy clients. Stable across reconnects for one logical claim.
+        operation_id: Option<String>,
     },
     /// Leaves a sealed link box for a device being linked (ADR 0045), under `id` = SHA-256
     /// of the link secret in its QR code. Only the new device can open it. The identity
@@ -532,7 +571,7 @@ pub struct DeviceRecord {
 
 /// One device's MLS key package, as claimed. Members re-check the leaf inside; the relay's
 /// check only keeps junk out of the table.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct KeyPackageRecord {
     pub identity: IdentityId,
     pub device: String,
@@ -588,6 +627,8 @@ pub enum ServerFrame {
         relay: String,
         protocol: u32,
         capabilities: Vec<String>,
+        /// Optional PG clock sample; required before relying on claim receipts.
+        server_time_ms: Option<i64>,
     },
     Ready {
         identity: IdentityId,
@@ -643,7 +684,9 @@ pub enum ServerFrame {
         space: SpaceId,
     },
     SyncDone,
-    Pong,
+    Pong {
+        server_time_ms: Option<i64>,
+    },
     Error {
         code: ErrorCode,
         message: String,
@@ -990,6 +1033,25 @@ mod tests {
         assert_eq!(normalize_handle("1abc"), None);
         assert_eq!(normalize_handle("ab"), None);
         assert_eq!(normalize_handle("a b c"), None);
+    }
+
+    #[test]
+    fn claim_operations_are_canonical_ulids() {
+        let operation = "01K75MYBPQ0000000000000001";
+        assert!(key_package_claim_time_ms(operation).is_some());
+        for invalid in [
+            operation.to_lowercase(),
+            format!("prefix-{operation}"),
+            "81K75MYBPQ0000000000000001".into(),
+            "01K75MYBPQ000000000000000I".into(),
+        ] {
+            assert_eq!(key_package_claim_time_ms(&invalid), None, "{invalid}");
+        }
+        assert_eq!(negotiate(&[]), Vec::<String>::new());
+        assert_eq!(
+            negotiate(&[KEY_PACKAGE_CLAIM_CAPABILITY.into()]),
+            vec![KEY_PACKAGE_CLAIM_CAPABILITY]
+        );
     }
 
     #[test]

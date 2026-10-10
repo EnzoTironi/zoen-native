@@ -42,6 +42,13 @@ pub struct Commit {
     pub group_info: Vec<u8>,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum GroupState {
+    Missing,
+    Pending,
+    Ready,
+}
+
 fn commit_bytes(bundle: &CommitMessageBundle) -> Result<Commit, MlsError> {
     Ok(Commit {
         commit: bundle.commit().to_bytes().map_err(mls)?,
@@ -81,6 +88,9 @@ struct Provider<'c> {
     crypto: RustCrypto,
     storage: SqliteStorageProvider<SealedCodec, &'c Connection>,
 }
+
+/// Current encryption keys indexed by the verified identity and device in each leaf.
+pub type LeafKeys = std::collections::BTreeMap<(String, String), Vec<u8>>;
 
 impl<'c> OpenMlsProvider for Provider<'c> {
     type CryptoProvider = RustCrypto;
@@ -132,6 +142,16 @@ fn identities(group: &MlsGroup) -> Result<BTreeSet<String>, MlsError> {
     group
         .members()
         .map(|m| leaf_of(&m.credential, &m.signature_key).map(|l| l.identity))
+        .collect()
+}
+
+fn leaf_keys(group: &MlsGroup) -> Result<LeafKeys, MlsError> {
+    group
+        .members()
+        .map(|m| {
+            leaf_of(&m.credential, &m.signature_key)
+                .map(|l| ((l.identity, l.device), m.encryption_key.clone()))
+        })
         .collect()
 }
 
@@ -284,6 +304,19 @@ impl<'c> Device<'c> {
 
     pub fn has_group(&self, space: &str) -> bool {
         self.with(|p| self.load(p, space).is_ok())
+    }
+
+    /// Reads the current group once. Storage failures never become missing groups.
+    pub fn group_state(&self, space: &str) -> Result<GroupState, MlsError> {
+        if self.recovery_pending(space) {
+            return Ok(GroupState::Pending);
+        }
+        self.with(|p| match self.load(p, space) {
+            Ok(group) if group.pending_commit().is_some() => Ok(GroupState::Pending),
+            Ok(_) => Ok(GroupState::Ready),
+            Err(MlsError::NoGroup) => Ok(GroupState::Missing),
+            Err(error) => Err(error),
+        })
     }
 
     /// Deletes this device's state for a group it was removed from: its secrets go, and
@@ -784,18 +817,26 @@ impl<'c> Device<'c> {
 
     /// The group's leaves: (identity, device) -> the leaf's current encryption key. A leaf
     /// that was taken out and added again (a device back from a long absence) has a new key.
-    pub fn leaves(
-        &self,
-        space: &str,
-    ) -> Result<std::collections::BTreeMap<(String, String), Vec<u8>>, MlsError> {
+    pub fn leaves(&self, space: &str) -> Result<LeafKeys, MlsError> {
+        self.with(|p| leaf_keys(&self.load(p, space)?))
+    }
+
+    /// Verified leaf keys of a group with no commit awaiting confirmation. Missing
+    /// groups and held recovery commits return `None`; storage failures remain errors.
+    pub fn committed_leaves(&self, space: &str) -> Result<Option<LeafKeys>, MlsError> {
+        if self.recovery_pending(space) {
+            return Ok(None);
+        }
         self.with(|p| {
-            self.load(p, space)?
-                .members()
-                .map(|m| {
-                    leaf_of(&m.credential, &m.signature_key)
-                        .map(|l| ((l.identity, l.device), m.encryption_key.clone()))
-                })
-                .collect()
+            let group = match self.load(p, space) {
+                Ok(group) => group,
+                Err(MlsError::NoGroup) => return Ok(None),
+                Err(error) => return Err(error),
+            };
+            if group.pending_commit().is_some() {
+                return Ok(None);
+            }
+            leaf_keys(&group).map(Some)
         })
     }
 
