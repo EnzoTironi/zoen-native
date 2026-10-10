@@ -280,13 +280,15 @@ fun ChatScreen(model: ZoenViewModel, state: AppState, spaceId: String, navigate:
             AgentBrowserCard(model.browser, spaceId) { navigate(Browser) }
             Box(Modifier.weight(1f)) {
                 ChatBackdrop(model, space.id, state.revision, Modifier.fillMaxSize())
-                LazyColumn(state = list, modifier = Modifier.fillMaxSize().testTag("chat-timeline"), contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-                    items(timeline, key = { it.id }) { entry ->
-                        Box(Modifier.testTag("timeline:${entry.id}").background(if (highlight == entry.id) MaterialTheme.colorScheme.secondaryContainer else androidx.compose.ui.graphics.Color.Transparent, RoundedCornerShape(16.dp))) {
-                            TimelineRow(model, entry, navigate, onReply = { replyId = entry.id }, onThread = { navigate(Thread(spaceId, entry.id)) }, onQuote = { jumpTo = it })
+                if (spaceId in state.timelines) {
+                    LazyColumn(state = list, modifier = Modifier.fillMaxSize().testTag("chat-timeline"), contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                        items(timeline, key = { it.id }) { entry ->
+                            Box(Modifier.testTag("timeline:${entry.id}").background(if (highlight == entry.id) MaterialTheme.colorScheme.secondaryContainer else androidx.compose.ui.graphics.Color.Transparent, RoundedCornerShape(16.dp))) {
+                                TimelineRow(model, entry, navigate, onReply = { replyId = entry.id }, onThread = { navigate(Thread(spaceId, entry.id)) }, onQuote = { jumpTo = it })
+                            }
                         }
                     }
-                }
+                } else CircularProgressIndicator(Modifier.align(Alignment.Center))
                 val lastVisible = list.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: 0
                 if (timeline.size > 5 && lastVisible < timeline.lastIndex - 1) SmallFloatingActionButton(onClick = { model.launch { list.animateScrollToItem(timeline.lastIndex) } }, Modifier.align(Alignment.BottomEnd).padding(16.dp)) {
                     Icon(Icons.Rounded.ArrowDownward, stringResource(R.string.jump_latest))
