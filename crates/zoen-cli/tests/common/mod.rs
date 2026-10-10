@@ -364,6 +364,20 @@ impl World {
             .expect("spawn zoen")
     }
 
+    pub fn spawn_zoen_logged_streams(
+        &self,
+        who: &str,
+        args: &[&str],
+        stdout_name: &str,
+        stderr_name: &str,
+    ) -> Child {
+        self.cmd(who, args)
+            .stdout(std::fs::File::create(self.dir.join(stdout_name)).expect("client stdout"))
+            .stderr(std::fs::File::create(self.dir.join(stderr_name)).expect("client stderr"))
+            .spawn()
+            .expect("spawn zoen")
+    }
+
     pub fn init(&self, handle: &str, name: &str) {
         let out = self.zoen(handle, &["init", "--name", name, "--handle", handle]);
         assert!(out.contains("registered"), "{out}");
