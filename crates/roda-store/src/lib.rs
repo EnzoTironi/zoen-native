@@ -7,8 +7,10 @@
 //! Seams para depois: SQLCipher (mesma API, `PRAGMA key`), FTS5 para busca local,
 //! App Group compartilhado com as extensões do iOS.
 
+mod image;
 mod profiles;
 mod sync;
+pub use image::MAX_MEMORY_IMAGE_BYTES;
 pub use profiles::ProfileKeyRow;
 pub use sync::{OutboxHead, Pending};
 
@@ -22,6 +24,8 @@ pub enum StoreError {
     Sqlite(#[from] rusqlite::Error),
     #[error("json: {0}")]
     Json(#[from] serde_json::Error),
+    #[error("unsupported or oversized memory database image")]
+    InvalidImage,
 }
 
 pub type Result<T> = std::result::Result<T, StoreError>;

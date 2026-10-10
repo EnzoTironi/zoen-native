@@ -196,8 +196,16 @@ pub(crate) struct State {
 
 impl State {
     pub(crate) fn apply(&mut self, e: &Event, identities: &HashMap<IdentityId, Identity>) {
+        self.apply_checked(e, identities);
+    }
+
+    pub(crate) fn apply_checked(
+        &mut self,
+        e: &Event,
+        identities: &HashMap<IdentityId, Identity>,
+    ) -> bool {
         if !self.approval_event_valid(e, identities) {
-            return;
+            return false;
         }
         let entry = |body| Entry {
             hash: e.hash.clone(),
@@ -432,6 +440,7 @@ impl State {
             | EventBody::Sealed { .. }
             | EventBody::Unsupported { .. } => {}
         }
+        true
     }
 }
 
@@ -479,6 +488,10 @@ impl Engine {
         } else {
             Store::open(path)?
         };
+        Self::from_store(store, path)
+    }
+
+    pub(crate) fn from_store(store: Store, path: &str) -> R<Self> {
         let mut engine = Engine {
             store,
             db_path: path.to_string(),
