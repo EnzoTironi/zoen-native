@@ -29,7 +29,7 @@ pub(super) async fn matching_workers_and_immutable_pairing() {
     for query in [
         "UPDATE runtime_deployment_binding SET namespace='replacement'",
         "DELETE FROM runtime_deployment_binding",
-        "TRUNCATE runtime_deployment_binding",
+        "TRUNCATE runtime_deployment_binding CASCADE",
     ] {
         let error = sqlx::query(query)
             .execute(&w.runtime.finance.pool)
