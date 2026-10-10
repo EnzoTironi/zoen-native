@@ -88,7 +88,4 @@ jobs:
         run: cargo clippy --workspace --all-targets -- -D warnings
 
       - name: Tests and journeys
-        env:
-          ZOEN_M2_CENSUS: "1"
-          ZOEN_NET_DEBUG: "1"
         run: cargo test --workspace --no-fail-fast

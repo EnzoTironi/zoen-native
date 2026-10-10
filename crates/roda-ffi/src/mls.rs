@@ -136,22 +136,6 @@ pub struct MlsNet {
     pub(crate) recovery_retry_at: HashMap<SpaceId, Instant>,
 }
 
-#[derive(Clone, PartialEq, Serialize)]
-pub(crate) struct MlsIdleCensus {
-    published: bool,
-    publishing_count: usize,
-    top_up: usize,
-    dirty_count: usize,
-    claiming_count: usize,
-    retry_count: usize,
-    turn_count: usize,
-    checkpoint_due_count: usize,
-    rejoin_count: usize,
-    behind_count: usize,
-    stuck_count: usize,
-    recovery_retry_count: usize,
-}
-
 /// Events the relay reads even in an end-to-end Space: what it orders and authorizes by.
 fn stays_clear(body: &EventBody) -> bool {
     matches!(
@@ -1770,38 +1754,6 @@ impl Engine {
             && m.turn_at.is_empty()
             && m.checkpoint_due.is_empty()
             && m.rejoin.is_empty()
-    }
-
-    /// Diagnostic counterpart: retain the same single metadata read and predicate.
-    pub(crate) fn mls_settled_observed(&self) -> (bool, MlsIdleCensus) {
-        let m = &self.net.mls;
-        let published = self.net.account.as_ref().is_none_or(|a| {
-            self.store.meta(META_PUBLISHED).ok().flatten().as_deref() == Some(a.device.as_str())
-        });
-        let settled = published
-            && m.publishing.is_none()
-            && m.top_up == 0
-            && m.dirty.is_empty()
-            && m.claiming.is_empty()
-            && m.retry_at.is_empty()
-            && m.turn_at.is_empty()
-            && m.checkpoint_due.is_empty()
-            && m.rejoin.is_empty();
-        let counts = MlsIdleCensus {
-            published,
-            publishing_count: usize::from(m.publishing.is_some()),
-            top_up: m.top_up,
-            dirty_count: m.dirty.len(),
-            claiming_count: m.claiming.len(),
-            retry_count: m.retry_at.len(),
-            turn_count: m.turn_at.len(),
-            checkpoint_due_count: m.checkpoint_due.len(),
-            rejoin_count: m.rejoin.len(),
-            behind_count: m.behind.len(),
-            stuck_count: m.stuck.len(),
-            recovery_retry_count: m.recovery_retry_at.len(),
-        };
-        (settled, counts)
     }
 
     /// The group as this device has it: epoch, checkpoint digest and members.

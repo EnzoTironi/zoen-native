@@ -56,17 +56,6 @@ pub struct ProfileNet {
     sealed: Option<SealedProfile>,
 }
 
-#[derive(Clone, PartialEq, serde::Serialize)]
-pub(crate) struct ProfileIdleCensus {
-    supported: bool,
-    need_agreement_count: usize,
-    no_agreement_count: usize,
-    need_profiles_count: usize,
-    shares_dirty: bool,
-    agreement_due: Option<bool>,
-    upload_due: Option<bool>,
-}
-
 impl ProfileNet {
     pub(crate) fn forget_shared(&mut self) {
         self.shared = None;
@@ -756,34 +745,5 @@ impl Engine {
             && !p.shares_dirty
             && self.agreement_to_publish().is_none()
             && !self.upload_due()
-    }
-
-    /// Diagnostic counterpart: do not sign or query a short-circuited gate.
-    pub(crate) fn profiles_settled_observed(&self) -> (bool, ProfileIdleCensus) {
-        let p = &self.net.profiles;
-        let mut counts = ProfileIdleCensus {
-            supported: p.supported,
-            need_agreement_count: p.need_agreement.len(),
-            no_agreement_count: p.no_agreement.len(),
-            need_profiles_count: p.need_profiles.len(),
-            shares_dirty: p.shares_dirty,
-            agreement_due: None,
-            upload_due: None,
-        };
-        let settled = !p.supported
-            || (p.need_agreement.is_empty()
-                && p.need_profiles.is_empty()
-                && !p.shares_dirty
-                && {
-                    let due = self.agreement_to_publish().is_some();
-                    counts.agreement_due = Some(due);
-                    !due
-                }
-                && {
-                    let due = self.upload_due();
-                    counts.upload_due = Some(due);
-                    !due
-                });
-        (settled, counts)
     }
 }
