@@ -32,14 +32,24 @@ fn usage(value: Option<&Value>) -> UsageEvidence {
             cache_read_tokens: detail(value, "prompt_tokens_details", "cached_tokens")?,
             reasoning_tokens: detail(value, "completion_tokens_details", "reasoning_tokens")?,
         };
-        if let (Some(input), Some(output), Some(total)) = (
-            counters.input_tokens,
-            counters.output_tokens,
-            counters.total_tokens,
-        ) {
-            if input.checked_add(output) != Some(total) {
+        if let (Some(input), Some(output)) = (counters.input_tokens, counters.output_tokens) {
+            let sum = input.checked_add(output).ok_or(())?;
+            if counters.total_tokens.is_some_and(|total| total != sum) {
                 return Err(());
             }
+        }
+        if counters.total_tokens.is_some_and(|total| {
+            [
+                counters.input_tokens,
+                counters.output_tokens,
+                counters.cache_read_tokens,
+                counters.reasoning_tokens,
+            ]
+            .into_iter()
+            .flatten()
+            .any(|counter| counter > total)
+        }) {
+            return Err(());
         }
         if let (Some(cache), Some(input)) = (counters.cache_read_tokens, counters.input_tokens) {
             if cache > input {

@@ -72,6 +72,11 @@ async fn invalid_counters_and_overflow_do_not_become_billable_zero() {
         json!({"prompt_tokens":2,"completion_tokens":1,"total_tokens":7}),
         json!({"prompt_tokens":u64::MAX,"completion_tokens":1,"total_tokens":0}),
         json!({"prompt_tokens":1,"prompt_tokens_details":{"cached_tokens":2}}),
+        json!({"prompt_tokens":10,"total_tokens":3}),
+        json!({"completion_tokens":10,"total_tokens":3}),
+        json!({"prompt_tokens":u64::MAX,"completion_tokens":1}),
+        json!({"total_tokens":3,"prompt_tokens_details":{"cached_tokens":10}}),
+        json!({"total_tokens":3,"completion_tokens_details":{"reasoning_tokens":10}}),
     ] {
         let mut body = reply();
         body["usage"] = usage;
@@ -84,6 +89,26 @@ async fn invalid_counters_and_overflow_do_not_become_billable_zero() {
         assert_eq!(result.receipt.usage, UsageEvidence::Invalid);
         assert!(result.output.is_ok());
     }
+}
+
+#[tokio::test]
+async fn valid_partial_counter_totals_never_fill_the_missing_counter() {
+    let mut body = reply();
+    body["usage"] = json!({"prompt_tokens":10,"total_tokens":13});
+    let fixture = Fixture::json(body).await;
+    let result = ModelGateway::new(config(&fixture.base))
+        .unwrap()
+        .complete(request(), &TestAuthority::default())
+        .await
+        .unwrap();
+    let UsageEvidence::Reported(counters) = result.receipt.usage else {
+        panic!("valid partial usage");
+    };
+    assert_eq!(counters.input_tokens, Some(10));
+    assert_eq!(counters.total_tokens, Some(13));
+    assert_eq!(counters.output_tokens, None);
+    assert!(result.evidence.complete);
+    assert_eq!(fixture.connections.load(Ordering::SeqCst), 1);
 }
 
 #[tokio::test]
@@ -148,6 +173,143 @@ async fn valid_tool_history_preserves_exact_call_and_result_identity() {
     );
     assert_eq!(seen[0].1["messages"][3]["tool_call_id"], "approved-call");
     assert_eq!(seen[0].1["messages"][3]["content"], "verified result");
+}
+
+#[tokio::test]
+async fn reused_historical_call_id_is_invalid_output_and_keeps_the_bill() {
+    let mut body = reply();
+    body["choices"][0]["message"] = json!({"role":"assistant","content":null,
+        "tool_calls":[{"id":"approved-call","type":"function","function":{"name":"lookup","arguments":"{}"}}]});
+    body["choices"][0]["finish_reason"] = json!("tool_calls");
+    let fixture = Fixture::json(body).await;
+    let mut input = request();
+    input.messages.extend([
+        InputMessage::Assistant {
+            blocks: vec![OutputBlock::ToolCall {
+                call_id: "approved-call".into(),
+                name: "lookup".into(),
+                arguments: json!({}),
+            }],
+        },
+        InputMessage::ToolResult {
+            call_id: "approved-call".into(),
+            name: "lookup".into(),
+            text: "verified earlier result".into(),
+        },
+    ]);
+    let result = ModelGateway::new(config(&fixture.base))
+        .unwrap()
+        .complete(input, &TestAuthority::default())
+        .await
+        .unwrap();
+    assert_eq!(result.output, Err(OutputFailure::InvalidToolCall));
+    assert!(matches!(result.receipt.usage, UsageEvidence::Reported(_)));
+    assert_eq!(result.receipt.response_id.as_deref(), Some("response-23"));
+    assert!(result.evidence.complete);
+    assert!(
+        serde_json::from_slice::<Value>(&result.evidence.body).unwrap()["choices"][0]["message"]
+            ["tool_calls"][0]["id"]
+            == "approved-call"
+    );
+    assert_eq!(fixture.connections.load(Ordering::SeqCst), 1);
+}
+
+#[tokio::test]
+async fn a_fresh_http_tool_proposal_and_its_result_continue_without_history_rejection() {
+    let mut body = reply();
+    body["choices"][0]["message"] = json!({"role":"assistant","content":null,
+        "tool_calls":[{"id":"next-call","type":"function","function":{"name":"lookup","arguments":"{}"}}]});
+    body["choices"][0]["finish_reason"] = json!("tool_calls");
+    let first = Fixture::json(body).await;
+    let mut input = request();
+    input.messages.extend([
+        InputMessage::Assistant {
+            blocks: vec![OutputBlock::ToolCall {
+                call_id: "approved-call".into(),
+                name: "lookup".into(),
+                arguments: json!({}),
+            }],
+        },
+        InputMessage::ToolResult {
+            call_id: "approved-call".into(),
+            name: "lookup".into(),
+            text: "earlier result".into(),
+        },
+    ]);
+    let result = ModelGateway::new(config(&first.base))
+        .unwrap()
+        .complete(input.clone(), &TestAuthority::default())
+        .await
+        .unwrap();
+    input.messages.extend([
+        InputMessage::Assistant {
+            blocks: result.output.unwrap(),
+        },
+        InputMessage::ToolResult {
+            call_id: "next-call".into(),
+            name: "lookup".into(),
+            text: "next verified result".into(),
+        },
+    ]);
+    input.context.attempt_id = "continued-attempt".into();
+    let second = Fixture::json(reply()).await;
+    let result = ModelGateway::new(config(&second.base))
+        .unwrap()
+        .complete(input, &TestAuthority::default())
+        .await
+        .unwrap();
+    assert!(result.output.is_ok());
+    assert_eq!(first.connections.load(Ordering::SeqCst), 1);
+    assert_eq!(second.connections.load(Ordering::SeqCst), 1);
+}
+
+#[tokio::test]
+async fn tool_argument_shape_limits_match_the_next_history_input() {
+    for depth in [64, 65] {
+        let mut arguments = Value::Null;
+        for _ in 0..depth {
+            arguments = json!({"n":arguments});
+        }
+        let mut body = reply();
+        body["choices"][0]["message"] = json!({"role":"assistant","content":null,
+            "tool_calls":[{"id":"nested-call","type":"function","function":{"name":"lookup","arguments":arguments.to_string()}}]});
+        body["choices"][0]["finish_reason"] = json!("tool_calls");
+        let fixture = Fixture::json(body).await;
+        let mut input = request();
+        input.tools[0].parameters = json!({"type":"object"});
+        let result = ModelGateway::new(config(&fixture.base))
+            .unwrap()
+            .complete(input.clone(), &TestAuthority::default())
+            .await
+            .unwrap();
+        assert!(matches!(result.receipt.usage, UsageEvidence::Reported(_)));
+        assert!(result.evidence.complete);
+        if depth == 65 {
+            assert_eq!(result.output, Err(OutputFailure::InvalidToolCall));
+        } else {
+            input.messages.extend([
+                InputMessage::Assistant {
+                    blocks: result.output.unwrap(),
+                },
+                InputMessage::ToolResult {
+                    call_id: "nested-call".into(),
+                    name: "lookup".into(),
+                    text: "bounded result".into(),
+                },
+            ]);
+            input.context.attempt_id = "nested-continuation".into();
+            let continuation = Fixture::json(reply()).await;
+            assert!(ModelGateway::new(config(&continuation.base))
+                .unwrap()
+                .complete(input, &TestAuthority::default())
+                .await
+                .unwrap()
+                .output
+                .is_ok());
+            assert_eq!(continuation.connections.load(Ordering::SeqCst), 1);
+        }
+        assert_eq!(fixture.connections.load(Ordering::SeqCst), 1);
+    }
 }
 
 #[tokio::test]

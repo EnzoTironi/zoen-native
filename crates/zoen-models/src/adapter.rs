@@ -3,7 +3,7 @@ use rig_core::message::AssistantContent;
 use serde_json::Value;
 use std::collections::BTreeSet;
 
-use crate::{ModelRequest, OutputBlock, OutputFailure};
+use crate::{InputMessage, ModelRequest, OutputBlock, OutputFailure};
 
 /// Validate the exact wire shape before accepting Rig's deliberately lenient
 /// tool parsing. In particular, no partial/double-decoded/null arguments and no
@@ -29,7 +29,19 @@ fn strict_calls(value: &Value, request: &ModelRequest) -> Result<(), OutputFailu
     if calls.len() > 64 {
         return Err(OutputFailure::InvalidToolCall);
     }
-    let mut ids = BTreeSet::new();
+    let mut ids: BTreeSet<&str> = request
+        .messages
+        .iter()
+        .filter_map(|message| match message {
+            InputMessage::Assistant { blocks } => Some(blocks),
+            _ => None,
+        })
+        .flatten()
+        .filter_map(|block| match block {
+            OutputBlock::ToolCall { call_id, .. } => Some(call_id.as_str()),
+            _ => None,
+        })
+        .collect();
     for call in calls {
         let id = call
             .get("id")
@@ -49,7 +61,8 @@ fn strict_calls(value: &Value, request: &ModelRequest) -> Result<(), OutputFailu
             || !ids.insert(id)
             || !request.tools.iter().any(|tool| tool.name == name)
             || arguments.len() > 65_536
-            || !serde_json::from_str::<Value>(arguments).is_ok_and(|value| value.is_object())
+            || !serde_json::from_str::<Value>(arguments)
+                .is_ok_and(|value| value.is_object() && crate::validation::json_shape(&value))
         {
             return Err(OutputFailure::InvalidToolCall);
         }
