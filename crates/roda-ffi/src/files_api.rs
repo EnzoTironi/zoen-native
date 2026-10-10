@@ -1,7 +1,7 @@
 //! Pages and files for the apps (ADR 0040).
 
 use crate::files::FileDto;
-use crate::pages::{MarkdownFileDto, PageBlockDto, PageDto};
+use crate::pages::{MarkdownFileDto, PageBlockDto, PageDto, PageEditResult};
 use crate::{CoreError, ItemDetail, RodaEngine};
 
 #[uniffi::export]
@@ -51,15 +51,18 @@ impl RodaEngine {
         self.lock().page_at(&item_id, version)
     }
 
-    /// Makes this device's copy match the editor: `order` lists every block id top to
-    /// bottom; `changed` holds the blocks whose kind, text or formatting changed.
-    pub fn page_apply(
+    /// Applies edits to the exact context previously read by this editor, then merges
+    /// them with newer changes. The receipt contains the merged blocks and next context.
+    pub fn page_apply_from(
         &self,
         item_id: String,
+        mutation_id: String,
+        edit_context: String,
         order: Vec<String>,
         changed: Vec<PageBlockDto>,
-    ) -> Result<(), CoreError> {
-        self.lock().page_apply(&item_id, &order, &changed)
+    ) -> Result<PageEditResult, CoreError> {
+        self.lock()
+            .page_apply_from(&item_id, &mutation_id, &edit_context, &order, &changed)
     }
 
     /// Saves unsaved edits as a new version for everyone. False if nothing changed.

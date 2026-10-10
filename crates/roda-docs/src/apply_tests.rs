@@ -23,6 +23,35 @@ fn fixture() -> Page {
     page
 }
 
+#[test]
+fn concurrent_insertion_of_the_same_external_id_cannot_corrupt_the_page() {
+    let page = fixture();
+    let first = page.at(&page.frontiers()).unwrap();
+    let second = page.at(&page.frontiers()).unwrap();
+    let mut ids = order(&page);
+    ids.push("shared-id".into());
+    first.apply(&ids, &[edit("shared-id", "First")]).unwrap();
+    second.apply(&ids, &[edit("shared-id", "Second")]).unwrap();
+    page.import(&first.updates_since(&page.version())).unwrap();
+    let before = page.snapshot();
+    let hash = page.content_hash();
+    assert!(page.import(&second.updates_since(&page.version())).is_err());
+    assert_eq!(page.snapshot(), before);
+    assert_eq!(page.content_hash(), hash);
+    assert_eq!(
+        page.blocks().iter().filter(|b| b.id == "shared-id").count(),
+        1
+    );
+    let mut edited = edit("shared-id", "Still editable");
+    edited.spans.push(Span {
+        start: 0,
+        end: 5,
+        key: "b".into(),
+        value: String::new(),
+    });
+    page.apply(&ids, &[edited]).unwrap();
+}
+
 fn assert_refused_without_mutation(page: &Page, ids: &[String], edits: &[BlockEdit]) {
     let markdown = page.to_markdown();
     let blocks = page.blocks();

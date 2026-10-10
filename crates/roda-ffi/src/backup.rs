@@ -368,7 +368,7 @@ impl Engine {
             }
             c.execute_batch(
                 "DELETE FROM meta WHERE key = 'account' OR key = 'relay_name' OR key LIKE 'backup.%'
-                    OR key LIKE 'mls.%' OR key LIKE 'invite:%';
+                    OR key LIKE 'mls.%' OR key LIKE 'invite:%' OR key LIKE 'page.draft.%';
                  VACUUM;",
             )
             .map_err(storage)?;

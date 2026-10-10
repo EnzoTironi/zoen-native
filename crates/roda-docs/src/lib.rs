@@ -293,6 +293,9 @@ impl Page {
         if status.pending.is_some_and(|pending| !pending.is_empty()) {
             return Err(DocError("page update has missing dependencies".into()));
         }
+        // Distinct peers can concurrently insert the same external block id. Refuse
+        // that ambiguous merged state before any changes reach the live document.
+        validate_ids(&block_ids(&staged.get_movable_list("blocks")))?;
         if staged.oplog_vv() == from {
             return Ok(());
         }

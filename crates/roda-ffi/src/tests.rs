@@ -564,10 +564,18 @@ fn version_previews_show_historical_plans_and_pages_without_restoring_them() {
     let page = e
         .page_import_markdown(space.id, "notes.md".into(), "# Original\n\nBefore".into())
         .unwrap();
-    let mut blocks = e.page(page.id.clone()).unwrap().blocks;
+    let observed = e.page(page.id.clone()).unwrap();
+    let mut blocks = observed.blocks;
     blocks[0].text = "Edited".into();
     let order = blocks.iter().map(|b| b.id.clone()).collect();
-    e.page_apply(page.id.clone(), order, blocks).unwrap();
+    e.page_apply_from(
+        page.id.clone(),
+        "edit-version-preview".into(),
+        observed.edit_context,
+        order,
+        blocks,
+    )
+    .unwrap();
     e.page_commit(page.id.clone(), "Edited".into()).unwrap();
     let preview = e.item_at(page.id.clone(), 1).unwrap();
     assert_eq!(preview.title, "Original");
