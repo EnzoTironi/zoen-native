@@ -6,6 +6,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Share
+import androidx.compose.material.icons.rounded.Image
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -26,6 +27,7 @@ import xyz.tironi.zoen.media.MediaPreview
 import xyz.tironi.zoen.miniapps.SnapshotCard
 import xyz.tironi.zoen.miniapps.WidgetSnapshot
 import xyz.tironi.zoen.pages.styledPageText
+import xyz.tironi.zoen.pages.pageTextStyle
 
 private data class HistoricalContent(val item: ItemDetail, val page: PageDto?, val bytes: ByteArray?)
 
@@ -56,7 +58,7 @@ fun VersionPreviewScreen(model: ZoenViewModel, id: String, number: UInt, back: (
         val historical = content
         if (historical == null) Box(Modifier.fillMaxSize().padding(padding), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
         else LazyColumn(Modifier.fillMaxSize().padding(padding), contentPadding = PaddingValues(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            item { Text(historical.item.title, style = MaterialTheme.typography.headlineLarge) }
+            if (historical.page == null) item { Text(historical.item.title, style = MaterialTheme.typography.headlineLarge) }
             historical.page?.let { page ->
                 items(page.blocks, key = { it.id }) { block ->
                     Row(verticalAlignment = Alignment.Top) {
@@ -67,7 +69,8 @@ fun VersionPreviewScreen(model: ZoenViewModel, id: String, number: UInt, back: (
                             "quote" -> Text("│ ")
                         }
                         if (block.kind == "divider") HorizontalDivider()
-                        else SelectionContainer { Text(if (block.kind == "image") androidx.compose.ui.text.AnnotatedString("${block.alt}\n${block.url}") else styledPageText(block, MaterialTheme.colorScheme.primary, MaterialTheme.colorScheme.surfaceContainerHighest), style = if (block.kind == "heading") MaterialTheme.typography.headlineSmall else MaterialTheme.typography.bodyLarge, modifier = Modifier.padding(start = (block.indent.coerceAtMost(8u).toInt() * 12).dp)) }
+                        else if (block.kind == "image") Row(verticalAlignment = Alignment.CenterVertically) { Icon(Icons.Rounded.Image, null); Text(block.alt, Modifier.padding(start = 8.dp)) }
+                        else SelectionContainer { Text(styledPageText(block, MaterialTheme.colorScheme.primary, MaterialTheme.colorScheme.surfaceContainerHighest), style = pageTextStyle(block), modifier = Modifier.padding(start = (block.indent.coerceAtMost(8u).toInt() * 12).dp)) }
                     }
                 }
             }

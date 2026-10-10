@@ -139,7 +139,9 @@ class ParityJourneysTest {
         val item = runBlocking { application.repository.change { it.pageImportMarkdown(chat.id, "notes/native-rich.md", "# Native rich page\n\nEditable paragraph\n\n```kotlin\nval x = 1\n```\n\n![Forest](https://example.com/forest.png)") } }
         val original = runBlocking { application.repository.query { it.page(item.id) } }
         val paragraph = original.blocks.first { it.kind == "paragraph" }
-        fun captureFormatting(stage: String) {
+        val capturePhases = InstrumentationRegistry.getArguments().getString("zoenFormattingEvidence") == "true"
+        fun captureFormatting(stage: String, force: Boolean = false) {
+            if (!capturePhases && !force) return
             val field = compose.onNodeWithTag("page-block:${paragraph.id}").fetchSemanticsNode().config
             val selection = androidx.compose.ui.semantics.SemanticsProperties.TextSelectionRange
             val bold = compose.onNodeWithContentDescription(application.getString(R.string.page_bold)).fetchSemanticsNode().config
@@ -177,6 +179,7 @@ class ParityJourneysTest {
         compose.waitUntil(10_000) { application.repository.state.value.items.first { it.id == item.id }.version == 2u }
         val persisted = runBlocking { application.repository.query { it.page(item.id) } }
         val savedSpans = persisted.blocks.first { it.id == paragraph.id }.spans
+        if (savedSpans.none { it.key == "b" && it.start == 0u && it.end == 6u }) captureFormatting("save-failure", force = true)
         assertTrue("Expected bold [0, 6) after save; actual spans: $savedSpans", savedSpans.any { it.key == "b" && it.start == 0u && it.end == 6u })
         assertEquals(original.blocks.filter { it.kind in listOf("code", "image") }, persisted.blocks.filter { it.kind in listOf("code", "image") })
         compose.onNodeWithContentDescription(application.getString(R.string.versions)).performClick()

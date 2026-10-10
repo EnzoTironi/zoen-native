@@ -124,7 +124,6 @@ fun RichPageEditor(model: ZoenViewModel, state: AppState, item: ItemDetail, modi
             IconButton(enabled = active?.indent?.let { it > 0u } == true, onClick = { active?.let { replace(it.copy(indent = it.indent - 1u)) } }) { Icon(Icons.AutoMirrored.Rounded.FormatIndentDecrease, stringResource(R.string.page_outdent)) }
         }
         LazyColumn(Modifier.weight(1f), contentPadding = PaddingValues(horizontal = 20.dp, vertical = 12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            item { Text(item.title, style = MaterialTheme.typography.headlineLarge) }
             items(blocks, key = { it.id }) { block ->
                 PageBlockEditor(block, selected == block.id, changed = { replace(it, if (it.kind == block.kind && it.text != block.text) block.id else null) }, enter = { updated, offset ->
                     val (left, right) = PageEditing.split(updated, offset)

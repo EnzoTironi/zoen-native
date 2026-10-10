@@ -15,6 +15,7 @@ import android.os.SystemClock
 import android.util.Log
 import android.view.InputDevice
 import android.view.MotionEvent
+import android.view.WindowInsets
 import android.view.ViewConfiguration
 import android.view.WindowManager
 import android.view.accessibility.AccessibilityNodeInfo
@@ -193,7 +194,7 @@ class LauncherWidgetJourneyTest {
                     // Launcher3's instruction temporarily hides the resize frame from accessibility.
                     // Its real touch handler closes the instruction without selecting the widget behind it.
                     capture("04-launcher-first-use-edit-instruction")
-                    touch(checkNotNull(editOrInstruction))
+                    touch(awaitNode("Launcher first-use instruction ready for touch") { it.text in instructionLabels })
                 }
                 val edit = awaitNode("Launcher widget reconfigure control") { it.enabled && it.clickable && it.id == editId }
                 capture("04-launcher-widget-edit-control")
@@ -402,10 +403,19 @@ class LauncherWidgetJourneyTest {
 
     private fun gesture(node: UiNode, holdMs: Long) {
         check(node.visible && node.enabled && !node.bounds.isEmpty) { "Cannot touch a hidden or disabled node" }
+        val touchBounds = Rect(node.bounds)
+        if (Build.VERSION.SDK_INT >= 30) {
+            val metrics = application.getSystemService(WindowManager::class.java).currentWindowMetrics
+            val insets = metrics.windowInsets.getInsetsIgnoringVisibility(WindowInsets.Type.systemBars() or WindowInsets.Type.mandatorySystemGestures())
+            val bounds = metrics.bounds
+            val safe = Rect(bounds.left + insets.left, bounds.top + insets.top, bounds.right - insets.right, bounds.bottom - insets.bottom)
+            check(touchBounds.intersect(safe)) { "The launcher target is entirely inside Android's system gesture area" }
+            trace.put(JSONObject().put("systemGestureSafeBounds", safe.toShortString()).put("touchBounds", touchBounds.toShortString()))
+        }
         val now = SystemClock.uptimeMillis()
         trace.put(JSONObject().put("touch", node.toJson()).put("holdMs", holdMs).put("uptimeMs", now))
         fun inject(action: Int) {
-            val event = MotionEvent.obtain(now, SystemClock.uptimeMillis(), action, node.bounds.exactCenterX(), node.bounds.exactCenterY(), 0).apply { source = InputDevice.SOURCE_TOUCHSCREEN }
+            val event = MotionEvent.obtain(now, SystemClock.uptimeMillis(), action, touchBounds.exactCenterX(), touchBounds.exactCenterY(), 0).apply { source = InputDevice.SOURCE_TOUCHSCREEN }
             try { assertTrue("Native touchscreen injection must succeed", automation.injectInputEvent(event, true)) }
             finally { event.recycle() }
         }
