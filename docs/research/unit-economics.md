@@ -1,5 +1,7 @@
 # Zoen: custo por usuário ativo vs. receita sem cobrar o consumidor
 
+> Research snapshot. Figures, availability and source references retain their original review date. Current implementation and completion gates are in [roadmap status](../roadmap-status.md).
+
 Pesquisa de 9/out/2026. Todos os preços foram lidos nas páginas oficiais nessa data (links na
 seção Fontes). Onde não achei dado público, está escrito "não encontrado". As contas estão em
 [`unit_economics_calc.py`](unit_economics_calc.py) para quem quiser mexer nas premissas.
