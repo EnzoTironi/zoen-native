@@ -5,7 +5,8 @@ plugins {
 }
 
 val coreAbis = providers.gradleProperty("androidAbis").orElse("arm64-v8a,x86_64")
-val coreProfile = providers.gradleProperty("coreProfile").orElse("dev")
+val coreProfile = providers.gradleProperty("coreProfile").orElse("release")
+require(coreProfile.get() in setOf("dev", "release")) { "coreProfile must be dev or release" }
 val coreOutput = layout.buildDirectory.dir("generated/roda")
 val buildRodaCore by tasks.registering(Exec::class) {
     group = "build"
@@ -60,6 +61,11 @@ android {
 
 kotlin { jvmToolchain(17) }
 tasks.named("preBuild") { dependsOn(buildRodaCore) }
+tasks.matching { it.name == "preReleaseBuild" }.configureEach {
+    doFirst {
+        require(coreProfile.get() == "release") { "Release APKs require coreProfile=release" }
+    }
+}
 
 dependencies {
     implementation(platform(libs.androidx.compose.bom))

@@ -263,6 +263,7 @@ class ParityJourneysTest {
         val mention = runBlocking { application.repository.query { it.mentions().first() } }
         val task = application.repository.state.value.items.first { it.plan?.sections?.any { section -> section.lines.any { !it.done } } == true }
         compose.onNodeWithText(application.getString(R.string.activity), substring = false).performClick()
+        compose.onNodeWithTag("activity-show-list").performClick()
         compose.onNodeWithTag("activity-tabs").performScrollToNode(hasText(application.getString(R.string.activity_mentions), substring = true))
         compose.onNodeWithText(application.getString(R.string.activity_mentions), substring = true).performClick()
         compose.onNodeWithText(application.getString(R.string.activity_mentioned, mention.entry.author.name), substring = true).assertExists()

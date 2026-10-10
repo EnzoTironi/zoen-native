@@ -3,6 +3,7 @@ package xyz.tironi.zoen
 import android.content.Intent
 import android.graphics.Bitmap
 import android.os.ParcelFileDescriptor
+import android.util.Log
 import android.view.WindowManager
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.semantics.SemanticsActions
@@ -20,11 +21,13 @@ import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
+import org.junit.rules.Timeout
 import xyz.tironi.zoen.core.*
 
 @RunWith(AndroidJUnit4::class)
 class ApprovalDeckJourneyTest {
-    @get:Rule val compose = createEmptyComposeRule()
+    @get:Rule(order = 0) val deadline = Timeout.seconds(120)
+    @get:Rule(order = 1) val compose = createEmptyComposeRule()
     private val app get() = ApplicationProvider.getApplicationContext<ZoenApplication>()
     private lateinit var scenario: ActivityScenario<MainActivity>
     private lateinit var model: ZoenViewModel
@@ -34,14 +37,18 @@ class ApprovalDeckJourneyTest {
         originalScale = shell("settings get global animator_duration_scale").trim()
         shell("settings put global animator_duration_scale 1")
         app.repository.preferences.edit().putBoolean("demo", true).putBoolean("onboarded", true).commit()
+        Log.i("ApprovalJourney", "Launching the native Activity")
         scenario = ActivityScenario.launch(Intent(app, MainActivity::class.java).putExtra("demo", true))
         scenario.onActivity {
             it.window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
             model = ViewModelProvider(it)[ZoenViewModel::class.java]
         }
         compose.waitUntil(30_000) { app.repository.state.value.ready && app.repository.state.value.me != null }
+        Log.i("ApprovalJourney", "Account ready; resetting the original demo")
         runBlocking { app.repository.resetDemo() }
+        Log.i("ApprovalJourney", "Demo reset; waiting for Compose")
         compose.waitForIdle()
+        Log.i("ApprovalJourney", "Ready for gestures")
     }
     @After fun close() {
         scenario.close()
@@ -182,7 +189,10 @@ class ApprovalDeckJourneyTest {
             compose.waitForIdle()
             val request = app.repository.state.value.requests.filter { it.agent.isMine && it.status == RequestStatus.PENDING }.minBy { it.openedMs }
             val before = runBlocking { app.repository.query { it.logEvents(request.spaceId).size } }
-            compose.onNodeWithText(app.getString(R.string.activity)).performClick()
+            compose.onNodeWithTag("tab:Activity").performClick()
+            listOf("Chats", "Store", "Files", "Activity").forEach {
+                compose.onNodeWithTag("tab:$it").assertIsDisplayed().assertHasClickAction()
+            }
             compose.waitForIdle()
             val rejected = feedback("Reject")
             capture("font200-before-reading-scroll")

@@ -15,8 +15,8 @@ parser.add_argument("--fetch", action="store_true", help="Refresh the authoritat
 parser.add_argument("--output", type=Path, default=root / "build/android-upstream.json")
 args = parser.parse_args()
 
-def git(*words, check=True):
-    return subprocess.run(["git", *words], cwd=root, check=check, capture_output=True, text=True)
+def git(*words, check=True, repo=root):
+    return subprocess.run(["git", *words], cwd=repo, check=check, capture_output=True, text=True)
 
 branches = ["main", "codex/native-android", "ux/audit-p1", "codex/desktop-web-chat-shell", "codex/roadmap-integration", "codex/backend-agent-proposals", "codex/backend-agent-ownership-proof", "codex/backend-model-runtime"]
 open_prs = []
@@ -48,13 +48,13 @@ def body_end(masked, opening):
             return index
     raise ValueError("Unclosed exported Rust definition")
 
-def public_api(ref):
+def public_api(ref, repo=root):
     methods, types = {}, {}
-    paths = git("ls-tree", "-r", "--name-only", ref, "crates/roda-ffi/src").stdout.splitlines()
+    paths = git("ls-tree", "-r", "--name-only", ref, "crates/roda-ffi/src", repo=repo).stdout.splitlines()
     for path in paths:
         if not path.endswith(".rs") or "tests" in Path(path).parts or path.endswith("/tests.rs"):
             continue
-        source = git("show", ref + ":" + path).stdout
+        source = git("show", ref + ":" + path, repo=repo).stdout
         masked = mask_rust(source)
         for exported in re.finditer(r"#\[uniffi::export(?:\([^\]]*\))?\]\s*impl\s+RodaEngine\s*\{", masked):
             opening = exported.end() - 1
@@ -106,6 +106,63 @@ for pr in open_prs:
     if requiring_review or shapes_requiring_review:
         incompatible_candidates.append(pr["url"])
 current_backend = git("merge-base", "--is-ancestor", refs["main"], head, check=False).returncode == 0
+def material_path(name):
+    parts = Path(name).parts
+    return bool(parts) and parts[0] in {"apple", "android", "miniapps", "crates"} and not any(
+        part in {".gradle", ".build", ".swiftpm", "build", "target", "node_modules", "DerivedData", ".DS_Store"} for part in parts
+    )
+
+local_work = []
+for block in git("worktree", "list", "--porcelain").stdout.strip().split("\n\n"):
+    entry = dict(line.split(" ", 1) for line in block.splitlines() if " " in line)
+    path = Path(entry["worktree"])
+    if path.resolve() == root.resolve() or not path.is_dir() or "HEAD" not in entry:
+        continue
+    commit = entry["HEAD"]
+    base = git("merge-base", head, commit).stdout.strip()
+    material = git("diff", "--name-only", base, commit, "--", "apple", "android", "miniapps", "crates").stdout.splitlines()
+    status = subprocess.run(["git", "status", "--porcelain", "-z", "--untracked-files=all"], cwd=path, check=True, capture_output=True).stdout
+    dirty = [record[3:].decode() for record in status.split(b"\0") if record and material_path(record[3:].decode())]
+    different = [name for name in material if git("diff", "--quiet", head, commit, "--", name, check=False).returncode != 0]
+    if not different and not dirty:
+        continue
+    working_diff = subprocess.run(["git", "diff", "HEAD", "--", "apple", "android", "miniapps", "crates"], cwd=path, check=True, capture_output=True).stdout
+    proposed, proposed_types = public_api(commit)
+    local_work.append({
+        "worktree": str(path), "branch": entry.get("branch"), "commit": commit,
+        "status": "Local work in progress; source differences are not runtime acceptance",
+        "committed_material_paths_different_from_android": different,
+        "uncommitted_material_paths": dirty,
+        "uncommitted_file_sha256": {name: hashlib.sha256((path / name).read_bytes()).hexdigest() for name in dirty if (path / name).is_file()},
+        "working_diff_sha256": hashlib.sha256(working_diff).hexdigest(),
+        "added_exported_functions": sorted(proposed.keys() - android_facade.keys()),
+        "added_exported_types": sorted(proposed_types.keys() - android_types.keys()),
+    })
+def canonical_origin(repo):
+    url = git("remote", "get-url", "origin", repo=repo, check=False).stdout.strip()
+    return url.replace("git@github.com:", "https://github.com/").removesuffix(".git").rstrip("/").lower()
+
+origin = canonical_origin(root)
+known_worktrees = {Path(entry["worktree"]).resolve() for entry in local_work}
+for path in sorted(root.parent.iterdir()):
+    if path.resolve() == root.resolve() or path.resolve() in known_worktrees or not (path / ".git").exists() or canonical_origin(path) != origin:
+        continue
+    commit = git("rev-parse", "HEAD", repo=path).stdout.strip()
+    material = git("diff", "--name-only", "origin/main", commit, "--", "apple", "android", "miniapps", "crates", repo=path).stdout.splitlines()
+    status = git("status", "--porcelain", "--untracked-files=all", repo=path).stdout
+    dirty = [line[3:] for line in status.splitlines() if material_path(line[3:])]
+    proposed, proposed_types = public_api(commit, repo=path)
+    working_diff = git("diff", "HEAD", "--", "apple", "android", "miniapps", "crates", repo=path).stdout
+    local_work.append({
+        "worktree": str(path), "branch": git("branch", "--show-current", repo=path).stdout.strip(),
+        "commit": commit, "status": "Separate local clone; not evidence of integration or runtime acceptance",
+        "committed_material_paths_changed_from_its_main": material,
+        "uncommitted_material_paths": dirty,
+        "uncommitted_file_sha256": {name: hashlib.sha256((path / name).read_bytes()).hexdigest() for name in dirty if (path / name).is_file()},
+        "working_diff_sha256": hashlib.sha256(working_diff.encode()).hexdigest(),
+        "added_exported_functions": sorted(proposed.keys() - android_facade.keys()),
+        "added_exported_types": sorted(proposed_types.keys() - android_types.keys()),
+    })
 sources = {}
 for fixture in ["ink-swift-reference.json.gz", "ink-icons-swift-reference.json.gz"]:
     document = json.loads(gzip.decompress((root / "android/app/src/test/resources" / fixture).read_bytes()))
@@ -123,6 +180,7 @@ report = {
     "remote_heads": refs,
     "open_pull_requests": open_prs,
     "backend_work_in_progress": backend_work,
+    "local_parallel_work": local_work,
     "unreviewed_interface_pull_requests": unreviewed_interfaces,
     "incompatible_backend_candidates": incompatible_candidates,
     "latest_main_is_ancestor": current_backend,

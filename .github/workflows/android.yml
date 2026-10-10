@@ -2,10 +2,10 @@ name: android
 
 on:
   pull_request:
-    paths: ["android/**", "crates/**", "Cargo.toml", "Cargo.lock", "scripts/build-android-core.sh", "scripts/*android-uniffi-callbacks.py", "scripts/test-android-device.sh", "scripts/test-android-rich-page.py", "scripts/ci-postgres.sh", "scripts/test-ci-postgres.py", ".github/workflows/android.yml"]
+    paths: ["android/**", "crates/**", "Cargo.toml", "Cargo.lock", "scripts/build-android-core.sh", "scripts/check-android-upstream.py", "scripts/*android-uniffi-callbacks.py", "scripts/test-android-device.sh", "scripts/test-android-rich-page.py", "scripts/ci-postgres.sh", "scripts/test-ci-postgres.py", ".github/workflows/android.yml"]
   push:
     branches: [main]
-    paths: ["android/**", "crates/**", "Cargo.toml", "Cargo.lock", "scripts/build-android-core.sh", "scripts/*android-uniffi-callbacks.py", "scripts/test-android-device.sh", "scripts/test-android-rich-page.py", "scripts/ci-postgres.sh", "scripts/test-ci-postgres.py", ".github/workflows/android.yml"]
+    paths: ["android/**", "crates/**", "Cargo.toml", "Cargo.lock", "scripts/build-android-core.sh", "scripts/check-android-upstream.py", "scripts/*android-uniffi-callbacks.py", "scripts/test-android-device.sh", "scripts/test-android-rich-page.py", "scripts/ci-postgres.sh", "scripts/test-ci-postgres.py", ".github/workflows/android.yml"]
 
 permissions:
   contents: read
@@ -30,6 +30,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+          fetch-depth: 0
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
@@ -45,6 +46,10 @@ jobs:
           targets: aarch64-linux-android,x86_64-linux-android
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
       - uses: gradle/actions/setup-gradle@v4
+      - name: Verify current backend and reviewed interface references
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 scripts/check-android-upstream.py --fetch --output android/app/build/outputs/android-upstream.json
       - name: UniFFI Android build tool
         run: cargo install cargo-ndk --locked
       - name: Build both ABIs, unit tests, and lint
@@ -95,6 +100,7 @@ jobs:
             android/app/build/outputs/androidTest-results/
             android/app/build/outputs/device-evidence/
             android/app/build/outputs/cold-process-tls/
+            android/app/build/outputs/android-upstream.json
       - name: Publish native test results
         uses: actions/upload-artifact@v4
         if: always()

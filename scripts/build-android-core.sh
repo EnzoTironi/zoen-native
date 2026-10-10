@@ -25,7 +25,8 @@ mkdir -p "$OUT/kotlin" "$OUT/jniLibs"
 find "$OUT/kotlin" -name '*.kt' -type f -delete
 
 # Bindgen runs on the host. Kotlin and every ABI use metadata from the same build.
-cargo build --locked -q -p roda-ffi -p uniffi-bindgen
+cargo build --locked -q -p uniffi-bindgen
+cargo rustc --locked -q -p roda-ffi --lib --crate-type cdylib
 case "$(uname -s)" in
   Darwin) HOST_LIB=target/debug/libroda_ffi.dylib ;;
   Linux) HOST_LIB=target/debug/libroda_ffi.so ;;
@@ -51,5 +52,5 @@ rustup target add "${TARGETS[@]}"
 export CARGO_TARGET_AARCH64_LINUX_ANDROID_RUSTFLAGS="-C link-arg=-Wl,-z,max-page-size=16384"
 export CARGO_TARGET_X86_64_LINUX_ANDROID_RUSTFLAGS="-C link-arg=-Wl,-z,max-page-size=16384"
 cargo ndk "${NDK_ARGS[@]}" --platform 28 -o "$OUT/jniLibs" \
-  build --locked -q -p roda-ffi --profile "$PROFILE"
+  rustc --locked -q -p roda-ffi --lib --crate-type cdylib --profile "$PROFILE"
 echo "Android core ready ($ABIS, $PROFILE)."

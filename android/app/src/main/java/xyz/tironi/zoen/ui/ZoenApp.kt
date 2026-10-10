@@ -118,7 +118,8 @@ fun ZoenApp(model: ZoenViewModel, deepLink: String?, consumed: () -> Unit) {
             val unread = state.spaces.sumOf { it.unread.toLong() }.coerceAtMost(100L).toInt()
             val rail = maxWidth >= 600.dp
             val split = maxWidth >= 840.dp
-            val navigationHeight = if (LocalConfiguration.current.fontScale > 1.5f) 112.dp else 80.dp
+            val largeNavigationText = LocalConfiguration.current.fontScale > 1.5f
+            val navigationHeight = if (largeNavigationText) 112.dp else 80.dp
             Row {
                 if (rail) NavigationRail(modifier = Modifier.fillMaxHeight(), header = {
                     ZoenMascot(Modifier.padding(top = 12.dp).size(64.dp))
@@ -142,10 +143,14 @@ fun ZoenApp(model: ZoenViewModel, deepLink: String?, consumed: () -> Unit) {
                                 if (index == 2) Box(Modifier.weight(1f), contentAlignment = Alignment.Center) {
                                     PlusVoiceButton({ quickActions = true }, { voiceStart++ }, { voiceRelease++ }, { voiceLock++ }, { voiceCancel++ }, compact = true)
                                 }
-                                NavigationBarItem(selected = tab == target, onClick = { if (tab != target) haptics.perform(ZoenFeedback.Selection); tab = target }, icon = { TabIcon(target, if (target == Tab.Chats) unread else state.pending, tab == target) }, label = {
-                                    Text(tabName(target), maxLines = 1, overflow = TextOverflow.Ellipsis,
-                                        style = if (LocalConfiguration.current.fontScale > 1.5f) MaterialTheme.typography.labelSmall else MaterialTheme.typography.labelMedium)
-                                }, modifier = Modifier.testTag("tab:${target.name}"))
+                                val item: @Composable RowScope.() -> Unit = {
+                                    NavigationBarItem(selected = tab == target, onClick = { if (tab != target) haptics.perform(ZoenFeedback.Selection); tab = target }, icon = { TabIcon(target, if (target == Tab.Chats) unread else state.pending, tab == target) }, label = {
+                                        Text(tabName(target), maxLines = 1, overflow = TextOverflow.Ellipsis,
+                                            style = if (largeNavigationText) MaterialTheme.typography.labelSmall else MaterialTheme.typography.labelMedium)
+                                    }, alwaysShowLabel = !largeNavigationText, modifier = Modifier.testTag("tab:${target.name}"))
+                                }
+                                if (largeNavigationText) Row(Modifier.weight(if (tab == target) 2.5f else 1f)) { item() }
+                                else item()
                             }
                         }
                     },
