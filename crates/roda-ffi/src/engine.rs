@@ -363,7 +363,11 @@ impl State {
                 });
             }
             EventBody::GrantRevoked { grant } => {
-                for g in self.grants.iter_mut().filter(|g| &g.grant.id == grant) {
+                for g in self
+                    .grants
+                    .iter_mut()
+                    .filter(|g| &g.grant.id == grant && g.grant.grantor == e.author)
+                {
                     g.revoked = true;
                 }
             }
@@ -807,7 +811,7 @@ impl Engine {
     }
 
     /// The newest unrevoked standing decision for this agent, kind of action and Space.
-    fn standing(
+    pub(crate) fn standing(
         &self,
         agent: &str,
         space: &str,
@@ -815,11 +819,13 @@ impl Engine {
     ) -> Option<(&GrantState, bool)> {
         let key = standing_key(action);
         let owner = self.identities.get(agent)?.owner.as_deref()?;
+        let now = now_ms();
         self.state
             .grants
             .iter()
             .rev()
             .filter(|g| !g.revoked && g.grant.grantee.as_deref() == Some(agent))
+            .filter(|g| g.grant.expires_at_ms.is_none_or(|at| at > now))
             .filter(|g| g.grant.grantor == owner)
             .filter(|g| g.grant.scope == GrantScope::Space(space.to_string()))
             .find_map(|g| match &g.grant.capability {
@@ -2407,9 +2413,11 @@ impl Engine {
 
     fn device_grants_for(&self, item: &str) -> impl Iterator<Item = &GrantState> {
         let grantee = format!("app:{item}");
+        let me = self.me.as_deref();
         let now = now_ms();
         self.state.grants.iter().rev().filter(move |g| {
             !g.revoked
+                && Some(g.grant.grantor.as_str()) == me
                 && g.grant.grantee.as_deref() == Some(grantee.as_str())
                 && g.grant.expires_at_ms.map(|e| e > now).unwrap_or(true)
                 && matches!(g.grant.capability, Capability::Device { .. })

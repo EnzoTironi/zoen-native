@@ -777,3 +777,6 @@ fn failed_approval_write_leaves_the_proposal_pending_and_identical_retry_succeed
     assert_eq!(e.items().len(), 1);
     assert_eq!(e.agent_profile(&chat.agent).budget_spent_cents, Some(37));
 }
+
+mod encrypted;
+mod review;

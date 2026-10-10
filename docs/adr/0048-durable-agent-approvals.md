@@ -25,8 +25,9 @@ append. A conflicting decision fails.
 
 A standing grant is part of the first resolution receipt. Each covered request settles
 atomically. A failed covered write returns an error; retry resumes the remaining requests
-without repeating settled effects. Revocation prevents that retry from authorizing more
-work. Removal or a reader role prevents new agent output.
+without repeating settled effects. The original grant must remain the current standing
+decision: replacement, expiry or revocation stops that retry. Removal or a reader role
+prevents new agent output.
 
 Model usage is incurred preparing a proposal, including a denied proposal. It is projected
 once at opening, requires an owner-signed trust grant for paid proposals, and is not charged
@@ -39,6 +40,19 @@ ingestion. Unauthorized signed commands remain on the cryptographic chain but do
 approval, item, grant or usage state. Item ids cannot be recreated, and item edits must be
 authored in their item's Space. Agent ownership metadata arriving after history triggers
 reprojection rather than permanently losing the request.
+
+When an ordered decision, membership, content or grant change can invalidate a pending
+resolution, the client rebuilds the projection from its verified log cache and then applies
+the remaining outbox. Confirmation follows the same path. The first valid ordered decision
+wins; a losing optimistic item or standing grant disappears before its acknowledgement,
+and live state matches restart. This reconciliation preserves MLS state and open page
+sessions. Ordinary message ingestion stays incremental.
+
+The `gr_app_` and `gr_standing_` namespaces belong to effects embedded in resolution
+receipts; standalone `GrantIssued` commands cannot preempt them. App approval also checks
+that its generated grant id is unused. Revocation affects only grants from its signer.
+Device capability checks require this device's account to have issued the grant; another
+member's consent cannot authorize this owner's phone.
 
 ## Compatibility and remaining M3 work
 
@@ -68,4 +82,9 @@ missing-output behavior, reopen before approval, verify usable apps and scoped p
 inject write failures, resume interrupted standing batches, revoke or remove principals,
 ingest authenticated wrong-owner/hash/Space decisions and prove that replay has no duplicate
 effect. A second engine receives signed binary frames and recreates the same approved item.
-These are core and wire-ingestion checks, not a live cloud model or production scale proof.
+Two certified owner devices and the declared agent also join a real OpenMLS group; encrypted
+denial and membership-before-echo cases preserve the same result after reopening the
+device database. Real relay/FDB journeys interrupt an outbox batch, cold-restart both core
+and relay, lose an acknowledgement, retry the identical envelope, and compare conflicting
+owner-device decisions with a fresh observer. These checks do not run a cloud model or
+prove production scale.
