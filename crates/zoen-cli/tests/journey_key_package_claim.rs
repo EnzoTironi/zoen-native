@@ -6,7 +6,9 @@ mod common;
 
 use claim_proxy::{Boundary, ClaimProxy, Observed};
 use common::{now_ms, RawClient, World};
-use roda_ffi::{AccountDto, EntryKind, PrivacyDto, RodaEngine, SecretVault};
+use roda_ffi::{
+    AccountDto, ConnectionDto, CoreListener, EntryKind, PrivacyDto, RodaEngine, SecretVault,
+};
 use roda_log::{
     profile::{sign_agreement, AgreementKey},
     Author, Signer,
@@ -35,6 +37,18 @@ impl SecretVault for Vault {
     fn delete(&self, key: String) {
         let _ = std::fs::remove_file(self.0.join(key));
     }
+}
+
+struct Refusals(tokio::sync::mpsc::UnboundedSender<String>);
+impl CoreListener for Refusals {
+    fn on_change(&self, _: Vec<String>) {}
+    fn on_ephemeral(&self, _: String, _: String, _: String, _: String) {}
+    fn on_presence(&self, _: String, _: bool) {}
+    fn on_connection(&self, _: ConnectionDto) {}
+    fn on_error(&self, message: String) {
+        let _ = self.0.send(message);
+    }
+    fn on_profile_changed(&self, _: String) {}
 }
 
 struct Device {
@@ -407,13 +421,35 @@ async fn empty_claim_schedules_work_and_cannot_look_idle_before_retry() {
     let mut proxy = ClaimProxy::new(w.port, Boundary::Reply).await;
     let ana = Device::new(&w, "ana", &proxy.url);
     ana.start().await;
+    let bootstrap_deadline = tokio::time::Instant::now() + Duration::from_secs(8);
     let space = ana
         .core
-        .create_group_with(
-            "Scheduled retry".into(),
-            vec![bruno.account.identity_id.clone()],
-            PrivacyDto::EndToEnd,
+        .create_group("Scheduled retry".into(), vec![])
+        .unwrap();
+    // Observe the owner's first confirmed recovery commit. An idle outbox can
+    // precede its staging; adding Bruno then would let him recover directly,
+    // without needing the owner's scheduled second key-package claim.
+    while !ana
+        .core
+        .group_keys(space.clone())
+        .is_some_and(|keys| keys.epoch > 0)
+    {
+        assert!(
+            tokio::time::Instant::now() < bootstrap_deadline,
+            "owner recovery context was not confirmed within eight seconds"
+        );
+        tokio::time::sleep(Duration::from_millis(20)).await;
+    }
+    ana.core
+        .wait_until_settled(
+            bootstrap_deadline
+                .saturating_duration_since(tokio::time::Instant::now())
+                .as_millis() as u64,
         )
+        .await
+        .unwrap();
+    ana.core
+        .add_member(space.clone(), bruno.account.identity_id.clone())
         .unwrap();
     let (empty_operation, _) = next_request(&mut proxy).await;
     let (_, records, held) = next_reply(&mut proxy).await;
@@ -464,7 +500,11 @@ async fn protocol_four_without_the_connected_relay_capability_refuses_claims() {
     bruno.core.stop_sync();
     let mut proxy = ClaimProxy::new(w.port, Boundary::AbsentCapability).await;
     let ana = Device::new(&w, "ana", &proxy.url);
-    ana.start().await;
+    let (refusals, mut errors) = tokio::sync::mpsc::unbounded_channel();
+    ana.core
+        .start_sync(Some(Arc::new(Refusals(refusals))))
+        .unwrap();
+    ana.core.wait_until_settled(8000).await.unwrap();
     ana.core
         .create_group_with(
             "Needs receipts".into(),
@@ -472,6 +512,14 @@ async fn protocol_four_without_the_connected_relay_capability_refuses_claims() {
             PrivacyDto::EndToEnd,
         )
         .unwrap();
+    let refusal = tokio::time::timeout(Duration::from_secs(8), errors.recv())
+        .await
+        .expect("the client did not report the negotiated capability refusal")
+        .expect("the client listener stopped");
+    assert!(
+        refusal.contains("does not support durable key-package claims"),
+        "{refusal}"
+    );
     let error = ana.core.wait_until_settled(1000).await.unwrap_err();
     assert!(
         error
@@ -719,7 +767,11 @@ async fn advertised_receipts_without_a_valid_challenge_clock_never_enable_claims
         bruno.core.stop_sync();
         let mut proxy = ClaimProxy::new(w.port, boundary).await;
         let ana = Device::new(&w, "ana", &proxy.url);
-        ana.start().await;
+        let (refusals, mut errors) = tokio::sync::mpsc::unbounded_channel();
+        ana.core
+            .start_sync(Some(Arc::new(Refusals(refusals))))
+            .unwrap();
+        ana.core.wait_until_settled(8000).await.unwrap();
         assert!(matches!(proxy.next().await, Observed::ClockRefreshed));
         ana.core
             .create_group_with(
@@ -728,6 +780,11 @@ async fn advertised_receipts_without_a_valid_challenge_clock_never_enable_claims
                 PrivacyDto::EndToEnd,
             )
             .unwrap();
+        let refusal = tokio::time::timeout(Duration::from_secs(8), errors.recv())
+            .await
+            .expect("the client did not report the negotiated clock refusal")
+            .expect("the client listener stopped");
+        assert!(refusal.contains("server clock"), "{refusal}");
         let error = ana.core.wait_until_settled(1000).await.unwrap_err();
         assert!(error.to_string().contains("server clock"), "{error}");
         // The initial Ping receives a genuine, valid-clock Pong. It must not enable
