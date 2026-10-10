@@ -29,11 +29,20 @@ package = "xyz.tironi.zoen"
 runner = package + ".test/androidx.test.runner.AndroidJUnitRunner"
 journey = package + ".ParityJourneysTest#richFormattingDraftUndoSaveAndOldVersionPreviewUseTheNativeUi"
 hashes = {}
-for app in (package, package + ".test"):
+apks = {
+    package: root / "android/app/build/outputs/apk/debug/app-debug.apk",
+    package + ".test": root / "android/app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk",
+}
+for app, apk in apks.items():
+    if not apk.is_file():
+        raise SystemExit(f"Build the debug and instrumentation APKs first: missing {apk}")
+    subprocess.run(adb + ["install", "-r", "-t", str(apk)], check=True, timeout=60)
     installed = device("shell", "pm", "path", app).removeprefix("package:")
     if not installed.startswith("/data/app/") or "\n" in installed:
         raise SystemExit(f"Unexpected installed APK path for {app}")
     hashes[app] = device("shell", "sha256sum", installed).split()[0]
+    if hashes[app] != hashlib.sha256(apk.read_bytes()).hexdigest():
+        raise SystemExit(f"Installed APK differs from the built artifact: {app}")
 
 record = {"api": api, "serial": serials[0], "installed_apk_sha256": hashes, "runs": []}
 summary = output / "summary.json"
