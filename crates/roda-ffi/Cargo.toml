@@ -35,9 +35,12 @@ chacha20poly1305.workspace = true
 roda-docs.workspace = true
 zoen-liveview.workspace = true
 hkdf.workspace = true
+curve25519-dalek.workspace = true
+argon2.workspace = true
 base64 = "0.22"
 fastcdc = "5"
 hpke-rs = { version = "0.7", default-features = false, features = ["rustcrypto"] }
 
 [dev-dependencies]
 sha2.workspace = true
+prost.workspace = true

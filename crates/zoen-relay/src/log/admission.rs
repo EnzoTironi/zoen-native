@@ -224,6 +224,17 @@ fn check_handshake(env: &Envelope, f: &Facts) -> Result<Option<Effect>, Reject> 
         return Ok(None);
     };
     let device = env.device().unwrap_or(env.author()).to_string();
+    if let Some(bytes) = env.recovery() {
+        let reference = roda_log::recovery::RecoveryRef::parse(bytes)
+            .ok_or_else(|| Reject::no("invalid recovery context reference"))?;
+        if kind != SealedKind::Commit
+            || roda_mls::commit_epoch(data).and_then(|e| e.checked_add(1)) != Some(reference.epoch)
+        {
+            return Err(Reject::no(
+                "recovery context must follow its commit's epoch",
+            ));
+        }
+    }
     match kind {
         SealedKind::Commit => {
             let epoch = roda_mls::commit_epoch(data)

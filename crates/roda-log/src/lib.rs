@@ -18,6 +18,7 @@
 
 pub mod content;
 pub mod profile;
+pub mod recovery;
 
 use content::{Payload, SignedContent};
 use ed25519_dalek::{Signature, Signer as _, SigningKey, Verifier, VerifyingKey};

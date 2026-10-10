@@ -533,12 +533,44 @@ async fn one_commit_per_epoch_and_each_welcome_follows_its_commit() {
     let first = d_ana
         .commit(&space, &d_bruno.key_packages(1, false).unwrap(), &none)
         .unwrap();
-    let env = handshake(ana, SealedKind::Commit, first.commit.clone(), &head);
+    let with_context = |kind, data, epoch, head: &roda_types::Seen| {
+        let mut sealed = roda_proto::Sealed::new(kind, roda_mls::SUITE_ID, data);
+        sealed.recovery = roda_log::recovery::RecoveryRef {
+            version: 1,
+            epoch,
+            blob: "ab".repeat(32),
+        }
+        .encode();
+        Envelope::sealed(ana, &space, &roda_types::new_id("c"), 1, Some(head), sealed)
+    };
+    assert_eq!(
+        refused(
+            warm.append(
+                &with_context(SealedKind::Commit, first.commit.clone(), 99, &head),
+                true
+            )
+            .await
+        ),
+        "recovery context must follow its commit's epoch"
+    );
+    assert_eq!(
+        refused(
+            warm.append(
+                &with_context(SealedKind::Application, vec![1], 1, &head),
+                true
+            )
+            .await
+        ),
+        "recovery context must follow its commit's epoch"
+    );
+    let env = with_context(SealedKind::Commit, first.commit.clone(), 1, &head);
     head = at(&landed(warm.append(&env, true).await));
     let env = handshake(ana, SealedKind::Welcome, first.welcome.unwrap(), &head);
     let welcome = landed(warm.append(&env, true).await);
     head = at(&welcome);
-    d_ana.open(&space, &first.commit, &listed).unwrap();
+    d_ana
+        .open(&space, &first.commit, &listed, d_ana.leaf())
+        .unwrap();
     let data = welcome.env.sealed_data().unwrap().1.to_vec();
     assert!(d_bruno.join(&space, &data, &listed).unwrap());
 

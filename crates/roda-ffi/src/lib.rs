@@ -10,6 +10,9 @@
 use std::sync::{Arc, Mutex, MutexGuard};
 
 mod api;
+mod backup;
+mod backup_api;
+pub use backup_api::BackupStatusDto;
 mod files;
 mod growth;
 pub use growth::{AcquisitionDto, GrowthSyncDto, OnboardingPlanDto};
@@ -24,6 +27,7 @@ mod link;
 mod link_api;
 mod linking;
 mod mls;
+mod mls_recovery;
 mod net;
 mod profile;
 mod replies;

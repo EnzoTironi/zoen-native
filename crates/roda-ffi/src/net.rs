@@ -425,6 +425,8 @@ async fn session(
         Ok(other) => return Exit::Retry(format!("unexpected {other:?}")),
         Err(e) => return Exit::Retry(e),
     };
+    // HTTP writes beside the socket (backups) sign for this name too.
+    let _ = ctx.engine().store.set_meta("relay_name", &relay);
     if let Err(e) = send(
         &mut sink,
         &ClientFrame::Auth {
@@ -764,6 +766,11 @@ async fn session(
                 if ctx.engine().take_ask_devices() {
                     reqs.push((Op::Devices, Waiting::Devices));
                 }
+                match ctx.engine().mls_recovery_pass() {
+                    Ok(true) => media_kick.notify_one(),
+                    Ok(false) => {}
+                    Err(e) => tracing_like(&format!("group recovery: {e}")),
+                }
                 let claim = ctx.engine().mls_to_claim();
                 if let Some((space, ids)) = claim {
                     reqs.push((Op::ClaimKeyPackages { ids }, Waiting::Claimed(space)));
@@ -880,6 +887,44 @@ fn now_ms() -> i64 {
     crate::engine::now_ms()
 }
 
+#[derive(Default)]
+struct RecoveryRetries {
+    by_space: HashMap<String, (crate::mls_recovery::ContextRef, tokio::time::Instant)>,
+}
+
+impl RecoveryRetries {
+    fn next(
+        &mut self,
+        wanted: Vec<crate::mls_recovery::ContextRef>,
+        now: tokio::time::Instant,
+    ) -> Option<crate::mls_recovery::ContextRef> {
+        let current: HashMap<_, _> = wanted.iter().map(|r| (r.space.as_str(), r)).collect();
+        self.by_space.retain(|space, (reference, _)| {
+            current.get(space.as_str()).is_some_and(|r| *r == reference)
+        });
+        wanted
+            .into_iter()
+            .find(|r| !self.by_space.get(&r.space).is_some_and(|(_, at)| *at > now))
+    }
+
+    fn defer(&mut self, reference: crate::mls_recovery::ContextRef, now: tokio::time::Instant) {
+        self.by_space.insert(
+            reference.space.clone(),
+            (reference, now + Duration::from_secs(5)),
+        );
+    }
+
+    fn complete(&mut self, reference: &crate::mls_recovery::ContextRef) {
+        if self
+            .by_space
+            .get(&reference.space)
+            .is_some_and(|(r, _)| r == reference)
+        {
+            self.by_space.remove(&reference.space);
+        }
+    }
+}
+
 /// Uploads queued encrypted copies and downloads the ones the chats need, retrying with
 /// backoff (a peer's event can arrive before their upload finishes).
 async fn media_worker(
@@ -898,6 +943,7 @@ async fn media_worker(
         return;
     };
     let mut retry_at: HashMap<String, (tokio::time::Instant, u32)> = HashMap::new();
+    let mut recovery_retries = RecoveryRetries::default();
     loop {
         // ── up ──
         let uploads = lock(&engine).pending_uploads(8);
@@ -921,7 +967,7 @@ async fn media_worker(
                         &sha[..12],
                         r.status()
                     ));
-                    lock(&engine).upload_done(&sha);
+                    lock(&engine).upload_refused(&sha);
                 }
                 Ok(r) => {
                     tracing_like(&format!(
@@ -935,6 +981,24 @@ async fn media_worker(
                     tracing_like(&format!("media: upload failed: {e}"));
                     break;
                 }
+            }
+        }
+
+        // Recovery uses a separate bounded download. Only ciphertext is cached, and
+        // its content address must match the signed commit before MLS sees any bytes.
+        let wanted = lock(&engine).wanted_recovery_contexts();
+        if let Some(reference) = recovery_retries.next(wanted, tokio::time::Instant::now()) {
+            let bytes = bounded_blob(
+                &http,
+                &format!("{base}/v1/blobs/{}", reference.blob),
+                roda_log::recovery::MAX_RECOVERY_BLOB_BYTES,
+            )
+            .await;
+            if bytes.is_some_and(|bytes| lock(&engine).recovery_context_arrived(&reference, &bytes))
+            {
+                recovery_retries.complete(&reference);
+            } else {
+                recovery_retries.defer(reference, tokio::time::Instant::now());
             }
         }
 
@@ -978,6 +1042,23 @@ async fn media_worker(
             _ = tokio::time::sleep(Duration::from_secs(5)) => {}
         }
     }
+}
+
+async fn bounded_blob(http: &reqwest::Client, url: &str, limit: usize) -> Option<Vec<u8>> {
+    let mut response = http.get(url).send().await.ok()?;
+    if !response.status().is_success()
+        || response.content_length().is_some_and(|n| n > limit as u64)
+    {
+        return None;
+    }
+    let mut bytes = Vec::new();
+    while let Some(chunk) = response.chunk().await.ok()? {
+        if chunk.len() > limit.saturating_sub(bytes.len()) {
+            return None;
+        }
+        bytes.extend_from_slice(&chunk);
+    }
+    (!bytes.is_empty()).then_some(bytes)
 }
 
 pub(crate) fn tracing_like(msg: &str) {
@@ -1085,6 +1166,54 @@ mod tests {
     use tokio_tungstenite::WebSocketStream;
 
     type RelaySocket = WebSocketStream<tokio::net::TcpStream>;
+
+    #[test]
+    fn recovery_download_retries_follow_current_references_and_discard_obsolete_failures() {
+        let mut retries = RecoveryRetries::default();
+        let now = tokio::time::Instant::now();
+        let mut reference = crate::mls_recovery::ContextRef {
+            space: "changing-context".into(),
+            epoch: 0,
+            blob: "0".repeat(64),
+            device: "device".into(),
+        };
+        for epoch in 0..10_000 {
+            reference.epoch = epoch;
+            reference.blob = format!("{epoch:064x}");
+            assert_eq!(
+                retries.next(vec![reference.clone()], now),
+                Some(reference.clone())
+            );
+            retries.defer(reference.clone(), now);
+            assert_eq!(retries.next(vec![reference.clone()], now), None);
+            assert_eq!(retries.by_space.len(), 1);
+        }
+        assert_eq!(
+            retries.next(vec![reference.clone()], now + Duration::from_secs(5)),
+            Some(reference.clone())
+        );
+        let other = crate::mls_recovery::ContextRef {
+            space: "another-space".into(),
+            ..reference.clone()
+        };
+        retries.defer(other.clone(), now);
+        assert_eq!(retries.next(vec![other.clone()], now), None);
+        assert_eq!(retries.by_space.len(), 1, "obsolete Space was removed");
+        retries.complete(&reference);
+        assert_eq!(
+            retries.by_space.len(),
+            1,
+            "a stale completion cannot clear another Space's backoff"
+        );
+        retries.complete(&other);
+        assert!(retries.by_space.is_empty());
+        retries.defer(other, now);
+        assert!(retries.next(Vec::new(), now).is_none());
+        assert!(
+            retries.by_space.is_empty(),
+            "cached, removed or restored groups need no retry state"
+        );
+    }
 
     async fn request(socket: &mut RelaySocket) -> ClientFrame {
         loop {
@@ -1255,7 +1384,8 @@ mod tests {
         assert!(engine.store.meta(&fresh_key).unwrap().is_none());
         let advance = peer.commit(space, &[], &Default::default()).unwrap();
         assert!(matches!(
-            peer.open(space, &advance.commit, &roster).unwrap(),
+            peer.open(space, &advance.commit, &roster, peer.leaf())
+                .unwrap(),
             Opened::Commit { epoch: 2 }
         ));
         let missed_commit = sequence(
@@ -1413,9 +1543,8 @@ mod tests {
                 let (marker, marked) = oneshot::channel();
                 let marker_box = "11".repeat(32);
                 cmd.send(Cmd::Req {
-                    op: Op::Lookup {
-                        handle: marker_box.clone(),
-                        prefix: true,
+                    op: Op::FetchLink {
+                        id: marker_box.clone(),
                     },
                     reply: marker,
                 })
@@ -1427,17 +1556,13 @@ mod tests {
                         }
                         ClientFrame::Req {
                             id,
-                            op:
-                                Op::Lookup {
-                                    handle,
-                                    prefix: true,
-                                },
-                        } if handle == marker_box => {
+                            op: Op::FetchLink { id: link },
+                        } if link == marker_box => {
                             reply(
                                 &mut socket,
                                 ServerFrame::Res {
                                     id,
-                                    result: Ok(Reply::Profiles(Vec::new())),
+                                    result: Ok(Reply::Link(None)),
                                 },
                             )
                             .await;
@@ -1447,9 +1572,7 @@ mod tests {
                         other => panic!("maintenance sent {other:?} before catch-up"),
                     }
                 }
-                assert!(
-                    matches!(marked.await.unwrap(), Ok(Reply::Profiles(list)) if list.is_empty())
-                );
+                assert!(matches!(marked.await.unwrap(), Ok(Reply::Link(None))));
                 {
                     let engine = lock(&engine);
                     assert_eq!(engine.outbox_len(), 2);
@@ -1481,8 +1604,18 @@ mod tests {
                         }
                         let (_, bytes) = env.sealed_data().unwrap();
                         assert_eq!(roda_mls::application_epoch(bytes), Some(2));
-                        let Opened::Application { plaintext, .. } =
-                            peer.open(space, bytes, &roster).unwrap()
+                        let Opened::Application { plaintext, .. } = peer
+                            .open(
+                                space,
+                                bytes,
+                                &roster,
+                                &roda_mls::Leaf {
+                                    identity: env.author().into(),
+                                    device: env.device().unwrap().into(),
+                                    cert: env.cert.clone().unwrap(),
+                                },
+                            )
+                            .unwrap()
                         else {
                             panic!("the peer must read the message at the caught-up epoch")
                         };
@@ -1513,9 +1646,8 @@ mod tests {
             let (marker, marked) = oneshot::channel();
             let marker_box = "22".repeat(32);
             cmd.send(Cmd::Req {
-                op: Op::Lookup {
-                    handle: marker_box.clone(),
-                    prefix: true,
+                op: Op::FetchLink {
+                    id: marker_box.clone(),
                 },
                 reply: marker,
             })
@@ -1524,17 +1656,13 @@ mod tests {
                 match request(&mut socket).await {
                     ClientFrame::Req {
                         id,
-                        op:
-                            Op::Lookup {
-                                handle,
-                                prefix: true,
-                            },
-                    } if handle == marker_box => {
+                        op: Op::FetchLink { id: link },
+                    } if link == marker_box => {
                         reply(
                             &mut socket,
                             ServerFrame::Res {
                                 id,
-                                result: Ok(Reply::Profiles(Vec::new())),
+                                result: Ok(Reply::Link(None)),
                             },
                         )
                         .await;
@@ -1555,7 +1683,7 @@ mod tests {
                     other => panic!("unexpected {other:?}"),
                 }
             }
-            assert!(matches!(marked.await.unwrap(), Ok(Reply::Profiles(list)) if list.is_empty()));
+            assert!(matches!(marked.await.unwrap(), Ok(Reply::Link(None))));
             {
                 let engine = lock(&engine);
                 assert!(!engine.net.pending.contains_key(&cached.client_id));
