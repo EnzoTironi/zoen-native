@@ -37,7 +37,7 @@ import androidx.compose.ui.window.DialogProperties
 private fun HomeBar(title: String, state: AppState, navigate: (NavKey) -> Unit, onStore: (() -> Unit)? = null, onSearch: (() -> Unit)? = null) {
     TopAppBar(title = {
         if (onStore != null) Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-            ZoenMascot(Modifier.size(32.dp))
+            ZoenMascot(Modifier.size(32.dp), headOnly = true)
             Text("zoen", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.ExtraBold)
         } else Text(title, maxLines = 1, overflow = TextOverflow.Ellipsis)
     }, actions = {
@@ -96,7 +96,7 @@ fun ConversationsScreen(model: ZoenViewModel, state: AppState, navigate: (NavKey
         Box(Modifier.weight(1f).fillMaxHeight()) {
             val chat = selectedChat?.let { id -> state.spaces.firstOrNull { it.id == id } }
             if (chat != null) ChatScreen(model, state, chat.id, navigate, { selectedChat = null })
-            else Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { EmptyState(stringResource(R.string.chat_empty_title), stringResource(R.string.chat_empty_detail)) }
+            else Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { EmptyState(stringResource(R.string.chat_select_title), stringResource(R.string.chat_select_detail)) }
         }
     } else list()
     if (store) Dialog(onDismissRequest = { store = false }, properties = DialogProperties(usePlatformDefaultWidth = false)) {

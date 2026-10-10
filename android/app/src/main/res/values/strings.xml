@@ -80,6 +80,8 @@ A lot more you.</string>
   <string name="live_apps">From your conversations</string>
   <string name="chat_empty_title">Start something good.</string>
   <string name="chat_empty_detail">Your conversations will appear here. Say hello to Zoen or find someone.</string>
+  <string name="chat_select_title">Choose a conversation.</string>
+  <string name="chat_select_detail">Open a chat or start a new one.</string>
   <string name="spaces_empty_title">Better together.</string>
   <string name="spaces_empty_detail">Create a space for your people, plans, and shared things.</string>
   <string name="all">All</string>

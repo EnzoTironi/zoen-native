@@ -26,7 +26,7 @@ import kotlinx.coroutines.delay
 enum class MascotPose { Wave, Phone, Map, Run, Juggle, Walk, Cheer }
 
 @Composable
-fun ZoenMascot(modifier: Modifier = Modifier, animated: Boolean = false, pose: MascotPose = MascotPose.Wave) {
+fun ZoenMascot(modifier: Modifier = Modifier, animated: Boolean = false, pose: MascotPose = MascotPose.Wave, headOnly: Boolean = false) {
     val context = LocalContext.current
     val lifecycle = LocalLifecycleOwner.current.lifecycle
     val reduced = Settings.Global.getFloat(context.contentResolver, Settings.Global.ANIMATOR_DURATION_SCALE, 1f) == 0f
@@ -37,7 +37,7 @@ fun ZoenMascot(modifier: Modifier = Modifier, animated: Boolean = false, pose: M
         }
     }
     Canvas(modifier.semantics { contentDescription = "Zoen" }) {
-        val unit = min(size.width / 160f, size.height / 170f)
+        val unit = if (headOnly) min(size.width / 124f, size.height / 124f) else min(size.width / 160f, size.height / 170f)
         val origin = Offset((size.width - 160 * unit) / 2, (size.height - 170 * unit) / 2)
         val phase = if (animated && !reduced) frame / 12f else 0f
         val bounce = sin(phase * 2.5f) * 1.5f
@@ -47,11 +47,13 @@ fun ZoenMascot(modifier: Modifier = Modifier, animated: Boolean = false, pose: M
             fun p(x: Float, y: Float) = Offset(ox + x, oy + y + bounce)
             val ink = Color(0xFF2B4019)
             val fur = Color(0xFF6A9A36)
-            drawOval(Color(0x1A3D542A), p(29f, 145f), Size(105f, 11f))
-            drawLine(ink, p(55f, 125f), p(49f, 144f), 6f, StrokeCap.Round)
-            drawLine(ink, p(107f, 125f), p(114f, 144f), 6f, StrokeCap.Round)
-            drawLine(ink, p(38f, 98f), p(23f, if (pose == MascotPose.Wave || pose == MascotPose.Cheer) 72f else 106f), 6f, StrokeCap.Round)
-            drawLine(ink, p(124f, 98f), p(136f, if (pose == MascotPose.Cheer) 72f else 108f), 6f, StrokeCap.Round)
+            if (!headOnly) {
+                drawOval(Color(0x1A3D542A), p(29f, 145f), Size(105f, 11f))
+                drawLine(ink, p(55f, 125f), p(49f, 144f), 6f, StrokeCap.Round)
+                drawLine(ink, p(107f, 125f), p(114f, 144f), 6f, StrokeCap.Round)
+                drawLine(ink, p(38f, 98f), p(23f, if (pose == MascotPose.Wave || pose == MascotPose.Cheer) 72f else 106f), 6f, StrokeCap.Round)
+                drawLine(ink, p(124f, 98f), p(136f, if (pose == MascotPose.Cheer) 72f else 108f), 6f, StrokeCap.Round)
+            }
             val body = Path().apply {
                 for (i in 0..90) {
                     val angle = (i * 2 * PI / 90).toFloat()
@@ -90,6 +92,7 @@ fun ZoenMascot(modifier: Modifier = Modifier, animated: Boolean = false, pose: M
             drawOval(Color(0xFFEFAAA2), p(107f, 91f), Size(20f, 10f))
             val mouth = Path().apply { moveTo(p(72f, 106f).x, p(72f, 106f).y); quadraticTo(p(80f, if (pose == MascotPose.Cheer) 116f else 102f).x, p(80f, if (pose == MascotPose.Cheer) 116f else 102f).y, p(88f, 106f).x, p(88f, 106f).y) }
             drawPath(mouth, ink, style = Stroke(2.4f, cap = StrokeCap.Round))
+            if (headOnly) return@scale
             if (pose == MascotPose.Map) {
                 drawRoundRect(Color(0xFFFFFCF5), p(109f, 89f), Size(40f, 34f), cornerRadius = androidx.compose.ui.geometry.CornerRadius(3f))
                 drawLine(Color(0xFF6A9A36), p(122f, 89f), p(122f, 123f), 1.5f)

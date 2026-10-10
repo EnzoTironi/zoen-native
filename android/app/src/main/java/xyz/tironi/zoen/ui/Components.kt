@@ -64,7 +64,7 @@ fun Avatar(persona: Persona?, modifier: Modifier = Modifier, size: Int = 52, onC
     Box(modifier.size(size.dp).clip(shape).background(if (contact) MaterialTheme.colorScheme.surface else color.copy(alpha = .18f))
         .then(if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier), contentAlignment = Alignment.Center) {
         if (photo != null) Image(photo!!.asImageBitmap(), persona?.name, Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
-        else if (persona?.handle == "zoen") ZoenMascot(Modifier.fillMaxSize().padding(2.dp))
+        else if (persona?.handle == "zoen") ZoenMascot(Modifier.fillMaxSize().padding(2.dp), headOnly = true)
         else if (drawing != null) AvatarDrawing(drawing, size)
         else if (persona?.kind == PersonaKind.AGENT) Icon(Icons.Rounded.AutoAwesome, persona.name, tint = MaterialTheme.colorScheme.primary)
         else Text(persona?.initials ?: "Z", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onSurface, fontWeight = FontWeight.SemiBold)
