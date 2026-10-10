@@ -54,13 +54,13 @@ fun ZoenMascot(modifier: Modifier = Modifier, animated: Boolean = false, pose: M
         MascotPose.Walk -> if (moving) R.drawable.zoen_mascot_walk_motion else R.drawable.zoen_mascot_walk
         MascotPose.Cheer -> if (moving) R.drawable.zoen_mascot_cheer_motion else R.drawable.zoen_mascot_cheer
     }
-    val drawable by produceState<Drawable?>(null, resource, context) {
+    val drawable = produceState<Drawable?>(null, resource, context) {
         value = withContext(Dispatchers.IO) {
             ImageDecoder.decodeDrawable(ImageDecoder.createSource(context.resources, resource)).apply {
                 if (this is AnimatedImageDrawable) repeatCount = AnimatedImageDrawable.REPEAT_INFINITE
             }
         }
-    }
+    }.value
     DisposableEffect(drawable, lifecycle) {
         val animation = drawable as? AnimatedImageDrawable
         val observer = LifecycleEventObserver { _, event ->

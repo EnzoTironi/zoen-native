@@ -29,6 +29,8 @@ Historical source `161c487` passed 53 cases at both viewport sizes. Earlier visu
 
 Current-head CI acceptance requires 54 passing cases on Android 15 and 52 passes with only the two documented HTML-provider skips on Android 9. [PR 41 checks](https://github.com/EnzoTironi/zoen-native/pull/41/checks) publish those results. Native/visual evidence is separate from successful physical model execution and the shared public relay rollout.
 
+The `1c91fb8` CI run passed Android 9 (52 passes and the same two provider skips), but Android 15 passed 53/54: the Activity appearance/recreation journey hit a detached `AndroidViewHolder` snapshot callback with a null handler. The mascot's delegated drawable state was being read inside the native view update. The lifecycle follow-up reads its value in composition and passes the completed drawable into the native view; the original journey and all deadlines remain unchanged. The failed XML/logs are retained. Five local baseline repeats did not reproduce this intermittent CI failure, so they are not claimed as a deterministic reproduction. Fresh checks are required for the follow-up.
+
 ## Evidence and scope
 
 The primary Files journey uses the same test APK against the previous and corrected app. The previous app fails because the primary Files destination is absent. The corrected app opens Files, preserves folder search through recreation, returns to Files with one Back action and switches to Chats and back. The screen-inspector accessibility conflict was retained as a separate failed harness run, then resolved by closing the inspector before instrumentation.
