@@ -108,6 +108,43 @@ class ParityJourneysTest {
         assertFalse(application.repository.appVisible)
     }
 
+    @Test fun pinnedPlanUsesTheSharedCardAndUnpinPersistsWithoutDeletingIt() {
+        val plan = application.repository.state.value.items.first { it.plan != null }
+        val pins = xyz.tironi.zoen.miniapps.MiniAppPins(application.repository.preferences)
+        val scope = xyz.tironi.zoen.miniapps.MiniAppPins.chat(plan.spaceId)
+        val tile = "miniapp-tile:${plan.id}#0"
+        pins.show(plan.id, scope)
+        try {
+            open("zoen://chat/${plan.spaceId}")
+            compose.waitUntil(10_000) { compose.onAllNodesWithTag(tile).fetchSemanticsNodes().isNotEmpty() }
+            compose.onNodeWithTag("chat-timeline").performScrollToIndex(0)
+            val summary = application.getString(R.string.chat_plan_count, plan.plan!!.sections.sumOf { it.lines.size },
+                xyz.tironi.zoen.core.formatMoney(plan.plan!!.totalCents, application.repository.locale))
+            compose.onNodeWithText(summary).assertIsDisplayed()
+            capturePageHistory("chat-pinned-plan-shared-card")
+            compose.onNodeWithTag(tile).performClick()
+            compose.onAllNodesWithText(plan.title).onFirst().assertIsDisplayed()
+            compose.onNodeWithContentDescription(application.getString(R.string.back)).performClick()
+            compose.waitUntil(10_000) { compose.onAllNodesWithTag(tile).fetchSemanticsNodes().isNotEmpty() }
+            val unpin = compose.onNodeWithTag(tile).fetchSemanticsNode().config[androidx.compose.ui.semantics.SemanticsActions.CustomActions]
+                .first { it.label == application.getString(R.string.unpin) }
+            compose.runOnIdle { assertTrue(unpin.action()) }
+            compose.onNodeWithText(application.getString(R.string.cancel)).performClick()
+            compose.onNodeWithTag(tile).assertIsDisplayed()
+            compose.runOnIdle { assertTrue(unpin.action()) }
+            compose.onNodeWithText(application.getString(R.string.unpin)).performClick()
+            compose.waitUntil(10_000) { compose.onAllNodesWithTag(tile).fetchSemanticsNodes().isEmpty() }
+            scenario.recreate()
+            compose.onNodeWithTag(tile).assertDoesNotExist()
+            val retained = runBlocking { application.repository.query { it.item(plan.id) } }
+            assertEquals(plan.version, retained.version)
+            assertEquals(plan.plan, retained.plan)
+            capturePageHistory("chat-pinned-plan-unpinned-after-recreation")
+        } finally {
+            pins.show(plan.id, scope)
+        }
+    }
+
     @Test fun threadRepliesStaySeparateQuotesJumpAndPinnedPlanOpensTheRealItem() {
         val plan = application.repository.state.value.items.first { it.plan != null }
         val space = plan.spaceId
@@ -119,7 +156,7 @@ class ParityJourneysTest {
             application.repository.change { it.sendReply(space, "Native inline reply", root, false); it.sendReply(space, "Native separate thread", root, true) }
         }
         open("zoen://chat/$space")
-        compose.waitUntil(10_000) { compose.onAllNodesWithTag("chat-pinned-plan").fetchSemanticsNodes().isNotEmpty() }
+        compose.waitUntil(10_000) { compose.onAllNodesWithTag("miniapp-tile:${plan.id}#0").fetchSemanticsNodes().isNotEmpty() }
         compose.onNodeWithText("Native separate thread").assertDoesNotExist()
         compose.onNodeWithTag("chat-timeline").performScrollToNode(hasTestTag("quote:$root"))
         compose.onNodeWithTag("quote:$root").assertIsDisplayed()
@@ -134,7 +171,7 @@ class ParityJourneysTest {
         compose.waitUntil(10_000) { compose.onAllNodesWithText("Native separate thread").fetchSemanticsNodes().isNotEmpty() }
         compose.onNodeWithText("Native separate thread").assertExists()
         compose.onNodeWithContentDescription(application.getString(R.string.back)).performClick()
-        compose.onNodeWithTag("chat-pinned-plan").performClick()
+        compose.onNodeWithTag("miniapp-tile:${plan.id}#0").performClick()
         compose.onAllNodesWithText(plan.title, substring = false).onFirst().assertExists()
     }
 
@@ -151,7 +188,9 @@ class ParityJourneysTest {
             val bold = compose.onNodeWithContentDescription(application.getString(R.string.page_bold)).fetchSemanticsNode().config
             val toggle = androidx.compose.ui.semantics.SemanticsProperties.ToggleableState
             val key = application.repository.localKey("pageDraft", item.id, application.repository.state.value.me!!.id)
-            val draft = application.repository.preferences.getString(key, null)
+            val draft = xyz.tironi.zoen.pages.PageDraftStore(application.repository.vault,
+                application.repository.localKey("encryptedPageDraft", item.id, application.repository.state.value.me!!.id))
+                .load(application.repository.preferences, key)?.content
             val spans = draft?.let { xyz.tironi.zoen.pages.PageEditing.decode(it) }
                 ?.firstOrNull { it.id == paragraph.id }?.spans.orEmpty()
             val record = org.json.JSONObject(mapOf(

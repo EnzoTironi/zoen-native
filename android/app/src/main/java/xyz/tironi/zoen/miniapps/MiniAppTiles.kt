@@ -75,7 +75,14 @@ fun MiniAppTileStrip(
         onDispose { preferences.unregisterOnSharedPreferenceChangeListener(listener) }
     }
     val isChat = scope.startsWith("chat:")
-    val raw = items.flatMap { item ->
+    val pinnedItems = if (isChat) {
+        val available = pins.visible(items, ItemDetail::id, scope)
+        val plan = available.firstOrNull { it.plan != null }
+        listOfNotNull(plan) + available.filter { it.app != null && it.id != plan?.id }
+            .sortedWith(compareByDescending<ItemDetail> { it.app?.appId == "hike" }
+                .thenByDescending { it.versions.firstOrNull()?.atMs ?: 0L })
+    } else items
+    val raw = pinnedItems.flatMap { item ->
         val snapshots = if (isChat) MiniAppSnapshots.tiles(item, model.repository.locale) else listOfNotNull(WidgetSnapshot.from(item))
         if (snapshots.isEmpty()) listOf(MiniAppTile(item.id, item, null))
         else snapshots.mapIndexed { index, snapshot -> MiniAppTile(if (isChat) "${item.id}#$index" else item.id, item, snapshot) }
@@ -110,7 +117,7 @@ fun MiniAppTileStrip(
                     .combinedClickable(hapticFeedbackEnabled = false, onClick = {
                         if (!editing) {
                             haptics.perform(ZoenFeedback.Open)
-                            if (compact || bounds == Rect.Zero) onOpenItem(tile.item.id) else flip = AppFlip(tile.item, bounds, tile.snapshot)
+                            if (tile.item.plan != null || compact || bounds == Rect.Zero) onOpenItem(tile.item.id) else flip = AppFlip(tile.item, bounds, tile.snapshot)
                         }
                     }, onLongClick = { editing = true; haptics.perform(ZoenFeedback.PickUp) })
                     .pointerInput(editing, tile.key, index, tiles.map { it.key }) {
@@ -124,9 +131,16 @@ fun MiniAppTileStrip(
                         customActions = listOf(CustomAccessibilityAction(moveLeft) { move(tile, -1); true }, CustomAccessibilityAction(moveRight) { move(tile, 1); true }, CustomAccessibilityAction(unpin) { remove = tile; true })
                     }
                 Column(shared.width(if (compact) 170.dp else 180.dp)) {
-                    if (compact) AssistChip(onClick = { onOpenItem(tile.item.id) }, label = { Text(tile.snapshot?.title ?: tile.item.title) })
+                    if (compact) AssistChip(onClick = {
+                        haptics.perform(ZoenFeedback.Open); onOpenItem(tile.item.id)
+                    }, enabled = !editing, label = { Text(tile.snapshot?.title ?: tile.item.title) })
                     else if (tile.snapshot != null) SnapshotCard(tile.snapshot, Modifier.fillMaxWidth().height((180f + (density.fontScale - 1).coerceAtLeast(0f) * 120f).dp))
-                    else ItemTile(tile.item, { if (!editing) flip = AppFlip(tile.item, bounds, null) })
+                    else ItemTile(tile.item, {
+                        if (!editing) {
+                            haptics.perform(ZoenFeedback.Open)
+                            if (tile.item.plan != null) onOpenItem(tile.item.id) else flip = AppFlip(tile.item, bounds, null)
+                        }
+                    })
                     if (editing) Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                         IconButton(onClick = { move(tile, -1) }, enabled = index > 0) { Icon(Icons.AutoMirrored.Rounded.ArrowBack, moveLeft) }
                         IconButton(onClick = { remove = tile }) { Icon(Icons.Rounded.RemoveCircleOutline, unpin) }

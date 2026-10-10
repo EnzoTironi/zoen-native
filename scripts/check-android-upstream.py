@@ -29,7 +29,7 @@ head = git("rev-parse", "HEAD").stdout.strip()
 # Updating these references requires reviewing the new Apple flows and their Android equivalents.
 reviewed_ios = {
     "ux/audit-p1": "07a04de9434cd3e7d26ba30be00b5722360b9754",
-    "codex/desktop-web-chat-shell": "39ccb765957f9a6e2f95c48aebfbd1b8a3aac38c",
+    "codex/desktop-web-chat-shell": "c9d6f8b6511c4203011b394a985147d3b0dc6d2d",
     "codex/roadmap-integration": "d9ebb3ed0208c52ce84600078e933213b2cdc905",
 }
 ios_changes = {
@@ -196,7 +196,7 @@ report = {
         "integration_requirement": "Retain the Android branch's shared-core additions when merging newer upstream work; an unmerged candidate does not yet contain them.",
     },
     "original_art_sources": sources,
-    "ios_review_behaviors_adapted": ["unified inbox with kind filters", "preserve reading position", "count incoming root messages", "first unread excludes own and system events", "pinned apps outside scrolling history", "approval cards and list", "four approval gestures with a 4.5-second pre-commit undo window"],
+    "ios_review_behaviors_adapted": ["unified inbox with kind filters", "preserve reading position", "count incoming root messages", "first unread excludes own and system events", "pinned apps outside scrolling history", "pinned plans share validated mini-app cards and local pin controls", "approval cards and list", "four approval gestures with a 4.5-second pre-commit undo window"],
     "pending_backend": {
         "pr": "https://github.com/EnzoTironi/zoen-native/pull/46",
         "commit": refs["codex/backend-agent-proposals"],

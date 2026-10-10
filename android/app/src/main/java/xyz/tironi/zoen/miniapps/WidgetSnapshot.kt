@@ -7,6 +7,7 @@ import java.util.concurrent.ConcurrentHashMap
 import org.json.JSONArray
 import org.json.JSONObject
 import xyz.tironi.zoen.core.ItemDetail
+import xyz.tironi.zoen.core.formatMoney
 
 /** Validated, local-art-only content shared by live tiles and Android app widgets. */
 data class WidgetSnapshot(
@@ -132,6 +133,13 @@ object MiniAppSnapshots {
     fun clear() { overrides.clear() }
 
     fun tiles(item: ItemDetail, locale: String, nowMs: Long = System.currentTimeMillis()): List<WidgetSnapshot> {
+        item.plan?.let { plan ->
+            val count = plan.sections.sumOf { it.lines.size }
+            val detail = "$count ${if (locale.startsWith("pt")) "itens" else "items"} · ${formatMoney(plan.totalCents, locale)}"
+            val snapshot = WidgetSnapshot(item.id, "plan", WidgetSnapshot.Template.CAPTION, item.title,
+                detail = detail, accentHex = "#3D7A28", symbol = "list.bullet", art = "notepad", deepLink = "zoen://app/${item.id}")
+            return listOfNotNull(WidgetSnapshot.decode(snapshot.toJson(), item.id))
+        }
         val primary = WidgetSnapshot.from(item) ?: return emptyList()
         if (item.app?.appId != "hike") return listOf(primary)
         val data = runCatching { JSONObject(item.app!!.viewJson) }.getOrNull() ?: return listOf(primary)

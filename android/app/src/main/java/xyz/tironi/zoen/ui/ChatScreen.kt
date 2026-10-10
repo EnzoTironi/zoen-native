@@ -316,17 +316,7 @@ fun ChatScreen(model: ZoenViewModel, state: AppState, spaceId: String, navigate:
             if (!state.demo && state.connection.state != "online" && space.counterpart?.handle != "zoen") {
                 Text(stringResource(if (state.connection.state == "connecting") R.string.connecting else R.string.offline), Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.secondaryContainer).padding(12.dp), style = MaterialTheme.typography.bodySmall)
             }
-            val apps = state.items.filter { it.spaceId == spaceId && it.app != null }
-            state.items.firstOrNull { it.spaceId == spaceId && it.plan != null }?.let { pinned ->
-                val lines = pinned.plan!!.sections.flatMap { it.lines }
-                Card(onClick = { navigate(Item(pinned.id)) }, modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp).testTag("chat-pinned-plan")) {
-                    Row(Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                        Icon(Icons.Rounded.PushPin, stringResource(R.string.chat_pinned_plan, pinned.title), tint = MaterialTheme.colorScheme.primary)
-                        Column(Modifier.weight(1f)) { Text(pinned.title, maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.titleSmall); Text(stringResource(R.string.chat_plan_count, lines.size, formatMoney(lines.sumOf { it.costCents }, model.repository.locale)), style = MaterialTheme.typography.labelSmall) }
-                        Icon(Icons.Rounded.ChevronRight, null)
-                    }
-                }
-            }
+            val apps = state.items.filter { it.spaceId == spaceId && (it.app != null || it.plan != null) }
             if (apps.isNotEmpty()) MiniAppTileStrip(model, state, apps, scope = MiniAppPins.chat(spaceId), compact = list.firstVisibleItemIndex > 2, onOpenItem = { navigate(Item(it)) })
             AgentBrowserCard(model.browser, spaceId) { navigate(Browser) }
             Box(Modifier.weight(1f)) {
