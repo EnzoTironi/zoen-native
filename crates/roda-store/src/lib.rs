@@ -461,6 +461,7 @@ mod tests {
     fn identities_and_meta_persist() {
         let s = Store::in_memory().unwrap();
         let id = Identity {
+            owner_proof: None,
             id: "abc".into(),
             kind: IdentityKind::Agent,
             name: "Financeiro".into(),

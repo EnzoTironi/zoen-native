@@ -494,11 +494,18 @@ impl Engine {
     /// come from their encrypted profile when this device holds the key, else the @handle.
     pub fn put_profiles(&mut self, profiles: Vec<Identity>) -> R<()> {
         for mut p in profiles {
-            if p.id.len() != 64 {
+            if p.id.len() != 64 || !roda_log::agent_owner::profile_authorized(&p) {
                 continue;
             }
             // Never let the directory rename someone this device holds keys for.
             if self.signers.contains_key(&p.id) || self.me.as_deref() == Some(p.id.as_str()) {
+                continue;
+            }
+            if self.identities.get(&p.id).is_some_and(|known| {
+                known.kind != p.kind
+                    || known.owner != p.owner
+                    || (known.owner_proof.is_some() && known.owner_proof != p.owner_proof)
+            }) {
                 continue;
             }
             self.overlay_profile(&mut p);
@@ -521,6 +528,23 @@ impl Engine {
 
     pub fn is_unlocked(&self) -> bool {
         self.net.author.is_some()
+    }
+
+    /// Authorizes an agent root from this account's unlocked, certified device.
+    /// The relay must still check enrollment at the agent's first registration.
+    pub fn authorize_agent(&self, agent: &str) -> R<roda_types::AgentOwnerProof> {
+        self.net
+            .author
+            .as_ref()
+            .filter(|author| {
+                self.account()
+                    .is_some_and(|a| a.identity == author.identity)
+            })
+            .and_then(|author| roda_log::agent_owner::authorize(author, agent))
+            .ok_or_else(|| CoreError::Forbidden {
+                reason: "agent authorization needs an unlocked owner device and a valid agent key"
+                    .into(),
+            })
     }
 
     pub(crate) fn save_linked_account(&mut self, a: AccountMeta) -> R<()> {
@@ -574,6 +598,7 @@ impl Engine {
         let device = Signer::generate();
         let author = Author::device(&root, device.clone());
         let me = Identity {
+            owner_proof: None,
             id: root.id(),
             kind: IdentityKind::Person,
             name: name.to_string(),
@@ -640,6 +665,7 @@ impl Engine {
         )?;
         let zoen = self.create_identity(
             Identity {
+                owner_proof: None,
                 id: String::new(),
                 kind: IdentityKind::Agent,
                 name: "Zoen".into(),
@@ -959,5 +985,68 @@ impl Engine {
 
     pub fn is_online(&self, who: &str) -> bool {
         self.net.presence.get(who).copied().unwrap_or(false)
+    }
+}
+
+#[cfg(test)]
+mod owner_tests {
+    use super::*;
+
+    fn agent(owner: &Author, id: String) -> Identity {
+        Identity {
+            owner_proof: Some(Box::new(
+                roda_log::agent_owner::authorize(owner, &id).unwrap(),
+            )),
+            id,
+            kind: IdentityKind::Agent,
+            name: "Agent".into(),
+            handle: "agent".into(),
+            tint_hex: "#fff".into(),
+            glyph: None,
+            owner: Some(owner.identity.clone()),
+            bio: String::new(),
+        }
+    }
+
+    #[test]
+    fn remote_agents_need_authorization_and_cannot_change_their_owner() {
+        let mut e = Engine::open(":memory:").unwrap();
+        let owner = Author::device(&Signer::generate(), Signer::generate());
+        let original = agent(&owner, Signer::generate().id());
+        let mut unsigned = original.clone();
+        unsigned.owner_proof = None;
+        e.put_profiles(vec![unsigned]).unwrap();
+        assert!(!e.identities.contains_key(&original.id));
+        e.put_profiles(vec![original.clone()]).unwrap();
+        let other = Author::device(&Signer::generate(), Signer::generate());
+        let transferred = agent(&other, original.id.clone());
+        e.put_profiles(vec![transferred]).unwrap();
+        assert_eq!(e.identities[&original.id], original);
+        let mut updated = original.clone();
+        updated.name = "New name".into();
+        e.put_profiles(vec![updated.clone()]).unwrap();
+        assert_eq!(e.identities[&original.id], updated);
+        e.reload().unwrap();
+        assert_eq!(e.identities[&original.id], updated);
+    }
+
+    #[test]
+    fn authorization_requires_an_unlocked_account_device_and_does_not_issue_a_grant() {
+        let mut e = Engine::open(":memory:").unwrap();
+        let agent = Signer::generate().id();
+        assert!(e.authorize_agent(&agent).is_err());
+        e.create_account("Owner", "owner", "http://127.0.0.1:9")
+            .unwrap();
+        let grants = e.state.grants.len();
+        let proof = e.authorize_agent(&agent).unwrap();
+        assert!(roda_log::agent_owner::verify(
+            &e.account().unwrap().identity,
+            &agent,
+            &proof
+        ));
+        assert_eq!(e.state.grants.len(), grants);
+        assert!(e.authorize_agent("invalid").is_err());
+        e.net.author = None;
+        assert!(e.authorize_agent(&agent).is_err());
     }
 }

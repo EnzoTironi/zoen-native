@@ -54,7 +54,14 @@ pub const MIN_PROTOCOL_VERSION: u32 = 4;
 /// This stays stable across handshake upgrades; changing it would change signed bytes.
 pub const PROTOCOL: &str = "zoen-sync/2";
 /// Optional features; each side announces its own and uses the intersection.
-pub const CAPABILITIES: &[&str] = &["blobs", "invites", "presence", "profiles"];
+pub const AGENT_OWNER_PROOF: &str = "agent_owner_proof_v1";
+pub const CAPABILITIES: &[&str] = &[
+    "blobs",
+    "invites",
+    "presence",
+    "profiles",
+    AGENT_OWNER_PROOF,
+];
 
 /// The capabilities both sides have, in our order.
 pub fn negotiate(theirs: &[String]) -> Vec<String> {
@@ -997,6 +1004,11 @@ mod tests {
         assert_eq!(
             negotiate(&["presence".into(), "telepathy".into(), "blobs".into()]),
             vec!["blobs", "presence"]
+        );
+        assert!(negotiate(&[]).is_empty());
+        assert_eq!(
+            negotiate(&[AGENT_OWNER_PROOF.into()]),
+            vec![AGENT_OWNER_PROOF]
         );
     }
 }

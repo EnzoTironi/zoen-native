@@ -266,6 +266,18 @@ pub struct PbProfile {
     pub owner: Option<String>,
     #[prost(string, tag = "8")]
     pub bio: String,
+    #[prost(message, optional, tag = "9")]
+    pub owner_proof: Option<PbAgentOwnerProof>,
+}
+
+#[derive(Clone, PartialEq, Message)]
+pub struct PbAgentOwnerProof {
+    #[prost(string, tag = "1")]
+    pub device: String,
+    #[prost(string, tag = "2")]
+    pub cert: String,
+    #[prost(string, tag = "3")]
+    pub signature: String,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, prost::Enumeration)]
@@ -644,6 +656,11 @@ fn profile_to(p: &Identity) -> PbProfile {
         glyph: p.glyph.clone(),
         owner: p.owner.clone(),
         bio: p.bio.clone(),
+        owner_proof: p.owner_proof.as_ref().map(|proof| PbAgentOwnerProof {
+            device: proof.device.clone(),
+            cert: proof.cert.clone(),
+            signature: proof.signature.clone(),
+        }),
     }
 }
 
@@ -660,6 +677,13 @@ fn profile_from(p: PbProfile) -> Result<Identity, DecodeError> {
         glyph: p.glyph,
         owner: p.owner,
         bio: p.bio,
+        owner_proof: p.owner_proof.map(|proof| {
+            Box::new(roda_types::AgentOwnerProof {
+                device: proof.device,
+                cert: proof.cert,
+                signature: proof.signature,
+            })
+        }),
     })
 }
 
@@ -1249,6 +1273,7 @@ mod tests {
         let (env, log) = signed();
         let first = &log.events()[0];
         let profile = Identity {
+            owner_proof: None,
             id: "ab".into(),
             kind: IdentityKind::Agent,
             name: "Pousada".into(),
@@ -1504,6 +1529,35 @@ mod tests {
                 },
             }
         );
+    }
+
+    #[test]
+    fn historical_profiles_and_new_owner_proofs_roundtrip() {
+        // Legacy Person profile, protobuf tags 1 and 4 only.
+        let legacy = [0x0a, 0x01, b'i', 0x22, 0x01, b'h'];
+        let person = profile_from(PbProfile::decode(&legacy[..]).unwrap()).unwrap();
+        assert!(person.owner_proof.is_none());
+        assert_eq!(profile_to(&person).encode_to_vec(), legacy);
+        let mut agent = person;
+        agent.kind = IdentityKind::Agent;
+        agent.owner = Some("owner".into());
+        agent.owner_proof = Some(Box::new(roda_types::AgentOwnerProof {
+            device: "device".into(),
+            cert: "certificate".into(),
+            signature: "signature".into(),
+        }));
+        let request = ClientFrame::Req {
+            id: 1,
+            op: Op::Register {
+                profile: agent.clone(),
+            },
+        };
+        assert_eq!(ClientFrame::decode(&request.encode()).unwrap(), request);
+        let response = ServerFrame::Res {
+            id: 1,
+            result: Ok(Reply::Profiles(vec![agent])),
+        };
+        assert_eq!(ServerFrame::decode(&response.encode()).unwrap(), response);
     }
 
     #[test]
