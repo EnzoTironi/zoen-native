@@ -26,16 +26,21 @@ object VoiceTranscriber {
     /** createOnDeviceSpeechRecognizer prevents cloud fallback, even when a model is missing. */
     suspend fun transcribe(context: Context, audio: PcmAudio, locale: String): VoiceTranscript? {
         if (Build.VERSION.SDK_INT < 33 || !supported(context)) return null
-        val source = withContext(Dispatchers.IO) {
-            File(VoiceRecorder.directory(context), "transcribe-${UUID.randomUUID()}.pcm").apply { writeBytes(audio.monoAt(16_000).bytes()) }
-        }
-        return try {
+        return withPcmSource(context, audio) { source ->
             withContext(Dispatchers.Main) {
                 withTimeoutOrNull((audio.duration * 1000).toLong().coerceIn(15_000, 120_000)) {
                     recognize(context, source, audio, locale)
                 }
             }
-        } finally { withContext(Dispatchers.IO) { source.delete() } }
+        }
+    }
+
+    internal suspend fun withPcmSource(context: Context, audio: PcmAudio, useSource: suspend (File) -> VoiceTranscript?): VoiceTranscript? = withContext(Dispatchers.IO) {
+        val source = File(VoiceRecorder.directory(context), "transcribe-${UUID.randomUUID()}.pcm")
+        try {
+            source.writeBytes(audio.monoAt(16_000).bytes())
+            useSource(source)
+        } finally { source.delete() }
     }
 
     @RequiresApi(33)
