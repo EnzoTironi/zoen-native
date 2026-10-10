@@ -22,12 +22,15 @@ The remote comparison on 2026-10-10 used these exact commits:
 | Pending backend approvals, PR 46 | `8e65c1bb17f08e66b658cffe77ae0b146703dfff` | Recorded separately; not merged into Android |
 | Pending owner-device proof, PR 48 | `bb96f58a97f563598af790d831771f6ab0e2e112` | Recorded separately; not merged into Android |
 | Pending model gateway, PR 49 | `693c2eb1b2d9422ade4e11931d17cb320eae34ea` | Recorded separately; not merged into Android |
+| Durable key-package claims, PR 50 | `dd03f6e38a133aafc72644aa6b068ea6d1025715` | Merged into Android source; fresh combined JNI and native acceptance required |
 
 Chats includes direct conversations, groups and communities with native kind filters and search. Incoming root messages keep the reading position and produce a counted new-message button. Own messages follow the bottom; replies, edits and system events do not count as new root messages. Initial unread placement uses incoming messages, including thread replies in the read count, and finds the first unread root. Pinned apps stay outside the scrolling history.
 
 Run `python3 scripts/check-android-upstream.py --fetch` before publishing another update. It inventories all open PRs through `gh`, fetches their exact heads, verifies that the current main is integrated, compares original art hashes against both live iOS branches and checks changes in their Apple and mini-app source since review. It stops on a new interface change even when art hashes still match, including changes from a new PR. Updating the reviewed references requires reviewing the corresponding Android behavior. Backend candidates are compared against their merge base so an older branch does not appear to remove changes that landed later on main.
 
 The expanded static comparison covers the upstream's 128 exported engine functions and 69 derived UniFFI records, enums and errors across the shared crate. Their signatures and type shapes match the pending backend. The Android branch also adds `member_roles`, `item_at`, `install_app`, `file_new_version_typed` and `MemberRoleDto`, and uses `CoreError.Storage.reason` for the JVM binding. These additions and the error-field adaptation must remain when upstream work is merged. All 132 Android engine functions match the generated Kotlin checksum inventory. Callback and session implementation changes need source review. This comparison does not prove the unmerged candidate's runtime behavior. Reports are saved under `build/` with UTC timestamps.
+
+The integrated claim-replay core also requires the connected relay to advertise `key-package-claim-receipts` and a valid server clock. Protocol 4 alone is insufficient. Migration `0024_key_package_claim_receipts.sql` and the matching relay must precede client rollout; additions stay queued with an upgrade error on an older relay. Fresh local native runs must use the rebuilt relay, separately from the public deployment.
 
 ## Verification
 
