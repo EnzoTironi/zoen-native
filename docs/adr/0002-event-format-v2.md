@@ -1,5 +1,7 @@
 # ADR 0002: Authors sign content, the relay signs nothing and chains it
 
+Event format v2 is historical. [ADR 0010](0010-binary-protocol.md) defines signed binary content; [ADR 0045](0045-linking-devices.md) and [ADR 0047](0047-mls-peerless-recovery.md) record current enrollment/sealed-entry compatibility.
+
 Status: superseded by ADR 0010 (format v3 signs exact protobuf bytes and a causal link)
 
 ## Context

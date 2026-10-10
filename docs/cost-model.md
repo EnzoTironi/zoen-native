@@ -5,6 +5,8 @@ before payment fees. Assumptions come from the scale model in [plan-real.md](pla
 per-node rates are estimates until `zoen-load` (S8) measures them, and this file gets updated
 with the measured numbers.
 
+These are modeling assumptions, not measured production costs. Use [roadmap status](roadmap-status.md#capacity-evidence) for the limits of existing benchmarks and the remaining capacity/cost gates.
+
 ## Assumptions per DAU per day
 
 40 messages sent, 5 device deliveries each, 1 KB per envelope, 2 photos of 200 KB, 0.33

@@ -1,5 +1,7 @@
 # E2B por dentro: o que o Zoen copia, adapta ou evita no "computador do agente"
 
+> Research snapshot. Figures, availability and source references retain their original review date. Current implementation and completion gates are in [roadmap status](../roadmap-status.md).
+
 > Pesquisa feita em 09/10/2026 lendo o código-fonte aberto da E2B, para orientar o
 > [ADR 0028](../adr/0028-agent-sandbox.md) (sandboxes próprias) e o `zoen-agentd`,
 > `zoen-sandboxd`, `zoen-guestd`, `zoen-egress` e `zoen-liveview`.

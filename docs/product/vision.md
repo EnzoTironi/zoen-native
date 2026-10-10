@@ -4,6 +4,8 @@
 >
 > Regra: registramos tudo para revisar depois, inclusive ideias que podem ser descartadas.
 
+Direção atual: produto e agente se chamam Zoen; conversas diretas, grupos e comunidades ficam em Chats, com filtros opcionais. Permissões e recursos compartilhados ficam dentro da conversa. O [roadmap](../roadmap-status.md) registra o progresso; [páginas vivas](live-pages.md) define a referência atual de edição e colaboração.
+
 ## Tese
 
 Zoen é o "WhatsApp 2": um mensageiro privado onde, além de conversar, as pessoas usam e criam apps e agentes na hora. Comunicação, comunidade, trabalho e comércio no mesmo lugar, com privacidade e segurança de verdade.

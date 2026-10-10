@@ -1,5 +1,7 @@
 # Curvas de crescimento de redes sociais — o que funcionou, o que morreu, e o que isso diz para o Zoen
 
+> Research snapshot. Figures, availability and source references retain their original review date. Current implementation and completion gates are in [roadmap status](../roadmap-status.md).
+
 > Pesquisa feita em 09/10/2026 para orientar a estratégia de crescimento do Zoen no Brasil.
 > **Regra deste documento:** todo número tem link de fonte. Quando não achamos fonte, está escrito **não encontrado**.
 > "Massa crítica" e o "formato da curva" são **julgamentos nossos** a partir dos dados, e estão marcados como tal.

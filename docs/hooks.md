@@ -5,6 +5,8 @@ Status: design; built after M2 (see plan-real.md). Decision record: ADR 0013.
 Hooks let a person, a Space, an agent, a mini-app or an org react to anything that happens in
 Zoen, the way Claude Code hooks react to tool use: block or rewrite before, observe after.
 
+The hook catalog and handlers below are a design contract. A working sandbox provider does not establish a complete hook runtime or agent execution loop. Track implementation in [roadmap status](roadmap-status.md). The proposed hook module should use the Zoen namespace.
+
 ## The event catalog
 
 One registry, generated from the Rust types so it can't drift:
@@ -13,7 +15,7 @@ One registry, generated from the Rust types so it can't drift:
 - lifecycle and tool events (`agent.called`, `agent.tool.before`, `agent.tool.after`,
   `mini_app.opened`, `permission.prompt`, `file.uploaded`, `call.started`).
 
-`roda-hooks` derives the catalog with a proc macro on the event enums and emits
+the proposed `zoen-hooks` derives the catalog with a proc macro on the event enums and emits
 `hooks/catalog.v1.json` (JSON Schema per event, a version per schema). CI fails if the
 committed catalog differs from the generated one.
 

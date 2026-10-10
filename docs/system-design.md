@@ -9,6 +9,8 @@ pass: grounding in the code that exists today (`how`), two whole-shape alternati
 contested decision (`architect`), and an adversarial review written as questions with answers
 at the end (`interrogate`). A multi-model interrogate run is listed under open items.
 
+This is the target system design. Its billion-user quantities are workload assumptions; implementation and measured/deployed evidence are recorded separately in [roadmap status](roadmap-status.md). Main now implements persisted leases and fencing. Production cell placement, TLS capacity and regional recovery still need proof.
+
 ## Goals and invariants
 
 1. A message sent in-region reaches the recipient's device in under 200 ms at p99.

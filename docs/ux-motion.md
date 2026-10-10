@@ -4,6 +4,8 @@ Taste over noise. Haptics never fire on scroll. Animations respect Reduce Motion
 (fade/opacity instead of springs, morphs and stroke-draw when Reduce Motion is on).
 Haptics only feel on a real device — the simulator is silent.
 
+This is the motion/haptic policy. Current implementation evidence and unresolved platform coverage are in [roadmap status](roadmap-status.md). A named policy does not establish that every screen follows it.
+
 ## Haptics (`Haptics`)
 
 | Trigger | Haptic | Why |
