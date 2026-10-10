@@ -456,11 +456,17 @@ async fn receipts_bind_canonical_targets_and_authenticated_actor() {
     assert_eq!(first.len(), 1);
     let replay = claim(
         &mut ana,
-        vec![
-            carol.identity(),
-            bruno.account.identity_id.clone(),
-            carol.identity(),
-        ],
+        // More than fifty raw entries still represent the same two identities.
+        // The durable limit applies after canonicalization, before any consumption.
+        (0..62)
+            .map(|i| {
+                if i % 2 == 0 {
+                    carol.identity()
+                } else {
+                    bruno.account.identity_id.clone()
+                }
+            })
+            .collect(),
         &operation,
     )
     .await
