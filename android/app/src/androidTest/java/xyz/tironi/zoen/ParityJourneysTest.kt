@@ -218,6 +218,10 @@ class ParityJourneysTest {
         compose.onNodeWithText(task.title, substring = false).assertExists()
         val chat = application.repository.state.value.zoenChat!!
         open("zoen://chat/${chat.id}")
+        compose.waitUntil(10_000) {
+            scenario.state == Lifecycle.State.RESUMED && application.repository.activeSpace == chat.id &&
+                compose.onAllNodesWithTag("composer").fetchSemanticsNodes().isNotEmpty()
+        }
         compose.onNodeWithContentDescription(application.getString(R.string.more)).performClick()
         compose.onNodeWithText(application.getString(R.string.chat_appearance), substring = false).performClick()
         compose.waitUntil(10_000) {
