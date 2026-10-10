@@ -1,297 +1,106 @@
-# Roadmap status: the path to one billion users
+# Roadmap status: the complete Zoen product
 
-Evidence reviewed on 2026-10-09, against `main` at `17999988` and work in PRs
-[#33](https://github.com/EnzoTironi/zoen-native/pull/33) through
-[#45](https://github.com/EnzoTironi/zoen-native/pull/45).
-GitHub records PRs 33, 34, 35, 36, 37 and 40 as merged. The examined `main` tree
-does not contain PR 34's encrypted-backup implementation; reviewed PR 38 at `08124f0`
-restores that integration and has [passing full Linux CI](https://github.com/EnzoTironi/zoen-native/actions/runs/37973200217).
-The reviewed integration candidate `d9ebb3e`
-has passing full Linux CI and remains a temporary, unmerged validation PR.
-UI PR 44 now has one Chats inbox for direct, group and community conversations,
-optional filters and Cards/List notification switching. Functional head `836910c` has
-[passing full Linux CI](https://github.com/EnzoTironi/zoen-native/actions/runs/37980360708),
-passing iOS/macOS builds, 13 web checks and running Mac/browser journeys. The later
-`159a2f2` only updates native Chats wording and Portuguese translations; the string
-catalog and diff checks pass, and fresh-head CI is required before integration.
-Full iOS interaction proof remains pending: recent runs recorded render/accessibility stalls and a nonmoving scroll gesture. Computer-use
-tooling subsequently detected the Mac was locked; further UI checks await unlock and
-failure diagnosis. A temporary rendering treatment is not part of the reviewed head.
-A controlled earlier AtTheEnd journey passed after deferring initialization of the
-inactive Search screen.
-Results are tied to named heads; earlier local M2 failures remain recorded below.
-The target is the complete product at one billion monthly users.
-The original prototype schedule in [repensado.md](repensado.md) does not determine readiness.
+Reviewed on 10 October 2026; published-head snapshot at 22:14 UTC. The target is one billion monthly users. The original prototype schedule does not define readiness.
 
-![Implementation, unfinished product work and scale completion gates](screens/roadmap-status.png)
+## Version ledger
 
-## Current position
+The integrated baseline is `main` at [`f277c804`](https://github.com/EnzoTironi/zoen-native/commit/f277c80466e73caea47d1a2033bea726fb1784ff), including the reviewed model gateway merge. The table distinguishes that baseline from changes published in parallel. Uncommitted changes remain work in progress.
 
-Zoen has real encrypted messaging foundations, a native Apple app, staging infrastructure,
-and several tested building blocks for agents, files and growth. It is still completing
-the product and its distributed infrastructure. A screen, an accepted ADR,
-a passing unit test and a deployed journey are different kinds of evidence.
+| Workstream | Published version | Evidence and current state |
+| --- | --- | --- |
+| Integrated backend | PR 43 merged as `893ab99`; PR 45 as `e051f97`; PR 49 as `f277c804` | Renewable ownership, fencing, forwarding, encrypted/peerless recovery and the bounded model adapter are in actual main. PR 49's reviewed `637f421` head passed [full CI](https://github.com/EnzoTironi/zoen-native/actions/runs/38071148664). [Post-merge main CI](https://github.com/EnzoTironi/zoen-native/actions/runs/38073793128) failed M2's final live stock gate at 8 instead of 32. Historical `e051f97` main CI also failed live key-package refill. |
+| Chat reading | [PR 38](https://github.com/EnzoTironi/zoen-native/pull/38), `07a04de` | Five reading journeys passed within the combined native UI verification. [Linux CI](https://github.com/EnzoTironi/zoen-native/actions/runs/38058275281) failed: M1 offline reconnection reported `handle_taken`, and M2 final refill remained at 8 instead of 32. The new fixture separates stdout/stderr; it does not waive the stock-32 refill requirement. |
+| Native shell and web preview | [PR 44](https://github.com/EnzoTironi/zoen-native/pull/44), `c9d6f8b`; earlier native source `50469b7` | The plan shares the mini-app card row. Strict TypeScript, 13 shell checks, real browser opening/closing/focus and a 390px viewport passed. Matching card files compiled and ran in the local Mac candidate. [Card PNGs and actual browser video](https://github.com/EnzoTironi/zoen-native/pull/44#issuecomment-6100742995) qualify source and sample-data limits. [Exact-head CI](https://github.com/EnzoTironi/zoen-native/actions/runs/38075285403) failed M2 at final stock 8 instead of 32, with 9/10 journeys passing. Ten earlier native journeys and [Xcode videos](https://github.com/EnzoTironi/zoen-native/pull/44#issuecomment-6098239059) predate this card change. The old Plan editor and sample-only web preview remain. |
+| Android integration | [PR 41](https://github.com/EnzoTironi/zoen-native/pull/41), `1901c1e` | [API 28](https://github.com/EnzoTironi/zoen-native/actions/runs/38079608123) failed the procedural-mascot 12-second UI wait and the missing `native-globe` display assertion; API 35 was cancelled. [Rust CI](https://github.com/EnzoTironi/zoen-native/actions/runs/38079608072) failed creating `Roda 36`, with 9/10 M2 journeys passing. The generic error omits the failed operation's elapsed time. Apple source is unchanged from `bdd8e14`; that head's earlier Rust pass does not certify this integration. Older `339b5f1` and `31f2ce0` failures remain historical. |
+| Durable agent proposals | [PR 46](https://github.com/EnzoTironi/zoen-native/pull/46), `8e65c1b` | Published atomic proposal storage and fixes for accepted denial versus optimistic approval, newer standing denials and generated-grant ID collisions. [Exact-head CI](https://github.com/EnzoTironi/zoen-native/actions/runs/38062532437) failed M2's pre-refill stock assertion at 9 instead of 8. Source review does not waive the failed service suite. |
+| Agent owner registration | [PR 48](https://github.com/EnzoTironi/zoen-native/pull/48), `bb96f58` | Registration requires an enrolled active owner device. Source review confirms the correction of an unsigned cached Agent profile to an authentic Person profile, including persistence/restart, while preserving verified-owner pins. [Exact-head CI](https://github.com/EnzoTironi/zoen-native/actions/runs/38063812598) failed M2's pre-refill stock assertion at 6 instead of 8; runtime CI is not green. |
+| Model gateway | [PR 49](https://github.com/EnzoTironi/zoen-native/pull/49), `637f421`, merged as `f277c804` | Bounded non-streaming adapter, provider receipts, strict tool proposals and TRACE privacy checks are integrated. Reviewed fixes preserve accepted tool IDs/serialization depth and refuse contradictory partial usage receipts. [Exact-head CI](https://github.com/EnzoTironi/zoen-native/actions/runs/38071148664) passed. Durable admission/settlement, certified MLS workers, streaming and live provider reconciliation remain unfinished. |
+| Durable key-package claims | [PR 50](https://github.com/EnzoTironi/zoen-native/pull/50), diagnostic `5dc4724` | [Full Linux CI](https://github.com/EnzoTironi/zoen-native/actions/runs/38086374272) passed at temporary diagnostic head `10e5b1d`: growth 3/3, claim 9/9 and M2 10/10 in 486.86 seconds, but successful libtest output hid the census. Uninstrumented `f6936e9` has the exact production `5a4d5f0` tree; its [full CI](https://github.com/EnzoTironi/zoen-native/actions/runs/38087802808) failed `Roda 39`, with M2 9/10 in 472.57 seconds. Failed-command timing/gates are absent. Current `5dc4724` restores the same reviewed diagnostics and displays captured test output at completion. Its [initial run](https://github.com/EnzoTironi/zoen-native/actions/runs/38089376182) stopped at the PostgreSQL image registry rate limit before Clippy/tests; a same-head rerun is running. The cause remains unproven. [Causal images and actual videos](https://github.com/EnzoTironi/zoen-native/pull/50) retain their recorded source. |
+| Financial runtime | [PR 51](https://github.com/EnzoTironi/zoen-native/pull/51), `7cc433b`, draft | All 30 named local PostgreSQL/FDB/HTTP journeys passed, plus format and runtime Clippy. Independent review closed the shared-SQL/different-FDB billing defect and found no blockers in bounded reservation retries. [Exact-head Linux CI](https://github.com/EnzoTironi/zoen-native/actions/runs/38077055609) passed the financial service target, including 100 concurrent reservations, in 41.46 seconds. That run still failed inherited growth/claim targets; M2 passed on its older stack. Complete CI and the PR 50 dependency remain required before integration. Certified ingestion, custody continuity and external restoration remain open; public production run/cancel is closed. |
+| Certified core ingestion | [PR 52](https://github.com/EnzoTironi/zoen-native/pull/52), `0fbcdcb`, draft | Independent review found no source blocker in certified owner/context admission and atomic ingestion receipts. [Exact-head CI](https://github.com/EnzoTironi/zoen-native/actions/runs/38077837818) passed 85 FFI, 22 grant, nine store tests and the financial target; inherited growth/claim and M2 targets failed. These Linux checks do not prove native custody/enrollment or production transport. Later capsule/maintenance and retained-run changes are published separately in PRs 53 and 54. |
+| Native capsules and maintenance | [PR 53](https://github.com/EnzoTironi/zoen-native/pull/53), `61c335d`, draft | Reviewed encrypted capsule persistence and known maintenance admission are published. [Exact-head CI](https://github.com/EnzoTironi/zoen-native/actions/runs/38083951133) failed inherited growth/empty-claim targets and creating `Roda 40`; 9/10 M2 journeys passed. The failed operation's elapsed time and individual settlement gates are absent. Native custody, known admission and external restore continuity still require further work. |
+| Native reply runs and wakes | [PR 54](https://github.com/EnzoTironi/zoen-native/pull/54), `be659d9`, draft | Retains the immutable original run/binding and encrypted reply context from the actual relay, with paired fenced leases and bounded discovery. [Exact-head Linux CI](https://github.com/EnzoTironi/zoen-native/actions/runs/38086453479) passed 87 FFI tests, 24 gateway tests, both combined runtime targets and Format/Clippy. The complete run failed inherited growth, empty-claim and M2 `Roda 45` targets; M2 passed 9/10. Local changed-target checks and independent source review passed. Final native admission/cancellation is published separately in PR 55; public production execution remains closed. |
+| Native admission and cancellation | [PR 55](https://github.com/EnzoTironi/zoen-native/pull/55), `c1acf35`, draft | Final paired-fence admission, immutable request/pricing retention, lease-independent cancellation, SQL closure gates and late-incurred billing are published. Both local runtime targets passed in 162.93 seconds with actual PostgreSQL/FDB/HTTP/OpenMLS: 26 new named outcomes, retained C2b cases and financial regressions. Four-package all-targets Clippy passed. Independent review found no blocking source finding and verified all 25 source hashes, four logs and the executable hash. This is local changed-target evidence; full exact-head Linux CI and production activation remain required. Guarded publication, approval reconciliation, worker processing/pruning, managed custody and external continuity remain open. |
+| Documentation reconciliation | [PR 47](https://github.com/EnzoTironi/zoen-native/pull/47), reviewed tooling/evidence `16de8ec` | [CI at that head](https://github.com/EnzoTironi/zoen-native/actions/runs/38083994027) passed Format/Clippy but failed M2's final stock gate, 8 instead of 32; 9/10 M2 journeys passed. The earlier `80109aa` full pass is historical. The PR contains actual HIG/source-auditor documentation PNGs and a 21.911-second browser video for `16de8ec`. Documentation and the advisory scanner do not certify product runtime readiness. |
+| Temporary integration | [PR 42](https://github.com/EnzoTironi/zoen-native/pull/42), `d9ebb3e` | Historical combined validation only. Close after the original feature PRs integrate. It is not the current backend baseline. |
 
-| Area | Implemented on main | Remaining completion gate |
-|---|---|---|
-| Accounts and sync (M1) | Device identities, signed binary events, durable outbox, paged sync, real relay and native account flow; [staging journey](../scripts/journey-staging.sh) | Repeatable release journeys across devices, interruptions and upgrades; account lifecycle and recovery UI |
-| Encryption (M2) | OpenMLS DMs/groups by default, membership removal, concurrent commit handling, sealed local state, reviewed pruning and explicit device enrollment; reviewed encrypted backup/recovery awaits restoration through PR 38 | Finish native linking/recovery UI and verify revocation and recovery through subsequent messages, including no surviving authorized MLS peer |
-| Relay scale (S1–S9) | FDB ordering, dedupe, per-Space batching, NATS two-node fan-out, rate limits, telemetry, load harness | Shared leases and placement, crash-safe durable forwarding, cell routing, migration and regional failover proofs |
-| Agent tools | Grants, signed tool manifests, budgets, sandbox lifecycle, gVisor/Firecracker/browser backends and merged WASM/Fly Machines providers | Real agent identities and MLS membership, durable model/tool run loop, approval resume, idempotent usage ledger, model gateway (M3); paid Fly staging and egress validation |
-| Media (M4) | Encrypted blob transport, backgrounds, profile photos and Item blobs | Photos and voice messages through the same transport, interrupted/resumed transfer, real S3 integration journey |
-| Push (M5) | Planned protocol and delivery design | Token registration, APNs worker, encrypted notification extension, simulator and HTTP/2 sink journeys, then physical-device validation |
-| Files and apps | Loro documents, file viewers/editors, pages, declarative view types and local mini-app examples (ADRs 0040–0042) | Multi-device editing and agent approval journeys, complete permissions, remote MCP interoperability, signed catalog publishing/search/install (M6) |
-| Growth and analytics | Invite mechanics, MAU/sent-message counters, retention reports, source attribution, experiment assignment/exposure foundations (ADRs 0043–0044) | Client flows per acquisition source, experiment guardrails, stronger invite eligibility, partitioned/columnar analytics and validated cell-level aggregation |
-| Platforms and distribution | Native iOS/macOS; real staging in Fly gru behind Cloudflare | Android and functional web client, universal links/passkeys, notification entitlements, release and compatibility testing |
-| Communities and commerce | Product design and UI foundations | Real discovery, moderation/reporting, creator/community workflows, business agent integrations and payment/credit ledger |
-| Operations (M7) | Infrastructure files, migrations, local relay stack, health endpoints and telemetry | Whole-stack deployment including agents/push, restore drills, SLO alerts, capacity admission, chaos and regional recovery drills |
+Before integrating a workstream, fetch its published head, compare production source and generated bindings, check results against that exact version, then inspect the resulting main tree. Earlier green runs do not certify later edits.
 
-Main evidence: [plan-real.md](plan-real.md), [system-design.md](system-design.md),
-[product vision](product/vision.md), [UX audit](product/ux-audit.md), and the named journey
-tests under `crates/zoen-cli/tests` and `apple/UITests`. Rows describe implementation,
-not a fresh rerun of every historical test.
+Local candidates are separate from the published ledger:
 
-## What the scale evidence proves
+| Candidate | Local evidence | Pending |
+| --- | --- | --- |
+| Durable key-package claims, historical local `dd03f6e` and later census | The unchanged 50-group M2 journey passed in 180.07 seconds with its original eight-second settled-command deadline and 20-second final stock-32 gate. All nine causal claim journeys passed, plus 55 FFI and 16 MLS tests. Exact-main/current CLI comparison reproduced false completion before claim admission. The later diagnostic Mac run passed with 356 actual records and 51 complete Ana operations; every recorded settlement succeeded within its original gate. | The instrumented Linux full pass and current uninstrumented run are tracked above. No deadlines, stock targets or workload were weakened. The Mac census does not explain every historical Linux failure, and successful Linux libtest output did not expose its census. |
+| Live Pages editor, core `aaf4315`, native `021c42c`; local integration `1846f1f` | 13 document tests and all 80 FFI tests passed locally. Current generated bindings and Page UI passed 95 Gradle unit tests across 15 suites, including 13 editor/offset and 10 coordinator cases, with no failures, errors or skips. Apple source parsed and 12 cases exercised the actual offset-mapping function. Android `31f2ce0` was merged locally as `357cda1`; the CLI dependency correction at `1846f1f` passed `cargo check --locked --all-targets`. The committed Mac candidate's clean build exited 0 and produced app bundles. | The C/C++ deployment correction rebuilt all 1,152 archive objects with minimum macOS 26 or earlier, and the Mac app rebuilt without newer-target warnings. Runtime on macOS 26 remains unverified. The uncommitted Reader/history/debug-isolation follow-up built successfully; a manual Mac journey verified edit/save, visible history and restore as a new version. The Apple keystroke checkpoint built successfully on Mac and passed ten production-code journeys using real CryptoKit, filesystem and core: nine memory-vault cases and one recreated native development vault. Unreadable draft files have an explicit keep/discard path, and stale confirmations cannot delete a newer checkpoint. The actual manual Mac journey completed history/restore, relaunch at v4, exact Unicode save at v5 and relaunch preserving that text. Its receipt contains eight steps and seven hashed screenshots. The certified XCTest runner builds but stalls before test cases; no automated pass is claimed and developer security settings were not changed. Release Keychain, IME/UI callbacks and iOS file protection remain unverified. Gradle skipped only `buildRodaCore`; Android ABI/JNI, Keystore, complete native editor runtime, encrypted two-device editing and authenticated browser editing remain unverified. |
+| Plans as Live Pages, unpublished experiment on `1846f1f` | The chosen design keeps the existing Plan Item, exact legacy IDs/text/cents and one Page/Loro writer. The full pre-repair check passed all 61 document and 118 FFI tests. After boxing the large test-only journal and borrowing fixture slices, all 24 session fixtures and all-targets document/FFI Clippy passed. Actual Loro, signed/encrypted events, atomic SQLite failure, journal reopen, duplicate/lost replies, restore-generation fences, an MLS peer and competing initial writers are exercised. | The new Plan session/timeline/journal paths remain compiled only for tests. The 61/118 result predates the Clippy repair; only 24 session cases and Clippy were rerun afterward. Production PageCache/session, typed DTO/native controls, legacy approval/poll/search adapters, authenticated restore, large-history policy and independent-client transport remain open. The card still opens the old Plan editor. |
+| Native HIG candidate on PR 44 `c9d6f8b` | Six isolated proposed HIG files compiled with a fresh matching Rust archive and generated Swift bindings. The actual Mac app switched appearance, opened a pinned card and closed the sheet with Escape. | Subsequent native capture had long gaps and does not qualify as a continuous interaction video. A process observation found high CPU use; its cause is under investigation. A separate real Plan inspector opening exposed missing close/Escape behavior. The successful mini-app sheet dismissal does not cover that inspector. Keyboard/VoiceOver, removal/reorder, enlarged text, accessibility preferences, release/minimum-OS and full HIG acceptance remain open. |
 
-The [load model](plan-real.md#scale-built-for-a-billion-people) assumes 500 million daily
-users, 700,000 peak messages/second, 3.5 million peak device deliveries/second and 160
-million concurrent sockets. These are design inputs.
+HIG release acceptance is tracked in the [platform matrix](product/hig-compliance.md). The [locked hig-doctor auditor](../tools/hig-audit/README.md) is advisory and does not replace current Apple guidance or native runtime evidence.
 
-[ADR 0022](adr/0022-capacity.md) and [ADR 0023](adr/0023-per-space-sequencer.md) measure
-a shared development box over short runs. The S9 sweep delivers 4,000 messages/second
-with p99 324 ms, above the system design's in-region 200 ms delivery goal. One hot Space
-tops out near 3,180 messages/second. The 37 KiB/socket measurement excludes TLS; 150,000
-sockets per node is a planning assumption. The approximately $470,000/month estimate is
-an extrapolation that excludes media and AI, not a production bill or capacity proof.
+## Implemented foundations and unfinished gates
 
-`NodeOwner::claim_all` in `crates/zoen-relay/src/ownership/mod.rs` grants all 4,096
-partitions to each process using an in-memory lease table and a one-year expiry.
-FDB head conflicts protect ordering across racing relays; there is no shared ownership
-handoff yet. The system design's two-second lease failover remains a target.
+| Area | Implemented | Completion gate |
+| --- | --- | --- |
+| M1 accounts and sync | Device identities, signed binary events, durable outbox, paged sync and real relay/client journeys. | Release onboarding, interrupted sessions, account lifecycle and supported upgrades on each platform. |
+| M2 encryption and recovery | OpenMLS direct/group encryption, pruning, explicit enrollment, revocation, paginated encrypted history, encrypted backups and peerless MLS recovery. PR 45 restored the backup implementation previously missing from main. | Native restore/link/revoke UI and subsequent-message proof, production password-vault authority, repeatable refill and enrollment/recovery failures. |
+| S1–S9 relay | FoundationDB ordering/dedupe, persisted renewable bucket ownership, fencing, bounded routing, NATS fan-out, rate limits and telemetry. | Mixed TLS workloads, reconnect storms, authorization/lease capacity, placement, cell migration and regional failure recovery. |
+| M3 agents | Grant evaluation, budgets, signed tools and sandbox providers; durable proposal/approval and enrolled-owner registration changes in review. | Authenticated MLS agent membership, durable model/tool loop, accepted-chain approval reconciliation, exactly-once usage ledger and live provider checks. |
+| M4 media | Encrypted content-addressed blob transport, profile/background and file support; Android native media workflows under review. | Apple photo/voice delivery, interruption/resume and real object-store interoperability. |
+| M5 push | Delivery design and infrastructure seams. | Token lifecycle, APNs/FCM workers, encrypted notification handling, retry/collapse behavior and physical-device proof. |
+| Pages, files and mini-apps | Loro block editing, versions, file viewers, declarative views and sandboxed local mini-apps. A local candidate adds encrypted device draft/receipt persistence, exact retry and restore fencing. | Native editor runtime, Notion-style block UX, nested pages and sharing, live bindings, comments/guarded agent proposals, two-device editing and remote MCP/catalog installation. See the [live-page contract](product/live-pages.md). |
+| Platforms | Native iOS/macOS; Android under review; themed web shell under review. | Authenticated browser client, encrypted browser storage and device enrollment, current ABI builds, native/web interoperability and distribution. |
+| Communities and commerce | Conversation and permission foundations; unified Chats UI under review. | Discovery, moderation/reporting, shared-resource ACLs, business integrations, payment/credit ledger and provider reconciliation. |
+| Growth | Invites, source attribution, experiments and content-free metrics. | Complete client acquisition flows, eligibility/abuse controls, bounded cell analytics and measured retention. |
+| M7 operations | Infrastructure files, migrations, staging, health endpoints and telemetry. | Current compatible rollout, whole-stack deployment, alerts, admission, restore drills, regional recovery and cost reconciliation. |
 
-A separate user-owned backend workstream is implementing persisted renewable leases,
-transaction fencing and bounded forwarding in [PR 43](https://github.com/EnzoTironi/zoen-native/pull/43).
-At reviewed head `3fe1ef5`, [full Linux CI passes](https://github.com/EnzoTironi/zoen-native/actions/runs/37982274653),
-including nine ownership assertion groups, ten real-store journeys and seven session
-revocation tests. The later `eff2eadd` addresses five source-review findings: registry
-cleanup/admission, complete inbound forwarding deadlines, reply metadata bounds, invite
-byte accounting and atomic failure of queued descendants after permanent genesis rejection.
-Independent source review checked those changes. The owner reports 15 real-service
-ownership assertion groups passing; fresh full CI is running at that head. These local
-results remain workstream reports, and the reviewed fixes have not been integrated.
+## Verification boundaries
 
-Two further service gaps remain before integration: the public WebSocket membership
-lookup has no complete Postgres deadline, and a forwarding timeout followed by a durable
-duplicate acknowledgement can omit live recipient delivery and `Joined`. The regression
-must exercise the public WebSocket path, recover pool capacity while the lock is still
-held, preserve retryable database failures, and deliver the committed event to currently
-authorized recipients without appending it twice. Earlier local FDB startup error 1031
-and short-lease renewal instability remain recorded. None of these checks closes workload,
-authenticated TLS, production-cell or regional recovery gates.
+The native ten-journey run covers five reading cases, community navigation, Cards/List/Cards, fixed pinned-widget geometry and opening/closing its mini-app, plus chat/Home editing and pin persistence. These are UI journeys using an isolated demonstration account. They do not verify the newly integrated recovery cryptography.
 
-The analytics hot path already batches counters in RAM every 15 seconds.
-Account/Space daily rows still accumulate in Postgres.
-The design needs explicit memory bounds, retry/idempotency semantics, cell aggregation,
-retention costs and reporting latency at the load model above.
+Earlier Android integration evidence includes 66 local FFI tests, focused Clippy and matching Kotlin binding compilation. The host library was built for Mac ARM to validate shared core/binding metadata; that Kotlin compile skipped the Android ABI build. Those results do not certify the current `1901c1e` device runtime. The older `31f2ce0` API 28/35 failures were the backup-database path and 30-second peer-message wait; subsequent `339b5f1` failures and current-head checks are recorded separately in the ledger above. Earlier recovery-availability/TLS assertion failures and media/UI evidence remain tied to their original versions.
 
-## Work in flight
+Main CI reproduced the unresolved live refill failure: a watching client reached `online`, `synced=true`, `pending=0`, received a Low notice at stock 7, generated 25 packages and observed successful publication. The final assertion found 31 packages instead of 32. Its M2 suite passed 9 of 10 journeys. Historical PRs 38/44 and Android `31f2ce0` ended at stock 8 instead of 32 without a live Low notice or refill publication. Earlier PRs 46, 48 and 47 failed the pre-refill assertion at 9, 6 and 7 respectively, against an expected 8; later documentation head `80109aa` passed full CI. These results are distinct from main's 31-versus-32 result and the older stock-7/no-client-Low failure.
 
-Six reviewed feature PRs are recorded as merged. The table distinguishes those integrations,
-passing checks and the remaining native/UI proof. A green check or merge does not
-establish product completeness.
+PR 50 now has local causal reply-loss proof: legacy retry consumed another package (31 to 30), while durable retry returned the same operation ID and package bytes without another consumption (31 to 31), then live refill reached 32 from 7 and peers exchanged readable messages. It also tests CLI completion while group work is pending. The relay-isolation candidate separately addresses competing test-relay startup/readiness. Neither result proves the cause of every historical CI failure.
 
-| PR | Merge / reviewed head | Scope | Integration status / remaining proof |
-|---|---|---|---|
-| [33](https://github.com/EnzoTironi/zoen-native/pull/33) | Merged `551394c1` | Pruning, linking, enrollment, encrypted history | Integrated; native linking and repeatable complete M2 journeys remain gates |
-| [34](https://github.com/EnzoTironi/zoen-native/pull/34) | GitHub records merge `2d39ab28` | Backup, authorized recovery enrollment, bounded storage | Missing from examined main tree; reviewed PR 38 restores it. Native recovery and recovery without a surviving authorized MLS peer remain gates |
-| [35](https://github.com/EnzoTironi/zoen-native/pull/35) | Merged `7b3c548` | Real WASM sandbox | [Linux CI at that merge passes](https://github.com/EnzoTironi/zoen-native/actions/runs/37948425509) |
-| [36](https://github.com/EnzoTironi/zoen-native/pull/36) | Merged `334ea050` | Fly Machines sandbox provider | Integrated; paid staging and production egress proof remain gates |
-| [37](https://github.com/EnzoTironi/zoen-native/pull/37) | Merged `17999988` | E2B research | Integrated research; the live computer still needs implementation |
-| [38](https://github.com/EnzoTironi/zoen-native/pull/38) | `08124f0` | Chat reading position, unread indicator and restored reviewed backup integration | [Full Linux CI passes](https://github.com/EnzoTironi/zoen-native/actions/runs/37973200217); combined native UI proof with PR 44 remains pending |
-| [39](https://github.com/EnzoTironi/zoen-native/pull/39) | Documentation/CI draft | Current roadmap evidence, all seven completion gates and Postgres CI image source | Links, diff and chart checks pass; full Linux CI at `1210b2b` passes with the verified Docker ECR mirror; updated evidence awaits fresh-head checks and integration |
-| [40](https://github.com/EnzoTironi/zoen-native/pull/40) | Merged `076d69e3` | Welcome ordering, refill, catch-up and stale-rejection fixes | Integrated; controlled regressions pass; historical stock-7 cause remains unproven and repeatability remains required |
-| [41](https://github.com/EnzoTironi/zoen-native/pull/41) | Separate draft | Native Android client | Owned by another active chat; untouched by this audit; owner supplies live sync/media evidence |
-| [42](https://github.com/EnzoTironi/zoen-native/pull/42) | `d9ebb3e` | Temporary combined validation PR | Full Linux CI passes; 41 local FFI tests and focused CLI/FFI Clippy pass; unmerged, close after original feature integration |
-| [43](https://github.com/EnzoTironi/zoen-native/pull/43) | `eff2eadd`, draft | Renewable persisted bucket ownership, fencing and bounded forwarding | Earlier `3fe1ef5` full CI passes. Five fixes are source-reviewed; owner reports 15 ownership assertion groups passing. Public-ingress deadline and timeout delivery gaps, fresh CI, workload and authenticated TLS proof remain |
-| [44](https://github.com/EnzoTironi/zoen-native/pull/44) | `159a2f2` stacked on PR 38 | One Chats inbox, native header/pins/palette, Cards/List notifications and reusable web shell | Functional head `836910c` passes full Linux CI, iOS/macOS builds, 13 web checks and Mac/browser journeys. Latest native wording/catalog checks pass; fresh-head CI and iOS interaction proof remain. Web data remains a local sample preview |
-| [45](https://github.com/EnzoTironi/zoen-native/pull/45) | `dd75e8f`, draft, currently stacked on PR 42 | Recovery after every original MLS device is lost | Owner reports 102 layer tests, 21 backup journeys, ten real-store contracts and Clippy passing at `59f14de`. Full CI at `dd75e8f` fails photo, refill and Welcome journeys; five source-review fixes and native proof remain. Retarget to actual main after PR 38 restores backup |
+The first unchanged 50-group M2 run passed offline refill, then failed `Roda 35` at the eight-second CLI deadline. Retained state had 35 claim receipts and no next claim. Profiling found repeated full MLS loads holding the engine mutex. The `dd03f6e` correction loads committed leaves once per reconciliation and computes owed work once per chat; its unchanged local 50-group run passed all commands and final stock 32. An immutable exact-main/current CLI pair also reproduced and corrected false completion before claim admission. Later fixes sign growth reports with the authenticated relay domain and establish the claim fixtures' settled/refused phase before strict assertions. At `ded5650`, CI passed growth 3/3 and claim 9/9, but M2 failed `Roda 30` before the final stock gate. A local diagnostic using retained executables with matching production/M2 source completed all 50 groups in 186.69 seconds; its process sample found repeated group loads in recovery while holding the engine mutex. The subsequent `5a4d5f0` recovery-cost correction passed growth/claim CI but still failed creating `Roda 41`, without the failed operation's elapsed time or individual gates. An opt-in per-actor census then passed locally and full Linux CI passed at `10e5b1d`. The local census contains 356 records for 51 Ana operations, all settling successfully; successful Linux libtest output did not expose its records. Current `f6936e9` removes the census and restores the exact `5a4d5f0` tree; full CI then failed `Roda 39`, again without per-command timing. Further observation remains required. No deadlines, stock targets or workload were weakened, and no single cause is established for every historical failure.
 
-Backup uses ADR 0046 and linking uses ADR 0045. Existing backup migration bytes were
-preserved; later migrations extend generations, object versions and package idempotency.
-The backup restoration must be verified in the final main tree. Native chat/UI proof and
-the remaining full-product gates are separate from the backend merge records.
+The local Pages FFI run passed 80 of 80 tests in 69.92 seconds, recorded in `live-pages-ffi-full-verified-tests.log`. The preceding 79-of-80 run exposed fixture errors: confirmation selected a failed outbox row, and a memory-only synced marker was lost on reload. Both fixture corrections preserved the production implementation and strict confirmation/retry-ID assertions. The final suite exercises public FFI receipts, file-backed reopen, own-edit undo/redo continuation, restore fences, collision atomicity, writer permissions and pending/failed relay acknowledgement. These are local core tests, not native UI or two-device transport proof.
 
-Peerless recovery review at `dd75e8f` found five required fixes: authenticate external
-UpdatePath credentials against the current roster and envelope device; exclude legacy
-unsigned pruning headers from recovery authority; preserve a recoverable handshake when
-confirmation or marker writes fail; remove device-local recovery markers during erase;
-and bound retry state when a recovery reference is superseded. The owner is repairing
-these before publishing a new reviewed head. Its [full CI run](https://github.com/EnzoTironi/zoen-native/actions/runs/37990340036)
-passes the 21 backup journeys but fails photo blob counting, key-package refill and the
-Welcome-ordering fixture. The existing duplication/secrecy, refill and ordering guarantees
-remain required. The source-review fixes, causal regressions and fresh full CI precede
-integration; encrypted local recovery tests do not complete native recovery or scale proof.
+The current local Android integration passed all 95 Gradle unit tests across 15 suites, with zero failures, errors or skips. It compiled the generated bindings and new Page UI while skipping `buildRodaCore` only; its 13 editor/offset and 10 coordinator tests are included in that total. This proves Kotlin compilation and JVM behavior, not Android ABI/JNI loading, Keystore or device UI.
 
-### Verified building blocks and unresolved failures
+The committed Mac candidate's clean build completed with exit 0 and app products present after the earlier disk and project-coordination problems. An earlier build contained macOS 27 C objects. Restricting the target C/C++ compiler flags fixed this without exporting MACOSX_DEPLOYMENT_TARGET to Rust host proc macros. A fresh archive inspection found 1,127 objects with minimum macOS 11 and 25 with minimum macOS 26; none exceed the app target. The Mac app rebuilt without newer-target warnings. Actual macOS 26 execution remains unverified. The subsequent Reader refresh, history permission/version gate and debug database isolation changes built successfully. A manual journey in the actual Mac app reproduced a collapsed history sheet, verified its corrected size, saved an edit, opened the read-only v1 preview and restored it as v3 while retaining v2. The Apple keystroke checkpoint built on Mac and passed ten production-code journeys, including two windows, unavailable/superseded keys, key loss after writing, unreadable storage, scoped/tampered ciphertext, explicit single-file discard, a stale discard confirmation and recovery after full Engine destruction. Nine cases use a memory vault; the tenth recreates the actual unsigned development KeychainVault and recovers the encrypted checkpoint. Its DEBUG fallback now reloads an existing development key and isolates keys with the test database. Release does not permit file fallback. The actual manual Mac journey opened a fenced draft, copied its exact text, discarded only the selected checkpoint, read v2, restored it as v4 retaining v3, quit/reopened, saved exact Unicode as v5 and quit/reopened again with that text intact. A source-qualified receipt contains eight steps and seven hashed PNGs. The certified XCTest runner builds but stalls before test cases with developer tools security disabled; settings were not changed and there is no automated pass. Release Keychain, native composition/IME, Reader remote updates, iOS file protection and independent-device transport remain pending.
 
-On `d9ebb3e`, **all 41 local FFI tests pass**, as do focused CLI and FFI Clippy checks.
-Controlled regressions verify three client behaviors:
+Earlier controlled regressions proved catch-up before offline writes, preservation of newer ciphertext after a stale rejection and socket progress during slow maintenance. Earlier complete CI runs passed at their recorded versions. The new claim regressions add focused causal evidence; repeatable release and unchanged-suite proof remain required.
 
-| Behavior | Old behavior | Fixed behavior |
-|---|---|---|
-| Initial catch-up before offline writes | Real-session test fails because a write overtakes catch-up | Queued plaintext and MLS maintenance wait for the first `SyncDone`; messages use the caught-up epoch and remain readable |
-| Late stale rejection after incremental catch-up | Compiled socket regression stalls after 12.57 seconds | Rejection uses the epoch actually sent; exact newer ciphertext is retained, retried and read by the peer; a genuine current-epoch block remains intact |
-| Slow maintenance and socket progress | Old interval fails the controlled notice test in 4 of 5 runs | Maintenance paced after each pass passes 5 of 5 runs |
+The [previous audit](history/roadmap-2026-10-09.md) preserves the earlier failed local journeys and source-review history. Current states above supersede its PR and merge table.
 
-The earlier `c7b1378` combined source has [passing full Linux CI](https://github.com/EnzoTironi/zoen-native/actions/runs/37953112924).
-Its verification round also passed 85 local core tests (FFI 37, log 22, MLS 9, protocol 17),
-19 backup journeys, 4 CLI revocation journeys, 1 connection journey, 3 key-package delivery
-journeys, 3 wire journeys, 10 FoundationDB tests and 7 Postgres/socket authorization tests.
-The newer combined `d9ebb3e` now also passes full Linux CI. The local results above remain
-bound to their original verification rounds; CI does not replace release/native proof.
+## Production deployment
 
-**The earlier local M2 round passed 8 of 10 journeys.** The offline-message journey left
-a `ProfileKeyShared` acknowledgement pending after the user message reached recipient
-history; the refill journey timed out earlier while adding Bruno to group 42. These local
-failures remain part of the evidence even though that combined head passed Linux CI.
-The new complete suites must establish repeatable recovery, delivery and refill.
+The public staging relay was last observed advertising protocol 2, while current shared clients require protocol 4. An `ok` health check does not establish compatibility. A reviewed rollout must inventory existing clients, apply compatible migrations, verify protocol negotiation and run fresh encrypted account/device journeys. An image rollback alone does not reverse migrations or newly written history.
 
-[PR 40 CI at `fb5f822` failed live refill](https://github.com/EnzoTironi/zoen-native/actions/runs/37950442153):
-stock 7, one Low notice enqueued, no client receipt, 15 pending and no rate limit.
-The new controlled regressions prove specific ordering and scheduler hazards; they do
-not establish the cause of that historical stock-7 failure. The reviewed backend PRs
-are merged and combined Linux CI passes; repeatable release journeys, native proof and
-the current UI verification remain required.
+Backup recovery-key mechanics and peerless MLS recovery are implemented. Password recovery is off by default and requires an explicit development opt-in. Production activation remains blocked by independent, identity-bound recovery authorization and an OPRF authority that enforces counters across nodes and proves real key destruction, as described in [ADR 0046](adr/0046-encrypted-backup.md). Deleting a staging database key does not erase historical copies.
 
-The candidate includes Welcome-before-message ordering, attaching a connecting device
-before its stock query, notices ordered after successful package publication, and
-idempotent package publication. The live-refill journey still requires exactly 32 packages
-within its original 20-second polling window. Its stock-7 failure has not been waived.
+Revocation stops fresh requests and future deliveries. Work admitted before its commit can finish because PostgreSQL device authorization and FoundationDB log append are separate transaction domains. Recovered identities and independently enrolled devices need their own authority lifecycle. See [ADR 0045](adr/0045-linking-devices.md) and [ADR 0047](adr/0047-mls-peerless-recovery.md).
 
-### Device and recovery boundaries
+Zoen is the product and built-in agent name. Legacy `roda-*`, `RodaCore`, build-task and storage/protocol identifiers still exist for technical compatibility. The [naming migration](dev/naming.md) is unfinished; branding must preserve old account data, generated bindings and authenticated history.
 
-[PR 33](https://github.com/EnzoTironi/zoen-native/pull/33) now requires explicit enrollment
-for a new device on an existing account. Linking verifies the root certificate while an
-active sponsor authorizes enrollment and box delivery in one Postgres transaction.
-Protocol 4 refuses older clients before authentication so a version-3 sponsor cannot
-report a successful link that leaves its target unenrolled. The upgrade preserves stored
-history, local event metadata and the existing login signing domain; it does not require
-wiping the database. See [ADR 0045](adr/0045-linking-devices.md).
+## Capacity evidence
 
-Revocation rejects fresh requests and new deliveries for the revoked key. Work admitted
-before the revocation commit can finish, including an already queued FoundationDB write;
-Postgres revocation and the log append are separate transaction domains. The copied root
-secret alone can no longer enroll another key at this relay. Valid backup recovery
-authority can still authorize a fresh key, and keys enrolled before revocation stay
-active until each is revoked. Those authorities need their own lifecycle. The durable
-authorization checks and bounded Postgres pools also add costs that must be measured
-under reconnect storms and sustained delivery before production-cell readiness.
+The [load model](plan-real.md#scale-built-for-a-billion-people) assumes 500 million daily users, 700,000 peak messages/second, 3.5 million device deliveries/second and 160 million concurrent sockets. These are design inputs.
 
-Sealed v4 entries bind the surviving pruned header and use a separate signature domain
-to prevent replay as a legacy stub. Full legacy v3 entries retain their authenticated
-bytes and stay unpruned. Previously persisted legacy stubs authenticate their original
-opaque digest; an upgrade cannot reconstruct trust in headers whose signed bytes were
-already discarded. Existing chains and outboxes are preserved, rather than reset.
+[ADR 0022](adr/0022-capacity.md) and [ADR 0023](adr/0023-per-space-sequencer.md) measured short development-box runs. The S9 sweep delivered 4,000 messages/second at p99 324 ms, above the 200 ms in-region target. One hot conversation reached about 3,180 messages/second. The 37 KiB/socket figure excludes TLS. The 150,000 sockets/node assumption and approximately $470,000/month projection do not establish production capacity or a bill; the cost projection excludes AI and media.
 
-[PR 34](https://github.com/EnzoTironi/zoen-native/pull/34) adds generation-bound recovery
-enrollment with a root certificate, proof from the new device and valid backup authority
-in one transaction. Restore installs that same enrolled key and retains durable MLS join
-requests; a surviving authorized peer must still add the leaf. Immutable object keys on
-every upload attempt and an atomic pointer change preserve the previous backup when a
-replacement fails. Database locks, object operations and full requests have bounded
-waits; uncertain or failed cleanup still needs an operations-tested garbage collector.
-See [ADR 0046](https://github.com/EnzoTironi/zoen-native/blob/08124f05bb4fbd6632df5f59eabc284831e36d6e/docs/adr/0046-encrypted-backup.md).
+Persisted ownership now replaces process-local claims. Its bounded queues and renewable leases improve the implementation, but do not prove fleet renewal throughput, failover time, region loss recovery or the load model above.
 
-**Production password recovery remains default off.** A vault key alone does not enable
-it. The explicit development opt-in is for tests and development only. Public activation
-requires independent, identity-bound recovery authorization before OPRF evaluation or
-destructive counters, plus a real HSM/enclave implementation with proven key destruction
-and counters across nodes. Removing a sealed key from Postgres does not destroy old
-copies. Recovery-key mode remains available; native linking/recovery UI and recovery
-without a surviving authorized MLS peer are still unfinished.
+## Required completion sequence
 
-### Native and parallel work
+1. Integrate current reviewed native reading/shell work and resolve live refill without weakening its guarantee. Finish native recovery/linking and the current Android runtime checks.
+2. Finish encrypted agent membership, model/tool execution, approval reconciliation, crash/retry behavior and usage accounting.
+3. Complete encrypted photo/voice transport and push between independent devices.
+4. Complete live pages, files, remote MCP/catalog, authenticated web, communities and commerce with permissions and cross-platform journeys.
+5. Prove a production cell under mixed TLS workloads, hot conversations, reconnects and service failures. Reconcile offered, accepted and delivered work separately.
+6. Prove cell placement/migration, compatible rolling upgrades, disaster recovery and regional failure behavior.
+7. Validate capacity and full costs against the billion-user model with measured headroom, retention and operating SLOs.
 
-Earlier [PR 38 native recordings](https://github.com/EnzoTironi/zoen-native/pull/38#issuecomment-6080457241)
-cover three local timeline stories at `9ab80ca`. They were attached with `gh --attach`.
-Five journeys now cover the expanded behavior. [Linux CI at `c836d5d3` passes](https://github.com/EnzoTironi/zoen-native/actions/runs/37963699446),
-but the fresh native trial hung in the first fixture and was interrupted; it is not a
-five-journey pass. Main-thread samples repeatedly passed through an invisible SwiftUI
-native search controller. Deferring inactive Search initialization subsequently passed a
-controlled AtTheEnd journey. The broader fresh native trial still recorded render/query
-stalls and failed scroll movement, and UI tooling detected the Mac locked. A temporary
-Activity rendering treatment was restored; the current source retains only the reviewed
-Search gate. Unlock and a rebuilt baseline are required before further diagnosis. Old
-recordings do not validate the changed source.
-Simulator timeline stories also do not measure live relay delivery or production capacity.
-
-The Grok computer also holds an unpublished `ux/audit-p2` patch across 14 Swift files.
-The original patch remains saved and unimported; it still needs review, simulator
-validation and a PR. The conversation confirms that some native flows are designed UI
-awaiting their backing implementation, including the displayed agent browser. Track
-these flows against their product completion gates.
-
-[PR 41](https://github.com/EnzoTironi/zoen-native/pull/41) is the separate native Android
-workstream. Its active chat owns validation and integration. A client implementation or
-local planner does not by itself complete live cross-device delivery, production media
-or the durable agent runtime.
-
-Current UI work removes the global desktop top bar, shares the mobile floating chat
-header, fixes the pin strip outside the timeline on a fully transparent background, and
-extends content to the window top. The whole Mac app uses the iOS palette; the React web
-shell uses the same palettes and side navigation. These changes are still undergoing
-verification and need fresh visual evidence at their final source head. The independent
-web shell/demo still has no authenticated web client. Live encrypted web sync,
-onboarding, permissions and supported-version journeys remain part of gate 4.
-
-## Execution order and acceptance gates
-
-These are completion gates, not an MVP cut. Product and distributed infrastructure can
-advance together once their common encrypted messaging boundary is reliable.
-
-1. **Stabilize and integrate the existing work.** Close the live-refill failure, preserve
-   unfinished UI changes, integrate reviewed linking/backup and sandbox work without ADR
-   or migration collisions. Exit: combined-tree CI, release simulator journeys and attached
-   visual evidence for each behavior; linking, history, recovery and revocation work through
-   the native app, including the case with no surviving authorized MLS peer. Production
-   password recovery also requires independent recovery authorization and proven key
-   destruction before public activation.
-2. **Make the agent a real participant.** Build the approved Rust/FDB/JetStream runtime,
-   keeping the model provider behind Zoen-owned traits. Exit: an MLS group member asks the
-   agent, receives its encrypted reply, approves an otherwise refused tool, and sees one
-   usage debit even after a worker crash/retry. Prove it with a scripted model endpoint,
-   then a configured live provider.
-3. **Complete daily communication.** Finish encrypted photo/voice delivery, resumable
-   transfers and push. Exit: a recipient with the app closed receives a notification,
-   opens the message/media, survives a network interruption and remains in sync; storage,
-   pushes and telemetry contain no message plaintext.
-4. **Complete product reach.** Finish signed catalog/MCP installation, cross-device files,
-   Android/web onboarding and invite links, community moderation and business workflows.
-   Exit: each promised flow works between independent accounts and platforms with scoped
-   permissions, accessibility and supported client versions.
-5. **Prove a production cell.** Replace process-local ownership with shared, renewable
-   leases and fenced forwarding. Bound queues/caches and authorization work, test hot Spaces
-   and reconnect storms, measure Postgres authorization capacity and backup cleanup, and
-   isolate the load generator. Exit: agreed SLOs hold with TLS and MLS-sized payloads
-   during a soak, a relay/NATS/storage failure, and restore from backup. Record offered,
-   accepted and delivered work separately with exact reconciliation.
-6. **Prove cells and regions.** Implement directory/cell placement and migration, DR and
-   version-compatible rolling changes. Exit: concurrent writers, duplicate delivery,
-   network partitions and region loss preserve ordering, membership and recoverable
-   messages with measured recovery objectives.
-7. **Validate the billion-user operating model.** Aggregate analytics by cell, run
-   representative mixed workloads and measure full costs including media, model use and
-   replication. Exit: demonstrated cell capacity multiplied by tested placement/failover
-   limits satisfies the load model with stated headroom; growth experiments preserve
-   retention and operational SLOs. Keep modeled, measured and deployed numbers distinct.
-
-## External activation
-
-Apple signing capabilities/APNs credentials, a live model provider and paid sandbox
-deployment activate their respective live checks. Their absence does not prevent local
-protocol, runtime, simulator or failure testing. GitHub Actions is currently running:
-the old private-repository billing blocker in the plan is stale.
-
-The ongoing product metrics remain **MAU and sent messages per user**, interpreted with
-retention, delivery success, privacy and cost. A completion percentage would hide the
-largest unproven gates; track their evidence instead.
+External signing/APNs/provider/sandbox credentials activate their live checks. Independent local, protocol, simulator and failure testing can continue. Track each gate by its evidence instead of a completion percentage.

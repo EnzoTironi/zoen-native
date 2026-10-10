@@ -1,8 +1,15 @@
 # Zoen security and privacy
 
-Status: design, folded into [system-design.md](system-design.md) and the ADRs. Items marked
-**later** have their seam designed now and their implementation scheduled; nothing here is a
-stub in shipped code.
+This document records the security design. The [roadmap](roadmap-status.md) identifies current implementation and outstanding verification at main `f277c804`. A design statement below is not a claim that hardware, passkeys, transparency, push or production controls have shipped.
+
+| Control | Current evidence or required gate |
+| --- | --- |
+| Signed logs and encrypted conversations | Implemented Ed25519 events, OpenMLS direct/groups, sealed MLS state and current enrollment/recovery foundations. |
+| Device key vault | Apple Keychain callback; unsigned Mac development has a permission-restricted file fallback. Android Keystore is in PR 41. Secure Enclave wrapping and physical-device proof remain gates. |
+| Backup | Recovery-key encrypted backup and peerless MLS recovery are integrated. Production OPRF authority remains required for password recovery. Passkey PRF is a separate design gate. |
+| Database confidentiality | MLS state and selected secrets are sealed. This does not establish full-database encryption of every local projection or document. |
+| Cross-device permissions | Explicit enrollment and revocation are implemented. Approval reconciliation fixes are under review in PR 46; agent membership and runtime controls remain unfinished. |
+| Production operations | TLS workload capacity, service identity controls, restore/failover, moderation and release signing need deployed proof. |
 
 ## Assets
 
@@ -44,9 +51,8 @@ contact graph and handles; agent permissions and budgets; backups; the code we s
   payload carries its ciphersuite, key packages advertise supported suites, and groups
   upgrade with a ReInit when all members support the new suite.
 - **Device keys.** Ed25519 for signing because MLS and our logs use it; the Secure Enclave
-  only does P-256, so the Ed25519 secret is wrapped by a Secure Enclave P-256 key (ECIES) and
-  stored in the Keychain. Unwrapping needs the enclave, so a copied Keychain is useless.
-- **Root identity under the passkey PRF.** The identity root key is encrypted with a key
+  only does P-256, so the planned hardware-bound design wraps the Ed25519 secret with a Secure Enclave P-256 key (ECIES) and stores the wrapped bytes in the Keychain. This hardware-bound wrapping requires implementation and physical-device proof.
+- **Root identity under the passkey PRF.** Planned: the identity root key is encrypted with a key
   derived from the passkey's PRF output and stored on our server as an opaque blob. A new
   device with the passkey recovers the root and certifies itself. Needs the domain for
   passkeys (Enzo).
@@ -67,8 +73,7 @@ contact graph and handles; agent permissions and budgets; backups; the code we s
   a recipient can reveal it to moderation in a report, and the server verifies the commitment
   it stored. **Later** with moderation; the sealed payload reserves the commitment field.
 - **Push.** Payloads are encrypted to the device; the Notification Service Extension decrypts.
-- **Backups.** Encrypted on the device with a key from the passkey PRF or a 24-word recovery
-  key; we store ciphertext only and can't help anyone read it.
+- **Backups.** Implemented backup uses a 64-digit recovery key, grouped in fours, and client-side authenticated encryption. Password recovery uses the ADR 0046 OPRF vault and still needs its production authority. Passkey PRF remains a separate future design.
 - **Disappearing messages.** A Space setting carried in a signed event; devices delete
   expired content locally and the relay drops expired envelopes with a retention job.
 - **Attachments.** Per-file random keys, XChaCha20-Poly1305 (ADR 0007).
