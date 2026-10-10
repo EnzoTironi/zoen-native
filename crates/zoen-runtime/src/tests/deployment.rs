@@ -117,7 +117,7 @@ pub(super) async fn changed_marker_closes_open_and_execution() {
     let binding = w
         .runtime
         .execution
-        .prepared_binding(&step.request.context.attempt_id, &w.runtime.custody)
+        .prepared_binding(&step.request().context.attempt_id, &w.runtime.custody)
         .await
         .unwrap();
     let witness: String = sqlx::query_scalar("SELECT witness FROM runtime_deployment_binding")

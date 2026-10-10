@@ -25,7 +25,7 @@ pub(super) async fn other_namespace_cannot_refund_dispatched_hold() {
             assert!(other.complete_verified(&step).await.is_err());
             let binding = other
                 .execution
-                .prepared_binding(&step.request.context.attempt_id, &other.custody)
+                .prepared_binding(&step.request().context.attempt_id, &other.custody)
                 .await
                 .unwrap();
             let proof = other
@@ -89,11 +89,11 @@ pub(super) async fn expired_policy_cannot_finish_admission() {
         .unwrap();
     w.runtime.finance.reserve(&binding).await.unwrap();
     let claim = w.runtime.finance.claim(&binding).await.unwrap().unwrap();
-    let guard = w.runtime.finance.guard(&binding).await.unwrap();
+    let guard = w.runtime.finance.guard(&binding, &step).await.unwrap();
     let admission = w
         .runtime
         .execution
-        .admit_once(&step, claim, &binding, &w.runtime.custody)
+        .admit_once(&step, claim, &binding, &w.runtime.custody, &w.runtime)
         .await
         .unwrap();
     // Wait against the real SQL clock, without synthesizing an expired proof or
@@ -134,11 +134,11 @@ pub(super) async fn delayed_permit_use_cannot_send() {
         .unwrap();
     w.runtime.finance.reserve(&binding).await.unwrap();
     let claim = w.runtime.finance.claim(&binding).await.unwrap().unwrap();
-    let guard = w.runtime.finance.guard(&binding).await.unwrap();
+    let guard = w.runtime.finance.guard(&binding, &step).await.unwrap();
     let admission = w
         .runtime
         .execution
-        .admit_once(&step, claim, &binding, &w.runtime.custody)
+        .admit_once(&step, claim, &binding, &w.runtime.custody, &w.runtime)
         .await
         .unwrap();
     let permit = guard.finish(admission).await.unwrap();
@@ -164,7 +164,7 @@ pub(super) async fn reservation_ack_lost_reuses_one_hold() {
     assert!(w.runtime.complete_verified(&step).await.is_err());
     assert_eq!(
         w.runtime
-            .inspect_attempt(&step.request.context.attempt_id)
+            .inspect_attempt(&step.request().context.attempt_id)
             .await
             .unwrap(),
         Some(FinancialState::Reserved)
@@ -196,7 +196,7 @@ pub(super) async fn claim_ack_lost_never_recreates_claim() {
     let binding = w
         .runtime
         .execution
-        .prepared_binding(&step.request.context.attempt_id, &w.runtime.custody)
+        .prepared_binding(&step.request().context.attempt_id, &w.runtime.custody)
         .await
         .unwrap();
     let proof = w
@@ -240,7 +240,7 @@ pub(super) async fn admission_and_guard_reply_losses_keep_hold() {
         assert!(
             w.runtime
                 .execution
-                .has_admission(&step.request.context.attempt_id)
+                .has_admission(&step.request().context.attempt_id)
                 .await
         );
         let reopened = w.reopen().await;
@@ -250,7 +250,7 @@ pub(super) async fn admission_and_guard_reply_losses_keep_hold() {
         let binding = w
             .runtime
             .execution
-            .prepared_binding(&step.request.context.attempt_id, &w.runtime.custody)
+            .prepared_binding(&step.request().context.attempt_id, &w.runtime.custody)
             .await
             .unwrap();
         assert!(w
@@ -286,11 +286,11 @@ pub(super) async fn admission_tombstone_race_and_old_worker() {
             .unwrap();
         w.runtime.finance.reserve(&binding).await.unwrap();
         let claim = w.runtime.finance.claim(&binding).await.unwrap().unwrap();
-        let guard = w.runtime.finance.guard(&binding).await.unwrap();
+        let guard = w.runtime.finance.guard(&binding, &step).await.unwrap();
         let (admitted, closed) = tokio::join!(
             w.runtime
                 .execution
-                .admit_once(&step, claim, &binding, &w.runtime.custody),
+                .admit_once(&step, claim, &binding, &w.runtime.custody, &w.runtime),
             w.runtime.execution.close_before_dispatch(
                 &step,
                 &binding,
@@ -349,7 +349,7 @@ pub(super) async fn both_admission_closure_orderings() {
             .unwrap();
         w.runtime.finance.reserve(&binding).await.unwrap();
         let claim = w.runtime.finance.claim(&binding).await.unwrap().unwrap();
-        let guard = w.runtime.finance.guard(&binding).await.unwrap();
+        let guard = w.runtime.finance.guard(&binding, &step).await.unwrap();
         if closure_first {
             let closure = w
                 .runtime
@@ -363,7 +363,7 @@ pub(super) async fn both_admission_closure_orderings() {
             assert!(w
                 .runtime
                 .execution
-                .admit_once(&step, claim, &binding, &w.runtime.custody,)
+                .admit_once(&step, claim, &binding, &w.runtime.custody, &w.runtime)
                 .await
                 .is_err());
             guard.rollback().await.unwrap();
@@ -383,7 +383,7 @@ pub(super) async fn both_admission_closure_orderings() {
             let admission = w
                 .runtime
                 .execution
-                .admit_once(&step, claim, &binding, &w.runtime.custody)
+                .admit_once(&step, claim, &binding, &w.runtime.custody, &w.runtime)
                 .await
                 .unwrap();
             guard.finish(admission).await.unwrap().consume().unwrap();
@@ -452,7 +452,7 @@ pub(super) async fn takeover_retains_late_bill_but_denies_progress() {
     let binding = w
         .runtime
         .execution
-        .prepared_binding(&step.request.context.attempt_id, &w.runtime.custody)
+        .prepared_binding(&step.request().context.attempt_id, &w.runtime.custody)
         .await
         .unwrap();
     assert_eq!(

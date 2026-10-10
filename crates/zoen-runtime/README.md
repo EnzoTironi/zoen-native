@@ -107,13 +107,16 @@ associated device leases, and refreshes the original intent. Original input,
 policy and Binding stay frozen while current native frontier/grant facts are
 derived separately. An actual source snapshot checks that frontier, active
 root, immutable association, both leases and prepared Binding. Reads mint no
-dispatch permit: C3 must repeat these checks in its final admission mutation.
+dispatch permit. The private Native reply step keeps these current facts separate
+from the frozen original and repeats the actual source/root/pair checks inside
+the final admission write. Seeded CoreCapsule/copied-frontier authority exists
+only in the explicitly separate test Fixture variant.
 Lease release preserves monotonic tokens and cannot release a newer holder.
 
 No-op synchronization consumes no image generation. Runs protect their original
 capsule through real GC references; terminal reference release and wake ACKs
-await a verified run disposition protocol. The public paid entry points remain
-closed. The joined SQL/OpenMLS/FdbLog fixture validates this unit separately from
+await a verified run disposition protocol. Production paid entry remains
+closed by absent managed custody and external continuity. The joined SQL/OpenMLS/FdbLog fixture validates this unit separately from
 financial core-scope fixtures; it does not implement live WS provisioning,
 managed credentials, external nonrollback continuity or guarded agent output.
 
@@ -138,15 +141,47 @@ committing its SQL witness and ending the guard. Only this known-fresh sequence
 produces a transient permit for one gateway transport. No SQL directory lock
 spans HTTP latency. Reads, replay, reopen and uncertain commits cannot recreate
 claims or permits. Both run and certified-device fences guard execution writes.
-Guard finish rechecks signed budget expiry using the actual SQL clock. The
+Guard finish rechecks the minimum signed budget, original period-end and actual
+native grant expiry using the SQL clock. The
 consuming permit has a conservative monotonic deadline, at most two seconds
-from that observation and no later than the policy deadline. A paused worker
+from that observation and no later than either authorization deadline. A paused worker
 cannot consume an expired permit; the admitted hold remains pending.
 
-Cancellation releases only after a permanent fenced FDB pre-dispatch tombstone
-defeats old admission. Admitted and unknown outcomes retain holds. Restore
+`cancel_model(run)` first records an authenticated permanent stop request under
+the original run/attempt/record/Binding scope. It requires continuity and exact
+retained association, prepared Binding, source pairing, trigger index and image
+reference. Recording the request does not acquire or steal a worker lease and
+grants no refund. The actual final admission reads the same key with a conflict.
+If the original worker still owns either valid lease, cancellation returns
+`ModelCancellation::Requested`; cleanup awaits its release or real expiry.
+
+Fenced cleanup is a separate private type without a current native credential,
+grant, image readiness, gateway quote, latest policy or live enrollment dependency.
+It rechecks both actual leases and the exact request, then releases only after a
+known permanent FDB pre-dispatch tombstone defeats old admission and the SQL
+closure/release commits successfully. Replayed closure also writes the tombstone;
+a read-only snapshot cannot mint a fresh closure proof. `Released` is this known
+outcome; observed admission returns `Retained { financial }`. Admitted and unknown outcomes retain holds. Restore
 continuity starts closed and has no production setter; absence or a namespace
 UUID is insufficient. The actual external nonrollback witness remains missing.
+
+The original SQL period exists before retention: policy installation creates it,
+and reply discovery requires `reply_budget` to find that installed signed policy.
+Its FK preserves the period. Cleanup never creates a policy or period. A permanent
+`runtime_predispatch_closures` row binds original deployment/owner/period/Binding
+under that period lock, even before an attempt exists. Reserve and claim use the
+same lock and SQL enforces the gate, preventing an old prepare from reserving
+after completed cleanup. Cancellation before reservation returns logical Released
+without fabricating an attempt, hold or posting. While valid worker leases delay
+cleanup, an old prepare may reserve temporarily but cannot pass final admission;
+later cleanup releases that one hold. Automatic worker wake/recovery and terminal
+reference/receipt pruning remain open.
+
+Successful fenced FDB admission followed by known still-valid SQL finish defines
+the finite authorization point. Later revocation/cancellation does not retroactively
+revoke that already admitted permit; its deadline still prevents delayed use.
+Incurred late evidence can settle the original bill and grants no output progress.
+This is not distributed atomicity or instantaneous remote provider cancellation.
 
 Immutable exact balanced postings record reservation and exclusive terminal
 release/settlement. Deferred SQL constraints enforce journal shape, reference
@@ -219,3 +254,22 @@ recovery, typed tool approval/resume, signed output/usage, external continuity
 witness, live billing reconciliation and deployment drills remain open. These
 journeys do not complete runtime milestone 1 or Mastra/TextQL parity. See the
 [capability ledger](../../docs/agent-runtime-capabilities.md).
+
+## C3 branch validation
+
+The real-service runtime suite completes 2 Rust tests, including 26 new named
+native admission/cancellation outcomes, all 12 retained-discovery outcomes and
+all 30 financial regressions. It uses actual Postgres, FoundationDB, OpenMLS,
+relay FdbLog and loopback HTTP with explicit fixture custody. The real
+60,000,000-version lease expiry is observed without changing that bound.
+A separate forced-expiry takeover cut remains explicitly synthetic. Known
+commit ACK suppression is not wire-level database commit-unknown testing.
+
+Independent review found no blocker in the production delta; it did not execute
+these services independently. One local fixture bootstrap returned Unavailable;
+the identical binary passed on repetition, and the cause remains unproved.
+The implementation PR binds its exact source, binary and raw-log hashes and
+retains the unsuccessful attempts. Full integration CI on the refreshed stack,
+managed custody, external nonrollback continuity, guarded publication and
+automatic worker/wake cleanup remain open. This is not backend completion or
+full Mastra/TextQL parity.

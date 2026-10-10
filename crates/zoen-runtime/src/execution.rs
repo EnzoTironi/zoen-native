@@ -22,6 +22,7 @@ pub(super) struct Lease {
     pub(super) token: i64,
     pub(super) expires: i64,
 }
+#[cfg(test)]
 #[derive(Serialize, Deserialize)]
 struct CoreCapsule {
     request: zoen_models::ModelRequest,
@@ -149,6 +150,7 @@ impl Execution {
     pub(super) fn run(&self, run: &str, part: &str) -> Vec<u8> {
         self.root.pack(&("run", run, part))
     }
+    #[cfg(test)]
     fn device(&self, context: &zoen_models::AttemptContext) -> Vec<u8> {
         self.root.pack(&(
             "device",
@@ -178,6 +180,23 @@ impl Execution {
         &self,
         trx: &Transaction,
         step: &VerifiedStep,
+        custody: &Custody,
+        _cancelling: bool,
+    ) -> Result<(), RuntimeError> {
+        match step {
+            VerifiedStep::Native(step) => step.scope_in(self, trx, custody).await,
+            #[cfg(test)]
+            VerifiedStep::Fixture(step) => {
+                self.fixture_scope(trx, step, custody, _cancelling).await
+            }
+        }
+    }
+
+    #[cfg(test)]
+    async fn fixture_scope(
+        &self,
+        trx: &Transaction,
+        step: &crate::FixtureStep,
         custody: &Custody,
         cancelling: bool,
     ) -> Result<(), RuntimeError> {
@@ -223,6 +242,9 @@ impl Execution {
         binding: &Binding,
         custody: &Custody,
     ) -> Result<(), RuntimeError> {
+        if binding.context != step.request().context {
+            return Err(RuntimeError::InvalidBinding);
+        }
         let trx = self.transaction().await?;
         self.scope(&trx, step, custody, false).await?;
         let attempt = &binding.context.attempt_id;
@@ -256,7 +278,12 @@ impl Execution {
         claim: FreshClaim,
         binding: &Binding,
         custody: &Custody,
+        runtime: &crate::RuntimeAuthority,
     ) -> Result<FreshAdmission, RuntimeError> {
+        runtime.continuity()?;
+        if binding.context != step.request().context {
+            return Err(RuntimeError::InvalidBinding);
+        }
         let (attempt, nonce, digest) = claim.consume();
         if attempt != binding.context.attempt_id || digest != binding.digest()? {
             return Err(RuntimeError::InvalidBinding);
@@ -284,9 +311,17 @@ impl Execution {
         }
         // The unique SQL nonce is evidence of the consumed claim, never a read API.
         trx.set(&self.attempt(&attempt, "admitted"), nonce.as_bytes());
+        #[cfg(test)]
+        if runtime.fault.load(std::sync::atomic::Ordering::SeqCst) == 22 {
+            runtime.native_cut_entered.notify_one();
+            runtime.native_cut_resume.notified().await;
+        }
+        runtime.continuity()?;
         trx.commit().await.map_err(|_| RuntimeError::Unavailable)?;
+        runtime.continuity()?;
         Ok(FreshAdmission { attempt, nonce })
     }
+    #[cfg(test)]
     pub async fn close_before_dispatch(
         &self,
         step: &VerifiedStep,
@@ -307,6 +342,28 @@ impl Execution {
             return Err(RuntimeError::InvalidBinding);
         }
         trx.set(&self.run(&binding.context.run_id, "cancel"), b"1");
+        self.close_in(trx, binding, runtime).await
+    }
+
+    pub(crate) async fn close_reply_before_dispatch(
+        &self,
+        step: &crate::native::CleanupStep,
+        custody: &Custody,
+        runtime: &crate::RuntimeAuthority,
+    ) -> Result<Option<PreDispatchClosure>, RuntimeError> {
+        runtime.continuity()?;
+        let trx = self.transaction().await?;
+        step.scope_in(self, &trx, custody).await?;
+        self.close_in(trx, step.binding(), runtime).await
+    }
+
+    async fn close_in(
+        &self,
+        trx: Transaction,
+        binding: &Binding,
+        runtime: &crate::RuntimeAuthority,
+    ) -> Result<Option<PreDispatchClosure>, RuntimeError> {
+        let attempt = &binding.context.attempt_id;
         if trx
             .get(&self.attempt(attempt, "admitted"), false)
             .await?
@@ -321,21 +378,21 @@ impl Execution {
             if old.as_ref() != digest.as_bytes() {
                 return Err(RuntimeError::InvalidBinding);
             }
-            trx.commit().await.map_err(|_| RuntimeError::Unavailable)?;
-            runtime.continuity()?;
-            return Ok(Some(PreDispatchClosure {
-                binding: binding.clone(),
-                digest,
-            }));
         }
+        // Replays also write: a read-only snapshot is not a fresh fenced proof.
         trx.set(&key, digest.as_bytes());
         trx.commit().await.map_err(|_| RuntimeError::Unavailable)?;
+        #[cfg(test)]
+        if runtime.fault.load(std::sync::atomic::Ordering::SeqCst) == 27 {
+            return Err(RuntimeError::Unavailable);
+        }
         runtime.continuity()?;
         Ok(Some(PreDispatchClosure {
             binding: binding.clone(),
             digest,
         }))
     }
+    #[cfg(test)]
     pub async fn prepared_binding(
         &self,
         attempt: &str,
@@ -421,6 +478,7 @@ impl Execution {
     // MLS sender, ordered grants, approvals or certified device-state import.
     #[cfg(test)]
     pub async fn seed(&self, step: &VerifiedStep, custody: &Custody) -> Result<(), RuntimeError> {
+        let step = step.fixture();
         let trx = self.transaction().await?;
         let expires = trx
             .get_read_version()
@@ -468,6 +526,7 @@ impl Execution {
     }
     #[cfg(test)]
     pub async fn take_device(&self, step: &VerifiedStep) {
+        let step = step.fixture();
         let trx = self.transaction().await.unwrap();
         let expires = trx.get_read_version().await.unwrap() + 60_000_000;
         trx.set(

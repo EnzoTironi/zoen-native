@@ -1,6 +1,8 @@
 //! Stable discovery records. These are inert retained originals; the loader
 //! derives current native facts separately and does not create a spend permit.
+mod cancellation;
 mod storage;
+pub(crate) use cancellation::{CleanupAcquisition, CleanupStep};
 #[cfg(test)]
 pub(super) mod testing;
 
@@ -126,8 +128,66 @@ impl Batch {
 
 struct LoadedReply {
     record: RunRecord,
+    record_digest: String,
+    current: Root,
     facts: ReplyFacts,
     fences: ReplyFences,
+}
+
+/// Owns one actually loaded original and separately refreshed authorization.
+/// Only the private native loader can construct this non-replayable step.
+pub(crate) struct ReplyStep {
+    loaded: LoadedReply,
+}
+
+impl ReplyStep {
+    pub(crate) fn request(&self) -> &ModelRequest {
+        &self.loaded.record.request
+    }
+
+    pub(crate) fn binding(
+        &self,
+        request: &zoen_models::DispatchRequest,
+    ) -> Result<Binding, RuntimeError> {
+        let original = &self.loaded.record.binding;
+        if request.context != original.context
+            || request.request_digest != original.request_digest
+            || request.descriptor.requested_output_tokens != original.requested_output_tokens
+            || original.price.quote(request)? != original.hold_units
+        {
+            return Err(RuntimeError::InvalidBinding);
+        }
+        Ok(original.clone())
+    }
+
+    pub(crate) fn grant_deadline(&self) -> Option<i64> {
+        self.loaded.facts.expires_at_ms()
+    }
+
+    pub(crate) async fn scope_in(
+        &self,
+        execution: &Execution,
+        trx: &foundationdb::Transaction,
+        custody: &crate::custody::Custody,
+    ) -> Result<(), RuntimeError> {
+        execution
+            .verify_reply_in(
+                trx,
+                &self.loaded.record,
+                &self.loaded.record_digest,
+                &self.loaded.current,
+                &self.loaded.facts,
+                &self.loaded.fences,
+                custody,
+            )
+            .await
+    }
+
+    pub(crate) async fn release(&self, execution: &Execution) -> Result<(), RuntimeError> {
+        execution
+            .release_reply(&self.loaded.record, &self.loaded.fences)
+            .await
+    }
 }
 
 // Constructed by known atomic acquisition of a real retained run and device.
@@ -436,14 +496,16 @@ impl NativeCustody {
                 .read_native(&principal, Some(&fences.device))
                 .await?;
             let current = capsule.root.clone();
-            let core = DeviceCore::restore(
-                self.open_image(&principal, capsule)?,
-                credential.unlocked()?,
-            )
-            .map_err(native_error)?;
-            let facts = core
-                .refresh(&record.intent, runtime.finance.reply_clock().await?)
+            let observed = runtime.finance.reply_clock().await?;
+            let facts = {
+                let core = DeviceCore::restore(
+                    self.open_image(&principal, capsule)?,
+                    credential.unlocked()?,
+                )
                 .map_err(native_error)?;
+                core.refresh(&record.intent, observed)
+                    .map_err(native_error)?
+            };
             let [InputMessage::User { text }] = record.request.messages.as_slice() else {
                 return Err(RuntimeError::InvalidBinding);
             };
@@ -459,7 +521,6 @@ impl NativeCustody {
             {
                 return Err(RuntimeError::InvalidBinding);
             }
-            drop(core);
             runtime
                 .execution
                 .verify_reply(
@@ -482,12 +543,14 @@ impl NativeCustody {
                 .await?
                 .commit()
                 .await?;
-            Ok(facts)
+            Ok((facts, current))
         }
         .await;
         match result {
-            Ok(facts) => Ok(LoadedReply {
+            Ok((facts, current)) => Ok(LoadedReply {
                 record,
+                record_digest,
+                current,
                 facts,
                 fences,
             }),
@@ -496,6 +559,16 @@ impl NativeCustody {
                 Err(error)
             }
         }
+    }
+
+    pub(crate) async fn verified_reply(
+        &self,
+        runtime: &RuntimeAuthority,
+        run: &str,
+    ) -> Result<ReplyStep, RuntimeError> {
+        Ok(ReplyStep {
+            loaded: self.load_reply(runtime, run).await?,
+        })
     }
 
     pub(crate) async fn inspect_reply(

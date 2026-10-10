@@ -25,7 +25,7 @@ pub(super) async fn run() {
     let step = w.step(0).await;
     assert_eq!(
         w.runtime
-            .run_model(&step.request.context.run_id)
+            .run_model(&step.request().context.run_id)
             .await
             .unwrap_err(),
         RuntimeError::CoreAuthorityUnavailable

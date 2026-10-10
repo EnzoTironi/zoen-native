@@ -15,6 +15,7 @@ pub(super) struct Provider {
     pub paused: Arc<AtomicBool>,
     pub lost: Arc<AtomicBool>,
     pub body: Arc<Mutex<Value>>,
+    pub requests: Arc<Mutex<Vec<Value>>>,
     task: tokio::task::JoinHandle<()>,
 }
 impl Drop for Provider {
@@ -32,23 +33,26 @@ impl Provider {
         let paused = Arc::new(AtomicBool::new(false));
         let lost = Arc::new(AtomicBool::new(false));
         let body = Arc::new(Mutex::new(reply()));
-        let (counter, signal, gate, pause, drop_reply, response) = (
+        let requests = Arc::new(Mutex::new(Vec::new()));
+        let (counter, signal, gate, pause, drop_reply, response, inputs) = (
             sends.clone(),
             received.clone(),
             release.clone(),
             paused.clone(),
             lost.clone(),
             body.clone(),
+            requests.clone(),
         );
         let task = tokio::spawn(async move {
             while let Ok((mut stream, _)) = listener.accept().await {
-                let (counter, signal, gate, pause, drop_reply, response) = (
+                let (counter, signal, gate, pause, drop_reply, response, inputs) = (
                     counter.clone(),
                     signal.clone(),
                     gate.clone(),
                     pause.clone(),
                     drop_reply.clone(),
                     response.clone(),
+                    inputs.clone(),
                 );
                 tokio::spawn(async move {
                     let mut wire = Vec::new();
@@ -91,6 +95,7 @@ impl Provider {
                     }
                     let input: Value = serde_json::from_slice(&wire[end..end + length]).unwrap();
                     assert_eq!(input["model"], "fixture-model");
+                    inputs.lock().unwrap().push(input);
                     counter.fetch_add(1, Ordering::SeqCst);
                     signal.notify_one();
                     if pause.load(Ordering::SeqCst) {
@@ -115,6 +120,7 @@ impl Provider {
             paused,
             lost,
             body,
+            requests,
             task,
         }
     }
