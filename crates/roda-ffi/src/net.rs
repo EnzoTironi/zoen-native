@@ -42,6 +42,15 @@ pub struct NetStatus {
     pub synced: bool,
     pub error: Option<String>,
     pub registered: bool,
+    authenticated_relay: Option<AuthenticatedRelay>,
+}
+
+#[derive(Clone, Debug)]
+struct AuthenticatedRelay {
+    base: String,
+    name: String,
+    identity: String,
+    device: String,
 }
 
 pub enum Cmd {
@@ -117,6 +126,7 @@ impl Net {
             synced: false,
             error: None,
             registered: false,
+            authenticated_relay: None,
         });
         {
             let poke_tx = cmd_tx.clone();
@@ -147,6 +157,22 @@ impl Net {
 
     pub fn status(&self) -> NetStatus {
         self.status.borrow().clone()
+    }
+
+    /// HTTP signatures share the current socket's authenticated relay domain.
+    pub fn authenticated_relay_name(
+        &self,
+        url: &str,
+        identity: &str,
+        device: &str,
+    ) -> Option<String> {
+        let status = self.status.borrow();
+        let relay = status.authenticated_relay.as_ref()?;
+        (status.state == ConnState::Online
+            && relay.base == http_base(url)
+            && relay.identity == identity
+            && relay.device == device)
+            .then(|| relay.name.clone())
     }
 
     pub fn flush(&self) {
@@ -204,7 +230,12 @@ struct Ctx {
 
 impl Ctx {
     fn set(&self, f: impl FnOnce(&mut NetStatus)) {
-        self.status.send_modify(f);
+        self.status.send_modify(|status| {
+            f(status);
+            if status.state != ConnState::Online {
+                status.authenticated_relay = None;
+            }
+        });
         self.notify_connection();
     }
 
@@ -462,8 +493,6 @@ async fn session(
         Ok(other) => return Exit::Retry(format!("unexpected {other:?}")),
         Err(e) => return Exit::Retry(e),
     };
-    // HTTP writes beside the socket (backups) sign for this name too.
-    let _ = ctx.engine().store.set_meta("relay_name", &relay);
     if let Err(e) = send(
         &mut sink,
         &ClientFrame::Auth {
@@ -499,6 +528,9 @@ async fn session(
         }
         let _ = ctx.engine().set_registered(true);
     }
+    // Publish the name only after this socket reached Ready and any registration
+    // succeeded. A Challenge alone must not establish an HTTP signature domain.
+    let _ = ctx.engine().store.set_meta("relay_name", &relay);
     *backoff = Duration::from_millis(500);
     ctx.engine().profiles_session_start(profiles);
     // Encrypted media moves over HTTP beside the socket, for as long as this session lives.
@@ -515,6 +547,12 @@ async fn session(
         s.state = ConnState::Online;
         s.error = None;
         s.registered = true;
+        s.authenticated_relay = (!relay.is_empty()).then(|| AuthenticatedRelay {
+            base: http_base(&relay_url),
+            name: relay.clone(),
+            identity: identity.clone(),
+            device: key.id(),
+        });
     });
 
     // ── catch up, then flush what we wrote offline ──
@@ -1479,6 +1517,7 @@ mod tests {
             synced: false,
             error: None,
             registered: true,
+            authenticated_relay: None,
         });
         let (maintenance, mut maintenance_started) = mpsc::unbounded_channel();
         let ctx = Ctx {
@@ -1827,6 +1866,7 @@ mod tests {
             synced: false,
             error: None,
             registered: true,
+            authenticated_relay: None,
         });
         let passes = Arc::new(AtomicUsize::new(0));
         let (maintenance_started, during_maintenance) = channel::channel();
