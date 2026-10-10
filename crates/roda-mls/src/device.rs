@@ -82,6 +82,9 @@ struct Provider<'c> {
     storage: SqliteStorageProvider<SealedCodec, &'c Connection>,
 }
 
+/// Current encryption keys indexed by the verified identity and device in each leaf.
+pub type LeafKeys = std::collections::BTreeMap<(String, String), Vec<u8>>;
+
 impl<'c> OpenMlsProvider for Provider<'c> {
     type CryptoProvider = RustCrypto;
     type RandProvider = RustCrypto;
@@ -132,6 +135,16 @@ fn identities(group: &MlsGroup) -> Result<BTreeSet<String>, MlsError> {
     group
         .members()
         .map(|m| leaf_of(&m.credential, &m.signature_key).map(|l| l.identity))
+        .collect()
+}
+
+fn leaf_keys(group: &MlsGroup) -> Result<LeafKeys, MlsError> {
+    group
+        .members()
+        .map(|m| {
+            leaf_of(&m.credential, &m.signature_key)
+                .map(|l| ((l.identity, l.device), m.encryption_key.clone()))
+        })
         .collect()
 }
 
@@ -784,18 +797,26 @@ impl<'c> Device<'c> {
 
     /// The group's leaves: (identity, device) -> the leaf's current encryption key. A leaf
     /// that was taken out and added again (a device back from a long absence) has a new key.
-    pub fn leaves(
-        &self,
-        space: &str,
-    ) -> Result<std::collections::BTreeMap<(String, String), Vec<u8>>, MlsError> {
+    pub fn leaves(&self, space: &str) -> Result<LeafKeys, MlsError> {
+        self.with(|p| leaf_keys(&self.load(p, space)?))
+    }
+
+    /// Verified leaf keys of a group with no commit awaiting confirmation. Missing
+    /// groups and held recovery commits return `None`; storage failures remain errors.
+    pub fn committed_leaves(&self, space: &str) -> Result<Option<LeafKeys>, MlsError> {
+        if self.recovery_pending(space) {
+            return Ok(None);
+        }
         self.with(|p| {
-            self.load(p, space)?
-                .members()
-                .map(|m| {
-                    leaf_of(&m.credential, &m.signature_key)
-                        .map(|l| ((l.identity, l.device), m.encryption_key.clone()))
-                })
-                .collect()
+            let group = match self.load(p, space) {
+                Ok(group) => group,
+                Err(MlsError::NoGroup) => return Ok(None),
+                Err(error) => return Err(error),
+            };
+            if group.pending_commit().is_some() {
+                return Ok(None);
+            }
+            leaf_keys(&group).map(Some)
         })
     }
 
