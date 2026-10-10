@@ -3,7 +3,7 @@
 
 use roda_log::content::{Sealed, SealedKind};
 use roda_log::recovery::{self, RecoveryRef};
-use roda_mls::{recovery::verify_group_info, Commit, SUITE_ID};
+use roda_mls::{recovery::verify_group_info, Commit, GroupState, SUITE_ID};
 use roda_proto::Envelope;
 use roda_types::{Event, Role};
 use serde::{Deserialize, Serialize};
@@ -178,15 +178,17 @@ impl Engine {
         self.net
             .synced
             .iter()
-            .filter(|s| self.can_recover(s) && !device.has_group(s))
-            .filter_map(|s| self.recovery_context(s))
-            .filter(|r| {
+            .filter(|s| self.can_recover(s))
+            .filter_map(|s| self.recovery_context(s).map(|r| (s, r)))
+            .filter(|(_, r)| {
                 self.store
                     .recovery_blob(&r.space, &r.blob)
                     .ok()
                     .flatten()
                     .is_none()
             })
+            .filter(|(space, _)| !device.has_group(space))
+            .map(|(_, reference)| reference)
             .collect()
     }
 
@@ -221,14 +223,24 @@ impl Engine {
             .filter(|s| self.can_recover(s))
             .cloned()
             .collect();
+        if spaces.is_empty() {
+            return Ok(false);
+        }
+        let pending: std::collections::HashSet<String> = self
+            .store
+            .outbox_handshakes()?
+            .into_iter()
+            .map(|(_, space, _)| space)
+            .collect();
         let mut error = None;
         for space in spaces {
-            if self
-                .net
-                .mls
-                .recovery_retry_at
-                .get(&space)
-                .is_some_and(|at| *at > Instant::now())
+            if pending.contains(&space)
+                || self
+                    .net
+                    .mls
+                    .recovery_retry_at
+                    .get(&space)
+                    .is_some_and(|at| *at > Instant::now())
             {
                 continue;
             }
@@ -251,19 +263,12 @@ impl Engine {
     }
 
     fn try_mls_recovery(&mut self, space: &str) -> R<bool> {
-        if self
-            .store
-            .outbox_handshakes()?
-            .iter()
-            .any(|(_, s, _)| s == space)
-        {
-            return Ok(false);
-        }
         let device = self.device()?;
-        if device.pending(space) {
+        let state = device.group_state(space).map_err(invalid)?;
+        if state == GroupState::Pending {
             return Ok(false);
         }
-        if device.has_group(space) {
+        if state == GroupState::Ready {
             // New and upgraded groups need a context even if nobody is being added.
             if self.recovery_context(space).is_none()
                 && self.ready_epoch(space).is_some()
