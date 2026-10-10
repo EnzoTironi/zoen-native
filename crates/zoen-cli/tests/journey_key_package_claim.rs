@@ -7,11 +7,15 @@ mod common;
 use claim_proxy::{Boundary, ClaimProxy, Observed};
 use common::{now_ms, RawClient, World};
 use roda_ffi::{AccountDto, EntryKind, PrivacyDto, RodaEngine, SecretVault};
-use roda_log::{Author, Signer};
+use roda_log::{
+    profile::{sign_agreement, AgreementKey},
+    Author, Signer,
+};
 use roda_proto::{
     ClientFrame, KeyPackageRecord, Op, Reply, ServerFrame, KEY_PACKAGE_CLAIM_EXPIRED,
     KEY_PACKAGE_CLAIM_TTL_MS,
 };
+use roda_types::{Identity, IdentityKind};
 use sqlx::{Connection, PgConnection};
 use std::{
     path::PathBuf,
@@ -358,16 +362,48 @@ async fn group_cli_deadline_cannot_report_an_unissued_claim_as_complete() {
 async fn empty_claim_schedules_work_and_cannot_look_idle_before_retry() {
     let w = World::new("kp_claim_retry_idle").await;
     let bruno = Device::new(&w, "bruno", &w.relay_url());
-    bruno.start().await;
-    bruno.core.stop_sync();
-    // An enrolled recipient with nothing published yet. Keep its real agreement key,
-    // then let its real core replenish signed packages when it returns online.
-    let mut db = PgConnection::connect(&w.db_url).await.unwrap();
-    sqlx::query("DELETE FROM key_packages WHERE identity = $1")
-        .bind(&bruno.account.identity_id)
-        .execute(&mut db)
-        .await
+    // Enroll the core's actual identity/device and signed agreement key, without
+    // starting its package publisher. Removing a previously published last-resort
+    // marker would contradict the core's persisted publication state.
+    let author = bruno.author();
+    let mut enrollment = RawClient::reconnect(&w.relay_url(), author.clone()).await;
+    assert!(matches!(
+        enrollment
+            .request(Op::Register {
+                profile: Identity {
+                    id: bruno.account.identity_id.clone(),
+                    kind: IdentityKind::Person,
+                    name: bruno.account.name.clone(),
+                    handle: bruno.account.handle.clone(),
+                    tint_hex: "#000".into(),
+                    glyph: None,
+                    owner: None,
+                    bio: String::new(),
+                },
+            })
+            .await
+            .unwrap(),
+        Reply::Done
+    ));
+    let secret = bruno
+        .vault
+        .load("zoen.agreement.v1".into())
+        .unwrap()
+        .try_into()
         .unwrap();
+    let public = AgreementKey::from_secret(secret).public_hex();
+    assert!(matches!(
+        enrollment
+            .request(Op::PublishAgreementKey {
+                signed: sign_agreement(&author, &public).unwrap(),
+                public,
+            })
+            .await
+            .unwrap(),
+        Reply::Done
+    ));
+    drop(enrollment);
+    assert_eq!(bruno.stock(&w).await, 0);
     let mut proxy = ClaimProxy::new(w.port, Boundary::Reply).await;
     let ana = Device::new(&w, "ana", &proxy.url);
     ana.start().await;
@@ -392,6 +428,7 @@ async fn empty_claim_schedules_work_and_cannot_look_idle_before_retry() {
         "a scheduled claim retry exists outside the event outbox"
     );
     bruno.start().await;
+    assert_eq!(bruno.stock(&w).await, 32);
     let (retry, _) = next_request(&mut proxy).await;
     assert_ne!(
         retry, empty_operation,
