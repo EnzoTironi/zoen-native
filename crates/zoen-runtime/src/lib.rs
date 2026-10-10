@@ -1,5 +1,5 @@
-//! Postgres finance and fenced FDB execution. Paid production work stays closed
-//! until the actual certified core/MLS retained-step loader is integrated.
+//! Postgres finance and fenced native FDB execution. Production work remains
+//! closed until managed custody and external restore continuity are available.
 mod custody;
 mod execution;
 mod finance;
@@ -106,6 +106,13 @@ pub struct ReconcileReport {
 #[derive(Debug)]
 pub struct RetainedModel {
     pub financial: FinancialState,
+}
+
+#[derive(Debug, PartialEq, Eq)]
+pub enum ModelCancellation {
+    Requested,
+    Released,
+    Retained { financial: FinancialState },
 }
 
 /// Structural inspection of a fully authenticated native capsule. This does
@@ -218,8 +225,10 @@ impl RuntimeAuthority {
             return Err(RuntimeError::InvalidBinding);
         }
         let step = self.verified_step(run).await?;
-        let (_, financial) = self.complete_verified(&step).await?;
-        Ok(RetainedModel { financial })
+        let result = self.complete_verified(&step).await;
+        // Lease loss must not erase an already incurred and retained bill.
+        let _ = step.release(&self.execution).await;
+        result.map(|(_, financial)| RetainedModel { financial })
     }
     pub async fn inspect_native_device(
         &self,
@@ -291,33 +300,51 @@ impl RuntimeAuthority {
             .pending_reply_runs(limit, &self.custody)
             .await
     }
-    async fn verified_step(&self, _run: &str) -> Result<VerifiedStep, RuntimeError> {
-        // No injected verifier, supplied head, arbitrary request or enrollment-only
-        // grant can construct a verified retained step through this public API.
-        Err(RuntimeError::CoreAuthorityUnavailable)
+    async fn verified_step(&self, run: &str) -> Result<VerifiedStep, RuntimeError> {
+        let native = self
+            .native
+            .as_ref()
+            .ok_or(RuntimeError::CoreAuthorityUnavailable)?;
+        self.continuity()?;
+        Ok(VerifiedStep::Native(Box::new(
+            native.verified_reply(self, run).await?,
+        )))
     }
-    pub async fn cancel_model(&self, run: &str) -> Result<FinancialState, RuntimeError> {
+    pub async fn cancel_model(&self, run: &str) -> Result<ModelCancellation, RuntimeError> {
         if !id(run) {
             return Err(RuntimeError::InvalidBinding);
         }
-        let step = self.verified_step(run).await?;
         self.continuity()?;
-        let binding = self
-            .execution
-            .prepared_binding(&step.request.context.attempt_id, &self.custody)
+        self.execution
+            .request_reply_cancel(run, &self.custody, self)
             .await?;
-        match self
-            .execution
-            .close_before_dispatch(&step, &binding, &self.custody, self)
-            .await?
-        {
-            Some(proof) => self.finance.release(proof, self).await,
-            None => self
-                .finance
-                .inspect(&binding.context.attempt_id)
+        let native::CleanupAcquisition::Ready(step) =
+            self.execution.cleanup_reply(run, &self.custody).await?
+        else {
+            return Ok(ModelCancellation::Requested);
+        };
+        let result = async {
+            match self
+                .execution
+                .close_reply_before_dispatch(&step, &self.custody, self)
                 .await?
-                .ok_or(RuntimeError::InvalidBinding),
+            {
+                Some(proof) => {
+                    self.finance.release(proof, self).await?;
+                    Ok(ModelCancellation::Released)
+                }
+                None => Ok(ModelCancellation::Retained {
+                    financial: self
+                        .finance
+                        .inspect(&step.binding().context.attempt_id)
+                        .await?
+                        .ok_or(RuntimeError::InvalidBinding)?,
+                }),
+            }
         }
+        .await;
+        let _ = step.release(&self.execution).await;
+        result
     }
     pub async fn reconcile(&self, limit: u16) -> Result<ReconcileReport, RuntimeError> {
         if !(1..=64).contains(&limit) {
@@ -377,7 +404,7 @@ impl RuntimeAuthority {
         };
         let result = self
             .gateway
-            .complete(step.request.clone(), &session)
+            .complete(step.request().clone(), &session)
             .await
             .map_err(|e| match e {
                 zoen_models::GatewayError::Admission(AdmissionError::Denied) => {
@@ -439,7 +466,14 @@ impl Binding {
 }
 // Private and deliberately lacks Deserialize/general-purpose constructor.
 // Only actual core extraction may create one in production; fixtures live in cfg(test).
-struct VerifiedStep {
+enum VerifiedStep {
+    Native(Box<native::ReplyStep>),
+    #[cfg(test)]
+    Fixture(Box<FixtureStep>),
+}
+
+#[cfg(test)]
+struct FixtureStep {
     request: ModelRequest,
     device_cert: String,
     frontier: String,
@@ -447,6 +481,65 @@ struct VerifiedStep {
     period_start: i64,
     run_fence: execution::Fence,
     device_fence: execution::Fence,
+}
+
+impl VerifiedStep {
+    fn request(&self) -> &ModelRequest {
+        match self {
+            Self::Native(step) => step.request(),
+            #[cfg(test)]
+            Self::Fixture(step) => &step.request,
+        }
+    }
+
+    fn binding(
+        &self,
+        request: &DispatchRequest,
+        _price: &PriceProfile,
+    ) -> Result<Binding, RuntimeError> {
+        if request.context != self.request().context {
+            return Err(RuntimeError::InvalidBinding);
+        }
+        match self {
+            Self::Native(step) => step.binding(request),
+            #[cfg(test)]
+            Self::Fixture(step) => Ok(Binding {
+                context: request.context.clone(),
+                device_cert: step.device_cert.clone(),
+                frontier: step.frontier.clone(),
+                period_start: step.period_start,
+                policy_digest: step.policy_digest.clone(),
+                request_digest: request.request_digest.clone(),
+                requested_output_tokens: request.descriptor.requested_output_tokens,
+                hold_units: _price.quote(request)?,
+                price: _price.clone(),
+            }),
+        }
+    }
+
+    fn grant_deadline(&self) -> Option<i64> {
+        match self {
+            Self::Native(step) => step.grant_deadline(),
+            #[cfg(test)]
+            Self::Fixture(_) => None,
+        }
+    }
+
+    async fn release(&self, execution: &execution::Execution) -> Result<(), RuntimeError> {
+        match self {
+            Self::Native(step) => step.release(execution).await,
+            #[cfg(test)]
+            Self::Fixture(_) => Ok(()),
+        }
+    }
+
+    #[cfg(test)]
+    fn fixture(&self) -> &FixtureStep {
+        match self {
+            Self::Fixture(step) => step,
+            Self::Native(_) => panic!("native authority is not a seeded financial fixture"),
+        }
+    }
 }
 #[derive(Serialize, Deserialize)]
 struct Capture {
@@ -464,24 +557,16 @@ impl DispatchAuthority for Session<'_> {
     async fn admit(&self, request: &DispatchRequest) -> Result<Admission, AdmissionError> {
         let result: Result<Admission, RuntimeError> = async {
             self.runtime.continuity()?;
-            if request.context != self.step.request.context {
-                return Err(RuntimeError::InvalidBinding);
-            }
-            let binding = Binding {
-                context: request.context.clone(),
-                device_cert: self.step.device_cert.clone(),
-                frontier: self.step.frontier.clone(),
-                period_start: self.step.period_start,
-                policy_digest: self.step.policy_digest.clone(),
-                request_digest: request.request_digest.clone(),
-                requested_output_tokens: request.descriptor.requested_output_tokens,
-                hold_units: self.runtime.price.quote(request)?,
-                price: self.runtime.price.clone(),
-            };
+            let binding = self.step.binding(request, &self.runtime.price)?;
             self.runtime
                 .execution
                 .prepare(self.step, &binding, &self.runtime.custody)
                 .await?;
+            #[cfg(test)]
+            if self.runtime.fault.load(Ordering::SeqCst) == 21 {
+                self.runtime.native_cut_entered.notify_one();
+                self.runtime.native_cut_resume.notified().await;
+            }
             self.runtime.finance.reserve(&binding).await?;
             #[cfg(test)]
             if self.runtime.fault.load(Ordering::SeqCst) == 4 {
@@ -494,11 +579,17 @@ impl DispatchAuthority for Session<'_> {
             if self.runtime.fault.load(Ordering::SeqCst) == 1 {
                 return Err(RuntimeError::Unavailable);
             }
-            let guard = self.runtime.finance.guard(&binding).await?;
+            let guard = self.runtime.finance.guard(&binding, self.step).await?;
             let admission = self
                 .runtime
                 .execution
-                .admit_once(self.step, claim, &binding, &self.runtime.custody)
+                .admit_once(
+                    self.step,
+                    claim,
+                    &binding,
+                    &self.runtime.custody,
+                    self.runtime,
+                )
                 .await?;
             #[cfg(test)]
             if self.runtime.fault.load(Ordering::SeqCst) == 2 {
@@ -509,7 +600,22 @@ impl DispatchAuthority for Session<'_> {
                 guard.rollback().await?;
                 return Err(RuntimeError::Unavailable);
             }
+            #[cfg(test)]
+            if self.runtime.fault.load(Ordering::SeqCst) == 24 {
+                self.runtime.native_cut_entered.notify_one();
+                self.runtime.native_cut_resume.notified().await;
+            }
             let permit = guard.finish(admission).await?;
+            #[cfg(test)]
+            if self.runtime.fault.load(Ordering::SeqCst) == 23 {
+                return Err(RuntimeError::Unavailable);
+            }
+            #[cfg(test)]
+            if self.runtime.fault.load(Ordering::SeqCst) == 25 {
+                self.runtime.native_cut_entered.notify_one();
+                self.runtime.native_cut_resume.notified().await;
+            }
+            self.runtime.continuity()?;
             *self
                 .admitted
                 .lock()

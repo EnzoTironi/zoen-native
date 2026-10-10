@@ -225,7 +225,7 @@ pub(super) async fn changed_and_lowered_policy() {
     let binding = w
         .runtime
         .execution
-        .prepared_binding(&step.request.context.attempt_id, &w.runtime.custody)
+        .prepared_binding(&step.request().context.attempt_id, &w.runtime.custody)
         .await
         .unwrap();
     let proof = w

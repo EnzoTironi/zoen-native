@@ -1,5 +1,45 @@
 use super::*;
 
+pub(crate) async fn repack_holder(runtime: &RuntimeAuthority, step: &crate::VerifiedStep) {
+    let crate::VerifiedStep::Native(step) = step else {
+        panic!("actual native holder required");
+    };
+    let principal = &step.loaded.record.original.context.principal;
+    let custody = runtime.native.as_ref().unwrap();
+    let credential = custody
+        .credential(&principal.agent, &principal.device)
+        .unwrap();
+    custody
+        .repack_fenced(runtime, credential, principal, &step.loaded.fences.device)
+        .await
+        .unwrap();
+}
+
+pub(crate) async fn lease_snapshot(
+    runtime: &RuntimeAuthority,
+    run: &str,
+) -> (i64, Vec<(String, i64, i64)>) {
+    let (record, _) = runtime
+        .execution
+        .read_reply(run, &runtime.custody)
+        .await
+        .unwrap();
+    let trx = runtime.execution.transaction().await.unwrap();
+    let version = trx.get_read_version().await.unwrap();
+    let mut leases = Vec::new();
+    for key in [
+        runtime.execution.run(run, "lease"),
+        runtime
+            .execution
+            .native_lease(&record.original.context.principal),
+    ] {
+        let bytes = trx.get(&key, false).await.unwrap().unwrap();
+        let lease: crate::execution::Lease = serde_json::from_slice(&bytes).unwrap();
+        leases.push((lease.holder, lease.token, lease.expires));
+    }
+    (version, leases)
+}
+
 pub(crate) async fn original(runtime: &RuntimeAuthority, run: &str) -> (String, String) {
     let (record, digest) = runtime
         .execution
@@ -10,6 +50,56 @@ pub(crate) async fn original(runtime: &RuntimeAuthority, run: &str) -> (String, 
         panic!()
     };
     (text.clone(), digest)
+}
+
+pub(crate) async fn stale_admission(runtime: &RuntimeAuthority, step: &crate::VerifiedStep) {
+    let crate::VerifiedStep::Native(native) = step else {
+        panic!("actual native step required");
+    };
+    let loaded = &native.loaded;
+    let principal = &loaded.record.original.context.principal;
+    let trx = runtime.execution.transaction().await.unwrap();
+    let version = trx.get_read_version().await.unwrap();
+    // Explicit fixture expiry cut; the separate cancellation journey waits for
+    // real expiry without changing the 60-million-version production deadline.
+    for key in [
+        runtime.execution.run(&loaded.record.locator.run, "lease"),
+        runtime.execution.native_lease(principal),
+    ] {
+        let bytes = trx.get(&key, false).await.unwrap().unwrap();
+        let mut lease: crate::execution::Lease = serde_json::from_slice(&bytes).unwrap();
+        lease.expires = version;
+        trx.set(&key, &serde_json::to_vec(&lease).unwrap());
+    }
+    trx.commit().await.unwrap();
+    let successor = runtime
+        .execution
+        .acquire_reply(&loaded.record, &loaded.record_digest)
+        .await
+        .unwrap();
+    assert_eq!(successor.run.token, loaded.fences.run.token + 1);
+    assert_eq!(successor.device.token, loaded.fences.device.token + 1);
+    let binding = &loaded.record.binding;
+    runtime.finance.reserve(binding).await.unwrap();
+    let claim = runtime.finance.claim(binding).await.unwrap().unwrap();
+    let guard = runtime.finance.guard(binding, step).await.unwrap();
+    assert!(matches!(
+        runtime
+            .execution
+            .admit_once(step, claim, binding, &runtime.custody, runtime)
+            .await,
+        Err(RuntimeError::Denied)
+    ));
+    guard.rollback().await.unwrap();
+    assert_eq!(
+        native.release(&runtime.execution).await.unwrap_err(),
+        RuntimeError::Denied
+    );
+    runtime
+        .execution
+        .release_reply(&loaded.record, &successor)
+        .await
+        .unwrap();
 }
 
 pub(crate) async fn fences(runtime: &RuntimeAuthority, run: &str) {

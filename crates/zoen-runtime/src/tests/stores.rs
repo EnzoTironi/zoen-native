@@ -75,8 +75,10 @@ pub(super) async fn native_device_custody() {
     native::testing::storage_cuts(&reopened, &actor.identity, &device).await;
     assert_eq!(
         reopened.run_model("fixture-run").await.unwrap_err(),
-        RuntimeError::CoreAuthorityUnavailable
+        RuntimeError::Denied
     );
+    assert_eq!(w.count("SELECT count(*) FROM runtime_attempts").await, 0);
+    assert_eq!(w.http.sends.load(Ordering::SeqCst), 0);
     let before_cut = native::testing::generation(&reopened, &actor.identity, &device).await;
     reopened.fault.store(14, Ordering::SeqCst);
     let (worker, worker_agent, worker_device) =
@@ -181,7 +183,7 @@ pub(super) async fn closed_sql_pool_retains_fdb_evidence() {
     let reopened = w.reopen().await;
     assert_eq!(
         reopened
-            .inspect_attempt(&step.request.context.attempt_id)
+            .inspect_attempt(&step.request().context.attempt_id)
             .await
             .unwrap(),
         Some(FinancialState::Claimed)
@@ -195,7 +197,7 @@ pub(super) async fn closed_sql_pool_retains_fdb_evidence() {
     assert!(reopened.reconcile(64).await.unwrap().transferred > 0);
     assert_eq!(
         reopened
-            .inspect_attempt(&step.request.context.attempt_id)
+            .inspect_attempt(&step.request().context.attempt_id)
             .await
             .unwrap(),
         Some(FinancialState::Settled { units: 6 })
@@ -278,7 +280,7 @@ pub(super) async fn declared_restore_closes_dispatch_and_release() {
     let binding = w
         .runtime
         .execution
-        .prepared_binding(&step.request.context.attempt_id, &w.runtime.custody)
+        .prepared_binding(&step.request().context.attempt_id, &w.runtime.custody)
         .await
         .unwrap();
     // Actually remove an admission in this throwaway namespace, simulating a
@@ -286,7 +288,7 @@ pub(super) async fn declared_restore_closes_dispatch_and_release() {
     let trx = w.runtime.execution.db.create_trx().unwrap();
     trx.clear(&w.runtime.execution.root.pack(&(
         "attempt",
-        step.request.context.attempt_id.as_str(),
+        step.request().context.attempt_id.as_str(),
         "admitted",
     )));
     trx.commit().await.unwrap();
@@ -313,7 +315,7 @@ pub(super) async fn declared_restore_closes_dispatch_and_release() {
     let binding = w
         .runtime
         .execution
-        .prepared_binding(&step.request.context.attempt_id, &w.runtime.custody)
+        .prepared_binding(&step.request().context.attempt_id, &w.runtime.custody)
         .await
         .unwrap();
     let proof = w

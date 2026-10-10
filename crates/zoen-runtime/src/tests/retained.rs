@@ -1,5 +1,6 @@
 //! Actual certified directory, OpenMLS leaves and relay-owned FDB log. Fixture
 //! custody is explicit; this does not provision a production vault or WS host.
+mod admission;
 use super::*;
 use roda_log::content::{InnerEvent, Sealed, SealedKind};
 use roda_mls::{Device, Opened, SUITE_ID};
@@ -217,6 +218,10 @@ impl Fixture {
     }
 
     async fn grant(&mut self, grant: &str) {
+        self.grant_until(grant, None).await;
+    }
+
+    async fn grant_until(&mut self, grant: &str, expires_at_ms: Option<i64>) {
         self.encrypted(EventBody::GrantIssued {
             grant: Grant {
                 id: grant.into(),
@@ -224,7 +229,7 @@ impl Fixture {
                 grantee: Some(self.agent.id.clone()),
                 scope: GrantScope::Space(self.space.clone()),
                 capability: Capability::Trust(TrustLevel::Listen),
-                expires_at_ms: None,
+                expires_at_ms,
             },
         })
         .await;
@@ -520,7 +525,7 @@ pub(super) async fn run() {
             .run_model(&original.run)
             .await
             .unwrap_err(),
-        RuntimeError::CoreAuthorityUnavailable
+        RuntimeError::Denied
     );
     assert_eq!(
         fixture
@@ -573,4 +578,5 @@ pub(super) async fn run() {
     assert_eq!(partial.world.http.sends.load(Ordering::SeqCst), 0);
     println!("retained reply journey: bounded partial source creates no run, authenticated discovery resumes once PASS");
     partial.finish().await;
+    Box::pin(admission::run()).await;
 }

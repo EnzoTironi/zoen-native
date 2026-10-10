@@ -3,6 +3,7 @@
 //! enrollment, relay currentness, restore continuity or dispatch authority.
 mod runs;
 mod storage;
+pub(crate) use runs::{CleanupAcquisition, CleanupStep, ReplyStep};
 
 use std::collections::BTreeMap;
 

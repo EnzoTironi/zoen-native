@@ -144,7 +144,7 @@ impl World {
         let period_start = finance::period(self.signed.policy.year, self.signed.policy.month)
             .unwrap()
             .0;
-        let step = VerifiedStep {
+        let step = VerifiedStep::Fixture(Box::new(FixtureStep {
             request: ModelRequest {
                 context: AttemptContext {
                     attempt_id: roda_types::new_id("attempt"),
@@ -176,7 +176,7 @@ impl World {
                 holder: "fixture-worker".into(),
                 token: 1,
             },
-        };
+        }));
         self.runtime
             .execution
             .seed(&step, &self.runtime.custody)
@@ -185,6 +185,7 @@ impl World {
         step
     }
     fn binding(&self, step: &VerifiedStep) -> Binding {
+        let step = step.fixture();
         Binding {
             context: step.request.context.clone(),
             device_cert: step.device_cert.clone(),

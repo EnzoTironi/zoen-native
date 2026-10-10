@@ -11,7 +11,7 @@ impl Execution {
             .ok_or(RuntimeError::CoreAuthorityUnavailable)
     }
 
-    fn reply_trigger(&self, agent: &str, space: &str, trigger: &str) -> Vec<u8> {
+    pub(super) fn reply_trigger(&self, agent: &str, space: &str, trigger: &str) -> Vec<u8> {
         // Stable across workers, devices, image generations and wake delivery.
         self.root.pack(&("native-trigger/1", agent, space, trigger))
     }
@@ -20,7 +20,7 @@ impl Execution {
         self.root.pack(&("native-wake/1", wake))
     }
 
-    async fn reply_in(
+    pub(super) async fn reply_in(
         &self,
         trx: &Transaction,
         run: &str,
@@ -166,6 +166,19 @@ impl Execution {
     ) -> Result<ReplyFences, RuntimeError> {
         let trx = self.transaction().await?;
         self.reply_record_scope(&trx, record, expected).await?;
+        let fences = self
+            .acquire_reply_in(&trx, record)
+            .await?
+            .ok_or(RuntimeError::Denied)?;
+        trx.commit().await.map_err(|_| RuntimeError::Unavailable)?;
+        Ok(fences)
+    }
+
+    pub(super) async fn acquire_reply_in(
+        &self,
+        trx: &Transaction,
+        record: &RunRecord,
+    ) -> Result<Option<ReplyFences>, RuntimeError> {
         let version = trx.get_read_version().await?;
         let principal = &record.original.context.principal;
         let run_key = self.run(&record.locator.run, "lease");
@@ -179,8 +192,11 @@ impl Execution {
                 }
                 let prior: Lease =
                     serde_json::from_slice(&prior).map_err(|_| RuntimeError::InvalidBinding)?;
+                if !id(&prior.holder) || prior.token <= 0 || prior.expires <= 0 {
+                    return Err(RuntimeError::InvalidBinding);
+                }
                 if prior.expires > version {
-                    return Err(RuntimeError::Denied);
+                    return Ok(None);
                 }
                 prior
                     .token
@@ -205,14 +221,13 @@ impl Execution {
                 token,
             });
         }
-        trx.commit().await.map_err(|_| RuntimeError::Unavailable)?;
-        Ok(ReplyFences {
+        Ok(Some(ReplyFences {
             run: fences.remove(0),
             device: fences.remove(0),
-        })
+        }))
     }
 
-    async fn reply_record_scope(
+    pub(super) async fn reply_original_scope(
         &self,
         trx: &Transaction,
         record: &RunRecord,
@@ -225,16 +240,19 @@ impl Execution {
         if hash(&sealed) != expected {
             return Err(RuntimeError::InvalidBinding);
         }
-        if trx
-            .get(&self.run(&record.locator.run, "cancel"), false)
-            .await?
-            .is_some()
-            || trx
-                .get(&self.attempt(&record.locator.attempt, "closed"), false)
-                .await?
-                .is_some()
-        {
-            return Err(RuntimeError::Denied);
+        record.validate(&record.locator.run, self.reply_source()?.cell())?;
+        let trigger = trx
+            .get(
+                &self.reply_trigger(
+                    &record.request.context.agent,
+                    record.intent.space(),
+                    record.intent.trigger(),
+                ),
+                false,
+            )
+            .await?;
+        if trigger.as_deref() != Some(record.locator.run.as_bytes()) {
+            return Err(RuntimeError::InvalidBinding);
         }
         let reference = trx
             .get(
@@ -250,6 +268,27 @@ impl Execution {
         Ok(())
     }
 
+    async fn reply_record_scope(
+        &self,
+        trx: &Transaction,
+        record: &RunRecord,
+        expected: &str,
+    ) -> Result<(), RuntimeError> {
+        self.reply_original_scope(trx, record, expected).await?;
+        if trx
+            .get(&self.run(&record.locator.run, "cancel"), false)
+            .await?
+            .is_some()
+            || trx
+                .get(&self.attempt(&record.locator.attempt, "closed"), false)
+                .await?
+                .is_some()
+        {
+            return Err(RuntimeError::Denied);
+        }
+        Ok(())
+    }
+
     pub(super) async fn verify_reply(
         &self,
         record: &RunRecord,
@@ -260,30 +299,56 @@ impl Execution {
         custody: &Custody,
     ) -> Result<(), RuntimeError> {
         let trx = self.transaction().await?;
-        self.reply_record_scope(&trx, record, expected).await?;
+        self.verify_reply_in(&trx, record, expected, current, facts, fences, custody)
+            .await
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub(super) async fn verify_reply_in(
+        &self,
+        trx: &Transaction,
+        record: &RunRecord,
+        expected: &str,
+        current: &Root,
+        facts: &ReplyFacts,
+        fences: &ReplyFences,
+        custody: &Custody,
+    ) -> Result<(), RuntimeError> {
+        self.reply_record_scope(trx, record, expected).await?;
         let principal = &record.original.context.principal;
         let version = trx.get_read_version().await?;
         Self::lease(
-            &trx,
+            trx,
             &self.run(&record.locator.run, "lease"),
             &fences.run,
             version,
         )
         .await?;
-        Self::lease(&trx, &self.native_lease(principal), &fences.device, version).await?;
+        Self::lease(trx, &self.native_lease(principal), &fences.device, version).await?;
         let head = self
             .reply_source()?
-            .head_in(&trx, record.intent.space())
+            .head_in(trx, record.intent.space())
             .await
             .map_err(|_| RuntimeError::Denied)?
             .ok_or(RuntimeError::Denied)?;
         if head.seq() != facts.frontier().seq()
             || head.hash() != facts.frontier().hash()
             || facts.intent() != &record.intent
-            || self.native_root(&trx, principal).await?.as_ref() != Some(current)
+            || self.native_root(trx, principal).await?.as_ref() != Some(current)
         {
             return Err(RuntimeError::Denied);
         }
+        self.reply_binding_in(trx, record, custody).await?;
+        // The caller owns this transaction, including the final admission write.
+        Ok(())
+    }
+
+    pub(super) async fn reply_binding_in(
+        &self,
+        trx: &Transaction,
+        record: &RunRecord,
+        custody: &Custody,
+    ) -> Result<(), RuntimeError> {
         let frozen = trx
             .get(&self.attempt(&record.locator.attempt, "prepared"), false)
             .await?
@@ -296,8 +361,6 @@ impl Execution {
         if binding != record.binding {
             return Err(RuntimeError::InvalidBinding);
         }
-        // This reads the real source in the same fenced snapshot. It has no
-        // admission mutation and must be rechecked inside C3's final write.
         Ok(())
     }
 

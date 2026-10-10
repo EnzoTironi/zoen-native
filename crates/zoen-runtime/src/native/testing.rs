@@ -135,6 +135,21 @@ pub(crate) async fn reply_fences(runtime: &RuntimeAuthority, run: &str) {
     super::runs::testing::fences(runtime, run).await;
 }
 
+pub(crate) async fn reply_lease_snapshot(
+    runtime: &RuntimeAuthority,
+    run: &str,
+) -> (i64, Vec<(String, i64, i64)>) {
+    super::runs::testing::lease_snapshot(runtime, run).await
+}
+
+pub(crate) async fn repack_reply_holder(runtime: &RuntimeAuthority, step: &crate::VerifiedStep) {
+    super::runs::testing::repack_holder(runtime, step).await;
+}
+
+pub(crate) async fn stale_reply_admission(runtime: &RuntimeAuthority, step: &crate::VerifiedStep) {
+    runs::testing::stale_admission(runtime, step).await;
+}
+
 pub(crate) async fn storage_cuts(runtime: &RuntimeAuthority, agent: &str, device: &str) {
     let custody = runtime.native.as_ref().unwrap();
     let credential = custody.credential(agent, device).unwrap();

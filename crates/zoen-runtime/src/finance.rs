@@ -467,6 +467,46 @@ impl Finance {
         }
         Ok(signed.policy)
     }
+
+    async fn not_closed(
+        tx: &mut Transaction<'_, Postgres>,
+        b: &Binding,
+    ) -> Result<(), RuntimeError> {
+        let closed: Option<String> = sqlx::query_scalar(
+            "SELECT binding_digest FROM runtime_predispatch_closures WHERE attempt=$1",
+        )
+        .bind(&b.context.attempt_id)
+        .fetch_optional(&mut **tx)
+        .await?;
+        match closed {
+            None => Ok(()),
+            Some(digest) if digest == b.digest()? => Err(RuntimeError::Denied),
+            Some(_) => Err(RuntimeError::InvalidBinding),
+        }
+    }
+
+    async fn retain_closure(
+        tx: &mut Transaction<'_, Postgres>,
+        b: &Binding,
+        digest: &str,
+    ) -> Result<(), RuntimeError> {
+        let prior: Option<(String, i64, String)> = sqlx::query_as(
+            "SELECT owner,period_start,binding_digest FROM runtime_predispatch_closures WHERE attempt=$1",
+        )
+        .bind(&b.context.attempt_id)
+        .fetch_optional(&mut **tx)
+        .await?;
+        if let Some((owner, period, original)) = prior {
+            if owner != b.context.owner || period != b.period_start || original != digest {
+                return Err(RuntimeError::InvalidBinding);
+            }
+        } else {
+            sqlx::query("INSERT INTO runtime_predispatch_closures(attempt,owner,period_start,binding_digest) VALUES($1,$2,$3,$4)")
+                .bind(&b.context.attempt_id).bind(&b.context.owner).bind(b.period_start)
+                .bind(digest).execute(&mut **tx).await?;
+        }
+        Ok(())
+    }
     pub async fn install_policy(&self, signed: SignedOwnerPolicy) -> Result<String, RuntimeError> {
         if !roda_log::owner_budget::verify(&signed) {
             return Err(RuntimeError::InvalidPolicy);
@@ -578,6 +618,7 @@ impl Finance {
         let mut tx = self.begin().await?;
         Self::directory(&mut tx, b).await?;
         let balance = Self::lock_period(&mut tx, b, false).await?;
+        Self::not_closed(&mut tx, b).await?;
         let policy = Self::policy(&mut tx, b).await?;
         let existing: Option<String> =
             sqlx::query_scalar("SELECT binding_digest FROM runtime_attempts WHERE attempt=$1")
@@ -619,6 +660,7 @@ impl Finance {
         let mut tx = self.begin().await?;
         Self::directory(&mut tx, b).await?;
         let balance = Self::lock_period(&mut tx, b, false).await?;
+        Self::not_closed(&mut tx, b).await?;
         let policy = Self::policy(&mut tx, b).await?;
         if balance
             .held_units
@@ -666,10 +708,15 @@ impl Finance {
             binding: b.digest().expect("validated binding"),
         }))
     }
-    pub async fn guard(&self, b: &Binding) -> Result<DirectoryGuard, RuntimeError> {
+    pub async fn guard(
+        &self,
+        b: &Binding,
+        step: &crate::VerifiedStep,
+    ) -> Result<DirectoryGuard, RuntimeError> {
         let mut tx = self.begin().await?;
         Self::directory(&mut tx, b).await?;
         let balance = Self::lock_period(&mut tx, b, true).await?;
+        Self::not_closed(&mut tx, b).await?;
         let policy = Self::policy(&mut tx, b).await?;
         if balance
             .held_units
@@ -678,12 +725,16 @@ impl Finance {
         {
             return Err(RuntimeError::OverBudget);
         }
-        Ok(DirectoryGuard {
-            tx,
-            valid_until_ms: policy
-                .expires_at_ms
-                .min(period(policy.year, policy.month)?.1),
-        })
+        let mut valid_until_ms = policy
+            .expires_at_ms
+            .min(period(policy.year, policy.month)?.1);
+        if let Some(native_deadline) = step.grant_deadline() {
+            valid_until_ms = valid_until_ms.min(native_deadline);
+        }
+        if Self::clock(&mut tx).await? >= valid_until_ms {
+            return Err(RuntimeError::Denied);
+        }
+        Ok(DirectoryGuard { tx, valid_until_ms })
     }
     pub async fn capture(
         &self,
@@ -760,15 +811,17 @@ impl Finance {
         let (b, digest) = proof.consume();
         let mut tx = self.begin().await?;
         let balance = Self::lock_period(&mut tx, &b, false).await?;
-        let exact: Option<i32> = sqlx::query_scalar(
-            "SELECT 1 FROM runtime_attempts WHERE attempt=$1 AND binding_digest=$2",
-        )
-        .bind(&b.context.attempt_id)
-        .bind(b.digest()?)
-        .fetch_optional(&mut *tx)
-        .await?;
-        if exact.is_none() {
+        let exact: Option<String> =
+            sqlx::query_scalar("SELECT binding_digest FROM runtime_attempts WHERE attempt=$1")
+                .bind(&b.context.attempt_id)
+                .fetch_optional(&mut *tx)
+                .await?;
+        if digest != b.digest()? || exact.as_deref().is_some_and(|old| old != digest) {
             return Err(RuntimeError::InvalidBinding);
+        }
+        Self::retain_closure(&mut tx, &b, &digest).await?;
+        if exact.is_none() {
+            return Self::finish_release(tx, continuity).await;
         }
         let terminal: Option<String> =
             sqlx::query_scalar("SELECT kind FROM runtime_dispositions WHERE attempt=$1")
@@ -779,8 +832,7 @@ impl Finance {
             if kind != "release" {
                 return Err(RuntimeError::InvalidBinding);
             }
-            tx.commit().await?;
-            return Ok(FinancialState::Released);
+            return Self::finish_release(tx, continuity).await;
         }
         let held = balance
             .held_units
@@ -797,8 +849,20 @@ impl Finance {
             .await?;
         Self::journal(&mut tx, &b, "release", 0).await?;
         Self::outbox(&mut tx, &b, "release", &digest).await?;
+        Self::finish_release(tx, continuity).await
+    }
+
+    async fn finish_release(
+        tx: Transaction<'static, Postgres>,
+        continuity: &crate::RuntimeAuthority,
+    ) -> Result<FinancialState, RuntimeError> {
         continuity.continuity()?;
         tx.commit().await?;
+        #[cfg(test)]
+        if continuity.fault.load(std::sync::atomic::Ordering::SeqCst) == 28 {
+            return Err(RuntimeError::Unavailable);
+        }
+        continuity.continuity()?;
         Ok(FinancialState::Released)
     }
     pub async fn balance(
