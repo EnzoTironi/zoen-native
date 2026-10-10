@@ -6,6 +6,9 @@ import androidx.compose.material3.ExtendedFloatingActionButton
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
@@ -41,6 +44,6 @@ fun PlusVoiceButton(actions: () -> Unit, start: () -> Unit, release: () -> Unit,
             onLock = { currentLock(); haptics.performHapticFeedback(HapticFeedbackType.LongPress) },
             onCancel = { currentCancel(); haptics.performHapticFeedback(HapticFeedbackType.Reject) })
     }
-    if (compact) FloatingActionButton(onClick = actions, modifier = modifier) { Icon(Icons.Rounded.Add, stringResource(R.string.ask_zoen)) }
+    if (compact) FloatingActionButton(onClick = actions, modifier = modifier.size(52.dp), shape = CircleShape, containerColor = MaterialTheme.colorScheme.primary, contentColor = MaterialTheme.colorScheme.onPrimary) { Icon(Icons.Rounded.Add, stringResource(R.string.ask_zoen)) }
     else ExtendedFloatingActionButton(onClick = actions, icon = { Icon(Icons.Rounded.Add, null) }, text = { Text(stringResource(R.string.ask_zoen)) }, modifier = modifier)
 }

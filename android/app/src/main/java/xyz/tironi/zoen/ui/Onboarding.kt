@@ -10,6 +10,8 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Image
+import androidx.compose.foundation.background
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.selection.selectable
@@ -24,11 +26,14 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.input.KeyboardCapitalization
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import java.util.Locale
 import kotlinx.coroutines.CancellationException
@@ -104,7 +109,16 @@ fun Onboarding(model: ZoenViewModel, modifier: Modifier = Modifier, acquisitionL
         }
     }
     BackHandler(enabled = position > 0 && !busy) { position-- }
-    Column(modifier.fillMaxSize().safeDrawingPadding().imePadding().testTag("onboarding:${step.id}")) {
+    val pose = when (step) {
+        OnboardingStep.Hello -> MascotPose.Wave
+        OnboardingStep.Profile, OnboardingStep.Notifications -> MascotPose.Phone
+        OnboardingStep.Areas -> MascotPose.Map
+        OnboardingStep.Plan -> MascotPose.Run
+        OnboardingStep.Agents -> MascotPose.Juggle
+        OnboardingStep.Location -> MascotPose.Walk
+        OnboardingStep.Done -> MascotPose.Cheer
+    }
+    Column(modifier.fillMaxSize().background(if (isSystemInDarkTheme()) MaterialTheme.colorScheme.background else Color(0xFFFFFCF5)).safeDrawingPadding().imePadding().testTag("onboarding:${step.id}")) {
         Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp), verticalAlignment = Alignment.CenterVertically) {
             IconButton(onClick = { position-- }, enabled = position > 0 && !busy) { Icon(Icons.AutoMirrored.Rounded.ArrowBack, stringResource(R.string.back)) }
             Row(Modifier.weight(1f).padding(end = 28.dp), horizontalArrangement = Arrangement.spacedBy(5.dp)) {
@@ -112,9 +126,9 @@ fun Onboarding(model: ZoenViewModel, modifier: Modifier = Modifier, acquisitionL
             }
         }
         Column(Modifier.weight(1f).verticalScroll(rememberScrollState()).widthIn(max = 560.dp).align(Alignment.CenterHorizontally).padding(horizontal = 28.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-            ZoenMascot(Modifier.fillMaxWidth().height(if (step == OnboardingStep.Profile || step == OnboardingStep.Done) 130.dp else 180.dp), animated = true, pose = step.ordinal)
-            Text(route.text("onboarding.${step.id}.title", language) ?: stringResource(step.title), style = if (step == OnboardingStep.Hello) MaterialTheme.typography.displaySmall else MaterialTheme.typography.headlineMedium)
-            Text(route.text("onboarding.${step.id}.body", language) ?: stringResource(step.detail), style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            ZoenMascot(Modifier.fillMaxWidth().height(if (step == OnboardingStep.Profile || step == OnboardingStep.Done) 130.dp else 160.dp), animated = true, pose = pose)
+            Text(route.text("onboarding.${step.id}.title", language) ?: stringResource(step.title), Modifier.fillMaxWidth(), style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.ExtraBold, textAlign = TextAlign.Center)
+            Text(route.text("onboarding.${step.id}.body", language) ?: stringResource(step.detail), Modifier.fillMaxWidth(), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, textAlign = TextAlign.Center)
             when (step) {
                 OnboardingStep.Profile -> {
                     val preview = remember(photo) { photo?.let { BitmapFactory.decodeByteArray(it, 0, it.size) } }

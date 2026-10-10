@@ -147,9 +147,9 @@ fun VoiceReview(session: VoiceSession, model: ZoenViewModel, space: String, repl
 }
 
 @Composable
-fun VoiceWaveform(levels: List<Float>, progress: Double = 0.0, duration: Double = 1.0, removed: List<TimeRange> = emptyList(), selection: TimeRange? = null, modifier: Modifier = Modifier) {
-    val primary = MaterialTheme.colorScheme.primary
-    val remaining = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = .55f)
+fun VoiceWaveform(levels: List<Float>, progress: Double = 0.0, duration: Double = 1.0, removed: List<TimeRange> = emptyList(), selection: TimeRange? = null, modifier: Modifier = Modifier, tint: Color? = null) {
+    val primary = tint ?: MaterialTheme.colorScheme.primary
+    val remaining = (tint ?: MaterialTheme.colorScheme.onSurfaceVariant).copy(alpha = .55f)
     val cut = MaterialTheme.colorScheme.error
     val selected = MaterialTheme.colorScheme.tertiaryContainer
     val label = stringResource(R.string.media_waveform)

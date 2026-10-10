@@ -177,17 +177,17 @@ fun VoiceBubble(model: ZoenViewModel, reference: VoiceNoteRef, modifier: Modifie
                 else Icon(if (current && playback.playing) Icons.Rounded.Pause else Icons.Rounded.PlayArrow, stringResource(if (current && playback.playing) R.string.media_pause else R.string.media_play_voice))
             }
             Column(Modifier.weight(1f)) {
-                VoiceWaveform(reference.levels, if (current) playback.position / maxOf(.001, playback.duration) else 0.0, modifier = Modifier.fillMaxWidth().height(28.dp))
+                VoiceWaveform(reference.levels, if (current) playback.position / maxOf(.001, playback.duration) else 0.0, modifier = Modifier.fillMaxWidth().height(28.dp), tint = LocalContentColor.current)
                 Slider(value = if (current) (playback.position / maxOf(.001, playback.duration)).toFloat().coerceIn(0f, 1f) else 0f,
                     onValueChange = { fraction -> if (current) VoicePlayback.seek(fraction * playback.duration) else play() }, modifier = Modifier.fillMaxWidth().height(24.dp))
             }
             Column(horizontalAlignment = Alignment.End) {
                 Text(if (current) voiceTime(playback.position) else voiceDuration(reference.ms / 1000.0), style = MaterialTheme.typography.labelMedium)
-                TextButton(onClick = { if (current) VoicePlayback.cycleRate() else play() }, contentPadding = PaddingValues(4.dp)) { Text(if (current) "${playback.rate}×" else "1×", modifier = Modifier.testTag("voice-speed")) }
+                TextButton(onClick = { if (current) VoicePlayback.cycleRate() else play() }, colors = ButtonDefaults.textButtonColors(contentColor = LocalContentColor.current), contentPadding = PaddingValues(4.dp)) { Text(if (current) "${playback.rate}×" else "1×", modifier = Modifier.testTag("voice-speed")) }
             }
         }
         if (reference.transcript.isNotBlank()) {
-            TextButton(onClick = { transcript = !transcript }, contentPadding = PaddingValues(0.dp)) { Text(stringResource(if (transcript) R.string.media_hide_transcript else R.string.media_show_transcript)) }
+            TextButton(onClick = { transcript = !transcript }, colors = ButtonDefaults.textButtonColors(contentColor = LocalContentColor.current), contentPadding = PaddingValues(0.dp)) { Text(stringResource(if (transcript) R.string.media_hide_transcript else R.string.media_show_transcript)) }
             if (transcript) androidx.compose.foundation.text.selection.SelectionContainer { Text(reference.transcript, style = MaterialTheme.typography.bodyMedium) }
         }
         if (current) playback.error?.let { Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall) }

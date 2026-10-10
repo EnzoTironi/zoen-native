@@ -352,7 +352,7 @@ private fun CountdownApp(model: ZoenViewModel, item: ItemDetail, data: JSONObjec
     LazyColumn(modifier, contentPadding = PaddingValues(24.dp), verticalArrangement = Arrangement.spacedBy(24.dp)) {
         item { Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.tertiaryContainer)) {
             Column(Modifier.fillMaxWidth().padding(20.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                ZoenMascot(Modifier.fillMaxWidth().height(180.dp), animated = true, pose = 6)
+                ZoenMascot(Modifier.fillMaxWidth().height(180.dp), animated = true, pose = MascotPose.Cheer)
                 Text(data.optString("title"), style = MaterialTheme.typography.headlineLarge)
                 if (!data.isNull("place")) Text(data.optString("place"), style = MaterialTheme.typography.titleLarge)
                 Text(java.text.DateFormat.getDateTimeInstance(java.text.DateFormat.FULL, java.text.DateFormat.SHORT).format(java.util.Date(target)), color = MaterialTheme.colorScheme.onTertiaryContainer)

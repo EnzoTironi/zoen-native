@@ -33,7 +33,7 @@ import kotlinx.coroutines.withContext
 import xyz.tironi.zoen.core.*
 
 @Composable
-fun Avatar(persona: Persona?, modifier: Modifier = Modifier, size: Int = 52, onClick: (() -> Unit)? = null) {
+fun Avatar(persona: Persona?, modifier: Modifier = Modifier, size: Int = 52, onClick: (() -> Unit)? = null, contact: Boolean = false) {
     val context = LocalContext.current
     val repository = (context.applicationContext as? ZoenApplication)?.repository
     val revision = repository?.state?.collectAsStateWithLifecycle()?.value?.revision
@@ -59,9 +59,9 @@ fun Avatar(persona: Persona?, modifier: Modifier = Modifier, size: Int = 52, onC
         onDispose { preferences.unregisterOnSharedPreferenceChangeListener(listener) }
     }
     val drawing = remember(persona?.id, drawingVersion) { persona?.takeIf { it.kind == PersonaKind.AGENT && it.handle != "zoen" }?.let { AvatarArt.agent(context, it) } }
-    val shape = if (persona?.kind == PersonaKind.AGENT) RoundedCornerShape((size * .32f).dp) else CircleShape
+    val shape = if (persona?.kind == PersonaKind.AGENT && !contact) RoundedCornerShape((size * .32f).dp) else CircleShape
     val color = try { Color(android.graphics.Color.parseColor(persona?.tintHex ?: "#DDEFD2")) } catch (_: Exception) { MaterialTheme.colorScheme.primaryContainer }
-    Box(modifier.size(size.dp).clip(shape).background(color.copy(alpha = .18f))
+    Box(modifier.size(size.dp).clip(shape).background(if (contact) MaterialTheme.colorScheme.surface else color.copy(alpha = .18f))
         .then(if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier), contentAlignment = Alignment.Center) {
         if (photo != null) Image(photo!!.asImageBitmap(), persona?.name, Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
         else if (persona?.handle == "zoen") ZoenMascot(Modifier.fillMaxSize().padding(2.dp))

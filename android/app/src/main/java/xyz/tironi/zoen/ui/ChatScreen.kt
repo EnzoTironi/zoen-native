@@ -68,6 +68,9 @@ import xyz.tironi.zoen.data.AppState
 import xyz.tironi.zoen.data.FileAccess
 import xyz.tironi.zoen.media.VoiceBubble
 import xyz.tironi.zoen.media.VoiceComposer
+import xyz.tironi.zoen.theme.ownMessage
+import xyz.tironi.zoen.theme.onOwnMessage
+import xyz.tironi.zoen.theme.otherMessage
 import xyz.tironi.zoen.media.VoiceNoteRef
 import xyz.tironi.zoen.media.MediaFiles
 
@@ -192,7 +195,7 @@ fun ChatScreen(model: ZoenViewModel, state: AppState, spaceId: String, navigate:
         topBar = {
             TopAppBar(title = {
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                    if (space.counterpart != null) Avatar(space.counterpart, size = 40, onClick = { navigate(if (space.counterpart!!.kind == PersonaKind.AGENT) Agent(space.counterpart!!.id) else Person(space.counterpart!!.id)) })
+                    if (space.counterpart != null) Avatar(space.counterpart, size = 40, onClick = { navigate(if (space.counterpart!!.kind == PersonaKind.AGENT) Agent(space.counterpart!!.id) else Person(space.counterpart!!.id)) }, contact = true)
                     else SpaceAvatar(space, size = 40, onClick = { navigate(Participants(space.id)) })
                     Column {
                         Text(space.title, style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
@@ -338,23 +341,24 @@ fun TimelineRow(model: ZoenViewModel, entry: TimelineEntry, navigate: (NavKey) -
                 }
             }, horizontalAlignment = if (mine) Alignment.End else Alignment.Start) {
                 if (!mine) Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Avatar(entry.author, size = 26, onClick = { navigate(if (entry.author.kind == PersonaKind.AGENT) Agent(entry.author.id) else Person(entry.author.id)) })
+                    Avatar(entry.author, size = 26, onClick = { navigate(if (entry.author.kind == PersonaKind.AGENT) Agent(entry.author.id) else Person(entry.author.id)) }, contact = true)
                     Text(entry.author.name, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
                 Box {
                     Surface(shape = RoundedCornerShape(22.dp, 22.dp, if (mine) 6.dp else 22.dp, if (mine) 22.dp else 6.dp),
-                        color = if (mine) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceContainer,
+                        color = if (mine) MaterialTheme.colorScheme.ownMessage else MaterialTheme.colorScheme.otherMessage,
+                        contentColor = if (mine) MaterialTheme.colorScheme.onOwnMessage else MaterialTheme.colorScheme.onSurface,
                         modifier = Modifier.padding(top = 6.dp).widthIn(max = 360.dp).combinedClickable(onClick = { kind.card?.let { navigate(Item(it.itemId)) } }, onLongClick = { menu = true })) {
-                        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                        Column(Modifier.padding(horizontal = 14.dp, vertical = 10.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                             entry.replyTo?.let { quote ->
-                                Surface(color = MaterialTheme.colorScheme.surface.copy(alpha = .6f), shape = RoundedCornerShape(8.dp), modifier = Modifier.testTag("quote:${quote.id}").clickable { onQuote?.invoke(quote.id) }) {
+                                Surface(color = MaterialTheme.colorScheme.surface, contentColor = MaterialTheme.colorScheme.onSurface, shape = RoundedCornerShape(8.dp), modifier = Modifier.testTag("quote:${quote.id}").clickable { onQuote?.invoke(quote.id) }) {
                                     Column(Modifier.padding(10.dp)) { Text(quote.author.name, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary); Text(quote.text, maxLines = 2, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.bodySmall) }
                                 }
                             }
                             val voice = VoiceNoteRef.parse(kind.text)
                             if (voice != null) VoiceBubble(model, voice)
                             else if (kind.text.isNotBlank()) {
-                                val mentionColor = MaterialTheme.colorScheme.primary
+                                val mentionColor = if (mine) LocalContentColor.current else MaterialTheme.colorScheme.primary
                                 SelectionContainer { Text(buildAnnotatedString { append(kind.text); Regex("(?<![\\w.])@[\\p{L}\\p{N}_.]+").findAll(kind.text).forEach { match -> addStyle(SpanStyle(color = mentionColor, fontWeight = FontWeight.SemiBold), match.range.first, match.range.last + 1) } }, style = MaterialTheme.typography.bodyLarge) }
                             }
                             kind.card?.let { card ->

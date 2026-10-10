@@ -33,49 +33,41 @@ import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 
 @Composable
-private fun HomeBar(title: String, state: AppState, navigate: (NavKey) -> Unit, onStore: (() -> Unit)? = null) {
-    ScreenBar(title, actions = {
+@OptIn(ExperimentalMaterial3Api::class)
+private fun HomeBar(title: String, state: AppState, navigate: (NavKey) -> Unit, onStore: (() -> Unit)? = null, onSearch: (() -> Unit)? = null) {
+    TopAppBar(title = {
+        if (onStore != null) Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+            ZoenMascot(Modifier.size(32.dp))
+            Text("zoen", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.ExtraBold)
+        } else Text(title, maxLines = 1, overflow = TextOverflow.Ellipsis)
+    }, actions = {
         if (onStore != null) IconButton(onClick = onStore) { Icon(Icons.Rounded.Storefront, stringResource(R.string.miniapp_store)) }
-        if (state.demo) AssistChip(onClick = { navigate(Context) }, label = { Text(stringResource(R.string.demo)) }, modifier = Modifier.padding(end = 4.dp))
-        IconButton(onClick = { navigate(Search) }) { Icon(Icons.Rounded.Search, stringResource(R.string.search)) }
+        IconButton(onClick = { if (onSearch != null) onSearch() else navigate(Search) }) { Icon(Icons.Rounded.Search, stringResource(R.string.search)) }
         IconButton(onClick = { navigate(Context) }, modifier = Modifier.testTag("open-context")) { Avatar(state.me, size = 34) }
-    })
+    }, colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.background))
 }
 
 @Composable
 fun ConversationsScreen(model: ZoenViewModel, state: AppState, navigate: (NavKey) -> Unit, split: Boolean) {
     var store by rememberSaveable { mutableStateOf(false) }
     var selectedChat by rememberSaveable { mutableStateOf<String?>(null) }
-    var filter by rememberSaveable { mutableIntStateOf(0) }
+    var searching by rememberSaveable { mutableStateOf(false) }
     var query by rememberSaveable { mutableStateOf("") }
     var pinned by remember { mutableStateOf(model.repository.preferences.getStringSet("pins", setOf("zoen"))!!.toSet()) }
     val chats = state.spaces.filter { it.kind != SpaceKindDto.COMMUNITY }
-        .filter { when (filter) { 1 -> it.counterpart?.kind == PersonaKind.PERSON; 2 -> it.unread > 0u; else -> true } }
         .filter { matchesSpace(it, query) }
         .sortedByDescending { it.lastAtMs }
         .sortedByDescending { it.id in pinned || it.counterpart?.handle in pinned }
     val list: @Composable () -> Unit = {
-        Scaffold(topBar = { HomeBar(stringResource(R.string.app_name), state, navigate, onStore = { store = true }) }, contentWindowInsets = WindowInsets(0, 0, 0, 0)) { padding ->
-            LazyColumn(Modifier.fillMaxSize().padding(padding).testTag("conversation-list"), contentPadding = PaddingValues(bottom = 100.dp)) {
-                item {
-                    OutlinedTextField(query, { query = it }, Modifier.fillMaxWidth().padding(horizontal = 24.dp), singleLine = true, label = { Text(stringResource(R.string.search)) }, leadingIcon = { Icon(Icons.Rounded.Search, null) })
-                }
-                item {
-                    Column(Modifier.padding(horizontal = 24.dp, vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                        Text(stringResource(R.string.chats), style = MaterialTheme.typography.headlineLarge)
-                        Text(stringResource(R.string.your_day), color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    }
+        Scaffold(topBar = { HomeBar(stringResource(R.string.app_name), state, navigate, onStore = { store = true }, onSearch = { searching = !searching }) }, containerColor = MaterialTheme.colorScheme.background, contentWindowInsets = WindowInsets(0, 0, 0, 0)) { padding ->
+            LazyColumn(Modifier.fillMaxSize().padding(padding).testTag("conversation-list"), contentPadding = PaddingValues(bottom = 16.dp)) {
+                if (searching || query.isNotBlank()) item {
+                    OutlinedTextField(query, { query = it }, Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 8.dp), singleLine = true, placeholder = { Text(stringResource(R.string.search)) }, leadingIcon = { Icon(Icons.Rounded.Search, null) }, shape = androidx.compose.foundation.shape.RoundedCornerShape(24.dp))
                 }
                 val apps = state.items.filter { it.app != null }
                 if (apps.isNotEmpty()) {
-                    item { SectionLabel(stringResource(R.string.live_apps), Modifier.padding(horizontal = 24.dp)) }
                     item {
                         MiniAppTileStrip(model, state, apps, onOpenItem = { navigate(Item(it)) })
-                    }
-                }
-                item {
-                    LazyRow(contentPadding = PaddingValues(horizontal = 24.dp, vertical = 12.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        items(3) { index -> FilterChip(selected = filter == index, onClick = { filter = index }, label = { Text(stringResource(listOf(R.string.all, R.string.people, R.string.unread)[index])) }) }
                     }
                 }
                 items(chats, key = { it.id }) { chat ->
@@ -118,13 +110,13 @@ private fun ConversationRow(chat: SpaceSummary, pinned: Boolean, selected: Boole
     var menu by remember { mutableStateOf(false) }
     Box {
         Row(Modifier.fillMaxWidth().testTag("chat:${chat.counterpart?.handle ?: chat.id}").background(if (selected) MaterialTheme.colorScheme.primaryContainer else Color.Transparent)
-            .combinedClickable(onClick = onClick, onLongClick = { menu = true }).padding(horizontal = 24.dp, vertical = 14.dp),
+            .combinedClickable(onClick = onClick, onLongClick = { menu = true }).padding(horizontal = 20.dp, vertical = 10.dp),
             verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp)) {
-            if (chat.counterpart != null) Avatar(chat.counterpart, size = 58)
-            else SpaceAvatar(chat, size = 58)
-            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            if (chat.counterpart != null) Avatar(chat.counterpart, size = 56, contact = true)
+            else SpaceAvatar(chat, size = 56)
+            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 Text(chat.title, style = MaterialTheme.typography.titleMedium, fontWeight = if (chat.unread > 0u) FontWeight.Bold else FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                Text(conversationPreview(chat), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                Text(conversationPreview(chat), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
             Column(horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text(DateFormat.getTimeInstance(DateFormat.SHORT).format(Date(chat.lastAtMs)), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)

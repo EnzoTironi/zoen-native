@@ -75,7 +75,7 @@ fun NewSpaceScreen(model: ZoenViewModel, navigate: (NavKey) -> Unit, back: () ->
     var busy by remember { mutableStateOf(false) }
     Scaffold(topBar = { ScreenBar(stringResource(R.string.new_space), back) }) { padding ->
         Column(Modifier.padding(padding).imePadding().verticalScroll(rememberScrollState()).padding(24.dp), verticalArrangement = Arrangement.spacedBy(20.dp)) {
-            ZoenMascot(Modifier.size(160.dp), pose = 1)
+            ZoenMascot(Modifier.size(160.dp), pose = MascotPose.Map)
             Text(stringResource(R.string.spaces_empty_title), style = MaterialTheme.typography.headlineMedium)
             Text(stringResource(R.string.spaces_empty_detail), color = MaterialTheme.colorScheme.onSurfaceVariant)
             OutlinedTextField(title, { title = it }, Modifier.fillMaxWidth(), label = { Text(stringResource(R.string.space_name)) })

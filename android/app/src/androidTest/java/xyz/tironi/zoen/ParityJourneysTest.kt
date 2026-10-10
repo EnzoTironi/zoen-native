@@ -53,6 +53,27 @@ class ParityJourneysTest {
         finally { bitmap.recycle() }
     }
 
+    @Test fun filesAreAPrimaryDestinationAndFolderBackReturnsToFiles() {
+        val item = application.repository.state.value.items.first()
+        compose.onNodeWithTag("tab:Files").performClick()
+        compose.onNodeWithTag("files-list").assertExists()
+        compose.onNodeWithContentDescription(application.getString(R.string.back)).assertDoesNotExist()
+        compose.onNodeWithTag("files-list").performScrollToNode(hasTestTag("folder:${item.spaceId}"))
+        compose.onNodeWithTag("folder:${item.spaceId}").performClick()
+        compose.onNodeWithTag("files-search").performTextReplacement(item.title)
+        scenario.recreate()
+        compose.onNodeWithTag("files-search").assertTextContains(item.title)
+        compose.onNodeWithContentDescription(application.getString(R.string.back)).performClick()
+        compose.onNodeWithTag("files-list").assertExists()
+        compose.onNodeWithTag("tab:Files").assertIsSelected()
+        capturePageHistory("primary-files-after-folder-back")
+        compose.onNodeWithTag("tab:Chats").performClick()
+        compose.onNodeWithTag("conversation-list").assertExists()
+        compose.onNodeWithTag("home-plus").assertIsDisplayed()
+        compose.onNodeWithTag("tab:Files").performClick()
+        compose.onNodeWithTag("files-list").assertExists()
+    }
+
     @Test fun nativeLinksReuseTheActivityAndConsumedLinksDoNotReplayAfterRecreation() {
         val chat = application.repository.state.value.zoenChat!!
         val otherSpace = application.repository.state.value.spaces.first { it.id != chat.id && it.counterpart?.handle == "marina" }

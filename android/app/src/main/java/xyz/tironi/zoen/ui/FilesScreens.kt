@@ -49,7 +49,7 @@ fun filterFiles(state: AppState, scope: FileScope, query: String, folder: String
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun FilesScreen(model: ZoenViewModel, state: AppState, navigate: (NavKey) -> Unit, back: () -> Unit, folder: String? = null) {
+fun FilesScreen(model: ZoenViewModel, state: AppState, navigate: (NavKey) -> Unit, back: (() -> Unit)?, folder: String? = null) {
     var query by rememberSaveable(folder) { mutableStateOf("") }
     var scope by rememberSaveable(folder) { mutableStateOf(FileScope.ALL) }
     var add by rememberSaveable { mutableStateOf(false) }
