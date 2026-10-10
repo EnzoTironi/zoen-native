@@ -15,9 +15,11 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
@@ -61,13 +63,17 @@ fun Avatar(persona: Persona?, modifier: Modifier = Modifier, size: Int = 52, onC
     val drawing = remember(persona?.id, drawingVersion) { persona?.takeIf { it.kind == PersonaKind.AGENT && it.handle != "zoen" }?.let { AvatarArt.agent(context, it) } }
     val shape = if (persona?.kind == PersonaKind.AGENT && !contact) RoundedCornerShape((size * .32f).dp) else CircleShape
     val color = try { Color(android.graphics.Color.parseColor(persona?.tintHex ?: "#DDEFD2")) } catch (_: Exception) { MaterialTheme.colorScheme.primaryContainer }
-    Box(modifier.size(size.dp).clip(shape).background(if (contact) MaterialTheme.colorScheme.surface else color.copy(alpha = .18f))
+    val person = persona?.kind == PersonaKind.PERSON
+    Box(modifier.size(size.dp).clip(shape).background(if (person) color else if (contact) MaterialTheme.colorScheme.surface else color.copy(alpha = .18f))
         .then(if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier), contentAlignment = Alignment.Center) {
         if (photo != null) Image(photo!!.asImageBitmap(), persona?.name, Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
         else if (persona?.handle == "zoen") ZoenMascot(Modifier.fillMaxSize().padding(2.dp), headOnly = true)
         else if (drawing != null) AvatarDrawing(drawing, size)
         else if (persona?.kind == PersonaKind.AGENT) Icon(Icons.Rounded.AutoAwesome, persona.name, tint = MaterialTheme.colorScheme.primary)
-        else Text(persona?.initials ?: "Z", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onSurface, fontWeight = FontWeight.SemiBold)
+        else Text(persona?.initials ?: "Z", style = MaterialTheme.typography.titleMedium,
+            fontSize = with(LocalDensity.current) { (size * .44f).dp.toSp() },
+            color = if (person) { if (color.luminance() > .5f) Color(0xFF0E1320) else Color.White } else MaterialTheme.colorScheme.onSurface,
+            fontWeight = FontWeight.SemiBold)
     }
 }
 

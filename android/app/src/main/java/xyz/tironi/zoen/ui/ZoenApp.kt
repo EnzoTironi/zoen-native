@@ -111,6 +111,7 @@ fun ZoenApp(model: ZoenViewModel, deepLink: String?, consumed: () -> Unit) {
             consumed()
         }
         BoxWithConstraints(Modifier.fillMaxSize()) {
+            val unread = state.spaces.sumOf { it.unread.toLong() }.coerceAtMost(100L).toInt()
             val rail = maxWidth >= 600.dp
             val split = maxWidth >= 840.dp
             val navigationHeight = if (LocalConfiguration.current.fontScale > 1.5f) 112.dp else 80.dp
@@ -122,7 +123,7 @@ fun ZoenApp(model: ZoenViewModel, deepLink: String?, consumed: () -> Unit) {
                 }) {
                     Spacer(Modifier.height(24.dp))
                     Tab.entries.forEach { target ->
-                        NavigationRailItem(selected = tab == target, onClick = { tab = target }, icon = { TabIcon(target, state.pending) }, label = { Text(tabName(target)) })
+                        NavigationRailItem(selected = tab == target, onClick = { tab = target }, icon = { TabIcon(target, if (target == Tab.Chats) unread else state.pending) }, label = { Text(tabName(target)) })
                     }
                     Spacer(Modifier.weight(1f))
                     IconButton(onClick = { navigate(Search) }) { Icon(Icons.Rounded.Search, stringResource(R.string.search)) }
@@ -137,7 +138,7 @@ fun ZoenApp(model: ZoenViewModel, deepLink: String?, consumed: () -> Unit) {
                                 if (index == 2) Box(Modifier.weight(1f), contentAlignment = Alignment.Center) {
                                     PlusVoiceButton({ quickActions = true }, { voiceStart++ }, { voiceRelease++ }, { voiceLock++ }, { voiceCancel++ }, compact = true)
                                 }
-                                NavigationBarItem(selected = tab == target, onClick = { tab = target }, icon = { TabIcon(target, state.pending) }, label = {
+                                NavigationBarItem(selected = tab == target, onClick = { tab = target }, icon = { TabIcon(target, if (target == Tab.Chats) unread else state.pending) }, label = {
                                     Text(tabName(target), maxLines = 1, overflow = TextOverflow.Ellipsis,
                                         style = if (LocalConfiguration.current.fontScale > 1.5f) MaterialTheme.typography.labelSmall else MaterialTheme.typography.labelMedium)
                                 }, modifier = Modifier.testTag("tab:${target.name}"))
@@ -218,5 +219,5 @@ private fun tabName(tab: Tab) = stringResource(when (tab) { Tab.Chats -> R.strin
 @Composable
 private fun TabIcon(tab: Tab, count: Int) {
     val icon = when (tab) { Tab.Chats -> Icons.AutoMirrored.Rounded.Chat; Tab.Spaces -> Icons.Rounded.Groups; Tab.Files -> Icons.Rounded.FolderOpen; Tab.Activity -> Icons.Rounded.NotificationsNone }
-    BadgedBox(badge = { if (tab == Tab.Activity && count > 0) Badge { Text(count.toString()) } }) { Icon(icon, tabName(tab)) }
+    BadgedBox(badge = { if (tab in listOf(Tab.Chats, Tab.Activity) && count > 0) Badge { Text(if (count > 99) "99+" else count.toString()) } }) { Icon(icon, tabName(tab)) }
 }

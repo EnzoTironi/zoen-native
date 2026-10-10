@@ -69,6 +69,7 @@ fun Onboarding(model: ZoenViewModel, modifier: Modifier = Modifier, acquisitionL
     var cameraUri by rememberSaveable { mutableStateOf<String?>(null) }
     val context = LocalContext.current
     val photoError = stringResource(R.string.something_wrong)
+    val pasteError = stringResource(R.string.onboarding_paste_error)
     val language = Locale.forLanguageTag(model.repository.locale).language
     val step = route.steps[position.coerceAtMost(route.steps.lastIndex)]
     fun next() { position = (position + 1).coerceAtMost(route.steps.lastIndex) }
@@ -126,10 +127,28 @@ fun Onboarding(model: ZoenViewModel, modifier: Modifier = Modifier, acquisitionL
             }
         }
         Column(Modifier.weight(1f).verticalScroll(rememberScrollState()).widthIn(max = 560.dp).align(Alignment.CenterHorizontally).padding(horizontal = 28.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-            ZoenMascot(Modifier.fillMaxWidth().height(if (step == OnboardingStep.Profile || step == OnboardingStep.Done) 130.dp else 160.dp), animated = true, pose = pose)
+            ZoenMascot(Modifier.fillMaxWidth().height(if (step == OnboardingStep.Profile) 130.dp else 230.dp), animated = true, pose = pose)
             Text(route.text("onboarding.${step.id}.title", language) ?: stringResource(step.title), Modifier.fillMaxWidth(), style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.ExtraBold, textAlign = TextAlign.Center)
-            Text(route.text("onboarding.${step.id}.body", language) ?: stringResource(step.detail), Modifier.fillMaxWidth(), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, textAlign = TextAlign.Center)
+            val detail = route.text("onboarding.${step.id}.body", language) ?: if (step == OnboardingStep.Profile) null else stringResource(step.detail)
+            detail?.let { Text(it, Modifier.fillMaxWidth(), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, textAlign = TextAlign.Center) }
             when (step) {
+                OnboardingStep.Hello -> if (route.flow == "default") {
+                    OutlinedButton(onClick = {
+                        val clipboard = context.getSystemService(android.content.ClipboardManager::class.java)
+                        val invite = clipboard.primaryClip?.takeIf { it.itemCount > 0 }?.getItemAt(0)?.coerceToText(context)?.toString()?.trim()
+                        if (invite.isNullOrEmpty() || invite.length > 8192 || Uri.parse(invite).scheme !in listOf("https", "zoen")) model.notify(pasteError)
+                        else model.launch {
+                            route = model.repository.query { core ->
+                                core.growthCaptureLink(invite)
+                                OnboardingRoute.from(core.growthOnboardingPlan())
+                            }
+                        }
+                    }, modifier = Modifier.align(Alignment.CenterHorizontally).testTag("onboarding-paste-invite")) {
+                        Icon(Icons.Rounded.ContentPaste, null, Modifier.size(18.dp))
+                        Spacer(Modifier.width(8.dp))
+                        Text(stringResource(R.string.onboarding_paste_invite))
+                    }
+                }
                 OnboardingStep.Profile -> {
                     val preview = remember(photo) { photo?.let { BitmapFactory.decodeByteArray(it, 0, it.size) } }
                     DisposableEffect(preview) { onDispose { preview?.recycle() } }
@@ -217,7 +236,7 @@ fun Onboarding(model: ZoenViewModel, modifier: Modifier = Modifier, acquisitionL
                 }
             }, enabled = !busy && !planning && (step != OnboardingStep.Profile || (name.isNotBlank() && Regex("[a-z][a-z0-9._]{2,23}").matches(handle) && (relay.startsWith("https://") || BuildConfig.DEBUG && relay.startsWith("http://")))), modifier = Modifier.fillMaxWidth().heightIn(min = 56.dp).testTag("onboarding-next")) {
                 if (busy) { CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp); Spacer(Modifier.width(12.dp)) }
-                Text(stringResource(when { busy -> R.string.creating; step == OnboardingStep.Notifications -> R.string.enable_notifications; step == OnboardingStep.Location -> R.string.onboarding_allow_location; step == OnboardingStep.Done -> R.string.finish; else -> R.string.continue_label }))
+                Text(stringResource(when { busy -> R.string.creating; step == OnboardingStep.Hello -> R.string.onboarding_hi_zoen; step == OnboardingStep.Plan -> R.string.onboarding_looks_good; step == OnboardingStep.Notifications -> R.string.enable_notifications; step == OnboardingStep.Location -> R.string.onboarding_allow_location; step == OnboardingStep.Done -> R.string.finish; else -> R.string.continue_label }))
             }
             if (step == OnboardingStep.Notifications || step == OnboardingStep.Location) TextButton(onClick = {
                 model.repository.preferences.edit().putBoolean(if (step == OnboardingStep.Notifications) "notifications" else "location", false).apply()

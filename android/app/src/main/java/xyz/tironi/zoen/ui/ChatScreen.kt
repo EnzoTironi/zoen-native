@@ -18,6 +18,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
@@ -26,11 +27,15 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material.icons.automirrored.rounded.Reply
 import androidx.compose.material.icons.automirrored.rounded.Send
+import androidx.compose.material.icons.automirrored.rounded.KeyboardArrowRight
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.material.icons.rounded.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.layout.HorizontalAlignmentLine
+import androidx.compose.ui.layout.layout
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalConfiguration
@@ -73,6 +78,13 @@ import xyz.tironi.zoen.theme.onOwnMessage
 import xyz.tironi.zoen.theme.otherMessage
 import xyz.tironi.zoen.media.VoiceNoteRef
 import xyz.tironi.zoen.media.MediaFiles
+
+private val MessageFace = HorizontalAlignmentLine { first, second -> maxOf(first, second) }
+
+private fun Modifier.messageFace() = layout { measurable, constraints ->
+    val placeable = measurable.measure(constraints)
+    layout(placeable.width, placeable.height, mapOf(MessageFace to placeable.height)) { placeable.placeRelative(0, 0) }
+}
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -213,6 +225,9 @@ fun ChatScreen(model: ZoenViewModel, state: AppState, spaceId: String, navigate:
                     }
                 }
             }, navigationIcon = { IconButton(onClick = back) { Icon(Icons.AutoMirrored.Rounded.ArrowBack, stringResource(R.string.back)) } }, actions = {
+                val callsComing = stringResource(R.string.calls_coming)
+                IconButton(onClick = { model.notify(callsComing) }) { Icon(Icons.Rounded.Call, stringResource(R.string.voice_call)) }
+                IconButton(onClick = { model.notify(callsComing) }) { Icon(Icons.Rounded.VideoCall, stringResource(R.string.video_call)) }
                 IconButton(onClick = { overflow = true }) { Icon(Icons.Rounded.MoreVert, stringResource(R.string.more)) }
                 DropdownMenu(overflow, onDismissRequest = { overflow = false }) {
                     DropdownMenuItem(text = { Text(stringResource(R.string.participants)) }, onClick = { overflow = false; navigate(Participants(space.id)) }, leadingIcon = { Icon(Icons.Rounded.Groups, null) })
@@ -284,8 +299,12 @@ fun ChatScreen(model: ZoenViewModel, state: AppState, spaceId: String, navigate:
             Box(Modifier.weight(1f)) {
                 ChatBackdrop(model, space.id, state.revision, Modifier.fillMaxSize())
                 if (spaceId in state.timelines) {
-                    LazyColumn(state = list, modifier = Modifier.fillMaxSize().testTag("chat-timeline"), contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        items(timeline, key = { it.id }) { entry ->
+                    LazyColumn(state = list, modifier = Modifier.fillMaxSize().testTag("chat-timeline"), contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp, Alignment.Bottom)) {
+                        itemsIndexed(timeline, key = { _, entry -> entry.id }) { index, entry ->
+                            if (index == 0) Box(Modifier.fillMaxWidth().padding(top = 8.dp, bottom = 12.dp), contentAlignment = Alignment.Center) {
+                                if (space.counterpart != null) Avatar(space.counterpart, size = 64, contact = true)
+                                else SpaceAvatar(space, size = 64)
+                            }
                             Box(Modifier.testTag("timeline:${entry.id}").background(if (highlight == entry.id) MaterialTheme.colorScheme.secondaryContainer else androidx.compose.ui.graphics.Color.Transparent, RoundedCornerShape(16.dp))) {
                                 TimelineRow(model, entry, navigate, onReply = { replyId = entry.id }, onThread = { navigate(Thread(spaceId, entry.id)) }, onQuote = { jumpTo = it }, direct = space.counterpart != null)
                             }
@@ -341,8 +360,8 @@ fun TimelineRow(model: ZoenViewModel, entry: TimelineEntry, navigate: (NavKey) -
                 }
             }, verticalAlignment = Alignment.Bottom, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 if (mine) Spacer(Modifier.width(40.dp))
-                else Avatar(entry.author, size = 36, onClick = { navigate(if (entry.author.kind == PersonaKind.AGENT) Agent(entry.author.id) else Person(entry.author.id)) }, contact = true)
-                Column(Modifier.weight(1f), horizontalAlignment = if (mine) Alignment.End else Alignment.Start) {
+                else Avatar(entry.author, modifier = Modifier.alignBy { it.measuredHeight }, size = 36, onClick = { navigate(if (entry.author.kind == PersonaKind.AGENT) Agent(entry.author.id) else Person(entry.author.id)) }, contact = true)
+                Column(Modifier.weight(1f).then(if (mine) Modifier else Modifier.alignBy(MessageFace)), horizontalAlignment = if (mine) Alignment.End else Alignment.Start) {
                 if (!mine && !direct) Text(entry.author.name, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 Box {
                     Column(horizontalAlignment = if (mine) Alignment.End else Alignment.Start, verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -350,7 +369,7 @@ fun TimelineRow(model: ZoenViewModel, entry: TimelineEntry, navigate: (NavKey) -
                     Surface(shape = RoundedCornerShape(22.dp, 22.dp, if (mine) 6.dp else 22.dp, if (mine) 22.dp else 6.dp),
                         color = if (mine) MaterialTheme.colorScheme.ownMessage else MaterialTheme.colorScheme.otherMessage,
                         contentColor = if (mine) MaterialTheme.colorScheme.onOwnMessage else MaterialTheme.colorScheme.onSurface,
-                        modifier = Modifier.padding(top = 6.dp).widthIn(max = 360.dp).combinedClickable(onClick = { kind.card?.let { navigate(Item(it.itemId)) } }, onLongClick = { menu = true })) {
+                        modifier = Modifier.padding(top = 6.dp).messageFace().widthIn(max = 360.dp).combinedClickable(onClick = { kind.card?.let { navigate(Item(it.itemId)) } }, onLongClick = { menu = true })) {
                         Column(Modifier.padding(horizontal = 14.dp, vertical = 10.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                             entry.replyTo?.let { quote ->
                                 Surface(color = MaterialTheme.colorScheme.surface, contentColor = MaterialTheme.colorScheme.onSurface, shape = RoundedCornerShape(8.dp), modifier = Modifier.testTag("quote:${quote.id}").clickable { onQuote?.invoke(quote.id) }) {
@@ -367,13 +386,16 @@ fun TimelineRow(model: ZoenViewModel, entry: TimelineEntry, navigate: (NavKey) -
                     }
                     }
                     kind.card?.let { card ->
-                                Card(onClick = { navigate(Item(card.itemId)) }, modifier = Modifier.testTag("item:${card.itemId}"), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
+                                Card(onClick = { navigate(Item(card.itemId)) }, modifier = Modifier.testTag("item:${card.itemId}").then(if (kind.text.isBlank() && entry.replyTo == null) Modifier.messageFace() else Modifier), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
                                     Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                                        Icon(appIcon(card.app?.appId ?: card.kindId), null, tint = MaterialTheme.colorScheme.primary)
-                                        Text(card.title, style = MaterialTheme.typography.titleMedium)
+                                        Row(verticalAlignment = Alignment.CenterVertically) {
+                                            Text(card.title, Modifier.weight(1f), style = MaterialTheme.typography.titleLarge,
+                                                fontFamily = if (card.app == null) FontFamily.Serif else FontFamily.Default, fontWeight = FontWeight.Bold)
+                                            Icon(Icons.AutoMirrored.Rounded.KeyboardArrowRight, null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                                        }
                                         Text(card.app?.headline ?: card.summary, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                                         card.totalCents?.let { Text(formatMoney(it, locale), style = MaterialTheme.typography.titleSmall) }
-                                        Text(stringResource(R.string.version, card.version.toInt()), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
+                                        if (card.app != null) Text(stringResource(R.string.version, card.version.toInt()), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
                                     }
                                 }
                     }

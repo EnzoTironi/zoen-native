@@ -55,7 +55,17 @@ class OnboardingConnectionJourneyTest {
             scenario.onActivity { it.window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON) }
             fun step(name: String) { compose.waitUntil(20_000) { compose.onAllNodesWithTag("onboarding:$name").fetchSemanticsNodes().isNotEmpty() } }
             fun next() { compose.onNodeWithTag("onboarding-next").performClick() }
-            step("hello"); next(); step("profile")
+            step("hello")
+            val sourceBefore = runBlocking { repository.query { it.growthAcquisition() } }
+            val campaign = "native_paste_$suffix"
+            val clipboard = application.getSystemService(android.content.ClipboardManager::class.java)
+            scenario.onActivity { clipboard.setPrimaryClip(android.content.ClipData.newPlainText("invite", "https://tryzoen.com/?utm_campaign=$campaign")) }
+            compose.onNodeWithTag("onboarding-paste-invite").performScrollTo().performClick()
+            compose.waitUntil(10_000) {
+                runBlocking { repository.query { it.growthAcquisition() } }.campaign ==
+                    if (sourceBefore.kind == "organic" && sourceBefore.campaign == null) campaign else sourceBefore.campaign
+            }
+            next(); step("profile")
             compose.onNodeWithTag("onboarding-name").performTextReplacement("Native Onboarding")
             compose.onNodeWithTag("onboarding-handle").performTextReplacement("on_$suffix")
             compose.onNodeWithText(application.getString(R.string.connection_settings)).performScrollTo().performClick()

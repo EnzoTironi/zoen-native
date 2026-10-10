@@ -28,6 +28,8 @@ import xyz.tironi.zoen.ZoenViewModel
 import xyz.tironi.zoen.core.*
 import xyz.tironi.zoen.data.AppState
 import xyz.tironi.zoen.miniapps.MiniAppTileStrip
+import xyz.tironi.zoen.miniapps.WidgetSnapshot
+import org.json.JSONObject
 import xyz.tironi.zoen.miniapps.MiniAppStoreScreen
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
@@ -37,7 +39,7 @@ import androidx.compose.ui.window.DialogProperties
 private fun HomeBar(title: String, state: AppState, navigate: (NavKey) -> Unit, onStore: (() -> Unit)? = null, onSearch: (() -> Unit)? = null) {
     TopAppBar(title = {
         if (onStore != null) Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-            ZoenMascot(Modifier.size(32.dp), headOnly = true)
+            ZoenMascot(Modifier.size(32.dp), headOnly = true, mood = MascotMood.Smirk)
             Text("zoen", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.ExtraBold)
         } else Text(title, maxLines = 1, overflow = TextOverflow.Ellipsis)
     }, actions = {
@@ -54,8 +56,7 @@ fun ConversationsScreen(model: ZoenViewModel, state: AppState, navigate: (NavKey
     var searching by rememberSaveable { mutableStateOf(false) }
     var query by rememberSaveable { mutableStateOf("") }
     var pinned by remember { mutableStateOf(model.repository.preferences.getStringSet("pins", setOf("zoen"))!!.toSet()) }
-    val chats = state.spaces.filter { it.kind != SpaceKindDto.COMMUNITY }
-        .filter { matchesSpace(it, query) }
+    val chats = state.spaces.filter { matchesSpace(it, query) }
         .sortedByDescending { it.lastAtMs }
         .sortedByDescending { it.id in pinned || it.counterpart?.handle in pinned }
     val list: @Composable () -> Unit = {
@@ -64,7 +65,9 @@ fun ConversationsScreen(model: ZoenViewModel, state: AppState, navigate: (NavKey
                 if (searching || query.isNotBlank()) item {
                     OutlinedTextField(query, { query = it }, Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 8.dp), singleLine = true, placeholder = { Text(stringResource(R.string.search)) }, leadingIcon = { Icon(Icons.Rounded.Search, null) }, shape = androidx.compose.foundation.shape.RoundedCornerShape(24.dp))
                 }
-                val apps = state.items.filter { it.app != null }
+                val apps = state.items.filter { item ->
+                    item.app?.let { !JSONObject(it.viewJson).optBoolean("released") } == true && WidgetSnapshot.from(item) != null
+                }.asReversed()
                 if (apps.isNotEmpty()) {
                     item {
                         MiniAppTileStrip(model, state, apps, onOpenItem = { navigate(Item(it)) })

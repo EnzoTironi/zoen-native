@@ -20,6 +20,7 @@ import org.junit.runner.RunWith
 import xyz.tironi.zoen.core.RequestStatus
 import xyz.tironi.zoen.core.ItemDetail
 import xyz.tironi.zoen.core.EntryKind
+import xyz.tironi.zoen.core.SpaceKindDto
 
 @RunWith(AndroidJUnit4::class)
 class NativeJourneysTest {
@@ -138,5 +139,18 @@ class NativeJourneysTest {
         compose.waitUntil(10_000) { compose.onAllNodes(result).fetchSemanticsNodes().isNotEmpty() }
         compose.onAllNodes(result).onFirst().performClick()
         compose.onNodeWithTag("composer").assertExists()
+    }
+
+    @Test fun homeSearchOpensJoinedCommunityAndKeepsItAfterRecreation() {
+        val community = application.repository.state.value.spaces.first { it.kind == SpaceKindDto.COMMUNITY }
+        compose.onNodeWithContentDescription(application.getString(R.string.search)).performClick()
+        compose.onNode(hasSetTextAction()).performTextInput(community.title)
+        compose.onNodeWithTag("conversation-list").performScrollToNode(hasTestTag("chat:${community.id}"))
+        compose.onNodeWithTag("chat:${community.id}").assertIsDisplayed().performClick()
+        compose.onNodeWithTag("composer").assertIsDisplayed()
+        scenario.recreate()
+        compose.onNodeWithText(community.title).assertIsDisplayed()
+        compose.onNodeWithTag("composer").assertIsDisplayed()
+        captureChatViewport("joined-community-after-recreation")
     }
 }

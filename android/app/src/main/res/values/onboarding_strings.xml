@@ -4,8 +4,12 @@
     <string name="life_food">Food</string>
     <string name="life_family">Family</string>
     <string name="onboarding_profile_title">What should friends call you?</string>
-    <string name="onboarding_location_detail">Allow approximate location for nearby plans. You can change this in Android settings.</string>
-    <string name="onboarding_done_detail">Your people, plans and shared things are ready. Your keys stay on this device.</string>
+    <string name="onboarding_location_detail">Used on this device, only when a plan needs it.</string>
+    <string name="onboarding_done_detail">Your plan is waiting in our chat. I’ll keep an eye on it.</string>
     <string name="onboarding_planning">Making your first plan…</string>
     <string name="onboarding_allow_location">Allow approximate location</string>
+    <string name="onboarding_hi_zoen">Hi, Zoen!</string>
+    <string name="onboarding_looks_good">Looks good</string>
+    <string name="onboarding_paste_invite">Paste invite</string>
+    <string name="onboarding_paste_error">Copy an invite link first.</string>
 </resources>

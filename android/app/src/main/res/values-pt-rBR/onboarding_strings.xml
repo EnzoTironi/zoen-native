@@ -3,9 +3,13 @@
     <string name="life_money">Dinheiro</string>
     <string name="life_food">Comida</string>
     <string name="life_family">Família</string>
-    <string name="onboarding_profile_title">Como seus amigos devem chamar você?</string>
-    <string name="onboarding_location_detail">Permita a localização aproximada para planos por perto. Você pode mudar isso nos ajustes do Android.</string>
-    <string name="onboarding_done_detail">Suas pessoas, planos e coisas compartilhadas estão prontos. Suas chaves ficam neste aparelho.</string>
+    <string name="onboarding_profile_title">Como os amigos te chamam?</string>
+    <string name="onboarding_location_detail">Usada neste aparelho, só quando um plano precisar.</string>
+    <string name="onboarding_done_detail">Seu plano está na nossa conversa. Vou ficar de olho nele.</string>
     <string name="onboarding_planning">Montando seu primeiro plano…</string>
     <string name="onboarding_allow_location">Permitir localização aproximada</string>
+    <string name="onboarding_hi_zoen">Oi, Zoen!</string>
+    <string name="onboarding_looks_good">Ficou bom</string>
+    <string name="onboarding_paste_invite">Colar convite</string>
+    <string name="onboarding_paste_error">Copie um link de convite primeiro.</string>
 </resources>

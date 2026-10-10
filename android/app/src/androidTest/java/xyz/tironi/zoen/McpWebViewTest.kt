@@ -5,8 +5,6 @@ import android.graphics.Bitmap
 import android.os.ParcelFileDescriptor
 import android.os.SystemClock
 import android.util.Log
-import android.view.InputDevice
-import android.view.MotionEvent
 import android.view.ViewTreeObserver
 import android.view.WindowManager
 import android.webkit.WebView
@@ -37,6 +35,7 @@ import org.junit.Assert.*
 import org.junit.Assume.assumeTrue
 import org.junit.Test
 import org.junit.runner.RunWith
+import kotlin.math.roundToInt
 import xyz.tironi.zoen.core.*
 import xyz.tironi.zoen.miniapps.*
 
@@ -56,7 +55,8 @@ class McpWebViewTest {
         val prompts = AtomicInteger()
         val confirmedCalls = AtomicInteger()
         val failure = AtomicReference<String?>()
-        val gateway = gateway(core, confirmedCalls)
+        val lastTool = AtomicReference("")
+        val gateway = gateway(core, confirmedCalls, lastTool)
         val session = McpAppSession(item.id, gateway, confirm = { prompts.incrementAndGet(); confirm.get() }, consent = { MiniAppConsent.DENY }, native = { _, _ -> error("No device capability was granted") }, nativeAvailable = emptySet(), openLink = { error("No external browser should open") }, onDisplay = {}, haptic = {}, onError = { failure.set(it) })
         val web = AtomicReference<WebView>()
         val probe = AtomicReference<McpRenderProbe>()
@@ -86,6 +86,7 @@ class McpWebViewTest {
             assertNull(failure.get())
             awaitNativeWindow(probe.get())
             waitUntil { evaluate(web.get(), "document.querySelectorAll('#items .it').length") == "1" }
+            observeHtmlInput(web.get())
             awaitFrame(web.get(), probe.get())
             val before = core.item(item.id).version
             touch(web.get(), "#items .it")
@@ -107,6 +108,7 @@ class McpWebViewTest {
             touch(web.get(), "#send")
             waitUntil { confirmedCalls.get() == 1 }
             assertEquals(2, prompts.get())
+            htmlInputEvidence(web.get(), "mcp-list-input-success.json", lastTool.get())
             assertTrue(core.verifyAll().all { it.valid })
             assertNull(failure.get())
             val authorizedVersion = core.item(item.id).version
@@ -119,6 +121,7 @@ class McpWebViewTest {
             waitUntil { evaluate(web.get(), "document.body.textContent") == "\"bridge missing\"" }
             assertEquals(authorizedVersion, core.item(item.id).version)
         } catch (error: Throwable) {
+            runCatching { htmlInputEvidence(web.get(), "mcp-list-input-failure.json", lastTool.get()) }.exceptionOrNull()?.let(error::addSuppressed)
             runCatching { probe.get()?.failureEvidence("mcp-list-failure", error) }.exceptionOrNull()?.let(error::addSuppressed)
             throw error
         } finally {
@@ -325,26 +328,20 @@ class McpWebViewTest {
             target.put("screenX", x).put("screenY", y)
             Log.i("McpWebViewTest", "System touch target $selector: $target")
         }
-        val at = SystemClock.uptimeMillis()
-        fun inject(action: Int) {
-            val event = MotionEvent.obtain(at, SystemClock.uptimeMillis(), action, 1,
-                arrayOf(MotionEvent.PointerProperties().apply { id = 0; toolType = MotionEvent.TOOL_TYPE_FINGER }),
-                arrayOf(MotionEvent.PointerCoords().apply { this.x = x; this.y = y; pressure = if (action == MotionEvent.ACTION_DOWN) 1f else 0f; size = 1f }),
-                0, 0, 1f, 1f, 0, 0, InputDevice.SOURCE_TOUCHSCREEN, 0)
-            try {
-                val submitted = SystemClock.uptimeMillis()
-                // ASYNC does not wait for the app to finish handling DOWN before scheduling UP.
-                val accepted = InstrumentationRegistry.getInstrumentation().uiAutomation.injectInputEvent(event, false)
-                val trace = JSONObject().put("selector", selector).put("target", target).put("action", MotionEvent.actionToString(action))
-                    .put("source", event.source).put("toolType", event.getToolType(0)).put("downTime", event.downTime).put("eventTime", event.eventTime)
-                    .put("submittedAt", submitted).put("returnedAt", SystemClock.uptimeMillis()).put("accepted", accepted)
-                systemInput.put(trace)
-                Log.i("McpWebViewTest", "System finger $selector: $trace")
-                check(accepted) { "Android rejected the system finger event for $selector" }
-            } finally { event.recycle() }
+        val clicksBefore = evaluate(web, "window.mcpInputTrace.filter(e => e.type === 'click' && e.trusted).length").toInt()
+        val submitted = SystemClock.uptimeMillis()
+        val command = "input touchscreen tap ${x.roundToInt()} ${y.roundToInt()}"
+        val result = ParcelFileDescriptor.AutoCloseInputStream(
+            InstrumentationRegistry.getInstrumentation().uiAutomation.executeShellCommand("$command 2>&1")
+        ).use { it.readBytes().toString(Charsets.UTF_8) }
+        val trace = JSONObject().put("selector", selector).put("target", target).put("command", command)
+            .put("submittedAt", submitted).put("returnedAt", SystemClock.uptimeMillis()).put("output", result)
+        systemInput.put(trace)
+        Log.i("McpWebViewTest", "System touchscreen $selector: $trace")
+        check(result.isBlank()) { "Android rejected the touchscreen command: $result" }
+        waitUntil(description = "Android touch did not deliver a trusted HTML click to $selector") {
+            evaluate(web, "window.mcpInputTrace.filter(e => e.type === 'click' && e.trusted).length").toInt() > clicksBefore
         }
-        inject(MotionEvent.ACTION_DOWN)
-        try { SystemClock.sleep(60) } finally { inject(MotionEvent.ACTION_UP) }
     }
     private fun wakeDevice() {
         for (command in listOf("input keyevent 224", "wm dismiss-keyguard")) {
