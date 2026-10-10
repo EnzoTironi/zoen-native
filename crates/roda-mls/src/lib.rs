@@ -24,7 +24,7 @@ pub mod recovery;
 pub mod sealed;
 
 #[cfg(feature = "device")]
-pub use device::{clear_recovery_markers, migrate, Commit, Device, LeafKeys, Opened};
+pub use device::{clear_recovery_markers, migrate, Commit, Device, GroupState, LeafKeys, Opened};
 use std::collections::BTreeSet;
 
 pub use leaf::Leaf;
