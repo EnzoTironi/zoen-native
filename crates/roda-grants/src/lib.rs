@@ -58,7 +58,7 @@ pub struct Budget {
 
 impl Budget {
     pub fn remaining_cents(&self) -> i64 {
-        (self.limit_cents - self.spent_cents).max(0)
+        self.limit_cents.saturating_sub(self.spent_cents).max(0)
     }
 
     pub fn fraction(&self) -> f64 {
@@ -70,11 +70,16 @@ impl Budget {
 
     /// Alerta aos 80 %.
     pub fn near_limit(&self) -> bool {
-        self.spent_cents * 10 >= self.limit_cents * 8
+        i128::from(self.spent_cents) * 10 >= i128::from(self.limit_cents) * 8
     }
 
     pub fn can_afford(&self, cents: i64) -> bool {
-        self.spent_cents + cents <= self.limit_cents
+        cents >= 0
+            && self.spent_cents >= 0
+            && self
+                .spent_cents
+                .checked_add(cents)
+                .is_some_and(|sum| sum <= self.limit_cents)
     }
 }
 
@@ -205,6 +210,18 @@ pub fn approval_still_valid(requested_hash: &str, current_hash: &str) -> bool {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn negative_and_overflowing_costs_cannot_bypass_the_budget() {
+        let budget = super::Budget {
+            limit_cents: i64::MAX,
+            spent_cents: i64::MAX - 1,
+        };
+        assert!(budget.can_afford(1));
+        assert!(!budget.can_afford(2));
+        assert!(!budget.can_afford(-1));
+        assert_eq!(budget.remaining_cents(), 1);
+        assert!(budget.near_limit());
+    }
     use super::*;
     use ActionClass::*;
     use TrustLevel::*;

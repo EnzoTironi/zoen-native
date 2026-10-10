@@ -803,14 +803,17 @@ impl Engine {
                 self.net.mls.dirty.insert(space.clone());
             }
             if let Some(s) = self.state.spaces.get_mut(&space) {
-                for entry in s.entries.iter_mut().filter(|x| x.client_id == client_id) {
+                for entry in s.entries.iter_mut().filter(|x| {
+                    x.client_id == client_id
+                        || x.client_id.strip_suffix(":result") == Some(client_id.as_str())
+                }) {
                     entry.seq = e.seq;
                     entry.hash = e.hash.clone();
                 }
             }
             return Ingest::Confirmed;
         }
-        self.state.apply(&e);
+        self.state.apply(&e, &self.identities);
         self.index_dirty = true;
         self.note_unknown(&e);
         Ingest::Applied

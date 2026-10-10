@@ -4,8 +4,8 @@ For the approvals swipe stack (`apple/Shared/Features/Approvals`). An agent's re
 something it wants to do that its owner must confirm. The stack lets the owner decide
 once (approve or deny) or set a **standing decision** ("always approve" / "always deny")
 for that kind of action from that agent in that Space. Everything below is in the Rust
-core (`roda-ffi`), generated into Swift by UniFFI (`RodaCore`). Nothing in the shipped
-path is a stub. The Debug showcase seeds three extra requests (`seedShowcaseApprovals`,
+core (`roda-ffi`), generated into Swift by UniFFI (`RodaCore`). Plan and mini-app proposals
+retain their complete typed output. The Debug showcase seeds three extra requests (`seedShowcaseApprovals`,
 `#if DEBUG` only).
 
 ## Calls
@@ -34,18 +34,39 @@ let mine: [StandingDecisionDto] = core.standingDecisions()
 try core.revokeStanding(grantId: d.grantId)
 ```
 
-Errors: `decideRequest(.alwaysApprove)` on a red line returns `Forbidden`. Deciding a
-request that isn't yours, is already resolved, or whose content changed (content hash)
-fails like `resolveRequest` does today.
+Errors: `decideRequest(.alwaysApprove)` on a red line returns `Forbidden`. A wrong owner,
+changed content, removed agent or conflicting second decision fails. Repeating the same
+decision returns its stored receipt without creating another item or charging usage again.
+An interrupted standing batch can resume from its original decision; revoking its standing
+grant prevents that resume.
 
 ## Events (signed, in the Space's log)
 
 | When | Event | Notes |
 |---|---|---|
-| agent asks | `RequestOpened { request: AgentRequest }` | only when `decide()` says *Request* (not when a standing grant already answers) |
-| owner decides | `RequestResolved { request, approved, content_hash }` | one per request, including the ones a standing decision covers |
+| agent asks | `RequestOpened { request: AgentRequest }` | `proposal` retains the item id, typed document, origin, completion text and model cost; its hash also binds the request metadata, agent and Space |
+| owner decides | `RequestResolved { request, approved, content_hash, resolution }` | the optional receipt creates the proposed item and its app permission in the same signed event; one accepted decision per request |
 | always approve / deny | `GrantIssued { grant }` with `capability: Standing { action, allow }` | see the shape below |
 | revoke | `GrantRevoked { grant }` | grantor must be the agent's owner |
+
+Model cost is incurred when the proposal is prepared, so it is projected once from
+`RequestOpened`, including if the owner later denies it. A paid proposal needs an active,
+owner-signed trust grant in that Space; a self-claimed owner in a profile is insufficient.
+Approval does not charge that cost a second time. Direct local outputs, chat cards,
+permissions and usage commit together in SQLite.
+
+An external action without a retained executable proposal records the owner's decision
+and reports that execution is waiting. Approval does not mark a payment or send as done.
+Old creation cards that lost their payload must be regenerated before approval.
+
+The projector checks owner, hash, Space, membership, prior status and receipt fields during
+replay and live ingestion. A signed but unauthorized decision remains in the verified
+chain without changing the request, item or usage projection. Duplicate item creation and
+edits from another Space cannot replace an approved output.
+
+Absent optional fields retain the exact historical JSON bytes. Older readers still do
+not understand embedded item effects, so shared-agent publishing requires upgraded readers
+before enablement; see [ADR 0048](adr/0048-durable-agent-approvals.md).
 
 Grant shape for a standing decision:
 
@@ -99,6 +120,11 @@ newest grant per key, so the server must also drop the older policy when a newer
 grant for the same (agent, Space, key) arrives.
 
 ## What the backend has to do
+
+The local approval implementation does not establish a cloud execution or billing service.
+The remaining M3 work includes owner-authorized agent registration, authenticated MLS
+membership, a sealed durable model/tool run loop, budget reservations and provider receipts.
+Local cost values supplied by a caller are not provider settlement evidence.
 
 1. **Redeploy relays with the new `roda-types`.** The relay parses `EventBody`; an old relay
    can't read `Capability::Standing` and breaks signature checks for those events.

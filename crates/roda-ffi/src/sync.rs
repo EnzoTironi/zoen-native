@@ -151,7 +151,7 @@ impl Engine {
                     self.net
                         .failed
                         .insert(e.client_id.clone(), p.last_error.unwrap_or_default());
-                    self.state.apply(&e);
+                    self.state.apply(&e, &self.identities);
                 }
                 continue;
             }
@@ -163,7 +163,7 @@ impl Engine {
             self.net
                 .pending
                 .insert(e.client_id.clone(), e.space.clone());
-            self.state.apply(&e);
+            self.state.apply(&e, &self.identities);
         }
         self.recompute_unknown();
         self.reload_mls();
@@ -199,9 +199,10 @@ impl Engine {
     }
 
     pub(crate) fn delivery(&self, e: &Entry) -> Delivery {
-        if self.net.failed.contains_key(&e.client_id) {
+        let source = e.client_id.strip_suffix(":result").unwrap_or(&e.client_id);
+        if self.net.failed.contains_key(source) {
             Delivery::Failed
-        } else if self.net.pending.contains_key(&e.client_id) {
+        } else if self.net.pending.contains_key(source) {
             Delivery::Sending
         } else if self.net.synced.contains(&e.space) {
             Delivery::Sent
@@ -251,12 +252,20 @@ impl Engine {
             self.causal_head(space)?
         };
         let e = signer.sign_event(space, &client_id, at_ms, seen, body);
+        if !self.state.approval_event_valid(&e, &self.identities) {
+            return Err(CoreError::Invalid {
+                reason: t(
+                    "pedido, decisão ou uso não autorizado",
+                    "unauthorized request, decision or usage",
+                ),
+            });
+        }
         self.store.outbox_put(&e)?;
         if creating && !self.space_order.contains(&space.to_string()) {
             self.space_order.push(space.to_string());
         }
         self.net.pending.insert(client_id, space.to_string());
-        self.state.apply(&e);
+        self.state.apply(&e, &self.identities);
         self.index_dirty = true;
         self.note_unknown(&e);
         self.note_profile_event(&e);
@@ -313,7 +322,10 @@ impl Engine {
         if self.net.pending.remove(&e.client_id).is_some() {
             let _ = self.store.outbox_remove(&e.client_id);
             if let Some(s) = self.state.spaces.get_mut(&space) {
-                for entry in s.entries.iter_mut().filter(|x| x.client_id == e.client_id) {
+                for entry in s.entries.iter_mut().filter(|x| {
+                    x.client_id == e.client_id
+                        || x.client_id.strip_suffix(":result") == Some(e.client_id.as_str())
+                }) {
                     entry.seq = e.seq;
                     entry.hash = e.hash.clone();
                 }
@@ -323,11 +335,11 @@ impl Engine {
                 || matches!(e.body, EventBody::MemberAdded { .. })
                     && !self.is_member_of(&space, &e.author)
             {
-                self.state.apply(&e);
+                self.state.apply(&e, &self.identities);
             }
             return Ingest::Confirmed;
         }
-        self.state.apply(&e);
+        self.state.apply(&e, &self.identities);
         self.index_dirty = true;
         self.note_unknown(&e);
         self.note_profile_event(&e);
@@ -493,6 +505,7 @@ impl Engine {
     /// Directory entries from the relay: handles and public keys. A person's name and bio
     /// come from their encrypted profile when this device holds the key, else the @handle.
     pub fn put_profiles(&mut self, profiles: Vec<Identity>) -> R<()> {
+        let mut reproject_agents = false;
         for mut p in profiles {
             if p.id.len() != 64 {
                 continue;
@@ -501,6 +514,11 @@ impl Engine {
             if self.signers.contains_key(&p.id) || self.me.as_deref() == Some(p.id.as_str()) {
                 continue;
             }
+            reproject_agents |= p.kind == IdentityKind::Agent
+                && self
+                    .identities
+                    .get(&p.id)
+                    .is_none_or(|old| old.kind != p.kind || old.owner != p.owner);
             self.overlay_profile(&mut p);
             self.store.put_identity(&p, None)?;
             if !self.identities.contains_key(&p.id) {
@@ -509,6 +527,9 @@ impl Engine {
             self.net.unknown.remove(&p.id);
             self.identities.insert(p.id.clone(), p);
             self.index_dirty = true;
+        }
+        if reproject_agents {
+            self.reload()?;
         }
         Ok(())
     }

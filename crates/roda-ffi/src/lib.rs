@@ -36,6 +36,7 @@ mod sync;
 pub use api::*;
 pub use link_api::{DeviceDto, HistoryDto, LinkRequestDto, LinkedDto, OlderDto, TransferListener};
 
+mod approvals;
 mod apps;
 pub mod dto;
 pub mod engine;
