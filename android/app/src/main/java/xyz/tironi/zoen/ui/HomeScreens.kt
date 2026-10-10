@@ -23,6 +23,10 @@ import androidx.compose.ui.unit.dp
 import androidx.navigation3.runtime.NavKey
 import java.text.DateFormat
 import java.util.Date
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import xyz.tironi.zoen.ui.ink.ZoenGlyph
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
 import xyz.tironi.zoen.R
 import xyz.tironi.zoen.ZoenViewModel
 import xyz.tironi.zoen.core.*
@@ -37,14 +41,15 @@ import androidx.compose.ui.window.DialogProperties
 @Composable
 @OptIn(ExperimentalMaterial3Api::class)
 private fun HomeBar(title: String, state: AppState, navigate: (NavKey) -> Unit, onStore: (() -> Unit)? = null, onSearch: (() -> Unit)? = null) {
+    val haptics = rememberZoenHaptics()
     TopAppBar(title = {
         if (onStore != null) Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
             ZoenMascot(Modifier.size(32.dp), headOnly = true, mood = MascotMood.Smirk)
             Text("zoen", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.ExtraBold)
         } else Text(title, maxLines = 1, overflow = TextOverflow.Ellipsis)
     }, actions = {
-        if (onStore != null) IconButton(onClick = onStore) { Icon(Icons.Rounded.Storefront, stringResource(R.string.miniapp_store)) }
-        IconButton(onClick = { if (onSearch != null) onSearch() else navigate(Search) }) { Icon(Icons.Rounded.Search, stringResource(R.string.search)) }
+        if (onStore != null) InkIconButton(ZoenGlyph.Store, stringResource(R.string.miniapp_store), { haptics.perform(ZoenFeedback.Open); onStore() })
+        InkIconButton(ZoenGlyph.Search, stringResource(R.string.search), { haptics.perform(ZoenFeedback.Tap); if (onSearch != null) onSearch() else navigate(Search) })
         IconButton(onClick = { navigate(Context) }, modifier = Modifier.testTag("open-context")) { Avatar(state.me, size = 34) }
     }, colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.background))
 }
@@ -56,7 +61,10 @@ fun ConversationsScreen(model: ZoenViewModel, state: AppState, navigate: (NavKey
     var searching by rememberSaveable { mutableStateOf(false) }
     var query by rememberSaveable { mutableStateOf("") }
     var pinned by remember { mutableStateOf(model.repository.preferences.getStringSet("pins", setOf("zoen"))!!.toSet()) }
-    val chats = state.spaces.filter { matchesSpace(it, query) }
+    var filter by rememberSaveable { mutableStateOf(ChatInboxFilter.All) }
+    val haptics = rememberZoenHaptics()
+    val working by model.working.collectAsStateWithLifecycle()
+    val chats = state.spaces.filter { filter.includes(it) && matchesSpace(it, query) }
         .sortedByDescending { it.lastAtMs }
         .sortedByDescending { it.id in pinned || it.counterpart?.handle in pinned }
     val list: @Composable () -> Unit = {
@@ -73,9 +81,10 @@ fun ConversationsScreen(model: ZoenViewModel, state: AppState, navigate: (NavKey
                         MiniAppTileStrip(model, state, apps, onOpenItem = { navigate(Item(it)) })
                     }
                 }
+                item { ChatFilterMenu(filter) { filter = it; haptics.perform(ZoenFeedback.Selection) } }
                 items(chats, key = { it.id }) { chat ->
                     val isPinned = chat.id in pinned || chat.counterpart?.handle in pinned
-                    ConversationRow(chat, isPinned, selected = split && selectedChat == chat.id,
+                    ConversationRow(chat, isPinned, working = working[chat.id], selected = split && selectedChat == chat.id,
                         onClick = { if (split) selectedChat = chat.id else navigate(Chat(chat.id)) },
                         onPin = {
                             val key = if (chat.counterpart?.handle == "zoen") "zoen" else chat.id
@@ -86,7 +95,7 @@ fun ConversationsScreen(model: ZoenViewModel, state: AppState, navigate: (NavKey
                     )
                 }
                 if (chats.isEmpty()) item {
-                    EmptyState(stringResource(R.string.chat_empty_title), stringResource(R.string.chat_empty_detail)) {
+                    EmptyState(stringResource(if (filter != ChatInboxFilter.All) R.string.chat_filter_empty else R.string.chat_empty_title), if (filter != ChatInboxFilter.All) "" else stringResource(R.string.chat_empty_detail)) {
                         Button(onClick = { navigate(NewChat) }) { Text(stringResource(R.string.new_chat)) }
                     }
                 }
@@ -109,17 +118,18 @@ fun ConversationsScreen(model: ZoenViewModel, state: AppState, navigate: (NavKey
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
-private fun ConversationRow(chat: SpaceSummary, pinned: Boolean, selected: Boolean, onClick: () -> Unit, onPin: () -> Unit, onRead: () -> Unit) {
+private fun ConversationRow(chat: SpaceSummary, pinned: Boolean, working: String?, selected: Boolean, onClick: () -> Unit, onPin: () -> Unit, onRead: () -> Unit) {
     var menu by remember { mutableStateOf(false) }
+    val haptics = rememberZoenHaptics()
     Box {
         Row(Modifier.fillMaxWidth().testTag("chat:${chat.counterpart?.handle ?: chat.id}").background(if (selected) MaterialTheme.colorScheme.primaryContainer else Color.Transparent)
-            .combinedClickable(onClick = onClick, onLongClick = { menu = true }).padding(horizontal = 20.dp, vertical = 10.dp),
+            .combinedClickable(hapticFeedbackEnabled = false, onClick = { haptics.perform(ZoenFeedback.Tap); onClick() }, onLongClick = { haptics.perform(ZoenFeedback.Open); menu = true }).padding(horizontal = 20.dp, vertical = 10.dp),
             verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp)) {
-            if (chat.counterpart != null) Avatar(chat.counterpart, size = 56, contact = true)
+            if (chat.counterpart != null) Avatar(chat.counterpart, size = 56, contact = true, working = working != null)
             else SpaceAvatar(chat, size = 56)
             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 Text(chat.title, style = MaterialTheme.typography.titleMedium, fontWeight = if (chat.unread > 0u) FontWeight.Bold else FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                Text(conversationPreview(chat), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text(if (working != null) stringResource(R.string.person_typing, working) else conversationPreview(chat), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
             Column(horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text(DateFormat.getTimeInstance(DateFormat.SHORT).format(Date(chat.lastAtMs)), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -144,47 +154,6 @@ private fun conversationPreview(space: SpaceSummary): String {
 private fun matchesSpace(space: SpaceSummary, query: String): Boolean {
     fun folded(value: String) = java.text.Normalizer.normalize(value, java.text.Normalizer.Form.NFD).replace(Regex("\\p{M}+"), "").lowercase(java.util.Locale.ROOT)
     return folded((listOf(space.title, space.lastPreview) + space.members.map { it.name }).joinToString(" ")).contains(folded(query.trim()))
-}
-
-@OptIn(ExperimentalFoundationApi::class)
-@Composable
-fun SpacesScreen(model: ZoenViewModel, state: AppState, navigate: (NavKey) -> Unit) {
-    var query by rememberSaveable { mutableStateOf("") }
-    var pinned by remember { mutableStateOf(model.repository.preferences.getStringSet("pins", emptySet())!!.toSet()) }
-    val groups = state.spaces.filter { it.kind == SpaceKindDto.COMMUNITY && matchesSpace(it, query) }.sortedByDescending { it.lastAtMs }.sortedByDescending { it.id in pinned }
-    Scaffold(topBar = { HomeBar(stringResource(R.string.spaces), state, navigate) }, contentWindowInsets = WindowInsets(0, 0, 0, 0)) { padding ->
-        LazyColumn(Modifier.padding(padding), contentPadding = PaddingValues(24.dp, 8.dp, 24.dp, 100.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-            item { Text(stringResource(R.string.spaces_empty_title), style = MaterialTheme.typography.headlineLarge) }
-            item { OutlinedTextField(query, { query = it }, Modifier.fillMaxWidth(), singleLine = true, label = { Text(stringResource(R.string.search)) }, leadingIcon = { Icon(Icons.Rounded.Search, null) }) }
-            item { Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                FilledTonalButton(onClick = { navigate(NewSpace) }) { Icon(Icons.Rounded.Add, null); Spacer(Modifier.width(6.dp)); Text(stringResource(R.string.new_space)) }
-                OutlinedButton(onClick = { navigate(Join()) }) { Text(stringResource(R.string.join)) }
-            } }
-            items(groups, key = { it.id }) { space ->
-                var menu by remember { mutableStateOf(false) }
-                Box {
-                Card(modifier = Modifier.combinedClickable(onClick = { navigate(Chat(space.id)) }, onLongClick = { menu = true }), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow)) {
-                    Column(Modifier.fillMaxWidth().padding(22.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
-                        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                            SpaceAvatar(space, size = 48)
-                            Spacer(Modifier.weight(1f))
-                            if (space.unread > 0u) Badge { Text(space.unread.toString()) }
-                            else if (space.id in pinned) Icon(Icons.Rounded.PushPin, stringResource(R.string.pinned))
-                        }
-                        Text(space.title, style = MaterialTheme.typography.titleLarge)
-                        Text(conversationPreview(space), color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 2, overflow = TextOverflow.Ellipsis)
-                        Row(horizontalArrangement = Arrangement.spacedBy(5.dp)) { space.members.take(6).forEach { Avatar(it, size = 28) } }
-                    }
-                }
-                DropdownMenu(menu, { menu = false }) {
-                    DropdownMenuItem(text = { Text(stringResource(if (space.id in pinned) R.string.unpin else R.string.pin)) }, onClick = { menu = false; pinned = if (space.id in pinned) pinned - space.id else pinned + space.id; model.repository.preferences.edit().putStringSet("pins", pinned).apply() })
-                    DropdownMenuItem(text = { Text(stringResource(R.string.chat_mark_read)) }, onClick = { menu = false; model.launch { model.repository.change { it.markRead(space.id) } } })
-                }
-                }
-            }
-            if (groups.isEmpty()) item { EmptyState(stringResource(R.string.spaces_empty_title), stringResource(R.string.spaces_empty_detail)) }
-        }
-    }
 }
 
 @Composable

@@ -72,7 +72,8 @@ fun Onboarding(model: ZoenViewModel, modifier: Modifier = Modifier, acquisitionL
     val pasteError = stringResource(R.string.onboarding_paste_error)
     val language = Locale.forLanguageTag(model.repository.locale).language
     val step = route.steps[position.coerceAtMost(route.steps.lastIndex)]
-    fun next() { position = (position + 1).coerceAtMost(route.steps.lastIndex) }
+    val haptics = rememberZoenHaptics()
+    fun next() { haptics.perform(ZoenFeedback.Selection); position = (position + 1).coerceAtMost(route.steps.lastIndex) }
     val notifications = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
         model.repository.preferences.edit().putBoolean("notifications", granted).apply(); next()
     }

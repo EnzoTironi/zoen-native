@@ -233,4 +233,15 @@
   <string name="approvals_recorded">%1$d approvals recorded</string>
   <string name="jump">Jump</string>
   <string name="handle_rules">3–24 characters. Start with a letter; use letters, numbers, dots or underscores.</string>
+  <string name="chat_filter">Filter chats</string>
+  <string name="chat_filter_all">All chats</string>
+  <string name="chat_filter_direct">Direct chats</string>
+  <string name="chat_filter_groups">Groups</string>
+  <string name="chat_filter_communities">Communities</string>
+  <string name="chat_filter_empty">No chats in this filter</string>
+  <string name="chat_unread_divider">Unread messages</string>
+  <plurals name="chat_new_messages">
+    <item quantity="one">%d new message</item>
+    <item quantity="other">%d new messages</item>
+  </plurals>
 </resources>

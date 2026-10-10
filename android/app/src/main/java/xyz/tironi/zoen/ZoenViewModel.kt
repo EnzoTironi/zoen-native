@@ -59,13 +59,14 @@ class ZoenViewModel(application: Application) : AndroidViewModel(application) {
     }
     fun undo(token: UndoToken) = launch { repository.change { it.undo(token) } }
 
-    suspend fun send(spaceId: String, text: String, reply: String? = null, thread: Boolean = false) {
+    suspend fun send(spaceId: String, text: String, reply: String? = null, thread: Boolean = false, onStored: () -> Unit = {}) {
         val clean = text.trim()
         if (clean.isEmpty()) return
         repository.change { core ->
             if (reply == null) core.sendMessage(spaceId, clean)
             else core.sendReply(spaceId, clean, reply, thread)
         }
+        onStored()
         if (reply != null) return
         val space = state.value.spaces.firstOrNull { it.id == spaceId } ?: return
         val mine = space.members.filter { it.kind == PersonaKind.AGENT && it.isMine }

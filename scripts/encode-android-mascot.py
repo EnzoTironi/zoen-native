@@ -1,12 +1,12 @@
 from pathlib import Path
 import argparse, subprocess, shutil, hashlib, json
 
-parser = argparse.ArgumentParser(description="Encode original SwiftUI mascot exports for native Android ImageDecoder.")
+parser = argparse.ArgumentParser(description="Encode original SwiftUI mascot exports as visual review references.")
 parser.add_argument("frames", type=Path)
 args = parser.parse_args()
 root = Path(__file__).resolve().parent.parent
-out = root / "android/app/src/main/res/drawable-nodpi"
-out.mkdir(exist_ok=True)
+out = root / "build/android-evidence/reference-raster"
+out.mkdir(parents=True, exist_ok=True)
 assets = []
 for pose in ["wave", "phone", "map", "run", "juggle", "walk", "cheer", "head", "head_smirk", "head_working"]:
     source = args.frames / pose
@@ -29,4 +29,4 @@ manifest = {
     "start_seconds": 2.3, "loop_seconds": 8, "alpha": True,
     "encoding": "lossless animated WebP; first frame PNG for reduced motion", "assets": assets,
 }
-(root / "docs/dev/android-mascot-assets.json").write_text(json.dumps(manifest, indent=2) + "\n")
+(out / "manifest.json").write_text(json.dumps(manifest, indent=2) + "\n")

@@ -1,7 +1,9 @@
 package xyz.tironi.zoen.miniapps
 
-import android.animation.ValueAnimator
-import android.view.HapticFeedbackConstants
+import xyz.tironi.zoen.ui.rememberMotionEnabled
+import xyz.tironi.zoen.ui.rememberZoenHaptics
+import xyz.tironi.zoen.ui.ZoenFeedback
+
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.tween
@@ -27,7 +29,6 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.boundsInWindow
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.CustomAccessibilityAction
@@ -66,7 +67,7 @@ fun MiniAppTileStrip(
     var editing by rememberSaveable(scope) { mutableStateOf(false) }
     var remove by remember { mutableStateOf<MiniAppTile?>(null) }
     var flip by remember { mutableStateOf<AppFlip?>(null) }
-    val view = LocalView.current
+    val haptics = rememberZoenHaptics()
     val density = LocalDensity.current
     DisposableEffect(preferences, scope) {
         val listener = android.content.SharedPreferences.OnSharedPreferenceChangeListener { _, key -> if (key?.startsWith("miniapps.") == true) revision++ }
@@ -90,7 +91,7 @@ fun MiniAppTileStrip(
         val to = (from + distance).coerceIn(0, ids.lastIndex)
         if (from >= 0 && from != to) {
             ids.add(to, ids.removeAt(from)); pins.reorder(ids, scope); revision++
-            view.performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK)
+            haptics.perform(ZoenFeedback.Selection)
         }
     }
     Column(modifier) {
@@ -106,14 +107,14 @@ fun MiniAppTileStrip(
                     .testTag("miniapp-tile:${tile.key}")
                     .alpha(if (flip?.item?.id == tile.item.id) 0f else 1f)
                     .graphicsLayer { translationX = drag; scaleX = if (dragging) 1.05f else 1f; scaleY = scaleX }
-                    .combinedClickable(onClick = {
+                    .combinedClickable(hapticFeedbackEnabled = false, onClick = {
                         if (!editing) {
-                            view.performHapticFeedback(HapticFeedbackConstants.CONTEXT_CLICK)
+                            haptics.perform(ZoenFeedback.Open)
                             if (compact || bounds == Rect.Zero) onOpenItem(tile.item.id) else flip = AppFlip(tile.item, bounds, tile.snapshot)
                         }
-                    }, onLongClick = { editing = true; view.performHapticFeedback(HapticFeedbackConstants.LONG_PRESS) })
+                    }, onLongClick = { editing = true; haptics.perform(ZoenFeedback.PickUp) })
                     .pointerInput(editing, tile.key, index, tiles.map { it.key }) {
-                        if (editing) detectDragGesturesAfterLongPress(onDragStart = { dragging = true }, onDragCancel = { drag = 0f; dragging = false }, onDragEnd = { drag = 0f; dragging = false }) { change, delta ->
+                        if (editing) detectDragGesturesAfterLongPress(onDragStart = { dragging = true }, onDragCancel = { drag = 0f; dragging = false }, onDragEnd = { drag = 0f; dragging = false; haptics.perform(ZoenFeedback.Drop) }) { change, delta ->
                             change.consume(); drag += delta.x
                             val threshold = with(density) { 92.dp.toPx() }
                             if (drag > threshold && index < tiles.lastIndex) { move(tile, 1); drag = 0f }
@@ -136,7 +137,7 @@ fun MiniAppTileStrip(
         }
     }
     remove?.let { tile -> AlertDialog(onDismissRequest = { remove = null }, title = { Text(stringResource(R.string.miniapp_unpin_question, tile.snapshot?.title ?: tile.item.title)) },
-        text = { Text(stringResource(R.string.miniapp_unpin_detail)) }, confirmButton = { TextButton(onClick = { pins.hide(tile.item.id, scope); revision++; remove = null }) { Text(unpin) } },
+        text = { Text(stringResource(R.string.miniapp_unpin_detail)) }, confirmButton = { TextButton(onClick = { pins.hide(tile.item.id, scope); revision++; remove = null; haptics.perform(ZoenFeedback.Confirm) }) { Text(unpin) } },
         dismissButton = { TextButton(onClick = { remove = null }) { Text(stringResource(R.string.cancel)) } }) }
     flip?.let { selected -> MiniAppFlipHost(model, state, selected.item.id, selected.from, selected.snapshot, onClosed = { flip = null }) }
 }
@@ -145,17 +146,21 @@ fun MiniAppTileStrip(
 fun MiniAppFlipHost(model: ZoenViewModel, state: AppState, itemId: String, source: Rect, front: WidgetSnapshot?, onClosed: () -> Unit) {
     val item = state.items.firstOrNull { it.id == itemId }
     val progress = remember(itemId) { Animatable(0f) }
-    val coroutine = rememberCoroutineScope()
     var closing by remember { mutableStateOf(false) }
-    val animations = ValueAnimator.areAnimatorsEnabled()
+    val closed by rememberUpdatedState(onClosed)
+    val animations = rememberMotionEnabled()
+    val haptics = rememberZoenHaptics()
     val density = LocalDensity.current
     val close = {
         if (!closing) {
             closing = true
-            coroutine.launch { progress.animateTo(0f, tween(if (animations) 320 else 140)); onClosed() }
         }
     }
-    LaunchedEffect(itemId) { progress.animateTo(1f, tween(if (animations) 440 else 180)) }
+    LaunchedEffect(itemId, animations, closing) {
+        val target = if (closing) 0f else 1f
+        if (animations) progress.animateTo(target, tween(if (closing) 320 else 440)) else progress.snapTo(target)
+        if (closing) { haptics.perform(ZoenFeedback.Dismiss); closed() }
+    }
     Dialog(onDismissRequest = close, properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false)) {
         BackHandler { close() }
         BoxWithConstraints(Modifier.fillMaxSize()) {

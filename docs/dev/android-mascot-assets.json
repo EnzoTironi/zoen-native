@@ -1,119 +1,45 @@
 {
-  "renderer": "Original SwiftUI Mascot + Ink Canvas renderer",
+  "renderer": "Native Android Canvas with the original procedural Swift rig ported to Kotlin",
+  "poses": [
+    "wave",
+    "phone",
+    "map",
+    "run",
+    "juggle",
+    "walk",
+    "zen",
+    "roar",
+    "shield",
+    "coin",
+    "cheer"
+  ],
+  "heads": [
+    "pout",
+    "smirk",
+    "working"
+  ],
+  "fps": {
+    "body": 12,
+    "head": 10
+  },
+  "timeline": "Unbounded procedural time; no eight-second raster loop",
+  "motion_settings": "Live Android animator duration scale; lifecycle, window focus and visibility pause",
+  "verification": {
+    "original_swift_frames": 98,
+    "timestamps_seconds": [
+      0,
+      0.37,
+      2.3,
+      3.78,
+      8.001,
+      10.3,
+      63.25
+    ],
+    "geometry_tolerance": 1e-12,
+    "fixture": "android/app/src/test/resources/ink-swift-reference.json.gz"
+  },
   "source_files": {
     "apple/Shared/DesignSystem/Mascot.swift": "bf2c6c587f694586b6735a9bc9504f5ff07e93befd1bbfe0f0b5006e53b429a3",
     "apple/Shared/DesignSystem/HandDrawn.swift": "e6481c1a4ff73a18459dbfcc19434391188c169174babcf959baa05f53e0b76c"
-  },
-  "size": {
-    "body": 384,
-    "head": 128
-  },
-  "frames_per_pose": 96,
-  "fps": 12,
-  "start_seconds": 2.3,
-  "loop_seconds": 8,
-  "alpha": true,
-  "encoding": "lossless animated WebP; first frame PNG for reduced motion",
-  "assets": [
-    {
-      "file": "android/app/src/main/res/drawable-nodpi/zoen_mascot_wave.png",
-      "bytes": 43619,
-      "sha256": "fa0272768f55570b08d2ed971a751147bfdacb418e7b9289b26a65cb1e6a69da"
-    },
-    {
-      "file": "android/app/src/main/res/drawable-nodpi/zoen_mascot_wave_motion.webp",
-      "bytes": 2554314,
-      "sha256": "403353b8f32badfb84529588fbe5901e278adc51e696bb54e9ec9780d4e682c7"
-    },
-    {
-      "file": "android/app/src/main/res/drawable-nodpi/zoen_mascot_phone.png",
-      "bytes": 44257,
-      "sha256": "9fe2af1da7f85c64620e62d3b4dc11a5b139a3052dc0b55b1952c2c1173250f4"
-    },
-    {
-      "file": "android/app/src/main/res/drawable-nodpi/zoen_mascot_phone_motion.webp",
-      "bytes": 2755388,
-      "sha256": "03001a7cd8ac8d62373594d996979d74662d3b00eb98ab06f34402dedf421606"
-    },
-    {
-      "file": "android/app/src/main/res/drawable-nodpi/zoen_mascot_map.png",
-      "bytes": 43811,
-      "sha256": "207027a23b487f700694f9a83e94eb30bb1c81005ab6a2b8f2e71d927c06fbbf"
-    },
-    {
-      "file": "android/app/src/main/res/drawable-nodpi/zoen_mascot_map_motion.webp",
-      "bytes": 2544452,
-      "sha256": "c5ce32b41dddaa154dd50ca1624cc39459de44ef67c4f35d6a9e4011d8208911"
-    },
-    {
-      "file": "android/app/src/main/res/drawable-nodpi/zoen_mascot_run.png",
-      "bytes": 42032,
-      "sha256": "87fcd245c757548ebb391ce52c09e90f2502d772142ffc2ea23460033bc738f3"
-    },
-    {
-      "file": "android/app/src/main/res/drawable-nodpi/zoen_mascot_run_motion.webp",
-      "bytes": 2668202,
-      "sha256": "a648c1b43c6d1525ace9d6adf2fdee63eae6179a32d82a3ee035b8bd8313de6e"
-    },
-    {
-      "file": "android/app/src/main/res/drawable-nodpi/zoen_mascot_juggle.png",
-      "bytes": 49576,
-      "sha256": "1fe7739fdfef2babbaf30b0bc2ab7d5144ce6250ebc4d4c29cfd3ee78610597e"
-    },
-    {
-      "file": "android/app/src/main/res/drawable-nodpi/zoen_mascot_juggle_motion.webp",
-      "bytes": 2954264,
-      "sha256": "17f2c16425e27523d96676cf2b254bb27991ad0d3240af73dc1f56b19f176931"
-    },
-    {
-      "file": "android/app/src/main/res/drawable-nodpi/zoen_mascot_walk.png",
-      "bytes": 44940,
-      "sha256": "03760d409ee8e7bae7098b1d7604f2b93cead0e6f63b51ebb68f487db42ed2f1"
-    },
-    {
-      "file": "android/app/src/main/res/drawable-nodpi/zoen_mascot_walk_motion.webp",
-      "bytes": 2905150,
-      "sha256": "78ede5e35b1c2150bd2d58233c2ba653e751f9be26b442b6cd7541b7a5b587f7"
-    },
-    {
-      "file": "android/app/src/main/res/drawable-nodpi/zoen_mascot_cheer.png",
-      "bytes": 44981,
-      "sha256": "02a19e5e7d8747ff8e666c81fb97a142dbd8b9ea6583378d1b33c73411f50250"
-    },
-    {
-      "file": "android/app/src/main/res/drawable-nodpi/zoen_mascot_cheer_motion.webp",
-      "bytes": 3025378,
-      "sha256": "3b03e0710c2e7cf375f9042577f00abbd838219221633238a07925c2c2086828"
-    },
-    {
-      "file": "android/app/src/main/res/drawable-nodpi/zoen_mascot_head.png",
-      "bytes": 15409,
-      "sha256": "ee30dca2c0f4205c628322b9f35d7484a16ccc07d06f255384db25a7d95ad882"
-    },
-    {
-      "file": "android/app/src/main/res/drawable-nodpi/zoen_mascot_head_motion.webp",
-      "bytes": 1034876,
-      "sha256": "7954c5819566ab797dd41360349e469872bb7378ebb0103e5fef20920fdbb4fd"
-    },
-    {
-      "file": "android/app/src/main/res/drawable-nodpi/zoen_mascot_head_smirk.png",
-      "bytes": 15378,
-      "sha256": "66aaaf362d7c26777b9102db7f064947c817d10311b48b93db706cce1d8601a1"
-    },
-    {
-      "file": "android/app/src/main/res/drawable-nodpi/zoen_mascot_head_smirk_motion.webp",
-      "bytes": 1032682,
-      "sha256": "aef86078d027317af220a5f4c7f1dd6e4bf175d09c2d756b9b6cffa8fbe50e4c"
-    },
-    {
-      "file": "android/app/src/main/res/drawable-nodpi/zoen_mascot_head_working.png",
-      "bytes": 15906,
-      "sha256": "949a440f25502b468eeddacf6aa7162f936e865e361a2314315cebc3b162ee61"
-    },
-    {
-      "file": "android/app/src/main/res/drawable-nodpi/zoen_mascot_head_working_motion.webp",
-      "bytes": 1025722,
-      "sha256": "ffd644e02ba02e01ce6dc5b12f4adf89b5b8fdcb418ed9124a187ea32c590dde"
-    }
-  ]
+  }
 }

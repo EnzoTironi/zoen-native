@@ -40,8 +40,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.ui.platform.LocalHapticFeedback
-import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
@@ -58,6 +56,15 @@ import java.text.DateFormat
 import java.util.Date
 import kotlin.math.roundToInt
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.Job
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.spring
+import androidx.compose.ui.res.pluralStringResource
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.liveRegion
+import androidx.compose.ui.semantics.LiveRegionMode
+import xyz.tironi.zoen.ui.ink.ZoenGlyph
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
@@ -95,7 +102,18 @@ fun ChatScreen(model: ZoenViewModel, state: AppState, spaceId: String, navigate:
     val timeline = allEntries.filter { it.inThread == null && (it.kind as? EntryKind.ItemEdited)?.itemId !in appIds }
     val list = rememberLazyListState()
     var firstLoad by rememberSaveable(spaceId) { mutableStateOf(true) }
-    var previousCount by rememberSaveable(spaceId) { mutableIntStateOf(0) }
+    var knownIds by rememberSaveable(spaceId) { mutableStateOf(arrayListOf<String>()) }
+    var openingUnread by rememberSaveable(spaceId) { mutableLongStateOf(space?.unread?.toLong() ?: -1L) }
+    var firstUnread by rememberSaveable(spaceId) { mutableStateOf<String?>(null) }
+    var unseen by rememberSaveable(spaceId) { mutableIntStateOf(0) }
+    val motion = rememberMotionEnabled()
+    val nearBottomTolerance = with(LocalDensity.current) { 140.dp.toPx() }
+    val nearBottom by remember(list, nearBottomTolerance) { derivedStateOf {
+        val layout = list.layoutInfo
+        val last = layout.visibleItemsInfo.lastOrNull()
+        last == null || (last.index == layout.totalItemsCount - 1 && last.offset + last.size <= layout.viewportEndOffset + nearBottomTolerance)
+    } }
+    val navigationHaptics = rememberZoenHaptics()
     var replyId by rememberSaveable(spaceId) { mutableStateOf<String?>(null) }
     val draftKey = model.repository.localKey("draft", spaceId, state.me?.id.orEmpty())
     var draft by remember(draftKey) { mutableStateOf(model.repository.preferences.getString(draftKey, "").orEmpty()) }
@@ -123,6 +141,7 @@ fun ChatScreen(model: ZoenViewModel, state: AppState, spaceId: String, navigate:
         }
     }
     LaunchedEffect(spaceId, space?.eventCount, space?.unread) {
+        if (openingUnread < 0 && space != null) openingUnread = space.unread.toLong()
         if (model.repository.appVisible && model.repository.activeSpace == spaceId && (space?.unread ?: 0u) > 0u) model.repository.change { it.markRead(spaceId) }
     }
     val imported = stringResource(R.string.file_imported)
@@ -145,24 +164,37 @@ fun ChatScreen(model: ZoenViewModel, state: AppState, spaceId: String, navigate:
         if (index >= 0) {
             // Navigation can compose this effect inside its current measure pass.
             withFrameNanos { }
-            list.animateScrollToItem(index)
+            if (motion) list.animateScrollToItem(index) else list.scrollToItem(index)
             highlight = original.inThread ?: target
             jumpTo = null
         }
     }
     LaunchedEffect(highlight) { if (highlight != null) { delay(1800); highlight = null } }
-    LaunchedEffect(spaceId, timeline.size) {
-        if (timeline.isNotEmpty()) {
-            val atBottom = list.layoutInfo.visibleItemsInfo.lastOrNull()?.index?.let { it >= previousCount - 2 } ?: true
-            if (firstLoad || (timeline.size > previousCount && (atBottom || timeline.last().author.isMe))) {
-                if (focusMessage == null && jumpTo == null && highlight == null) {
-                    withFrameNanos { }
-                    list.scrollToItem(timeline.lastIndex)
-                }
-                firstLoad = false
+    LaunchedEffect(spaceId, allEntries.map { it.id }) {
+        if (spaceId !in state.timelines || timeline.isEmpty()) return@LaunchedEffect
+        if (firstLoad) {
+            firstUnread = firstUnreadMessage(allEntries, openingUnread.coerceAtLeast(0))
+            knownIds = ArrayList(allEntries.map { it.id })
+            firstLoad = false
+            if (focusMessage == null && jumpTo == null && highlight == null) {
+                withFrameNanos { }
+                val unreadIndex = timeline.indexOfFirst { it.id == firstUnread }
+                list.scrollToItem(if (unreadIndex >= 0) unreadIndex else timeline.lastIndex)
             }
-            previousCount = timeline.size
+        } else {
+            val appended = appendedMessages(allEntries, knownIds.toSet())
+            knownIds = ArrayList(allEntries.map { it.id })
+            if (appended.mine || (appended.incoming > 0 && nearBottom)) {
+                if (jumpTo == null && highlight == null) {
+                    withFrameNanos { }
+                    if (motion) list.animateScrollToItem(timeline.lastIndex) else list.scrollToItem(timeline.lastIndex)
+                    unseen = 0
+                }
+            } else unseen += appended.incoming
         }
+    }
+    LaunchedEffect(list) {
+        snapshotFlow { nearBottom }.collect { atBottom -> if (atBottom) unseen = 0 }
     }
     val import: (Uri) -> Unit = { uri ->
         model.launch {
@@ -181,6 +213,7 @@ fun ChatScreen(model: ZoenViewModel, state: AppState, spaceId: String, navigate:
     val videoCamera = rememberLauncherForActivityResult(ActivityResultContracts.CaptureVideo()) { success ->
         if (success) videoUri?.let { import(Uri.parse(it)) }
     }
+    val sendHaptics = rememberZoenHaptics()
     val send: () -> Unit = {
         if (draft.isNotBlank() && !sending) {
             val text = draft
@@ -188,7 +221,7 @@ fun ChatScreen(model: ZoenViewModel, state: AppState, spaceId: String, navigate:
             sending = true
             model.launch {
                 try {
-                    model.send(spaceId, text, reply)
+                    model.send(spaceId, text, reply, onStored = { sendHaptics.perform(ZoenFeedback.Send) })
                     if (draft == text) { draft = ""; model.repository.preferences.edit().remove(draftKey).apply() }
                     replyId = null
                 } finally { sending = false }
@@ -207,7 +240,7 @@ fun ChatScreen(model: ZoenViewModel, state: AppState, spaceId: String, navigate:
         topBar = {
             TopAppBar(title = {
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                    if (space.counterpart != null) Avatar(space.counterpart, size = 40, onClick = { navigate(if (space.counterpart!!.kind == PersonaKind.AGENT) Agent(space.counterpart!!.id) else Person(space.counterpart!!.id)) }, contact = true)
+                    if (space.counterpart != null) Avatar(space.counterpart, size = 40, onClick = { navigate(if (space.counterpart!!.kind == PersonaKind.AGENT) Agent(space.counterpart!!.id) else Person(space.counterpart!!.id)) }, contact = true, working = working[spaceId] != null)
                     else SpaceAvatar(space, size = 40, onClick = { navigate(Participants(space.id)) })
                     Column {
                         Text(space.title, style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
@@ -224,7 +257,7 @@ fun ChatScreen(model: ZoenViewModel, state: AppState, spaceId: String, navigate:
                         if (status.isNotBlank()) Text(status, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
                     }
                 }
-            }, navigationIcon = { IconButton(onClick = back) { Icon(Icons.AutoMirrored.Rounded.ArrowBack, stringResource(R.string.back)) } }, actions = {
+            }, navigationIcon = { InkIconButton(ZoenGlyph.Back, stringResource(R.string.back), { navigationHaptics.perform(ZoenFeedback.Dismiss); back() }) }, actions = {
                 val callsComing = stringResource(R.string.calls_coming)
                 IconButton(onClick = { model.notify(callsComing) }) { Icon(Icons.Rounded.Call, stringResource(R.string.voice_call)) }
                 IconButton(onClick = { model.notify(callsComing) }) { Icon(Icons.Rounded.VideoCall, stringResource(R.string.video_call)) }
@@ -260,7 +293,7 @@ fun ChatScreen(model: ZoenViewModel, state: AppState, spaceId: String, navigate:
                         }
                     }
                     Row(verticalAlignment = Alignment.Bottom, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        IconButton(onClick = { attachments = true }, modifier = Modifier.padding(bottom = 4.dp)) { Icon(Icons.Rounded.Add, stringResource(R.string.attach)) }
+                        InkIconButton(ZoenGlyph.Plus, stringResource(R.string.attach), { navigationHaptics.perform(ZoenFeedback.Open); attachments = true }, Modifier.padding(bottom = 4.dp))
                         OutlinedTextField(value = draft, onValueChange = {
                             draft = it
                             model.repository.preferences.edit().putString(draftKey, it).apply()
@@ -272,7 +305,7 @@ fun ChatScreen(model: ZoenViewModel, state: AppState, spaceId: String, navigate:
                         if (draft.isBlank()) VoiceComposer(model, spaceId, Modifier.padding(bottom = 4.dp), reply = replyId, onSent = { replyId = null })
                         else FilledIconButton(onClick = send, enabled = draft.isNotBlank() && !sending && !state.keyMissing, modifier = Modifier.padding(bottom = 4.dp).size(48.dp).testTag("send")) {
                             if (sending) CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp)
-                            else Icon(Icons.AutoMirrored.Rounded.Send, stringResource(R.string.send))
+                            else ZoenIcon(ZoenGlyph.Send, stringResource(R.string.send))
                         }
                     }
                 }
@@ -305,14 +338,30 @@ fun ChatScreen(model: ZoenViewModel, state: AppState, spaceId: String, navigate:
                                 if (space.counterpart != null) Avatar(space.counterpart, size = 64, contact = true)
                                 else SpaceAvatar(space, size = 64)
                             }
-                            Box(Modifier.testTag("timeline:${entry.id}").background(if (highlight == entry.id) MaterialTheme.colorScheme.secondaryContainer else androidx.compose.ui.graphics.Color.Transparent, RoundedCornerShape(16.dp))) {
+                            if (entry.id == firstUnread) Row(Modifier.fillMaxWidth().padding(vertical = 12.dp).testTag("unread-divider"), verticalAlignment = Alignment.CenterVertically) {
+                                HorizontalDivider(Modifier.weight(1f))
+                                Text(stringResource(R.string.chat_unread_divider), Modifier.padding(horizontal = 12.dp), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
+                                HorizontalDivider(Modifier.weight(1f))
+                            }
+                            Box(Modifier.animateItem(fadeInSpec = if (motion) androidx.compose.animation.core.tween(180) else null, placementSpec = null, fadeOutSpec = null).testTag("timeline:${entry.id}").background(if (highlight == entry.id) MaterialTheme.colorScheme.secondaryContainer else androidx.compose.ui.graphics.Color.Transparent, RoundedCornerShape(16.dp))) {
                                 TimelineRow(model, entry, navigate, onReply = { replyId = entry.id }, onThread = { navigate(Thread(spaceId, entry.id)) }, onQuote = { jumpTo = it }, direct = space.counterpart != null)
                             }
                         }
                     }
                 } else CircularProgressIndicator(Modifier.align(Alignment.Center))
-                val lastVisible = list.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: 0
-                if (timeline.size > 5 && lastVisible < timeline.lastIndex - 1) SmallFloatingActionButton(onClick = { model.launch { list.animateScrollToItem(timeline.lastIndex) } }, Modifier.align(Alignment.BottomEnd).padding(16.dp)) {
+                if (unseen > 0) FilledTonalButton(onClick = {
+                    navigationHaptics.perform(ZoenFeedback.Selection)
+                    model.launch {
+                        if (motion) list.animateScrollToItem(timeline.lastIndex) else list.scrollToItem(timeline.lastIndex)
+                        unseen = 0
+                    }
+                }, modifier = Modifier.align(Alignment.BottomCenter).padding(16.dp).testTag("chat-new-messages").semantics { liveRegion = LiveRegionMode.Polite }) {
+                    Icon(Icons.Rounded.ArrowDownward, null); Spacer(Modifier.width(8.dp))
+                    Text(pluralStringResource(R.plurals.chat_new_messages, unseen, unseen))
+                } else if (timeline.size > 5 && !nearBottom) SmallFloatingActionButton(onClick = {
+                    navigationHaptics.perform(ZoenFeedback.Selection)
+                    model.launch { if (motion) list.animateScrollToItem(timeline.lastIndex) else list.scrollToItem(timeline.lastIndex) }
+                }, Modifier.align(Alignment.BottomEnd).padding(16.dp)) {
                     Icon(Icons.Rounded.ArrowDownward, stringResource(R.string.jump_latest))
                 }
             }
@@ -343,20 +392,40 @@ fun TimelineRow(model: ZoenViewModel, entry: TimelineEntry, navigate: (NavKey) -
             val mine = entry.author.isMe
             var swipe by remember(entry.id) { mutableFloatStateOf(0f) }
             val threshold = with(LocalDensity.current) { 72.dp.toPx() }
-            val haptics = LocalHapticFeedback.current
+            val haptics = rememberZoenHaptics()
+            val motion = rememberMotionEnabled()
+            val scope = rememberCoroutineScope()
+            val settling = remember { Animatable(0f) }
+            var returnJob by remember { mutableStateOf<Job?>(null) }
+            var returning by remember { mutableStateOf(false) }
+            var armed by remember { mutableStateOf(false) }
+            val shownSwipe = if (returning) settling.value else swipe
+            fun settle() {
+                if (!motion) { swipe = 0f; returning = false; return }
+                returnJob = scope.launch {
+                    settling.snapTo(swipe); returning = true
+                    settling.animateTo(0f, spring(dampingRatio = .7f, stiffness = 400f))
+                    swipe = 0f; returning = false
+                }
+            }
             val reply by rememberUpdatedState(onReply)
             val thread by rememberUpdatedState(onThread)
             Box(Modifier.fillMaxWidth()) {
                 if (swipe < -threshold / 3) Icon(Icons.AutoMirrored.Rounded.Reply, stringResource(R.string.reply), Modifier.align(Alignment.CenterEnd).padding(12.dp), tint = MaterialTheme.colorScheme.primary)
                 if (swipe > threshold / 3 && onThread != null) Icon(Icons.Rounded.Forum, stringResource(R.string.thread), Modifier.align(Alignment.CenterStart).padding(12.dp), tint = MaterialTheme.colorScheme.primary)
-            Row(Modifier.fillMaxWidth().offset { IntOffset(swipe.roundToInt(), 0) }.pointerInput(entry.id, onThread != null, threshold) {
-                detectHorizontalDragGestures(onDragEnd = {
-                    if (swipe <= -threshold) { haptics.performHapticFeedback(HapticFeedbackType.LongPress); reply() }
-                    else if (swipe >= threshold && thread != null) { haptics.performHapticFeedback(HapticFeedbackType.LongPress); thread?.invoke() }
-                    swipe = 0f
-                }, onDragCancel = { swipe = 0f }) { change, distance ->
+            Row(Modifier.fillMaxWidth().offset { IntOffset(shownSwipe.roundToInt(), 0) }.pointerInput(entry.id, onThread != null, threshold) {
+                detectHorizontalDragGestures(onDragStart = {
+                    swipe = shownSwipe; returnJob?.cancel(); returning = false; armed = false
+                }, onDragEnd = {
+                    if (swipe <= -threshold) reply()
+                    else if (swipe >= threshold && thread != null) thread?.invoke()
+                    settle()
+                }, onDragCancel = { settle() }) { change, distance ->
                     change.consume()
                     swipe = (swipe + distance).coerceIn(-threshold * 1.5f, if (thread == null) 0f else threshold * 1.5f)
+                    val reached = kotlin.math.abs(swipe) >= threshold
+                    if (reached && !armed) haptics.perform(ZoenFeedback.Selection)
+                    armed = reached
                 }
             }, verticalAlignment = Alignment.Bottom, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 if (mine) Spacer(Modifier.width(40.dp))
@@ -453,6 +522,7 @@ fun ThreadScreen(model: ZoenViewModel, state: AppState, space: String, root: Str
     var text by rememberSaveable { mutableStateOf("") }
     var replyTo by rememberSaveable(root) { mutableStateOf(root) }
     var sending by remember { mutableStateOf(false) }
+    val threadHaptics = rememberZoenHaptics()
     Scaffold(topBar = { ScreenBar(stringResource(R.string.replies), back) }, bottomBar = {
         Row(Modifier.navigationBarsPadding().imePadding().padding(16.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             OutlinedTextField(text, { text = it }, Modifier.weight(1f), placeholder = { Text(stringResource(R.string.reply)) }, maxLines = 4,
@@ -460,7 +530,7 @@ fun ThreadScreen(model: ZoenViewModel, state: AppState, space: String, root: Str
             if (text.isBlank()) VoiceComposer(model, space, reply = replyTo, thread = true, threadRoot = root, onSent = { replyTo = root })
             else FilledIconButton(onClick = {
                 val draft = text; val target = replyTo; sending = true
-                model.launch { try { model.send(space, draft, target, true); if (text == draft) text = ""; replyTo = root } finally { sending = false } }
+                model.launch { try { model.send(space, draft, target, true, onStored = { threadHaptics.perform(ZoenFeedback.Send) }); if (text == draft) text = ""; replyTo = root } finally { sending = false } }
             }, enabled = text.isNotBlank() && !sending) { Icon(Icons.AutoMirrored.Rounded.Send, stringResource(R.string.send)) }
         }
     }) { padding -> LazyColumn(Modifier.padding(padding), state = list, contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {

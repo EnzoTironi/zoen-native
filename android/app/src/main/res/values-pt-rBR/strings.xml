@@ -233,4 +233,15 @@
   <string name="approvals_recorded">%1$d aprovações registradas</string>
   <string name="jump">Pular</string>
   <string name="handle_rules">3–24 caracteres. Comece com letra; use letras, números, pontos ou sublinhado.</string>
+  <string name="chat_filter">Filtrar conversas</string>
+  <string name="chat_filter_all">Todas as conversas</string>
+  <string name="chat_filter_direct">Conversas diretas</string>
+  <string name="chat_filter_groups">Grupos</string>
+  <string name="chat_filter_communities">Comunidades</string>
+  <string name="chat_filter_empty">Nenhuma conversa neste filtro</string>
+  <string name="chat_unread_divider">Mensagens não lidas</string>
+  <plurals name="chat_new_messages">
+    <item quantity="one">%d mensagem nova</item>
+    <item quantity="other">%d mensagens novas</item>
+  </plurals>
 </resources>

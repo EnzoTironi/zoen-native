@@ -25,6 +25,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import xyz.tironi.zoen.ui.ink.ZoenGlyph
 import xyz.tironi.zoen.R
 import xyz.tironi.zoen.ZoenApplication
 import xyz.tironi.zoen.agent.AvatarArt
@@ -35,7 +36,7 @@ import kotlinx.coroutines.withContext
 import xyz.tironi.zoen.core.*
 
 @Composable
-fun Avatar(persona: Persona?, modifier: Modifier = Modifier, size: Int = 52, onClick: (() -> Unit)? = null, contact: Boolean = false) {
+fun Avatar(persona: Persona?, modifier: Modifier = Modifier, size: Int = 52, onClick: (() -> Unit)? = null, contact: Boolean = false, working: Boolean = false) {
     val context = LocalContext.current
     val repository = (context.applicationContext as? ZoenApplication)?.repository
     val revision = repository?.state?.collectAsStateWithLifecycle()?.value?.revision
@@ -67,7 +68,7 @@ fun Avatar(persona: Persona?, modifier: Modifier = Modifier, size: Int = 52, onC
     Box(modifier.size(size.dp).clip(shape).background(if (person) color else if (contact) MaterialTheme.colorScheme.surface else color.copy(alpha = .18f))
         .then(if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier), contentAlignment = Alignment.Center) {
         if (photo != null) Image(photo!!.asImageBitmap(), persona?.name, Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
-        else if (persona?.handle == "zoen") ZoenMascot(Modifier.fillMaxSize().padding(2.dp), headOnly = true)
+        else if (persona?.handle == "zoen") ZoenMascot(Modifier.fillMaxSize().padding(2.dp), headOnly = true, mood = if (working) MascotMood.Working else MascotMood.Pout)
         else if (drawing != null) AvatarDrawing(drawing, size)
         else if (persona?.kind == PersonaKind.AGENT) Icon(Icons.Rounded.AutoAwesome, persona.name, tint = MaterialTheme.colorScheme.primary)
         else Text(persona?.initials ?: "Z", style = MaterialTheme.typography.titleMedium,
@@ -113,19 +114,21 @@ fun EmptyState(title: String, detail: String, modifier: Modifier = Modifier, act
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ScreenBar(title: String, back: (() -> Unit)? = null, actions: @Composable RowScope.() -> Unit = {}) {
+    val haptics = rememberZoenHaptics()
     TopAppBar(title = { Text(title, maxLines = 1, overflow = TextOverflow.Ellipsis) }, navigationIcon = {
-        if (back != null) IconButton(onClick = back) { Icon(Icons.AutoMirrored.Rounded.ArrowBack, stringResource(R.string.back)) }
+        if (back != null) InkIconButton(ZoenGlyph.Back, stringResource(R.string.back), { haptics.perform(ZoenFeedback.Dismiss); back() })
     }, actions = actions, colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.surface))
 }
 
 @Composable
 fun SettingsRow(icon: ImageVector, title: String, detail: String? = null, onClick: () -> Unit, trailing: (@Composable () -> Unit)? = null) {
+    val haptics = rememberZoenHaptics()
     ListItem(
         headlineContent = { Text(title) },
         supportingContent = detail?.let { { Text(it) } },
         leadingContent = { Icon(icon, null, tint = MaterialTheme.colorScheme.primary) },
         trailingContent = trailing ?: { Icon(Icons.Rounded.ChevronRight, null, tint = MaterialTheme.colorScheme.onSurfaceVariant) },
-        modifier = Modifier.clickable(onClick = onClick),
+        modifier = Modifier.clickable(onClick = { haptics.perform(ZoenFeedback.Tap); onClick() }),
         colors = ListItemDefaults.colors(containerColor = Color.Transparent),
     )
 }

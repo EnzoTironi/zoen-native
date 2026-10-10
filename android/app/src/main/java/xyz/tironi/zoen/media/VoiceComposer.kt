@@ -1,5 +1,8 @@
 package xyz.tironi.zoen.media
 
+import xyz.tironi.zoen.ui.rememberZoenHaptics
+import xyz.tironi.zoen.ui.ZoenFeedback
+
 import android.Manifest
 import android.content.pm.PackageManager
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -13,12 +16,10 @@ import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.IntOffset
@@ -62,9 +63,10 @@ fun VoiceComposer(
     val microphonePermission = stringResource(R.string.media_microphone_permission)
     val recording by session.recorder.state.collectAsStateWithLifecycle()
     val review by session.state.collectAsStateWithLifecycle()
-    val haptics = LocalHapticFeedback.current
+    val haptics = rememberZoenHaptics()
     val owner = LocalLifecycleOwner.current
     val sent by rememberUpdatedState(onSent)
+    fun stored() { haptics.perform(ZoenFeedback.Send); sent() }
     val active by rememberUpdatedState(onActiveChanged)
     val currentReply by rememberUpdatedState(reply)
     val density = LocalDensity.current
@@ -75,7 +77,7 @@ fun VoiceComposer(
         VoicePlayback.pause()
         if (session.recorder.start()) {
             if (locked) session.recorder.lock()
-            haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+            haptics.perform(if (locked) ZoenFeedback.RecordLock else ZoenFeedback.RecordStart)
         } else recording.error?.let(model::notify)
     }
     val permission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
@@ -88,10 +90,10 @@ fun VoiceComposer(
     val currentBegin by rememberUpdatedState(begin)
     LaunchedEffect(startSignal) { if (startSignal > 0 && recording.phase == RecordingPhase.IDLE && review.clip == null) begin(false) }
     LaunchedEffect(releaseSignal) {
-        if (releaseSignal > 0 && session.recorder.state.value.phase == RecordingPhase.HOLDING) session.release(model.repository, spaceId, currentReply, thread) { sent() }
+        if (releaseSignal > 0 && session.recorder.state.value.phase == RecordingPhase.HOLDING) session.release(model.repository, spaceId, currentReply, thread) { stored() }
     }
-    LaunchedEffect(lockSignal) { if (lockSignal > 0 && session.recorder.state.value.phase == RecordingPhase.HOLDING) session.recorder.lock() }
-    LaunchedEffect(cancelSignal) { if (cancelSignal > 0 && session.recorder.state.value.phase == RecordingPhase.HOLDING) session.cancel() }
+    LaunchedEffect(lockSignal) { if (lockSignal > 0 && session.recorder.state.value.phase == RecordingPhase.HOLDING) { session.recorder.lock(); haptics.perform(ZoenFeedback.RecordLock) } }
+    LaunchedEffect(cancelSignal) { if (cancelSignal > 0 && session.recorder.state.value.phase == RecordingPhase.HOLDING) { session.cancel(); haptics.perform(ZoenFeedback.Reject) } }
     LaunchedEffect(recording.phase, review.clip) { active(recording.phase != RecordingPhase.IDLE || review.clip != null) }
     DisposableEffect(owner, session) {
         val observer = LifecycleEventObserver { _, event ->
@@ -109,11 +111,11 @@ fun VoiceComposer(
                 detectVoiceHoldGestures(cancelDistance, lockDistance,
                     onStart = { currentBegin(false) },
                     onRelease = {
-                        if (session.recorder.state.value.phase == RecordingPhase.HOLDING) session.release(model.repository, spaceId, currentReply, thread) { sent() }
+                        if (session.recorder.state.value.phase == RecordingPhase.HOLDING) session.release(model.repository, spaceId, currentReply, thread) { stored() }
                     }, onLock = {
-                        if (session.recorder.state.value.phase == RecordingPhase.HOLDING) { session.recorder.lock(); haptics.performHapticFeedback(HapticFeedbackType.LongPress) }
+                        if (session.recorder.state.value.phase == RecordingPhase.HOLDING) { session.recorder.lock(); haptics.perform(ZoenFeedback.RecordLock) }
                     }, onCancel = {
-                        if (session.recorder.state.value.phase == RecordingPhase.HOLDING) { session.cancel(); haptics.performHapticFeedback(HapticFeedbackType.Reject) }
+                        if (session.recorder.state.value.phase == RecordingPhase.HOLDING) { session.cancel(); haptics.perform(ZoenFeedback.Reject) }
                     })
             }) { Icon(Icons.Rounded.Mic, stringResource(R.string.media_hold_record)) }
         if (recording.phase != RecordingPhase.IDLE) {
@@ -122,12 +124,12 @@ fun VoiceComposer(
                 Surface(Modifier.width(width).testTag("voice-recording"), shape = RoundedCornerShape(20.dp), color = MaterialTheme.colorScheme.surfaceContainerHigh, tonalElevation = 6.dp, shadowElevation = 8.dp) {
                     Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                            IconButton(onClick = { session.cancel() }, enabled = recording.phase != RecordingPhase.FINISHING) { Icon(Icons.Rounded.DeleteOutline, stringResource(R.string.media_delete_recording), tint = MaterialTheme.colorScheme.error) }
+                            IconButton(onClick = { session.cancel(); haptics.perform(ZoenFeedback.Reject) }, enabled = recording.phase != RecordingPhase.FINISHING) { Icon(Icons.Rounded.DeleteOutline, stringResource(R.string.media_delete_recording), tint = MaterialTheme.colorScheme.error) }
                             Column(Modifier.weight(1f)) {
                                 Text(stringResource(if (recording.phase == RecordingPhase.LOCKED) R.string.media_recording_locked else R.string.media_recording, voiceTime(recording.seconds)), style = MaterialTheme.typography.labelLarge)
                                 VoiceWaveform(recording.levels, modifier = Modifier.fillMaxWidth().height(32.dp))
                             }
-                            if (recording.phase == RecordingPhase.HOLDING) IconButton(onClick = { session.recorder.lock() }) { Icon(Icons.Rounded.Lock, stringResource(R.string.media_lock)) }
+                            if (recording.phase == RecordingPhase.HOLDING) IconButton(onClick = { session.recorder.lock(); haptics.perform(ZoenFeedback.RecordLock) }) { Icon(Icons.Rounded.Lock, stringResource(R.string.media_lock)) }
                             IconButton(onClick = { session.review() }, enabled = recording.phase != RecordingPhase.FINISHING) {
                                 if (recording.phase == RecordingPhase.FINISHING) CircularProgressIndicator(Modifier.size(22.dp), strokeWidth = 2.dp)
                                 else Icon(Icons.Rounded.StopCircle, stringResource(R.string.media_stop_review), tint = MaterialTheme.colorScheme.error)
@@ -140,7 +142,7 @@ fun VoiceComposer(
             }
         }
     }
-    if (review.clip != null) VoiceReview(session, model, spaceId, reply, thread) { sent() }
+    if (review.clip != null) VoiceReview(session, model, spaceId, reply, thread) { stored() }
 }
 
 @Composable

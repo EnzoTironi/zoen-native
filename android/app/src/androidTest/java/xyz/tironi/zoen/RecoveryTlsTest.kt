@@ -50,6 +50,8 @@ class RecoveryTlsTest {
         val server = tls.serverSocketFactory.createServerSocket(0, 1, InetAddress.getByName("127.0.0.1")) as SSLServerSocket
         server.soTimeout = 10_000
         server.enabledProtocols = arrayOf("TLSv1.2")
+        server.enabledCipherSuites = arrayOf("TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256")
+        var refusedAlert = "No rejection alert received"
         val executor = Executors.newSingleThreadExecutor()
         val handshake = executor.submit<Boolean> {
             (server.accept() as SSLSocket).use { socket ->
@@ -61,6 +63,7 @@ class RecoveryTlsTest {
                 try { socket.startHandshake(); false }
                 catch (refused: SSLHandshakeException) {
                     val message = refused.message.orEmpty().lowercase()
+                    refusedAlert = message
                     "certificate" in message || "unknown_ca" in message || "unknown ca" in message
                 }
             }
@@ -94,7 +97,8 @@ class RecoveryTlsTest {
             } catch (refused: CoreException.Invalid) {
                 assertTrue(refused.reason, refused.reason.contains("Can't reach the server right now."))
             }
-            assertTrue("The tested TLS fixture must receive a certificate-rejection alert", handshake.get(10, TimeUnit.SECONDS))
+            val rejected = handshake.get(10, TimeUnit.SECONDS)
+            assertTrue("The tested TLS fixture must receive a certificate-rejection alert: $refusedAlert", rejected)
             assertNull(core.account())
             Evidence.outputFile("recovery", "untrusted-tls-receipt.txt").writeText(
                 "PASS: restore before sync reached a real loopback TLS server, rejected its untrusted certificate, " +
