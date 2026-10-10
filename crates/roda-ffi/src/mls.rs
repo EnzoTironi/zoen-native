@@ -796,6 +796,21 @@ impl Engine {
             self.net.mls.checkpoint_due.insert(space.clone());
         }
 
+        if self.approval_projection_needs_replay(&e) {
+            if own {
+                self.net.pending.remove(&client_id);
+            }
+            if let Err(err) = self.reproject_approval_overlay() {
+                let _ = self.reload();
+                return Ingest::Invalid(err.to_string());
+            }
+            return if own {
+                Ingest::Confirmed
+            } else {
+                Ingest::Applied
+            };
+        }
+
         if own {
             self.net.pending.remove(&client_id);
             if kind == SealedKind::Welcome {

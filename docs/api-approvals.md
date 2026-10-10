@@ -37,8 +37,10 @@ try core.revokeStanding(grantId: d.grantId)
 Errors: `decideRequest(.alwaysApprove)` on a red line returns `Forbidden`. A wrong owner,
 changed content, removed agent or conflicting second decision fails. Repeating the same
 decision returns its stored receipt without creating another item or charging usage again.
-An interrupted standing batch can resume from its original decision; revoking its standing
-grant prevents that resume.
+An interrupted standing batch can resume while its original grant remains the current
+standing decision. Replacement, expiry or revocation prevents that resume. A relay-ordered
+decision or membership change takes precedence over a pending local resolution, including
+before its acknowledgement; live and reopened views show the same effects.
 
 ## Events (signed, in the Space's log)
 
@@ -46,7 +48,7 @@ grant prevents that resume.
 |---|---|---|
 | agent asks | `RequestOpened { request: AgentRequest }` | `proposal` retains the item id, typed document, origin, completion text and model cost; its hash also binds the request metadata, agent and Space |
 | owner decides | `RequestResolved { request, approved, content_hash, resolution }` | the optional receipt creates the proposed item and its app permission in the same signed event; one accepted decision per request |
-| always approve / deny | `GrantIssued { grant }` with `capability: Standing { action, allow }` | see the shape below |
+| always approve / deny | `standing_grant` inside the first `RequestResolved.resolution` | committed with that decision; see the shape below |
 | revoke | `GrantRevoked { grant }` | grantor must be the agent's owner |
 
 Model cost is incurred when the proposal is prepared, so it is projected once from

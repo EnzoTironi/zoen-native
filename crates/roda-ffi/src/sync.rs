@@ -20,7 +20,7 @@ use roda_types::*;
 use serde::{Deserialize, Serialize};
 
 use crate::dto::Delivery;
-use crate::engine::{Engine, Entry};
+use crate::engine::{Engine, Entry, State};
 use crate::i18n::t;
 use crate::CoreError;
 
@@ -49,6 +49,8 @@ pub struct NetState {
     pub synced: HashSet<SpaceId>,
     /// client_id → Space, for events in the outbox.
     pub pending: HashMap<String, SpaceId>,
+    /// Spaces whose pending resolutions overlay their ordered approval state.
+    pub(crate) optimistic_approvals: HashSet<SpaceId>,
     /// client_id → why the relay refused it.
     pub failed: HashMap<String, String>,
     /// Identities seen in logs whose profile this device doesn't have yet.
@@ -125,6 +127,7 @@ impl Engine {
         }
         self.net.synced = self.store.synced_spaces()?.into_iter().collect();
         self.net.pending.clear();
+        self.net.optimistic_approvals.clear();
         self.net.failed.clear();
         self.net.profiles.forget_shared();
 
@@ -163,6 +166,9 @@ impl Engine {
             self.net
                 .pending
                 .insert(e.client_id.clone(), e.space.clone());
+            if matches!(e.body, EventBody::RequestResolved { .. }) {
+                self.net.optimistic_approvals.insert(e.space.clone());
+            }
             self.state.apply(&e, &self.identities);
         }
         self.recompute_unknown();
@@ -185,6 +191,71 @@ impl Engine {
             }
         }
         self.net.unknown = unknown;
+    }
+
+    pub(crate) fn approval_projection_needs_replay(&self, e: &Event) -> bool {
+        self.net.optimistic_approvals.contains(&e.space)
+            && matches!(
+                e.body,
+                EventBody::RequestOpened { .. }
+                    | EventBody::RequestResolved { .. }
+                    | EventBody::MemberAdded { .. }
+                    | EventBody::MemberRemoved { .. }
+                    | EventBody::GrantIssued { .. }
+                    | EventBody::GrantRevoked { .. }
+                    | EventBody::ItemCreated { .. }
+                    | EventBody::ItemVersioned { .. }
+                    | EventBody::ItemReverted { .. }
+            )
+    }
+
+    /// Reconcile only when an ordered dependency can invalidate an optimistic decision.
+    /// Use the verified log cache; do not reload keys, MLS state or open page sessions.
+    pub(crate) fn reproject_approval_overlay(&mut self) -> R<()> {
+        let mut order = self.store.space_ids()?;
+        let pending = self.store.outbox()?;
+        let mut state = State::default();
+        let mut confirmed = HashSet::new();
+        for space in &order {
+            if let Some(log) = self.logs.get(space) {
+                for e in log.events() {
+                    confirmed.insert(e.client_id.clone());
+                    state.apply(e, &self.identities);
+                }
+            } else if let Some(broken) = self.state.spaces.get(space) {
+                let mut broken = broken.clone();
+                broken.entries.clear();
+                state.spaces.insert(space.clone(), broken);
+            }
+        }
+        let mut optimistic = HashSet::new();
+        for p in pending {
+            let e = p.event;
+            if confirmed.contains(&e.client_id) {
+                continue;
+            }
+            if p.failed {
+                if matches!(e.body, EventBody::MessagePosted { .. })
+                    && state.spaces.contains_key(&e.space)
+                {
+                    state.apply(&e, &self.identities);
+                }
+                continue;
+            }
+            if matches!(e.body, EventBody::SpaceCreated { .. }) && !order.contains(&e.space) {
+                order.push(e.space.clone());
+            }
+            if matches!(e.body, EventBody::RequestResolved { .. }) {
+                optimistic.insert(e.space.clone());
+            }
+            state.apply(&e, &self.identities);
+        }
+        self.state = state;
+        self.space_order = order;
+        self.net.optimistic_approvals = optimistic;
+        self.index_dirty = true;
+        self.recompute_unknown();
+        Ok(())
     }
 
     pub(crate) fn note_unknown(&mut self, e: &Event) {
@@ -215,7 +286,7 @@ impl Engine {
     /// for a Space this device created and the relay hasn't confirmed yet, the genesis link
     /// it will get (the creator's `SpaceCreated` always lands at seq 0, so its chain hash is
     /// known before it's sent).
-    fn causal_head(&self, space: &str) -> R<Option<Seen>> {
+    pub fn causal_head(&self, space: &str) -> R<Option<Seen>> {
         if let Some(head) = self.logs.get(space).and_then(SpaceLog::head) {
             return Ok(Some(head));
         }
@@ -265,6 +336,9 @@ impl Engine {
             self.space_order.push(space.to_string());
         }
         self.net.pending.insert(client_id, space.to_string());
+        if matches!(e.body, EventBody::RequestResolved { .. }) {
+            self.net.optimistic_approvals.insert(space.to_string());
+        }
         self.state.apply(&e, &self.identities);
         self.index_dirty = true;
         self.note_unknown(&e);
@@ -319,8 +393,24 @@ impl Engine {
         if !self.space_order.contains(&space) {
             self.space_order.push(space.clone());
         }
-        if self.net.pending.remove(&e.client_id).is_some() {
+        let replay_approval = self.approval_projection_needs_replay(&e);
+        let own = self.net.pending.remove(&e.client_id).is_some();
+        if own {
             let _ = self.store.outbox_remove(&e.client_id);
+        }
+        if replay_approval {
+            if let Err(err) = self.reproject_approval_overlay() {
+                let _ = self.reload();
+                return Ingest::Invalid(err.to_string());
+            }
+            self.note_profile_event(&e);
+            return if own {
+                Ingest::Confirmed
+            } else {
+                Ingest::Applied
+            };
+        }
+        if own {
             if let Some(s) = self.state.spaces.get_mut(&space) {
                 for entry in s.entries.iter_mut().filter(|x| {
                     x.client_id == e.client_id

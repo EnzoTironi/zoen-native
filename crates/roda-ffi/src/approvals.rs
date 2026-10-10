@@ -113,6 +113,8 @@ impl State {
                 if grant.grantor != e.author
                     || !self.writer(&e.space, &e.author)
                     || self.grants.iter().any(|g| g.grant.id == grant.id)
+                    || grant.id.starts_with("gr_app_")
+                    || grant.id.starts_with("gr_standing_")
                     || matches!(grant.capability, Capability::MonthlyBudget { cents } if cents < 0)
                 {
                     return false;
@@ -190,6 +192,15 @@ impl State {
                     return r.req.proposal.is_none();
                 };
                 let proposal = r.req.proposal.as_ref();
+                if *approved
+                    && proposal.is_some_and(|p| p.kind == ItemKind::App)
+                    && self
+                        .grants
+                        .iter()
+                        .any(|g| g.grant.id == format!("gr_app_{}", r.req.id))
+                {
+                    return false;
+                }
                 let expected_item = if *approved {
                     proposal.map(|p| &p.item)
                 } else {
@@ -447,16 +458,16 @@ impl Engine {
                     if !standing || receipt.standing_grant.is_some() {
                         if standing
                             && !receipt.standing_grant.as_ref().is_some_and(|given| {
-                                self.state
-                                    .grants
-                                    .iter()
-                                    .any(|g| g.grant.id == given.id && !g.revoked)
+                                self.standing(&r.req.agent, &r.space, &r.req.action)
+                                    .is_some_and(|(current, allow)| {
+                                        current.grant.id == given.id && allow == approve
+                                    })
                             })
                         {
                             return Err(CoreError::Forbidden {
                                 reason: t(
-                                    "A decisão permanente foi revogada.",
-                                    "The standing decision was revoked.",
+                                    "A decisão permanente mudou, expirou ou foi revogada.",
+                                    "The standing decision changed, expired or was revoked.",
                                 ),
                             });
                         }

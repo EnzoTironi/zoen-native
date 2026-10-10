@@ -35,6 +35,7 @@ pub use profile::{PhotoChange, ProfileDto};
 mod sync;
 pub use api::*;
 pub use link_api::{DeviceDto, HistoryDto, LinkRequestDto, LinkedDto, OlderDto, TransferListener};
+pub use sync::Ingest;
 
 mod approvals;
 mod apps;
