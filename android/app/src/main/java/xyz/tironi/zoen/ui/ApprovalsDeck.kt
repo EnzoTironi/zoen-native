@@ -9,6 +9,7 @@ import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -21,6 +22,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.input.pointer.PointerInputChange
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
@@ -101,6 +104,8 @@ internal fun ApprovalsDeck(model: ZoenViewModel, app: AppState, navigate: (NavKe
     }
     BoxWithConstraints(modifier.fillMaxSize().testTag("approval-deck")) {
         val compact = maxHeight < 520.dp || LocalDensity.current.fontScale > 1.3f
+        val cardViewport = (maxHeight - 76.dp).coerceAtLeast(0.dp)
+        val verticalViewportPx = with(LocalDensity.current) { cardViewport.toPx() }
         LaunchedEffect(displayed.firstOrNull()?.id, undoFlight, compact) {
             if (compact) {
                 if (motion) scroll.animateScrollTo(0) else scroll.scrollTo(0)
@@ -121,7 +126,7 @@ internal fun ApprovalsDeck(model: ZoenViewModel, app: AppState, navigate: (NavKe
                 }
             } else {
                 key(displayed.first().id, undoFlight) {
-                    ApprovalStack(displayed, model, app.keyMissing, motion, compact, returned?.takeIf { it.first == displayed.first().id }?.second, navigate, { leaving = it }, if (compact) Modifier.fillMaxWidth() else Modifier.weight(1f).fillMaxWidth())
+                    ApprovalStack(displayed, model, app.keyMissing, motion, compact, verticalViewportPx, returned?.takeIf { it.first == displayed.first().id }?.second, navigate, { leaving = it }, if (compact) Modifier.fillMaxWidth() else Modifier.weight(1f).fillMaxWidth())
                 }
             }
             review.pending?.let { pending ->
@@ -152,7 +157,7 @@ internal fun ApprovalsDeck(model: ZoenViewModel, app: AppState, navigate: (NavKe
 }
 
 @Composable
-private fun ApprovalStack(queue: List<AgentRequestDto>, model: ZoenViewModel, keyMissing: Boolean, motion: Boolean, compact: Boolean, returned: RequestDecision?, navigate: (NavKey) -> Unit, leaving: (AgentRequestDto?) -> Unit, modifier: Modifier) {
+private fun ApprovalStack(queue: List<AgentRequestDto>, model: ZoenViewModel, keyMissing: Boolean, motion: Boolean, compact: Boolean, verticalViewportPx: Float, returned: RequestDecision?, navigate: (NavKey) -> Unit, leaving: (AgentRequestDto?) -> Unit, modifier: Modifier) {
     val top = queue.first()
     val density = LocalDensity.current
     val scope = rememberCoroutineScope()
@@ -248,34 +253,36 @@ private fun ApprovalStack(queue: List<AgentRequestDto>, model: ZoenViewModel, ke
         }
     }
     val labels = ApprovalDirection.entries.associateWith { stringResource(it.label) }
-    val gesture = Modifier.pointerInput(top.id, keyMissing, motion) {
-        detectDragGestures(
-            onDragStart = { if (!busy && !keyMissing) { scope.launch { offset.stop() }; dragging = true; drag = offset.value; crossed = null } },
-            onDragCancel = { if (!busy) returnCard() },
-            onDragEnd = {
-                if (!busy && dragging) {
-                    val dp = drag / density.density
-                    val direction = ApprovalDirection.from(dp)
-                    if (direction != null && direction.distance(dp) >= direction.threshold) decide(direction) else returnCard()
-                }
-            },
-            onDrag = { change, amount ->
-                if (dragging && !busy) {
-                    change.consume(); drag += amount
-                    val dp = drag / density.density
-                    val direction = ApprovalDirection.from(dp)?.takeIf { it.distance(dp) >= it.threshold }
-                    if (direction != null && crossed != direction) haptics.perform(if (direction == ApprovalDirection.Up && !top.canAlwaysApprove) ZoenFeedback.Reject else ZoenFeedback.Selection)
-                    crossed = direction
-                }
-            },
-        )
+    var cardHeight by remember(top.id) { mutableIntStateOf(0) }
+    val verticalDecisions = density.fontScale <= 1.3f && (!compact || cardHeight <= verticalViewportPx)
+    val gesture = Modifier.pointerInput(top.id, keyMissing, motion, verticalDecisions) {
+        val start: (Offset) -> Unit = { if (!busy && !keyMissing) { scope.launch { offset.stop() }; dragging = true; drag = offset.value; crossed = null } }
+        val cancel: () -> Unit = { if (!busy) returnCard() }
+        val end: () -> Unit = {
+            if (!busy && dragging) {
+                val dp = drag / density.density
+                val direction = ApprovalDirection.from(dp)
+                if (direction != null && direction.distance(dp) >= direction.threshold) decide(direction) else returnCard()
+            }
+        }
+        val move: (PointerInputChange, Offset) -> Unit = { change, amount ->
+            if (dragging && !busy) {
+                change.consume(); drag += amount
+                val dp = drag / density.density
+                val direction = ApprovalDirection.from(dp)?.takeIf { it.distance(dp) >= it.threshold }
+                if (direction != null && crossed != direction) haptics.perform(if (direction == ApprovalDirection.Up && !top.canAlwaysApprove) ZoenFeedback.Reject else ZoenFeedback.Selection)
+                crossed = direction
+            }
+        }
+        if (verticalDecisions) detectDragGestures(onDragStart = start, onDragCancel = cancel, onDragEnd = end, onDrag = move)
+        else detectHorizontalDragGestures(onDragStart = start, onDragCancel = cancel, onDragEnd = end, onHorizontalDrag = { change, amount -> move(change, Offset(amount, 0f)) })
     }
     Column(modifier, verticalArrangement = Arrangement.spacedBy(16.dp)) {
         BoxWithConstraints((if (compact) Modifier else Modifier.weight(1f)).fillMaxWidth()) {
             SideEffect { extent = with(density) { maxOf(maxWidth, maxHeight).coerceAtMost(900.dp).toPx() * 1.6f } }
             queue.take(3).withIndex().reversed().forEach { (depth, request) ->
                 val isTop = depth == 0
-                val cardModifier = if (isTop) (if (compact) Modifier.fillMaxWidth() else Modifier.fillMaxSize()).testTag("approval-card-top").then(gesture)
+                val cardModifier = if (isTop) (if (compact) Modifier.fillMaxWidth() else Modifier.fillMaxSize()).onSizeChanged { cardHeight = it.height }.testTag("approval-card-top").then(gesture)
                     .clickable(enabled = !busy && !keyMissing) { haptics.perform(ZoenFeedback.Open); model.approvals.flush(); navigate(Request(request.id)) }
                     .semantics { customActions = ApprovalDirection.entries.filter { it != ApprovalDirection.Up || top.canAlwaysApprove }.map { direction -> CustomAccessibilityAction(labels.getValue(direction)) { if (busy || keyMissing) false else { decide(direction); true } } } }
                 else Modifier.matchParentSize().clearAndSetSemantics { }
@@ -307,7 +314,9 @@ private fun ApprovalStack(queue: List<AgentRequestDto>, model: ZoenViewModel, ke
             }
         }
         if (lockedHint) Text(stringResource(R.string.approval_always_asks), color = MaterialTheme.colorScheme.error, modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite })
-        for (row in listOf(listOf(ApprovalDirection.Left, ApprovalDirection.Right), listOf(ApprovalDirection.Down, ApprovalDirection.Up))) {
+        val actions = listOf(ApprovalDirection.Left, ApprovalDirection.Right, ApprovalDirection.Down, ApprovalDirection.Up)
+        val rows = if (density.fontScale > 1.3f) actions.map { listOf(it) } else actions.chunked(2)
+        for (row in rows) {
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 row.forEach { direction ->
                     OutlinedButton(onClick = { decide(direction) }, enabled = !busy && !keyMissing && (direction != ApprovalDirection.Up || top.canAlwaysApprove), modifier = Modifier.weight(1f).heightIn(min = 48.dp).testTag("approval-${direction.name.lowercase()}"), contentPadding = PaddingValues(horizontal = 12.dp, vertical = 12.dp)) {

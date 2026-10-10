@@ -49,7 +49,15 @@ class ApprovalDeckJourneyTest {
     }
 
     @Test fun swipeThresholdsUndoAndRotationKeepDecisionsUnsignedUntilTheWindowCloses() {
+        runBlocking {
+            app.repository.change { core ->
+                val shortMoneyRequest = core.requests().first { it.agent.isMine && it.status == RequestStatus.PENDING && it.title == "Buy the bus tickets" }
+                core.requests().filter { it.agent.isMine && it.status == RequestStatus.PENDING && it.openedMs < shortMoneyRequest.openedMs }.forEach { core.decideRequest(it.id, RequestDecision.DENY) }
+            }
+        }
+        compose.waitForIdle()
         val request = app.repository.state.value.requests.filter { it.agent.isMine && it.status == RequestStatus.PENDING }.minBy { it.openedMs }
+        assertEquals("Buy the bus tickets", request.title)
         assertFalse("The original money request is a red line", request.canAlwaysApprove)
         val before = runBlocking { app.repository.query { it.logEvents(request.spaceId).size } }
         compose.onNodeWithText(app.getString(R.string.activity)).performClick()
@@ -112,7 +120,7 @@ class ApprovalDeckJourneyTest {
         assertTrue(runBlocking { app.repository.query { it.verifyAll().all { report -> report.valid } } })
         compose.onNodeWithTag("activity-show-list").performClick()
         compose.onNodeWithTag("activity-list").performScrollToNode(hasText(request.title))
-        compose.onNodeWithText(app.getString(R.string.status_denied)).assertIsDisplayed()
+        compose.onNode(hasText(request.title) and hasText(app.getString(R.string.status_denied))).assertIsDisplayed()
         capture("signed-denial-in-list")
         Evidence.outputFile("approvals", "undo-recreation-receipt.txt").writeText("PASS: short drag returns, sensitive upward swipe rejected once, right swipe waits unsigned, recreation retains undo, undo adds no signed event, left swipe signs after 4.5 seconds and requests one platform confirmation.\n")
     }
@@ -160,6 +168,42 @@ class ApprovalDeckJourneyTest {
         assertTrue(runBlocking { app.repository.query { it.verifyAll().all { report -> report.valid } } })
         assertEquals(confirmed, feedback("Confirm"))
         Evidence.outputFile("approvals", "activity-finish-receipt.txt").writeText("PASS: leaving the Activity stores the accepted decision before the ViewModel disappears; signed logs verify and no confirmation is requested in the background.\n")
+    }
+
+    @Test fun enlargedTextScrollsOverTheCardWithoutMakingADecision() {
+        val originalFont = shell("settings get system font_scale").trim()
+        try {
+            shell("settings put system font_scale 2.0")
+            scenario.recreate()
+            scenario.onActivity {
+                assertEquals(2f, it.resources.configuration.fontScale, .01f)
+                model = ViewModelProvider(it)[ZoenViewModel::class.java]
+            }
+            compose.waitForIdle()
+            val request = app.repository.state.value.requests.filter { it.agent.isMine && it.status == RequestStatus.PENDING }.minBy { it.openedMs }
+            val before = runBlocking { app.repository.query { it.logEvents(request.spaceId).size } }
+            compose.onNodeWithText(app.getString(R.string.activity)).performClick()
+            compose.waitForIdle()
+            val rejected = feedback("Reject")
+            capture("font200-before-reading-scroll")
+            repeat(4) {
+                compose.onNodeWithTag("approval-deck").performTouchInput {
+                    swipe(Offset(width * .5f, height * .55f), Offset(width * .5f, height * .15f), 600)
+                }
+                compose.waitForIdle()
+            }
+            assertNull("Reading a long card must not choose a decision", model.approvals.state.value.pending)
+            assertEquals(RequestStatus.PENDING, status(request.id))
+            assertEquals(before, runBlocking { app.repository.query { it.logEvents(request.spaceId).size } })
+            assertEquals("Reading must not request rejection feedback", rejected, feedback("Reject"))
+            listOf("approval-left", "approval-right", "approval-down", "approval-up").forEach { compose.onNodeWithTag(it).assertIsDisplayed() }
+            compose.onNodeWithTag("approval-up").assertIsNotEnabled()
+            capture("font200-buttons-after-reading-scroll")
+            Evidence.outputFile("approvals", "font200-reading-scroll-receipt.txt").writeText("PASS: four actual vertical finger swipes at 200% text expose every decision button; no pending choice, signed event or rejection feedback is produced, and sensitive standing approval remains disabled.\n")
+        } finally {
+            if (originalFont == "null") shell("settings delete system font_scale") else shell("settings put system font_scale $originalFont")
+            scenario.recreate()
+        }
     }
 
     private fun createPlanRequests(prefix: String): List<String> = runBlocking {
