@@ -1,0 +1,28 @@
+[package]
+name = "zoen-runtime"
+description = "Zoen-owned Postgres financial authority and fenced FDB execution admission."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+zoen-models = { path = "../zoen-models" }
+roda-types.workspace = true
+roda-log.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+sha2.workspace = true
+hex.workspace = true
+getrandom.workspace = true
+chacha20poly1305.workspace = true
+async-trait = "0.1"
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync", "time"] }
+sqlx = { version = "0.9", default-features = false, features = ["runtime-tokio", "postgres", "json", "migrate", "macros"] }
+foundationdb = { version = "0.11", default-features = false, features = ["fdb-7_3", "embedded-fdb-include"] }
+chrono = { version = "0.4", default-features = false, features = ["std"] }
+
+[dev-dependencies]
+zoen-relay = { path = "../zoen-relay" }
+tokio = { version = "1", features = ["net", "io-util"] }

@@ -15,6 +15,7 @@ members = [
   "crates/zoen-load",
   "crates/zoen-agentd",
   "crates/zoen-models",
+  "crates/zoen-runtime",
   "crates/zoen-egress",
   "crates/zoen-guestd",
   "crates/zoen-sandboxd",
