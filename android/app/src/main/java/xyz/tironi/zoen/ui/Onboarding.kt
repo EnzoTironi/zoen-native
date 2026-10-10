@@ -126,65 +126,71 @@ fun Onboarding(model: ZoenViewModel, modifier: Modifier = Modifier, acquisitionL
                 repeat(route.steps.size) { index -> LinearProgressIndicator(progress = { if (index <= position) 1f else 0f }, modifier = Modifier.weight(1f).height(4.dp)) }
             }
         }
-        Column(Modifier.weight(1f).verticalScroll(rememberScrollState()).widthIn(max = 560.dp).align(Alignment.CenterHorizontally).padding(horizontal = 28.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-            ZoenMascot(Modifier.fillMaxWidth().height(if (step == OnboardingStep.Profile) 130.dp else 230.dp), animated = true, pose = pose)
-            Text(route.text("onboarding.${step.id}.title", language) ?: stringResource(step.title), Modifier.fillMaxWidth(), style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.ExtraBold, textAlign = TextAlign.Center)
-            val detail = route.text("onboarding.${step.id}.body", language) ?: if (step == OnboardingStep.Profile) null else stringResource(step.detail)
-            detail?.let { Text(it, Modifier.fillMaxWidth(), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, textAlign = TextAlign.Center) }
-            when (step) {
-                OnboardingStep.Hello -> if (route.flow == "default") {
-                    OutlinedButton(onClick = {
-                        val clipboard = context.getSystemService(android.content.ClipboardManager::class.java)
-                        val invite = clipboard.primaryClip?.takeIf { it.itemCount > 0 }?.getItemAt(0)?.coerceToText(context)?.toString()?.trim()
-                        if (invite.isNullOrEmpty() || invite.length > 8192 || Uri.parse(invite).scheme !in listOf("https", "zoen")) model.notify(pasteError)
-                        else model.launch {
-                            route = model.repository.query { core ->
-                                core.growthCaptureLink(invite)
-                                OnboardingRoute.from(core.growthOnboardingPlan())
+        BoxWithConstraints(Modifier.weight(1f).fillMaxWidth()) {
+            val mascotHeight = if (step == OnboardingStep.Profile && maxHeight < 560.dp) {
+                val room = maxHeight - 230.dp
+                if (room >= 88.dp) room.coerceAtMost(190.dp) else 0.dp
+            } else (maxHeight - 400.dp).coerceIn(110.dp, 230.dp)
+            Column(Modifier.widthIn(max = 560.dp).fillMaxSize().align(Alignment.TopCenter).verticalScroll(rememberScrollState()).padding(horizontal = 28.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                if (mascotHeight > 0.dp) ZoenMascot(Modifier.fillMaxWidth().height(mascotHeight), animated = true, pose = pose)
+                Text(route.text("onboarding.${step.id}.title", language) ?: stringResource(step.title), Modifier.fillMaxWidth(), style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.ExtraBold, textAlign = TextAlign.Center)
+                val detail = route.text("onboarding.${step.id}.body", language) ?: if (step == OnboardingStep.Profile) null else stringResource(step.detail)
+                detail?.let { Text(it, Modifier.fillMaxWidth(), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, textAlign = TextAlign.Center) }
+                when (step) {
+                    OnboardingStep.Hello -> if (route.flow == "default") {
+                        OutlinedButton(onClick = {
+                            val clipboard = context.getSystemService(android.content.ClipboardManager::class.java)
+                            val invite = clipboard.primaryClip?.takeIf { it.itemCount > 0 }?.getItemAt(0)?.coerceToText(context)?.toString()?.trim()
+                            if (invite.isNullOrEmpty() || invite.length > 8192 || Uri.parse(invite).scheme !in listOf("https", "zoen")) model.notify(pasteError)
+                            else model.launch {
+                                route = model.repository.query { core ->
+                                    core.growthCaptureLink(invite)
+                                    OnboardingRoute.from(core.growthOnboardingPlan())
+                                }
                             }
+                        }, modifier = Modifier.align(Alignment.CenterHorizontally).testTag("onboarding-paste-invite")) {
+                            Icon(Icons.Rounded.ContentPaste, null, Modifier.size(18.dp))
+                            Spacer(Modifier.width(8.dp))
+                            Text(stringResource(R.string.onboarding_paste_invite))
                         }
-                    }, modifier = Modifier.align(Alignment.CenterHorizontally).testTag("onboarding-paste-invite")) {
-                        Icon(Icons.Rounded.ContentPaste, null, Modifier.size(18.dp))
-                        Spacer(Modifier.width(8.dp))
-                        Text(stringResource(R.string.onboarding_paste_invite))
                     }
-                }
-                OnboardingStep.Profile -> {
-                    val preview = remember(photo) { photo?.let { BitmapFactory.decodeByteArray(it, 0, it.size) } }
-                    DisposableEffect(preview) { onDispose { preview?.recycle() } }
-                    preview?.let { Image(it.asImageBitmap(), stringResource(R.string.agent_photo_crop), Modifier.size(100.dp).align(Alignment.CenterHorizontally)) }
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        TextButton(onClick = { photoPicker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) }) { Text(stringResource(R.string.agent_photo_choose)) }
-                        TextButton(onClick = { cameraUri = FileAccess.cameraUri(context).toString(); camera.launch(Uri.parse(cameraUri)) }) { Text(stringResource(R.string.agent_photo_camera)) }
-                    }
-                    OutlinedTextField(name, { name = it }, label = { Text(stringResource(R.string.name)) }, singleLine = true, modifier = Modifier.fillMaxWidth().testTag("onboarding-name"), keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Words))
-                    OutlinedTextField(handle, { handle = it.lowercase(Locale.ROOT).filter { c -> c in 'a'..'z' || c in '0'..'9' || c == '_' || c == '.' }.take(24) }, label = { Text(stringResource(R.string.handle)) }, prefix = { Text("@") }, supportingText = { Text(stringResource(R.string.handle_rules)) }, singleLine = true, modifier = Modifier.fillMaxWidth().testTag("onboarding-handle"))
-                    TextButton(onClick = { connectionSettings = !connectionSettings }) { Text(stringResource(R.string.connection_settings)) }
-                    if (connectionSettings) OutlinedTextField(relay, { relay = it }, label = { Text(stringResource(R.string.relay)) }, singleLine = true, modifier = Modifier.fillMaxWidth().testTag("onboarding-relay"))
-                }
-                OnboardingStep.Areas -> FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    areaLabels.forEachIndexed { index, label -> FilterChip(selected = index in selected, onClick = { selected = if (index in selected) selected - index else selected + index }, label = { Text(label) }) }
-                }
-                OnboardingStep.Plan -> if (planning || plan == null) {
-                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) { CircularProgressIndicator(Modifier.size(24.dp)); Text(stringResource(R.string.onboarding_planning)) }
-                } else Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer)) {
-                    Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Text(plan!!.plan.title, style = MaterialTheme.typography.titleLarge)
-                        plan!!.plan.sections.forEach { section ->
-                            Text(section.title, style = MaterialTheme.typography.titleSmall)
-                            section.lines.forEach { line -> Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) { Icon(Icons.Rounded.CheckCircleOutline, null, Modifier.size(18.dp)); Text(line.text) } }
+                    OnboardingStep.Profile -> {
+                        val preview = remember(photo) { photo?.let { BitmapFactory.decodeByteArray(it, 0, it.size) } }
+                        DisposableEffect(preview) { onDispose { preview?.recycle() } }
+                        preview?.let { Image(it.asImageBitmap(), stringResource(R.string.agent_photo_crop), Modifier.size(100.dp).align(Alignment.CenterHorizontally)) }
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            TextButton(onClick = { photoPicker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) }) { Text(stringResource(R.string.agent_photo_choose)) }
+                            TextButton(onClick = { cameraUri = FileAccess.cameraUri(context).toString(); camera.launch(Uri.parse(cameraUri)) }) { Text(stringResource(R.string.agent_photo_camera)) }
                         }
-                        Text(plan!!.engineLabel, style = MaterialTheme.typography.labelSmall)
+                        OutlinedTextField(name, { name = it }, label = { Text(stringResource(R.string.name)) }, singleLine = true, modifier = Modifier.fillMaxWidth().testTag("onboarding-name"), keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Words))
+                        OutlinedTextField(handle, { handle = it.lowercase(Locale.ROOT).filter { c -> c in 'a'..'z' || c in '0'..'9' || c == '_' || c == '.' }.take(24) }, label = { Text(stringResource(R.string.handle)) }, prefix = { Text("@") }, supportingText = { Text(stringResource(R.string.handle_rules)) }, singleLine = true, modifier = Modifier.fillMaxWidth().testTag("onboarding-handle"))
+                        TextButton(onClick = { connectionSettings = !connectionSettings }) { Text(stringResource(R.string.connection_settings)) }
+                        if (connectionSettings) OutlinedTextField(relay, { relay = it }, label = { Text(stringResource(R.string.relay)) }, singleLine = true, modifier = Modifier.fillMaxWidth().testTag("onboarding-relay"))
                     }
+                    OnboardingStep.Areas -> FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        areaLabels.forEachIndexed { index, label -> FilterChip(selected = index in selected, onClick = { selected = if (index in selected) selected - index else selected + index }, label = { Text(label) }) }
+                    }
+                    OnboardingStep.Plan -> if (planning || plan == null) {
+                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) { CircularProgressIndicator(Modifier.size(24.dp)); Text(stringResource(R.string.onboarding_planning)) }
+                    } else Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer)) {
+                        Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Text(plan!!.plan.title, style = MaterialTheme.typography.titleLarge)
+                            plan!!.plan.sections.forEach { section ->
+                                Text(section.title, style = MaterialTheme.typography.titleSmall)
+                                section.lines.forEach { line -> Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) { Icon(Icons.Rounded.CheckCircleOutline, null, Modifier.size(18.dp)); Text(line.text) } }
+                            }
+                            Text(plan!!.engineLabel, style = MaterialTheme.typography.labelSmall)
+                        }
+                    }
+                    OnboardingStep.Agents -> {
+                        val levels = listOf(R.string.listen to R.string.listen_detail, R.string.suggest to R.string.suggest_detail, R.string.act to R.string.act_detail, R.string.autonomous to R.string.autonomous_detail)
+                        levels.forEachIndexed { index, labels -> Row(Modifier.fillMaxWidth().selectable(trust == index, role = Role.RadioButton, onClick = { trust = index }).padding(vertical = 5.dp), verticalAlignment = Alignment.CenterVertically) {
+                            RadioButton(trust == index, onClick = null)
+                            Column(Modifier.padding(start = 12.dp)) { Text(stringResource(labels.first), style = MaterialTheme.typography.titleSmall); Text(stringResource(labels.second), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+                        } }
+                    }
+                    else -> Unit
                 }
-                OnboardingStep.Agents -> {
-                    val levels = listOf(R.string.listen to R.string.listen_detail, R.string.suggest to R.string.suggest_detail, R.string.act to R.string.act_detail, R.string.autonomous to R.string.autonomous_detail)
-                    levels.forEachIndexed { index, labels -> Row(Modifier.fillMaxWidth().selectable(trust == index, role = Role.RadioButton, onClick = { trust = index }).padding(vertical = 5.dp), verticalAlignment = Alignment.CenterVertically) {
-                        RadioButton(trust == index, onClick = null)
-                        Column(Modifier.padding(start = 12.dp)) { Text(stringResource(labels.first), style = MaterialTheme.typography.titleSmall); Text(stringResource(labels.second), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
-                    } }
-                }
-                else -> Unit
             }
         }
         Column(Modifier.widthIn(max = 560.dp).fillMaxWidth().align(Alignment.CenterHorizontally).padding(24.dp), verticalArrangement = Arrangement.spacedBy(4.dp), horizontalAlignment = Alignment.CenterHorizontally) {

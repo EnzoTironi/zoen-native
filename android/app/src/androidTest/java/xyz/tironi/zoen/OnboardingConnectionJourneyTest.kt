@@ -70,7 +70,20 @@ class OnboardingConnectionJourneyTest {
             compose.onNodeWithTag("onboarding-handle").performTextReplacement("on_$suffix")
             compose.onNodeWithText(application.getString(R.string.connection_settings)).performScrollTo().performClick()
             compose.onNodeWithTag("onboarding-relay").performScrollTo().performTextReplacement(relay!!)
-            shell("input keyevent KEYCODE_BACK")
+            scenario.onActivity { activity ->
+                activity.window.decorView.clearFocus()
+                activity.getSystemService(android.view.inputmethod.InputMethodManager::class.java)
+                    .hideSoftInputFromWindow(activity.window.decorView.windowToken, 0)
+            }
+            compose.waitUntil(10_000) {
+                var hidden = false
+                scenario.onActivity { activity ->
+                    hidden = androidx.core.view.ViewCompat.getRootWindowInsets(activity.window.decorView)
+                        ?.isVisible(androidx.core.view.WindowInsetsCompat.Type.ime()) == false
+                }
+                hidden
+            }
+            compose.waitForIdle()
             next(); step("areas")
             ownIdentity = repository.state.value.me!!.id
             val areaResources = listOf(R.string.life_travel, R.string.life_money, R.string.life_home, R.string.life_food, R.string.life_friends, R.string.life_work, R.string.life_health, R.string.life_family)
