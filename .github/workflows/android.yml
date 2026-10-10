@@ -93,4 +93,6 @@ jobs:
         if: always()
         with:
           name: zoen-android-${{ matrix.api }}-results
-          path: android/app/build/outputs/androidTest-results/
+          path: |
+            android/app/build/outputs/androidTest-results/
+            android/app/build/outputs/device-evidence/**/pages/rich-formatting-*

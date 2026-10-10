@@ -139,20 +139,45 @@ class ParityJourneysTest {
         val item = runBlocking { application.repository.change { it.pageImportMarkdown(chat.id, "notes/native-rich.md", "# Native rich page\n\nEditable paragraph\n\n```kotlin\nval x = 1\n```\n\n![Forest](https://example.com/forest.png)") } }
         val original = runBlocking { application.repository.query { it.page(item.id) } }
         val paragraph = original.blocks.first { it.kind == "paragraph" }
+        fun captureFormatting(stage: String) {
+            val field = compose.onNodeWithTag("page-block:${paragraph.id}").fetchSemanticsNode().config
+            val selection = androidx.compose.ui.semantics.SemanticsProperties.TextSelectionRange
+            val bold = compose.onNodeWithContentDescription(application.getString(R.string.page_bold)).fetchSemanticsNode().config
+            val toggle = androidx.compose.ui.semantics.SemanticsProperties.ToggleableState
+            val key = application.repository.localKey("pageDraft", item.id, application.repository.state.value.me!!.id)
+            val draft = application.repository.preferences.getString(key, null)
+            val spans = draft?.let { xyz.tironi.zoen.pages.PageEditing.decode(it) }
+                ?.firstOrNull { it.id == paragraph.id }?.spans.orEmpty()
+            val record = org.json.JSONObject(mapOf(
+                "stage" to stage, "api" to Build.VERSION.SDK_INT,
+                "selection" to if (field.contains(selection)) field[selection].toString() else "absent",
+                "bold" to if (bold.contains(toggle)) bold[toggle].toString() else "absent",
+                "draft_present" to (draft != null),
+                "spans" to spans.map { mapOf("key" to it.key, "start" to it.start.toLong(), "end" to it.end.toLong()) },
+            )).toString(2)
+            Evidence.outputFile("pages", "rich-formatting-$stage.json").writeText(record)
+            android.util.Log.i("RichEditorJourney", record)
+            capturePageHistory("rich-formatting-$stage")
+        }
         open("zoen://item/${item.id}")
         compose.waitUntil(10_000) { compose.onAllNodesWithTag("page-block:${paragraph.id}").fetchSemanticsNodes().isNotEmpty() }
         compose.onNodeWithTag("page-block:${paragraph.id}").performTextReplacement("Edited paragraph")
         compose.onNodeWithTag("page-block:${paragraph.id}").performTextInputSelection(TextRange(0, 6))
+        captureFormatting("selected")
         compose.onNodeWithContentDescription(application.getString(R.string.page_bold)).performClick()
+        captureFormatting("bold")
         compose.onNodeWithContentDescription(application.getString(R.string.undo)).performClick()
         compose.onNodeWithContentDescription(application.getString(R.string.page_redo)).performClick()
+        captureFormatting("redo")
         scenario.recreate()
         compose.waitUntil(10_000) { compose.onAllNodesWithTag("page-block:${paragraph.id}").fetchSemanticsNodes().isNotEmpty() }
         compose.onNodeWithTag("page-block:${paragraph.id}").assertTextContains("Edited paragraph")
+        captureFormatting("recreated")
         if (!compose.onNodeWithTag("page-save").fetchSemanticsNode().config.contains(androidx.compose.ui.semantics.SemanticsProperties.Disabled)) compose.onNodeWithTag("page-save").performClick()
         compose.waitUntil(10_000) { application.repository.state.value.items.first { it.id == item.id }.version == 2u }
         val persisted = runBlocking { application.repository.query { it.page(item.id) } }
-        assertTrue(persisted.blocks.first { it.id == paragraph.id }.spans.any { it.key == "b" && it.start == 0u && it.end == 6u })
+        val savedSpans = persisted.blocks.first { it.id == paragraph.id }.spans
+        assertTrue("Expected bold [0, 6) after save; actual spans: $savedSpans", savedSpans.any { it.key == "b" && it.start == 0u && it.end == 6u })
         assertEquals(original.blocks.filter { it.kind in listOf("code", "image") }, persisted.blocks.filter { it.kind in listOf("code", "image") })
         compose.onNodeWithContentDescription(application.getString(R.string.versions)).performClick()
         compose.onNodeWithText(application.getString(R.string.version, 1)).performClick()
