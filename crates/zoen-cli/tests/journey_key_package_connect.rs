@@ -35,6 +35,7 @@ async fn a_connecting_device_does_not_miss_a_low_stock_notice() {
     for _ in 0..24 {
         ana.request(Op::ClaimKeyPackages {
             ids: vec![bruno.identity.clone()],
+            operation_id: None,
         })
         .await
         .expect("claim package");
@@ -77,6 +78,7 @@ async fn a_connecting_device_does_not_miss_a_low_stock_notice() {
     );
     ana.request(Op::ClaimKeyPackages {
         ids: vec![bruno.identity.clone()],
+        operation_id: None,
     })
     .await
     .expect("claim the eighth package");

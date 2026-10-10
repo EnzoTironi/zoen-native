@@ -119,7 +119,10 @@ impl Net {
         });
         {
             let poke_tx = cmd_tx.clone();
-            lock(&engine).net.poke = Some(Box::new(move || {
+            let mut engine = lock(&engine);
+            // stop_sync cancels its runtime; its dispatcher may not reach normal cleanup.
+            engine.mls_claims_disconnected();
+            engine.net.poke = Some(Box::new(move || {
                 let _ = poke_tx.send(Cmd::Flush);
             }));
         }
@@ -336,7 +339,10 @@ enum Waiting {
     SealedProfiles(Vec<String>),
     KeyPackagesPublished,
     /// Key packages claimed for this Space's newcomers.
-    Claimed(String),
+    Claimed {
+        space: String,
+        operation: String,
+    },
     /// Our devices, as the relay lists them.
     Devices,
     /// Nothing to do with the answer (a message to another device of ours).
@@ -406,16 +412,21 @@ async fn session(
     if let Err(e) = send(&mut sink, &hello).await {
         return Exit::Retry(e);
     }
-    let (nonce, relay, profiles) = match recv(&mut stream).await {
+    let (nonce, relay, profiles, claim_receipts) = match recv(&mut stream).await {
         Ok(ServerFrame::Challenge {
             nonce,
             relay,
             capabilities,
             protocol,
             ..
-        }) if protocol >= MIN_PROTOCOL_VERSION => {
-            (nonce, relay, capabilities.iter().any(|c| c == "profiles"))
-        }
+        }) if protocol >= MIN_PROTOCOL_VERSION => (
+            nonce,
+            relay,
+            capabilities.iter().any(|c| c == "profiles"),
+            capabilities
+                .iter()
+                .any(|c| c == roda_proto::KEY_PACKAGE_CLAIM_CAPABILITY),
+        ),
         Ok(ServerFrame::Challenge { protocol, .. }) => {
             return Exit::Blocked(format!(
                 "relay protocol {protocol} needs an upgrade before encrypted histories can sync"
@@ -498,6 +509,7 @@ async fn session(
     let mut profiles_inflight: Option<tokio::time::Instant> = None;
     let mut traffic = ProfileTraffic::default();
     let mut opening: Option<tokio::time::Instant> = None;
+    let mut claim_refusal_reported = false;
 
     // Registration can receive low-stock notices, events and presence before its reply.
     // Run them through the same ordered dispatcher as the following socket frames.
@@ -658,13 +670,13 @@ async fn session(
                                 ctx.engine().mls_key_packages_published(result.map(|_| ()));
                                 settle(&mut traffic.key_packages, ok);
                             }
-                            Some(Waiting::Claimed(space)) => {
+                            Some(Waiting::Claimed { space, operation }) => {
                                 let packages = match result {
                                     Ok(Reply::KeyPackages(list)) => Ok(list),
                                     Ok(other) => Err(format!("unexpected {other:?}")),
                                     Err(e) => Err(e),
                                 };
-                                ctx.engine().mls_claimed(&space, packages);
+                                ctx.engine().mls_claimed(&space, &operation, packages);
                                 if let Err(e) = flush(ctx, &mut sink, &mut sent).await { break Exit::Retry(e) }
                             }
                             None => {}
@@ -771,9 +783,21 @@ async fn session(
                     Ok(false) => {}
                     Err(e) => tracing_like(&format!("group recovery: {e}")),
                 }
-                let claim = ctx.engine().mls_to_claim();
-                if let Some((space, ids)) = claim {
-                    reqs.push((Op::ClaimKeyPackages { ids }, Waiting::Claimed(space)));
+                let claim = ctx.engine().mls_to_claim(claim_receipts);
+                match claim {
+                    Ok(Some((space, ids, operation))) => reqs.push((
+                        Op::ClaimKeyPackages { ids, operation_id: Some(operation.clone()) },
+                        Waiting::Claimed { space, operation },
+                    )),
+                    Ok(None) => {},
+                    Err(error) if !claim_refusal_reported => {
+                        let message = error.to_string();
+                        tracing_like(&message);
+                        ctx.set(|s| s.error = Some(message.clone()));
+                        if let Some(listener) = &ctx.listener { listener.on_error(message); }
+                        claim_refusal_reported = true;
+                    }
+                    Err(_) => {},
                 }
                 let checkpoints = ctx.engine().mls_checkpoints();
                 match checkpoints {
@@ -813,6 +837,8 @@ async fn session(
             }
         }
     };
+    // Include unsent claims if writing a batch failed before their waiting entry existed.
+    ctx.engine().mls_claims_disconnected();
     for (_, w) in waiting {
         if let Waiting::External(tx) = w {
             let _ = tx.send(Err("offline".into()));

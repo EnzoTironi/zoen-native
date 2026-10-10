@@ -703,7 +703,9 @@ async fn main() {
             let space = e
                 .create_group_with(title, ids, privacy)
                 .unwrap_or_else(|err| die(err));
-            e.wait_until_idle(timeout).await;
+            e.wait_until_settled(timeout)
+                .await
+                .unwrap_or_else(|err| die(err));
             println!("{space}");
         }
         "send" => {
