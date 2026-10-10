@@ -4,7 +4,7 @@ The port uses Kotlin/Compose and the real Rust JNI library. The [product review]
 
 ## Product correction — 2026-10-10
 
-App source `161c487` preserves the original navigation order, home hierarchy, contact portraits, neutral message palette, message/card structure, onboarding poses and app artwork. The [product review](android-product-review.md) lists the original files, concrete mismatches and corrections. Both complete local native runs pass 53/53 cases with zero failures or skips; normal both-ABI builds, R8, lint, 77 JVM tests, 16 KB alignment and non-debuggable cold startup pass. The added journey covers primary Files navigation and folder back-stack restoration. Passing these checks does not establish that every visual detail is perfect.
+Production source `6b7e450` restores the original mascot artwork and motion, English/Portuguese onboarding, all joined conversations, app ordering, neutral palette and chat/card hierarchy. Android uses native navigation, permission prompts, adaptive sizing and lifecycle/reduced-motion behavior. Direct iOS runtime references and Android screenshots are described in the [product review](android-product-review.md). Both complete native suites pass 54/54 with no failures or skips, using identical APKs; both-ABI builds, R8, lint, 77 JVM tests and 16 KB alignment pass. The signed non-debuggable release cold-starts in 624 ms in one emulator sample. The original Files regression and new same-test-APK community regression are retained. Earlier failures remain labeled by source. Physical model execution and the public relay rollout remain separate dependencies.
 
 ## Local checks — 2026-10-09
 
