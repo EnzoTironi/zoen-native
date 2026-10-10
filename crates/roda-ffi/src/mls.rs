@@ -647,6 +647,9 @@ impl Engine {
                         }
                     }
                     Ok(_) => {}
+                    Err(e @ roda_mls::MlsError::Storage(_)) => {
+                        return Ingest::Invalid(e.to_string());
+                    }
                     Err(e) => tracing_like(&format!("can't open a message in {space}: {e}")),
                 }
             }
@@ -677,14 +680,33 @@ impl Engine {
             },
             SealedKind::Welcome if !device.has_group(&space) => {
                 match device.join(&space, &data, &roster) {
-                    Ok(true) => landed = device.epoch(&space).ok().map(|ep| (ep, true)),
+                    Ok(true) => match device.epoch(&space) {
+                        Ok(epoch) => landed = Some((epoch, true)),
+                        Err(e @ roda_mls::MlsError::Storage(_)) => {
+                            return Ingest::Invalid(e.to_string());
+                        }
+                        Err(e) => {
+                            tracing_like(&format!("can't load a joined group in {space}: {e}"))
+                        }
+                    },
                     Ok(false) => {}
+                    Err(e @ roda_mls::MlsError::Storage(_)) => {
+                        return Ingest::Invalid(e.to_string());
+                    }
                     Err(e) => tracing_like(&format!("refused a welcome in {space}: {e}")),
                 }
             }
             SealedKind::Welcome | SealedKind::Unspecified => {}
         }
-        let digest = landed.and_then(|_| device.checkpoint(&space).ok());
+        let digest = if landed.is_some() {
+            match device.checkpoint(&space) {
+                Ok(checkpoint) => Some(checkpoint),
+                Err(e @ roda_mls::MlsError::Storage(_)) => return Ingest::Invalid(e.to_string()),
+                Err(_) => None,
+            }
+        } else {
+            None
+        };
         drop(device);
 
         let e = match opened {

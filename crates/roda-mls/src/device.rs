@@ -19,6 +19,20 @@ const PAST_EPOCHS: usize = 4;
 const PADDING: usize = 64;
 const CHECKPOINT_TAG: &[u8] = b"zoen-checkpoint/1";
 
+fn storage_error(error: impl std::fmt::Debug) -> MlsError {
+    MlsError::Storage(format!("{error:?}"))
+}
+
+fn welcome_error<E: std::fmt::Debug>(error: WelcomeError<E>) -> MlsError {
+    match error {
+        WelcomeError::StorageError(error)
+        | WelcomeError::PublicGroupError(CreationFromExternalError::WriteToStorageError(error)) => {
+            storage_error(error)
+        }
+        error => mls(error),
+    }
+}
+
 /// A commit this device made: publish `commit`, then `welcome` (when it adds someone),
 /// in the Space's log. The commit applies when it comes back through [`Device::open`].
 pub struct Commit {
@@ -245,7 +259,7 @@ impl<'c> Device<'c> {
 
     fn load(&self, p: &Provider<'c>, space: &str) -> Result<MlsGroup, MlsError> {
         MlsGroup::load(p.storage(), &group_id(space))
-            .map_err(mls)?
+            .map_err(storage_error)?
             .ok_or(MlsError::NoGroup)
     }
 
@@ -563,9 +577,11 @@ impl<'c> Device<'c> {
                 Err(WelcomeError::NoMatchingKeyPackage | WelcomeError::JoinerSecretNotFound) => {
                     return Ok(false)
                 }
-                Err(e) => return Err(mls(e)),
+                Err(e) => return Err(welcome_error(e)),
             };
-            let staged = processed.into_staged_welcome(p, None).map_err(mls)?;
+            let staged = processed
+                .into_staged_welcome(p, None)
+                .map_err(welcome_error)?;
             if staged.group_context().group_id() != &group_id(space) {
                 return Err(MlsError::Mls("Welcome for another space".into()));
             }
@@ -574,7 +590,7 @@ impl<'c> Device<'c> {
                 .map(|m| leaf_of(&m.credential, &m.signature_key).map(|l| l.identity))
                 .collect::<Result<BTreeSet<_>, _>>()?;
             unlisted(group, roster)?;
-            staged.into_group(p).map(drop).map_err(mls)?;
+            staged.into_group(p).map(drop).map_err(welcome_error)?;
             Ok(true)
         })
     }
@@ -607,8 +623,10 @@ impl<'c> Device<'c> {
         admitted_sender: &Leaf,
     ) -> Result<Opened, MlsError> {
         self.with(|p| {
-            let Ok(mut group) = self.load(p, space) else {
-                return Ok(Opened::NotMember);
+            let mut group = match self.load(p, space) {
+                Ok(group) => group,
+                Err(MlsError::NoGroup) => return Ok(Opened::NotMember),
+                Err(error) => return Err(error),
             };
             if !group.is_active() {
                 return Ok(Opened::NotMember);
@@ -623,6 +641,15 @@ impl<'c> Device<'c> {
                 Ok(m) => m,
                 Err(ProcessMessageError::ValidationError(ValidationError::WrongEpoch)) => {
                     return Ok(Opened::Stale)
+                }
+                Err(ProcessMessageError::StorageError(error)) => return Err(storage_error(error)),
+                // OpenMLS also collapses failed local key reads into this staging error.
+                Err(
+                    error @ ProcessMessageError::InvalidCommit(
+                        StageCommitError::MissingDecryptionKey,
+                    ),
+                ) => {
+                    return Err(storage_error(error));
                 }
                 Err(e) => return Err(mls(e)),
             };
@@ -670,13 +697,18 @@ impl<'c> Device<'c> {
                         .then(|| self.conn.unchecked_transaction())
                         .transpose()
                         .map_err(|e| MlsError::Storage(e.to_string()))?;
-                    group.merge_staged_commit(p, *staged).map_err(mls)?;
+                    group
+                        .merge_staged_commit(p, *staged)
+                        .map_err(|error| match error {
+                            MergeCommitError::StorageError(error) => storage_error(error),
+                            error => mls(error),
+                        })?;
                     self.set_reconciliation(space, reconcile)?;
                     let epoch = group.epoch().as_u64();
                     if !group.is_active() {
                         // Our leaf was taken out (a removal, or a stranded leaf replaced):
                         // the secrets go, and a later Welcome starts the group afresh.
-                        group.delete(p.storage()).map_err(mls)?;
+                        group.delete(p.storage()).map_err(storage_error)?;
                     }
                     if let Some(tx) = tx {
                         tx.commit().map_err(|e| MlsError::Storage(e.to_string()))?;
@@ -716,7 +748,9 @@ impl<'c> Device<'c> {
         let staged = group.pending_commit().ok_or(MlsError::NoGroup)?;
         if let Err(e) = check_roster(group, staged, roster) {
             // Everyone refuses it alike, so drop it and stay in this epoch.
-            group.clear_pending_commit(p.storage()).map_err(mls)?;
+            group
+                .clear_pending_commit(p.storage())
+                .map_err(storage_error)?;
             return Err(e);
         }
         let tx = self
@@ -725,7 +759,12 @@ impl<'c> Device<'c> {
             .then(|| self.conn.unchecked_transaction())
             .transpose()
             .map_err(|e| MlsError::Storage(e.to_string()))?;
-        group.merge_pending_commit(p).map_err(mls)?;
+        group.merge_pending_commit(p).map_err(|error| match error {
+            MergePendingCommitError::MergeCommitError(MergeCommitError::StorageError(error)) => {
+                storage_error(error)
+            }
+            error => mls(error),
+        })?;
         self.set_reconciliation(
             std::str::from_utf8(group.group_id().as_slice()).map_err(|_| MlsError::Credential)?,
             false,

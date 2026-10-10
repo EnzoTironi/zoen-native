@@ -63,6 +63,42 @@ fn pair(enzo: &Device, marina: &Device, both: &BTreeSet<String>) -> Vec<u8> {
 }
 
 #[test]
+fn provider_read_and_processing_failures_remain_storage_errors_and_allow_retry() {
+    let (e, m) = (Person::new(), Person::new());
+    let (ce, cm) = (db(), db());
+    let (enzo, marina) = (e.open(&ce), m.open(&cm));
+    let both = roster(&[&e, &m]);
+    pair(&enzo, &marina, &both);
+    let before = marina.checkpoint(SPACE).unwrap();
+    let bytes = enzo.seal(SPACE, b"retry the same application").unwrap();
+    cm.execute_batch("ALTER TABLE openmls_group_data RENAME TO unavailable_group_data")
+        .unwrap();
+    assert!(matches!(
+        marina.open(SPACE, &bytes, &both, enzo.leaf()),
+        Err(MlsError::Storage(_))
+    ));
+    cm.execute_batch("ALTER TABLE unavailable_group_data RENAME TO openmls_group_data")
+        .unwrap();
+    assert_eq!(marina.checkpoint(SPACE).unwrap(), before);
+    cm.execute_batch(
+        "CREATE TRIGGER fail_processing BEFORE INSERT ON openmls_group_data
+         WHEN NEW.data_type = 'message_secrets'
+         BEGIN SELECT RAISE(ABORT, 'injected processing failure'); END;",
+    )
+    .unwrap();
+    assert!(matches!(
+        marina.open(SPACE, &bytes, &both, enzo.leaf()),
+        Err(MlsError::Storage(ref reason)) if reason.contains("injected processing failure")
+    ));
+    cm.execute_batch("DROP TRIGGER fail_processing").unwrap();
+    assert_eq!(marina.checkpoint(SPACE).unwrap(), before);
+    assert!(matches!(
+        marina.open(SPACE, &bytes, &both, enzo.leaf()).unwrap(),
+        Opened::Application { plaintext, .. } if plaintext == b"retry the same application"
+    ));
+}
+
+#[test]
 fn external_commit_cannot_add_an_unlisted_identity_or_impersonate_an_admitted_device() {
     let (e, m, outsider) = (Person::new(), Person::new(), Person::new());
     let (ce, cm, cx) = (db(), db(), db());
