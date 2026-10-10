@@ -18,6 +18,13 @@ data class Notice(val text: String, val undo: UndoToken? = null)
 class ZoenViewModel(application: Application) : AndroidViewModel(application) {
     val repository = (application as ZoenApplication).repository
     val state = repository.state
+    val approvals = xyz.tironi.zoen.data.ApprovalReview(viewModelScope, state, write = { pending ->
+        repository.change { core ->
+            check(core.me().id == pending.owner && !state.value.keyMissing)
+            val result = core.decideRequest(pending.request.id, pending.decision)
+            result.request.status == RequestStatus.APPROVED || result.request.status == RequestStatus.DENIED
+        }
+    }, onError = { notify(it.message ?: application.getString(R.string.something_wrong)) })
     val planner = AgentPlanner()
     val pageSaves = xyz.tironi.zoen.pages.PageSaveCoordinator()
     val browser = AgentBrowser(application, viewModelScope, repository.vault)
@@ -29,7 +36,10 @@ class ZoenViewModel(application: Application) : AndroidViewModel(application) {
     private val messages = Channel<Notice>(Channel.BUFFERED)
     val notices = messages.receiveAsFlow()
 
-    init { viewModelScope.launch { repository.errorEvents.collect { messages.send(Notice(it)) } } }
+    init {
+        viewModelScope.launch { repository.errorEvents.collect { messages.send(Notice(it)) } }
+        viewModelScope.launch { state.collect { approvals.reconcile(it) } }
+    }
 
     fun boot(demo: Boolean) = viewModelScope.launch { repository.boot(demo) }
     fun reportGrowthAfterOnboarding() {

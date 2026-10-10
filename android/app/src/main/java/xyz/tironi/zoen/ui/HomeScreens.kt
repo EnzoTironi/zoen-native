@@ -158,6 +158,15 @@ private fun matchesSpace(space: SpaceSummary, query: String): Boolean {
 
 @Composable
 fun ActivityScreen(model: ZoenViewModel, state: AppState, navigate: (NavKey) -> Unit) {
+    var showingList by rememberSaveable(state.me?.id) { mutableStateOf(false) }
+    if (showingList) ActivityList(model, state, navigate) { showingList = false }
+    else Scaffold(topBar = { HomeBar(stringResource(R.string.activity), state, navigate) }, contentWindowInsets = WindowInsets(0, 0, 0, 0)) { padding ->
+        ApprovalsDeck(model, state, navigate, { model.approvals.flush(); showingList = true }, Modifier.padding(padding))
+    }
+}
+
+@Composable
+private fun ActivityList(model: ZoenViewModel, state: AppState, navigate: (NavKey) -> Unit, onShowCards: () -> Unit) {
     var section by rememberSaveable { mutableIntStateOf(0) }
     val loadedMentions by produceState<List<Mention>>(emptyList(), state.revision) { value = model.repository.query { it.mentions() } }
     val mentions = loadedMentions
@@ -167,7 +176,10 @@ fun ActivityScreen(model: ZoenViewModel, state: AppState, navigate: (NavKey) -> 
     var review by remember { mutableStateOf<List<AgentRequestDto>?>(null) }
     var busy by remember { mutableStateOf(false) }
     Scaffold(topBar = { HomeBar(stringResource(R.string.activity), state, navigate) }, contentWindowInsets = WindowInsets(0, 0, 0, 0)) { padding ->
-        LazyColumn(Modifier.padding(padding), contentPadding = PaddingValues(24.dp, 8.dp, 24.dp, 100.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        LazyColumn(Modifier.padding(padding).testTag("activity-list"), contentPadding = PaddingValues(24.dp, 8.dp, 24.dp, 100.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            item { Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+                TextButton(onClick = onShowCards, modifier = Modifier.testTag("activity-show-cards")) { Text(stringResource(R.string.approval_cards)) }
+            } }
             item { LazyRow(Modifier.testTag("activity-tabs"), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 items(3) { index ->
                     val count = listOf(pending.size, mentions.size, tasks.size)[index]

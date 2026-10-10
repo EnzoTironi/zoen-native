@@ -129,6 +129,13 @@
   <string name="pending">Needs your attention</string>
   <string name="all_clear">You\'re all caught up.</string>
   <string name="all_clear_detail">When an agent needs your permission, it will appear here.</string>
+  <string name="approval_cards">Cards</string>
+  <string name="approval_list">List</string>
+  <string name="approval_empty">No approval requests here yet</string>
+  <string name="approval_empty_detail">Requests appear when your agents need a decision. Open List for mentions, tasks and past requests.</string>
+  <string name="approval_gesture_help">Review with a swipe</string>
+  <string name="approval_gesture_detail">Swipe right to approve or left to deny. Swipe up to always approve this action, or down to always deny it. A standing rule covers this agent, action and chat. You have a few seconds to undo before the decision is saved. Sensitive actions always ask. The buttons offer the same choices.</string>
+  <string name="approval_always_asks">This action always asks. Review it each time.</string>
   <string name="approve_all">Approve all</string>
   <string name="approve_question">Allow this agent to perform this action?</string>
   <string name="status_pending">Pending</string>

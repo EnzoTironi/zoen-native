@@ -88,6 +88,7 @@ class NativeJourneysTest {
     @Test fun approvalsAreReviewedAndRecordedByTheSharedEngine() {
         val request = application.repository.state.value.requests.first { it.status == RequestStatus.PENDING }
         compose.onNodeWithText(application.getString(R.string.activity)).performClick()
+        compose.onNodeWithTag("activity-show-list").performClick()
         compose.onNodeWithText(request.title).performScrollTo().performClick()
         compose.onNodeWithText(application.getString(R.string.approve), substring = false).performClick()
         compose.onNode(isDialog()).assertExists()

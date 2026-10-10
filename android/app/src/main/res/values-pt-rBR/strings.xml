@@ -129,6 +129,13 @@
   <string name="pending">Precisa da sua atenção</string>
   <string name="all_clear">Tudo em dia.</string>
   <string name="all_clear_detail">Quando um agente precisar de permissão, o pedido aparecerá aqui.</string>
+  <string name="approval_cards">Cartões</string>
+  <string name="approval_list">Lista</string>
+  <string name="approval_empty">Ainda não há pedidos de aprovação</string>
+  <string name="approval_empty_detail">Os pedidos aparecem quando seus agentes precisam de uma decisão. Abra Lista para menções, tarefas e pedidos anteriores.</string>
+  <string name="approval_gesture_help">Revisar deslizando</string>
+  <string name="approval_gesture_detail">Deslize para a direita para aprovar ou para a esquerda para recusar. Para cima, sempre aprovar esta ação; para baixo, sempre recusar. Uma regra vale para este agente, ação e conversa. Você tem alguns segundos para desfazer antes de salvar a decisão. Ações sensíveis sempre pedem aprovação. Os botões oferecem as mesmas opções.</string>
+  <string name="approval_always_asks">Esta ação sempre pede aprovação. Revise a cada vez.</string>
   <string name="approve_all">Aprovar todos</string>
   <string name="approve_question">Permitir que este agente faça esta ação?</string>
   <string name="status_pending">Pendente</string>
