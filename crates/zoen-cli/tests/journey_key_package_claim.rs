@@ -419,6 +419,20 @@ async fn empty_claim_schedules_work_and_cannot_look_idle_before_retry() {
     let (_, records, held) = next_reply(&mut proxy).await;
     assert!(held);
     assert!(records.is_empty());
+    // The held claim is independent of the initial group's event acknowledgments.
+    // Observe that outbox draining has finished before testing an idle-looking retry.
+    let deadline = tokio::time::Instant::now() + Duration::from_secs(8);
+    loop {
+        let connection = ana.core.connection();
+        if connection.synced && connection.pending == 0 {
+            break;
+        }
+        assert!(
+            tokio::time::Instant::now() < deadline,
+            "initial group outbox did not drain: {connection:?}"
+        );
+        tokio::time::sleep(Duration::from_millis(20)).await;
+    }
     proxy.release.notify_one();
     assert!(ana.core.wait_until_settled(200).await.is_err());
     let connection = ana.core.connection();
