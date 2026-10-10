@@ -113,7 +113,12 @@ pub fn evaluate(
             remaining_cents: budget.remaining_cents(),
         });
     }
+    evaluate_permission(level, action, policy)
+}
 
+/// Permission only. Budget accounting remains a separate authority; a runtime
+/// must supply an actual verified grant and its own financial admission.
+pub fn evaluate_permission(level: TrustLevel, action: &ActionClass, policy: &Policy) -> Decision {
     // 1. Linhas vermelhas: sempre pedem, em qualquer nível.
     match action {
         ActionClass::Money { cents } if *cents > policy.money_ceiling_cents => {
