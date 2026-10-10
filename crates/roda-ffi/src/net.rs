@@ -68,6 +68,22 @@ fn lock(e: &Shared) -> std::sync::MutexGuard<'_, Engine> {
     e.lock().unwrap_or_else(|p| p.into_inner())
 }
 
+/// Builds the HTTP TLS configuration, including before sync has started.
+pub(crate) fn http_client(timeout: Duration) -> Result<reqwest::Client, reqwest::Error> {
+    let _ = rustls::crypto::ring::default_provider().install_default();
+    let builder = reqwest::Client::builder().timeout(timeout);
+    #[cfg(target_os = "android")]
+    let builder = {
+        let roots =
+            rustls::RootCertStore::from_iter(webpki_roots::TLS_SERVER_ROOTS.iter().cloned());
+        let tls = rustls::ClientConfig::builder()
+            .with_root_certificates(roots)
+            .with_no_client_auth();
+        builder.tls_backend_preconfigured(tls)
+    };
+    builder.build()
+}
+
 /// The relay's HTTP base (blobs): `wss://x` → `https://x`, no trailing slash.
 pub fn http_base(relay: &str) -> String {
     let base = relay.trim_end_matches('/');
@@ -165,8 +181,17 @@ impl Drop for Net {
     fn drop(&mut self) {
         let _ = self.cmd.send(Cmd::Stop);
         if let Some(rt) = self.rt.take() {
-            // Safe from inside another async runtime too.
-            rt.shutdown_background();
+            // Sync and media tasks own the database. Drain them before a caller reopens it.
+            if let Ok(caller) = tokio::runtime::Handle::try_current() {
+                let own_worker = caller.id() == rt.handle().id();
+                let shutdown = std::thread::spawn(move || drop(rt));
+                // A callback on this runtime must return before its own worker can join.
+                if !own_worker {
+                    shutdown.join().expect("network runtime shutdown failed");
+                }
+            } else {
+                drop(rt);
+            }
         }
     }
 }
@@ -441,7 +466,13 @@ async fn session(
     let mut early: Vec<ServerFrame> = Vec::new();
     let relay_knows_me = loop {
         match recv(&mut stream).await {
-            Ok(ServerFrame::Ready { registered, .. }) => break registered,
+            Ok(ServerFrame::Ready {
+                identity: ready_identity,
+                registered,
+            }) if ready_identity == identity => break registered,
+            Ok(ServerFrame::Ready { .. }) => {
+                return Exit::Blocked("relay authenticated a different identity".into())
+            }
             Ok(ServerFrame::Error { code, message }) => return refused(code, message, backoff),
             Ok(f @ ServerFrame::Presence { .. }) if early.len() < 1024 => early.push(f),
             Ok(other) => return Exit::Retry(format!("unexpected {other:?}")),
@@ -458,6 +489,8 @@ async fn session(
         }
         let _ = ctx.engine().set_registered(true);
     }
+    ctx.engine()
+        .remember_authenticated_relay(&identity, &key.id(), &relay_url, &relay);
     *backoff = Duration::from_millis(500);
     ctx.engine().profiles_session_start(profiles);
     // Encrypted media moves over HTTP beside the socket, for as long as this session lives.
@@ -935,10 +968,7 @@ async fn media_worker(
     key: roda_log::Signer,
     kick: Arc<tokio::sync::Notify>,
 ) {
-    let Ok(http) = reqwest::Client::builder()
-        .timeout(Duration::from_secs(60))
-        .build()
-    else {
+    let Ok(http) = http_client(Duration::from_secs(60)) else {
         tracing_like("media: no HTTP client");
         return;
     };
@@ -1251,6 +1281,70 @@ mod tests {
             hash,
             env,
         }
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn a_ready_for_another_identity_cannot_establish_report_credentials() {
+        let _ = rustls::crypto::ring::default_provider().install_default();
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let url = format!("ws://{}", listener.local_addr().unwrap());
+        let mut engine = Engine::open(":memory:").unwrap();
+        engine.create_account("Ana", "ana", &url).unwrap();
+        engine.set_registered(true).unwrap();
+        let engine = Arc::new(Mutex::new(engine));
+        let (_command, mut commands) = mpsc::unbounded_channel();
+        let (status, _) = watch::channel(NetStatus {
+            state: ConnState::Connecting,
+            synced: false,
+            error: None,
+            registered: true,
+        });
+        let ctx = Ctx {
+            engine: engine.clone(),
+            listener: None,
+            status,
+            lang: crate::i18n::Lang::En,
+            maintenance_work: None,
+        };
+        let client = async {
+            let mut backoff = Duration::from_millis(500);
+            let exit = session(&ctx, &mut commands, &mut backoff).await;
+            assert!(
+                matches!(exit, Exit::Blocked(ref error) if error == "relay authenticated a different identity")
+            );
+            assert!(ctx.engine().net.authenticated_relay.is_none());
+        };
+        let relay = async {
+            let (socket, _) = listener.accept().await.unwrap();
+            let mut socket = tokio_tungstenite::accept_async(socket).await.unwrap();
+            assert!(matches!(
+                request(&mut socket).await,
+                ClientFrame::Hello { .. }
+            ));
+            reply(
+                &mut socket,
+                ServerFrame::Challenge {
+                    nonce: "wrong-ready-test".into(),
+                    relay: "canonical-relay".into(),
+                    protocol: PROTOCOL_VERSION,
+                    capabilities: Vec::new(),
+                },
+            )
+            .await;
+            assert!(matches!(
+                request(&mut socket).await,
+                ClientFrame::Auth { .. }
+            ));
+            reply(
+                &mut socket,
+                ServerFrame::Ready {
+                    identity: "another-account".into(),
+                    registered: true,
+                },
+            )
+            .await;
+        };
+        tokio::join!(client, relay);
     }
 
     #[tokio::test(flavor = "current_thread")]

@@ -222,13 +222,13 @@ fn fork_meta(space: &str) -> String {
 
 fn storage(e: impl std::fmt::Display) -> CoreError {
     CoreError::Storage {
-        message: e.to_string(),
+        reason: e.to_string(),
     }
 }
 
 pub(crate) fn mls_err(e: MlsError) -> CoreError {
     match e {
-        MlsError::Storage(message) => CoreError::Storage { message },
+        MlsError::Storage(reason) => CoreError::Storage { reason },
         other => CoreError::Invalid {
             reason: other.to_string(),
         },

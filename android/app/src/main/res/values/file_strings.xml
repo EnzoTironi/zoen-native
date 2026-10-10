@@ -1,0 +1,15 @@
+<resources>
+    <string name="files_add">Add</string>
+    <string name="files_you">you</string>
+    <string name="files_search">Search files, chats or people</string>
+    <string name="files_personal">Personal</string>
+    <string name="files_shared">Shared</string>
+    <string name="files_agents">From agents</string>
+    <string name="files_folders">Folders</string>
+    <string name="files_recent">Recent</string>
+    <plurals name="files_items"><item quantity="one">%1$d item</item><item quantity="other">%1$d items</item></plurals>
+    <string name="files_versions">Every change is kept as a version. Restoring adds a new version; nothing is lost.</string>
+    <string name="files_import_many">Add files</string>
+    <string name="files_open_chat">Open the chat</string>
+    <string name="files_add_to">Add to a chat</string>
+</resources>

@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="activity_approvals">Approvals</string>
+    <string name="activity_mentions">Mentions</string>
+    <string name="activity_tasks">Tasks</string>
+    <string name="activity_no_mentions">Nobody mentioned you</string>
+    <string name="activity_no_tasks">No open tasks</string>
+    <string name="activity_mentioned">%1$s mentioned you</string>
+    <string name="activity_near_cap">%1$s is near the cap</string>
+</resources>

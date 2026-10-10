@@ -20,7 +20,6 @@ env:
   CARGO_INCREMENTAL: "0"
   CARGO_PROFILE_DEV_DEBUG: "0"
   RUST_TOOLCHAIN: "1.99.0"
-  ZOEN_TEST_PG: postgres://zoen@127.0.0.1:5432/postgres
 
 jobs:
   rust:
@@ -43,11 +42,13 @@ jobs:
       - name: Format
         run: cargo fmt --all --check
 
-      - name: Postgres, FoundationDB and NATS
+      - name: Runner PostgreSQL
         run: |
-          docker run -d --name pg -p 5432:5432 \
-            -e POSTGRES_USER=zoen -e POSTGRES_HOST_AUTH_METHOD=trust \
-            public.ecr.aws/docker/library/postgres:17-alpine -c max_connections=300
+          python3 scripts/test-ci-postgres.py
+          scripts/ci-postgres.sh
+
+      - name: FoundationDB and NATS
+        run: |
           scripts/fdb.sh up
           scripts/nats.sh up
           eval "$(scripts/fdb.sh env)"
@@ -55,7 +56,6 @@ jobs:
           for v in FDB_CLUSTER_FILE LIBRARY_PATH LD_LIBRARY_PATH ZOEN_NATS_URL; do
             echo "$v=${!v}" >> "$GITHUB_ENV"
           done
-          for _ in $(seq 1 30); do docker exec pg pg_isready -U zoen >/dev/null 2>&1 && break; sleep 1; done
 
       - name: gVisor for the sandbox journeys (ADR 0028 P0)
         run: |

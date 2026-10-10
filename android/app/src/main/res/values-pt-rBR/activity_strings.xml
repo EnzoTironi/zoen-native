@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="activity_approvals">Aprovações</string>
+    <string name="activity_mentions">Menções</string>
+    <string name="activity_tasks">Tarefas</string>
+    <string name="activity_no_mentions">Ninguém mencionou você</string>
+    <string name="activity_no_tasks">Nenhuma tarefa pendente</string>
+    <string name="activity_mentioned">%1$s mencionou você</string>
+    <string name="activity_near_cap">%1$s está perto do limite</string>
+</resources>

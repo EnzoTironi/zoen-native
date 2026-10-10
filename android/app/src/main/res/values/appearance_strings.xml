@@ -1,0 +1,10 @@
+<resources>
+    <string name="chat_appearance">Chat background</string><string name="chat_appearance_preview">Your messages stay easy to read</string>
+    <string name="background_only_me">Only on this device</string><string name="background_shared_detail">Turn off to share the background with this chat.</string>
+    <string name="background_default">Default background</string><string name="choose_photo">Choose photo</string>
+    <string name="background_colors">Colors</string><string name="background_gradients">Gradients</string><string name="background_doodles">Doodles</string><string name="background_scenes">Paper scenes</string>
+    <string name="background_zoom">Zoom</string><string name="background_horizontal">Horizontal position</string><string name="background_vertical">Vertical position</string><string name="background_dim">Dimming</string><string name="background_blur">Blur</string>
+    <string name="background_auto">System</string><string name="background_light">Light</string><string name="background_dark">Dark</string>
+    <string name="bg_butter">Butter</string><string name="bg_mint">Mint</string><string name="bg_sky">Sky</string><string name="bg_lilac">Lilac</string><string name="bg_blush">Blush</string><string name="bg_cardboard">Cardboard</string>
+    <string name="bg_dawn">Dawn</string><string name="bg_forest">Forest</string><string name="bg_ocean">Ocean</string><string name="bg_dusk">Dusk</string><string name="bg_paper">Paper</string><string name="bg_trail">Trail</string><string name="bg_picnic">Picnic</string><string name="bg_studio">Studio</string><string name="bg_meadow">Meadow</string><string name="bg_coast">Coast</string>
+</resources>

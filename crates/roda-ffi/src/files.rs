@@ -251,6 +251,40 @@ impl Engine {
         thumbnail: Option<&[u8]>,
         note: &str,
     ) -> R<()> {
+        self.file_new_version_inner(item, bytes, thumbnail, note, None)
+    }
+
+    pub fn file_new_version_typed(
+        &mut self,
+        item: &str,
+        bytes: &[u8],
+        thumbnail: Option<&[u8]>,
+        note: &str,
+        name: &str,
+        mime: &str,
+    ) -> R<()> {
+        if name.is_empty()
+            || name.len() > 255
+            || name.contains(['/', '\\', '\0'])
+            || !mime.contains('/')
+            || mime.len() > 128
+        {
+            return Err(invalid(
+                "nome ou tipo de arquivo inválido",
+                "invalid file name or type",
+            ));
+        }
+        self.file_new_version_inner(item, bytes, thumbnail, note, Some((name, mime)))
+    }
+
+    fn file_new_version_inner(
+        &mut self,
+        item: &str,
+        bytes: &[u8],
+        thumbnail: Option<&[u8]>,
+        note: &str,
+        format: Option<(&str, &str)>,
+    ) -> R<()> {
         let me = self.me_id()?;
         let (it, cur) = self.file_item(item)?;
         let space = it.space.clone();
@@ -267,10 +301,13 @@ impl Engine {
         let key = self.file_key(Some(item))?;
         self.store
             .set_meta(&format!("file_key:{item}"), &hex::encode(key))?;
+        let (name, mime) = format.unwrap_or((&cur.name, &cur.mime));
         let doc = self.file_doc(
-            &space, &key, &cur.name, &cur.path, &cur.mime, bytes, thumbnail, &prior,
+            &space, &key, name, &cur.path, mime, bytes, thumbnail, &prior,
         )?;
         if doc.sha256 == cur.sha256
+            && doc.name == cur.name
+            && doc.mime == cur.mime
             && doc.thumb.as_ref().map(|t| &t.sha256) == cur.thumb.as_ref().map(|t| &t.sha256)
         {
             return Ok(());

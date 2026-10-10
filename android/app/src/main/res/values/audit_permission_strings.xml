@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="ap_retry">Try again</string>
+    <string name="ap_audit_refresh">Verify again</string>
+    <string name="ap_audit_load_failed">Could not read the signed history.</string>
+    <string name="ap_audit_empty">No signed history yet</string>
+    <string name="ap_audit_explanation">Every change is an append-only signed event. Each event links to the previous hash and carries an Ed25519 signature. The shared core verifies the hashes, signatures and event order against the history stored on this device.</string>
+    <string name="ap_audit_checked_chats">Checked the history of %1$d chats on this device.</string>
+    <string name="ap_audit_verified">Verified</string>
+    <string name="ap_audit_invalid">Verification failed</string>
+    <string name="ap_audit_event_count">%1$s signed events</string>
+    <string name="ap_audit_all_events">All %1$d events · newest first</string>
+    <string name="ap_audit_no_events">This chat has no events.</string>
+    <string name="ap_audit_head_hash">Latest event hash</string>
+    <string name="ap_audit_hash">Event hash</string>
+    <string name="ap_audit_previous">Previous event hash</string>
+    <string name="ap_audit_signature">Ed25519 signature</string>
+    <string name="ap_audit_sequence">#%1$s · %2$s</string>
+    <string name="ap_permission_load_failed">Could not read permissions.</string>
+    <string name="ap_permission_revoked">Permission revoked. The next request will ask again.</string>
+    <string name="ap_standing_title">Standing decisions</string>
+    <string name="ap_standing_empty">No standing decisions in this scope.</string>
+    <string name="ap_standing_explanation">Swipe up on an approval to always approve that kind of action from that agent in that chat, or swipe down to always deny it. Revoking the rule makes the agent ask again. The core still asks for actions beyond its safety limits, such as spending above the limit, a public audience or third-party data.</string>
+    <string name="ap_device_title">Mini-app access</string>
+    <string name="ap_device_chat_scope">These permissions belong to mini-apps in this chat.</string>
+    <string name="ap_device_agent_scope">These permissions belong to mini-apps created by this agent.</string>
+    <string name="ap_device_empty">No mini-app permissions in this scope.</string>
+    <string name="ap_device_source">%1$s · %2$s</string>
+    <string name="ap_device_always">Allowed until revoked</string>
+    <string name="ap_device_once">Allowed once · expires after one minute</string>
+    <string name="ap_device_explanation">Each permission is for one mini-app in one chat. Revocation is recorded as a signed event. Android manages its own permissions in system settings; those permissions do not replace your consent here.</string>
+    <string name="ap_cap_location_approximate">Your approximate location (about 3 km)</string>
+    <string name="ap_cap_location_precise">Your precise location</string>
+    <string name="ap_cap_photos">Only the photos you pick</string>
+    <string name="ap_cap_camera">One photo you take now</string>
+    <string name="ap_cap_calendar_busy">When you are busy (no event names)</string>
+    <string name="ap_cap_calendar_events">Your event names and details</string>
+    <string name="ap_cap_calendar_add">A new event, after you review it</string>
+    <string name="ap_cap_contacts">Only the contact you pick (name)</string>
+    <string name="ap_cap_steps">Your daily step count</string>
+    <string name="ap_cap_network">Internet access to %1$s</string>
+</resources>

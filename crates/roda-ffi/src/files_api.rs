@@ -100,6 +100,21 @@ impl RodaEngine {
         e.item(&item_id)
     }
 
+    /// Saves an encoded edit while recording its actual output format in the new version.
+    pub fn file_new_version_typed(
+        &self,
+        item_id: String,
+        bytes: Vec<u8>,
+        thumbnail: Option<Vec<u8>>,
+        note: String,
+        name: String,
+        mime: String,
+    ) -> Result<ItemDetail, CoreError> {
+        let mut e = self.lock();
+        e.file_new_version_typed(&item_id, &bytes, thumbnail.as_deref(), &note, &name, &mime)?;
+        e.item(&item_id)
+    }
+
     /// The file's bytes (latest version, or `version`), or `None` while pieces are missing.
     pub fn file_bytes(
         &self,

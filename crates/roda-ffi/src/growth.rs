@@ -8,7 +8,7 @@ use roda_proto::experiments::{
 };
 use sha2::{Digest, Sha256};
 
-use crate::{CoreError, RodaEngine};
+use crate::{sync::AccountMeta, CoreError, Engine, RodaEngine};
 
 fn invalid(reason: String) -> CoreError {
     CoreError::Invalid { reason }
@@ -20,6 +20,42 @@ const META_SOURCE_SENT: &str = "growth:source_sent";
 const META_CONFIG: &str = "growth:config";
 const META_ETAG: &str = "growth:etag";
 const META_EXPOSURES: &str = "growth:exposures";
+
+fn same_account(current: Option<&AccountMeta>, expected: Option<&AccountMeta>) -> bool {
+    let scope = |a: &AccountMeta| (a.identity.clone(), a.device.clone(), a.relay_url.clone());
+    current.map(scope) == expected.map(scope)
+}
+
+fn install_unit(engine: &Engine) -> String {
+    if let Some(unit) = engine.store.meta(META_UNIT).ok().flatten() {
+        return unit;
+    }
+    let mut bytes = [0u8; 16];
+    getrandom::getrandom(&mut bytes).expect("os randomness");
+    let unit = hex::encode(bytes);
+    let _ = engine.store.set_meta(META_UNIT, &unit);
+    unit
+}
+
+fn cached_config(engine: &Engine) -> RemoteConfig {
+    engine
+        .store
+        .meta(META_CONFIG)
+        .ok()
+        .flatten()
+        .and_then(|json| RemoteConfig::parse(&json).ok())
+        .unwrap_or_else(RemoteConfig::builtin)
+}
+
+fn acquisition(engine: &Engine) -> Attribution {
+    engine
+        .store
+        .meta(META_SOURCE)
+        .ok()
+        .flatten()
+        .and_then(|json| serde_json::from_str(&json).ok())
+        .unwrap_or_else(Attribution::organic)
+}
 
 #[derive(Debug, Clone, PartialEq, uniffi::Record)]
 pub struct AcquisitionDto {
@@ -62,26 +98,15 @@ impl RodaEngine {
 
     /// This install's experiment unit, made on first use.
     fn unit(&self) -> String {
-        if let Some(u) = self.meta(META_UNIT) {
-            return u;
-        }
-        let mut b = [0u8; 16];
-        getrandom::getrandom(&mut b).expect("os randomness");
-        let u = hex::encode(b);
-        let _ = self.set_meta(META_UNIT, &u);
-        u
+        install_unit(&self.lock())
     }
 
     fn config(&self) -> RemoteConfig {
-        self.meta(META_CONFIG)
-            .and_then(|j| RemoteConfig::parse(&j).ok())
-            .unwrap_or_else(RemoteConfig::builtin)
+        cached_config(&self.lock())
     }
 
     fn source(&self) -> Attribution {
-        self.meta(META_SOURCE)
-            .and_then(|j| serde_json::from_str(&j).ok())
-            .unwrap_or_else(Attribution::organic)
+        acquisition(&self.lock())
     }
 
     fn mark_exposed(&self, flag: &str, variant: &str) {
@@ -187,8 +212,8 @@ impl RodaEngine {
 #[uniffi::export(async_runtime = "tokio")]
 impl RodaEngine {
     /// Refreshes the remote config from `relay_url` (or the account's relay) and, once
-    /// there's a registered, unlocked account, sends what's pending: the source (once), the
-    /// arms shown, and app health when `share_health` is on. Safe to call often.
+    /// there's a registered, unlocked account with a completed relay login, sends what's
+    /// pending: the source (once), the arms shown, and opt-in app health. Safe to call often.
     pub async fn growth_sync(
         &self,
         relay_url: Option<String>,
@@ -197,18 +222,19 @@ impl RodaEngine {
         crashes: u32,
     ) -> Result<GrowthSyncDto, CoreError> {
         let _ = rustls::crypto::ring::default_provider().install_default();
-        let account = self.account();
+        let (account, etag) = {
+            let e = self.lock();
+            (e.net.account.clone(), e.store.meta(META_ETAG)?)
+        };
         let relay = relay_url
             .or_else(|| account.as_ref().map(|a| a.relay_url.clone()))
             .ok_or_else(|| invalid("no relay".into()))?;
         let base = crate::net::http_base(&relay);
-        let http = reqwest::Client::builder()
-            .timeout(std::time::Duration::from_secs(15))
-            .build()
+        let http = crate::net::http_client(std::time::Duration::from_secs(15))
             .map_err(|e| invalid(e.to_string()))?;
 
         let mut req = http.get(format!("{base}/v1/config"));
-        if let Some(etag) = self.meta(META_ETAG) {
+        if let Some(etag) = etag {
             req = req.header("if-none-match", etag);
         }
         if let Ok(r) = req.send().await {
@@ -220,55 +246,69 @@ impl RodaEngine {
                     .map(str::to_string);
                 if let Ok(text) = r.text().await {
                     if RemoteConfig::parse(&text).is_ok() {
-                        self.set_meta(META_CONFIG, &text)?;
-                        if let Some(e) = etag {
-                            self.set_meta(META_ETAG, &e)?;
+                        let e = self.lock();
+                        if !same_account(e.net.account.as_ref(), account.as_ref()) {
+                            return Ok(GrowthSyncDto {
+                                config_version: cached_config(&e).version,
+                                reported: false,
+                            });
+                        }
+                        e.store.set_meta(META_CONFIG, &text)?;
+                        if let Some(tag) = etag {
+                            e.store.set_meta(META_ETAG, &tag)?;
                         }
                     }
                 }
             }
         }
-        let version = self.config().version;
-
-        let Some(acct) = account.filter(|a| a.registered && a.unlocked) else {
-            return Ok(GrowthSyncDto {
-                config_version: version,
-                reported: false,
-            });
-        };
-        let key = {
+        // Credentials and pending data belong to one account, even if another task signs out.
+        let (key, authenticated_relay, source_pending, source_snapshot, exposures, body, version) = {
             let e = self.lock();
-            e.net.author.as_ref().map(|a| a.key.clone())
+            let version = cached_config(&e).version;
+            // A relay's signing name can differ from its URL. Only login establishes it.
+            let credentials = e.net.report_credentials(&relay);
+            let Some((key, authenticated_relay)) =
+                credentials.filter(|_| same_account(e.net.account.as_ref(), account.as_ref()))
+            else {
+                return Ok(GrowthSyncDto {
+                    config_version: version,
+                    reported: false,
+                });
+            };
+            let source_pending = e.store.meta(META_SOURCE_SENT)?.is_none();
+            let source_snapshot = e.store.meta(META_SOURCE)?;
+            let exposures: Vec<Exposure> = e
+                .store
+                .meta(META_EXPOSURES)?
+                .and_then(|json| serde_json::from_str(&json).ok())
+                .unwrap_or_default();
+            let health = (share_health && sessions > 0).then_some(Health { sessions, crashes });
+            if !source_pending && exposures.is_empty() && health.is_none() {
+                return Ok(GrowthSyncDto {
+                    config_version: version,
+                    reported: false,
+                });
+            }
+            let report = ClientReport {
+                unit: install_unit(&e),
+                attribution: source_pending.then(|| acquisition(&e).reportable()),
+                exposures: exposures.clone(),
+                health,
+            };
+            let body = serde_json::to_vec(&report).map_err(|err| invalid(err.to_string()))?;
+            (
+                key,
+                authenticated_relay,
+                source_pending,
+                source_snapshot,
+                exposures,
+                body,
+                version,
+            )
         };
-        let Some(key) = key else {
-            return Ok(GrowthSyncDto {
-                config_version: version,
-                reported: false,
-            });
-        };
-        let source_pending = self.meta(META_SOURCE_SENT).is_none();
-        let exposures: Vec<Exposure> = self
-            .meta(META_EXPOSURES)
-            .and_then(|j| serde_json::from_str(&j).ok())
-            .unwrap_or_default();
-        let health = (share_health && sessions > 0).then_some(Health { sessions, crashes });
-        if !source_pending && exposures.is_empty() && health.is_none() {
-            return Ok(GrowthSyncDto {
-                config_version: version,
-                reported: false,
-            });
-        }
-        let report = ClientReport {
-            unit: self.unit(),
-            attribution: source_pending.then(|| self.source().reportable()),
-            exposures: exposures.clone(),
-            health,
-        };
-        let body = serde_json::to_vec(&report).map_err(|e| invalid(e.to_string()))?;
         let ts = crate::engine::now_ms();
-        let relay_name = relay_name(&acct.relay_url);
         let sha = hex::encode(Sha256::digest(&body));
-        let sig = key.sign(&report_message(&sha, ts, &relay_name));
+        let sig = key.sign(&report_message(&sha, ts, &authenticated_relay.name));
         let r = http
             .post(format!("{base}/v1/report"))
             .header("content-type", "application/json")
@@ -282,16 +322,25 @@ impl RodaEngine {
         if !r.status().is_success() {
             return Err(invalid(format!("report refused ({})", r.status())));
         }
-        if source_pending {
-            self.set_meta(META_SOURCE_SENT, "1")?;
+        let e = self.lock();
+        // An old account's accepted request must not consume a new account's pending report.
+        if e.net.report_credentials(&relay).map(|(_, r)| r) != Some(authenticated_relay) {
+            return Ok(GrowthSyncDto {
+                config_version: version,
+                reported: true,
+            });
+        }
+        if source_pending && e.store.meta(META_SOURCE)? == source_snapshot {
+            e.store.set_meta(META_SOURCE_SENT, "1")?;
         }
         // Keep exposures that arrived while this report was in flight.
-        let now: Vec<Exposure> = self
-            .meta(META_EXPOSURES)
+        let now: Vec<Exposure> = e
+            .store
+            .meta(META_EXPOSURES)?
             .and_then(|j| serde_json::from_str(&j).ok())
             .unwrap_or_default();
         let rest: Vec<&Exposure> = now.iter().filter(|e| !exposures.contains(e)).collect();
-        self.set_meta(
+        e.store.set_meta(
             META_EXPOSURES,
             &serde_json::to_string(&rest).unwrap_or_else(|_| "[]".into()),
         )?;
@@ -302,13 +351,5 @@ impl RodaEngine {
     }
 }
 
-/// The relay's name as it signs logins: the host (and port) of its URL.
-fn relay_name(url: &str) -> String {
-    let s = url
-        .trim_end_matches('/')
-        .split("://")
-        .last()
-        .unwrap_or(url)
-        .to_string();
-    s.split('/').next().unwrap_or(&s).to_string()
-}
+#[cfg(test)]
+mod tests;

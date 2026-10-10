@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="page_redo">Refazer</string>
+    <string name="page_bold">Negrito</string>
+    <string name="page_italic">Itálico</string>
+    <string name="page_strike">Tachado</string>
+    <string name="page_inline_code">Código em linha</string>
+    <string name="page_link">Link</string>
+    <string name="page_indent">Aumentar recuo</string>
+    <string name="page_outdent">Diminuir recuo</string>
+    <string name="page_bullet">Lista com marcadores</string>
+    <string name="page_numbered">Lista numerada</string>
+    <string name="page_quote">Citação</string>
+    <string name="page_code">Bloco de código</string>
+    <string name="page_code_language">Linguagem do código</string>
+    <string name="page_divider">Divisória</string>
+    <string name="page_image">Imagem</string>
+    <string name="page_raw">Markdown bruto</string>
+    <string name="page_image_url">URL</string>
+    <string name="page_image_alt">Descrição da imagem</string>
+    <string name="page_draft_saved">Rascunho salvo neste aparelho</string>
+    <string name="page_preview_version">Ver versão %1$d</string>
+    <string name="page_restore_version">Restaurar esta versão</string>
+    <string name="page_line_break">Quebra de linha</string>
+</resources>
