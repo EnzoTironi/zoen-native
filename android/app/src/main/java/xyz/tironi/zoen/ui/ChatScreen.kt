@@ -317,7 +317,8 @@ fun ChatScreen(model: ZoenViewModel, state: AppState, spaceId: String, navigate:
                 Text(stringResource(if (state.connection.state == "connecting") R.string.connecting else R.string.offline), Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.secondaryContainer).padding(12.dp), style = MaterialTheme.typography.bodySmall)
             }
             val apps = state.items.filter { it.spaceId == spaceId && (it.app != null || it.plan != null) }
-            if (apps.isNotEmpty()) MiniAppTileStrip(model, state, apps, scope = MiniAppPins.chat(spaceId), compact = list.firstVisibleItemIndex > 2, onOpenItem = { navigate(Item(it)) })
+            if (apps.isNotEmpty()) MiniAppTileStrip(model, state, apps, scope = MiniAppPins.chat(spaceId),
+                compact = WindowInsets.ime.getBottom(LocalDensity.current) > 0, onOpenItem = { navigate(Item(it)) })
             AgentBrowserCard(model.browser, spaceId) { navigate(Browser) }
             Box(Modifier.weight(1f)) {
                 ChatBackdrop(model, space.id, state.revision, Modifier.fillMaxSize())
