@@ -56,7 +56,12 @@ class RecoveryJourneyTest {
             assertNotEquals(account.deviceId, restored.deviceId)
             assertTrue(recovered.hasMessage(chat, "Encrypted history before losing the phone"))
             recovered.startSync(null)
-            await("Recovered device sync and group keys", engines) { recovered.connection().synced && recovered.groupKeys(chat) != null }
+            await("Recovered device admission on both peers", engines) {
+                val mine = recovered.groupKeys(chat)
+                val peer = b.groupKeys(chat)
+                recovered.connection().synced && recovered.connection().pending == 0uL &&
+                    mine != null && peer != null && mine.epoch == peer.epoch && mine.digest == peer.digest
+            }
             b.sendMessage(chat, "Encrypted message after recovery")
             await("Peer message after recovery", engines) { recovered.hasMessage(chat, "Encrypted message after recovery") }
             recovered.sendMessage(chat, "The recovered Android device replies")

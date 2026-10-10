@@ -937,7 +937,7 @@ impl RecoveryRetries {
         });
         wanted
             .into_iter()
-            .find(|r| !self.by_space.get(&r.space).is_some_and(|(_, at)| *at > now))
+            .find(|r| self.by_space.get(&r.space).is_none_or(|(_, at)| *at <= now))
     }
 
     fn defer(&mut self, reference: crate::mls_recovery::ContextRef, now: tokio::time::Instant) {

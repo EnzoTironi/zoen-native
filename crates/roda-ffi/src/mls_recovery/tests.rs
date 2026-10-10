@@ -144,6 +144,28 @@ fn staged_recovery(path: &str, space: &str) -> StagedRecovery {
 }
 
 #[test]
+fn a_staged_recovery_checkpoint_does_not_mean_the_peer_has_admitted_the_device() {
+    let space = "recovery-admission";
+    let fixture = staged_recovery(":memory:", space);
+    let mut recovered = fixture.engine;
+    let mut peer = fixture.peer_engine;
+    for frame in &fixture.baseline {
+        assert_eq!(peer.ingest(frame.clone()), Ingest::Applied);
+    }
+    assert!(recovered.mls_status(space).is_some());
+    assert!(recovered.device().unwrap().recovery_pending(space));
+    assert_ne!(recovered.mls_status(space), peer.mls_status(space));
+    let external = Envelope::plain(&recovered.store.outbox().unwrap()[0].event);
+    let reference = RecoveryRef::parse(external.recovery().unwrap()).unwrap();
+    recovered.upload_done(&reference.blob);
+    let frame = ordered(&peer, external);
+    assert_eq!(peer.ingest(frame.clone()), Ingest::Applied);
+    assert_eq!(recovered.ingest(frame), Ingest::Confirmed);
+    assert!(!recovered.device().unwrap().recovery_pending(space));
+    assert_eq!(recovered.mls_status(space), peer.mls_status(space));
+}
+
+#[test]
 fn peer_external_commit_storage_failure_keeps_the_cursor_epoch_and_context_for_retry() {
     let space = "peer-merge-storage-failure";
     let fixture = staged_recovery(":memory:", space);
