@@ -9,7 +9,8 @@ use common::{now_ms, RawClient, World};
 use roda_ffi::{AccountDto, EntryKind, PrivacyDto, RodaEngine, SecretVault};
 use roda_log::{Author, Signer};
 use roda_proto::{
-    KeyPackageRecord, Op, Reply, ServerFrame, KEY_PACKAGE_CLAIM_EXPIRED, KEY_PACKAGE_CLAIM_TTL_MS,
+    ClientFrame, KeyPackageRecord, Op, Reply, ServerFrame, KEY_PACKAGE_CLAIM_EXPIRED,
+    KEY_PACKAGE_CLAIM_TTL_MS,
 };
 use sqlx::{Connection, PgConnection};
 use std::{
@@ -153,14 +154,21 @@ async fn readable(w: &World, ana: &Device, bruno: &Device, space: &str) {
         bruno.core.group_keys(space.into())
     );
     assert!(ana.core.group_keys(space.into()).is_some());
-    ana.core
-        .send_message(space.into(), "after the lost claim reply".into())
-        .unwrap();
+    let text = format!(
+        "after the lost claim reply: {}",
+        ana.core.timeline(space.into()).unwrap().len()
+    );
+    ana.core.send_message(space.into(), text.clone()).unwrap();
     ana.core.wait_until_settled(8000).await.unwrap();
     let deadline = tokio::time::Instant::now() + Duration::from_secs(8);
     loop {
         let entries = bruno.core.timeline(space.into()).unwrap_or_default();
-        if entries.iter().any(|e| matches!(&e.kind, EntryKind::Message { text, .. } if text == "after the lost claim reply")) { break }
+        if entries
+            .iter()
+            .any(|e| matches!(&e.kind, EntryKind::Message { text: actual, .. } if actual == &text))
+        {
+            break;
+        }
         assert!(
             tokio::time::Instant::now() < deadline,
             "MLS message never opened\n{}",
@@ -237,6 +245,43 @@ async fn committed_claim_reply_lost_across_restart_spends_exactly_one_package() 
     ana.reopen().await;
     ana.start().await;
     readable(&w, &ana, &bruno, &space).await;
+    bruno.core.stop_sync();
+    let mut claimant = RawClient::reconnect(&w.relay_url(), ana.author()).await;
+    let mut db = PgConnection::connect(&w.db_url).await.unwrap();
+    for i in 0..24 {
+        let time: i64 = sqlx::query_scalar(
+            "SELECT floor(extract(epoch FROM clock_timestamp()) * 1000)::bigint",
+        )
+        .fetch_one(&mut db)
+        .await
+        .unwrap();
+        assert_eq!(
+            claim(
+                &mut claimant,
+                vec![bruno.account.identity_id.clone()],
+                &operation_at(time, 500 + i)
+            )
+            .await
+            .unwrap()
+            .len(),
+            1
+        );
+    }
+    assert_eq!(bruno.stock(&w).await, 7);
+    let started = tokio::time::Instant::now();
+    bruno.start().await;
+    assert!(
+        started.elapsed() < Duration::from_secs(20),
+        "refill exceeded unchanged twenty-second gate"
+    );
+    assert_eq!(
+        bruno.stock(&w).await,
+        32,
+        "the real recipient replenishes the same stock target after replay"
+    );
+    readable(&w, &ana, &bruno, &space).await;
+    assert_eq!(bruno.stock(&w).await, 32);
+    eprintln!("durable causal treatment: same operation={operation}; same package bytes; committed31 -> retried31 -> low7 -> refilled32; MLS messages opened before and after refill");
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
@@ -249,7 +294,11 @@ async fn group_cli_deadline_cannot_report_an_unissued_claim_as_complete() {
     let mut ana = Device::new(&w, "ana", &proxy.url);
     ana.start().await;
     ana.close_database().await;
-    let mut child = Command::new(env!("CARGO_BIN_EXE_zoen"))
+    // An immutable legacy CLI artifact may run this same strict regression for
+    // before/after evidence; the normal gate always uses this package's real CLI.
+    let cli = std::env::var_os("ZOEN_TEST_GROUP_CLI_BINARY")
+        .unwrap_or_else(|| env!("CARGO_BIN_EXE_zoen").into());
+    let mut child = Command::new(cli)
         .arg("--home")
         .arg(&ana.home)
         .args(["group", "Unissued", "@bruno"])
@@ -696,4 +745,82 @@ async fn receipt_claims_progress_with_a_sixty_second_device_event_clock_skew() {
     ana.core.wait_until_settled(8000).await.unwrap();
     assert_eq!(bruno.stock(&w).await, 31);
     readable(&w, &ana, &bruno, &space).await;
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn legacy_claim_reply_loss_causally_spends_an_extra_package() {
+    let w = World::new("kp_claim_legacy_loss").await;
+    let bruno = Device::new(&w, "bruno", &w.relay_url());
+    bruno.start().await;
+    bruno.core.stop_sync();
+    let mut proxy = ClaimProxy::new(w.port, Boundary::Reply).await;
+    let mut first_client = RawClient::connect(&proxy.url, "ana").await;
+    let author = first_client.author.clone();
+    first_client
+        .send(&ClientFrame::Req {
+            id: 1,
+            op: Op::ClaimKeyPackages {
+                ids: vec![bruno.account.identity_id.clone()],
+                operation_id: None,
+            },
+        })
+        .await;
+    assert!(matches!(
+        proxy.next().await,
+        Observed::Request {
+            operation: None,
+            ..
+        }
+    ));
+    let Observed::Reply {
+        operation: None,
+        records: first,
+        held: true,
+    } = proxy.next().await
+    else {
+        panic!("real legacy reply must be committed and withheld")
+    };
+    assert_eq!(first.len(), 1);
+    assert_eq!(bruno.stock(&w).await, 31);
+    drop(first_client);
+    proxy.disconnect.notify_one();
+    let mut retry = RawClient::reconnect(&proxy.url, author).await;
+    let Reply::KeyPackages(second) = retry
+        .request(Op::ClaimKeyPackages {
+            ids: vec![bruno.account.identity_id.clone()],
+            operation_id: None,
+        })
+        .await
+        .unwrap()
+    else {
+        panic!("legacy claim reply")
+    };
+    assert!(matches!(
+        proxy.next().await,
+        Observed::Request {
+            operation: None,
+            ..
+        }
+    ));
+    assert!(matches!(
+        proxy.next().await,
+        Observed::Reply {
+            operation: None,
+            held: false,
+            ..
+        }
+    ));
+    assert_eq!(second.len(), 1);
+    assert_ne!(first, second);
+    assert_eq!(
+        bruno.stock(&w).await,
+        30,
+        "unchanged legacy retry consumes a second real package"
+    );
+    assert_eq!(
+        w.count("SELECT count(*) FROM key_package_claim_receipts")
+            .await,
+        0
+    );
+    eprintln!("legacy causal reproduction: committed31 -> retried30; different signed package bytes; this does not identify a historical CI reply loss");
 }

@@ -1862,6 +1862,7 @@ mod tests {
             privacy: Privacy::EndToEnd,
         }];
         for peer in peers.iter_mut() {
+            peer.net.profiles.supported = true;
             let identity = peer.me.clone().unwrap();
             let (public, signed) = peer.agreement_to_publish().unwrap();
             engine.agreement_keys_arrived(
