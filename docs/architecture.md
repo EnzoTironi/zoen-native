@@ -1,6 +1,6 @@
 # Zoen architecture
 
-The integrated source baseline is `main` at `e051f97`, reviewed on 10 October 2026. The [roadmap](roadmap-status.md) distinguishes that tree from current native/Android/agent PRs and their verification. Decisions and compatibility rules live in [adr/](adr/). Legacy package names below identify existing source; their [Zoen migration](dev/naming.md) is tracked separately.
+The integrated source baseline is `main` at `f277c804`, reviewed on 10 October 2026. The [roadmap](roadmap-status.md) distinguishes that tree from current native/Android/agent PRs and their verification. Decisions and compatibility rules live in [adr/](adr/). Legacy package names below identify existing source; their [Zoen migration](dev/naming.md) is tracked separately.
 
 The domain type `Space` is a conversation and its permissions/resources. It does not imply a separate Spaces inbox. The unified Chats UI is under review in PR 44.
 

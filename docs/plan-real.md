@@ -1,6 +1,6 @@
 # Zoen implementation plan
 
-Current completion and exact verification versions are in [roadmap status](roadmap-status.md), updated 10 October 2026 against main `e051f97`. This document defines the implementation sequence and workload model. Its dated measurements are historical evidence, and a component marked implemented still needs its current product/production completion gate. [Live pages](product/live-pages.md) and [naming migration](dev/naming.md) record the latest product requirements.
+Current completion and exact verification versions are in [roadmap status](roadmap-status.md), updated 10 October 2026 against main `f277c804`. This document defines the implementation sequence and workload model. Its dated measurements are historical evidence, and a component marked implemented still needs its current product/production completion gate. [Live pages](product/live-pages.md) and [naming migration](dev/naming.md) record the latest product requirements.
 
 
 Zoen started as a native app over a seeded demo. This plan turns every surface into the

@@ -1,6 +1,6 @@
 # Zoen security and privacy
 
-This document records the security design. The [roadmap](roadmap-status.md) identifies current implementation and outstanding verification at main `e051f97`. A design statement below is not a claim that hardware, passkeys, transparency, push or production controls have shipped.
+This document records the security design. The [roadmap](roadmap-status.md) identifies current implementation and outstanding verification at main `f277c804`. A design statement below is not a claim that hardware, passkeys, transparency, push or production controls have shipped.
 
 | Control | Current evidence or required gate |
 | --- | --- |
