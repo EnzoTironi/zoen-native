@@ -15,6 +15,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation3.runtime.NavKey
@@ -112,6 +113,7 @@ fun ZoenApp(model: ZoenViewModel, deepLink: String?, consumed: () -> Unit) {
         BoxWithConstraints(Modifier.fillMaxSize()) {
             val rail = maxWidth >= 600.dp
             val split = maxWidth >= 840.dp
+            val navigationHeight = if (LocalConfiguration.current.fontScale > 1.5f) 112.dp else 80.dp
             Row {
                 if (rail) NavigationRail(modifier = Modifier.fillMaxHeight(), header = {
                     ZoenMascot(Modifier.padding(top = 12.dp).size(64.dp))
@@ -130,12 +132,15 @@ fun ZoenApp(model: ZoenViewModel, deepLink: String?, consumed: () -> Unit) {
                     modifier = Modifier.weight(1f),
                     snackbarHost = { if (stack.lastOrNull() !is VersionPreview) SnackbarHost(snackbar, Modifier.testTag("app-snackbar")) },
                     bottomBar = {
-                        if (!rail && stack.size == 1) NavigationBar(containerColor = MaterialTheme.colorScheme.surface, tonalElevation = 0.dp) {
+                        if (!rail && stack.size == 1) NavigationBar(modifier = Modifier.heightIn(min = navigationHeight), containerColor = MaterialTheme.colorScheme.surface, tonalElevation = 0.dp) {
                             Tab.entries.forEachIndexed { index, target ->
                                 if (index == 2) Box(Modifier.weight(1f), contentAlignment = Alignment.Center) {
                                     PlusVoiceButton({ quickActions = true }, { voiceStart++ }, { voiceRelease++ }, { voiceLock++ }, { voiceCancel++ }, compact = true)
                                 }
-                                NavigationBarItem(selected = tab == target, onClick = { tab = target }, icon = { TabIcon(target, state.pending) }, label = { Text(tabName(target), maxLines = 1) }, modifier = Modifier.testTag("tab:${target.name}"))
+                                NavigationBarItem(selected = tab == target, onClick = { tab = target }, icon = { TabIcon(target, state.pending) }, label = {
+                                    Text(tabName(target), maxLines = 1, overflow = TextOverflow.Ellipsis,
+                                        style = if (LocalConfiguration.current.fontScale > 1.5f) MaterialTheme.typography.labelSmall else MaterialTheme.typography.labelMedium)
+                                }, modifier = Modifier.testTag("tab:${target.name}"))
                             }
                         }
                     },

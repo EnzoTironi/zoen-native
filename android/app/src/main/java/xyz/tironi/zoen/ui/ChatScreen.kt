@@ -284,10 +284,10 @@ fun ChatScreen(model: ZoenViewModel, state: AppState, spaceId: String, navigate:
             Box(Modifier.weight(1f)) {
                 ChatBackdrop(model, space.id, state.revision, Modifier.fillMaxSize())
                 if (spaceId in state.timelines) {
-                    LazyColumn(state = list, modifier = Modifier.fillMaxSize().testTag("chat-timeline"), contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                    LazyColumn(state = list, modifier = Modifier.fillMaxSize().testTag("chat-timeline"), contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                         items(timeline, key = { it.id }) { entry ->
                             Box(Modifier.testTag("timeline:${entry.id}").background(if (highlight == entry.id) MaterialTheme.colorScheme.secondaryContainer else androidx.compose.ui.graphics.Color.Transparent, RoundedCornerShape(16.dp))) {
-                                TimelineRow(model, entry, navigate, onReply = { replyId = entry.id }, onThread = { navigate(Thread(spaceId, entry.id)) }, onQuote = { jumpTo = it })
+                                TimelineRow(model, entry, navigate, onReply = { replyId = entry.id }, onThread = { navigate(Thread(spaceId, entry.id)) }, onQuote = { jumpTo = it }, direct = space.counterpart != null)
                             }
                         }
                     }
@@ -314,7 +314,7 @@ fun ChatScreen(model: ZoenViewModel, state: AppState, spaceId: String, navigate:
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
-fun TimelineRow(model: ZoenViewModel, entry: TimelineEntry, navigate: (NavKey) -> Unit, onReply: () -> Unit, onThread: (() -> Unit)?, onQuote: ((String) -> Unit)? = null) {
+fun TimelineRow(model: ZoenViewModel, entry: TimelineEntry, navigate: (NavKey) -> Unit, onReply: () -> Unit, onThread: (() -> Unit)?, onQuote: ((String) -> Unit)? = null, direct: Boolean = false) {
     val context = LocalContext.current
     var menu by remember { mutableStateOf(false) }
     val copied = stringResource(R.string.copied)
@@ -330,7 +330,7 @@ fun TimelineRow(model: ZoenViewModel, entry: TimelineEntry, navigate: (NavKey) -
             Box(Modifier.fillMaxWidth()) {
                 if (swipe < -threshold / 3) Icon(Icons.AutoMirrored.Rounded.Reply, stringResource(R.string.reply), Modifier.align(Alignment.CenterEnd).padding(12.dp), tint = MaterialTheme.colorScheme.primary)
                 if (swipe > threshold / 3 && onThread != null) Icon(Icons.Rounded.Forum, stringResource(R.string.thread), Modifier.align(Alignment.CenterStart).padding(12.dp), tint = MaterialTheme.colorScheme.primary)
-            Column(Modifier.fillMaxWidth().offset { IntOffset(swipe.roundToInt(), 0) }.pointerInput(entry.id, onThread != null, threshold) {
+            Row(Modifier.fillMaxWidth().offset { IntOffset(swipe.roundToInt(), 0) }.pointerInput(entry.id, onThread != null, threshold) {
                 detectHorizontalDragGestures(onDragEnd = {
                     if (swipe <= -threshold) { haptics.performHapticFeedback(HapticFeedbackType.LongPress); reply() }
                     else if (swipe >= threshold && thread != null) { haptics.performHapticFeedback(HapticFeedbackType.LongPress); thread?.invoke() }
@@ -339,12 +339,14 @@ fun TimelineRow(model: ZoenViewModel, entry: TimelineEntry, navigate: (NavKey) -
                     change.consume()
                     swipe = (swipe + distance).coerceIn(-threshold * 1.5f, if (thread == null) 0f else threshold * 1.5f)
                 }
-            }, horizontalAlignment = if (mine) Alignment.End else Alignment.Start) {
-                if (!mine) Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Avatar(entry.author, size = 26, onClick = { navigate(if (entry.author.kind == PersonaKind.AGENT) Agent(entry.author.id) else Person(entry.author.id)) }, contact = true)
-                    Text(entry.author.name, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                }
+            }, verticalAlignment = Alignment.Bottom, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                if (mine) Spacer(Modifier.width(40.dp))
+                else Avatar(entry.author, size = 36, onClick = { navigate(if (entry.author.kind == PersonaKind.AGENT) Agent(entry.author.id) else Person(entry.author.id)) }, contact = true)
+                Column(Modifier.weight(1f), horizontalAlignment = if (mine) Alignment.End else Alignment.Start) {
+                if (!mine && !direct) Text(entry.author.name, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 Box {
+                    Column(horizontalAlignment = if (mine) Alignment.End else Alignment.Start, verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    if (kind.text.isNotBlank() || entry.replyTo != null) {
                     Surface(shape = RoundedCornerShape(22.dp, 22.dp, if (mine) 6.dp else 22.dp, if (mine) 22.dp else 6.dp),
                         color = if (mine) MaterialTheme.colorScheme.ownMessage else MaterialTheme.colorScheme.otherMessage,
                         contentColor = if (mine) MaterialTheme.colorScheme.onOwnMessage else MaterialTheme.colorScheme.onSurface,
@@ -361,7 +363,10 @@ fun TimelineRow(model: ZoenViewModel, entry: TimelineEntry, navigate: (NavKey) -
                                 val mentionColor = if (mine) LocalContentColor.current else MaterialTheme.colorScheme.primary
                                 SelectionContainer { Text(buildAnnotatedString { append(kind.text); Regex("(?<![\\w.])@[\\p{L}\\p{N}_.]+").findAll(kind.text).forEach { match -> addStyle(SpanStyle(color = mentionColor, fontWeight = FontWeight.SemiBold), match.range.first, match.range.last + 1) } }, style = MaterialTheme.typography.bodyLarge) }
                             }
-                            kind.card?.let { card ->
+                        }
+                    }
+                    }
+                    kind.card?.let { card ->
                                 Card(onClick = { navigate(Item(card.itemId)) }, modifier = Modifier.testTag("item:${card.itemId}"), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
                                     Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                                         Icon(appIcon(card.app?.appId ?: card.kindId), null, tint = MaterialTheme.colorScheme.primary)
@@ -371,8 +376,7 @@ fun TimelineRow(model: ZoenViewModel, entry: TimelineEntry, navigate: (NavKey) -
                                         Text(stringResource(R.string.version, card.version.toInt()), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
                                     }
                                 }
-                            }
-                        }
+                    }
                     }
                     DropdownMenu(menu, onDismissRequest = { menu = false }) {
                         DropdownMenuItem(text = { Text(stringResource(R.string.reply)) }, onClick = { menu = false; onReply() }, leadingIcon = { Icon(Icons.AutoMirrored.Rounded.Reply, null) })
@@ -385,6 +389,7 @@ fun TimelineRow(model: ZoenViewModel, entry: TimelineEntry, navigate: (NavKey) -
                     if (mine) Icon(when (entry.delivery) { Delivery.FAILED -> Icons.Rounded.ErrorOutline; Delivery.SENDING -> Icons.Rounded.Schedule; Delivery.SENT -> Icons.Rounded.DoneAll; Delivery.LOCAL -> Icons.Rounded.Done }, null, Modifier.size(14.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
                 if (entry.threadReplies > 0u && onThread != null) TextButton(onClick = onThread) { Text("${entry.threadReplies} " + stringResource(R.string.replies)) }
+                }
             }
             }
         }
