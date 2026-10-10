@@ -1,7 +1,6 @@
 import SwiftUI
 import RodaCore
 
-#if os(iOS)
 /// Tapping the chat's title grows the header into a menu, Slack-style. The avatar still
 /// opens the profile (or the people, in a group).
 /// The menu that drops out of the header: a line about the chat, then the rows.
@@ -87,4 +86,3 @@ struct HeaderMenuPanel: View {
         .accessibilityIdentifier("header-menu")
     }
 }
-#endif

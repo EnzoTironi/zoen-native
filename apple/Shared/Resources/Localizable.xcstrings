@@ -6339,18 +6339,18 @@
         }
       }
     },
-    "Spaces in common": {
+    "Chats in common": {
       "localizations": {
         "pt-BR": {
           "stringUnit": {
             "state": "translated",
-            "value": "Espaços em comum"
+            "value": "Conversas em comum"
           }
         },
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Spaces in common"
+            "value": "Chats in common"
           }
         }
       }
@@ -8231,6 +8231,156 @@
           "stringUnit": {
             "state": "translated",
             "value": "Vai para a mensagem mais recente"
+          }
+        }
+      }
+    },
+    "All chats": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Todas as conversas"
+          }
+        }
+      }
+    },
+    "Direct chats": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Conversas diretas"
+          }
+        }
+      }
+    },
+    "Groups": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Grupos"
+          }
+        }
+      }
+    },
+    "Filter chats": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Filtrar conversas"
+          }
+        }
+      }
+    },
+    "No chats in this filter": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Nenhuma conversa neste filtro"
+          }
+        }
+      }
+    },
+    "Community name": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Nome da comunidade"
+          }
+        }
+      }
+    },
+    "Join a chat": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Entrar em uma conversa"
+          }
+        }
+      }
+    },
+    "A conversation for a club or neighbourhood, alongside your other chats.": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Uma conversa para um clube ou bairro, junto das suas outras conversas."
+          }
+        }
+      }
+    },
+    "Chat": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Conversa"
+          }
+        }
+      }
+    },
+    "New chat": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Nova conversa"
+          }
+        }
+      }
+    },
+    "Cards": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Cartões"
+          }
+        }
+      }
+    },
+    "List": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Lista"
+          }
+        }
+      }
+    },
+    "No approval requests here yet": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Nenhum pedido de aprovação por aqui ainda"
+          }
+        }
+      }
+    },
+    "Requests appear here when your agents need a decision. Use List for mentions, tasks, and past requests.": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Os pedidos aparecem aqui quando seus agentes precisam de uma decisão. Use Lista para ver menções, tarefas e pedidos anteriores."
+          }
+        }
+      }
+    },
+    "View mentions, tasks, and approval history": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Veja menções, tarefas e o histórico de aprovações"
           }
         }
       }

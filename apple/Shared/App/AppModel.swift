@@ -2,16 +2,15 @@ import SwiftUI
 import Observation
 import RodaCore
 
-/// Top-level destinations. On iPhone, three live in the bottom bar's pill (`barTabs`),
+/// Top-level destinations. On iPhone, two live in the bottom bar's pill (`barTabs`),
 /// Search has its own button, and the rest open from the + fan menu.
 enum AppTab: String, Hashable, CaseIterable {
-    case conversations, communities, files, activity
+    case conversations, files, activity
     case agents, you, search, store
 
     var title: String {
         switch self {
         case .conversations: String(localized: "Chats")
-        case .communities: String(localized: "Spaces")
         case .files: String(localized: "Files")
         case .activity: String(localized: "Activity")
         case .agents: String(localized: "Your agents")
@@ -24,7 +23,6 @@ enum AppTab: String, Hashable, CaseIterable {
     var symbol: String {
         switch self {
         case .conversations: "bubble.left.and.bubble.right.fill"
-        case .communities: "person.3.fill"
         case .files: "folder.fill"
         case .activity: "bell.fill"
         case .agents: "sparkles.rectangle.stack.fill"
@@ -38,7 +36,6 @@ enum AppTab: String, Hashable, CaseIterable {
     var glyph: ZoenGlyph {
         switch self {
         case .conversations: .chats
-        case .communities: .spaces
         case .files: .folder
         case .activity: .bell
         case .agents: .agents
@@ -51,8 +48,8 @@ enum AppTab: String, Hashable, CaseIterable {
     /// Selected state in the tab pill (the outline symbols fill in).
     var selectedSymbol: String { self == .store ? "storefront.fill" : symbol }
 
-    /// Chats, Spaces and Store. Notifications (and approvals) moved to the bell in the headers.
-    static let barTabs: [AppTab] = [.conversations, .communities, .store]
+    /// Direct conversations, groups, and communities share Chats. Approvals live behind the bell.
+    static let barTabs: [AppTab] = [.conversations, .store]
 }
 
 enum Route: Hashable {
@@ -111,6 +108,7 @@ final class AppModel {
     @ObservationIgnored var appModelContext: [String: [String: Any]] = [:]
 
     var tab: AppTab = .conversations
+    var chatFilter: ChatInboxFilter = .all
     /// Uma pilha de navegação por destino (preserva onde você estava em cada um).
     var paths: [AppTab: [Route]] = [:]
     /// Menu radial do botão central (aberto por toque ou por pressionar e arrastar).
@@ -688,7 +686,7 @@ final class AppModel {
             self.tab = switch tab {
             case "atividade", "activity": .activity
             case "loja", "store", "explore": .store
-            case "comunidades", "communities", "espacos", "spaces": .communities
+            case "comunidades", "communities", "espacos", "spaces": .conversations
             case "arquivos", "files": .files
             case "agentes", "agents": .agents
             case "voce", "you", "contexto": .you
@@ -1137,16 +1135,10 @@ final class AppModel {
         #endif
     }
 
-    /// The bell: on iPhone a sheet over whatever you're on; on Mac the Activity pane.
+    /// The bell opens approval cards over the current iPhone screen or in the Mac Activity pane.
     func openNotifications() {
         #if os(iOS)
-        // Approvals waiting: the catch-up stack. Otherwise the plain list.
-        if !approvalQueue.isEmpty {
-            approvalsOpen = true
-            return
-        }
-        paths[.activity] = []
-        notificationsOpen = true
+        approvalsOpen = true
         #else
         select(.activity)
         #endif
@@ -1270,13 +1262,12 @@ final class AppModel {
 }
 
 enum MacSidebarItem: Hashable {
-    case activity, communities, files, agents, you, search, store
+    case activity, files, agents, you, search, store
     case space(String)
 
     init?(tab: AppTab) {
         switch tab {
         case .conversations: return nil
-        case .communities: self = .communities
         case .files: self = .files
         case .activity: self = .activity
         case .agents: self = .agents

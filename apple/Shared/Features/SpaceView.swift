@@ -9,11 +9,9 @@ struct SpaceView: View {
 
     @State private var entries: [TimelineEntry] = []
     @State private var draft = ""
-    @State private var pinned: ItemDetail?
     @State private var pinnedApps: [ItemDetail] = []
-    /// Height of the glass top bar (plus the plan bar), and the status-bar inset, for the scroll insets and fade.
+    /// The floating title, plan and widgets reserve room for the initial reading position.
     @State private var chromeHeight: CGFloat = 0
-    @State private var safeTop: CGFloat = 0
     @State private var scrollPos = ScrollPosition(edge: .bottom)
     @State private var offsetY: CGFloat = 0
     /// Reading position: new messages only pull the chat down while you're at the end.
@@ -69,15 +67,7 @@ struct SpaceView: View {
         ScrollViewReader { proxy in
             ScrollView {
                 VStack(alignment: .leading, spacing: 4) {
-                    // Wabi pattern: the pinned tiles are the chat's first section, right under
-                    // the top bar, and scroll away with the messages.
                     Color.clear.frame(height: 1).id("chat-top")
-                    if !pinnedApps.isEmpty {
-                        ChatPinStrip(apps: pinnedApps)
-                            .padding(.horizontal, -14)
-                            .padding(.bottom, 8)
-                            .transition(.opacity)
-                    }
                     if let space { SpaceHeaderCard(space: space).padding(.bottom, 12) }
                     let shown = visible
                     ForEach(Array(shown.enumerated()), id: \.element.id) { idx, entry in
@@ -135,14 +125,10 @@ struct SpaceView: View {
                 .padding(.horizontal, 14)
                 .padding(.top, 8)
             }
-            // Investor shots pin the top; content growth (tiles, images) must not drag it down.
+            .accessibilityIdentifier("chat-message-scroll")
+            // Screenshot journeys can start at the top; ordinary chats keep their reading position.
             .defaultScrollAnchor(UserDefaults.standard.bool(forKey: "RodaChatScrollTop") ? .top : .bottom)
-            #if os(iOS)
-            // iOS 26 adds a soft blur where content meets a bar; none here, content stays crisp.
             .scrollEdgeEffectHidden(true, for: .top)
-            #endif
-            // Fold the tiles only once *you* scroll back through history (never from layout
-            // changes, which would feed back into the insets and loop).
             .scrollPosition($scrollPos)
             .onScrollGeometryChange(for: CGFloat.self) { $0.contentOffset.y } action: { _, y in offsetY = y }
             .onScrollGeometryChange(for: Bool.self) { g in
@@ -151,9 +137,7 @@ struct SpaceView: View {
                 nearBottom = near
                 if near && unseen > 0 { withAnimation(.smooth(duration: 0.3)) { unseen = 0 } }
             }
-            // Content starts just under the glass bar (bar height + 8pt): at rest nothing sits
-            // behind the glass or the status bar; content passes under the bar only while
-            // scrolling. No mask, blur or band.
+            // History scrolls behind the transparent header; its starting position clears the widgets.
             .safeAreaPadding(.top, chromeHeight + 8)
             .scrollDismissesKeyboard(.interactively)
             .environment(\.chatBackdrop, !background.isNone)
@@ -252,7 +236,7 @@ struct SpaceView: View {
             #endif
             .onDisappear { model.sync.stoppedTyping(spaceId) }
             .onChange(of: entries.count) { old, _ in
-                // Investor shots: `-RodaChatScrollTop` keeps the pin strip framed (don't jump to bottom).
+                // Screenshot journeys can open at the beginning of message history.
                 if UserDefaults.standard.bool(forKey: "RodaChatScrollTop") {
                     if old == 0 {
                         Task { @MainActor in
@@ -335,19 +319,11 @@ struct SpaceView: View {
             let top = UserDefaults.standard.bool(forKey: "RodaChatScrollTop")
             guard up > 0 || top else { return }
             let delay = UserDefaults.standard.double(forKey: "RodaChatScrollDelay")
-            // Investor shots: wait for timeline + pins to land, then pin the top.
+            // Screenshot journeys choose an initial reading position after the story loads.
             let wait = delay > 0 ? delay : (top ? 1.2 : 9)
             try? await Task.sleep(for: .seconds(wait))
             withAnimation(.smooth(duration: 0.45)) {
                 if top { scrollPos.scrollTo(edge: .top) } else { scrollPos.scrollTo(y: max(0, offsetY - up)) }
-            }
-            if top {
-                // Late tiles, images and app cards can still grow the content: keep re-pinning
-                // for a few seconds until nothing moves it any more.
-                for _ in 0..<6 {
-                    try? await Task.sleep(for: .seconds(1))
-                    withAnimation(.smooth(duration: 0.3)) { scrollPos.scrollTo(edge: .top) }
-                }
             }
         }
         .task {
@@ -381,9 +357,7 @@ struct SpaceView: View {
         // Our own glass bar replaces the system one (the edge swipe back still works).
         .toolbar(.hidden, for: .navigationBar)
         .toolbarBackground(.hidden, for: .navigationBar)
-        .onGeometryChange(for: CGFloat.self) { $0.safeAreaInsets.top } action: { safeTop = $0 }
-        // No veil, blur or fade anywhere: content runs crisp to the screen edge and only the
-        // glass elements have a surface.
+        #endif
         .overlay {
             if headerMenu {
                 // Everything under the menu dims; a tap anywhere folds it back.
@@ -399,6 +373,7 @@ struct SpaceView: View {
                 if let space {
                     ChatTopBar(space: space, subtitle: subtitle(space), status: status(space),
                                onBack: { _ = model.pop() },
+                               showsBack: showsBack,
                                onOpen: {
                                    setHeaderMenu(false)
                                    if let who = space.counterpart { model.openProfile(who.id) } else { model.go(.participants(spaceId)) }
@@ -415,23 +390,38 @@ struct SpaceView: View {
                             removal: .scale(scale: 0.95, anchor: .top).combined(with: .opacity)))
                     }
                 }
-                if let pinned, !headerMenu { PinnedItemBar(item: pinned) { onOpenItem(pinned.id) } }
+                pinnedAppStrip
             }
-            .padding(.top, 2)
+            .padding(.top, headerTopPadding)
             .padding(.bottom, 6)
             .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { if !headerMenu { chromeHeight = $0 } }
         }
+    }
+
+    private var headerTopPadding: CGFloat {
+        #if os(macOS)
+        return 10
         #else
-        .toolbar {
-            ToolbarItem(placement: .primaryAction) {
-                Button { model.go(.participants(spaceId)) } label: { ZoenIcon(.info, size: 18) }
-                    .accessibilityLabel("Participants")
-            }
-        }
-        .safeAreaInset(edge: .top, spacing: 0) {
-            if let pinned { PinnedItemBar(item: pinned) { onOpenItem(pinned.id) } }
-        }
+        return 2
         #endif
+    }
+
+    private var showsBack: Bool {
+        #if os(iOS)
+        return true
+        #else
+        return !model.path(.conversations).isEmpty
+        #endif
+    }
+
+    @ViewBuilder
+    private var pinnedAppStrip: some View {
+        if !pinnedApps.isEmpty {
+            ChatPinStrip(apps: pinnedApps, onOpenItem: onOpenItem)
+                .padding(.vertical, 8)
+                .clipped()
+                .transition(.opacity)
+        }
     }
 
     /// Voice notes record on iPhone; the Mac app has no mic entitlement yet.
@@ -485,16 +475,13 @@ struct SpaceView: View {
         return String(localized: "\(people) people")
     }
 
-    #if os(iOS)
     private func setHeaderMenu(_ open: Bool) {
         guard open != headerMenu else { return }
         open ? Haptics.menuOpen() : Haptics.menuClose()
-        let anim: Animation = reduceMotionOn ? .easeInOut(duration: 0.2)
+        let anim: Animation = reduceMotion ? .easeInOut(duration: 0.2)
             : open ? .spring(response: 0.38, dampingFraction: 0.84) : .spring(response: 0.26, dampingFraction: 0.95)
         withAnimation(anim) { headerMenu = open }
     }
-
-    private var reduceMotionOn: Bool { UIAccessibility.isReduceMotionEnabled }
 
     private func headerPick(_ pick: HeaderMenuPanel.Pick) {
         setHeaderMenu(false)
@@ -504,7 +491,6 @@ struct SpaceView: View {
         case .mute: model.show(.init(kind: .info, text: String(localized: "Muted on this device.")))
         }
     }
-    #endif
 
     /// Who answered in a message's thread (newest first, each once).
     private func threadFaces(_ root: String) -> [Persona] {
@@ -526,10 +512,13 @@ struct SpaceView: View {
 
     private func reload() {
         let new = (try? model.core.timeline(spaceId: spaceId)) ?? []
-        pinned = model.core.items().first { $0.spaceId == spaceId && $0.plan != nil }
+        let plan = model.core.items().first {
+            $0.spaceId == spaceId && $0.plan != nil && !model.chatAppsUnpinned.contains($0.id)
+        }
         // Live mini-apps of this chat, newest first (the hike leads when there is one).
-        let apps = model.liveApps.filter { $0.spaceId == spaceId && $0.app != nil && !model.chatAppsUnpinned.contains($0.id) }
+        let liveApps = model.liveApps.filter { $0.spaceId == spaceId && $0.app != nil && !model.chatAppsUnpinned.contains($0.id) }
             .sorted { ($0.app?.appId == "hike" ? 1 : 0, $0.versions.first?.atMs ?? 0) > ($1.app?.appId == "hike" ? 1 : 0, $1.versions.first?.atMs ?? 0) }
+        let apps = (plan.map { [$0] } ?? []) + liveApps.filter { $0.id != plan?.id }
         let firstLoad = entries.isEmpty
         if apps != pinnedApps {
             if firstLoad || apps.map(\.id) == pinnedApps.map(\.id) {
@@ -569,38 +558,6 @@ struct SpaceView: View {
             }
         }
         if !new.isEmpty { try? model.core.markRead(spaceId: spaceId) }
-    }
-}
-
-/// Item fixado no topo da conversa (poster #015: "Lançamento de outubro").
-struct PinnedItemBar: View {
-    let item: ItemDetail
-    var onOpen: () -> Void
-    var body: some View {
-        Button(action: onOpen) {
-            HStack(spacing: 10) {
-                ZoenIcon(.pin, size: 15).foregroundStyle(Palette.action)
-                VStack(alignment: .leading, spacing: 0) {
-                    Text(item.title).font(.subheadline.weight(.semibold)).foregroundStyle(Palette.textPrimary).lineLimit(1)
-                    Text(meta).font(.caption2).foregroundStyle(Palette.textSecondary).lineLimit(1)
-                }
-                Spacer()
-                ZoenIcon(.chevron, size: 13).foregroundStyle(Palette.textTertiary)
-            }
-            .padding(.horizontal, 14)
-            .padding(.vertical, 8)
-            .glassEffect(.regular.interactive(), in: .rect(cornerRadius: 16))
-            .padding(.horizontal, 12)
-            .padding(.bottom, 4)
-        }
-        .buttonStyle(.plain)
-        .accessibilityLabel("Pinned: \(item.title)")
-    }
-    private var meta: String {
-        let lines = item.plan?.sections.flatMap(\.lines) ?? []
-        let total = lines.reduce(Int64(0)) { $0 + $1.costCents }
-        if lines.isEmpty { return Money.format(total) }
-        return String(localized: "\(lines.count) items · \(Money.format(total))")
     }
 }
 

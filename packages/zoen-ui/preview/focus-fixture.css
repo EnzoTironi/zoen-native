@@ -1,0 +1,44 @@
+html,
+body {
+  margin: 0;
+}
+.focus-fixture-instructions {
+  max-width: 660px;
+  padding: 24px;
+}
+.focus-fixture-instructions h1 {
+  font-size: 24px;
+  line-height: 1.25;
+}
+.focus-fixture-instructions li {
+  margin-bottom: 12px;
+}
+.focus-fixture-footer details {
+  margin-bottom: 14px;
+}
+.focus-fixture-footer summary {
+  cursor: pointer;
+  font-weight: 600;
+}
+.focus-fixture-footer [role='toolbar'] {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.zs-shell .focus-fixture-footer button {
+  width: 100%;
+  min-height: 36px;
+  padding: 8px;
+  border: 1px solid var(--zs-border);
+  border-radius: 8px;
+  background: var(--zs-surface-muted);
+  color: var(--zs-muted);
+  font-size: 11px;
+}
+.zs-shell .focus-fixture-footer button[aria-pressed='true'] {
+  background: var(--zs-selected);
+  color: var(--zs-action);
+}
+.focus-fixture-footer [role='status'] {
+  margin: 12px 0;
+}
