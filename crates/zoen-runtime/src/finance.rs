@@ -360,6 +360,21 @@ impl Finance {
         if b.hold_units != b.price.reserve(b.requested_output_tokens)? {
             return Err(RuntimeError::InvalidBinding);
         }
+        // Reservation is replayable by its immutable binding, including an
+        // uncertain SQL commit. Keep each transaction's original short timeouts
+        // and recheck directory/policy on each bounded retry. This loop never
+        // claims an attempt, admits a dispatch or constructs a send capability.
+        for retry in 0..3 {
+            match self.reserve_once(b).await {
+                Err(RuntimeError::Unavailable) if retry < 2 && !self.pool.is_closed() => {
+                    tokio::time::sleep(std::time::Duration::from_millis(125 << retry)).await;
+                }
+                outcome => return outcome,
+            }
+        }
+        Err(RuntimeError::Unavailable)
+    }
+    async fn reserve_once(&self, b: &Binding) -> Result<(), RuntimeError> {
         let mut tx = self.begin().await?;
         Self::directory(&mut tx, b).await?;
         let balance = Self::lock_period(&mut tx, b, false).await?;

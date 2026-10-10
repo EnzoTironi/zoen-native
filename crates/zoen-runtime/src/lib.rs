@@ -58,7 +58,21 @@ pub enum RuntimeError {
     EvidenceTooLarge,
 }
 impl From<sqlx::Error> for RuntimeError {
-    fn from(_: sqlx::Error) -> Self {
+    fn from(error: sqlx::Error) -> Self {
+        #[cfg(test)]
+        eprintln!(
+            "runtime SQL failure category: {}",
+            match &error {
+                sqlx::Error::Database(db) => db
+                    .code()
+                    .map(|code| code.into_owned())
+                    .unwrap_or_else(|| "database".into()),
+                sqlx::Error::PoolTimedOut => "pool-timeout".into(),
+                sqlx::Error::PoolClosed => "pool-closed".into(),
+                _ => "other".into(),
+            }
+        );
+        let _ = error;
         Self::Unavailable
     }
 }

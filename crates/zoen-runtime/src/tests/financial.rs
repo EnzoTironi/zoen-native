@@ -101,6 +101,83 @@ pub(super) async fn owner_wide_concurrency() {
     w.finish().await;
 }
 
+pub(super) async fn bounded_reservation_contention_recovers_once() {
+    for pool_contention in [true, false] {
+        let w = World::new().await;
+        let binding = w.binding(&w.step(0).await);
+        let mut connections = Vec::new();
+        let mut lock = None;
+        if pool_contention {
+            for _ in 0..12 {
+                connections.push(w.runtime.finance.pool.acquire().await.unwrap());
+            }
+        } else {
+            let mut tx = w.runtime.finance.pool.begin().await.unwrap();
+            sqlx::query("SELECT 1 FROM runtime_periods WHERE owner=$1 FOR UPDATE")
+                .bind(&w.owner.identity)
+                .execute(&mut *tx)
+                .await
+                .unwrap();
+            lock = Some(tx);
+        }
+        let runtime = w.runtime.clone();
+        let original = binding.clone();
+        let task = tokio::spawn(async move { runtime.finance.reserve(&original).await });
+        tokio::time::sleep(Duration::from_millis(if pool_contention {
+            3200
+        } else {
+            2200
+        }))
+        .await;
+        drop(connections);
+        if let Some(tx) = lock {
+            tx.rollback().await.unwrap();
+        }
+        let outcome = task.await.unwrap();
+        eprintln!("real reservation contention: pool={pool_contention}, result={outcome:?}");
+        assert!(outcome.is_ok());
+        w.runtime.finance.reserve(&binding).await.unwrap();
+        assert_eq!(w.balance().await.held_units, 13);
+        assert_eq!(w.count("SELECT count(*) FROM runtime_attempts").await, 1);
+        assert_eq!(
+            w.count("SELECT count(*) FROM runtime_journals WHERE kind='reserve'")
+                .await,
+            1
+        );
+        assert_eq!(w.http.sends.load(Ordering::SeqCst), 0);
+        w.finish().await;
+    }
+}
+
+pub(super) async fn reservation_retry_rechecks_revoked_device() {
+    let w = World::new().await;
+    let binding = w.binding(&w.step(0).await);
+    let mut connections = Vec::new();
+    for _ in 0..12 {
+        connections.push(w.runtime.finance.pool.acquire().await.unwrap());
+    }
+    let runtime = w.runtime.clone();
+    let task = tokio::spawn(async move { runtime.finance.reserve(&binding).await });
+    tokio::time::sleep(Duration::from_millis(3200)).await;
+    let mut admin = PgConnection::connect(&w.db_url).await.unwrap();
+    let mut tx = admin.begin().await.unwrap();
+    let agent = &w.agents[0];
+    assert!(zoen_relay::db::revoke_device(
+        &mut tx,
+        &agent.identity,
+        agent.device.as_deref().unwrap()
+    )
+    .await
+    .unwrap());
+    tx.commit().await.unwrap();
+    drop(connections);
+    assert_eq!(task.await.unwrap().unwrap_err(), RuntimeError::Denied);
+    assert_eq!(w.balance().await.held_units, 0);
+    assert_eq!(w.count("SELECT count(*) FROM runtime_attempts").await, 0);
+    assert_eq!(w.http.sends.load(Ordering::SeqCst), 0);
+    w.finish().await;
+}
+
 pub(super) async fn immutable_balanced_postings() {
     let w = World::new().await;
     let step = w.step(0).await;

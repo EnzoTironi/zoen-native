@@ -52,6 +52,12 @@ pub(super) async fn run() {
     println!("authority journey: gateway model, credential and endpoint match approved price PASS");
     financial::owner_wide_concurrency().await;
     println!("authority journey: 100 concurrent reservations share owner ceiling PASS");
+    financial::bounded_reservation_contention_recovers_once().await;
+    println!("authority journey: bounded pool and row-lock contention recover one exact reservation PASS");
+    financial::reservation_retry_rechecks_revoked_device().await;
+    println!(
+        "authority journey: reservation retry rechecks revoked device, zero hold and send PASS"
+    );
     financial::immutable_balanced_postings().await;
     println!("authority journey: immutable exact balanced postings and aggregate audit PASS");
     financial::changed_and_lowered_policy().await;
