@@ -97,8 +97,9 @@ MLS Welcome plus readable subsequent message.
 Historical failures remain separate:
 
 - Main `e051f97`, CI `38055889469`, finished at **31**: live Low(7), generation of 25,
-  successful publication, then a later group completed. The log lacks per-claim IDs, so
-  it cannot establish which operation was retried or prove reply loss caused that run.
+  successful publication, and a later blob upload. A blob upload does not prove durable
+  claim or MLS completion. The log lacks per-claim IDs, so it cannot establish which
+  operation was retried or prove reply loss caused that run.
 - PR38 `38058275281` and PR44 `38058379030` finished at **8**, with a ready watcher and
   no live Low. Those logs require verifying whether the last producer's claim completed;
   a persisted receipt cannot issue work after an early process exit.
