@@ -14,19 +14,22 @@ use std::{path::PathBuf, process::Child, time::Duration};
 struct Watch {
     child: Child,
     log: PathBuf,
+    status_log: PathBuf,
 }
 
 impl Watch {
-    async fn until(&mut self, expected: &str, observed: impl Fn(&str) -> bool) -> String {
+    async fn until(&mut self, expected: &str, observed: impl Fn(&str, &str) -> bool) -> String {
         let deadline = tokio::time::Instant::now() + Duration::from_secs(30);
         loop {
-            let log = std::fs::read_to_string(&self.log).expect("watch log");
+            let stdout = std::fs::read_to_string(&self.log).expect("watch stdout");
+            let stderr = std::fs::read_to_string(&self.status_log).expect("watch stderr");
+            let log = format!("stdout:\n{stdout}\nstderr:\n{stderr}");
             let status = self.child.try_wait().expect("watch status");
             assert!(
                 status.is_none(),
                 "watch exited while waiting for {expected}: {status:?}\n{log}"
             );
-            if observed(&log) {
+            if observed(&stdout, &stderr) {
                 return log;
             }
             assert!(
@@ -220,13 +223,19 @@ async fn typing_reaches_the_other_person_and_is_never_stored() {
     // Startup and the typing/sending CLI calls must not consume a fixed watcher
     // lifetime. Start only after this listener caught up, and stop on receipt.
     let mut watcher = Watch {
-        child: w.spawn_zoen_logged("bruno", &["watch"], "bruno-typing-watch.log"),
+        child: w.spawn_zoen_logged_streams(
+            "bruno",
+            &["watch"],
+            "bruno-typing-watch.log",
+            "bruno-typing-watch.stderr.log",
+        ),
         log: w.dir.join("bruno-typing-watch.log"),
+        status_log: w.dir.join("bruno-typing-watch.stderr.log"),
     };
     watcher
-        .until("Bruno online and synced", |log| {
-            log.contains("watching as @bruno")
-                && log
+        .until("Bruno online and synced", |stdout, stderr| {
+            stdout.contains("watching as @bruno")
+                && stderr
                     .lines()
                     .rev()
                     .find(|line| line.starts_with("[zoen-net] connection="))
@@ -236,8 +245,8 @@ async fn typing_reaches_the_other_person_and_is_never_stored() {
     w.zoen("ana", &["typing", "@bruno", "--for", "2"]);
     w.zoen("ana", &["send", "@bruno", "chegando!"]);
     let out = watcher
-        .until("typing and the following message", |log| {
-            log.contains("[Ana] Ana is typing…") && log.contains("[Ana] Ana: chegando!")
+        .until("typing and the following message", |stdout, _| {
+            stdout.contains("[Ana] Ana is typing…") && stdout.contains("[Ana] Ana: chegando!")
         })
         .await;
     drop(watcher);
