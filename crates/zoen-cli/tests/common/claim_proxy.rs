@@ -21,10 +21,13 @@ pub enum Boundary {
     Request,
     Reply,
     AbsentCapability,
+    AbsentClock,
+    MalformedClock,
 }
 
 #[derive(Debug)]
 pub enum Observed {
+    ClockRefreshed,
     Request {
         operation: Option<String>,
         targets: Vec<String>,
@@ -144,7 +147,7 @@ async fn forward(
                 let Some(Ok(msg)) = msg else { break };
                 if let Message::Binary(bytes) = &msg {
                     if let Ok(ClientFrame::Req { id, op: Op::ClaimKeyPackages { ids, operation_id } }) = ClientFrame::decode(bytes) {
-                        let held = !matches!(boundary, Boundary::AbsentCapability) && once.swap(false, Ordering::SeqCst);
+                        let held = matches!(boundary, Boundary::Request | Boundary::Reply) && once.swap(false, Ordering::SeqCst);
                         claims.insert(id, (operation_id.clone(), held));
                         let _ = events.send(Observed::Request { operation: operation_id, targets: ids });
                         if held && matches!(boundary, Boundary::Request) {
@@ -162,9 +165,20 @@ async fn forward(
                 if let Message::Binary(bytes) = &msg {
                     if let Ok(frame) = ServerFrame::decode(bytes) {
                         match frame {
-                            ServerFrame::Challenge { nonce, relay, protocol, mut capabilities } if matches!(boundary, Boundary::AbsentCapability) => {
-                                capabilities.retain(|c| c != roda_proto::KEY_PACKAGE_CLAIM_CAPABILITY);
-                                msg = Message::Binary(ServerFrame::Challenge { nonce, relay, protocol, capabilities }.encode().into());
+                            ServerFrame::Challenge { nonce, relay, protocol, mut capabilities, mut server_time_ms } => {
+                                match boundary {
+                                    Boundary::AbsentCapability => capabilities.retain(|c| c != roda_proto::KEY_PACKAGE_CLAIM_CAPABILITY),
+                                    Boundary::AbsentClock => server_time_ms = None,
+                                    Boundary::MalformedClock => server_time_ms = Some(-1),
+                                    Boundary::Request | Boundary::Reply => {},
+                                }
+                                msg = Message::Binary(ServerFrame::Challenge { nonce, relay, protocol, capabilities, server_time_ms }.encode().into());
+                            }
+                            ServerFrame::Pong { server_time_ms: Some(time) }
+                                if matches!(boundary, Boundary::AbsentClock | Boundary::MalformedClock)
+                                    && roda_proto::KeyPackageClaimClock::from_server_ms(time).is_some()
+                                    && once.swap(false, Ordering::SeqCst) => {
+                                let _ = events.send(Observed::ClockRefreshed);
                             }
                             ServerFrame::Res { id, result: Ok(Reply::KeyPackages(records)) } => {
                                 if let Some((operation, selected)) = claims.remove(&id) {

@@ -15,7 +15,18 @@ wire bytes and behavior. The protocol version stays 4.
 The new core requires the explicit `key-package-claim-receipts` capability from the
 **Challenge of the connected relay** before issuing a claim for a membership addition.
 An omitted capability, including an older Hello/Challenge, defaults to unsupported.
-Protocol 4 alone is insufficient. Ordinary sync continues, while additions remain saved
+Protocol 4 alone is insufficient. The same Challenge must include a valid optional
+PostgreSQL `server_time_ms` (field 5). The client activates that socket-local sample only
+after authentication reaches Ready. Pong retains message tag 11 and optionally carries
+a refreshed clock in nested field 1; legacy empty Pongs remain byte-compatible. A later
+Pong cannot enable a capability or clock missing from the initial Challenge.
+
+Claim IDs use the exact database timestamp plus independent cryptographic randomness,
+without the device-wall-clock clamp used for event IDs. Neither wall time nor elapsed
+time advances a sample. Monotonic age only invalidates a sample once its 24-hour window
+passes; fresh IDs then wait for a valid Pong or reconnect. Saved IDs replay unchanged.
+Clock reads have the existing five-second database bound. Missing or malformed clock
+advertisements leave claims disabled. Ordinary sync and removals continue, while additions remain saved
 and surface an upgrade error instead of assuming an older relay will honor field 2.
 
 Deploy migration `0024_key_package_claim_receipts.sql` with the relay implementation
@@ -26,7 +37,8 @@ relay. An old client on a new relay still has destructive, non-idempotent legacy
 ## Transaction and retry boundary
 
 The receipt primary key is `(source_identity, source_device, operation_id)`. Both source
-values come from the authenticated session, never a request field. Targets are sorted
+values come from the authenticated session, never a request field. Targets must be
+canonical lowercase 64-character identity keys, and are sorted
 and deduplicated. Reusing a scoped operation with different targets is refused before
 consumption; reordering or repeating the same targets replays the same result.
 
@@ -37,7 +49,10 @@ Existing request-admission and per-frame delivery authorization still apply: wor
 admitted before revocation may complete; new requests and receipt delivery are fenced.
 
 On the device, `mls.claim:<space>` in SQLite contains the canonical operation, device,
-epoch, exact membership intent, and eventually the returned packages. The reply is saved
+epoch, exact membership intent, the sorted distinct target batch (at most 50 identities),
+and eventually the returned packages. Larger groups confirm one batch before claiming
+the remaining identities under a new operation; unrequested members are not treated as
+missing-package failures. The reply is saved
 before MLS staging. MLS state, staged commit/Welcome, and claim retirement share one
 SQLite transaction. A staging failure retries the cached reply; a socket loss retries the
 same operation. A changed intent creates a new operation. A completed empty reply is
@@ -73,7 +88,8 @@ increased. Test transport faults are confined to the journey harness.
 
 The new regressions cover a real committed reply lost across restart, an unissued
 request at the CLI deadline, a scheduled retry outside the event outbox, capability
-absence, changed/canonical targets, identity/device scoping and revocation, operation
+absence and invalid advertised clocks, a phone event clock 60 seconds ahead, 51-member
+batching, independent chat removals during capability fallback, changed/canonical targets, identity/device scoping and revocation, operation
 expiry, simultaneous retries, count/byte saturation rollback, bounded GC, and a genuine
 MLS Welcome plus readable subsequent message.
 
