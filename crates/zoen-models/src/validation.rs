@@ -51,7 +51,7 @@ pub(crate) fn bounded_json<T: serde::Serialize>(
     Ok(writer.bytes)
 }
 
-fn json_shape(value: &Value) -> bool {
+pub(crate) fn json_shape(value: &Value) -> bool {
     let mut pending = vec![(value, 0usize)];
     let mut nodes = 0;
     while let Some((value, depth)) = pending.pop() {
