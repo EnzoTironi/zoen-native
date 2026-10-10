@@ -34,6 +34,13 @@ impl From<sqlx::Error> for ClaimError {
     }
 }
 
+/// The same PostgreSQL clock used to enforce receipt freshness and expiry.
+pub async fn clock_ms(pool: &PgPool) -> Result<i64, sqlx::Error> {
+    sqlx::query_scalar("SELECT floor(extract(epoch FROM clock_timestamp()) * 1000)::bigint")
+        .fetch_one(pool)
+        .await
+}
+
 pub async fn claim(
     pool: &PgPool,
     source_identity: &str,
@@ -43,12 +50,20 @@ pub async fn claim(
 ) -> Result<Vec<KeyPackageRecord>, ClaimError> {
     let created = key_package_claim_time_ms(operation)
         .ok_or(ClaimError::Refused("invalid key-package claim operation"))?;
-    if targets.is_empty() || targets.len() > 50 {
-        return Err(ClaimError::Refused("claim one to fifty identities"));
+    if targets
+        .iter()
+        .any(|id| id.len() != 64 || !id.bytes().all(|c| matches!(c, b'0'..=b'9' | b'a'..=b'f')))
+    {
+        return Err(ClaimError::Refused(
+            "claim targets must be canonical identity keys",
+        ));
     }
     let mut targets = targets.to_vec();
     targets.sort_unstable();
     targets.dedup();
+    if targets.is_empty() || targets.len() > 50 {
+        return Err(ClaimError::Refused("claim one to fifty identities"));
+    }
     let expires = created + KEY_PACKAGE_CLAIM_TTL_MS;
     let mut tx = pool.begin().await?;
     // Serialize quota accounting and same-id retries, across nodes and connections.

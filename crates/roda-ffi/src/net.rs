@@ -16,8 +16,9 @@ use std::{
 
 use futures_util::{SinkExt, StreamExt};
 use roda_proto::{
-    auth_message, blob_put_message, ClientFrame, EphemeralKind, ErrorCode, Op, Reply, ServerFrame,
-    CAPABILITIES, MIN_PROTOCOL_VERSION, PROTOCOL_VERSION,
+    auth_message, blob_put_message, ClientFrame, EphemeralKind, ErrorCode, KeyPackageClaimClock,
+    Op, Reply, ServerFrame, CAPABILITIES, KEY_PACKAGE_CLAIM_TTL_MS, MIN_PROTOCOL_VERSION,
+    PROTOCOL_VERSION,
 };
 use roda_types::Identity;
 use tokio::sync::{mpsc, oneshot, watch};
@@ -375,6 +376,25 @@ fn settle(slot: &mut Option<tokio::time::Instant>, ok: bool) {
 }
 
 const PROFILE_TIMEOUT: Duration = Duration::from_secs(30);
+struct ClaimClockSample {
+    clock: KeyPackageClaimClock,
+    sampled: tokio::time::Instant,
+}
+
+impl ClaimClockSample {
+    fn new(clock: KeyPackageClaimClock) -> Self {
+        Self {
+            clock,
+            sampled: tokio::time::Instant::now(),
+        }
+    }
+
+    fn fresh(&self) -> Option<KeyPackageClaimClock> {
+        (self.sampled.elapsed() < Duration::from_millis(KEY_PACKAGE_CLAIM_TTL_MS as u64))
+            .then_some(self.clock)
+    }
+}
+
 const MAINTENANCE_PERIOD: Duration = Duration::from_millis(50);
 
 async fn session(
@@ -412,20 +432,26 @@ async fn session(
     if let Err(e) = send(&mut sink, &hello).await {
         return Exit::Retry(e);
     }
-    let (nonce, relay, profiles, claim_receipts) = match recv(&mut stream).await {
+    let (nonce, relay, profiles, advertised_clock) = match recv(&mut stream).await {
         Ok(ServerFrame::Challenge {
             nonce,
             relay,
             capabilities,
             protocol,
-            ..
+            server_time_ms,
         }) if protocol >= MIN_PROTOCOL_VERSION => (
             nonce,
             relay,
             capabilities.iter().any(|c| c == "profiles"),
             capabilities
                 .iter()
-                .any(|c| c == roda_proto::KEY_PACKAGE_CLAIM_CAPABILITY),
+                .any(|c| c == roda_proto::KEY_PACKAGE_CLAIM_CAPABILITY)
+                .then(|| {
+                    server_time_ms
+                        .and_then(KeyPackageClaimClock::from_server_ms)
+                        .map(ClaimClockSample::new)
+                })
+                .flatten(),
         ),
         Ok(ServerFrame::Challenge { protocol, .. }) => {
             return Exit::Blocked(format!(
@@ -459,6 +485,10 @@ async fn session(
             Err(e) => return Exit::Retry(e),
         }
     };
+    // A Challenge sample belongs to this authenticated socket only. A later Pong
+    // cannot enable a capability or clock that its Challenge did not advertise.
+    let clock_negotiated = advertised_clock.is_some();
+    let mut claim_clock = advertised_clock;
     if !relay_knows_me || !registered {
         if let Err(e) = register(&mut sink, &mut stream, profile, &mut early).await {
             return if e == "handle_taken" {
@@ -685,7 +715,11 @@ async fn session(
                     ServerFrame::ProfileChanged { identity, .. } => ctx.engine().profile_changed(&identity),
                     ServerFrame::KeyPackagesLow { device, remaining } => ctx.engine().mls_key_packages_low(&device, remaining),
                     ServerFrame::DeviceMessage { from, to, sealed } => ctx.engine().device_message(&from, &to, &sealed),
-                    ServerFrame::Pong => {}
+                    ServerFrame::Pong { server_time_ms } => {
+                        if clock_negotiated {
+                            claim_clock = server_time_ms.and_then(KeyPackageClaimClock::from_server_ms).map(ClaimClockSample::new);
+                        }
+                    }
                     ServerFrame::Error { message, .. } => tracing_like(&format!("relay: {message}")),
                     ServerFrame::Challenge { .. } | ServerFrame::Ready { .. } => {}
                 }
@@ -783,7 +817,7 @@ async fn session(
                     Ok(false) => {}
                     Err(e) => tracing_like(&format!("group recovery: {e}")),
                 }
-                let claim = ctx.engine().mls_to_claim(claim_receipts);
+                let claim = ctx.engine().mls_to_claim(claim_clock.as_ref().and_then(ClaimClockSample::fresh));
                 match claim {
                     Ok(Some((space, ids, operation))) => reqs.push((
                         Op::ClaimKeyPackages { ids, operation_id: Some(operation.clone()) },
@@ -1178,6 +1212,19 @@ pub async fn fetch_link_box(
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn an_unrefreshed_receipt_clock_expires_without_advancing_its_timestamp() {
+        let clock = roda_proto::KeyPackageClaimClock::from_server_ms(1_800_000_000_000).unwrap();
+        let mut sample = super::ClaimClockSample::new(clock);
+        sample.sampled -=
+            std::time::Duration::from_millis(roda_proto::KEY_PACKAGE_CLAIM_TTL_MS as u64 / 2);
+        assert_eq!(sample.fresh(), Some(clock));
+        sample.sampled -= std::time::Duration::from_millis(
+            roda_proto::KEY_PACKAGE_CLAIM_TTL_MS as u64 / 2 + 1_000,
+        );
+        assert_eq!(sample.fresh(), None);
+    }
+
     use super::*;
     use roda_log::{
         chain_hash, content::InnerEvent, content::Sealed, content::SealedKind, Author, Signer,
@@ -1465,6 +1512,7 @@ mod tests {
                     relay: "catch-up-test".into(),
                     protocol: PROTOCOL_VERSION,
                     capabilities: Vec::new(),
+                    server_time_ms: None,
                 },
             )
             .await;
@@ -1508,7 +1556,15 @@ mod tests {
                             )
                             .await;
                         }
-                        ClientFrame::Ping => reply(&mut socket, ServerFrame::Pong).await,
+                        ClientFrame::Ping => {
+                            reply(
+                                &mut socket,
+                                ServerFrame::Pong {
+                                    server_time_ms: None,
+                                },
+                            )
+                            .await
+                        }
                         ClientFrame::Publish { .. } => {}
                         other => panic!("unexpected {other:?}"),
                     }
@@ -1594,7 +1650,15 @@ mod tests {
                             .await;
                             break;
                         }
-                        ClientFrame::Ping => reply(&mut socket, ServerFrame::Pong).await,
+                        ClientFrame::Ping => {
+                            reply(
+                                &mut socket,
+                                ServerFrame::Pong {
+                                    server_time_ms: None,
+                                },
+                            )
+                            .await
+                        }
                         other => panic!("maintenance sent {other:?} before catch-up"),
                     }
                 }
@@ -1662,7 +1726,15 @@ mod tests {
                         )
                         .await;
                     }
-                    ClientFrame::Ping => reply(&mut socket, ServerFrame::Pong).await,
+                    ClientFrame::Ping => {
+                        reply(
+                            &mut socket,
+                            ServerFrame::Pong {
+                                server_time_ms: None,
+                            },
+                        )
+                        .await
+                    }
                     ClientFrame::Publish { .. } => {}
                     other => panic!("unexpected {other:?}"),
                 }
@@ -1704,7 +1776,15 @@ mod tests {
                         )
                         .await
                     }
-                    ClientFrame::Ping => reply(&mut socket, ServerFrame::Pong).await,
+                    ClientFrame::Ping => {
+                        reply(
+                            &mut socket,
+                            ServerFrame::Pong {
+                                server_time_ms: None,
+                            },
+                        )
+                        .await
+                    }
                     ClientFrame::Publish { .. } => {}
                     other => panic!("unexpected {other:?}"),
                 }
@@ -1773,6 +1853,7 @@ mod tests {
                             relay: "maintenance-test".into(),
                             protocol: PROTOCOL_VERSION,
                             capabilities: Vec::new(),
+                    server_time_ms: None,
                         },
                     )
                     .await;
@@ -1845,7 +1926,7 @@ mod tests {
                                 )
                                 .await
                             }
-                            ClientFrame::Ping => reply(&mut socket, ServerFrame::Pong).await,
+                            ClientFrame::Ping => reply(&mut socket, ServerFrame::Pong { server_time_ms: None }).await,
                             _ => {}
                         }
                     }

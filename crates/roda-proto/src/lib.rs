@@ -69,6 +69,21 @@ pub const CAPABILITIES: &[&str] = &[
     KEY_PACKAGE_CLAIM_CAPABILITY,
 ];
 
+/// A database-clock sample from the authenticated, receipt-capable relay connection.
+/// This value is never extrapolated using the device's wall clock.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct KeyPackageClaimClock(i64);
+
+impl KeyPackageClaimClock {
+    pub fn from_server_ms(time: i64) -> Option<Self> {
+        (1..=0xFFFF_FFFF_FFFF).contains(&time).then_some(Self(time))
+    }
+
+    pub fn milliseconds(self) -> i64 {
+        self.0
+    }
+}
+
 /// Canonical uppercase ULIDs only: no prefixes, aliases or overflowing leading bits.
 pub fn key_package_claim_time_ms(operation: &str) -> Option<i64> {
     if operation.len() != 26
@@ -614,6 +629,8 @@ pub enum ServerFrame {
         relay: String,
         protocol: u32,
         capabilities: Vec<String>,
+        /// Optional PG clock sample; required before relying on claim receipts.
+        server_time_ms: Option<i64>,
     },
     Ready {
         identity: IdentityId,
@@ -669,7 +686,9 @@ pub enum ServerFrame {
         space: SpaceId,
     },
     SyncDone,
-    Pong,
+    Pong {
+        server_time_ms: Option<i64>,
+    },
     Error {
         code: ErrorCode,
         message: String,

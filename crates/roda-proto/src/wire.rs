@@ -422,7 +422,7 @@ pub mod pb_server_frame {
         #[prost(message, tag = "10")]
         SyncDone(PbEmpty),
         #[prost(message, tag = "11")]
-        Pong(PbEmpty),
+        Pong(PbClock),
         #[prost(message, tag = "12")]
         Error(PbError),
         #[prost(message, tag = "13")]
@@ -444,6 +444,14 @@ pub struct PbChallenge {
     pub protocol: u32,
     #[prost(string, repeated, tag = "4")]
     pub capabilities: Vec<String>,
+    #[prost(int64, optional, tag = "5")]
+    pub server_time_ms: Option<i64>,
+}
+
+#[derive(Clone, PartialEq, Message)]
+pub struct PbClock {
+    #[prost(int64, optional, tag = "1")]
+    pub server_time_ms: Option<i64>,
 }
 
 #[derive(Clone, PartialEq, Message)]
@@ -960,11 +968,13 @@ impl ServerFrame {
                 relay,
                 protocol,
                 capabilities,
+                server_time_ms,
             } => F::Challenge(PbChallenge {
                 nonce: nonce.clone(),
                 relay: relay.clone(),
                 protocol: *protocol,
                 capabilities: capabilities.clone(),
+                server_time_ms: *server_time_ms,
             }),
             ServerFrame::Ready {
                 identity,
@@ -1077,7 +1087,9 @@ impl ServerFrame {
             }),
             ServerFrame::Joined { space } => F::Joined(space.clone()),
             ServerFrame::SyncDone => F::SyncDone(PbEmpty {}),
-            ServerFrame::Pong => F::Pong(PbEmpty {}),
+            ServerFrame::Pong { server_time_ms } => F::Pong(PbClock {
+                server_time_ms: *server_time_ms,
+            }),
             ServerFrame::Error { code, message } => F::Error(PbError {
                 code: match code {
                     ErrorCode::Other => PbErrorCode::Other,
@@ -1101,6 +1113,7 @@ impl ServerFrame {
                 relay: c.relay,
                 protocol: c.protocol,
                 capabilities: c.capabilities,
+                server_time_ms: c.server_time_ms,
             },
             F::Ready(r) => ServerFrame::Ready {
                 identity: r.identity,
@@ -1208,7 +1221,9 @@ impl ServerFrame {
             },
             F::Joined(space) => ServerFrame::Joined { space },
             F::SyncDone(_) => ServerFrame::SyncDone,
-            F::Pong(_) => ServerFrame::Pong,
+            F::Pong(c) => ServerFrame::Pong {
+                server_time_ms: c.server_time_ms,
+            },
             F::Error(e) => ServerFrame::Error {
                 code: match PbErrorCode::try_from(e.code).unwrap_or(PbErrorCode::Other) {
                     PbErrorCode::Other => ErrorCode::Other,
@@ -1226,6 +1241,7 @@ impl ServerFrame {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::KeyPackageClaimClock;
     use roda_log::{Author, Signer, SpaceLog};
     use roda_types::{EventBody, Privacy, SpaceKind};
 
@@ -1303,6 +1319,7 @@ mod tests {
                 relay: "r".into(),
                 protocol: 2,
                 capabilities: vec!["blobs".into()],
+                server_time_ms: None,
             },
             ServerFrame::Ready {
                 identity: "i".into(),
@@ -1404,7 +1421,9 @@ mod tests {
             },
             ServerFrame::Joined { space: "sp".into() },
             ServerFrame::SyncDone,
-            ServerFrame::Pong,
+            ServerFrame::Pong {
+                server_time_ms: None,
+            },
             ServerFrame::error(ErrorCode::UpgradeRequired, "update"),
         ];
         for f in frames {
@@ -1606,6 +1625,43 @@ mod tests {
             cert: "c".into(),
         };
         assert_eq!(ClientFrame::decode(&hello.encode()).unwrap(), hello);
+    }
+
+    #[test]
+    fn optional_relay_clock_preserves_legacy_challenge_and_pong_bytes() {
+        let challenge = ServerFrame::Challenge {
+            nonce: "n".into(),
+            relay: "r".into(),
+            protocol: 4,
+            capabilities: Vec::new(),
+            server_time_ms: None,
+        };
+        let old_challenge = [0x0a, 0x08, 0x0a, 0x01, b'n', 0x12, 0x01, b'r', 0x18, 0x04];
+        assert_eq!(challenge.encode(), old_challenge);
+        assert_eq!(ServerFrame::decode(&old_challenge).unwrap(), challenge);
+        let old_pong = [0x5a, 0x00];
+        assert_eq!(
+            ServerFrame::Pong {
+                server_time_ms: None
+            }
+            .encode(),
+            old_pong
+        );
+        assert_eq!(
+            ServerFrame::decode(&old_pong).unwrap(),
+            ServerFrame::Pong {
+                server_time_ms: None
+            }
+        );
+        for time in [None, Some(-1), Some(1_800_000_000_000)] {
+            let pong = ServerFrame::Pong {
+                server_time_ms: time,
+            };
+            assert_eq!(ServerFrame::decode(&pong.encode()).unwrap(), pong);
+        }
+        assert!(KeyPackageClaimClock::from_server_ms(-1).is_none());
+        assert!(KeyPackageClaimClock::from_server_ms(0).is_none());
+        assert!(KeyPackageClaimClock::from_server_ms(1i64 << 48).is_none());
     }
 
     #[test]

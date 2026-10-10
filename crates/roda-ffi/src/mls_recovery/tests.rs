@@ -397,7 +397,12 @@ fn a_removal_during_held_recovery_survives_restart_and_repairs_before_sealing() 
         .unwrap()
         .seal(space, b"held after restart")
         .is_err());
-    assert!(engine.mls_to_claim(true).unwrap().is_none());
+    assert!(engine
+        .mls_to_claim(Some(
+            roda_proto::KeyPackageClaimClock::from_server_ms(crate::engine::now_ms()).unwrap()
+        ))
+        .unwrap()
+        .is_none());
     let repairs = engine.store.outbox().unwrap();
     assert_eq!(
         repairs.len(),
@@ -465,7 +470,12 @@ fn agreement_lookup_finishes_before_the_engine_requests_one_shot_key_packages() 
         assert_eq!(engine.ingest(ordered(&engine, env)), Ingest::Applied);
     }
     engine.create_mls_group(space).unwrap();
-    assert!(engine.mls_to_claim(true).unwrap().is_none());
+    assert!(engine
+        .mls_to_claim(Some(
+            roda_proto::KeyPackageClaimClock::from_server_ms(crate::engine::now_ms()).unwrap()
+        ))
+        .unwrap()
+        .is_none());
     assert!(engine.take_need_agreement().contains(&identity));
     assert_eq!(engine.outbox_len(), 0);
     let (public, signed) = peer.agreement_to_publish().unwrap();
@@ -477,7 +487,12 @@ fn agreement_lookup_finishes_before_the_engine_requests_one_shot_key_packages() 
         }],
         std::slice::from_ref(&identity),
     );
-    let (claimed_space, targets, operation) = engine.mls_to_claim(true).unwrap().unwrap();
+    let (claimed_space, targets, operation) = engine
+        .mls_to_claim(Some(
+            roda_proto::KeyPackageClaimClock::from_server_ms(crate::engine::now_ms()).unwrap(),
+        ))
+        .unwrap()
+        .unwrap();
     assert_eq!(claimed_space, space);
     assert_eq!(targets, vec![identity.clone()]);
     let package = peer

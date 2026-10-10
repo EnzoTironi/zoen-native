@@ -58,8 +58,31 @@ impl Device {
             vault,
         }
     }
-    fn reopen(&mut self) {
+    async fn close_database(&mut self) {
         self.core.stop_sync();
+        let placeholder = RodaEngine::open(":memory:".into(), "en-US".into()).unwrap();
+        drop(std::mem::replace(&mut self.core, placeholder));
+        // shutdown_background may briefly retain the inner Engine. Observe actual
+        // ownership release rather than racing a second app against EXCLUSIVE SQLite.
+        let deadline = tokio::time::Instant::now() + Duration::from_secs(8);
+        loop {
+            let available =
+                rusqlite::Connection::open(self.home.join("zoen.sqlite")).and_then(|db| {
+                    db.busy_timeout(Duration::ZERO)?;
+                    db.execute_batch("BEGIN IMMEDIATE; COMMIT;")
+                });
+            if available.is_ok() {
+                break;
+            }
+            assert!(
+                tokio::time::Instant::now() < deadline,
+                "device database still owned: {available:?}"
+            );
+            tokio::time::sleep(Duration::from_millis(20)).await;
+        }
+    }
+    async fn reopen(&mut self) {
+        self.close_database().await;
         let core = RodaEngine::open(
             self.home.join("zoen.sqlite").to_string_lossy().into_owned(),
             "en-US".into(),
@@ -179,7 +202,7 @@ async fn committed_claim_reply_lost_across_restart_spends_exactly_one_package() 
     );
     ana.core.stop_sync();
     proxy.disconnect.notify_one();
-    ana.reopen();
+    ana.reopen().await;
     ana.core.start_sync(None).unwrap();
     let (retry, retry_targets) = next_request(&mut proxy).await;
     assert_eq!((retry, retry_targets), (operation.clone(), targets));
@@ -200,6 +223,7 @@ async fn committed_claim_reply_lost_across_restart_spends_exactly_one_package() 
             .await,
         1
     );
+    ana.close_database().await;
     let db = rusqlite::Connection::open(ana.home.join("zoen.sqlite")).unwrap();
     let pending: i64 = db
         .query_row(
@@ -209,6 +233,9 @@ async fn committed_claim_reply_lost_across_restart_spends_exactly_one_package() 
         )
         .unwrap();
     assert_eq!(pending, 0, "staged MLS commit atomically retires its claim");
+    drop(db);
+    ana.reopen().await;
+    ana.start().await;
     readable(&w, &ana, &bruno, &space).await;
 }
 
@@ -221,7 +248,7 @@ async fn group_cli_deadline_cannot_report_an_unissued_claim_as_complete() {
     let mut proxy = ClaimProxy::new(w.port, Boundary::Request).await;
     let mut ana = Device::new(&w, "ana", &proxy.url);
     ana.start().await;
-    ana.core.stop_sync();
+    ana.close_database().await;
     let mut child = Command::new(env!("CARGO_BIN_EXE_zoen"))
         .arg("--home")
         .arg(&ana.home)
@@ -259,7 +286,7 @@ async fn group_cli_deadline_cannot_report_an_unissued_claim_as_complete() {
     assert!(String::from_utf8_lossy(&output.stdout).trim().is_empty());
     assert_eq!(bruno.stock(&w).await, 32);
     proxy.disconnect.notify_one();
-    ana.reopen();
+    ana.reopen().await;
     ana.core.start_sync(None).unwrap();
     let (retry, retry_targets) = next_request(&mut proxy).await;
     assert_eq!((retry, retry_targets), (operation, targets));
@@ -404,6 +431,21 @@ async fn receipts_bind_canonical_targets_and_authenticated_actor() {
     let mut ana = RawClient::reconnect(&w.relay_url(), source.author()).await;
     let mut carol = RawClient::connect(&w.relay_url(), "carol").await;
     let operation = operation_at(now_ms(), 1);
+    for invalid in [
+        bruno.account.identity_id.to_uppercase(),
+        "x".repeat(900_000),
+    ] {
+        let invalid_target = claim(&mut ana, vec![invalid], &operation)
+            .await
+            .unwrap_err();
+        assert!(invalid_target.contains("canonical identity"));
+    }
+    assert_eq!(
+        w.count("SELECT count(*) FROM key_package_claim_receipts")
+            .await,
+        0
+    );
+    assert_eq!(bruno.stock(&w).await, 32);
     let first = claim(
         &mut ana,
         vec![bruno.account.identity_id.clone(), carol.identity()],
@@ -560,4 +602,92 @@ async fn expired_future_and_noncanonical_operations_never_consume_packages() {
         KEY_PACKAGE_CLAIM_EXPIRED
     );
     assert_eq!(bruno.stock(&w).await, 32);
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn advertised_receipts_without_a_valid_challenge_clock_never_enable_claims() {
+    for boundary in [Boundary::AbsentClock, Boundary::MalformedClock] {
+        let w = World::new("kp_claim_invalid_clock").await;
+        let bruno = Device::new(&w, "bruno", &w.relay_url());
+        bruno.start().await;
+        bruno.core.stop_sync();
+        let mut proxy = ClaimProxy::new(w.port, boundary).await;
+        let ana = Device::new(&w, "ana", &proxy.url);
+        ana.start().await;
+        assert!(matches!(proxy.next().await, Observed::ClockRefreshed));
+        ana.core
+            .create_group_with(
+                "Missing receipt clock".into(),
+                vec![bruno.account.identity_id.clone()],
+                PrivacyDto::EndToEnd,
+            )
+            .unwrap();
+        let error = ana.core.wait_until_settled(1000).await.unwrap_err();
+        assert!(error.to_string().contains("server clock"), "{error}");
+        // The initial Ping receives a genuine, valid-clock Pong. It must not enable
+        // a clock/capability absent or malformed in this socket's Challenge.
+        assert!(
+            proxy.events.try_recv().is_err(),
+            "invalid clock enabled a destructive claim"
+        );
+        assert_eq!(bruno.stock(&w).await, 32);
+        assert_eq!(
+            w.count("SELECT count(*) FROM key_package_claim_receipts")
+                .await,
+            0
+        );
+    }
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn receipt_claims_progress_with_a_sixty_second_device_event_clock_skew() {
+    const CHILD: &str = "ZOEN_CLAIM_CLOCK_SKEW_CHILD";
+    if std::env::var_os(CHILD).is_none() {
+        // new_ulid's monotonic event clock is process-wide. Isolate the skew so
+        // other genuine-crypto journeys retain their normal device clocks.
+        let output = Command::new(std::env::current_exe().unwrap())
+            .args([
+                "--exact",
+                "receipt_claims_progress_with_a_sixty_second_device_event_clock_skew",
+                "--nocapture",
+            ])
+            .env(CHILD, "1")
+            .output()
+            .unwrap();
+        assert!(
+            output.status.success(),
+            "{}\n{}",
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr)
+        );
+        return;
+    }
+    let w = World::new("kp_claim_clock_skew").await;
+    let bruno = Device::new(&w, "bruno", &w.relay_url());
+    bruno.start().await;
+    bruno.core.stop_sync();
+    let mut proxy = ClaimProxy::new(w.port, Boundary::Reply).await;
+    let ana = Device::new(&w, "ana", &proxy.url);
+    ana.start().await;
+    let skewed = roda_types::new_ulid(now_ms() + 60_000);
+    let space = ana
+        .core
+        .create_group_with(
+            "Phone clock ahead".into(),
+            vec![bruno.account.identity_id.clone()],
+            PrivacyDto::EndToEnd,
+        )
+        .unwrap();
+    let (operation, _) = next_request(&mut proxy).await;
+    assert!(
+        roda_proto::key_package_claim_time_ms(&operation).unwrap()
+            < roda_types::id_time_ms(&skewed).unwrap() - 50_000
+    );
+    let (_, records, held) = next_reply(&mut proxy).await;
+    assert!(held);
+    assert_eq!(records.len(), 1, "relay refused a normally skewed device");
+    proxy.release.notify_one();
+    ana.core.wait_until_settled(8000).await.unwrap();
+    assert_eq!(bruno.stock(&w).await, 31);
+    readable(&w, &ana, &bruno, &space).await;
 }
