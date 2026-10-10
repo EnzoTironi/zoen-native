@@ -540,10 +540,8 @@ impl Engine {
     }
 
     pub(crate) fn atomic_agent_action<T>(&mut self, f: impl FnOnce(&mut Self) -> R<T>) -> R<T> {
-        fn storage(e: impl std::fmt::Display) -> CoreError {
-            CoreError::Storage {
-                message: e.to_string(),
-            }
+        fn storage(e: rusqlite::Error) -> CoreError {
+            roda_store::StoreError::from(e).into()
         }
         self.store
             .conn()
