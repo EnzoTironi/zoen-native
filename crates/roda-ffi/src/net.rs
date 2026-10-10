@@ -1401,6 +1401,7 @@ mod tests {
                     relay: "canonical-relay".into(),
                     protocol: PROTOCOL_VERSION,
                     capabilities: Vec::new(),
+                    server_time_ms: None,
                 },
             )
             .await;
