@@ -78,6 +78,8 @@ final class ApprovalsJourneyTests: XCTestCase {
         XCTAssertFalse(list.exists, "notifications start with approval cards")
         keep(app, "notifications default to cards")
 
+        XCTAssertEqual(app.buttons.matching(identifier: "notifications-list").count, 1,
+                       "only the visible notification deck exposes its List button")
         app.buttons["notifications-list"].tap()
         XCTAssertTrue(list.waitForExistence(timeout: 10), "List explicitly opens the notification list")
         XCTAssertTrue(app.buttons["notifications-cards"].waitForExistence(timeout: 5))
@@ -86,6 +88,7 @@ final class ApprovalsJourneyTests: XCTestCase {
         app.buttons["notifications-cards"].tap()
         XCTAssertEqual(topCard(app), first, "switching presentation does not decide a request")
         XCTAssertFalse(list.exists, "Cards returns to the deck")
+        XCTAssertEqual(app.buttons.matching(identifier: "notifications-list").count, 1)
         keep(app, "notifications return to cards")
 
         app.buttons["approvals-back"].tap()

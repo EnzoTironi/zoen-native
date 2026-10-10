@@ -42,7 +42,8 @@ struct RootView: View {
         @Bindable var model = model
         ZStack(alignment: .bottom) {
             ForEach(AppTab.allCases, id: \.self) { t in
-                if t != .search || model.tab == .search {
+                if (t != .search || model.tab == .search)
+                    && (t != .activity || (model.tab == .activity && !model.approvalsOpen && !model.notificationsOpen)) {
                     stack(for: t)
                         .opacity(model.tab == t ? 1 : 0)
                         .allowsHitTesting(model.tab == t)

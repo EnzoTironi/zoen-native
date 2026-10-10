@@ -53,11 +53,26 @@ final class ChatPinnedWidgetJourneyTests: XCTestCase {
                        "scrolling messages does not change the widget row's height")
         capture("Pinned widget held while a real message moves")
 
-        tile.tap()
+        tile.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap()
         let miniApp = app.descendants(matching: .any)["miniapp-sheet"].firstMatch
         XCTAssertTrue(miniApp.waitForExistence(timeout: 10), "the pinned widget still opens its live mini-app")
-        XCTAssertTrue(app.buttons["miniapp-close"].firstMatch.waitForExistence(timeout: 5))
+        let denyNetwork = app.buttons["Don’t allow"].firstMatch
+        let nativeClose = miniApp.buttons["miniapp-close"].firstMatch
+        let webClose = miniApp.webViews.buttons.matching(NSPredicate(
+            format: "label IN %@", ["Close", "Fechar"])).firstMatch
+        expectation(for: NSPredicate { _, _ in
+            denyNetwork.exists || nativeClose.exists || webClose.exists
+        }, evaluatedWith: app)
+        waitForExpectations(timeout: 15)
+        if denyNetwork.exists { denyNetwork.tap() }
+        let close = nativeClose.exists ? nativeClose : webClose
+        XCTAssertTrue(close.waitForExistence(timeout: 10), "the app can close without granting network access")
         capture("Pinned widget opens its mini-app after scrolling")
+        close.tap()
+        expectation(for: NSPredicate(format: "exists == false"), evaluatedWith: miniApp)
+        waitForExpectations(timeout: 10)
+        XCTAssertTrue(tile.isHittable, "closing returns to the pinned widget in the chat")
+        capture("Closing the pinned mini-app returns to the chat")
     }
 
     @MainActor
