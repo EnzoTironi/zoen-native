@@ -43,6 +43,8 @@ fun VersionPreviewScreen(model: ZoenViewModel, id: String, number: UInt, back: (
     var confirm by remember { mutableStateOf(false) }
     var busy by remember { mutableStateOf(false) }
     val saved = stringResource(R.string.saved)
+    val pendingSync = stringResource(R.string.page_pending_sync)
+    val draftSaved = stringResource(R.string.page_draft_saved)
     Scaffold(snackbarHost = { snackbar?.let { SnackbarHost(it, Modifier.testTag("app-snackbar")) } }, topBar = { ScreenBar(stringResource(R.string.page_preview_version, number.toInt()), back, actions = {
         if (content != null) IconButton(onClick = { model.launch {
             val historical = checkNotNull(content)
@@ -101,12 +103,20 @@ fun VersionPreviewScreen(model: ZoenViewModel, id: String, number: UInt, back: (
         }
     }
     if (confirm) AlertDialog(onDismissRequest = { confirm = false }, title = { Text(stringResource(R.string.restore)) }, text = { Text(stringResource(R.string.restore_question)) }, confirmButton = {
-        TextButton(onClick = { confirm = false; busy = true; model.launch {
-            try {
-                model.repository.change { it.restoreVersion(id, number) }
-                model.repository.preferences.edit().remove(model.repository.localKey("pageDraft", id)).remove(model.repository.localKey("pageDraft", id) + ":base").commit()
-                model.notify(saved); back()
-            } finally { busy = false }
-        } }) { Text(stringResource(R.string.restore)) }
+        TextButton(onClick = {
+            val owner = model.state.value.me?.id ?: return@TextButton
+            confirm = false; busy = true
+            model.launch {
+                try {
+                    val fresh = model.pageSaves.restoreVersion(model.repository, id, owner, number)
+                    model.notify(fresh?.saveError ?: when {
+                        fresh?.pendingSync == true -> pendingSync
+                        fresh?.unsaved == true -> draftSaved
+                        else -> saved
+                    })
+                    back()
+                } finally { busy = false }
+            }
+        }) { Text(stringResource(R.string.restore)) }
     }, dismissButton = { TextButton(onClick = { confirm = false }) { Text(stringResource(R.string.cancel)) } })
 }

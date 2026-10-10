@@ -15,6 +15,11 @@ struct PageScreen: View {
     @State private var item: ItemDetail?
     @State private var loadedVersion: UInt32 = 0
     @State private var dirty = false
+    @State private var pendingEdit = false
+    @State private var canEdit = false
+    @State private var editContext = ""
+    @State private var editId = UUID().uuidString
+    @State private var saveError: String?
     @State private var saveState = SaveState.idle
     @State private var applyTask: Task<Void, Never>?
     @State private var commitTask: Task<Void, Never>?
@@ -26,17 +31,29 @@ struct PageScreen: View {
     /// What Share sends (refreshed on load and save, not on every keystroke).
     @State private var markdown = ""
 
-    enum SaveState: Equatable { case idle, editing, saved }
+    enum SaveState: Equatable { case idle, editing, saved, syncing, failed, readOnly }
 
     var body: some View {
         VStack(spacing: 0) {
             if let item { header(item) }
-            PageTextView(controller: controller, editable: true, autofocus: isNew) { openLink() }
+            if let saveError {
+                HStack(alignment: .top, spacing: 10) {
+                    Image(systemName: "exclamationmark.circle")
+                    Text(saveError).frame(maxWidth: .infinity, alignment: .leading)
+                    if canEdit { Button("Try again") { commitNow() } }
+                }
+                .font(.caption)
+                .foregroundStyle(Palette.danger)
+                .padding(.horizontal, 22).padding(.vertical, 10)
+                .accessibilityIdentifier("page.saveError")
+            }
+            PageTextView(controller: controller, editable: canEdit, autofocus: isNew && canEdit) { openLink() }
                 .overlay(alignment: .topLeading) { placeholder }
             #if os(macOS)
             FormatBar(controller: controller) { openLink() }
                 .frame(maxWidth: 720)
                 .padding(.bottom, 8)
+                .disabled(!canEdit)
             #endif
         }
         .frame(maxWidth: 760)
@@ -49,7 +66,7 @@ struct PageScreen: View {
         .toolbar {
             ToolbarItem(placement: .principal) { savePill }
             ToolbarItemGroup(placement: .primaryAction) {
-                Button { commitNow(); showVersions = true } label: { Label("Versions", systemImage: "clock.arrow.circlepath") }
+                Button { if !canEdit || commitNow() { showVersions = true } } label: { Label("Versions", systemImage: "clock.arrow.circlepath") }
                     .accessibilityIdentifier("page.versions")
                 if !markdown.isEmpty {
                     ShareLink(item: markdown, preview: SharePreview(item?.title ?? "Page")) { Label("Share", systemImage: "square.and.arrow.up") }
@@ -67,15 +84,16 @@ struct PageScreen: View {
                 #endif
                 .autocorrectionDisabled()
             Button("Cancel", role: .cancel) {}
-            Button("OK") { controller.setLink(linkText) }
+            Button("OK") { if canEdit { controller.setLink(linkText) } }
+                .disabled(!canEdit)
         } message: {
             Text("Leave empty to remove the link.")
         }
         .sensoryFeedback(.success, trigger: savedBump)
         .task { load(initial: true) }
         .onChange(of: model.revision) { reloadIfIdle() }
-        .onChange(of: scenePhase) { _, phase in if phase != .active { commitNow() } }
-        .onDisappear { commitNow() }
+        .onChange(of: scenePhase) { _, phase in if phase != .active { controller.finishComposition(); commitNow() } }
+        .onDisappear { controller.finishComposition(); commitNow() }
         .onAppear {
             controller.onEdit = { edited() }
         }
@@ -120,6 +138,16 @@ struct PageScreen: View {
                 .background(Palette.action.opacity(0.12), in: .capsule)
                 .transition(.scale(scale: 0.8).combined(with: .opacity))
                 .accessibilityIdentifier("page.saved")
+        case .syncing:
+            Label("Saved on this device", systemImage: "icloud.and.arrow.up")
+                .font(.caption).foregroundStyle(Palette.textSecondary)
+                .accessibilityIdentifier("page.pendingSync")
+        case .failed:
+            Label("Couldn't save", systemImage: "exclamationmark.circle")
+                .font(.caption).foregroundStyle(Palette.danger)
+        case .readOnly:
+            Label("Read only", systemImage: "lock")
+                .font(.caption).foregroundStyle(Palette.textSecondary)
         }
     }
 
@@ -146,13 +174,11 @@ struct PageScreen: View {
             blocks = [PageBlockDto(id: blocks.first?.id ?? BlockTag.newId(), kind: "heading", level: 1, indent: 0, number: 0,
                                    checked: false, lang: "", url: "", alt: "", text: "", spans: [])]
         }
-        controller.load(blocks, keepSelection: !initial)
-        loadedVersion = page.version
+        guard controller.load(blocks, keepSelection: !initial) else { return }
+        accept(page)
         markdown = (try? model.core.pageMarkdown(itemId: itemId)) ?? ""
-        if initial {
-            synced = Dictionary(page.blocks.map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a })
-            syncedOrder = page.blocks.map(\.id)
-        }
+        dirty = page.unsaved && page.canEdit
+        updateSaveState(page)
     }
 
     /// What the core has for each block (to send only what changed).
@@ -160,6 +186,9 @@ struct PageScreen: View {
     @State private var syncedOrder: [String] = []
 
     private func edited() {
+        guard canEdit else { return }
+        editId = UUID().uuidString
+        pendingEdit = true
         dirty = true
         if saveState != .editing { withAnimation(.spring(duration: 0.35, bounce: 0.3)) { saveState = .editing } }
         applyTask?.cancel()
@@ -176,59 +205,109 @@ struct PageScreen: View {
         }
     }
 
-    private func applyNow() {
+    @discardableResult private func applyNow() -> Bool {
+        guard !controller.isComposing else { return false }
+        // An undo may equal the old baseline after an accepted save lost its reply.
+        guard pendingEdit else { return true }
         let blocks = controller.blocks()
         let order = blocks.map(\.id)
         let changed = blocks.filter { synced[$0.id] != $0 }
-        if changed.isEmpty && order == syncedOrder { return }
+        guard canEdit, !editContext.isEmpty else { return false }
         let start = ContinuousClock.now
         defer { log.debug("apply \(changed.count) blocks in \(ContinuousClock.now - start, privacy: .public)") }
         do {
-            try model.core.pageApply(itemId: itemId, order: order, changed: changed)
-            synced = Dictionary(blocks.map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a })
-            syncedOrder = order
+            let receipt = try model.core.pageApplyFrom(itemId: itemId, mutationId: editId, editContext: editContext, order: order, changed: changed)
+            guard controller.load(receipt.page.blocks, keepSelection: true) else { return false }
+            pendingEdit = false
+            accept(receipt.page)
+            saveError = receipt.page.saveError
+            return true
         } catch {
-            model.show(.init(kind: .error, text: (error as? CoreError)?.message ?? error.localizedDescription))
+            failed(error)
+            return false
         }
     }
 
-    private func commitNow() {
+    @discardableResult private func commitNow() -> Bool {
         applyTask?.cancel()
         commitTask?.cancel()
-        guard dirty else { log.debug("commit: nothing to save"); return }
+        guard dirty else { log.debug("commit: nothing to save"); return true }
         let start = ContinuousClock.now
         defer { log.debug("commit in \(ContinuousClock.now - start, privacy: .public), now v\(loadedVersion)") }
-        applyNow()
-        dirty = false
-        if model.perform({ try model.core.pageCommit(itemId: itemId, note: "") }) == true {
-            savedBump += 1
-            withAnimation(.spring(duration: 0.4, bounce: 0.35)) { saveState = .saved }
-            Task { @MainActor in
-                try? await Task.sleep(for: .seconds(2))
-                if saveState == .saved, !dirty { withAnimation(.easeOut(duration: 0.3)) { saveState = .idle } }
-            }
-        } else if saveState == .editing {
-            withAnimation { saveState = .idle }
+        guard applyNow() else { return false }
+        do {
+            let committed = try model.core.pageCommit(itemId: itemId, note: "")
+            let page = try model.core.page(itemId: itemId)
+            guard controller.load(page.blocks, keepSelection: true) else { return false }
+            accept(page)
+            dirty = page.unsaved && page.canEdit
+            if committed && !page.pendingSync && page.saveError == nil { savedBump += 1 }
+            updateSaveState(page)
+            item = try? model.core.item(itemId: itemId)
+            markdown = (try? model.core.pageMarkdown(itemId: itemId)) ?? markdown
+            return page.saveError == nil && !page.unsaved
+        } catch {
+            failed(error)
+            return false
         }
-        item = try? model.core.item(itemId: itemId)
-        if let v = item?.version { loadedVersion = v }
-        markdown = (try? model.core.pageMarkdown(itemId: itemId)) ?? ""
     }
 
     /// Someone else saved a version: show it unless this person is mid-edit.
     private func reloadIfIdle() {
         let fresh = try? model.core.item(itemId: itemId)
         item = fresh ?? item
-        guard !dirty, let v = fresh?.version, v != loadedVersion else { return }
         guard let page = try? model.core.page(itemId: itemId) else { return }
-        controller.load(page.blocks, keepSelection: true)
+        canEdit = page.canEdit
+        controller.editable = canEdit
+        if !canEdit { updateSaveState(page); return }
+        guard !controller.isComposing, !pendingEdit else { return }
+        if dirty {
+            let blocks = controller.blocks()
+            guard blocks.map(\.id) == syncedOrder, blocks.allSatisfy({ synced[$0.id] == $0 }) else { return }
+        }
+        guard controller.load(page.blocks, keepSelection: true) else { return }
+        accept(page)
+        dirty = page.unsaved && page.canEdit
+        updateSaveState(page)
+        markdown = (try? model.core.pageMarkdown(itemId: itemId)) ?? markdown
+        if page.unsaved && page.canEdit && !page.pendingSync && page.saveError == nil { commitNow() }
+    }
+
+    private func accept(_ page: PageDto) {
         synced = Dictionary(page.blocks.map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a })
         syncedOrder = page.blocks.map(\.id)
+        editContext = page.editContext
+        editId = UUID().uuidString
+        canEdit = page.canEdit
+        controller.editable = canEdit
         loadedVersion = page.version
-        markdown = (try? model.core.pageMarkdown(itemId: itemId)) ?? ""
+    }
+
+    private func updateSaveState(_ page: PageDto) {
+        saveError = page.saveError
+        withAnimation(.spring(duration: 0.35)) {
+            if page.saveError != nil { saveState = .failed }
+            else if !page.canEdit { saveState = .readOnly }
+            else if page.unsaved { saveState = .editing }
+            else if page.pendingSync { saveState = .syncing }
+            else { saveState = .saved }
+        }
+    }
+
+    private func failed(_ error: Error) {
+        let message = (error as? CoreError)?.message ?? error.localizedDescription
+        saveError = message
+        saveState = .failed
+        dirty = true
+        if let page = try? model.core.page(itemId: itemId) {
+            canEdit = page.canEdit
+            controller.editable = canEdit
+        }
+        model.show(.init(kind: .error, text: message))
     }
 
     private func openLink() {
+        guard canEdit else { return }
         linkText = controller.currentLink ?? ""
         linkPrompt = true
     }

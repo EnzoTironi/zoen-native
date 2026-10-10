@@ -35,11 +35,12 @@ fun ItemScreen(model: ZoenViewModel, state: AppState, id: String, navigate: (Nav
     var restore by remember { mutableStateOf<UInt?>(null) }
     var lineToEdit by remember { mutableStateOf<PlanLineDto?>(null) }
     var addSection by remember { mutableStateOf<Int?>(null) }
-    var restored by remember { mutableIntStateOf(0) }
     val context = LocalContext.current
     val focus = LocalFocusManager.current
     val fileUnavailable = stringResource(R.string.file_not_ready)
     val saved = stringResource(R.string.saved)
+    val pendingSync = stringResource(R.string.page_pending_sync)
+    val draftSaved = stringResource(R.string.page_draft_saved)
     DisposableEffect(id) { model.viewingItem(id); onDispose { model.viewingItem(null) } }
     if (item == null) {
         Scaffold(topBar = { ScreenBar(stringResource(R.string.files), back) }) { padding -> EmptyState(stringResource(R.string.unavailable), stringResource(R.string.unavailable_detail), Modifier.padding(padding)) }
@@ -66,7 +67,7 @@ fun ItemScreen(model: ZoenViewModel, state: AppState, id: String, navigate: (Nav
     }) { padding ->
         when {
             item.app != null -> MiniAppScreen(model, state, item, Modifier.padding(padding), onClose = back)
-            item.kindId == "page" -> key(id, restored) { xyz.tironi.zoen.pages.RichPageEditor(model, state, item, Modifier.padding(padding)) }
+            item.kindId == "page" -> xyz.tironi.zoen.pages.RichPageEditor(model, state, item, Modifier.padding(padding))
             item.file != null -> FileScreen(model, state, item, Modifier.padding(padding))
             else -> LazyColumn(Modifier.padding(padding).testTag("plan-lines"), contentPadding = PaddingValues(24.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
                 item {
@@ -126,11 +127,14 @@ fun ItemScreen(model: ZoenViewModel, state: AppState, id: String, navigate: (Nav
     restore?.let { number -> AlertDialog(onDismissRequest = { restore = null }, title = { Text(stringResource(R.string.restore)) }, text = { Text(stringResource(R.string.restore_question)) }, confirmButton = {
         TextButton(onClick = {
             restore = null; versions = false
+            val owner = state.me?.id ?: return@TextButton
             model.launch {
-                model.repository.change { it.restoreVersion(id, number) }
-                model.repository.preferences.edit().remove(model.repository.localKey("pageDraft", id)).remove(model.repository.localKey("pageDraft", id) + ":base").apply()
-                restored++
-                model.notify(saved)
+                val fresh = model.pageSaves.restoreVersion(model.repository, id, owner, number)
+                model.notify(fresh?.saveError ?: when {
+                    fresh?.pendingSync == true -> pendingSync
+                    fresh?.unsaved == true -> draftSaved
+                    else -> saved
+                })
             }
         }) { Text(stringResource(R.string.restore)) }
     }, dismissButton = { TextButton(onClick = { restore = null }) { Text(stringResource(R.string.cancel)) } }) }

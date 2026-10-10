@@ -22,6 +22,7 @@ import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.CancellationException
+import java.util.UUID
 import xyz.tironi.zoen.R
 import xyz.tironi.zoen.ZoenViewModel
 import xyz.tironi.zoen.core.*
@@ -31,11 +32,21 @@ import xyz.tironi.zoen.ui.EmptyState
 @Composable
 fun RichPageEditor(model: ZoenViewModel, state: AppState, item: ItemDetail, modifier: Modifier = Modifier) {
     val owner = state.me?.id ?: return
-    val page by produceState<PageDto?>(null, owner, item.id, state.revision) { value = model.repository.query { it.page(item.id) } }
+    var page by remember(owner, item.id) { mutableStateOf<PageDto?>(null) }
+    var pageReload by remember(owner, item.id) { mutableIntStateOf(0) }
+    LaunchedEffect(owner, item.id, state.revision, pageReload) { page = model.repository.query { it.page(item.id) } }
     val draftKey = model.repository.localKey("pageDraft", item.id, owner)
-    val baseKey = "$draftKey:base"
-    var draft by remember(owner, item.id) { mutableStateOf(model.repository.preferences.getString(draftKey, null)) }
-    var original by remember(owner, item.id) { mutableStateOf<List<PageBlockDto>?>(model.repository.preferences.getString(baseKey, null)?.let { PageEditing.decode(it) }) }
+    val draftStore = remember(owner, item.id) { PageDraftStore(model.repository.vault, model.repository.localKey("encryptedPageDraft", item.id, owner)) }
+    val loadedDraft = remember(owner, item.id) { runCatching { draftStore.load(model.repository.preferences, draftKey) } }
+    var draft by remember(owner, item.id) { mutableStateOf(loadedDraft.getOrNull()) }
+    var draftReadable by remember(owner, item.id) { mutableStateOf(loadedDraft.isSuccess) }
+    var saveError by remember(owner, item.id) { mutableStateOf(loadedDraft.exceptionOrNull()?.message) }
+    var deferred by remember(owner, item.id) { mutableStateOf(false) }
+    val editorToken = remember(owner, item.id) { Any() }
+    var generation by remember(owner, item.id) { mutableLongStateOf(model.pageSaves.generation(item.id)) }
+    var restorePaused by remember(owner, item.id) { mutableStateOf(false) }
+    var composingBlocks by remember(owner, item.id) { mutableStateOf<Set<String>>(emptySet()) }
+    var compositionPage by remember(owner, item.id) { mutableStateOf<PageDto?>(null) }
     var selected by rememberSaveable { mutableStateOf<String?>(null) }
     var range by remember { mutableStateOf(TextRange.Zero) }
     var typingMarks by remember(item.id) { mutableStateOf<Map<String, String?>>(emptyMap()) }
@@ -44,84 +55,151 @@ fun RichPageEditor(model: ZoenViewModel, state: AppState, item: ItemDetail, modi
     var link by rememberSaveable { mutableStateOf("") }
     var busy by remember { mutableStateOf(false) }
     var historyRevision by remember { mutableIntStateOf(0) }
-    DisposableEffect(model.repository.preferences, item.id) {
-        val preferences = model.repository.preferences
-        val listener = android.content.SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
-            if (key == draftKey && !preferences.contains(draftKey)) { draft = null; original = null }
-        }
-        preferences.registerOnSharedPreferenceChangeListener(listener)
-        onDispose { preferences.unregisterOnSharedPreferenceChangeListener(listener) }
-    }
-    val history = remember(item.id) { PageEditHistory() }
+    var history by remember(owner, item.id) { mutableStateOf(PageEditHistory()) }
     val saved = stringResource(R.string.saved)
     val current = page
     if (current == null) { Box(modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator() }; return }
     if (!current.ready) { EmptyState(stringResource(R.string.page_not_ready), "", modifier); return }
-    val blocks = remember(current, draft) { draft?.let { PageEditing.decode(it, original ?: current.blocks) } ?: current.blocks }
+    val editable = current.canEdit && draftReadable && !restorePaused
+    val rendered = compositionPage ?: current
+    val blocks = remember(rendered, draft) { draft?.let { PageEditing.decode(it.content, PageEditing.decode(it.base).orEmpty()) } ?: rendered.blocks }
     fun persist(next: List<PageBlockDto>) {
-        if (model.state.value.me?.id != owner) return
-        if (original == null) { original = current.blocks; model.repository.preferences.edit().putString(baseKey, PageEditing.encode(current.blocks)).apply() }
-        draft = PageEditing.encode(next)
-        model.repository.preferences.edit().putString(draftKey, draft).apply()
+        if (!editable || model.state.value.me?.id != owner || !model.pageSaves.isCurrent(item.id, editorToken, generation)) return
+        val nextDraft = PageDraft(PageEditing.encode(next), draft?.base ?: PageEditing.encode(rendered.blocks),
+            draft?.context ?: rendered.editContext, (draft?.revision ?: 0) + 1)
+        draft = nextDraft
+        runCatching { draftStore.save(nextDraft) }.onFailure { saveError = it.message; model.notify(it.message.orEmpty()) }
     }
     fun change(next: List<PageBlockDto>, editKey: String? = null) {
-        if (next == blocks) return
+        if (!editable || next == blocks) return
         history.record(blocks, editKey); historyRevision++; persist(next)
     }
     fun replace(block: PageBlockDto, editKey: String? = null) = change(blocks.map { if (it.id == block.id) block else it }, editKey)
     val active = blocks.firstOrNull { it.id == selected }
-    val identity = state.me?.id
     val save: suspend (Boolean) -> Unit = { commit ->
-        val savingDraft = draft
-        if (savingDraft != null && model.state.value.me?.id == identity) {
-            val savingBlocks = PageEditing.decode(savingDraft, original ?: current.blocks) ?: blocks
-            val originals = (original ?: current.blocks).associateBy { it.id }
-            val changed = model.repository.change { core ->
-                check(core.me()?.id == identity) { "The page belongs to another account" }
-                val remote = core.page(item.id)
-                val ids = savingBlocks.map { it.id }
-                val additions = remote.blocks.map { it.id }.filter { it !in originals && it !in ids }
-                core.pageApply(item.id, ids + additions, savingBlocks.filter { originals[it.id] != it })
-                if (commit) core.pageCommit(item.id, saved) else false
-            }
-            if (commit && draft == savingDraft) {
-                draft = null; original = null
-                model.repository.preferences.edit().remove(draftKey).remove(baseKey).apply()
-                if (changed) model.notify(saved)
+        model.pageSaves.save(item.id, editorToken, generation) {
+            var savingDraft = draft ?: return@save
+            if (draftReadable && composingBlocks.isEmpty() && model.state.value.me?.id == owner) {
+                if (savingDraft.context.isEmpty()) {
+                    val remote = model.repository.query { core ->
+                        check(core.me()?.id == owner) { "The page belongs to another account" }
+                        core.page(item.id).also { check(it.canEdit) { it.saveError ?: "This page is read only" } }
+                    }
+                    if (!model.pageSaves.isCurrent(item.id, editorToken, generation) || composingBlocks.isNotEmpty()) return@save
+                    fun migrate(old: PageDraft): PageDraft {
+                        val base = requireNotNull(PageEditing.decode(old.base))
+                        val pending = requireNotNull(PageEditing.decode(old.content, base))
+                        return old.copy(content = PageEditing.encode(PageEditing.recoverLegacy(pending, base, remote.blocks)),
+                            base = PageEditing.encode(remote.blocks), context = remote.editContext)
+                    }
+                    val previous = savingDraft
+                    val upgraded = migrate(previous)
+                    val newest = draft
+                    val upgradedNewest = if (newest == previous) upgraded else newest?.let { if (it.context.isEmpty()) migrate(it) else it }
+                    // Persist the one-time recovery and its exact context before the first core mutation.
+                    draftStore.save(upgradedNewest ?: upgraded)
+                    draft = upgradedNewest ?: upgraded
+                    savingDraft = upgraded
+                } else {
+                    draftStore.save(checkNotNull(draft))
+                }
+                val base = requireNotNull(PageEditing.decode(savingDraft.base))
+                val appliedBlocks = requireNotNull(PageEditing.decode(savingDraft.content, base))
+                val originals = base.associateBy { it.id }
+                val changed = appliedBlocks.filter { originals[it.id] != it }
+                val (receipt, fresh) = model.repository.change { core ->
+                    check(core.me()?.id == owner) { "The page belongs to another account" }
+                    // An empty observed diff can undo a previous accepted edit whose receipt was lost.
+                    val result = core.pageApplyFrom(item.id, savingDraft.editId, savingDraft.context, appliedBlocks.map { it.id }, changed)
+                    if (commit) core.pageCommit(item.id, saved)
+                    result to core.page(item.id)
+                }
+                if (model.state.value.me?.id != owner || !model.pageSaves.isCurrent(item.id, editorToken, generation)) return@save
+                page = fresh
+                saveError = fresh.saveError
+                deferred = commit && fresh.unsaved && fresh.pendingSync
+                val newest = draft
+                if (newest == savingDraft) {
+                    if (composingBlocks.isNotEmpty()) {
+                        val next = savingDraft.copy(base = PageEditing.encode(appliedBlocks), context = receipt.appliedEditContext,
+                            editId = UUID.randomUUID().toString())
+                        draftStore.save(next); draft = next
+                    } else if (!fresh.unsaved && fresh.saveError == null) {
+                        draftStore.delete(); draft = null
+                    } else {
+                        val next = PageDraft.fromPage(fresh, savingDraft.revision)
+                        draftStore.save(next); draft = next
+                    }
+                } else if (newest != null) {
+                    val next = newest.copy(base = PageEditing.encode(appliedBlocks), context = receipt.appliedEditContext)
+                    draftStore.save(next); draft = next
+                }
             }
         }
     }
     val latestSave by rememberUpdatedState(save)
     val lifecycle = LocalLifecycleOwner.current.lifecycle
-    DisposableEffect(item.id, lifecycle) {
+    DisposableEffect(owner, item.id, lifecycle) {
         val flush: suspend () -> Unit = { latestSave(true) }
-        model.pageSaves.register(item.id, flush)
+        model.pageSaves.register(item.id, editorToken, flush, pause = { paused ->
+            restorePaused = paused
+            if (paused) { menu = null; linking = false }
+        }, restored = { nextGeneration, restored, error ->
+            generation = nextGeneration
+            if (model.state.value.me?.id == owner) {
+                restored?.let {
+                    pageReload++
+                    page = it.page
+                    draft = it.draft
+                    draftReadable = it.draftStored
+                    deferred = it.page.unsaved && it.page.pendingSync
+                    composingBlocks = emptySet(); compositionPage = null
+                    selected = null; range = TextRange.Zero; typingMarks = emptyMap()
+                    history = PageEditHistory(); historyRevision = 0
+                }
+                saveError = error ?: restored?.page?.saveError
+            }
+        })
         val observer = LifecycleEventObserver { _, event -> if (event == Lifecycle.Event.ON_STOP) model.launch { flush() } }
         lifecycle.addObserver(observer)
-        onDispose { lifecycle.removeObserver(observer); model.launch { try { flush() } finally { model.pageSaves.unregister(item.id, flush) } } }
+        onDispose { lifecycle.removeObserver(observer); model.launch { try { flush() } finally { model.pageSaves.unregister(item.id, editorToken) } } }
     }
-    LaunchedEffect(draft) {
-        if (draft != null) try { delay(400); latestSave(false); delay(3600); latestSave(true) }
-        catch (error: Exception) { if (error is CancellationException) throw error; model.notify(error.message ?: saved) }
+    LaunchedEffect(draft?.revision, composingBlocks, restorePaused) {
+        if (draft != null && composingBlocks.isEmpty() && !restorePaused) try { delay(400); latestSave(false); delay(3600); latestSave(true) }
+        catch (error: Exception) { if (error is CancellationException) throw error; saveError = error.message; model.notify(error.message ?: saved) }
+    }
+    LaunchedEffect(current.pendingSync, state.revision) {
+        if (deferred && !current.pendingSync && current.canEdit) {
+            deferred = false
+            try { latestSave(true) } catch (error: Exception) { if (error is CancellationException) throw error; saveError = error.message }
+        }
+    }
+    val renderedGeneration = generation
+    LaunchedEffect(current.unsaved, owner, item.id, generation, restorePaused, composingBlocks) {
+        if (current.unsaved && editable && composingBlocks.isEmpty() && draft == null && page == current &&
+            model.state.value.me?.id == owner && model.pageSaves.isCurrent(item.id, editorToken, renderedGeneration)) {
+            val restored = PageDraft.fromPage(current)
+            draftStore.save(restored); draft = restored
+        }
     }
     Column(modifier.fillMaxSize().imePadding()) {
         Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-            IconButton(onClick = { history.undo(blocks)?.let { persist(it) }; typingMarks = emptyMap(); historyRevision++ }, enabled = historyRevision > 0 && history.canUndo) { Icon(Icons.AutoMirrored.Rounded.Undo, stringResource(R.string.undo)) }
-            IconButton(onClick = { history.redo(blocks)?.let { persist(it) }; typingMarks = emptyMap(); historyRevision++ }, enabled = historyRevision > 0 && history.canRedo) { Icon(Icons.AutoMirrored.Rounded.Redo, stringResource(R.string.page_redo)) }
+            IconButton(onClick = { history.undo(blocks)?.let { persist(it) }; typingMarks = emptyMap(); historyRevision++ }, enabled = editable && historyRevision > 0 && history.canUndo) { Icon(Icons.AutoMirrored.Rounded.Undo, stringResource(R.string.undo)) }
+            IconButton(onClick = { history.redo(blocks)?.let { persist(it) }; typingMarks = emptyMap(); historyRevision++ }, enabled = editable && historyRevision > 0 && history.canRedo) { Icon(Icons.AutoMirrored.Rounded.Redo, stringResource(R.string.page_redo)) }
             val formats = listOf(Triple("b", Icons.Rounded.FormatBold, R.string.page_bold), Triple("i", Icons.Rounded.FormatItalic, R.string.page_italic), Triple("s", Icons.Rounded.FormatStrikethrough, R.string.page_strike), Triple("c", Icons.Rounded.Code, R.string.page_inline_code))
             formats.forEach { (key, icon, label) ->
                 val checked = active?.let { if (range.collapsed && typingMarks.containsKey(key)) typingMarks[key] != null else PageEditing.hasMark(it, key, range.start, range.end) } == true
-                IconToggleButton(checked = checked, enabled = active != null, onCheckedChange = { active?.let {
+                IconToggleButton(checked = checked, enabled = editable && active != null, onCheckedChange = { active?.let {
                     if (range.collapsed) typingMarks = typingMarks + (key to if (checked) null else "")
                     else replace(PageEditing.toggle(it, key, "", range.start, range.end))
                 } }) { Icon(icon, stringResource(label)) }
             }
-            IconButton(enabled = active != null, onClick = { link = active?.let { PageEditing.marksAt(it, range.start)["a"] }.orEmpty(); linking = true }) { Icon(Icons.Rounded.Link, stringResource(R.string.page_link)) }
-            IconButton(enabled = active != null && active.kind !in listOf("image", "divider"), onClick = { active?.let {
+            IconButton(enabled = editable && active != null, onClick = { link = active?.let { PageEditing.marksAt(it, range.start)["a"] }.orEmpty(); linking = true }) { Icon(Icons.Rounded.Link, stringResource(R.string.page_link)) }
+            IconButton(enabled = editable && active != null && active.kind !in listOf("image", "divider"), onClick = { active?.let {
                 replace(PageEditing.hardBreak(it, range.start, range.end)); range = TextRange(minOf(range.start, range.end) + 1)
             } }) { Icon(Icons.Rounded.KeyboardReturn, stringResource(R.string.page_line_break)) }
-            IconButton(enabled = active?.kind in listOf("bullet", "numbered", "task"), onClick = { active?.let { replace(it.copy(indent = (it.indent + 1u).coerceAtMost(6u))) } }) { Icon(Icons.AutoMirrored.Rounded.FormatIndentIncrease, stringResource(R.string.page_indent)) }
-            IconButton(enabled = active?.indent?.let { it > 0u } == true, onClick = { active?.let { replace(it.copy(indent = it.indent - 1u)) } }) { Icon(Icons.AutoMirrored.Rounded.FormatIndentDecrease, stringResource(R.string.page_outdent)) }
+            IconButton(enabled = editable && active?.kind in listOf("bullet", "numbered", "task"), onClick = { active?.let { replace(it.copy(indent = (it.indent + 1u).coerceAtMost(6u))) } }) { Icon(Icons.AutoMirrored.Rounded.FormatIndentIncrease, stringResource(R.string.page_indent)) }
+            IconButton(enabled = editable && active?.indent?.let { it > 0u } == true, onClick = { active?.let { replace(it.copy(indent = it.indent - 1u)) } }) { Icon(Icons.AutoMirrored.Rounded.FormatIndentDecrease, stringResource(R.string.page_outdent)) }
         }
         LazyColumn(Modifier.weight(1f), contentPadding = PaddingValues(horizontal = 20.dp, vertical = 12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             items(blocks, key = { it.id }) { block ->
@@ -131,18 +209,33 @@ fun RichPageEditor(model: ZoenViewModel, state: AppState, item: ItemDetail, modi
                 }, selection = { nextRange, typed ->
                     if (selected != block.id || !typed && range != nextRange) typingMarks = emptyMap()
                     selected = block.id; range = nextRange
-                }, format = { if (selected != block.id) typingMarks = emptyMap(); selected = block.id; menu = block.id }, selectedRange = range.takeIf { selected == block.id }, typingMarks = typingMarks.takeIf { selected == block.id }.orEmpty())
+                }, format = { if (editable) { if (selected != block.id) typingMarks = emptyMap(); selected = block.id; menu = block.id } },
+                    selectedRange = range.takeIf { selected == block.id }, typingMarks = typingMarks.takeIf { selected == block.id }.orEmpty(), editable = editable,
+                    composing = { composing ->
+                        if (composing && editable) {
+                            if (composingBlocks.isEmpty()) compositionPage = rendered
+                            composingBlocks = composingBlocks + block.id
+                        } else {
+                            composingBlocks = composingBlocks - block.id
+                            if (composingBlocks.isEmpty()) compositionPage = null
+                        }
+                    })
             }
-            item { TextButton(onClick = { val block = PageEditing.blank(); change(blocks + block); selected = block.id }) { Icon(Icons.Rounded.Add, null); Spacer(Modifier.width(8.dp)); Text(stringResource(R.string.add_block)) } }
+            if (editable) item { TextButton(onClick = { val block = PageEditing.blank(); change(blocks + block); selected = block.id }) { Icon(Icons.Rounded.Add, null); Spacer(Modifier.width(8.dp)); Text(stringResource(R.string.add_block)) } }
         }
         Surface(tonalElevation = 2.dp) {
             Row(Modifier.fillMaxWidth().navigationBarsPadding().padding(horizontal = 20.dp, vertical = 12.dp), horizontalArrangement = Arrangement.End, verticalAlignment = Alignment.CenterVertically) {
-                if (draft != null) Text(stringResource(R.string.page_draft_saved), Modifier.weight(1f), style = MaterialTheme.typography.labelSmall)
-                Button(enabled = draft != null && !busy, modifier = Modifier.testTag("page-save"), onClick = {
+                val status = saveError ?: current.saveError ?: if (!editable) stringResource(R.string.read_only) else if (current.pendingSync) stringResource(R.string.page_pending_sync) else if (draft != null) stringResource(R.string.page_draft_saved) else saved
+                Text(status, Modifier.weight(1f), style = MaterialTheme.typography.labelSmall,
+                    color = if (saveError != null || current.saveError != null) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant)
+                Button(enabled = editable && composingBlocks.isEmpty() && (draft != null || current.unsaved) && !busy, modifier = Modifier.testTag("page-save"), onClick = {
                     busy = true
                     model.launch {
                         try {
                             latestSave(true)
+                        } catch (error: Exception) {
+                            if (error is CancellationException) throw error
+                            saveError = error.message
                         } finally { busy = false }
                     }
                 }) { Text(stringResource(R.string.save)) }
@@ -151,7 +244,7 @@ fun RichPageEditor(model: ZoenViewModel, state: AppState, item: ItemDetail, modi
     }
     menu?.let { id ->
         val block = blocks.firstOrNull { it.id == id }
-        if (block != null) AlertDialog(onDismissRequest = { menu = null }, title = { Text(stringResource(R.string.format)) }, text = {
+        if (block != null && editable) AlertDialog(onDismissRequest = { menu = null }, title = { Text(stringResource(R.string.format)) }, text = {
             Column {
                 val kinds = listOf("paragraph" to R.string.paragraph, "heading" to R.string.heading, "bullet" to R.string.page_bullet, "numbered" to R.string.page_numbered, "task" to R.string.task, "quote" to R.string.page_quote, "code" to R.string.page_code, "divider" to R.string.page_divider, "image" to R.string.page_image, "raw" to R.string.page_raw)
                 Row(Modifier.horizontalScroll(rememberScrollState())) { kinds.forEach { (kind, label) -> FilterChip(block.kind == kind, { replace(block.copy(kind = kind, level = if (kind == "heading") 2u else 0u)); menu = null }, label = { Text(stringResource(label)) }, modifier = Modifier.padding(end = 4.dp)) } }
@@ -161,7 +254,7 @@ fun RichPageEditor(model: ZoenViewModel, state: AppState, item: ItemDetail, modi
             }
         }, confirmButton = { TextButton(onClick = { menu = null }) { Text(stringResource(R.string.done)) } })
     }
-    if (linking) AlertDialog(onDismissRequest = { linking = false }, title = { Text(stringResource(R.string.page_link)) }, text = { OutlinedTextField(link, { link = it }, label = { Text(stringResource(R.string.page_image_url)) }, singleLine = true) }, confirmButton = {
+    if (linking && editable) AlertDialog(onDismissRequest = { linking = false }, title = { Text(stringResource(R.string.page_link)) }, text = { OutlinedTextField(link, { link = it }, label = { Text(stringResource(R.string.page_image_url)) }, singleLine = true) }, confirmButton = {
         TextButton(enabled = link.isBlank() || PageEditing.linkTarget(link) != null, onClick = { active?.let { block ->
             replace(PageEditing.setLink(block, link, range.start, range.end))
             if (range.collapsed && link.isNotBlank()) range = TextRange(range.start + link.trim().length)

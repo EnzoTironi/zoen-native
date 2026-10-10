@@ -12,9 +12,27 @@ final class PageUITextView: UITextView, PageTextHost {
         super.didMoveToWindow()
         guard wantsFocus, window != nil else { return }
         wantsFocus = false
-        DispatchQueue.main.async { [weak self] in _ = self?.becomeFirstResponder() }
+        DispatchQueue.main.async { [weak self] in
+            guard let self, isEditable else { return }
+            _ = becomeFirstResponder()
+        }
     }
     var pageStorage: NSTextStorage { textStorage }
+    var pageHasMarkedText: Bool { markedTextRange != nil }
+    func pageEndComposition() { unmarkText() }
+    func pageViewport() -> PageViewport? {
+        guard let position = closestPosition(to: CGPoint(x: textContainerInset.left + 4, y: contentOffset.y + 4)) else { return nil }
+        let rect = caretRect(for: position)
+        return PageViewport(index: offset(from: beginningOfDocument, to: position),
+                            offset: CGPoint(x: contentOffset.x, y: contentOffset.y - rect.minY))
+    }
+    func pageRestoreViewport(_ viewport: PageViewport) {
+        guard let position = position(from: beginningOfDocument, offset: viewport.index) else { return }
+        let y = caretRect(for: position).minY + viewport.offset.y
+        let minimum = -adjustedContentInset.top
+        let maximum = max(minimum, contentSize.height - bounds.height + adjustedContentInset.bottom)
+        setContentOffset(CGPoint(x: viewport.offset.x, y: min(max(y, minimum), maximum)), animated: false)
+    }
     var pageSelection: NSRange {
         get { selectedRange }
         set { selectedRange = newValue }
@@ -48,20 +66,12 @@ struct PageTextView: UIViewRepresentable {
         tv.delegate = context.coordinator
         tv.isEditable = editable
         tv.accessibilityIdentifier = "page.editor"
-        controller.host = tv
         controller.editable = editable
+        controller.host = tv
         let tap = UITapGestureRecognizer(target: context.coordinator, action: #selector(Coordinator.tapped(_:)))
         tap.delegate = context.coordinator
         tv.addGestureRecognizer(tap)
-        if editable {
-            let bar = UIHostingController(rootView: FormatBar(controller: controller, onLink: { onLink?() }))
-            bar.view.backgroundColor = .clear
-            bar.sizingOptions = [.intrinsicContentSize]
-            bar.view.frame = CGRect(x: 0, y: 0, width: 400, height: 58)
-            bar.view.autoresizingMask = [.flexibleWidth]
-            tv.inputAccessoryView = bar.view
-            context.coordinator.bar = bar
-        }
+        context.coordinator.updateAccessory(tv, editable: editable, onLink: onLink)
         tv.wantsFocus = autofocus
         context.coordinator.focused = autofocus
         return tv
@@ -70,10 +80,14 @@ struct PageTextView: UIViewRepresentable {
     func updateUIView(_ tv: PageUITextView, context: Context) {
         if tv.isEditable != editable { tv.isEditable = editable }
         if controller.editable != editable { controller.editable = editable }
+        context.coordinator.updateAccessory(tv, editable: editable, onLink: onLink)
+        if !editable { tv.wantsFocus = false }
         // The screen learns it's a new page after loading, so focus can arrive here too (once).
         if autofocus, !context.coordinator.focused {
             context.coordinator.focused = true
-            if tv.window != nil { DispatchQueue.main.async { _ = tv.becomeFirstResponder() } } else { tv.wantsFocus = true }
+            if tv.window != nil {
+                DispatchQueue.main.async { if tv.isEditable { _ = tv.becomeFirstResponder() } }
+            } else { tv.wantsFocus = true }
         }
     }
 
@@ -85,6 +99,32 @@ struct PageTextView: UIViewRepresentable {
         private var pending: NSRange?
 
         init(controller: PageEditorController) { self.controller = controller }
+
+        func updateAccessory(_ tv: PageUITextView, editable: Bool, onLink: (() -> Void)?) {
+            if editable {
+                let content = FormatBar(controller: controller, onLink: { onLink?() })
+                let bar: UIHostingController<FormatBar>
+                if let existing = self.bar {
+                    bar = existing
+                    bar.rootView = content
+                } else {
+                    bar = UIHostingController(rootView: content)
+                    bar.view.backgroundColor = .clear
+                    bar.sizingOptions = [.intrinsicContentSize]
+                    bar.view.frame = CGRect(x: 0, y: 0, width: 400, height: 58)
+                    bar.view.autoresizingMask = [.flexibleWidth]
+                    self.bar = bar
+                }
+                if tv.inputAccessoryView !== bar.view {
+                    tv.inputAccessoryView = bar.view
+                    tv.reloadInputViews()
+                }
+            } else if tv.inputAccessoryView != nil {
+                tv.inputAccessoryView = nil
+                bar = nil
+                tv.reloadInputViews()
+            }
+        }
 
         func textView(_ textView: UITextView, shouldChangeTextIn range: NSRange, replacementText text: String) -> Bool {
             let ok = controller.shouldChange(range, replacement: text)
@@ -136,6 +176,23 @@ import AppKit
 final class PageNSTextView: NSTextView, PageTextHost {
     weak var controller: PageEditorController?
     var pageStorage: NSTextStorage { textStorage ?? NSTextStorage() }
+    var pageHasMarkedText: Bool { hasMarkedText() }
+    func pageEndComposition() { unmarkText() }
+    private func pageCaretY(_ index: Int) -> CGFloat? {
+        guard let window else { return nil }
+        let rect = firstRect(forCharacterRange: NSRange(location: index, length: 0), actualRange: nil)
+        return convert(window.convertFromScreen(rect), from: nil).minY
+    }
+    func pageViewport() -> PageViewport? {
+        let index = min(characterIndexForInsertion(at: visibleRect.origin), pageStorage.length)
+        guard let y = pageCaretY(index) else { return nil }
+        return PageViewport(index: index, offset: CGPoint(x: visibleRect.minX, y: visibleRect.minY - y))
+    }
+    func pageRestoreViewport(_ viewport: PageViewport) {
+        guard let scroll = enclosingScrollView, let y = pageCaretY(viewport.index) else { return }
+        scroll.contentView.scroll(to: CGPoint(x: viewport.offset.x, y: y + viewport.offset.y))
+        scroll.reflectScrolledClipView(scroll.contentView)
+    }
     var pageSelection: NSRange {
         get { selectedRange() }
         set { setSelectedRange(newValue) }
@@ -183,13 +240,13 @@ struct PageTextView: NSViewRepresentable {
         tv.delegate = context.coordinator
         tv.isEditable = editable
         tv.setAccessibilityIdentifier("page.editor")
-        controller.host = tv
         controller.editable = editable
+        controller.host = tv
         let scroll = NSScrollView()
         scroll.drawsBackground = false
         scroll.hasVerticalScroller = true
         scroll.documentView = tv
-        if autofocus { DispatchQueue.main.async { tv.window?.makeFirstResponder(tv) } }
+        if autofocus { DispatchQueue.main.async { if tv.isEditable { tv.window?.makeFirstResponder(tv) } } }
         return scroll
     }
 
@@ -197,7 +254,7 @@ struct PageTextView: NSViewRepresentable {
         if let tv = scroll.documentView as? NSTextView, tv.isEditable != editable { tv.isEditable = editable }
         if controller.editable != editable { controller.editable = editable }
         if autofocus, let tv = scroll.documentView as? NSTextView, tv.window?.firstResponder !== tv, tv.string.isEmpty {
-            DispatchQueue.main.async { tv.window?.makeFirstResponder(tv) }
+            DispatchQueue.main.async { if tv.isEditable { tv.window?.makeFirstResponder(tv) } }
         }
     }
 

@@ -131,7 +131,7 @@ class NativeParityTest {
             val body = original.blocks.first { it.kind == "paragraph" && it.text.contains("styled") }
             val changed = PageEditing.replaceText(body, "Updated " + body.text)
             val blocks = PageEditing.decode(PageEditing.encode(original.blocks.map { if (it.id == body.id) changed else it }))!!
-            core.pageApply(item.id, blocks.map { it.id }, listOf(changed))
+            core.pageApplyFrom(item.id, UUID.randomUUID().toString(), original.editContext, blocks.map { it.id }, listOf(changed))
             core.pageCommit(item.id, "Rich text edited")
             assertEquals(2u, core.item(item.id).version)
             assertEquals(original.blocks, core.pageAt(item.id, 1u).blocks)

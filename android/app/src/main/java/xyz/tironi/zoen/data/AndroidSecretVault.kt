@@ -50,6 +50,13 @@ class AndroidSecretVault(context: Context, namespace: String = "keys") : SecretV
     }
 
     @Synchronized
+    fun loadStored(key: String): ByteArray? {
+        val target = file(key)
+        if (!target.baseFile.exists() && !File(target.baseFile.path + ".bak").exists()) return null
+        return load(key) ?: error("The saved draft is locked; it has not been deleted")
+    }
+
+    @Synchronized
     override fun save(key: String, value: ByteArray): Boolean {
         val target = file(key)
         var stream: java.io.FileOutputStream? = null

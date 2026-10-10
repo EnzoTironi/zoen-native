@@ -54,15 +54,26 @@ fun pageTextStyle(block: PageBlockDto): TextStyle = when (block.kind) {
     }.copy(color = if (block.kind in listOf("quote", "raw") || block.kind == "task" && block.checked) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onSurface)
 
 @Composable
-fun PageBlockEditor(block: PageBlockDto, focus: Boolean, changed: (PageBlockDto) -> Unit, enter: (PageBlockDto, Int) -> Unit, selection: (TextRange, Boolean) -> Unit, format: () -> Unit, modifier: Modifier = Modifier, selectedRange: TextRange? = null, typingMarks: Map<String, String?> = emptyMap()) {
+fun PageBlockEditor(block: PageBlockDto, focus: Boolean, changed: (PageBlockDto) -> Unit, enter: (PageBlockDto, Int) -> Unit, selection: (TextRange, Boolean) -> Unit, format: () -> Unit, modifier: Modifier = Modifier, selectedRange: TextRange? = null, typingMarks: Map<String, String?> = emptyMap(), editable: Boolean = true, composing: (Boolean) -> Unit = {}) {
     var value by remember(block.id) { mutableStateOf(TextFieldValue(block.text.replace('\u2028', '\n'))) }
+    var composingNow by remember(block.id) { mutableStateOf(false) }
+    val reportComposition by rememberUpdatedState(composing)
+    fun compositionChanged(active: Boolean) {
+        if (active != composingNow) { composingNow = active; reportComposition(active) }
+    }
+    DisposableEffect(block.id) { onDispose { if (composingNow) reportComposition(false) } }
+    LaunchedEffect(editable) { if (!editable && composingNow) { value = value.copy(composition = null); compositionChanged(false) } }
     val requester = remember { FocusRequester() }
-    LaunchedEffect(block.text) {
+    LaunchedEffect(block.text, value.composition) {
         val text = block.text.replace('\u2028', '\n')
-        if (value.text != text) value = value.copy(text = text, selection = TextRange(value.selection.start.coerceAtMost(text.length), value.selection.end.coerceAtMost(text.length)))
+        if (value.text != text && value.composition == null) {
+            val nextRange = TextRange(PageTextOffsets.remap(value.selection.start, value.text, text), PageTextOffsets.remap(value.selection.end, value.text, text))
+            value = value.copy(text = text, selection = nextRange)
+            if (focus) selection(nextRange, false)
+        }
     }
     LaunchedEffect(selectedRange) {
-        selectedRange?.let { value = value.copy(selection = TextRange(it.start.coerceIn(0, value.text.length), it.end.coerceIn(0, value.text.length))) }
+        if (value.composition == null) selectedRange?.let { value = value.copy(selection = TextRange(PageTextOffsets.boundary(value.text, it.start), PageTextOffsets.boundary(value.text, it.end))) }
     }
     LaunchedEffect(focus) { if (focus && block.kind != "divider" && block.kind != "image") requester.requestFocus() }
     val style = pageTextStyle(block)
@@ -73,7 +84,7 @@ fun PageBlockEditor(block: PageBlockDto, focus: Boolean, changed: (PageBlockDto)
     }
     Row(modifier.fillMaxWidth().padding(start = (block.indent.coerceAtMost(8u).toInt() * 12).dp), verticalAlignment = Alignment.Top) {
         when (block.kind) {
-            "task" -> Checkbox(block.checked, { changed(block.copy(checked = it)) })
+            "task" -> Checkbox(block.checked, { changed(block.copy(checked = it)) }, enabled = editable)
             "bullet" -> Text("•", Modifier.padding(top = 16.dp, end = 8.dp))
             "numbered" -> Text("${block.number.coerceAtLeast(1u)}.", Modifier.padding(top = 16.dp, end = 8.dp))
             "quote" -> VerticalDivider(Modifier.padding(top = 8.dp, end = 10.dp).height(48.dp), thickness = 3.dp)
@@ -83,39 +94,49 @@ fun PageBlockEditor(block: PageBlockDto, focus: Boolean, changed: (PageBlockDto)
                 "divider" -> HorizontalDivider(Modifier.padding(vertical = 24.dp))
                 "image" -> {
                     Row(verticalAlignment = Alignment.CenterVertically) { Icon(Icons.Rounded.Image, null); Text(block.alt, Modifier.padding(start = 8.dp)) }
-                    if (focus) {
+                    if (focus && editable) {
                         OutlinedTextField(block.url, { changed(block.copy(url = it)) }, label = { Text(stringResource(R.string.page_image_url)) }, modifier = Modifier.fillMaxWidth(), singleLine = true)
                         OutlinedTextField(block.alt, { changed(block.copy(alt = it)) }, label = { Text(stringResource(R.string.page_image_alt)) }, modifier = Modifier.fillMaxWidth(), singleLine = true)
                     }
                 }
                 else -> {
                     BasicTextField(value, { next ->
+                        if (!editable) return@BasicTextField
+                        compositionChanged(next.composition != null)
                         val textChanged = next.text != value.text
                         val marks = PageEditing.marksAt(block, value.selection.start) + typingMarks
-                        val inserted = next.text.length > value.text.length && next.selection.collapsed && next.selection.start > 0 && next.text.getOrNull(next.selection.start - 1) == '\n'
+                        val inserted = next.composition == null && next.text.length > value.text.length && next.selection.collapsed && next.selection.start > 0 && next.text.getOrNull(next.selection.start - 1) == '\n'
                         if (inserted && block.kind !in listOf("code", "raw", "quote")) {
                             val offset = next.selection.start - 1
                             if (block.text.isEmpty() && block.kind in listOf("task", "bullet", "numbered")) changed(block.copy(kind = "paragraph", indent = 0u))
                             else enter(PageEditing.replaceText(block, next.text.removeRange(offset, offset + 1).replace('\n', '\u2028'), marks), offset)
                         } else {
-                            if (textChanged) changed(PageEditing.shortcut(PageEditing.replaceText(block, next.text.replace('\n', '\u2028'), marks)))
-                            value = next; selection(next.selection, textChanged)
+                            if (textChanged) {
+                                val updated = PageEditing.replaceText(block, next.text.replace('\n', '\u2028'), marks)
+                                val formatted = if (next.composition == null) PageEditing.shortcut(updated) else updated
+                                changed(formatted)
+                                value = if (formatted.text != updated.text) next.copy(text = formatted.text.replace('\u2028', '\n'), selection = TextRange.Zero) else next
+                            } else value = next
+                            selection(value.selection, textChanged)
                         }
                     }, modifier = Modifier.fillMaxWidth().padding(vertical = 12.dp).testTag("page-block:${block.id}").focusRequester(requester).onPreviewKeyEvent { event ->
-                        if (event.key == Key.Enter && event.isShiftPressed && event.type == KeyEventType.KeyDown) {
+                        if (editable && event.key == Key.Enter && event.isShiftPressed && event.type == KeyEventType.KeyDown) {
                             val next = PageEditing.hardBreak(block, value.selection.start, value.selection.end)
                             val caret = TextRange(minOf(value.selection.start, value.selection.end) + 1)
                             value = TextFieldValue(next.text.replace('\u2028', '\n'), caret)
                             changed(next); selection(caret, true); true
                         } else false
-                    }.onFocusChanged { if (it.isFocused) selection(value.selection, false) }, textStyle = style,
-                        cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
+                    }.onFocusChanged {
+                        if (it.isFocused) selection(value.selection, false)
+                        else if (composingNow) { value = value.copy(composition = null); compositionChanged(false) }
+                    }, textStyle = style,
+                        readOnly = !editable, cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
                         visualTransformation = transformation, keyboardOptions = KeyboardOptions(capitalization = if (block.kind in listOf("code", "raw")) KeyboardCapitalization.None else KeyboardCapitalization.Sentences),
                         decorationBox = { field -> Box { if (value.text.isEmpty()) Text(stringResource(R.string.block_text), style = style, color = MaterialTheme.colorScheme.onSurfaceVariant); field() } })
-                    if (block.kind == "code" && focus) OutlinedTextField(block.lang, { changed(block.copy(lang = it.take(32))) }, label = { Text(stringResource(R.string.page_code_language)) }, modifier = Modifier.fillMaxWidth(), singleLine = true)
+                    if (block.kind == "code" && focus && editable) OutlinedTextField(block.lang, { changed(block.copy(lang = it.take(32))) }, label = { Text(stringResource(R.string.page_code_language)) }, modifier = Modifier.fillMaxWidth(), singleLine = true)
                 }
             }
         }
-        IconButton(onClick = format) { Icon(Icons.Rounded.MoreVert, stringResource(R.string.format)) }
+        if (editable) IconButton(onClick = format) { Icon(Icons.Rounded.MoreVert, stringResource(R.string.format)) }
     }
 }

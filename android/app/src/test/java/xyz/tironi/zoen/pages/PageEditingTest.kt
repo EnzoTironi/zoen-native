@@ -5,6 +5,48 @@ import org.junit.Test
 import xyz.tironi.zoen.core.TextSpanDto
 
 class PageEditingTest {
+    @Test fun separateRemoteChangesPreserveUtf16SelectionPositions() {
+        assertEquals(5, PageTextOffsets.remap(4, "abcdefghi", "XabcdefghiY"))
+        assertEquals(3, PageTextOffsets.remap(4, "XabcdefghiY", "abcdefghi"))
+        assertEquals(6, PageTextOffsets.remap(4, "abcdefghi", "XXabcdeZghi"))
+        assertEquals(5, PageTextOffsets.remap(4, "🌿abcdef", "X🌿abcdefY"))
+        assertEquals(0, PageTextOffsets.boundary("🌿", 1))
+        assertEquals(2, PageTextOffsets.remap(2, "🌿", "🌱"))
+        assertEquals(0, PageTextOffsets.remap(4, "gone", ""))
+    }
+    @Test fun multipleInsertionsAndRemovalsKeepUntouchedCaretAnchors() {
+        val old = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+        val random = kotlin.random.Random(7)
+        repeat(200) {
+            val anchor = random.nextInt(2, 24)
+            val next = buildString {
+                old.forEachIndexed { index, char ->
+                    if (index != anchor + 1 && random.nextBoolean()) append("xy")
+                    if (index == anchor || index == anchor + 1 || random.nextBoolean()) append(char)
+                }
+                append("zz")
+            }
+            assertEquals(next.indexOf(old[anchor]) + 1, PageTextOffsets.remap(anchor + 1, old, next))
+        }
+    }
+    @Test fun replacingEmojiCannotLeaveFormattingInsideItsSurrogatePair() {
+        val first = PageEditing.blank().copy(text = "🌿", spans = listOf(TextSpanDto(0u, 2u, "b", "")))
+        val replaced = PageEditing.replaceText(first, "🌱", mapOf("b" to null, "i" to ""))
+        assertEquals(listOf(TextSpanDto(0u, 2u, "i", "")), replaced.spans)
+        val (left, right) = PageEditing.split(first, 1)
+        assertEquals("", left.text)
+        assertEquals(first.text, right.text)
+    }
+    @Test fun olderDraftRecoveryKeepsUnseenBlocksAndRefusesOverlappingEdits() {
+        val a = PageEditing.blank().copy(text = "A")
+        val b = PageEditing.blank().copy(text = "B")
+        val extra = PageEditing.blank().copy(text = "New remote block")
+        val local = listOf(a.copy(text = "Local A"), b)
+        assertEquals(listOf(local[0], extra, b.copy(text = "Remote B")), PageEditing.recoverLegacy(local, listOf(a, b), listOf(a, extra, b.copy(text = "Remote B"))))
+        assertThrows(IllegalStateException::class.java) { PageEditing.recoverLegacy(local, listOf(a, b), listOf(a.copy(text = "Remote A"), b)) }
+        assertEquals(listOf(b), PageEditing.recoverLegacy(listOf(a, b), listOf(a, b), listOf(b)))
+        assertThrows(IllegalArgumentException::class.java) { PageEditing.recoverLegacy(local, listOf(a, b), listOf(b, a)) }
+    }
     @Test fun savedDraftPreservesEveryImportedBlockFieldAndUtf16Span() {
         val blocks = listOf(
             PageEditing.blank("numbered").copy(indent = 2u, number = 7u, text = "Hello 🌿 world", spans = listOf(TextSpanDto(6u, 8u, "b", ""), TextSpanDto(9u, 14u, "a", "https://example.com"))),

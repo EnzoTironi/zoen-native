@@ -19,6 +19,7 @@
     <string name="page_image_url">URL</string>
     <string name="page_image_alt">Image description</string>
     <string name="page_draft_saved">Draft saved on this device</string>
+    <string name="page_pending_sync">Saved on this device · waiting to sync</string>
     <string name="page_preview_version">Preview version %1$d</string>
     <string name="page_restore_version">Restore this version</string>
     <string name="page_line_break">Line break</string>

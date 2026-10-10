@@ -6,6 +6,34 @@ import xyz.tironi.zoen.core.PageBlockDto
 import xyz.tironi.zoen.core.TextSpanDto
 
 object PageEditing {
+    /** Older drafts have no CRDT context. Refuse conflicting changes and preserve new remote blocks. */
+    fun recoverLegacy(local: List<PageBlockDto>, base: List<PageBlockDto>, remote: List<PageBlockDto>): List<PageBlockDto> {
+        val old = base.associateBy { it.id }
+        val current = remote.associateBy { it.id }
+        val wanted = local.associateBy { it.id }
+        val conflict = "This older draft overlaps a newer edit. Your draft is still saved on this device."
+        base.forEach { block ->
+            if (wanted[block.id] != block && current[block.id] != block && current[block.id] != wanted[block.id]) error(conflict)
+        }
+        local.filter { it.id !in old }.forEach { block -> require(current[block.id] == null || current[block.id] == block) { conflict } }
+        val common = base.map { it.id }.filter { it in current }
+        require(remote.filter { it.id in old }.map { it.id } == common) { conflict }
+        val surviving = local.filter { it.id !in old || it.id in current }.map { it.id }.toSet()
+        val extras = linkedMapOf<String?, MutableList<PageBlockDto>>()
+        var anchor: String? = null
+        remote.forEach { block ->
+            if (block.id in surviving) anchor = block.id
+            else if (block.id !in old && block.id !in wanted) extras.getOrPut(anchor) { mutableListOf() }.add(block)
+        }
+        return buildList {
+            addAll(extras[null].orEmpty())
+            local.filter { it.id in surviving }.forEach { block ->
+                add(if (old[block.id] == block) current[block.id] ?: block else block)
+                addAll(extras[block.id].orEmpty())
+            }
+        }
+    }
+
     fun blank(kind: String = "paragraph") = PageBlockDto(UUID.randomUUID().toString(), kind, 0u, 0u, if (kind == "numbered") 1u else 0u, false, "", "", "", "", emptyList())
 
     fun encode(blocks: List<PageBlockDto>): String = buildJsonArray {
@@ -50,8 +78,10 @@ object PageEditing {
         if (text == block.text) return block
         var prefix = 0
         while (prefix < minOf(text.length, block.text.length) && text[prefix] == block.text[prefix]) prefix++
+        prefix = minOf(PageTextOffsets.boundary(text, prefix), PageTextOffsets.boundary(block.text, prefix))
         var suffix = 0
         while (suffix < minOf(text.length, block.text.length) - prefix && text[text.lastIndex - suffix] == block.text[block.text.lastIndex - suffix]) suffix++
+        if (suffix > 0 && (PageTextOffsets.boundary(text, text.length - suffix) != text.length - suffix || PageTextOffsets.boundary(block.text, block.text.length - suffix) != block.text.length - suffix)) suffix--
         val oldEnd = block.text.length - suffix
         val newEnd = text.length - suffix
         val delta = text.length - block.text.length
@@ -68,8 +98,8 @@ object PageEditing {
     }
 
     fun setMark(block: PageBlockDto, key: String, value: String?, start: Int, end: Int): PageBlockDto {
-        val from = minOf(start, end).coerceIn(0, block.text.length)
-        val to = maxOf(start, end).coerceIn(from, block.text.length)
+        val from = PageTextOffsets.boundary(block.text, minOf(start, end))
+        val to = PageTextOffsets.boundary(block.text, maxOf(start, end)).coerceAtLeast(from)
         if (from == to) return block
         val spans = block.spans.flatMap { span ->
             if (span.key != key || span.end.toInt() <= from || span.start.toInt() >= to) listOf(span)
@@ -103,8 +133,8 @@ object PageEditing {
     }
 
     fun toggle(block: PageBlockDto, key: String, value: String, selectionStart: Int, selectionEnd: Int): PageBlockDto {
-        val from = minOf(selectionStart, selectionEnd).coerceIn(0, block.text.length)
-        val to = maxOf(selectionStart, selectionEnd).coerceIn(from, block.text.length)
+        val from = PageTextOffsets.boundary(block.text, minOf(selectionStart, selectionEnd))
+        val to = PageTextOffsets.boundary(block.text, maxOf(selectionStart, selectionEnd)).coerceAtLeast(from)
         val start = from
         val end = to
         if (start == end) return block
@@ -131,8 +161,8 @@ object PageEditing {
     }
 
     fun setLink(block: PageBlockDto, address: String, start: Int, end: Int): PageBlockDto {
-        val from = minOf(start, end).coerceIn(0, block.text.length)
-        val to = maxOf(start, end).coerceIn(from, block.text.length)
+        val from = PageTextOffsets.boundary(block.text, minOf(start, end))
+        val to = PageTextOffsets.boundary(block.text, maxOf(start, end)).coerceAtLeast(from)
         if (address.isBlank()) return setMark(block, "a", null, from, to)
         val target = linkTarget(address) ?: return block
         if (from != to) return setMark(block, "a", target, from, to)
@@ -142,14 +172,14 @@ object PageEditing {
     }
 
     fun hardBreak(block: PageBlockDto, start: Int, end: Int): PageBlockDto {
-        val from = minOf(start, end).coerceIn(0, block.text.length)
-        val to = maxOf(start, end).coerceIn(from, block.text.length)
+        val from = PageTextOffsets.boundary(block.text, minOf(start, end))
+        val to = PageTextOffsets.boundary(block.text, maxOf(start, end)).coerceAtLeast(from)
         val next = replaceText(block, block.text.replaceRange(from, to, "\u2028"), marksAt(block, from))
         return setMark(next, "hb", "", from, from + 1)
     }
 
     fun split(block: PageBlockDto, offset: Int): Pair<PageBlockDto, PageBlockDto> {
-        val at = offset.coerceIn(0, block.text.length)
+        val at = PageTextOffsets.boundary(block.text, offset)
         fun spans(from: Int, to: Int) = block.spans.mapNotNull { s ->
             val a = maxOf(s.start.toInt(), from); val b = minOf(s.end.toInt(), to)
             if (a >= b) null else s.copy(start = (a - from).toUInt(), end = (b - from).toUInt())
