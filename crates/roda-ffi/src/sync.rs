@@ -502,9 +502,12 @@ impl Engine {
                 continue;
             }
             if self.identities.get(&p.id).is_some_and(|known| {
-                known.kind != p.kind
-                    || known.owner != p.owner
-                    || (known.owner_proof.is_some() && known.owner_proof != p.owner_proof)
+                // Unsigned legacy directory metadata cannot establish an owner pin.
+                known.owner_proof.is_some()
+                    && roda_log::agent_owner::profile_authorized(known)
+                    && (known.kind != p.kind
+                        || known.owner != p.owner
+                        || known.owner_proof != p.owner_proof)
             }) {
                 continue;
             }
@@ -1048,5 +1051,44 @@ mod owner_tests {
         assert!(e.authorize_agent("invalid").is_err());
         e.net.author = None;
         assert!(e.authorize_agent(&agent).is_err());
+    }
+
+    #[test]
+    fn unsigned_legacy_metadata_cannot_authorize_trust_after_reload() {
+        let mut e = Engine::open(":memory:").unwrap();
+        e.create_account("Owner", "owner", "http://127.0.0.1:9")
+            .unwrap();
+        let owner = e.net.author.clone().unwrap();
+        let mut legacy = agent(&owner, Signer::generate().id());
+        legacy.owner_proof = None;
+        e.store.put_identity(&legacy, None).unwrap();
+        let space = e
+            .create_synced_space(
+                "Group",
+                SpaceKind::Group,
+                Privacy::Closed,
+                std::slice::from_ref(&legacy.id),
+            )
+            .unwrap();
+        e.reload().unwrap();
+        assert!(!e.agents().iter().any(|a| a.persona.id == legacy.id));
+        assert!(e.set_trust(&legacy.id, &space, TrustLevel::Act).is_err());
+        assert!(e.net.unknown.contains(&legacy.id));
+
+        let mut correct = legacy;
+        correct.kind = IdentityKind::Person;
+        correct.owner = None;
+        e.put_profiles(vec![correct.clone()]).unwrap();
+        e.reload().unwrap();
+        assert_eq!(e.identities[&correct.id].kind, IdentityKind::Person);
+        assert_eq!(e.identities[&correct.id].owner, None);
+        assert_eq!(e.identities[&correct.id].owner_proof, None);
+        assert!(e.set_trust(&correct.id, &space, TrustLevel::Act).is_err());
+
+        let me = e.me_id().unwrap();
+        let original = e.identities[&me].clone();
+        let other = Author::device(&Signer::generate(), Signer::generate());
+        e.put_profiles(vec![agent(&other, me.clone())]).unwrap();
+        assert_eq!(e.identities[&me], original);
     }
 }
