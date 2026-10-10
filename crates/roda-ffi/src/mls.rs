@@ -114,6 +114,7 @@ pub struct MlsNet {
     /// Spaces this device must ask to rejoin (its group fell behind pruned history), once
     /// it has caught up with the log.
     rejoin: HashSet<SpaceId>,
+    pub(crate) recovery_retry_at: HashMap<SpaceId, Instant>,
 }
 
 /// Events the relay reads even in an end-to-end Space: what it orders and authorizes by.
@@ -225,9 +226,12 @@ fn storage(e: impl std::fmt::Display) -> CoreError {
     }
 }
 
-fn mls_err(e: MlsError) -> CoreError {
-    CoreError::Invalid {
-        reason: e.to_string(),
+pub(crate) fn mls_err(e: MlsError) -> CoreError {
+    match e {
+        MlsError::Storage(message) => CoreError::Storage { message },
+        other => CoreError::Invalid {
+            reason: other.to_string(),
+        },
     }
 }
 
@@ -263,7 +267,7 @@ impl Engine {
     }
 
     /// This device as an MLS client over `conn` (the store, or a transaction on it).
-    fn device_on<'c>(&self, conn: &'c Connection) -> R<Device<'c>> {
+    pub(crate) fn device_on<'c>(&self, conn: &'c Connection) -> R<Device<'c>> {
         let (Some(author), Some(acct)) = (&self.net.author, &self.net.account) else {
             return Err(CoreError::Forbidden {
                 reason: t("Entre na sua conta primeiro.", "Sign in first."),
@@ -273,7 +277,7 @@ impl Engine {
         Device::new(conn, state_key(&secret), &acct.identity, secret, &acct.cert).map_err(mls_err)
     }
 
-    fn device(&self) -> R<Device<'_>> {
+    pub(crate) fn device(&self) -> R<Device<'_>> {
         self.device_on(self.store.conn())
     }
 
@@ -321,7 +325,7 @@ impl Engine {
         d.leaves(space).ok().map(|l| l.into_keys().collect())
     }
 
-    fn roster(&self, space: &str) -> BTreeSet<IdentityId> {
+    pub(crate) fn roster(&self, space: &str) -> BTreeSet<IdentityId> {
         self.net
             .mls
             .rosters
@@ -386,9 +390,9 @@ impl Engine {
     }
 
     /// The epoch to seal `space`'s messages at, once its group is ready for them.
-    fn ready_epoch(&self, space: &str) -> Option<u64> {
+    pub(crate) fn ready_epoch(&self, space: &str) -> Option<u64> {
         let device = self.device().ok()?;
-        if !device.has_group(space) || device.pending(space) {
+        if !device.has_group(space) || device.pending(space) || device.needs_reconciliation(space) {
             return None;
         }
         // The commit can land before its Welcome is accepted (e.g. under a publish
@@ -548,7 +552,7 @@ impl Engine {
     }
 
     /// Signs MLS bytes into the Space's outbox, in order.
-    fn queue_handshake(&mut self, space: &str, kind: SealedKind, data: Vec<u8>) -> R<String> {
+    pub(crate) fn handshake_event(&self, space: &str, sealed: Sealed) -> R<Event> {
         let author = self
             .net
             .author
@@ -559,13 +563,7 @@ impl Engine {
         let at_ms = crate::engine::now_ms();
         let client_id = new_ulid(at_ms);
         let seen = self.logs.get(space).and_then(|l| l.head());
-        let (content, sig) = author.sign_sealed(
-            space,
-            &client_id,
-            at_ms,
-            seen.as_ref(),
-            Sealed::new(kind, SUITE_ID, data),
-        );
+        let (content, sig) = author.sign_sealed(space, &client_id, at_ms, seen.as_ref(), sealed);
         let e = event_from_content(
             content,
             sig,
@@ -575,12 +573,15 @@ impl Engine {
             String::new(),
         )
         .map_err(storage)?;
-        self.store.outbox_put(&e)?;
-        self.net
-            .pending
-            .insert(client_id.clone(), space.to_string());
+        Ok(e)
+    }
+
+    pub(crate) fn queued_recovery_commit(&mut self, events: Vec<Event>) {
+        for e in events {
+            self.net.pending.insert(e.client_id, e.space.clone());
+            self.net.mls.dirty.insert(e.space);
+        }
         self.net.wake();
-        Ok(client_id)
     }
 
     /// A sealed entry the relay sequenced: opened (or kept sealed) and logged in one
@@ -606,8 +607,17 @@ impl Engine {
             return Ingest::Invalid("not sealed".into());
         };
         let client_id = ev.env.client_id().to_string();
-        let own = self.net.pending.contains_key(&client_id);
+        let own = self.net.pending.contains_key(&client_id)
+            && self.net.account.as_ref().is_some_and(|account| {
+                account.identity == ev.env.author()
+                    && ev.env.device() == Some(account.device.as_str())
+            });
         let roster = self.roster(&space);
+        let admitted_sender = roda_mls::Leaf {
+            identity: ev.env.author().into(),
+            device: ev.env.device().unwrap_or(ev.env.author()).into(),
+            cert: ev.env.cert.clone().unwrap_or_default(),
+        };
         let own_copy = if own && kind == SealedKind::Application {
             self.store.outbox_get(&client_id).ok().flatten()
         } else {
@@ -627,7 +637,7 @@ impl Engine {
         let mut landed: Option<(u64, bool)> = None; // (epoch, joined)
         match kind {
             SealedKind::Application if opened.is_none() => {
-                match device.open(&space, &data, &roster) {
+                match device.open(&space, &data, &roster, &admitted_sender) {
                     Ok(Opened::Application { plaintext, from }) => {
                         match inner_event(&ev, &plaintext, &from) {
                             Some(e) => opened = Some(e),
@@ -637,25 +647,66 @@ impl Engine {
                         }
                     }
                     Ok(_) => {}
+                    Err(e @ roda_mls::MlsError::Storage(_)) => {
+                        return Ingest::Invalid(e.to_string());
+                    }
                     Err(e) => tracing_like(&format!("can't open a message in {space}: {e}")),
                 }
             }
             SealedKind::Application => {}
-            SealedKind::Commit => match device.open(&space, &data, &roster) {
-                Ok(Opened::Commit { epoch }) => landed = Some((epoch, false)),
+            SealedKind::Commit => match if device.recovery_pending(&space) && own {
+                device.confirm_recovery(&space, &data, &roster)
+            } else {
+                // A winning external commit can replace a tentative group at the same
+                // epoch. Discard the loser before retaining the authenticated new context.
+                if device.recovery_pending(&space) {
+                    if let Err(err) = device.abandon_recovery(&space) {
+                        return Ingest::Invalid(err.to_string());
+                    }
+                }
+                device.open(&space, &data, &roster, &admitted_sender)
+            } {
+                Ok(Opened::Commit { epoch } | Opened::Reconcile { epoch }) => {
+                    landed = Some((epoch, false))
+                }
                 Ok(_) => {}
+                Err(e)
+                    if own && device.recovery_pending(&space)
+                        || matches!(e, roda_mls::MlsError::Storage(_)) =>
+                {
+                    return Ingest::Invalid(e.to_string());
+                }
                 Err(e) => tracing_like(&format!("refused a commit in {space}: {e}")),
             },
             SealedKind::Welcome if !device.has_group(&space) => {
                 match device.join(&space, &data, &roster) {
-                    Ok(true) => landed = device.epoch(&space).ok().map(|ep| (ep, true)),
+                    Ok(true) => match device.epoch(&space) {
+                        Ok(epoch) => landed = Some((epoch, true)),
+                        Err(e @ roda_mls::MlsError::Storage(_)) => {
+                            return Ingest::Invalid(e.to_string());
+                        }
+                        Err(e) => {
+                            tracing_like(&format!("can't load a joined group in {space}: {e}"))
+                        }
+                    },
                     Ok(false) => {}
+                    Err(e @ roda_mls::MlsError::Storage(_)) => {
+                        return Ingest::Invalid(e.to_string());
+                    }
                     Err(e) => tracing_like(&format!("refused a welcome in {space}: {e}")),
                 }
             }
             SealedKind::Welcome | SealedKind::Unspecified => {}
         }
-        let digest = landed.and_then(|_| device.checkpoint(&space).ok());
+        let digest = if landed.is_some() {
+            match device.checkpoint(&space) {
+                Ok(checkpoint) => Some(checkpoint),
+                Err(e @ roda_mls::MlsError::Storage(_)) => return Ingest::Invalid(e.to_string()),
+                Err(_) => None,
+            }
+        } else {
+            None
+        };
         drop(device);
 
         let e = match opened {
@@ -689,10 +740,35 @@ impl Engine {
             return Ingest::Invalid(err.to_string()); // the transaction rolls back
         }
         let mut stored = self.store.append_event(&e).map_err(storage);
+        stored = stored.and_then(|_| self.remember_recovery_context(&ev.env));
+        if own && kind == SealedKind::Commit {
+            if let Some(reference) = ev
+                .env
+                .recovery()
+                .and_then(roda_log::recovery::RecoveryRef::parse)
+            {
+                stored = stored.and_then(|_| {
+                    self.store
+                        .clear_recovery_upload(&reference.blob)
+                        .map_err(storage)
+                });
+            }
+        }
         if let Some((epoch, digest)) = &digest {
             stored = stored.and_then(|_| {
                 self.store
                     .set_meta(&digest_meta(&space, *epoch), digest)
+                    .map_err(storage)
+            });
+        }
+        if own {
+            stored = stored.and_then(|_| {
+                self.store.outbox_remove(&client_id).map_err(storage)?;
+                self.store
+                    .meta_delete(&sealed_meta(&client_id))
+                    .map_err(storage)?;
+                self.store
+                    .meta_delete(&welcome_meta(&client_id))
                     .map_err(storage)
             });
         }
@@ -722,9 +798,6 @@ impl Engine {
 
         if own {
             self.net.pending.remove(&client_id);
-            let _ = self.store.outbox_remove(&client_id);
-            let _ = self.store.meta_delete(&sealed_meta(&client_id));
-            let _ = self.store.meta_delete(&welcome_meta(&client_id));
             if kind == SealedKind::Welcome {
                 // The group may owe a commit that waited for this Welcome to land.
                 self.net.mls.dirty.insert(space.clone());
@@ -782,6 +855,7 @@ impl Engine {
                 _ => false,
             };
             self.store.append_event(&e).map_err(storage)?;
+            self.remember_recovery_context(&ev.env)?;
             tx.commit().map_err(storage)?;
             Ok(forgot)
         })();
@@ -1039,13 +1113,19 @@ impl Engine {
         let EventBody::Sealed { kind } = &e.body else {
             return false;
         };
+        if kind != SealedKind::Commit.name() && kind != SealedKind::Welcome.name() {
+            return false;
+        }
         tracing_like(&format!("{kind} in {} refused: {reason}", e.space));
-        if kind == SealedKind::Commit.name() {
-            // Its Welcome, held behind it, has no commit to follow any more.
-            let orphans: Vec<String> = self
+        let dropped = (|| -> R<Vec<String>> {
+            let tx = self.store.conn().unchecked_transaction().map_err(storage)?;
+            let mut dropped = vec![client_id.to_string()];
+            if kind == SealedKind::Commit.name() {
+                // Its Welcome, held behind it, has no commit to follow any more.
+                let orphans: Vec<String> = self
                 .store
                 .outbox()
-                .unwrap_or_default()
+                .map_err(storage)?
                 .into_iter()
                 .map(|p| p.event)
                 .filter(|o| {
@@ -1054,32 +1134,52 @@ impl Engine {
                 })
                 .map(|o| o.client_id)
                 .collect();
-            for id in orphans {
-                let _ = self.store.outbox_remove(&id);
-                let _ = self.store.meta_delete(&welcome_meta(&id));
-                self.net.pending.remove(&id);
+                for id in orphans {
+                    self.store.outbox_remove(&id)?;
+                    self.store.meta_delete(&welcome_meta(&id))?;
+                    dropped.push(id);
+                }
+                let device = self.device_on(&tx)?;
+                if device.has_group(&e.space) {
+                    device.abandon(&e.space).map_err(mls_err)?;
+                } else {
+                    device.forget(&e.space).map_err(mls_err)?;
+                }
+                if let Some(reference) = Envelope::plain(&e)
+                    .recovery()
+                    .and_then(roda_log::recovery::RecoveryRef::parse)
+                {
+                    self.store.clear_recovery_upload(&reference.blob)?;
+                }
+            } else if kind == SealedKind::Welcome.name() {
+                // Its commit landed but another got in before the Welcome: the newcomers' leaves
+                // are in our group with no way in, so they get taken out and added afresh.
+                let key = welcome_meta(client_id);
+                let stranded = identity_set(self.store.meta(&key)?);
+                self.store.meta_delete(&key)?;
+                if !stranded.is_empty() {
+                    let key = rewelcome_meta(&e.space);
+                    let mut all = identity_set(self.store.meta(&key)?);
+                    all.extend(stranded);
+                    self.store.set_meta(&key, &join_set(&all))?;
+                }
             }
-            if let Err(err) = self
-                .device()
-                .and_then(|d| d.abandon(&e.space).map_err(mls_err))
-            {
-                tracing_like(&format!("dropping the commit in {}: {err}", e.space));
+            self.store.outbox_remove(client_id)?;
+            tx.commit().map_err(storage)?;
+            Ok(dropped)
+        })();
+        let dropped = match dropped {
+            Ok(ids) => ids,
+            Err(err) => {
+                // This is still a handshake. Preserve its whole transaction for retry;
+                // treating it as a failed user event would strand the pending group.
+                tracing_like(&format!("dropping the handshake in {}: {err}", e.space));
+                return true;
             }
-        } else if kind == SealedKind::Welcome.name() {
-            // Its commit landed but another got in before the Welcome: the newcomers' leaves
-            // are in our group with no way in, so they get taken out and added afresh.
-            let key = welcome_meta(client_id);
-            let stranded = identity_set(self.store.meta(&key).ok().flatten());
-            let _ = self.store.meta_delete(&key);
-            if !stranded.is_empty() {
-                let key = rewelcome_meta(&e.space);
-                let mut all = identity_set(self.store.meta(&key).ok().flatten());
-                all.extend(stranded);
-                let _ = self.store.set_meta(&key, &join_set(&all));
-            }
+        };
+        for id in dropped {
+            self.net.pending.remove(&id);
         }
-        let _ = self.store.outbox_remove(client_id);
-        self.net.pending.remove(client_id);
         self.net.mls.dirty.insert(e.space);
         true
     }
@@ -1127,9 +1227,19 @@ impl Engine {
                     self.net.mls.dirty.remove(&space);
                     if let Err(e) = self.commit_now(&space, &[], &owed.remove) {
                         tracing_like(&format!("removal commit in {space}: {e}"));
+                        self.net
+                            .mls
+                            .retry_at
+                            .insert(space.clone(), now + CLAIM_RETRY);
                     }
                 }
                 Ok(Some(owed)) => {
+                    // Resolve recovery recipients before consuming one-shot key
+                    // packages. A pending agreement lookup must not spend a package
+                    // and then fail commit_now before staging the handshake.
+                    if self.recovery_recipients(&space).is_err() {
+                        continue;
+                    }
                     self.net.mls.dirty.remove(&space);
                     self.net.mls.claiming.insert(space.clone());
                     return Some((space, owed.to_claim()));
@@ -1221,8 +1331,13 @@ impl Engine {
         let joins = self.joins(space);
         let stranded = identity_set(self.store.meta(&rewelcome_meta(space))?);
         let revoked = self.revoked_devices();
+        let reconciling = self.device()?.needs_reconciliation(space);
         let for_me = |name: &String| admin || split_leaf(name).is_some_and(|(id, _)| id == me);
-        if !admin && !joins.keys().any(for_me) && !stranded.iter().any(for_me) && revoked.is_empty()
+        if !admin
+            && !reconciling
+            && !joins.keys().any(for_me)
+            && !stranded.iter().any(for_me)
+            && revoked.is_empty()
         {
             return Ok(None);
         }
@@ -1262,9 +1377,11 @@ impl Engine {
         let leaves = device.leaves(space).map_err(mls_err)?;
         let group: BTreeSet<IdentityId> = leaves.keys().map(|(id, _)| id.clone()).collect();
         let mut owed = Owed::default();
-        if admin {
+        if admin || reconciling {
             let listed: BTreeSet<IdentityId> = roster.keys().cloned().collect();
-            owed.add = listed.difference(&group).cloned().collect();
+            if admin {
+                owed.add = listed.difference(&group).cloned().collect();
+            }
             owed.remove = group.difference(&listed).cloned().collect();
         }
         let has = |id: &str, dev: &str| leaves.get(&(id.to_string(), dev.to_string()));
@@ -1296,7 +1413,7 @@ impl Engine {
                 }
             }
         }
-        Ok((!owed.is_empty()).then_some(owed))
+        Ok((!owed.is_empty() || reconciling).then_some(owed))
     }
 
     /// Key packages for a group's newcomers came back: commit them (and any removals).
@@ -1362,19 +1479,32 @@ impl Engine {
         }
     }
 
-    fn commit_now(&mut self, space: &str, add: &[Vec<u8>], remove: &BTreeSet<IdentityId>) -> R<()> {
-        let c = self.device()?.commit(space, add, remove).map_err(mls_err)?;
-        self.queue_handshake(space, SealedKind::Commit, c.commit)?;
-        if let Some(w) = c.welcome {
-            let welcome = self.queue_handshake(space, SealedKind::Welcome, w)?;
+    pub(crate) fn commit_now(
+        &mut self,
+        space: &str,
+        add: &[Vec<u8>],
+        remove: &BTreeSet<IdentityId>,
+    ) -> R<()> {
+        let recipients = self.recovery_recipients(space)?;
+        let tx = self.store.conn().unchecked_transaction().map_err(storage)?;
+        let c = self
+            .device_on(&tx)?
+            .commit(space, add, remove)
+            .map_err(mls_err)?;
+        let events = self.store_recovery_commit(space, c, recipients.as_deref())?;
+        if let Some(welcome) = events.iter().find(
+            |e| matches!(&e.body, EventBody::Sealed { kind } if kind == SealedKind::Welcome.name()),
+        ) {
             let newcomers: BTreeSet<String> = add
                 .iter()
                 .filter_map(|kp| roda_mls::key_package_leaf(kp).ok())
                 .map(|l| leaf_name(&l.identity, &l.device))
                 .collect();
             self.store
-                .set_meta(&welcome_meta(&welcome), &join_set(&newcomers))?;
+                .set_meta(&welcome_meta(&welcome.client_id), &join_set(&newcomers))?;
         }
+        tx.commit().map_err(storage)?;
+        self.queued_recovery_commit(events);
         Ok(())
     }
 

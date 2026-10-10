@@ -7,6 +7,9 @@ use roda_types::{EventBody, Privacy, Role, SpaceKind};
 
 use super::Reject;
 
+/// Current relay/fanout contract. Larger groups require a paginated delivery path.
+pub const MAX_MEMBERS: u32 = 5_000;
+
 /// What the append transaction read before deciding.
 #[derive(Debug, Default)]
 pub struct Facts {
@@ -66,6 +69,9 @@ pub enum Effect {
 }
 
 pub fn admit(env: &Envelope, f: &Facts) -> Result<Effect, Reject> {
+    if f.member_count > MAX_MEMBERS {
+        return Err(Reject::no("space exceeds the supported member limit"));
+    }
     let body = env.body();
     let author = env.author();
     let effect = match (&f.head, body.clone()) {
@@ -80,6 +86,12 @@ pub fn admit(env: &Envelope, f: &Facts) -> Result<Effect, Reject> {
             return Err(Reject::no("space already exists"))
         }
         (Some(_), Some(EventBody::MemberAdded { identity, role })) => {
+            if !identity_key(&identity) {
+                return Err(Reject::no("not an identity key"));
+            }
+            if f.target_role.is_none() && f.member_count >= MAX_MEMBERS {
+                return Err(Reject::no("space member limit reached"));
+            }
             if !f.target_known {
                 return Err(Reject::no("that person isn't on Zoen yet"));
             }
@@ -125,6 +137,9 @@ pub fn admit(env: &Envelope, f: &Facts) -> Result<Effect, Reject> {
             }
         }
         (Some(_), Some(EventBody::MemberRemoved { identity })) => {
+            if !identity_key(&identity) {
+                return Err(Reject::no("not an identity key"));
+            }
             let allowed = identity == author
                 || matches!(f.author_role, Some(Role::Owner))
                 || (matches!(f.author_role, Some(Role::Admin))
@@ -197,6 +212,10 @@ pub fn admit(env: &Envelope, f: &Facts) -> Result<Effect, Reject> {
     Ok(effect)
 }
 
+pub(crate) fn identity_key(identity: &str) -> bool {
+    identity.len() == 64 && identity.bytes().all(|b| b.is_ascii_hexdigit())
+}
+
 /// One commit per epoch, in log order: the relay reads the epoch from the clear framing and
 /// refuses a commit that lost the race, so members never see two. A Welcome belongs to the
 /// last commit, which must be from the same device; after a refused commit there is none.
@@ -205,6 +224,17 @@ fn check_handshake(env: &Envelope, f: &Facts) -> Result<Option<Effect>, Reject> 
         return Ok(None);
     };
     let device = env.device().unwrap_or(env.author()).to_string();
+    if let Some(bytes) = env.recovery() {
+        let reference = roda_log::recovery::RecoveryRef::parse(bytes)
+            .ok_or_else(|| Reject::no("invalid recovery context reference"))?;
+        if kind != SealedKind::Commit
+            || roda_mls::commit_epoch(data).and_then(|e| e.checked_add(1)) != Some(reference.epoch)
+        {
+            return Err(Reject::no(
+                "recovery context must follow its commit's epoch",
+            ));
+        }
+    }
     match kind {
         SealedKind::Commit => {
             let epoch = roda_mls::commit_epoch(data)
@@ -515,6 +545,62 @@ mod tests {
         assert_eq!(
             admit(&env(&a, seen, msg()), &stranger).unwrap_err().reason,
             "not a member of this space"
+        );
+    }
+
+    #[test]
+    fn supported_membership_bounds_every_new_forwarding_audience() {
+        let author = Author::root(Signer::generate());
+        let seen = Some(Seen {
+            seq: 3,
+            hash: "h3".into(),
+        });
+        let add = env(
+            &author,
+            seen.clone(),
+            EventBody::MemberAdded {
+                identity: "c".repeat(64),
+                role: Role::Member,
+            },
+        );
+        let mut facts = Facts {
+            member_count: MAX_MEMBERS - 1,
+            ..member_facts(Role::Owner)
+        };
+        assert!(matches!(admit(&add, &facts), Ok(Effect::Add { .. })));
+        facts.member_count = MAX_MEMBERS;
+        assert_eq!(
+            admit(&add, &facts).unwrap_err().reason,
+            "space member limit reached"
+        );
+        facts.target_role = Some(Role::Reader);
+        assert!(
+            matches!(admit(&add, &facts), Ok(Effect::Add { .. })),
+            "role changes don't grow the audience"
+        );
+        let mut remove = env(
+            &author,
+            seen.clone(),
+            EventBody::MemberRemoved {
+                identity: "d".repeat(64),
+            },
+        );
+        assert!(matches!(admit(&remove, &facts), Ok(Effect::Remove { .. })));
+        remove = env(
+            &author,
+            seen,
+            EventBody::MemberRemoved {
+                identity: "unbounded".repeat(10_000),
+            },
+        );
+        assert_eq!(
+            admit(&remove, &facts).unwrap_err().reason,
+            "not an identity key"
+        );
+        facts.member_count = MAX_MEMBERS + 1;
+        assert_eq!(
+            admit(&add, &facts).unwrap_err().reason,
+            "space exceeds the supported member limit"
         );
     }
 

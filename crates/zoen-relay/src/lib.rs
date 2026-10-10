@@ -77,9 +77,6 @@ pub struct AppState {
     pub metrics: metrics::Metrics,
     pub blobs: Arc<dyn object_store::ObjectStore>,
     pub apple_app_ids: Vec<String>,
-    /// This node's Space-partition leases (S4). One process owns every partition until
-    /// S5 brings a multi-node lease exchange over NATS.
-    pub owner: ownership::NodeOwner,
     /// Guards password backups (ADR 0046); `None` = only recovery-key backups.
     pub backup_vault: Option<Arc<dyn backup::Vault>>,
     pub backup_settings: backup::Settings,
@@ -198,24 +195,26 @@ pub async fn build(cfg: &Config) -> anyhow::Result<(Router, Shared)> {
     tracing::info!(blobs = %where_, "blob store ready");
     let log = log::fdb::FdbLog::open(cfg.fdb_cluster_file.as_deref(), &cfg.fdb_cell)?;
     tracing::info!(cell = %cfg.fdb_cell, "log store ready (FoundationDB)");
-    let node = fanout::new_node_id();
+    let log = Arc::new(log);
+    let node = log.owner.node.clone();
     let fanout = match &cfg.nats_url {
         Some(url) => fanout::Fanout::nats(node.clone(), url, &cfg.fdb_cell).await?,
         None => fanout::Fanout::local(node.clone()),
     };
     tracing::info!(node = %node, bus = fanout.bus_kind(), "fan-out ready");
-    let owner = ownership::NodeOwner::claim_all(&node);
-    tracing::info!(
-        node = %owner.node,
-        partitions = ownership::PARTITION_COUNT,
-        "space ownership ready (single node owns every partition)"
-    );
+    if let Some(url) = &cfg.nats_url {
+        log.enable_forwarding(url, &cfg.fdb_cell, pool.clone())
+            .await?;
+    }
+    log.owner.maintain().await?;
+    log.start_renewal();
+    tracing::info!(node = %node, partitions = ownership::PARTITION_COUNT, "persisted space ownership ready");
     let analytics = analytics::Analytics::load(&pool).await?;
     let state = Arc::new(AppState {
         pool,
         session_auth,
         delivery_auth,
-        log: Arc::new(log),
+        log,
         fanout,
         limits: limits::Limits::from_spec(&cfg.limits)?,
         client_ip_header: cfg
@@ -227,7 +226,6 @@ pub async fn build(cfg: &Config) -> anyhow::Result<(Router, Shared)> {
         metrics: metrics::Metrics::default(),
         blobs,
         apple_app_ids: cfg.apple_app_ids.clone(),
-        owner,
         backup_vault: backup_vault(),
         backup_settings: backup::Settings::from_env()?,
         analytics,
@@ -377,7 +375,11 @@ async fn readyz(State(st): State<Shared>) -> impl IntoResponse {
         .fetch_one(&st.pool)
         .await
     {
-        Ok(_) => (StatusCode::OK, "ready"),
+        Ok(_) if st.log.ready().await => (StatusCode::OK, "ready"),
+        Ok(_) => (
+            StatusCode::SERVICE_UNAVAILABLE,
+            "cell ownership unavailable",
+        ),
         Err(_) => (StatusCode::SERVICE_UNAVAILABLE, "database unavailable"),
     }
 }

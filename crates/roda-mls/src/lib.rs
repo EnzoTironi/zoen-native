@@ -19,11 +19,12 @@
 #[cfg(feature = "device")]
 mod device;
 mod leaf;
+pub mod recovery;
 #[cfg(feature = "device")]
 pub mod sealed;
 
 #[cfg(feature = "device")]
-pub use device::{migrate, Commit, Device, Opened};
+pub use device::{clear_recovery_markers, migrate, Commit, Device, Opened};
 use std::collections::BTreeSet;
 
 pub use leaf::Leaf;
@@ -39,6 +40,8 @@ pub const SUITE_ID: u32 = 0x0003;
 pub enum MlsError {
     #[error("MLS: {0}")]
     Mls(String),
+    #[error("MLS state storage: {0}")]
+    Storage(String),
     #[error("not valid MLS bytes: {0}")]
     Decode(String),
     #[error("a leaf whose credential doesn't verify")]

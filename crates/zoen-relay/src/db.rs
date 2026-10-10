@@ -49,13 +49,15 @@ pub async fn authorize_device(
 }
 
 pub async fn is_registered(pool: &PgPool, id: &str) -> Result<bool, sqlx::Error> {
-    Ok(
-        sqlx::query_scalar::<_, String>("SELECT id FROM identities WHERE id = $1")
-            .bind(id)
-            .fetch_optional(pool)
-            .await?
-            .is_some(),
-    )
+    tokio::time::timeout(std::time::Duration::from_secs(2), async {
+        let mut tx = pool.begin().await?;
+        sqlx::query("SELECT set_config('lock_timeout', '1s', true), set_config('statement_timeout', '1s', true)")
+            .execute(&mut *tx).await?;
+        let known = sqlx::query_scalar::<_, bool>("SELECT EXISTS(SELECT 1 FROM identities WHERE id = $1)")
+            .bind(id).fetch_one(&mut *tx).await?;
+        tx.commit().await?;
+        Ok(known)
+    }).await.map_err(|_| sqlx::Error::PoolTimedOut)?
 }
 
 pub async fn device_known(pool: &PgPool, device: &str) -> Result<bool, sqlx::Error> {

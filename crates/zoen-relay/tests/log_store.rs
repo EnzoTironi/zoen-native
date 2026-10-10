@@ -21,11 +21,17 @@ fn store() -> Arc<FdbLog> {
     store_on(&roda_types::new_id("t"))
 }
 
-/// Another relay on the same cell: its own sequencer and caches, the same keys.
+/// Another storage client of the same owner: separate sequencer/cache, shared keys.
+/// Distinct owners and failover are exercised by the ownership journey.
 fn store_on(cell: &str) -> Arc<FdbLog> {
     Arc::new(
-        FdbLog::open(std::env::var("FDB_CLUSTER_FILE").ok().as_deref(), cell)
-            .expect("FoundationDB"),
+        FdbLog::open_as(
+            std::env::var("FDB_CLUSTER_FILE").ok().as_deref(),
+            cell,
+            "log-contract",
+            std::time::Duration::from_secs(15),
+        )
+        .expect("FoundationDB"),
     )
 }
 
@@ -43,6 +49,7 @@ fn message(i: usize) -> EventBody {
 }
 
 async fn create(log: &FdbLog, a: &Author) -> (String, Seen) {
+    log.owner.maintain().await.expect("initialize ownership");
     let space = roda_types::new_id("sp");
     let body = EventBody::SpaceCreated {
         title: "t".into(),
@@ -57,7 +64,8 @@ async fn create(log: &FdbLog, a: &Author) -> (String, Seen) {
                 hash: ev.hash,
             },
         ),
-        _ => panic!("genesis refused"),
+        Err(r) => panic!("genesis refused: {}", r.reason),
+        _ => panic!("genesis answered as a duplicate"),
     }
 }
 
@@ -141,7 +149,7 @@ async fn a_retried_envelope_is_answered_with_the_stored_copy() {
     let Ok(Sequencing::New { ev: first, .. }) = log.append(&env, true).await else {
         panic!()
     };
-    let Ok(Sequencing::Duplicate { ev }) = log.append(&env, true).await else {
+    let Ok(Sequencing::Duplicate { ev, .. }) = log.append(&env, true).await else {
         panic!("not deduplicated")
     };
     assert_eq!((ev.seq, ev.hash), (first.seq, first.hash));
@@ -259,7 +267,7 @@ async fn invites_are_bounded_by_uses() {
     log.drop_cell().await.unwrap();
 }
 
-async fn two_relays_on_one_space_share_one_chain_and_one_membership() {
+async fn two_storage_clients_share_one_chain_and_one_membership() {
     let cell = roda_types::new_id("t");
     let relays = [store_on(&cell), store_on(&cell)];
     let ana = Arc::new(Author::root(Signer::generate()));
@@ -353,7 +361,7 @@ async fn duplicates_in_one_batch() {
                 new += 1;
                 stored.push((ev.seq, ev.hash));
             }
-            Ok(Sequencing::Duplicate { ev }) => stored.push((ev.seq, ev.hash)),
+            Ok(Sequencing::Duplicate { ev, .. }) => stored.push((ev.seq, ev.hash)),
             Err(r) => panic!("refused: {}", r.reason),
         }
     }
@@ -525,12 +533,44 @@ async fn one_commit_per_epoch_and_each_welcome_follows_its_commit() {
     let first = d_ana
         .commit(&space, &d_bruno.key_packages(1, false).unwrap(), &none)
         .unwrap();
-    let env = handshake(ana, SealedKind::Commit, first.commit.clone(), &head);
+    let with_context = |kind, data, epoch, head: &roda_types::Seen| {
+        let mut sealed = roda_proto::Sealed::new(kind, roda_mls::SUITE_ID, data);
+        sealed.recovery = roda_log::recovery::RecoveryRef {
+            version: 1,
+            epoch,
+            blob: "ab".repeat(32),
+        }
+        .encode();
+        Envelope::sealed(ana, &space, &roda_types::new_id("c"), 1, Some(head), sealed)
+    };
+    assert_eq!(
+        refused(
+            warm.append(
+                &with_context(SealedKind::Commit, first.commit.clone(), 99, &head),
+                true
+            )
+            .await
+        ),
+        "recovery context must follow its commit's epoch"
+    );
+    assert_eq!(
+        refused(
+            warm.append(
+                &with_context(SealedKind::Application, vec![1], 1, &head),
+                true
+            )
+            .await
+        ),
+        "recovery context must follow its commit's epoch"
+    );
+    let env = with_context(SealedKind::Commit, first.commit.clone(), 1, &head);
     head = at(&landed(warm.append(&env, true).await));
     let env = handshake(ana, SealedKind::Welcome, first.welcome.unwrap(), &head);
     let welcome = landed(warm.append(&env, true).await);
     head = at(&welcome);
-    d_ana.open(&space, &first.commit, &listed).unwrap();
+    d_ana
+        .open(&space, &first.commit, &listed, d_ana.leaf())
+        .unwrap();
     let data = welcome.env.sealed_data().unwrap().1.to_vec();
     assert!(d_bruno.join(&space, &data, &listed).unwrap());
 
@@ -681,8 +721,8 @@ fn main() {
         )
         .await;
         run(
-            "two relays on one space share one chain and one membership",
-            two_relays_on_one_space_share_one_chain_and_one_membership(),
+            "two storage clients of one owner share one chain and one membership",
+            two_storage_clients_share_one_chain_and_one_membership(),
         )
         .await;
         run(

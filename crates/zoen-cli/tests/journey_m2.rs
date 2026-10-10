@@ -505,7 +505,12 @@ async fn key_packages_refill_when_they_run_low() {
     for i in 25..49 {
         w.zoen("ana", &["group", &format!("Roda {i}"), "@bruno"]);
     }
-    assert_eq!(w.count(&sql).await, 8);
+    assert_eq!(
+        w.count(&sql).await,
+        8,
+        "stock after 24 new groups:\n{}",
+        w.relay_log_text()
+    );
     w.zoen("bruno", &["sync"]);
     assert_eq!(w.count(&sql).await, 8);
 

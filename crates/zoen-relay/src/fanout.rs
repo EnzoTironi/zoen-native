@@ -451,7 +451,7 @@ fn subject_token(s: &str) -> String {
 
 /// A fresh node id per process: two relays behind one public name are still two nodes.
 pub fn new_node_id() -> String {
-    let mut b = [0u8; 6];
+    let mut b = [0u8; 16];
     getrandom::getrandom(&mut b).expect("os randomness");
     format!("n{}", hex::encode(b))
 }

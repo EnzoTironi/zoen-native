@@ -27,6 +27,7 @@ mod link;
 mod link_api;
 mod linking;
 mod mls;
+mod mls_recovery;
 mod net;
 mod profile;
 mod replies;

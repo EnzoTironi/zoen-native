@@ -3005,15 +3005,26 @@ impl Engine {
     }
 
     pub fn wipe(&mut self) -> R<()> {
+        let tx = self
+            .store
+            .conn()
+            .unchecked_transaction()
+            .map_err(|e| CoreError::Storage {
+                message: e.to_string(),
+            })?;
         self.store.wipe()?;
         self.store.wipe_sync()?;
         self.store.wipe_profiles()?;
+        roda_mls::clear_recovery_markers(&tx).map_err(crate::mls::mls_err)?;
         // `wipe` empties `meta` too: keep the format marker, or the next open takes this
         // device's fresh v2 logs for old demo data and erases them.
         self.store.set_meta(
             crate::sync::EVENT_FORMAT_META,
             crate::sync::EVENT_FORMAT_VALUE,
         )?;
+        tx.commit().map_err(|e| CoreError::Storage {
+            message: e.to_string(),
+        })?;
         self.reload()
     }
 
