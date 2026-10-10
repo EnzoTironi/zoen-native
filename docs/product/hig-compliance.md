@@ -40,7 +40,9 @@ case stays open; source-level corrections remain separate from runtime passes.
 ## Source audit
 
 The [locked hig-doctor command](../../tools/hig-audit/README.md) supplements this
-matrix. Its local core/CLI tests passed 232/232. The published package matched
+matrix. Its local core/CLI tests passed 232/232. A Node 24.19.0 check reproduced
+truncated upstream JSON through a pipe; the wrapper now publishes a complete
+report after a successful scan. The published package matched
 the reviewed source bundle. Calibration found both useful detections and known
 false positives/blind spots; its references stop at 2 February 2025.
 

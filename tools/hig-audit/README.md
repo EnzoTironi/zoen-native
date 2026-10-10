@@ -10,13 +10,25 @@ bash scripts/audit-hig.sh apple > apple-hig.json
 bash scripts/audit-hig.sh web > web-hig.json
 ```
 
-Use the tool's declared Node 24.x runtime for reproducible checks. Evaluation on
-10 October 2026 used Node 26.11.0 and Bun 1.3.14; Node 26 produces an engine
-warning. The installation is locked to CLI 2.0.3 and TypeScript 5.9.3. It does not
+Use the tool's declared Node 24.x runtime for reproducible checks. On 10 October
+2026, transport checks used Node 24.19.0; the core/CLI suite used Node 26.11.0
+and Bun 1.3.14. Node 26 produces an engine warning. The installation is locked
+to CLI 2.0.3 and TypeScript 5.9.3. It does not
 install an MCP server or an agent skill. The wrapper disables configuration and
 baseline discovery, never requests fixes or cache writes, and excludes generated
 Rust bindings and native test fixtures. It prints JSON; a zero exit status means
 the scan completed, including when concerns were found.
+
+The upstream CLI can truncate JSON sent through a pipe: its immediate
+`process.exit()` interrupts pending output. On Node 24.19.0, an actual Apple
+source scan exited successfully with only 65,536 bytes of invalid JSON, while
+the same scan written to a regular file produced 163,082 valid bytes. This is
+consistent with [Node's documented exit and output behavior](https://nodejs.org/docs/latest-v24.x/api/process.html#processexitcode).
+The wrapper stages the report in a private temporary file and publishes it
+after success. Its piped output matched the complete report byte for byte;
+an injected auditor failure preserved its exit code and stderr, published no
+partial report, and removed the temporary file. This workaround changes no
+scanner rule or source. The raw upstream JSON command remains affected.
 
 The published CLI bundle matched a local build of upstream commit
 `5e2055877b83ec23930f4db7b062d0d3f725fa5a` byte for byte:

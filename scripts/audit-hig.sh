@@ -18,8 +18,18 @@ if [[ ! -f "$TOOL" ]]; then
   exit 2
 fi
 
+# Upstream exits before asynchronous pipe writes finish. A regular file keeps
+# its report complete; publish it only after the auditor succeeds.
+umask 077
+HIG_OUTPUT="$(mktemp "${TMPDIR:-/tmp}/zoen-hig-audit.XXXXXX")"
+trap 'rm -f -- "$HIG_OUTPUT"' EXIT
+
 # Advisory JSON only. Do not absorb findings into a baseline or change sources.
-exec node "$TOOL" "$SOURCE" "$ROOT/tools/hig-audit/references" \
+if node "$TOOL" "$SOURCE" "$ROOT/tools/hig-audit/references" \
   --json --no-config --no-baseline \
   --exclude '**/RodaFFI.generated.swift' \
-  --exclude 'Tests/**' --exclude 'MacUITests/**'
+  --exclude 'Tests/**' --exclude 'MacUITests/**' > "$HIG_OUTPUT"; then
+  cat "$HIG_OUTPUT"
+else
+  exit "$?"
+fi
