@@ -50,6 +50,7 @@ async fn setup(w: &World, path: &Path) -> (Engine, Owner, RawClient, RawClient, 
     let author = Author::device(&Signer::generate(), Signer::generate());
     let mut agent = RawClient::reconnect(&w.relay_url(), author).await;
     let profile = Identity {
+        owner_proof: Some(Box::new(e.authorize_agent(&agent.identity()).unwrap())),
         id: agent.identity(),
         kind: IdentityKind::Agent,
         name: "Approval agent".into(),

@@ -52,6 +52,7 @@ impl Database {
         let root = Signer::generate();
         let author = Author::device(&root, Signer::generate());
         let profile = Identity {
+            owner_proof: None,
             id: root.id(),
             kind: IdentityKind::Person,
             name: handle.into(),

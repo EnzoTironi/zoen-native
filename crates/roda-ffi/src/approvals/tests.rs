@@ -24,6 +24,14 @@ impl Chat {
         let agent = e
             .create_identity(identity(IdentityKind::Agent, Some(owner.clone())), true)
             .unwrap();
+        let author = roda_log::Author::device(&e.signers[&owner], roda_log::Signer::generate());
+        let profile = e.identities.get_mut(&agent).unwrap();
+        profile.owner_proof = Some(Box::new(
+            roda_log::agent_owner::authorize(&author, &agent).unwrap(),
+        ));
+        e.store
+            .put_identity(profile, Some(&e.signers[&agent].secret()))
+            .unwrap();
         let space = new_id("sp");
         e.append(
             &space,
@@ -86,6 +94,7 @@ impl Drop for Chat {
 
 fn identity(kind: IdentityKind, owner: Option<String>) -> Identity {
     Identity {
+        owner_proof: None,
         id: String::new(),
         kind,
         name: "Journey principal".into(),

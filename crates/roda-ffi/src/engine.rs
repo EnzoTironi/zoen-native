@@ -581,6 +581,15 @@ impl Engine {
     pub(crate) fn create_identity(&mut self, mut identity: Identity, local: bool) -> R<IdentityId> {
         let signer = Signer::generate();
         identity.id = signer.id();
+        if local && identity.kind == IdentityKind::Agent && identity.owner_proof.is_none() {
+            identity.owner_proof = self
+                .net
+                .author
+                .as_ref()
+                .filter(|owner| identity.owner.as_deref() == Some(&owner.identity))
+                .and_then(|owner| roda_log::agent_owner::authorize(owner, &identity.id))
+                .map(Box::new);
+        }
         let secret = signer.secret();
         self.store
             .put_identity(&identity, if local { Some(&secret) } else { None })?;

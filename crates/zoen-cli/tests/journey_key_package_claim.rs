@@ -378,6 +378,7 @@ async fn empty_claim_schedules_work_and_cannot_look_idle_before_retry() {
                     tint_hex: "#000".into(),
                     glyph: None,
                     owner: None,
+                    owner_proof: None,
                     bio: String::new(),
                 },
             })
