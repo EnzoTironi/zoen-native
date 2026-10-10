@@ -254,12 +254,22 @@ class LauncherWidgetJourneyTest {
 
             step("Open Pet from the launcher and see the same updated native state")
             touch(awaitWidget(petTitle).title)
+            val petOpenDeadline = SystemClock.uptimeMillis() + 10_000
             compose.waitUntil(10_000) {
                 readUi()?.packageName == application.packageName &&
                     compose.onAllNodesWithText(petTitle).fetchSemanticsNodes(atLeastOneRootRequired = false).isNotEmpty() &&
-                    compose.onAllNodesWithText("${afterFullness.toInt()}%").fetchSemanticsNodes(atLeastOneRootRequired = false).isNotEmpty()
+                    compose.onAllNodesWithTag("pet-app-content").fetchSemanticsNodes(atLeastOneRootRequired = false).isNotEmpty() &&
+                    compose.onAllNodesWithTag("pet-unboxing").fetchSemanticsNodes(atLeastOneRootRequired = false).isEmpty()
             }
-            compose.onAllNodesWithText(petTitle).onFirst().assertIsDisplayed()
+            compose.onNodeWithTag("pet-app-content").performScrollToNode(hasText("${afterFullness.toInt()}%"))
+            val remaining = petOpenDeadline - SystemClock.uptimeMillis()
+            assertTrue("Native opening and scrolling must fit the original ten-second deadline", remaining > 0)
+            compose.waitUntil(remaining) {
+                compose.onAllNodesWithText("${afterFullness.toInt()}%").fetchSemanticsNodes(atLeastOneRootRequired = false).isNotEmpty()
+            }
+            val petTitles = compose.onAllNodesWithText(petTitle)
+            assertTrue("The same Pet title must stay visible after native scrolling",
+                petTitles.fetchSemanticsNodes().indices.any { petTitles[it].isDisplayed() })
             compose.onNodeWithText("${afterFullness.toInt()}%").assertIsDisplayed()
             capture("08-native-pet-matches-launcher-update")
         } catch (error: Throwable) {

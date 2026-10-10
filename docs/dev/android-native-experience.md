@@ -14,7 +14,7 @@ Activity opens the native approval deck from the current iOS review, with a reta
 
 ## Versions checked
 
-The live comparison on 2026-10-10 (latest fetch 21:41 UTC) uses these commits. A second fetch caught the iOS pinned-plan update while Android validation was running; its behavior was adapted before the next APK build.
+The live comparison on 2026-10-10 (latest fetch 22:01 UTC) uses these commits. A second fetch caught the iOS pinned-plan update while Android validation was running; its behavior was adapted before the next APK build.
 
 | Role | Commit | Integration status |
 |---|---|---|
