@@ -290,10 +290,12 @@ impl RodaEngine {
 
     pub fn stop_sync(&self) {
         let net = self.net.lock().unwrap_or_else(|p| p.into_inner()).take();
-        if let Some(n) = net {
-            self.lock().net.poke = None;
-            drop(n);
+        {
+            let mut engine = self.lock();
+            engine.net.poke = None;
+            engine.net.authenticated_relay = None;
         }
+        drop(net);
     }
 
     pub fn connection(&self) -> ConnectionDto {

@@ -289,6 +289,26 @@ async fn reports_defer_without_login_and_retain_pending_data_after_refusal() {
 }
 
 #[tokio::test]
+async fn stopping_sync_defers_reports_until_a_new_login_without_consuming_source() {
+    let relay = HttpRelay::new(false);
+    let (engine, _) = account(&relay.url);
+    authenticate(&engine);
+    engine.stop_sync();
+    assert!(!engine.growth_sync(None, true, 1, 0).await.unwrap().reported);
+    assert_eq!(relay.reports(), 0);
+    assert!(engine.meta(META_SOURCE_SENT).is_none());
+    authenticate(&engine);
+    assert!(
+        engine
+            .growth_sync(None, false, 0, 0)
+            .await
+            .unwrap()
+            .reported
+    );
+    assert_eq!(relay.reports(), 1);
+}
+
+#[tokio::test]
 async fn report_binding_survives_profile_registration_but_not_relay_key_or_account_changes() {
     let relay = HttpRelay::new(false);
     let other = HttpRelay::new(false);

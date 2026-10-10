@@ -71,6 +71,10 @@ fn lock(e: &Shared) -> std::sync::MutexGuard<'_, Engine> {
 
 /// Builds the HTTP TLS configuration, including before sync has started.
 pub(crate) fn http_client(timeout: Duration) -> Result<reqwest::Client, reqwest::Error> {
+    http_client_builder(timeout).build()
+}
+
+pub(crate) fn http_client_builder(timeout: Duration) -> reqwest::ClientBuilder {
     let _ = rustls::crypto::ring::default_provider().install_default();
     let builder = reqwest::Client::builder().timeout(timeout);
     #[cfg(target_os = "android")]
@@ -82,7 +86,7 @@ pub(crate) fn http_client(timeout: Duration) -> Result<reqwest::Client, reqwest:
             .with_no_client_auth();
         builder.tls_backend_preconfigured(tls)
     };
-    builder.build()
+    builder
 }
 
 /// The relay's HTTP base (blobs): `wss://x` → `https://x`, no trailing slash.
@@ -230,6 +234,9 @@ struct Ctx {
 impl Ctx {
     fn set(&self, f: impl FnOnce(&mut NetStatus)) {
         self.status.send_modify(f);
+        if self.status.borrow().state != ConnState::Online {
+            self.engine().net.authenticated_relay = None;
+        }
         self.notify_connection();
     }
 
