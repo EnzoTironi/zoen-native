@@ -138,7 +138,7 @@ class RecoveryJourneyTest {
     private fun RodaEngine.hasMessage(chat: String, text: String): Boolean =
         timeline(chat).any { (it.kind as? EntryKind.Message)?.text == text }
 
-    private suspend fun await(stage: String, engines: Map<String, RodaEngine>, condition: () -> Boolean) {
+    private suspend fun await(stage: String, engines: Map<String, RodaEngine>, condition: suspend () -> Boolean) {
         try {
             withTimeout(30_000) { while (!condition()) delay(50) }
         } catch (timeout: TimeoutCancellationException) {
