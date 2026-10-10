@@ -18,6 +18,36 @@ needs explicit reconciliation and is never silently adopted. Matching workers
 can reopen concurrently. This marker identifies stores only: it does not prove
 nonrollback continuity or permit paid work/refunds after restore.
 
+## Native device custody
+
+`inspect_native_device(agent, device)` and `repack_native_device(agent, device)`
+accept locators only. The private loader authenticates the complete capsule,
+checks the exact real SQL profiles/device certificate, and restores the native
+facade's strict supported schema. The returned inspection contains generation
+and byte counts; it grants no relay currentness or model permission.
+
+The device-wide SQLite image is at most 4 MiB: at most 64 raw 64 KiB chunks, each
+at most 65,576 encrypted bytes. A separately encrypted manifest stays below 16 KiB.
+Authenticated context binds namespace, owner, Agent, device, certificate digest,
+key version, parent manifest, generation, image size/digest and chunk index/count.
+The capsule domain and key are separate from financial evidence custody.
+
+One stage pin per device bounds unfinished staging. Each bounded transaction
+checks the real device fence. Only a complete ready stage can atomically replace
+the exact previous root; root and pin reads conflict with activation and GC.
+Unknown/failed commits return no live workspace or execution permission. Device
+maintenance creates no model run. Expired abandoned stages can be collected.
+Committed older generations are retained for a version-clock window and while
+referenced; at most 16 retired generations may coexist. A full retention budget
+refuses activation instead of evicting potentially needed evidence. These FDB
+version windows are operational bounds, not a trusted wall clock or restore witness.
+
+Managed custody construction remains absent: `RuntimeAuthority::open` installs
+no native credential/key owner. Test-only provisioning exercises this protocol
+with genuine certified profiles and retained OpenMLS packages. A fixture key/map
+is not a production vault. Paid execution, source synchronization, trigger/run
+dedupe and guarded output still require their separate integration gates.
+
 ## Dispatch and finance
 
 `roda-log::owner_budget` signs bounded owner-period policy bytes with a certified
@@ -78,6 +108,17 @@ network and executes named journeys on fresh Postgres databases, isolated FDB
 prefixes and actual local TCP/HTTP. Directory profiles, certificates and owner
 proofs are real. Core scopes and continuity are explicitly seeded test authority.
 
+The capsule fixture separately exercises genuine retained OpenMLS key packages,
+full authenticated image restoration, real SQL revocation and FDB root/pin/lease
+conflicts. It creates no paid run or provider send. It does not prove a live relay
+join or managed key service. Forced version-clock retirement and known-reply
+suppression are explicit fixture cuts. Native C1's joined encrypted reply journeys
+remain separate from this maintenance slice.
+
+On macOS, Cargo's runner may omit the external FoundationDB client from its
+dynamic library path. Build with `--lib --no-run`, then run that exact test
+executable with `DYLD_LIBRARY_PATH` pointing at the configured FDB client library.
+
 Journeys cover owner concurrency, policy/directory refusal, balanced immutable
 postings, profile mismatch, changed limits, direct zero/missing usage, overruns,
 invalid output, replay/reopen, both forced admission/closure orderings and races,
@@ -94,7 +135,8 @@ attempts, and an actual deferred SQL commit failure are exercised. That failure
 leaves the independently committed FDB marker orphaned and closed. It is a real
 commit rejection, not DB wire-level commit-unknown testing.
 
-The real core/MLS loader, chunked device capsule and custody, worker/JetStream
+The paid retained-step loader, managed custody, actual relay synchronization,
+stable trigger/run creation, worker/JetStream
 recovery, typed tool approval/resume, signed output/usage, external continuity
 witness, live billing reconciliation and deployment drills remain open. These
 journeys do not complete runtime milestone 1 or Mastra/TextQL parity. See the

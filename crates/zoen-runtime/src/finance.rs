@@ -212,6 +212,46 @@ impl Finance {
         }
         Self::person(tx, &b.context.owner).await
     }
+
+    pub(super) async fn native_directory(
+        &self,
+        agent: &Identity,
+        owner: &Identity,
+        device: &str,
+        certificate: &str,
+    ) -> Result<Transaction<'static, Postgres>, RuntimeError> {
+        let mut tx = self.begin().await?;
+        Self::device(&mut tx, &agent.id, device, certificate).await?;
+        for expected in [agent, owner] {
+            let row: Option<(String, Option<String>, Json<Identity>)> =
+                sqlx::query_as("SELECT kind,owner,profile FROM identities WHERE id=$1 FOR SHARE")
+                    .bind(&expected.id)
+                    .fetch_optional(&mut *tx)
+                    .await?;
+            let Some((kind, parent, Json(actual))) = row else {
+                return Err(RuntimeError::Denied);
+            };
+            if &actual != expected
+                || parent != expected.owner
+                || kind
+                    != match expected.kind {
+                        IdentityKind::Person => "Person",
+                        IdentityKind::Agent => "Agent",
+                    }
+                || !roda_log::agent_owner::profile_authorized(&actual)
+            {
+                return Err(RuntimeError::Denied);
+            }
+        }
+        if agent.kind != IdentityKind::Agent
+            || owner.kind != IdentityKind::Person
+            || owner.owner.is_some()
+            || agent.owner.as_deref() != Some(owner.id.as_str())
+        {
+            return Err(RuntimeError::Denied);
+        }
+        Ok(tx)
+    }
     async fn lock_period(
         tx: &mut Transaction<'_, Postgres>,
         b: &Binding,

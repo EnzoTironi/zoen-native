@@ -10,12 +10,14 @@ publish.workspace = true
 zoen-models = { path = "../zoen-models" }
 roda-types.workspace = true
 roda-log.workspace = true
+roda-ffi = { path = "../roda-ffi" }
 serde.workspace = true
 serde_json.workspace = true
 thiserror.workspace = true
 sha2.workspace = true
 hex.workspace = true
 getrandom.workspace = true
+zeroize.workspace = true
 chacha20poly1305.workspace = true
 async-trait = "0.1"
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync", "time"] }

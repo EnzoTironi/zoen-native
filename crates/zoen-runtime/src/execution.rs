@@ -16,10 +16,10 @@ pub(crate) struct Fence {
     pub token: i64,
 }
 #[derive(Serialize, Deserialize)]
-struct Lease {
-    holder: String,
-    token: i64,
-    expires: i64,
+pub(super) struct Lease {
+    pub(super) holder: String,
+    pub(super) token: i64,
+    pub(super) expires: i64,
 }
 #[derive(Serialize, Deserialize)]
 struct CoreCapsule {
@@ -95,7 +95,7 @@ impl Execution {
         }
         Ok(())
     }
-    async fn transaction(&self) -> Result<Transaction, RuntimeError> {
+    pub(super) async fn transaction(&self) -> Result<Transaction, RuntimeError> {
         let trx = Self::bounded_transaction(&self.db)?;
         // Guard each operation and its commit against an unpaired store or a
         // changed marker, including already-open runtimes after reconfiguration.
@@ -116,7 +116,7 @@ impl Execution {
     fn attempt(&self, attempt: &str, part: &str) -> Vec<u8> {
         self.root.pack(&("attempt", attempt, part))
     }
-    async fn lease(
+    pub(super) async fn lease(
         trx: &Transaction,
         key: &[u8],
         fence: &Fence,

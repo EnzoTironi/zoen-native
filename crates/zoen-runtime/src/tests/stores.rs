@@ -1,5 +1,106 @@
 use super::*;
 
+pub(super) async fn native_device_custody() {
+    let mut w = World::new().await;
+    let actor = w.agents[0].clone();
+    let device = actor.device.clone().unwrap();
+    let agent: sqlx::types::Json<Identity> =
+        sqlx::query_scalar("SELECT profile FROM identities WHERE id=$1")
+            .bind(&actor.identity)
+            .fetch_one(&w.runtime.finance.pool)
+            .await
+            .unwrap();
+    let owner: sqlx::types::Json<Identity> =
+        sqlx::query_scalar("SELECT profile FROM identities WHERE id=$1")
+            .bind(&w.owner.identity)
+            .fetch_one(&w.runtime.finance.pool)
+            .await
+            .unwrap();
+    assert_eq!(
+        w.runtime
+            .inspect_native_device(&actor.identity, &device)
+            .await
+            .unwrap_err(),
+        RuntimeError::CoreAuthorityUnavailable
+    );
+    Arc::get_mut(&mut w.runtime).unwrap().native = Some(native::testing::custody(
+        &w.config_namespace,
+        agent.0.clone(),
+        owner.0.clone(),
+        actor.cert.clone().unwrap(),
+        actor.key.secret(),
+    ));
+    native::testing::provision(&w.runtime, &actor.identity, &device).await;
+    let original = w
+        .runtime
+        .inspect_native_device(&actor.identity, &device)
+        .await
+        .unwrap();
+    assert_eq!(original.generation, 1);
+    let (worker, worker_agent, worker_device) =
+        (w.runtime.clone(), actor.identity.clone(), device.clone());
+    let packed = tokio::spawn(async move {
+        worker
+            .repack_native_device(&worker_agent, &worker_device)
+            .await
+    })
+    .await
+    .unwrap()
+    .unwrap();
+    assert_eq!(packed.generation, 2);
+    assert_eq!(packed.image_bytes, original.image_bytes);
+    let mut reopened = w.reopen().await;
+    assert_eq!(
+        reopened
+            .inspect_native_device(&actor.identity, &device)
+            .await
+            .unwrap_err(),
+        RuntimeError::CoreAuthorityUnavailable
+    );
+    Arc::get_mut(&mut reopened).unwrap().native = Some(native::testing::custody(
+        &w.config_namespace,
+        agent.0,
+        owner.0,
+        actor.cert.clone().unwrap(),
+        actor.key.secret(),
+    ));
+    assert_eq!(
+        reopened
+            .inspect_native_device(&actor.identity, &device)
+            .await
+            .unwrap(),
+        packed
+    );
+    native::testing::storage_cuts(&reopened, &actor.identity, &device).await;
+    assert_eq!(
+        reopened.run_model("fixture-run").await.unwrap_err(),
+        RuntimeError::CoreAuthorityUnavailable
+    );
+    sqlx::query("UPDATE devices SET revoked_at=clock_timestamp() WHERE device=$1")
+        .bind(&device)
+        .execute(&reopened.finance.pool)
+        .await
+        .unwrap();
+    assert_eq!(
+        reopened
+            .inspect_native_device(&actor.identity, &device)
+            .await
+            .unwrap_err(),
+        RuntimeError::Denied
+    );
+    assert_eq!(
+        reopened
+            .repack_native_device(&actor.identity, &device)
+            .await
+            .unwrap_err(),
+        RuntimeError::Denied
+    );
+    assert_eq!(w.count("SELECT count(*) FROM runtime_attempts").await, 0);
+    assert_eq!(w.http.sends.load(Ordering::SeqCst), 0);
+    reopened.finance.pool.close().await;
+    w.finish().await;
+}
+
 pub(super) async fn closed_sql_pool_retains_fdb_evidence() {
     let mut w = World::new().await;
     let step = Arc::new(w.step(0).await);

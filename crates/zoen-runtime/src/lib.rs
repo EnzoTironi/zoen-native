@@ -3,6 +3,7 @@
 mod custody;
 mod execution;
 mod finance;
+mod native;
 mod pricing;
 pub use pricing::PriceProfile;
 pub use roda_types::owner_budget::{OwnerPeriodPolicy, SignedOwnerPolicy};
@@ -105,10 +106,21 @@ pub struct RetainedModel {
     pub financial: FinancialState,
 }
 
+/// Structural inspection of a fully authenticated native capsule. This does
+/// not certify a current relay head or grant permission to dispatch a model.
+#[derive(Debug, PartialEq, Eq)]
+pub struct NativeInspection {
+    pub generation: u64,
+    pub image_bytes: u32,
+}
+
 pub struct RuntimeAuthority {
     finance: finance::Finance,
     execution: execution::Execution,
     custody: custody::Custody,
+    // No production key or credential constructor exists yet. Test provisioning
+    // exercises the storage protocol without claiming a deployed managed vault.
+    native: Option<native::NativeCustody>,
     gateway: ModelGateway,
     price: PriceProfile,
     // No production setter: an incarnation UUID does not prove absence after restore.
@@ -140,6 +152,7 @@ impl RuntimeAuthority {
             finance,
             execution: execution::Execution::new(db, root, witness),
             custody: custody::Custody::new(config.evidence_key, config.namespace),
+            native: None,
             gateway,
             price: config.price,
             continuity: Arc::new(AtomicBool::new(false)),
@@ -174,6 +187,37 @@ impl RuntimeAuthority {
         let step = self.verified_step(run).await?;
         let (_, financial) = self.complete_verified(&step).await?;
         Ok(RetainedModel { financial })
+    }
+    pub async fn inspect_native_device(
+        &self,
+        agent: &str,
+        device: &str,
+    ) -> Result<NativeInspection, RuntimeError> {
+        if !id(agent) || !id(device) {
+            return Err(RuntimeError::InvalidBinding);
+        }
+        self.native
+            .as_ref()
+            .ok_or(RuntimeError::CoreAuthorityUnavailable)?
+            .inspect(self, agent, device)
+            .await
+    }
+
+    /// Repack one already provisioned device under its actual device fence.
+    /// No run, trigger, external effect or financial permission is created.
+    pub async fn repack_native_device(
+        &self,
+        agent: &str,
+        device: &str,
+    ) -> Result<NativeInspection, RuntimeError> {
+        if !id(agent) || !id(device) {
+            return Err(RuntimeError::InvalidBinding);
+        }
+        self.native
+            .as_ref()
+            .ok_or(RuntimeError::CoreAuthorityUnavailable)?
+            .repack(self, agent, device)
+            .await
     }
     async fn verified_step(&self, _run: &str) -> Result<VerifiedStep, RuntimeError> {
         // No injected verifier, supplied head, arbitrary request or enrollment-only

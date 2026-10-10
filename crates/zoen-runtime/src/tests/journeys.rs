@@ -1,5 +1,7 @@
 use super::*;
 pub(super) async fn run() {
+    stores::native_device_custody().await;
+    println!("native custody journey: test-provisioned real directory, retained OpenMLS packages, cold restore and device revocation PASS");
     failure_cuts::other_namespace_cannot_refund_dispatched_hold().await;
     println!("authority journey: another FDB namespace cannot refund an in-flight paid hold PASS");
     deployment::matching_workers_and_immutable_pairing().await;
