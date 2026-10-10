@@ -1,6 +1,7 @@
 //! Complete image custody. Deployment construction stays private and absent
 //! until a managed key/credential backend is implemented. A fixture key is not
 //! enrollment, relay currentness, restore continuity or dispatch authority.
+mod runs;
 mod storage;
 
 use std::collections::BTreeMap;
@@ -53,6 +54,7 @@ pub(crate) struct ActivationScope {
     previous: Option<Root>,
     target: Root,
     fence: crate::execution::Fence,
+    effects: String,
 }
 
 impl ActivationScope {

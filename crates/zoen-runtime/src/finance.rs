@@ -269,6 +269,49 @@ impl Finance {
             .await?,
         )
     }
+
+    pub(super) async fn reply_clock(&self) -> Result<i64, RuntimeError> {
+        let mut tx = self.begin().await?;
+        let now = Self::clock(&mut tx).await?;
+        tx.commit().await?;
+        Ok(now)
+    }
+
+    /// An original discovery snapshot, not a spend reservation or live permit.
+    /// Dispatch must independently revalidate the frozen policy and budget.
+    pub(super) async fn reply_budget(
+        &self,
+        owner: &str,
+        price: &crate::PriceProfile,
+    ) -> Result<(i64, String), RuntimeError> {
+        let mut tx = self.begin().await?;
+        Self::person(&mut tx, owner).await?;
+        let now = Self::clock(&mut tx).await?;
+        let row: Option<(Json<SignedOwnerPolicy>, String)> = sqlx::query_as(
+            "SELECT signed,digest FROM runtime_policies WHERE owner=$1 AND period_start <= $2 ORDER BY period_start DESC,version DESC LIMIT 1"
+        ).bind(owner).bind(now).fetch_optional(&mut *tx).await?;
+        let Some((Json(signed), digest)) = row else {
+            return Err(RuntimeError::Denied);
+        };
+        let policy = &signed.policy;
+        let (start, end) = period(policy.year, policy.month)?;
+        if !roda_log::owner_budget::verify(&signed)
+            || roda_log::owner_budget::digest(policy).as_deref() != Some(&digest)
+            || policy.owner != owner
+            || now < start
+            || now >= end
+            || now >= policy.expires_at_ms
+            || !policy.enabled
+            || policy.currency != price.currency
+            || policy.scale != price.scale
+            || !policy.allowed_profiles.contains(&price.digest()?)
+            || price.reserve(price.max_output_tokens)? > policy.max_attempt_units
+        {
+            return Err(RuntimeError::Denied);
+        }
+        tx.commit().await?;
+        Ok((start, digest))
+    }
     async fn device(
         tx: &mut Transaction<'_, Postgres>,
         identity: &str,

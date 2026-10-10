@@ -9,6 +9,7 @@ pub(crate) struct Execution {
     pub(super) db: Arc<Database>,
     pub(super) root: Subspace,
     pub(super) deployment: String,
+    pub(super) source: Option<zoen_relay::log::fdb::RuntimeSource>,
 }
 #[derive(Clone, PartialEq, Eq)]
 pub(crate) struct Fence {
@@ -47,11 +48,48 @@ impl PreDispatchClosure {
 }
 
 impl Execution {
-    pub fn new(db: Arc<Database>, root: Subspace, deployment: String) -> Self {
+    pub fn new(
+        db: Arc<Database>,
+        root: Subspace,
+        deployment: String,
+        source: Option<zoen_relay::log::fdb::RuntimeSource>,
+    ) -> Self {
         Self {
             db,
             root,
             deployment,
+            source,
+        }
+    }
+
+    pub(super) async fn bind_source(
+        db: &Database,
+        root: &Subspace,
+        deployment: &str,
+        source: Option<&zoen_relay::log::fdb::RuntimeSource>,
+    ) -> Result<(), RuntimeError> {
+        let trx = Self::bounded_transaction(db)?;
+        Self::check_deployment(&trx, root, deployment).await?;
+        let key = root.pack(&("relay-source/1",));
+        let prior = trx.get(&key, false).await?;
+        match (source, prior) {
+            (None, None) => Ok(()),
+            (Some(source), Some(prior)) if prior.as_ref() == source.cell().as_bytes() => Ok(()),
+            (Some(source), None) => {
+                // Only the deployment marker may precede source selection.
+                // Existing native/run state cannot be adopted by a new relay.
+                let mut range = RangeOption::from(root.range());
+                range.limit = Some(2);
+                let rows = trx.get_range(&range, 1, false).await?;
+                let marker = root.pack(&("deployment",));
+                if rows.more() || rows.iter().any(|row| row.key() != marker.as_slice()) {
+                    return Err(RuntimeError::DeploymentMismatch);
+                }
+                trx.set(&key, source.cell().as_bytes());
+                trx.commit().await.map_err(|_| RuntimeError::Unavailable)?;
+                Ok(())
+            }
+            _ => Err(RuntimeError::DeploymentMismatch),
         }
     }
     fn bounded_transaction(db: &Database) -> Result<Transaction, RuntimeError> {
@@ -100,9 +138,15 @@ impl Execution {
         // Guard each operation and its commit against an unpaired store or a
         // changed marker, including already-open runtimes after reconfiguration.
         Self::check_deployment(&trx, &self.root, &self.deployment).await?;
+        let source = trx
+            .get(&self.root.pack(&("relay-source/1",)), false)
+            .await?;
+        if source.as_deref() != self.source.as_ref().map(|source| source.cell().as_bytes()) {
+            return Err(RuntimeError::DeploymentMismatch);
+        }
         Ok(trx)
     }
-    fn run(&self, run: &str, part: &str) -> Vec<u8> {
+    pub(super) fn run(&self, run: &str, part: &str) -> Vec<u8> {
         self.root.pack(&("run", run, part))
     }
     fn device(&self, context: &zoen_models::AttemptContext) -> Vec<u8> {
@@ -113,7 +157,7 @@ impl Execution {
             "lease",
         ))
     }
-    fn attempt(&self, attempt: &str, part: &str) -> Vec<u8> {
+    pub(super) fn attempt(&self, attempt: &str, part: &str) -> Vec<u8> {
         self.root.pack(&("attempt", attempt, part))
     }
     pub(super) async fn lease(

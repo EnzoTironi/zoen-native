@@ -25,6 +25,8 @@ pub struct RuntimeConfig {
     pub postgres_url: String,
     pub fdb_cluster_file: Option<String>,
     pub namespace: String,
+    /// Actual relay cell on the shared FDB cluster, pinned at first open.
+    pub relay_cell: Option<String>,
     pub price: PriceProfile,
     pub gateway: GatewayConfig,
     pub evidence_key: [u8; 32],
@@ -114,6 +116,22 @@ pub struct NativeInspection {
     pub image_bytes: u32,
 }
 
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ReplyRun {
+    pub run: String,
+    pub attempt: String,
+    pub wake: String,
+}
+
+#[derive(Debug, PartialEq, Eq)]
+pub struct ReplySync {
+    pub native: NativeInspection,
+    pub caught_up: bool,
+    pub scanned: u16,
+    pub discovery_complete: bool,
+    pub runs: Vec<ReplyRun>,
+}
+
 pub struct RuntimeAuthority {
     finance: finance::Finance,
     execution: execution::Execution,
@@ -152,9 +170,16 @@ impl RuntimeAuthority {
         let witness = finance
             .bind_deployment(&config.namespace, &hash(&config.evidence_key), &db, &root)
             .await?;
+        let source = config
+            .relay_cell
+            .as_deref()
+            .map(zoen_relay::log::fdb::RuntimeSource::configured)
+            .transpose()
+            .map_err(|_| RuntimeError::InvalidBinding)?;
+        execution::Execution::bind_source(&db, &root, &witness, source.as_ref()).await?;
         Ok(Self {
             finance,
-            execution: execution::Execution::new(db, root, witness),
+            execution: execution::Execution::new(db, root, witness, source),
             custody: custody::Custody::new(config.evidence_key, config.namespace),
             native: None,
             gateway,
@@ -225,6 +250,45 @@ impl RuntimeAuthority {
             .as_ref()
             .ok_or(RuntimeError::CoreAuthorityUnavailable)?
             .repack(self, agent, device)
+            .await
+    }
+
+    /// Locators only. The host cannot supply a frontier, trigger, request,
+    /// native image, grant, credential or verified execution step.
+    pub async fn sync_reply_runs(
+        &self,
+        agent: &str,
+        device: &str,
+        space: &str,
+    ) -> Result<ReplySync, RuntimeError> {
+        if !id(agent) || !id(device) || !id(space) {
+            return Err(RuntimeError::InvalidBinding);
+        }
+        self.native
+            .as_ref()
+            .ok_or(RuntimeError::CoreAuthorityUnavailable)?
+            .sync_replies(self, agent, device, space)
+            .await
+    }
+
+    /// Exercises the private retained loader and returns inert identifiers.
+    /// This does not admit a paid model call or export native context.
+    pub async fn inspect_reply_run(&self, run: &str) -> Result<ReplyRun, RuntimeError> {
+        if !id(run) {
+            return Err(RuntimeError::InvalidBinding);
+        }
+        self.native
+            .as_ref()
+            .ok_or(RuntimeError::CoreAuthorityUnavailable)?
+            .inspect_reply(self, run)
+            .await
+    }
+
+    /// Durable scheduling locators, not execution capabilities. A lost wake
+    /// reply cannot create another run or another paid attempt.
+    pub async fn pending_reply_runs(&self, limit: u16) -> Result<Vec<ReplyRun>, RuntimeError> {
+        self.execution
+            .pending_reply_runs(limit, &self.custody)
             .await
     }
     async fn verified_step(&self, _run: &str) -> Result<VerifiedStep, RuntimeError> {

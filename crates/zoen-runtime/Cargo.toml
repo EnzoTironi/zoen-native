@@ -8,6 +8,7 @@ publish.workspace = true
 
 [dependencies]
 zoen-models = { path = "../zoen-models" }
+zoen-relay = { path = "../zoen-relay" }
 roda-types.workspace = true
 roda-log.workspace = true
 roda-ffi = { path = "../roda-ffi" }
@@ -26,5 +27,7 @@ foundationdb = { version = "0.11", default-features = false, features = ["fdb-7_
 chrono = { version = "0.4", default-features = false, features = ["std"] }
 
 [dev-dependencies]
-zoen-relay = { path = "../zoen-relay" }
+roda-mls.workspace = true
+roda-store.workspace = true
+roda-proto.workspace = true
 tokio = { version = "1", features = ["net", "io-util"] }

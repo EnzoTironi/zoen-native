@@ -62,8 +62,60 @@ version windows are operational bounds, not a trusted wall clock or restore witn
 Managed custody construction remains absent: `RuntimeAuthority::open` installs
 no native credential/key owner. Test-only provisioning exercises this protocol
 with genuine certified profiles and retained OpenMLS packages. A fixture key/map
-is not a production vault. Paid execution, source synchronization, trigger/run
-dedupe and guarded output still require their separate integration gates.
+is not a production vault. Paid execution and guarded output still require
+their separate integration gates.
+
+## Retained reply discovery and loading
+
+`relay_cell` optionally identifies the actual relay cell on the same FDB
+cluster. The existing Execution owner pins that cell in its namespace and
+checks it in every transaction. Selection requires an empty FDB namespace
+apart from the deployment marker; existing unbound native/run state is not
+adopted. Changed or removed configuration refuses open. This identifies the
+source store; it is not a restore-continuity witness.
+
+`sync_reply_runs(agent, device, space)` accepts locators only. It restores an
+authenticated certified device image and reads the real relay-owned log schema
+with conflicts, through a concrete bounded source accessor. Each call hydrates
+at most 64 entries and 4 MiB of content. Missing positions, rollback/mismatched
+cursors, unsupported history and image bounds refuse progress. Partial catch-up
+can retain an image but creates no reply run until its native frontier matches
+the actual source head. The head is checked again inside the activation write.
+
+The native core retains discovery position inside that complete authenticated
+image and scans at most 64 events/16 eligible replies per call. It selects actual
+opened owner messages under C1's supported Direct/Trust profile and SQL clock
+observation. The runtime freezes their original request, exact gateway preflight
+digest, price/policy snapshot and ReplyIntent. These are inert originals, not a
+live spending approval. The configured input bound is not a tokenizer estimate.
+
+One FDB transaction activates the image with sealed immutable run, attempt
+Binding, original-image reference, trigger-dedupe and durable wake records.
+The trigger key is Agent/Space/actual source-event hash, independent of device,
+generation or wake delivery. Another certified device finds the same original
+run and cannot replace its request, device or Binding. The known SQL maintenance
+proof additionally binds the complete proposed source/journal/ciphertext effect
+batch. A root-only maintenance proof cannot authorize a journal batch. Unknown
+activation returns no native workspace/capability; a later scheduling scan can
+observe the retained wake without recreating execution permission.
+
+`pending_reply_runs(1..=64)` returns inert durable scheduling identifiers.
+`inspect_reply_run(run)` exercises a private retained loader and returns those
+identifiers only. The loader authenticates the sealed original, exact current
+SQL enrollment and active native image, atomically acquires actual run and
+associated device leases, and refreshes the original intent. Original input,
+policy and Binding stay frozen while current native frontier/grant facts are
+derived separately. An actual source snapshot checks that frontier, active
+root, immutable association, both leases and prepared Binding. Reads mint no
+dispatch permit: C3 must repeat these checks in its final admission mutation.
+Lease release preserves monotonic tokens and cannot release a newer holder.
+
+No-op synchronization consumes no image generation. Runs protect their original
+capsule through real GC references; terminal reference release and wake ACKs
+await a verified run disposition protocol. The public paid entry points remain
+closed. The joined SQL/OpenMLS/FdbLog fixture validates this unit separately from
+financial core-scope fixtures; it does not implement live WS provisioning,
+managed credentials, external nonrollback continuity or guarded agent output.
 
 ## Dispatch and finance
 
@@ -161,8 +213,8 @@ attempts, and an actual deferred SQL commit failure are exercised. That failure
 leaves the independently committed FDB marker orphaned and closed. It is a real
 commit rejection, not DB wire-level commit-unknown testing.
 
-The paid retained-step loader, managed custody, actual relay synchronization,
-stable trigger/run creation, worker/JetStream
+The paid retained-step admission, managed custody, live relay provisioning,
+worker/JetStream
 recovery, typed tool approval/resume, signed output/usage, external continuity
 witness, live billing reconciliation and deployment drills remain open. These
 journeys do not complete runtime milestone 1 or Mastra/TextQL parity. See the
