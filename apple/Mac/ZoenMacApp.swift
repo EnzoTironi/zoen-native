@@ -267,7 +267,7 @@ struct MacRootView: View {
                     if badge > 0 {
                         Text(badge > 99 ? "99+" : "\(badge)")
                             .font(.system(size: 10, weight: .bold))
-                            .foregroundStyle(.white)
+                            .foregroundStyle(Palette.onAction)
                             .padding(.horizontal, 4).padding(.vertical, 2)
                             .background(Palette.action, in: .capsule)
                             .offset(x: 3, y: -2)

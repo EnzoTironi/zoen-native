@@ -194,7 +194,9 @@ struct ActivityScreen: View {
                 }
                 if !typeSize.isAccessibilitySize { Spacer() }
                 if approvable.count > 1 {
-                    Button("Approve all") { model.approveAll(agent: agent) }
+                    Button { model.approveAll(agent: agent) } label: {
+                        Text("Approve all").foregroundStyle(ActionGlassForeground())
+                    }
                         .buttonStyle(.glassProminent)
                         .font(.subheadline.weight(.semibold))
                 }

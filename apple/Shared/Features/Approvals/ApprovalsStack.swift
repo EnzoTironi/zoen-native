@@ -1224,7 +1224,7 @@ struct AllCaughtUpView: View {
             Spacer(minLength: 0)
             if let onClose {
                 Button(action: onClose) {
-                    Text("Done").font(.headline).frame(maxWidth: 220, minHeight: 50)
+                    Text("Done").font(.headline).foregroundStyle(ActionGlassForeground()).frame(maxWidth: 220, minHeight: 50)
                 }
                 .buttonStyle(.glassProminent)
                 .tint(Palette.action)

@@ -179,7 +179,9 @@ struct RequestCard: View {
                 HStack(spacing: 10) {
                     Button(action: onDeny) { Text("Decline").frame(maxWidth: .infinity) }
                         .buttonStyle(.glass)
-                    Button(action: onApprove) { Text("Approve").fontWeight(.semibold).frame(maxWidth: .infinity) }
+                    Button(action: onApprove) {
+                        Text("Approve").fontWeight(.semibold).foregroundStyle(ActionGlassForeground()).frame(maxWidth: .infinity)
+                    }
                         .buttonStyle(.glassProminent)
                 }
                 .controlSize(.large)
@@ -252,6 +254,7 @@ struct ToastView: View {
                     onUndo(token)
                 } label: {
                     Label("Undo", systemImage: "arrow.uturn.backward").font(.subheadline.weight(.semibold))
+                        .foregroundStyle(ActionGlassForeground())
                 }
                 .buttonStyle(.glassProminent)
             case .revoked(let grantId, let p):
@@ -262,6 +265,7 @@ struct ToastView: View {
                     onRestore(grantId)
                 } label: {
                     Label("Undo", systemImage: "arrow.uturn.backward").font(.subheadline.weight(.semibold))
+                        .foregroundStyle(ActionGlassForeground())
                 }
                 .buttonStyle(.glassProminent)
                 .accessibilityIdentifier("toast-undo")

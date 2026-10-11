@@ -852,7 +852,9 @@ struct InlineRequestRow: View {
             Spacer(minLength: 4)
             switch request.status {
             case .pending:
-                Button("Approve") { model.approve(request) }
+                Button { model.approve(request) } label: {
+                    Text("Approve").foregroundStyle(ActionGlassForeground())
+                }
                     .buttonStyle(.glassProminent)
                     .controlSize(.small)
             case .stale:
@@ -1069,7 +1071,7 @@ struct Composer: View {
                 ZoenIcon(.send, size: 21).frame(width: 44, height: 44)
             }
             .buttonStyle(IconPressStyle())
-            .foregroundStyle(.white)
+            .foregroundStyle(ActionGlassForeground())
             .glassEffect(.regular.tint(Palette.action).interactive(), in: .circle)
             .accessibilityLabel("Send voice message")
             .transition(.scale.combined(with: .opacity))
@@ -1081,7 +1083,7 @@ struct Composer: View {
                     .frame(width: 44, height: 44)
             }
             .buttonStyle(IconPressStyle())
-            .foregroundStyle(.white)
+            .foregroundStyle(ActionGlassForeground())
             .glassEffect(.regular.tint(Palette.action).interactive(), in: .circle)
             .disabled(empty || busy)
             .opacity(empty ? 0.55 : 1)
@@ -1096,7 +1098,7 @@ struct Composer: View {
     private var mic: some View {
         let recording = recorder.phase == .recording
         return ZoenIcon(.mic, selected: recording, size: 21)
-            .foregroundStyle(.white)
+            .foregroundStyle(recording ? AnyShapeStyle(Color.white) : AnyShapeStyle(ActionGlassForeground()))
             .frame(width: 44, height: 44)
             // While recording it's a solid red disc outside the glass (so it doesn't melt
             // into the recording row next to it).

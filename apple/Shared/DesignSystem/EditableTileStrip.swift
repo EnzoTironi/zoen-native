@@ -95,7 +95,7 @@ struct EditableTileStrip<Item: Identifiable, Tile: View>: View where Item.ID == 
                 Text("Done editing").font(.subheadline.weight(.semibold))
                     .padding(.horizontal, 16).frame(minHeight: 44)
                     .glassEffect(.regular.tint(Palette.action.opacity(0.9)).interactive(), in: .capsule)
-                    .foregroundStyle(.white)
+                    .foregroundStyle(ActionGlassForeground())
             }
             .buttonStyle(.plain)
             .accessibilityIdentifier("\(idPrefix)-done")

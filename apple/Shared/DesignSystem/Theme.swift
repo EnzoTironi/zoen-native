@@ -43,8 +43,7 @@ extension PlatformColor {
     }
 }
 
-/// Paleta "Zoen Night" do PR 211, agora nativa: cinzas azulados, um azul de ação,
-/// claro como cidadão de primeira classe.
+/// Shared colors for Light and Dark appearance.
 enum Palette {
     static let background = Color.adaptive(light: "#F4F6FB", dark: "#090D15")
     static let surface = Color.adaptive(light: "#FFFFFF", dark: "#121826")
@@ -56,6 +55,7 @@ enum Palette {
     static let textTertiary = Color.adaptive(light: "#8C95A8", dark: "#5F6B82")
     static let action = Color.adaptive(light: "#3D7A28", dark: "#86C25A")  // moss green: the mascot's fur
     static let actionDeep = Color.adaptive(light: "#2C5E1C", dark: "#5E9A35")
+    static let onAction = Color.adaptive(light: "#FFFFFF", dark: "#0E1320")
     static let amber = Color(hex: "#FFB020")
     static let success = Color(hex: "#22C55E")
     static let danger = Color(hex: "#FF4D5E")
@@ -68,6 +68,15 @@ enum Palette {
 
     static var actionGradient: LinearGradient {
         LinearGradient(colors: [action, actionDeep], startPoint: .topLeading, endPoint: .bottomTrailing)
+    }
+}
+
+struct ActionGlassForeground: ShapeStyle {
+    func resolve(in environment: EnvironmentValues) -> Color {
+        #if os(macOS)
+        if environment.controlActiveState != .key { return Palette.textPrimary }
+        #endif
+        return Palette.onAction
     }
 }
 

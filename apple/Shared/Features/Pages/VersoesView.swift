@@ -98,6 +98,7 @@ struct VersionPreview: View {
                 } label: {
                     Label("Restore this version", systemImage: "clock.arrow.circlepath")
                         .font(.body.weight(.semibold))
+                        .foregroundStyle(ActionGlassForeground())
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 6)
                 }
