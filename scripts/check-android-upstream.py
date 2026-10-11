@@ -29,7 +29,7 @@ head = git("rev-parse", "HEAD").stdout.strip()
 # Updating these references requires reviewing the new Apple flows and their Android equivalents.
 reviewed_ios = {
     "ux/audit-p1": "07a04de9434cd3e7d26ba30be00b5722360b9754",
-    "codex/desktop-web-chat-shell": "309930df563230cf223b37e15d5f8c7e53982377",
+    "codex/desktop-web-chat-shell": "895e878ab57da4d83c0bab5dc0a3b45ef578578c",
     "codex/roadmap-integration": "d9ebb3ed0208c52ce84600078e933213b2cdc905",
 }
 ios_changes = {

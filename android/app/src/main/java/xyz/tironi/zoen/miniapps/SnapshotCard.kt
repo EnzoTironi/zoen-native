@@ -34,6 +34,8 @@ fun SnapshotCard(snapshot: WidgetSnapshot, modifier: Modifier = Modifier, live: 
     val accent = Color(android.graphics.Color.parseColor(snapshot.accentHex))
     val darkArt = snapshot.template == WidgetSnapshot.Template.PHOTO || snapshot.art in setOf("pet.asleep", "globe", "trip")
     val ink = if (darkArt) Color.White else MaterialTheme.colorScheme.onSurface
+    val tripCountdown = snapshot.art == "trip" && snapshot.template == WidgetSnapshot.Template.COUNTDOWN
+    val titleInk = if (snapshot.art == "trip") Color(0xFF2B2530) else ink
     val background = if (darkArt) Color(0xFF18251D) else MaterialTheme.colorScheme.surfaceContainerLow
     var now by remember { mutableLongStateOf(System.currentTimeMillis()) }
     LaunchedEffect(snapshot.targetMs, live) { if (live && snapshot.targetMs != null) while (true) { now = System.currentTimeMillis(); delay(60_000) } }
@@ -55,11 +57,16 @@ fun SnapshotCard(snapshot: WidgetSnapshot, modifier: Modifier = Modifier, live: 
             }), null, Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
             Box(Modifier.fillMaxSize().background(Brush.verticalGradient(listOf(Color.Transparent, Color.Black.copy(alpha = .7f)))))
         }
+        if (tripCountdown) {
+            SnapshotArt(snapshot, accent, Modifier.align(Alignment.BottomEnd).fillMaxSize(.82f).offset(14.dp, 12.dp), live)
+            Box(Modifier.fillMaxSize().background(Brush.verticalGradient(
+                .2f to Color.Transparent, .5f to Color.Black.copy(alpha = .28f), 1f to Color.Black.copy(alpha = .5f))))
+        }
         Column(Modifier.fillMaxSize().padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-            snapshot.eyebrow?.let { Text(it, style = MaterialTheme.typography.labelSmall, color = ink.copy(alpha = .8f), maxLines = 1, overflow = TextOverflow.Ellipsis) }
+            snapshot.eyebrow?.let { Text(it, style = MaterialTheme.typography.labelSmall, color = (if (tripCountdown) titleInk else ink).copy(alpha = .8f), maxLines = 1, overflow = TextOverflow.Ellipsis) }
             when (snapshot.template) {
                 WidgetSnapshot.Template.TICKET -> {
-                    Text(snapshot.title, style = MaterialTheme.typography.labelMedium, color = ink)
+                    Text(snapshot.title, style = MaterialTheme.typography.labelMedium, color = titleInk)
                     Spacer(Modifier.weight(1f))
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                         snapshot.codes.take(2).forEach { Text(it, style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold, color = ink) }
@@ -75,17 +82,22 @@ fun SnapshotCard(snapshot: WidgetSnapshot, modifier: Modifier = Modifier, live: 
                 }
                 WidgetSnapshot.Template.PHOTO -> {
                     Spacer(Modifier.weight(1f))
-                    Text(snapshot.title, color = ink, style = MaterialTheme.typography.titleMedium, maxLines = 2, fontWeight = FontWeight.Bold, overflow = TextOverflow.Ellipsis)
+                    Text(snapshot.title, color = titleInk, style = MaterialTheme.typography.titleMedium, maxLines = 2, fontWeight = FontWeight.Bold, overflow = TextOverflow.Ellipsis)
                     if (snapshot.targetMs != null) SnapshotCountdown(snapshot, now, ink)
                 }
                 WidgetSnapshot.Template.COUNTDOWN -> {
-                    SnapshotArt(snapshot, accent, Modifier.weight(1f).fillMaxWidth(), live)
-                    Text(snapshot.title, style = MaterialTheme.typography.titleSmall, color = ink, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    if (tripCountdown) {
+                        Text(snapshot.title, style = MaterialTheme.typography.titleSmall, color = titleInk, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                        Spacer(Modifier.weight(1f))
+                    } else {
+                        SnapshotArt(snapshot, accent, Modifier.weight(1f).fillMaxWidth(), live)
+                        Text(snapshot.title, style = MaterialTheme.typography.titleSmall, color = titleInk, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    }
                     SnapshotCountdown(snapshot, now, ink)
                 }
                 WidgetSnapshot.Template.PROGRESS -> {
                     SnapshotArt(snapshot, accent, Modifier.weight(1f).fillMaxWidth(), live)
-                    Text(snapshot.title, style = MaterialTheme.typography.titleSmall, color = ink, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    Text(snapshot.title, style = MaterialTheme.typography.titleSmall, color = titleInk, maxLines = 1, overflow = TextOverflow.Ellipsis)
                     snapshot.bars.take(3).forEach { bar ->
                         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                             Text(bar.label, Modifier.widthIn(max = 60.dp), color = ink, style = MaterialTheme.typography.labelSmall, maxLines = 1)
@@ -95,7 +107,7 @@ fun SnapshotCard(snapshot: WidgetSnapshot, modifier: Modifier = Modifier, live: 
                 }
                 WidgetSnapshot.Template.LIST -> {
                     Icon(appIcon(snapshot.appId), null, Modifier.size(26.dp), tint = accent)
-                    Text(snapshot.title, style = MaterialTheme.typography.titleSmall, color = ink, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    Text(snapshot.title, style = MaterialTheme.typography.titleSmall, color = titleInk, maxLines = 1, overflow = TextOverflow.Ellipsis)
                     snapshot.rows.take(4).forEach { row -> Row(horizontalArrangement = Arrangement.spacedBy(5.dp), verticalAlignment = Alignment.CenterVertically) {
                         Icon(if (row.done) Icons.Rounded.CheckBox else Icons.Rounded.CheckBoxOutlineBlank, null, Modifier.size(16.dp), tint = accent)
                         Text(row.text, style = MaterialTheme.typography.bodySmall, color = ink.copy(alpha = if (row.done) .5f else 1f), maxLines = 1, overflow = TextOverflow.Ellipsis)
@@ -105,13 +117,13 @@ fun SnapshotCard(snapshot: WidgetSnapshot, modifier: Modifier = Modifier, live: 
                     SnapshotArt(snapshot, accent, Modifier.weight(1f).fillMaxWidth(), live)
                     Row(verticalAlignment = Alignment.Bottom, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         snapshot.value?.let { Text(it, style = MaterialTheme.typography.headlineMedium, color = ink, fontWeight = FontWeight.Bold, maxLines = 1) }
-                        Text(snapshot.title, style = MaterialTheme.typography.titleSmall, color = ink, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                        Text(snapshot.title, style = MaterialTheme.typography.titleSmall, color = titleInk, maxLines = 2, overflow = TextOverflow.Ellipsis)
                     }
                     snapshot.detail?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = ink.copy(alpha = .75f), maxLines = 1, overflow = TextOverflow.Ellipsis) }
                 }
                 WidgetSnapshot.Template.CAPTION -> {
                     SnapshotArt(snapshot, accent, Modifier.weight(1f).fillMaxWidth(), live)
-                    Text(snapshot.title, style = MaterialTheme.typography.titleMedium, color = ink, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                    Text(snapshot.title, style = MaterialTheme.typography.titleMedium, color = titleInk, maxLines = 2, overflow = TextOverflow.Ellipsis)
                     snapshot.detail?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = ink.copy(alpha = .75f), maxLines = 2, overflow = TextOverflow.Ellipsis) }
                 }
             }
@@ -126,7 +138,7 @@ private fun SnapshotCountdown(snapshot: WidgetSnapshot, now: Long, ink: Color) {
         listOf(remaining.days to R.string.miniapp_days, remaining.hours to R.string.miniapp_hours, remaining.minutes to R.string.miniapp_minutes).forEach { (value, label) ->
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
                 Text(value.toString(), style = MaterialTheme.typography.titleLarge, color = ink, fontWeight = FontWeight.Bold)
-                Text(stringResource(label), style = MaterialTheme.typography.labelSmall, color = ink.copy(alpha = .8f))
+                Text(stringResource(label), style = MaterialTheme.typography.labelSmall, color = ink)
             }
         }
     }

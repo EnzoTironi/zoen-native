@@ -30,7 +30,7 @@ private val light = lightColorScheme(
     inverseSurface = Color(0xFF182032), inverseOnSurface = Color(0xFFEEF2FA), inversePrimary = Color(0xFF86C25A),
 )
 private val dark = darkColorScheme(
-    primary = Color(0xFFA4D581), onPrimary = Color(0xFF1E370F),
+    primary = Color(0xFF86C25A), onPrimary = Color(0xFF0E1320),
     primaryContainer = Color(0xFF324A25), onPrimaryContainer = Color(0xFFDDEFD2),
     secondary = Color(0xFFBACCAE), onSecondary = Color(0xFF21351D),
     secondaryContainer = Color(0xFF374632), onSecondaryContainer = Color(0xFFE8EDDF),

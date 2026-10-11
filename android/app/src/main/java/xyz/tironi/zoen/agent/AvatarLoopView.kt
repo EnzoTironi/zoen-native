@@ -1,14 +1,17 @@
 package xyz.tironi.zoen.agent
 
 import android.content.Context
+import android.annotation.SuppressLint
 import android.graphics.Rect
 import android.graphics.drawable.AnimatedImageDrawable
 import android.graphics.drawable.Drawable
 import android.view.View
 import android.view.ViewTreeObserver
-import androidx.appcompat.widget.AppCompatImageView
+import android.widget.ImageView
 
-internal class AvatarLoopView(context: Context) : AppCompatImageView(context) {
+// Theme.Zoen is a platform theme; API 28 already supports AnimatedImageDrawable and image tint.
+@SuppressLint("AppCompatCustomView")
+internal class AvatarLoopView(context: Context) : ImageView(context) {
     private var playbackEnabled = false
     private val visibleRect = Rect()
     private val scrollListener = ViewTreeObserver.OnScrollChangedListener { reconcile() }
