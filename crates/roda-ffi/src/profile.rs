@@ -129,6 +129,9 @@ impl Engine {
         let secret = agreement.secret();
         self.net.profiles.agreement = Some(agreement);
         self.net.profiles.shares_dirty = true;
+        self.net
+            .mls
+            .wake_recovery_many(self.net.synced.iter().cloned());
         Ok(secret)
     }
 
@@ -147,6 +150,9 @@ impl Engine {
             self.store.set_profile_fields(&me, 1, &fields.to_bytes())?;
         }
         self.net.profiles.shares_dirty = true;
+        self.net
+            .mls
+            .wake_recovery_many(self.net.synced.iter().cloned());
         match secret.and_then(|b| <[u8; 32]>::try_from(b.as_slice()).ok()) {
             Some(s) => {
                 self.net.profiles.agreement = Some(AgreementKey::from_secret(s));
@@ -542,6 +548,9 @@ impl Engine {
 
     /// A new session: refresh every profile I hold a key for and retry missing shares.
     pub fn profiles_session_start(&mut self, supported: bool) {
+        self.net
+            .mls
+            .wake_recovery_many(self.net.synced.iter().cloned());
         let me = self.me.clone().unwrap_or_default();
         let p = &mut self.net.profiles;
         p.supported = supported;
@@ -672,6 +681,16 @@ impl Engine {
             }
         }
         p.shares_dirty = true;
+        self.net.mls.wake_recovery_many(
+            self.net
+                .synced
+                .iter()
+                .filter(|space| {
+                    self.mls_roster(space)
+                        .is_some_and(|roster| asked.iter().any(|id| roster.contains_key(id)))
+                })
+                .cloned(),
+        );
     }
 
     pub fn take_need_profiles(&self) -> Vec<IdentityId> {

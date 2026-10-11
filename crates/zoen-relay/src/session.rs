@@ -50,6 +50,7 @@ struct Session {
     /// When the device logged in, for time to first sync.
     started: std::time::Instant,
     first_sync_done: bool,
+    claim_receipts: bool,
 }
 
 struct DeliveryAuthorization {
@@ -138,6 +139,7 @@ pub async fn run(socket: WebSocket, st: Shared, ip: String) {
         device,
         cert,
         registered,
+        claim_receipts,
     }) = handshake(&st, &tx, &mut stream, &ip).await
     else {
         return finish(writer, tx).await;
@@ -202,6 +204,7 @@ pub async fn run(socket: WebSocket, st: Shared, ip: String) {
         ip,
         started: std::time::Instant::now(),
         first_sync_done: false,
+        claim_receipts,
     };
     // `ready` first: the client's handshake reads it before anything else.
     let _ = tx
@@ -285,6 +288,7 @@ struct LoggedIn {
     device: String,
     cert: String,
     registered: bool,
+    claim_receipts: bool,
 }
 
 /// Hello → Challenge → Auth. `None` when the client is refused; the reason has been sent.
@@ -347,13 +351,37 @@ async fn handshake(
         )
         .await;
     }
+    let capabilities = negotiate(&capabilities);
+    let claim_receipts = capabilities
+        .iter()
+        .any(|c| c == roda_proto::KEY_PACKAGE_CLAIM_CAPABILITY);
+    let server_time_ms = if claim_receipts {
+        match tokio::time::timeout(
+            Duration::from_secs(5),
+            crate::key_package_claims::clock_ms(&st.pool),
+        )
+        .await
+        {
+            Ok(Ok(time)) => Some(time),
+            _ => {
+                return refuse(
+                    "database_unavailable",
+                    ServerFrame::error(ErrorCode::Unavailable, "database unavailable"),
+                )
+                .await
+            }
+        }
+    } else {
+        None
+    };
     let n = nonce();
     let _ = tx
         .send(ServerFrame::Challenge {
             nonce: n.clone(),
             relay: st.relay_name.clone(),
             protocol: protocol.min(PROTOCOL_VERSION),
-            capabilities: negotiate(&capabilities),
+            capabilities,
+            server_time_ms,
         })
         .await;
     let auth = tokio::time::timeout(Duration::from_secs(10), recv_frame(stream))
@@ -426,6 +454,7 @@ async fn handshake(
         device,
         cert,
         registered,
+        claim_receipts,
     })
 }
 
@@ -625,7 +654,20 @@ impl Session {
             None
         };
         match f {
-            ClientFrame::Ping => self.send(ServerFrame::Pong).await,
+            ClientFrame::Ping => {
+                let server_time_ms = if self.claim_receipts {
+                    tokio::time::timeout(
+                        Duration::from_secs(5),
+                        crate::key_package_claims::clock_ms(&self.st.pool),
+                    )
+                    .await
+                    .ok()
+                    .and_then(Result::ok)
+                } else {
+                    None
+                };
+                self.send(ServerFrame::Pong { server_time_ms }).await;
+            }
             ClientFrame::Req { id, op } => {
                 let refill = matches!(&op, Op::PublishKeyPackages { .. });
                 let unlinked = match &op {
@@ -985,16 +1027,28 @@ impl Session {
                 }
                 Ok(Reply::Done)
             }
-            Op::ClaimKeyPackages { ids } => {
+            Op::ClaimKeyPackages { ids, operation_id } => {
                 self.st
                     .limits
                     .lookup_account
                     .check(&self.identity)
                     .map_err(limits::slow_down)?;
-                let ids: Vec<String> = ids.into_iter().take(50).collect();
-                let claimed = db::claim_key_packages(pool, &ids)
+                let claimed = if let Some(operation) = operation_id {
+                    crate::key_package_claims::claim(
+                        pool,
+                        &self.identity,
+                        &self.device,
+                        &operation,
+                        &ids,
+                    )
                     .await
-                    .map_err(|e| e.to_string())?;
+                    .map_err(|e| e.to_string())?
+                } else {
+                    let ids: Vec<String> = ids.into_iter().take(50).collect();
+                    db::claim_key_packages(pool, &ids)
+                        .await
+                        .map_err(|e| e.to_string())?
+                };
                 self.key_packages_low(&claimed).await;
                 Ok(Reply::KeyPackages(claimed))
             }

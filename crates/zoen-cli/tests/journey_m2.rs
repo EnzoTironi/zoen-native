@@ -518,12 +518,19 @@ async fn key_packages_refill_when_they_run_low() {
     // Wait for this client's catch-up, rather than a session count that can still include
     // the preceding sync. Keep it alive until the assertion; 120 s is only a failsafe.
     let log_path = w.dir.join("bruno-watch.log");
-    let mut watch = w.spawn_zoen_logged("bruno", &["watch", "--for", "120"], "bruno-watch.log");
+    let status_path = w.dir.join("bruno-watch.stderr.log");
+    let mut watch = w.spawn_zoen_logged_streams(
+        "bruno",
+        &["watch", "--for", "120"],
+        "bruno-watch.log",
+        "bruno-watch.stderr.log",
+    );
     let mut ready = false;
     for _ in 0..300 {
         let log = std::fs::read_to_string(&log_path).unwrap();
+        let status_log = std::fs::read_to_string(&status_path).unwrap();
         ready = log.contains("watching as @bruno")
-            && log
+            && status_log
                 .lines()
                 .rev()
                 .find(|line| line.starts_with("[zoen-net] connection="))
@@ -537,8 +544,9 @@ async fn key_packages_refill_when_they_run_low() {
         let _ = watch.kill();
         let _ = watch.wait();
         panic!(
-            "Bruno never finished starting the watcher:\n{}",
-            std::fs::read_to_string(&log_path).unwrap()
+            "Bruno never finished starting the watcher:\nstdout:\n{}\nstderr:\n{}",
+            std::fs::read_to_string(&log_path).unwrap(),
+            std::fs::read_to_string(&status_path).unwrap()
         );
     }
     w.zoen("ana", &["group", "Roda 49", "@bruno"]);
@@ -554,7 +562,11 @@ async fn key_packages_refill_when_they_run_low() {
     let metrics = w.metrics();
     let _ = watch.kill();
     let _ = watch.wait();
-    let log = std::fs::read_to_string(&log_path).unwrap();
+    let log = format!(
+        "stdout:\n{}\nstderr:\n{}",
+        std::fs::read_to_string(&log_path).unwrap(),
+        std::fs::read_to_string(&status_path).unwrap()
+    );
     if std::env::var_os("ZOEN_NET_DEBUG").is_some() {
         for line in log.lines() {
             eprintln!("[bruno] {line}");

@@ -319,7 +319,7 @@ pub async fn public_lookup(
         // Ready precedes go_online. Drain that startup work before occupying the
         // directory pool so every blocked lookup belongs to the injected publish.
         socket.send(ClientFrame::Ping).await;
-        while !matches!(socket.recv().await, ServerFrame::Pong) {}
+        while !matches!(socket.recv().await, ServerFrame::Pong { .. }) {}
         sockets.push(socket);
     }
     let mut lock = PgConnection::connect(database).await.unwrap();
