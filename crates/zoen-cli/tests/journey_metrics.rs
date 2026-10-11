@@ -1,5 +1,5 @@
 //! Success metrics journey (ADR 0043): real relay, Postgres, FoundationDB and `zoen`
-//! processes. People chat over simulated days (the relay's metrics clock is shifted through
+//! processes. People chat over simulated days (the relay's metrics clock is fixed through
 //! `ZOEN_METRICS_CLOCK_FILE`, debug builds only), then the admin endpoint must report the
 //! right MAU, messages per active user, activation, retention and invites, while neither
 //! the report nor the relay's log ever names an account.
@@ -8,9 +8,22 @@
 
 mod common;
 use common::*;
+use sqlx::{Connection, PgConnection};
 use std::io::{Read, Write};
+use std::path::Path;
 
 const TOKEN: &str = "journey-admin-token-0123456789abcdef";
+const DAY_MS: i64 = 86_400_000;
+
+fn set_day(clock: &Path, base_ms: i64, day: i32) {
+    let next = clock.with_extension("next");
+    std::fs::write(
+        &next,
+        format!("unix_ms:{}", base_ms + i64::from(day) * DAY_MS),
+    )
+    .unwrap();
+    std::fs::rename(next, clock).unwrap();
+}
 
 fn get(port: u16, path: &str, token: Option<&str>) -> (u16, String) {
     let mut s = std::net::TcpStream::connect(("127.0.0.1", port)).unwrap();
@@ -56,8 +69,13 @@ fn report(w: &World, everyone: bool) -> serde_json::Value {
 
 #[tokio::test]
 async fn mau_and_messages_per_user_over_simulated_days() {
-    let clock = std::env::temp_dir().join(format!("zoen-metrics-clock-{}", now_ms()));
-    std::fs::write(&clock, "0").unwrap();
+    let real_ms = now_ms();
+    let base_ms = real_ms.div_euclid(DAY_MS) * DAY_MS + DAY_MS / 2;
+    let clock = std::env::temp_dir().join(format!(
+        "zoen-metrics-clock-{}-{real_ms}",
+        std::process::id()
+    ));
+    set_day(&clock, base_ms, 0);
     let clock_s = clock.to_string_lossy().to_string();
     let w = World::with_env(
         "metrics",
@@ -69,7 +87,20 @@ async fn mau_and_messages_per_user_over_simulated_days() {
         ],
     )
     .await;
-    let day = |n: i32| std::fs::write(&clock, n.to_string()).unwrap();
+    let day = |n: i32| set_day(&clock, base_ms, n);
+
+    // This fresh world's signups and metrics share the same simulated day. The
+    // production schema keeps its wall-clock default.
+    assert_eq!(w.count("SELECT count(*) FROM identities").await, 0);
+    let mut db = PgConnection::connect(&w.db_url).await.unwrap();
+    sqlx::query(sqlx::AssertSqlSafe(format!(
+        "ALTER TABLE identities ALTER COLUMN created_at
+         SET DEFAULT to_timestamp({base_ms}::double precision / 1000)"
+    )))
+    .execute(&mut db)
+    .await
+    .unwrap();
+    drop(db);
 
     // Admin surface: nothing without the token.
     assert_eq!(get(w.port, "/admin/metrics", None).0, 401);
@@ -88,6 +119,15 @@ async fn mau_and_messages_per_user_over_simulated_days() {
     ] {
         w.init(h, n);
     }
+    assert_eq!(
+        w.count(&format!(
+            "SELECT count(*) FROM identities
+             WHERE (extract(epoch FROM created_at) * 1000)::bigint = {base_ms}"
+        ))
+        .await,
+        5,
+        "all fixture signups use the fixed day-zero timestamp"
+    );
     // Baseline: what setting up a chat costs in application envelopes, measured, not assumed.
     let before = report(&w, false)["headline"]["messages"]["day"]
         .as_i64()
