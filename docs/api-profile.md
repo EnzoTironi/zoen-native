@@ -3,6 +3,8 @@
 For the profile screen on `ui/*`. Everything below is in the Rust core (`roda-ffi`) and
 generated into Swift by UniFFI (`RodaCore`). Design: [ADR 0016](adr/0016-encrypted-profiles.md).
 
+Use [roadmap status](roadmap-status.md) for the current platform/version ledger. This API contract describes profile operations; it does not establish that every client and public deployment is on the same protocol.
+
 ## What a profile is
 Name, bio (status line) and an optional photo. They're encrypted on the device, and the
 relay stores only ciphertext. Contacts are people you share a chat, group or Space with;

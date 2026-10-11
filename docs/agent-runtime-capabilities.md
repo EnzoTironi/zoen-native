@@ -1,0 +1,112 @@
+# Agent runtime capability ledger
+
+This is the implementation and acceptance ledger for Zoen's internal Rust runtime. The backend and reference parity are incomplete. A capability's status applies only to its stated revision and acceptance boundary. `specified` means a requirement exists; `implemented` means source exists; `integration-tested` requires an executable journey and retained revision-specific evidence; `production-verified` requires a real deployment drill. None of the runtime rows below is production-verified.
+
+Mastra is the primary framework behavior reference. TextQL supplies the ontology workflow and data semantics. IronClaw adds Rust execution, isolation and operations examples. Its matrix compares IronClaw with OpenClaw; its implemented/partial notes are reference claims, not Zoen verification. A blocking child call is not a durable background agent, and a live broadcast is not a reconnectable retained stream.
+
+Reference freeze, inspected 2026-10-10:
+
+- [Mastra source](https://github.com/mastra-ai/mastra/tree/85636a2341aca229feb83c72b730a0d50f2f1753), [durable agents](https://mastra.ai/docs/harness/durable-agents), [approval](https://mastra.ai/docs/agents/human-in-the-loop), [workflow suspension](https://mastra.ai/docs/workflows/suspend-and-resume).
+- [IronClaw matrix](https://github.com/nearai/ironclaw/blob/b0b999d96781516ee05e6ba961d6f3ead900da96/FEATURE_PARITY.md) and [source](https://github.com/nearai/ironclaw/tree/b0b999d96781516ee05e6ba961d6f3ead900da96). Model-call replay permitted by its recovery tests is not adopted for Zoen's uncertain paid attempts.
+- [TextQL official manual](https://docs.textql.com/core/ontology/tql-reference.md), frozen SHA-256 `84e7d12c330ace7f1606df4f3ea73e386d6b73e48ac3ed272962bf1286748c7d`; [starter source](https://github.com/TextQLLabs/ontology-starter-kits/tree/72c9a5df9da1e52f094a7faf80d3eb5aebbc653e); [authoring and golden-query recipes](https://github.com/TextQLLabs/skills/tree/31123f39645d3b7872319ee8b304dae0f0f0a12f). The descriptive manual is reachable. A formal grammar/reference conformance suite has not been established by the inspected sources; examples alone do not prove full compatibility.
+- [Rig 0.44.0](https://github.com/0xPlaygrounds/rig/releases/tag/v0.44.0), source `2d1071e0e0c602f994e9d6cfd8cf5faea6f53650`. SDK types remain private implementation details.
+- [OpenCode v2 core](https://github.com/anomalyco/opencode/blob/4617210822bdbb31e5749751afbfb4584ccedac8/packages/core/package.json) and [session runner](https://github.com/anomalyco/opencode/blob/4617210822bdbb31e5749751afbfb4584ccedac8/packages/core/src/session/runner/index.ts), supplemental session/control reference. This inspected public v2 tree has TypeScript/Effect core and Bun scripts; it contains no `.rs` or `Cargo.toml`. A separately reported, unpublished Rust port is outside this source freeze. Its automatic provider retry policy is not Zoen's paid-attempt policy.
+
+## Ownership and completion rules
+
+Accepted [ADR0008](adr/0008-foundationdb-system-of-record.md) retains billing in Postgres. FDB owns sealed run state, leases, device capsules, final dispatch admission and publication outboxes. Postgres owns verified owner budgets, reservations, exclusive financial claims and immutable settlement. JetStream carries recoverable opaque wakeups. They share an `EffectAttemptId`; they do not share an atomic transaction.
+
+Only known-fresh financial claim plus known-fresh fenced admission may create a live dispatch permit. Restoring or reading a claimed/admitted record must never recreate that permit. Cancellation releases a hold only after a durable pre-dispatch tombstone defeats old admission. Unknown paid outcomes retain holds. Receipt settlement is independent of permission to advance or publish. No price, currency conversion or missing-budget fallback authorizes spending.
+
+[ADR0014](adr/0014-memory-and-knowledge-are-items.md) makes signed encrypted Space Items canonical knowledge. External Git authoring is an explicit extension: reviewed source becomes a validated candidate, exact approval, staged encrypted content and one ordered complete release activation. A merge does not grant permission or activate code. Runs resolve their pinned Item release, never a moving branch. External export retains ADR0014's owner initiation/confirmation rule.
+
+Every acceptance entry labelled **Planned** below is missing executable evidence. It is a requirement, not a passing test. Integration work must split these family entries into operation-specific rows when providers, dialects, channels or adapters have different limitations.
+
+## Runtime and model execution
+
+Baseline: main `e051f97f046ef8c98652cfe61edadd515f4b480d`. The two model rows marked `integration-tested (branch)` describe this branch's [gateway unit](../crates/zoen-models/README.md), tested against a real local HTTP fixture and an in-memory test authority. They do not change the main baseline or verify durable billing.
+
+| Capability / user behavior | Responsible component | Status | Acceptance and current evidence / limitation |
+|---|---|---|---|
+| Versioned agent definition, instructions, active tool set and context | core Items / agentd | specified | **Planned:** changing a definition pins a new version; a restarted old run retains its exact approved version. |
+| Private provider gateway with owned request/output/receipt types | models | integration-tested (branch) | `zoen-models::tests::{provider,dispatch,privacy}`: real local HTTP, bounded request/reply, zero transport on denied/unknown/replayed admission, and active TRACE canaries. Trusted SQL/FDB admission and live-provider billing remain missing. |
+| Paid dispatch and owner-wide concurrent budget | agentd / Postgres / FDB | specified | **Planned:** competing agents cannot exceed owner holds; inject crashes at each reserve/claim/admission/settle boundary. Missing policy denies. |
+| Receipt-backed usage, explicit versioned integer prices | Postgres / core usage | specified | **Planned:** valid receipt plus invalid output settles once; duplicate receipt, missing counters, overflow and overrun are explicit. Local proposal-cost projection is not a provider invoice. |
+| Certified MLS agent, keys and sealed worker handoff | core / directory / agentd | specified | **Planned:** real signed trigger, device capsule+run+outbox atomic commit, restart and revoked-device refusal. Enrollment proof alone gives no membership or budget. |
+| Durable lifecycle, leases and queue recovery | agentd / FDB / JetStream | specified | **Planned:** lease takeover, lost wake, duplicate trigger and stale writer preserve the same run and attempt identities. |
+| Exact tool proposal, approval, waiting input and resume | core / agentd | specified | **Planned:** signed exact arguments/context/manifest approval resumes one admitted tool; edits, denial, expired grant and revocation block. Generic approval cards are insufficient. |
+| Cancellation and late evidence | agentd / Postgres / FDB | specified | **Planned:** cancellation races admission; proven-unsent release or uncertain retained hold, with late receipt settlement but no stale publication. |
+| Token accounting and context limits | models / agentd | specified | **Planned:** compact before overflow while preserving pinned instructions, tool-call/result pairs and citations; explicit truncation refusal. Reported usage and estimates stay distinct. |
+| Session retention and compaction | agentd / core memory | specified | **Planned:** bounded retained context survives restart; forgotten/revoked source is absent from rebuilt context and caches. |
+| Processors, guardrails and structured artifacts | models / agentd | specified | **Planned:** whole-response policy buffers before disclosure; invalid artifact fails without losing billable receipt. |
+| Retained text/tool stream and reconnect cursors | agentd / runtime API | specified | **Planned:** disconnect/reconnect replays authorized events without another generation; stale/cross-owner cursor refused. |
+| Partial output and cancellation of streaming | models / agentd | specified | **Planned:** cancelled stream retains authorized partial output; missing terminal receipt leaves spend unknown. Local cancellation does not prove remote cancellation. |
+| Durable background children with isolated context | agentd / FDB | specified | **Planned:** parent disconnect/restart does not lose child; bounded child budget, lineage, cancellation and no sibling state leakage. Blocking-only delegation does not pass. |
+| Steering, signals, goals and loop detection | agentd / core controls | specified | **Planned:** repeated-loop ceiling, durable goal state and idempotent authenticated steering survive restart. New text cannot grant capabilities. |
+| Schedules and occurrence identity | agentd / FDB | specified | **Planned:** IANA-zone/DST fixtures, missed-slot policy and competing claims yield one canonical run per occurrence. |
+
+Each operation below needs separate provider/API/model/profile/limits and evidence. Enabling a Rig feature does not change its status.
+
+| Operation | Component | Status | Required executable acceptance |
+|---|---|---|---|
+| Non-streaming chat completion | models | integration-tested (branch) | `zoen-openai-chat-v1/rig-0.44.0`: real scripted HTTP verifies text/tool proposals, request/response IDs, directly reported optional counters, invalid output with retained evidence, caps, lost/partial/timeout replies and cancellation. No provider certification, live invoice or tool execution. |
+| Streaming completion | models | specified | **Planned:** chunk/frame caps, interleaved tools, terminal usage, interruption and retained replay. |
+| Structured output | models | specified | **Planned:** supported schema/profile, invalid result and bounded explicitly authorized retry. |
+| Embeddings | models | specified | **Planned:** vector dimensions/finite values, input limits, optional usage and price binding. |
+| Reranking | models | specified | **Planned:** index/score validation, ordering, bounded documents and usage evidence. |
+| Transcription | models | specified | **Planned:** media limits, source/segment provenance, bounded decode and receipt. |
+| Audio generation | models | specified | **Planned:** format/byte/time ceilings, delivery authority and receipt. |
+| Image generation/editing | models | specified | **Planned:** input/output media caps, scope, origin and explicit supported billing profile. |
+
+## Workflows, ontology and memory
+
+| Capability / user behavior | Responsible component | Status | Acceptance and current evidence / limitation |
+|---|---|---|---|
+| Workflow branching and nested suspend/resume | agentd / FDB | specified | **Planned:** persist every nested boundary, exact resume data and canonical run ID; restart before/after each step. |
+| Parallel workflow execution | agentd / FDB | specified | **Planned:** branches isolate mutable output and merge deterministically; failed/cancelled branch cannot overwrite sibling state. |
+| Bounded loops, durable timers, retries and compensation | agentd / FDB / Postgres | specified | **Planned:** each retry/compensation is a separate authorized attempt; timers deduplicate, limits persist and unknown paid attempts are not repeated. |
+| Canonical encrypted knowledge and byte-preserving files | core Items / MLS | implemented | Source: `roda-types::ItemContent`, `roda-ffi::files`; tests: `zoen-cli/tests/journey_files.rs`. This does not implement ontology release activation. |
+| Git binding and immutable candidate closure | ontology / core | specified | **Planned:** exact tree/commit, path/import/hash/profile closure; reject escape, symlink, submodule, missing/cyclic dependency and stale approval. |
+| Approved encrypted release publication | ontology / core reducer | specified | **Planned:** incomplete staging never activates; concurrent base conflicts produce one ordered result; live and cold replay agree. |
+| TQL parsing, types/defaults/nulls/lists/sets/records | ontology | specified | **Planned:** independently authored named-profile positive/negative corpus, source-located diagnostics and bounded evaluation. No full TextQL compatibility claim. |
+| TQL imports, expressions, fragments and semantic views | ontology | specified | **Planned:** lazy branches, precedence, import closure, filter-driven joins and exact supported dialect rendering. |
+| Verified query context and read-only execution | ontology / connectors | specified | **Planned:** caller cannot inject `_tql`, fragments, roles or tenant authority; connector independently limits datasets, mode, time and rows. |
+| Governed golden queries and reviewed drift | ontology | specified | **Planned:** execute actual governed entrypoints on recorded fixture data; tolerances/grain/null/unit invariants; changed baseline requires review. |
+| Query/result provenance and citations | ontology / core | specified | **Planned:** retain release/compiler/query/parameters/connector/dialect/source watermark/time/result hash; mutable data is not falsely reproducible. |
+| Scoped hybrid memory retrieval | core memory / agentd | specified | **Planned:** lexical+vector ranking, citations, configurable diversity/recency and current caller permissions. Existing local FTS is not a cloud multi-principal API. |
+| Atomic index replacement and forgetting | core memory | specified | **Planned:** rebuild activates one complete index; forget/revoke invalidates source, embeddings, citations, context and derived caches after restart. |
+| Permission-aware keeper and live Page refresh | core / native / keeper | specified | **Planned:** authorized pinned query, result schema/provenance, changed-result-only proposal, exact approval and refresh under viewer permissions. Native editing is a separate prerequisite. |
+
+## Tools, extensions, channels and operations
+
+| Capability / user behavior | Responsible component | Status | Acceptance and current evidence / limitation |
+|---|---|---|---|
+| Manifest-selected WASM/code/browser tiers | agentd / sandboxd / egress | implemented | Existing `manifest`, `router`, `wasm`, `browser`, `sandbox` modules and Linux journeys. Durable model/tool continuation remains missing. |
+| Capability-bound credentials and egress | egress / models / adapters | specified | **Planned:** cross-capability secret/destination denial yields zero transport; bounded response and resource exhaustion fail safely. Reference: IronClaw host egress tests. |
+| Validated extensions and atomic activation | core / agentd | specified | **Planned:** versioned manifest/hook schema, scoped credentials, whole activation, rollback and incompatible-version rejection. |
+| Scoped skills and workspaces | core / agentd / sandboxd | specified | **Planned:** release-bound skills cannot mint grants; checkpointed workspace output retains source/attempt provenance and obeys export policy. |
+| MCP connections | adapters / grants | specified | **Planned:** authenticated scoped server/session, exact tool arguments, no hidden paid retries, cancel/reconnect and usage limits. |
+| A2A and ACP connections | adapters / grants | specified | **Planned:** protocol-specific identity, capability, idempotency, cancellation and bounded child authority. Each protocol has its own record. |
+| Foreign SDK bridges | adapters / models | specified | **Planned:** every effect/internal paid call is intercepted; unsupported interception or hidden retry refuses the job. |
+| Messaging channels and delivery | adapters / runtime API | specified | **Planned:** channel-specific authentication, correct threading, delivery/media limits, dedupe/reconnect and partial-cancel behavior. |
+| Channel health and provider failover diagnostics | agentd / operations | specified | **Planned:** health distinguishes auth/rate/network/unknown charge; fallback creates a new authorized attempt without releasing old uncertainty. |
+| Bounded media processing | models / adapters / sandboxd | specified | **Planned:** compressed/decoded size, dimensions, duration and CPU limits; malformed media cannot exhaust workers. |
+| Runtime API, native controls and Studio | agentd API / native | specified | **Planned:** authorized definition/run/approval/goal/memory/ontology/query/workspace/usage inspection with stable cursors and actual visual journeys. |
+| Evaluations and experiments | agentd / models / Postgres | specified | **Planned:** pinned dataset/scorer, reproducible comparison and budgeted model graders; private samples stay scoped. |
+| Private observability and redacted support exports | operations / core | specified | **Planned:** TRACE secret/content canaries, metadata-only traces and owner-confirmed exports; no raw SDK Debug/Display or connection secrets. |
+| Safe configuration and lifecycle hooks | agentd / operations | specified | **Planned:** validate complete candidate, explicit versions, atomic activation, rollback and in-flight pinned configuration. |
+| Drain, fairness, provider throttling and upgrades | agentd / operations | specified | **Planned:** restart/drain preserves attempts; owner fairness, quotas, migration compatibility and throttling under real service load. |
+| Custody, backup/restore, retention and reconciliation | agentd / FDB / Postgres | specified | **Planned:** seal/unseal authorization, partial restore blocks paid dispatch until inventories reconcile; dedupe-horizon publication recovery and retention drills. |
+
+## Pending dependencies and milestone acceptance
+
+These results are outside the baseline and do not make main feature-complete:
+
+| Dependency | Tested revision and result | Remaining boundary |
+|---|---|---|
+| [PR46: approval projections](https://github.com/EnzoTironi/zoen-native/pull/46) | `8e65c1b`: 207 local tests, format and affected Clippy pass; Linux CI fails unchanged key-package refill. | Compose with refill fix and runtime typed tool continuation; declared proposal cost is not provider settlement. |
+| [PR48: owner authorization](https://github.com/EnzoTironi/zoen-native/pull/48) | `bb96f58`: 209 local tests, format and affected Clippy pass; Linux CI fails the same refill test. Legacy unsigned-cache regression is fixed. | Compose with refill fix, regenerate native bindings and integrate real agent provisioning. Enrollment gives no Space permission or spending authority. |
+
+Milestone 1 is complete only when a real certified MLS agent receives a signed message, calls the admitted model, waits for an exact out-of-grant tool approval, restarts, resumes once, settles in Postgres and publishes signed output/usage. Include SQL/FDB failure cuts, lost queue/relay ACKs, revocation and privacy canaries.
+
+The full ontology acceptance journey is: ask, resolve an approved definition, execute, cite, propose a definition change, validate goldens, approve, publish an immutable complete release and refresh its connected Page. Intermediate parser, file or editor tests cannot complete that journey. Every milestone retains exact-revision evidence; implementation PRs attach images and videos through `gh --attach`.
