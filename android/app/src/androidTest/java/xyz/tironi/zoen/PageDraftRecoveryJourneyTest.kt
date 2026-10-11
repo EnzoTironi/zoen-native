@@ -121,10 +121,14 @@ class PageDraftRecoveryJourneyTest {
         capture("unreadable-encrypted-draft-native-actions")
         val exports = File(app.cacheDir, "exports")
         val previous = exports.walkTopDown().filter { it.isFile }.map { it.absolutePath }.toSet()
+        val shareTargets = app.packageManager.queryIntentActivities(
+            Intent(Intent.ACTION_SEND).setType("application/octet-stream"),
+            android.content.pm.PackageManager.MATCH_DEFAULT_ONLY,
+        ).map { it.activityInfo.packageName }.toSet() + setOf("android", "com.android.intentresolver")
         compose.onNodeWithTag("page-keep-draft").performClick()
         val automation = InstrumentationRegistry.getInstrumentation().uiAutomation
         compose.waitUntil(10_000) {
-            automation.rootInActiveWindow?.packageName?.toString() in setOf("android", "com.android.intentresolver")
+            automation.rootInActiveWindow?.packageName?.toString() in shareTargets
         }
         val exported = exports.walkTopDown().first { it.isFile && it.absolutePath !in previous }
         assertArrayEquals(archive, exported.readBytes())

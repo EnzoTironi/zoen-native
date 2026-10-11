@@ -74,7 +74,7 @@ class NativeDashJourneyTest {
         compose.onNodeWithTag("pet-app-content").assertExists()
         assertEquals(version, app.repository.state.value.items.first { it.id == pet.id }.version)
         compose.onNodeWithTag("pet-app-content").performScrollToNode(hasText(app.getString(R.string.nap)))
-        compose.onNodeWithText(app.getString(R.string.nap)).performClick()
+        compose.onNodeWithText(app.getString(R.string.nap)).performScrollTo().assertIsDisplayed().performClick()
         compose.waitUntil(10_000) { org.json.JSONObject(app.repository.state.value.items.first { it.id == pet.id }.app!!.viewJson).getBoolean("asleep") }
         compose.onNodeWithTag("pet-tab-1").assertIsNotEnabled()
         capture("native-pet-sleeping-care")
@@ -83,7 +83,7 @@ class NativeDashJourneyTest {
         capture("native-pet-sleeping-leaderboard")
         compose.onNodeWithTag("pet-tab-0").performClick()
         compose.onNodeWithTag("pet-app-content").performScrollToNode(hasText(app.getString(R.string.wake)))
-        compose.onNodeWithText(app.getString(R.string.wake)).performClick()
+        compose.onNodeWithText(app.getString(R.string.wake)).performScrollTo().assertIsDisplayed().performClick()
         compose.waitUntil(10_000) { !org.json.JSONObject(app.repository.state.value.items.first { it.id == pet.id }.app!!.viewJson).getBoolean("asleep") }
         compose.onNodeWithTag("pet-tab-1").assertIsEnabled()
         assertEquals(version + 2u, app.repository.state.value.items.first { it.id == pet.id }.version)

@@ -7,6 +7,7 @@ import androidx.compose.material.icons.rounded.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.navigation3.runtime.NavKey
@@ -21,7 +22,7 @@ fun RequestScreen(model: ZoenViewModel, state: AppState, id: String, navigate: (
     var confirm by remember { mutableStateOf<RequestDecision?>(null) }
     var busy by remember { mutableStateOf(false) }
     Scaffold(topBar = { ScreenBar(stringResource(R.string.review), back) }) { padding ->
-        if (request != null) LazyColumn(Modifier.padding(padding), contentPadding = PaddingValues(24.dp), verticalArrangement = Arrangement.spacedBy(20.dp)) {
+        if (request != null) LazyColumn(Modifier.padding(padding).testTag("request-details"), contentPadding = PaddingValues(24.dp), verticalArrangement = Arrangement.spacedBy(20.dp)) {
             item { Avatar(request.agent, size = 68, onClick = { navigate(Agent(request.agent.id)) }) }
             item { Text(request.title, style = MaterialTheme.typography.headlineMedium); Text(request.agent.name + " · " + request.spaceTitle, color = MaterialTheme.colorScheme.onSurfaceVariant) }
             item { Text(request.detail, style = MaterialTheme.typography.bodyLarge) }

@@ -15,6 +15,7 @@ import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.test.StandardTestDispatcher
 import org.junit.After
 import org.junit.Assert.*
 import org.junit.Before
@@ -25,9 +26,10 @@ import org.junit.rules.Timeout
 import xyz.tironi.zoen.core.*
 
 @RunWith(AndroidJUnit4::class)
+@OptIn(ExperimentalTestApi::class)
 class ApprovalDeckJourneyTest {
     @get:Rule(order = 0) val deadline = Timeout.seconds(120)
-    @get:Rule(order = 1) val compose = createEmptyComposeRule()
+    @get:Rule(order = 1) val compose = createEmptyComposeRule(effectContext = StandardTestDispatcher())
     private val app get() = ApplicationProvider.getApplicationContext<ZoenApplication>()
     private lateinit var scenario: ActivityScenario<MainActivity>
     private lateinit var model: ZoenViewModel

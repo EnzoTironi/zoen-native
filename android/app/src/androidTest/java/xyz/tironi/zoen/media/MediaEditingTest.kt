@@ -27,6 +27,7 @@ import kotlin.math.sin
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.*
 import org.junit.Test
+import xyz.tironi.zoen.Evidence
 import org.junit.runner.RunWith
 import xyz.tironi.zoen.core.RodaEngine
 import xyz.tironi.zoen.data.ZoenRepository
@@ -162,7 +163,7 @@ class MediaEditingTest {
         try { assertEquals(Color.RED, decoded.getPixel(50, 40)); assertEquals(Color.WHITE, decoded.getPixel(50, 10)) } finally { decoded.recycle() }
     }
 
-    @Test fun videoExportContainsOnlySelectedGreenFramesAndNoHiddenPreRoll() = runBlocking {
+    @Test fun videoExportContainsOnlySelectedGreenFramesAndNoHiddenPreRoll() = runBlocking<Unit> {
         val dir = folder()
         try {
             val input = File(dir, "colors.mp4")
@@ -183,6 +184,8 @@ class MediaEditingTest {
             val extractor = android.media.MediaExtractor()
             try { extractor.setDataSource(output.absolutePath); extractor.selectTrack(0); assertTrue(extractor.sampleTime >= 0) } finally { extractor.release() }
             assertTrue(input.exists())
+            input.copyTo(Evidence.outputFile("media", "video-trim-original-fixture.mp4"), overwrite = true)
+            output.copyTo(Evidence.outputFile("media", "video-trim-native-selected.mp4"), overwrite = true)
         } finally { dir.deleteRecursively() }
     }
 }

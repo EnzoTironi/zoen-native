@@ -90,7 +90,8 @@ class NativeJourneysTest {
         compose.onNodeWithText(application.getString(R.string.activity)).performClick()
         compose.onNodeWithTag("activity-show-list").performClick()
         compose.onNodeWithText(request.title).performScrollTo().performClick()
-        compose.onNodeWithText(application.getString(R.string.approve), substring = false).performClick()
+        compose.onNodeWithTag("request-details").performScrollToNode(hasText(application.getString(R.string.approve)))
+        compose.onNodeWithText(application.getString(R.string.approve), substring = false).performScrollTo().assertIsDisplayed().performClick()
         compose.onNode(isDialog()).assertExists()
         compose.onAllNodesWithText(application.getString(R.string.approve), substring = false).onLast().performClick()
         compose.waitUntil(10_000) {

@@ -97,7 +97,7 @@ internal fun PetApp(preferences: android.content.SharedPreferences, itemId: Stri
                         }
                     } }
                     if (!released) {
-                        item { FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        item { FlowRow(Modifier.keepSnackbarAbove(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                             FilledTonalButton(onClick = { action("pet_feed", JSONObject()) }, enabled = !asleep) { Text(stringResource(R.string.feed)) }
                             FilledTonalButton(onClick = { action(if (asleep) "pet_wake" else "pet_nap", JSONObject()) }) { Text(stringResource(if (asleep) R.string.wake else R.string.nap)) }
                             FilledTonalButton(onClick = { action("pet_play", JSONObject()) }, enabled = !asleep) { Text(stringResource(R.string.play)) }
