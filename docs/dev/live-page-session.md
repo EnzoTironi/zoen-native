@@ -24,12 +24,18 @@ Existing Binary Page Loro content, preference and database keys, and the `Storag
 
 ## Plan admission
 
-The typed Plan document, authenticated timeline and tagged journal are foundations for a shared Live Page editor. Public Page APIs still reject Plan Items. This change does not activate Plan writers or replace current Plan readers.
+The typed Plan document, authenticated timeline and tagged journal are foundations for a shared Live Page editor. Public Page APIs still reject Plan Items. The Plan consumer candidate replaces current card, item and search projections without activating the public Plan editor.
 
-Before admission, migrate the canonical card/item/search projections, approvals and financial hashes, legacy mutations and historical views. Finish typed client DTOs, restore policy, mixed-version writer refusal, native controls and actual two-device/provider journeys. Plan financial metadata must never be flattened into ordinary paragraph text.
+After valid cutover, consumers read the session's saved document and accepted version, author and timestamp. They exclude private drafts and refused later whole-plan writes while retaining those writes in history. Before cutover, existing offline legacy previews preserve their exact bytes. Search indexes the accepted document's blocks and typed rows; it does not introduce another editable Plan store.
+
+Legacy edit, toggle, add, remove, restore and linked approval mutations refuse before changing storage once cutover is saved or pending. A poll that would add a legacy Plan row also refuses before closing or posting its result. Existing approval display compares the first matching legacy row ID's exact text and cents; completion alone does not change the hash. The stricter C4 proposal, writer, space and transactional approval implementation must be reconciled separately before integrating that backend stack.
+
+Totals use checked integer addition. Cards report an unavailable total on overflow while preserving row counts and stored history. The older `PlanDto` requires an `i64` total, so `item()` returns an explicit error for overflow instead of zero, clamping or panic. A typed optional-total client DTO and canonical history/restore views are still required before public admission. Historical negative cents, including `i64::MIN`, remain readable.
+
+Before admission, finish typed client DTOs, canonical writers and historical views, restore policy, mixed-version writer refusal, native controls and actual two-device/provider journeys. Plan financial metadata must never be flattened into ordinary paragraph text.
 
 ## Verification scope
 
-The isolated candidate based on main `7cad5b1` passed formatting, all-target Clippy, 61 document tests, 7 type compatibility tests and all 120 FFI tests on 11 October 2026. No tests were ignored or filtered. The ordinary unoptimized profile used the default stack and the existing resource/time guards.
+PR 60's shared-session foundation is merged as main `fa4eed8`; its Linux run passed 61 document, 7 compatibility and 120 FFI tests. The subsequent Plan consumer core candidate `610895f` passed formatting, all-target FFI Clippy and the full 127-test FFI suite on 11 October 2026. Its seven added consumer tests first ran against unchanged main production source: one passed and six failed. The fixed source retained all 120 original tests and passed all seven new cases, with no tests ignored or filtered. The ordinary unoptimized profile used the default stack and the existing resource/time guards.
 
 The standalone public API evidence uses an owned local SQLite database and two editor contexts for one actor. It is separate from native app footage, relay/provider execution, full HIG acceptance and billion-user capacity evidence. Those gates remain open in the [roadmap](../roadmap-status.md).
