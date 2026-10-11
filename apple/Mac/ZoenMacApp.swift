@@ -406,20 +406,23 @@ struct MacRootView: View {
         NavigationStack(path: Binding(get: { model.path(.conversations) }, set: { model.setPath(.conversations, $0) })) {
             detail
                 .navigationDestination(for: Route.self) { route in
-                    switch route {
-                    case .store(let id): StoreDetailView(listingId: id)
-                    case .agent(let id): AgentDetailView(agentId: id)
-                    case .integrity: IntegrityView()
-                    case .log(let id): LogEventsView(spaceId: id)
-                    case .items: ItemsListView(onOpen: { model.inspectorItem = $0 })
-                    case .item(let id): ItemView(itemId: id)
-                    case .space(let id): SpaceView(spaceId: id, onOpenItem: { model.inspectorItem = $0 })
-                    case .participants(let id): ParticipantsView(spaceId: id)
-                    case .permissions(let agent, let space): AgentPermissionsView(agentId: agent, spaceId: space)
-                    case .request(let id): RequestReviewView(requestId: id)
-                    case .folder(let id): FolderView(spaceId: id)
-                    case .app(let id): AppFullScreenView(itemId: id)
+                    Group {
+                        switch route {
+                        case .store(let id): StoreDetailView(listingId: id)
+                        case .agent(let id): AgentDetailView(agentId: id)
+                        case .integrity: IntegrityView()
+                        case .log(let id): LogEventsView(spaceId: id)
+                        case .items: ItemsListView(onOpen: { model.inspectorItem = $0 })
+                        case .item(let id): ItemView(itemId: id)
+                        case .space(let id): SpaceView(spaceId: id, onOpenItem: { model.inspectorItem = $0 })
+                        case .participants(let id): ParticipantsView(spaceId: id)
+                        case .permissions(let agent, let space): AgentPermissionsView(agentId: agent, spaceId: space)
+                        case .request(let id): RequestReviewView(requestId: id)
+                        case .folder(let id): FolderView(spaceId: id)
+                        case .app(let id): AppFullScreenView(itemId: id)
+                        }
                     }
+                    .navigationBarBackButtonHidden(true)
                 }
         }
         .safeAreaInset(edge: .top, spacing: 0) {
