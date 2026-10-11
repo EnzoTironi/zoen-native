@@ -343,8 +343,8 @@ async fn finite_admission_and_failed_activation() {
         let grant_started = std::time::Instant::now();
         if cut == 50 {
             let observed = fixture.world.runtime.finance.reply_clock().await.unwrap();
-            let expiry = observed + 1700;
-            println!("native output admission setup: cut={cut} stage=grant_clock observed_ms={observed} expires_at_ms={expiry} remaining_ms=1700");
+            let expiry = observed + 20_000;
+            println!("native output admission setup: cut={cut} stage=grant_clock observed_ms={observed} expires_at_ms={expiry} initial_lifetime_ms=20000");
             fixture
                 .grant_until("output-owner-trust", Some(expiry))
                 .await;
@@ -390,7 +390,7 @@ async fn finite_admission_and_failed_activation() {
                 "actual native deadline cut must follow a known SQL commit: {remaining} ms"
             );
             assert_eq!(refused, Err(RuntimeError::Denied));
-            println!("native output expiry proof: original 1700 ms signed grant; known SQL commit reached with {remaining} ms remaining; delayed ACK refused as Denied");
+            println!("native output expiry proof: same original 20000 ms setup grant; actual native output window at known SQL commit has {remaining} ms remaining; delayed ACK refused as Denied");
         } else {
             assert!(refused.is_err(), "{cut}");
         }

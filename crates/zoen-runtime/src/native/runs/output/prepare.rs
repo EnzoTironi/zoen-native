@@ -161,6 +161,31 @@ impl NativeCustody {
             staged,
         };
         let scope = output.scope(&runtime.execution)?;
+        #[cfg(test)]
+        if runtime.fault.load(std::sync::atomic::Ordering::SeqCst) == 50 {
+            let expiry = scope.expires_at_ms().ok_or(RuntimeError::InvalidBinding)?;
+            // All expensive work and staging are complete. No SQL/FDB
+            // transaction is held while the actual signed deadline approaches.
+            tokio::time::timeout(std::time::Duration::from_millis(20_000), async {
+                loop {
+                    let observed = runtime.finance.reply_clock().await?;
+                    let remaining = expiry
+                        .checked_sub(observed)
+                        .filter(|remaining| *remaining > 0)
+                        .ok_or(RuntimeError::Denied)?;
+                    if remaining <= 1700 {
+                        println!("native output staged window: same signed expiry={expiry} observed_sql_ms={observed} remaining_ms={remaining}; fresh directory admission follows");
+                        break Ok::<(), RuntimeError>(());
+                    }
+                    tokio::time::sleep(std::time::Duration::from_millis(
+                        (remaining - 1700).min(1000) as u64,
+                    ))
+                    .await;
+                }
+            })
+            .await
+            .map_err(|_| RuntimeError::Unavailable)??;
+        }
         let guard = runtime
             .finance
             .native_directory(
