@@ -479,6 +479,7 @@ impl Engine {
 
     /// Recarrega tudo do disco: reverifica cada log e reprojeta do zero.
     pub fn reload(&mut self) -> R<()> {
+        self.pages.epoch = std::sync::Arc::new(());
         self.pages
             .sessions
             .lock()
@@ -680,7 +681,7 @@ impl Engine {
             .ok_or_else(|| not_found(&t("Espaço", "Space")))
     }
 
-    fn item_state(&self, id: &str) -> R<&ItemState> {
+    pub(crate) fn item_state(&self, id: &str) -> R<&ItemState> {
         self.state.items.get(id).ok_or_else(|| not_found("Item"))
     }
 
