@@ -1,6 +1,6 @@
 # Live pages: behavior and completion contract
 
-Updated 10 October 2026 from the user's ChatGPT Space reference, the available Pages tool contracts and Zoen's editor source. [OpenAI's feature page](https://chatgpt.com/pt-BR/features/space/) describes editable pages with collaborators, comments, interactive content, connected context and recurring updates. The user also expects Notion's familiar [block-editing workflow](https://www.notion.com/help/writing-and-editing-basics), [collaboration](https://www.notion.com/help/collaborate-within-a-workspace) and [sharing controls](https://www.notion.com/help/sharing-and-permissions).
+Updated 11 October 2026 from the user's ChatGPT Space reference, the available Pages tool contracts and Zoen's editor source. [OpenAI's feature page](https://chatgpt.com/pt-BR/features/space/) describes editable pages with collaborators, comments, interactive content, connected context and recurring updates. The user also expects Notion's familiar [block-editing workflow](https://www.notion.com/help/writing-and-editing-basics), [collaboration](https://www.notion.com/help/collaborate-within-a-workspace) and [sharing controls](https://www.notion.com/help/sharing-and-permissions).
 
 A page belongs to a conversation or the person's own files. Groups and communities remain in Chats; pages do not introduce another conversation inbox.
 
@@ -24,7 +24,7 @@ Requests stay bound to exact line text and cost. Changing either requires a new 
 
 Native release acceptance also follows the [HIG matrix](hig-compliance.md), including VoiceOver, keyboard, undo/IME and text enlargement.
 
-Current state: PR 44 implements the shared card pattern, verified in the actual browser preview and Mac demo. It still opens the existing plan editor. The isolated Page/Loro model and bounded inspectable codec passed 23 Plan tests, all 36 document tests and Clippy under Rust 1.99.0. Tests cover canonical replay, concurrent fields, exact IDs/text/cents, conflicting operation IDs, Unicode slices, retries and invalid payload refusal. This library codec is not yet the production Page wire. The next isolated authenticated-timeline unit passed 14 fixtures, all 94 FFI tests and Clippy under Rust 1.99.0, without activating a session or writer. Typed observed editing, production session/journal cutover, semantic receipt acceptance, native typed fields/checkpoints, caller migration, large-history handling and cross-platform journeys are required before enabling Live Page plans.
+Current state: PR 44 implements the shared card pattern, verified in the actual browser preview and Mac demo at their recorded builds; it still opens the existing Plan editor. PR 60 is merged and provides the shared session and typed Plan model, but public Plan Item APIs still refuse activation. Canonical Plan readers/writers, typed native/Android/browser fields, approval/history/search consumers, legacy writer refusal and cross-platform workflows remain required. The older 23-test codec and 14-fixture timeline experiments remain historical source evidence; they do not establish an enabled Plan Live Page workflow.
 
 ## Collaboration and agent editing
 
@@ -42,7 +42,7 @@ Only write a new page version when the materialized content changes. Record sour
 
 ## Current implementation and gaps
 
-The isolated shared-session candidate based on main `7cad5b1` passed formatting, all-target Clippy, 61 document tests, 7 type compatibility tests and all 120 FFI tests on 11 October 2026, with no ignored or filtered tests. Public Binary Pages use one session for editing, encrypted recovery, history and atomic publication. The [client/session contract](../dev/live-page-session.md) explains observed contexts, exact retries and the retained older editing API. Plan Page APIs still reject Plan Items: typed client DTOs, canonical consumer migration, mixed-version writers and the native Plan editor remain required. Older detailed editor/checkpoint evidence below retains its original build scope.
+[PR 60](https://github.com/EnzoTironi/zoen-native/pull/60) merged as main `fa4eed8` on 11 October 2026. Its tested tree is identical to the integrated tree. Formatting, all-target Clippy, 61 document tests, 7 type compatibility tests and all 120 FFI tests passed; the complete Linux run passed 468 tests across 65 targets, with one existing cross-process helper ignored. Matching bindings compiled in Mac and ARM64 iOS Simulator applications. A separate native editor candidate passed eight Unicode and ten encrypted checkpoint/recovery journeys, while actual restored-history UI remains unverified on that candidate. Public Binary Pages use one session for editing, encrypted recovery, history and atomic publication. The [client/session contract](../dev/live-page-session.md) explains observed contexts, exact retries and the retained older editing API. Plan Page APIs still reject Plan Items: typed client DTOs, canonical consumer migration, mixed-version writers and the native Plan editor remain required. Older detailed editor/checkpoint evidence below retains its original build scope.
 
 | Capability | Current code | Required proof |
 | --- | --- | --- |
