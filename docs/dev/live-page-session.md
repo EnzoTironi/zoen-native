@@ -32,4 +32,4 @@ Before admission, migrate the canonical card/item/search projections, approvals 
 
 The isolated candidate based on main `7cad5b1` passed formatting, all-target Clippy, 61 document tests, 7 type compatibility tests and all 120 FFI tests on 11 October 2026. No tests were ignored or filtered. The ordinary unoptimized profile used the default stack and the existing resource/time guards.
 
-The standalone public API evidence uses an owned local SQLite database and two editor contexts for one actor. It is separate from native app footage, relay/provider execution, full HIG acceptance and billion-user capacity evidence. Those gates remain open in the [roadmap](../roadmap.md).
+The standalone public API evidence uses an owned local SQLite database and two editor contexts for one actor. It is separate from native app footage, relay/provider execution, full HIG acceptance and billion-user capacity evidence. Those gates remain open in the [roadmap](../roadmap-status.md).
