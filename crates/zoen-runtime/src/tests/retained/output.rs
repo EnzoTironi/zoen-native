@@ -334,6 +334,12 @@ async fn finite_admission_and_failed_activation() {
     for cut in [42, 45, 46, 50] {
         println!("native output admission setup: cut={cut} stage=fixture_start");
         let mut fixture = Fixture::with_output().await;
+        if cut == 50 {
+            let initial = fixture.sync(false).await.unwrap();
+            assert!(initial.caught_up);
+            assert!(initial.runs.is_empty());
+            println!("native output admission setup: cut={cut} stage=initial_epoch_retained_before_grant");
+        }
         let grant_started = std::time::Instant::now();
         if cut == 50 {
             let observed = fixture.world.runtime.finance.reply_clock().await.unwrap();
@@ -375,13 +381,19 @@ async fn finite_admission_and_failed_activation() {
         )
         .await;
         fixture.world.runtime.fault.store(cut, Ordering::SeqCst);
-        assert!(
-            proof::prepare(&fixture.world.runtime, &run.run)
-                .await
-                .is_err(),
-            "{cut}"
-        );
+        let refused = proof::prepare(&fixture.world.runtime, &run.run).await;
         fixture.world.runtime.fault.store(0, Ordering::SeqCst);
+        if cut == 50 {
+            let remaining = proof::expiry_cut_remaining(&fixture.world.runtime);
+            assert!(
+                (1..1800).contains(&remaining),
+                "actual native deadline cut must follow a known SQL commit: {remaining} ms"
+            );
+            assert_eq!(refused, Err(RuntimeError::Denied));
+            println!("native output expiry proof: original 1700 ms signed grant; known SQL commit reached with {remaining} ms remaining; delayed ACK refused as Denied");
+        } else {
+            assert!(refused.is_err(), "{cut}");
+        }
         assert_eq!(
             proof::fingerprints(&fixture.world.runtime, &run.run).await,
             original

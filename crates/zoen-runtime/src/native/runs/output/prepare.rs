@@ -174,7 +174,8 @@ impl NativeCustody {
         let guard = match runtime.fault.load(std::sync::atomic::Ordering::SeqCst) {
             45 => guard.suppress_known_ack(),
             46 => guard.delay_known_ack(),
-            50 => guard.delay_output_expiry(),
+            50 => guard
+                .delay_output_expiry(std::sync::Arc::clone(&capability.output_expiry_remaining)),
             _ => guard,
         };
         let admission = guard.authorize_output(scope).await?;

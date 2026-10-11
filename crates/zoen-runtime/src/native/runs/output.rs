@@ -23,6 +23,8 @@ pub(crate) struct FreshOutputNamespace {
     source: String,
     #[cfg(test)]
     observed: std::sync::Mutex<std::collections::BTreeMap<String, roda_proto::Envelope>>,
+    #[cfg(test)]
+    output_expiry_remaining: std::sync::Arc<std::sync::atomic::AtomicU64>,
 }
 
 impl FreshOutputNamespace {

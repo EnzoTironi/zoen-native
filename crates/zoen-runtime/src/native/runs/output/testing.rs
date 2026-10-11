@@ -22,7 +22,17 @@ pub(crate) async fn provision(runtime: &RuntimeAuthority) -> FreshOutputNamespac
         deployment: execution.deployment.clone(),
         source: execution.reply_source().unwrap().cell().into(),
         observed: Default::default(),
+        output_expiry_remaining: Default::default(),
     }
+}
+
+pub(crate) fn expiry_cut_remaining(runtime: &RuntimeAuthority) -> u64 {
+    runtime
+        .output_fixture
+        .as_ref()
+        .unwrap()
+        .output_expiry_remaining
+        .load(std::sync::atomic::Ordering::SeqCst)
 }
 
 pub(crate) async fn prepare(

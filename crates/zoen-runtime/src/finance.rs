@@ -38,7 +38,7 @@ enum NativeAckCut {
     Normal,
     Suppressed,
     Delayed,
-    OutputExpiry,
+    OutputExpiry(std::sync::Arc<std::sync::atomic::AtomicU64>),
 }
 
 /// One known SQL maintenance admission. Only NativeDirectoryGuard constructs
@@ -136,10 +136,11 @@ impl NativeDirectoryGuard {
             NativeAckCut::Delayed => {
                 tokio::time::sleep(std::time::Duration::from_millis(2200)).await
             }
-            NativeAckCut::OutputExpiry => {
+            NativeAckCut::OutputExpiry(observed_remaining) => {
                 if scope.expires_at_ms().is_none() || remaining >= 1800 {
                     return Err(RuntimeError::InvalidBinding);
                 }
+                observed_remaining.store(remaining, std::sync::atomic::Ordering::SeqCst);
                 println!("native output deadline cut: actual SQL/native remainder {remaining} ms; ACK delay consumes it below the 2 s maintenance cap");
                 tokio::time::sleep(std::time::Duration::from_millis(remaining + 50)).await;
             }
@@ -165,8 +166,11 @@ impl NativeDirectoryGuard {
     }
 
     #[cfg(test)]
-    pub(crate) fn delay_output_expiry(mut self) -> Self {
-        self.ack_cut = NativeAckCut::OutputExpiry;
+    pub(crate) fn delay_output_expiry(
+        mut self,
+        observed_remaining: std::sync::Arc<std::sync::atomic::AtomicU64>,
+    ) -> Self {
+        self.ack_cut = NativeAckCut::OutputExpiry(observed_remaining);
         self
     }
 
@@ -201,7 +205,7 @@ impl NativeDirectoryGuard {
             NativeAckCut::Delayed => {
                 tokio::time::sleep(std::time::Duration::from_millis(2200)).await
             }
-            NativeAckCut::OutputExpiry => return Err(RuntimeError::InvalidBinding),
+            NativeAckCut::OutputExpiry(_) => return Err(RuntimeError::InvalidBinding),
         }
         let admission = NativeActivation {
             scope,
