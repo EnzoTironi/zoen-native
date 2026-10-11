@@ -12,6 +12,8 @@ Everything is code under `infra/`; nothing secret is in git.
 | `infra/k8s/operators/foundationdb` | fdb-kubernetes-operator v2.37.0 (CRDs + controller), applied before the base |
 | `infra/k8s/overlays/local` | the k3d overlay |
 
+Implementation and deployment state are separate. Main `f277c804` includes persisted renewable ownership, fencing and bounded cross-node forwarding from PR 43. Public staging was last observed on protocol 2, while current clients require protocol 4. Review migrations and supported clients before rollout. [Roadmap status](roadmap-status.md) records the current gates; the local-cluster evidence below is dated.
+
 ## Local cluster (k3d on the box)
 
 ```sh

@@ -16,6 +16,7 @@ pub mod blobs;
 pub mod db;
 pub mod fanout;
 pub mod hub;
+pub mod key_package_claims;
 pub mod limits;
 pub mod log;
 pub mod metrics;
@@ -231,6 +232,7 @@ pub async fn build(cfg: &Config) -> anyhow::Result<(Router, Shared)> {
         analytics,
     });
     analytics::spawn(state.clone());
+    key_package_claims::spawn(&state);
     let app = match cfg.metrics_bind {
         Some(_) => router(state.clone()),
         None => router(state.clone()).merge(metrics_router(state.clone())),

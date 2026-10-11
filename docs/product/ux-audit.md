@@ -6,6 +6,8 @@
 > House rules checked: no technical jargon in the UI; Back pops exactly one screen; Slack-style swipe approval cards; drag-to-reply; jiggle edit; Things-style confirmations; profile sheet on every name or avatar tap; hand-drawn animated art; Reduce Motion respected.
 > Related: `docs/ux-motion.md` (haptic table and WOW moments). That doc is a policy; the code has **no central Motion token set**, so it drifts (see P2-1).
 
+Current resolution and proof are in the [roadmap](../roadmap-status.md). This audit retains its original source version and line references. PRs 38/44 now include verified reading, notification and widget interactions; the old counts below were not rerun on that source.
+
 ## Numbers behind the audit
 
 | Signal | Count |

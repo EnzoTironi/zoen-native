@@ -167,7 +167,7 @@ async fn connect(url: &str, author: &Author) -> Socket {
     send(&mut socket, ClientFrame::Ping).await;
     while !matches!(
         recv(&mut socket).await.expect("caller closed"),
-        ServerFrame::Pong
+        ServerFrame::Pong { .. }
     ) {}
     socket
 }

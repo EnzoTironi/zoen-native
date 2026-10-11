@@ -109,6 +109,7 @@ async fn claim(ana: &mut RawClient, identity: &str, count: usize) -> Vec<Vec<u8>
         let Reply::KeyPackages(mut records) = ana
             .request(Op::ClaimKeyPackages {
                 ids: vec![identity.into()],
+                operation_id: None,
             })
             .await
             .unwrap()

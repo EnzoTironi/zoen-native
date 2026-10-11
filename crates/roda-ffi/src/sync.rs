@@ -700,6 +700,9 @@ impl Engine {
             key,
             acct.cert.clone(),
         ));
+        self.net
+            .mls
+            .wake_recovery_many(self.net.synced.iter().cloned());
         Ok(true)
     }
 

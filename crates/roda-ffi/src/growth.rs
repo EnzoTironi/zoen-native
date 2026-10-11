@@ -188,7 +188,8 @@ impl RodaEngine {
 impl RodaEngine {
     /// Refreshes the remote config from `relay_url` (or the account's relay) and, once
     /// there's a registered, unlocked account, sends what's pending: the source (once), the
-    /// arms shown, and app health when `share_health` is on. Safe to call often.
+    /// arms shown, and app health when `share_health` is on. Signed reports require the
+    /// current account's authenticated Ready session at this endpoint; config reads do not.
     pub async fn growth_sync(
         &self,
         relay_url: Option<String>,
@@ -204,6 +205,9 @@ impl RodaEngine {
         let base = crate::net::http_base(&relay);
         let http = reqwest::Client::builder()
             .timeout(std::time::Duration::from_secs(15))
+            // A redirect cannot establish the authenticated socket's HTTP domain.
+            // Keep config cached and report intents queued on redirect responses.
+            .redirect(reqwest::redirect::Policy::none())
             .build()
             .map_err(|e| invalid(e.to_string()))?;
 
@@ -266,7 +270,18 @@ impl RodaEngine {
         };
         let body = serde_json::to_vec(&report).map_err(|e| invalid(e.to_string()))?;
         let ts = crate::engine::now_ms();
-        let relay_name = relay_name(&acct.relay_url);
+        // Reports carry device credentials. Use only the currently authenticated
+        // Ready session for this endpoint/account; cached names and URL hosts do
+        // not establish a signature domain, including for a config URL override.
+        let relay_name = self
+            .net
+            .lock()
+            .unwrap_or_else(|p| p.into_inner())
+            .as_ref()
+            .and_then(|net| net.authenticated_relay_name(&relay, &acct.identity_id, &key.id()))
+            .ok_or_else(|| {
+                invalid("Connect to this relay before sending a growth report.".into())
+            })?;
         let sha = hex::encode(Sha256::digest(&body));
         let sig = key.sign(&report_message(&sha, ts, &relay_name));
         let r = http
@@ -300,15 +315,4 @@ impl RodaEngine {
             reported: true,
         })
     }
-}
-
-/// The relay's name as it signs logins: the host (and port) of its URL.
-fn relay_name(url: &str) -> String {
-    let s = url
-        .trim_end_matches('/')
-        .split("://")
-        .last()
-        .unwrap_or(url)
-        .to_string();
-    s.split('/').next().unwrap_or(&s).to_string()
 }

@@ -1,7 +1,7 @@
 # Accounts created for the project
 
 Every external account an agent creates for Zoen is listed here. No secrets in this file;
-keys live in the gitignored `.env` or as secrets on the service.
+keys live in the gitignored `.env` or as secrets on the service. The table records creation dates and original plan estimates; it is not a current usage or billing report. Deployment compatibility and current activation gates are in [roadmap status](roadmap-status.md).
 
 | date | service | inbox | purpose | plan |
 |---|---|---|---|---|
