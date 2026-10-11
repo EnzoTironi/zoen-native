@@ -116,6 +116,27 @@ async fn accepted_across_prefix_revocation_and_cold_replay() {
         })
         .await;
     revoke_device(&fixture).await;
+    // Observe the real FDB timeout without changing the execution deadline or
+    // the paired receipt leases, then exercise native work beyond that deadline.
+    let bounded = fixture.world.runtime.execution.transaction().await.unwrap();
+    tokio::time::sleep(std::time::Duration::from_millis(2250)).await;
+    let timeout = bounded
+        .get(
+            &fixture
+                .world
+                .runtime
+                .execution
+                .root
+                .pack(&("receipt-read-deadline-probe",)),
+            false,
+        )
+        .await
+        .err()
+        .expect("bounded transaction must expire before the probe");
+    assert_eq!(timeout.code(), 1031);
+    drop(bounded);
+    eprintln!("native receipt real bounded transaction timeout: FDB code1031 PASS");
+    fixture.world.runtime.fault.store(55, Ordering::SeqCst);
     let ReplyReceiptProgress::CatchingUp {
         through,
         generation,
@@ -125,6 +146,7 @@ async fn accepted_across_prefix_revocation_and_cold_replay() {
     else {
         panic!("target is beyond first64 actual positions");
     };
+    fixture.world.runtime.fault.store(0, Ordering::SeqCst);
     assert!(through.seq < accepted.seq && generation > first.generation);
     assert_eq!(
         proof::fingerprints(&fixture.world.runtime, &run.run).await,

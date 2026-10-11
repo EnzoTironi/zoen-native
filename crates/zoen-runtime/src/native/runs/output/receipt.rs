@@ -31,6 +31,14 @@ macro_rules! receipt_stage {
     };
 }
 
+#[cfg(test)]
+async fn receipt_work_pause(runtime: &RuntimeAuthority) {
+    if runtime.fault.load(std::sync::atomic::Ordering::SeqCst) == 55 {
+        tokio::time::sleep(std::time::Duration::from_millis(2250)).await;
+        eprintln!("native receipt work pause: controlled2250ms before native proof");
+    }
+}
+
 pub(super) struct LoadedReceipt {
     pub(super) record: RunRecord,
     pub(super) original: String,
@@ -96,6 +104,23 @@ pub(super) fn verify_position(
         ReplyReceipt::Prefix(_) if position.env.client_id() != publication.client_id => Ok(()),
         _ => Err(RuntimeError::InvalidBinding),
     }
+}
+
+async fn receipt_snapshot(
+    runtime: &RuntimeAuthority,
+    loaded: &LoadedReceipt,
+    capability: &FreshOutputNamespace,
+) -> Result<Transaction, RuntimeError> {
+    let trx = receipt_stage!("transaction", runtime.execution.transaction().await)?;
+    capability.check_in(&runtime.execution, &trx).await?;
+    receipt_stage!(
+        "historical_scope",
+        runtime
+            .execution
+            .receipt_scope_in(&trx, loaded, &runtime.custody)
+            .await
+    )?;
+    Ok(trx)
 }
 
 impl NativeCustody {
@@ -218,17 +243,10 @@ impl NativeCustody {
         let mut core =
             DeviceCore::restore(self.open_image(principal, capsule)?, credential.unlocked()?)
                 .map_err(native_error)?;
-        let trx = receipt_stage!("transaction", runtime.execution.transaction().await)?;
-        capability.check_in(&runtime.execution, &trx).await?;
-        receipt_stage!(
-            "historical_scope",
-            runtime
-                .execution
-                .receipt_scope_in(&trx, loaded, &runtime.custody)
-                .await
-        )?;
         let source = runtime.execution.reply_source()?;
         if let Some(prior) = &loaded.receipt {
+            #[cfg(test)]
+            receipt_work_pause(runtime).await;
             let proof = ReplyReceipt::Accepted(
                 core.receive_reply(
                     &loaded.record.intent,
@@ -240,6 +258,7 @@ impl NativeCustody {
             let ReplyReceipt::Accepted(accepted) = &proof else {
                 unreachable!();
             };
+            let trx = receipt_snapshot(runtime, loaded, capability).await?;
             let position = receipt_stage!(
                 "actual_source_position",
                 source
@@ -269,6 +288,7 @@ impl NativeCustody {
             .retained_head(loaded.record.intent.space())
             .map_err(native_error)?
             .ok_or(RuntimeError::Denied)?;
+        let trx = receipt_snapshot(runtime, loaded, capability).await?;
         let batch = receipt_stage!(
             "actual_source_batch",
             source
@@ -285,6 +305,9 @@ impl NativeCustody {
             hash: batch.head.hash().into(),
         };
         let empty = batch.entries.is_empty();
+        drop(trx);
+        #[cfg(test)]
+        receipt_work_pause(runtime).await;
         let proof = match receipt_stage!(
             "native_historical_prefix",
             core.receive_reply_progress(
@@ -301,6 +324,7 @@ impl NativeCustody {
             ReplyReceipt::Accepted(p) => p.accepted(),
             ReplyReceipt::Prefix(p) => p.frontier(),
         };
+        let trx = receipt_snapshot(runtime, loaded, capability).await?;
         let position = receipt_stage!(
             "actual_source_position",
             source
