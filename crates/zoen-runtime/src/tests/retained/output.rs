@@ -332,18 +332,40 @@ async fn current_permission_and_source_refuse_new_output() {
 
 async fn finite_admission_and_failed_activation() {
     for cut in [42, 45, 46, 50] {
+        println!("native output admission setup: cut={cut} stage=fixture_start");
         let mut fixture = Fixture::with_output().await;
+        let grant_started = std::time::Instant::now();
         if cut == 50 {
-            let expiry = fixture.world.runtime.finance.reply_clock().await.unwrap() + 1700;
+            let observed = fixture.world.runtime.finance.reply_clock().await.unwrap();
+            let expiry = observed + 1700;
+            println!("native output admission setup: cut={cut} stage=grant_clock observed_ms={observed} expires_at_ms={expiry} remaining_ms=1700");
             fixture
                 .grant_until("output-owner-trust", Some(expiry))
                 .await;
         } else {
             fixture.grant("output-owner-trust").await;
         }
+        println!(
+            "native output admission setup: cut={cut} stage=grant_retained elapsed_us={}",
+            grant_started.elapsed().as_micros()
+        );
         fixture.message(ORIGINAL).await;
+        println!(
+            "native output admission setup: cut={cut} stage=trigger_retained elapsed_us={}",
+            grant_started.elapsed().as_micros()
+        );
         let run = fixture.sync(false).await.unwrap().runs.remove(0);
-        fixture.world.runtime.run_model(&run.run).await.unwrap();
+        println!(
+            "native output admission setup: cut={cut} stage=before_paid_admission elapsed_us={}",
+            grant_started.elapsed().as_micros()
+        );
+        let paid = fixture.world.runtime.run_model(&run.run).await;
+        println!(
+            "native output admission setup: cut={cut} stage=paid_result elapsed_us={} result={:?}",
+            grant_started.elapsed().as_micros(),
+            paid.as_ref().map(|_| "ok")
+        );
+        paid.unwrap_or_else(|error| panic!("native output admission setup cut={cut}: {error:?}"));
         let original = proof::fingerprints(&fixture.world.runtime, &run.run).await;
         let actor = fixture.world.agents[0].clone();
         let generation = native::testing::generation(

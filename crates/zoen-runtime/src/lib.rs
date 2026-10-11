@@ -248,8 +248,17 @@ impl RuntimeAuthority {
         if !id(run) {
             return Err(RuntimeError::InvalidBinding);
         }
+        #[cfg(test)]
+        println!("native paid stage: verified_step_start");
         let step = self.verified_step(run).await?;
+        #[cfg(test)]
+        println!("native paid stage: verified_step_complete");
         let result = self.complete_verified(&step).await;
+        #[cfg(test)]
+        println!(
+            "native paid stage: complete_verified result={:?}",
+            result.as_ref().map(|_| "ok")
+        );
         // Lease loss must not erase an already incurred and retained bill.
         let _ = step.release(&self.execution).await;
         result.map(|(_, financial)| RetainedModel { financial })

@@ -498,6 +498,8 @@ impl NativeCustody {
                 .await?;
             let current = capsule.root.clone();
             let observed = runtime.finance.reply_clock().await?;
+            #[cfg(test)]
+            println!("native paid load: stage=refresh_start observed_sql_ms={observed}");
             let facts = {
                 let core = DeviceCore::restore(
                     self.open_image(&principal, capsule)?,
@@ -507,6 +509,12 @@ impl NativeCustody {
                 core.refresh(&record.intent, observed)
                     .map_err(native_error)?
             };
+            #[cfg(test)]
+            println!(
+                "native paid load: stage=refresh_complete observed_sql_ms={observed} native_expires_at_ms={:?} remaining_ms={:?}",
+                facts.expires_at_ms(),
+                facts.expires_at_ms().and_then(|expiry| expiry.checked_sub(observed))
+            );
             let [InputMessage::User { text }] = record.request.messages.as_slice() else {
                 return Err(RuntimeError::InvalidBinding);
             };
