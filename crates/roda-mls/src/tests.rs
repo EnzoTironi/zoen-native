@@ -68,8 +68,10 @@ fn committed_leaves_wait_for_the_commit_and_follow_confirmed_membership() {
     let (ce, cm) = (db(), db());
     let (enzo, marina) = (e.open(&ce), m.open(&cm));
     let both = roster(&[&e, &m]);
+    assert_eq!(enzo.group_state(SPACE).unwrap(), GroupState::Missing);
     assert!(enzo.committed_leaves(SPACE).unwrap().is_none());
     enzo.create_group(SPACE).unwrap();
+    assert_eq!(enzo.group_state(SPACE).unwrap(), GroupState::Ready);
     assert_eq!(
         enzo.committed_leaves(SPACE)
             .unwrap()
@@ -79,11 +81,13 @@ fn committed_leaves_wait_for_the_commit_and_follow_confirmed_membership() {
         BTreeSet::from([(e.id(), e.device.id())])
     );
     let added = add(&enzo, &marina);
+    assert_eq!(enzo.group_state(SPACE).unwrap(), GroupState::Pending);
     assert!(enzo.committed_leaves(SPACE).unwrap().is_none());
     assert_eq!(
         enzo.open(SPACE, &added.commit, &both, enzo.leaf()).unwrap(),
         Opened::Commit { epoch: 1 }
     );
+    assert_eq!(enzo.group_state(SPACE).unwrap(), GroupState::Ready);
     let committed = enzo.committed_leaves(SPACE).unwrap().unwrap();
     assert_eq!(committed, enzo.leaves(SPACE).unwrap());
     assert_eq!(
@@ -97,12 +101,14 @@ fn committed_leaves_wait_for_the_commit_and_follow_confirmed_membership() {
                      Opened::Application { plaintext, .. } if plaintext == b"after the confirmed add")
     );
     let removed = enzo.commit(SPACE, &[], &BTreeSet::from([m.id()])).unwrap();
+    assert_eq!(enzo.group_state(SPACE).unwrap(), GroupState::Pending);
     assert!(enzo.committed_leaves(SPACE).unwrap().is_none());
     assert_eq!(
         enzo.open(SPACE, &removed.commit, &roster(&[&e]), enzo.leaf())
             .unwrap(),
         Opened::Commit { epoch: 2 }
     );
+    assert_eq!(enzo.group_state(SPACE).unwrap(), GroupState::Ready);
     assert_eq!(
         enzo.committed_leaves(SPACE)
             .unwrap()
@@ -117,6 +123,8 @@ fn committed_leaves_wait_for_the_commit_and_follow_confirmed_membership() {
         2,
         "an inspection does not cache later mutations"
     );
+    enzo.forget(SPACE).unwrap();
+    assert_eq!(enzo.group_state(SPACE).unwrap(), GroupState::Missing);
 }
 
 #[test]
@@ -131,6 +139,10 @@ fn provider_read_and_processing_failures_remain_storage_errors_and_allow_retry()
     cm.execute_batch("ALTER TABLE openmls_group_data RENAME TO unavailable_group_data")
         .unwrap();
     assert!(matches!(
+        marina.group_state(SPACE),
+        Err(MlsError::Storage(_))
+    ));
+    assert!(matches!(
         marina.committed_leaves(SPACE),
         Err(MlsError::Storage(_))
     ));
@@ -140,6 +152,7 @@ fn provider_read_and_processing_failures_remain_storage_errors_and_allow_retry()
     ));
     cm.execute_batch("ALTER TABLE unavailable_group_data RENAME TO openmls_group_data")
         .unwrap();
+    assert_eq!(marina.group_state(SPACE).unwrap(), GroupState::Ready);
     assert_eq!(
         marina.committed_leaves(SPACE).unwrap().unwrap(),
         marina.leaves(SPACE).unwrap()
@@ -472,6 +485,7 @@ fn recovery_marker_survives_reopen_and_failed_staging_rolls_back_the_group() {
         .recover(SPACE, &context, &both)
         .unwrap();
     let reopened = fresh.open(&restored);
+    assert_eq!(reopened.group_state(SPACE).unwrap(), GroupState::Pending);
     assert!(reopened.pending(SPACE));
     assert!(reopened.seal(SPACE, b"held after restart").is_err());
     assert!(reopened
@@ -479,6 +493,7 @@ fn recovery_marker_survives_reopen_and_failed_staging_rolls_back_the_group() {
         .is_err());
     assert!(reopened.pending(SPACE));
     reopened.abandon(SPACE).unwrap();
+    assert_eq!(reopened.group_state(SPACE).unwrap(), GroupState::Missing);
     assert!(!reopened.has_group(SPACE));
     assert!(!reopened.pending(SPACE));
     let retry = reopened.recover(SPACE, &context, &both).unwrap();
@@ -486,6 +501,7 @@ fn recovery_marker_survives_reopen_and_failed_staging_rolls_back_the_group() {
     reopened
         .confirm_recovery(SPACE, &retry.commit, &both)
         .unwrap();
+    assert_eq!(reopened.group_state(SPACE).unwrap(), GroupState::Ready);
     assert!(!reopened.pending(SPACE));
     assert!(reopened.seal(SPACE, b"confirmed").is_ok());
 }

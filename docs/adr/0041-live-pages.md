@@ -5,18 +5,10 @@ Status: proposed (2026-10-08). Depends on ADR 0040 (editor, Loro), 0042 (dynamic
 Rig) and the approvals API (`docs/api-approvals.md`, branch `ui/approvals-swipe`).
 
 ## Context
-Enzo pointed at ChatGPT Space (chatgpt.com/features/space, launched 2026-09-29). From the
-feature page, help center and coverage, here is what it offers:
-- Pages are block documents you edit with teammates and ChatGPT in real time.
-- The `/` menu has tables, code, files, links to pages and chats, "Visualize" (interactive
-  calculators and diagrams), and Prompt, Task and Agent-instructions blocks.
-- You can mention ChatGPT in a comment to edit that part of the page.
-- Pages "can stay updated from your connected tools".
 
-What it doesn't do yet, per OpenAI's own help center as summarized by eesel.ai on 2026-10-01:
-- "Keep updated" was **not available at launch**; recurring updates are scheduled tasks.
-- Mobile can only read.
-- The server reads everything.
+The current product reference is [ChatGPT Space](https://chatgpt.com/pt-BR/features/space/), reviewed on 10 October 2026. Its official page describes concurrent page editing, comments and mentions, interactive content, connected context and scheduled updates. Mobile editing availability is described separately and may change.
+
+The available Pages tools expose stable Page/block IDs, content hashes, guarded edits, structural operations, per-operation receipts, sharing permissions and an auto-update controller with workers. These are useful behavior references, not Zoen's internal data format. The [live-page product contract](../product/live-pages.md) maps them to native block editing, signed updates, Loro and agent grants. Earlier launch reporting does not establish current availability.
 
 Similar products:
 - **Notion AI pages:** AI blocks, databases with synced views.
@@ -140,8 +132,7 @@ asks for confirmation (ADR 0014).
 ## Why not just copy ChatGPT Space
 - ChatGPT Space keeps pages fresh through its server, with plaintext access. Zoen does the
   same on member devices and agent members, under E2E encryption.
-- ChatGPT pages are read-only on mobile. Zoen's editor is native on both platforms from the
-  first slice.
+- Zoen requires native mobile and desktop editing and authenticated web parity. The reference product's device availability does not reduce that requirement.
 - Zoen agents are accountable: every change has a signed author, provenance, an approval card
   and Desfazer.
 

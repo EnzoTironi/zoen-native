@@ -42,6 +42,13 @@ pub struct Commit {
     pub group_info: Vec<u8>,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum GroupState {
+    Missing,
+    Pending,
+    Ready,
+}
+
 fn commit_bytes(bundle: &CommitMessageBundle) -> Result<Commit, MlsError> {
     Ok(Commit {
         commit: bundle.commit().to_bytes().map_err(mls)?,
@@ -297,6 +304,19 @@ impl<'c> Device<'c> {
 
     pub fn has_group(&self, space: &str) -> bool {
         self.with(|p| self.load(p, space).is_ok())
+    }
+
+    /// Reads the current group once. Storage failures never become missing groups.
+    pub fn group_state(&self, space: &str) -> Result<GroupState, MlsError> {
+        if self.recovery_pending(space) {
+            return Ok(GroupState::Pending);
+        }
+        self.with(|p| match self.load(p, space) {
+            Ok(group) if group.pending_commit().is_some() => Ok(GroupState::Pending),
+            Ok(_) => Ok(GroupState::Ready),
+            Err(MlsError::NoGroup) => Ok(GroupState::Missing),
+            Err(error) => Err(error),
+        })
     }
 
     /// Deletes this device's state for a group it was removed from: its secrets go, and

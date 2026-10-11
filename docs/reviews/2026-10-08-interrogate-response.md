@@ -1,5 +1,7 @@
 # Response to the 2026-10-08 interrogate pass
 
+> Dated source review. Figures, availability and source references retain their original review date. Current implementation and completion gates are in [roadmap status](../roadmap-status.md).
+
 Reviewer: the `codex` CLI on the box, read-only sandbox, over system-design.md, security.md
 and ADR 0008 (its report is next to this file). The `grok` CLI could not take part: it isn't
 logged in on the box, and logging in needs a browser device-code flow.

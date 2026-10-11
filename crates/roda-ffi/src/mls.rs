@@ -27,6 +27,7 @@
 //!   was shown another group: the Space is marked as forked.
 
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
+use std::sync::Mutex;
 use std::time::{Duration, Instant};
 
 use roda_log::content::{InnerEvent, Sealed, SealedKind};
@@ -134,6 +135,44 @@ pub struct MlsNet {
     /// it has caught up with the log.
     rejoin: HashSet<SpaceId>,
     pub(crate) recovery_retry_at: HashMap<SpaceId, Instant>,
+    recovery_dirty: Mutex<HashSet<SpaceId>>,
+}
+
+impl MlsNet {
+    pub(crate) fn wake_recovery(&self, space: &str) {
+        self.recovery_dirty
+            .lock()
+            .unwrap_or_else(|p| p.into_inner())
+            .insert(space.into());
+    }
+
+    pub(crate) fn wake_recovery_many(&self, spaces: impl IntoIterator<Item = SpaceId>) {
+        self.recovery_dirty
+            .lock()
+            .unwrap_or_else(|p| p.into_inner())
+            .extend(spaces);
+    }
+
+    pub(crate) fn has_recovery_work(&self) -> bool {
+        !self
+            .recovery_dirty
+            .lock()
+            .unwrap_or_else(|p| p.into_inner())
+            .is_empty()
+    }
+
+    pub(crate) fn take_recovery_work(&self) -> Vec<SpaceId> {
+        self.recovery_dirty
+            .lock()
+            .unwrap_or_else(|p| p.into_inner())
+            .drain()
+            .collect()
+    }
+
+    fn mark_group_dirty(&mut self, space: SpaceId) {
+        self.wake_recovery(&space);
+        self.dirty.insert(space);
+    }
 }
 
 /// Events the relay reads even in an end-to-end Space: what it orders and authorizes by.
@@ -222,6 +261,7 @@ struct Owed {
 
 impl MlsNet {
     pub(crate) fn mark_dirty(&mut self, spaces: Vec<SpaceId>) {
+        self.wake_recovery_many(spaces.iter().cloned());
         self.dirty.extend(spaces);
     }
 }
@@ -345,7 +385,7 @@ impl Engine {
                     s.integrity_error = Some(reason);
                 }
             }
-            self.net.mls.dirty.insert(space);
+            self.net.mls.mark_group_dirty(space);
         }
     }
 
@@ -416,13 +456,13 @@ impl Engine {
             }
             _ => return,
         }
-        self.net.mls.dirty.insert(e.space.clone());
+        self.net.mls.mark_group_dirty(e.space.clone());
     }
 
     /// The group for a Space this device just created (it's the only member).
     pub(crate) fn create_mls_group(&mut self, space: &str) -> R<()> {
         self.device()?.create_group(space).map_err(mls_err)?;
-        self.net.mls.dirty.insert(space.to_string());
+        self.net.mls.mark_group_dirty(space.to_string());
         Ok(())
     }
 
@@ -620,7 +660,7 @@ impl Engine {
     pub(crate) fn queued_recovery_commit(&mut self, events: Vec<Event>) {
         for e in events {
             self.net.pending.insert(e.client_id, e.space.clone());
-            self.net.mls.dirty.insert(e.space);
+            self.net.mls.mark_group_dirty(e.space);
         }
         self.net.wake();
     }
@@ -833,14 +873,14 @@ impl Engine {
         self.net.synced.insert(space.clone());
         let m = &mut self.net.mls;
         if landed.is_some() {
-            m.dirty.insert(space.clone());
+            m.mark_group_dirty(space.clone());
         }
         if matches!(landed, Some((_, true))) || (own && landed.is_some()) {
             m.checkpoint_due.insert(space.clone());
         }
         if kind == SealedKind::Commit && landed.is_none() {
             // Refused or stale: the group may still owe this Space a commit.
-            m.dirty.insert(space.clone());
+            m.mark_group_dirty(space.clone());
         }
         if e.seq >= self.checkpointed_at(&space) + checkpoint_every()
             && self.device().is_ok_and(|d| d.has_group(&space))
@@ -867,7 +907,7 @@ impl Engine {
             self.net.pending.remove(&client_id);
             if kind == SealedKind::Welcome {
                 // The group may owe a commit that waited for this Welcome to land.
-                self.net.mls.dirty.insert(space.clone());
+                self.net.mls.mark_group_dirty(space.clone());
             }
             if let Some(s) = self.state.spaces.get_mut(&space) {
                 for entry in s.entries.iter_mut().filter(|x| {
@@ -941,6 +981,7 @@ impl Engine {
             self.net.mls.rejoin.insert(space.clone());
         }
         let _ = self.store.set_synced(&space);
+        self.net.mls.wake_recovery(&space);
         self.net.synced.insert(space);
         Ingest::Applied
     }
@@ -991,7 +1032,7 @@ impl Engine {
         let mut joins = self.joins(&e.space);
         joins.insert(leaf_name(&e.author, device), stale);
         self.set_joins(&e.space, &joins);
-        self.net.mls.dirty.insert(e.space.clone());
+        self.net.mls.mark_group_dirty(e.space.clone());
     }
 
     /// Drops joins that are done: the device has a leaf with a new key, or its identity
@@ -1250,7 +1291,7 @@ impl Engine {
         for id in dropped {
             self.net.pending.remove(&id);
         }
-        self.net.mls.dirty.insert(e.space);
+        self.net.mls.mark_group_dirty(e.space);
         true
     }
 
@@ -1271,7 +1312,7 @@ impl Engine {
             .collect();
         for s in ready {
             self.net.mls.retry_at.remove(&s);
-            self.net.mls.dirty.insert(s);
+            self.net.mls.mark_group_dirty(s);
         }
         let turn: Vec<SpaceId> = self
             .net
@@ -1284,7 +1325,7 @@ impl Engine {
         for s in turn {
             self.net.mls.turn_at.remove(&s);
             self.net.mls.waited.insert(s.clone());
-            self.net.mls.dirty.insert(s);
+            self.net.mls.mark_group_dirty(s);
         }
         let dirty: Vec<SpaceId> = self.net.mls.dirty.iter().cloned().collect();
         let mut unsupported = false;
@@ -1388,7 +1429,9 @@ impl Engine {
     /// in-flight marker is cleared; the next session retries the persisted operation.
     pub(crate) fn mls_claims_disconnected(&mut self) {
         let interrupted: Vec<_> = self.net.mls.claiming.drain().collect();
-        self.net.mls.dirty.extend(interrupted);
+        for space in interrupted {
+            self.net.mls.mark_group_dirty(space);
+        }
     }
 
     /// How long this device waits before committing an owed change in `space`: one stagger
@@ -1553,11 +1596,12 @@ impl Engine {
         operation: &str,
         result: Result<Vec<KeyPackageRecord>, String>,
     ) {
+        self.net.mls.wake_recovery(space);
         self.net.mls.claiming.remove(space);
         let mut claim = match self.load_claim(space) {
             Ok(Some(c)) if c.operation_id == operation => c,
             _ => {
-                self.net.mls.dirty.insert(space.to_string());
+                self.net.mls.mark_group_dirty(space.to_string());
                 return;
             }
         };
@@ -1589,13 +1633,13 @@ impl Engine {
         let owed = match self.owed(space) {
             Ok(Some(o)) => o,
             _ => {
-                self.net.mls.dirty.insert(space.to_string());
+                self.net.mls.mark_group_dirty(space.to_string());
                 return;
             }
         };
         if owed != claim.intent {
             // A membership change while the reply was in flight is a new operation.
-            self.net.mls.dirty.insert(space.to_string());
+            self.net.mls.mark_group_dirty(space.to_string());
             return;
         }
         let Owed {
@@ -1787,6 +1831,7 @@ impl Engine {
             && m.turn_at.is_empty()
             && m.checkpoint_due.is_empty()
             && m.rejoin.is_empty()
+            && !m.has_recovery_work()
     }
 
     /// The group as this device has it: epoch, checkpoint digest and members.

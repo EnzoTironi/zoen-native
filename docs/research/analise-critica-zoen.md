@@ -1,5 +1,7 @@
 # Análise crítica do Zoen pelas aulas de "How to Start a Startup" (CS183B, Stanford, 2014)
 
+> Research snapshot. Figures, availability and source references retain their original review date. Current implementation and completion gates are in [roadmap status](../roadmap-status.md).
+
 > Escrita em 9/out/2026 a pedido do Enzo, na chamada de voz. É um julgamento honesto, não um pitch.
 > As referências às aulas vêm das transcrições públicas do curso (links no fim). Citações entre
 > aspas estão em inglês e foram copiadas das transcrições; o resto é paráfrase.
