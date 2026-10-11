@@ -22,7 +22,7 @@ pub use liveview::{LiveViewDemoVm, LiveViewInput, LiveViewKey, LiveViewSession};
 mod media;
 mod pages;
 pub use files::FileDto;
-pub use pages::{MarkdownFileDto, PageBlockDto, PageDto, TextSpanDto};
+pub use pages::{MarkdownFileDto, PageBlockDto, PageDto, PageEditResult, TextSpanDto};
 mod link;
 mod link_api;
 mod linking;
@@ -50,8 +50,8 @@ uniffi::setup_scaffolding!();
 
 #[derive(Debug, thiserror::Error, uniffi::Error)]
 pub enum CoreError {
-    #[error("{}{message}", crate::i18n::ts("Armazenamento: ", "Storage: "))]
-    Storage { message: String },
+    #[error("{}{reason}", crate::i18n::ts("Armazenamento: ", "Storage: "))]
+    Storage { reason: String },
     #[error("{}{what}", crate::i18n::ts("Não encontrado: ", "Not found: "))]
     NotFound { what: String },
     #[error("{reason}")]
@@ -149,6 +149,10 @@ impl RodaEngine {
         self.lock().space_summary(&space_id)
     }
 
+    pub fn member_roles(&self, space_id: String) -> Result<Vec<MemberRoleDto>, CoreError> {
+        self.lock().member_roles(&space_id)
+    }
+
     pub fn timeline(&self, space_id: String) -> Result<Vec<TimelineEntry>, CoreError> {
         self.lock().timeline(&space_id)
     }
@@ -234,6 +238,10 @@ impl RodaEngine {
 
     pub fn item(&self, item_id: String) -> Result<ItemDetail, CoreError> {
         self.lock().item(&item_id)
+    }
+
+    pub fn item_at(&self, item_id: String, version: u32) -> Result<ItemDetail, CoreError> {
+        self.lock().item_at(&item_id, version)
     }
 
     pub fn items(&self) -> Vec<ItemDetail> {
@@ -440,6 +448,16 @@ impl RodaEngine {
             &engine_label,
             &prompt,
         )
+    }
+
+    /// Installs a catalog mini-app explicitly as the current user, with an Item-scoped grant.
+    pub fn install_app(
+        &self,
+        space_id: String,
+        app_id: String,
+        args_json: String,
+    ) -> Result<ItemDetail, CoreError> {
+        self.lock().install_app(&space_id, &app_id, &args_json)
     }
 
     /// `tools/call` da interface do mini-app, pelo crivo de Concessões.

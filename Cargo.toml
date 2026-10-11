@@ -61,6 +61,18 @@ opt-level = 3
 [profile.dev.package.blake2]
 opt-level = 3
 
+# MLS state sealing and signed-log verification stay hot during device sync in debug builds.
+[profile.dev.package.roda-mls]
+opt-level = 3
+[profile.dev.package.roda-log]
+opt-level = 3
+
+# Page snapshot storage and hashing are hot during bulk imports in debug builds.
+[profile.dev.package.loro-kv-store]
+opt-level = 3
+[profile.dev.package.sha2]
+opt-level = 3
+
 [profile.release]
 opt-level = 3
 lto = "thin"

@@ -42,3 +42,11 @@ tools/dev-relay/blobs/
 .env.*
 /.tools/
 .zoen/
+
+# Android and generated UniFFI Kotlin/native libraries
+android/.gradle/
+android/.kotlin/
+android/**/build/
+android/local.properties
+android/*.jks
+android/*.keystore

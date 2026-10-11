@@ -389,8 +389,14 @@ fn edit_page(
         .into_iter()
         .filter(|b| changed_ids.contains(&b.id))
         .collect();
-    e.page_apply(id.to_string(), order, changed)
-        .unwrap_or_else(|err| die(err));
+    e.page_apply_from(
+        id.to_string(),
+        roda_types::new_id("edit"),
+        p.edit_context,
+        order,
+        changed,
+    )
+    .unwrap_or_else(|err| die(err));
     let saved = e
         .page_commit(id.to_string(), String::new())
         .unwrap_or_else(|err| die(err));
@@ -703,7 +709,11 @@ async fn main() {
             let space = e
                 .create_group_with(title, ids, privacy)
                 .unwrap_or_else(|err| die(err));
-            e.wait_until_idle(timeout).await;
+            if !offline {
+                e.wait_until_settled(timeout)
+                    .await
+                    .unwrap_or_else(|err| die(err));
+            }
             println!("{space}");
         }
         "send" => {

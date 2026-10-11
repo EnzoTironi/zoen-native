@@ -24,7 +24,7 @@
 * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
 html, body { margin: 0; height: 100%; background: transparent; color: var(--z-ink); font: 16px/1.35 var(--z-font); -webkit-font-smoothing: antialiased; -webkit-user-select: none; user-select: none; overscroll-behavior: none; }
 button { font: inherit; color: inherit; border: 0; background: none; padding: 0; cursor: pointer; }
-.z-glass { background: var(--z-glass); -webkit-backdrop-filter: blur(22px) saturate(1.6); backdrop-filter: blur(22px) saturate(1.6); border: .5px solid var(--z-glass-stroke); box-shadow: var(--z-glass-shadow); }
+.z-glass { background: var(--z-glass); -webkit-backdrop-filter: var(--z-glass-filter, blur(22px) saturate(1.6)); backdrop-filter: var(--z-glass-filter, blur(22px) saturate(1.6)); border: .5px solid var(--z-glass-stroke); box-shadow: var(--z-glass-shadow); }
 .z-pill { display: inline-flex; align-items: center; gap: 6px; height: 36px; padding: 0 14px; border-radius: 999px; font-weight: 600; font-size: 15px; white-space: nowrap; transition: transform .25s var(--z-spring); }
 .z-pill:active { transform: scale(.95); }
 .z-pill.black { background: var(--z-black); color: var(--z-on-black); }

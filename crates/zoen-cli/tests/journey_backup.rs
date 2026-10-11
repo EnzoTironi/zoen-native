@@ -66,7 +66,7 @@ fn signed_backup_request(
     let ts = now_ms();
     let relay = format!("127.0.0.1:{}", w.port);
     let sig = key.sign(&roda_proto::backup_message(
-        &relay,
+        w.relay_name(),
         identity,
         op,
         &hex::encode(Sha256::digest(body)),

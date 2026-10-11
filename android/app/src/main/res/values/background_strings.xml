@@ -1,0 +1,11 @@
+<resources>
+    <string name="approval_needed">Approval needed</string>
+    <string name="new_activity">New activity</string>
+    <string name="background_connection">Stay connected in the background</string>
+    <string name="background_connection_detail">Receive messages and approvals while Zoen is closed. Android shows a connection notification. You can stop it at any time.</string>
+    <string name="background_pending">Sending %1$s pending events</string>
+    <string name="background_connected">Connected · messages stay in sync</string>
+    <string name="background_reconnecting">Waiting for a connection · outgoing messages are saved</string>
+    <string name="stop_background_connection">Stop connection</string>
+    <string name="notifications_permission_needed">Allow notifications to receive messages in the background.</string>
+</resources>

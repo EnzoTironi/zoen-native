@@ -16,8 +16,9 @@ use std::{
 
 use futures_util::{SinkExt, StreamExt};
 use roda_proto::{
-    auth_message, blob_put_message, ClientFrame, EphemeralKind, ErrorCode, Op, Reply, ServerFrame,
-    CAPABILITIES, MIN_PROTOCOL_VERSION, PROTOCOL_VERSION,
+    auth_message, blob_put_message, ClientFrame, EphemeralKind, ErrorCode, KeyPackageClaimClock,
+    Op, Reply, ServerFrame, CAPABILITIES, KEY_PACKAGE_CLAIM_TTL_MS, MIN_PROTOCOL_VERSION,
+    PROTOCOL_VERSION,
 };
 use roda_types::Identity;
 use tokio::sync::{mpsc, oneshot, watch};
@@ -66,6 +67,26 @@ type Shared = Arc<Mutex<Engine>>;
 
 fn lock(e: &Shared) -> std::sync::MutexGuard<'_, Engine> {
     e.lock().unwrap_or_else(|p| p.into_inner())
+}
+
+/// Builds the HTTP TLS configuration, including before sync has started.
+pub(crate) fn http_client(timeout: Duration) -> Result<reqwest::Client, reqwest::Error> {
+    http_client_builder(timeout).build()
+}
+
+pub(crate) fn http_client_builder(timeout: Duration) -> reqwest::ClientBuilder {
+    let _ = rustls::crypto::ring::default_provider().install_default();
+    let builder = reqwest::Client::builder().timeout(timeout);
+    #[cfg(target_os = "android")]
+    let builder = {
+        let roots =
+            rustls::RootCertStore::from_iter(webpki_roots::TLS_SERVER_ROOTS.iter().cloned());
+        let tls = rustls::ClientConfig::builder()
+            .with_root_certificates(roots)
+            .with_no_client_auth();
+        builder.tls_backend_preconfigured(tls)
+    };
+    builder
 }
 
 /// The relay's HTTP base (blobs): `wss://x` → `https://x`, no trailing slash.
@@ -119,7 +140,10 @@ impl Net {
         });
         {
             let poke_tx = cmd_tx.clone();
-            lock(&engine).net.poke = Some(Box::new(move || {
+            let mut engine = lock(&engine);
+            // stop_sync cancels its runtime; its dispatcher may not reach normal cleanup.
+            engine.mls_claims_disconnected();
+            engine.net.poke = Some(Box::new(move || {
                 let _ = poke_tx.send(Cmd::Flush);
             }));
         }
@@ -165,8 +189,17 @@ impl Drop for Net {
     fn drop(&mut self) {
         let _ = self.cmd.send(Cmd::Stop);
         if let Some(rt) = self.rt.take() {
-            // Safe from inside another async runtime too.
-            rt.shutdown_background();
+            // Sync and media tasks own the database. Drain them before a caller reopens it.
+            if let Ok(caller) = tokio::runtime::Handle::try_current() {
+                let own_worker = caller.id() == rt.handle().id();
+                let shutdown = std::thread::spawn(move || drop(rt));
+                // A callback on this runtime must return before its own worker can join.
+                if !own_worker {
+                    shutdown.join().expect("network runtime shutdown failed");
+                }
+            } else {
+                drop(rt);
+            }
         }
     }
 }
@@ -201,6 +234,9 @@ struct Ctx {
 impl Ctx {
     fn set(&self, f: impl FnOnce(&mut NetStatus)) {
         self.status.send_modify(f);
+        if self.status.borrow().state != ConnState::Online {
+            self.engine().net.authenticated_relay = None;
+        }
         self.notify_connection();
     }
 
@@ -336,7 +372,10 @@ enum Waiting {
     SealedProfiles(Vec<String>),
     KeyPackagesPublished,
     /// Key packages claimed for this Space's newcomers.
-    Claimed(String),
+    Claimed {
+        space: String,
+        operation: String,
+    },
     /// Our devices, as the relay lists them.
     Devices,
     /// Nothing to do with the answer (a message to another device of ours).
@@ -369,6 +408,25 @@ fn settle(slot: &mut Option<tokio::time::Instant>, ok: bool) {
 }
 
 const PROFILE_TIMEOUT: Duration = Duration::from_secs(30);
+struct ClaimClockSample {
+    clock: KeyPackageClaimClock,
+    sampled: tokio::time::Instant,
+}
+
+impl ClaimClockSample {
+    fn new(clock: KeyPackageClaimClock) -> Self {
+        Self {
+            clock,
+            sampled: tokio::time::Instant::now(),
+        }
+    }
+
+    fn fresh(&self) -> Option<KeyPackageClaimClock> {
+        (self.sampled.elapsed() < Duration::from_millis(KEY_PACKAGE_CLAIM_TTL_MS as u64))
+            .then_some(self.clock)
+    }
+}
+
 const MAINTENANCE_PERIOD: Duration = Duration::from_millis(50);
 
 async fn session(
@@ -406,16 +464,27 @@ async fn session(
     if let Err(e) = send(&mut sink, &hello).await {
         return Exit::Retry(e);
     }
-    let (nonce, relay, profiles) = match recv(&mut stream).await {
+    let (nonce, relay, profiles, advertised_clock) = match recv(&mut stream).await {
         Ok(ServerFrame::Challenge {
             nonce,
             relay,
             capabilities,
             protocol,
-            ..
-        }) if protocol >= MIN_PROTOCOL_VERSION => {
-            (nonce, relay, capabilities.iter().any(|c| c == "profiles"))
-        }
+            server_time_ms,
+        }) if protocol >= MIN_PROTOCOL_VERSION => (
+            nonce,
+            relay,
+            capabilities.iter().any(|c| c == "profiles"),
+            capabilities
+                .iter()
+                .any(|c| c == roda_proto::KEY_PACKAGE_CLAIM_CAPABILITY)
+                .then(|| {
+                    server_time_ms
+                        .and_then(KeyPackageClaimClock::from_server_ms)
+                        .map(ClaimClockSample::new)
+                })
+                .flatten(),
+        ),
         Ok(ServerFrame::Challenge { protocol, .. }) => {
             return Exit::Blocked(format!(
                 "relay protocol {protocol} needs an upgrade before encrypted histories can sync"
@@ -441,13 +510,23 @@ async fn session(
     let mut early: Vec<ServerFrame> = Vec::new();
     let relay_knows_me = loop {
         match recv(&mut stream).await {
-            Ok(ServerFrame::Ready { registered, .. }) => break registered,
+            Ok(ServerFrame::Ready {
+                identity: ready_identity,
+                registered,
+            }) if ready_identity == identity => break registered,
+            Ok(ServerFrame::Ready { .. }) => {
+                return Exit::Blocked("relay authenticated a different identity".into())
+            }
             Ok(ServerFrame::Error { code, message }) => return refused(code, message, backoff),
             Ok(f @ ServerFrame::Presence { .. }) if early.len() < 1024 => early.push(f),
             Ok(other) => return Exit::Retry(format!("unexpected {other:?}")),
             Err(e) => return Exit::Retry(e),
         }
     };
+    // A Challenge sample belongs to this authenticated socket only. A later Pong
+    // cannot enable a capability or clock that its Challenge did not advertise.
+    let clock_negotiated = advertised_clock.is_some();
+    let mut claim_clock = advertised_clock;
     if !relay_knows_me || !registered {
         if let Err(e) = register(&mut sink, &mut stream, profile, &mut early).await {
             return if e == "handle_taken" {
@@ -458,6 +537,8 @@ async fn session(
         }
         let _ = ctx.engine().set_registered(true);
     }
+    ctx.engine()
+        .remember_authenticated_relay(&identity, &key.id(), &relay_url, &relay);
     *backoff = Duration::from_millis(500);
     ctx.engine().profiles_session_start(profiles);
     // Encrypted media moves over HTTP beside the socket, for as long as this session lives.
@@ -498,6 +579,7 @@ async fn session(
     let mut profiles_inflight: Option<tokio::time::Instant> = None;
     let mut traffic = ProfileTraffic::default();
     let mut opening: Option<tokio::time::Instant> = None;
+    let mut claim_refusal_reported = false;
 
     // Registration can receive low-stock notices, events and presence before its reply.
     // Run them through the same ordered dispatcher as the following socket frames.
@@ -658,13 +740,13 @@ async fn session(
                                 ctx.engine().mls_key_packages_published(result.map(|_| ()));
                                 settle(&mut traffic.key_packages, ok);
                             }
-                            Some(Waiting::Claimed(space)) => {
+                            Some(Waiting::Claimed { space, operation }) => {
                                 let packages = match result {
                                     Ok(Reply::KeyPackages(list)) => Ok(list),
                                     Ok(other) => Err(format!("unexpected {other:?}")),
                                     Err(e) => Err(e),
                                 };
-                                ctx.engine().mls_claimed(&space, packages);
+                                ctx.engine().mls_claimed(&space, &operation, packages);
                                 if let Err(e) = flush(ctx, &mut sink, &mut sent).await { break Exit::Retry(e) }
                             }
                             None => {}
@@ -673,7 +755,11 @@ async fn session(
                     ServerFrame::ProfileChanged { identity, .. } => ctx.engine().profile_changed(&identity),
                     ServerFrame::KeyPackagesLow { device, remaining } => ctx.engine().mls_key_packages_low(&device, remaining),
                     ServerFrame::DeviceMessage { from, to, sealed } => ctx.engine().device_message(&from, &to, &sealed),
-                    ServerFrame::Pong => {}
+                    ServerFrame::Pong { server_time_ms } => {
+                        if clock_negotiated {
+                            claim_clock = server_time_ms.and_then(KeyPackageClaimClock::from_server_ms).map(ClaimClockSample::new);
+                        }
+                    }
                     ServerFrame::Error { message, .. } => tracing_like(&format!("relay: {message}")),
                     ServerFrame::Challenge { .. } | ServerFrame::Ready { .. } => {}
                 }
@@ -771,9 +857,21 @@ async fn session(
                     Ok(false) => {}
                     Err(e) => tracing_like(&format!("group recovery: {e}")),
                 }
-                let claim = ctx.engine().mls_to_claim();
-                if let Some((space, ids)) = claim {
-                    reqs.push((Op::ClaimKeyPackages { ids }, Waiting::Claimed(space)));
+                let claim = ctx.engine().mls_to_claim(claim_clock.as_ref().and_then(ClaimClockSample::fresh));
+                match claim {
+                    Ok(Some((space, ids, operation))) => reqs.push((
+                        Op::ClaimKeyPackages { ids, operation_id: Some(operation.clone()) },
+                        Waiting::Claimed { space, operation },
+                    )),
+                    Ok(None) => {},
+                    Err(error) if !claim_refusal_reported => {
+                        let message = error.to_string();
+                        tracing_like(&message);
+                        ctx.set(|s| s.error = Some(message.clone()));
+                        if let Some(listener) = &ctx.listener { listener.on_error(message); }
+                        claim_refusal_reported = true;
+                    }
+                    Err(_) => {},
                 }
                 let checkpoints = ctx.engine().mls_checkpoints();
                 match checkpoints {
@@ -813,6 +911,8 @@ async fn session(
             }
         }
     };
+    // Include unsent claims if writing a batch failed before their waiting entry existed.
+    ctx.engine().mls_claims_disconnected();
     for (_, w) in waiting {
         if let Waiting::External(tx) = w {
             let _ = tx.send(Err("offline".into()));
@@ -904,7 +1004,7 @@ impl RecoveryRetries {
         });
         wanted
             .into_iter()
-            .find(|r| !self.by_space.get(&r.space).is_some_and(|(_, at)| *at > now))
+            .find(|r| self.by_space.get(&r.space).is_none_or(|(_, at)| *at <= now))
     }
 
     fn defer(&mut self, reference: crate::mls_recovery::ContextRef, now: tokio::time::Instant) {
@@ -935,10 +1035,7 @@ async fn media_worker(
     key: roda_log::Signer,
     kick: Arc<tokio::sync::Notify>,
 ) {
-    let Ok(http) = reqwest::Client::builder()
-        .timeout(Duration::from_secs(60))
-        .build()
-    else {
+    let Ok(http) = http_client(Duration::from_secs(60)) else {
         tracing_like("media: no HTTP client");
         return;
     };
@@ -1152,6 +1249,19 @@ pub async fn fetch_link_box(
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn an_unrefreshed_receipt_clock_expires_without_advancing_its_timestamp() {
+        let clock = roda_proto::KeyPackageClaimClock::from_server_ms(1_800_000_000_000).unwrap();
+        let mut sample = super::ClaimClockSample::new(clock);
+        sample.sampled -=
+            std::time::Duration::from_millis(roda_proto::KEY_PACKAGE_CLAIM_TTL_MS as u64 / 2);
+        assert_eq!(sample.fresh(), Some(clock));
+        sample.sampled -= std::time::Duration::from_millis(
+            roda_proto::KEY_PACKAGE_CLAIM_TTL_MS as u64 / 2 + 1_000,
+        );
+        assert_eq!(sample.fresh(), None);
+    }
+
     use super::*;
     use roda_log::{
         chain_hash, content::InnerEvent, content::Sealed, content::SealedKind, Author, Signer,
@@ -1251,6 +1361,71 @@ mod tests {
             hash,
             env,
         }
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn a_ready_for_another_identity_cannot_establish_report_credentials() {
+        let _ = rustls::crypto::ring::default_provider().install_default();
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let url = format!("ws://{}", listener.local_addr().unwrap());
+        let mut engine = Engine::open(":memory:").unwrap();
+        engine.create_account("Ana", "ana", &url).unwrap();
+        engine.set_registered(true).unwrap();
+        let engine = Arc::new(Mutex::new(engine));
+        let (_command, mut commands) = mpsc::unbounded_channel();
+        let (status, _) = watch::channel(NetStatus {
+            state: ConnState::Connecting,
+            synced: false,
+            error: None,
+            registered: true,
+        });
+        let ctx = Ctx {
+            engine: engine.clone(),
+            listener: None,
+            status,
+            lang: crate::i18n::Lang::En,
+            maintenance_work: None,
+        };
+        let client = async {
+            let mut backoff = Duration::from_millis(500);
+            let exit = session(&ctx, &mut commands, &mut backoff).await;
+            assert!(
+                matches!(exit, Exit::Blocked(ref error) if error == "relay authenticated a different identity")
+            );
+            assert!(ctx.engine().net.authenticated_relay.is_none());
+        };
+        let relay = async {
+            let (socket, _) = listener.accept().await.unwrap();
+            let mut socket = tokio_tungstenite::accept_async(socket).await.unwrap();
+            assert!(matches!(
+                request(&mut socket).await,
+                ClientFrame::Hello { .. }
+            ));
+            reply(
+                &mut socket,
+                ServerFrame::Challenge {
+                    nonce: "wrong-ready-test".into(),
+                    relay: "canonical-relay".into(),
+                    protocol: PROTOCOL_VERSION,
+                    capabilities: Vec::new(),
+                    server_time_ms: None,
+                },
+            )
+            .await;
+            assert!(matches!(
+                request(&mut socket).await,
+                ClientFrame::Auth { .. }
+            ));
+            reply(
+                &mut socket,
+                ServerFrame::Ready {
+                    identity: "another-account".into(),
+                    registered: true,
+                },
+            )
+            .await;
+        };
+        tokio::join!(client, relay);
     }
 
     #[tokio::test(flavor = "current_thread")]
@@ -1439,6 +1614,7 @@ mod tests {
                     relay: "catch-up-test".into(),
                     protocol: PROTOCOL_VERSION,
                     capabilities: Vec::new(),
+                    server_time_ms: None,
                 },
             )
             .await;
@@ -1482,7 +1658,15 @@ mod tests {
                             )
                             .await;
                         }
-                        ClientFrame::Ping => reply(&mut socket, ServerFrame::Pong).await,
+                        ClientFrame::Ping => {
+                            reply(
+                                &mut socket,
+                                ServerFrame::Pong {
+                                    server_time_ms: None,
+                                },
+                            )
+                            .await
+                        }
                         ClientFrame::Publish { .. } => {}
                         other => panic!("unexpected {other:?}"),
                     }
@@ -1568,7 +1752,15 @@ mod tests {
                             .await;
                             break;
                         }
-                        ClientFrame::Ping => reply(&mut socket, ServerFrame::Pong).await,
+                        ClientFrame::Ping => {
+                            reply(
+                                &mut socket,
+                                ServerFrame::Pong {
+                                    server_time_ms: None,
+                                },
+                            )
+                            .await
+                        }
                         other => panic!("maintenance sent {other:?} before catch-up"),
                     }
                 }
@@ -1636,7 +1828,15 @@ mod tests {
                         )
                         .await;
                     }
-                    ClientFrame::Ping => reply(&mut socket, ServerFrame::Pong).await,
+                    ClientFrame::Ping => {
+                        reply(
+                            &mut socket,
+                            ServerFrame::Pong {
+                                server_time_ms: None,
+                            },
+                        )
+                        .await
+                    }
                     ClientFrame::Publish { .. } => {}
                     other => panic!("unexpected {other:?}"),
                 }
@@ -1678,7 +1878,15 @@ mod tests {
                         )
                         .await
                     }
-                    ClientFrame::Ping => reply(&mut socket, ServerFrame::Pong).await,
+                    ClientFrame::Ping => {
+                        reply(
+                            &mut socket,
+                            ServerFrame::Pong {
+                                server_time_ms: None,
+                            },
+                        )
+                        .await
+                    }
                     ClientFrame::Publish { .. } => {}
                     other => panic!("unexpected {other:?}"),
                 }
@@ -1747,6 +1955,7 @@ mod tests {
                             relay: "maintenance-test".into(),
                             protocol: PROTOCOL_VERSION,
                             capabilities: Vec::new(),
+                    server_time_ms: None,
                         },
                     )
                     .await;
@@ -1819,7 +2028,7 @@ mod tests {
                                 )
                                 .await
                             }
-                            ClientFrame::Ping => reply(&mut socket, ServerFrame::Pong).await,
+                            ClientFrame::Ping => reply(&mut socket, ServerFrame::Pong { server_time_ms: None }).await,
                             _ => {}
                         }
                     }

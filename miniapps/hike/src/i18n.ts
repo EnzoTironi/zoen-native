@@ -17,6 +17,8 @@ const PT: Record<string, string> = {
   'Calendar isn’t available in this app host': 'Agenda não disponível neste app',
   'Photos aren’t available in this app host': 'Fotos não disponíveis neste app',
   'Moderate': 'Moderada', 'Easy': 'Fácil', 'Hard': 'Difícil', 'Out & back': 'Ida e volta', 'Loop': 'Circuito',
+  'Offline route': 'Percurso offline', 'Drag to move, pinch to zoom': 'Arraste para mover, use dois dedos para ampliar',
+  'Map controls': 'Controles do mapa', 'Zoom in': 'Ampliar', 'Zoom out': 'Reduzir', 'Fit route': 'Enquadrar percurso',
 };
 
 export const L = (s: string) => (zoen.locale.toLowerCase().startsWith('pt') ? PT[s] ?? s : s);

@@ -427,6 +427,163 @@ fn mcp_specs_follow_the_apps_extension() {
 }
 
 #[test]
+fn explicit_install_does_not_raise_agent_trust_and_limits_the_app_grant_to_its_item() {
+    let e = seeded();
+    let space = find_space(&e, "Paraty com a Marina");
+    let agent = zoen(&e);
+    e.set_trust(agent.id.clone(), space.id.clone(), TrustLevelDto::Listen)
+        .unwrap();
+    let pet = e
+        .install_app(
+            space.id.clone(),
+            "pet".into(),
+            r#"{"name":"Android Burrico"}"#.into(),
+        )
+        .unwrap();
+    assert_eq!(pet.created_by.id, e.me().unwrap().id);
+    assert_eq!(pet.app.as_ref().unwrap().trust, TrustLevelDto::Act);
+    let profile = e.agent_profile(agent.id);
+    assert_eq!(
+        profile
+            .spaces
+            .iter()
+            .find(|s| s.space_id == space.id)
+            .unwrap()
+            .level,
+        TrustLevelDto::Listen
+    );
+    let fed = e
+        .app_call_tool(pet.id.clone(), "pet_feed".into(), "{}".into(), false)
+        .unwrap();
+    assert_eq!(fed.status, AppCallStatus::Done);
+    assert_eq!(
+        e.app_call_tool(pet.id, "pet_release".into(), "{}".into(), false)
+            .unwrap()
+            .status,
+        AppCallStatus::NeedsConfirmation
+    );
+    assert!(e.verify_log(space.id).valid);
+}
+
+#[test]
+fn explicit_install_rejects_invalid_inputs_before_creating_any_item() {
+    let e = seeded();
+    let space = find_space(&e, "Paraty com a Marina");
+    let before = e.items().len();
+    for (id, args) in [("unknown", "{}"), ("pet", "{"), ("pet", "[]")] {
+        assert!(e
+            .install_app(space.id.clone(), id.into(), args.into())
+            .is_err());
+    }
+    assert!(e
+        .install_app("missing-space".into(), "pet".into(), "{}".into())
+        .is_err());
+    assert_eq!(e.items().len(), before);
+}
+
+#[test]
+fn member_roles_match_the_shared_membership_projection() {
+    let e = seeded();
+    let space = find_space(&e, "Paraty com a Marina");
+    let roles = e.member_roles(space.id.clone()).unwrap();
+    assert_eq!(roles.len(), space.members.len());
+    assert!(roles
+        .iter()
+        .all(|r| space.members.iter().any(|m| m.id == r.identity_id)));
+    assert!(roles
+        .iter()
+        .all(|r| ["owner", "admin", "member", "reader"].contains(&r.role.as_str())));
+    assert!(roles
+        .iter()
+        .any(|r| r.identity_id == e.me().unwrap().id && r.role == "owner"));
+    assert!(e.member_roles("missing".into()).is_err());
+}
+
+#[test]
+fn rendered_file_versions_record_the_output_format_and_preserve_original_bytes() {
+    let e = seeded();
+    let space = find_space(&e, "Paraty com a Marina");
+    let original = e
+        .file_add(
+            space.id.clone(),
+            "".into(),
+            "recording.mp3".into(),
+            "audio/mpeg".into(),
+            vec![1, 2, 3],
+            None,
+        )
+        .unwrap();
+    let encoded = e
+        .file_new_version_typed(
+            original.id.clone(),
+            vec![4, 5],
+            None,
+            "Trimmed".into(),
+            "recording.m4a".into(),
+            "audio/mp4".into(),
+        )
+        .unwrap();
+    assert_eq!(encoded.version, 2);
+    assert_eq!(encoded.file.as_ref().unwrap().name, "recording.m4a");
+    assert_eq!(encoded.file.as_ref().unwrap().mime, "audio/mp4");
+    let preview = e.item_at(original.id.clone(), 1).unwrap();
+    assert_eq!(preview.file.as_ref().unwrap().mime, "audio/mpeg");
+    assert_eq!(preview.file.as_ref().unwrap().name, "recording.mp3");
+    assert_eq!(preview.version, 1);
+    assert_eq!(e.item(original.id.clone()).unwrap().version, 2);
+    assert_eq!(
+        e.file_bytes(original.id.clone(), Some(1)).unwrap(),
+        Some(vec![1, 2, 3])
+    );
+    assert_eq!(
+        e.file_bytes(original.id.clone(), Some(2)).unwrap(),
+        Some(vec![4, 5])
+    );
+    assert!(e
+        .file_new_version_typed(
+            original.id,
+            vec![6],
+            None,
+            "Invalid".into(),
+            "../bad.mp4".into(),
+            "video/mp4".into()
+        )
+        .is_err());
+    assert!(e.verify_log(space.id).valid);
+}
+
+#[test]
+fn version_previews_show_historical_plans_and_pages_without_restoring_them() {
+    let e = seeded();
+    let plan = paraty_plan(&e);
+    let before = e.item_at(plan.id.clone(), 1).unwrap();
+    assert_eq!(before.plan.unwrap().total_cents, 134_800);
+    assert_eq!(e.item(plan.id.clone()).unwrap().version, 2);
+    assert!(e.item_at(plan.id, 0).is_err());
+    let space = find_space(&e, "Paraty com a Marina");
+    let page = e
+        .page_import_markdown(space.id, "notes.md".into(), "# Original\n\nBefore".into())
+        .unwrap();
+    let observed = e.page(page.id.clone()).unwrap();
+    let mut blocks = observed.blocks;
+    blocks[0].text = "Edited".into();
+    let order = blocks.iter().map(|b| b.id.clone()).collect();
+    e.page_apply_from(
+        page.id.clone(),
+        "edit-version-preview".into(),
+        observed.edit_context,
+        order,
+        blocks,
+    )
+    .unwrap();
+    e.page_commit(page.id.clone(), "Edited".into()).unwrap();
+    let preview = e.item_at(page.id.clone(), 1).unwrap();
+    assert_eq!(preview.title, "Original");
+    assert!(preview.text.unwrap().contains("Before"));
+    assert_eq!(e.item(page.id).unwrap().title, "Edited");
+}
+
+#[test]
 fn pet_is_shared_state_versioned_and_gated_by_grants() {
     let e = seeded();
     let paraty = find_space(&e, "Paraty com a Marina");
@@ -1300,6 +1457,115 @@ fn account_and_chats_survive_a_relaunch_after_search() {
 }
 
 #[test]
+fn stop_sync_drains_callbacks_before_reopening_the_exclusive_database() {
+    use std::sync::mpsc;
+    use std::time::Duration;
+
+    struct HeldConnection {
+        entered: mpsc::SyncSender<()>,
+        release: Mutex<mpsc::Receiver<()>>,
+        held: std::sync::atomic::AtomicBool,
+    }
+    impl CoreListener for HeldConnection {
+        fn on_change(&self, _: Vec<String>) {}
+        fn on_ephemeral(&self, _: String, _: String, _: String, _: String) {}
+        fn on_presence(&self, _: String, _: bool) {}
+        fn on_error(&self, _: String) {}
+        fn on_profile_changed(&self, _: String) {}
+        fn on_connection(&self, status: ConnectionDto) {
+            if status.state == "connecting"
+                && !self.held.swap(true, std::sync::atomic::Ordering::SeqCst)
+            {
+                self.entered.send(()).unwrap();
+                self.release.lock().unwrap().recv().unwrap();
+            }
+        }
+    }
+
+    let dir = std::env::temp_dir().join(format!("zoen-sync-drain-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let path = dir.join("core.sqlite").to_string_lossy().to_string();
+    let vault: Arc<dyn SecretVault> = Arc::new(MemVault::default());
+    let e = RodaEngine::open(path.clone(), "en".into()).unwrap();
+    e.create_account(
+        "Alice".into(),
+        "sync_drain".into(),
+        "http://127.0.0.1:9".into(),
+        vault.clone(),
+    )
+    .unwrap();
+    let space = e
+        .create_group("Offline persistence".into(), vec![])
+        .unwrap();
+    e.send_message(space.clone(), "Keep this queued message".into())
+        .unwrap();
+    let (entered_tx, entered_rx) = mpsc::sync_channel(1);
+    let (release_tx, release_rx) = mpsc::sync_channel(1);
+    e.start_sync(Some(Arc::new(HeldConnection {
+        entered: entered_tx,
+        release: Mutex::new(release_rx),
+        held: std::sync::atomic::AtomicBool::new(false),
+    })))
+    .unwrap();
+    entered_rx.recv_timeout(Duration::from_secs(5)).unwrap();
+    let (stopping_tx, stopping_rx) = mpsc::sync_channel(1);
+    let (stopped_tx, stopped_rx) = mpsc::sync_channel(1);
+    let stopping = e.clone();
+    let thread = std::thread::spawn(move || {
+        stopping_tx.send(()).unwrap();
+        stopping.stop_sync();
+        stopped_tx.send(()).unwrap();
+    });
+    stopping_rx.recv_timeout(Duration::from_secs(5)).unwrap();
+    let returned_before_callback = stopped_rx.recv_timeout(Duration::from_millis(100)).is_ok();
+    release_tx.send(()).unwrap();
+    thread.join().unwrap();
+    drop(e);
+    let reopened = RodaEngine::open(path, "en".into()).unwrap();
+    assert!(reopened.unlock(vault).unwrap());
+    assert!(reopened.timeline(space).unwrap().iter().any(|row|
+        matches!(&row.kind, EntryKind::Message { text, .. } if text == "Keep this queued message")));
+    assert!(reopened.connection().pending > 0);
+    assert!(reopened.verify_all().iter().all(|report| report.valid));
+    assert!(
+        !returned_before_callback,
+        "stop_sync returned while its callback still owned the database"
+    );
+    drop(reopened);
+    std::fs::remove_dir_all(dir).unwrap();
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn stop_sync_inside_another_runtime_releases_the_database_before_returning() {
+    let dir = std::env::temp_dir().join(format!("zoen-sync-nested-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let path = dir.join("core.sqlite").to_string_lossy().to_string();
+    let vault: Arc<dyn SecretVault> = Arc::new(MemVault::default());
+    for _ in 0..4 {
+        let e = RodaEngine::open(path.clone(), "en".into()).unwrap();
+        if e.account().is_none() {
+            e.create_account(
+                "Bob".into(),
+                "sync_nested".into(),
+                "http://127.0.0.1:9".into(),
+                vault.clone(),
+            )
+            .unwrap();
+        } else {
+            assert!(e.unlock(vault.clone()).unwrap());
+        }
+        e.start_sync(None).unwrap();
+        e.stop_sync();
+        drop(e);
+    }
+    let reopened = RodaEngine::open(path, "en".into()).unwrap();
+    assert!(reopened.unlock(vault).unwrap());
+    assert!(reopened.verify_all().iter().all(|report| report.valid));
+    drop(reopened);
+    std::fs::remove_dir_all(dir).unwrap();
+}
+
+#[test]
 fn unconfirmed_genesis_holds_its_descendants_across_retry_and_relaunch() {
     use roda_log::chain_hash;
     use roda_proto::Sequenced;
@@ -1390,6 +1656,45 @@ fn unconfirmed_genesis_holds_its_descendants_across_retry_and_relaunch() {
     );
     drop(e);
     std::fs::remove_dir_all(dir).unwrap();
+}
+
+#[test]
+fn stop_sync_from_its_own_connection_callback_does_not_deadlock() {
+    struct StopOnConnection {
+        engine: std::sync::Weak<RodaEngine>,
+        stopped: std::sync::mpsc::SyncSender<()>,
+    }
+    impl CoreListener for StopOnConnection {
+        fn on_change(&self, _: Vec<String>) {}
+        fn on_ephemeral(&self, _: String, _: String, _: String, _: String) {}
+        fn on_presence(&self, _: String, _: bool) {}
+        fn on_error(&self, _: String) {}
+        fn on_profile_changed(&self, _: String) {}
+        fn on_connection(&self, status: ConnectionDto) {
+            if status.state == "connecting" {
+                self.engine.upgrade().unwrap().stop_sync();
+                self.stopped.send(()).unwrap();
+            }
+        }
+    }
+    let e = RodaEngine::open(":memory:".into(), "en".into()).unwrap();
+    e.create_account(
+        "Callback".into(),
+        "sync_callback".into(),
+        "http://127.0.0.1:9".into(),
+        Arc::new(MemVault::default()),
+    )
+    .unwrap();
+    let (stopped_tx, stopped_rx) = std::sync::mpsc::sync_channel(1);
+    e.start_sync(Some(Arc::new(StopOnConnection {
+        engine: Arc::downgrade(&e),
+        stopped: stopped_tx,
+    })))
+    .unwrap();
+    stopped_rx
+        .recv_timeout(std::time::Duration::from_secs(5))
+        .unwrap();
+    assert_eq!(e.connection().state, "offline");
 }
 
 #[test]

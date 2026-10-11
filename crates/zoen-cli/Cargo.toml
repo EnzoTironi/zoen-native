@@ -12,6 +12,7 @@ path = "src/main.rs"
 
 [dependencies]
 roda-ffi = { path = "../roda-ffi" }
+roda-types.workspace = true
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "time", "signal"] }
 
 [dev-dependencies]
@@ -21,7 +22,6 @@ async-nats = "0.50"
 sha2.workspace = true
 roda-proto = { path = "../roda-proto" }
 roda-log = { path = "../roda-log" }
-roda-types = { path = "../roda-types" }
 serde_json = "1"
 rusqlite.workspace = true
 sqlx = { version = "0.9", default-features = false, features = ["runtime-tokio", "postgres"] }

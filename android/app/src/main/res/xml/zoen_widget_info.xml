@@ -1,0 +1,6 @@
+<appwidget-provider xmlns:android="http://schemas.android.com/apk/res/android"
+    android:minWidth="180dp" android:minHeight="240dp" android:minResizeWidth="160dp" android:minResizeHeight="180dp"
+    android:targetCellWidth="3" android:targetCellHeight="3" android:resizeMode="horizontal|vertical"
+    android:widgetCategory="home_screen" android:widgetFeatures="reconfigurable" android:updatePeriodMillis="1800000"
+    android:initialLayout="@layout/zoen_widget" android:previewLayout="@layout/zoen_widget"
+    android:configure="xyz.tironi.zoen.widgets.WidgetConfigurationActivity" android:description="@string/widget_description" />

@@ -92,10 +92,7 @@ pub struct DeviceDto {
 }
 
 fn http() -> Result<reqwest::Client, CoreError> {
-    reqwest::Client::builder()
-        .timeout(Duration::from_secs(60))
-        .build()
-        .map_err(|e| invalid(e.to_string()))
+    crate::net::http_client(Duration::from_secs(60)).map_err(|e| invalid(e.to_string()))
 }
 
 fn save_peers(vault: &Arc<dyn SecretVault>, peers: &[Peer]) -> bool {

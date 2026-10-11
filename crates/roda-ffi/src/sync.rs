@@ -41,9 +41,19 @@ pub struct AccountMeta {
     pub registered: bool,
 }
 
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) struct AuthenticatedRelay {
+    pub identity: IdentityId,
+    pub device: String,
+    pub url: String,
+    pub name: String,
+}
+
 #[derive(Default)]
 pub struct NetState {
     pub account: Option<AccountMeta>,
+    /// The signing name from a completed login, scoped to its exact credentials and URL.
+    pub(crate) authenticated_relay: Option<AuthenticatedRelay>,
     /// The unlocked device key (loaded from the vault).
     pub author: Option<Author>,
     pub synced: HashSet<SpaceId>,
@@ -62,6 +72,22 @@ pub struct NetState {
 }
 
 impl NetState {
+    pub(crate) fn report_credentials(&self, url: &str) -> Option<(Signer, AuthenticatedRelay)> {
+        let account = self.account.as_ref().filter(|a| a.registered)?;
+        let author = self.author.as_ref()?;
+        let relay = self.authenticated_relay.as_ref()?;
+        if account.identity != relay.identity
+            || account.device != relay.device
+            || account.relay_url != relay.url
+            || url.trim_end_matches('/') != relay.url
+            || author.identity != account.identity
+            || author.key.id() != account.device
+        {
+            return None;
+        }
+        Some((author.key.clone(), relay.clone()))
+    }
+
     pub fn account_author(&self, who: &str) -> Option<Author> {
         self.author.as_ref().filter(|a| a.identity == who).cloned()
     }
@@ -531,9 +557,17 @@ impl Engine {
         self.store.set_meta(
             "account",
             &serde_json::to_string(&a).map_err(|e| CoreError::Storage {
-                message: e.to_string(),
+                reason: e.to_string(),
             })?,
         )?;
+        if self.net.account.as_ref().is_none_or(|old| {
+            old.identity != a.identity
+                || old.device != a.device
+                || old.cert != a.cert
+                || old.relay_url != a.relay_url
+        }) {
+            self.net.authenticated_relay = None;
+        }
         self.net.account = Some(a);
         Ok(())
     }
@@ -679,6 +713,7 @@ impl Engine {
 
     /// Loads the device key from the vault. `false` = no account (or key missing).
     pub fn unlock(&mut self, device_secret: Option<Vec<u8>>) -> R<bool> {
+        self.net.authenticated_relay = None;
         let Some(acct) = self.net.account.clone() else {
             return Ok(false);
         };
@@ -711,6 +746,34 @@ impl Engine {
             }
         }
         Ok(())
+    }
+
+    pub(crate) fn remember_authenticated_relay(
+        &mut self,
+        identity: &str,
+        device: &str,
+        url: &str,
+        name: &str,
+    ) {
+        let Some(account) = self.net.account.as_ref() else {
+            return;
+        };
+        let Some(author) = self.net.author.as_ref() else {
+            return;
+        };
+        if account.identity == identity
+            && account.device == device
+            && account.relay_url == url
+            && author.identity == identity
+            && author.key.id() == device
+        {
+            self.net.authenticated_relay = Some(AuthenticatedRelay {
+                identity: identity.into(),
+                device: device.into(),
+                url: url.into(),
+                name: name.into(),
+            });
+        }
     }
 
     pub fn my_profile(&self) -> Option<Identity> {

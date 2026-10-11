@@ -32,13 +32,32 @@ use std::time::{Duration, Instant};
 use roda_log::content::{InnerEvent, Sealed, SealedKind};
 use roda_log::{event_from_content, SpaceLog};
 use roda_mls::{leaf_name, sealed::state_key, Device, Leaf, MlsError, Opened, SUITE_ID};
-use roda_proto::{Envelope, KeyPackageRecord, Sequenced};
+use roda_proto::{
+    Envelope, KeyPackageClaimClock, KeyPackageRecord, Sequenced, KEY_PACKAGE_CLAIM_EXPIRED,
+};
 use roda_types::*;
 use rusqlite::Connection;
+use serde::{Deserialize, Serialize};
 
 use crate::engine::Engine;
 use crate::i18n::t;
 use crate::net::tracing_like;
+
+fn claim_operation(clock: KeyPackageClaimClock) -> R<String> {
+    // Event ULIDs intentionally clamp to this device's wall clock. Consumptive
+    // claim receipts instead use an exact relay sample and independent entropy.
+    let mut random = [0u8; 16];
+    getrandom::getrandom(&mut random).map_err(storage)?;
+    let mut value = ((clock.milliseconds() as u128) << 80)
+        | (u128::from_be_bytes(random) & ((1u128 << 80) - 1));
+    let alphabet = b"0123456789ABCDEFGHJKMNPQRSTVWXYZ";
+    let mut encoded = [0u8; 26];
+    for c in encoded.iter_mut().rev() {
+        *c = alphabet[(value & 31) as usize];
+        value >>= 5;
+    }
+    String::from_utf8(encoded.to_vec()).map_err(storage)
+}
 use crate::sync::Ingest;
 use crate::CoreError;
 
@@ -115,6 +134,8 @@ pub struct MlsNet {
     /// it has caught up with the log.
     rejoin: HashSet<SpaceId>,
     pub(crate) recovery_retry_at: HashMap<SpaceId, Instant>,
+    pub(crate) recovery_checked_generation: Option<(u64, i64, Leaf)>,
+    pub(crate) recovery_checked: HashMap<SpaceId, roda_mls::GroupState>,
 }
 
 /// Events the relay reads even in an end-to-end Space: what it orders and authorizes by.
@@ -144,6 +165,22 @@ fn welcome_meta(client_id: &str) -> String {
 /// commit lands) a leaf they can never use, so the group takes it out and adds them again.
 fn rewelcome_meta(space: &str) -> String {
     format!("mls.rewelcome:{space}")
+}
+
+fn claim_meta(space: &str) -> String {
+    format!("mls.claim:{space}")
+}
+
+/// Persisted before a destructive relay request, then with its exact reply before MLS
+/// staging. Removing it shares the transaction that stages the commit and Welcome.
+#[derive(Serialize, Deserialize)]
+struct ClaimOperation {
+    operation_id: String,
+    device: String,
+    epoch: u64,
+    intent: Owed,
+    targets: Vec<IdentityId>,
+    records: Option<Vec<KeyPackageRecord>>,
 }
 
 fn identity_set(v: Option<String>) -> BTreeSet<IdentityId> {
@@ -178,7 +215,7 @@ fn joins_meta(space: &str) -> String {
 
 /// What a group owes, as one commit: identities to add (every device of theirs), single
 /// devices to add (identity already in), and removals (identities or leaf names).
-#[derive(Default, Debug)]
+#[derive(Default, Debug, Clone, PartialEq, Serialize, Deserialize)]
 struct Owed {
     add: BTreeSet<IdentityId>,
     add_devices: BTreeSet<(IdentityId, String)>,
@@ -204,7 +241,9 @@ impl Owed {
     fn to_claim(&self) -> Vec<IdentityId> {
         let mut ids = self.add.clone();
         ids.extend(self.add_devices.iter().map(|(id, _)| id.clone()));
-        ids.into_iter().collect()
+        // The relay serves up to fifty distinct identities per operation. Remaining
+        // members reconcile after this batch's commit/Welcome lands.
+        ids.into_iter().take(50).collect()
     }
 }
 
@@ -222,13 +261,13 @@ fn fork_meta(space: &str) -> String {
 
 fn storage(e: impl std::fmt::Display) -> CoreError {
     CoreError::Storage {
-        message: e.to_string(),
+        reason: e.to_string(),
     }
 }
 
 pub(crate) fn mls_err(e: MlsError) -> CoreError {
     match e {
-        MlsError::Storage(message) => CoreError::Storage { message },
+        MlsError::Storage(reason) => CoreError::Storage { reason },
         other => CoreError::Invalid {
             reason: other.to_string(),
         },
@@ -392,9 +431,10 @@ impl Engine {
     /// The epoch to seal `space`'s messages at, once its group is ready for them.
     pub(crate) fn ready_epoch(&self, space: &str) -> Option<u64> {
         let device = self.device().ok()?;
-        if !device.has_group(space) || device.pending(space) || device.needs_reconciliation(space) {
+        if device.needs_reconciliation(space) {
             return None;
         }
+        let committed = device.committed_group(space).ok()??;
         // The commit can land before its Welcome is accepted (e.g. under a publish
         // limit). The new member cannot open messages that overtake that Welcome.
         if self
@@ -408,7 +448,7 @@ impl Engine {
         }
         let me = self.me.as_deref()?;
         let s = self.state.spaces.get(space)?;
-        let group = device.roster(space).ok()?;
+        let group = committed.identities;
         // Nobody seals for a group that still holds someone the log removed: wait for the
         // commit that takes them out.
         if group.iter().any(|g| !s.members.iter().any(|(m, _)| m == g)) {
@@ -421,7 +461,7 @@ impl Engine {
             .iter()
             .any(|(m, r)| m == me && matches!(r, Role::Owner | Role::Admin));
         let m = &self.net.mls;
-        let epoch = device.epoch(space).ok()?;
+        let epoch = committed.epoch;
         if m.behind.get(space) == Some(&epoch) {
             return None;
         }
@@ -430,7 +470,7 @@ impl Engine {
         if runs_it && adding && !m.stuck.contains(space) {
             return None;
         }
-        device.epoch(space).ok()
+        Some(epoch)
     }
 
     /// The epoch a queued event was sealed at, without reading its sealed bytes.
@@ -1186,7 +1226,10 @@ impl Engine {
 
     /// The next group that owes a commit adding someone: claim their key packages. Groups
     /// that only owe removals commit right here.
-    pub fn mls_to_claim(&mut self) -> Option<(SpaceId, Vec<IdentityId>)> {
+    pub fn mls_to_claim(
+        &mut self,
+        claim_clock: Option<KeyPackageClaimClock>,
+    ) -> R<Option<(SpaceId, Vec<IdentityId>, String)>> {
         let now = Instant::now();
         let ready: Vec<SpaceId> = self
             .net
@@ -1214,56 +1257,114 @@ impl Engine {
             self.net.mls.dirty.insert(s);
         }
         let dirty: Vec<SpaceId> = self.net.mls.dirty.iter().cloned().collect();
+        let mut unsupported = false;
         for space in dirty {
             self.settle_rewelcome(&space);
             self.settle_joins(&space);
+            let owed = match self.owed(&space) {
+                Ok(Some(owed)) => owed,
+                Ok(None) => {
+                    self.net.mls.waited.remove(&space);
+                    self.net.mls.dirty.remove(&space);
+                    continue;
+                }
+                Err(error) => {
+                    self.net.mls.waited.remove(&space);
+                    self.net.mls.dirty.remove(&space);
+                    tracing_like(&format!("group check in {space}: {error}"));
+                    continue;
+                }
+            };
             if let Some(turn) = self.admin_turn(&space) {
                 self.net.mls.dirty.remove(&space);
                 self.net.mls.turn_at.insert(space, now + turn);
                 continue;
             }
-            match self.owed(&space) {
-                Ok(Some(owed)) if owed.adds_nobody() => {
-                    self.net.mls.dirty.remove(&space);
-                    if let Err(e) = self.commit_now(&space, &[], &owed.remove) {
-                        tracing_like(&format!("removal commit in {space}: {e}"));
-                        self.net
-                            .mls
-                            .retry_at
-                            .insert(space.clone(), now + CLAIM_RETRY);
-                    }
+            if owed.adds_nobody() {
+                self.net.mls.dirty.remove(&space);
+                if let Err(e) = self.commit_now(&space, &[], &owed.remove) {
+                    tracing_like(&format!("removal commit in {space}: {e}"));
+                    self.net
+                        .mls
+                        .retry_at
+                        .insert(space.clone(), now + CLAIM_RETRY);
                 }
-                Ok(Some(owed)) => {
-                    // Resolve recovery recipients before consuming one-shot key
-                    // packages. A pending agreement lookup must not spend a package
-                    // and then fail commit_now before staging the handshake.
-                    if self.recovery_recipients(&space).is_err() {
-                        continue;
-                    }
-                    self.net.mls.dirty.remove(&space);
-                    self.net.mls.claiming.insert(space.clone());
-                    return Some((space, owed.to_claim()));
-                }
-                Ok(None) => {
-                    self.net.mls.dirty.remove(&space);
-                }
-                Err(e) => {
-                    self.net.mls.dirty.remove(&space);
-                    tracing_like(&format!("group check in {space}: {e}"));
-                }
+                continue;
             }
+            let Some(clock) = claim_clock else {
+                unsupported = true;
+                continue;
+            };
+            // Resolve recovery recipients before consuming one-shot key
+            // packages. A pending agreement lookup must not spend a package
+            // and then fail commit_now before staging the handshake.
+            if self.recovery_recipients(&space).is_err() {
+                continue;
+            }
+            let device = self
+                .account()
+                .ok_or_else(|| storage("no account"))?
+                .device
+                .clone();
+            let epoch = self.device()?.epoch(&space).map_err(mls_err)?;
+            let saved = self.load_claim(&space)?;
+            let claim = match saved {
+                Some(c) if c.device == device && c.epoch == epoch && c.intent == owed => c,
+                _ => {
+                    let c = ClaimOperation {
+                        operation_id: claim_operation(clock)?,
+                        device,
+                        epoch,
+                        targets: owed.to_claim(),
+                        intent: owed,
+                        records: None,
+                    };
+                    self.save_claim(&space, &c)?;
+                    c
+                }
+            };
+            self.net.mls.dirty.remove(&space);
+            if let Some(records) = claim.records {
+                self.mls_claimed(&space, &claim.operation_id, Ok(records));
+                continue;
+            }
+            self.net.mls.claiming.insert(space.clone());
+            return Ok(Some((space, claim.targets, claim.operation_id)));
         }
-        None
+        if unsupported {
+            return Err(CoreError::Invalid {
+                reason: "This relay does not support durable key-package claims with a current server clock; upgrade or reconnect before adding chat members.".into(),
+            });
+        }
+        Ok(None)
+    }
+
+    fn load_claim(&self, space: &str) -> R<Option<ClaimOperation>> {
+        self.store
+            .meta(&claim_meta(space))?
+            .map(|data| serde_json::from_str(&data).map_err(storage))
+            .transpose()
+    }
+
+    fn save_claim(&self, space: &str, claim: &ClaimOperation) -> R<()> {
+        self.store.set_meta(
+            &claim_meta(space),
+            &serde_json::to_string(claim).map_err(storage)?,
+        )?;
+        Ok(())
+    }
+
+    /// A socket may close after a committed claim and before its reply. Only its volatile
+    /// in-flight marker is cleared; the next session retries the persisted operation.
+    pub(crate) fn mls_claims_disconnected(&mut self) {
+        let interrupted: Vec<_> = self.net.mls.claiming.drain().collect();
+        self.net.mls.dirty.extend(interrupted);
     }
 
     /// How long this device waits before committing an owed change in `space`: one stagger
-    /// per admin ahead of it in identity order. `None` once it has waited, when it is first,
-    /// or when nothing is owed.
+    /// per admin ahead of it in identity order. Called after determining an owed change;
+    /// `None` once it has waited or when it is first.
     fn admin_turn(&mut self, space: &str) -> Option<Duration> {
-        if !matches!(self.owed(space), Ok(Some(_))) {
-            self.net.mls.waited.remove(space);
-            return None;
-        }
         if self.net.mls.waited.contains(space) || self.net.mls.turn_at.contains_key(space) {
             return None;
         }
@@ -1331,7 +1432,8 @@ impl Engine {
         let joins = self.joins(space);
         let stranded = identity_set(self.store.meta(&rewelcome_meta(space))?);
         let revoked = self.revoked_devices();
-        let reconciling = self.device()?.needs_reconciliation(space);
+        let device = self.device()?;
+        let reconciling = device.needs_reconciliation(space);
         let for_me = |name: &String| admin || split_leaf(name).is_some_and(|(id, _)| id == me);
         if !admin
             && !reconciling
@@ -1370,11 +1472,9 @@ impl Engine {
         if handshaking {
             return Ok(None);
         }
-        let device = self.device()?;
-        if !device.has_group(space) || device.pending(space) {
+        let Some(leaves) = device.committed_leaves(space).map_err(mls_err)? else {
             return Ok(None);
-        }
-        let leaves = device.leaves(space).map_err(mls_err)?;
+        };
         let group: BTreeSet<IdentityId> = leaves.keys().map(|(id, _)| id.clone()).collect();
         let mut owed = Owed::default();
         if admin || reconciling {
@@ -1417,12 +1517,57 @@ impl Engine {
     }
 
     /// Key packages for a group's newcomers came back: commit them (and any removals).
-    pub fn mls_claimed(&mut self, space: &str, result: Result<Vec<KeyPackageRecord>, String>) {
+    pub fn mls_claimed(
+        &mut self,
+        space: &str,
+        operation: &str,
+        result: Result<Vec<KeyPackageRecord>, String>,
+    ) {
         self.net.mls.claiming.remove(space);
+        let mut claim = match self.load_claim(space) {
+            Ok(Some(c)) if c.operation_id == operation => c,
+            _ => {
+                self.net.mls.dirty.insert(space.to_string());
+                return;
+            }
+        };
+        let records = match result {
+            Ok(records) => {
+                claim.records = Some(records.clone());
+                if let Err(error) = self.save_claim(space, &claim) {
+                    tracing_like(&format!("saving key-package claim in {space}: {error}"));
+                    self.net
+                        .mls
+                        .retry_at
+                        .insert(space.to_string(), Instant::now() + CLAIM_RETRY);
+                    return;
+                }
+                records
+            }
+            Err(error) => {
+                if error == KEY_PACKAGE_CLAIM_EXPIRED {
+                    let _ = self.store.meta_delete(&claim_meta(space));
+                }
+                tracing_like(&format!("key-package claim in {space}: {error}"));
+                self.net
+                    .mls
+                    .retry_at
+                    .insert(space.to_string(), Instant::now() + CLAIM_RETRY);
+                return;
+            }
+        };
         let owed = match self.owed(space) {
             Ok(Some(o)) => o,
-            _ => return,
+            _ => {
+                self.net.mls.dirty.insert(space.to_string());
+                return;
+            }
         };
+        if owed != claim.intent {
+            // A membership change while the reply was in flight is a new operation.
+            self.net.mls.dirty.insert(space.to_string());
+            return;
+        }
         let Owed {
             add,
             add_devices,
@@ -1430,13 +1575,13 @@ impl Engine {
         } = owed;
         // Only packages whose verified leaf is one of the people (or devices) we asked for,
         // and never a device whose old leaf is still in (it goes first).
-        let records: Vec<KeyPackageRecord> = result
-            .unwrap_or_default()
+        let records: Vec<KeyPackageRecord> = records
             .into_iter()
             .filter(|r| {
                 roda_mls::key_package_leaf(&r.data).is_ok_and(|l: Leaf| {
                     l.identity == r.identity
                         && l.device == r.device
+                        && claim.targets.contains(&l.identity)
                         && (add.contains(&l.identity)
                             || add_devices.contains(&(l.identity.clone(), l.device.clone())))
                         && !remove.contains(&leaf_name(&l.identity, &l.device))
@@ -1444,7 +1589,10 @@ impl Engine {
             })
             .collect();
         let found: BTreeSet<&IdentityId> = records.iter().map(|r| &r.identity).collect();
-        if add.iter().any(|who| !found.contains(who)) {
+        if add
+            .iter()
+            .any(|who| claim.targets.contains(who) && !found.contains(who))
+        {
             // Someone can't be added yet (no device, or none with packages): messages
             // don't wait for them; they'll read from whenever their commit lands.
             self.net.mls.stuck.insert(space.to_string());
@@ -1453,18 +1601,20 @@ impl Engine {
             .iter()
             .map(|r| (r.identity.as_str(), r.device.as_str()))
             .collect();
-        let devices_missing = add_devices
-            .iter()
-            .any(|(id, dev)| !devices_found.contains(&(id.as_str(), dev.as_str())));
+        let devices_missing = add_devices.iter().any(|(id, dev)| {
+            claim.targets.contains(id) && !devices_found.contains(&(id.as_str(), dev.as_str()))
+        });
         let packages: Vec<Vec<u8>> = records.into_iter().map(|r| r.data).collect();
         if packages.is_empty() && remove.is_empty() {
+            // A recorded empty response will never acquire a newly published package.
+            let _ = self.store.meta_delete(&claim_meta(space));
             self.net
                 .mls
                 .retry_at
                 .insert(space.to_string(), Instant::now() + CLAIM_RETRY);
             return;
         }
-        if let Err(e) = self.commit_now(space, &packages, &remove) {
+        if let Err(e) = self.commit_with_claim(space, &packages, &remove, Some(operation)) {
             tracing_like(&format!("commit in {space}: {e}"));
             self.net
                 .mls
@@ -1485,6 +1635,16 @@ impl Engine {
         add: &[Vec<u8>],
         remove: &BTreeSet<IdentityId>,
     ) -> R<()> {
+        self.commit_with_claim(space, add, remove, None)
+    }
+
+    fn commit_with_claim(
+        &mut self,
+        space: &str,
+        add: &[Vec<u8>],
+        remove: &BTreeSet<IdentityId>,
+        operation: Option<&str>,
+    ) -> R<()> {
         let recipients = self.recovery_recipients(space)?;
         let tx = self.store.conn().unchecked_transaction().map_err(storage)?;
         let c = self
@@ -1502,6 +1662,14 @@ impl Engine {
                 .collect();
             self.store
                 .set_meta(&welcome_meta(&welcome.client_id), &join_set(&newcomers))?;
+        }
+        if let Some(operation) = operation {
+            if self
+                .load_claim(space)?
+                .is_some_and(|c| c.operation_id == operation)
+            {
+                self.store.meta_delete(&claim_meta(space))?;
+            }
         }
         tx.commit().map_err(storage)?;
         self.queued_recovery_commit(events);
@@ -1585,6 +1753,7 @@ impl Engine {
             && m.top_up == 0
             && m.dirty.is_empty()
             && m.claiming.is_empty()
+            && m.retry_at.is_empty()
             && m.turn_at.is_empty()
             && m.checkpoint_due.is_empty()
             && m.rejoin.is_empty()
@@ -1634,6 +1803,269 @@ pub(crate) fn must_seal(body: &EventBody) -> bool {
 mod tests {
     use super::*;
     use roda_log::{chain_hash, Author};
+
+    fn ordered(engine: &Engine, env: Envelope) -> Sequenced {
+        let (seq, prev) = engine
+            .logs
+            .get(env.space())
+            .map(|log| {
+                (
+                    log.next_seq(),
+                    log.events()
+                        .last()
+                        .map(|e| e.hash.clone())
+                        .unwrap_or_else(|| roda_types::GENESIS_PREV.into()),
+                )
+            })
+            .unwrap_or_else(|| (0, roda_types::GENESIS_PREV.into()));
+        Sequenced {
+            seq,
+            hash: chain_hash(env.space(), seq, &prev, &env.wire_hash()),
+            prev,
+            env,
+        }
+    }
+
+    fn seen(engine: &Engine, space: &str) -> Option<roda_types::Seen> {
+        engine
+            .logs
+            .get(space)
+            .and_then(|log| log.events().last())
+            .map(|e| roda_types::Seen {
+                seq: e.seq,
+                hash: e.hash.clone(),
+            })
+    }
+
+    fn confirm_claim_handshakes(engine: &mut Engine) -> Vec<Sequenced> {
+        for (sha, _) in engine.pending_uploads(100) {
+            engine.upload_done(&sha);
+        }
+        let mut frames = Vec::new();
+        // Confirmation may enqueue the epoch checkpoint; order it through the same log.
+        while engine.outbox_len() > 0 {
+            let pending = engine.store.outbox().unwrap();
+            assert!(!pending.is_empty());
+            for queued in pending {
+                let frame = ordered(engine, Envelope::plain(&queued.event));
+                assert_eq!(engine.ingest(frame.clone()), Ingest::Confirmed);
+                frames.push(frame);
+            }
+            assert!(frames.len() < 10, "handshake confirmation did not settle");
+        }
+        frames
+    }
+
+    fn claim_group(engine: &mut Engine, space: &str, peers: &mut [Engine]) -> Vec<Sequenced> {
+        let author = engine.net.author.clone().unwrap();
+        let mut bodies = vec![EventBody::SpaceCreated {
+            title: space.into(),
+            kind: SpaceKind::Group,
+            privacy: Privacy::EndToEnd,
+        }];
+        for peer in peers.iter_mut() {
+            peer.net.profiles.supported = true;
+            let identity = peer.me.clone().unwrap();
+            let (public, signed) = peer.agreement_to_publish().unwrap();
+            engine.agreement_keys_arrived(
+                vec![roda_proto::AgreementKeyRecord {
+                    identity: identity.clone(),
+                    public,
+                    signed,
+                }],
+                std::slice::from_ref(&identity),
+            );
+            bodies.push(EventBody::MemberAdded {
+                identity,
+                role: Role::Member,
+            });
+        }
+        let mut frames = Vec::new();
+        for (i, body) in bodies.into_iter().enumerate() {
+            let env = Envelope::plain(&author.sign_event(
+                space,
+                &format!("{space}-{i}"),
+                1,
+                seen(engine, space),
+                body,
+            ));
+            let frame = ordered(engine, env);
+            assert_eq!(engine.ingest(frame.clone()), Ingest::Applied);
+            frames.push(frame);
+        }
+        engine.create_mls_group(space).unwrap();
+        frames
+    }
+
+    fn claimed_records(
+        peers: &mut [Engine],
+        targets: &[String],
+    ) -> Vec<roda_proto::KeyPackageRecord> {
+        peers
+            .iter_mut()
+            .filter_map(|peer| {
+                let identity = peer.me.clone().unwrap();
+                if !targets.contains(&identity) {
+                    return None;
+                }
+                let device = peer.net.account.as_ref().unwrap().device.clone();
+                let data = peer
+                    .device()
+                    .unwrap()
+                    .key_packages(1, false)
+                    .unwrap()
+                    .remove(0);
+                Some(roda_proto::KeyPackageRecord {
+                    identity,
+                    device,
+                    data,
+                })
+            })
+            .collect()
+    }
+
+    #[test]
+    fn fifty_one_members_reconcile_in_two_durable_claim_batches() {
+        let mut owner = Engine::open(":memory:").unwrap();
+        owner
+            .create_account("Ana", "ana", "http://relay.test")
+            .unwrap();
+        owner.net.profiles.supported = true;
+        let mut peers: Vec<Engine> = (0..51)
+            .map(|i| {
+                let mut peer = Engine::open(":memory:").unwrap();
+                peer.create_account(
+                    &format!("Peer {i}"),
+                    &format!("peer{i}"),
+                    "http://relay.test",
+                )
+                .unwrap();
+                peer
+            })
+            .collect();
+        let space = "fifty-one-claim-members";
+        let mut frames = claim_group(&mut owner, space, &mut peers);
+        let clock = Some(
+            roda_proto::KeyPackageClaimClock::from_server_ms(crate::engine::now_ms()).unwrap(),
+        );
+        let (first_space, first_targets, first_operation) =
+            owner.mls_to_claim(clock).unwrap().unwrap();
+        assert_eq!(first_space, space);
+        assert_eq!(first_targets.len(), 50);
+        assert!(first_targets.windows(2).all(|pair| pair[0] < pair[1]));
+        owner.mls_claimed(
+            space,
+            &first_operation,
+            Ok(claimed_records(&mut peers, &first_targets)),
+        );
+        frames.extend(confirm_claim_handshakes(&mut owner));
+        let (second_space, second_targets, second_operation) =
+            owner.mls_to_claim(clock).unwrap().unwrap();
+        assert_eq!(second_space, space);
+        assert_eq!(second_targets.len(), 1);
+        assert!(!first_targets.contains(&second_targets[0]));
+        assert_ne!(second_operation, first_operation);
+        owner.mls_claimed(
+            space,
+            &second_operation,
+            Ok(claimed_records(&mut peers, &second_targets)),
+        );
+        frames.extend(confirm_claim_handshakes(&mut owner));
+        assert!(owner.mls_to_claim(clock).unwrap().is_none());
+        assert_eq!(owner.device().unwrap().leaves(space).unwrap().len(), 52);
+        assert!(owner.ready_epoch(space).is_some());
+        let recipient = peers
+            .iter_mut()
+            .find(|p| p.me.as_ref() == Some(&second_targets[0]))
+            .unwrap();
+        for frame in frames {
+            assert_eq!(recipient.ingest(frame), Ingest::Applied);
+        }
+        assert_eq!(
+            recipient.device().unwrap().checkpoint(space).unwrap(),
+            owner.device().unwrap().checkpoint(space).unwrap()
+        );
+    }
+
+    #[test]
+    fn unsupported_claims_in_one_chat_do_not_block_another_chats_removal() {
+        let mut owner = Engine::open(":memory:").unwrap();
+        owner
+            .create_account("Ana", "ana", "http://relay.test")
+            .unwrap();
+        owner.net.profiles.supported = true;
+        let mut peer = Engine::open(":memory:").unwrap();
+        peer.create_account("Bruno", "bruno", "http://relay.test")
+            .unwrap();
+        let peer_identity = peer.me.clone().unwrap();
+        for space in ["fallback-one", "fallback-two"] {
+            claim_group(&mut owner, space, std::slice::from_mut(&mut peer));
+            let records = claimed_records(
+                std::slice::from_mut(&mut peer),
+                std::slice::from_ref(&peer_identity),
+            );
+            owner
+                .commit_now(space, &[records[0].data.clone()], &Default::default())
+                .unwrap();
+            confirm_claim_handshakes(&mut owner);
+        }
+        owner.net.mls.dirty = ["fallback-one".into(), "fallback-two".into()]
+            .into_iter()
+            .collect();
+        let adding = owner.net.mls.dirty.iter().next().unwrap().clone();
+        let removing = owner
+            .net
+            .mls
+            .dirty
+            .iter()
+            .find(|s| **s != adding)
+            .unwrap()
+            .clone();
+        let author = owner.net.author.clone().unwrap();
+        let mut newcomer = Engine::open(":memory:").unwrap();
+        newcomer
+            .create_account("Carol", "carol", "http://relay.test")
+            .unwrap();
+        for (space, body) in [
+            (
+                adding.as_str(),
+                EventBody::MemberAdded {
+                    identity: newcomer.me.clone().unwrap(),
+                    role: Role::Member,
+                },
+            ),
+            (
+                removing.as_str(),
+                EventBody::MemberRemoved {
+                    identity: peer_identity.clone(),
+                },
+            ),
+        ] {
+            let env = Envelope::plain(&author.sign_event(
+                space,
+                &format!("change-{space}"),
+                2,
+                seen(&owner, space),
+                body,
+            ));
+            assert_eq!(owner.ingest(ordered(&owner, env)), Ingest::Applied);
+        }
+        assert_eq!(
+            owner.net.mls.dirty.iter().next(),
+            Some(&adding),
+            "blocked addition must precede removal in this regression"
+        );
+        assert!(owner.mls_to_claim(None).is_err());
+        assert!(owner.net.mls.dirty.contains(&adding));
+        assert!(!owner.device().unwrap().pending(&adding));
+        assert!(
+            owner.device().unwrap().pending(&removing),
+            "unrelated removal was never staged"
+        );
+        confirm_claim_handshakes(&mut owner);
+        assert_eq!(owner.device().unwrap().leaves(&removing).unwrap().len(), 1);
+        assert!(owner.ready_epoch(&removing).is_some());
+    }
 
     #[test]
     fn an_obsolete_stale_rejection_cannot_release_a_current_epoch_block() {
