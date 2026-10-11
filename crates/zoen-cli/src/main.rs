@@ -567,7 +567,9 @@ async fn main() {
     let (me, census_actor) = e
         .account()
         .map(|a| {
-            let actor = if cmd == "group" && std::env::var("ZOEN_M2_CENSUS").as_deref() == Ok("1") {
+            let actor = if matches!(cmd.as_str(), "group" | "read")
+                && std::env::var("ZOEN_M2_CENSUS").as_deref() == Ok("1")
+            {
                 match a.handle.as_str() {
                     "ana" => Some(SyncCensusActor::Ana),
                     "bruno" => Some(SyncCensusActor::Bruno),
@@ -590,7 +592,10 @@ async fn main() {
             None
         };
         e.start_sync(listener).unwrap_or_else(|err| die(err));
-        let c = e.wait_until_idle(timeout).await;
+        let c = match (cmd.as_str(), census_actor) {
+            ("read", Some(actor)) => e.wait_until_idle_observed(timeout, actor).await,
+            _ => e.wait_until_idle(timeout).await,
+        };
         if c.state != "online"
             && !matches!(
                 cmd.as_str(),

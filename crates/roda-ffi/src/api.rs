@@ -170,6 +170,28 @@ struct ConnectionObservation {
     duration_ms: f64,
 }
 
+struct IdleWaitObservation {
+    started: tokio::time::Instant,
+    connection: ConnectionDto,
+    connection_observation: ConnectionObservation,
+    first: IdleObservation,
+    elapsed_ms: f64,
+    reason: &'static str,
+}
+
+impl IdleWaitObservation {
+    fn emit_return(&self, actor: SyncCensusActor, space: &str) {
+        emit_census(serde_json::json!({
+            "v": 1, "actor": actor, "pid": std::process::id(), "space": space,
+            "kind": "idle_return", "phase": "first", "elapsed_ms": self.elapsed_ms,
+            "return_reason": self.reason, "connection": self.connection_observation,
+            "lock_wait_ms": self.first.lock_wait_ms, "evaluation_ms": self.first.evaluation_ms,
+            "gate": self.first.snapshot.gate, "profiles": self.first.snapshot.profiles,
+            "mls": self.first.snapshot.mls,
+        }));
+    }
+}
+
 fn census_ms(duration: Duration) -> f64 {
     duration.as_secs_f64() * 1000.0
 }
@@ -285,13 +307,13 @@ impl RodaEngine {
         observation
     }
 
-    /// Opt-in Rust CLI observation of the same deadline, loop and second idle decision.
-    pub async fn wait_until_settled_observed(
+    async fn observe_idle_wait(
         &self,
         timeout_ms: u64,
         actor: SyncCensusActor,
         space: &str,
-    ) -> Result<ConnectionDto, CoreError> {
+        operation: &'static str,
+    ) -> IdleWaitObservation {
         let started = tokio::time::Instant::now();
         let deadline = started + Duration::from_millis(timeout_ms);
         emit_census(serde_json::json!({
@@ -315,7 +337,7 @@ impl RodaEngine {
             if blocker_records < 4 && previous.as_ref() != Some(&first.snapshot) {
                 emit_census(serde_json::json!({
                     "v": 1, "actor": actor, "pid": std::process::id(), "space": space,
-                    "kind": "group", "phase": "loop", "outcome": "held",
+                    "kind": operation, "phase": "loop", "outcome": "held",
                     "elapsed_ms": census_ms(started.elapsed()), "connection": read,
                     "lock_wait_ms": first.lock_wait_ms, "evaluation_ms": first.evaluation_ms,
                     "gate": first.snapshot.gate, "profiles": first.snapshot.profiles,
@@ -326,18 +348,44 @@ impl RodaEngine {
             }
             tokio::time::sleep(Duration::from_millis(40)).await;
         };
+        IdleWaitObservation {
+            started,
+            connection,
+            connection_observation,
+            first,
+            elapsed_ms: first_elapsed,
+            reason,
+        }
+    }
+
+    /// Opt-in observation preserves the CLI read's best-effort return at its deadline.
+    pub async fn wait_until_idle_observed(
+        &self,
+        timeout_ms: u64,
+        actor: SyncCensusActor,
+    ) -> ConnectionDto {
+        let observed = self
+            .observe_idle_wait(timeout_ms, actor, "read", "read")
+            .await;
+        observed.emit_return(actor, "read");
+        observed.connection
+    }
+
+    /// Opt-in Rust CLI observation of the same deadline, loop and second idle decision.
+    pub async fn wait_until_settled_observed(
+        &self,
+        timeout_ms: u64,
+        actor: SyncCensusActor,
+        space: &str,
+    ) -> Result<ConnectionDto, CoreError> {
+        let observed = self
+            .observe_idle_wait(timeout_ms, actor, space, "group")
+            .await;
         // No stderr or JSON work between the first return and the actual second check.
-        let second = self.sync_idle_observed(&connection);
-        let final_elapsed = census_ms(started.elapsed());
+        let second = self.sync_idle_observed(&observed.connection);
+        let final_elapsed = census_ms(observed.started.elapsed());
         let success = second.snapshot.gate.idle;
-        emit_census(serde_json::json!({
-            "v": 1, "actor": actor, "pid": std::process::id(), "space": space,
-            "kind": "idle_return", "phase": "first", "elapsed_ms": first_elapsed,
-            "return_reason": reason, "connection": connection_observation,
-            "lock_wait_ms": first.lock_wait_ms, "evaluation_ms": first.evaluation_ms,
-            "gate": first.snapshot.gate, "profiles": first.snapshot.profiles,
-            "mls": first.snapshot.mls,
-        }));
+        observed.emit_return(actor, space);
         emit_census(serde_json::json!({
             "v": 1, "actor": actor, "pid": std::process::id(), "space": space,
             "kind": "wait_result", "phase": "second", "elapsed_ms": final_elapsed,
@@ -346,9 +394,9 @@ impl RodaEngine {
             "profiles": second.snapshot.profiles, "mls": second.snapshot.mls,
         }));
         if success {
-            Ok(connection)
+            Ok(observed.connection)
         } else {
-            Err(invalid(connection.error.unwrap_or_else(|| {
+            Err(invalid(observed.connection.error.unwrap_or_else(|| {
                 "Sync did not finish before the deadline; queued work is saved for retry.".into()
             })))
         }

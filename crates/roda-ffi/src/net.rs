@@ -228,6 +228,47 @@ struct Ctx {
     maintenance_work: Option<Arc<dyn Fn() + Send + Sync>>,
 }
 
+struct MaintenanceEngine<'a> {
+    engine: Option<std::sync::MutexGuard<'a, Engine>>,
+    phase: &'static str,
+    timing: Option<(std::time::Instant, std::time::Instant)>,
+}
+
+impl std::ops::Deref for MaintenanceEngine<'_> {
+    type Target = Engine;
+
+    fn deref(&self) -> &Engine {
+        self.engine.as_deref().expect("guard remains until drop")
+    }
+}
+
+impl std::ops::DerefMut for MaintenanceEngine<'_> {
+    fn deref_mut(&mut self) -> &mut Engine {
+        self.engine
+            .as_deref_mut()
+            .expect("guard remains until drop")
+    }
+}
+
+impl Drop for MaintenanceEngine<'_> {
+    fn drop(&mut self) {
+        let finished = self.timing.map(|_| std::time::Instant::now());
+        drop(self.engine.take());
+        if let (Some((started, acquired)), Some(finished)) = (self.timing, finished) {
+            if finished - started >= Duration::from_millis(100) {
+                use std::io::Write;
+                let record = serde_json::json!({
+                    "v": 1, "pid": std::process::id(), "phase": self.phase,
+                    "lock_wait_ms": (acquired - started).as_secs_f64() * 1000.0,
+                    "work_ms": (finished - acquired).as_secs_f64() * 1000.0,
+                    "total_ms": (finished - started).as_secs_f64() * 1000.0,
+                });
+                let _ = writeln!(std::io::stderr().lock(), "[zoen-maintenance] {record}");
+            }
+        }
+    }
+}
+
 impl Ctx {
     fn set(&self, f: impl FnOnce(&mut NetStatus)) {
         self.status.send_modify(|status| {
@@ -250,6 +291,18 @@ impl Ctx {
     fn engine(&self) -> std::sync::MutexGuard<'_, Engine> {
         crate::i18n::set(self.lang);
         lock(&self.engine)
+    }
+
+    fn engine_observed(&self, phase: &'static str) -> MaintenanceEngine<'_> {
+        let started = (cfg!(debug_assertions)
+            && std::env::var("ZOEN_M2_CENSUS").as_deref() == Ok("1"))
+        .then(std::time::Instant::now);
+        let engine = self.engine();
+        MaintenanceEngine {
+            engine: Some(engine),
+            phase,
+            timing: started.map(|started| (started, std::time::Instant::now())),
+        }
     }
 }
 
@@ -609,7 +662,7 @@ async fn session(
                     ServerFrame::Event { ev } => {
                         let space = ev.env.space().to_string();
                         let client_id = ev.env.client_id().to_string();
-                        let r = ctx.engine().ingest(ev);
+                        let r = ctx.engine_observed("ingest").ingest(ev);
                         if r == Ingest::Confirmed { sent.remove(&client_id); }
                         match r {
                             Ingest::Confirmed => {
@@ -735,7 +788,7 @@ async fn session(
                             }
                             Some(Waiting::KeyPackagesPublished) => {
                                 let ok = matches!(result, Ok(Reply::Done));
-                                ctx.engine().mls_key_packages_published(result.map(|_| ()));
+                                ctx.engine_observed("key_packages_published").mls_key_packages_published(result.map(|_| ()));
                                 settle(&mut traffic.key_packages, ok);
                             }
                             Some(Waiting::Claimed { space, operation }) => {
@@ -744,7 +797,7 @@ async fn session(
                                     Ok(other) => Err(format!("unexpected {other:?}")),
                                     Err(e) => Err(e),
                                 };
-                                ctx.engine().mls_claimed(&space, &operation, packages);
+                                ctx.engine_observed("claimed").mls_claimed(&space, &operation, packages);
                                 if let Err(e) = flush(ctx, &mut sink, &mut sent).await { break Exit::Retry(e) }
                             }
                             None => {}
@@ -837,7 +890,7 @@ async fn session(
                     }
                 }
                 if free(&mut traffic.key_packages) {
-                    let publish = ctx.engine().mls_key_packages_to_publish();
+                    let publish = ctx.engine_observed("key_packages").mls_key_packages_to_publish();
                     if let Some((packages, last_resort)) = publish {
                         traffic.key_packages = Some(tokio::time::Instant::now() + PROFILE_TIMEOUT);
                         reqs.push((Op::PublishKeyPackages { packages, last_resort }, Waiting::KeyPackagesPublished));
@@ -850,12 +903,12 @@ async fn session(
                 if ctx.engine().take_ask_devices() {
                     reqs.push((Op::Devices, Waiting::Devices));
                 }
-                match ctx.engine().mls_recovery_pass() {
+                match ctx.engine_observed("recovery").mls_recovery_pass() {
                     Ok(true) => media_kick.notify_one(),
                     Ok(false) => {}
                     Err(e) => tracing_like(&format!("group recovery: {e}")),
                 }
-                let claim = ctx.engine().mls_to_claim(claim_clock.as_ref().and_then(ClaimClockSample::fresh));
+                let claim = ctx.engine_observed("claim").mls_to_claim(claim_clock.as_ref().and_then(ClaimClockSample::fresh));
                 match claim {
                     Ok(Some((space, ids, operation))) => reqs.push((
                         Op::ClaimKeyPackages { ids, operation_id: Some(operation.clone()) },
@@ -871,13 +924,13 @@ async fn session(
                     }
                     Err(_) => {},
                 }
-                let checkpoints = ctx.engine().mls_checkpoints();
+                let checkpoints = ctx.engine_observed("checkpoints").mls_checkpoints();
                 match checkpoints {
                     Ok(true) => if let Err(e) = flush(ctx, &mut sink, &mut sent).await { break Exit::Retry(e) },
                     Ok(false) => {}
                     Err(e) => tracing_like(&format!("checkpoints: {e}")),
                 }
-                let sealed = ctx.engine().mls_seal_outbox();
+                let sealed = ctx.engine_observed("sealing").mls_seal_outbox();
                 match sealed {
                     Ok(true) => if let Err(e) = flush(ctx, &mut sink, &mut sent).await { break Exit::Retry(e) },
                     Ok(false) => {}
