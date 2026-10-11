@@ -1,6 +1,7 @@
 //! Actual certified directory, OpenMLS leaves and relay-owned FDB log. Fixture
 //! custody is explicit; this does not provision a production vault or WS host.
 mod admission;
+pub(super) mod output;
 use super::*;
 use roda_log::content::{InnerEvent, Sealed, SealedKind};
 use roda_mls::{Device, Opened, SUITE_ID};
@@ -25,7 +26,19 @@ struct Fixture {
 
 impl Fixture {
     async fn new() -> Self {
+        Self::build(false).await
+    }
+
+    async fn with_output() -> Self {
+        Self::build(true).await
+    }
+
+    async fn build(output: bool) -> Self {
         let mut world = World::with_relay().await;
+        if output {
+            let capability = native::testing::output::provision(&world.runtime).await;
+            Arc::get_mut(&mut world.runtime).unwrap().output_fixture = Some(capability);
+        }
         let actor = world.agents[0].clone();
         let device = actor.device.clone().unwrap();
         let second = Author::device(&world.agent_roots[0], Signer::generate());

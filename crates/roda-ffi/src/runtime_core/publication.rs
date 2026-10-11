@@ -18,6 +18,8 @@ pub struct PreparedReply {
     envelope: Envelope,
     message: String,
     event_digest: String,
+    reference_digest: String,
+    publish_digest: String,
     image: NativeImage,
 }
 
@@ -42,6 +44,14 @@ impl PreparedReply {
 
     pub fn event_digest(&self) -> &str {
         &self.event_digest
+    }
+
+    pub fn reference_digest(&self) -> &str {
+        &self.reference_digest
+    }
+
+    pub fn publish_digest(&self) -> &str {
+        &self.publish_digest
     }
 
     pub fn image(&self) -> &NativeImage {
@@ -126,12 +136,15 @@ impl DeviceCore {
             {
                 return Err(NativeError::Bounds);
             }
-            self.retain_reply_reference(facts.intent(), &event, &envelope)?;
+            let (reference_digest, publish_digest) =
+                self.retain_reply_reference(facts.intent(), &event, &envelope)?;
             Ok(PreparedReply {
                 facts,
                 envelope,
                 message,
                 event_digest: roda_log::content_hash_of(&event),
+                reference_digest,
+                publish_digest,
                 image: self.image()?,
             })
         })();

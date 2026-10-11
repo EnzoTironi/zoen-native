@@ -1,6 +1,7 @@
 //! Stable discovery records. These are inert retained originals; the loader
 //! derives current native facts separately and does not create a spend permit.
 mod cancellation;
+pub(crate) mod output;
 mod storage;
 pub(crate) use cancellation::{CleanupAcquisition, CleanupStep};
 #[cfg(test)]

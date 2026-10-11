@@ -38,6 +38,7 @@ enum NativeAckCut {
     Normal,
     Suppressed,
     Delayed,
+    OutputExpiry,
 }
 
 /// One known SQL maintenance admission. Only NativeDirectoryGuard constructs
@@ -46,6 +47,32 @@ enum NativeAckCut {
 pub(crate) struct NativeActivation {
     scope: crate::native::ActivationScope,
     expires: std::time::Instant,
+}
+
+pub(crate) struct ReplyOutputAdmission {
+    scope: crate::native::ReplyOutputScope,
+    expires: std::time::Instant,
+}
+
+impl ReplyOutputAdmission {
+    pub(crate) fn check(
+        &self,
+        expected: &crate::native::ReplyOutputScope,
+    ) -> Result<(), RuntimeError> {
+        if &self.scope != expected {
+            return Err(RuntimeError::InvalidBinding);
+        }
+        if std::time::Instant::now() >= self.expires {
+            return Err(RuntimeError::Denied);
+        }
+        Ok(())
+    }
+    pub(crate) fn consume(
+        self,
+        expected: &crate::native::ReplyOutputScope,
+    ) -> Result<(), RuntimeError> {
+        self.check(expected)
+    }
 }
 
 impl NativeActivation {
@@ -79,6 +106,52 @@ impl NativeActivation {
 }
 
 impl NativeDirectoryGuard {
+    pub(crate) async fn authorize_output(
+        mut self,
+        scope: crate::native::ReplyOutputScope,
+    ) -> Result<ReplyOutputAdmission, RuntimeError> {
+        if !scope.matches_directory(
+            &self.owner,
+            &self.agent,
+            &self.device,
+            &self.certificate_digest,
+        ) {
+            return Err(RuntimeError::InvalidBinding);
+        }
+        let started = std::time::Instant::now();
+        let clock = Finance::clock(&mut self.tx).await?;
+        let remaining = match scope.expires_at_ms() {
+            Some(expiry) => expiry
+                .checked_sub(clock)
+                .filter(|remaining| *remaining > 0)
+                .ok_or(RuntimeError::Denied)?
+                .min(2000) as u64,
+            None => 2000,
+        };
+        self.tx.commit().await?;
+        #[cfg(test)]
+        match self.ack_cut {
+            NativeAckCut::Normal => {}
+            NativeAckCut::Suppressed => return Err(RuntimeError::Unavailable),
+            NativeAckCut::Delayed => {
+                tokio::time::sleep(std::time::Duration::from_millis(2200)).await
+            }
+            NativeAckCut::OutputExpiry => {
+                if scope.expires_at_ms().is_none() || remaining >= 1800 {
+                    return Err(RuntimeError::InvalidBinding);
+                }
+                println!("native output deadline cut: actual SQL/native remainder {remaining} ms; ACK delay consumes it below the 2 s maintenance cap");
+                tokio::time::sleep(std::time::Duration::from_millis(remaining + 50)).await;
+            }
+        }
+        let admission = ReplyOutputAdmission {
+            scope,
+            expires: started + std::time::Duration::from_millis(remaining),
+        };
+        admission.check(&admission.scope)?;
+        Ok(admission)
+    }
+
     #[cfg(test)]
     pub(crate) fn suppress_known_ack(mut self) -> Self {
         self.ack_cut = NativeAckCut::Suppressed;
@@ -88,6 +161,12 @@ impl NativeDirectoryGuard {
     #[cfg(test)]
     pub(crate) fn delay_known_ack(mut self) -> Self {
         self.ack_cut = NativeAckCut::Delayed;
+        self
+    }
+
+    #[cfg(test)]
+    pub(crate) fn delay_output_expiry(mut self) -> Self {
+        self.ack_cut = NativeAckCut::OutputExpiry;
         self
     }
 
@@ -122,6 +201,7 @@ impl NativeDirectoryGuard {
             NativeAckCut::Delayed => {
                 tokio::time::sleep(std::time::Duration::from_millis(2200)).await
             }
+            NativeAckCut::OutputExpiry => return Err(RuntimeError::InvalidBinding),
         }
         let admission = NativeActivation {
             scope,

@@ -45,7 +45,7 @@ mod publication;
 mod receipt;
 mod reference;
 pub use publication::PreparedReply;
-pub use receipt::AcceptedReply;
+pub use receipt::{AcceptedReply, NativeReceiptPrefix, ReplyReceipt};
 
 /// Inert plaintext image. A successful parse does not authenticate its origin.
 /// The private cloud loader must first authenticate the entire custody capsule.

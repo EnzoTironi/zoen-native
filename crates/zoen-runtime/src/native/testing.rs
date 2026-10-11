@@ -1,5 +1,6 @@
 //! Explicit fixture custody, not a production key or enrollment constructor.
 use super::*;
+pub(crate) use runs::output::testing as output;
 
 pub(crate) fn custody(
     namespace: &str,

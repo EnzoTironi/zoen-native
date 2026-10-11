@@ -16,6 +16,8 @@ pub struct AcceptedReply {
     client_id: String,
     message: String,
     inner_digest: String,
+    reference_digest: String,
+    publish_digest: String,
     accepted: Seen,
     image: NativeImage,
 }
@@ -39,12 +41,75 @@ impl AcceptedReply {
     pub fn event_digest(&self) -> &str {
         &self.inner_digest
     }
+    pub fn reference_digest(&self) -> &str {
+        &self.reference_digest
+    }
+    pub fn publish_digest(&self) -> &str {
+        &self.publish_digest
+    }
     pub fn accepted(&self) -> &Seen {
         &self.accepted
     }
     pub fn image(&self) -> &NativeImage {
         &self.image
     }
+}
+
+/// A contiguous historical prefix with the entire pending outbox unchanged.
+/// It proves no acceptance and cannot produce a new native command.
+pub struct NativeReceiptPrefix {
+    original: ReplyIntent,
+    client_id: String,
+    message: String,
+    inner_digest: String,
+    reference_digest: String,
+    publish_digest: String,
+    before: Seen,
+    frontier: Seen,
+    image: NativeImage,
+}
+
+impl fmt::Debug for NativeReceiptPrefix {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("NativeReceiptPrefix")
+            .finish_non_exhaustive()
+    }
+}
+
+impl NativeReceiptPrefix {
+    pub fn original(&self) -> &ReplyIntent {
+        &self.original
+    }
+    pub fn client_id(&self) -> &str {
+        &self.client_id
+    }
+    pub fn message(&self) -> &str {
+        &self.message
+    }
+    pub fn event_digest(&self) -> &str {
+        &self.inner_digest
+    }
+    pub fn reference_digest(&self) -> &str {
+        &self.reference_digest
+    }
+    pub fn publish_digest(&self) -> &str {
+        &self.publish_digest
+    }
+    pub fn before(&self) -> &Seen {
+        &self.before
+    }
+    pub fn frontier(&self) -> &Seen {
+        &self.frontier
+    }
+    pub fn image(&self) -> &NativeImage {
+        &self.image
+    }
+}
+
+#[derive(Debug)]
+pub enum ReplyReceipt {
+    Accepted(AcceptedReply),
+    Prefix(NativeReceiptPrefix),
 }
 
 #[derive(PartialEq, Eq)]
@@ -55,6 +120,7 @@ struct PendingSnapshot {
     failed: bool,
 }
 
+#[derive(PartialEq, Eq)]
 pub(super) struct OutboxSnapshot {
     rows: BTreeMap<String, PendingSnapshot>,
     pending: BTreeMap<String, String>,
@@ -88,6 +154,23 @@ impl DeviceCore {
             }
             return Ok(());
         };
+        let expected = self.pending_envelope(&pending, reference.as_ref())?;
+        if expected.content().len() > MAX_EVENT_BYTES
+            || expected.is_pruned()
+            || expected != entry.env
+            || expected.verify().is_err()
+        {
+            return Err(NativeError::History);
+        }
+        Ok(())
+    }
+
+    fn pending_envelope(
+        &self,
+        pending: &Event,
+        reference: Option<&ReplyReference>,
+    ) -> Result<Envelope> {
+        let client_id = &pending.client_id;
         let account = self
             .engine
             .net
@@ -95,13 +178,12 @@ impl DeviceCore {
             .as_ref()
             .ok_or(NativeError::Credential)?;
         if self.engine.net.pending.get(client_id) != Some(&pending.space)
-            || pending.client_id != client_id
             || pending.author != self.agent
             || pending.author != account.identity
             || pending.device.as_deref() != Some(account.device.as_str())
             || pending.cert.as_deref() != Some(account.cert.as_str())
             || pending.content.len() > MAX_EVENT_BYTES
-            || verify_author(&pending).is_err()
+            || verify_author(pending).is_err()
         {
             return Err(NativeError::History);
         }
@@ -111,9 +193,9 @@ impl DeviceCore {
             let expected = reference.envelope(self)?;
             let (epoch, historical) = self
                 .engine
-                .sealed_copy(&pending)
+                .sealed_copy(pending)
                 .ok_or(NativeError::History)?;
-            if !reference.matches_inner(&pending, &expected)
+            if !reference.matches_inner(pending, &expected)
                 || historical != expected
                 || historical
                     .sealed_data()
@@ -128,16 +210,9 @@ impl DeviceCore {
         {
             return Err(NativeError::History);
         } else {
-            Envelope::plain(&pending)
+            Envelope::plain(pending)
         };
-        if expected.content().len() > MAX_EVENT_BYTES
-            || expected.is_pruned()
-            || expected != entry.env
-            || expected.verify().is_err()
-        {
-            return Err(NativeError::History);
-        }
-        Ok(())
+        Ok(expected)
     }
 
     /// Ingests historical source only and proves this producer's exact original
@@ -148,6 +223,23 @@ impl DeviceCore {
         client_id: &str,
         ordered_batch: Vec<Sequenced>,
     ) -> Result<AcceptedReply> {
+        match self.receive_reply_progress(original, client_id, ordered_batch)? {
+            ReplyReceipt::Accepted(receipt) => Ok(receipt),
+            ReplyReceipt::Prefix(_) => {
+                self.usable = false;
+                Err(NativeError::NotReady)
+            }
+        }
+    }
+
+    /// Reads at most 64 real positions. A prefix keeps every pending row and
+    /// sealing/reference byte unchanged; only native acceptance yields a receipt.
+    pub fn receive_reply_progress(
+        &mut self,
+        original: &ReplyIntent,
+        client_id: &str,
+        ordered_batch: Vec<Sequenced>,
+    ) -> Result<ReplyReceipt> {
         let result = (|| {
             if !self.usable {
                 return Err(NativeError::History);
@@ -159,22 +251,84 @@ impl DeviceCore {
                 return Err(NativeError::History);
             }
             let envelope = reference.envelope(self)?;
+            let (reference_digest, publish_digest) = reference.digests()?;
             let before = self.snapshot_outbox()?;
+            let initial = self
+                .retained_head(original.space())?
+                .ok_or(NativeError::History)?;
+            let pending = self
+                .engine
+                .store
+                .outbox_get(client_id)
+                .map_err(|_| NativeError::Storage)?;
+            if let Some(pending) = &pending {
+                if self.pending_envelope(pending, Some(&reference))? != envelope
+                    || self.engine.logs[original.space()]
+                        .events()
+                        .iter()
+                        .any(|event| event.client_id == client_id)
+                {
+                    return Err(NativeError::History);
+                }
+            } else {
+                self.accepted_reply_event(&reference, &envelope)?;
+            }
+            if ordered_batch.is_empty() && pending.is_some() {
+                return Err(NativeError::NotReady);
+            }
+            let prefix_frontier =
+                contiguous_prefix(&initial, original.space(), client_id, &ordered_batch);
             self.ingest(ordered_batch)?;
-            self.verify_receipt_delta(&before, client_id)?;
-            let event = self.accepted_reply_event(&reference, &envelope)?;
-            let accepted = Seen {
-                seq: event.seq,
-                hash: event.hash.clone(),
-            };
-            Ok(AcceptedReply {
-                original: reference.original,
-                client_id: reference.client_id,
-                message: reference.message,
-                inner_digest: reference.inner_digest,
-                accepted,
-                image: self.image()?,
-            })
+            match self.accepted_reply_event(&reference, &envelope) {
+                Ok(event) => {
+                    let accepted = Seen {
+                        seq: event.seq,
+                        hash: event.hash.clone(),
+                    };
+                    self.verify_receipt_delta(&before, client_id)?;
+                    Ok(ReplyReceipt::Accepted(AcceptedReply {
+                        original: reference.original,
+                        client_id: reference.client_id,
+                        message: reference.message,
+                        inner_digest: reference.inner_digest,
+                        reference_digest,
+                        publish_digest,
+                        accepted,
+                        image: self.image()?,
+                    }))
+                }
+                Err(NativeError::NotReady) => {
+                    let frontier = prefix_frontier.ok_or(NativeError::History)?;
+                    let pending = self
+                        .engine
+                        .store
+                        .outbox_get(client_id)
+                        .map_err(|_| NativeError::Storage)?
+                        .ok_or(NativeError::History)?;
+                    if self.snapshot_outbox()? != before
+                        || self.pending_envelope(&pending, Some(&reference))? != envelope
+                        || self.retained_head(original.space())?.as_ref() != Some(&frontier)
+                        || self.engine.logs[original.space()]
+                            .events()
+                            .iter()
+                            .any(|event| event.client_id == client_id)
+                    {
+                        return Err(NativeError::History);
+                    }
+                    Ok(ReplyReceipt::Prefix(NativeReceiptPrefix {
+                        original: reference.original,
+                        client_id: reference.client_id,
+                        message: reference.message,
+                        inner_digest: reference.inner_digest,
+                        reference_digest,
+                        publish_digest,
+                        before: initial,
+                        frontier,
+                        image: self.image()?,
+                    }))
+                }
+                Err(error) => Err(error),
+            }
         })();
         if result.is_err() {
             self.usable = false;
@@ -335,4 +489,31 @@ impl DeviceCore {
         }
         Ok(())
     }
+}
+
+fn contiguous_prefix(
+    initial: &Seen,
+    space: &str,
+    client_id: &str,
+    batch: &[Sequenced],
+) -> Option<Seen> {
+    if batch.is_empty() || batch.len() > MAX_BATCH {
+        return None;
+    }
+    let mut frontier = initial.clone();
+    for entry in batch {
+        if entry.env.space() != space
+            || entry.env.is_pruned()
+            || entry.env.client_id() == client_id
+            || Some(entry.seq) != frontier.seq.checked_add(1)
+            || entry.prev != frontier.hash
+        {
+            return None;
+        }
+        frontier = Seen {
+            seq: entry.seq,
+            hash: entry.hash.clone(),
+        };
+    }
+    Some(frontier)
 }

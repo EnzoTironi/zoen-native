@@ -139,6 +139,26 @@ pub struct ReplySync {
     pub runs: Vec<ReplyRun>,
 }
 
+#[derive(Debug, PartialEq, Eq)]
+pub struct ReplyOutputInspection {
+    pub client_id: String,
+    pub message: String,
+    pub generation: u64,
+}
+
+#[derive(Debug, PartialEq, Eq)]
+pub enum ReplyReceiptProgress {
+    Waiting,
+    CatchingUp {
+        through: roda_types::Seen,
+        generation: u64,
+    },
+    Accepted {
+        accepted: roda_types::Seen,
+        generation: u64,
+    },
+}
+
 pub struct RuntimeAuthority {
     finance: finance::Finance,
     execution: execution::Execution,
@@ -156,6 +176,8 @@ pub struct RuntimeAuthority {
     native_cut_entered: tokio::sync::Notify,
     #[cfg(test)]
     native_cut_resume: tokio::sync::Notify,
+    #[cfg(test)]
+    output_fixture: Option<native::FreshOutputNamespace>,
 }
 
 impl RuntimeAuthority {
@@ -198,6 +220,8 @@ impl RuntimeAuthority {
             native_cut_entered: tokio::sync::Notify::new(),
             #[cfg(test)]
             native_cut_resume: tokio::sync::Notify::new(),
+            #[cfg(test)]
+            output_fixture: None,
         })
     }
     pub async fn install_policy(&self, signed: SignedOwnerPolicy) -> Result<String, RuntimeError> {
@@ -298,6 +322,43 @@ impl RuntimeAuthority {
     pub async fn pending_reply_runs(&self, limit: u16) -> Result<Vec<ReplyRun>, RuntimeError> {
         self.execution
             .pending_reply_runs(limit, &self.custody)
+            .await
+    }
+
+    fn production_output_scope(&self) -> Result<&native::FreshOutputNamespace, RuntimeError> {
+        // A fresh fixture cannot attest that old production writers stopped.
+        Err(RuntimeError::CoreAuthorityUnavailable)
+    }
+
+    /// Closed until actual custody, continuity and old-writer barrier evidence
+    /// can authorize this boundary. A locator never creates that evidence.
+    pub async fn prepare_reply_output(
+        &self,
+        run: &str,
+    ) -> Result<ReplyOutputInspection, RuntimeError> {
+        if !id(run) {
+            return Err(RuntimeError::InvalidBinding);
+        }
+        let scope = self.production_output_scope()?;
+        self.native
+            .as_ref()
+            .ok_or(RuntimeError::CoreAuthorityUnavailable)?
+            .prepare_output(self, run, scope)
+            .await
+    }
+
+    pub async fn reconcile_reply_receipt(
+        &self,
+        run: &str,
+    ) -> Result<ReplyReceiptProgress, RuntimeError> {
+        if !id(run) {
+            return Err(RuntimeError::InvalidBinding);
+        }
+        let scope = self.production_output_scope()?;
+        self.native
+            .as_ref()
+            .ok_or(RuntimeError::CoreAuthorityUnavailable)?
+            .reconcile_output(self, run, scope)
             .await
     }
     async fn verified_step(&self, run: &str) -> Result<VerifiedStep, RuntimeError> {
@@ -412,20 +473,24 @@ impl RuntimeAuthority {
                 }
                 _ => RuntimeError::Unavailable,
             })?;
-        let binding = session
+        let admitted = session
             .admitted
             .lock()
             .map_err(|_| RuntimeError::Unavailable)?
             .take()
             .ok_or(RuntimeError::InvalidBinding)?;
         let capture = Capture {
-            binding,
+            binding: admitted.binding,
             result: result.clone(),
         };
         let (digest, sealed) = self.custody.seal(
             &format!("evidence/{}", capture.binding.context.attempt_id),
             &capture,
         )?;
+        // Output association refusal must not prevent either independent store
+        // from retaining an already incurred expense, including late captures.
+        let _ = native::associate_capture(self, step, &capture, &admitted.nonce, &digest, &sealed)
+            .await;
         // Either durable store can retain incurred evidence. It grants no progress.
         let sql = self.finance.capture(&capture, &digest, &sealed).await;
         #[cfg(test)]
@@ -549,7 +614,12 @@ struct Capture {
 struct Session<'a> {
     runtime: &'a RuntimeAuthority,
     step: &'a VerifiedStep,
-    admitted: Mutex<Option<Binding>>,
+    admitted: Mutex<Option<AdmittedBinding>>,
+}
+
+struct AdmittedBinding {
+    binding: Binding,
+    nonce: String,
 }
 
 #[async_trait]
@@ -605,6 +675,7 @@ impl DispatchAuthority for Session<'_> {
                 self.runtime.native_cut_entered.notify_one();
                 self.runtime.native_cut_resume.notified().await;
             }
+            let nonce = admission.nonce().to_string();
             let permit = guard.finish(admission).await?;
             #[cfg(test)]
             if self.runtime.fault.load(Ordering::SeqCst) == 23 {
@@ -619,7 +690,7 @@ impl DispatchAuthority for Session<'_> {
             *self
                 .admitted
                 .lock()
-                .map_err(|_| RuntimeError::Unavailable)? = Some(binding);
+                .map_err(|_| RuntimeError::Unavailable)? = Some(AdmittedBinding { binding, nonce });
             permit.consume()
         }
         .await;

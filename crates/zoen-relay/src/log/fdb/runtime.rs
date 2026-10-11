@@ -139,6 +139,24 @@ impl RuntimeSource {
         Ok(RuntimeSourceBatch { head, entries })
     }
 
+    /// A bounded conflicted observation of the actual full source position.
+    /// Reading it grants no native acceptance, delivery or execution authority.
+    pub async fn position_in(
+        &self,
+        trx: &Transaction,
+        space: &str,
+        seq: u64,
+    ) -> Result<Sequenced, StoreError> {
+        let entry = self.entry_in(trx, space, seq).await?;
+        if entry.env.is_pruned()
+            || entry.env.verify().is_err()
+            || roda_log::chain_hash(space, seq, &entry.prev, &entry.env.wire_hash()) != entry.hash
+        {
+            return Err(invalid());
+        }
+        Ok(entry)
+    }
+
     async fn entry_in(
         &self,
         trx: &Transaction,

@@ -34,6 +34,10 @@ pub(crate) struct FreshAdmission {
     nonce: String,
 }
 impl FreshAdmission {
+    pub(crate) fn nonce(&self) -> &str {
+        &self.nonce
+    }
+
     pub fn consume(self) -> (String, String) {
         (self.attempt, self.nonce)
     }

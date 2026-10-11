@@ -1,6 +1,7 @@
 use super::*;
 pub(super) async fn run() {
-    retained::run().await;
+    Box::pin(retained::run()).await;
+    Box::pin(retained::output::run()).await;
     stores::native_device_custody().await;
     println!("native custody journey: test-provisioned real directory, retained OpenMLS packages, cold restore and device revocation PASS");
     failure_cuts::other_namespace_cannot_refund_dispatched_hold().await;

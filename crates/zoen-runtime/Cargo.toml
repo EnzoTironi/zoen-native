@@ -11,6 +11,7 @@ zoen-models = { path = "../zoen-models" }
 zoen-relay = { path = "../zoen-relay" }
 roda-types.workspace = true
 roda-log.workspace = true
+roda-proto.workspace = true
 roda-ffi = { path = "../roda-ffi" }
 serde.workspace = true
 serde_json.workspace = true
@@ -29,5 +30,4 @@ chrono = { version = "0.4", default-features = false, features = ["std"] }
 [dev-dependencies]
 roda-mls.workspace = true
 roda-store.workspace = true
-roda-proto.workspace = true
 tokio = { version = "1", features = ["net", "io-util"] }

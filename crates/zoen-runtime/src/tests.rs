@@ -76,7 +76,7 @@ impl World {
             match result {
                 Ok(runtime) => successful.push((candidate, runtime)),
                 Err(error) => {
-                    assert!(competing_namespaces);
+                    assert!(competing_namespaces, "unexpected opener error: {error:?}");
                     assert_eq!(error, RuntimeError::DeploymentMismatch);
                 }
             }

@@ -3,6 +3,7 @@ use roda_log::{content::SealedKind, content_hash_of, verify_author};
 use roda_proto::{ClientFrame, Envelope};
 use roda_types::*;
 use serde::{Deserialize, Serialize};
+use sha2::{Digest, Sha256};
 
 use super::publication::MAX_PUBLISH_BYTES;
 use super::{
@@ -37,6 +38,17 @@ fn digest(value: &str) -> bool {
 }
 
 impl ReplyReference {
+    pub(super) fn digests(&self) -> Result<(String, String)> {
+        let json = serde_json::to_vec(self).map_err(|_| NativeError::Storage)?;
+        let wire = STANDARD
+            .decode(&self.wire)
+            .map_err(|_| NativeError::History)?;
+        Ok((
+            hex::encode(Sha256::digest(json)),
+            hex::encode(Sha256::digest(wire)),
+        ))
+    }
+
     pub(super) fn envelope(&self, core: &DeviceCore) -> Result<Envelope> {
         if self.version != 1
             || self.original.profile != PROFILE
@@ -122,7 +134,7 @@ impl DeviceCore {
         original: &ReplyIntent,
         event: &Event,
         envelope: &Envelope,
-    ) -> Result<()> {
+    ) -> Result<(String, String)> {
         let EventBody::MessagePosted { message, .. } = &event.body else {
             return Err(NativeError::History);
         };
@@ -160,7 +172,8 @@ impl DeviceCore {
         self.engine
             .store
             .set_meta(&key, &json)
-            .map_err(|_| NativeError::Storage)
+            .map_err(|_| NativeError::Storage)?;
+        reference.digests()
     }
 
     pub(super) fn reply_reference(&self, client_id: &str) -> Result<Option<ReplyReference>> {
