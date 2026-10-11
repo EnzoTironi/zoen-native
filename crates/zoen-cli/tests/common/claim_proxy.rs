@@ -4,7 +4,7 @@ use roda_proto::{ClientFrame, KeyPackageRecord, Op, Reply, ServerFrame};
 use std::{
     collections::HashMap,
     sync::{
-        atomic::{AtomicBool, Ordering},
+        atomic::{AtomicU8, Ordering},
         Arc,
     },
     time::Duration,
@@ -20,6 +20,7 @@ use tokio_tungstenite::tungstenite::Message;
 pub enum Boundary {
     Request,
     Reply,
+    ReplyThenRequest,
     AbsentCapability,
     AbsentClock,
     MalformedClock,
@@ -54,7 +55,7 @@ impl ClaimProxy {
         let (events, rx) = mpsc::unbounded_channel();
         let release = Arc::new(Notify::new());
         let disconnect = Arc::new(Notify::new());
-        let once = Arc::new(AtomicBool::new(true));
+        let once = Arc::new(AtomicU8::new(0));
         let release_task = release.clone();
         let disconnect_task = disconnect.clone();
         let task = tokio::spawn(async move {
@@ -101,7 +102,7 @@ async fn forward(
     mut socket: TcpStream,
     port: u16,
     boundary: Boundary,
-    once: Arc<AtomicBool>,
+    once: Arc<AtomicU8>,
     events: mpsc::UnboundedSender<Observed>,
     release: Arc<Notify>,
     disconnect: Arc<Notify>,
@@ -147,10 +148,13 @@ async fn forward(
                 let Some(Ok(msg)) = msg else { break };
                 if let Message::Binary(bytes) = &msg {
                     if let Ok(ClientFrame::Req { id, op: Op::ClaimKeyPackages { ids, operation_id } }) = ClientFrame::decode(bytes) {
-                        let held = matches!(boundary, Boundary::Request | Boundary::Reply) && once.swap(false, Ordering::SeqCst);
+                        let held = matches!(boundary, Boundary::Request | Boundary::Reply | Boundary::ReplyThenRequest)
+                            && once.compare_exchange(0, 1, Ordering::SeqCst, Ordering::SeqCst).is_ok();
+                        let retry_held = matches!(boundary, Boundary::ReplyThenRequest) && !held
+                            && once.compare_exchange(1, 2, Ordering::SeqCst, Ordering::SeqCst).is_ok();
                         claims.insert(id, (operation_id.clone(), held));
                         let _ = events.send(Observed::Request { operation: operation_id, targets: ids });
-                        if held && matches!(boundary, Boundary::Request) {
+                        if (held && matches!(boundary, Boundary::Request)) || retry_held {
                             tokio::select! {
                                 _ = release.notified() => {},
                                 _ = disconnect.notified() => break,
@@ -170,19 +174,19 @@ async fn forward(
                                     Boundary::AbsentCapability => capabilities.retain(|c| c != roda_proto::KEY_PACKAGE_CLAIM_CAPABILITY),
                                     Boundary::AbsentClock => server_time_ms = None,
                                     Boundary::MalformedClock => server_time_ms = Some(-1),
-                                    Boundary::Request | Boundary::Reply => {},
+                                    Boundary::Request | Boundary::Reply | Boundary::ReplyThenRequest => {},
                                 }
                                 msg = Message::Binary(ServerFrame::Challenge { nonce, relay, protocol, capabilities, server_time_ms }.encode().into());
                             }
                             ServerFrame::Pong { server_time_ms: Some(time) }
                                 if matches!(boundary, Boundary::AbsentClock | Boundary::MalformedClock)
                                     && roda_proto::KeyPackageClaimClock::from_server_ms(time).is_some()
-                                    && once.swap(false, Ordering::SeqCst) => {
+                                    && once.compare_exchange(0, 1, Ordering::SeqCst, Ordering::SeqCst).is_ok() => {
                                 let _ = events.send(Observed::ClockRefreshed);
                             }
                             ServerFrame::Res { id, result: Ok(Reply::KeyPackages(records)) } => {
                                 if let Some((operation, selected)) = claims.remove(&id) {
-                                    let held = selected && matches!(boundary, Boundary::Reply);
+                                    let held = selected && matches!(boundary, Boundary::Reply | Boundary::ReplyThenRequest);
                                     let _ = events.send(Observed::Reply { operation, records, held });
                                     if held {
                                         tokio::select! {

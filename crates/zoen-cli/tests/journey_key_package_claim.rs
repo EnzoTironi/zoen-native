@@ -418,7 +418,7 @@ async fn empty_claim_schedules_work_and_cannot_look_idle_before_retry() {
     ));
     drop(enrollment);
     assert_eq!(bruno.stock(&w).await, 0);
-    let mut proxy = ClaimProxy::new(w.port, Boundary::Reply).await;
+    let mut proxy = ClaimProxy::new(w.port, Boundary::ReplyThenRequest).await;
     let ana = Device::new(&w, "ana", &proxy.url);
     ana.start().await;
     let bootstrap_deadline = tokio::time::Instant::now() + Duration::from_secs(8);
@@ -477,17 +477,30 @@ async fn empty_claim_schedules_work_and_cannot_look_idle_before_retry() {
         connection.pending, 0,
         "a scheduled claim retry exists outside the event outbox"
     );
-    bruno.start().await;
-    assert_eq!(bruno.stock(&w).await, 32);
+    // Starting Bruno also catches up the joined group. Its settled return can
+    // occur after Ana's retry has legitimately consumed one package. Hold that
+    // request before relay admission to observe publication and consumption apart.
+    let publication_deadline = tokio::time::Instant::now() + Duration::from_secs(8);
+    bruno.core.start_sync(None).unwrap();
     let (retry, _) = next_request(&mut proxy).await;
     assert_ne!(
         retry, empty_operation,
         "a completed empty claim must not replay emptiness forever"
     );
+    while bruno.stock(&w).await != 32 {
+        assert!(
+            tokio::time::Instant::now() < publication_deadline,
+            "Bruno did not publish 32 packages before the held retry"
+        );
+        tokio::time::sleep(Duration::from_millis(20)).await;
+    }
+    assert_eq!(bruno.stock(&w).await, 32);
+    proxy.release.notify_one();
     let (_, records, held) = next_reply(&mut proxy).await;
     assert!(!held);
     assert_eq!(records.len(), 1);
     ana.core.wait_until_settled(8000).await.unwrap();
+    bruno.core.wait_until_settled(8000).await.unwrap();
     assert_eq!(bruno.stock(&w).await, 31);
     readable(&w, &ana, &bruno, &space).await;
 }
