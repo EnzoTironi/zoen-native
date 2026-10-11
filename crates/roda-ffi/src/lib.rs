@@ -22,7 +22,10 @@ pub use liveview::{LiveViewDemoVm, LiveViewInput, LiveViewKey, LiveViewSession};
 mod media;
 mod pages;
 pub use files::FileDto;
-pub use pages::{MarkdownFileDto, PageBlockDto, PageDto, PageEditResult, TextSpanDto};
+pub use pages::{
+    MarkdownFileDto, PageBlockDto, PageDto, PageEditResult, PlanPageBlockDto, PlanPageContentDto,
+    PlanPageDto, PlanProseKindDto, TextSpanDto,
+};
 mod link;
 mod link_api;
 mod linking;
