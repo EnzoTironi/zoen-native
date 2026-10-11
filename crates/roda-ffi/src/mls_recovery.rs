@@ -125,6 +125,7 @@ impl Engine {
         let Some(bytes) = env.recovery() else {
             self.store.meta_delete(&context_meta(env.space()))?;
             self.store.invalidate_recovery_blob(env.space(), None)?;
+            self.net.mls.wake_recovery(env.space());
             return Ok(());
         };
         let r = RecoveryRef::parse(bytes).ok_or_else(|| invalid("invalid recovery reference"))?;
@@ -151,6 +152,7 @@ impl Engine {
         )?;
         self.store
             .invalidate_recovery_blob(env.space(), Some(&reference.blob))?;
+        self.net.mls.wake_recovery(env.space());
         Ok(())
     }
 
@@ -208,6 +210,7 @@ impl Engine {
             .cache_recovery_blob(&reference.space, &reference.blob, bytes)
             .is_ok();
         if ok {
+            self.net.mls.wake_recovery(&reference.space);
             self.net.wake();
         }
         ok
@@ -216,14 +219,7 @@ impl Engine {
     /// Runs after ordered catch-up. A restart resends the exact staged commit; messages
     /// stay held by the persisted recovery marker until the log confirms that commit.
     pub(crate) fn mls_recovery_pass(&mut self) -> R<bool> {
-        let spaces: Vec<String> = self
-            .net
-            .synced
-            .iter()
-            .filter(|s| self.can_recover(s))
-            .cloned()
-            .collect();
-        if spaces.is_empty() {
+        if !self.net.mls.has_recovery_work() {
             return Ok(false);
         }
         let pending: std::collections::HashSet<String> = self
@@ -232,8 +228,12 @@ impl Engine {
             .into_iter()
             .map(|(_, space, _)| space)
             .collect();
+        let mut spaces = self.net.mls.take_recovery_work().into_iter();
         let mut error = None;
-        for space in spaces {
+        while let Some(space) = spaces.next() {
+            if !self.can_recover(&space) {
+                continue;
+            }
             if pending.contains(&space)
                 || self
                     .net
@@ -242,15 +242,18 @@ impl Engine {
                     .get(&space)
                     .is_some_and(|at| *at > Instant::now())
             {
+                self.net.mls.wake_recovery(&space);
                 continue;
             }
             match self.try_mls_recovery(&space) {
                 Ok(true) => {
                     self.net.mls.recovery_retry_at.remove(&space);
+                    self.net.mls.wake_recovery_many(spaces);
                     return Ok(true);
                 }
                 Ok(false) => {}
                 Err(err) => {
+                    self.net.mls.wake_recovery(&space);
                     self.net
                         .mls
                         .recovery_retry_at

@@ -17,7 +17,7 @@ use std::{
 
 use roda_ffi::{
     ConnectionDto, CoreListener, Delivery, EntryKind, MarkdownFileDto, PhotoChange, PrivacyDto,
-    ProfileDto, RodaEngine, SecretVault, SpaceKindDto, SyncCensusActor,
+    ProfileDto, RodaEngine, SecretVault, SpaceKindDto,
 };
 
 struct FileVault {
@@ -564,23 +564,7 @@ async fn main() {
             home.display()
         ));
     }
-    let (me, census_actor) = e
-        .account()
-        .map(|a| {
-            let actor = if matches!(cmd.as_str(), "group" | "read")
-                && std::env::var("ZOEN_M2_CENSUS").as_deref() == Ok("1")
-            {
-                match a.handle.as_str() {
-                    "ana" => Some(SyncCensusActor::Ana),
-                    "bruno" => Some(SyncCensusActor::Bruno),
-                    _ => None,
-                }
-            } else {
-                None
-            };
-            (a.identity_id, actor)
-        })
-        .unwrap_or_default();
+    let me = e.account().map(|a| a.identity_id).unwrap_or_default();
     let watching = cmd == "watch";
     if !offline {
         let listener: Option<Arc<dyn CoreListener>> = if watching {
@@ -592,10 +576,7 @@ async fn main() {
             None
         };
         e.start_sync(listener).unwrap_or_else(|err| die(err));
-        let c = match (cmd.as_str(), census_actor) {
-            ("read", Some(actor)) => e.wait_until_idle_observed(timeout, actor).await,
-            _ => e.wait_until_idle(timeout).await,
-        };
+        let c = e.wait_until_idle(timeout).await;
         if c.state != "online"
             && !matches!(
                 cmd.as_str(),
@@ -723,11 +704,9 @@ async fn main() {
                 .create_group_with(title, ids, privacy)
                 .unwrap_or_else(|err| die(err));
             if !offline {
-                match census_actor {
-                    Some(actor) => e.wait_until_settled_observed(timeout, actor, &space).await,
-                    None => e.wait_until_settled(timeout).await,
-                }
-                .unwrap_or_else(|err| die(err));
+                e.wait_until_settled(timeout)
+                    .await
+                    .unwrap_or_else(|err| die(err));
             }
             println!("{space}");
         }

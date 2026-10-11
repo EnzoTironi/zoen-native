@@ -56,17 +56,6 @@ pub struct ProfileNet {
     sealed: Option<SealedProfile>,
 }
 
-#[derive(Clone, PartialEq, serde::Serialize)]
-pub(crate) struct ProfileIdleCensus {
-    supported: bool,
-    need_agreement_count: usize,
-    no_agreement_count: usize,
-    need_profiles_count: usize,
-    shares_dirty: bool,
-    agreement_due: Option<bool>,
-    upload_due: Option<bool>,
-}
-
 impl ProfileNet {
     pub(crate) fn forget_shared(&mut self) {
         self.shared = None;
@@ -140,6 +129,9 @@ impl Engine {
         let secret = agreement.secret();
         self.net.profiles.agreement = Some(agreement);
         self.net.profiles.shares_dirty = true;
+        self.net
+            .mls
+            .wake_recovery_many(self.net.synced.iter().cloned());
         Ok(secret)
     }
 
@@ -158,6 +150,9 @@ impl Engine {
             self.store.set_profile_fields(&me, 1, &fields.to_bytes())?;
         }
         self.net.profiles.shares_dirty = true;
+        self.net
+            .mls
+            .wake_recovery_many(self.net.synced.iter().cloned());
         match secret.and_then(|b| <[u8; 32]>::try_from(b.as_slice()).ok()) {
             Some(s) => {
                 self.net.profiles.agreement = Some(AgreementKey::from_secret(s));
@@ -553,6 +548,9 @@ impl Engine {
 
     /// A new session: refresh every profile I hold a key for and retry missing shares.
     pub fn profiles_session_start(&mut self, supported: bool) {
+        self.net
+            .mls
+            .wake_recovery_many(self.net.synced.iter().cloned());
         let me = self.me.clone().unwrap_or_default();
         let p = &mut self.net.profiles;
         p.supported = supported;
@@ -683,6 +681,16 @@ impl Engine {
             }
         }
         p.shares_dirty = true;
+        self.net.mls.wake_recovery_many(
+            self.net
+                .synced
+                .iter()
+                .filter(|space| {
+                    self.mls_roster(space)
+                        .is_some_and(|roster| asked.iter().any(|id| roster.contains_key(id)))
+                })
+                .cloned(),
+        );
     }
 
     pub fn take_need_profiles(&self) -> Vec<IdentityId> {
@@ -756,34 +764,5 @@ impl Engine {
             && !p.shares_dirty
             && self.agreement_to_publish().is_none()
             && !self.upload_due()
-    }
-
-    /// Diagnostic counterpart: do not sign or query a short-circuited gate.
-    pub(crate) fn profiles_settled_observed(&self) -> (bool, ProfileIdleCensus) {
-        let p = &self.net.profiles;
-        let mut counts = ProfileIdleCensus {
-            supported: p.supported,
-            need_agreement_count: p.need_agreement.len(),
-            no_agreement_count: p.no_agreement.len(),
-            need_profiles_count: p.need_profiles.len(),
-            shares_dirty: p.shares_dirty,
-            agreement_due: None,
-            upload_due: None,
-        };
-        let settled = !p.supported
-            || (p.need_agreement.is_empty()
-                && p.need_profiles.is_empty()
-                && !p.shares_dirty
-                && {
-                    let due = self.agreement_to_publish().is_some();
-                    counts.agreement_due = Some(due);
-                    !due
-                }
-                && {
-                    let due = self.upload_due();
-                    counts.upload_due = Some(due);
-                    !due
-                });
-        (settled, counts)
     }
 }

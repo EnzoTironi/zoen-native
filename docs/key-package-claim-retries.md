@@ -79,9 +79,21 @@ tests must measure receipt rate, retained bytes, lock waits, and GC backlog.
 The online CLI group command now requires actual settled sync before printing success.
 Explicit `--offline` still creates and queues a local group for later synchronization. An
 empty event outbox is insufficient while a claim, scheduled MLS retry, commit/Welcome,
-or recovery upload is unfinished. The default CLI deadline remains eight seconds;
+recovery upload, or queued recovery check is unfinished. The default CLI deadline remains eight seconds;
 expiration returns a failure and preserves local work. Public Apple/Android idle-wait
 ABI behavior is unchanged; the stricter CLI method is Rust-only.
+
+Recovery checks now use a separate set of groups awaiting work. An idle maintenance tick
+returns before reading group storage. Startup and changes to group state, claim results,
+agreement keys, profile capabilities, or validated recovery references wake the affected
+groups. Each check rereads current membership, roles, and recovery proof before acting.
+The queue holds group identifiers; it does not cache credentials or authorize recovery.
+
+Pending handshakes and future recovery retries remain queued. A storage error preserves
+the work and its original five-second backoff. A successful recovery commit also preserves
+unvisited groups. An empty claim response wakes recovery before retiring the claim: the
+result can make a group ready even when no group commit was created. The ordinary MLS
+completion predicate requires this recovery queue to be empty.
 
 The relay low-water threshold remains 8, the client stock target remains 32, and the
 existing refill journey still requires 32 within 20 seconds. No quota or timeout was
@@ -93,6 +105,10 @@ absence and invalid advertised clocks, a phone event clock 60 seconds ahead, 51-
 batching, independent chat removals during capability fallback, changed/canonical targets, identity/device scoping and revocation, operation
 expiry, simultaneous retries, count/byte saturation rollback, bounded GC, and a genuine
 MLS Welcome plus readable subsequent message.
+
+Recovery regressions also exercise late profile capability, a delayed valid recovery
+blob with an altered blob refused, empty-claim completion, retained work during a future
+retry, and independent groups remaining queued after the first successful recovery.
 
 Historical failures remain separate:
 
