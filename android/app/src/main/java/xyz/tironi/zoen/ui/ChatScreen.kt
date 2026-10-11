@@ -102,6 +102,7 @@ fun ChatScreen(model: ZoenViewModel, state: AppState, spaceId: String, navigate:
     val appIds = state.items.filter { it.app != null }.map { it.id }.toSet()
     val timeline = allEntries.filter { it.inThread == null && (it.kind as? EntryKind.ItemEdited)?.itemId !in appIds }
     val list = rememberLazyListState()
+    val scrollScope = rememberCoroutineScope()
     var firstLoad by rememberSaveable(spaceId) { mutableStateOf(true) }
     var knownIds by rememberSaveable(spaceId) { mutableStateOf(arrayListOf<String>()) }
     var openingUnread by rememberSaveable(spaceId) { mutableLongStateOf(space?.unread?.toLong() ?: -1L) }
@@ -349,7 +350,7 @@ fun ChatScreen(model: ZoenViewModel, state: AppState, spaceId: String, navigate:
                 } else CircularProgressIndicator(Modifier.align(Alignment.Center))
                 if (unseen > 0) FilledTonalButton(onClick = {
                     navigationHaptics.perform(ZoenFeedback.Selection)
-                    model.launch {
+                    scrollScope.launch {
                         if (motion) list.animateScrollToItem(timeline.lastIndex) else list.scrollToItem(timeline.lastIndex)
                         unseen = 0
                     }
@@ -358,7 +359,7 @@ fun ChatScreen(model: ZoenViewModel, state: AppState, spaceId: String, navigate:
                     Text(pluralStringResource(R.plurals.chat_new_messages, unseen, unseen))
                 } else if (timeline.size > 5 && !nearBottom) SmallFloatingActionButton(onClick = {
                     navigationHaptics.perform(ZoenFeedback.Selection)
-                    model.launch { if (motion) list.animateScrollToItem(timeline.lastIndex) else list.scrollToItem(timeline.lastIndex) }
+                    scrollScope.launch { if (motion) list.animateScrollToItem(timeline.lastIndex) else list.scrollToItem(timeline.lastIndex) }
                 }, Modifier.align(Alignment.BottomEnd).padding(16.dp)) {
                     Icon(Icons.Rounded.ArrowDownward, stringResource(R.string.jump_latest))
                 }
@@ -517,6 +518,7 @@ fun ThreadScreen(model: ZoenViewModel, state: AppState, space: String, root: Str
     val loadedEntries by produceState<List<TimelineEntry>>(emptyList(), state.revision, root) { value = model.repository.query { it.thread(space, root) } }
     val entries = loadedEntries
     val list = rememberLazyListState()
+    val scrollScope = rememberCoroutineScope()
     var text by rememberSaveable { mutableStateOf("") }
     var replyTo by rememberSaveable(root) { mutableStateOf(root) }
     var sending by remember { mutableStateOf(false) }
@@ -535,7 +537,7 @@ fun ThreadScreen(model: ZoenViewModel, state: AppState, space: String, root: Str
     }) { padding -> LazyColumn(Modifier.padding(padding), state = list, contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
         items(entries, key = { it.id }) { entry -> TimelineRow(model, entry, navigate, onReply = { replyTo = entry.id }, onThread = null, onQuote = { id ->
             val index = entries.indexOfFirst { it.id == id }
-            if (index >= 0) model.launch { if (motion) list.animateScrollToItem(index) else list.scrollToItem(index) } else navigate(Chat(space, id))
+            if (index >= 0) scrollScope.launch { if (motion) list.animateScrollToItem(index) else list.scrollToItem(index) } else navigate(Chat(space, id))
         }) }
     } }
 }

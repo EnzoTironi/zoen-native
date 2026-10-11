@@ -128,7 +128,8 @@ class LauncherWidgetJourneyTest {
             compose.onNodeWithTag("widget-pin:${initial.id}").performScrollTo().assertIsDisplayed().performTouchInput { click() }
             val addLabels = launcherStrings("add_to_home_screen", "place_automatically")
             val accept = awaitNode("Launcher pin acceptance button") { node ->
-                node.packageName == launcher && node.className == "android.widget.Button" && node.enabled && node.clickable && matchesLabel(node.text, addLabels)
+                node.packageName == launcher && node.className == "android.widget.Button" && node.enabled && node.clickable &&
+                    (matchesLabel(node.text, addLabels) || (launcher == "com.sec.android.app.launcher" && node.id == "$launcher:id/add_button"))
             }
             assertEquals("The launcher must own the pin confirmation window", launcher, readUi()?.packageName)
             if (Build.VERSION.SDK_INT >= 31) {
@@ -159,11 +160,17 @@ class LauncherWidgetJourneyTest {
                 repository.preferences.getString("widget:$widgetId", null) == initial.id && repository.preferences.getString("widget-owner:$widgetId", null) == owner
             }
             trace.put(JSONObject().put("widgetId", widgetId).put("owner", owner).put("initialItem", initial.id))
-
             step("Touch the pinned widget on the actual launcher")
             home()
             val openDeadline = SystemClock.uptimeMillis() + 10_000
             awaitWidget(checkNotNull(configuredTitle), openDeadline)
+            if (launcher == "com.sec.android.app.launcher") {
+                // The pin callback arrives before Samsung enters its workspace resize mode.
+                automation.waitForIdle(250, (openDeadline - SystemClock.uptimeMillis()).also { assertTrue(it > 0) })
+                assertTrue("System Back must finish the visible launcher's resize mode", automation.performGlobalAction(AccessibilityService.GLOBAL_ACTION_BACK))
+                automation.waitForIdle(100, (openDeadline - SystemClock.uptimeMillis()).also { assertTrue(it > 0) })
+                awaitWidget(checkNotNull(configuredTitle), openDeadline)
+            }
             capture("02-launcher-pinned-widget")
             // A capture can outlive a launcher transition. Never reuse pin-preview coordinates.
             touch(awaitWidget(checkNotNull(configuredTitle), openDeadline).title)
@@ -174,7 +181,7 @@ class LauncherWidgetJourneyTest {
             }
             compose.onAllNodesWithText(openedText).onFirst().assertIsDisplayed()
             assertEquals(application.packageName, readUi()?.packageName)
-            capture("03-widget-opens-native-miniapp")
+            capture("03-widget-opens-native-miniapp", committedAppFrame = true)
 
             if (reconfigurable) {
                 step("Long-press and edit the same widget through the launcher")
@@ -182,21 +189,24 @@ class LauncherWidgetJourneyTest {
                 home()
                 longPress(awaitWidget(listTitle).title)
                 val editId = "$launcher:id/widget_reconfigure_button"
+                val editLabels = launcherStrings("quick_option_widget_settings")
+                fun isEdit(node: UiNode) = node.packageName == launcher && node.enabled &&
+                    ((node.clickable && node.id == editId) || (launcher == "com.sec.android.app.launcher" && node.id == "$launcher:id/global_option_label" && matchesLabel(node.text, editLabels)))
                 val instructionLabels = launcherStrings("reconfigurable_widget_education_tip")
                 var editOrInstruction: UiNode? = null
                 await("Launcher reconfigure control or its first-use instruction") {
                     val nodes = readUi()?.descendants().orEmpty().filter { it.visible && it.enabled }
-                    editOrInstruction = nodes.singleOrNull { it.clickable && it.id == editId }
+                    editOrInstruction = nodes.singleOrNull(::isEdit)
                         ?: nodes.singleOrNull { it.text in instructionLabels }
                     editOrInstruction != null
                 }
-                if (checkNotNull(editOrInstruction).id != editId) {
+                if (!isEdit(checkNotNull(editOrInstruction))) {
                     // Launcher3's instruction temporarily hides the resize frame from accessibility.
                     // Its real touch handler closes the instruction without selecting the widget behind it.
                     capture("04-launcher-first-use-edit-instruction")
                     touch(awaitNode("Launcher first-use instruction ready for touch") { it.text in instructionLabels })
                 }
-                val edit = awaitNode("Launcher widget reconfigure control") { it.enabled && it.clickable && it.id == editId }
+                val edit = awaitNode("Launcher widget reconfigure control", ::isEdit)
                 capture("04-launcher-widget-edit-control")
                 touch(edit)
                 compose.waitUntil(10_000) {
@@ -271,7 +281,7 @@ class LauncherWidgetJourneyTest {
             assertTrue("The same Pet title must stay visible after native scrolling",
                 petTitles.fetchSemanticsNodes().indices.any { petTitles[it].isDisplayed() })
             compose.onNodeWithText("${afterFullness.toInt()}%").assertIsDisplayed()
-            capture("08-native-pet-matches-launcher-update")
+            capture("08-native-pet-matches-launcher-update", committedAppFrame = true)
         } catch (error: Throwable) {
             failure = error
             trace.put(JSONObject().put("failedStage", stage).put("error", error.toString()))
@@ -322,7 +332,9 @@ class LauncherWidgetJourneyTest {
     }
 
     private fun home() {
-        assertTrue("System HOME action must succeed", automation.performGlobalAction(AccessibilityService.GLOBAL_ACTION_HOME))
+        if (readUi()?.let(::homeWorkspace) == null) {
+            assertTrue("System HOME action must succeed", automation.performGlobalAction(AccessibilityService.GLOBAL_ACTION_HOME))
+        }
         await("The default launcher's home workspace is foreground") { readUi()?.let(::homeWorkspace) != null }
     }
 
@@ -371,7 +383,8 @@ class LauncherWidgetJourneyTest {
     private fun homeWorkspace(root: UiNode): UiNode? {
         if (root.packageName != launcher) return null
         return root.descendants().singleOrNull {
-            it.id == "$launcher:id/workspace" && it.packageName == launcher && it.visible && it.enabled && !it.bounds.isEmpty
+            (it.id == "$launcher:id/workspace" || (launcher == "com.sec.android.app.launcher" && it.id == "$launcher:id/workspace_fast_recycler_view")) &&
+                it.packageName == launcher && it.visible && it.enabled && !it.bounds.isEmpty
         }
     }
 
@@ -435,7 +448,18 @@ class LauncherWidgetJourneyTest {
 
     @Suppress("DEPRECATION")
     private fun removeFromLauncher(title: String) {
-        val removeLabel = launcherStrings("remove_drop_target_label").single()
+        if (launcher == "com.sec.android.app.launcher") {
+            longPress(awaitWidget(title).title)
+            val labels = launcherStrings("remove")
+            assertTrue("Samsung must expose its localized Remove label", labels.isNotEmpty())
+            fun isRemove(node: UiNode) = node.packageName == launcher && node.enabled &&
+                node.id == "$launcher:id/global_option_label" && matchesLabel(node.text, labels)
+            awaitNode("Samsung Remove control for the selected test widget", ::isRemove)
+            capture("09-launcher-owned-widget-remove-control")
+            touch(awaitNode("Samsung Remove control ready for touch", ::isRemove))
+            return
+        }
+        val removeLabel = launcherStrings("remove_drop_target_label", "action_remove_from_home").single()
         val moveLabels = launcherStrings("action_move")
         val root = checkNotNull(automation.rootInActiveWindow)
         var node: AccessibilityNodeInfo? = null
@@ -508,10 +532,20 @@ class LauncherWidgetJourneyTest {
         return try { read(root) } finally { root.recycle() }
     }
 
-    private fun capture(name: String) {
-        val bitmap = checkNotNull(automation.takeScreenshot()) { "Native launcher screenshot was unavailable" }
-        try { Evidence.outputFile("widgets", "$name.png").outputStream().use { check(bitmap.compress(Bitmap.CompressFormat.PNG, 100, it)) } }
-        finally { bitmap.recycle() }
+    private fun capture(name: String, committedAppFrame: Boolean = false) {
+        if (committedAppFrame) {
+            compose.waitForIdle()
+            var activity: MainActivity? = null
+            InstrumentationRegistry.getInstrumentation().runOnMainSync {
+                activity = ActivityLifecycleMonitorRegistry.getInstance().getActivitiesInStage(Stage.RESUMED)
+                    .filterIsInstance<MainActivity>().single()
+            }
+            CommittedWindowCapture.save(checkNotNull(activity), "widgets", name)
+        } else {
+            val bitmap = checkNotNull(automation.takeScreenshot()) { "Native launcher screenshot was unavailable" }
+            try { Evidence.outputFile("widgets", "$name.png").outputStream().use { check(bitmap.compress(Bitmap.CompressFormat.PNG, 100, it)) } }
+            finally { bitmap.recycle() }
+        }
         val snapshot = readUi()
         Evidence.outputFile("widgets", "$name.json").writeText(JSONObject().put("stage", stage).put("sdk", Build.VERSION.SDK_INT).put("launcher", launcher).put("displayDensity", application.resources.displayMetrics.density).put("ui", JSONArray(snapshot?.descendants()?.map(UiNode::toJson).orEmpty())).toString(2))
     }

@@ -15,6 +15,7 @@ import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
 import xyz.tironi.zoen.ZoenApplication
+import xyz.tironi.zoen.R
 import xyz.tironi.zoen.core.Persona
 import xyz.tironi.zoen.core.PersonaKind
 import xyz.tironi.zoen.data.AndroidSecretVault
@@ -38,7 +39,7 @@ class AgentBrowserJourneyTest {
             compose.onNodeWithTag("browser-takeover-screen").performScrollTo().performClick()
             compose.onNodeWithTag("browser-password").performScrollTo().performTextInput("demo-password")
             compose.runOnIdle { assertEquals(BrowserPhase.Driving, browser.state.value.phase); assertEquals(13, browser.state.value.ownership.typed) }
-            compose.onNodeWithContentDescription("Back").performClick()
+            compose.onNodeWithContentDescription(context.getString(R.string.back)).performClick()
             compose.runOnIdle { assertEquals(1, closed); assertEquals(BrowserPhase.Driving, browser.state.value.phase); assertEquals(0, browser.state.value.ownership.typed) }
             compose.onNodeWithTag("browser-password").performScrollTo().performTextInput("owner-demo")
             compose.onNodeWithTag("browser-done").performScrollTo().performClick()

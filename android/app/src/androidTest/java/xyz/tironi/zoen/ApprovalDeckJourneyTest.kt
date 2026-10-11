@@ -58,13 +58,14 @@ class ApprovalDeckJourneyTest {
     @Test fun swipeThresholdsUndoAndRotationKeepDecisionsUnsignedUntilTheWindowCloses() {
         runBlocking {
             app.repository.change { core ->
-                val shortMoneyRequest = core.requests().first { it.agent.isMine && it.status == RequestStatus.PENDING && it.title == "Buy the bus tickets" }
+                val shortMoneyRequest = core.requests().single { it.agent.isMine && it.status == RequestStatus.PENDING && it.costCents == 24_800L }
                 core.requests().filter { it.agent.isMine && it.status == RequestStatus.PENDING && it.openedMs < shortMoneyRequest.openedMs }.forEach { core.decideRequest(it.id, RequestDecision.DENY) }
             }
         }
         compose.waitForIdle()
         val request = app.repository.state.value.requests.filter { it.agent.isMine && it.status == RequestStatus.PENDING }.minBy { it.openedMs }
-        assertEquals("Buy the bus tickets", request.title)
+        assertEquals(24_800L, requireNotNull(request.costCents))
+        assertEquals("Viação Costa Verde", request.audience)
         assertFalse("The original money request is a red line", request.canAlwaysApprove)
         val before = runBlocking { app.repository.query { it.logEvents(request.spaceId).size } }
         compose.onNodeWithText(app.getString(R.string.activity)).performClick()

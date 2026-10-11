@@ -30,15 +30,23 @@ class ChatReadingJourneyTest {
     private val repository get() = ApplicationProvider.getApplicationContext<ZoenApplication>().repository
     private lateinit var model: ZoenViewModel
     private val visibilityOwner = Any()
+    private var originalMotionScale: String? = null
     @Before fun prepare() {
         repository.preferences.edit().putBoolean("demo", true).putBoolean("onboarded", true).commit()
         runBlocking { repository.boot(true); repository.resetDemo() }
         repository.setAppVisible(true, visibilityOwner)
         model = ViewModelProvider(compose.activity)[ZoenViewModel::class.java]
     }
-    @After fun stopObserving() { repository.setAppVisible(false, visibilityOwner) }
+    @After fun stopObserving() {
+        repository.setAppVisible(false, visibilityOwner)
+        originalMotionScale?.let {
+            shell(if (it == "null") "settings delete global animator_duration_scale" else "settings put global animator_duration_scale $it")
+        }
+    }
 
     @Test fun incomingMessagesKeepReadingPositionAndCountOnlyNewRootMessages() {
+        originalMotionScale = shell("settings get global animator_duration_scale").trim()
+        shell("settings put global animator_duration_scale 1")
         val space = repository.state.value.spaces.first { it.kind == SpaceKindDto.GROUP }
         val friend = space.members.first { !it.isMe && it.kind == PersonaKind.PERSON }
         val ids = runBlocking { repository.change { core ->
@@ -67,6 +75,10 @@ class ChatReadingJourneyTest {
         compose.onNodeWithText("Following while at the bottom").assertIsDisplayed()
         assertTrue(runBlocking { repository.query { it.verifyLog(space.id).valid } })
     }
+
+    private fun shell(command: String): String = android.os.ParcelFileDescriptor.AutoCloseInputStream(
+        androidx.test.platform.app.InstrumentationRegistry.getInstrumentation().uiAutomation.executeShellCommand(command)
+    ).use { it.readBytes().toString(Charsets.UTF_8) }
 
     @Test fun unreadStartsAtFirstIncomingRootDespiteOwnMessagesRepliesAndSystemEvents() {
         val friend = repository.state.value.spaces.first { it.kind == SpaceKindDto.GROUP }.members.first { !it.isMe && it.kind == PersonaKind.PERSON }
