@@ -357,6 +357,35 @@ impl PageSession {
         }
     }
 
+    pub(super) fn plan_snapshot(&mut self, engine: &Engine) -> R<plan::PlanSnapshot> {
+        self.refresh(engine)?;
+        let fold = match &self.plan_history {
+            Some(history) => history.metadata.metadata(),
+            None => engine.plan_timeline(&self.item)?,
+        };
+        if fold.waiting {
+            return Err(invalid("the current Plan is still arriving"));
+        }
+        if fold.frozen_at.is_none() {
+            let current = engine.item_state(&self.item)?.current();
+            if let ItemContent::Plan(document) = &current.content {
+                // Existing legacy clients keep their offline optimistic preview until
+                // cutover. A canonical preview never uses an outbox or local draft.
+                return Ok(plan::PlanSnapshot::legacy(document, current));
+            }
+        }
+        let version = fold
+            .accepted_current
+            .ok_or_else(|| invalid("the Plan has no accepted current version"))?;
+        let source = &fold
+            .slots
+            .iter()
+            .find(|slot| slot.number == Some(version))
+            .ok_or_else(|| invalid("the accepted Plan version has no authenticated source"))?
+            .source;
+        plan::PlanSnapshot::canonical(plan_doc(&self.shadow)?, version, source)
+    }
+
     fn refresh_plan(&mut self, engine: &Engine, tag: &PlanOrigin) -> R<()> {
         let it = engine.item_state(&self.item)?;
         if it.kind != ItemKind::Plan {

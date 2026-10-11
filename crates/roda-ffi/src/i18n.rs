@@ -72,7 +72,7 @@ pub fn money(cents: i64) -> String {
 
 pub fn money_in(lang: Lang, cents: i64) -> String {
     let neg = cents < 0;
-    let c = cents.abs();
+    let c = cents.unsigned_abs();
     let (units, frac) = (c / 100, c % 100);
     let (thousands, decimal, prefix) = match lang {
         Lang::En => (',', '.', "$"),

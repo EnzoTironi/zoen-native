@@ -4,6 +4,8 @@ use roda_docs::plan::{ExpectedLine, LinePatch, PlanCommand};
 use roda_log::chain_hash;
 use roda_proto::{Envelope, Sequenced};
 
+mod consumers;
+
 struct Fixture {
     engine: Engine,
     space: String,

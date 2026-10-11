@@ -189,37 +189,48 @@ impl Engine {
         }
         for it in self.state.items.values() {
             let v = it.versions.last().expect("item sempre tem v1");
-            let (kind, body) = match &v.content {
-                ItemContent::Plan(p) => {
-                    let mut b = p.summary.clone();
-                    for l in p.sections.iter().flat_map(|s| &s.lines) {
-                        b.push_str(" · ");
-                        b.push_str(&l.text);
-                    }
-                    ("item", b)
+            let plan = if it.kind == ItemKind::Plan {
+                match self.plan_snapshot(&it.id) {
+                    Ok(plan) => Some(plan),
+                    Err(_) => continue,
                 }
-                ItemContent::Text { text } => ("item", text.clone()),
-                ItemContent::Page(_) => ("item", self.page_text(&it.id)),
-                ItemContent::File(f) => ("item", format!("{} {}", f.name, f.path)),
-                ItemContent::App(a) => (
-                    "app",
-                    apps::headline(
-                        &a.app,
-                        &serde_json::from_str(&a.state_json).unwrap_or(Value::Null),
-                        now_ms(),
-                    )
-                    .0,
-                ),
+            } else {
+                None
             };
-            st.index_put(
-                kind,
-                &it.id,
-                &it.space,
-                &v.author,
-                v.at_ms,
-                &v.content.title(),
-                &body,
-            )?;
+            let title = plan
+                .as_ref()
+                .map_or_else(|| v.content.title(), |plan| plan.document.title.clone());
+            let author = plan
+                .as_ref()
+                .map_or(v.author.as_str(), |plan| plan.author.as_str());
+            let at_ms = plan.as_ref().map_or(v.at_ms, |plan| plan.at_ms);
+            let (kind, body) = if let Some(plan) = &plan {
+                ("item", plan.text.clone())
+            } else {
+                match &v.content {
+                    ItemContent::Plan(p) => {
+                        let mut b = p.summary.clone();
+                        for l in p.sections.iter().flat_map(|s| &s.lines) {
+                            b.push_str(" · ");
+                            b.push_str(&l.text);
+                        }
+                        ("item", b)
+                    }
+                    ItemContent::Text { text } => ("item", text.clone()),
+                    ItemContent::Page(_) => ("item", self.page_text(&it.id)),
+                    ItemContent::File(f) => ("item", format!("{} {}", f.name, f.path)),
+                    ItemContent::App(a) => (
+                        "app",
+                        apps::headline(
+                            &a.app,
+                            &serde_json::from_str(&a.state_json).unwrap_or(Value::Null),
+                            now_ms(),
+                        )
+                        .0,
+                    ),
+                }
+            };
+            st.index_put(kind, &it.id, &it.space, author, at_ms, &title, &body)?;
         }
         Ok(())
     }
