@@ -2,7 +2,7 @@
 
 The completion gate includes the visible product structure and functional coverage of the current Apple app, with Android equivalents for system APIs. A capability is complete only when it is wired into the app and its real behavior has been exercised. Model availability and system permissions are explicit platform conditions, as they are on Apple. Passing builds alone does not establish feature or visual parity. The [current native experience and upstream reference record](android-native-experience.md) supersedes the historical source-specific checks below; the [product review](android-product-review.md) preserves the earlier corrections.
 
-The current native suite requires 71 passes with no failures or skips on Android 15, using the same final APK pair on both phone and compact displays. Android 9 must pass the other 69 journeys; only the two HTML-origin-isolation cases may report an unsupported installed provider, with the explicit provider update screen remaining required. Current source-specific results belong to the native experience record linked above.
+The current native suite requires 74 passes with no failures or skips on Android 15, using the same final APK pair on both phone and compact displays. Android 9 must pass the other 72 journeys; only the two HTML-origin-isolation cases may report an unsupported installed provider, with the explicit provider update screen remaining required. Current source-specific results belong to the native experience record linked above.
 
 ## Work sequence
 
