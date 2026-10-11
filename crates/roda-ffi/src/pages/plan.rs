@@ -34,7 +34,10 @@ pub(crate) fn checked_total(document: &PlanDoc) -> Option<i64> {
         .sections
         .iter()
         .flat_map(|section| &section.lines)
-        .try_fold(0_i64, |total, line| total.checked_add(line.cost_cents))
+        .try_fold(0_i128, |total, line| {
+            total.checked_add(i128::from(line.cost_cents))
+        })
+        .and_then(|total| i64::try_from(total).ok())
 }
 
 impl PlanSnapshot {
