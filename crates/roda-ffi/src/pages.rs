@@ -9,17 +9,25 @@
 use std::collections::HashMap;
 
 use base64::Engine as _;
-use roda_docs::{BlockEdit, Kind, Page, Span};
+use roda_docs::{BlockEdit, Kind, Page};
 use roda_types::*;
 
 use crate::engine::{Engine, ItemState, R};
 use crate::i18n::t;
 use crate::CoreError;
 
+mod drafts;
+mod plan;
+mod session;
+#[cfg(test)]
+mod tests;
+
+use session::{CommitStatus, DocumentEdit, DocumentView, PageSession, SessionRead};
+
 /// Largest payload that rides inside the event (base64 adds a third; envelopes cap at 90 KB).
 const INLINE_MAX: usize = 48 * 1024;
 
-#[derive(Debug, Clone, PartialEq, uniffi::Record)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, uniffi::Record)]
 pub struct TextSpanDto {
     /// UTF-16 offsets into the block's text.
     pub start: u32,
@@ -29,7 +37,7 @@ pub struct TextSpanDto {
     pub value: String,
 }
 
-#[derive(Debug, Clone, PartialEq, uniffi::Record)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, uniffi::Record)]
 pub struct PageBlockDto {
     pub id: String,
     /// paragraph, heading, bullet, numbered, task, quote, code, divider, image, raw
@@ -65,24 +73,33 @@ pub struct PageDto {
     pub ready: bool,
     /// Edits on this device not saved as a version yet.
     pub unsaved: bool,
+    pub pending_sync: bool,
+    pub save_error: Option<String>,
+    /// Whether the current account may edit this page now.
+    pub can_edit: bool,
+    /// Semantic content hash, including block order and stable ids.
+    pub content_hash: String,
+    /// Opaque CRDT context for the exact blocks returned by this read.
+    pub edit_context: String,
     pub blocks: Vec<PageBlockDto>,
 }
 
-pub(crate) struct PageSession {
-    shadow: Page,
-    live: Page,
-    applied: usize,
-    /// Shadow's frontiers after each applied version (index 0 = version 1).
-    frontiers: Vec<roda_docs::Frontiers>,
-    blocked: bool,
-    dirty: bool,
-    /// Plain text for lists and search, until the page changes.
-    text: Option<String>,
+#[derive(Debug, Clone, PartialEq, uniffi::Record)]
+pub struct PageEditResult {
+    pub mutation_hash: String,
+    pub mutation_id: String,
+    pub applied_content_hash: String,
+    pub replayed: bool,
+    /// This editor's accepted state, before unseen edits merge into `page`.
+    pub applied_edit_context: String,
+    /// Current merged state; it may include changes accepted after this mutation.
+    pub page: PageDto,
 }
 
 #[derive(Default)]
 pub(crate) struct PageCache {
     pub(crate) sessions: std::sync::Mutex<HashMap<ItemId, PageSession>>,
+    pub(crate) epoch: std::sync::Arc<()>,
 }
 
 fn invalid(pt: &str, en: &str) -> CoreError {
@@ -182,39 +199,12 @@ impl Engine {
     }
 
     /// Brings the session for `item` up to date with the log; returns false if not a page.
-    fn page_sync(&self, it: &ItemState, s: &mut PageSession) {
-        while s.applied < it.versions.len() {
-            let ItemContent::Page(c) = &it.versions[s.applied].content else {
-                // An old undo copied another version's payload: nothing new to import.
-                s.frontiers.push(s.shadow.frontiers());
-                s.applied += 1;
-                continue;
-            };
-            let Some(bytes) = self.page_payload(c) else {
-                s.blocked = true;
-                return;
-            };
-            let _ = s.shadow.import(&bytes);
-            let _ = s.live.import(&bytes);
-            s.text = None;
-            s.frontiers.push(s.shadow.frontiers());
-            s.applied += 1;
-        }
-        s.blocked = false;
-    }
-
     fn with_page<T>(
         &self,
         item: &str,
         f: impl FnOnce(&ItemState, &mut PageSession) -> R<T>,
     ) -> R<T> {
-        let it = self
-            .state
-            .items
-            .get(item)
-            .ok_or_else(|| CoreError::NotFound {
-                what: "Item".into(),
-            })?;
+        let it = self.item_state(item)?;
         if it.kind != ItemKind::Page {
             return Err(invalid(
                 "este Item não é uma página",
@@ -226,19 +216,77 @@ impl Engine {
             .sessions
             .lock()
             .unwrap_or_else(|p| p.into_inner());
-        let s = sessions
-            .entry(item.to_string())
-            .or_insert_with(|| PageSession {
-                shadow: Page::new(),
-                live: Page::new(),
-                applied: 0,
-                frontiers: Vec::new(),
-                blocked: false,
-                dirty: false,
-                text: None,
+        let session = match sessions.entry(item.to_string()) {
+            std::collections::hash_map::Entry::Occupied(entry) => entry.into_mut(),
+            std::collections::hash_map::Entry::Vacant(entry) => {
+                entry.insert(PageSession::open(self, item)?)
+            }
+        };
+        f(it, session)
+    }
+
+    fn page_write_author(&self, item: &str) -> R<String> {
+        let me = self.me_id()?;
+        let it = self
+            .state
+            .items
+            .get(item)
+            .ok_or_else(|| CoreError::NotFound {
+                what: "Item".into(),
+            })?;
+        if !self.page_writer(&it.space, &me) {
+            return Err(CoreError::Forbidden {
+                reason: t("só membros editam páginas", "only members can edit pages"),
             });
-        self.page_sync(it, s);
-        f(it, s)
+        }
+        self.author_for(&me)?;
+        Ok(me)
+    }
+
+    fn page_writer(&self, space: &str, actor: &str) -> bool {
+        self.state.spaces.get(space).is_some_and(|s| {
+            s.members
+                .iter()
+                .any(|(id, role)| id == actor && *role != Role::Reader)
+        })
+    }
+
+    fn page_dto(&self, it: &ItemState, read: SessionRead) -> R<PageDto> {
+        let DocumentView::BinaryPage { blocks } = read.view else {
+            return Err(invalid(
+                "este Item não é uma página",
+                "this Item is not a page",
+            ));
+        };
+        if read.tag != session::DocumentTag::BinaryPageV1 {
+            return Err(invalid(
+                "este Item não é uma página",
+                "this Item is not a page",
+            ));
+        }
+        let title = match it.versions.last().map(|v| &v.content) {
+            Some(ItemContent::Page(content)) => content.title.clone(),
+            _ => String::new(),
+        };
+        let path = match it.versions.first().map(|v| &v.content) {
+            Some(ItemContent::Page(content)) => content.path.clone(),
+            _ => String::new(),
+        };
+        Ok(PageDto {
+            item_id: it.id.clone(),
+            space_id: it.space.clone(),
+            title,
+            path,
+            version: it.versions.len() as u32,
+            ready: read.ready,
+            unsaved: read.unsaved,
+            pending_sync: read.pending_sync,
+            save_error: read.save_error,
+            can_edit: read.can_edit,
+            content_hash: read.content_hash,
+            edit_context: read.edit_context,
+            blocks: blocks.iter().map(block_dto).collect(),
+        })
     }
 
     fn page_content(
@@ -261,12 +309,13 @@ impl Engine {
             path: path.to_string(),
             loro,
             blob,
+            manifest: None,
         })
     }
 
     fn new_page(&mut self, space: &str, path: &str, page: Page, origin: &str) -> R<String> {
         let me = self.me_id()?;
-        if !self.is_member(space, &me) {
+        if !self.page_writer(space, &me) {
             return Err(CoreError::Forbidden {
                 reason: t("só membros criam páginas", "only members can create pages"),
             });
@@ -339,44 +388,28 @@ impl Engine {
     }
 
     pub fn page(&self, item: &str) -> R<PageDto> {
-        self.with_page(item, |it, s| {
-            let title = match &it.versions.last().map(|v| &v.content) {
-                Some(ItemContent::Page(c)) => c.title.clone(),
-                _ => String::new(),
-            };
-            let path = match &it.versions.first().map(|v| &v.content) {
-                Some(ItemContent::Page(c)) => c.path.clone(),
-                _ => String::new(),
-            };
-            Ok(PageDto {
-                item_id: it.id.clone(),
-                space_id: it.space.clone(),
-                title,
-                path,
-                version: it.versions.len() as u32,
-                ready: !s.blocked,
-                unsaved: s.dirty,
-                blocks: s.live.blocks().iter().map(block_dto).collect(),
-            })
-        })
+        self.with_page(item, |it, session| self.page_dto(it, session.read(self)?))
     }
 
     /// The page as it read at `version` (for looking back before restoring).
     pub fn page_at(&self, item: &str, version: u32) -> R<PageDto> {
-        let mut dto = self.page(item)?;
-        self.with_page(item, |it, s| {
-            let Some(f) = s.frontiers.get(version.saturating_sub(1) as usize).cloned() else {
-                return Err(invalid("versão não encontrada", "version not found"));
-            };
-            let old = s.shadow.at(&f).map_err(doc_err)?;
+        self.with_page(item, |it, session| {
+            let read = session.read(self)?;
+            let old = session.binary_at(version)?;
+            let mut dto = self.page_dto(it, read)?;
             dto.version = version;
             dto.unsaved = false;
-            if let Some(ItemContent::Page(c)) = it
+            dto.can_edit = false;
+            dto.content_hash = old.content_hash();
+            dto.edit_context = String::new();
+            dto.pending_sync = false;
+            dto.save_error = None;
+            if let Some(ItemContent::Page(content)) = it
                 .versions
                 .get((version as usize).saturating_sub(1))
                 .map(|v| &v.content)
             {
-                dto.title = c.title.clone();
+                dto.title = content.title.clone();
             }
             dto.blocks = old.blocks().iter().map(block_dto).collect();
             Ok(dto)
@@ -384,132 +417,85 @@ impl Engine {
     }
 
     /// Applies an editor's state to this device's copy (not saved as a version yet).
-    pub fn page_apply(&self, item: &str, order: &[String], changed: &[PageBlockDto]) -> R<()> {
-        self.with_page(item, |_, s| {
-            if s.blocked {
-                return Err(invalid(
-                    "a página ainda está chegando",
-                    "the page is still arriving",
-                ));
-            }
-            let current: HashMap<String, Kind> = s
-                .live
-                .blocks()
-                .into_iter()
-                .map(|b| (b.id, b.kind))
-                .collect();
-            let edits: Vec<BlockEdit> = changed
-                .iter()
-                .map(|d| BlockEdit {
-                    id: d.id.clone(),
-                    kind: kind_from_dto(d, current.get(&d.id)),
-                    text: d.text.clone(),
-                    spans: d
-                        .spans
-                        .iter()
-                        .map(|x| Span {
-                            start: x.start,
-                            end: x.end,
-                            key: x.key.clone(),
-                            value: x.value.clone(),
-                        })
-                        .collect(),
-                })
-                .collect();
-            s.live.apply(order, &edits).map_err(doc_err)?;
-            s.dirty = true;
-            s.text = None;
-            Ok(())
+    pub fn page_apply_from(
+        &self,
+        item: &str,
+        mutation_id: &str,
+        context: &str,
+        order: &[String],
+        changed: &[PageBlockDto],
+    ) -> R<PageEditResult> {
+        self.with_page(item, |it, session| {
+            let accepted = session.apply_from(
+                self,
+                mutation_id,
+                context,
+                DocumentEdit::BinaryPage { order, changed },
+            )?;
+            Ok(PageEditResult {
+                mutation_hash: accepted.request_hash,
+                mutation_id: accepted.mutation_id,
+                applied_content_hash: accepted.applied_content_hash,
+                replayed: accepted.replayed,
+                applied_edit_context: accepted.applied_edit_context,
+                page: self.page_dto(it, accepted.current)?,
+            })
         })
     }
 
-    /// Saves this device's unsaved edits as the next version. Returns false if nothing
-    /// changed.
+    /// Queues one new version; an unchanged or already pending page returns false.
     pub fn page_commit(&mut self, item: &str, note: &str) -> R<bool> {
-        let me = self.me_id()?;
-        let pending = self.with_page(item, |it, s| {
-            let bytes = s.live.updates_since(&s.shadow.version());
-            s.dirty = false;
-            let path = match &it.versions.first().map(|v| &v.content) {
-                Some(ItemContent::Page(c)) => c.path.clone(),
-                _ => String::new(),
-            };
-            Ok((bytes, s.live.title(), it.space.clone(), path))
-        })?;
-        let (bytes, title, space, path) = pending;
-        if bytes.is_empty() {
-            return Ok(false);
+        self.page_write_author(item)?;
+        if self.item_state(item)?.kind != ItemKind::Page {
+            return Err(invalid(
+                "este Item não é uma página",
+                "this Item is not a page",
+            ));
         }
-        let title = if title.is_empty() {
-            t("Sem título", "Untitled")
-        } else {
-            title
+        // Detach the one owner before append: an actual storage rollback calls reload,
+        // which must be able to clear the cache without holding its mutex here.
+        let cached = self
+            .pages
+            .sessions
+            .lock()
+            .unwrap_or_else(|p| p.into_inner())
+            .remove(item);
+        let mut session = match cached {
+            Some(session) => session,
+            None => PageSession::open(self, item)?,
         };
-        let content = self.page_content(&space, title, &path, bytes)?;
         let note = if note.is_empty() {
             t("Editou", "Edited")
         } else {
-            note.to_string()
+            note.into()
         };
-        self.append(
-            &space,
-            &me,
-            EventBody::ItemVersioned {
-                item: item.into(),
-                content: ItemContent::Page(content),
-                note,
-            },
-        )?;
-        self.index_dirty = true;
-        Ok(true)
+        let result = session.commit(self, &note);
+        self.pages
+            .sessions
+            .lock()
+            .unwrap_or_else(|p| p.into_inner())
+            .insert(item.into(), session);
+        let queued = matches!(result?, CommitStatus::Queued(_));
+        if queued {
+            self.index_dirty = true;
+        }
+        Ok(queued)
     }
 
-    /// Makes the page read as it did at `version`, as a new version (nothing is lost).
+    /// Makes the page read as it did at version, as a new version.
     pub(crate) fn page_restore(&mut self, item: &str, version: u32, note: &str) -> R<()> {
-        self.with_page(item, |_, s| {
-            let Some(f) = s.frontiers.get(version.saturating_sub(1) as usize).cloned() else {
-                return Err(invalid("versão não encontrada", "version not found"));
-            };
-            s.live.revert_to(&f).map_err(doc_err)?;
-            s.dirty = true;
-            s.text = None;
-            Ok(())
-        })?;
+        self.with_page(item, |_, session| session.restore_binary(self, version))?;
         self.page_commit(item, note)?;
         Ok(())
     }
 
     pub fn page_markdown(&self, item: &str) -> R<String> {
-        self.with_page(item, |_, s| {
-            if s.blocked {
-                return Err(invalid(
-                    "a página ainda está chegando",
-                    "the page is still arriving",
-                ));
-            }
-            Ok(s.live.to_markdown())
-        })
+        self.with_page(item, |_, session| session.binary_markdown(self))
     }
 
-    /// The page's text for search and summaries ("" while it's arriving).
     pub(crate) fn page_text(&self, item: &str) -> String {
-        self.with_page(item, |_, s| {
-            if let Some(t) = &s.text {
-                return Ok(t.clone());
-            }
-            let t = s
-                .live
-                .blocks()
-                .iter()
-                .map(|b| b.plain_text().replace('\u{2028}', " "))
-                .collect::<Vec<_>>()
-                .join("\n");
-            if !s.blocked {
-                s.text = Some(t.clone());
-            }
-            Ok(t)
-        })
-        .unwrap_or_default()
+        self.with_page(item, |_, session| session.binary_text(self))
+            .unwrap_or_default()
     }
 }
 

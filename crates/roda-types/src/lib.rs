@@ -239,6 +239,30 @@ pub struct PageContent {
     pub loro: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub blob: Option<ChunkRef>,
+    /// Absent for ordinary binary Loro pages. Unknown/malformed manifests stay
+    /// inspectable so a typed fold can refuse them without losing version history.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub manifest: Option<PageManifest>,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
+#[serde(untagged)]
+pub enum PageManifest {
+    PlanV1(PlanManifestV1),
+    Unsupported(serde_json::Value),
+}
+
+/// A claim about a locally verifiable prefix, never permission to write or a CAS.
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub struct PlanManifestV1 {
+    pub schema: String,
+    pub space: SpaceId,
+    pub item: ItemId,
+    pub creation_event: String,
+    pub legacy_versions: u32,
+    pub legacy_head: String,
+    pub prefix_sha256: String,
 }
 
 /// One encrypted piece of a file on the relay. `key` opens the copy stored under `blob`

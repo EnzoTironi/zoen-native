@@ -458,7 +458,7 @@ pub(crate) fn export(lead: &str, blocks: &[Block], canonical: bool) -> String {
         if i > 0 && !s.is_empty() && !s.ends_with("\n\n") {
             let prev = &blocks[i - 1];
             let adjacent_in_source = !b.src.is_empty() && !prev.src.is_empty();
-            if !adjacent_in_source && !(prev.kind.is_list_item() && b.kind.is_list_item()) {
+            if !(adjacent_in_source || prev.kind.is_list_item() && b.kind.is_list_item()) {
                 s.push('\n');
             }
         }

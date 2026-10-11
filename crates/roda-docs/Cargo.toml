@@ -7,6 +7,7 @@ license.workspace = true
 publish.workspace = true
 
 [dependencies]
+roda-types.workspace = true
 loro = "1.16"
 comrak = { version = "0.56", default-features = false }
 serde.workspace = true
