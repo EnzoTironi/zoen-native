@@ -85,6 +85,10 @@ class PageDraftRecoveryJourneyTest {
         compose.onAllNodesWithText(app.getString(R.string.restore))[0].assertIsNotEnabled()
         compose.onAllNodesWithText(app.getString(R.string.restore))[1].assertIsNotEnabled()
         InstrumentationRegistry.getInstrumentation().uiAutomation.executeShellCommand("input keyevent KEYCODE_BACK").close()
+        compose.waitUntil(10_000) {
+            compose.onAllNodesWithText(app.getString(R.string.restore)).fetchSemanticsNodes().isEmpty()
+        }
+        compose.onNodeWithTag("page-recovery-actions").assertIsDisplayed()
         scenario.recreate()
         compose.waitUntil(10_000) { compose.onAllNodesWithTag("page-copy-draft").fetchSemanticsNodes().isNotEmpty() }
         compose.onNodeWithTag("page-discard-draft").performClick()
