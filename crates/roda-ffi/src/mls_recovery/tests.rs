@@ -102,6 +102,56 @@ fn recovery_inspection_tracks_held_commits_and_rejects_corrupted_storage() {
     assert!(engine.recovery_group_state(space).is_err());
 }
 
+#[test]
+fn cached_recovery_inspection_rejects_changed_credentials_without_database_writes() {
+    let mut engine = Engine::open(":memory:").unwrap();
+    engine
+        .create_account("Ana", "ana", "http://relay.test")
+        .unwrap();
+    let space = "recovery-inspection-credentials";
+    engine.device().unwrap().create_group(space).unwrap();
+    assert_eq!(
+        engine.recovery_group_state(space).unwrap(),
+        GroupState::Ready
+    );
+    let changes = engine.store.conn().total_changes();
+    let account = engine.net.account.clone().unwrap();
+    let author = engine.net.author.clone().unwrap();
+
+    engine.net.account.as_mut().unwrap().cert = "00".repeat(64);
+    assert!(engine.recovery_group_state(space).is_err());
+    engine.net.account = Some(account.clone());
+    assert_eq!(
+        engine.recovery_group_state(space).unwrap(),
+        GroupState::Ready
+    );
+
+    engine.net.account.as_mut().unwrap().identity = roda_log::Signer::generate().id();
+    assert!(engine.recovery_group_state(space).is_err());
+    engine.net.account = Some(account);
+    assert_eq!(
+        engine.recovery_group_state(space).unwrap(),
+        GroupState::Ready
+    );
+
+    engine.net.author.as_mut().unwrap().key = roda_log::Signer::generate();
+    assert!(engine.recovery_group_state(space).is_err());
+    engine.net.author = Some(author.clone());
+    assert_eq!(
+        engine.recovery_group_state(space).unwrap(),
+        GroupState::Ready
+    );
+
+    engine.net.author = None;
+    assert!(engine.recovery_group_state(space).is_err());
+    engine.net.author = Some(author);
+    assert_eq!(
+        engine.recovery_group_state(space).unwrap(),
+        GroupState::Ready
+    );
+    assert_eq!(engine.store.conn().total_changes(), changes);
+}
+
 fn ordered(engine: &Engine, env: Envelope) -> Sequenced {
     let (seq, prev) = engine
         .logs

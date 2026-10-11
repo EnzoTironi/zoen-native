@@ -3,7 +3,7 @@
 
 use roda_log::content::{Sealed, SealedKind};
 use roda_log::recovery::{self, RecoveryRef};
-use roda_mls::{recovery::verify_group_info, Commit, GroupState, SUITE_ID};
+use roda_mls::{recovery::verify_group_info, Commit, GroupState, Leaf, SUITE_ID};
 use roda_proto::Envelope;
 use roda_types::{Event, Role};
 use serde::{Deserialize, Serialize};
@@ -198,7 +198,14 @@ impl Engine {
     /// Reuse authenticated classifications while the exclusively locked database is
     /// unchanged. Writes and schema changes invalidate them; transactions never cache.
     fn recovery_group_state(&mut self, space: &str) -> R<GroupState> {
-        let leaf = self.device()?.leaf().clone();
+        let leaf = match (&self.net.author, &self.net.account) {
+            (Some(author), Some(account)) => Leaf {
+                identity: account.identity.clone(),
+                device: author.key.id(),
+                cert: account.cert.clone(),
+            },
+            _ => return self.device()?.group_state(space).map_err(invalid),
+        };
         let conn = self.store.conn();
         if !conn.is_autocommit() {
             self.net.mls.recovery_checked_generation = None;
