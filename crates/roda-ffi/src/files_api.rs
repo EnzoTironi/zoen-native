@@ -1,7 +1,7 @@
 //! Pages and files for the apps (ADR 0040).
 
 use crate::files::FileDto;
-use crate::pages::{MarkdownFileDto, PageBlockDto, PageDto};
+use crate::pages::{MarkdownFileDto, PageBlockDto, PageDto, PageEditResult};
 use crate::{CoreError, ItemDetail, RodaEngine};
 
 #[uniffi::export]
@@ -59,7 +59,30 @@ impl RodaEngine {
         order: Vec<String>,
         changed: Vec<PageBlockDto>,
     ) -> Result<(), CoreError> {
-        self.lock().page_apply(&item_id, &order, &changed)
+        let engine = self.lock();
+        let current = engine.page(&item_id)?;
+        engine.page_apply_from(
+            &item_id,
+            &roda_types::new_id("page_edit"),
+            &current.edit_context,
+            &order,
+            &changed,
+        )?;
+        Ok(())
+    }
+
+    /// Applies to the context actually observed by this editor. The mutation receipt
+    /// allows retries without applying the edit again or overwriting unseen changes.
+    pub fn page_apply_from(
+        &self,
+        item_id: String,
+        mutation_id: String,
+        edit_context: String,
+        order: Vec<String>,
+        changed: Vec<PageBlockDto>,
+    ) -> Result<PageEditResult, CoreError> {
+        self.lock()
+            .page_apply_from(&item_id, &mutation_id, &edit_context, &order, &changed)
     }
 
     /// Saves unsaved edits as a new version for everyone. False if nothing changed.

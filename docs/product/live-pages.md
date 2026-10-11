@@ -42,7 +42,7 @@ Only write a new page version when the materialized content changes. Record sour
 
 ## Current implementation and gaps
 
-A frozen local typed-session check passed 61 document and 122 FFI tests, plus all-target Clippy. A later warm-shadow candidate passed both actual-media Binary/Plan reuse/reload regressions and independent focused review. The current local integration includes main `62c763b2` and preserved its 60 source files; fresh full checks remain pending. These results do not activate production Plan sessions, typed DTOs, compatibility callers, mixed-version writers or the native Plan editor. Older detailed editor/checkpoint evidence below retains its original build scope.
+The isolated shared-session candidate based on main `7cad5b1` passed formatting, all-target Clippy, 61 document tests, 7 type compatibility tests and all 120 FFI tests on 11 October 2026, with no ignored or filtered tests. Public Binary Pages use one session for editing, encrypted recovery, history and atomic publication. The [client/session contract](../dev/live-page-session.md) explains observed contexts, exact retries and the retained older editing API. Plan Page APIs still reject Plan Items: typed client DTOs, canonical consumer migration, mixed-version writers and the native Plan editor remain required. Older detailed editor/checkpoint evidence below retains its original build scope.
 
 | Capability | Current code | Required proof |
 | --- | --- | --- |
