@@ -51,6 +51,7 @@ fn add_identity(engine: &mut Engine, name: &str) -> String {
                 glyph: None,
                 owner: None,
                 bio: String::new(),
+                owner_proof: None,
             },
             true,
         )
@@ -733,7 +734,10 @@ fn invalid_undo_sources_do_not_shift_legacy_version_addresses() {
 
 #[test]
 fn transport_confirmation_cannot_ack_a_semantically_refused_page_or_late_legacy_undo() {
-    let mut fixture = Fixture::new();
+    let directory = std::env::temp_dir().join(new_id("plan-refused-outbox-reopen"));
+    std::fs::create_dir_all(&directory).unwrap();
+    let path = directory.join("plan.sqlite");
+    let fixture = Fixture::at(path.to_str().unwrap());
     let baseline = fixture.fold();
     let document = edited(
         baseline.document.as_ref().unwrap(),
@@ -743,16 +747,64 @@ fn transport_confirmation_cannot_ack_a_semantically_refused_page_or_late_legacy_
         },
     );
     let valid = page(baseline.manifest().unwrap(), &document);
-    let refused = fixture.queue(fixture.version(ItemContent::Page(PageContent {
-        manifest: None,
-        ..valid.clone()
-    })));
+    let refused = fixture.signed_as(
+        &fixture.owner,
+        fixture.version(ItemContent::Page(PageContent {
+            manifest: None,
+            ..valid.clone()
+        })),
+    );
+    assert!(roda_log::verify_author(&refused).is_ok());
+    let raw = fixture.engine.store.events(&fixture.space).unwrap();
+    // A pre-upgrade signed outbox fact must survive recovery without being admitted
+    // as a new publication or projected as an authorized Plan version.
+    fixture.engine.store.outbox_put(&refused).unwrap();
+    let Fixture {
+        engine,
+        space,
+        item,
+        owner,
+    } = fixture;
+    drop(engine);
+    let mut fixture = Fixture {
+        engine: Engine::open(path.to_str().unwrap()).unwrap(),
+        space,
+        item,
+        owner,
+    };
+    assert_eq!(fixture.engine.store.events(&fixture.space).unwrap(), raw);
+    assert_eq!(
+        fixture.engine.store.outbox_get(&refused.client_id).unwrap(),
+        Some(refused.clone())
+    );
+    assert_eq!(
+        fixture.engine.net.pending.get(&refused.client_id),
+        Some(&fixture.space)
+    );
+    assert_eq!(fixture.engine.state.items[&fixture.item].versions.len(), 1);
+    assert_eq!(view(&fixture.fold()), original());
+    assert!(matches!(
+        fixture.fold().slots.last().unwrap().acceptance,
+        Acceptance::Pending
+    ));
     let refused_source = source(&fixture.space, &fixture.item, &refused, false);
     deliver(&mut fixture.engine, &refused, Ingest::Confirmed);
     assert!(!fixture
         .fold()
         .acknowledges(&refused.client_id, &refused_source.event_id));
     assert!(fixture.fold().frozen_at.is_none());
+    assert!(fixture
+        .engine
+        .store
+        .outbox_get(&refused.client_id)
+        .unwrap()
+        .is_none());
+    assert!(!fixture.engine.net.pending.contains_key(&refused.client_id));
+    assert_eq!(fixture.engine.state.items[&fixture.item].versions.len(), 1);
+    assert!(matches!(
+        fixture.fold().slots.last().unwrap().acceptance,
+        Acceptance::Refused(_)
+    ));
 
     let valid = fixture.queue(fixture.version(ItemContent::Page(valid)));
     let valid_source = source(&fixture.space, &fixture.item, &valid, false);
@@ -785,6 +837,22 @@ fn transport_confirmation_cannot_ack_a_semantically_refused_page_or_late_legacy_
         fold.slots[2].source.ordered,
         Some((confirmed.seq, confirmed.hash))
     );
+    let raw = fixture.engine.store.events(&fixture.space).unwrap();
+    let space = fixture.space.clone();
+    let item = fixture.item.clone();
+    drop(fixture);
+    let reopened = Engine::open(path.to_str().unwrap()).unwrap();
+    let recovered = reopened.plan_timeline(&item).unwrap();
+    assert_eq!(recovered.slots, fold.slots);
+    assert_eq!(recovered.frozen_at, fold.frozen_at);
+    assert_eq!(recovered.accepted_current, fold.accepted_current);
+    assert_eq!(view(&recovered), view(&fold));
+    assert_eq!(reopened.store.events(&space).unwrap(), raw);
+    assert!(reopened.logs[&space].verify().is_ok());
+    assert!(!recovered.acknowledges(&refused.client_id, &refused_source.event_id));
+    assert!(recovered.acknowledges(&valid.client_id, &valid_source.event_id));
+    drop(reopened);
+    std::fs::remove_dir_all(directory).unwrap();
 }
 
 #[test]
@@ -939,4 +1007,124 @@ fn reopening_the_real_database_reverifies_identical_sources_history_and_cutover(
     ));
     drop(reopened);
     std::fs::remove_dir_all(directory).unwrap();
+}
+
+#[test]
+fn tagged_plan_versions_preserve_author_space_and_creation_checks() {
+    let mut fixture = Fixture::new();
+    let reader = add_identity(&mut fixture.engine, "Reader");
+    let removed = add_identity(&mut fixture.engine, "Removed");
+    fixture.ordered(EventBody::MemberAdded {
+        identity: reader.clone(),
+        role: Role::Reader,
+    });
+    fixture.ordered(EventBody::MemberAdded {
+        identity: removed.clone(),
+        role: Role::Member,
+    });
+    fixture.ordered(EventBody::MemberRemoved {
+        identity: removed.clone(),
+    });
+    let other_space = new_id("other-plan-space");
+    fixture
+        .engine
+        .append(
+            &other_space,
+            &fixture.owner,
+            EventBody::SpaceCreated {
+                title: "Other conversation".into(),
+                kind: SpaceKind::Group,
+                privacy: Privacy::Public,
+            },
+        )
+        .unwrap();
+    let baseline = fixture.fold();
+    let document = edited(
+        baseline.document.as_ref().unwrap(),
+        LinePatch {
+            done: Some(true),
+            ..Default::default()
+        },
+    );
+    let content = page(baseline.manifest().unwrap(), &document);
+    let mut ordinary = content.clone();
+    ordinary.manifest = None;
+    let mut unsupported = content.clone();
+    unsupported.manifest = Some(PageManifest::Unsupported(serde_json::json!({
+        "schema": "future"
+    })));
+    let version = fixture.version(ItemContent::Page(content.clone()));
+    let refusals = [
+        (
+            fixture.space.clone(),
+            fixture.owner.clone(),
+            fixture.version(ItemContent::Page(ordinary)),
+        ),
+        (
+            fixture.space.clone(),
+            fixture.owner.clone(),
+            fixture.version(ItemContent::Page(unsupported)),
+        ),
+        (other_space.clone(), fixture.owner.clone(), version.clone()),
+        (fixture.space.clone(), reader, version.clone()),
+        (fixture.space.clone(), removed, version.clone()),
+        (
+            fixture.space.clone(),
+            fixture.owner.clone(),
+            EventBody::ItemCreated {
+                item: new_id("plan-page-creation"),
+                kind: ItemKind::Plan,
+                content: ItemContent::Page(content.clone()),
+                origin: "unsupported creation".into(),
+            },
+        ),
+        (
+            fixture.space.clone(),
+            fixture.owner.clone(),
+            EventBody::ItemVersioned {
+                item: new_id("missing-plan"),
+                content: ItemContent::Page(content),
+                note: "missing target".into(),
+            },
+        ),
+    ];
+    let saved = fixture.engine.store.events(&fixture.space).unwrap();
+    let other_saved = fixture.engine.store.events(&other_space).unwrap();
+    let versions = fixture
+        .engine
+        .item_state(&fixture.item)
+        .unwrap()
+        .versions
+        .len();
+    for (space, actor, body) in refusals {
+        let author = fixture.engine.author_for(&actor).unwrap();
+        assert!(fixture
+            .engine
+            .append_synced(&space, &author, 1_800_000_000_000, body)
+            .is_err());
+    }
+    assert_eq!(fixture.engine.store.outbox_len().unwrap(), 0);
+    assert_eq!(fixture.engine.store.events(&fixture.space).unwrap(), saved);
+    assert_eq!(
+        fixture.engine.store.events(&other_space).unwrap(),
+        other_saved
+    );
+    assert_eq!(
+        fixture
+            .engine
+            .item_state(&fixture.item)
+            .unwrap()
+            .versions
+            .len(),
+        versions
+    );
+    let pending = fixture.queue(version);
+    assert_eq!(fixture.engine.store.outbox_len().unwrap(), 1);
+    let confirmed = deliver(&mut fixture.engine, &pending, Ingest::Confirmed);
+    let fold = fixture.fold();
+    assert_eq!(view(&fold), document.view().unwrap().to_plan_doc());
+    assert!(fold.acknowledges(
+        &confirmed.client_id,
+        &source(&fixture.space, &fixture.item, &confirmed, true).event_id
+    ));
 }

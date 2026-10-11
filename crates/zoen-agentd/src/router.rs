@@ -213,5 +213,6 @@ fn card(agent: &str, m: &ToolManifest) -> AgentRequest {
         content_hash: format!("{}:{hash}", tier.capability(&m.id)),
         item: None,
         line: None,
+        proposal: None,
     }
 }

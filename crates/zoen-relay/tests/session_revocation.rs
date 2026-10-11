@@ -280,6 +280,7 @@ async fn request(socket: &mut Socket, id: u64, op: Op) -> Result<Reply, String> 
 
 fn profile(author: &Author, handle: &str) -> Identity {
     Identity {
+        owner_proof: None,
         id: author.identity.clone(),
         kind: IdentityKind::Person,
         name: "Ana".into(),
@@ -315,6 +316,7 @@ async fn stalled_operation_revocation(publish: bool) {
             id: 1,
             op: Op::Register {
                 profile: Identity {
+                    owner_proof: None,
                     id: root.id(),
                     kind: IdentityKind::Person,
                     name: "Ana".into(),

@@ -78,6 +78,7 @@ impl Engine {
             self.wipe()?;
         }
         let me = Identity {
+            owner_proof: None,
             id: identity.id(),
             kind: IdentityKind::Person,
             name: b.name.clone(),

@@ -138,17 +138,23 @@ impl ModelGateway {
         operation == Operation::ChatCompletion
     }
 
-    pub async fn complete(
+    /// Validates and describes the exact wire request without admitting or
+    /// sending it. Retained runtimes can freeze the same dispatch binding that
+    /// `complete` will present to their authority.
+    pub fn preflight(&self, request: &ModelRequest) -> Result<DispatchRequest, GatewayError> {
+        self.prepare(request).map(|(_, dispatch)| dispatch)
+    }
+
+    fn prepare(
         &self,
-        request: ModelRequest,
-        authority: &dyn DispatchAuthority,
-    ) -> Result<ModelAttemptResult, GatewayError> {
+        request: &ModelRequest,
+    ) -> Result<(rig_core::completion::CompletionRequest, DispatchRequest), GatewayError> {
         let limits = self.config.limits;
-        let (prepared, provider, digest) = tracing::subscriber::with_default(
+        let (prepared, digest, encoded_request_bytes) = tracing::subscriber::with_default(
             tracing::subscriber::NoSubscriber::default(),
             || {
                 let prepared = validation::prepare(
-                    &request,
+                    request,
                     limits.max_output_tokens,
                     limits.max_request_bytes,
                 )?;
@@ -183,15 +189,36 @@ impl ModelGateway {
                     "timeout_ms": limits.timeout.as_millis(),
                     "connect_timeout_ms": limits.connect_timeout.as_millis(),
                 });
-                let digest = validation::digest(&request, &profile, limits.max_request_bytes)?;
-                Ok::<_, GatewayError>((prepared, provider, digest))
+                let digest = validation::digest(request, &profile, limits.max_request_bytes)?;
+                Ok::<_, GatewayError>((prepared, digest, bytes.len() as u64))
             },
         )?;
         let admission = DispatchRequest {
             context: request.context.clone(),
             request_digest: digest.clone(),
             profile: CHAT_PROFILE,
+            descriptor: DispatchDescriptor {
+                operation: request.operation,
+                endpoint: format!("{}/chat/completions", self.config.base_url),
+                model: self.config.model.clone(),
+                credential_ref: self.config.credential_ref.clone(),
+                encoded_request_bytes,
+                max_request_bytes: limits.max_request_bytes as u64,
+                max_response_bytes: limits.max_response_bytes as u64,
+                requested_output_tokens: request.max_output_tokens,
+            },
         };
+        Ok((prepared, admission))
+    }
+
+    pub async fn complete(
+        &self,
+        request: ModelRequest,
+        authority: &dyn DispatchAuthority,
+    ) -> Result<ModelAttemptResult, GatewayError> {
+        let limits = self.config.limits;
+        let (prepared, admission) = self.prepare(&request)?;
+        let digest = admission.request_digest.clone();
         if authority.admit(&admission).await? != Admission::Fresh {
             return Err(GatewayError::NotFresh);
         }
@@ -205,6 +232,8 @@ impl ModelGateway {
         };
         let model =
             tracing::subscriber::with_default(tracing::subscriber::NoSubscriber::default(), || {
+                let provider = OpenAIConfig::new(self.config.api_key.clone())
+                    .with_base_url(&self.config.base_url);
                 provider.connect(transport).chat(&self.config.model)
             });
         // Rig 0.44 trace_json logs raw requests/replies even with content
