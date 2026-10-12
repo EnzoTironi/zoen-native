@@ -244,6 +244,9 @@ impl<'a> PlanReplay<'a> {
                 .get(request)
                 .and_then(|request| request.req.item.as_deref())
             {
+                Some(item) if matches!(mode, Mode::Pending) && self.pending_cutover(item)? => {
+                    PlanRead::Changed
+                }
                 Some(item) => match self.read(state, &event.space, item, end, mode)? {
                     PlanRead::Ready { legacy: false, .. } if matches!(mode, Mode::Pending) => {
                         PlanRead::Changed

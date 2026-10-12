@@ -255,6 +255,19 @@ fn optimistic_canonical_pages_cannot_supply_confirmed_approval_content() {
     );
     let pending = fixture
         .queue(fixture.version(ItemContent::Page(page(fold.manifest().unwrap(), &document))));
+    let baseline = open(&mut fixture, &agent, &original());
+    let queued = fixture.engine.store.outbox().unwrap().len();
+    let author = fixture.engine.author_for(&fixture.owner).unwrap();
+    assert!(fixture
+        .engine
+        .append_synced(
+            &fixture.space,
+            &author,
+            1_800_000_000_000,
+            decision(&baseline, true)
+        )
+        .is_err());
+    assert_eq!(fixture.engine.store.outbox().unwrap().len(), queued);
     fixture.ordered(decision(&request, true));
     assert_eq!(
         fixture.engine.state.requests[&request.id].status,
@@ -534,7 +547,7 @@ fn unauthorized_owner_hash_and_receipt_checks_precede_missing_payload_reads() {
 fn storage_errors_preserve_the_stable_projection_and_raw_decision_for_retry() {
     let mut fixture = Fixture::new();
     let agent = agent(&mut fixture);
-    let (page, _, _, _, document) = missing_blob(
+    let (page, bytes, wanted, _, document) = missing_blob(
         &fixture,
         LinePatch {
             text: Some("Infrastructure wait".into()),
@@ -557,9 +570,10 @@ fn storage_errors_preserve_the_stable_projection_and_raw_decision_for_retry() {
         .unwrap();
     let incoming = frame(&fixture.engine, &signed);
     assert!(matches!(
-        fixture.engine.ingest(incoming),
+        fixture.engine.ingest(incoming.clone()),
         Ingest::Invalid(_)
     ));
+    assert!(fixture.engine.approval_replay_needed);
     assert_eq!(
         fixture.engine.state.requests[&request.id].status,
         ReqStatus::Pending
@@ -586,19 +600,31 @@ fn storage_errors_preserve_the_stable_projection_and_raw_decision_for_retry() {
         .conn()
         .execute_batch("ALTER TABLE temporarily_unavailable_media RENAME TO media")
         .unwrap();
-    fixture.engine.reproject_approval_overlay().unwrap();
+    assert_eq!(fixture.engine.ingest(incoming), Ingest::Duplicate);
     assert!(fixture.engine.state.waiting_spaces.contains(&fixture.space));
+    assert!(!fixture.engine.approval_replay_needed);
+    assert!(fixture
+        .engine
+        .import_media(&wanted.plain, &bytes, "application/json")
+        .unwrap());
+    assert_eq!(
+        fixture.engine.state.requests[&request.id].status,
+        ReqStatus::Approved
+    );
 }
 
 #[test]
 fn exact_text_and_cents_select_the_first_duplicate_id_while_done_is_not_hashed() {
     let mut fixture = Fixture::new();
     let agent = agent(&mut fixture);
+    let mut legacy = original();
+    legacy.sections[0].lines[0].cost_cents = -17;
+    fixture.ordered(fixture.version(ItemContent::Plan(legacy)));
     let document = canonical(
         &mut fixture,
         LinePatch {
             text: Some("Cafe\u{301}\r\n😀".into()),
-            cost_cents: Some(-17),
+            cost_cents: None,
             done: Some(true),
         },
     );
