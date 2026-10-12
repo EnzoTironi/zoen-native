@@ -152,7 +152,7 @@ pub(crate) struct ItemState {
 }
 
 impl ItemState {
-    fn current(&self) -> &Version {
+    pub(crate) fn current(&self) -> &Version {
         self.versions.last().expect("item sempre tem v1")
     }
 }
@@ -809,41 +809,60 @@ impl Engine {
     pub(crate) fn card(&self, item: &str) -> Option<ItemCard> {
         let it = self.state.items.get(item)?;
         let v = it.current();
-        let (summary, total, budget, lines, done) = match &v.content {
-            ItemContent::Plan(p) => {
-                let all: Vec<&PlanLine> = p.sections.iter().flat_map(|s| &s.lines).collect();
-                (
-                    p.summary.clone(),
-                    Some(p.total_cents()),
-                    p.budget_cents,
-                    all.len() as u32,
-                    all.iter().filter(|l| l.done).count() as u32,
-                )
+        let plan = if it.kind == ItemKind::Plan {
+            Some(self.plan_snapshot(item).ok()?)
+        } else {
+            None
+        };
+        let title = plan
+            .as_ref()
+            .map_or_else(|| v.content.title(), |plan| plan.document.title.clone());
+        let version = plan.as_ref().map_or(v.number, |plan| plan.version);
+        let document = plan.as_ref().map(|plan| &plan.document).or({
+            if let ItemContent::Plan(document) = &v.content {
+                Some(document)
+            } else {
+                None
             }
-            ItemContent::Text { text } => (text.clone(), None, None, 0, 0),
-            ItemContent::App(_) => (String::new(), None, None, 0, 0),
-            ItemContent::Page(_) => {
-                let text = self.page_text(item);
-                let summary: String = text
-                    .lines()
-                    .skip(1)
-                    .find(|l| !l.trim().is_empty())
-                    .unwrap_or("")
-                    .chars()
-                    .take(160)
-                    .collect();
-                (summary, None, None, 0, 0)
+        });
+        let (summary, total, budget, lines, done) = if let Some(p) = document {
+            let all: Vec<&PlanLine> = p.sections.iter().flat_map(|s| &s.lines).collect();
+            (
+                p.summary.clone(),
+                plan.as_ref()
+                    .map_or_else(|| Self::plan_total(p), |plan| plan.total_cents),
+                p.budget_cents,
+                all.len() as u32,
+                all.iter().filter(|l| l.done).count() as u32,
+            )
+        } else {
+            match &v.content {
+                ItemContent::Plan(_) => return None,
+                ItemContent::Text { text } => (text.clone(), None, None, 0, 0),
+                ItemContent::App(_) => (String::new(), None, None, 0, 0),
+                ItemContent::Page(_) => {
+                    let text = self.page_text(item);
+                    let summary: String = text
+                        .lines()
+                        .skip(1)
+                        .find(|l| !l.trim().is_empty())
+                        .unwrap_or("")
+                        .chars()
+                        .take(160)
+                        .collect();
+                    (summary, None, None, 0, 0)
+                }
+                ItemContent::File(f) => (f.mime.clone(), None, None, 0, 0),
             }
-            ItemContent::File(f) => (f.mime.clone(), None, None, 0, 0),
         };
         Some(ItemCard {
             app: self.app_state_dto(it),
             item_id: it.id.clone(),
-            title: v.content.title(),
+            title,
             summary,
             kind_label: kind_label(it.kind).into(),
             kind_id: kind_id(it.kind).into(),
-            version: v.number,
+            version,
             total_cents: total,
             budget_cents: budget,
             line_count: lines,
@@ -1015,17 +1034,11 @@ impl Engine {
 
     fn request_is_current(&self, req: &AgentRequest) -> bool {
         match (&req.item, &req.line) {
-            (Some(item), Some(line)) => self
-                .state
-                .items
-                .get(item)
-                .and_then(|it| match &it.current().content {
-                    ItemContent::Plan(p) => p.line(line).map(|l| {
-                        roda_grants::approval_still_valid(&req.content_hash, &Self::line_hash(l))
-                    }),
-                    _ => None,
+            (Some(item), Some(line)) => self.plan_snapshot(item).ok().is_some_and(|plan| {
+                plan.document.line(line).is_some_and(|l| {
+                    roda_grants::approval_still_valid(&req.content_hash, &Self::line_hash(l))
                 })
-                .unwrap_or(false),
+            }),
             _ => true,
         }
     }
@@ -1227,6 +1240,12 @@ impl Engine {
                 reason: t("plano vazio", "empty plan"),
             });
         }
+        let total = Self::plan_total(&doc).ok_or_else(|| CoreError::Invalid {
+            reason: t(
+                "total do plano fora do limite",
+                "Plan total exceeds the limit",
+            ),
+        })?;
         let decision = self.decide(agent, space, &ActionClass::Reversible, ai_cost_cents);
         let agent_name = self.persona(agent).name;
         match decision {
@@ -1253,7 +1272,6 @@ impl Engine {
             }
             Decision::Act { .. } => {
                 let item = new_id("it");
-                let total = doc.total_cents();
                 let budget = doc.budget_cents;
                 let title = doc.title.clone();
                 self.append(
@@ -1298,18 +1316,44 @@ impl Engine {
     pub fn item(&self, id: &str) -> R<ItemDetail> {
         let it = self.item_state(id)?;
         let v = it.current();
+        let snapshot = if it.kind == ItemKind::Plan {
+            Some(self.plan_snapshot(id)?)
+        } else {
+            None
+        };
         let space_title = self
             .state
             .spaces
             .get(&it.space)
             .map(|s| s.title.clone())
             .unwrap_or_default();
-        let (plan, text) = match &v.content {
-            ItemContent::Plan(p) => (Some(plan_to_dto(p)), None),
-            ItemContent::Text { text } => (None, Some(text.clone())),
-            ItemContent::App(_) => (None, None),
-            ItemContent::Page(_) => (None, Some(self.page_text(id))),
-            ItemContent::File(_) => (None, None),
+        let (plan, text) = if let Some(snapshot) = &snapshot {
+            let total = snapshot.total_cents.ok_or_else(|| CoreError::Invalid {
+                reason: t(
+                    "o total do plano excede o limite; as linhas e o histórico foram preservados",
+                    "the Plan total exceeds the limit; its lines and history are preserved",
+                ),
+            })?;
+            (
+                Some(plan_to_dto(&snapshot.document, total)),
+                Some(snapshot.text.clone()),
+            )
+        } else {
+            match &v.content {
+                ItemContent::Plan(p) => {
+                    let total = Self::plan_total(p).ok_or_else(|| CoreError::Invalid {
+                        reason: t(
+                            "total do plano fora do limite",
+                            "Plan total exceeds the limit",
+                        ),
+                    })?;
+                    (Some(plan_to_dto(p, total)), None)
+                }
+                ItemContent::Text { text } => (None, Some(text.clone())),
+                ItemContent::App(_) => (None, None),
+                ItemContent::Page(_) => (None, Some(self.page_text(id))),
+                ItemContent::File(_) => (None, None),
+            }
         };
         let (path, file) = match &v.content {
             ItemContent::Page(p) => (p.path.clone(), None),
@@ -1330,12 +1374,14 @@ impl Engine {
             space_title,
             kind_label: kind_label(it.kind).into(),
             kind_id: kind_id(it.kind).into(),
-            title: v.content.title(),
+            title: snapshot
+                .as_ref()
+                .map_or_else(|| v.content.title(), |plan| plan.document.title.clone()),
             origin: it.origin.clone(),
             created_by: self.persona(&it.versions[0].author),
             plan,
             text,
-            version: v.number,
+            version: snapshot.as_ref().map_or(v.number, |plan| plan.version),
             versions: it
                 .versions
                 .iter()
@@ -1347,7 +1393,7 @@ impl Engine {
                     note: v.note.clone(),
                     is_undo: v.is_undo,
                     total_cents: match &v.content {
-                        ItemContent::Plan(p) => Some(p.total_cents()),
+                        ItemContent::Plan(p) => Self::plan_total(p),
                         _ => None,
                     },
                 })
@@ -1375,6 +1421,7 @@ impl Engine {
         f: impl FnOnce(&mut PlanDoc) -> R<()>,
     ) -> R<EditOutcome> {
         let me = self.me_id()?;
+        self.require_legacy_plan(item)?;
         let it = self.item_state(item)?;
         let space = it.space.clone();
         let before = it.current().number;
@@ -1384,9 +1431,19 @@ impl Engine {
             });
         };
         let creator = it.versions[0].author.clone();
-        let old_total = doc.total_cents();
+        let old_total = Self::plan_total(&doc).ok_or_else(|| CoreError::Invalid {
+            reason: t(
+                "total do plano fora do limite",
+                "Plan total exceeds the limit",
+            ),
+        })?;
         f(&mut doc)?;
-        let new_total = doc.total_cents();
+        let new_total = Self::plan_total(&doc).ok_or_else(|| CoreError::Invalid {
+            reason: t(
+                "total do plano fora do limite",
+                "Plan total exceeds the limit",
+            ),
+        })?;
         let budget = doc.budget_cents;
         self.append(
             &space,
@@ -1516,6 +1573,11 @@ impl Engine {
                 reason: t("a linha precisa de um texto", "the line needs some text"),
             });
         }
+        if cost_cents < 0 {
+            return Err(CoreError::Invalid {
+                reason: t("custo negativo", "negative cost"),
+            });
+        }
         let note = tr!("Adicionou “{}”", "Added “{}”", text);
         self.edit_plan(item, note, |doc| {
             let s = doc
@@ -1525,7 +1587,7 @@ impl Engine {
             s.lines.push(PlanLine {
                 id: new_id("ln"),
                 text,
-                cost_cents: cost_cents.max(0),
+                cost_cents,
                 done: false,
             });
             Ok(())
@@ -1577,6 +1639,9 @@ impl Engine {
         let it = self.item_state(item)?;
         if !it.versions.iter().any(|v| v.number == version) {
             return Err(not_found(&t("versão", "version")));
+        }
+        if it.kind == ItemKind::Plan {
+            self.require_legacy_plan(item)?;
         }
         if it.kind == ItemKind::Page {
             // A page's versions are Loro changes: restoring is a new change, not a copy.
@@ -1660,6 +1725,11 @@ impl Engine {
         action: ActionClass,
         link: Option<(String, String)>,
     ) -> R<Option<String>> {
+        if let Some((item, _)) = &link {
+            if self.item_state(item)?.kind == ItemKind::Plan {
+                self.require_legacy_plan(item)?;
+            }
+        }
         match self.decide(agent, space, &action, 0) {
             Decision::Act { .. } => Ok(None),
             Decision::Block(r) => Err(CoreError::Forbidden {
@@ -1667,12 +1737,15 @@ impl Engine {
             }),
             Decision::Request(_) => {
                 let content_hash = match &link {
-                    Some((item, line)) => match &self.item_state(item)?.current().content {
-                        ItemContent::Plan(p) => Self::line_hash(
-                            p.line(line).ok_or_else(|| not_found(&t("linha", "line")))?,
-                        ),
-                        _ => content_hash(&title),
-                    },
+                    Some((item, line)) if self.item_state(item)?.kind == ItemKind::Plan => {
+                        let plan = self.plan_snapshot(item)?;
+                        Self::line_hash(
+                            plan.document
+                                .line(line)
+                                .ok_or_else(|| not_found(&t("linha", "line")))?,
+                        )
+                    }
+                    Some(_) => content_hash(&title),
                     None => content_hash(&(title, detail, audience)),
                 };
                 let req = AgentRequest {
@@ -1730,6 +1803,13 @@ impl Engine {
         }
         if approve && !self.request_is_current(&r.req) {
             return Err(CoreError::Stale { reason: t("O plano mudou depois do pedido. A aprovação vale só para o conteúdo exato — peça de novo.", "The plan changed after the request. Approval only covers the exact content — ask again.") });
+        }
+        if approve {
+            if let Some(item) = &r.req.item {
+                if self.item_state(item)?.kind == ItemKind::Plan {
+                    self.require_legacy_plan(item)?;
+                }
+            }
         }
         self.append(
             &r.space,
@@ -2312,32 +2392,57 @@ impl Engine {
         let mut hits = Vec::new();
         for it in self.state.items.values() {
             let v = it.current();
-            let mut hay = v.content.title();
+            let plan = if it.kind == ItemKind::Plan {
+                match self.plan_snapshot(&it.id) {
+                    Ok(plan) => Some(plan),
+                    Err(_) => continue,
+                }
+            } else {
+                None
+            };
+            let title = plan
+                .as_ref()
+                .map_or_else(|| v.content.title(), |plan| plan.document.title.clone());
+            let mut hay = plan
+                .as_ref()
+                .map_or_else(|| title.clone(), |plan| plan.text.clone());
             if let ItemContent::Plan(p) = &v.content {
-                for l in p.sections.iter().flat_map(|s| &s.lines) {
-                    hay.push_str(" · ");
-                    hay.push_str(&l.text);
+                if plan.is_none() {
+                    for l in p.sections.iter().flat_map(|s| &s.lines) {
+                        hay.push_str(" · ");
+                        hay.push_str(&l.text);
+                    }
                 }
             }
             if fold(&hay).contains(&q) {
-                let snippet = match &v.content {
-                    ItemContent::Plan(p) => p
+                let snippet = if let Some(plan) = &plan {
+                    plan.document
                         .sections
                         .iter()
-                        .flat_map(|s| &s.lines)
-                        .find(|l| fold(&l.text).contains(&q))
-                        .map(|l| format!("{} · {}", l.text, money(l.cost_cents)))
-                        .unwrap_or(p.summary.clone()),
-                    ItemContent::Text { text } => text.clone(),
-                    ItemContent::Page(_) => self.page_text(&it.id),
-                    ItemContent::File(f) => f.name.clone(),
-                    ItemContent::App(a) => {
-                        apps::headline(
-                            &a.app,
-                            &serde_json::from_str(&a.state_json).unwrap_or(Value::Null),
-                            now_ms(),
-                        )
-                        .0
+                        .flat_map(|section| &section.lines)
+                        .find(|line| fold(&line.text).contains(&q))
+                        .map(|line| format!("{} · {}", line.text, money(line.cost_cents)))
+                        .unwrap_or_else(|| plan.text.clone())
+                } else {
+                    match &v.content {
+                        ItemContent::Plan(p) => p
+                            .sections
+                            .iter()
+                            .flat_map(|s| &s.lines)
+                            .find(|l| fold(&l.text).contains(&q))
+                            .map(|l| format!("{} · {}", l.text, money(l.cost_cents)))
+                            .unwrap_or(p.summary.clone()),
+                        ItemContent::Text { text } => text.clone(),
+                        ItemContent::Page(_) => self.page_text(&it.id),
+                        ItemContent::File(f) => f.name.clone(),
+                        ItemContent::App(a) => {
+                            apps::headline(
+                                &a.app,
+                                &serde_json::from_str(&a.state_json).unwrap_or(Value::Null),
+                                now_ms(),
+                            )
+                            .0
+                        }
                     }
                 };
                 hits.push(SearchHit {
@@ -2347,10 +2452,13 @@ impl Engine {
                         .map(|s| s.title)
                         .unwrap_or_default(),
                     item_id: Some(it.id.clone()),
-                    title: v.content.title(),
+                    title,
                     snippet,
-                    author: self.persona(&v.author),
-                    at_ms: v.at_ms,
+                    author: self.persona(
+                        plan.as_ref()
+                            .map_or(v.author.as_str(), |plan| plan.author.as_str()),
+                    ),
+                    at_ms: plan.as_ref().map_or(v.at_ms, |plan| plan.at_ms),
                 });
             }
         }
@@ -2964,6 +3072,22 @@ impl Engine {
             title: applied.title.clone().unwrap_or_else(|| doc.title.clone()),
             ..doc.clone()
         };
+        let target_plan = if matches!(&applied.effect, Some(apps::Effect::AddPlanLine { .. })) {
+            let target = self
+                .state
+                .items
+                .values()
+                .filter(|item| item.space == it.space && item.kind == ItemKind::Plan)
+                .max_by_key(|item| item.current().at_ms)
+                .map(|item| item.id.clone());
+            if let Some(target) = &target {
+                // Refuse the legacy effect before changing the poll or posting its result.
+                self.require_legacy_plan(target)?;
+            }
+            target
+        } else {
+            None
+        };
         self.append(
             &it.space,
             &me,
@@ -2981,16 +3105,7 @@ impl Engine {
             }
         }
         if let Some(apps::Effect::AddPlanLine { text, cost_cents }) = applied.effect {
-            let plan = self
-                .state
-                .items
-                .values()
-                .filter(|i| {
-                    i.space == it.space && matches!(i.current().content, ItemContent::Plan(_))
-                })
-                .max_by_key(|i| i.current().at_ms)
-                .map(|i| i.id.clone());
-            if let Some(plan) = plan {
+            if let Some(plan) = target_plan {
                 self.add_plan_line(&plan, 0, &text, cost_cents)?;
             }
         }
@@ -3314,12 +3429,12 @@ pub(crate) fn plan_from_dto(p: PlanDto) -> PlanDoc {
     }
 }
 
-pub(crate) fn plan_to_dto(p: &PlanDoc) -> PlanDto {
+pub(crate) fn plan_to_dto(p: &PlanDoc, total_cents: i64) -> PlanDto {
     PlanDto {
         title: p.title.clone(),
         summary: p.summary.clone(),
         budget_cents: p.budget_cents,
-        total_cents: p.total_cents(),
+        total_cents,
         sections: p
             .sections
             .iter()

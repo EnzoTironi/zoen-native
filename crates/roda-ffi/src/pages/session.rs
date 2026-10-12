@@ -164,6 +164,7 @@ pub(crate) struct PageSession {
 pub(super) struct SessionRead {
     pub tag: DocumentTag,
     pub view: DocumentView,
+    pub version: u32,
     pub content_hash: String,
     pub edit_context: String,
     pub unsaved: bool,
@@ -355,6 +356,35 @@ impl PageSession {
             DocumentTag::PlanV1(tag) => self.refresh_plan(engine, &tag),
             DocumentTag::BinaryPageV1 => self.refresh_binary(engine),
         }
+    }
+
+    pub(super) fn plan_snapshot(&mut self, engine: &Engine) -> R<plan::PlanSnapshot> {
+        self.refresh(engine)?;
+        let fold = match &self.plan_history {
+            Some(history) => history.metadata.metadata(),
+            None => engine.plan_timeline(&self.item)?,
+        };
+        if fold.waiting {
+            return Err(invalid("the current Plan is still arriving"));
+        }
+        if fold.frozen_at.is_none() {
+            let current = engine.item_state(&self.item)?.current();
+            if let ItemContent::Plan(document) = &current.content {
+                // Existing legacy clients keep their offline optimistic preview until
+                // cutover. A canonical preview never uses an outbox or local draft.
+                return Ok(plan::PlanSnapshot::legacy(document, current));
+            }
+        }
+        let version = fold
+            .accepted_current
+            .ok_or_else(|| invalid("the Plan has no accepted current version"))?;
+        let source = &fold
+            .slots
+            .iter()
+            .find(|slot| slot.number == Some(version))
+            .ok_or_else(|| invalid("the accepted Plan version has no authenticated source"))?
+            .source;
+        plan::PlanSnapshot::canonical(plan_doc(&self.shadow)?, version, source)
     }
 
     fn refresh_plan(&mut self, engine: &Engine, tag: &PlanOrigin) -> R<()> {
@@ -831,6 +861,12 @@ impl PageSession {
         Ok(SessionRead {
             tag: self.tag.clone(),
             view,
+            version: self
+                .plan_history
+                .as_ref()
+                .map_or(it.versions.len() as u32, |history| {
+                    history.metadata.accepted_current.unwrap_or(0)
+                }),
             content_hash,
             edit_context,
             unsaved,

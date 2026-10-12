@@ -8,7 +8,8 @@ use std::collections::BTreeMap;
 
 use base64::Engine as _;
 use roda_docs::plan::{
-    CanonicalPlanSeed, LegacyVersion, PlanDocument, PlanUpdate, PlanVersion, MAX_PLAN_PACKET_BYTES,
+    CanonicalPlanSeed, LegacyVersion, PlanDocument, PlanUpdate, PlanVersion, TotalCents,
+    MAX_PLAN_PACKET_BYTES,
 };
 use roda_types::*;
 use rusqlite::OptionalExtension;
@@ -17,7 +18,73 @@ use sha2::{Digest, Sha256};
 use crate::engine::{Engine, R};
 use crate::CoreError;
 
+mod api;
+pub use api::{PlanPageBlockDto, PlanPageContentDto, PlanPageDto, PlanProseKindDto};
+
 const MANIFEST_SCHEMA: &str = "plan_v1";
+
+pub(crate) struct PlanSnapshot {
+    pub document: PlanDoc,
+    pub total_cents: Option<i64>,
+    pub version: u32,
+    pub author: String,
+    pub at_ms: i64,
+    pub text: String,
+}
+
+pub(crate) fn checked_total(document: &PlanDoc) -> Option<i64> {
+    document
+        .sections
+        .iter()
+        .flat_map(|section| &section.lines)
+        .try_fold(0_i128, |total, line| {
+            total.checked_add(i128::from(line.cost_cents))
+        })
+        .and_then(|total| i64::try_from(total).ok())
+}
+
+impl PlanSnapshot {
+    pub(super) fn legacy(document: &PlanDoc, version: &crate::engine::Version) -> Self {
+        let mut text = vec![document.title.clone(), document.summary.clone()];
+        for section in &document.sections {
+            text.push(section.title.clone());
+            text.extend(section.lines.iter().map(|line| line.text.clone()));
+        }
+        Self {
+            document: document.clone(),
+            total_cents: checked_total(document),
+            version: version.number,
+            author: version.author.clone(),
+            at_ms: version.at_ms,
+            text: text.join("\n"),
+        }
+    }
+
+    pub(super) fn canonical(document: &PlanDocument, version: u32, source: &Source) -> R<Self> {
+        let view = document
+            .view()
+            .map_err(|error| invalid(&error.to_string()))?;
+        let total_cents = match view.total {
+            TotalCents::Cents(cents) => Some(cents),
+            TotalCents::Overflow => None,
+        };
+        let text = document
+            .blocks()
+            .map_err(|error| invalid(&error.to_string()))?
+            .iter()
+            .map(|block| block.plain_text())
+            .collect::<Vec<_>>()
+            .join("\n");
+        Ok(Self {
+            document: view.to_plan_doc(),
+            total_cents,
+            version,
+            author: source.author.clone(),
+            at_ms: source.at_ms,
+            text,
+        })
+    }
+}
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(super) struct Source {

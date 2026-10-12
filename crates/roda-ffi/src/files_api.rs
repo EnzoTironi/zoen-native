@@ -1,7 +1,7 @@
 //! Pages and files for the apps (ADR 0040).
 
 use crate::files::FileDto;
-use crate::pages::{MarkdownFileDto, PageBlockDto, PageDto, PageEditResult};
+use crate::pages::{MarkdownFileDto, PageBlockDto, PageDto, PageEditResult, PlanPageDto};
 use crate::{CoreError, ItemDetail, RodaEngine};
 
 #[uniffi::export]
@@ -44,6 +44,12 @@ impl RodaEngine {
     /// The page's blocks as this device has them (saved versions plus unsaved edits).
     pub fn page(&self, item_id: String) -> Result<PageDto, CoreError> {
         self.lock().page(&item_id)
+    }
+
+    /// Lossless typed Plan blocks from this device's shared document session.
+    /// Private drafts are labelled; this read grants no editing capability.
+    pub fn plan_page(&self, item_id: String) -> Result<PlanPageDto, CoreError> {
+        self.lock().plan_page(&item_id)
     }
 
     /// The page as it read at an earlier version.
