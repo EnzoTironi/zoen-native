@@ -18,7 +18,9 @@ use crate::CoreError;
 
 mod drafts;
 mod plan;
-pub use plan::{PlanPageBlockDto, PlanPageContentDto, PlanPageDto, PlanProseKindDto};
+pub use plan::{
+    PlanPageBlockDto, PlanPageContentDto, PlanPageDto, PlanPageReadSourceDto, PlanProseKindDto,
+};
 mod session;
 #[cfg(test)]
 mod tests;

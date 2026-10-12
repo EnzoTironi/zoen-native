@@ -151,6 +151,24 @@ impl Store {
         Ok(())
     }
 
+    /// Cache an import whose hash the caller has verified, repairing damaged bytes.
+    /// An identical cached payload preserves its original metadata and timestamp.
+    pub fn cache_imported_media(
+        &self,
+        sha256: &str,
+        mime: &str,
+        bytes: &[u8],
+        at_ms: i64,
+    ) -> Result<()> {
+        self.conn.execute(
+            "INSERT INTO media (sha256, mime, bytes, at_ms) VALUES (?1, ?2, ?3, ?4) \
+             ON CONFLICT(sha256) DO UPDATE SET mime = excluded.mime, bytes = excluded.bytes, at_ms = excluded.at_ms \
+             WHERE media.bytes <> excluded.bytes",
+            params![sha256, mime, bytes, at_ms],
+        )?;
+        Ok(())
+    }
+
     /// Whether these bytes are on this device (without reading them).
     pub fn has_media(&self, sha256: &str) -> Result<bool> {
         Ok(self

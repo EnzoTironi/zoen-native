@@ -24,7 +24,7 @@ mod pages;
 pub use files::FileDto;
 pub use pages::{
     MarkdownFileDto, PageBlockDto, PageDto, PageEditResult, PlanPageBlockDto, PlanPageContentDto,
-    PlanPageDto, PlanProseKindDto, TextSpanDto,
+    PlanPageDto, PlanPageReadSourceDto, PlanProseKindDto, TextSpanDto,
 };
 mod link;
 mod link_api;
