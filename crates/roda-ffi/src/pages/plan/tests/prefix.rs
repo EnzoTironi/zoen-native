@@ -6,14 +6,12 @@ fn frontier(fixture: &Fixture) -> usize {
 }
 
 fn snapshot_at(fixture: &Fixture, end: usize) -> (PlanFold, u32) {
-    Prefix::from_log(
-        &fixture.space,
-        fixture.engine.logs.get(&fixture.space),
-        end,
-    )
-    .unwrap()
-    .fold(&fixture.item, |content| fixture.engine.plan_payload(content))
-    .unwrap()
+    Prefix::from_log(&fixture.space, fixture.engine.logs.get(&fixture.space), end)
+        .unwrap()
+        .fold(&fixture.item, |content| {
+            fixture.engine.plan_payload(content)
+        })
+        .unwrap()
 }
 
 #[test]
@@ -32,10 +30,8 @@ fn bounded_prefix_excludes_a_later_cutover_and_late_legacy_write() {
             ..Default::default()
         },
     );
-    let canonical = fixture.ordered(fixture.version(ItemContent::Page(page(
-        manifest.clone(),
-        &document,
-    ))));
+    let canonical =
+        fixture.ordered(fixture.version(ItemContent::Page(page(manifest.clone(), &document))));
     let canonical_end = frontier(&fixture);
     let late_document = PlanDoc {
         summary: "Late legacy overwrite".into(),
@@ -61,7 +57,10 @@ fn bounded_prefix_excludes_a_later_cutover_and_late_legacy_write() {
     assert_eq!(cutover.frozen_at, Some(canonical_source.clone()));
     assert_eq!(cutover.manifest().unwrap(), manifest);
     assert_eq!(view(&cutover), document.view().unwrap().to_plan_doc());
-    assert_eq!(cutover.document.as_ref().unwrap().version(), document.version());
+    assert_eq!(
+        cutover.document.as_ref().unwrap().version(),
+        document.version()
+    );
     assert!(cutover.acknowledges(&canonical.client_id, &canonical_source.event_id));
 
     let visible = fixture.fold();
@@ -69,12 +68,18 @@ fn bounded_prefix_excludes_a_later_cutover_and_late_legacy_write() {
     assert_eq!(view(&visible), view(&cutover));
     assert_eq!(visible.slots.len(), 3);
     assert_eq!(visible.slots[2].number, Some(3));
-    assert_eq!(visible.slots[2].content, Some(ItemContent::Plan(late_document)));
+    assert_eq!(
+        visible.slots[2].content,
+        Some(ItemContent::Plan(late_document))
+    );
     assert_eq!(
         visible.slots[2].source,
         source(&fixture.space, &fixture.item, &late, true)
     );
-    assert!(matches!(visible.slots[2].acceptance, Acceptance::Refused(_)));
+    assert!(matches!(
+        visible.slots[2].acceptance,
+        Acceptance::Refused(_)
+    ));
     assert!(!visible.acknowledges(&late.client_id, &visible.slots[2].source.event_id));
 }
 
@@ -126,7 +131,10 @@ fn prefix_roster_checks_use_membership_at_each_ordered_event() {
     assert_eq!(view(&read_only), original());
     assert!(read_only.frozen_at.is_none());
     assert_eq!(read_only.slots[1].source.author, member);
-    assert!(matches!(read_only.slots[1].acceptance, Acceptance::Refused(_)));
+    assert!(matches!(
+        read_only.slots[1].acceptance,
+        Acceptance::Refused(_)
+    ));
     let (authorized, number) = snapshot_at(&fixture, accepted_end);
     assert_eq!(number, 3);
     assert_eq!(authorized.accepted_current, Some(3));
@@ -172,7 +180,11 @@ fn ui_overlay_keeps_version_addresses_after_invalid_undo_and_duplicate_creation(
     assert_eq!(number, 2);
     assert_eq!(confirmed.accepted_current, Some(1));
     assert_eq!(
-        confirmed.slots.iter().map(|slot| slot.number).collect::<Vec<_>>(),
+        confirmed
+            .slots
+            .iter()
+            .map(|slot| slot.number)
+            .collect::<Vec<_>>(),
         vec![Some(1), None, Some(2), None]
     );
     assert!(confirmed.slots[1..]
@@ -190,19 +202,27 @@ fn ui_overlay_keeps_version_addresses_after_invalid_undo_and_duplicate_creation(
     assert_eq!(&visible.slots[..4], confirmed.slots.as_slice());
     assert_eq!(visible.slots[4].number, Some(3));
     assert_eq!(visible.slots[4].source, pending_source);
-    assert_eq!(visible.slots[4].content, Some(ItemContent::Plan(intent.clone())));
+    assert_eq!(
+        visible.slots[4].content,
+        Some(ItemContent::Plan(intent.clone()))
+    );
     assert_eq!(visible.slots[4].acceptance, Acceptance::Pending);
     assert!(visible.pending_legacy);
     assert_eq!(view(&visible), original());
     assert!(visible.manifest().is_err());
 
-    assert!(fixture.engine.reject(&pending.client_id, "permission", true, None));
+    assert!(fixture
+        .engine
+        .reject(&pending.client_id, "permission", true, None));
     let failed = fixture.fold();
     assert_eq!(&failed.slots[..4], confirmed.slots.as_slice());
     assert_eq!(failed.slots[4].number, Some(3));
     assert_eq!(failed.slots[4].source, pending_source);
     assert_eq!(failed.slots[4].content, Some(ItemContent::Plan(intent)));
-    assert_eq!(failed.slots[4].acceptance, Acceptance::TransportRefused("permission".into()));
+    assert_eq!(
+        failed.slots[4].acceptance,
+        Acceptance::TransportRefused("permission".into())
+    );
     assert!(!failed.pending_legacy);
     assert_eq!(failed.manifest().unwrap(), manifest);
     assert_eq!(view(&failed), original());
@@ -211,7 +231,10 @@ fn ui_overlay_keeps_version_addresses_after_invalid_undo_and_duplicate_creation(
     assert_eq!(unchanged.slots, confirmed.slots);
     assert_eq!(unchanged.manifest().unwrap(), manifest);
     assert_eq!(fixture.engine.store.events(&fixture.space).unwrap(), stored);
-    assert_eq!(fixture.engine.store.outbox().unwrap()[0].event.content, pending.content);
+    assert_eq!(
+        fixture.engine.store.outbox().unwrap()[0].event.content,
+        pending.content
+    );
 }
 
 #[test]
@@ -240,7 +263,9 @@ fn bounded_fold_never_reads_payloads_beyond_its_frontier() {
         manifest: Some(PageManifest::PlanV1(wrong_manifest)),
         ..valid.clone()
     })));
-    fixture.ordered(EventBody::MemberRemoved { identity: member.clone() });
+    fixture.ordered(EventBody::MemberRemoved {
+        identity: member.clone(),
+    });
     fixture.ordered_as(&member, fixture.version(ItemContent::Page(valid.clone())));
     let refused_end = frontier(&fixture);
     let malformed = PageContent {
@@ -271,17 +296,14 @@ fn bounded_fold_never_reads_payloads_beyond_its_frontier() {
         (missing_end, vec![valid.clone(), malformed.clone(), missing]),
     ] {
         let mut reads = Vec::new();
-        let (fold, _) = Prefix::from_log(
-            &fixture.space,
-            fixture.engine.logs.get(&fixture.space),
-            end,
-        )
-        .unwrap()
-        .fold(&fixture.item, |content| {
-            reads.push(content.clone());
-            fixture.engine.plan_payload(content)
-        })
-        .unwrap();
+        let (fold, _) =
+            Prefix::from_log(&fixture.space, fixture.engine.logs.get(&fixture.space), end)
+                .unwrap()
+                .fold(&fixture.item, |content| {
+                    reads.push(content.clone());
+                    fixture.engine.plan_payload(content)
+                })
+                .unwrap();
         assert_eq!(reads, expected);
         assert_eq!(fold.waiting, end == missing_end);
         if end == before_end {
@@ -324,7 +346,11 @@ fn wrong_space_or_unavailable_prefix_cannot_borrow_future_history() {
         Err(CoreError::Invalid { .. })
     ));
     assert!(matches!(
-        Prefix::from_log(&fixture.space, fixture.engine.logs.get(&fixture.space), end + 1),
+        Prefix::from_log(
+            &fixture.space,
+            fixture.engine.logs.get(&fixture.space),
+            end + 1
+        ),
         Err(CoreError::Invalid { .. })
     ));
     assert!(matches!(
@@ -346,14 +372,11 @@ fn wrong_space_or_unavailable_prefix_cannot_borrow_future_history() {
         assert!(fold.frozen_at.is_none());
         assert!(fold.manifest().is_err());
     }
-    let (no_origin, number) = Prefix::from_log(
-        &fixture.space,
-        fixture.engine.logs.get(&fixture.space),
-        end,
-    )
-    .unwrap()
-    .fold(&pending_item, |_| panic!("pending creation read a payload"))
-    .unwrap();
+    let (no_origin, number) =
+        Prefix::from_log(&fixture.space, fixture.engine.logs.get(&fixture.space), end)
+            .unwrap()
+            .fold(&pending_item, |_| panic!("pending creation read a payload"))
+            .unwrap();
     assert_eq!(number, 0);
     assert!(no_origin.slots.is_empty());
     assert!(no_origin.document.is_none());
@@ -364,5 +387,8 @@ fn wrong_space_or_unavailable_prefix_cannot_borrow_future_history() {
     assert_eq!(frontier(&fixture), end);
     assert_eq!(view(&snapshot_at(&fixture, end).0), original());
     assert_eq!(fixture.engine.store.events(&fixture.space).unwrap(), stored);
-    assert_eq!(other.engine.store.events(&other.space).unwrap(), other_stored);
+    assert_eq!(
+        other.engine.store.events(&other.space).unwrap(),
+        other_stored
+    );
 }
