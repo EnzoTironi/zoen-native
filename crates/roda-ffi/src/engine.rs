@@ -1573,6 +1573,11 @@ impl Engine {
                 reason: t("a linha precisa de um texto", "the line needs some text"),
             });
         }
+        if cost_cents < 0 {
+            return Err(CoreError::Invalid {
+                reason: t("custo negativo", "negative cost"),
+            });
+        }
         let note = tr!("Adicionou “{}”", "Added “{}”", text);
         self.edit_plan(item, note, |doc| {
             let s = doc
@@ -1582,7 +1587,7 @@ impl Engine {
             s.lines.push(PlanLine {
                 id: new_id("ln"),
                 text,
-                cost_cents: cost_cents.max(0),
+                cost_cents,
                 done: false,
             });
             Ok(())
