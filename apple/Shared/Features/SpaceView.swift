@@ -83,14 +83,14 @@ struct SpaceView: View {
                                   onSwipe: { intent in
                                       switch intent {
                                       case .reply:
-                                          withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) { replyTo = entry }
+                                          withAnimation(reduceMotion ? nil : .spring(response: 0.35, dampingFraction: 0.8)) { replyTo = entry }
                                           composerFocused = true
                                       case .thread:
                                           thread = ThreadRef(id: entry.id)
                                       }
                                   },
                                   onJump: { id in
-                                      withAnimation(.smooth(duration: 0.45)) { proxy.scrollTo(id, anchor: .center) }
+                                      withAnimation(reduceMotion ? nil : .smooth(duration: 0.45)) { proxy.scrollTo(id, anchor: .center) }
                                       withAnimation(.easeOut(duration: 0.25)) { highlighted = id }
                                       Task { @MainActor in
                                           try? await Task.sleep(for: .seconds(1.4))
@@ -107,17 +107,17 @@ struct SpaceView: View {
                                 }
                             }
                             .id(entry.id)
-                            .transition(.asymmetric(insertion: .scale(scale: 0.92, anchor: .bottom).combined(with: .opacity), removal: .opacity))
+                            .transition(reduceMotion ? .opacity : .asymmetric(insertion: .scale(scale: 0.92, anchor: .bottom).combined(with: .opacity), removal: .opacity))
                     }
                     if model.browser.session?.spaceId == spaceId {
                         AgentBrowserCard()
                             .id("agent-browser")
-                            .transition(.scale(scale: 0.94, anchor: .bottom).combined(with: .opacity))
+                            .transition(reduceMotion ? .opacity : .scale(scale: 0.94, anchor: .bottom).combined(with: .opacity))
                     }
                     if let agent = workingAgent {
                         WorkingRow(agent: agent, label: model.planner.availability == .onDevice ? String(localized: "on device") : String(localized: "local planner"))
                             .id("working")
-                            .transition(.asymmetric(insertion: .scale(scale: 0.6, anchor: .bottomLeading).combined(with: .opacity),
+                            .transition(reduceMotion ? .opacity : .asymmetric(insertion: .scale(scale: 0.6, anchor: .bottomLeading).combined(with: .opacity),
                                                     removal: .scale(scale: 0.85, anchor: .leading).combined(with: .opacity)))
                     }
                     Color.clear.frame(height: 8).id("bottom")
@@ -135,7 +135,7 @@ struct SpaceView: View {
                 g.visibleRect.maxY >= g.contentSize.height - 140
             } action: { _, near in
                 nearBottom = near
-                if near && unseen > 0 { withAnimation(.smooth(duration: 0.3)) { unseen = 0 } }
+                if near && unseen > 0 { withAnimation(reduceMotion ? nil : .smooth(duration: 0.3)) { unseen = 0 } }
             }
             // History scrolls behind the transparent header; its starting position clears the widgets.
             .safeAreaPadding(.top, chromeHeight + 8)
@@ -167,16 +167,16 @@ struct SpaceView: View {
                 if unseen > 0 {
                     NewMessagesPill(count: unseen) {
                         Haptics.selectionTick()
-                        withAnimation(reduceMotion ? .easeOut(duration: 0.2) : .smooth(duration: 0.45)) {
+                        withAnimation(reduceMotion ? nil : .smooth(duration: 0.45)) {
                             proxy.scrollTo("bottom", anchor: .bottom)
                         }
-                        withAnimation(.smooth(duration: 0.3)) { unseen = 0 }
+                        withAnimation(reduceMotion ? nil : .smooth(duration: 0.3)) { unseen = 0 }
                     }
                     .transition(reduceMotion ? .opacity : .scale(scale: 0.85, anchor: .bottom).combined(with: .opacity))
                 }
                 if let r = replyTo {
-                    ReplyComposerBar(entry: r) { withAnimation(.spring(response: 0.3, dampingFraction: 0.85)) { replyTo = nil } }
-                        .transition(.move(edge: .bottom).combined(with: .opacity))
+                    ReplyComposerBar(entry: r) { withAnimation(reduceMotion ? nil : .spring(response: 0.3, dampingFraction: 0.85)) { replyTo = nil } }
+                        .transition(reduceMotion ? .opacity : .move(edge: .bottom).combined(with: .opacity))
                 }
                 Composer(text: $draft,
                          placeholder: space?.counterpart?.kind == .agent ? String(localized: "What do you want to get done?") : String(localized: "Message"),
@@ -188,15 +188,15 @@ struct SpaceView: View {
                     draft = ""
                     model.sync.stoppedTyping(spaceId)
                     if let r = replyTo {
-                        withAnimation(.spring(response: 0.3, dampingFraction: 0.85)) { replyTo = nil }
+                        withAnimation(reduceMotion ? nil : .spring(response: 0.3, dampingFraction: 0.85)) { replyTo = nil }
                         model.sendReply(text, to: r.id, thread: false, in: spaceId)
                     } else {
                         Task { await model.send(text, in: spaceId) }
                     }
                 }
               }
-              .animation(.spring(response: 0.35, dampingFraction: 0.85), value: replyTo?.id)
-              .animation(.spring(response: 0.35, dampingFraction: 0.8), value: unseen > 0)
+              .animation(reduceMotion ? nil : .spring(response: 0.35, dampingFraction: 0.85), value: replyTo?.id)
+              .animation(reduceMotion ? nil : .spring(response: 0.35, dampingFraction: 0.8), value: unseen > 0)
               .onGeometryChange(for: CGFloat.self) { $0.frame(in: .global).minY } action: { composerTop = $0 }
             }
             #if os(iOS)
@@ -259,7 +259,7 @@ struct SpaceView: View {
                     }
                 } else if appendedMine {
                     // I just sent it: always follow, even from further up.
-                    withAnimation(.snappy) { proxy.scrollTo("bottom", anchor: .bottom) }
+                    withAnimation(reduceMotion ? nil : .snappy) { proxy.scrollTo("bottom", anchor: .bottom) }
                     unseen = 0
                 } else if appendedOthers > 0 {
                     followOrCount(appendedOthers, proxy: proxy)
@@ -269,7 +269,7 @@ struct SpaceView: View {
                 // Search jumped here: scroll to the exact message and highlight it briefly.
                 guard let j = model.jumpTarget, j.space == spaceId, entries.contains(where: { $0.id == j.entry }) else { return }
                 try? await Task.sleep(for: .milliseconds(450))
-                withAnimation(.smooth(duration: 0.5)) { proxy.scrollTo(j.entry, anchor: .center) }
+                withAnimation(reduceMotion ? nil : .smooth(duration: 0.5)) { proxy.scrollTo(j.entry, anchor: .center) }
                 withAnimation(.easeOut(duration: 0.25)) { highlighted = j.entry }
                 Haptics.selectionTick()
                 Task { @MainActor in
@@ -281,7 +281,7 @@ struct SpaceView: View {
             .onChange(of: workingAgent?.id) { _, id in
                 // Only follow the "working" row while you're at the end; never yank you down.
                 guard nearBottom, id != nil else { return }
-                withAnimation(.snappy) { proxy.scrollTo("bottom", anchor: .bottom) }
+                withAnimation(reduceMotion ? nil : .snappy) { proxy.scrollTo("bottom", anchor: .bottom) }
             }
         }
         .task(id: model.revision) { reload() }
@@ -322,7 +322,7 @@ struct SpaceView: View {
             // Screenshot journeys choose an initial reading position after the story loads.
             let wait = delay > 0 ? delay : (top ? 1.2 : 9)
             try? await Task.sleep(for: .seconds(wait))
-            withAnimation(.smooth(duration: 0.45)) {
+            withAnimation(reduceMotion ? nil : .smooth(duration: 0.45)) {
                 if top { scrollPos.scrollTo(edge: .top) } else { scrollPos.scrollTo(y: max(0, offsetY - up)) }
             }
         }
@@ -385,7 +385,7 @@ struct SpaceView: View {
                             headerPick(pick)
                         }
                         // Grows out of the title (not from nothing), folds back a touch quicker.
-                        .transition(.asymmetric(
+                        .transition(reduceMotion ? .opacity : .asymmetric(
                             insertion: .scale(scale: 0.88, anchor: .top).combined(with: .offset(y: -12)).combined(with: .opacity),
                             removal: .scale(scale: 0.95, anchor: .top).combined(with: .opacity)))
                     }
@@ -478,7 +478,7 @@ struct SpaceView: View {
     private func setHeaderMenu(_ open: Bool) {
         guard open != headerMenu else { return }
         open ? Haptics.menuOpen() : Haptics.menuClose()
-        let anim: Animation = reduceMotion ? .easeInOut(duration: 0.2)
+        let anim: Animation? = reduceMotion ? nil
             : open ? .spring(response: 0.38, dampingFraction: 0.84) : .spring(response: 0.26, dampingFraction: 0.95)
         withAnimation(anim) { headerMenu = open }
     }
@@ -502,9 +502,9 @@ struct SpaceView: View {
     /// At the end: follow new content. Reading further up: keep your place and count it.
     private func followOrCount(_ n: Int, proxy: ScrollViewProxy) {
         if nearBottom {
-            withAnimation(reduceMotion ? .easeOut(duration: 0.2) : .snappy) { proxy.scrollTo("bottom", anchor: .bottom) }
+            withAnimation(reduceMotion ? nil : .snappy) { proxy.scrollTo("bottom", anchor: .bottom) }
         } else {
-            withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) { unseen += n }
+            withAnimation(reduceMotion ? nil : .spring(response: 0.35, dampingFraction: 0.8)) { unseen += n }
             Haptics.selectionTick()
             AccessibilityNotification.Announcement(NewMessagesPill.label(unseen)).post()
         }
@@ -524,7 +524,7 @@ struct SpaceView: View {
             if firstLoad || apps.map(\.id) == pinnedApps.map(\.id) {
                 pinnedApps = apps
             } else {
-                withAnimation(.spring(duration: 0.5, bounce: 0.2)) { pinnedApps = apps }
+                withAnimation(reduceMotion ? nil : .spring(duration: 0.5, bounce: 0.2)) { pinnedApps = apps }
             }
         }
         // Another chat changed (or nothing did): leave this one alone, no re-render, no motion.
@@ -554,7 +554,7 @@ struct SpaceView: View {
                 entries = new
             } else {
                 // Only the new bubbles animate in (their own insertion transition).
-                withAnimation(.spring(duration: 0.4, bounce: 0.15)) { entries = new }
+                withAnimation(reduceMotion ? nil : .spring(duration: 0.4, bounce: 0.15)) { entries = new }
             }
         }
         if !new.isEmpty { try? model.core.markRead(spaceId: spaceId) }
@@ -593,6 +593,7 @@ struct EntryView: View {
     /// Tap a quote: scroll to the message it answers.
     var onJump: ((String) -> Void)? = nil
     @Environment(AppModel.self) private var model
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     /// Same author within 5 minutes → continuation (no name).
     private var grouped: Bool {
@@ -624,7 +625,7 @@ struct EntryView: View {
                 if entry.threadReplies > 0 {
                     ThreadRepliesChip(count: entry.threadReplies, faces: threadFaces) { onSwipe?(.thread) }
                         .padding(.leading, entry.author.isMe ? 0 : 44)
-                        .transition(.scale(scale: 0.6, anchor: .topLeading).combined(with: .opacity))
+                        .transition(reduceMotion ? .opacity : .scale(scale: 0.6, anchor: .topLeading).combined(with: .opacity))
                 }
                 if entry.author.isMe { DeliveryMark(delivery: entry.delivery) }
             }
@@ -700,6 +701,7 @@ struct MessageRow: View {
     var quote: ReplyQuote? = nil
     var onQuote: ((String) -> Void)? = nil
     @Environment(\.chatBackdrop) private var backdrop
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     private static let face: CGFloat = 36
 
@@ -788,14 +790,14 @@ struct MessageRow: View {
                 }
                 if let card, let app = card.app, app.appId == "hike" {
                     HikeChatCard(card: card, app: app)
-                        .transition(.scale(scale: 0.85, anchor: .topLeading).combined(with: .opacity))
+                        .transition(reduceMotion ? .opacity : .scale(scale: 0.85, anchor: .topLeading).combined(with: .opacity))
                 } else if let card, let app = card.app {
                     AppOutputBlock(card: card, app: app)
-                        .transition(.scale(scale: 0.85, anchor: .topLeading).combined(with: .opacity))
+                        .transition(reduceMotion ? .opacity : .scale(scale: 0.85, anchor: .topLeading).combined(with: .opacity))
                 } else if let card {
                     Button { onOpenItem(card.itemId) } label: { ItemCardView(card: card) }
                         .buttonStyle(.plain)
-                        .transition(.scale(scale: 0.85, anchor: .topLeading).combined(with: .opacity))
+                        .transition(reduceMotion ? .opacity : .scale(scale: 0.85, anchor: .topLeading).combined(with: .opacity))
                 }
             }
             if !mine { Spacer(minLength: card?.app != nil ? 0 : 32) }
@@ -903,16 +905,17 @@ struct WorkingRow: View {
 
 struct TypingDots: View {
     @Environment(\.ambientPaused) private var ambientPaused
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     var body: some View {
-        TimelineView(.animation(paused: ambientPaused)) { ctx in
+        TimelineView(.animation(paused: ambientPaused || reduceMotion)) { ctx in
             let t = ctx.date.timeIntervalSinceReferenceDate
             HStack(spacing: 4) {
                 ForEach(0..<3, id: \.self) { i in
-                    let phase = (sin((t * 2 * .pi / 1.1) - Double(i) * 0.9) + 1) / 2
+                    let phase = reduceMotion ? 0.5 : (sin((t * 2 * .pi / 1.1) - Double(i) * 0.9) + 1) / 2
                     Circle().fill(Palette.textSecondary)
                         .frame(width: 7, height: 7)
                         .opacity(0.35 + 0.65 * phase)
-                        .offset(y: -2.5 * phase)
+                        .offset(y: reduceMotion ? 0 : -2.5 * phase)
                 }
             }
         }
@@ -922,6 +925,7 @@ struct TypingDots: View {
 // MARK: - Composer (cápsula de vidro)
 
 struct Composer: View {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Binding var text: String
     var placeholder: String
     var focused: FocusState<Bool>.Binding
@@ -948,10 +952,10 @@ struct Composer: View {
         VStack(spacing: 8) {
             #if os(iOS)
             if cameraOpen {
-                InlineCameraPanel(onClose: { withAnimation(.spring(duration: 0.4, bounce: 0.2)) { cameraOpen = false } },
+                InlineCameraPanel(onClose: { withAnimation(reduceMotion ? nil : .spring(duration: 0.4, bounce: 0.2)) { cameraOpen = false } },
                                   onCapture: { onCapture?() })
                     .padding(.horizontal, 12)
-                    .transition(.asymmetric(insertion: .scale(scale: 0.4, anchor: .bottomLeading).combined(with: .opacity),
+                    .transition(reduceMotion ? .opacity : .asymmetric(insertion: .scale(scale: 0.4, anchor: .bottomLeading).combined(with: .opacity),
                                             removal: .scale(scale: 0.6, anchor: .bottomLeading).combined(with: .opacity)))
             }
             #endif
@@ -965,7 +969,7 @@ struct Composer: View {
                     .padding(.horizontal, 12).padding(.vertical, 8)
                     .glassEffect(.regular, in: .capsule)
                     .offset(x: -12, y: -38)
-                    .transition(.scale(scale: 0.8, anchor: .bottomTrailing).combined(with: .opacity))
+                    .transition(reduceMotion ? .opacity : .scale(scale: 0.8, anchor: .bottomTrailing).combined(with: .opacity))
             }
         }
         .overlay(alignment: .bottomTrailing) {
@@ -973,11 +977,11 @@ struct Composer: View {
                 LockHint(dragY: drag.height)
                     .padding(.trailing, 14)
                     .padding(.bottom, 66)
-                    .transition(.move(edge: .bottom).combined(with: .opacity))
+                    .transition(reduceMotion ? .opacity : .move(edge: .bottom).combined(with: .opacity))
             }
         }
-        .animation(.spring(duration: 0.35, bounce: 0.25), value: recorder.phase)
-        .animation(.snappy, value: tooltip)
+        .animation(reduceMotion ? nil : .spring(duration: 0.35, bounce: 0.25), value: recorder.phase)
+        .animation(reduceMotion ? nil : .snappy, value: tooltip)
         .onChange(of: micMode) { _, _ in Haptics.selectionTick() }
         .sheet(item: $review) { m in
             VoiceReviewSheet(model: m) { clip, text in onVoice?(clip, text) }
@@ -1026,7 +1030,7 @@ struct Composer: View {
                 if recorder.phase != .idle {
                     RecordingRow(recorder: recorder, dragX: drag.width, onDelete: cancelRecording, onStop: stopForReview)
                         .glassEffect(.regular, in: .rect(cornerRadius: 22, style: .continuous))
-                        .transition(.opacity.combined(with: .scale(scale: 0.96, anchor: .trailing)))
+                        .transition(reduceMotion ? .opacity : .opacity.combined(with: .scale(scale: 0.96, anchor: .trailing)))
                 } else {
                     leading
                     TextField(placeholder, text: $text, axis: .vertical)
@@ -1053,7 +1057,7 @@ struct Composer: View {
         #if os(iOS)
         Button {
             Haptics.selectionTick()
-            withAnimation(.spring(duration: 0.45, bounce: 0.25)) { cameraOpen.toggle() }
+            withAnimation(reduceMotion ? nil : .spring(duration: 0.45, bounce: 0.25)) { cameraOpen.toggle() }
         } label: {
             ZoenIcon(.camera, selected: cameraOpen, size: 21).frame(width: 44, height: 44)
                 .foregroundStyle(Palette.textPrimary)
@@ -1082,7 +1086,7 @@ struct Composer: View {
             .foregroundStyle(ActionGlassForeground())
             .glassEffect(.regular.tint(Palette.action).interactive(), in: .circle)
             .accessibilityLabel("Send voice message")
-            .transition(.scale.combined(with: .opacity))
+            .transition(reduceMotion ? .opacity : .scale.combined(with: .opacity))
         } else if micMode || recorder.phase == .recording {
             mic
         } else {
@@ -1098,7 +1102,7 @@ struct Composer: View {
             .accessibilityLabel("Send")
             .accessibilityIdentifier("send")
             .keyboardShortcut(.return, modifiers: .command)
-            .transition(.scale(scale: 0.6).combined(with: .opacity))
+            .transition(reduceMotion ? .opacity : .scale(scale: 0.6).combined(with: .opacity))
         }
     }
 
@@ -1112,9 +1116,9 @@ struct Composer: View {
             // into the recording row next to it).
             .background { if recording { Circle().fill(Palette.danger).shadow(color: Palette.danger.opacity(0.35), radius: 8, y: 2) } }
             .glassEffect(recording ? .identity : .regular.tint(Palette.action).interactive(), in: .circle)
-            .scaleEffect(recording ? 1.3 : (pressing ? 0.92 : 1), anchor: .trailing)
-            .offset(x: recording ? min(0, drag.width) * 0.35 : 0, y: recording ? min(0, drag.height) * 0.35 : 0)
-            .animation(.spring(duration: 0.3, bounce: 0.3), value: recording)
+            .scaleEffect(reduceMotion ? 1 : (recording ? 1.3 : (pressing ? 0.92 : 1)), anchor: .trailing)
+            .offset(x: recording && !reduceMotion ? min(0, drag.width) * 0.35 : 0, y: recording && !reduceMotion ? min(0, drag.height) * 0.35 : 0)
+            .animation(reduceMotion ? nil : .spring(duration: 0.3, bounce: 0.3), value: recording)
             .contentShape(.circle)
             .gesture(
                 DragGesture(minimumDistance: 0)
@@ -1140,7 +1144,7 @@ struct Composer: View {
                             cancelRecording()
                         } else if v.translation.height < -80 {
                             Haptics.action()
-                            withAnimation(.spring(duration: 0.35, bounce: 0.25)) { recorder.lock() }
+                            withAnimation(reduceMotion ? nil : .spring(duration: 0.35, bounce: 0.25)) { recorder.lock() }
                             drag = .zero
                         }
                     }
@@ -1166,7 +1170,7 @@ struct Composer: View {
                     if recorder.phase == .idle, await recorder.start() { recorder.lock(); Haptics.commit() }
                 }
             }
-            .transition(.scale(scale: 0.6).combined(with: .opacity))
+            .transition(reduceMotion ? .opacity : .scale(scale: 0.6).combined(with: .opacity))
     }
 
     /// Locked → stop: review (Delete · Edit · Send) instead of sending right away.
@@ -1178,7 +1182,7 @@ struct Composer: View {
 
     private func cancelRecording() {
         Haptics.dismiss()
-        withAnimation(.snappy) { recorder.cancel() }
+        withAnimation(reduceMotion ? nil : .snappy) { recorder.cancel() }
         drag = .zero
     }
 

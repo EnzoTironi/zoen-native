@@ -33,19 +33,19 @@ struct MessageSwipe: ViewModifier {
 
     func body(content: Content) -> some View {
         content
-            .offset(x: x)
+            .offset(x: reduceMotion ? 0 : x)
             .background(alignment: .trailing) {
                 // Left pull: the reply arrow waits on the right.
                 icon("arrowshape.turn.up.left.fill", active: armed == .reply)
                     .opacity(pull < 0 ? Double(progress) : 0)
-                    .scaleEffect(pull < 0 ? 0.4 + 0.6 * progress : 0.4)
+                    .scaleEffect(reduceMotion ? 1 : (pull < 0 ? 0.4 + 0.6 * progress : 0.4))
                     .padding(.trailing, 6)
             }
             .background(alignment: .leading) {
                 // Right pull: the thread glyph waits on the left.
                 icon("bubble.left.and.text.bubble.right.fill", active: armed == .thread)
                     .opacity(pull > 0 ? Double(progress) : 0)
-                    .scaleEffect(pull > 0 ? 0.4 + 0.6 * progress : 0.4)
+                    .scaleEffect(reduceMotion ? 1 : (pull > 0 ? 0.4 + 0.6 * progress : 0.4))
                     .padding(.leading, 6)
             }
             .simultaneousGesture(drag, isEnabled: enabled)
@@ -59,8 +59,8 @@ struct MessageSwipe: ViewModifier {
             .frame(width: 34, height: 34)
             .background(active ? Palette.action : Palette.textPrimary.opacity(0.08), in: .circle)
             // A small pop when the pull counts, so the eye gets the tick the finger feels.
-            .scaleEffect(active ? 1.12 : 1)
-            .animation(.spring(response: 0.25, dampingFraction: 0.6), value: active)
+            .scaleEffect(active && !reduceMotion ? 1.12 : 1)
+            .animation(reduceMotion ? nil : .spring(response: 0.25, dampingFraction: 0.6), value: active)
             .accessibilityHidden(true)
     }
 
@@ -99,7 +99,7 @@ struct MessageSwipe: ViewModifier {
                 }
                 locked = nil
                 armed = nil
-                withAnimation(.spring(response: 0.32, dampingFraction: 0.72)) { x = 0; pull = 0 }
+                withAnimation(reduceMotion ? nil : .spring(response: 0.32, dampingFraction: 0.72)) { x = 0; pull = 0 }
                 if let fire {
                     Haptics.open()
                     onIntent(fire)
@@ -236,6 +236,7 @@ enum MessageReplies {
 struct ThreadSheet: View {
     @Environment(AppModel.self) private var model
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     let spaceId: String
     let rootId: String
     @State private var entries: [TimelineEntry] = []
@@ -262,7 +263,7 @@ struct ThreadSheet: View {
                             ForEach(Array(entries.dropFirst().enumerated()), id: \.element.id) { i, e in
                                 row(e, previous: i == 0 ? nil : entries[i])
                                     .id(e.id)
-                                    .transition(.scale(scale: 0.92, anchor: .bottom).combined(with: .opacity))
+                                    .transition(reduceMotion ? .opacity : .scale(scale: 0.92, anchor: .bottom).combined(with: .opacity))
                             }
                         }
                         Color.clear.frame(height: 6).id("thread-bottom")
@@ -271,7 +272,7 @@ struct ThreadSheet: View {
                     .padding(.top, 8)
                 }
                 .defaultScrollAnchor(.bottom)
-                .onChange(of: entries.count) { _, _ in withAnimation(.snappy) { proxy.scrollTo("thread-bottom", anchor: .bottom) } }
+                .onChange(of: entries.count) { _, _ in withAnimation(reduceMotion ? nil : .snappy) { proxy.scrollTo("thread-bottom", anchor: .bottom) } }
             }
             .background(Palette.background.ignoresSafeArea())
             .safeAreaBar(edge: .bottom, spacing: 0) {
@@ -312,7 +313,7 @@ struct ThreadSheet: View {
     }
 
     private func reload() {
-        withAnimation(.spring(duration: 0.4, bounce: 0.2)) {
+        withAnimation(reduceMotion ? nil : .spring(duration: 0.4, bounce: 0.2)) {
             entries = (try? model.core.thread(spaceId: spaceId, rootId: rootId)) ?? []
         }
     }

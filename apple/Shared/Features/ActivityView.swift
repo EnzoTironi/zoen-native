@@ -6,6 +6,7 @@ import RodaCore
 struct ActivityScreen: View {
     @Environment(AppModel.self) private var model
     @Environment(\.dynamicTypeSize) private var typeSize
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var showingList: Bool
     private let onShowCards: (() -> Void)?
 
@@ -157,7 +158,7 @@ struct ActivityScreen: View {
                     ForEach(Filter.allCases) { s in
                         let on = s == section
                         Button {
-                            withAnimation(.snappy) { section = s }
+                            withAnimation(reduceMotion ? nil : .snappy) { section = s }
                         } label: {
                             HStack(spacing: 6) {
                                 Text(s.label).font(.subheadline.weight(on ? .semibold : .medium))
@@ -204,10 +205,10 @@ struct ActivityScreen: View {
             ForEach(requests) { r in
                 RequestCard(request: r, onReview: { model.push(.request(r.id)) },
                             onApprove: { model.approve(r) }, onDeny: { model.deny(r) })
-                    .transition(.asymmetric(insertion: .opacity, removal: .scale(scale: 0.9).combined(with: .opacity)))
+                    .transition(reduceMotion ? .opacity : .asymmetric(insertion: .opacity, removal: .scale(scale: 0.9).combined(with: .opacity)))
             }
         }
-        .animation(.spring(duration: 0.45), value: requests.map(\.id))
+        .animation(reduceMotion ? nil : .spring(duration: 0.45), value: requests.map(\.id))
     }
 
     @ViewBuilder
