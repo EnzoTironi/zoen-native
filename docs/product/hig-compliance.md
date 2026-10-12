@@ -23,15 +23,24 @@ and nine additional TextKit/editor assertions retain their revision scope.
 include exact Plan save/cold reopen/restore, scoped Escape, themes, conversation
 opening, notification switching, real typing/undo and Unicode save/restore.
 
-The current follow-up at source `19836654` passes three full arm64 Debug app
+Merged [PR 69](https://github.com/EnzoTironi/zoen-native/pull/69), at product source `19836654`, passes three full arm64 Debug app
 builds (Mac, iOS simulator and generic iOS device) with Core193. Actual Tab/Space
 journeys verify request review/back with focus return, native change-event opening
 and quoted-message navigation. All 426 product and nine check files are preserved
-when composing it with Main `c87542f`. Keyboard Navigation was temporarily enabled
+when composing it with Main 68. Its complete hosted CI and resulting Main `a90bb52` have the same whole tree. Keyboard Navigation was temporarily enabled
 and restored to its original off value. Review actions left all three requests
 pending; the quote journey added one local demo reply. Videos are explicitly
 labeled screenshot walkthroughs. Core198 native packaging, physical iOS, Release,
 minimum-OS, assistive technology and the full workflow/settings matrix remain open.
+
+The motion follow-up at product source `47c90fb` passes three full arm64 Debug
+builds with Core193. Separate bounded Mac journeys verify the chat menu/quote jump,
+a local thread reply sent by Cmd-Return and retained after cold reopen, and
+Cards/List/Cards with task/approval filters and zero decisions. All 426 product and
+nine check inputs remain literal after composing with Main 69. Thread initiation
+still uses a swipe. Root changed no system preferences in this unit; the actual
+Reduce Motion/Transparency/Contrast matrix remains open. Its 28-second video uses
+eight unchanged actual captures and a separate provenance title.
 
 ## Required evidence
 
@@ -48,7 +57,7 @@ case stays open; source-level corrections remain separate from runtime passes.
 | Controls and gestures | Use native buttons, menus and dialogs. Every gesture action has an accessible and keyboard alternative, including card editing, reorder and removal. | Request review headers, change events and actionable reply quotes now use native Buttons. Their bounded Mac Tab/Space journeys pass; Plan card opening and confirmed removal/restoration retain prior proof. Creating a reply still used the existing swipe gesture in the quote journey. A keyboard-only reply-creation alternative, full keyboard order and pin reorder/removal remain open. |
 | Target sizes | Prefer 44 × 44 pt controls on iOS/iPadOS and 28 × 28 pt on Mac; Apple's minima are 28 × 28 and 20 × 20 respectively. Evaluate actual hit regions, spacing and pointer/touch context. | The candidate gives removal and Done controls 44 pt hit heights, and Mac appearance controls 40 pt hit heights within the existing rail. All affected rendered targets and the remaining product controls still require measurement. A 44 pt rule must not be imposed indiscriminately on Mac. |
 | Typography and text enlargement | Use legible system styles, preserve hierarchy and support enlarged content without overlap or losing actions. Default/minimum sizes are 17/11 pt for iOS and 13/10 pt for Mac. | The candidate uses a stacked header and multiline title at accessibility text sizes and increases Mac badge text to 10 pt. Fixed native/editor fonts and the full iOS Dynamic Type/Mac enlargement journeys remain open. Mac does not support Dynamic Type; using its name in source is not proof of enlargement. |
-| Motion | Reduce Motion removes nonessential spatial animation. Necessary changes remain understandable with immediate updates or fades. Gesture tracking still follows the user. | The tile/header code removes spring, scale and slide effects under Reduce Motion. The current PageScreen follow-up uses fades and removes symbol effects; Mac command-search reads the system preference. Remaining quote-jump, request-list and reply/thread animation sites require review. Actual Reduce Motion settings journeys remain open. |
+| Motion | Reduce Motion removes nonessential spatial animation. Necessary changes remain understandable with immediate updates or fades. Gesture tracking still follows the user. | The motion follow-up makes chat quote/search/follow scrolling immediate, removes reply/thread and composer spatial transitions, pauses typing dots, disables header/pinned insertion springs and uses opacity press feedback under Reduce Motion. Request-list/filter transitions follow the preference. The notification card stack and remaining product animation sites still require review. Actual Reduce Motion settings journeys remain open. |
 | Materials and themes | Liquid Glass belongs to navigation and controls; content uses appropriate standard surfaces. Light, dark and system appearances retain legibility. Respect Reduce Transparency and Increase Contrast. | Current Mac light/dark/light switching retains the shared palette, transparent chat overlays and typed Plan content. Contrast measurements, Reduce Transparency/Increase Contrast, system appearance and web preference behavior remain open. |
 | Accessibility semantics | VoiceOver exposes meaningful labels, values, state and actions in a coherent order. Decorative art does not create duplicate controls. State is understandable without color. | Native request-review labels and a hidden decorative icon improve the control boundary. Full VoiceOver/Switch Control, duplicate agent/avatar announcement review and coherent complete keyboard order remain required; a button trait or a bounded Tab journey alone is insufficient. |
 | Focus and presentation | Opening a card moves focus into the presentation. Closing or Escape returns it appropriately. Modals retain usable dismiss and confirmation actions. | Current Mac history Escape dismisses only its sheet; subsequent Escape closes the Plan inspector. Creation-menu Escape, text-page history Escape and unsaved line-editor cancellation retain prior proof. The current request-review destination opens with Back focused, and Back restores focus to the originating list button. Change-event opening and quoted-message navigation pass by Tab/Space. Window-scoped Escape handling preserves sheets and marked-text composition in source; actual IME, every presentation and assistive-technology focus journeys remain open. |
@@ -65,12 +74,16 @@ report after a successful scan. The published package matched
 the reviewed source bundle. Calibration found both useful detections and known
 false positives/blind spots; its references stop at 2 February 2025.
 
-Two complete scans use the same frozen 122 product-file inputs and locked
+Three complete scans use the same frozen 122 product-file inputs and locked
 Node 24.19.0 tool. Published source `15a58f0` produces 334 Apple moderate concerns
 and 37 web concerns (six serious, 31 moderate). Follow-up source `19836654`
-produces 330 Apple moderate concerns and the identical 37 web concerns. Neither
-Apple report has critical or serious findings. The four pattern-count changes
+produces 330 Apple moderate concerns and the identical 37 web concerns. The motion
+follow-up at source `47c90fb`, composed as `883713a`, also produces 330 Apple moderate
+concerns and the same 37 web concerns. No Apple report has critical or serious findings.
+The four pattern-count changes between the first two scans
 are three replaced tap-gesture sites and one decorative image annotation.
+The unchanged count after the motion corrections illustrates the scanner's limited
+coverage of actual preference behavior; retain the runtime settings matrix.
 
 These are source patterns, not confirmed defect counts or a compliance score.
 The four serious web landmark patterns occur inside the labeled sidebar, heading

@@ -2,7 +2,7 @@
 
 The [README](../README.md) introduces the product. [Roadmap status](roadmap-status.md) is the dated source of truth for implementation, current PR versions, verification and remaining billion-user gates. Read [development setup](dev/setup.md) before running a current-client journey.
 
-The current baseline includes merged native/web consolidation PR 67 and private confirmed Plan history PR 68. The roadmap records their complete CI and source-composition evidence; the [HIG matrix](product/hig-compliance.md) records the current native build, editor and keyboard journeys. Runtime capabilities retain their separate acceptance boundaries.
+The current baseline includes merged native/web consolidation PR 67, private confirmed Plan history PR 68 and native keyboard controls PR 69. The roadmap records their complete CI and source-composition evidence, the native motion follow-up and the separately reviewed 216-case backend unit. The [HIG matrix](product/hig-compliance.md) records actual native build, editor, keyboard and chat/thread journeys. Runtime capabilities retain their separate acceptance boundaries.
 
 | Document category | How to read it |
 | --- | --- |
