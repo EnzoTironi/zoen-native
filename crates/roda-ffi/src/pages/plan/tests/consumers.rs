@@ -7,6 +7,51 @@ use sha2::{Digest, Sha256};
 
 const EXACT: &str = "Reservation: cafe\u{301} 👩🏽‍💻\r\nkeep NEL\u{85}and paragraph\u{2029}bytes";
 
+#[test]
+fn legacy_line_addition_refuses_negative_cost_without_publishing_zero() {
+    let mut fixture = Fixture::new();
+    let before = storage(&fixture);
+    for cents in [-1, -1_025, i64::MIN] {
+        assert!(matches!(
+            fixture
+                .engine
+                .add_plan_line(&fixture.item, 0, "Credit", cents),
+            Err(CoreError::Invalid { .. })
+        ));
+        assert_eq!(storage(&fixture), before);
+        assert_eq!(fixture.engine.item(&fixture.item).unwrap().version, 1);
+    }
+    for cents in [0, 1_025] {
+        let outcome = fixture
+            .engine
+            .add_plan_line(&fixture.item, 0, "Exact cost", cents)
+            .unwrap();
+        let plan = outcome.item.plan.unwrap();
+        let added = plan.sections[0].lines.last().unwrap();
+        assert_eq!(added.text, "Exact cost");
+        assert_eq!(added.cost_cents, cents);
+        assert_eq!(plan.sections[0].lines[1].cost_cents, -7);
+    }
+}
+
+#[test]
+fn legacy_line_addition_refuses_an_unrepresentable_total_before_writing() {
+    let mut fixture = Fixture::new();
+    let before = storage(&fixture);
+    assert!(matches!(
+        fixture
+            .engine
+            .add_plan_line(&fixture.item, 0, "Too much", i64::MAX),
+        Err(CoreError::Invalid { .. })
+    ));
+    assert_eq!(storage(&fixture), before);
+    let outcome = fixture
+        .engine
+        .add_plan_line(&fixture.item, 0, "Exact upper total", i64::MAX - 193)
+        .unwrap();
+    assert_eq!(outcome.item.plan.unwrap().total_cents, i64::MAX);
+}
+
 fn storage(fixture: &Fixture) -> Vec<(String, Vec<String>)> {
     let connection = fixture.engine.store.conn();
     let tables: Vec<String> = connection
