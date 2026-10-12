@@ -8384,6 +8384,226 @@
           }
         }
       }
+    },
+    "Copy any text you want to keep first. Discarding opens the current page and keeps its saved versions.": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Copie primeiro o texto que deseja manter. Descartar abre a página atual e preserva as versões salvas."
+          }
+        }
+      }
+    },
+    "Copy draft text": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Copiar texto do rascunho"
+          }
+        }
+      }
+    },
+    "Could not confirm restoration. Check the current page.": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Não foi possível confirmar a restauração. Confira a página atual."
+          }
+        }
+      }
+    },
+    "Could not unlock the page draft on this device.": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Não foi possível desbloquear o rascunho da página neste dispositivo."
+          }
+        }
+      }
+    },
+    "Couldn't save": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Não foi possível salvar"
+          }
+        }
+      }
+    },
+    "Discard draft": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Descartar rascunho"
+          }
+        }
+      }
+    },
+    "Discard this draft?": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Descartar este rascunho?"
+          }
+        }
+      }
+    },
+    "Draft text copied.": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Texto do rascunho copiado."
+          }
+        }
+      }
+    },
+    "Keep a copy of the encrypted draft file first. Discarding removes only this unreadable draft and keeps the current page and its saved versions.": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Guarde primeiro uma cópia do arquivo criptografado do rascunho. Descartar remove apenas este rascunho ilegível e preserva a página atual e suas versões salvas."
+          }
+        }
+      }
+    },
+    "Keep draft file": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Guardar arquivo do rascunho"
+          }
+        }
+      }
+    },
+    "Read only": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Somente leitura"
+          }
+        }
+      }
+    },
+    "Restoration is waiting to sync.": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "A restauração está aguardando a sincronização."
+          }
+        }
+      }
+    },
+    "Saved on this device": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Salvo neste dispositivo"
+          }
+        }
+      }
+    },
+    "The page draft could not be read. Your saved versions are still available.": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Não foi possível ler o rascunho da página. As versões salvas continuam disponíveis."
+          }
+        }
+      }
+    },
+    "This page is too large to save on this device.": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Esta página é grande demais para salvar neste dispositivo."
+          }
+        }
+      }
+    },
+    "Try again": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tentar novamente"
+          }
+        }
+      }
+    },
+    "Enter a valid amount with up to two decimal places.": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Digite um valor válido com até duas casas decimais."
+          }
+        }
+      }
+    },
+    "Cost cannot be negative.": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "O custo não pode ser negativo."
+          }
+        }
+      }
+    },
+    "Restoring deletes nothing: it creates a new version equal to the chosen one.": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Restaurar não apaga nada: cria uma versão nova igual à escolhida."
+          }
+        }
+      }
+    },
+    "over the %@ cap": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "acima do limite de %@"
+          }
+        }
+      }
+    },
+    "total unavailable": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "total indisponível"
+          }
+        }
+      }
+    },
+    "within the %@ cap": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "dentro do limite de %@"
+          }
+        }
+      }
     }
   },
   "version": "1.0"

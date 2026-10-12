@@ -1,12 +1,26 @@
 import SwiftUI
 import RodaCore
 
+struct VersionHistorySheet: View {
+    let item: ItemDetail
+    var allowsRestore = true
+
+    var body: some View {
+        NavigationStack { VersoesView(item: item, allowsRestore: allowsRestore) }
+            #if os(macOS)
+            .frame(width: 560, height: 600)
+            #endif
+            .zoenSheet([.medium, .large])
+    }
+}
+
 /// Every version of a page or file: who, when, what it looked like; restore any of them
 /// (as a new version, so nothing is lost).
 struct VersoesView: View {
     @Environment(AppModel.self) private var model
     @Environment(\.dismiss) private var dismiss
     let item: ItemDetail
+    var allowsRestore = true
     @State private var current: ItemDetail?
 
     private var shown: ItemDetail { current ?? item }
@@ -16,7 +30,7 @@ struct VersoesView: View {
             Section {
                 ForEach(shown.versions.sorted { $0.number > $1.number }) { v in
                     NavigationLink {
-                        VersionPreview(item: shown, version: v) { restored in
+                        VersionPreview(item: shown, version: v, allowsRestore: allowsRestore) { restored in
                             current = restored
                         }
                     } label: {
@@ -62,11 +76,14 @@ struct VersionPreview: View {
     @Environment(\.dismiss) private var dismiss
     let item: ItemDetail
     let version: VersionDto
+    var allowsRestore = true
     var onRestore: (ItemDetail) -> Void = { _ in }
 
     @State private var controller = PageEditorController()
     @State private var url: URL?
     @State private var bump = 0
+    @State private var currentVersion: UInt32 = 0
+    @State private var canRestore = false
 
     var body: some View {
         Group {
@@ -92,7 +109,7 @@ struct VersionPreview: View {
         .navigationBarTitleDisplayMode(.inline)
         #endif
         .safeAreaInset(edge: .bottom) {
-            if version.number != item.version {
+            if canRestore && version.number != currentVersion {
                 Button {
                     restore()
                 } label: {
@@ -110,14 +127,41 @@ struct VersionPreview: View {
             }
         }
         .sensoryFeedback(.success, trigger: bump)
+        .task(id: model.revision) { refreshPermission() }
     }
 
     private func restore() {
+        refreshPermission()
+        guard canRestore, version.number != currentVersion else { return }
         if let it = model.perform({ try model.core.restoreVersion(itemId: item.id, version: version.number) }) {
+            var savedVersion = it.version
+            if item.kindId == "page" {
+                guard let page = try? model.core.page(itemId: item.id) else {
+                    model.show(.init(kind: .error, text: String(localized: "Could not confirm restoration. Check the current page.")))
+                    return
+                }
+                if page.unsaved || page.pendingSync || page.saveError != nil {
+                    model.show(.init(kind: page.saveError == nil ? .info : .error,
+                        text: page.saveError ?? String(localized: "Restoration is waiting to sync.")), seconds: 4)
+                    onRestore(it)
+                    dismiss()
+                    return
+                }
+                savedVersion = page.version
+            }
             bump += 1
-            model.show(.init(kind: .info, text: String(localized: "Version \(version.number) is back, as version \(it.version).")), seconds: 3)
+            model.show(.init(kind: .info, text: String(localized: "Version \(version.number) is back, as version \(savedVersion).")), seconds: 3)
             onRestore(it)
             dismiss()
+        }
+    }
+
+    private func refreshPermission() {
+        currentVersion = (try? model.core.item(itemId: item.id).version) ?? item.version
+        if item.kindId == "page" {
+            canRestore = allowsRestore && ((try? model.core.page(itemId: item.id).canEdit) ?? false)
+        } else {
+            canRestore = allowsRestore
         }
     }
 }

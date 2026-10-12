@@ -32,7 +32,7 @@ struct PlanItemView: View {
         var lineId: String?
         var section: UInt32
         var text: String
-        var reais: Double
+        var amount: String
     }
 
     var body: some View {
@@ -141,10 +141,17 @@ struct PlanItemView: View {
                     .contentTransition(.numericText(value: Double(plan.totalCents)))
                 if let budget = plan.budgetCents {
                     let over = plan.totalCents > budget
-                    Text(over ? String(localized: "\(Money.format(plan.totalCents - budget)) over the \(Money.format(budget)) cap") : String(localized: "of \(Money.format(budget)) · \(Money.format(budget - plan.totalCents)) left"))
-                        .font(.subheadline)
-                        .foregroundStyle(over ? Palette.danger : Palette.textSecondary)
-                        .contentTransition(.numericText())
+                    let difference = MoneyInput.differenceCents(over ? plan.totalCents : budget, over ? budget : plan.totalCents)
+                    Group {
+                        if let difference {
+                            Text(over ? String(localized: "\(Money.format(difference)) over the \(Money.format(budget)) cap") : String(localized: "of \(Money.format(budget)) · \(Money.format(difference)) left"))
+                        } else {
+                            Text(over ? String(localized: "over the \(Money.format(budget)) cap") : String(localized: "within the \(Money.format(budget)) cap"))
+                        }
+                    }
+                    .font(.subheadline)
+                    .foregroundStyle(over ? Palette.danger : Palette.textSecondary)
+                    .contentTransition(.numericText())
                 } else {
                     Text("estimated total").font(.subheadline).foregroundStyle(Palette.textSecondary)
                 }
@@ -157,18 +164,19 @@ struct PlanItemView: View {
 
     private func sectionView(item: ItemDetail, index: UInt32, section: PlanSectionDto) -> some View {
         VStack(alignment: .leading, spacing: 8) {
-            SectionHeader(title: section.title, trailing: Money.format(section.lines.reduce(0) { $0 + $1.costCents }))
+            let subtotal = MoneyInput.sumCents(section.lines.lazy.map(\.costCents))
+            SectionHeader(title: section.title, trailing: subtotal.map(Money.format) ?? String(localized: "total unavailable"))
             VStack(spacing: 0) {
                 ForEach(section.lines) { line in
                     PlanLineRow(line: line,
                                 request: item.linkedRequests.first { $0.lineId == line.id },
                                 onToggle: { toggle(line) },
-                                onEdit: { editing = EditingLine(lineId: line.id, section: index, text: line.text, reais: Double(line.costCents) / 100) },
+                                onEdit: { editing = EditingLine(lineId: line.id, section: index, text: line.text, amount: MoneyInput.text(for: line.costCents, locale: AppLocale.locale)) },
                                 onRemove: { remove(line) })
                     Divider().padding(.leading, 48).opacity(0.5)
                 }
                 Button {
-                    editing = EditingLine(lineId: nil, section: index, text: "", reais: 0)
+                    editing = EditingLine(lineId: nil, section: index, text: "", amount: MoneyInput.text(for: 0, locale: AppLocale.locale))
                 } label: {
                     Label("Add", systemImage: "plus").font(.subheadline.weight(.medium))
                         .frame(maxWidth: .infinity, alignment: .leading)
@@ -213,13 +221,16 @@ struct PlanItemView: View {
         apply(model.perform { try model.core.removePlanLine(itemId: itemId, lineId: lineId) })
     }
 
-    private func save(_ e: EditingLine) {
-        let cents = Int64((e.reais * 100).rounded())
+    private func save(_ e: EditingLine) -> Bool {
+        guard let cents = MoneyInput.cents(from: e.amount, locale: AppLocale.locale), cents >= 0 else { return false }
+        let out: EditOutcome?
         if let lineId = e.lineId {
-            apply(model.perform { try model.core.editPlanLine(itemId: itemId, lineId: lineId, text: e.text, costCents: cents) })
+            out = model.perform { try model.core.editPlanLine(itemId: itemId, lineId: lineId, text: e.text, costCents: cents) }
         } else {
-            apply(model.perform { try model.core.addPlanLine(itemId: itemId, sectionIndex: e.section, text: e.text, costCents: cents) })
+            out = model.perform { try model.core.addPlanLine(itemId: itemId, sectionIndex: e.section, text: e.text, costCents: cents) }
         }
+        apply(out)
+        return out != nil
     }
 
     private func apply(_ out: EditOutcome?) {
@@ -337,11 +348,15 @@ struct AgentReaction: View {
 
 struct LineEditor: View {
     @State var editing: PlanItemView.EditingLine
-    var onSave: (PlanItemView.EditingLine) -> Void
+    var onSave: (PlanItemView.EditingLine) -> Bool
     /// Editing an existing line: the bottom row offers [trash] [Update], Things-style.
     var onRemove: (() -> Void)? = nil
     @Environment(\.dismiss) private var dismiss
     @FocusState private var focus: Bool
+
+    private var parsedAmount: Int64? { MoneyInput.cents(from: editing.amount, locale: AppLocale.locale) }
+    private var validAmount: Bool { parsedAmount.map { $0 >= 0 } ?? false }
+    private var canSave: Bool { !editing.text.trimmingCharacters(in: .whitespaces).isEmpty && validAmount }
 
     var body: some View {
         Form {
@@ -352,11 +367,21 @@ struct LineEditor: View {
                     .sheetItem(0)
             }
             Section("Cost") {
-                TextField("Amount", value: $editing.reais, format: .currency(code: AppLocale.currencyCode).locale(AppLocale.locale))
+                TextField("Amount", text: $editing.amount)
+                    .accessibilityIdentifier("line-editor-amount")
                     #if os(iOS)
-                    .keyboardType(.decimalPad)
+                    .keyboardType(.numbersAndPunctuation)
                     #endif
                     .sheetItem(1)
+                if !validAmount {
+                    if let parsedAmount, parsedAmount < 0 {
+                        Text("Cost cannot be negative.")
+                            .font(.caption).foregroundStyle(Palette.danger)
+                    } else {
+                        Text("Enter a valid amount with up to two decimal places.")
+                            .font(.caption).foregroundStyle(Palette.danger)
+                    }
+                }
             }
         }
         .navigationTitle(editing.lineId == nil ? String(localized: "Add") : String(localized: "Edit line"))
@@ -367,8 +392,8 @@ struct LineEditor: View {
             ToolbarItem(placement: .cancellationAction) { Button("Cancel", role: .cancel) { dismiss() } }
             if onRemove == nil {
                 ToolbarItem(placement: .confirmationAction) {
-                    Button("Save") { onSave(editing); dismiss() }
-                        .disabled(editing.text.trimmingCharacters(in: .whitespaces).isEmpty)
+                    Button("Save") { if onSave(editing) { dismiss() } }
+                        .disabled(!canSave)
                 }
             }
         }
@@ -376,8 +401,8 @@ struct LineEditor: View {
             if let onRemove {
                 ConfirmMorphRow(
                     primaryTitle: "Update",
-                    primaryEnabled: !editing.text.trimmingCharacters(in: .whitespaces).isEmpty,
-                    primary: { Haptics.commit(); onSave(editing); dismiss() },
+                    primaryEnabled: canSave,
+                    primary: { if onSave(editing) { Haptics.commit(); dismiss() } },
                     destructiveLabel: "Remove item",
                     confirmTitle: "Remove item",
                     doneTitle: "Removed",
@@ -421,6 +446,12 @@ struct VersionsView: View {
                             Text("\(v.author.isMe ? "Você" : v.author.name) · \(v.note)").font(.subheadline).foregroundStyle(Palette.textSecondary)
                             if let t = v.totalCents { Text(Money.format(t)).font(.caption.weight(.medium)).monospacedDigit() }
                         }
+                        #if os(macOS)
+                        if v.number != item.version {
+                            Button("Restore", systemImage: "clock.arrow.circlepath") { restore(v) }
+                                .accessibilityIdentifier("legacy-version.restore.\(v.number)")
+                        }
+                        #endif
                     }
                     .padding(.vertical, 4)
                     .swipeActions {
@@ -433,11 +464,18 @@ struct VersionsView: View {
                     }
                 }
             } footer: {
+                #if os(macOS)
+                Text("Restoring deletes nothing: it creates a new version equal to the chosen one.")
+                #else
                 Text("Restoring deletes nothing: it creates a new version equal to the chosen one. Swipe to restore.")
+                #endif
             }
         }
         .navigationTitle("Versions")
         .toolbar { ToolbarItem(placement: .confirmationAction) { Button("OK") { dismiss() } } }
+        #if os(macOS)
+        .frame(minWidth: 560, minHeight: 480)
+        #endif
     }
 
     private func restore(_ v: VersionDto) {

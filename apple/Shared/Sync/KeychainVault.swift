@@ -27,6 +27,13 @@ final class KeychainVault: SecretVault, @unchecked Sendable {
             var out: CFTypeRef?
             let status = SecItemCopyMatching(q as CFDictionary, &out)
             if status == errSecSuccess { return out as? Data }
+            #if DEBUG && os(macOS)
+            // CopyMatching may report no item before an unsigned build discovers its missing entitlement on Add.
+            if status == errSecItemNotFound, let value = try? Data(contentsOf: fileURL(key)) {
+                useFile = true
+                return value
+            }
+            #endif
             if !fallsBack(status) { return nil }
         }
         return try? Data(contentsOf: fileURL(key))
@@ -75,7 +82,7 @@ final class KeychainVault: SecretVault, @unchecked Sendable {
 
     /// Only an unentitled Mac dev build falls back to the file.
     private func fallsBack(_ status: OSStatus) -> Bool {
-        #if os(macOS)
+        #if DEBUG && os(macOS)
         if status == errSecMissingEntitlement {
             useFile = true
             return true
@@ -86,6 +93,12 @@ final class KeychainVault: SecretVault, @unchecked Sendable {
 
     private func fileURL(_ key: String) -> URL {
         let safe = key.map { $0.isLetter || $0.isNumber || $0 == "-" || $0 == "_" ? $0 : "_" }
+        #if DEBUG
+        if let path = UserDefaults.standard.string(forKey: "ZoenDatabasePath"), path.hasPrefix("/") {
+            return URL(fileURLWithPath: path).deletingLastPathComponent()
+                .appending(path: "keys", directoryHint: .isDirectory).appending(path: String(safe))
+        }
+        #endif
         return URL.applicationSupportDirectory
             .appending(path: "Zoen/keys", directoryHint: .isDirectory)
             .appending(path: String(safe))
