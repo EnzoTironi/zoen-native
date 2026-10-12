@@ -31,6 +31,53 @@ private struct MacSearchCommandsKey: FocusedValueKey {
     typealias Value = MacSearchCommands
 }
 
+private struct MacEscapeHandler: NSViewRepresentable {
+    let onEscape: () -> Bool
+
+    func makeNSView(context: Context) -> EscapeView {
+        let view = EscapeView()
+        view.onEscape = onEscape
+        return view
+    }
+
+    func updateNSView(_ view: EscapeView, context: Context) {
+        view.onEscape = onEscape
+    }
+
+    static func dismantleNSView(_ view: EscapeView, coordinator: ()) {
+        view.stopMonitoring()
+    }
+
+    final class EscapeView: NSView {
+        var onEscape: (() -> Bool)?
+        private var monitor: Any?
+
+        override func viewDidMoveToWindow() {
+            super.viewDidMoveToWindow()
+            stopMonitoring()
+            guard window != nil else { return }
+            monitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
+                guard let self, let window = self.window,
+                      event.window === window, NSApp.keyWindow === window,
+                      window.sheetParent == nil, window.attachedSheet == nil,
+                      NSApp.modalWindow == nil,
+                      event.charactersIgnoringModifiers == "\u{1b}",
+                      event.modifierFlags.intersection([.command, .option, .control, .shift]).isEmpty
+                else { return event }
+                if let editor = window.firstResponder as? NSTextView, editor.hasMarkedText() {
+                    return event
+                }
+                return self.onEscape?() == true ? nil : event
+            }
+        }
+
+        func stopMonitoring() {
+            if let monitor { NSEvent.removeMonitor(monitor) }
+            monitor = nil
+        }
+    }
+}
+
 private extension FocusedValues {
     var macSearch: MacSearchCommands? {
         get { self[MacSearchCommandsKey.self] }
@@ -127,6 +174,7 @@ struct MacRootView: View {
             .padding(.bottom, 16)
         }
         .background(Palette.background)
+        .background(MacEscapeHandler(onEscape: dismissTransientPresentation))
         .ignoresSafeArea(.container, edges: .top)
         .toolbarBackground(.hidden, for: .windowToolbar)
         .focusedSceneValue(\.macSearch, MacSearchCommands(scope: searchCommandScope, query: $search,
@@ -139,7 +187,6 @@ struct MacRootView: View {
                 }
                 .ignoresSafeArea(.container, edges: .top)
                 .inspectorColumnWidth(min: 360, ideal: 440, max: 560)
-                .onExitCommand { closeInspector() }
             }
         }
         .overlay(alignment: .bottom) {
@@ -159,9 +206,6 @@ struct MacRootView: View {
         }
         .sheet(item: $model.profileSheet) { ref in
             ProfileSheet(personaId: ref.id).environment(model)
-        }
-        .onKeyPress(.escape) {
-            dismissTransientPresentation() ? .handled : .ignored
         }
         .onAppear {
             if model.macSelection == nil, let first = model.spaceId(titled: DemoSpace.paraty) ?? model.spaces.first?.id {
@@ -203,9 +247,6 @@ struct MacRootView: View {
     }
 
     private func dismissTransientPresentation() -> Bool {
-        guard let window = NSApp.keyWindow,
-              window.sheetParent == nil, window.attachedSheet == nil,
-              NSApp.modalWindow == nil else { return false }
         if model.radialOpen {
             withAnimation(reduceMotion ? nil : .spring(duration: 0.35)) { model.radialOpen = false }
             return true

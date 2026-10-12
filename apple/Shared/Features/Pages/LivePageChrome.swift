@@ -57,9 +57,6 @@ private struct LivePageChrome<Status: View, Actions: View>: ViewModifier {
     let onClose: (() -> Void)?
     let status: Status
     let actions: Actions
-    #if os(macOS)
-    @FocusState private var closeFocused: Bool
-    #endif
 
     func body(content: Content) -> some View {
         #if os(macOS)
@@ -75,8 +72,6 @@ private struct LivePageChrome<Status: View, Actions: View>: ViewModifier {
                     .accessibilityLabel(Text("Close details"))
                     .accessibilityIdentifier("mac-inspector-close")
                     .help("Close details (Esc)")
-                    .focused($closeFocused)
-                    .onAppear { closeFocused = true }
                 }
             }
             .labelStyle(.iconOnly)
