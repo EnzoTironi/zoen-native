@@ -895,6 +895,35 @@ fn contexts_are_bound_to_the_exact_decision_and_do_not_read_later_payloads() {
         state.apply_checked(&substituted, &fixture.engine.identities, &context),
         Projection::Refused
     );
+    for substituted in [
+        Event {
+            seq: event.seq + 1,
+            ..event.clone()
+        },
+        Event {
+            prev: "substituted".into(),
+            ..event.clone()
+        },
+        Event {
+            hash: "substituted".into(),
+            ..event.clone()
+        },
+        Event {
+            at_ms: event.at_ms + 1,
+            ..event.clone()
+        },
+    ] {
+        assert!(!context.matches(&substituted));
+        assert!(plans
+            .before(&state, &fixture.engine.identities, &substituted, end)
+            .is_err());
+        assert_eq!(
+            state.apply_checked(&substituted, &fixture.engine.identities, &context),
+            Projection::Refused
+        );
+        assert_eq!(state.requests[&request.id].status, ReqStatus::Pending);
+        assert!(state.resolved_order.is_empty());
+    }
     assert!(plans
         .before(&state, &fixture.engine.identities, &event, end + 1)
         .is_err());

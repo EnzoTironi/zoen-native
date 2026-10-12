@@ -48,6 +48,7 @@ enum Mode {
 /// from a verified log prefix and locally authenticated, bounded payload bytes.
 pub(crate) struct BeforeEvent {
     event: String,
+    ordered_address: Option<(u64, String, String)>,
     mode: Mode,
     plan: PlanRead,
 }
@@ -70,6 +71,12 @@ fn binding(event: &Event) -> String {
 impl BeforeEvent {
     pub(crate) fn matches(&self, event: &Event) -> bool {
         self.event == binding(event)
+            && self
+                .ordered_address
+                .as_ref()
+                .is_none_or(|(seq, prev, hash)| {
+                    *seq == event.seq && prev == &event.prev && hash == &event.hash
+                })
     }
 
     pub(crate) fn plan(&self) -> &PlanRead {
@@ -260,6 +267,8 @@ impl<'a> PlanReplay<'a> {
         };
         Ok(BeforeEvent {
             event: binding(event),
+            ordered_address: matches!(mode, Mode::Confirmed)
+                .then(|| (event.seq, event.prev.clone(), event.hash.clone())),
             mode,
             plan,
         })
