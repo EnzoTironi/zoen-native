@@ -1,5 +1,6 @@
 import SwiftUI
 import RodaCore
+import AppKit
 
 private struct MacSearchCommands: Equatable {
     let scope: UUID
@@ -160,7 +161,7 @@ struct MacRootView: View {
             ProfileSheet(personaId: ref.id).environment(model)
         }
         .onKeyPress(.escape) {
-            dismissCreateMenu() ? .handled : .ignored
+            dismissTransientPresentation() ? .handled : .ignored
         }
         .onAppear {
             if model.macSelection == nil, let first = model.spaceId(titled: DemoSpace.paraty) ?? model.spaces.first?.id {
@@ -201,9 +202,16 @@ struct MacRootView: View {
         model.inspectorItem = nil
     }
 
-    private func dismissCreateMenu() -> Bool {
+    private func dismissTransientPresentation() -> Bool {
+        guard let window = NSApp.keyWindow,
+              window.sheetParent == nil, window.attachedSheet == nil,
+              NSApp.modalWindow == nil else { return false }
         if model.radialOpen {
             withAnimation(reduceMotion ? nil : .spring(duration: 0.35)) { model.radialOpen = false }
+            return true
+        }
+        if model.inspectorItem != nil {
+            closeInspector()
             return true
         }
         return false
