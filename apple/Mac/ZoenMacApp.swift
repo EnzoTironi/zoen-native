@@ -136,6 +136,7 @@ struct MacRootView: View {
                 NavigationStack {
                     ItemView(itemId: id, onClose: { closeInspector() })
                 }
+                .ignoresSafeArea(.container, edges: .top)
                 .inspectorColumnWidth(min: 360, ideal: 440, max: 560)
                 .onExitCommand { closeInspector() }
             }
