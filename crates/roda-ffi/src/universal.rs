@@ -62,7 +62,8 @@ impl Engine {
         if hex::encode(Sha256::digest(bytes)) != sha256 {
             return Ok(false);
         }
-        self.store.put_media(sha256, mime, bytes, now_ms())?;
+        self.store
+            .cache_imported_media(sha256, mime, bytes, now_ms())?;
         Ok(true)
     }
 

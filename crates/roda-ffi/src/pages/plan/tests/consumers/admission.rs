@@ -281,6 +281,11 @@ fn missing_or_damaged_payload_never_admits_legacy_editing_before_or_after_recove
         .add_plan_line(&fixture.item, 0, "Damaged payload", 1)
         .is_err());
     assert_eq!(storage(&fixture), before);
+    assert!(!fixture
+        .engine
+        .import_media(&hash, b"wrong imported payload", "application/json")
+        .unwrap());
+    assert_eq!(storage(&fixture), before);
     assert!(fixture
         .engine
         .import_media(&hash, &bytes, "application/json")
@@ -288,11 +293,17 @@ fn missing_or_damaged_payload_never_admits_legacy_editing_before_or_after_recove
     let before = storage(&fixture);
     let recovered = fixture.engine.plan_page(&fixture.item).unwrap();
     assert!(recovered.ready);
+    assert_eq!(fixture.engine.media(&hash).unwrap(), Some(bytes.clone()));
     assert!(!recovered.legacy_edit_admitted);
     assert!(fixture
         .engine
         .add_plan_line(&fixture.item, 0, "Recovered cutover", 1)
         .is_err());
+    assert_eq!(storage(&fixture), before);
+    assert!(fixture
+        .engine
+        .import_media(&hash, &bytes, "application/vnd.zoen.page")
+        .unwrap());
     assert_eq!(storage(&fixture), before);
 }
 
@@ -533,7 +544,7 @@ fn legacy_admission_and_actual_writes_preserve_missing_key_and_relay_account_ref
 
     fixture
         .engine
-        .create_account("Relay account", "relay-account", "http://127.0.0.1:9")
+        .create_account("Relay account", "relay_account", "http://127.0.0.1:9")
         .unwrap();
     let account = fixture.engine.me_id().unwrap();
     fixture.ordered(EventBody::MemberAdded {
