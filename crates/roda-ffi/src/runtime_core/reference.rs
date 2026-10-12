@@ -210,8 +210,16 @@ impl DeviceCore {
             .ok_or(NativeError::History)?;
         let mut ordered = State::default();
         let mut grant_event = None;
-        for event in log.events() {
-            let accepted = ordered.apply_checked(event, &self.engine.identities);
+        let mut plans = crate::pages::PlanReplay::new(&self.engine.store, &self.engine.logs);
+        for (end, event) in log.events().iter().enumerate() {
+            let context = plans
+                .before(&ordered, &self.engine.identities, event, end)
+                .map_err(|_| NativeError::History)?;
+            let accepted = match ordered.apply_checked(event, &self.engine.identities, &context) {
+                crate::pages::Projection::Applied => true,
+                crate::pages::Projection::Refused => false,
+                crate::pages::Projection::Waiting => return Err(NativeError::History),
+            };
             if accepted
                 && matches!(&event.body, EventBody::GrantIssued { grant } if grant.id == original.grant)
             {

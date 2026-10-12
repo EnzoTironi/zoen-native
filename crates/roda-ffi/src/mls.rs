@@ -671,6 +671,11 @@ impl Engine {
         let space = ev.env.space().to_string();
         let next = self.logs.get(&space).map(|l| l.next_seq()).unwrap_or(0);
         if ev.seq < next {
+            if self.approval_replay_needed {
+                if let Err(error) = self.reproject_approval_overlay() {
+                    return Ingest::Invalid(error.to_string());
+                }
+            }
             return Ingest::Duplicate;
         }
         if ev.seq > next {
@@ -893,7 +898,6 @@ impl Engine {
                 self.net.pending.remove(&client_id);
             }
             if let Err(err) = self.reproject_approval_overlay() {
-                let _ = self.reload();
                 return Ingest::Invalid(err.to_string());
             }
             return if own {
@@ -920,7 +924,9 @@ impl Engine {
             }
             return Ingest::Confirmed;
         }
-        self.state.apply(&e, &self.identities);
+        if let Err(err) = self.apply_confirmed_event(&e) {
+            return Ingest::Invalid(err.to_string());
+        }
         self.index_dirty = true;
         self.note_unknown(&e);
         Ingest::Applied

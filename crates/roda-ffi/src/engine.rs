@@ -4,7 +4,7 @@
 //! aplicar na projeção**. Ler é só consultar a projeção. Reabrir o app = reverificar
 //! cada log e reprojetar do zero.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use roda_grants::{
     evaluate, standing_allow_permitted, standing_key, Budget, Decision, Policy, Reason,
@@ -15,6 +15,7 @@ use roda_types::*;
 use serde_json::{json, Value};
 
 use crate::apps;
+use crate::pages::{BeforeEvent, Currentness, PlanOrigin, PlanReplay, Projection};
 
 use crate::dto::*;
 use crate::i18n::{money, t, ts};
@@ -192,20 +193,26 @@ pub(crate) struct State {
     pub resolved_order: Vec<RequestId>,
     pub grants: Vec<GrantState>,
     pub usage: Vec<(IdentityId, i64, i64)>, // (agente, centavos, quando)
+    pub(crate) plan_origins: HashMap<ItemId, PlanOrigin>,
+    pub(crate) waiting_spaces: HashSet<SpaceId>,
 }
 
 impl State {
-    pub(crate) fn apply(&mut self, e: &Event, identities: &HashMap<IdentityId, Identity>) {
-        self.apply_checked(e, identities);
-    }
-
     pub(crate) fn apply_checked(
         &mut self,
         e: &Event,
         identities: &HashMap<IdentityId, Identity>,
-    ) -> bool {
-        if !self.approval_event_valid(e, identities) {
-            return false;
+        context: &BeforeEvent,
+    ) -> Projection {
+        match self.approval_event_valid(e, identities, context) {
+            Projection::Refused => return Projection::Refused,
+            Projection::Waiting => {
+                if context.ordered() {
+                    self.waiting_spaces.insert(e.space.clone());
+                }
+                return Projection::Waiting;
+            }
+            Projection::Applied => {}
         }
         let entry = |body| Entry {
             hash: e.hash.clone(),
@@ -440,7 +447,31 @@ impl State {
             | EventBody::Sealed { .. }
             | EventBody::Unsupported { .. } => {}
         }
-        true
+        match &e.body {
+            EventBody::ItemCreated {
+                item,
+                kind: ItemKind::Plan,
+                content: ItemContent::Plan(_),
+                ..
+            } => {
+                self.plan_origins
+                    .insert(item.clone(), context.creation_origin(e, item));
+            }
+            EventBody::RequestResolved {
+                request,
+                approved: true,
+                ..
+            } => {
+                if let Some(proposal) = self.requests[request].req.proposal.as_ref() {
+                    if proposal.kind == ItemKind::Plan {
+                        self.plan_origins
+                            .insert(proposal.item.clone(), PlanOrigin::Proposal);
+                    }
+                }
+            }
+            _ => {}
+        }
+        Projection::Applied
     }
 }
 
@@ -450,6 +481,8 @@ pub struct Engine {
     pub(crate) store: Store,
     pub(crate) db_path: String,
     pub(crate) logs: HashMap<SpaceId, SpaceLog>,
+    pub(crate) broken_spaces: HashMap<SpaceId, SpaceState>,
+    pub(crate) approval_replay_needed: bool,
     pub(crate) space_order: Vec<SpaceId>,
     pub(crate) identities: HashMap<IdentityId, Identity>,
     pub(crate) identity_order: Vec<IdentityId>,
@@ -496,6 +529,8 @@ impl Engine {
             store,
             db_path: path.to_string(),
             logs: HashMap::new(),
+            broken_spaces: HashMap::new(),
+            approval_replay_needed: false,
             space_order: Vec::new(),
             identities: HashMap::new(),
             identity_order: Vec::new(),
@@ -526,7 +561,7 @@ impl Engine {
         self.identities.clear();
         self.identity_order.clear();
         self.signers.clear();
-        self.state = State::default();
+        self.broken_spaces.clear();
         self.index_dirty = true;
         self.me = self.store.meta("me")?;
         for (identity, secret) in self.store.identities()? {
@@ -547,9 +582,6 @@ impl Engine {
             let events = self.store.events(&space)?;
             match SpaceLog::from_events(space.clone(), events.clone()) {
                 Ok(log) => {
-                    for e in log.events() {
-                        self.state.apply(e, &self.identities);
-                    }
                     self.logs.insert(space.clone(), log);
                 }
                 Err(err) => {
@@ -561,7 +593,7 @@ impl Engine {
                             _ => None,
                         })
                         .unwrap_or_else(|| t("Espaço", "Space"));
-                    self.state.spaces.insert(
+                    self.broken_spaces.insert(
                         space.clone(),
                         SpaceState {
                             id: space.clone(),
@@ -623,6 +655,9 @@ impl Engine {
         at_ms: i64,
         body: EventBody,
     ) -> R<Event> {
+        if self.approval_replay_needed {
+            self.reproject_approval_overlay()?;
+        }
         let signer = self.author_for(author)?;
         if self.net.synced.contains(space) {
             // Only this device's account publishes to the relay for now; local agents
@@ -648,22 +683,32 @@ impl Engine {
         if is_new && !matches!(body, EventBody::SpaceCreated { .. }) {
             return Err(not_found(&t("Espaço", "Space")));
         }
-        let log = self
-            .logs
-            .entry(space.to_string())
-            .or_insert_with(|| SpaceLog::new(space));
         let client_id = new_ulid(at_ms);
-        let seen = log.head();
+        let seen = self.logs.get(space).and_then(SpaceLog::head);
         let signed = signer.sign_event(space, &client_id, at_ms, seen, body);
-        if !self.state.approval_event_valid(&signed, &self.identities) {
+        let context = PlanReplay::new(&self.store, &self.logs).local(
+            &self.state,
+            &self.identities,
+            &signed,
+        )?;
+        if self
+            .state
+            .approval_event_valid(&signed, &self.identities, &context)
+            != Projection::Applied
+        {
             return Err(CoreError::Invalid {
                 reason: t(
-                    "pedido, decisão ou uso não autorizado",
-                    "unauthorized request, decision or usage",
+                    "pedido, decisão ou uso não autorizado ou aguardando conteúdo",
+                    "unauthorized request, decision or usage, or content still arriving",
                 ),
             });
         }
-        let event = log.sequence(signed).clone();
+        let event = self
+            .logs
+            .entry(space.to_string())
+            .or_insert_with(|| SpaceLog::new(space))
+            .sequence(signed)
+            .clone();
         if let Err(e) = self.store.append_event(&event) {
             // Mantém memória e disco iguais: desfaz o append em memória recarregando.
             self.reload()?;
@@ -672,7 +717,7 @@ impl Engine {
         if is_new {
             self.space_order.push(space.to_string());
         }
-        self.state.apply(&event, &self.identities);
+        self.state.apply_checked(&event, &self.identities, &context);
         self.index_dirty = true;
         Ok(event)
     }
@@ -1052,7 +1097,9 @@ impl Engine {
             ReqStatus::Approved => RequestStatus::Approved,
             ReqStatus::Denied => RequestStatus::Denied,
         };
-        if status == RequestStatus::Pending && !self.request_is_current(&r.req) {
+        if status == RequestStatus::Pending
+            && matches!(self.request_currentness(&r.req), Ok(Currentness::Changed))
+        {
             status = RequestStatus::Stale;
         }
         let decision = self.decide(&r.req.agent, &r.space, &r.req.action, 0);
@@ -1102,13 +1149,18 @@ impl Engine {
         }
     }
 
+    pub(crate) fn request_currentness(&self, req: &AgentRequest) -> R<Currentness> {
+        if self.approval_replay_needed {
+            return Ok(Currentness::Waiting);
+        }
+        let Some(request) = self.state.requests.get(&req.id) else {
+            return Ok(Currentness::Changed);
+        };
+        PlanReplay::new(&self.store, &self.logs).current(&self.state, req, &request.space)
+    }
+
     pub(crate) fn request_is_current(&self, req: &AgentRequest) -> bool {
-        self.state.requests.get(&req.id).is_some_and(|r| {
-            self.state
-                .request_is_current_with_plan(req, &r.space, |item| {
-                    self.plan_snapshot(item).ok().map(|plan| plan.document)
-                })
-        })
+        matches!(self.request_currentness(req), Ok(Currentness::Current))
     }
 
     // ───────────────────────────── API pública ─────────────────────────────

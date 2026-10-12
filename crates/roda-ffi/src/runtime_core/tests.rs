@@ -9,6 +9,8 @@ use roda_proto::{ClientFrame, Envelope, KeyPackageClaimClock, KeyPackageRecord};
 
 const SPACE: &str = "certified-owner-agent-direct";
 
+mod canonical_approvals;
+
 struct Fixture {
     space: String,
     owner: Engine,

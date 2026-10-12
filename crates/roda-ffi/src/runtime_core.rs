@@ -471,13 +471,21 @@ impl DeviceCore {
         let mut original = None;
         let mut readable = false;
         let mut text = Zeroizing::new(String::new());
-        for event in log.events() {
+        let mut plans = crate::pages::PlanReplay::new(&self.engine.store, &self.engine.logs);
+        for (end, event) in log.events().iter().enumerate() {
             let opened = crate::mls_opening::opened_leaf(&self.engine.store, event);
             let own_echo = self.engine.net.account.as_ref().is_some_and(|account| {
                 crate::mls_opening::own_echo(&self.engine.store, event, account)
             });
             let historical_writers = direct_writers(&ordered, space, &self.owner, &self.agent);
-            let accepted = ordered.apply_checked(event, &self.engine.identities);
+            let context = plans
+                .before(&ordered, &self.engine.identities, event, end)
+                .map_err(|_| NativeError::History)?;
+            let accepted = match ordered.apply_checked(event, &self.engine.identities, &context) {
+                crate::pages::Projection::Applied => true,
+                crate::pages::Projection::Refused => false,
+                crate::pages::Projection::Waiting => return Err(NativeError::History),
+            };
             if let EventBody::GrantIssued { grant } = &event.body {
                 if accepted {
                     grant_events.insert(grant.id.as_str(), event);

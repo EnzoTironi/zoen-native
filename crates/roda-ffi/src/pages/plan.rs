@@ -17,6 +17,7 @@ use crate::CoreError;
 
 mod api;
 mod confirmed;
+pub(crate) mod projection;
 pub use api::{
     PlanPageBlockDto, PlanPageContentDto, PlanPageDto, PlanPageReadSourceDto, PlanProseKindDto,
 };
@@ -248,6 +249,7 @@ fn event_content(event: &Event, slots: &[Slot]) -> (Option<ItemContent>, Option<
     }
 }
 
+#[derive(Clone)]
 enum PayloadRead {
     Ready(Vec<u8>),
     Waiting(String),
@@ -335,57 +337,57 @@ impl Tape {
     }
 }
 
+fn read_plan_payload(store: &roda_store::Store, page: &PageContent) -> R<PayloadRead> {
+    if let Some(blob) = &page.blob {
+        if !page.loro.is_empty()
+            || blob.bytes > MAX_PLAN_PACKET_BYTES as u64
+            || !hash_address(&blob.sha256)
+            || !hash_address(&blob.blob)
+            || !hash_address(&blob.key)
+        {
+            return Ok(PayloadRead::Malformed(
+                "invalid Plan blob descriptor".into(),
+            ));
+        }
+        let bytes: Option<Vec<u8>> = store
+            .conn()
+            .query_row(
+                "SELECT bytes FROM media WHERE sha256 = ?1 AND length(bytes) = ?2",
+                rusqlite::params![blob.sha256, blob.bytes],
+                |row| row.get(0),
+            )
+            .optional()
+            .map_err(|error| CoreError::Storage {
+                message: error.to_string(),
+            })?;
+        return Ok(match bytes {
+            Some(bytes) if hex::encode(Sha256::digest(&bytes)) == blob.sha256 => {
+                PayloadRead::Ready(bytes)
+            }
+            _ => {
+                PayloadRead::Waiting("the Plan blob is missing or has damaged cached bytes".into())
+            }
+        });
+    }
+    if page.loro.len() > MAX_PLAN_PACKET_BYTES.div_ceil(3) * 4 {
+        return Ok(PayloadRead::Malformed(
+            "Plan payload exceeds the packet limit; nothing was discarded".into(),
+        ));
+    }
+    Ok(
+        match base64::engine::general_purpose::STANDARD.decode(&page.loro) {
+            Ok(bytes) if bytes.len() <= MAX_PLAN_PACKET_BYTES => PayloadRead::Ready(bytes),
+            _ => PayloadRead::Malformed("invalid or oversized inline Plan payload".into()),
+        },
+    )
+}
+
 impl Engine {
     /// A malformed signed payload is a refusal. Missing or damaged local media is
     /// a waiting condition, and an infrastructure error leaves the fold unchanged.
     /// Check cached length before allocating a payload already subject to codec caps.
     fn plan_payload(&self, page: &PageContent) -> R<PayloadRead> {
-        if let Some(blob) = &page.blob {
-            if !page.loro.is_empty()
-                || blob.bytes > MAX_PLAN_PACKET_BYTES as u64
-                || !hash_address(&blob.sha256)
-                || !hash_address(&blob.blob)
-                || !hash_address(&blob.key)
-            {
-                return Ok(PayloadRead::Malformed(
-                    "invalid Plan blob descriptor".into(),
-                ));
-            }
-            let length: Option<u64> = self
-                .store
-                .conn()
-                .query_row(
-                    "SELECT length(bytes) FROM media WHERE sha256 = ?1",
-                    [&blob.sha256],
-                    |row| row.get(0),
-                )
-                .optional()
-                .map_err(|error| CoreError::Storage {
-                    message: error.to_string(),
-                })?;
-            if length != Some(blob.bytes) {
-                return Ok(PayloadRead::Waiting(
-                    "the Plan blob is missing or has damaged cached bytes".into(),
-                ));
-            }
-            return Ok(match self.media(&blob.sha256)? {
-                Some(bytes) => PayloadRead::Ready(bytes),
-                None => PayloadRead::Waiting(
-                    "the Plan blob is missing or has damaged cached bytes".into(),
-                ),
-            });
-        }
-        if page.loro.len() > MAX_PLAN_PACKET_BYTES.div_ceil(3) * 4 {
-            return Ok(PayloadRead::Malformed(
-                "Plan payload exceeds the packet limit; nothing was discarded".into(),
-            ));
-        }
-        Ok(
-            match base64::engine::general_purpose::STANDARD.decode(&page.loro) {
-                Ok(bytes) if bytes.len() <= MAX_PLAN_PACKET_BYTES => PayloadRead::Ready(bytes),
-                _ => PayloadRead::Malformed("invalid or oversized inline Plan payload".into()),
-            },
-        )
+        read_plan_payload(&self.store, page)
     }
 
     pub(super) fn plan_timeline(&self, item: &str) -> R<PlanFold> {

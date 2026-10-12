@@ -9,6 +9,7 @@ use crate::engine::{
     Engine, Entry, EntryBody, GrantState, ItemState, ReqStatus, RequestState, State, Version,
 };
 use crate::i18n::t;
+use crate::pages::{BeforeEvent, Currentness, PlanRead, Projection};
 use crate::{tr, CoreError};
 
 type R<T> = Result<T, CoreError>;
@@ -33,20 +34,36 @@ impl State {
         })
     }
 
-    pub(crate) fn request_is_current(&self, req: &AgentRequest, space: &str) -> bool {
-        self.request_is_current_with_plan(req, space, |item| {
-            match &self.items.get(item)?.current().content {
-                ItemContent::Plan(plan) => Some(plan.clone()),
-                _ => None,
-            }
-        })
-    }
-
-    pub(crate) fn request_is_current_with_plan(
+    pub(crate) fn request_currentness(
         &self,
         req: &AgentRequest,
         space: &str,
-        read_plan: impl FnOnce(&str) -> Option<PlanDoc>,
+        plan: &PlanRead,
+    ) -> Currentness {
+        if matches!(plan, PlanRead::Waiting)
+            && req.proposal.is_none()
+            && self.writer(space, &req.agent)
+            && matches!((&req.item, &req.line), (Some(item), Some(_))
+                if self.items.get(item).is_some_and(|item| item.space == space))
+        {
+            return Currentness::Waiting;
+        }
+        let document = match plan {
+            PlanRead::Ready { document, .. } => Some(document),
+            _ => None,
+        };
+        if self.request_matches(req, space, document) {
+            Currentness::Current
+        } else {
+            Currentness::Changed
+        }
+    }
+
+    fn request_matches(
+        &self,
+        req: &AgentRequest,
+        space: &str,
+        read_plan: Option<&PlanDoc>,
     ) -> bool {
         if !self.writer(space, &req.agent) {
             return false;
@@ -76,7 +93,7 @@ impl State {
         match (&req.item, &req.line) {
             (Some(item), Some(line)) => self.items.get(item).is_some_and(|it| {
                 it.space == space
-                    && read_plan(item).is_some_and(|plan| {
+                    && read_plan.is_some_and(|plan| {
                         plan.line(line).is_some_and(|line| {
                             content_hash(&(&line.text, line.cost_cents)) == req.content_hash
                         })
@@ -96,6 +113,37 @@ impl State {
     /// A signed but unauthorized event remains in the verified chain without changing
     /// an approval, output or usage projection.
     pub(crate) fn approval_event_valid(
+        &self,
+        event: &Event,
+        identities: &HashMap<IdentityId, Identity>,
+        context: &BeforeEvent,
+    ) -> Projection {
+        if !context.matches(event) {
+            return Projection::Refused;
+        }
+        if self.waiting_spaces.contains(&event.space) {
+            return Projection::Waiting;
+        }
+        if !self.approval_event_guards(event, identities) {
+            return Projection::Refused;
+        }
+        if let EventBody::RequestResolved {
+            request,
+            approved: true,
+            ..
+        } = &event.body
+        {
+            let request = &self.requests[request];
+            return match self.request_currentness(&request.req, &request.space, context.plan()) {
+                Currentness::Current => Projection::Applied,
+                Currentness::Changed => Projection::Refused,
+                Currentness::Waiting => Projection::Waiting,
+            };
+        }
+        Projection::Applied
+    }
+
+    pub(crate) fn approval_event_guards(
         &self,
         e: &Event,
         identities: &HashMap<IdentityId, Identity>,
@@ -176,7 +224,7 @@ impl State {
                     && identities
                         .get(&request.agent)
                         .is_some_and(|i| i.kind == IdentityKind::Agent && i.owner.is_some())
-                    && (request.proposal.is_none() || self.request_is_current(request, &e.space))
+                    && (request.proposal.is_none() || self.request_matches(request, &e.space, None))
                     && request.proposal.as_ref().is_none_or(|p| {
                         p.ai_cost_cents == 0
                             || identities
@@ -212,7 +260,16 @@ impl State {
                         .get(&r.req.agent)
                         .and_then(|a| a.owner.as_deref())
                         != Some(e.author.as_str())
-                    || (*approved && !self.request_is_current(&r.req, &r.space))
+                    || (*approved && !self.writer(&r.space, &r.req.agent))
+                    || (*approved
+                        && match (&r.req.item, &r.req.line) {
+                            (Some(item), Some(_)) => !self
+                                .items
+                                .get(item)
+                                .is_some_and(|item| item.space == r.space),
+                            (None, None) => false,
+                            _ => true,
+                        })
                 {
                     return false;
                 }
@@ -513,13 +570,26 @@ impl Engine {
                 ),
             });
         }
-        if approve && !self.request_is_current(&r.req) {
-            return Err(CoreError::Stale {
-                reason: t(
-                    "O conteúdo ou a autorização mudou. Peça uma nova proposta.",
-                    "The content or authorization changed. Request a new proposal.",
-                ),
-            });
+        if approve {
+            match self.request_currentness(&r.req)? {
+                Currentness::Current => {}
+                Currentness::Waiting => {
+                    return Err(CoreError::Forbidden {
+                        reason: t(
+                            "O conteúdo confirmado ainda está chegando.",
+                            "The confirmed content is still arriving.",
+                        ),
+                    })
+                }
+                Currentness::Changed => {
+                    return Err(CoreError::Stale {
+                        reason: t(
+                            "O conteúdo ou a autorização mudou. Peça uma nova proposta.",
+                            "The content or authorization changed. Request a new proposal.",
+                        ),
+                    })
+                }
+            }
         }
         if approve {
             if let Some(item) = &r.req.item {

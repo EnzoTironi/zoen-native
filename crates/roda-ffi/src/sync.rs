@@ -22,6 +22,7 @@ use serde::{Deserialize, Serialize};
 use crate::dto::Delivery;
 use crate::engine::{Engine, Entry, State};
 use crate::i18n::t;
+use crate::pages::{PlanReplay, Projection};
 use crate::CoreError;
 
 type R<T> = Result<T, CoreError>;
@@ -78,9 +79,9 @@ impl NetState {
 /// What happened to an event from the relay.
 #[derive(Debug, PartialEq, Eq)]
 pub enum Ingest {
-    /// Someone else's event, now in the projection.
+    /// Someone else's verified event was retained; projection may await media.
     Applied,
-    /// One of ours: the pending copy is now confirmed.
+    /// One of ours: transport confirmed the pending copy; authority is rechecked.
     Confirmed,
     /// Already had it.
     Duplicate,
@@ -149,12 +150,11 @@ impl Engine {
             if p.failed {
                 // Only refused messages stay visible (with a retry/delete affordance).
                 if matches!(e.body, EventBody::MessagePosted { .. })
-                    && self.state.spaces.contains_key(&e.space)
+                    && self.space_order.contains(&e.space)
                 {
                     self.net
                         .failed
                         .insert(e.client_id.clone(), p.last_error.unwrap_or_default());
-                    self.state.apply(&e, &self.identities);
                 }
                 continue;
             }
@@ -169,8 +169,8 @@ impl Engine {
             if matches!(e.body, EventBody::RequestResolved { .. }) {
                 self.net.optimistic_approvals.insert(e.space.clone());
             }
-            self.state.apply(&e, &self.identities);
         }
+        self.reproject_approval_overlay()?;
         self.recompute_unknown();
         self.reload_mls();
         Ok(())
@@ -194,8 +194,9 @@ impl Engine {
     }
 
     pub(crate) fn approval_projection_needs_replay(&self, e: &Event) -> bool {
-        self.net.optimistic_approvals.contains(&e.space)
-            && matches!(
+        self.approval_replay_needed
+            || self.state.waiting_spaces.contains(&e.space)
+            || matches!(
                 e.body,
                 EventBody::RequestOpened { .. }
                     | EventBody::RequestResolved { .. }
@@ -209,20 +210,40 @@ impl Engine {
             )
     }
 
-    /// Reconcile only when an ordered dependency can invalidate an optimistic decision.
+    pub(crate) fn apply_confirmed_event(&mut self, event: &Event) -> R<Projection> {
+        let end = self
+            .logs
+            .get(&event.space)
+            .and_then(|log| log.len().checked_sub(1))
+            .ok_or_else(|| CoreError::Invalid {
+                reason: "missing confirmed frontier".into(),
+            })?;
+        let context = PlanReplay::new(&self.store, &self.logs).before(
+            &self.state,
+            &self.identities,
+            event,
+            end,
+        )?;
+        Ok(self.state.apply_checked(event, &self.identities, &context))
+    }
+
+    /// Rebuild authority into temporary state before publishing an optimistic overlay.
     /// Use the verified log cache; do not reload keys, MLS state or open page sessions.
     pub(crate) fn reproject_approval_overlay(&mut self) -> R<()> {
+        self.approval_replay_needed = true;
         let mut order = self.store.space_ids()?;
         let pending = self.store.outbox()?;
         let mut state = State::default();
         let mut confirmed = HashSet::new();
+        let mut plans = PlanReplay::new(&self.store, &self.logs);
         for space in &order {
             if let Some(log) = self.logs.get(space) {
-                for e in log.events() {
+                for (end, e) in log.events().iter().enumerate() {
                     confirmed.insert(e.client_id.clone());
-                    state.apply(e, &self.identities);
+                    let context = plans.before(&state, &self.identities, e, end)?;
+                    state.apply_checked(e, &self.identities, &context);
                 }
-            } else if let Some(broken) = self.state.spaces.get(space) {
+            } else if let Some(broken) = self.broken_spaces.get(space) {
                 let mut broken = broken.clone();
                 broken.entries.clear();
                 state.spaces.insert(space.clone(), broken);
@@ -238,7 +259,8 @@ impl Engine {
                 if matches!(e.body, EventBody::MessagePosted { .. })
                     && state.spaces.contains_key(&e.space)
                 {
-                    state.apply(&e, &self.identities);
+                    let context = plans.pending(&state, &self.identities, &e)?;
+                    state.apply_checked(&e, &self.identities, &context);
                 }
                 continue;
             }
@@ -248,11 +270,13 @@ impl Engine {
             if matches!(e.body, EventBody::RequestResolved { .. }) {
                 optimistic.insert(e.space.clone());
             }
-            state.apply(&e, &self.identities);
+            let context = plans.pending(&state, &self.identities, &e)?;
+            state.apply_checked(&e, &self.identities, &context);
         }
         self.state = state;
         self.space_order = order;
         self.net.optimistic_approvals = optimistic;
+        self.approval_replay_needed = false;
         self.index_dirty = true;
         self.recompute_unknown();
         Ok(())
@@ -310,6 +334,9 @@ impl Engine {
         at_ms: i64,
         body: EventBody,
     ) -> R<Event> {
+        if self.approval_replay_needed {
+            self.reproject_approval_overlay()?;
+        }
         let creating = matches!(body, EventBody::SpaceCreated { .. });
         if !creating && !self.state.spaces.contains_key(space) {
             return Err(CoreError::NotFound {
@@ -323,7 +350,13 @@ impl Engine {
             self.causal_head(space)?
         };
         let e = signer.sign_event(space, &client_id, at_ms, seen, body);
-        if !self.state.approval_event_valid(&e, &self.identities) {
+        let context =
+            PlanReplay::new(&self.store, &self.logs).pending(&self.state, &self.identities, &e)?;
+        if self
+            .state
+            .approval_event_valid(&e, &self.identities, &context)
+            != Projection::Applied
+        {
             return Err(CoreError::Invalid {
                 reason: t(
                     "pedido, decisão ou uso não autorizado",
@@ -339,7 +372,7 @@ impl Engine {
         if matches!(e.body, EventBody::RequestResolved { .. }) {
             self.net.optimistic_approvals.insert(space.to_string());
         }
-        self.state.apply(&e, &self.identities);
+        self.state.apply_checked(&e, &self.identities, &context);
         self.index_dirty = true;
         self.note_unknown(&e);
         self.note_profile_event(&e);
@@ -368,6 +401,11 @@ impl Engine {
         let space = e.space.clone();
         let next = self.logs.get(&space).map(|l| l.next_seq()).unwrap_or(0);
         if e.seq < next {
+            if self.approval_replay_needed {
+                if let Err(error) = self.reproject_approval_overlay() {
+                    return Ingest::Invalid(error.to_string());
+                }
+            }
             return Ingest::Duplicate;
         }
         if e.seq > next {
@@ -400,7 +438,6 @@ impl Engine {
         }
         if replay_approval {
             if let Err(err) = self.reproject_approval_overlay() {
-                let _ = self.reload();
                 return Ingest::Invalid(err.to_string());
             }
             self.note_profile_event(&e);
@@ -425,11 +462,15 @@ impl Engine {
                 || matches!(e.body, EventBody::MemberAdded { .. })
                     && !self.is_member_of(&space, &e.author)
             {
-                self.state.apply(&e, &self.identities);
+                if let Err(err) = self.apply_confirmed_event(&e) {
+                    return Ingest::Invalid(err.to_string());
+                }
             }
             return Ingest::Confirmed;
         }
-        self.state.apply(&e, &self.identities);
+        if let Err(err) = self.apply_confirmed_event(&e) {
+            return Ingest::Invalid(err.to_string());
+        }
         self.index_dirty = true;
         self.note_unknown(&e);
         self.note_profile_event(&e);
