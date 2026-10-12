@@ -88,7 +88,8 @@ struct VersionPreview: View {
     var onRestore: (ItemDetail) -> Void = { _ in }
 
     @State private var controller = PageEditorController()
-    @State private var url: URL?
+    @State private var file: AttachmentFile?
+    @State private var previewFailure: String?
     @State private var bump = 0
     @State private var currentVersion: UInt32 = 0
     @State private var canRestore = false
@@ -102,16 +103,27 @@ struct VersionPreview: View {
                             controller.load(p.blocks)
                         }
                     }
-            } else if let url {
-                QuickLookView(url: url)
+            } else if let file {
+                QuickLookView(file: file)
+            } else if let previewFailure {
+                ContentUnavailableView("Could not open file", systemImage: "doc", description: Text(previewFailure))
             } else {
                 ProgressView()
                     .task {
-                        url = FileSupport.localURL(core: model.core, itemId: item.id, version: version.number, name: item.file?.name ?? item.title)
+                        do {
+                            let loaded = try await FileSupport.localFile(core: model.core, itemId: item.id, version: version.number)
+                            do { try Task.checkCancellation() }
+                            catch { loaded?.discard(); throw error }
+                            file = loaded
+                        } catch is CancellationError {
+                        } catch {
+                            previewFailure = (error as? CoreError)?.message ?? error.localizedDescription
+                        }
                     }
             }
         }
         .background(Palette.background.ignoresSafeArea())
+        .onDisappear { file?.discard(); file = nil }
         .navigationTitle("v\(version.number)")
         #if os(iOS)
         .navigationBarTitleDisplayMode(.inline)

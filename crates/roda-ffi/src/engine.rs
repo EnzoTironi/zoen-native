@@ -4,7 +4,7 @@
 //! aplicar na projeção**. Ler é só consultar a projeção. Reabrir o app = reverificar
 //! cada log e reprojetar do zero.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use roda_grants::{
     evaluate, standing_allow_permitted, standing_key, Budget, Decision, Policy, Reason,
@@ -15,6 +15,7 @@ use roda_types::*;
 use serde_json::{json, Value};
 
 use crate::apps;
+use crate::pages::{BeforeEvent, Currentness, PlanOrigin, PlanReplay, Projection};
 
 use crate::dto::*;
 use crate::i18n::{money, t, ts};
@@ -192,20 +193,26 @@ pub(crate) struct State {
     pub resolved_order: Vec<RequestId>,
     pub grants: Vec<GrantState>,
     pub usage: Vec<(IdentityId, i64, i64)>, // (agente, centavos, quando)
+    pub(crate) plan_origins: HashMap<ItemId, PlanOrigin>,
+    pub(crate) waiting_spaces: HashSet<SpaceId>,
 }
 
 impl State {
-    pub(crate) fn apply(&mut self, e: &Event, identities: &HashMap<IdentityId, Identity>) {
-        self.apply_checked(e, identities);
-    }
-
     pub(crate) fn apply_checked(
         &mut self,
         e: &Event,
         identities: &HashMap<IdentityId, Identity>,
-    ) -> bool {
-        if !self.approval_event_valid(e, identities) {
-            return false;
+        context: &BeforeEvent,
+    ) -> Projection {
+        match self.approval_event_valid(e, identities, context) {
+            Projection::Refused => return Projection::Refused,
+            Projection::Waiting => {
+                if context.ordered() {
+                    self.waiting_spaces.insert(e.space.clone());
+                }
+                return Projection::Waiting;
+            }
+            Projection::Applied => {}
         }
         let entry = |body| Entry {
             hash: e.hash.clone(),
@@ -440,7 +447,31 @@ impl State {
             | EventBody::Sealed { .. }
             | EventBody::Unsupported { .. } => {}
         }
-        true
+        match &e.body {
+            EventBody::ItemCreated {
+                item,
+                kind: ItemKind::Plan,
+                content: ItemContent::Plan(_),
+                ..
+            } => {
+                self.plan_origins
+                    .insert(item.clone(), context.creation_origin(e, item));
+            }
+            EventBody::RequestResolved {
+                request,
+                approved: true,
+                ..
+            } => {
+                if let Some(proposal) = self.requests[request].req.proposal.as_ref() {
+                    if proposal.kind == ItemKind::Plan {
+                        self.plan_origins
+                            .insert(proposal.item.clone(), PlanOrigin::Proposal);
+                    }
+                }
+            }
+            _ => {}
+        }
+        Projection::Applied
     }
 }
 
@@ -450,6 +481,8 @@ pub struct Engine {
     pub(crate) store: Store,
     pub(crate) db_path: String,
     pub(crate) logs: HashMap<SpaceId, SpaceLog>,
+    pub(crate) broken_spaces: HashMap<SpaceId, SpaceState>,
+    pub(crate) approval_replay_needed: bool,
     pub(crate) space_order: Vec<SpaceId>,
     pub(crate) identities: HashMap<IdentityId, Identity>,
     pub(crate) identity_order: Vec<IdentityId>,
@@ -458,6 +491,7 @@ pub struct Engine {
     pub(crate) index_dirty: bool,
     pub(crate) me: Option<IdentityId>,
     pub(crate) state: State,
+    pub(crate) space_projections: HashMap<SpaceId, State>,
     pub(crate) policy: Policy,
     /// Account, outbox and relay bookkeeping (see `sync.rs`).
     pub(crate) net: crate::sync::NetState,
@@ -482,6 +516,64 @@ fn not_found(what: &str) -> CoreError {
 }
 
 impl Engine {
+    pub(crate) fn merge_space_projections(
+        projections: &HashMap<SpaceId, State>,
+        order: &[SpaceId],
+    ) -> State {
+        let mut item_spaces = HashMap::<&str, usize>::new();
+        let mut request_spaces = HashMap::<&str, usize>::new();
+        for scoped in projections.values() {
+            for item in scoped.items.keys() {
+                *item_spaces.entry(item).or_default() += 1;
+            }
+            for request in scoped.requests.keys() {
+                *request_spaces.entry(request).or_default() += 1;
+            }
+        }
+        let mut state = State::default();
+        for space in order {
+            let Some(scoped) = projections.get(space) else {
+                continue;
+            };
+            if let Some(projected) = scoped.spaces.get(space) {
+                state.spaces.insert(space.clone(), projected.clone());
+            }
+            for (item, projected) in &scoped.items {
+                if item_spaces.get(item.as_str()) == Some(&1) {
+                    state.items.insert(item.clone(), projected.clone());
+                    if let Some(origin) = scoped.plan_origins.get(item) {
+                        state.plan_origins.insert(item.clone(), origin.clone());
+                    }
+                }
+            }
+            for (request, projected) in &scoped.requests {
+                if request_spaces.get(request.as_str()) == Some(&1) {
+                    state.requests.insert(request.clone(), projected.clone());
+                }
+            }
+            state.request_order.extend(
+                scoped
+                    .request_order
+                    .iter()
+                    .filter(|request| request_spaces.get(request.as_str()) == Some(&1))
+                    .cloned(),
+            );
+            state.resolved_order.extend(
+                scoped
+                    .resolved_order
+                    .iter()
+                    .filter(|request| request_spaces.get(request.as_str()) == Some(&1))
+                    .cloned(),
+            );
+            state.grants.extend(scoped.grants.iter().cloned());
+            state.usage.extend(scoped.usage.iter().cloned());
+            state
+                .waiting_spaces
+                .extend(scoped.waiting_spaces.iter().cloned());
+        }
+        state
+    }
+
     pub fn open(path: &str) -> R<Self> {
         let store = if path == ":memory:" {
             Store::in_memory()?
@@ -496,12 +588,15 @@ impl Engine {
             store,
             db_path: path.to_string(),
             logs: HashMap::new(),
+            broken_spaces: HashMap::new(),
+            approval_replay_needed: false,
             space_order: Vec::new(),
             identities: HashMap::new(),
             identity_order: Vec::new(),
             signers: HashMap::new(),
             me: None,
             state: State::default(),
+            space_projections: HashMap::new(),
             policy: Policy::default(),
             index_dirty: true,
             net: Default::default(),
@@ -526,7 +621,7 @@ impl Engine {
         self.identities.clear();
         self.identity_order.clear();
         self.signers.clear();
-        self.state = State::default();
+        self.broken_spaces.clear();
         self.index_dirty = true;
         self.me = self.store.meta("me")?;
         for (identity, secret) in self.store.identities()? {
@@ -547,9 +642,6 @@ impl Engine {
             let events = self.store.events(&space)?;
             match SpaceLog::from_events(space.clone(), events.clone()) {
                 Ok(log) => {
-                    for e in log.events() {
-                        self.state.apply(e, &self.identities);
-                    }
                     self.logs.insert(space.clone(), log);
                 }
                 Err(err) => {
@@ -561,7 +653,7 @@ impl Engine {
                             _ => None,
                         })
                         .unwrap_or_else(|| t("Espaço", "Space"));
-                    self.state.spaces.insert(
+                    self.broken_spaces.insert(
                         space.clone(),
                         SpaceState {
                             id: space.clone(),
@@ -623,6 +715,9 @@ impl Engine {
         at_ms: i64,
         body: EventBody,
     ) -> R<Event> {
+        if self.approval_replay_needed {
+            self.reproject_approval_overlay()?;
+        }
         let signer = self.author_for(author)?;
         if self.net.synced.contains(space) {
             // Only this device's account publishes to the relay for now; local agents
@@ -648,22 +743,27 @@ impl Engine {
         if is_new && !matches!(body, EventBody::SpaceCreated { .. }) {
             return Err(not_found(&t("Espaço", "Space")));
         }
-        let log = self
-            .logs
-            .entry(space.to_string())
-            .or_insert_with(|| SpaceLog::new(space));
         let client_id = new_ulid(at_ms);
-        let seen = log.head();
+        let seen = self.logs.get(space).and_then(SpaceLog::head);
         let signed = signer.sign_event(space, &client_id, at_ms, seen, body);
-        if !self.state.approval_event_valid(&signed, &self.identities) {
+        let empty = State::default();
+        let scoped = self.space_projections.get(space).unwrap_or(&empty);
+        let context =
+            PlanReplay::new(&self.store, &self.logs).local(scoped, &self.identities, &signed)?;
+        if scoped.approval_event_valid(&signed, &self.identities, &context) != Projection::Applied {
             return Err(CoreError::Invalid {
                 reason: t(
-                    "pedido, decisão ou uso não autorizado",
-                    "unauthorized request, decision or usage",
+                    "pedido, decisão ou uso não autorizado ou aguardando conteúdo",
+                    "unauthorized request, decision or usage, or content still arriving",
                 ),
             });
         }
-        let event = log.sequence(signed).clone();
+        let event = self
+            .logs
+            .entry(space.to_string())
+            .or_insert_with(|| SpaceLog::new(space))
+            .sequence(signed)
+            .clone();
         if let Err(e) = self.store.append_event(&event) {
             // Mantém memória e disco iguais: desfaz o append em memória recarregando.
             self.reload()?;
@@ -672,7 +772,11 @@ impl Engine {
         if is_new {
             self.space_order.push(space.to_string());
         }
-        self.state.apply(&event, &self.identities);
+        self.space_projections
+            .entry(space.to_owned())
+            .or_default()
+            .apply_checked(&event, &self.identities, &context);
+        self.state = Self::merge_space_projections(&self.space_projections, &self.space_order);
         self.index_dirty = true;
         Ok(event)
     }
@@ -878,12 +982,45 @@ impl Engine {
 
     pub(crate) fn card(&self, item: &str) -> Option<ItemCard> {
         let it = self.state.items.get(item)?;
-        let v = it.current();
         let plan = if it.kind == ItemKind::Plan {
             Some(self.plan_snapshot(item).ok()?)
         } else {
             None
         };
+        self.item_card(it, plan)
+    }
+
+    fn card_in_space(&self, space: &str, item: &str) -> Option<ItemCard> {
+        if self
+            .state
+            .items
+            .get(item)
+            .is_some_and(|it| it.space == space)
+            && !self.logs.values().any(|log| {
+                log.events().iter().any(|event| {
+                event.space != space
+                    && matches!(&event.body, EventBody::ItemCreated { item: id, .. } if id == item)
+            })
+            })
+        {
+            return self.card(item);
+        }
+        let it = self.space_projections.get(space)?.items.get(item)?;
+        let plan = if it.kind == ItemKind::Plan {
+            Some(self.plan_snapshot_in_space(space, item).ok()?)
+        } else {
+            None
+        };
+        self.item_card(it, plan)
+    }
+
+    fn item_card(
+        &self,
+        it: &ItemState,
+        plan: Option<crate::pages::PlanSnapshot>,
+    ) -> Option<ItemCard> {
+        let item = it.id.as_str();
+        let v = it.current();
         let title = plan
             .as_ref()
             .map_or_else(|| v.content.title(), |plan| plan.document.title.clone());
@@ -944,7 +1081,9 @@ impl Engine {
         let kind = match &e.body {
             EntryBody::Message { text, attaches, .. } => EntryKind::Message {
                 text: text.clone(),
-                card: attaches.as_deref().and_then(|i| self.card(i)),
+                card: attaches
+                    .as_deref()
+                    .and_then(|item| self.card_in_space(&e.space, item)),
             },
             EntryBody::ItemEdited {
                 item,
@@ -954,9 +1093,9 @@ impl Engine {
             } => EntryKind::ItemEdited {
                 item_id: item.clone(),
                 title: self
-                    .state
-                    .items
-                    .get(item)
+                    .space_projections
+                    .get(&e.space)
+                    .and_then(|scoped| scoped.items.get(item))
                     .map(|i| i.current().content.title())
                     .unwrap_or_default(),
                 version: *version,
@@ -964,7 +1103,10 @@ impl Engine {
                 is_undo: *is_undo,
             },
             EntryBody::Request { request } => {
-                let r = self.state.requests.get(request);
+                let r = self
+                    .space_projections
+                    .get(&e.space)
+                    .and_then(|scoped| scoped.requests.get(request));
                 EntryKind::Request {
                     request_id: request.clone(),
                     title: r.map(|r| r.req.title.clone()).unwrap_or_default(),
@@ -977,9 +1119,9 @@ impl Engine {
             }
             EntryBody::RequestResolved { request, approved } => {
                 let title = self
-                    .state
-                    .requests
-                    .get(request)
+                    .space_projections
+                    .get(&e.space)
+                    .and_then(|scoped| scoped.requests.get(request))
                     .map(|r| r.req.title.clone())
                     .unwrap_or_default();
                 EntryKind::System {
@@ -1052,7 +1194,9 @@ impl Engine {
             ReqStatus::Approved => RequestStatus::Approved,
             ReqStatus::Denied => RequestStatus::Denied,
         };
-        if status == RequestStatus::Pending && !self.request_is_current(&r.req) {
+        if status == RequestStatus::Pending
+            && matches!(self.request_currentness(&r.req), Ok(Currentness::Changed))
+        {
             status = RequestStatus::Stale;
         }
         let decision = self.decide(&r.req.agent, &r.space, &r.req.action, 0);
@@ -1102,13 +1246,18 @@ impl Engine {
         }
     }
 
+    pub(crate) fn request_currentness(&self, req: &AgentRequest) -> R<Currentness> {
+        if self.approval_replay_needed {
+            return Ok(Currentness::Waiting);
+        }
+        let Some(request) = self.state.requests.get(&req.id) else {
+            return Ok(Currentness::Changed);
+        };
+        PlanReplay::new(&self.store, &self.logs).current(&self.state, req, &request.space)
+    }
+
     pub(crate) fn request_is_current(&self, req: &AgentRequest) -> bool {
-        self.state.requests.get(&req.id).is_some_and(|r| {
-            self.state
-                .request_is_current_with_plan(req, &r.space, |item| {
-                    self.plan_snapshot(item).ok().map(|plan| plan.document)
-                })
-        })
+        matches!(self.request_currentness(req), Ok(Currentness::Current))
     }
 
     // ───────────────────────────── API pública ─────────────────────────────
@@ -1193,6 +1342,24 @@ impl Engine {
             pending_requests: pending,
             event_count: self.logs.get(id).map(|l| l.len() as u64).unwrap_or(0),
         })
+    }
+
+    pub fn member_roles(&self, space: &str) -> R<Vec<MemberRoleDto>> {
+        Ok(self
+            .space_state(space)?
+            .members
+            .iter()
+            .map(|(identity, role)| MemberRoleDto {
+                identity_id: identity.clone(),
+                role: match role {
+                    Role::Owner => "owner",
+                    Role::Admin => "admin",
+                    Role::Member => "member",
+                    Role::Reader => "reader",
+                }
+                .into(),
+            })
+            .collect())
     }
 
     pub fn mark_read(&self, space: &str) -> R<()> {
@@ -1453,6 +1620,55 @@ impl Engine {
             path,
             file,
         })
+    }
+
+    pub fn item_at(&self, id: &str, number: u32) -> R<ItemDetail> {
+        let state = self.item_state(id)?;
+        if state.kind == ItemKind::Plan {
+            self.require_legacy_plan(id)?;
+        }
+        let position = state
+            .versions
+            .iter()
+            .position(|v| v.number == number)
+            .ok_or_else(|| not_found(&t("versão", "version")))?;
+        let mut past = state.clone();
+        past.versions.truncate(position + 1);
+        let version = past.current();
+        let mut detail = self.item(id)?;
+        detail.version = version.number;
+        detail.title = version.content.title();
+        detail.plan = match &version.content {
+            ItemContent::Plan(plan) => {
+                let total = Self::plan_total(plan).ok_or_else(|| CoreError::Invalid {
+                    reason: t(
+                        "total do plano fora do limite",
+                        "Plan total exceeds the limit",
+                    ),
+                })?;
+                Some(plan_to_dto(plan, total))
+            }
+            _ => None,
+        };
+        detail.text = match &version.content {
+            ItemContent::Text { text } => Some(text.clone()),
+            ItemContent::Page(_) => Some(
+                self.page_at(id, number)?
+                    .blocks
+                    .iter()
+                    .map(|b| b.text.as_str())
+                    .collect::<Vec<_>>()
+                    .join("\n"),
+            ),
+            _ => None,
+        };
+        (detail.path, detail.file) = match &version.content {
+            ItemContent::Page(page) => (page.path.clone(), None),
+            ItemContent::File(file) => (file.path.clone(), Some(self.file_dto(file))),
+            _ => (String::new(), None),
+        };
+        detail.app = self.app_state_dto(&past);
+        Ok(detail)
     }
 
     pub fn items(&self) -> Vec<ItemDetail> {
@@ -2706,7 +2922,7 @@ impl Engine {
                 .map(|(label, value)| AppMetricDto { label, value })
                 .collect(),
             last_action: apps::last_action(&state),
-            trust: trust_dto(self.app_trust(&it.id)),
+            trust: trust_dto(self.app_trust_in_space(&it.space, &it.id)),
             snapshot_json: apps::snapshot(&doc.app, &state, &it.id, now)
                 .map(|v| v.to_string())
                 .unwrap_or_default(),
@@ -2715,10 +2931,17 @@ impl Engine {
 
     /// Nível da Concessão do mini-app neste Item (sem Concessão: só ouvir).
     fn app_trust(&self, item: &str) -> TrustLevel {
+        self.state.items.get(item).map_or(TrustLevel::Listen, |it| {
+            self.app_trust_in_space(&it.space, item)
+        })
+    }
+
+    fn app_trust_in_space(&self, space: &str, item: &str) -> TrustLevel {
         let grantee = format!("app:{item}");
-        self.state
-            .grants
-            .iter()
+        self.space_projections
+            .get(space)
+            .into_iter()
+            .flat_map(|scoped| scoped.grants.iter())
             .rev()
             .filter(|g| {
                 !g.revoked
@@ -2846,6 +3069,75 @@ impl Engine {
             ),
             proposal,
         )
+    }
+
+    /// Installs a catalog mini-app as the current user, with an Item-scoped grant.
+    pub fn install_app(&mut self, space: &str, app_id: &str, args_json: &str) -> R<ItemDetail> {
+        let me = self.me_id()?;
+        if !self.is_member(space, &me) {
+            return Err(CoreError::Forbidden {
+                reason: t(
+                    "você não é membro deste Espaço",
+                    "you are not a member of this Space",
+                ),
+            });
+        }
+        let spec = apps::specs()
+            .into_iter()
+            .find(|spec| spec.id == app_id)
+            .ok_or_else(|| CoreError::Invalid {
+                reason: t("mini-app desconhecido", "unknown mini-app"),
+            })?;
+        let args: Value = serde_json::from_str(args_json).map_err(|_| CoreError::Invalid {
+            reason: t("argumentos inválidos", "invalid arguments"),
+        })?;
+        if !args.is_object() {
+            return Err(CoreError::Invalid {
+                reason: t("argumentos inválidos", "invalid arguments"),
+            });
+        }
+        let (title, state) = apps::create(spec.id, &args, &self.persona(&me).name, now_ms())
+            .map_err(|reason| CoreError::Invalid { reason })?;
+        let item = new_id("it");
+        self.append(
+            space,
+            &me,
+            EventBody::ItemCreated {
+                item: item.clone(),
+                kind: ItemKind::App,
+                content: ItemContent::App(AppDoc {
+                    app: spec.id.into(),
+                    resource_uri: spec.resource_uri.into(),
+                    title,
+                    state_json: state.to_string(),
+                }),
+                origin: t("Instalado por você", "Installed by you"),
+            },
+        )?;
+        self.append(
+            space,
+            &me,
+            EventBody::GrantIssued {
+                grant: Grant {
+                    id: new_id("gr"),
+                    grantor: me.clone(),
+                    grantee: Some(format!("app:{item}")),
+                    scope: GrantScope::Item(item.clone()),
+                    capability: Capability::Trust(TrustLevel::Act),
+                    expires_at_ms: None,
+                },
+            },
+        )?;
+        self.post_as(
+            space,
+            &me,
+            &t(
+                "Mini-app adicionado a este Espaço.",
+                "Mini-app added to this Space.",
+            ),
+            Some(item.clone()),
+        )?;
+        self.item(&item)
     }
 
     /// `tools/call` vindo da interface de um mini-app. Toda chamada passa pelo avaliador

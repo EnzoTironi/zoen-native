@@ -3700,6 +3700,7 @@ version = "0.9.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "88ea97f8931047590bda498a9502e8fe6c9bb2bb04547a9a463618783481e0ec"
 dependencies = [
+ "getrandom 0.4.3",
  "log",
  "openmls_serialization_helpers",
  "openmls_traits",
@@ -3708,6 +3709,7 @@ dependencies = [
  "serde_bytes",
  "thiserror 2.0.21",
  "tls_codec",
+ "web-time",
  "zeroize",
 ]
 
@@ -5011,6 +5013,7 @@ dependencies = [
  "openmls_basic_credential",
  "openmls_rust_crypto",
  "openmls_sqlite_storage",
+ "openmls_traits",
  "roda-log",
  "rusqlite",
  "serde",
@@ -7211,6 +7214,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "5a6580f308b1fad9207618087a65c04e7a10bc77e02c8e84e9b00dd4b12fa0bb"
 dependencies = [
  "js-sys",
+ "serde",
  "wasm-bindgen",
 ]
 
@@ -7941,6 +7945,30 @@ dependencies = [
  "zoen-egress",
  "zoen-guestd",
  "zoen-liveview",
+]
+
+[[package]]
+name = "zoen-web-core"
+version = "0.1.0"
+dependencies = [
+ "getrandom 0.2.17",
+ "getrandom 0.4.3",
+ "hex",
+ "hpke-rs",
+ "js-sys",
+ "openmls",
+ "openmls_rust_crypto",
+ "openmls_traits",
+ "roda-log",
+ "roda-mls",
+ "roda-proto",
+ "roda-types",
+ "rusqlite",
+ "serde",
+ "serde_json",
+ "sha2 0.10.9",
+ "wasm-bindgen",
+ "zeroize",
 ]
 
 [[package]]

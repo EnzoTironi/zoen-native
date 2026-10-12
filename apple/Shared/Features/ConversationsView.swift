@@ -126,7 +126,7 @@ struct ConversationRow: View {
                         if working, let agent = space.members.first(where: { $0.kind == .agent && $0.isMine }) {
                             Text("\(agent.name) is typing…").foregroundStyle(Palette.action)
                         } else {
-                            Text("\(authorPrefix)\(VoiceNoteRef.preview(space.lastPreview) ?? ChatBackgroundMarker.preview(space.lastPreview) ?? space.lastPreview)")
+                            Text("\(authorPrefix)\(VoiceNoteRef.preview(space.lastPreview) ?? space.lastPreview)")
                                 .foregroundStyle(unread ? Palette.textPrimary.opacity(0.8) : Palette.textSecondary)
                         }
                     }

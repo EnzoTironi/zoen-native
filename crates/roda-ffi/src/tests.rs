@@ -2,6 +2,9 @@
 
 use super::*;
 
+mod client_api;
+mod file_bounds;
+
 fn seeded() -> Arc<RodaEngine> {
     let e = RodaEngine::open(":memory:".into(), "pt-BR".into()).unwrap();
     assert!(e.seed_demo_if_empty().unwrap());

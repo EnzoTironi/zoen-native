@@ -8,6 +8,7 @@ struct SpaceView: View {
     var onOpenItem: (String) -> Void
 
     @State private var entries: [TimelineEntry] = []
+    @State private var sharedBackdrop: (ChatBackground, PhotoBackgroundLayout) = (.none, .default)
     @State private var draft = ""
     @State private var pinnedApps: [ItemDetail] = []
     /// The floating title, plan and widgets reserve room for the initial reading position.
@@ -47,8 +48,9 @@ struct SpaceView: View {
     private var workingAgent: Persona? { model.working[spaceId] }
     /// "Just for me" wins over the shared one (the latest `BackgroundSet` in the log).
     private var backgroundState: (background: ChatBackground, layout: PhotoBackgroundLayout, isLocal: Bool) {
-        _ = entries.count
-        return model.backgroundState(spaceId)
+        let store = ChatBackgroundStore.shared
+        if let local = store.local(spaceId) { return (local, store.layout(for: spaceId), true) }
+        return (sharedBackdrop.0, sharedBackdrop.1, false)
     }
     private var background: ChatBackground { backgroundState.background }
     /// A photo background can pin the chat to light or dark.
@@ -74,7 +76,7 @@ struct SpaceView: View {
                         if entry.id == firstUnread {
                             UnreadDivider().id("unread-divider")
                         }
-                        EntryView(entry: entry,
+                        EntryView(spaceId: spaceId, entry: entry,
                                   previous: idx > 0 ? shown[idx - 1] : nil,
                                   next: idx + 1 < shown.count ? shown[idx + 1] : nil,
                                   isDirect: space?.kind == .direct,
@@ -182,7 +184,7 @@ struct SpaceView: View {
                          placeholder: space?.counterpart?.kind == .agent ? String(localized: "What do you want to get done?") : String(localized: "Message"),
                          focused: $composerFocused,
                          busy: workingAgent != nil,
-                         onCapture: { model.show(.init(kind: .info, text: String(localized: "Photo taken. Sending photos comes in a later build, so it stays on this device."))) },
+                         attachmentSpaceId: spaceId,
                          onVoice: voiceHandler) {
                     let text = draft
                     draft = ""
@@ -512,7 +514,9 @@ struct SpaceView: View {
 
     private func reload() {
         let new = (try? model.core.timeline(spaceId: spaceId)) ?? []
-        let plan = model.core.items().first {
+        let shared = model.sharedBackgroundState(spaceId)
+        if shared.0 != sharedBackdrop.0 || shared.1 != sharedBackdrop.1 { sharedBackdrop = shared }
+        let plan = model.items.first {
             $0.spaceId == spaceId && $0.plan != nil && !model.chatAppsUnpinned.contains($0.id)
         }
         // Live mini-apps of this chat, newest first (the hike leads when there is one).
@@ -582,6 +586,7 @@ struct SpaceHeaderCard: View {
 // MARK: - Linhas da conversa
 
 struct EntryView: View {
+    let spaceId: String
     let entry: TimelineEntry
     let previous: TimelineEntry?
     var next: TimelineEntry? = nil
@@ -598,21 +603,19 @@ struct EntryView: View {
     /// Same author within 5 minutes → continuation (no name).
     private var grouped: Bool {
         guard let previous, previous.author.id == entry.author.id else { return false }
-        guard case .message(let pt, _) = previous.kind, ChatBackgroundMarker.parse(pt) == nil else { return false }
+        guard case .message = previous.kind else { return false }
         return entry.atMs - previous.atMs < 5 * 60_000
     }
 
     /// Last bubble in a run: avatar sits here (WhatsApp-style).
     private var endsRun: Bool {
         guard let next, next.author.id == entry.author.id else { return true }
-        guard case .message(let nt, _) = next.kind, ChatBackgroundMarker.parse(nt) == nil else { return true }
+        guard case .message = next.kind else { return true }
         return next.atMs - entry.atMs >= 5 * 60_000
     }
 
     var body: some View {
         switch entry.kind {
-        case .message(let text, _) where ChatBackgroundMarker.parse(text) != nil:
-            BackgroundChangeRow(author: entry.author, background: ChatBackgroundMarker.parse(text) ?? .none, spaceId: entry.id)
         case .background(let dto):
             BackgroundChangeRow(author: entry.author, background: ChatBackground(dto: dto),
                                 spaceId: entry.id, layout: PhotoBackgroundLayout(dto: dto))
@@ -620,7 +623,7 @@ struct EntryView: View {
             VStack(alignment: entry.author.isMe ? .trailing : .leading, spacing: 3) {
                 MessageRow(author: entry.author, text: text, card: card, atMs: entry.atMs,
                            grouped: grouped && entry.replyTo == nil, endsRun: endsRun, isDirect: isDirect, onOpenItem: onOpenItem,
-                           quote: entry.replyTo, onQuote: { onJump?($0) })
+                           quote: entry.replyTo, onQuote: { onJump?($0) }, onIntent: onSwipe)
                     .modifier(MessageSwipe(enabled: onSwipe != nil) { onSwipe?($0) })
                 if entry.threadReplies > 0 {
                     ThreadRepliesChip(count: entry.threadReplies, faces: threadFaces) { onSwipe?(.thread) }
@@ -631,7 +634,7 @@ struct EntryView: View {
             }
             .frame(maxWidth: .infinity, alignment: entry.author.isMe ? .trailing : .leading)
             .padding(.top, grouped && entry.replyTo == nil ? 0 : 10)
-        case .itemEdited(let itemId, _, _, _, _) where (try? model.core.item(itemId: itemId))?.app != nil:
+        case .itemEdited(let itemId, _, _, _, _) where model.miniAppItemIds.contains(itemId):
             // Mini-apps: cada toque atualiza o widget ao vivo (ponto vermelho e coração no
             // cartão); o histórico fica na folha, não enche a conversa.
             EmptyView()
@@ -641,9 +644,13 @@ struct EntryView: View {
             }
             .buttonStyle(.plain)
             .padding(.vertical, 6)
-        case .request(let requestId, _, _):
-            if let r = model.requests.first(where: { $0.id == requestId }) {
+        case .request(let requestId, let title, let approved):
+            if let r = model.requests.first(where: { $0.id == requestId && $0.spaceId == spaceId }) {
                 InlineRequestRow(request: r).padding(.vertical, 6)
+            } else if !title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                RequestHistoryRow(author: entry.author, title: title, approved: approved)
+                    .padding(.vertical, 6)
+                    .accessibilityIdentifier("request-history-\(entry.id)")
             }
         case .system(let text):
             SystemRow(glyph: text.hasPrefix(String(localized: "Approved")) ? .check : .close, text: text, trailing: nil)
@@ -700,6 +707,7 @@ struct MessageRow: View {
     /// Inline reply: the message this one answers, quoted at the top of the bubble.
     var quote: ReplyQuote? = nil
     var onQuote: ((String) -> Void)? = nil
+    var onIntent: ((MessageSwipeIntent) -> Void)? = nil
     @Environment(\.chatBackdrop) private var backdrop
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
@@ -800,7 +808,12 @@ struct MessageRow: View {
                         .transition(reduceMotion ? .opacity : .scale(scale: 0.85, anchor: .topLeading).combined(with: .opacity))
                 }
             }
-            if !mine { Spacer(minLength: card?.app != nil ? 0 : 32) }
+            if !mine { Spacer(minLength: onIntent != nil ? 44 : (card?.app != nil ? 0 : 32)) }
+        }
+        .overlay(alignment: mine ? .leading : .trailing) {
+            if let onIntent {
+                MessageActionsMenu(author: author, onIntent: onIntent)
+            }
         }
     }
 
@@ -884,6 +897,37 @@ struct InlineRequestRow: View {
     }
 }
 
+private struct RequestHistoryRow: View {
+    let author: Persona
+    let title: String
+    let approved: Bool?
+
+    var body: some View {
+        HStack(spacing: 10) {
+            ContactAvatar(persona: author, size: 26)
+            VStack(alignment: .leading, spacing: 4) {
+                Text(title).font(.subheadline.weight(.semibold))
+                    .fixedSize(horizontal: false, vertical: true)
+                Group {
+                    if let approved {
+                        Label(approved ? String(localized: "Approved") : String(localized: "Declined"),
+                              systemImage: approved ? "checkmark.circle" : "xmark.circle")
+                    } else {
+                        Label("Awaiting decision", systemImage: "clock")
+                    }
+                }
+                .font(.caption).foregroundStyle(Palette.textSecondary)
+            }
+            Spacer(minLength: 4)
+        }
+        .padding(.horizontal, 12).padding(.vertical, 10)
+        .background(Palette.surface, in: .rect(cornerRadius: 16, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous).strokeBorder(Palette.hairline, lineWidth: 0.8))
+        .padding(.leading, 38)
+        .accessibilityElement(children: .combine)
+    }
+}
+
 struct WorkingRow: View {
     let agent: Persona
     let label: String
@@ -930,12 +974,11 @@ struct Composer: View {
     var placeholder: String
     var focused: FocusState<Bool>.Binding
     var busy: Bool
-    var onCapture: (() -> Void)? = nil
+    var attachmentSpaceId: String? = nil
     /// A finished voice note (iOS) and its transcript if already known (the editor sends
     /// the kept words). Nil hides the mic.
     var onVoice: ((VoiceClip, String?) -> Void)? = nil
     var onSend: () -> Void
-    @State private var cameraOpen = false
     @State private var recorder = VoiceRecorder()
     @State private var drag: CGSize = .zero
     @State private var pressing = false
@@ -949,18 +992,7 @@ struct Composer: View {
     private var micMode: Bool { onVoice != nil && empty && !busy }
 
     var body: some View {
-        VStack(spacing: 8) {
-            #if os(iOS)
-            if cameraOpen {
-                InlineCameraPanel(onClose: { withAnimation(reduceMotion ? nil : .spring(duration: 0.4, bounce: 0.2)) { cameraOpen = false } },
-                                  onCapture: { onCapture?() })
-                    .padding(.horizontal, 12)
-                    .transition(reduceMotion ? .opacity : .asymmetric(insertion: .scale(scale: 0.4, anchor: .bottomLeading).combined(with: .opacity),
-                                            removal: .scale(scale: 0.6, anchor: .bottomLeading).combined(with: .opacity)))
-            }
-            #endif
-            bar
-        }
+        bar
         .overlay(alignment: .topTrailing) {
             if tooltip {
                 Text("Hold to record, release to send")
@@ -1054,27 +1086,9 @@ struct Composer: View {
     }
 
     @ViewBuilder private var leading: some View {
-        #if os(iOS)
-        Button {
-            Haptics.selectionTick()
-            withAnimation(reduceMotion ? nil : .spring(duration: 0.45, bounce: 0.25)) { cameraOpen.toggle() }
-        } label: {
-            ZoenIcon(.camera, selected: cameraOpen, size: 21).frame(width: 44, height: 44)
-                .foregroundStyle(Palette.textPrimary)
+        if let attachmentSpaceId {
+            ChatAttachmentButton(spaceId: attachmentSpaceId)
         }
-        .buttonStyle(IconPressStyle())
-        .glassEffect(.regular.interactive(), in: .circle)
-        .accessibilityLabel(cameraOpen ? String(localized: "Close camera") : String(localized: "Camera"))
-        #else
-        Button {} label: {
-            ZoenIcon(.plus, size: 19).frame(width: 44, height: 44)
-        }
-        .buttonStyle(.plain)
-        .glassEffect(.regular.interactive(), in: .circle)
-        .accessibilityLabel("Attach (soon)")
-        .disabled(true)
-        .opacity(0.7)
-        #endif
     }
 
     @ViewBuilder private var trailing: some View {

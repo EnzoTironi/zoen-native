@@ -13,7 +13,7 @@ import AppKit
 // MARK: - Per-chat backgrounds
 //
 // Chat info → Background: colours, gradients, doodles, 6 built-in paper scenes, or a photo.
-// Shared by default via a typed `BackgroundSet` log event (legacy `⟦bg:⟧` markers still parse).
+// Shared by default via a typed `BackgroundSet` log event.
 // Photos are resized ≤2048px HEIC/JPEG ~80% and stored content-addressed in the core
 // (`put_media`); in shared chats the core sends an encrypted copy through the relay (ADR 0007).
 
@@ -126,19 +126,6 @@ struct PhotoBackgroundLayout: Equatable, Hashable {
     func dto(style: String, media: MediaRefDto?) -> BackgroundDto {
         BackgroundDto(style: style, media: media, zoomPm: zoomPm, offsetXPm: offsetXPm,
                       offsetYPm: offsetYPm, dimPm: dimPm, blurPm: blurPm, appearance: appearance)
-    }
-}
-
-/// Legacy marker (old builds). New writes use `BackgroundSet`.
-enum ChatBackgroundMarker {
-    static let open = "⟦bg:", close = "⟧"
-    static func text(_ bg: ChatBackground) -> String { "\(open)\(bg.token)\(close)" }
-    static func parse(_ text: String) -> ChatBackground? {
-        guard text.hasPrefix(open), text.hasSuffix(close) else { return nil }
-        return ChatBackground(token: String(text.dropFirst(open.count).dropLast(close.count)))
-    }
-    static func preview(_ text: String) -> String? {
-        text.hasPrefix(open) ? String(localized: "Changed the chat background") : nil
     }
 }
 
@@ -631,7 +618,7 @@ struct ChatBackgroundPicker: View {
         let entries = (try? model.core.timeline(spaceId: spaceId)) ?? []
         var out: [EditorMessage] = []
         for e in entries.reversed() {
-            guard case .message(let text, _) = e.kind, ChatBackgroundMarker.parse(text) == nil else { continue }
+            guard case .message(let text, _) = e.kind else { continue }
             let shown = VoiceNoteRef.preview(text) ?? text
             out.append(EditorMessage(id: e.id, text: String(shown.prefix(140)), mine: e.author.isMe, name: e.author.name))
             if out.count == 5 { break }

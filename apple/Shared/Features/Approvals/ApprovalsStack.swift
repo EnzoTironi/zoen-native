@@ -152,7 +152,7 @@ struct ApprovalsStackView: View {
                     cards
                 } else if seenCards {
                     AllCaughtUpView(onClose: showsClose ? { close() } : nil)
-                        .transition(.opacity.combined(with: .scale(scale: 0.96)))
+                        .transition(reduceMotion ? .opacity : .opacity.combined(with: .scale(scale: 0.96)))
                 } else {
                     InkEmptyState(pose: .zen, title: String(localized: "No approval requests here yet"),
                                   message: String(localized: "Requests appear here when your agents need a decision. Use List for mentions, tasks, and past requests."))
@@ -173,7 +173,7 @@ struct ApprovalsStackView: View {
         }
         .padding(.bottom, 8)
         .background(Palette.background.ignoresSafeArea())
-        .animation(.spring(response: 0.55, dampingFraction: 0.66), value: visible.map(\.id))
+        .animation(reduceMotion ? nil : .spring(response: 0.55, dampingFraction: 0.66), value: visible.map(\.id))
         .onAppear(perform: sync)
         #if os(iOS) && DEBUG
         .task {
@@ -209,7 +209,7 @@ struct ApprovalsStackView: View {
     private var header: some View {
         HStack(spacing: 14) {
             if showsClose || expanded {
-                Button { if expanded { withAnimation(.spring(duration: 0.4)) { expanded = false } } else { close() } } label: {
+                Button { if expanded { withAnimation(reduceMotion ? .easeOut(duration: 0.2) : .spring(duration: 0.4)) { expanded = false } } else { close() } } label: {
                     ZoenIcon(.back, size: 18)
                         .foregroundStyle(Palette.textPrimary)
                         .frame(width: 44, height: 44)
@@ -225,7 +225,7 @@ struct ApprovalsStackView: View {
                     Capsule().fill(Palette.textPrimary.opacity(0.08))
                     Capsule().fill(Palette.action)
                         .frame(width: max(8, geo.size.width * progress))
-                        .animation(.spring(duration: 0.5, bounce: 0.15), value: progress)
+                        .animation(reduceMotion ? nil : .spring(duration: 0.5, bounce: 0.15), value: progress)
                 }
             }
             .frame(height: 6)
@@ -310,7 +310,7 @@ struct ApprovalsStackView: View {
         let back = max(0, i - lift)                     // 0 = on top
         let offset = top ? (flying != nil ? exit : shown(drag, r)) : CGSize(width: 0, height: reduceMotion ? 0 : -(cardHeight * 0.0275 + 11) * back)
         let angle = top ? tilt + (flying != nil ? exitSpin : 0) : 0
-        let scale = top ? (pressed && flying == nil ? 1.02 : 1) : 1 - 0.055 * back
+        let scale = top ? (pressed && flying == nil && !reduceMotion ? 1.02 : 1) : 1 - 0.055 * back
         let locked = lead?.0 == .up && !r.canAlwaysApprove
         let drop = reduceMotion ? 0 : (entered ? 0 : -(cardHeight + 160 + i * 70))
         return TiltSheen(active: top && !pressed && flying == nil && drag == .zero && entered) {
@@ -330,7 +330,7 @@ struct ApprovalsStackView: View {
             .overlay {
                 if top, let s = stamping {
                     AlwaysStamp(tint: s.tint)
-                        .transition(.scale(scale: 1.5).combined(with: .opacity))
+                        .transition(reduceMotion ? .opacity : .scale(scale: 1.5).combined(with: .opacity))
                 }
             }
             .scaleEffect(scale)
@@ -365,7 +365,7 @@ struct ApprovalsStackView: View {
     }
 
     private func toggleDetails() {
-        withAnimation(.spring(response: 0.42, dampingFraction: 0.82)) { expanded.toggle() }
+        withAnimation(reduceMotion ? .easeOut(duration: 0.2) : .spring(response: 0.42, dampingFraction: 0.82)) { expanded.toggle() }
     }
 
     @ViewBuilder
@@ -387,10 +387,10 @@ struct ApprovalsStackView: View {
                 .padding(.horizontal, 16).padding(.vertical, 11)
                 .background(color, in: .capsule)
                 .shadow(color: color.opacity(0.35), radius: 8, y: 3)
-                .rotationEffect(.degrees(dir == .right ? -8 : dir == .left ? 8 : 0))
+                .rotationEffect(.degrees(reduceMotion ? 0 : dir == .right ? -8 : dir == .left ? 8 : 0))
                 .padding(24)
                 .opacity(ramp)
-                .scaleEffect(0.86 + 0.22 * min(1, p))
+                .scaleEffect(reduceMotion ? 1 : 0.86 + 0.22 * min(1, p))
             }
             .allowsHitTesting(false)
             .accessibilityHidden(true)
@@ -407,7 +407,7 @@ struct ApprovalsStackView: View {
                     FramePacingProbe.shared.begin("card-drag")
                     #endif
                     grabTop = v.startLocation.y < cardHeight / 2
-                    withAnimation(.spring(response: 0.25, dampingFraction: 0.75)) { pressed = true }
+                    withAnimation(reduceMotion ? nil : .spring(response: 0.25, dampingFraction: 0.75)) { pressed = true }
                 }
                 drag = v.translation           // 1:1, no animation
                 let dir = direction(for: v.translation)
@@ -423,7 +423,7 @@ struct ApprovalsStackView: View {
                 crossed = nil
                 let t = v.translation
                 if hypot(t.width, t.height) < 8 {
-                    withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) { pressed = false; drag = .zero }
+                    withAnimation(reduceMotion ? nil : .spring(response: 0.3, dampingFraction: 0.7)) { pressed = false; drag = .zero }
                     toggleDetails()
                     return
                 }
@@ -438,7 +438,7 @@ struct ApprovalsStackView: View {
                 let flick = dir.isStanding ? (along > 1100 && swipeProgress(t, dir) > 0.5) : (along > 650 && abs(t.width) > 24)
                 guard swipeProgress(t, dir) >= 1 || flick else { return settle(v.velocity, r) }
                 if dir == .up && !r.canAlwaysApprove {
-                    withAnimation(.spring(duration: 0.3)) { lockedHint = true }
+                    withAnimation(reduceMotion ? .easeOut(duration: 0.2) : .spring(duration: 0.3)) { lockedHint = true }
                     DispatchQueue.main.asyncAfter(deadline: .now() + 3) { withAnimation { lockedHint = false } }
                     return settle(v.velocity, r)
                 }
@@ -451,7 +451,7 @@ struct ApprovalsStackView: View {
         let at = shown(drag, r)
         let d2 = max(1, at.width * at.width + at.height * at.height)
         let toward = -(velocity.width * at.width + velocity.height * at.height) / d2
-        withAnimation(.interpolatingSpring(Spring(response: 0.35, dampingRatio: 0.7), initialVelocity: min(30, max(-10, toward)))) {
+        withAnimation(reduceMotion ? nil : .interpolatingSpring(Spring(response: 0.35, dampingRatio: 0.7), initialVelocity: min(30, max(-10, toward)))) {
             drag = .zero
             pressed = false
         }
@@ -480,7 +480,7 @@ struct ApprovalsStackView: View {
         guard flying == nil, stamping == nil, let top = visible.first else { return }
         if s == .up && !top.canAlwaysApprove {
             commitFeel = .warning; commitTick += 1
-            withAnimation(.spring(duration: 0.3)) { lockedHint = true }
+            withAnimation(reduceMotion ? .easeOut(duration: 0.2) : .spring(duration: 0.3)) { lockedHint = true }
             DispatchQueue.main.asyncAfter(deadline: .now() + 3) { withAnimation { lockedHint = false } }
             return
         }
@@ -549,7 +549,7 @@ struct ApprovalsStackView: View {
     }
 
     private func schedule(_ p: Pending) {
-        withAnimation(.spring(duration: 0.35)) { pending = p }
+        withAnimation(reduceMotion ? .easeOut(duration: 0.2) : .spring(duration: 0.35)) { pending = p }
         let token = p.token
         DispatchQueue.main.asyncAfter(deadline: .now() + 4.5) {
             if pending?.token == token { commitPending() }
@@ -676,7 +676,7 @@ struct ApprovalsStackView: View {
             .padding(.horizontal, 14).padding(.vertical, 10)
             .glassEffect(.regular, in: .capsule)
             .padding(.horizontal, 8)
-            .transition(.move(edge: .bottom).combined(with: .opacity))
+            .transition(reduceMotion ? .opacity : .move(edge: .bottom).combined(with: .opacity))
             .accessibilityElement(children: .contain)
         } else if lockedHint {
             Label(String(localized: "Red line: this always asks. You can approve just this once."), systemImage: "lock.fill")
@@ -692,12 +692,12 @@ struct ApprovalsStackView: View {
     private var explainerDeck: some View {
         let e = ApprovalExplainer.all[explainerStep]
         return ApprovalExplainerCard(explainer: e) {
-            withAnimation(.spring(duration: 0.4)) {
+            withAnimation(reduceMotion ? .easeOut(duration: 0.2) : .spring(duration: 0.4)) {
                 if explainerStep + 1 >= ApprovalExplainer.all.count { explained = true } else { explainerStep += 1 }
             }
         }
         .id(explainerStep)
-        .transition(.asymmetric(insertion: .scale(scale: 0.94).combined(with: .opacity),
+        .transition(reduceMotion ? .opacity : .asymmetric(insertion: .scale(scale: 0.94).combined(with: .opacity),
                                 removal: .move(edge: e.swipe == .left ? .leading : e.swipe == .up ? .top : e.swipe == .down ? .bottom : .trailing).combined(with: .opacity)))
     }
 }
@@ -1236,7 +1236,7 @@ struct AllCaughtUpView: View {
         .accessibilityIdentifier("approvals-done")
         .onAppear {
             Haptics.commit()
-            withAnimation(.spring(duration: 0.7, bounce: 0.45).delay(0.1)) { shown = true }
+            withAnimation(reduceMotion ? nil : .spring(duration: 0.7, bounce: 0.45).delay(0.1)) { shown = true }
         }
     }
 }
@@ -1289,7 +1289,7 @@ struct ApprovalExplainerCard: View {
         .offset(drag)
         .gesture(DragGesture().onChanged { drag = $0.translation }.onEnded { v in
             if max(abs(v.translation.width), abs(v.translation.height)) > 90 { onNext() } else {
-                withAnimation(.spring(duration: 0.4)) { drag = .zero }
+                withAnimation(reduceMotion ? nil : .spring(duration: 0.4)) { drag = .zero }
             }
         })
         .onAppear {

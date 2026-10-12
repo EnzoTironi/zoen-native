@@ -1,0 +1,11 @@
+<resources>
+    <string name="approval_needed">Aprovação necessária</string>
+    <string name="new_activity">Nova atividade</string>
+    <string name="background_connection">Manter conexão em segundo plano</string>
+    <string name="background_connection_detail">Receba mensagens e aprovações com o Zoen fechado. O Android mostra uma notificação de conexão. Você pode interrompê-la quando quiser.</string>
+    <string name="background_pending">Enviando %1$s eventos pendentes</string>
+    <string name="background_connected">Conectado · mensagens em sincronia</string>
+    <string name="background_reconnecting">Aguardando conexão · mensagens enviadas estão salvas</string>
+    <string name="stop_background_connection">Parar conexão</string>
+    <string name="notifications_permission_needed">Permita notificações para receber mensagens em segundo plano.</string>
+</resources>

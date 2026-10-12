@@ -129,6 +129,21 @@ impl RodaEngine {
         e.item(&item_id)
     }
 
+    /// Records the actual encoded name and format in the new file version.
+    pub fn file_new_version_typed(
+        &self,
+        item_id: String,
+        bytes: Vec<u8>,
+        thumbnail: Option<Vec<u8>>,
+        note: String,
+        name: String,
+        mime: String,
+    ) -> Result<ItemDetail, CoreError> {
+        let mut e = self.lock();
+        e.file_new_version_typed(&item_id, &bytes, thumbnail.as_deref(), &note, &name, &mime)?;
+        e.item(&item_id)
+    }
+
     /// The file's bytes (latest version, or `version`), or `None` while pieces are missing.
     pub fn file_bytes(
         &self,
@@ -138,6 +153,17 @@ impl RodaEngine {
         self.lock().file_bytes(&item_id, version)
     }
 
+    /// Validates the selected version and limits every cached payload before reading
+    /// it. An oversized or damaged file is an error; missing pieces return `None`.
+    pub fn file_bytes_bounded(
+        &self,
+        item_id: String,
+        version: Option<u32>,
+        max_bytes: u64,
+    ) -> Result<Option<Vec<u8>>, CoreError> {
+        self.lock().file_bytes_bounded(&item_id, version, max_bytes)
+    }
+
     pub fn file_thumbnail(&self, item_id: String) -> Result<Option<Vec<u8>>, CoreError> {
         self.lock().file_thumbnail(&item_id)
     }
@@ -145,5 +171,14 @@ impl RodaEngine {
     /// The file's description, including how much of it is on this device.
     pub fn file_info(&self, item_id: String) -> Result<Option<FileDto>, CoreError> {
         Ok(self.lock().item(&item_id)?.file)
+    }
+
+    /// The description of exactly the requested file version, without restoring it.
+    pub fn file_info_at(
+        &self,
+        item_id: String,
+        version: Option<u32>,
+    ) -> Result<FileDto, CoreError> {
+        self.lock().file_info_at(&item_id, version)
     }
 }

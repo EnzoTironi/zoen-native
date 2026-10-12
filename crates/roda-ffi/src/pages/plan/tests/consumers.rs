@@ -130,6 +130,29 @@ fn canonical(fixture: &mut Fixture) -> PlanDoc {
     expected
 }
 
+#[test]
+fn generic_item_history_preserves_the_canonical_plan_cutover_gate() {
+    let mut fixture = Fixture::new();
+    let legacy = fixture.engine.item_at(&fixture.item, 1).unwrap();
+    assert_eq!(legacy.plan.unwrap().total_cents, 193);
+    canonical(&mut fixture);
+    let before = storage(&fixture);
+    for version in [1, 2] {
+        assert!(matches!(
+            fixture.engine.item_at(&fixture.item, version),
+            Err(CoreError::Invalid { .. })
+        ));
+        assert_eq!(storage(&fixture), before);
+    }
+    assert!(
+        !fixture
+            .engine
+            .plan_page(&fixture.item)
+            .unwrap()
+            .legacy_edit_admitted
+    );
+}
+
 fn owned_agent(fixture: &mut Fixture) -> String {
     let mut identity = fixture.engine.identities[&fixture.owner].clone();
     identity.kind = IdentityKind::Agent;

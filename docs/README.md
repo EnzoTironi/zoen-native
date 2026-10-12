@@ -14,6 +14,8 @@ The current verified product baseline is `ff5b519`: native/web consolidation PR 
 
 Technical identifiers inherited from the old project name are tracked in the [Zoen naming migration](dev/naming.md). The product has one Chats inbox; the internal `Space` type describes its conversation/permission boundary.
 
+The current source checkpoint and pause are recorded in the [complete handoff](dev/handoff-2026-10-12.md). The new [prelaunch policy](dev/prelaunch-policy.md) supersedes compatibility-preservation guidance in older documents; dated evidence retains its original scope.
+
 ## Current status and contracts
 
 - [Accounts created for the project](accounts.md)
@@ -39,7 +41,14 @@ Technical identifiers inherited from the old project name are tracked in the [Zo
 
 - [Instalar o Zoen no seu iPhone com Apple ID grátis](dev/instalar-no-iphone.md)
 - [O app de iPhone no Mac, sem simulador](dev/iphone-no-mac.md)
-- [Zoen naming and compatibility](dev/naming.md)
+- [Zoen naming cutover](dev/naming.md)
+- [Complete checkpoint handoff — 12 October 2026](dev/handoff-2026-10-12.md)
+- [Prelaunch development policy](dev/prelaunch-policy.md)
+- [Current Android source and generated contract](dev/android-current-main.md)
+- [Apple media and push boundaries](dev/apple-media-push.md)
+- [Bounded file reads](dev/bounded-file-reads.md)
+- [APNs wake contract](dev/push-contract.md)
+- [Authenticated web source/build contract](../packages/zoen-ui/web/README.md)
 - [Development setup](dev/setup.md)
 - [Shared-main development workflow](dev/shared-main-workflow.md)
 - [Live Page session API and offline Plan admission](dev/live-page-session.md)

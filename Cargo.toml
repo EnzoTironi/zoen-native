@@ -10,6 +10,7 @@ members = [
   "crates/roda-gate",
   "crates/roda-proto",
   "crates/roda-mls",
+  "crates/zoen-web-core",
   "crates/zoen-relay",
   "crates/zoen-cli",
   "crates/zoen-load",

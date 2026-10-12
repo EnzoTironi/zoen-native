@@ -1,19 +1,18 @@
-# Zoen naming and compatibility
+# Zoen naming cutover
 
-The product, default agent, repository, application bundle and relay use Zoen. Some technical identifiers still use the project's former name, Roda. They are inherited implementation names, not a second product or service.
+The product and built-in agent are Zoen. Some source packages, generated bindings, preferences and development flags still use Roda. Their presence is unfinished naming work. Zoen has not launched and has no production users or data; the [prelaunch policy](prelaunch-policy.md) supersedes the previous compatibility-preservation plan.
 
-## Migration inventory
+## Atomic cutover inventory
 
-| Existing identifier | Target | Required verification |
+| Current identifiers | Target | Required coordinated work |
 | --- | --- | --- |
-| Nine `crates/roda-*` packages and `roda_*` Rust imports | `crates/zoen-*` and `zoen_*` | Workspace metadata, lockfile, all callers, feature combinations, full CI and journey setup. |
-| `RodaCore`, `RodaFFI`, `RodaEngine`, `roda_ffi` generated bindings | `ZoenCore`, `ZoenFFI`, `ZoenEngine`, `zoen_ffi` | Regenerate Swift/Kotlin and native libraries together; verify each supported ABI and native consumer. |
-| Apple `Roda…` development flags and preferences | `Zoen…` | Read existing preferences, preserve explicit old launch arguments during migration, write new keys and test relaunch. |
-| `buildRodaCore` and generated build directories | Zoen-named tasks/directories | Gradle inputs/outputs, build scripts, CI, callback patching and clean rebuilds. |
-| Local database paths containing the former name | Zoen path for new installs with legacy discovery | Preserve existing account/database ownership and migration versions; verify upgrade without creating a second account. |
-| Built-in resource URIs already stored in signed Items | Zoen namespace for new resources with legacy resolution | Old mini-apps must still open; never rewrite signed history to change a label. |
-| Signature/HKDF domains and persisted protocol bytes | Stable compatibility identifiers | A branding change must not invalidate signatures, encrypted state, backups or enrollment proofs. A protocol change needs its own versioned migration. |
+| `crates/roda-*`, `roda_*` Rust imports | `crates/zoen-*`, `zoen_*` | Move packages, workspace/lock/features, callers, scripts and tests together; verify complete CI/setup. |
+| `RodaCore`, `RodaFFI`, `RodaEngine`, `roda_ffi` | `ZoenCore`, `ZoenFFI`, `ZoenEngine`, `zoen_ffi` | Regenerate Swift/Kotlin and native libraries together; update every client and supported ABI. |
+| Apple `Roda…` preferences and launch flags | `Zoen…` | Replace names and callers directly; reset affected disposable preferences/fixtures, without old aliases or dual reads. |
+| `buildRodaCore`, generated build directories | Zoen task/directory names | Update Gradle inputs/outputs, producer/verifier scripts and CI in one unit; clean rebuild. |
+| Old local database names and resource URI namespaces | One current Zoen namespace | Reset affected development/test databases and seed fixtures coherently. Do not add old-path discovery or URI aliases. |
+| Cryptographic/protocol domains, if changed | One current explicit domain/version | Update both peers, proof/signature/encryption tests and setup atomically. Preserve domain separation and authenticated-byte correctness; recreate affected disposable signed history instead of silently rewriting it. |
 
-Source/package naming can migrate without renaming cryptographic domains. Existing account data, signed history and published protocol compatibility need explicit preservation tests. The remaining legacy names in API/build documentation describe the current code until those changes are integrated.
+Complete each coherent unit on shared main with one owner/coordinator, update documentation and validate its callers. Do not move another owner's files while they are being edited. Database migration-baseline consolidation is a separate explicit coordinated operation with affected database resets; this handoff performs no consolidation.
 
-Backend and native work are being updated in parallel on shared `main`. The Git coordinator integrates small verified migration units directly, with explicit file ownership. Regenerate bindings and validate old-data/new-client journeys together before publishing affected APIs. Avoid moving another owner's files while their changes are uncommitted; preserve cryptographic and persisted compatibility identifiers.
+The [12 October checkpoint](handoff-2026-10-12.md) records the current names and unfinished bindings/caller work. It does not claim that this cutover is complete. Revisit the prelaunch policy before the first production deployment.

@@ -671,6 +671,11 @@ impl Engine {
         let space = ev.env.space().to_string();
         let next = self.logs.get(&space).map(|l| l.next_seq()).unwrap_or(0);
         if ev.seq < next {
+            if self.approval_replay_needed {
+                if let Err(error) = self.reproject_approval_overlay() {
+                    return Ingest::Invalid(error.to_string());
+                }
+            }
             return Ingest::Duplicate;
         }
         if ev.seq > next {
@@ -688,7 +693,7 @@ impl Engine {
             return Ingest::Invalid("not sealed".into());
         };
         let client_id = ev.env.client_id().to_string();
-        let own = self.net.pending.contains_key(&client_id)
+        let own = self.net.pending.get(&client_id) == Some(&space)
             && self.net.account.as_ref().is_some_and(|account| {
                 account.identity == ev.env.author()
                     && ev.env.device() == Some(account.device.as_str())
@@ -893,7 +898,6 @@ impl Engine {
                 self.net.pending.remove(&client_id);
             }
             if let Err(err) = self.reproject_approval_overlay() {
-                let _ = self.reload();
                 return Ingest::Invalid(err.to_string());
             }
             return if own {
@@ -909,7 +913,11 @@ impl Engine {
                 // The group may owe a commit that waited for this Welcome to land.
                 self.net.mls.mark_group_dirty(space.clone());
             }
-            if let Some(s) = self.state.spaces.get_mut(&space) {
+            if let Some(s) = self
+                .space_projections
+                .get_mut(&space)
+                .and_then(|scoped| scoped.spaces.get_mut(&space))
+            {
                 for entry in s.entries.iter_mut().filter(|x| {
                     x.client_id == client_id
                         || x.client_id.strip_suffix(":result") == Some(client_id.as_str())
@@ -918,9 +926,12 @@ impl Engine {
                     entry.hash = e.hash.clone();
                 }
             }
+            self.state = Self::merge_space_projections(&self.space_projections, &self.space_order);
             return Ingest::Confirmed;
         }
-        self.state.apply(&e, &self.identities);
+        if let Err(err) = self.apply_confirmed_event(&e) {
+            return Ingest::Invalid(err.to_string());
+        }
         self.index_dirty = true;
         self.note_unknown(&e);
         Ingest::Applied

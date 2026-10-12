@@ -11,6 +11,10 @@
     "./shell.css": "./src/shell.css"
   },
   "scripts": {
+    "typecheck:web": "tsc --noEmit -p web/tsconfig.json",
+    "test:web": "node --test web/*.test.ts",
+    "build:web": "node web/build.mjs",
+    "web": "node web/server.mjs",
     "typecheck:shell": "tsc --noEmit -p preview/tsconfig.json",
     "test:shell": "node --test preview/shell.test.mjs",
     "build:preview": "node preview/build.mjs",
@@ -22,11 +26,16 @@
     "react": "^19"
   },
   "devDependencies": {
+    "@types/qrcode": "1.5.6",
     "@types/react": "19.1.16",
     "@types/react-dom": "19.1.9",
     "esbuild": "0.25.10",
+    "fake-indexeddb": "6.2.5",
     "react": "19.1.1",
     "react-dom": "19.1.1",
     "typescript": "5.9.2"
+  },
+  "dependencies": {
+    "qrcode": "1.5.4"
   }
 }

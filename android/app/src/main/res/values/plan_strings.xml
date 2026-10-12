@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="plan_read_only">This plan is read only.</string>
+    <string name="plan_changed">This plan changed. Reopen the editor to use the current version.</string>
+    <string name="plan_cost_invalid">Enter an exact cost of zero or more, with at most two decimal places.</string>
+    <string name="plan_total_unavailable">Total exceeds the supported range</string>
+    <string name="plan_remove_title">Remove this task?</string>
+    <string name="plan_remove_detail">Remove \"%1$s\"? A new version will keep the previous task in history.</string>
+    <string name="file_open_too_large">This file exceeds the 20 MiB limit for opening and sharing on Android.</string>
+    <string name="file_image_edit_too_large">Images over 16 megapixels can be viewed and exported. Markup is unavailable.</string>
+</resources>

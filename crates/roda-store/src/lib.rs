@@ -26,6 +26,8 @@ pub enum StoreError {
     Json(#[from] serde_json::Error),
     #[error("unsupported or oversized memory database image")]
     InvalidImage,
+    #[error("cached media exceeds the requested byte limit")]
+    MediaTooLarge,
 }
 
 pub type Result<T> = std::result::Result<T, StoreError>;
@@ -191,6 +193,38 @@ impl Store {
                 |r| Ok((r.get(0)?, r.get(1)?)),
             )
             .optional()?)
+    }
+
+    /// Reads only the cached length, without materializing a payload.
+    pub fn media_bytes_len(&self, sha256: &str) -> Result<Option<u64>> {
+        Ok(self
+            .conn
+            .query_row(
+                "SELECT length(bytes) FROM media WHERE sha256 = ?1",
+                [sha256],
+                |r| r.get(0),
+            )
+            .optional()?)
+    }
+
+    /// The length check and payload selection use the same SQLite snapshot. An
+    /// oversized BLOB is never returned to Rust, including after a cache replacement.
+    pub fn media_bytes_bounded(&self, sha256: &str, max_bytes: usize) -> Result<Option<Vec<u8>>> {
+        let limit = i64::try_from(max_bytes).map_err(|_| StoreError::MediaTooLarge)?;
+        let row: Option<(u64, Option<Vec<u8>>)> = self
+            .conn
+            .query_row(
+                "SELECT length(bytes), CASE WHEN length(bytes) <= ?2 THEN bytes ELSE NULL END \
+                 FROM media WHERE sha256 = ?1",
+                params![sha256, limit],
+                |r| Ok((r.get(0)?, r.get(1)?)),
+            )
+            .optional()?;
+        match row {
+            None => Ok(None),
+            Some((len, Some(bytes))) if len <= max_bytes as u64 => Ok(Some(bytes)),
+            Some(_) => Err(StoreError::MediaTooLarge),
+        }
     }
 
     // ── search index ──

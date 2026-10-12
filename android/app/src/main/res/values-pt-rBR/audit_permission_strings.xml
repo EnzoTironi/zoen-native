@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="ap_retry">Tentar novamente</string>
+    <string name="ap_audit_refresh">Verificar novamente</string>
+    <string name="ap_audit_load_failed">Não foi possível ler o histórico assinado.</string>
+    <string name="ap_audit_empty">Nenhum histórico assinado ainda</string>
+    <string name="ap_audit_explanation">Cada mudança é um evento assinado que só pode ser acrescentado ao histórico. Cada evento contém o hash anterior e uma assinatura Ed25519. O núcleo compartilhado verifica os hashes, as assinaturas e a ordem dos eventos no histórico armazenado neste aparelho.</string>
+    <string name="ap_audit_checked_chats">O histórico de %1$d conversas neste aparelho foi verificado.</string>
+    <string name="ap_audit_verified">Verificado</string>
+    <string name="ap_audit_invalid">A verificação falhou</string>
+    <string name="ap_audit_event_count">%1$s eventos assinados</string>
+    <string name="ap_audit_all_events">Todos os %1$d eventos · mais recentes primeiro</string>
+    <string name="ap_audit_no_events">Esta conversa não tem eventos.</string>
+    <string name="ap_audit_head_hash">Hash do último evento</string>
+    <string name="ap_audit_hash">Hash do evento</string>
+    <string name="ap_audit_previous">Hash do evento anterior</string>
+    <string name="ap_audit_signature">Assinatura Ed25519</string>
+    <string name="ap_audit_sequence">#%1$s · %2$s</string>
+    <string name="ap_permission_load_failed">Não foi possível ler as permissões.</string>
+    <string name="ap_permission_revoked">Permissão revogada. O próximo pedido vai perguntar novamente.</string>
+    <string name="ap_standing_title">Decisões permanentes</string>
+    <string name="ap_standing_empty">Nenhuma decisão permanente neste escopo.</string>
+    <string name="ap_standing_explanation">Deslize uma aprovação para cima para sempre aprovar esse tipo de ação desse agente nessa conversa, ou para baixo para sempre negar. Ao revogar a regra, o agente volta a perguntar. O núcleo continua pedindo aprovação para ações além dos limites de segurança, como gastos acima do limite, público aberto ou dados de terceiros.</string>
+    <string name="ap_device_title">Acesso dos mini-apps</string>
+    <string name="ap_device_chat_scope">Estas permissões pertencem aos mini-apps desta conversa.</string>
+    <string name="ap_device_agent_scope">Estas permissões pertencem aos mini-apps criados por este agente.</string>
+    <string name="ap_device_empty">Nenhuma permissão de mini-app neste escopo.</string>
+    <string name="ap_device_source">%1$s · %2$s</string>
+    <string name="ap_device_always">Permitido até ser revogado</string>
+    <string name="ap_device_once">Permitido uma vez · expira após um minuto</string>
+    <string name="ap_device_explanation">Cada permissão vale para um mini-app em uma conversa. A revogação é registrada como um evento assinado. O Android mantém suas próprias permissões nas configurações do sistema; elas não substituem seu consentimento aqui.</string>
+    <string name="ap_cap_location_approximate">Sua localização aproximada (cerca de 3 km)</string>
+    <string name="ap_cap_location_precise">Sua localização precisa</string>
+    <string name="ap_cap_photos">Somente as fotos que você escolher</string>
+    <string name="ap_cap_camera">Uma foto que você tirar agora</string>
+    <string name="ap_cap_calendar_busy">Seus horários ocupados (sem nomes dos eventos)</string>
+    <string name="ap_cap_calendar_events">Os nomes e detalhes dos seus eventos</string>
+    <string name="ap_cap_calendar_add">Um novo evento, depois de revisá-lo</string>
+    <string name="ap_cap_contacts">Somente o contato que você escolher (nome)</string>
+    <string name="ap_cap_steps">Sua contagem diária de passos</string>
+    <string name="ap_cap_network">Acesso à internet para %1$s</string>
+</resources>

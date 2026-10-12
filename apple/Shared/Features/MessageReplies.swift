@@ -125,6 +125,32 @@ private struct SwipeActionsForVoiceOver: ViewModifier {
     }
 }
 
+struct MessageActionsMenu: View {
+    let author: Persona
+    var onIntent: (MessageSwipeIntent) -> Void
+
+    var body: some View {
+        Menu {
+            Button("Reply", systemImage: "arrowshape.turn.up.left") { onIntent(.reply) }
+            Button("Reply in thread", systemImage: "bubble.left.and.text.bubble.right") { onIntent(.thread) }
+        } label: {
+            Image(systemName: "ellipsis")
+                .font(.body.weight(.semibold))
+                .foregroundStyle(Palette.textSecondary)
+                .frame(width: 44, height: 44)
+                .contentShape(.rect)
+        }
+        #if os(macOS)
+        .menuStyle(.borderlessButton)
+        .menuIndicator(.hidden)
+        #endif
+        .accessibilityLabel(Text("Message actions"))
+        .accessibilityValue(Text(author.name))
+        .accessibilityHint(Text("Reply or open a thread"))
+        .accessibilityIdentifier("message-actions")
+    }
+}
+
 // MARK: - The quote inside a reply bubble, and the bar above the composer
 
 struct ReplyQuoteView: View {
@@ -179,10 +205,11 @@ struct ReplyComposerBar: View {
                 Image(systemName: "xmark")
                     .font(.system(size: 12, weight: .bold))
                     .foregroundStyle(Palette.textSecondary)
-                    .frame(width: 28, height: 28)
+                    .frame(width: 44, height: 44)
                     .background(Palette.textPrimary.opacity(0.08), in: .circle)
             }
             .buttonStyle(.plain)
+            .keyboardShortcut(.cancelAction)
             .accessibilityLabel(Text("Cancel reply"))
             .accessibilityIdentifier("reply-cancel")
         }
@@ -191,6 +218,7 @@ struct ReplyComposerBar: View {
         .padding(.horizontal, 12)
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("reply-bar")
+        .accessibilityAction(.escape, onClose)
     }
 }
 

@@ -1164,10 +1164,14 @@ async fn main() {
                     let items = e
                         .pages_import_markdown(space.clone(), files)
                         .unwrap_or_else(|err| die(format!("import: {err}")));
+                    if !offline {
+                        e.wait_until_settled(timeout)
+                            .await
+                            .unwrap_or_else(|err| die(format!("import: {err}")));
+                    }
                     for (d, path) in items.iter().zip(&paths) {
                         println!("{}\t{}", d.id, path);
                     }
-                    e.wait_until_idle(timeout).await;
                 }
                 "new" => {
                     if cli.args.len() < 2 {

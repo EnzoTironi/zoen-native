@@ -64,6 +64,9 @@ impl Engine {
         }
         self.store
             .cache_imported_media(sha256, mime, bytes, now_ms())?;
+        if self.approval_replay_needed || !self.state.waiting_spaces.is_empty() {
+            self.reproject_approval_overlay()?;
+        }
         Ok(true)
     }
 

@@ -1,0 +1,10 @@
+<resources>
+    <string name="chat_appearance">Fundo da conversa</string><string name="chat_appearance_preview">Suas mensagens continuam fáceis de ler</string>
+    <string name="background_only_me">Somente neste dispositivo</string><string name="background_shared_detail">Desative para compartilhar o fundo com esta conversa.</string>
+    <string name="background_default">Fundo padrão</string><string name="choose_photo">Escolher foto</string>
+    <string name="background_colors">Cores</string><string name="background_gradients">Degradês</string><string name="background_doodles">Desenhos</string><string name="background_scenes">Cenários de papel</string>
+    <string name="background_zoom">Zoom</string><string name="background_horizontal">Posição horizontal</string><string name="background_vertical">Posição vertical</string><string name="background_dim">Escurecer</string><string name="background_blur">Desfoque</string>
+    <string name="background_auto">Sistema</string><string name="background_light">Claro</string><string name="background_dark">Escuro</string>
+    <string name="bg_butter">Manteiga</string><string name="bg_mint">Menta</string><string name="bg_sky">Céu</string><string name="bg_lilac">Lilás</string><string name="bg_blush">Rosado</string><string name="bg_cardboard">Papelão</string>
+    <string name="bg_dawn">Amanhecer</string><string name="bg_forest">Floresta</string><string name="bg_ocean">Oceano</string><string name="bg_dusk">Entardecer</string><string name="bg_paper">Papel</string><string name="bg_trail">Trilha</string><string name="bg_picnic">Piquenique</string><string name="bg_studio">Estúdio</string><string name="bg_meadow">Prado</string><string name="bg_coast">Costa</string>
+</resources>

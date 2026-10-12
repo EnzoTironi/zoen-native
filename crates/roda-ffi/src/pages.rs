@@ -18,6 +18,10 @@ use crate::CoreError;
 
 mod drafts;
 mod plan;
+pub(crate) use plan::projection::{
+    BeforeEvent, Currentness, PlanOrigin, PlanRead, PlanReplay, Projection,
+};
+pub(crate) use plan::PlanSnapshot;
 pub use plan::{
     PlanPageBlockDto, PlanPageContentDto, PlanPageDto, PlanPageReadSourceDto, PlanProseKindDto,
 };

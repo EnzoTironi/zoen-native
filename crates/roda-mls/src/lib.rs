@@ -18,13 +18,21 @@
 
 #[cfg(feature = "device")]
 mod device;
+#[cfg(any(feature = "device", feature = "portable"))]
+mod group;
 mod leaf;
+#[cfg(feature = "portable")]
+mod portable;
 pub mod recovery;
 #[cfg(feature = "device")]
 pub mod sealed;
 
 #[cfg(feature = "device")]
-pub use device::{clear_recovery_markers, migrate, Commit, Device, GroupState, LeafKeys, Opened};
+pub use device::{clear_recovery_markers, migrate, Device};
+#[cfg(any(feature = "device", feature = "portable"))]
+pub use group::{Commit, GroupState, LeafKeys, Opened};
+#[cfg(feature = "portable")]
+pub use portable::ExternalDevice;
 use std::collections::BTreeSet;
 
 pub use leaf::Leaf;

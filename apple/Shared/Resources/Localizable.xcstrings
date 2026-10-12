@@ -8684,6 +8684,226 @@
           }
         }
       }
+    },
+    "Message actions": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ações da mensagem"
+          }
+        }
+      }
+    },
+    "Reply or open a thread": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Responda ou abra uma thread"
+          }
+        }
+      }
+    },
+    "Awaiting decision": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Aguardando decisão"
+          }
+        }
+      }
+    },
+    "This file is empty.": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Este arquivo está vazio."
+          }
+        }
+      }
+    },
+    "Choose a file of 32 MB or less.": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Escolha um arquivo de até 32 MB."
+          }
+        }
+      }
+    },
+    "Choose files totaling 64 MB or less.": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Escolha arquivos que somem até 64 MB."
+          }
+        }
+      }
+    },
+    "Choose a file instead of a folder.": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Escolha um arquivo em vez de uma pasta."
+          }
+        }
+      }
+    },
+    "Choose up to 10 files at a time.": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Escolha até 10 arquivos por vez."
+          }
+        }
+      }
+    },
+    "Choose a photo of 64 megapixels or less.": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Escolha uma foto de até 64 megapixels."
+          }
+        }
+      }
+    },
+    "This photo could not be opened.": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Não foi possível abrir esta foto."
+          }
+        }
+      }
+    },
+    "This older file version cannot be previewed on this device yet.": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ainda não é possível visualizar esta versão anterior do arquivo neste dispositivo."
+          }
+        }
+      }
+    },
+    "Could not open file": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Não foi possível abrir o arquivo"
+          }
+        }
+      }
+    },
+    "Photo library": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Fototeca"
+          }
+        }
+      }
+    },
+    "Choose files": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Escolher arquivos"
+          }
+        }
+      }
+    },
+    "Attach photo or file": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Anexar foto ou arquivo"
+          }
+        }
+      }
+    },
+    "Could not attach": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Não foi possível anexar"
+          }
+        }
+      }
+    },
+    "Send attachments": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Enviar anexos"
+          }
+        }
+      }
+    },
+    "Shared in this conversation. Files stay on this device until you send.": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Compartilhados nesta conversa. Os arquivos ficam neste dispositivo até você enviar."
+          }
+        }
+      }
+    },
+    "Camera is unavailable on this device.": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "A câmera não está disponível neste dispositivo."
+          }
+        }
+      }
+    },
+    "The camera did not return a photo. Please try again.": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "A câmera não retornou uma foto. Tente novamente."
+          }
+        }
+      }
+    },
+    "Preview": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Prévia"
+          }
+        }
+      }
+    },
+    "Could not take photo": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Não foi possível tirar a foto"
+          }
+        }
+      }
     }
   },
   "version": "1.0"

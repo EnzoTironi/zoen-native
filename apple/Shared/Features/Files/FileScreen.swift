@@ -8,7 +8,8 @@ struct FileScreen: View {
     var onClose: (() -> Void)? = nil
 
     @State private var item: ItemDetail?
-    @State private var url: URL?
+    @State private var file: AttachmentFile?
+    @State private var previewFailure: String?
     @State private var showVersions = false
     @State private var saving = false
     @State private var savedBump = 0
@@ -17,11 +18,13 @@ struct FileScreen: View {
         VStack(spacing: 0) {
             if let item { info(item) }
             ZStack {
-                if let url {
-                    QuickLookView(url: url)
+                if let file {
+                    QuickLookView(file: file)
                         .clipShape(.rect(cornerRadius: 18, style: .continuous))
                         .padding(.horizontal, 12)
                         .transition(.opacity)
+                } else if let previewFailure {
+                    ContentUnavailableView("Could not open file", systemImage: "doc", description: Text(previewFailure))
                 } else if let f = item?.file {
                     arriving(f)
                 }
@@ -32,7 +35,7 @@ struct FileScreen: View {
                 }
             }
             .frame(maxHeight: .infinity)
-            .animation(.spring(duration: 0.4), value: url)
+            .animation(.spring(duration: 0.4), value: file?.id)
         }
         .background(Palette.background.ignoresSafeArea())
         .navigationTitle(item?.title ?? String(localized: "File"))
@@ -41,19 +44,20 @@ struct FileScreen: View {
         #endif
         .livePageChrome(onClose: onClose, status: { EmptyView() }) {
             #if os(iOS)
-            if let url {
-                Button { markup(url) } label: { Label("Markup", systemImage: "pencil.tip.crop.circle") }
+            if let file {
+                Button { markup(file) } label: { Label("Markup", systemImage: "pencil.tip.crop.circle") }
                     .accessibilityIdentifier("file.markup")
             }
             #endif
             Button { showVersions = true } label: { Label("Versions", systemImage: "clock.arrow.circlepath") }
-            if let url { ShareLink(item: url) { Label("Share", systemImage: "square.and.arrow.up") } }
+            if let file { ShareLink(item: file.url) { Label("Share", systemImage: "square.and.arrow.up") } }
         }
         .sheet(isPresented: $showVersions) {
             if let item { NavigationStack { VersoesView(item: item) } .zoenSheet([.medium, .large]) }
         }
         .sensoryFeedback(.success, trigger: savedBump)
-        .task(id: model.revision) { reload() }
+        .task(id: model.revision) { await reload() }
+        .onDisappear { file?.discard(); file = nil }
     }
 
     private func info(_ item: ItemDetail) -> some View {
@@ -63,7 +67,7 @@ struct FileScreen: View {
             FileThumb(item: item, size: 30)
             VStack(alignment: .leading, spacing: 1) {
                 Text(item.spaceTitle).font(.caption.weight(.medium)).foregroundStyle(Palette.textSecondary)
-                Text("v\(item.version) · \(who) · \(ByteCountFormatter.string(fromByteCount: Int64(item.file?.bytes ?? 0), countStyle: .file))")
+                Text("v\(item.version) · \(who) · \(ByteCountFormatter.string(fromByteCount: Int64(clamping: item.file?.bytes ?? 0), countStyle: .file))")
                     .font(.caption).foregroundStyle(Palette.textTertiary)
                     .contentTransition(.numericText())
             }
@@ -83,29 +87,51 @@ struct FileScreen: View {
         }
     }
 
-    private func reload() {
+    private func reload() async {
         let fresh = try? model.core.item(itemId: itemId)
-        let changed = fresh?.version != item?.version || url == nil
+        let changed = fresh?.version != item?.version || file == nil
+        if fresh?.version != item?.version { file?.discard(); file = nil; previewFailure = nil }
         item = fresh
         guard changed, let f = fresh?.file, f.ready else { return }
-        url = FileSupport.localURL(core: model.core, itemId: itemId, version: fresh?.version, name: f.name)
+        do {
+            let loaded = try await FileSupport.localFile(core: model.core, itemId: itemId, version: fresh?.version)
+            do { try Task.checkCancellation() }
+            catch { loaded?.discard(); throw error }
+            file = loaded
+            previewFailure = nil
+        } catch is CancellationError {
+        } catch {
+            file?.discard()
+            file = nil
+            previewFailure = (error as? CoreError)?.message ?? error.localizedDescription
+        }
     }
 
     #if os(iOS)
-    private func markup(_ url: URL) {
+    private func markup(_ file: AttachmentFile) {
         Haptics.open()
-        MarkupPresenter.shared.present(url: url) { edited in
+        MarkupPresenter.present(file: file) { edited in
             Task { @MainActor in
+                defer { edited.discard() }
                 saving = true
                 defer { saving = false }
-                guard let data = try? Data(contentsOf: edited) else { return }
-                let thumb = await FileSupport.thumbnail(for: edited)
-                try? FileManager.default.removeItem(at: edited)
-                if let it = model.perform({ try model.core.fileNewVersion(itemId: itemId, bytes: data, thumbnail: thumb, note: String(localized: "Marked up")) }) {
+                do {
+                    let thumb = await FileSupport.thumbnail(for: edited.url)
+                    let core = model.core
+                    let version = try await Task.detached(priority: .userInitiated) {
+                        let data = try AttachmentFiles.read(edited.url)
+                        return try core.fileNewVersion(itemId: itemId, bytes: data, thumbnail: thumb,
+                                                       note: String(localized: "Marked up")).version
+                    }.value
+                    model.refresh()
                     savedBump += 1
-                    model.show(.init(kind: .info, text: String(localized: "Saved as version \(it.version).")), seconds: 3)
+                    model.show(.init(kind: .info, text: String(localized: "Saved as version \(version).")), seconds: 3)
+                } catch {
+                    model.show(.init(kind: .error, text: (error as? CoreError)?.message ?? error.localizedDescription))
                 }
             }
+        } onFailure: { message in
+            model.show(.init(kind: .error, text: message))
         }
     }
     #endif

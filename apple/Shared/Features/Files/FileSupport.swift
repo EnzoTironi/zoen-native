@@ -13,19 +13,32 @@ import Quartz
 
 /// Files on disk for Quick Look, and previews made on this device.
 enum FileSupport {
-    /// The bytes of a file's version as a real file (Quick Look needs a name and type).
-    static func localURL(core: RodaEngine, itemId: String, version: UInt32?, name: String) -> URL? {
-        let v = version.map { "v\($0)" } ?? "latest"
-        let dir = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0]
-            .appendingPathComponent("ZoenFiles", isDirectory: true)
-            .appendingPathComponent(itemId, isDirectory: true)
-            .appendingPathComponent(v, isDirectory: true)
-        let url = dir.appendingPathComponent(name.isEmpty ? "file" : name)
-        if version != nil, FileManager.default.fileExists(atPath: url.path) { return url }
-        guard let bytes = try? core.fileBytes(itemId: itemId, version: version) else { return nil }
-        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
-        do { try bytes.write(to: url, options: .atomic) } catch { return nil }
-        return url
+    enum Failure: LocalizedError {
+        case historicalPreviewUnavailable
+
+        var errorDescription: String? {
+            String(localized: "This older file version cannot be previewed on this device yet.")
+        }
+    }
+
+    /// The viewer keeps the owner alive until Quick Look releases its file.
+    static func localFile(core: RodaEngine, itemId: String, version: UInt32?) async throws -> AttachmentFile? {
+        let work = Task.detached(priority: .userInitiated) {
+            let item = try core.item(itemId: itemId)
+            // Old versions lack a byte-count DTO. Do not allocate them without a bounded core read.
+            guard version == nil || version == item.version else { throw Failure.historicalPreviewUnavailable }
+            guard let info = item.file else { return nil as AttachmentFile? }
+            guard info.bytes <= UInt64(AttachmentFiles.maximumBytes) else { throw AttachmentFiles.Failure.tooLarge }
+            guard let bytes = try core.fileBytes(itemId: itemId, version: item.version) else { return nil }
+            try Task.checkCancellation()
+            return try AttachmentFiles.stage(bytes, name: info.name)
+        }
+        return try await withTaskCancellationHandler {
+            let file = try await work.value
+            do { try Task.checkCancellation() }
+            catch { file?.discard(); throw error }
+            return file
+        } onCancel: { work.cancel() }
     }
 
     static func mime(for url: URL) -> String {
@@ -45,14 +58,40 @@ enum FileSupport {
 
     /// A PNG preview made by Quick Look on this device (travels with the file).
     static func thumbnail(for url: URL) async -> Data? {
+        guard let size = try? url.resourceValues(forKeys: [.fileSizeKey]).fileSize,
+              Int64(size) <= AttachmentFiles.maximumBytes else { return nil }
+        do {
+            if let bytes = try await Task.detached(priority: .userInitiated, operation: {
+                try AttachmentFiles.imageThumbnail(url)
+            }).value { return bytes }
+        } catch { return nil }
         let req = QLThumbnailGenerator.Request(fileAt: url, size: CGSize(width: 240, height: 240), scale: 2, representationTypes: .thumbnail)
         guard let rep = try? await QLThumbnailGenerator.shared.generateBestRepresentation(for: req) else { return nil }
+        guard rep.cgImage.width <= 512, rep.cgImage.height <= 512 else { return nil }
         #if canImport(UIKit)
-        return rep.uiImage.pngData()
+        let data = rep.uiImage.pngData()
         #else
         guard let tiff = rep.nsImage.tiffRepresentation, let bmp = NSBitmapImageRep(data: tiff) else { return nil }
-        return bmp.representation(using: .png, properties: [:])
+        let data = bmp.representation(using: .png, properties: [:])
         #endif
+        guard let data, data.count <= 2 << 20 else { return nil }
+        return data
+    }
+
+    @MainActor @discardableResult
+    static func sendAttachment(_ file: AttachmentFile, into spaceId: String, model: AppModel) async throws -> String {
+        guard let use = file.beginUse() else { throw CocoaError(.fileNoSuchFile) }
+        defer { use.close() }
+        let thumb = await thumbnail(for: file.url)
+        let core = model.core
+        // Once accepted, the core owns encrypted chunks and its durable upload queue.
+        let id = try await Task.detached(priority: .userInitiated) {
+            let bytes = try AttachmentFiles.read(file.url)
+            return try core.fileAdd(spaceId: spaceId, path: file.name, name: file.name,
+                                    mime: mime(for: file.url), bytes: bytes, thumbnail: thumb).id
+        }.value
+        model.refresh()
+        return id
     }
 
     /// Adds files a person picked to a Space: Markdown becomes a page, the rest files.
@@ -61,23 +100,25 @@ enum FileSupport {
     static func importFiles(_ urls: [URL], into spaceId: String, model: AppModel) async -> [String] {
         var ids: [String] = []
         var pages: [MarkdownFileDto] = []
-        for url in urls {
-            let scoped = url.startAccessingSecurityScopedResource()
-            defer { if scoped { url.stopAccessingSecurityScopedResource() } }
-            guard let data = try? Data(contentsOf: url) else { continue }
-            let name = url.lastPathComponent
-            let ext = url.pathExtension.lowercased()
-            if ["md", "markdown"].contains(ext), let md = String(data: data, encoding: .utf8) {
-                pages.append(MarkdownFileDto(path: name, markdown: md))
-                continue
+        do {
+            let files = try await AttachmentFiles.importSelection(urls)
+            defer { files.forEach { $0.discard() } }
+            for file in files {
+                let ext = file.url.pathExtension.lowercased()
+                if ["md", "markdown"].contains(ext) {
+                    let data = try await Task.detached(priority: .userInitiated) { try AttachmentFiles.read(file.url) }.value
+                    if let md = String(data: data, encoding: .utf8) {
+                        pages.append(MarkdownFileDto(path: file.name, markdown: md))
+                        continue
+                    }
+                }
+                ids.append(try await sendAttachment(file, into: spaceId, model: model))
             }
-            let thumb = await thumbnail(for: url)
-            if let it = model.perform({ try model.core.fileAdd(spaceId: spaceId, path: name, name: name, mime: mime(for: url), bytes: data, thumbnail: thumb) }) {
-                ids.append(it.id)
+            if !pages.isEmpty, let made = model.perform({ try model.core.pagesImportMarkdown(spaceId: spaceId, files: pages) }) {
+                ids.append(contentsOf: made.map(\.id))
             }
-        }
-        if !pages.isEmpty, let made = model.perform({ try model.core.pagesImportMarkdown(spaceId: spaceId, files: pages) }) {
-            ids.append(contentsOf: made.map(\.id))
+        } catch {
+            model.show(.init(kind: .error, text: (error as? CoreError)?.message ?? error.localizedDescription))
         }
         return ids
     }
@@ -108,7 +149,8 @@ struct FileThumb: View {
         .clipShape(.rect(cornerRadius: size * 0.22, style: .continuous))
         .task(id: "\(item.id)-\(item.version)") {
             guard item.file?.hasThumbnail == true, let data = try? model.core.fileThumbnail(itemId: item.id) else { return }
-            image = PlatformImage(data: data)
+            let bounded = await Task.detached(priority: .userInitiated) { AttachmentFiles.imageThumbnail(data) }.value
+            image = bounded.flatMap { PlatformImage(data: $0) }
         }
     }
 }
@@ -116,9 +158,9 @@ struct FileThumb: View {
 #if canImport(UIKit)
 /// Quick Look inside a screen (any format iOS can show).
 struct QuickLookView: UIViewControllerRepresentable {
-    let url: URL
+    let file: AttachmentFile
 
-    func makeCoordinator() -> Source { Source(url: url) }
+    func makeCoordinator() -> Source { Source(file: file) }
 
     func makeUIViewController(context: Context) -> QLPreviewController {
         let ql = QLPreviewController()
@@ -127,44 +169,76 @@ struct QuickLookView: UIViewControllerRepresentable {
     }
 
     func updateUIViewController(_ ql: QLPreviewController, context: Context) {
-        if context.coordinator.url != url {
-            context.coordinator.url = url
+        if context.coordinator.file.id != file.id {
+            let oldUse = context.coordinator.use
+            context.coordinator.file = file
+            context.coordinator.use = file.beginUse()
             ql.reloadData()
+            oldUse?.close()
         }
+    }
+
+    static func dismantleUIViewController(_ ql: QLPreviewController, coordinator: Source) {
+        ql.dataSource = nil
+        ql.reloadData()
+        coordinator.use?.close()
+        coordinator.use = nil
     }
 
     @MainActor
     final class Source: NSObject, QLPreviewControllerDataSource {
-        var url: URL
-        init(url: URL) { self.url = url }
-        func numberOfPreviewItems(in controller: QLPreviewController) -> Int { 1 }
-        func previewController(_ controller: QLPreviewController, previewItemAt index: Int) -> QLPreviewItem { url as NSURL }
+        var file: AttachmentFile
+        var use: AttachmentFile.Use?
+        init(file: AttachmentFile) { self.file = file; use = file.beginUse() }
+        func numberOfPreviewItems(in controller: QLPreviewController) -> Int { use == nil ? 0 : 1 }
+        func previewController(_ controller: QLPreviewController, previewItemAt index: Int) -> QLPreviewItem { file.url as NSURL }
     }
 }
 
 /// Full-screen Quick Look with Markup; a saved markup comes back as new bytes.
 @MainActor
 final class MarkupPresenter: NSObject, QLPreviewControllerDataSource, QLPreviewControllerDelegate {
-    static let shared = MarkupPresenter()
-    private var url: URL?
-    private var onSave: ((URL) -> Void)?
+    nonisolated let file: AttachmentFile
+    private var use: AttachmentFile.Use?
+    private let onSave: @MainActor @Sendable (AttachmentFile) -> Void
+    private let onFailure: @MainActor @Sendable (String) -> Void
 
-    func present(url: URL, onSave: @escaping (URL) -> Void) {
-        self.url = url
+    private init(file: AttachmentFile, onSave: @escaping @MainActor @Sendable (AttachmentFile) -> Void,
+                 onFailure: @escaping @MainActor @Sendable (String) -> Void) {
+        self.file = file
+        self.use = file.beginUse()
         self.onSave = onSave
-        let ql = QLPreviewController()
-        ql.dataSource = self
-        ql.delegate = self
+        self.onFailure = onFailure
+    }
+
+    static func present(file: AttachmentFile, onSave: @escaping @MainActor @Sendable (AttachmentFile) -> Void,
+                        onFailure: @escaping @MainActor @Sendable (String) -> Void) {
         guard var top = UIApplication.shared.connectedScenes
             .compactMap({ ($0 as? UIWindowScene)?.keyWindow?.rootViewController }).first else { return }
         while let p = top.presentedViewController { top = p }
+        let source = MarkupPresenter(file: file, onSave: onSave, onFailure: onFailure)
+        guard source.use != nil else { return }
+        let ql = OwnedMarkupController()
+        ql.owner = source
+        ql.dataSource = source
+        ql.delegate = source
         top.present(ql, animated: true)
     }
 
     func numberOfPreviewItems(in controller: QLPreviewController) -> Int { 1 }
 
     func previewController(_ controller: QLPreviewController, previewItemAt index: Int) -> QLPreviewItem {
-        (url ?? URL(fileURLWithPath: "/")) as NSURL
+        file.url as NSURL
+    }
+
+    func previewControllerDidDismiss(_ controller: QLPreviewController) {
+        controller.dataSource = nil
+        close()
+    }
+
+    func close() {
+        use?.close()
+        use = nil
     }
 
     nonisolated func previewController(_ controller: QLPreviewController, editingModeFor previewItem: QLPreviewItem) -> QLPreviewItemEditingMode {
@@ -172,22 +246,58 @@ final class MarkupPresenter: NSObject, QLPreviewControllerDataSource, QLPreviewC
     }
 
     nonisolated func previewController(_ controller: QLPreviewController, didSaveEditedCopyOf previewItem: QLPreviewItem, at modifiedContentsURL: URL) {
-        // Quick Look removes the copy after this returns: keep our own.
-        let keep = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString + "-" + modifiedContentsURL.lastPathComponent)
-        try? FileManager.default.copyItem(at: modifiedContentsURL, to: keep)
-        Task { @MainActor in self.onSave?(keep) }
+        // Quick Look removes its copy after this callback returns.
+        do {
+            let saved = try AttachmentFiles.stage([modifiedContentsURL])[0]
+            Task { @MainActor in self.onSave(saved) }
+        } catch {
+            let message = error.localizedDescription
+            Task { @MainActor in self.onFailure(message) }
+        }
+    }
+}
+
+private final class OwnedMarkupController: QLPreviewController {
+    var owner: MarkupPresenter?
+    override func viewDidDisappear(_ animated: Bool) {
+        super.viewDidDisappear(animated)
+        if isBeingDismissed || presentingViewController == nil {
+            dataSource = nil
+            owner?.close()
+            owner = nil
+        }
     }
 }
 #else
 struct QuickLookView: NSViewRepresentable {
-    let url: URL
+    let file: AttachmentFile
     func makeNSView(context: Context) -> QLPreviewView {
-        let v = QLPreviewView(frame: .zero, style: .normal)!
-        v.previewItem = url as NSURL
+        let v = OwnedPreviewView(frame: .zero, style: .normal)!
+        v.owner = file
+        v.use = file.beginUse()
+        if v.use != nil { v.previewItem = file.url as NSURL }
         return v
     }
     func updateNSView(_ v: QLPreviewView, context: Context) {
-        if (v.previewItem as? NSURL) as URL? != url { v.previewItem = url as NSURL }
+        guard let owned = v as? OwnedPreviewView, owned.owner?.id != file.id else { return }
+        let oldUse = owned.use
+        owned.owner = file
+        owned.use = file.beginUse()
+        v.previewItem = owned.use == nil ? nil : file.url as NSURL
+        oldUse?.close()
     }
+    static func dismantleNSView(_ v: QLPreviewView, coordinator: ()) {
+        v.previewItem = nil
+        v.close()
+        guard let owned = v as? OwnedPreviewView else { return }
+        owned.use?.close()
+        owned.use = nil
+        owned.owner = nil
+    }
+}
+
+private final class OwnedPreviewView: QLPreviewView {
+    var owner: AttachmentFile?
+    var use: AttachmentFile.Use?
 }
 #endif

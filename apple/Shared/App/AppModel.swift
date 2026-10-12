@@ -93,6 +93,8 @@ final class AppModel {
     private(set) var mentions: [Mention] = []
     private(set) var stats: CoreStats?
     private(set) var revision = 0
+    private(set) var items: [ItemDetail] = []
+    private(set) var miniAppItemIds: Set<String> = []
     /// Mini-apps vivos (um por Espaço, o mais recente) para os blocos da tela Conversas.
     private(set) var liveApps: [ItemDetail] = []
     /// Confirmação nativa pedida por um mini-app (irreversível / sai do Espaço).
@@ -233,7 +235,9 @@ final class AppModel {
         agents = core.agents()
         mentions = core.mentions()
         stats = core.stats()
-        liveApps = core.items().filter { item in
+        items = core.items()
+        miniAppItemIds = Set(items.compactMap { $0.app == nil ? nil : $0.id })
+        liveApps = items.filter { item in
             guard let app = item.app else { return false }
             return !AppView(app).bool("released")
         }
@@ -413,17 +417,12 @@ final class AppModel {
 
     // MARK: o agente na conversa
 
-    /// The chat's shared background: the latest typed `BackgroundSet` event in its log
-    /// (falls back to a legacy `⟦bg:⟧` marker from older builds).
+    /// The chat's shared background comes from the typed `BackgroundSet` event.
     func sharedBackground(_ spaceId: String) -> ChatBackground { sharedBackgroundState(spaceId).0 }
 
     func sharedBackgroundState(_ spaceId: String) -> (ChatBackground, PhotoBackgroundLayout) {
         if let dto = try? core.background(spaceId: spaceId) {
             return (ChatBackground(dto: dto), PhotoBackgroundLayout(dto: dto))
-        }
-        let entries = (try? core.timeline(spaceId: spaceId)) ?? []
-        for e in entries.reversed() {
-            if case .message(let t, _) = e.kind, let bg = ChatBackgroundMarker.parse(t) { return (bg, .default) }
         }
         return (.none, .default)
     }

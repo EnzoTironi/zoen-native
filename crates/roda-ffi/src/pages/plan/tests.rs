@@ -5,6 +5,7 @@ use roda_log::chain_hash;
 use roda_proto::{Envelope, Sequenced};
 
 mod api;
+mod approvals;
 mod consumers;
 mod prefix;
 
