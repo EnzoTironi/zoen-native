@@ -75,7 +75,6 @@ private struct LivePageChrome<Status: View, Actions: View>: ViewModifier {
                     .accessibilityLabel(Text("Close details"))
                     .accessibilityIdentifier("mac-inspector-close")
                     .help("Close details (Esc)")
-                    .keyboardShortcut(.cancelAction)
                     .focused($closeFocused)
                     .onAppear { closeFocused = true }
                 }
