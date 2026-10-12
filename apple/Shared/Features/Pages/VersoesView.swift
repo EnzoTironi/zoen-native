@@ -53,6 +53,9 @@ struct VersoesView: View {
             }
         }
         .task(id: model.revision) { current = try? model.core.item(itemId: item.id) }
+        #if os(macOS)
+        .onExitCommand { dismiss() }
+        #endif
     }
 
     private func row(_ v: VersionDto) -> some View {

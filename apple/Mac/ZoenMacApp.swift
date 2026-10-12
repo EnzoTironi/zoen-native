@@ -160,9 +160,8 @@ struct MacRootView: View {
             ProfileSheet(personaId: ref.id).environment(model)
         }
         .onKeyPress(.escape) {
-            dismissTransientPresentation() ? .handled : .ignored
+            dismissCreateMenu() ? .handled : .ignored
         }
-        .onExitCommand { _ = dismissTransientPresentation() }
         .onAppear {
             if model.macSelection == nil, let first = model.spaceId(titled: DemoSpace.paraty) ?? model.spaces.first?.id {
                 model.macSelection = .space(first)
@@ -202,13 +201,9 @@ struct MacRootView: View {
         model.inspectorItem = nil
     }
 
-    private func dismissTransientPresentation() -> Bool {
+    private func dismissCreateMenu() -> Bool {
         if model.radialOpen {
             withAnimation(reduceMotion ? nil : .spring(duration: 0.35)) { model.radialOpen = false }
-            return true
-        }
-        if model.inspectorItem != nil {
-            closeInspector()
             return true
         }
         return false

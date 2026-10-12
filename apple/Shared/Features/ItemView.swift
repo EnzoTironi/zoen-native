@@ -203,6 +203,7 @@ struct VersionsView: View {
         }
         #if os(macOS)
         .frame(minWidth: 560, minHeight: 480)
+        .onExitCommand { dismiss() }
         #endif
     }
 
