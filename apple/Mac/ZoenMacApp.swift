@@ -130,7 +130,11 @@ struct ZoenMacApp: App {
                     .keyboardShortcut("0", modifiers: .command)
                 Button("Activity") { searchCommands?.reset(); model.select(.activity) }
                     .keyboardShortcut("1", modifiers: .command)
-                Button("Create and more") { withAnimation(.spring(duration: 0.45, bounce: 0.28)) { model.radialOpen.toggle() } }
+                Button("Create and more") {
+                    withAnimation(NSWorkspace.shared.accessibilityDisplayShouldReduceMotion ? nil : .spring(duration: 0.45, bounce: 0.28)) {
+                        model.radialOpen.toggle()
+                    }
+                }
                     .keyboardShortcut("k", modifiers: .command)
             }
         }

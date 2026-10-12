@@ -202,10 +202,8 @@ struct ActivityScreen: View {
                 }
             }
             ForEach(requests) { r in
-                RequestCard(request: r, onApprove: { model.approve(r) }, onDeny: { model.deny(r) })
-                    .contentShape(.rect)
-                    .onTapGesture { model.push(.request(r.id)) }
-                    .accessibilityAction(named: String(localized: "Review")) { model.push(.request(r.id)) }
+                RequestCard(request: r, onReview: { model.push(.request(r.id)) },
+                            onApprove: { model.approve(r) }, onDeny: { model.deny(r) })
                     .transition(.asymmetric(insertion: .opacity, removal: .scale(scale: 0.9).combined(with: .opacity)))
             }
         }
