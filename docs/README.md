@@ -39,6 +39,7 @@ Technical identifiers inherited from the old project name are tracked in the [Zo
 - [O app de iPhone no Mac, sem simulador](dev/iphone-no-mac.md)
 - [Zoen naming and compatibility](dev/naming.md)
 - [Development setup](dev/setup.md)
+- [Live Page session API and offline Plan admission](dev/live-page-session.md)
 
 ## Product and design
 
