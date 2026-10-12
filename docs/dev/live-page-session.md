@@ -24,7 +24,7 @@ Existing Binary Page Loro content, preference and database keys, and the `Storag
 
 ## Plan admission
 
-The typed Plan document, authenticated timeline and tagged journal are foundations for a shared Live Page editor. Public Page APIs still reject Plan Items. PR 62’s merged consumers replace current card, item and search projections without activating the public Plan editor.
+The typed Plan document, authenticated timeline and tagged journal are foundations for a shared Live Page editor. Canonical Page mutation APIs still reject Plan Items; the dedicated `plan_page()` read is merged in PR 64. PR 62’s merged consumers replace current card, item and search projections without activating the public Plan editor.
 
 After valid cutover, consumers read the session's saved document and accepted version, author and timestamp. They exclude private drafts and refused later whole-plan writes while retaining those writes in history. Before cutover, existing offline legacy previews preserve their exact bytes. Search indexes the accepted document's blocks and typed rows; it does not introduce another editable Plan store.
 
@@ -43,3 +43,9 @@ PR 60's shared-session foundation is merged as main `fa4eed8`; its Linux run pas
 The standalone public API evidence uses an owned local SQLite database and two editor contexts for one actor. It is separate from native app footage, relay/provider execution, full HIG acceptance and billion-user capacity evidence. Those gates remain open in the [roadmap](../roadmap-status.md).
 
 The additive typed Plan client read subsequently passed formatting, all-target FFI Clippy and all 132 FFI tests, with zero failures, ignored or filtered tests, plus the empty doc-test target. Four new journeys exercise exact duplicate IDs/text, all prose variants and UTF-16 marks through authenticated cutover, private-draft separation, extreme cents and order-independent credit cancellation. This is local core evidence; current generated client bindings and app workflows remain separate.
+
+PR 65 merged negative legacy-addition validation as `04fdb7a`. Its complete Linux run passes 482 tests, including all 134 FFI cases; the tested tree matches the resulting main. The SDK was regenerated and full arm64 Mac, iOS simulator and generic iOS device Debug apps compiled after correcting C/C++ library deployment targets to version 26. These builds do not establish current runtime, Release, physical minimum-OS or HIG acceptance. Ten Swift presentation/API cases independently exercise exact text/cents, duplicate-row addressing and real generated Core reads.
+
+The native Plan replacement remains unshipped. Existing session `can_edit` blocks pending legacy intent, while old legacy writers allow successive offline edits. A pending creation may also lack an authenticated session seed despite having a readable local legacy preview. Compatibility work must preserve those offline flows without manufacturing an authenticated manifest, opening canonical writes or exposing a second editable store. A presentation/admission flag is not financial authorization.
+
+Backend integration update (12 October 2026, 17:15 UTC): PR 63 is merged as Main `0b349d3` after complete 558-pass Linux CI, including 183 actual Core tests. The compiled native Core134 baseline and its ten Swift/API cases retain their separate scope. The offline compatibility candidate has not passed its full suite yet; the first run exposed invalid fixture input and a real damaged-media import recovery bug. The corrected candidate is being retested before generating new bindings and validating the replacement Plan screen.

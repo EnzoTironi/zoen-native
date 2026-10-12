@@ -16,289 +16,6 @@ struct ItemView: View {
     }
 }
 
-/// Tela 9: o Item (aqui, um plano). Editável; cada edição é uma versão com Desfazer.
-struct PlanItemView: View {
-    @Environment(AppModel.self) private var model
-    let itemId: String
-
-    @State private var item: ItemDetail?
-    @State private var editing: EditingLine?
-    @State private var showVersions = false
-    @State private var reaction: String?
-    @State private var bump = 0
-
-    struct EditingLine: Identifiable {
-        var id: String { lineId ?? "new-\(section)" }
-        var lineId: String?
-        var section: UInt32
-        var text: String
-        var amount: String
-    }
-
-    var body: some View {
-        ScrollView {
-            if let item {
-                VStack(alignment: .leading, spacing: 22) {
-                    header(item)
-                    if let plan = item.plan {
-                        budgetBlock(plan)
-                        if let reaction, let fin = model.agents.first(where: { $0.persona.handle == "financeiro" })?.persona ?? model.zoen {
-                            AgentReaction(agent: fin, text: reaction)
-                                .transition(.move(edge: .top).combined(with: .opacity))
-                        }
-                        ForEach(Array(plan.sections.enumerated()), id: \.offset) { idx, section in
-                            sectionView(item: item, index: UInt32(idx), section: section)
-                        }
-                    } else if let text = item.text {
-                        Text(text).font(.body).solidCard()
-                    }
-                    footer(item)
-                }
-                .padding(.horizontal, 18)
-                .padding(.vertical, 12)
-                .frame(maxWidth: 720)
-                .frame(maxWidth: .infinity)
-            }
-        }
-        .background(Palette.background.ignoresSafeArea())
-        .navigationTitle(item?.kindLabel ?? "Item")
-        #if os(iOS)
-        .navigationBarTitleDisplayMode(.inline)
-        #endif
-        #if os(iOS)
-        .toolbar {
-            ToolbarItemGroup(placement: .primaryAction) {
-                if let item {
-                    Button { showVersions = true } label: { Label("Versions", systemImage: "clock.arrow.circlepath") }
-                    ShareLink(item: shareText(item)) { Label("Share", systemImage: "square.and.arrow.up") }
-                }
-            }
-        }
-        #endif
-        .sheet(item: $editing) { e in
-            NavigationStack {
-                LineEditor(editing: e, onSave: { save($0) },
-                           onRemove: e.lineId == nil ? nil : { remove(lineId: e.lineId!) })
-            }
-            .zoenSheet([.height(e.lineId == nil ? 320 : 390)])
-        }
-        .sheet(isPresented: $showVersions) {
-            if let item { NavigationStack { VersionsView(item: item) } .zoenSheet([.medium, .large]) }
-        }
-        .task(id: model.revision) { item = try? model.core.item(itemId: itemId) }
-        .sensoryFeedback(.success, trigger: bump)
-    }
-
-    // MARK: partes
-
-    private func header(_ item: ItemDetail) -> some View {
-        VStack(alignment: .leading, spacing: 10) {
-            HStack {
-                Text(item.spaceTitle)
-                    .font(.caption.weight(.medium))
-                    .foregroundStyle(Palette.textSecondary)
-                #if os(macOS)
-                Spacer()
-                Button { showVersions = true } label: { Image(systemName: "clock.arrow.circlepath") }
-                    .buttonStyle(.plain)
-                    .help("Versions")
-                    .accessibilityLabel("Versions")
-                ShareLink(item: shareText(item)) { Image(systemName: "square.and.arrow.up") }
-                    .buttonStyle(.plain)
-                    .help("Share")
-                    .accessibilityLabel("Share")
-                #endif
-            }
-
-            Text(item.title)
-                .font(.editorial(34))
-                .foregroundStyle(Palette.textPrimary)
-
-            if let plan = item.plan, !plan.summary.isEmpty {
-                Text(plan.summary).font(.callout).foregroundStyle(Palette.textSecondary)
-            }
-
-            HStack(spacing: 8) {
-                Avatar(persona: item.createdBy, size: 22)
-                Text(item.origin)
-                    .font(.caption)
-                    .foregroundStyle(Palette.textSecondary)
-                    .lineLimit(2)
-            }
-            .padding(.top, 2)
-        }
-    }
-
-    private func budgetBlock(_ plan: PlanDto) -> some View {
-        HStack(alignment: .center, spacing: 16) {
-            if let budget = plan.budgetCents {
-                BudgetRing(spent: plan.totalCents, limit: budget, size: 64, lineWidth: 7, showsLabel: true)
-            }
-            VStack(alignment: .leading, spacing: 4) {
-                Text(Money.format(plan.totalCents))
-                    .font(.system(size: 30, weight: .bold, design: .rounded))
-                    .monospacedDigit()
-                    .contentTransition(.numericText(value: Double(plan.totalCents)))
-                if let budget = plan.budgetCents {
-                    let over = plan.totalCents > budget
-                    let difference = MoneyInput.differenceCents(over ? plan.totalCents : budget, over ? budget : plan.totalCents)
-                    Group {
-                        if let difference {
-                            Text(over ? String(localized: "\(Money.format(difference)) over the \(Money.format(budget)) cap") : String(localized: "of \(Money.format(budget)) · \(Money.format(difference)) left"))
-                        } else {
-                            Text(over ? String(localized: "over the \(Money.format(budget)) cap") : String(localized: "within the \(Money.format(budget)) cap"))
-                        }
-                    }
-                    .font(.subheadline)
-                    .foregroundStyle(over ? Palette.danger : Palette.textSecondary)
-                    .contentTransition(.numericText())
-                } else {
-                    Text("estimated total").font(.subheadline).foregroundStyle(Palette.textSecondary)
-                }
-            }
-            Spacer()
-        }
-        .solidCard()
-        .animation(.spring(duration: 0.5), value: plan.totalCents)
-    }
-
-    private func sectionView(item: ItemDetail, index: UInt32, section: PlanSectionDto) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
-            let subtotal = MoneyInput.sumCents(section.lines.lazy.map(\.costCents))
-            SectionHeader(title: section.title, trailing: subtotal.map(Money.format) ?? String(localized: "total unavailable"))
-            VStack(spacing: 0) {
-                ForEach(section.lines) { line in
-                    PlanLineRow(line: line,
-                                request: item.linkedRequests.first { $0.lineId == line.id },
-                                onToggle: { toggle(line) },
-                                onEdit: { editing = EditingLine(lineId: line.id, section: index, text: line.text, amount: MoneyInput.text(for: line.costCents, locale: AppLocale.locale)) },
-                                onRemove: { remove(line) })
-                    Divider().padding(.leading, 48).opacity(0.5)
-                }
-                Button {
-                    editing = EditingLine(lineId: nil, section: index, text: "", amount: MoneyInput.text(for: 0, locale: AppLocale.locale))
-                } label: {
-                    Label("Add", systemImage: "plus").font(.subheadline.weight(.medium))
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .padding(.vertical, 12).padding(.horizontal, 14)
-                }
-                .buttonStyle(.plain)
-                .foregroundStyle(Palette.action)
-            }
-            .background(Palette.surface, in: .rect(cornerRadius: 20, style: .continuous))
-            .overlay(RoundedRectangle(cornerRadius: 20, style: .continuous).strokeBorder(Palette.hairline.opacity(0.7), lineWidth: 0.5))
-        }
-    }
-
-    private func footer(_ item: ItemDetail) -> some View {
-        Button { showVersions = true } label: {
-            HStack(spacing: 10) {
-                Image(systemName: "clock.arrow.circlepath")
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("\(item.versions.count) versions · nothing is lost").font(.subheadline.weight(.semibold))
-                    Text("Every change is a signed event in the Space’s log").font(.caption).foregroundStyle(Palette.textSecondary)
-                }
-                Spacer()
-                Image(systemName: "chevron.right").font(.caption.weight(.bold)).foregroundStyle(Palette.textTertiary)
-            }
-            .foregroundStyle(Palette.textPrimary)
-            .solidCard(radius: 18, padding: 14)
-        }
-        .buttonStyle(.plain)
-        .padding(.top, 4)
-    }
-
-    // MARK: ações (todas pelo núcleo)
-
-    private func toggle(_ line: PlanLineDto) {
-        let out = model.perform { try model.core.togglePlanLine(itemId: itemId, lineId: line.id) }
-        if out != nil { bump += 1 }
-        apply(out)
-    }
-
-    private func remove(_ line: PlanLineDto) { remove(lineId: line.id) }
-    private func remove(lineId: String) {
-        apply(model.perform { try model.core.removePlanLine(itemId: itemId, lineId: lineId) })
-    }
-
-    private func save(_ e: EditingLine) -> Bool {
-        guard let cents = MoneyInput.cents(from: e.amount, locale: AppLocale.locale), cents >= 0 else { return false }
-        let out: EditOutcome?
-        if let lineId = e.lineId {
-            out = model.perform { try model.core.editPlanLine(itemId: itemId, lineId: lineId, text: e.text, costCents: cents) }
-        } else {
-            out = model.perform { try model.core.addPlanLine(itemId: itemId, sectionIndex: e.section, text: e.text, costCents: cents) }
-        }
-        apply(out)
-        return out != nil
-    }
-
-    private func apply(_ out: EditOutcome?) {
-        guard let out else { return }
-        withAnimation(.spring(duration: 0.45)) { item = out.item }
-        if let r = model.handleEdit(out) {
-            withAnimation(.spring(duration: 0.5)) { reaction = r }
-        }
-    }
-
-    private func shareText(_ item: ItemDetail) -> String {
-        guard let plan = item.plan else { return item.text ?? item.title }
-        var s = "\(plan.title)\n\(plan.summary)\n"
-        for sec in plan.sections {
-            s += "\n\(sec.title)\n"
-            for l in sec.lines { s += "\(l.done ? "✓" : "•") \(l.text) — \(Money.format(l.costCents))\n" }
-        }
-        s += String(localized: "\nTotal: \(Money.format(plan.totalCents))")
-        if let b = plan.budgetCents { s += String(localized: " of \(Money.format(b))") }
-        return s + String(localized: "\n\nMade in Zoen")
-    }
-}
-
-struct PlanLineRow: View {
-    let line: PlanLineDto
-    let request: AgentRequestDto?
-    var onToggle: () -> Void
-    var onEdit: () -> Void
-    var onRemove: () -> Void
-
-    var body: some View {
-        HStack(alignment: .center, spacing: 12) {
-            Button(action: onToggle) {
-                Image(systemName: line.done ? "checkmark.circle.fill" : "circle")
-                    .font(.system(size: 22))
-                    .foregroundStyle(line.done ? Palette.success : Palette.textTertiary)
-                    .contentTransition(.symbolEffect(.replace))
-            }
-            .buttonStyle(.plain)
-            .accessibilityLabel(line.done ? String(localized: "Reopen") : String(localized: "Complete"))
-
-            VStack(alignment: .leading, spacing: 3) {
-                Text(line.text)
-                    .font(.body)
-                    .foregroundStyle(line.done ? Palette.textSecondary : Palette.textPrimary)
-                    .strikethrough(line.done, color: Palette.textTertiary)
-                if let request {
-                    RequestBadge(request: request)
-                }
-            }
-            Spacer(minLength: 8)
-            Text(line.costCents == 0 ? String(localized: "free") : Money.format(line.costCents))
-                .font(.callout.weight(.medium))
-                .monospacedDigit()
-                .foregroundStyle(line.costCents == 0 ? Palette.textTertiary : Palette.textPrimary)
-        }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 12)
-        .contentShape(.rect)
-        .onTapGesture(perform: onEdit)
-        .contextMenu {
-            Button("Edit", systemImage: "pencil", action: onEdit)
-            Button(line.done ? String(localized: "Reopen") : String(localized: "Complete"), systemImage: "checkmark.circle", action: onToggle)
-            Button("Remove", systemImage: "trash", role: .destructive, action: onRemove)
-        }
-    }
-}
-
 struct RequestBadge: View {
     let request: AgentRequestDto
     var body: some View {
@@ -350,13 +67,14 @@ struct LineEditor: View {
     @State var editing: PlanItemView.EditingLine
     var onSave: (PlanItemView.EditingLine) -> Bool
     /// Editing an existing line: the bottom row offers [trash] [Update], Things-style.
-    var onRemove: (() -> Void)? = nil
+    var onRemove: (() -> Bool)? = nil
+    var allowsChanges = true
     @Environment(\.dismiss) private var dismiss
     @FocusState private var focus: Bool
 
     private var parsedAmount: Int64? { MoneyInput.cents(from: editing.amount, locale: AppLocale.locale) }
     private var validAmount: Bool { parsedAmount.map { $0 >= 0 } ?? false }
-    private var canSave: Bool { !editing.text.trimmingCharacters(in: .whitespaces).isEmpty && validAmount }
+    private var canSave: Bool { allowsChanges && !editing.text.trimmingCharacters(in: .whitespaces).isEmpty && validAmount }
 
     var body: some View {
         Form {
@@ -406,9 +124,11 @@ struct LineEditor: View {
                     destructiveLabel: "Remove item",
                     confirmTitle: "Remove item",
                     doneTitle: "Removed",
-                    confirm: { onRemove(); dismiss() },
+                    confirm: { allowsChanges && onRemove() },
+                    completion: { dismiss() },
                     idPrefix: "line-editor"
                 )
+                .disabled(!allowsChanges)
                 .padding(.horizontal, 18)
                 .padding(.bottom, 8)
                 .sheetItem(2)
@@ -428,6 +148,7 @@ struct VersionsView: View {
     @Environment(AppModel.self) private var model
     @Environment(\.dismiss) private var dismiss
     let item: ItemDetail
+    var allowsRestore = true
 
     var body: some View {
         List {
@@ -450,17 +171,18 @@ struct VersionsView: View {
                         if v.number != item.version {
                             Button("Restore", systemImage: "clock.arrow.circlepath") { restore(v) }
                                 .accessibilityIdentifier("legacy-version.restore.\(v.number)")
+                                .disabled(!allowsRestore)
                         }
                         #endif
                     }
                     .padding(.vertical, 4)
                     .swipeActions {
                         if v.number != item.version {
-                            Button("Restore") { restore(v) }.tint(Palette.action)
+                            Button("Restore") { restore(v) }.tint(Palette.action).disabled(!allowsRestore)
                         }
                     }
                     .contextMenu {
-                        if v.number != item.version { Button("Restore this version", systemImage: "clock.arrow.circlepath") { restore(v) } }
+                        if v.number != item.version { Button("Restore this version", systemImage: "clock.arrow.circlepath") { restore(v) }.disabled(!allowsRestore) }
                     }
                 }
             } footer: {
@@ -479,6 +201,7 @@ struct VersionsView: View {
     }
 
     private func restore(_ v: VersionDto) {
+        guard allowsRestore else { return }
         if model.perform({ try model.core.restoreVersion(itemId: item.id, version: v.number) }) != nil {
             model.show(.init(kind: .info, text: String(localized: "Version \(v.number) restored.")), seconds: 3)
             dismiss()

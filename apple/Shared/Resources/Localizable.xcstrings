@@ -8604,6 +8604,86 @@
           }
         }
       }
+    },
+    "Waiting for page content": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Aguardando o conteúdo da página"
+          }
+        }
+      }
+    },
+    "Couldn't open this page": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Não foi possível abrir esta página"
+          }
+        }
+      }
+    },
+    "Not shared yet · %@": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ainda não compartilhado · %@"
+          }
+        }
+      }
+    },
+    "Add item to %@": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Adicionar item a %@"
+          }
+        }
+      }
+    },
+    "within the cap": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "dentro do limite"
+          }
+        }
+      }
+    },
+    "Draft on this device": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Rascunho neste dispositivo"
+          }
+        }
+      }
+    },
+    "Image": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Imagem"
+          }
+        }
+      }
+    },
+    "v%u · %@ · %@": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "v%u · %@ · %@"
+          }
+        }
+      }
     }
   },
   "version": "1.0"

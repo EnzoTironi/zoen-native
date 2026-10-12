@@ -51,7 +51,7 @@ struct PageScreen: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            if let item { header(item) }
+            if let item { LivePageMetadata(item: item) }
             if let saveError {
                 HStack(alignment: .top, spacing: 10) {
                     Image(systemName: "exclamationmark.circle")
@@ -85,9 +85,7 @@ struct PageScreen: View {
                 .disabled(!canEdit || !draftReady)
             #endif
         }
-        .frame(maxWidth: 760)
-        .frame(maxWidth: .infinity)
-        .background(Palette.background.ignoresSafeArea())
+        .livePageSurface()
         .navigationTitle(item?.title ?? String(localized: "Page"))
         #if os(iOS)
         .navigationBarTitleDisplayMode(.inline)
@@ -144,24 +142,6 @@ struct PageScreen: View {
     }
 
     // MARK: parts
-
-    private func header(_ item: ItemDetail) -> some View {
-        let last = item.versions.max { $0.number < $1.number }
-        let who = last.map { $0.author.isMe ? String(localized: "you") : $0.author.name } ?? item.createdBy.name
-        return HStack(spacing: 8) {
-            Image(systemName: "doc.richtext").foregroundStyle(Palette.action)
-            Text(item.spaceTitle).fontWeight(.medium)
-            Text("·")
-            Text("v\(item.version) · \(who) · \(RodaTime.relative(last?.atMs ?? 0))")
-                .contentTransition(.numericText())
-            Spacer()
-        }
-        .font(.caption)
-        .foregroundStyle(Palette.textSecondary)
-        .padding(.horizontal, 22)
-        .padding(.top, 6)
-        .animation(.spring(duration: 0.4), value: item.version)
-    }
 
     @ViewBuilder private var savePill: some View {
         switch saveState {
