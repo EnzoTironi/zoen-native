@@ -170,12 +170,16 @@ pub async fn register(
     cert: &str,
     first: bool,
 ) -> Result<(), String> {
+    if !roda_log::agent_owner::profile_authorized(profile) {
+        return Err("profile ownership authorization invalid".into());
+    }
     let kind = match profile.kind {
         IdentityKind::Person => "Person",
         IdentityKind::Agent => "Agent",
     };
     let json = serde_json::to_value(profile).map_err(|e| e.to_string())?;
     if first {
+        authorize_agent_owner(tx, profile).await?;
         let created = sqlx::query(
             "INSERT INTO identities (id, handle, kind, owner, profile) VALUES ($1, $2, $3, $4, $5)
              ON CONFLICT (id) DO NOTHING",
@@ -206,6 +210,30 @@ pub async fn register(
         if active != Some(true) {
             return Err("link this device first".into());
         }
+        let Some((stored_kind, stored_owner, stored_json)) =
+            sqlx::query_as::<_, (String, Option<String>, serde_json::Value)>(
+                "SELECT kind, owner, profile FROM identities WHERE id = $1 FOR UPDATE",
+            )
+            .bind(&profile.id)
+            .fetch_optional(&mut **tx)
+            .await
+            .map_err(directory_error)?
+        else {
+            return Err("account isn't registered".into());
+        };
+        if stored_kind != kind || stored_owner != profile.owner {
+            return Err("identity kind and owner cannot change".into());
+        }
+        let stored: Identity = serde_json::from_value(stored_json)
+            .map_err(|_| "stored profile invalid".to_string())?;
+        if stored.owner_proof != profile.owner_proof {
+            // A legacy agent may add its first proof without changing its SQL owner.
+            // Already authorized agents retain the original proof after device revocation.
+            if stored.owner_proof.is_some() || profile.kind != IdentityKind::Agent {
+                return Err("agent ownership proof cannot change".into());
+            }
+            authorize_agent_owner(tx, profile).await?;
+        }
         sqlx::query(
             "UPDATE identities SET handle = $2, profile = $3, updated_at = now() WHERE id = $1",
         )
@@ -215,6 +243,42 @@ pub async fn register(
         .execute(&mut **tx)
         .await
         .map_err(directory_error)?;
+    }
+    Ok(())
+}
+
+async fn authorize_agent_owner(
+    tx: &mut Transaction<'_, Postgres>,
+    profile: &Identity,
+) -> Result<(), String> {
+    if profile.kind != IdentityKind::Agent {
+        return Ok(());
+    }
+    let (Some(owner), Some(proof)) = (&profile.owner, &profile.owner_proof) else {
+        return Err("an agent needs owner authorization".into());
+    };
+    let person = sqlx::query_scalar::<_, bool>(
+        "SELECT kind = 'Person' AND owner IS NULL FROM identities WHERE id = $1 FOR SHARE",
+    )
+    .bind(owner)
+    .fetch_optional(&mut **tx)
+    .await
+    .map_err(directory_error)?;
+    if person != Some(true) {
+        return Err("an agent owner must be a registered person".into());
+    }
+    let active = sqlx::query_scalar::<_, bool>(
+        "SELECT identity = $1 AND cert = $3 AND revoked_at IS NULL
+         FROM devices WHERE device = $2 FOR SHARE",
+    )
+    .bind(owner)
+    .bind(&proof.device)
+    .bind(&proof.cert)
+    .fetch_optional(&mut **tx)
+    .await
+    .map_err(directory_error)?;
+    if active != Some(true) {
+        return Err("agent authorization device is not enrolled or is revoked".into());
     }
     Ok(())
 }
@@ -239,36 +303,51 @@ pub async fn lookup(
     handle: &str,
     prefix: bool,
 ) -> Result<Vec<Identity>, sqlx::Error> {
-    let rows: Vec<serde_json::Value> = if prefix {
+    let rows: Vec<DirectoryRow> = if prefix {
         let pattern = format!("{}%", handle.replace(['\\', '%'], "").replace('_', "\\_"));
-        sqlx::query_scalar(
-            "SELECT profile FROM identities WHERE handle LIKE $1 ORDER BY handle LIMIT 20",
+        sqlx::query_as(
+            "SELECT id, kind, owner, profile FROM identities WHERE handle LIKE $1 ORDER BY handle LIMIT 20",
         )
         .bind(pattern)
         .fetch_all(pool)
         .await?
     } else {
-        sqlx::query_scalar("SELECT profile FROM identities WHERE handle = $1")
+        sqlx::query_as("SELECT id, kind, owner, profile FROM identities WHERE handle = $1")
             .bind(handle)
             .fetch_all(pool)
             .await?
     };
     Ok(rows
         .into_iter()
-        .filter_map(|v| serde_json::from_value(v).ok())
+        .filter_map(authorized_directory_profile)
         .collect())
 }
 
 pub async fn profiles(pool: &PgPool, ids: &[String]) -> Result<Vec<Identity>, sqlx::Error> {
-    let rows: Vec<serde_json::Value> =
-        sqlx::query_scalar("SELECT profile FROM identities WHERE id = ANY($1)")
+    let rows: Vec<DirectoryRow> =
+        sqlx::query_as("SELECT id, kind, owner, profile FROM identities WHERE id = ANY($1)")
             .bind(ids)
             .fetch_all(pool)
             .await?;
     Ok(rows
         .into_iter()
-        .filter_map(|v| serde_json::from_value(v).ok())
+        .filter_map(authorized_directory_profile)
         .collect())
+}
+
+type DirectoryRow = (String, String, Option<String>, serde_json::Value);
+
+fn authorized_directory_profile((id, kind, owner, json): DirectoryRow) -> Option<Identity> {
+    let profile: Identity = serde_json::from_value(json).ok()?;
+    let expected = match profile.kind {
+        IdentityKind::Person => "Person",
+        IdentityKind::Agent => "Agent",
+    };
+    (profile.id == id
+        && expected == kind
+        && profile.owner == owner
+        && roda_log::agent_owner::profile_authorized(&profile))
+    .then_some(profile)
 }
 
 pub async fn put_agreement_key(

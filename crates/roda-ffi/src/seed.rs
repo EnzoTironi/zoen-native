@@ -15,6 +15,7 @@ const MIN: i64 = 60_000;
 
 fn person(name: &str, handle: &str, tint: &str, bio: &str) -> Identity {
     Identity {
+        owner_proof: None,
         id: String::new(),
         kind: IdentityKind::Person,
         name: name.into(),
@@ -28,6 +29,7 @@ fn person(name: &str, handle: &str, tint: &str, bio: &str) -> Identity {
 
 fn agent(name: &str, handle: &str, tint: &str, glyph: &str, owner: &str, bio: &str) -> Identity {
     Identity {
+        owner_proof: None,
         id: String::new(),
         kind: IdentityKind::Agent,
         name: name.into(),

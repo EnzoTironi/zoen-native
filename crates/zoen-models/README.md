@@ -10,6 +10,10 @@ It is not the durable agent worker or a billing implementation.
 
 `ModelGateway::complete` validates and bounds the input and the prepared wire
 request before asking the caller's trusted `DispatchAuthority` to admit it.
+Preflight supplies a Zoen-owned descriptor with the validated endpoint, model,
+credential reference, exact encoded byte count and transport/output bounds.
+The runtime matches it to an approved finite price profile; byte count is not
+estimated token usage.
 The digest binds the canonical request, authenticated context versions, actual
 prepared wire shape, endpoint, model, credential reference, limits and profile.
 Equivalent JSON object key order produces the same digest. API keys are not
@@ -67,11 +71,13 @@ serializable content must still remain inside the host's encrypted custody.
 
 ## Verification and remaining work
 
-Run `cargo test -p zoen-models --lib`. Nineteen behavior tests use an actual local
+Run `cargo test -p zoen-models --lib`. Behavior tests use an actual local
 TCP/HTTP server: pinned request, optional/zero/invalid usage, tool identity,
 invalid output with preserved receipt, denied/unknown/replayed/concurrent
 admission, semantic JSON ordering, cancellation, loss, partial loss, timeout,
-redirect/error refusal, body caps and active TRACE privacy. They use fixture
+redirect/error refusal, body caps, historical tool-ID reuse, argument shapes
+that survive the next turn, partial-counter contradictions and active TRACE
+privacy. They use fixture
 credentials and make no live provider call.
 
 All other exposed operation variants return `UnsupportedOperation` before

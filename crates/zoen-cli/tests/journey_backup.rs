@@ -967,7 +967,9 @@ async fn a_generation_backup_still_restores_after_object_version_upgrade() {
 #[tokio::test]
 async fn a_lost_phone_comes_back_from_a_password_backup() {
     let w = world("backup").await;
-    w.init("ana", "Ana");
+    // A full private name tests profile secrecy without three-byte ciphertext collisions.
+    const PROFILE_NAME: &str = "Ana - perfil privado do backup";
+    w.init("ana", PROFILE_NAME);
     w.init("bruno", "Bruno");
     w.zoen(
         "ana",
@@ -1000,7 +1002,7 @@ async fn a_lost_phone_comes_back_from_a_password_backup() {
         "guardei",
         "sábado 7h",
         "Trilha",
-        "Ana",
+        PROFILE_NAME,
         PASSWORD,
     ] {
         assert!(!contains(&files[0], secret), "backup leaks {secret:?}");
@@ -1045,20 +1047,24 @@ async fn a_lost_phone_comes_back_from_a_password_backup() {
     // History is there, including the end-to-end chat the relay can't read.
     let dm = w.zoen("ana-new", &["read", "@bruno"]);
     assert!(
-        dm.contains("Ana: oi Bruno, guarda o mapa da trilha"),
+        dm.contains(&format!(
+            "{PROFILE_NAME}: oi Bruno, guarda o mapa da trilha"
+        )),
         "{dm}"
     );
     assert!(dm.contains("Bruno: guardei!"), "{dm}");
     assert!(w
         .zoen("ana-new", &["read", "Trilha"])
-        .contains("Ana: sábado 7h no portão"));
-    assert!(w.zoen("ana-new", &["whoami"]).starts_with("@ana Ana"));
+        .contains(&format!("{PROFILE_NAME}: sábado 7h no portão")));
+    assert!(w
+        .zoen("ana-new", &["whoami"])
+        .starts_with(&format!("@ana {PROFILE_NAME}")));
 
     // And the conversation goes on from the new phone.
     w.zoen("ana-new", &["send", "Trilha", "voltei, celular novo"]);
     assert!(w
         .zoen("bruno", &["read", "Trilha"])
-        .contains("Ana: voltei, celular novo"));
+        .contains(&format!("{PROFILE_NAME}: voltei, celular novo")));
     w.zoen("bruno", &["send", "Trilha", "bem-vinda de volta"]);
     assert!(w
         .zoen("ana-new", &["read", "Trilha"])
