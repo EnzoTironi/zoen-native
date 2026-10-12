@@ -150,7 +150,6 @@ struct MacRootView: View {
     @AppStorage("RodaAppearance") private var appearance = "system"
     @State private var search = ""
     @FocusState private var searchFocused: Bool
-    @FocusState private var detailBackFocused: Bool
     @State private var searchCommandScope = UUID()
     @State private var lastChat: String?
     @State private var onboarding = OnboardingFlow.shouldShow
@@ -222,9 +221,6 @@ struct MacRootView: View {
             rememberChat(selection)
             search = ""
             searchFocused = false
-        }
-        .onChange(of: model.path(.conversations)) { _, _ in
-            detailBackFocused = needsDetailBack
         }
         .sheet(isPresented: $model.newChatOpen) {
             NewChatSheet().environment(model)
@@ -438,7 +434,7 @@ struct MacRootView: View {
         NavigationStack(path: Binding(get: { model.path(.conversations) }, set: { model.setPath(.conversations, $0) })) {
             detail
                 .navigationDestination(for: Route.self) { route in
-                    Group {
+                    MacNavigationDetail(showsBack: showsDetailBack(for: route), onBack: { _ = model.pop() }) {
                         switch route {
                         case .store(let id): StoreDetailView(listingId: id)
                         case .agent(let id): AgentDetailView(agentId: id)
@@ -457,24 +453,9 @@ struct MacRootView: View {
                     .navigationBarBackButtonHidden(true)
                 }
         }
-        .safeAreaInset(edge: .top, spacing: 0) {
-            if needsDetailBack {
-                HStack {
-                    Button { _ = model.pop() } label: { Label("Back", systemImage: "chevron.left") }
-                        .buttonStyle(.plain)
-                        .accessibilityIdentifier("mac-detail-back")
-                        .focused($detailBackFocused)
-                    Spacer()
-                }
-                .defaultFocus($detailBackFocused, true, priority: .userInitiated)
-                .font(.system(size: 13))
-                .padding(.horizontal, 16).padding(.vertical, 10)
-            }
-        }
     }
 
-    private var needsDetailBack: Bool {
-        guard let route = model.path(.conversations).last else { return false }
+    private func showsDetailBack(for route: Route) -> Bool {
         if case .space = route { return false }
         return true
     }
@@ -517,6 +498,32 @@ struct MacRootView: View {
             case nil: ContentUnavailableView("Pick a chat", systemImage: "bubble.left.and.bubble.right")
             }
         }
+    }
+}
+
+private struct MacNavigationDetail<Content: View>: View {
+    let showsBack: Bool
+    let onBack: () -> Void
+    @ViewBuilder let content: () -> Content
+    @FocusState private var backFocused: Bool
+
+    var body: some View {
+        content()
+            .safeAreaInset(edge: .top, spacing: 0) {
+                if showsBack {
+                    HStack {
+                        Button(action: onBack) { Label("Back", systemImage: "chevron.left") }
+                            .buttonStyle(.plain)
+                            .accessibilityIdentifier("mac-detail-back")
+                            .focused($backFocused)
+                        Spacer()
+                    }
+                    .font(.system(size: 13))
+                    .padding(.horizontal, 16).padding(.vertical, 10)
+                }
+            }
+            .defaultFocus($backFocused, showsBack, priority: .userInitiated)
+            .onAppear { backFocused = showsBack }
     }
 }
 
