@@ -138,7 +138,7 @@ fn approval_is_bound_to_the_exact_content() {
 
     let approved = e.approve_request(pousada.id.clone()).unwrap();
     assert_eq!(approved.request.status, RequestStatus::Approved);
-    assert!(approved.message.contains("Simulação"));
+    assert!(approved.message.contains("Aguardando a execução"));
     let after = e.item(plan.id.clone()).unwrap();
     let l = after
         .plan
@@ -148,10 +148,13 @@ fn approval_is_bound_to_the_exact_content() {
         .flat_map(|s| s.lines.clone())
         .find(|l| l.id == line_id)
         .unwrap();
-    assert!(l.done, "aprovar executa: a linha do plano fica feita");
     assert!(
-        e.approve_request(pousada.id).is_err(),
-        "não aprova duas vezes"
+        !l.done,
+        "approval cannot claim a payment or external send was executed"
+    );
+    assert!(
+        e.approve_request(pousada.id).is_ok(),
+        "a repeated decision returns the stored receipt without executing again"
     );
 }
 

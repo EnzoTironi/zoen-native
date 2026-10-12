@@ -817,6 +817,7 @@ impl Egress {
             content_hash: hash,
             item: None,
             line: None,
+            proposal: None,
         };
         st.pending.insert(
             id.clone(),

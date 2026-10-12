@@ -180,6 +180,7 @@ impl Device {
         assert!(matches!(d.recv().await, ServerFrame::Ready { .. }));
         if register {
             let profile = Identity {
+                owner_proof: None,
                 id: d.author.identity.clone(),
                 kind: IdentityKind::Person,
                 name: "Ownership journey".into(),

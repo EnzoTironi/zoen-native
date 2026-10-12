@@ -468,6 +468,10 @@ impl Engine {
 
     /// The epoch to seal `space`'s messages at, once its group is ready for them.
     pub(crate) fn ready_epoch(&self, space: &str) -> Option<u64> {
+        self.ready_epoch_in(space, &self.state)
+    }
+
+    pub(crate) fn ready_epoch_in(&self, space: &str, state: &crate::engine::State) -> Option<u64> {
         let device = self.device().ok()?;
         if !device.has_group(space) || device.pending(space) || device.needs_reconciliation(space) {
             return None;
@@ -484,7 +488,7 @@ impl Engine {
             return None;
         }
         let me = self.me.as_deref()?;
-        let s = self.state.spaces.get(space)?;
+        let s = state.spaces.get(space)?;
         let group = device.roster(space).ok()?;
         // Nobody seals for a group that still holds someone the log removed: wait for the
         // commit that takes them out.
@@ -528,8 +532,8 @@ impl Engine {
             .ok()
     }
 
-    /// The sealed copy of a queued event: the epoch it was sealed at, and the envelope.
-    fn sealed_copy(&self, e: &Event) -> Option<(u64, Envelope)> {
+    /// The historical sealed copy, without filtering by the group's current epoch.
+    pub(crate) fn sealed_copy(&self, e: &Event) -> Option<(u64, Envelope)> {
         let v = self.store.meta(&sealed_meta(&e.client_id)).ok().flatten()?;
         let mut parts = v.splitn(3, ':');
         let epoch = parts.next()?.parse().ok()?;
@@ -711,13 +715,22 @@ impl Engine {
             Err(e) => return Ingest::Invalid(e.to_string()),
         };
         let mut opened: Option<Event> = own_copy;
+        let mut opening = if opened.is_some() {
+            crate::mls_opening::OpeningOutcome::OwnRetainedEcho
+        } else {
+            crate::mls_opening::OpeningOutcome::Opaque
+        };
         let mut landed: Option<(u64, bool)> = None; // (epoch, joined)
         match kind {
             SealedKind::Application if opened.is_none() => {
                 match device.open(&space, &data, &roster, &admitted_sender) {
                     Ok(Opened::Application { plaintext, from }) => {
                         match inner_event(&ev, &plaintext, &from) {
-                            Some(e) => opened = Some(e),
+                            Some(e) => {
+                                opening =
+                                    crate::mls_opening::OpeningOutcome::from_application(&e, &from);
+                                opened = Some(e);
+                            }
                             None => tracing_like(&format!(
                                 "sealed message in {space} doesn't match its envelope; kept sealed"
                             )),
@@ -817,6 +830,8 @@ impl Engine {
             return Ingest::Invalid(err.to_string()); // the transaction rolls back
         }
         let mut stored = self.store.append_event(&e).map_err(storage);
+        stored = stored
+            .and_then(|_| crate::mls_opening::record(&self.store, &ev, opening).map_err(storage));
         stored = stored.and_then(|_| self.remember_recovery_context(&ev.env));
         if own && kind == SealedKind::Commit {
             if let Some(reference) = ev
@@ -873,6 +888,21 @@ impl Engine {
             self.net.mls.checkpoint_due.insert(space.clone());
         }
 
+        if self.approval_projection_needs_replay(&e) {
+            if own {
+                self.net.pending.remove(&client_id);
+            }
+            if let Err(err) = self.reproject_approval_overlay() {
+                let _ = self.reload();
+                return Ingest::Invalid(err.to_string());
+            }
+            return if own {
+                Ingest::Confirmed
+            } else {
+                Ingest::Applied
+            };
+        }
+
         if own {
             self.net.pending.remove(&client_id);
             if kind == SealedKind::Welcome {
@@ -880,14 +910,17 @@ impl Engine {
                 self.net.mls.mark_group_dirty(space.clone());
             }
             if let Some(s) = self.state.spaces.get_mut(&space) {
-                for entry in s.entries.iter_mut().filter(|x| x.client_id == client_id) {
+                for entry in s.entries.iter_mut().filter(|x| {
+                    x.client_id == client_id
+                        || x.client_id.strip_suffix(":result") == Some(client_id.as_str())
+                }) {
                     entry.seq = e.seq;
                     entry.hash = e.hash.clone();
                 }
             }
             return Ingest::Confirmed;
         }
-        self.state.apply(&e);
+        self.state.apply(&e, &self.identities);
         self.index_dirty = true;
         self.note_unknown(&e);
         Ingest::Applied

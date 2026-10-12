@@ -64,6 +64,9 @@ use super::{
     InviteInfo, LogStore, Reject, Sequencing, StoreError,
 };
 
+mod runtime;
+pub use runtime::{RuntimeHead, RuntimeSource, RuntimeSourceBatch};
+
 pub struct FdbLog {
     cell: Arc<Cell>,
     sequencer: Sequencer<Cell>,
