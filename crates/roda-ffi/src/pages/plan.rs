@@ -383,6 +383,57 @@ fn read_plan_payload(store: &roda_store::Store, page: &PageContent) -> R<Payload
 }
 
 impl Engine {
+    pub(crate) fn plan_snapshot_in_space(&self, space: &str, item: &str) -> R<PlanSnapshot> {
+        let scoped = self
+            .space_projections
+            .get(space)
+            .ok_or_else(|| invalid("the Space projection is unavailable"))?;
+        let it = scoped
+            .items
+            .get(item)
+            .filter(|it| it.space == space && it.kind == ItemKind::Plan)
+            .ok_or_else(|| invalid("the scoped Item is not a Plan"))?;
+        let Some(projection::PlanOrigin::Explicit(origin)) = scoped.plan_origins.get(item) else {
+            return match (&it.current().content, scoped.plan_origins.get(item)) {
+                (ItemContent::Plan(document), Some(projection::PlanOrigin::Proposal)) => {
+                    Ok(PlanSnapshot::legacy(document, it.current()))
+                }
+                _ => Err(invalid("the scoped Plan has no confirmed origin")),
+            };
+        };
+        let log = self.logs.get(space);
+        let (fold, _) = confirmed::Prefix::from_log(space, log, log.map_or(0, |log| log.len()))?
+            .fold(item, |page| self.plan_payload(page))?;
+        if fold.waiting
+            || fold
+                .origin_tag()
+                .is_none_or(|(_, _, creation)| creation != origin)
+        {
+            return Err(invalid("the scoped Plan history is unavailable"));
+        }
+        if fold.frozen_at.is_none() {
+            if let ItemContent::Plan(document) = &it.current().content {
+                return Ok(PlanSnapshot::legacy(document, it.current()));
+            }
+        }
+        let version = fold
+            .accepted_current
+            .ok_or_else(|| invalid("the scoped Plan has no accepted version"))?;
+        let source = &fold
+            .slots
+            .iter()
+            .find(|slot| slot.number == Some(version))
+            .ok_or_else(|| invalid("the scoped Plan version has no authenticated source"))?
+            .source;
+        PlanSnapshot::canonical(
+            fold.document
+                .as_ref()
+                .ok_or_else(|| invalid("the scoped Plan document is unavailable"))?,
+            version,
+            source,
+        )
+    }
+
     /// A malformed signed payload is a refusal. Missing or damaged local media is
     /// a waiting condition, and an infrastructure error leaves the fold unchanged.
     /// Check cached length before allocating a payload already subject to codec caps.

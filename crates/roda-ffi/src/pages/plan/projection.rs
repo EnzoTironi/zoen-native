@@ -49,6 +49,7 @@ enum Mode {
 pub(crate) struct BeforeEvent {
     event: String,
     ordered_address: Option<(u64, String, String)>,
+    scope_valid: bool,
     mode: Mode,
     plan: PlanRead,
 }
@@ -69,6 +70,10 @@ fn binding(event: &Event) -> String {
 }
 
 impl BeforeEvent {
+    pub(crate) fn scope_valid(&self) -> bool {
+        self.scope_valid
+    }
+
     pub(crate) fn matches(&self, event: &Event) -> bool {
         self.event == binding(event)
             && self
@@ -103,6 +108,7 @@ pub(crate) struct PlanReplay<'a> {
     store: &'a Store,
     logs: &'a HashMap<SpaceId, SpaceLog>,
     origins: HashMap<ItemId, HashSet<SpaceId>>,
+    requests: HashMap<RequestId, HashSet<SpaceId>>,
     positions: HashMap<(SpaceId, ItemId), Vec<usize>>,
     cache: HashMap<(SpaceId, ItemId), (Option<usize>, String, PlanRead)>,
     payloads: HashMap<String, PayloadRead>,
@@ -116,6 +122,7 @@ impl<'a> PlanReplay<'a> {
             store,
             logs,
             origins: HashMap::new(),
+            requests: HashMap::new(),
             positions: HashMap::new(),
             cache: HashMap::new(),
             payloads: HashMap::new(),
@@ -129,6 +136,7 @@ impl<'a> PlanReplay<'a> {
             return;
         }
         let mut origins: HashMap<ItemId, HashSet<SpaceId>> = HashMap::new();
+        let mut requests: HashMap<RequestId, HashSet<SpaceId>> = HashMap::new();
         let mut positions: HashMap<(SpaceId, ItemId), Vec<usize>> = HashMap::new();
         for (space, log) in self.logs {
             for (index, event) in log.events().iter().enumerate() {
@@ -137,6 +145,18 @@ impl<'a> PlanReplay<'a> {
                         .entry(item.clone())
                         .or_default()
                         .insert(space.clone());
+                }
+                if let EventBody::RequestOpened { request } = &event.body {
+                    requests
+                        .entry(request.id.clone())
+                        .or_default()
+                        .insert(space.clone());
+                    if let Some(proposal) = &request.proposal {
+                        origins
+                            .entry(proposal.item.clone())
+                            .or_default()
+                            .insert(space.clone());
+                    }
                 }
                 let item = match &event.body {
                     EventBody::ItemCreated { item, .. }
@@ -153,8 +173,55 @@ impl<'a> PlanReplay<'a> {
             }
         }
         self.origins = origins;
+        self.requests = requests;
         self.positions = positions;
         self.indexed = true;
+    }
+
+    fn current_scope_valid(&mut self, state: &State, event: &Event) -> bool {
+        self.index();
+        let item = match &event.body {
+            EventBody::ItemCreated { item, .. }
+            | EventBody::ItemVersioned { item, .. }
+            | EventBody::ItemReverted { item, .. } => Some(item.as_str()),
+            EventBody::MessagePosted { attaches, .. } => attaches.as_deref(),
+            EventBody::GrantIssued { grant } => match &grant.scope {
+                GrantScope::Item(item) => Some(item.as_str()),
+                _ => None,
+            },
+            EventBody::RequestOpened { request } => request.item.as_deref().or_else(|| {
+                request
+                    .proposal
+                    .as_ref()
+                    .map(|proposal| proposal.item.as_str())
+            }),
+            EventBody::RequestResolved { request, .. } => {
+                state.requests.get(request).and_then(|request| {
+                    request.req.item.as_deref().or_else(|| {
+                        request
+                            .req
+                            .proposal
+                            .as_ref()
+                            .map(|proposal| proposal.item.as_str())
+                    })
+                })
+            }
+            _ => None,
+        };
+        let request = match &event.body {
+            EventBody::RequestOpened { request } => Some(request.id.as_str()),
+            EventBody::RequestResolved { request, .. } => Some(request.as_str()),
+            _ => None,
+        };
+        !item.is_some_and(|item| {
+            self.origins
+                .get(item)
+                .is_some_and(|spaces| spaces.iter().any(|space| space != &event.space))
+        }) && !request.is_some_and(|request| {
+            self.requests
+                .get(request)
+                .is_some_and(|spaces| spaces.iter().any(|space| space != &event.space))
+        })
     }
 
     fn pending_cutover(&mut self, item: &str) -> R<bool> {
@@ -236,7 +303,9 @@ impl<'a> PlanReplay<'a> {
         end: usize,
         mode: Mode,
     ) -> R<BeforeEvent> {
-        let plan = if state.waiting_spaces.contains(&event.space)
+        let scope_valid = matches!(mode, Mode::Confirmed) || self.current_scope_valid(state, event);
+        let plan = if !scope_valid
+            || state.waiting_spaces.contains(&event.space)
             || !state.approval_event_guards(event, identities)
         {
             PlanRead::Changed
@@ -269,6 +338,7 @@ impl<'a> PlanReplay<'a> {
             event: binding(event),
             ordered_address: matches!(mode, Mode::Confirmed)
                 .then(|| (event.seq, event.prev.clone(), event.hash.clone())),
+            scope_valid,
             mode,
             plan,
         })
@@ -313,10 +383,11 @@ impl<'a> PlanReplay<'a> {
         };
         self.index();
         let pending_cutover = matches!(mode, Mode::Pending) && self.pending_cutover(item)?;
-        if self
-            .origins
-            .get(item)
-            .is_some_and(|spaces| spaces.iter().any(|origin| origin != space))
+        if !matches!(mode, Mode::Confirmed)
+            && self
+                .origins
+                .get(item)
+                .is_some_and(|spaces| spaces.iter().any(|origin| origin != space))
         {
             return Ok(PlanRead::Changed);
         }

@@ -218,13 +218,19 @@ impl Engine {
             .ok_or_else(|| CoreError::Invalid {
                 reason: "missing confirmed frontier".into(),
             })?;
+        let scoped = self
+            .space_projections
+            .entry(event.space.clone())
+            .or_default();
         let context = PlanReplay::new(&self.store, &self.logs).before(
-            &self.state,
+            scoped,
             &self.identities,
             event,
             end,
         )?;
-        Ok(self.state.apply_checked(event, &self.identities, &context))
+        let outcome = scoped.apply_checked(event, &self.identities, &context);
+        self.state = Self::merge_space_projections(&self.space_projections, &self.space_order);
+        Ok(outcome)
     }
 
     /// Rebuild authority into temporary state before publishing an optimistic overlay.
@@ -233,34 +239,39 @@ impl Engine {
         self.approval_replay_needed = true;
         let mut order = self.store.space_ids()?;
         let pending = self.store.outbox()?;
-        let mut state = State::default();
+        let mut projections = HashMap::new();
         let mut confirmed = HashSet::new();
         let mut plans = PlanReplay::new(&self.store, &self.logs);
         for space in &order {
+            let mut scoped = State::default();
             if let Some(log) = self.logs.get(space) {
                 for (end, e) in log.events().iter().enumerate() {
-                    confirmed.insert(e.client_id.clone());
-                    let context = plans.before(&state, &self.identities, e, end)?;
-                    state.apply_checked(e, &self.identities, &context);
+                    confirmed.insert((e.space.clone(), e.client_id.clone()));
+                    let context = plans.before(&scoped, &self.identities, e, end)?;
+                    scoped.apply_checked(e, &self.identities, &context);
                 }
             } else if let Some(broken) = self.broken_spaces.get(space) {
                 let mut broken = broken.clone();
                 broken.entries.clear();
-                state.spaces.insert(space.clone(), broken);
+                scoped.spaces.insert(space.clone(), broken);
             }
+            projections.insert(space.clone(), scoped);
         }
         let mut optimistic = HashSet::new();
         for p in pending {
             let e = p.event;
-            if confirmed.contains(&e.client_id) {
+            if confirmed.contains(&(e.space.clone(), e.client_id.clone())) {
                 continue;
             }
             if p.failed {
                 if matches!(e.body, EventBody::MessagePosted { .. })
-                    && state.spaces.contains_key(&e.space)
+                    && projections
+                        .get(&e.space)
+                        .is_some_and(|scoped| scoped.spaces.contains_key(&e.space))
                 {
-                    let context = plans.pending(&state, &self.identities, &e)?;
-                    state.apply_checked(&e, &self.identities, &context);
+                    let scoped = projections.get_mut(&e.space).expect("checked above");
+                    let context = plans.pending(scoped, &self.identities, &e)?;
+                    scoped.apply_checked(&e, &self.identities, &context);
                 }
                 continue;
             }
@@ -270,10 +281,13 @@ impl Engine {
             if matches!(e.body, EventBody::RequestResolved { .. }) {
                 optimistic.insert(e.space.clone());
             }
-            let context = plans.pending(&state, &self.identities, &e)?;
-            state.apply_checked(&e, &self.identities, &context);
+            let scoped = projections.entry(e.space.clone()).or_default();
+            let context = plans.pending(scoped, &self.identities, &e)?;
+            scoped.apply_checked(&e, &self.identities, &context);
         }
+        let state = Self::merge_space_projections(&projections, &order);
         self.state = state;
+        self.space_projections = projections;
         self.space_order = order;
         self.net.optimistic_approvals = optimistic;
         self.approval_replay_needed = false;
@@ -350,13 +364,11 @@ impl Engine {
             self.causal_head(space)?
         };
         let e = signer.sign_event(space, &client_id, at_ms, seen, body);
+        let empty = State::default();
+        let scoped = self.space_projections.get(space).unwrap_or(&empty);
         let context =
-            PlanReplay::new(&self.store, &self.logs).pending(&self.state, &self.identities, &e)?;
-        if self
-            .state
-            .approval_event_valid(&e, &self.identities, &context)
-            != Projection::Applied
-        {
+            PlanReplay::new(&self.store, &self.logs).pending(scoped, &self.identities, &e)?;
+        if scoped.approval_event_valid(&e, &self.identities, &context) != Projection::Applied {
             return Err(CoreError::Invalid {
                 reason: t(
                     "pedido, decisão ou uso não autorizado",
@@ -372,7 +384,11 @@ impl Engine {
         if matches!(e.body, EventBody::RequestResolved { .. }) {
             self.net.optimistic_approvals.insert(space.to_string());
         }
-        self.state.apply_checked(&e, &self.identities, &context);
+        self.space_projections
+            .entry(space.to_owned())
+            .or_default()
+            .apply_checked(&e, &self.identities, &context);
+        self.state = Self::merge_space_projections(&self.space_projections, &self.space_order);
         self.index_dirty = true;
         self.note_unknown(&e);
         self.note_profile_event(&e);
@@ -432,8 +448,9 @@ impl Engine {
             self.space_order.push(space.clone());
         }
         let replay_approval = self.approval_projection_needs_replay(&e);
-        let own = self.net.pending.remove(&e.client_id).is_some();
+        let own = self.net.pending.get(&e.client_id) == Some(&space);
         if own {
+            self.net.pending.remove(&e.client_id);
             let _ = self.store.outbox_remove(&e.client_id);
         }
         if replay_approval {
@@ -448,7 +465,11 @@ impl Engine {
             };
         }
         if own {
-            if let Some(s) = self.state.spaces.get_mut(&space) {
+            if let Some(s) = self
+                .space_projections
+                .get_mut(&space)
+                .and_then(|scoped| scoped.spaces.get_mut(&space))
+            {
                 for entry in s.entries.iter_mut().filter(|x| {
                     x.client_id == e.client_id
                         || x.client_id.strip_suffix(":result") == Some(e.client_id.as_str())
@@ -457,6 +478,7 @@ impl Engine {
                     entry.hash = e.hash.clone();
                 }
             }
+            self.state = Self::merge_space_projections(&self.space_projections, &self.space_order);
             // A join we sent before we had the Space's history: project it now.
             if !self.state.spaces.contains_key(&space)
                 || matches!(e.body, EventBody::MemberAdded { .. })

@@ -805,7 +805,7 @@ fn own_confirmation_rechecks_semantics_and_preserves_profiles_sessions_and_ident
 }
 
 #[test]
-fn colliding_cross_space_origins_refuse_canonical_authority_without_timestamp_election() {
+fn cross_space_ambiguity_closes_local_writes_but_preserves_scoped_confirmed_decisions() {
     let mut fixture = Fixture::new();
     let agent = agent(&mut fixture);
     let document = canonical(
@@ -840,17 +840,65 @@ fn colliding_cross_space_origins_refuse_canonical_authority_without_timestamp_el
         );
         deliver(&mut fixture.engine, &signed, Ingest::Applied);
     }
-    fixture.ordered(decision(&request, true));
+    let raw = fixture.engine.store.events(&fixture.space).unwrap();
+    let outbox = fixture.engine.store.outbox().unwrap();
+    assert!(!fixture.engine.state.items.contains_key(&fixture.item));
+    assert!(fixture.engine.plan_timeline(&fixture.item).is_err());
+    assert!(fixture.engine.card(&fixture.item).is_none());
+    assert!(fixture.engine.resolve_request(&request.id, true).is_err());
+    assert!(fixture
+        .engine
+        .append_synced(
+            &fixture.space,
+            &author,
+            1_800_000_000_000,
+            decision(&request, true),
+        )
+        .is_err());
+    assert_eq!(fixture.engine.store.events(&fixture.space).unwrap(), raw);
+    assert_eq!(fixture.engine.store.outbox().unwrap().len(), outbox.len());
+    for pending in outbox {
+        assert_eq!(
+            fixture
+                .engine
+                .store
+                .outbox_get(&pending.event.client_id)
+                .unwrap(),
+            Some(pending.event)
+        );
+    }
     assert_eq!(
         fixture.engine.state.requests[&request.id].status,
         ReqStatus::Pending
+    );
+
+    // An ordered decision has only this Space's authenticated prefix. The wire
+    // does not attest whether the unrelated Space was observed before or after it.
+    fixture.ordered(decision(&request, true));
+    assert_eq!(
+        fixture.engine.state.requests[&request.id].status,
+        ReqStatus::Approved
     );
     fixture.engine.reload().unwrap();
     assert_eq!(
         fixture.engine.state.requests[&request.id].status,
-        ReqStatus::Pending
+        ReqStatus::Approved
     );
-    assert!(fixture.engine.state.resolved_order.is_empty());
+    assert_eq!(
+        fixture.engine.state.resolved_order,
+        vec![request.id.clone()]
+    );
+    assert_eq!(
+        fixture
+            .engine
+            .plan_snapshot_in_space(&fixture.space, &fixture.item)
+            .unwrap()
+            .document,
+        document
+    );
+    assert!(fixture.engine.timeline(&fixture.space).unwrap().iter().any(|entry| {
+        matches!(&entry.kind, crate::dto::EntryKind::Request { request_id, approved: Some(true), .. } if request_id == &request.id)
+    }));
 }
 
 #[test]
@@ -938,4 +986,246 @@ fn contexts_are_bound_to_the_exact_decision_and_do_not_read_later_payloads() {
         .conn()
         .execute_batch("ALTER TABLE temporarily_unavailable_media RENAME TO media")
         .unwrap();
+}
+
+#[test]
+fn later_foreign_creations_do_not_rewrite_the_scoped_approved_decision() {
+    for reader in [true, false] {
+        for at_ms in [1, 1_900_000_000_000] {
+            let directory = std::env::temp_dir().join(new_id("late-foreign-plan-origin"));
+            std::fs::create_dir_all(&directory).unwrap();
+            let path = directory.join("plan.sqlite");
+            let mut fixture = Fixture::at(path.to_str().unwrap());
+            let agent = agent(&mut fixture);
+            let document = canonical(
+                &mut fixture,
+                LinePatch {
+                    text: Some("Exact historically approved row".into()),
+                    cost_cents: Some(317),
+                    ..Default::default()
+                },
+            );
+            let request = open(&mut fixture, &agent, &document);
+            let accepted = fixture.ordered(decision(&request, true));
+            assert_eq!(
+                fixture.engine.state.requests[&request.id].status,
+                ReqStatus::Approved
+            );
+            assert_eq!(
+                fixture.engine.state.resolved_order,
+                vec![request.id.clone()]
+            );
+            let original_raw = fixture.engine.store.events(&fixture.space).unwrap();
+            let other = new_id("unrelated-space");
+            let author = fixture.engine.author_for(&fixture.owner).unwrap();
+            let mut bodies = vec![EventBody::SpaceCreated {
+                title: "Unrelated later history".into(),
+                kind: SpaceKind::Group,
+                privacy: Privacy::Public,
+            }];
+            if reader {
+                bodies.push(EventBody::MemberAdded {
+                    identity: fixture.owner.clone(),
+                    role: Role::Reader,
+                });
+            }
+            bodies.push(EventBody::ItemCreated {
+                item: fixture.item.clone(),
+                kind: ItemKind::Plan,
+                content: ItemContent::Plan(original()),
+                origin: "Refused duplicate".into(),
+            });
+            for body in bodies {
+                let signed = author.sign_event(
+                    &other,
+                    &new_id("late-foreign-event"),
+                    at_ms,
+                    fixture.engine.logs.get(&other).and_then(|log| log.head()),
+                    body,
+                );
+                deliver(&mut fixture.engine, &signed, Ingest::Applied);
+            }
+            assert_eq!(
+                fixture.engine.store.events(&fixture.space).unwrap(),
+                original_raw
+            );
+            assert_eq!(
+                fixture.engine.state.requests[&request.id].status,
+                ReqStatus::Approved
+            );
+            assert_eq!(
+                fixture
+                    .engine
+                    .plan_snapshot_in_space(&fixture.space, &fixture.item)
+                    .unwrap()
+                    .document,
+                document
+            );
+            assert_eq!(
+                fixture.engine.space_projections[&fixture.space].requests[&request.id].status,
+                ReqStatus::Approved
+            );
+            assert_eq!(
+                fixture.engine.state.requests[&request.id].resolved_ms,
+                Some(accepted.at_ms)
+            );
+            assert_eq!(
+                fixture.engine.state.resolved_order,
+                vec![request.id.clone()]
+            );
+            fixture.engine.reload().unwrap();
+            assert_eq!(
+                fixture.engine.state.requests[&request.id].status,
+                ReqStatus::Approved
+            );
+            assert_eq!(
+                fixture
+                    .engine
+                    .plan_snapshot_in_space(&fixture.space, &fixture.item)
+                    .unwrap()
+                    .document,
+                document
+            );
+            assert_eq!(
+                fixture.engine.space_projections[&fixture.space].requests[&request.id].status,
+                ReqStatus::Approved
+            );
+            assert_eq!(
+                fixture.engine.state.requests[&request.id].resolved_ms,
+                Some(accepted.at_ms)
+            );
+            assert_eq!(
+                fixture.engine.state.resolved_order,
+                vec![request.id.clone()]
+            );
+            let own_space = fixture.space.clone();
+            drop(fixture);
+            let reopened = Engine::open(path.to_str().unwrap()).unwrap();
+            assert_eq!(reopened.store.events(&own_space).unwrap(), original_raw);
+            assert_eq!(
+                reopened.state.requests[&request.id].status,
+                ReqStatus::Approved
+            );
+            assert_eq!(
+                reopened
+                    .plan_snapshot_in_space(&own_space, request.item.as_deref().unwrap())
+                    .unwrap()
+                    .document,
+                document
+            );
+            assert_eq!(
+                reopened.state.requests[&request.id].resolved_ms,
+                Some(accepted.at_ms)
+            );
+            assert_eq!(reopened.state.resolved_order, vec![request.id.clone()]);
+            drop(reopened);
+            std::fs::remove_dir_all(directory).unwrap();
+        }
+    }
+}
+
+#[test]
+fn duplicate_request_ids_keep_each_space_history_and_close_unscoped_writes() {
+    for at_ms in [1, 1_900_000_000_000] {
+        let mut fixture = Fixture::new();
+        let agent = agent(&mut fixture);
+        let document = canonical(
+            &mut fixture,
+            LinePatch {
+                text: Some("Own authenticated row".into()),
+                ..Default::default()
+            },
+        );
+        let request = open(&mut fixture, &agent, &document);
+        let owner = fixture.engine.author_for(&fixture.owner).unwrap();
+        let agent_author = fixture.engine.author_for(&agent).unwrap();
+        let other = new_id("duplicate-request-space");
+        let other_item = new_id("different-plan");
+        let mut foreign_document = original();
+        foreign_document.title = "Different scoped Plan".into();
+        foreign_document.sections[0].lines[0].text = "Unrelated row".into();
+        foreign_document.sections[0].lines[0].cost_cents = 987;
+        let line = &foreign_document.sections[0].lines[0];
+        let mut foreign_request = request.clone();
+        foreign_request.title = "Unrelated request".into();
+        foreign_request.item = Some(other_item.clone());
+        foreign_request.content_hash = content_hash(&(&line.text, line.cost_cents));
+        for body in [
+            EventBody::SpaceCreated {
+                title: "Separate request history".into(),
+                kind: SpaceKind::Group,
+                privacy: Privacy::Public,
+            },
+            EventBody::MemberAdded {
+                identity: agent.clone(),
+                role: Role::Member,
+            },
+            EventBody::ItemCreated {
+                item: other_item,
+                kind: ItemKind::Plan,
+                content: ItemContent::Plan(foreign_document),
+                origin: "Separate authenticated origin".into(),
+            },
+            EventBody::RequestOpened {
+                request: foreign_request.clone(),
+            },
+            decision(&foreign_request, false),
+        ] {
+            let author = if matches!(&body, EventBody::RequestOpened { .. }) {
+                &agent_author
+            } else {
+                &owner
+            };
+            let event = author.sign_event(
+                &other,
+                &new_id("separate-request-event"),
+                at_ms,
+                fixture.engine.logs.get(&other).and_then(|log| log.head()),
+                body,
+            );
+            deliver(&mut fixture.engine, &event, Ingest::Applied);
+        }
+        assert!(!fixture.engine.state.requests.contains_key(&request.id));
+        let raw = fixture.engine.store.events(&fixture.space).unwrap();
+        let outbox = fixture.engine.store.outbox().unwrap().len();
+        assert!(fixture.engine.resolve_request(&request.id, true).is_err());
+        assert!(fixture
+            .engine
+            .append_synced(
+                &fixture.space,
+                &owner,
+                1_800_000_000_000,
+                decision(&request, true),
+            )
+            .is_err());
+        assert_eq!(fixture.engine.store.events(&fixture.space).unwrap(), raw);
+        assert_eq!(fixture.engine.store.outbox().unwrap().len(), outbox);
+
+        fixture.ordered(decision(&request, true));
+        fixture.engine.reload().unwrap();
+        assert!(!fixture.engine.state.requests.contains_key(&request.id));
+        let own = &fixture.engine.space_projections[&fixture.space].requests[&request.id];
+        let foreign = &fixture.engine.space_projections[&other].requests[&request.id];
+        assert_eq!(own.req, request);
+        assert_eq!(own.status, ReqStatus::Approved);
+        assert_eq!(foreign.req, foreign_request);
+        assert_eq!(foreign.status, ReqStatus::Denied);
+        assert_eq!(
+            fixture.engine.space_projections[&fixture.space].resolved_order,
+            vec![request.id.clone()]
+        );
+        assert_eq!(
+            fixture.engine.space_projections[&other].resolved_order,
+            vec![request.id.clone()]
+        );
+        for (space, title, approved) in [
+            (&fixture.space, request.title.as_str(), true),
+            (&other, foreign_request.title.as_str(), false),
+        ] {
+            assert!(fixture.engine.timeline(space).unwrap().iter().any(|entry| {
+                matches!(&entry.kind, crate::dto::EntryKind::Request { request_id, title: visible_title, approved: Some(value) }
+                    if request_id == &request.id && visible_title == title && *value == approved)
+            }));
+        }
+    }
 }

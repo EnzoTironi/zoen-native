@@ -118,7 +118,7 @@ impl State {
         identities: &HashMap<IdentityId, Identity>,
         context: &BeforeEvent,
     ) -> Projection {
-        if !context.matches(event) {
+        if !context.matches(event) || !context.scope_valid() {
             return Projection::Refused;
         }
         if self.waiting_spaces.contains(&event.space) {
