@@ -338,11 +338,13 @@ struct ZoenIconV1: View {
 
 /// Our buttons press their icons: a slight sink and the line boils while held.
 struct IconPressStyle: ButtonStyle {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
-            .environment(\.zoenIconBoil, configuration.isPressed)
-            .scaleEffect(configuration.isPressed ? 0.94 : 1)
-            .animation(.spring(response: 0.25, dampingFraction: 0.6), value: configuration.isPressed)
+            .environment(\.zoenIconBoil, configuration.isPressed && !reduceMotion)
+            .scaleEffect(configuration.isPressed && !reduceMotion ? 0.94 : 1)
+            .animation(reduceMotion ? nil : .spring(response: 0.25, dampingFraction: 0.6), value: configuration.isPressed)
     }
 }
 

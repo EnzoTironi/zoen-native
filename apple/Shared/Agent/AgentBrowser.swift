@@ -274,7 +274,7 @@ struct AgentBrowserCard: View {
                             .font(.subheadline.weight(.semibold)).frame(maxWidth: .infinity).padding(.vertical, 11)
                     }
                     .buttonStyle(.plain)
-                    .foregroundStyle(.white)
+                    .foregroundStyle(Palette.onAction)
                     .background(Capsule().fill(Palette.action))
                     .accessibilityIdentifier("browser-takeover")
                 }
@@ -413,7 +413,7 @@ struct LiveViewScreen: View {
                     Text("Done, carry on").font(.headline).frame(maxWidth: .infinity).padding(.vertical, 13)
                 }
                 .buttonStyle(.plain)
-                .foregroundStyle(.white)
+                .foregroundStyle(browser.typed == 0 ? Palette.textPrimary : Palette.onAction)
                 .background(Capsule().fill(browser.typed == 0 ? Palette.textTertiary : Palette.action))
                 .disabled(browser.typed == 0)
                 .accessibilityIdentifier("browser-done")
@@ -428,7 +428,7 @@ struct LiveViewScreen: View {
                         .font(.headline).frame(maxWidth: .infinity).padding(.vertical, 13)
                 }
                 .buttonStyle(.plain)
-                .foregroundStyle(.white)
+                .foregroundStyle(Palette.onAction)
                 .background(Capsule().fill(Palette.action))
                 .accessibilityIdentifier("browser-takeover-screen")
             }

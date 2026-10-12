@@ -2,16 +2,15 @@ import SwiftUI
 import Observation
 import RodaCore
 
-/// Top-level destinations. On iPhone, three live in the bottom bar's pill (`barTabs`),
+/// Top-level destinations. On iPhone, two live in the bottom bar's pill (`barTabs`),
 /// Search has its own button, and the rest open from the + fan menu.
 enum AppTab: String, Hashable, CaseIterable {
-    case conversations, communities, files, activity
+    case conversations, files, activity
     case agents, you, search, store
 
     var title: String {
         switch self {
         case .conversations: String(localized: "Chats")
-        case .communities: String(localized: "Spaces")
         case .files: String(localized: "Files")
         case .activity: String(localized: "Activity")
         case .agents: String(localized: "Your agents")
@@ -24,7 +23,6 @@ enum AppTab: String, Hashable, CaseIterable {
     var symbol: String {
         switch self {
         case .conversations: "bubble.left.and.bubble.right.fill"
-        case .communities: "person.3.fill"
         case .files: "folder.fill"
         case .activity: "bell.fill"
         case .agents: "sparkles.rectangle.stack.fill"
@@ -38,7 +36,6 @@ enum AppTab: String, Hashable, CaseIterable {
     var glyph: ZoenGlyph {
         switch self {
         case .conversations: .chats
-        case .communities: .spaces
         case .files: .folder
         case .activity: .bell
         case .agents: .agents
@@ -51,8 +48,8 @@ enum AppTab: String, Hashable, CaseIterable {
     /// Selected state in the tab pill (the outline symbols fill in).
     var selectedSymbol: String { self == .store ? "storefront.fill" : symbol }
 
-    /// Chats, Spaces and Store. Notifications (and approvals) moved to the bell in the headers.
-    static let barTabs: [AppTab] = [.conversations, .communities, .store]
+    /// Direct conversations, groups, and communities share Chats. Approvals live behind the bell.
+    static let barTabs: [AppTab] = [.conversations, .store]
 }
 
 enum Route: Hashable {
@@ -111,6 +108,7 @@ final class AppModel {
     @ObservationIgnored var appModelContext: [String: [String: Any]] = [:]
 
     var tab: AppTab = .conversations
+    var chatFilter: ChatInboxFilter = .all
     /// Uma pilha de navegação por destino (preserva onde você estava em cada um).
     var paths: [AppTab: [Route]] = [:]
     /// Menu radial do botão central (aberto por toque ou por pressionar e arrastar).
@@ -688,7 +686,7 @@ final class AppModel {
             self.tab = switch tab {
             case "atividade", "activity": .activity
             case "loja", "store", "explore": .store
-            case "comunidades", "communities", "espacos", "spaces": .communities
+            case "comunidades", "communities", "espacos", "spaces": .conversations
             case "arquivos", "files": .files
             case "agentes", "agents": .agents
             case "voce", "you", "contexto": .you
@@ -792,8 +790,12 @@ final class AppModel {
     /// closing turns it back. Stays where you are (Home or the chat) underneath.
     func flipOpenApp(_ itemId: String, from: CGRect, sourceKey: String, front: AnyView) {
         guard appFlip == nil, appSheet == nil else { return }
+        #if os(macOS)
+        openApp(itemId)
+        #else
         if let item = try? core.item(itemId: itemId), item.app?.appId == "pet" { petTab = .care }
         appFlip = AppFlip(itemId: itemId, from: from, sourceKey: sourceKey, front: front)
+        #endif
     }
 
     func openApp(_ itemId: String, fromHome: Bool = false) {
@@ -946,6 +948,16 @@ final class AppModel {
     }
     #endif
 
+    func receiveIncomingStoryMessages() async {
+        guard SyncModel.mode == .demo,
+              let turma = spaceId(titled: DemoSpace.saturdayCrew) else { return }
+        perform { try core.demoMemberSay(spaceId: turma, memberHandle: "marina",
+                                         text: AppLocale.pick("chegando em 10 min", "there in 10 min")) }
+        try? await Task.sleep(for: .milliseconds(600))
+        perform { try core.demoMemberSay(spaceId: turma, memberHandle: "lucas",
+                                         text: AppLocale.pick("guarda um lugar pra mim", "save me a seat")) }
+    }
+
     func runStory(_ story: String) async {
         guard let turma = spaceId(titled: DemoSpace.saturdayCrew) else { return }
         func wait(_ s: Double) async { try? await Task.sleep(for: .seconds(s)) }
@@ -963,9 +975,50 @@ final class AppModel {
             paths[.conversations] = []
             return
         }
+        #if DEBUG
+        if story == "incoming", SyncModel.mode == .demo {
+            perform { try core.markRead(spaceId: turma) }
+        }
+        if ["unread", "unread-mixed"].contains(story), SyncModel.mode == .demo {
+            perform { try core.markRead(spaceId: turma) }
+            let prefix = story == "unread-mixed" ? "Mensagem mista não lida" : "Mensagem não lida"
+            for i in 1...12 {
+                let incoming = perform { try core.demoMemberSay(spaceId: turma, memberHandle: "marina",
+                    text: "\(prefix) \(i): a saída é às oito. Levo água e lanches; nos encontramos na praça antes de pegar a trilha.") }
+                if story == "unread-mixed" {
+                    perform { try core.sendMessage(spaceId: turma,
+                        text: "Minha mensagem \(i): combinado, vou conferir o trajeto e preparar a mochila antes de sair.") }
+                    if i == 1, let incoming {
+                        perform { try core.sendReply(spaceId: turma, text: "Minha resposta na conversa paralela.",
+                                                     to: incoming.id, thread: true) }
+                    }
+                    perform { try core.setBackground(spaceId: turma,
+                        background: PhotoBackgroundLayout().dto(style: "none", media: nil)) }
+                }
+            }
+        }
+        if story == "unread-all", SyncModel.mode == .demo {
+            guard let marina = space(turma)?.members.first(where: { $0.handle == "marina" }),
+                  let fresh = perform({ try core.createCommunity(title: "Primeira leitura") }),
+                  perform({ try core.addMember(spaceId: fresh, identityId: marina.id) }) != nil else { return }
+            // A new chat has no read marker and no earlier messages.
+            for i in 1...12 {
+                perform { try core.demoMemberSay(spaceId: fresh, memberHandle: "marina",
+                    text: "Mensagem da primeira leitura \(i): a saída é às oito. Levo água e lanches; nos encontramos na praça antes de pegar a trilha.") }
+            }
+            go(.space(fresh))
+            return
+        }
+        #endif
         go(.space(turma))
         await wait(0.8)
         switch story {
+        // `incoming`: two friends write while you're reading further up (journey for the
+        // "novas mensagens" pill: the chat must keep your place).
+        case "incoming":
+            if d("RodaIncomingManual") { return }
+            await wait(d("RodaIncomingFast") ? 2 : 5)
+            await receiveIncomingStoryMessages()
         case let s where s.hasPrefix("pet"):
             await send(AppLocale.pick("e se a gente adotasse um jumento pro grupo?", "what if we adopted a donkey for the group?"), in: turma)
             guard let pet = app("pet") else { return }
@@ -1086,16 +1139,10 @@ final class AppModel {
         #endif
     }
 
-    /// The bell: on iPhone a sheet over whatever you're on; on Mac the Activity pane.
+    /// The bell opens approval cards over the current iPhone screen or in the Mac Activity pane.
     func openNotifications() {
         #if os(iOS)
-        // Approvals waiting: the catch-up stack. Otherwise the plain list.
-        if !approvalQueue.isEmpty {
-            approvalsOpen = true
-            return
-        }
-        paths[.activity] = []
-        notificationsOpen = true
+        approvalsOpen = true
         #else
         select(.activity)
         #endif
@@ -1219,13 +1266,12 @@ final class AppModel {
 }
 
 enum MacSidebarItem: Hashable {
-    case activity, communities, files, agents, you, search, store
+    case activity, files, agents, you, search, store
     case space(String)
 
     init?(tab: AppTab) {
         switch tab {
         case .conversations: return nil
-        case .communities: self = .communities
         case .files: self = .files
         case .activity: self = .activity
         case .agents: self = .agents

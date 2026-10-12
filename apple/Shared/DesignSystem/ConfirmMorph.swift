@@ -5,7 +5,7 @@ import SwiftUI
 /// A sheet's bottom row with a destructive icon next to the primary action (Things:
 /// [trash] [UPDATE]). Tap the icon and it grows across the row into a red "Remove item"
 /// while the primary shrinks into a small ×; tap red to confirm (a check lands, then
-/// `confirm` runs), tap × or wait a few seconds and it folds back.
+/// the change succeeds), tap × or wait a few seconds and it folds back.
 struct ConfirmMorphRow: View {
     let primaryTitle: LocalizedStringKey
     var primaryEnabled = true
@@ -14,7 +14,8 @@ struct ConfirmMorphRow: View {
     let destructiveLabel: LocalizedStringKey
     let confirmTitle: LocalizedStringKey
     let doneTitle: LocalizedStringKey
-    let confirm: () -> Void
+    let confirm: () -> Bool
+    var completion: () -> Void = {}
     var idPrefix = "confirm-row"
 
     @State private var armed = false
@@ -114,11 +115,15 @@ struct ConfirmMorphRow: View {
         // A double tap shouldn't arm and confirm at once: the question has to be seen first.
         guard Date.now.timeIntervalSince(armedAt) > ConfirmTiming.grace else { return }
         disarm?.cancel()
+        guard confirm() else {
+            armed = false
+            return
+        }
         Haptics.remove()
         done = true
-        Task { @MainActor in
+        disarm = Task { @MainActor in
             try? await Task.sleep(for: .milliseconds(reduceMotion ? 150 : 520))
-            confirm()
+            if !Task.isCancelled { completion() }
         }
     }
 }

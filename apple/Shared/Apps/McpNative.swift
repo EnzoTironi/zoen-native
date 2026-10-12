@@ -244,7 +244,8 @@ struct ZoenConsentSheet: View {
             .background(Palette.surface, in: .rect(cornerRadius: 22, style: .continuous))
             VStack(spacing: 10) {
                 Button { decide(.always) } label: {
-                    Text("Always for this app").font(.headline).frame(maxWidth: .infinity).frame(height: 50)
+                    Text("Always for this app").font(.headline).foregroundStyle(ActionGlassForeground())
+                        .frame(maxWidth: .infinity).frame(height: 50)
                 }
                 .buttonStyle(.glassProminent)
                 .tint(Palette.action)

@@ -6,6 +6,13 @@ import RodaCore
 struct ActivityScreen: View {
     @Environment(AppModel.self) private var model
     @Environment(\.dynamicTypeSize) private var typeSize
+    @State private var showingList: Bool
+    private let onShowCards: (() -> Void)?
+
+    init(initialList: Bool = false, onShowCards: (() -> Void)? = nil) {
+        _showingList = State(initialValue: initialList)
+        self.onShowCards = onShowCards
+    }
 
     /// Em tamanhos de acessibilidade o cabeçalho empilha (texto em cima, botão embaixo)
     /// em vez de espremer o texto ao lado do botão.
@@ -63,8 +70,34 @@ struct ActivityScreen: View {
     }
 
     var body: some View {
+        Group {
+            if showingList {
+                list
+            } else {
+                ApprovalsStackView(showsClose: false, onShowList: { showingList = true })
+            }
+        }
+        .navigationTitle("Activity")
+    }
+
+    private var list: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 22) {
+                HStack {
+                    Spacer()
+                    Button {
+                        if let onShowCards {
+                            onShowCards()
+                        } else {
+                            showingList = false
+                        }
+                    } label: {
+                        Label("Cards", systemImage: "rectangle.stack")
+                            .frame(minHeight: 44)
+                    }
+                    .buttonStyle(.glass)
+                    .accessibilityIdentifier("notifications-cards")
+                }
                 pills
 
                 switch section {
@@ -113,7 +146,7 @@ struct ActivityScreen: View {
         }
         .scrollEdgeEffectStyle(.soft, for: .top)
         .background(NightBackdrop())
-        .navigationTitle("Activity")
+        .accessibilityIdentifier("notifications-list-view")
         .task(id: model.revision) { items = model.core.items() }
     }
 
@@ -161,16 +194,16 @@ struct ActivityScreen: View {
                 }
                 if !typeSize.isAccessibilitySize { Spacer() }
                 if approvable.count > 1 {
-                    Button("Approve all") { model.approveAll(agent: agent) }
+                    Button { model.approveAll(agent: agent) } label: {
+                        Text("Approve all").foregroundStyle(ActionGlassForeground())
+                    }
                         .buttonStyle(.glassProminent)
                         .font(.subheadline.weight(.semibold))
                 }
             }
             ForEach(requests) { r in
-                RequestCard(request: r, onApprove: { model.approve(r) }, onDeny: { model.deny(r) })
-                    .contentShape(.rect)
-                    .onTapGesture { model.push(.request(r.id)) }
-                    .accessibilityAction(named: String(localized: "Review")) { model.push(.request(r.id)) }
+                RequestCard(request: r, onReview: { model.push(.request(r.id)) },
+                            onApprove: { model.approve(r) }, onDeny: { model.deny(r) })
                     .transition(.asymmetric(insertion: .opacity, removal: .scale(scale: 0.9).combined(with: .opacity)))
             }
         }

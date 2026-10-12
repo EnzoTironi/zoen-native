@@ -2,6 +2,8 @@
 
 The [README](../README.md) introduces the product. [Roadmap status](roadmap-status.md) is the dated source of truth for implementation, current PR versions, verification and remaining billion-user gates. Read [development setup](dev/setup.md) before running a current-client journey.
 
+The current baseline includes merged native/web consolidation PR 67 and private confirmed Plan history PR 68. The roadmap records their complete CI and source-composition evidence; the [HIG matrix](product/hig-compliance.md) records the current native build, editor and keyboard journeys. Runtime capabilities retain their separate acceptance boundaries.
+
 | Document category | How to read it |
 | --- | --- |
 | Current status and contracts | Implementation and requirements, with explicit verification boundaries. |
@@ -39,6 +41,7 @@ Technical identifiers inherited from the old project name are tracked in the [Zo
 - [O app de iPhone no Mac, sem simulador](dev/iphone-no-mac.md)
 - [Zoen naming and compatibility](dev/naming.md)
 - [Development setup](dev/setup.md)
+- [Live Page session API and offline Plan admission](dev/live-page-session.md)
 
 ## Product and design
 

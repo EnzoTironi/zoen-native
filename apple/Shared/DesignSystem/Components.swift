@@ -33,14 +33,16 @@ struct BudgetRing: View {
     var lineWidth: CGFloat = 5
     var showsLabel = false
 
-    var fraction: Double { limit > 0 ? min(1, Double(spent) / Double(limit)) : 1 }
+    var fraction: Double {
+        limit > 0 ? max(0, min(1, Double(spent) / Double(limit))) : (spent > limit ? 1 : 0)
+    }
     var color: Color { fraction >= 1 ? Palette.danger : (fraction >= 0.8 ? Palette.amber : Palette.success) }
 
     var body: some View {
         ZStack {
             Circle().stroke(Palette.surfaceMuted, lineWidth: lineWidth)
             Circle()
-                .trim(from: 0, to: max(0.02, fraction))
+                .trim(from: 0, to: fraction)
                 .stroke(color.gradient, style: StrokeStyle(lineWidth: lineWidth, lineCap: .round))
                 .rotationEffect(.degrees(-90))
                 .animation(.spring(duration: 0.6), value: fraction)
@@ -67,7 +69,7 @@ struct PlanBudgetBar: View {
         VStack(alignment: .leading, spacing: 6) {
             if let budget {
                 GeometryReader { geo in
-                    let f = min(1, Double(total) / Double(max(budget, 1)))
+                    let f = max(0, min(1, Double(total) / Double(max(budget, 1))))
                     ZStack(alignment: .leading) {
                         Capsule().fill(Palette.surfaceMuted)
                         Capsule()
@@ -83,9 +85,15 @@ struct PlanBudgetBar: View {
                 if let budget {
                     Text("of \(Money.format(budget))").foregroundStyle(Palette.textSecondary)
                     Spacer()
-                    Text(over ? String(localized: "\(Money.format(total - budget)) over") : String(localized: "\(Money.format(budget - total)) left"))
-                        .foregroundStyle(over ? Palette.danger : Palette.textSecondary)
-                        .monospacedDigit()
+                    Group {
+                        if let difference = MoneyInput.differenceCents(over ? total : budget, over ? budget : total) {
+                            Text(over ? String(localized: "\(Money.format(difference)) over") : String(localized: "\(Money.format(difference)) left"))
+                        } else {
+                            Text(over ? String(localized: "over the cap") : String(localized: "within the cap"))
+                        }
+                    }
+                    .foregroundStyle(over ? Palette.danger : Palette.textSecondary)
+                    .monospacedDigit()
                 }
             }
             .font(.footnote)
@@ -140,28 +148,37 @@ struct ItemCardView: View {
 struct RequestCard: View {
     let request: AgentRequestDto
     var compact = false
+    var onReview: () -> Void
     var onApprove: () -> Void
     var onDeny: () -> Void
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            HStack(alignment: .top, spacing: 12) {
-                Image(systemName: icon)
-                    .font(.system(size: 15, weight: .semibold))
-                    .foregroundStyle(iconColor)
-                    .frame(width: 34, height: 34)
-                    .background(iconColor.opacity(0.14), in: .rect(cornerRadius: 10, style: .continuous))
-                VStack(alignment: .leading, spacing: 3) {
-                    Text(request.title).font(.body.weight(.semibold)).foregroundStyle(Palette.textPrimary)
-                    if !compact {
-                        Text(request.detail).font(.subheadline).foregroundStyle(Palette.textSecondary).fixedSize(horizontal: false, vertical: true)
+            Button(action: onReview) {
+                HStack(alignment: .top, spacing: 12) {
+                    Image(systemName: icon)
+                        .font(.system(size: 15, weight: .semibold))
+                        .foregroundStyle(iconColor)
+                        .frame(width: 34, height: 34)
+                        .background(iconColor.opacity(0.14), in: .rect(cornerRadius: 10, style: .continuous))
+                        .accessibilityHidden(true)
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text(request.title).font(.body.weight(.semibold)).foregroundStyle(Palette.textPrimary)
+                        if !compact {
+                            Text(request.detail).font(.subheadline).foregroundStyle(Palette.textSecondary).fixedSize(horizontal: false, vertical: true)
+                        }
+                    }
+                    Spacer(minLength: 0)
+                    if let cost = request.costCents {
+                        Text(Money.format(cost)).font(.body.weight(.semibold)).monospacedDigit()
                     }
                 }
-                Spacer(minLength: 0)
-                if let cost = request.costCents {
-                    Text(Money.format(cost)).font(.body.weight(.semibold)).monospacedDigit()
-                }
+                .frame(minHeight: 44)
+                .contentShape(.rect)
             }
+            .buttonStyle(.plain)
+            .accessibilityHint(Text("Review request"))
+            .accessibilityIdentifier("request-review-\(request.id)")
 
             // Audience, kind and chat live on the review page (and in VoiceOver), not as tags.
             Color.clear.frame(height: 0)
@@ -179,7 +196,9 @@ struct RequestCard: View {
                 HStack(spacing: 10) {
                     Button(action: onDeny) { Text("Decline").frame(maxWidth: .infinity) }
                         .buttonStyle(.glass)
-                    Button(action: onApprove) { Text("Approve").fontWeight(.semibold).frame(maxWidth: .infinity) }
+                    Button(action: onApprove) {
+                        Text("Approve").fontWeight(.semibold).foregroundStyle(ActionGlassForeground()).frame(maxWidth: .infinity)
+                    }
                         .buttonStyle(.glassProminent)
                 }
                 .controlSize(.large)
@@ -252,6 +271,7 @@ struct ToastView: View {
                     onUndo(token)
                 } label: {
                     Label("Undo", systemImage: "arrow.uturn.backward").font(.subheadline.weight(.semibold))
+                        .foregroundStyle(ActionGlassForeground())
                 }
                 .buttonStyle(.glassProminent)
             case .revoked(let grantId, let p):
@@ -262,6 +282,7 @@ struct ToastView: View {
                     onRestore(grantId)
                 } label: {
                     Label("Undo", systemImage: "arrow.uturn.backward").font(.subheadline.weight(.semibold))
+                        .foregroundStyle(ActionGlassForeground())
                 }
                 .buttonStyle(.glassProminent)
                 .accessibilityIdentifier("toast-undo")

@@ -60,6 +60,10 @@ struct MiniAppFlipHost: View {
         .environment(\.miniAppClose, close)
         .onAppear(perform: open)
         .accessibilityAddTraits(.isModal)
+        .accessibilityAction(.escape, close)
+        #if os(macOS)
+        .onExitCommand(perform: close)
+        #endif
     }
 
     private func open() {

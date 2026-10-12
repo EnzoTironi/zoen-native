@@ -92,7 +92,7 @@ struct AvatarPhotoPicker: View {
     private var cameraBadge: some View {
         Image(systemName: "camera.fill")
             .font(.system(size: badgeSize * 0.42, weight: .bold))
-            .foregroundStyle(.white)
+            .foregroundStyle(Palette.onAction)
             .frame(width: badgeSize, height: badgeSize)
             .background(Palette.action, in: .circle)
             .padding(ringWidth)
