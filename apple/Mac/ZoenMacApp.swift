@@ -150,6 +150,7 @@ struct MacRootView: View {
     @AppStorage("RodaAppearance") private var appearance = "system"
     @State private var search = ""
     @FocusState private var searchFocused: Bool
+    @FocusState private var detailBackFocused: Bool
     @State private var searchCommandScope = UUID()
     @State private var lastChat: String?
     @State private var onboarding = OnboardingFlow.shouldShow
@@ -221,6 +222,9 @@ struct MacRootView: View {
             rememberChat(selection)
             search = ""
             searchFocused = false
+        }
+        .onChange(of: model.path(.conversations)) { _, _ in
+            detailBackFocused = needsDetailBack
         }
         .sheet(isPresented: $model.newChatOpen) {
             NewChatSheet().environment(model)
@@ -459,8 +463,10 @@ struct MacRootView: View {
                     Button { _ = model.pop() } label: { Label("Back", systemImage: "chevron.left") }
                         .buttonStyle(.plain)
                         .accessibilityIdentifier("mac-detail-back")
+                        .focused($detailBackFocused)
                     Spacer()
                 }
+                .defaultFocus($detailBackFocused, true, priority: .userInitiated)
                 .font(.system(size: 13))
                 .padding(.horizontal, 16).padding(.vertical, 10)
             }
