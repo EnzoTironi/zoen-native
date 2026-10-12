@@ -542,36 +542,59 @@ fn legacy_admission_and_actual_writes_preserve_missing_key_and_relay_account_ref
     assert_eq!(storage(&fixture), before);
     fixture.engine.signers.insert(fixture.owner.clone(), signer);
 
-    fixture
-        .engine
+    let mut engine = Engine::open(":memory:").unwrap();
+    engine
         .create_account("Relay account", "relay_account", "http://127.0.0.1:9")
         .unwrap();
-    let account = fixture.engine.me_id().unwrap();
-    fixture.ordered(EventBody::MemberAdded {
-        identity: account,
+    let account = engine.me_id().unwrap();
+    let mut relay = Fixture {
+        engine,
+        space: new_id("authenticated-plan-space"),
+        item: new_id("authenticated-plan"),
+        owner: account,
+    };
+    relay.ordered(EventBody::SpaceCreated {
+        title: "Authenticated Plan conversation".into(),
+        kind: SpaceKind::Group,
+        privacy: Privacy::Public,
+    });
+    relay.ordered(EventBody::ItemCreated {
+        item: relay.item.clone(),
+        kind: ItemKind::Plan,
+        content: ItemContent::Plan(original()),
+        origin: "account user".into(),
+    });
+    let other_writer = add_identity(&mut relay.engine, "Other writer");
+    relay.ordered(EventBody::MemberAdded {
+        identity: other_writer.clone(),
         role: Role::Member,
     });
+    let before = storage(&relay);
     assert!(
-        fixture
+        relay
             .engine
-            .plan_page(&fixture.item)
+            .plan_page(&relay.item)
             .unwrap()
             .legacy_edit_admitted
     );
-    fixture
+    assert_eq!(storage(&relay), before);
+    relay
         .engine
-        .add_plan_line(&fixture.item, 0, "Matching relay signer", 0)
+        .add_plan_line(&relay.item, 0, "Matching relay signer", 0)
         .unwrap();
-    fixture.engine.me = Some(fixture.owner.clone());
-    let before = storage(&fixture);
-    let read = fixture.engine.plan_page(&fixture.item).unwrap();
+    relay.engine.me = Some(other_writer.clone());
+    assert!(relay.engine.state.writer(&relay.space, &other_writer));
+    assert!(relay.engine.author_for(&other_writer).is_ok());
+    assert!(relay.engine.net.synced.contains(&relay.space));
+    let before = storage(&relay);
+    let read = relay.engine.plan_page(&relay.item).unwrap();
     assert_eq!(read.source, PlanPageReadSourceDto::LocalPendingLegacy);
     assert!(!read.legacy_edit_admitted);
-    assert!(fixture
+    assert!(relay
         .engine
-        .add_plan_line(&fixture.item, 0, "Wrong relay signer", 0)
+        .add_plan_line(&relay.item, 0, "Wrong relay signer", 0)
         .is_err());
-    assert_eq!(storage(&fixture), before);
+    assert_eq!(storage(&relay), before);
 }
 
 #[test]
