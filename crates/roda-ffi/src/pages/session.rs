@@ -877,6 +877,14 @@ impl PageSession {
         })
     }
 
+    /// Pending legacy intent can use its existing writer; unreadable journals cannot.
+    pub(super) fn legacy_read_blocked(&self) -> bool {
+        matches!(
+            self.blocked,
+            Some(SessionBlock::Waiting(_) | SessionBlock::DraftLocked(_))
+        )
+    }
+
     pub(super) fn read(&mut self, engine: &Engine) -> R<SessionRead> {
         self.refresh(engine)?;
         self.read_current(engine)
