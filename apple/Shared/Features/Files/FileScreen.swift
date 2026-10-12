@@ -5,6 +5,7 @@ import RodaCore
 struct FileScreen: View {
     @Environment(AppModel.self) private var model
     let itemId: String
+    var onClose: (() -> Void)? = nil
 
     @State private var item: ItemDetail?
     @State private var url: URL?
@@ -38,17 +39,15 @@ struct FileScreen: View {
         #if os(iOS)
         .navigationBarTitleDisplayMode(.inline)
         #endif
-        .toolbar {
-            ToolbarItemGroup(placement: .primaryAction) {
-                #if os(iOS)
-                if let url {
-                    Button { markup(url) } label: { Label("Markup", systemImage: "pencil.tip.crop.circle") }
-                        .accessibilityIdentifier("file.markup")
-                }
-                #endif
-                Button { showVersions = true } label: { Label("Versions", systemImage: "clock.arrow.circlepath") }
-                if let url { ShareLink(item: url) { Label("Share", systemImage: "square.and.arrow.up") } }
+        .livePageChrome(onClose: onClose, status: { EmptyView() }) {
+            #if os(iOS)
+            if let url {
+                Button { markup(url) } label: { Label("Markup", systemImage: "pencil.tip.crop.circle") }
+                    .accessibilityIdentifier("file.markup")
             }
+            #endif
+            Button { showVersions = true } label: { Label("Versions", systemImage: "clock.arrow.circlepath") }
+            if let url { ShareLink(item: url) { Label("Share", systemImage: "square.and.arrow.up") } }
         }
         .sheet(isPresented: $showVersions) {
             if let item { NavigationStack { VersoesView(item: item) } .zoenSheet([.medium, .large]) }

@@ -99,7 +99,6 @@ struct MacRootView: View {
     @State private var search = ""
     @FocusState private var searchFocused: Bool
     @State private var searchCommandScope = UUID()
-    @FocusState private var inspectorCloseFocused: Bool
     @State private var lastChat: String?
     @State private var onboarding = OnboardingFlow.shouldShow
 
@@ -134,31 +133,12 @@ struct MacRootView: View {
                                                        reduceMotion: reduceMotion))
         .inspector(isPresented: Binding(get: { model.inspectorItem != nil }, set: { if !$0 { closeInspector() } })) {
             if let id = model.inspectorItem {
-                VStack(spacing: 0) {
-                    HStack {
-                        Spacer()
-                        Button { closeInspector() } label: {
-                            Image(systemName: "xmark")
-                                .frame(width: 28, height: 28)
-                        }
-                        .buttonStyle(.plain)
-                        .accessibilityLabel(Text("Close details"))
-                        .accessibilityIdentifier("mac-inspector-close")
-                        .help("Close details (Esc)")
-                        .keyboardShortcut(.cancelAction)
-                        .focused($inspectorCloseFocused)
-                        .onAppear { inspectorCloseFocused = true }
-                    }
-                    .padding(.horizontal, 12)
-                    .padding(.top, 8)
-                    NavigationStack { ItemView(itemId: id) }
+                NavigationStack {
+                    ItemView(itemId: id, onClose: { closeInspector() })
                 }
                 .inspectorColumnWidth(min: 360, ideal: 440, max: 560)
                 .onExitCommand { closeInspector() }
             }
-        }
-        .onChange(of: model.inspectorItem) { _, id in
-            if id == nil { inspectorCloseFocused = false }
         }
         .overlay(alignment: .bottom) {
             if let toast = model.toast {
@@ -218,7 +198,6 @@ struct MacRootView: View {
     }
 
     private func closeInspector() {
-        inspectorCloseFocused = false
         model.inspectorItem = nil
     }
 

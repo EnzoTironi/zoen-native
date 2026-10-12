@@ -43,4 +43,57 @@ private struct LivePageSurface: ViewModifier {
 
 extension View {
     func livePageSurface() -> some View { modifier(LivePageSurface()) }
+
+    func livePageChrome<Status: View, Actions: View>(
+        onClose: (() -> Void)? = nil,
+        @ViewBuilder status: () -> Status,
+        @ViewBuilder actions: () -> Actions
+    ) -> some View {
+        modifier(LivePageChrome(onClose: onClose, status: status(), actions: actions()))
+    }
+}
+
+private struct LivePageChrome<Status: View, Actions: View>: ViewModifier {
+    let onClose: (() -> Void)?
+    let status: Status
+    let actions: Actions
+    #if os(macOS)
+    @FocusState private var closeFocused: Bool
+    #endif
+
+    func body(content: Content) -> some View {
+        #if os(macOS)
+        VStack(spacing: 0) {
+            HStack(spacing: 12) {
+                status
+                Spacer(minLength: 0)
+                actions
+                if let onClose {
+                    Button(action: onClose) {
+                        Image(systemName: "xmark").frame(width: 28, height: 28)
+                    }
+                    .accessibilityLabel(Text("Close details"))
+                    .accessibilityIdentifier("mac-inspector-close")
+                    .help("Close details (Esc)")
+                    .keyboardShortcut(.cancelAction)
+                    .focused($closeFocused)
+                    .onAppear { closeFocused = true }
+                }
+            }
+            .labelStyle(.iconOnly)
+            .buttonStyle(.borderless)
+            .foregroundStyle(Palette.textSecondary)
+            .frame(minHeight: 28)
+            .padding(.horizontal, 12)
+            .padding(.vertical, 8)
+            .background(Palette.background)
+            content
+        }
+        #else
+        content.toolbar {
+            ToolbarItem(placement: .principal) { status }
+            ToolbarItemGroup(placement: .primaryAction) { actions }
+        }
+        #endif
+    }
 }

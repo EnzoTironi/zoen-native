@@ -15,6 +15,7 @@ struct PageScreen: View {
     @Environment(AppModel.self) private var model
     @Environment(\.scenePhase) private var scenePhase
     let itemId: String
+    var onClose: (() -> Void)? = nil
 
     @State private var controller = PageEditorController()
     @State private var item: ItemDetail?
@@ -90,19 +91,16 @@ struct PageScreen: View {
         #if os(iOS)
         .navigationBarTitleDisplayMode(.inline)
         #endif
-        .toolbar {
-            ToolbarItem(placement: .principal) { savePill }
-            ToolbarItemGroup(placement: .primaryAction) {
-                Button {
-                    let allowsRestore = canEdit && draftReady && commitNow()
-                    if let item {
-                        versionHistory = VersionHistoryPresentation(item: item, allowsRestore: allowsRestore)
-                    }
-                } label: { Label("Versions", systemImage: "clock.arrow.circlepath") }
-                    .accessibilityIdentifier("page.versions")
-                if !markdown.isEmpty {
-                    ShareLink(item: markdown, preview: SharePreview(item?.title ?? "Page")) { Label("Share", systemImage: "square.and.arrow.up") }
+        .livePageChrome(onClose: onClose, status: { savePill }) {
+            Button {
+                let allowsRestore = canEdit && draftReady && commitNow()
+                if let item {
+                    versionHistory = VersionHistoryPresentation(item: item, allowsRestore: allowsRestore)
                 }
+            } label: { Label("Versions", systemImage: "clock.arrow.circlepath") }
+                .accessibilityIdentifier("page.versions")
+            if !markdown.isEmpty {
+                ShareLink(item: markdown, preview: SharePreview(item?.title ?? "Page")) { Label("Share", systemImage: "square.and.arrow.up") }
             }
         }
         .sheet(item: $versionHistory) { presentation in

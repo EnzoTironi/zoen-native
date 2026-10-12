@@ -5,13 +5,14 @@ import RodaCore
 struct ItemView: View {
     @Environment(AppModel.self) private var model
     let itemId: String
+    var onClose: (() -> Void)? = nil
 
     var body: some View {
         let kind = (try? model.core.item(itemId: itemId))?.kindId ?? ""
         switch kind {
-        case "page": PageScreen(itemId: itemId)
-        case "file": FileScreen(itemId: itemId)
-        default: PlanItemView(itemId: itemId)
+        case "page": PageScreen(itemId: itemId, onClose: onClose)
+        case "file": FileScreen(itemId: itemId, onClose: onClose)
+        default: PlanItemView(itemId: itemId, onClose: onClose)
         }
     }
 }

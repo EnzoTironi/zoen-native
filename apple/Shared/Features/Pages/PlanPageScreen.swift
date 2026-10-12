@@ -5,6 +5,7 @@ struct PlanItemView: View {
     @Environment(AppModel.self) private var model
     @ScaledMetric(relativeTo: .body) private var textScale: CGFloat = 1
     let itemId: String
+    var onClose: (() -> Void)? = nil
 
     @State private var page: PlanPageDto?
     @State private var item: ItemDetail?
@@ -62,19 +63,16 @@ struct PlanItemView: View {
         #if os(iOS)
         .navigationBarTitleDisplayMode(.inline)
         #endif
-        .toolbar {
-            ToolbarItem(placement: .principal) {
-                status.font(.caption).foregroundStyle(Palette.textSecondary)
+        .livePageChrome(onClose: onClose, status: {
+            status.font(.caption).foregroundStyle(Palette.textSecondary)
+        }) {
+            if item != nil {
+                Button { showVersions = true } label: { Label("Versions", systemImage: "clock.arrow.circlepath") }
+                    .accessibilityIdentifier("plan-page.versions")
             }
-            ToolbarItemGroup(placement: .primaryAction) {
-                if item != nil {
-                    Button { showVersions = true } label: { Label("Versions", systemImage: "clock.arrow.circlepath") }
-                        .accessibilityIdentifier("plan-page.versions")
-                }
-                if let page, page.ready {
-                    ShareLink(item: shareText(page), preview: SharePreview(item?.title ?? String(localized: "Page"))) {
-                        Label("Share", systemImage: "square.and.arrow.up")
-                    }
+            if let page, page.ready {
+                ShareLink(item: shareText(page), preview: SharePreview(item?.title ?? String(localized: "Page"))) {
+                    Label("Share", systemImage: "square.and.arrow.up")
                 }
             }
         }
