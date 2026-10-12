@@ -148,28 +148,37 @@ struct ItemCardView: View {
 struct RequestCard: View {
     let request: AgentRequestDto
     var compact = false
+    var onReview: () -> Void
     var onApprove: () -> Void
     var onDeny: () -> Void
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            HStack(alignment: .top, spacing: 12) {
-                Image(systemName: icon)
-                    .font(.system(size: 15, weight: .semibold))
-                    .foregroundStyle(iconColor)
-                    .frame(width: 34, height: 34)
-                    .background(iconColor.opacity(0.14), in: .rect(cornerRadius: 10, style: .continuous))
-                VStack(alignment: .leading, spacing: 3) {
-                    Text(request.title).font(.body.weight(.semibold)).foregroundStyle(Palette.textPrimary)
-                    if !compact {
-                        Text(request.detail).font(.subheadline).foregroundStyle(Palette.textSecondary).fixedSize(horizontal: false, vertical: true)
+            Button(action: onReview) {
+                HStack(alignment: .top, spacing: 12) {
+                    Image(systemName: icon)
+                        .font(.system(size: 15, weight: .semibold))
+                        .foregroundStyle(iconColor)
+                        .frame(width: 34, height: 34)
+                        .background(iconColor.opacity(0.14), in: .rect(cornerRadius: 10, style: .continuous))
+                        .accessibilityHidden(true)
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text(request.title).font(.body.weight(.semibold)).foregroundStyle(Palette.textPrimary)
+                        if !compact {
+                            Text(request.detail).font(.subheadline).foregroundStyle(Palette.textSecondary).fixedSize(horizontal: false, vertical: true)
+                        }
+                    }
+                    Spacer(minLength: 0)
+                    if let cost = request.costCents {
+                        Text(Money.format(cost)).font(.body.weight(.semibold)).monospacedDigit()
                     }
                 }
-                Spacer(minLength: 0)
-                if let cost = request.costCents {
-                    Text(Money.format(cost)).font(.body.weight(.semibold)).monospacedDigit()
-                }
+                .frame(minHeight: 44)
+                .contentShape(.rect)
             }
+            .buttonStyle(.plain)
+            .accessibilityHint(Text("Review request"))
+            .accessibilityIdentifier("request-review-\(request.id)")
 
             // Audience, kind and chat live on the review page (and in VoiceOver), not as tags.
             Color.clear.frame(height: 0)

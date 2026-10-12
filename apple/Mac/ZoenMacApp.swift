@@ -130,7 +130,11 @@ struct ZoenMacApp: App {
                     .keyboardShortcut("0", modifiers: .command)
                 Button("Activity") { searchCommands?.reset(); model.select(.activity) }
                     .keyboardShortcut("1", modifiers: .command)
-                Button("Create and more") { withAnimation(.spring(duration: 0.45, bounce: 0.28)) { model.radialOpen.toggle() } }
+                Button("Create and more") {
+                    withAnimation(NSWorkspace.shared.accessibilityDisplayShouldReduceMotion ? nil : .spring(duration: 0.45, bounce: 0.28)) {
+                        model.radialOpen.toggle()
+                    }
+                }
                     .keyboardShortcut("k", modifiers: .command)
             }
         }
@@ -430,7 +434,7 @@ struct MacRootView: View {
         NavigationStack(path: Binding(get: { model.path(.conversations) }, set: { model.setPath(.conversations, $0) })) {
             detail
                 .navigationDestination(for: Route.self) { route in
-                    Group {
+                    MacNavigationDetail(showsBack: showsDetailBack(for: route), onBack: { _ = model.pop() }) {
                         switch route {
                         case .store(let id): StoreDetailView(listingId: id)
                         case .agent(let id): AgentDetailView(agentId: id)
@@ -449,22 +453,9 @@ struct MacRootView: View {
                     .navigationBarBackButtonHidden(true)
                 }
         }
-        .safeAreaInset(edge: .top, spacing: 0) {
-            if needsDetailBack {
-                HStack {
-                    Button { _ = model.pop() } label: { Label("Back", systemImage: "chevron.left") }
-                        .buttonStyle(.plain)
-                        .accessibilityIdentifier("mac-detail-back")
-                    Spacer()
-                }
-                .font(.system(size: 13))
-                .padding(.horizontal, 16).padding(.vertical, 10)
-            }
-        }
     }
 
-    private var needsDetailBack: Bool {
-        guard let route = model.path(.conversations).last else { return false }
+    private func showsDetailBack(for route: Route) -> Bool {
         if case .space = route { return false }
         return true
     }
@@ -507,6 +498,32 @@ struct MacRootView: View {
             case nil: ContentUnavailableView("Pick a chat", systemImage: "bubble.left.and.bubble.right")
             }
         }
+    }
+}
+
+private struct MacNavigationDetail<Content: View>: View {
+    let showsBack: Bool
+    let onBack: () -> Void
+    @ViewBuilder let content: () -> Content
+    @FocusState private var backFocused: Bool
+
+    var body: some View {
+        content()
+            .safeAreaInset(edge: .top, spacing: 0) {
+                if showsBack {
+                    HStack {
+                        Button(action: onBack) { Label("Back", systemImage: "chevron.left") }
+                            .buttonStyle(.plain)
+                            .accessibilityIdentifier("mac-detail-back")
+                            .focused($backFocused)
+                        Spacer()
+                    }
+                    .font(.system(size: 13))
+                    .padding(.horizontal, 16).padding(.vertical, 10)
+                }
+            }
+            .defaultFocus($backFocused, showsBack, priority: .userInitiated)
+            .onAppear { backFocused = showsBack }
     }
 }
 

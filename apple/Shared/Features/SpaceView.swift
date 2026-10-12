@@ -635,9 +635,11 @@ struct EntryView: View {
             // cartão); o histórico fica na folha, não enche a conversa.
             EmptyView()
         case .itemEdited(let itemId, _, let version, let note, let isUndo):
-            SystemRow(glyph: isUndo ? .back : .list, text: "\(entry.author.isMe ? "Você" : entry.author.name) · \(note)", trailing: "v\(version)")
-                .onTapGesture { onOpenItem(itemId) }
-                .padding(.vertical, 6)
+            Button { onOpenItem(itemId) } label: {
+                SystemRow(glyph: isUndo ? .back : .list, text: "\(entry.author.isMe ? "Você" : entry.author.name) · \(note)", trailing: "v\(version)")
+            }
+            .buttonStyle(.plain)
+            .padding(.vertical, 6)
         case .request(let requestId, _, _):
             if let r = model.requests.first(where: { $0.id == requestId }) {
                 InlineRequestRow(request: r).padding(.vertical, 6)
@@ -751,8 +753,14 @@ struct MessageRow: View {
                         // included, in the same grey bubble (tight corner bottom left).
                         VStack(alignment: .leading, spacing: 6) {
                             if let quote {
-                                ReplyQuoteView(quote: quote, mine: mine)
-                                    .onTapGesture { onQuote?(quote.id) }
+                                if let onQuote {
+                                    Button { onQuote(quote.id) } label: {
+                                        ReplyQuoteView(quote: quote, mine: mine)
+                                    }
+                                    .buttonStyle(.plain)
+                                } else {
+                                    ReplyQuoteView(quote: quote, mine: mine)
+                                }
                             }
                             Text(attributed(text))
                                 .font(.body)

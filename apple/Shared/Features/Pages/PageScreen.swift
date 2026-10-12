@@ -14,6 +14,7 @@ private let log = Logger(subsystem: "xyz.tironi.zoen", category: "page")
 struct PageScreen: View {
     @Environment(AppModel.self) private var model
     @Environment(\.scenePhase) private var scenePhase
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     let itemId: String
     var onClose: (() -> Void)? = nil
 
@@ -150,15 +151,16 @@ struct PageScreen: View {
                 .foregroundStyle(Palette.textSecondary)
                 .padding(.horizontal, 10).padding(.vertical, 5)
                 .background(Palette.surfaceMuted, in: .capsule)
-                .transition(.scale(scale: 0.8).combined(with: .opacity))
+                .transition(reduceMotion ? .opacity : .scale(scale: 0.8).combined(with: .opacity))
         case .saved:
             Label("Saved", systemImage: "checkmark.circle.fill")
                 .font(.caption.weight(.semibold))
                 .foregroundStyle(Palette.action)
                 .symbolEffect(.bounce, value: savedBump)
+                .symbolEffectsRemoved(reduceMotion)
                 .padding(.horizontal, 10).padding(.vertical, 5)
                 .background(Palette.action.opacity(0.12), in: .capsule)
-                .transition(.scale(scale: 0.8).combined(with: .opacity))
+                .transition(reduceMotion ? .opacity : .scale(scale: 0.8).combined(with: .opacity))
                 .accessibilityIdentifier("page.saved")
         case .syncing:
             Label("Saved on this device", systemImage: "icloud.and.arrow.up")
@@ -263,7 +265,7 @@ struct PageScreen: View {
         pendingEdit = true
         dirty = true
         guard checkpoint() else { return }
-        if saveState != .editing { withAnimation(.spring(duration: 0.35, bounce: 0.3)) { saveState = .editing } }
+        if saveState != .editing { withAnimation(reduceMotion ? nil : .spring(duration: 0.35, bounce: 0.3)) { saveState = .editing } }
         applyTask?.cancel()
         applyTask = Task { @MainActor in
             try? await Task.sleep(for: .milliseconds(400))
@@ -367,7 +369,7 @@ struct PageScreen: View {
 
     private func updateSaveState(_ page: PageDto) {
         saveError = page.saveError
-        withAnimation(.spring(duration: 0.35)) {
+        withAnimation(reduceMotion ? nil : .spring(duration: 0.35)) {
             if page.saveError != nil { saveState = .failed }
             else if !page.canEdit { saveState = .readOnly }
             else if page.unsaved { saveState = .editing }
