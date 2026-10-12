@@ -5,6 +5,8 @@ use roda_docs::plan::{PlanBlockEdit, PlanCommand};
 use rusqlite::types::ValueRef;
 use sha2::{Digest, Sha256};
 
+mod admission;
+
 const EXACT: &str = "Reservation: cafe\u{301} 👩🏽‍💻\r\nkeep NEL\u{85}and paragraph\u{2029}bytes";
 
 #[test]

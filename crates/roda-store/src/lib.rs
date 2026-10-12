@@ -7,8 +7,10 @@
 //! Seams para depois: SQLCipher (mesma API, `PRAGMA key`), FTS5 para busca local,
 //! App Group compartilhado com as extensões do iOS.
 
+mod image;
 mod profiles;
 mod sync;
+pub use image::MAX_MEMORY_IMAGE_BYTES;
 pub use profiles::ProfileKeyRow;
 pub use sync::{OutboxHead, Pending};
 
@@ -22,6 +24,8 @@ pub enum StoreError {
     Sqlite(#[from] rusqlite::Error),
     #[error("json: {0}")]
     Json(#[from] serde_json::Error),
+    #[error("unsupported or oversized memory database image")]
+    InvalidImage,
 }
 
 pub type Result<T> = std::result::Result<T, StoreError>;
@@ -142,6 +146,24 @@ impl Store {
     pub fn put_media(&self, sha256: &str, mime: &str, bytes: &[u8], at_ms: i64) -> Result<()> {
         self.conn.execute(
             "INSERT INTO media (sha256, mime, bytes, at_ms) VALUES (?1, ?2, ?3, ?4) ON CONFLICT(sha256) DO NOTHING",
+            params![sha256, mime, bytes, at_ms],
+        )?;
+        Ok(())
+    }
+
+    /// Cache an import whose hash the caller has verified, repairing damaged bytes.
+    /// An identical cached payload preserves its original metadata and timestamp.
+    pub fn cache_imported_media(
+        &self,
+        sha256: &str,
+        mime: &str,
+        bytes: &[u8],
+        at_ms: i64,
+    ) -> Result<()> {
+        self.conn.execute(
+            "INSERT INTO media (sha256, mime, bytes, at_ms) VALUES (?1, ?2, ?3, ?4) \
+             ON CONFLICT(sha256) DO UPDATE SET mime = excluded.mime, bytes = excluded.bytes, at_ms = excluded.at_ms \
+             WHERE media.bytes <> excluded.bytes",
             params![sha256, mime, bytes, at_ms],
         )?;
         Ok(())
@@ -461,6 +483,7 @@ mod tests {
     fn identities_and_meta_persist() {
         let s = Store::in_memory().unwrap();
         let id = Identity {
+            owner_proof: None,
             id: "abc".into(),
             kind: IdentityKind::Agent,
             name: "Financeiro".into(),

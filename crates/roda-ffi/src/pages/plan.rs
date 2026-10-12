@@ -19,7 +19,9 @@ use crate::engine::{Engine, R};
 use crate::CoreError;
 
 mod api;
-pub use api::{PlanPageBlockDto, PlanPageContentDto, PlanPageDto, PlanProseKindDto};
+pub use api::{
+    PlanPageBlockDto, PlanPageContentDto, PlanPageDto, PlanPageReadSourceDto, PlanProseKindDto,
+};
 
 const MANIFEST_SCHEMA: &str = "plan_v1";
 

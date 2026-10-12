@@ -20,7 +20,7 @@ use roda_types::*;
 use serde::{Deserialize, Serialize};
 
 use crate::dto::Delivery;
-use crate::engine::{Engine, Entry};
+use crate::engine::{Engine, Entry, State};
 use crate::i18n::t;
 use crate::CoreError;
 
@@ -49,6 +49,8 @@ pub struct NetState {
     pub synced: HashSet<SpaceId>,
     /// client_id → Space, for events in the outbox.
     pub pending: HashMap<String, SpaceId>,
+    /// Spaces whose pending resolutions overlay their ordered approval state.
+    pub(crate) optimistic_approvals: HashSet<SpaceId>,
     /// client_id → why the relay refused it.
     pub failed: HashMap<String, String>,
     /// Identities seen in logs whose profile this device doesn't have yet.
@@ -125,6 +127,7 @@ impl Engine {
         }
         self.net.synced = self.store.synced_spaces()?.into_iter().collect();
         self.net.pending.clear();
+        self.net.optimistic_approvals.clear();
         self.net.failed.clear();
         self.net.profiles.forget_shared();
 
@@ -151,7 +154,7 @@ impl Engine {
                     self.net
                         .failed
                         .insert(e.client_id.clone(), p.last_error.unwrap_or_default());
-                    self.state.apply(&e);
+                    self.state.apply(&e, &self.identities);
                 }
                 continue;
             }
@@ -163,7 +166,10 @@ impl Engine {
             self.net
                 .pending
                 .insert(e.client_id.clone(), e.space.clone());
-            self.state.apply(&e);
+            if matches!(e.body, EventBody::RequestResolved { .. }) {
+                self.net.optimistic_approvals.insert(e.space.clone());
+            }
+            self.state.apply(&e, &self.identities);
         }
         self.recompute_unknown();
         self.reload_mls();
@@ -187,6 +193,71 @@ impl Engine {
         self.net.unknown = unknown;
     }
 
+    pub(crate) fn approval_projection_needs_replay(&self, e: &Event) -> bool {
+        self.net.optimistic_approvals.contains(&e.space)
+            && matches!(
+                e.body,
+                EventBody::RequestOpened { .. }
+                    | EventBody::RequestResolved { .. }
+                    | EventBody::MemberAdded { .. }
+                    | EventBody::MemberRemoved { .. }
+                    | EventBody::GrantIssued { .. }
+                    | EventBody::GrantRevoked { .. }
+                    | EventBody::ItemCreated { .. }
+                    | EventBody::ItemVersioned { .. }
+                    | EventBody::ItemReverted { .. }
+            )
+    }
+
+    /// Reconcile only when an ordered dependency can invalidate an optimistic decision.
+    /// Use the verified log cache; do not reload keys, MLS state or open page sessions.
+    pub(crate) fn reproject_approval_overlay(&mut self) -> R<()> {
+        let mut order = self.store.space_ids()?;
+        let pending = self.store.outbox()?;
+        let mut state = State::default();
+        let mut confirmed = HashSet::new();
+        for space in &order {
+            if let Some(log) = self.logs.get(space) {
+                for e in log.events() {
+                    confirmed.insert(e.client_id.clone());
+                    state.apply(e, &self.identities);
+                }
+            } else if let Some(broken) = self.state.spaces.get(space) {
+                let mut broken = broken.clone();
+                broken.entries.clear();
+                state.spaces.insert(space.clone(), broken);
+            }
+        }
+        let mut optimistic = HashSet::new();
+        for p in pending {
+            let e = p.event;
+            if confirmed.contains(&e.client_id) {
+                continue;
+            }
+            if p.failed {
+                if matches!(e.body, EventBody::MessagePosted { .. })
+                    && state.spaces.contains_key(&e.space)
+                {
+                    state.apply(&e, &self.identities);
+                }
+                continue;
+            }
+            if matches!(e.body, EventBody::SpaceCreated { .. }) && !order.contains(&e.space) {
+                order.push(e.space.clone());
+            }
+            if matches!(e.body, EventBody::RequestResolved { .. }) {
+                optimistic.insert(e.space.clone());
+            }
+            state.apply(&e, &self.identities);
+        }
+        self.state = state;
+        self.space_order = order;
+        self.net.optimistic_approvals = optimistic;
+        self.index_dirty = true;
+        self.recompute_unknown();
+        Ok(())
+    }
+
     pub(crate) fn note_unknown(&mut self, e: &Event) {
         if !self.identities.contains_key(&e.author) {
             self.net.unknown.insert(e.author.clone());
@@ -199,9 +270,10 @@ impl Engine {
     }
 
     pub(crate) fn delivery(&self, e: &Entry) -> Delivery {
-        if self.net.failed.contains_key(&e.client_id) {
+        let source = e.client_id.strip_suffix(":result").unwrap_or(&e.client_id);
+        if self.net.failed.contains_key(source) {
             Delivery::Failed
-        } else if self.net.pending.contains_key(&e.client_id) {
+        } else if self.net.pending.contains_key(source) {
             Delivery::Sending
         } else if self.net.synced.contains(&e.space) {
             Delivery::Sent
@@ -214,7 +286,7 @@ impl Engine {
     /// for a Space this device created and the relay hasn't confirmed yet, the genesis link
     /// it will get (the creator's `SpaceCreated` always lands at seq 0, so its chain hash is
     /// known before it's sent).
-    fn causal_head(&self, space: &str) -> R<Option<Seen>> {
+    pub fn causal_head(&self, space: &str) -> R<Option<Seen>> {
         if let Some(head) = self.logs.get(space).and_then(SpaceLog::head) {
             return Ok(Some(head));
         }
@@ -251,12 +323,23 @@ impl Engine {
             self.causal_head(space)?
         };
         let e = signer.sign_event(space, &client_id, at_ms, seen, body);
+        if !self.state.approval_event_valid(&e, &self.identities) {
+            return Err(CoreError::Invalid {
+                reason: t(
+                    "pedido, decisão ou uso não autorizado",
+                    "unauthorized request, decision or usage",
+                ),
+            });
+        }
         self.store.outbox_put(&e)?;
         if creating && !self.space_order.contains(&space.to_string()) {
             self.space_order.push(space.to_string());
         }
         self.net.pending.insert(client_id, space.to_string());
-        self.state.apply(&e);
+        if matches!(e.body, EventBody::RequestResolved { .. }) {
+            self.net.optimistic_approvals.insert(space.to_string());
+        }
+        self.state.apply(&e, &self.identities);
         self.index_dirty = true;
         self.note_unknown(&e);
         self.note_profile_event(&e);
@@ -310,10 +393,29 @@ impl Engine {
         if !self.space_order.contains(&space) {
             self.space_order.push(space.clone());
         }
-        if self.net.pending.remove(&e.client_id).is_some() {
+        let replay_approval = self.approval_projection_needs_replay(&e);
+        let own = self.net.pending.remove(&e.client_id).is_some();
+        if own {
             let _ = self.store.outbox_remove(&e.client_id);
+        }
+        if replay_approval {
+            if let Err(err) = self.reproject_approval_overlay() {
+                let _ = self.reload();
+                return Ingest::Invalid(err.to_string());
+            }
+            self.note_profile_event(&e);
+            return if own {
+                Ingest::Confirmed
+            } else {
+                Ingest::Applied
+            };
+        }
+        if own {
             if let Some(s) = self.state.spaces.get_mut(&space) {
-                for entry in s.entries.iter_mut().filter(|x| x.client_id == e.client_id) {
+                for entry in s.entries.iter_mut().filter(|x| {
+                    x.client_id == e.client_id
+                        || x.client_id.strip_suffix(":result") == Some(e.client_id.as_str())
+                }) {
                     entry.seq = e.seq;
                     entry.hash = e.hash.clone();
                 }
@@ -323,11 +425,11 @@ impl Engine {
                 || matches!(e.body, EventBody::MemberAdded { .. })
                     && !self.is_member_of(&space, &e.author)
             {
-                self.state.apply(&e);
+                self.state.apply(&e, &self.identities);
             }
             return Ingest::Confirmed;
         }
-        self.state.apply(&e);
+        self.state.apply(&e, &self.identities);
         self.index_dirty = true;
         self.note_unknown(&e);
         self.note_profile_event(&e);
@@ -493,14 +595,30 @@ impl Engine {
     /// Directory entries from the relay: handles and public keys. A person's name and bio
     /// come from their encrypted profile when this device holds the key, else the @handle.
     pub fn put_profiles(&mut self, profiles: Vec<Identity>) -> R<()> {
+        let mut reproject_agents = false;
         for mut p in profiles {
-            if p.id.len() != 64 {
+            if p.id.len() != 64 || !roda_log::agent_owner::profile_authorized(&p) {
                 continue;
             }
             // Never let the directory rename someone this device holds keys for.
             if self.signers.contains_key(&p.id) || self.me.as_deref() == Some(p.id.as_str()) {
                 continue;
             }
+            if self.identities.get(&p.id).is_some_and(|known| {
+                // Unsigned legacy directory metadata cannot establish an owner pin.
+                known.owner_proof.is_some()
+                    && roda_log::agent_owner::profile_authorized(known)
+                    && (known.kind != p.kind
+                        || known.owner != p.owner
+                        || known.owner_proof != p.owner_proof)
+            }) {
+                continue;
+            }
+            reproject_agents |= p.kind == IdentityKind::Agent
+                && self
+                    .identities
+                    .get(&p.id)
+                    .is_none_or(|old| old.kind != p.kind || old.owner != p.owner);
             self.overlay_profile(&mut p);
             self.store.put_identity(&p, None)?;
             if !self.identities.contains_key(&p.id) {
@@ -509,6 +627,9 @@ impl Engine {
             self.net.unknown.remove(&p.id);
             self.identities.insert(p.id.clone(), p);
             self.index_dirty = true;
+        }
+        if reproject_agents {
+            self.reload()?;
         }
         Ok(())
     }
@@ -521,6 +642,23 @@ impl Engine {
 
     pub fn is_unlocked(&self) -> bool {
         self.net.author.is_some()
+    }
+
+    /// Authorizes an agent root from this account's unlocked, certified device.
+    /// The relay must still check enrollment at the agent's first registration.
+    pub fn authorize_agent(&self, agent: &str) -> R<roda_types::AgentOwnerProof> {
+        self.net
+            .author
+            .as_ref()
+            .filter(|author| {
+                self.account()
+                    .is_some_and(|a| a.identity == author.identity)
+            })
+            .and_then(|author| roda_log::agent_owner::authorize(author, agent))
+            .ok_or_else(|| CoreError::Forbidden {
+                reason: "agent authorization needs an unlocked owner device and a valid agent key"
+                    .into(),
+            })
     }
 
     pub(crate) fn save_linked_account(&mut self, a: AccountMeta) -> R<()> {
@@ -574,6 +712,7 @@ impl Engine {
         let device = Signer::generate();
         let author = Author::device(&root, device.clone());
         let me = Identity {
+            owner_proof: None,
             id: root.id(),
             kind: IdentityKind::Person,
             name: name.to_string(),
@@ -640,6 +779,7 @@ impl Engine {
         )?;
         let zoen = self.create_identity(
             Identity {
+                owner_proof: None,
                 id: String::new(),
                 kind: IdentityKind::Agent,
                 name: "Zoen".into(),
@@ -962,5 +1102,107 @@ impl Engine {
 
     pub fn is_online(&self, who: &str) -> bool {
         self.net.presence.get(who).copied().unwrap_or(false)
+    }
+}
+
+#[cfg(test)]
+mod owner_tests {
+    use super::*;
+
+    fn agent(owner: &Author, id: String) -> Identity {
+        Identity {
+            owner_proof: Some(Box::new(
+                roda_log::agent_owner::authorize(owner, &id).unwrap(),
+            )),
+            id,
+            kind: IdentityKind::Agent,
+            name: "Agent".into(),
+            handle: "agent".into(),
+            tint_hex: "#fff".into(),
+            glyph: None,
+            owner: Some(owner.identity.clone()),
+            bio: String::new(),
+        }
+    }
+
+    #[test]
+    fn remote_agents_need_authorization_and_cannot_change_their_owner() {
+        let mut e = Engine::open(":memory:").unwrap();
+        let owner = Author::device(&Signer::generate(), Signer::generate());
+        let original = agent(&owner, Signer::generate().id());
+        let mut unsigned = original.clone();
+        unsigned.owner_proof = None;
+        e.put_profiles(vec![unsigned]).unwrap();
+        assert!(!e.identities.contains_key(&original.id));
+        e.put_profiles(vec![original.clone()]).unwrap();
+        let other = Author::device(&Signer::generate(), Signer::generate());
+        let transferred = agent(&other, original.id.clone());
+        e.put_profiles(vec![transferred]).unwrap();
+        assert_eq!(e.identities[&original.id], original);
+        let mut updated = original.clone();
+        updated.name = "New name".into();
+        e.put_profiles(vec![updated.clone()]).unwrap();
+        assert_eq!(e.identities[&original.id], updated);
+        e.reload().unwrap();
+        assert_eq!(e.identities[&original.id], updated);
+    }
+
+    #[test]
+    fn authorization_requires_an_unlocked_account_device_and_does_not_issue_a_grant() {
+        let mut e = Engine::open(":memory:").unwrap();
+        let agent = Signer::generate().id();
+        assert!(e.authorize_agent(&agent).is_err());
+        e.create_account("Owner", "owner", "http://127.0.0.1:9")
+            .unwrap();
+        let grants = e.state.grants.len();
+        let proof = e.authorize_agent(&agent).unwrap();
+        assert!(roda_log::agent_owner::verify(
+            &e.account().unwrap().identity,
+            &agent,
+            &proof
+        ));
+        assert_eq!(e.state.grants.len(), grants);
+        assert!(e.authorize_agent("invalid").is_err());
+        e.net.author = None;
+        assert!(e.authorize_agent(&agent).is_err());
+    }
+
+    #[test]
+    fn unsigned_legacy_metadata_cannot_authorize_trust_after_reload() {
+        let mut e = Engine::open(":memory:").unwrap();
+        e.create_account("Owner", "owner", "http://127.0.0.1:9")
+            .unwrap();
+        let owner = e.net.author.clone().unwrap();
+        let mut legacy = agent(&owner, Signer::generate().id());
+        legacy.owner_proof = None;
+        e.store.put_identity(&legacy, None).unwrap();
+        let space = e
+            .create_synced_space(
+                "Group",
+                SpaceKind::Group,
+                Privacy::Closed,
+                std::slice::from_ref(&legacy.id),
+            )
+            .unwrap();
+        e.reload().unwrap();
+        assert!(!e.agents().iter().any(|a| a.persona.id == legacy.id));
+        assert!(e.set_trust(&legacy.id, &space, TrustLevel::Act).is_err());
+        assert!(e.net.unknown.contains(&legacy.id));
+
+        let mut correct = legacy;
+        correct.kind = IdentityKind::Person;
+        correct.owner = None;
+        e.put_profiles(vec![correct.clone()]).unwrap();
+        e.reload().unwrap();
+        assert_eq!(e.identities[&correct.id].kind, IdentityKind::Person);
+        assert_eq!(e.identities[&correct.id].owner, None);
+        assert_eq!(e.identities[&correct.id].owner_proof, None);
+        assert!(e.set_trust(&correct.id, &space, TrustLevel::Act).is_err());
+
+        let me = e.me_id().unwrap();
+        let original = e.identities[&me].clone();
+        let other = Author::device(&Signer::generate(), Signer::generate());
+        e.put_profiles(vec![agent(&other, me.clone())]).unwrap();
+        assert_eq!(e.identities[&me], original);
     }
 }

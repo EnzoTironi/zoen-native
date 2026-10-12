@@ -70,6 +70,7 @@ fn identity(engine: &mut Engine, name: &str) -> String {
                 glyph: None,
                 owner: None,
                 bio: String::new(),
+                owner_proof: None,
             },
             true,
         )

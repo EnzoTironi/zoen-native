@@ -26,6 +26,7 @@ uniffi = { workspace = true, features = ["tokio"] }
 roda-proto.workspace = true
 serde.workspace = true
 getrandom.workspace = true
+zeroize.workspace = true
 tokio = { version = "1", features = ["rt-multi-thread", "sync", "time", "macros", "net"] }
 tokio-tungstenite = { version = "0.30", default-features = false, features = ["connect", "handshake", "rustls-tls-webpki-roots"] }
 futures-util = { version = "0.3", default-features = false, features = ["sink", "std"] }
