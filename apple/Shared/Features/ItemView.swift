@@ -195,7 +195,12 @@ struct VersionsView: View {
             }
         }
         .navigationTitle("Versions")
-        .toolbar { ToolbarItem(placement: .confirmationAction) { Button("OK") { dismiss() } } }
+        .toolbar {
+            ToolbarItem(placement: .confirmationAction) {
+                Button("OK") { dismiss() }
+                    .keyboardShortcut(.cancelAction)
+            }
+        }
         #if os(macOS)
         .frame(minWidth: 560, minHeight: 480)
         #endif

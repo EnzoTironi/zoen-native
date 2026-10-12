@@ -46,7 +46,12 @@ struct VersoesView: View {
         #if os(iOS)
         .navigationBarTitleDisplayMode(.inline)
         #endif
-        .toolbar { ToolbarItem(placement: .confirmationAction) { Button("OK") { dismiss() } } }
+        .toolbar {
+            ToolbarItem(placement: .confirmationAction) {
+                Button("OK") { dismiss() }
+                    .keyboardShortcut(.cancelAction)
+            }
+        }
         .task(id: model.revision) { current = try? model.core.item(itemId: item.id) }
     }
 
