@@ -76,7 +76,8 @@ struct SnapshotCard: View {
         case "pot":
             LinearGradient(colors: [Color(hex: "#FBE3C8"), Color(hex: "#F4B98A")], startPoint: .top, endPoint: .bottom)
         default:
-            LinearGradient(colors: [accent.opacity(0.22), InkPalette.paper], startPoint: .top, endPoint: .bottom)
+            InkPalette.paper
+                .overlay(LinearGradient(colors: [accent.opacity(0.22), .clear], startPoint: .top, endPoint: .bottom))
         }
     }
 
@@ -207,7 +208,7 @@ struct SnapshotCard: View {
     private var title: some View {
         Text(snap.title)
             .font(.system(.subheadline, design: .rounded).weight(.bold))
-            .foregroundStyle(ink)
+            .foregroundStyle(snap.art == "trip" ? InkPalette.ink : ink)
             .lineLimit(2)
             .contentTransition(.numericText())
     }
@@ -276,6 +277,14 @@ struct SnapshotCard: View {
                     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomTrailing)
                     .offset(x: 14, y: 12)
                     .opacity(0.95)
+                if snap.art == "trip" {
+                    LinearGradient(stops: [.init(color: .clear, location: 0.2),
+                                           .init(color: .black.opacity(0.28), location: 0.5),
+                                           .init(color: .black.opacity(0.5), location: 1)],
+                                   startPoint: .top, endPoint: .bottom)
+                        .padding(-14)
+                        .allowsHitTesting(false)
+                }
                 VStack(alignment: .leading, spacing: 0) {
                     title
                     Spacer(minLength: 0)
@@ -286,7 +295,6 @@ struct SnapshotCard: View {
                             .contentTransition(.numericText(countsDown: true))
                         Text(r.days == 1 ? "day to go" : "days to go")
                             .font(.caption.weight(.bold))
-                            .opacity(0.85)
                     } else {
                         Text("\(r.hours)h \(r.minutes)m")
                             .font(.system(size: side * 0.2, weight: .heavy, design: .rounded))
@@ -294,7 +302,7 @@ struct SnapshotCard: View {
                             .contentTransition(.numericText(countsDown: true))
                     }
                 }
-                .foregroundStyle(.white)
+                .foregroundStyle(ink)
                 .shadow(color: .black.opacity(0.18), radius: 6, y: 2)
             }
             .animation(.spring(duration: 0.5), value: r.days)

@@ -25,8 +25,6 @@ final class InvestorShowcaseTests: XCTestCase {
         shoot(appearance: appearance, lang: lang, name: "chat-coastal", extra: [
             "-RodaOpen", "coastal", "-RodaChatScrollTop", "YES",
         ])
-        // Spaces
-        shoot(appearance: appearance, lang: lang, name: "spaces", extra: ["-RodaTab", "spaces"])
         // Store
         shoot(appearance: appearance, lang: lang, name: "store", extra: ["-RodaTab", "store"])
     }

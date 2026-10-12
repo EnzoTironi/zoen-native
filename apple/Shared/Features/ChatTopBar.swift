@@ -1,17 +1,16 @@
 import SwiftUI
 import RodaCore
 
-#if os(iOS)
 /// The chat's top bar (v2, Muse-style): back, a horizontal title whose larger avatar overlaps
 /// the left end of the glass name capsule (live status as the subtitle), and one calls capsule
-/// on the right. Each piece is its own Liquid Glass (tinted like the bottom bar in dark mode)
-/// with its content on top. Deployment target is iOS 26, so there's no material fallback.
+/// on the right. iOS and Mac share these floating controls; the space around them is transparent.
 struct ChatTopBar: View {
     let space: SpaceSummary
     let subtitle: String
     /// Live status that replaces the subtitle while something is happening.
     var status: ChatStatus? = nil
     let onBack: () -> Void
+    var showsBack = true
     let onOpen: () -> Void
     /// The title opens the header menu (the avatar keeps `onOpen`).
     var onTitle: (() -> Void)? = nil
@@ -19,6 +18,7 @@ struct ChatTopBar: View {
     var onCall: (ZoenGlyph) -> Void = { _ in }
     @Environment(\.colorScheme) private var scheme
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @State private var dropped = true
     @State private var barMidY: CGFloat = 0
     static let height: CGFloat = 44
@@ -34,30 +34,27 @@ struct ChatTopBar: View {
         // it never reaches either side (the name truncates first). All three pieces are real
         // Liquid Glass in one container; each piece's text and icons are the glass's content.
         GlassEffectContainer(spacing: 4) {
-            TopBarLayout(gap: Self.gap) {
-                Button(action: onBack) {
-                    ZoenIcon(.back, size: 21)
-                        .foregroundStyle(Palette.textPrimary)
-                        .frame(width: Self.height, height: Self.height)
-                        .contentShape(.circle)
+            if dynamicTypeSize.isAccessibilitySize {
+                VStack(spacing: Self.gap) {
+                    HStack {
+                        backControl
+                        Spacer(minLength: Self.gap)
+                        CallsCapsule(onCall: onCall)
+                    }
+                    titleControl
+                        .frame(maxWidth: .infinity)
                 }
-                .buttonStyle(GlassPress(shape: .circle))
-                .accessibilityLabel(Text("Back"))
-                .accessibilityIdentifier("zoenBack")
-
-                Button(action: onTitle ?? onOpen) { title }
-                    .buttonStyle(TitlePress())
-                    .accessibilityHint(onTitle == nil ? Text("Shows who's in this chat") : Text("Opens the chat menu"))
-                    .accessibilityIdentifier("chat-title")
-                    // B centres the capsule itself under the island (the avatar hangs off
-                    // its left); A centres the whole avatar + capsule group.
-                    .offset(x: TitleVariant.current == .b ? -(Self.avatar - Self.overlap) / 2 : 0)
-                    .modifier(IslandDrop(dropped: dropped, fromY: islandDY))
-
-                CallsCapsule(onCall: onCall)
+            } else {
+                TopBarLayout(gap: Self.gap) {
+                    backControl
+                    titleControl
+                        // B centres the capsule; A centres the avatar and capsule together.
+                        .offset(x: TitleVariant.current == .b ? -(Self.avatar - Self.overlap) / 2 : 0)
+                    CallsCapsule(onCall: onCall)
+                }
             }
         }
-        .frame(height: Self.height)
+        .frame(minHeight: Self.height)
         .onGeometryChange(for: CGFloat.self) { $0.frame(in: .global).midY } action: { barMidY = $0 }
         .onAppear {
             guard TitleVariant.current == .c, !reduceMotion, Island.rect != nil else { return }
@@ -77,7 +74,7 @@ struct ChatTopBar: View {
                     .buttonStyle(TitlePress())
                     .accessibilityHidden(true)
                     .position(x: r.midX, y: r.midY)
-                    .modifier(IslandDrop(dropped: dropped, fromY: islandDY))
+                    .modifier(IslandDrop(dropped: reduceMotion || dropped, fromY: islandDY))
                 }
             }
         }
@@ -92,6 +89,33 @@ struct ChatTopBar: View {
     /// From the bar's centre up to the island's centre (for the drop-in).
     private var islandDY: CGFloat { Island.rect.map { $0.midY - barMidY } ?? 0 }
 
+    @ViewBuilder
+    private var backControl: some View {
+        if showsBack {
+            Button(action: onBack) {
+                ZoenIcon(.back, size: 21)
+                    .foregroundStyle(Palette.textPrimary)
+                    .frame(width: Self.height, height: Self.height)
+                    .contentShape(.circle)
+            }
+            .buttonStyle(GlassPress(shape: .circle))
+            .accessibilityLabel(Text("Back"))
+            .accessibilityIdentifier("zoenBack")
+        } else {
+            Color.clear.frame(width: Self.height, height: Self.height)
+                .accessibilityHidden(true)
+        }
+    }
+
+    private var titleControl: some View {
+        Button(action: onTitle ?? onOpen) { title }
+            .buttonStyle(TitlePress())
+            .accessibilityHint(onTitle == nil ? Text("Shows who's in this chat") : Text("Opens the chat menu"))
+            .accessibilityAction(named: Text("Participants"), onOpen)
+            .accessibilityIdentifier("chat-title")
+            .modifier(IslandDrop(dropped: reduceMotion || dropped, fromY: islandDY))
+    }
+
     private var title: some View {
         // Avatar above the capsule (zIndex), overlapping its left end; the capsule's leading
         // padding keeps the text clear of it. The glass is the capsule's own effect, with the
@@ -105,8 +129,7 @@ struct ChatTopBar: View {
                     Text(space.title)
                         .font(.subheadline.weight(.semibold))
                         .foregroundStyle(Palette.textPrimary)
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.65)
+                        .lineLimit(dynamicTypeSize.isAccessibilitySize ? nil : 1)
                         .truncationMode(.tail)
                     ZStack(alignment: .leading) {
                         if let status {
@@ -117,21 +140,21 @@ struct ChatTopBar: View {
                             .font(.caption2.weight(.medium))
                             .foregroundStyle(Palette.action)
                             .id(status.id)
-                            .transition(.push(from: .bottom))
+                            .transition(reduceMotion ? .opacity : .push(from: .bottom))
                         } else {
                             Text(subtitle)
                                 .font(.caption2)
                                 .foregroundStyle(Palette.textSecondary)
-                                .transition(.push(from: .bottom))
+                                .transition(reduceMotion ? .opacity : .push(from: .bottom))
                         }
                     }
                     // Room for descenders (g, p, y) inside the clip the push transition needs.
                     .padding(.bottom, 2)
                     .clipped()
                     .padding(.bottom, -2)
-                    .animation(.spring(duration: 0.4, bounce: 0.15), value: status?.id)
+                    .animation(reduceMotion ? nil : .spring(duration: 0.4, bounce: 0.15), value: status?.id)
                 }
-                .lineLimit(1)
+                .lineLimit(dynamicTypeSize.isAccessibilitySize ? nil : 1)
             }
             .overlay(alignment: .trailing) {
                 if onTitle != nil {
@@ -139,7 +162,7 @@ struct ChatTopBar: View {
                         .font(.system(size: 10, weight: .bold))
                         .foregroundStyle(Palette.textSecondary)
                         .rotationEffect(.degrees(menuOpen ? 180 : 0))
-                        .animation(.spring(response: 0.35, dampingFraction: 0.7), value: menuOpen)
+                        .animation(reduceMotion ? nil : .spring(response: 0.35, dampingFraction: 0.7), value: menuOpen)
                         .offset(x: 14)
                         .accessibilityHidden(true)
                 }
@@ -149,7 +172,8 @@ struct ChatTopBar: View {
             .frame(minWidth: TitleVariant.current == .b ? max(0, (Island.rect?.width ?? 0) - Self.overlap - 8 - 16) : 0, alignment: .leading)
             .padding(.leading, Self.overlap + 8)
             .padding(.trailing, 16)
-            .frame(height: Self.height)
+            .padding(.vertical, 6)
+            .frame(minHeight: Self.height)
             .topGlass(Capsule())
         }
         .contentShape(.capsule)
@@ -166,7 +190,9 @@ struct TopGlass<S: InsettableShape>: ViewModifier {
     func body(content: Content) -> some View {
         content
             .glassEffect(interactive ? .regular.interactive() : .regular, in: shape)
+            #if os(iOS)
             .barEdge(shape, diffuse: false)
+            #endif
     }
 }
 
@@ -190,12 +216,16 @@ enum TitleVariant: String {
 @MainActor
 enum Island {
     static var rect: CGRect? {
+        #if os(iOS)
         guard let w = UIApplication.shared.connectedScenes.compactMap({ $0 as? UIWindowScene }).first,
               let win = w.windows.first(where: { $0.isKeyWindow }) ?? w.windows.first else { return nil }
         let top = win.safeAreaInsets.top, width = win.bounds.width
         guard top >= 59 else { return nil }
         let y: CGFloat = top >= 62 ? 14 : 11
         return CGRect(x: width / 2 - 63, y: y, width: 126, height: 37)
+        #else
+        return nil
+        #endif
     }
 }
 
@@ -227,7 +257,7 @@ private struct TopBarLayout: Layout {
         subviews[0].place(at: CGPoint(x: b.minX, y: b.midY), anchor: .leading, proposal: ProposedViewSize(l))
         subviews[2].place(at: CGPoint(x: b.maxX, y: b.midY), anchor: .trailing, proposal: ProposedViewSize(r))
         // Leave real room for long group names; sides keep their natural widths.
-        let cap = max(120, b.width - l.width - r.width - 2 * gap)
+        let cap = max(0, b.width - 2 * max(l.width, r.width) - 2 * gap)
         let t = subviews[1].sizeThatFits(ProposedViewSize(width: cap, height: b.height))
         subviews[1].place(at: CGPoint(x: b.midX, y: b.midY), anchor: .center, proposal: ProposedViewSize(width: min(t.width, cap), height: t.height))
     }
@@ -256,10 +286,12 @@ private struct AvatarSlot: PreferenceKey {
 
 /// The title presses as one piece (avatar and capsule sink together).
 struct TitlePress: ButtonStyle {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
-            .scaleEffect(configuration.isPressed ? 0.96 : 1)
-            .animation(.spring(response: 0.28, dampingFraction: 0.62), value: configuration.isPressed)
+            .scaleEffect(configuration.isPressed && !reduceMotion ? 0.96 : 1)
+            .animation(reduceMotion ? nil : .spring(response: 0.28, dampingFraction: 0.62), value: configuration.isPressed)
     }
 }
 
@@ -305,13 +337,15 @@ struct CallsCapsule: View {
 /// and the whole capsule (glass included) sinks a touch while pressed.
 struct GlassPress<S: InsettableShape>: ButtonStyle {
     let shape: S
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
-            .environment(\.zoenIconBoil, configuration.isPressed)
+            .environment(\.zoenIconBoil, configuration.isPressed && !reduceMotion)
             .topGlass(shape)
-            .scaleEffect(configuration.isPressed ? 0.95 : 1)
+            .scaleEffect(configuration.isPressed && !reduceMotion ? 0.95 : 1)
             .brightness(configuration.isPressed ? -0.03 : 0)
-            .animation(.spring(response: 0.28, dampingFraction: 0.62), value: configuration.isPressed)
+            .animation(reduceMotion ? nil : .spring(response: 0.28, dampingFraction: 0.62), value: configuration.isPressed)
     }
 }
 
@@ -357,8 +391,6 @@ private struct BackChrome: ViewModifier {
         }
     }
 }
-
-#endif
 
 /// What's happening in the chat right now, the same for people and agents (no badge: the
 /// status just describes the activity). Groups name who; 1:1s don't need to.
@@ -432,19 +464,19 @@ struct TopBarWidthSheet: View {
 }
 #endif
 
-#if os(iOS)
 /// The title's face, one image only: the contact for a 1:1 (agent or person, drawn the same),
 /// or the group's own picture (a generated pen-and-paper default until one is set).
 struct TitleAvatar: View {
     let space: SpaceSummary
     var size: CGFloat = 42
     var working = false
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     var body: some View {
         Group {
             if let c = space.counterpart {
                 ContactAvatar(persona: c, size: size, working: working)
                     .profileLink(c)
-                    .animation(.spring(duration: 0.45, bounce: 0.2), value: working)
+                    .animation(reduceMotion ? nil : .spring(duration: 0.45, bounce: 0.2), value: working)
             } else {
                 GroupAvatar(space: space, size: size)
             }
@@ -452,4 +484,3 @@ struct TitleAvatar: View {
         .clipShape(.circle)
     }
 }
-#endif

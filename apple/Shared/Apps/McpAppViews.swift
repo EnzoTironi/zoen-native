@@ -199,7 +199,9 @@ struct AppConfirmSheet: View {
                 Button(role: request.destructive ? .destructive : nil) {
                     Haptics.commit(); request.decide(true); onDone()
                 } label: {
-                    Text(request.confirmLabel ?? String(localized: "Confirm")).font(.headline).frame(maxWidth: .infinity).frame(height: 50)
+                    Text(request.confirmLabel ?? String(localized: "Confirm")).font(.headline)
+                        .foregroundStyle(request.destructive ? AnyShapeStyle(Color.white) : AnyShapeStyle(ActionGlassForeground()))
+                        .frame(maxWidth: .infinity).frame(height: 50)
                 }
                 .buttonStyle(.glassProminent)
                 .tint(request.destructive ? Palette.danger : Palette.action)

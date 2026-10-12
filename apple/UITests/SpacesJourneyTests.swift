@@ -1,50 +1,49 @@
 import XCTest
 
-/// Opens Spaces, creates a Space through the app, and sees it listed.
+/// Creates a community from Chats and finds it in the same inbox.
 final class SpacesJourneyTests: XCTestCase {
     @MainActor
-    func testCreateSpaceAndSeeItListed() throws {
+    func testCreateCommunityFromChatsAndSeeItInTheInbox() throws {
         continueAfterFailure = false
         let app = XCUIApplication()
         app.launchArguments = [
             "-RodaFreshStart", "YES",
             "-RodaDemo", "YES",
-            "-RodaTab", "spaces",
+            "-RodaTab", "chats",
             "-AppleLanguages", "(en)",
             "-RodaAppearance", "light",
         ]
         app.launch()
 
-        // Spaces tab is already selected via -RodaTab spaces.
-        let create = app.buttons["createSpace"].exists
-            ? app.buttons["createSpace"]
-            : app.buttons["createSpaceEmpty"]
-        XCTAssertTrue(create.waitForExistence(timeout: 15), "create control on Spaces")
-        create.tap()
+        XCTAssertFalse(app.buttons["Spaces"].exists, "communities do not have a second inbox")
+        let newChat = app.buttons["newChat"]
+        XCTAssertTrue(newChat.waitForExistence(timeout: 15))
+        newChat.tap()
+        app.buttons["Community"].tap()
 
-        let name = app.textFields["spaceNameField"]
+        let name = app.textFields["communityNameField"]
         XCTAssertTrue(name.waitForExistence(timeout: 5))
         name.tap()
-        let title = "Trail Club \(Int(Date().timeIntervalSince1970) % 10_000)"
+        let title = "Trail Club and Coastal Travelers Community \(Int(Date().timeIntervalSince1970) % 10_000)"
         name.typeText(title)
 
-        app.buttons["confirmCreateSpace"].tap()
+        app.buttons["confirmCreateCommunity"].tap()
 
-        // After create we open the Space; go back and confirm it's listed.
-        let back = app.buttons.matching(NSPredicate(format: "label CONTAINS[c] 'back' OR identifier CONTAINS[c] 'back'")).firstMatch
-        if back.waitForExistence(timeout: 8) { back.tap() }
+        let back = app.buttons["zoenBack"]
+        XCTAssertTrue(back.waitForExistence(timeout: 10), "the new community opens as a conversation")
+        let chatTitle = app.buttons["chat-title"]
+        let voiceCall = app.buttons["Voice call"]
+        XCTAssertTrue(chatTitle.exists && voiceCall.exists)
+        XCTAssertLessThanOrEqual(chatTitle.frame.maxX + 4, voiceCall.frame.minX,
+                                 "a long community title leaves room for the call controls")
+        back.tap()
 
-        // Re-select Spaces if needed.
-        let spacesTab = app.buttons["Spaces"]
-        if spacesTab.waitForExistence(timeout: 3) { spacesTab.tap() }
-
-        let row = app.descendants(matching: .any)["spaceRow-\(title)"]
+        let row = app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", title)).firstMatch
         let listed = row.waitForExistence(timeout: 10)
-            || app.staticTexts[title].waitForExistence(timeout: 2)
         let shot = XCTAttachment(screenshot: app.screenshot())
-        shot.name = listed ? "space-listed" : "space-missing"
+        shot.name = listed ? "community-in-chats" : "community-missing-from-chats"
         shot.lifetime = .keepAlways
         add(shot)
-        XCTAssertTrue(listed, "the new Space appears in the list")
+        XCTAssertTrue(listed, "the community appears in Chats alongside direct conversations and groups")
     }
 }

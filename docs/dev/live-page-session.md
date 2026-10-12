@@ -1,45 +1,52 @@
 # Live Page document session
 
-Binary Pages now use one session for saved history, local edits, encrypted draft receipts, recovery and publication. The new editing API carries the state the editor observed instead of replacing whichever blocks are current when the call arrives.
+Binary Pages use one session for saved history, observed edits, encrypted draft receipts, recovery and publication. Main `3c8cef9` includes the shared session and Core193 typed Plan compatibility. Canonical Plan mutation remains a separate admission gate.
 
 ## Client contract
 
-1. Read `page(item_id)`. Keep its `edit_context` with the blocks the editor actually displays.
-2. Allocate one mutation ID for an edit and call `page_apply_from` with that ID, the observed context, complete block order and changed blocks.
-3. After an uncertain response, repeat the exact ID, context and edit. A retained receipt returns `replayed = true` without applying the edit twice.
-4. Display the returned `page`, which can include other edits. `applied_content_hash` and `applied_edit_context` identify this editor's accepted operation; they can differ from the merged page.
-5. Publish with `page_commit`. Show `pending_sync` and `save_error`; a local version alone does not prove acceptance by a remote relay.
+1. Read `page(item_id)` and keep its `edit_context` with the blocks actually displayed.
+2. Allocate one mutation ID per edit. Call `page_apply_from` with that ID, the observed context, complete block order and changed blocks.
+3. After an uncertain response, repeat the exact ID/context/edit. A retained receipt returns `replayed = true` without applying the edit twice.
+4. Display the returned `page`. This editor's `applied_content_hash` and `applied_edit_context` identify its accepted operation and can differ from the merged page. Adopt a merged page's blocks and context together.
+5. Publish with `page_commit`. Show `pending_sync` and `save_error`; local acknowledgement does not establish remote relay acceptance.
 
-A context is bound to its actor, space, item and creation. After restore, an unaccepted edit from an older context returns `Stale`. An already accepted exact retry can still return its retained receipt, without applying it again; its current `page` remains restored. Receipt retention is bounded to 512 entries; an evicted generation returns `Stale`. Re-read and reconcile the person's intent rather than assigning a new ID to an obsolete full document.
+Contexts bind actor, conversation, item and creation. Restore fences unaccepted earlier contexts with `Stale`; an accepted exact retry can return its retained receipt while the current page remains restored. Receipt retention is 512 entries. After eviction or invalidation, reread and reconcile intent instead of assigning a fresh ID to an obsolete full document.
 
-The older `page_apply` entry point remains available for current clients. Its adapter reads the current context under the Engine lock. It cannot carry the context an older client previously observed. Native editors still using it must migrate to `page_apply_from` before their concurrent-edit journey is considered complete.
+The older `page_apply` adapter reads current context under the Engine lock. It cannot carry what an older client observed; concurrent editors must use `page_apply_from`. Every actual revision, including own-edit undo, requires its own mutation. Matching visible text alone cannot identify an earlier edit whose response was lost.
 
-## Persistence and recovery
+## Persistence, recovery and media
 
-The session keeps a verified saved document and the local document. Repeated reads authenticate the current encrypted journal before reusing cached state. Reload changes the cache epoch, so saved payloads must be verified again.
+The session retains a verified saved document and the local document. Reads authenticate the current encrypted journal before using cached state; reload changes the cache epoch. Unreadable ciphertext never becomes an empty draft. Saved content can remain readable while editing is disabled.
 
-Journal recovery never replaces unreadable ciphertext with an empty draft. A cold reader can still see the saved page while editing is disabled. Publication stages the blob, signed event, outbox and encrypted journal marker in one SQLite savepoint. Failure rolls back the actual writes and retains the recoverable draft. A refused save keeps its error and unsaved indication visible.
+Publication stages blob, signed event, outbox and encrypted journal marker in one SQLite savepoint. Failure rolls back the writes and retains a recoverable draft/error. Device-derived draft journals are scoped to identity/conversation/page and excluded from portable backups; saved-version recovery does not promise unsaved-draft recovery after device loss.
 
-Existing Binary Page Loro content, preference and database keys, and the `Storage(message)` FFI field are preserved. Regenerate Swift/Kotlin bindings together with the core library: the Page record gains fields and the observed-context API is new. The user-facing name is Zoen; persisted `roda` identifiers are not renamed by this change.
+PR 66 repairs a damaged media-byte cache only after the imported bytes pass their content hash. The update is atomic; wrong-hash input leaves storage unchanged. An identical reimport preserves row metadata, and ordinary media insertion retains its existing no-replacement behavior.
 
-## Plan admission
+Existing Binary Page Loro bytes, database/preference keys and `Storage(message)` remain compatible. Regenerate bindings and libraries together. User-facing branding is Zoen; persisted technical identifiers require the separate [naming migration](naming.md).
 
-The typed Plan document, authenticated timeline and tagged journal are foundations for a shared Live Page editor. Public Page APIs still reject Plan Items. PR 62’s merged consumers replace current card, item and search projections without activating the public Plan editor.
+## Typed Plan read and compatible legacy admission
 
-After valid cutover, consumers read the session's saved document and accepted version, author and timestamp. They exclude private drafts and refused later whole-plan writes while retaining those writes in history. Before cutover, existing offline legacy previews preserve their exact bytes. Search indexes the accepted document's blocks and typed rows; it does not introduce another editable Plan store.
+`plan_page()` returns typed title/budget, summary, section, priced line and prose blocks from the same document session. Stable CRDT block IDs stay distinct from possibly duplicated legacy row IDs. Raw text, UTF-16 marks, signed integer cents, prose styles and image titles survive the boundary.
 
-Legacy edit, toggle, add, remove, restore and linked approval mutations refuse before changing storage once cutover is saved or pending. A poll that would add a legacy Plan row also refuses before closing or posting its result. Existing approval display compares the first matching legacy row ID's exact text and cents; completion alone does not change the hash. The stricter C4 proposal, writer, space and transactional approval implementation must be reconciled separately before integrating that backend stack.
+The optional total accumulates checked `i128` and converts the mathematical final result to `i64`. Compensating credits preserve valid totals regardless of order. Overflow leaves the total unavailable while preserving rows/history; the older mandatory-total `PlanDto` returns an explicit error. Historical negative cents, including `i64::MIN`, remain readable; new negative legacy additions refuse before storage changes.
 
-Totals accumulate checked `i128` values before converting the final result to `i64`; compensating credits cannot cause a false overflow or make the total depend on row order. Cards report an unavailable total on overflow while preserving row counts and stored history. The older `PlanDto` requires an `i64` total, so `item()` returns an explicit error for overflow instead of zero, clamping or panic. The new `plan_page()` client read returns a typed `PlanPageDto` with an optional total. Canonical history/restore views and write admission still require migration. Historical negative cents, including `i64::MIN`, remain readable.
+Core193 exposes two read sources:
 
-The additive `plan_page()` read uses the same document session and returns closed typed variants for title/budget, summary, section, priced line and prose. Stable CRDT block IDs remain distinct from possibly duplicated legacy row IDs. Exact raw text, UTF-16 marks, signed integer cents, heading style and image titles survive the client boundary. The optional total is computed from the returned rows; a mathematical value outside `i64` stays unavailable. The version is the last accepted shared version, while `unsaved` labels this account’s private draft. Cards and search continue to read the accepted shadow. This endpoint exposes no editing context or write capability. Native/Android/web binding and presentation journeys remain required.
+| Source | Meaning | Admission boundary |
+| --- | --- | --- |
+| `DocumentSession` | Authenticated saved/session content with its accepted version and private-draft state. | Canonical writes remain closed; private, waiting, unreadable or cutover sessions do not admit legacy controls. Cards/search read accepted content rather than private edits. |
+| `LocalPendingLegacy` | This account's signed durable optimistic legacy intent, including its own pending creation. | Version 0 means creation is not confirmed. The namespaced presentation hash is not an edit context/shared manifest. Presentation readiness is not remote confirmation. |
 
-Before write admission, finish canonical writers and historical views, restore policy, mixed-version writer refusal, strict C4 linked-request live/replay, native controls and actual two-device/provider journeys. Plan financial metadata must never be flattened into ordinary paragraph text.
+`legacy_edit_admitted` mirrors the real existing legacy writer gates, including writer/author/account checks and valid totals. It preserves successive offline edits and own pending creation without creating a second editable store. Reader, removed-member, other-account, private/unreadable and saved/pending canonical-cutover cases remain read-only. Native delayed controls reread the observed version/hash before the legacy mutation. This flag grants no financial or provider authority.
 
-## Verification scope
+Legacy edit/toggle/add/remove/restore/linked-approval mutations refuse before changing storage after saved or pending cutover. A poll refuses before adding a legacy row or closing/posting its result. Approval display retains exact first-matching row text/cents; completion/formatting alone do not change the financial hash.
 
-PR 60's shared-session foundation is merged as main `fa4eed8`; its Linux run passed 61 document, 7 compatibility and 120 FFI tests. The initial Plan consumer candidate `610895f` passed the full 127-test FFI suite. The resulting consumer implementation merged as main `32e0415`. Fresh main Linux CI passed 476 tests across 65 standard harness summaries, including all 128 FFI tests, with zero failures and one existing helper ignored outside FFI. Its seven added consumer tests first ran against unchanged main production source: one passed and six failed. The eighth consumer test first failed through the card API against the earlier consumer candidate; it then passed legacy and canonical reads, exact rows, promotion and reload for compensating credits at both integer limits in different orders. The fixed source retained all 120 original tests and all seven earlier consumer tests, with no tests ignored or filtered. The ordinary unoptimized profile used the default stack and the existing resource/time guards.
+The integrated backend contains stricter approval/runtime foundations. All17 canonical Plan approval callers, accepted-chain replay, canonical history/restore and writer migration still require reconciliation. Financial metadata must never be flattened into ordinary paragraph text.
 
-The standalone public API evidence uses an owned local SQLite database and two editor contexts for one actor. It is separate from native app footage, relay/provider execution, full HIG acceptance and billion-user capacity evidence. Those gates remain open in the [roadmap](../roadmap-status.md).
+## Verification and remaining workflows
 
-The additive typed Plan client read subsequently passed formatting, all-target FFI Clippy and all 132 FFI tests, with zero failures, ignored or filtered tests, plus the empty doc-test target. Four new journeys exercise exact duplicate IDs/text, all prose variants and UTF-16 marks through authenticated cutover, private-draft separation, extreme cents and order-independent credit cancellation. This is local core evidence; current generated client bindings and app workflows remain separate.
+[PR 66's complete CI](https://github.com/EnzoTironi/zoen-native/actions/runs/38288186205) tests the same tree as Main `3c8cef9`:69 standard summaries, 568 passed,0 failed/filtered and 1 original helper ignored. All193 actual FFI names match the local full suite and retain prior 183. Ten additions cover offline admission/preview and validated cache recovery. Custom log-store 10/ownership 17 counts remain separate.
+
+Matching Core193 Swift libraries/bindings and full arm64 Mac, iOS simulator and generic iOS device Debug builds pass. Eleven Swift/API cases exercise exact Unicode/UTF-16 text, signed cents, duplicate/orphan routing and actual generated reads/admission flags. Owned-demo Mac journeys at `eec5c432` verify one-cent save/cold reopen/re-edit, cancellation, confirmed removal and restoration as a new version; [images/video](https://github.com/EnzoTironi/zoen-native/pull/66#issuecomment-6130391154) retain that scope.
+
+Physical iOS, Release Keychain/file protection, actual IME/undo/selection/viewport behavior, reader/revocation UI and independent-device convergence remain open. Next workflows include distinct members editing separate/overlapping blocks, offline reconnect, approve/deny/undo of an agent suggestion, revocation, unchanged/failed refresh and nested-page moves. The [product contract](../product/live-pages.md), [HIG matrix](../product/hig-compliance.md) and [roadmap](../roadmap-status.md) retain their separate acceptance gates. [History](../history/roadmap-2026-10-12-before-consolidation.md) preserves earlier failures and results.

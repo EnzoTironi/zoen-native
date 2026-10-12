@@ -1,5 +1,6 @@
 import SwiftUI
 import ImageIO
+import QuartzCore
 #if canImport(UIKit)
 import UIKit
 #elseif canImport(AppKit)
@@ -198,6 +199,141 @@ enum HandDrawnLoopCache {
     }
 }
 
+@MainActor
+private final class AvatarLoopPlayback {
+    private static let animationKey = "zoen.avatar.loop"
+    private let layer: CALayer
+    private var assetID: String?
+    private var frames: [CGImage] = []
+    private var paused = true
+    private var attached = false
+
+    init(layer: CALayer) {
+        self.layer = layer
+        layer.contentsGravity = .resizeAspectFill
+        layer.masksToBounds = true
+    }
+
+    func update(assetID: String, frames: [CGImage], paused: Bool) {
+        if self.assetID != assetID {
+            layer.removeAnimation(forKey: Self.animationKey)
+            self.assetID = assetID
+            self.frames = frames
+            setContents(frames.first)
+        }
+        self.paused = paused
+        reconcile()
+    }
+
+    func setAttached(_ attached: Bool) {
+        self.attached = attached
+        reconcile()
+    }
+
+    private func reconcile() {
+        let running = layer.animation(forKey: Self.animationKey) != nil
+        if attached && !paused && frames.count > 1 {
+            guard !running else { return }
+            let animation = CAKeyframeAnimation(keyPath: "contents")
+            animation.values = frames.map { $0 as Any }
+            animation.keyTimes = frames.indices.map { NSNumber(value: Double($0) / Double(frames.count)) }
+            animation.calculationMode = .discrete
+            animation.duration = Double(frames.count) / 10
+            animation.repeatCount = .infinity
+            layer.add(animation, forKey: Self.animationKey)
+        } else if running {
+            let visibleFrame = layer.presentation()?.contents ?? layer.contents
+            layer.removeAnimation(forKey: Self.animationKey)
+            setContents(visibleFrame)
+        }
+    }
+
+    private func setContents(_ contents: Any?) {
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        layer.contents = contents
+        CATransaction.commit()
+    }
+}
+
+#if os(macOS)
+private typealias AvatarPlatformView = NSView
+#else
+private typealias AvatarPlatformView = UIView
+#endif
+
+@MainActor
+private final class NativeAvatarLoopView: AvatarPlatformView {
+    private var playback: AvatarLoopPlayback?
+
+    func update(assetID: String, frames: [CGImage], paused: Bool) {
+        if playback == nil {
+            #if os(macOS)
+            wantsLayer = true
+            let avatarLayer = CALayer()
+            layer = avatarLayer
+            #else
+            let avatarLayer = layer
+            #endif
+            playback = AvatarLoopPlayback(layer: avatarLayer)
+        }
+        playback?.update(assetID: assetID, frames: frames, paused: paused)
+        playback?.setAttached(window != nil)
+    }
+
+    func stop() { playback?.setAttached(false) }
+
+    #if os(macOS)
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        playback?.setAttached(window != nil)
+    }
+    #else
+    override func didMoveToWindow() {
+        super.didMoveToWindow()
+        playback?.setAttached(window != nil)
+    }
+    #endif
+}
+
+#if os(macOS)
+private struct NativeAvatarLoop: NSViewRepresentable {
+    let assetID: String
+    let frames: [CGImage]
+    let paused: Bool
+
+    func makeNSView(context: Context) -> NativeAvatarLoopView {
+        let view = NativeAvatarLoopView(frame: .zero)
+        view.update(assetID: assetID, frames: frames, paused: paused)
+        return view
+    }
+
+    func updateNSView(_ view: NativeAvatarLoopView, context: Context) {
+        view.update(assetID: assetID, frames: frames, paused: paused)
+    }
+
+    static func dismantleNSView(_ view: NativeAvatarLoopView, coordinator: Void) { view.stop() }
+}
+#else
+private struct NativeAvatarLoop: UIViewRepresentable {
+    let assetID: String
+    let frames: [CGImage]
+    let paused: Bool
+
+    func makeUIView(context: Context) -> NativeAvatarLoopView {
+        let view = NativeAvatarLoopView(frame: .zero)
+        view.update(assetID: assetID, frames: frames, paused: paused)
+        return view
+    }
+
+    func updateUIView(_ view: NativeAvatarLoopView, context: Context) {
+        view.update(assetID: assetID, frames: frames, paused: paused)
+    }
+
+    static func dismantleUIView(_ view: NativeAvatarLoopView, coordinator: Void) { view.stop() }
+}
+#endif
+
 /// Still in lists; animated WebP loop when large (>= 56 pt) and Reduce Motion is off.
 struct HandDrawnAvatarView: View {
     @Environment(\.ambientPaused) private var ambientPaused
@@ -220,10 +356,7 @@ struct HandDrawnAvatarView: View {
     @ViewBuilder private var content: some View {
         let frames = wantsLoop ? HandDrawnLoopCache.frames(for: asset) : []
         if frames.count > 1 {
-            TimelineView(.animation(minimumInterval: 0.1, paused: ambientPaused)) { ctx in
-                let i = Int(ctx.date.timeIntervalSinceReferenceDate * 10) % frames.count
-                Image(decorative: frames[i], scale: 1).resizable().interpolation(.high).scaledToFill()
-            }
+            NativeAvatarLoop(assetID: asset.id, frames: frames, paused: ambientPaused)
         } else if let img = HandDrawnAvatarAsset.stillImage(for: asset) {
             img.resizable().interpolation(.high).scaledToFill()
         } else {

@@ -6339,18 +6339,18 @@
         }
       }
     },
-    "Spaces in common": {
+    "Chats in common": {
       "localizations": {
         "pt-BR": {
           "stringUnit": {
             "state": "translated",
-            "value": "Espaços em comum"
+            "value": "Conversas em comum"
           }
         },
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Spaces in common"
+            "value": "Chats in common"
           }
         }
       }
@@ -8191,6 +8191,496 @@
           "stringUnit": {
             "state": "translated",
             "value": "%lld itens · %@"
+          }
+        }
+      }
+    },
+    "Unread messages": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Mensagens não lidas"
+          }
+        }
+      }
+    },
+    "1 new message": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "1 nova mensagem"
+          }
+        }
+      }
+    },
+    "%lld new messages": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld novas mensagens"
+          }
+        }
+      }
+    },
+    "Jumps to the latest message": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Vai para a mensagem mais recente"
+          }
+        }
+      }
+    },
+    "All chats": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Todas as conversas"
+          }
+        }
+      }
+    },
+    "Direct chats": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Conversas diretas"
+          }
+        }
+      }
+    },
+    "Groups": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Grupos"
+          }
+        }
+      }
+    },
+    "Filter chats": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Filtrar conversas"
+          }
+        }
+      }
+    },
+    "No chats in this filter": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Nenhuma conversa neste filtro"
+          }
+        }
+      }
+    },
+    "Community name": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Nome da comunidade"
+          }
+        }
+      }
+    },
+    "Join a chat": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Entrar em uma conversa"
+          }
+        }
+      }
+    },
+    "A conversation for a club or neighbourhood, alongside your other chats.": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Uma conversa para um clube ou bairro, junto das suas outras conversas."
+          }
+        }
+      }
+    },
+    "Chat": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Conversa"
+          }
+        }
+      }
+    },
+    "New chat": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Nova conversa"
+          }
+        }
+      }
+    },
+    "Cards": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Cartões"
+          }
+        }
+      }
+    },
+    "List": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Lista"
+          }
+        }
+      }
+    },
+    "No approval requests here yet": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Nenhum pedido de aprovação por aqui ainda"
+          }
+        }
+      }
+    },
+    "Requests appear here when your agents need a decision. Use List for mentions, tasks, and past requests.": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Os pedidos aparecem aqui quando seus agentes precisam de uma decisão. Use Lista para ver menções, tarefas e pedidos anteriores."
+          }
+        }
+      }
+    },
+    "View mentions, tasks, and approval history": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Veja menções, tarefas e o histórico de aprovações"
+          }
+        }
+      }
+    },
+    "Copy any text you want to keep first. Discarding opens the current page and keeps its saved versions.": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Copie primeiro o texto que deseja manter. Descartar abre a página atual e preserva as versões salvas."
+          }
+        }
+      }
+    },
+    "Copy draft text": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Copiar texto do rascunho"
+          }
+        }
+      }
+    },
+    "Could not confirm restoration. Check the current page.": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Não foi possível confirmar a restauração. Confira a página atual."
+          }
+        }
+      }
+    },
+    "Could not unlock the page draft on this device.": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Não foi possível desbloquear o rascunho da página neste dispositivo."
+          }
+        }
+      }
+    },
+    "Couldn't save": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Não foi possível salvar"
+          }
+        }
+      }
+    },
+    "Discard draft": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Descartar rascunho"
+          }
+        }
+      }
+    },
+    "Discard this draft?": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Descartar este rascunho?"
+          }
+        }
+      }
+    },
+    "Draft text copied.": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Texto do rascunho copiado."
+          }
+        }
+      }
+    },
+    "Keep a copy of the encrypted draft file first. Discarding removes only this unreadable draft and keeps the current page and its saved versions.": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Guarde primeiro uma cópia do arquivo criptografado do rascunho. Descartar remove apenas este rascunho ilegível e preserva a página atual e suas versões salvas."
+          }
+        }
+      }
+    },
+    "Keep draft file": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Guardar arquivo do rascunho"
+          }
+        }
+      }
+    },
+    "Read only": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Somente leitura"
+          }
+        }
+      }
+    },
+    "Restoration is waiting to sync.": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "A restauração está aguardando a sincronização."
+          }
+        }
+      }
+    },
+    "Saved on this device": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Salvo neste dispositivo"
+          }
+        }
+      }
+    },
+    "The page draft could not be read. Your saved versions are still available.": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Não foi possível ler o rascunho da página. As versões salvas continuam disponíveis."
+          }
+        }
+      }
+    },
+    "This page is too large to save on this device.": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Esta página é grande demais para salvar neste dispositivo."
+          }
+        }
+      }
+    },
+    "Try again": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tentar novamente"
+          }
+        }
+      }
+    },
+    "Enter a valid amount with up to two decimal places.": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Digite um valor válido com até duas casas decimais."
+          }
+        }
+      }
+    },
+    "Cost cannot be negative.": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "O custo não pode ser negativo."
+          }
+        }
+      }
+    },
+    "Restoring deletes nothing: it creates a new version equal to the chosen one.": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Restaurar não apaga nada: cria uma versão nova igual à escolhida."
+          }
+        }
+      }
+    },
+    "over the %@ cap": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "acima do limite de %@"
+          }
+        }
+      }
+    },
+    "total unavailable": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "total indisponível"
+          }
+        }
+      }
+    },
+    "within the %@ cap": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "dentro do limite de %@"
+          }
+        }
+      }
+    },
+    "Waiting for page content": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Aguardando o conteúdo da página"
+          }
+        }
+      }
+    },
+    "Couldn't open this page": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Não foi possível abrir esta página"
+          }
+        }
+      }
+    },
+    "Not shared yet · %@": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ainda não compartilhado · %@"
+          }
+        }
+      }
+    },
+    "Add item to %@": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Adicionar item a %@"
+          }
+        }
+      }
+    },
+    "within the cap": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "dentro do limite"
+          }
+        }
+      }
+    },
+    "Draft on this device": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Rascunho neste dispositivo"
+          }
+        }
+      }
+    },
+    "Image": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Imagem"
+          }
+        }
+      }
+    },
+    "v%u · %@ · %@": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "v%u · %@ · %@"
           }
         }
       }

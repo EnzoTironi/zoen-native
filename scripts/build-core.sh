@@ -18,13 +18,23 @@ PROFILE="${PROFILE:-release}"
 DIR="$PROFILE"; [[ "$PROFILE" == "dev" ]] && DIR="debug"
 export IPHONEOS_DEPLOYMENT_TARGET=26.0
 # Não exporte MACOSX_DEPLOYMENT_TARGET: no Xcode 27/rustc 1.95 isso gera dylibs de
-# proc-macro do host inválidas ("mis-aligned LINKEDIT"). O mínimo padrão do macOS linka bem.
+# proc-macro do host inválidas ("mis-aligned LINKEDIT"). Aplique o mínimo do app
+# às dependências C/C++ apenas na compilação do target macOS abaixo.
 unset MACOSX_DEPLOYMENT_TARGET
 
 TARGETS=(aarch64-apple-ios aarch64-apple-ios-sim aarch64-apple-darwin)
 for t in "${TARGETS[@]}"; do
   echo "▸ cargo build roda-ffi ($PROFILE, $t)"
-  cargo build -q -p roda-ffi --profile "$PROFILE" --target "$t"
+  if [[ "$t" == "aarch64-apple-darwin" ]]; then
+    zoen_mac_cflags="$(printenv CFLAGS_aarch64-apple-darwin || true)"
+    zoen_mac_cxxflags="$(printenv CXXFLAGS_aarch64-apple-darwin || true)"
+    zoen_mac_cflags="${zoen_mac_cflags:-${CFLAGS_aarch64_apple_darwin:-${CFLAGS:-}}} -mmacosx-version-min=26.0"
+    zoen_mac_cxxflags="${zoen_mac_cxxflags:-${CXXFLAGS_aarch64_apple_darwin:-${CXXFLAGS:-}}} -mmacosx-version-min=26.0"
+    env "CFLAGS_${t}=$zoen_mac_cflags" "CXXFLAGS_${t}=$zoen_mac_cxxflags" \
+      cargo build -q -p roda-ffi --profile "$PROFILE" --target "$t"
+  else
+    cargo build -q -p roda-ffi --profile "$PROFILE" --target "$t"
+  fi
 done
 
 OUT=build/bindings

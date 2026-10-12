@@ -1,8 +1,61 @@
 import SwiftUI
 import RodaCore
 
-/// Your chats, pinned first, then by recency. No filters, headers or tags: the avatar says
-/// what kind of chat it is.
+enum ChatInboxFilter: String, CaseIterable, Identifiable {
+    case all, direct, groups, communities
+    var id: Self { self }
+
+    var title: String {
+        switch self {
+        case .all: String(localized: "All chats")
+        case .direct: String(localized: "Direct chats")
+        case .groups: String(localized: "Groups")
+        case .communities: String(localized: "Communities")
+        }
+    }
+
+    func includes(_ space: SpaceSummary) -> Bool {
+        switch self {
+        case .all: true
+        case .direct: space.kind == .direct
+        case .groups: space.kind == .group
+        case .communities: space.kind == .community
+        }
+    }
+}
+
+struct ChatInboxFilterMenu: View {
+    @Environment(AppModel.self) private var model
+    var showsLabel = true
+
+    var body: some View {
+        @Bindable var model = model
+        Menu {
+            Picker("Filter chats", selection: $model.chatFilter) {
+                ForEach(ChatInboxFilter.allCases) { filter in
+                    Text(filter.title).tag(filter)
+                        .accessibilityIdentifier("chat-filter-\(filter.rawValue)")
+                }
+            }
+        } label: {
+            HStack(spacing: 6) {
+                Image(systemName: "line.3.horizontal.decrease")
+                if showsLabel { Text(model.chatFilter.title) }
+            }
+            .font(.subheadline.weight(.medium))
+            .foregroundStyle(model.chatFilter == .all ? Palette.textSecondary : Palette.action)
+            .frame(minWidth: 28, minHeight: showsLabel ? 44 : 28)
+        }
+        #if os(macOS)
+        .menuStyle(.borderlessButton)
+        #endif
+        .accessibilityLabel("Filter chats")
+        .accessibilityValue(model.chatFilter.title)
+        .accessibilityIdentifier("chat-filter")
+    }
+}
+
+/// Every conversation shares one inbox, pinned first and then by recency.
 struct ConversationsList: View {
     @Environment(AppModel.self) private var model
     var query: String = ""
@@ -11,8 +64,9 @@ struct ConversationsList: View {
 
     private var filtered: [SpaceSummary] {
         let q = query.trimmingCharacters(in: .whitespaces).folding(options: [.caseInsensitive, .diacriticInsensitive], locale: .current)
-        guard !q.isEmpty else { return model.orderedSpaces }
-        return model.orderedSpaces.filter { s in
+        let inbox = model.orderedSpaces.filter { model.chatFilter.includes($0) }
+        guard !q.isEmpty else { return inbox }
+        return inbox.filter { s in
             ([s.title, s.lastPreview] + s.members.map(\.name)).joined(separator: " ")
                 .folding(options: [.caseInsensitive, .diacriticInsensitive], locale: .current)
                 .contains(q)
@@ -39,6 +93,8 @@ struct ConversationsList: View {
             }
             if filtered.isEmpty && !query.isEmpty {
                 InkEmptyState(pose: .map, title: String(localized: "Nothing for “\(query)”"))
+            } else if filtered.isEmpty && model.chatFilter != .all {
+                InkEmptyState(pose: .map, title: String(localized: "No chats in this filter"))
             }
         }
     }
@@ -191,6 +247,8 @@ struct ConversationsScreen: View {
                         HomeStrip()
                             .transition(.opacity.combined(with: .move(edge: .top)))
                     }
+                    ChatInboxFilterMenu()
+                        .padding(.horizontal, 20)
                     ConversationsList(query: model.chatQuery) { id in model.push(.space(id)) }
                 }
                 .padding(.top, searching ? 12 : 0)
@@ -227,7 +285,7 @@ struct HomeHeader: View {
             .accessibilityLabel("Zoen")
             .accessibilityAddTraits(.isHeader)
             Spacer()
-            if model.sync.account != nil {
+            if model.sync.account != nil || SyncModel.mode == .demo {
                 ConnectionDot()
                 Button {
                     Haptics.tap()

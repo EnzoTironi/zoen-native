@@ -126,7 +126,7 @@ struct FanMenu: View {
         // the arming touch's gesture, and its release is what sends the take.
         ZStack(alignment: .bottomTrailing) {
             ZoenIcon(.plus, size: 25)
-                .foregroundStyle(scheme == .dark ? Color(hex: "#10200A") : .white)
+                .foregroundStyle(ActionGlassForeground())
                 .rotationEffect(.degrees(isOpen ? 45 : 0))
                 .frame(width: triggerSize, height: triggerSize)
                 .glassEffect(.regular.tint(scheme == .dark ? Palette.action : Color(hex: "#1D2418").opacity(0.92)).interactive(), in: .circle)
@@ -317,7 +317,7 @@ struct FanMenu: View {
                 if let g = ZoenGlyph.radial(item.id) { ZoenIcon(g, selected: on, size: 22) }
                 else { Image(systemName: item.symbol).font(.system(size: 19, weight: on ? .semibold : .medium)) }
             }
-                .foregroundStyle(on ? Color.white : Palette.textPrimary)
+                .foregroundStyle(on ? AnyShapeStyle(ActionGlassForeground()) : AnyShapeStyle(Palette.textPrimary))
                 .frame(width: itemSize, height: itemSize)
                 // Same Liquid Glass as the bottom bar; the item under the finger fills with moss green.
                 .glassEffect(on ? .regular.tint(Palette.action).interactive() : .regular.interactive(), in: .circle)

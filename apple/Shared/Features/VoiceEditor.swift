@@ -559,9 +559,9 @@ struct VoiceReviewSheet: View {
                 }
             } label: {
                 Group {
-                    if model.rendering { ProgressView().tint(.white) } else { ZoenIcon(.send, size: 21) }
+                    if model.rendering { ProgressView().tint(ActionGlassForeground()) } else { ZoenIcon(.send, size: 21) }
                 }
-                .foregroundStyle(.white)
+                .foregroundStyle(ActionGlassForeground())
                 .frame(width: 48, height: 48)
             }
             .glassEffect(.regular.tint(Palette.action).interactive(), in: .circle)

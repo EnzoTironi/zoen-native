@@ -580,7 +580,7 @@ struct MessagePill: View {
         } label: {
             Text(AppLocale.pick("Mensagem", "Message"))
                 .font(.system(size: compact ? 12 : 14, weight: .bold))
-                .foregroundStyle(.white)
+                .foregroundStyle(Palette.onAction)
                 .padding(.horizontal, compact ? 10 : 16)
                 .frame(height: compact ? 24 : 32)
                 .background(Palette.action, in: .capsule)
@@ -734,13 +734,15 @@ struct StoreDetailView: View {
                     Group {
                         if l.isAgent {
                             Button { Haptics.tap(); model.messageAgent(l) } label: {
-                                Label { Text(AppLocale.pick("Mensagem", "Message")) } icon: { ZoenIcon(.chats, size: 19) }.frame(maxWidth: .infinity)
+                                Label { Text(AppLocale.pick("Mensagem", "Message")) } icon: { ZoenIcon(.chats, size: 19) }
+                                    .foregroundStyle(ActionGlassForeground()).frame(maxWidth: .infinity)
                             }
                         } else {
                             let has = model.storeInstalled.contains(l.id)
                             Button { Haptics.tap(); model.installListing(l) } label: {
                                 Label { Text(has ? AppLocale.pick("Instalado", "Installed") : AppLocale.pick("Instalar", "Install")) }
-                                      icon: { ZoenIcon(has ? .check : .download, size: 19) }.frame(maxWidth: .infinity)
+                                      icon: { ZoenIcon(has ? .check : .download, size: 19) }
+                                    .foregroundStyle(ActionGlassForeground()).frame(maxWidth: .infinity)
                             }
                         }
                     }

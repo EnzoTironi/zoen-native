@@ -872,7 +872,7 @@ struct PhotoBackgroundEditor: View {
                         .fontWeight(.semibold)
                         .padding(.horizontal, 14).padding(.vertical, 8)
                         .glassEffect(.regular.tint(Palette.action).interactive(), in: .capsule)
-                        .foregroundStyle(.white)
+                        .foregroundStyle(ActionGlassForeground())
                         .accessibilityIdentifier("bg-editor-set")
                 }
                 .foregroundStyle(Palette.textPrimary)

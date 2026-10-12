@@ -47,6 +47,8 @@ struct EditableTileStrip<Item: Identifiable, Tile: View>: View where Item.ID == 
     @State private var confirming = false
     /// Anchored on the first tile so late-loading tiles don't nudge the strip sideways.
     @State private var leadingId: String?
+    @FocusState private var focusedTile: String?
+    @State private var openedTile: String?
 
     private var step: CGFloat { tileWidth + spacing }
     private var shown: [Item] {
@@ -57,20 +59,27 @@ struct EditableTileStrip<Item: Identifiable, Tile: View>: View where Item.ID == 
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            if editing { editBar.transition(.move(edge: .top).combined(with: .opacity)) }
+            if editing { editBar.transition(reduceMotion ? .opacity : .move(edge: .top).combined(with: .opacity)) }
             strip
         }
-        .animation(.spring(response: 0.38, dampingFraction: 0.82), value: editing)
+        .animation(reduceMotion ? nil : .spring(response: 0.38, dampingFraction: 0.82), value: editing)
         .confirmationDialog(pendingRemove.map(removeTitle) ?? "", isPresented: $confirming, titleVisibility: .visible, presenting: pendingRemove) { item in
             Button(role: .destructive) {
                 Haptics.remove()
-                withAnimation(.spring(response: 0.42, dampingFraction: 0.8)) { remove(item) }
+                withAnimation(reduceMotion ? nil : .spring(response: 0.42, dampingFraction: 0.8)) { remove(item) }
                 if items.count <= 1 { editing = false }
             } label: { Text(removeAction) }
             .accessibilityIdentifier("\(idPrefix)-remove-confirm")
             Button(role: .cancel) {} label: { Text("Cancel") }
         } message: { _ in Text(removeMessage) }
-        .onChange(of: items.map(\.id)) { _, ids in if ids.isEmpty { editing = false } }
+        .onChange(of: items.map(\.id)) { _, ids in
+            if ids.isEmpty { editing = false }
+            if let focusedTile, !ids.contains(focusedTile) { self.focusedTile = ids.first }
+        }
+        #if os(macOS)
+        .onChange(of: model.inspectorItem) { _, id in if id == nil { restoreTileFocus() } }
+        .onChange(of: model.appSheet?.id) { _, id in if id == nil { restoreTileFocus() } }
+        #endif
     }
 
     private var editBar: some View {
@@ -84,9 +93,9 @@ struct EditableTileStrip<Item: Identifiable, Tile: View>: View where Item.ID == 
                 editing = false
             } label: {
                 Text("Done editing").font(.subheadline.weight(.semibold))
-                    .padding(.horizontal, 16).frame(height: 34)
+                    .padding(.horizontal, 16).frame(minHeight: 44)
                     .glassEffect(.regular.tint(Palette.action.opacity(0.9)).interactive(), in: .capsule)
-                    .foregroundStyle(.white)
+                    .foregroundStyle(ActionGlassForeground())
             }
             .buttonStyle(.plain)
             .accessibilityIdentifier("\(idPrefix)-done")
@@ -101,14 +110,14 @@ struct EditableTileStrip<Item: Identifiable, Tile: View>: View where Item.ID == 
                     ForEach(Array(shown.enumerated()), id: \.element.id) { i, item in
                         cell(item, index: i)
                             .id(item.id)
-                            .transition(.scale(scale: 0.4).combined(with: .opacity))
+                            .transition(reduceMotion ? .opacity : .scale(scale: 0.4).combined(with: .opacity))
                     }
                 }
                 .scrollTargetLayout()
                 .padding(.horizontal, margin)
                 // Room for the minus badges that sit on the tiles' top-left corners.
                 .padding(.top, editing ? 10 : 0)
-                .animation(.spring(response: 0.34, dampingFraction: 0.78), value: shown.map(\.id))
+                .animation(reduceMotion ? nil : .spring(response: 0.34, dampingFraction: 0.78), value: shown.map(\.id))
             }
             .scrollPosition(id: $leadingId, anchor: .leading)
             .scrollClipDisabled()
@@ -122,11 +131,11 @@ struct EditableTileStrip<Item: Identifiable, Tile: View>: View where Item.ID == 
             .task(id: items.count) {
                 guard scrollToEnd, items.count > 2 else { return }
                 try? await Task.sleep(for: .milliseconds(700))
-                withAnimation(.snappy) { proxy.scrollTo(items.last?.id, anchor: .trailing) }
+                withAnimation(reduceMotion ? nil : .snappy) { proxy.scrollTo(items.last?.id, anchor: .trailing) }
             }
             .onChange(of: order) { _, o in
                 // Keep the lifted tile in view as it travels.
-                if let d = dragging, o.firstIndex(of: d) != nil { withAnimation(.snappy) { proxy.scrollTo(d) } }
+                if let d = dragging, o.firstIndex(of: d) != nil { withAnimation(reduceMotion ? nil : .snappy) { proxy.scrollTo(d) } }
             }
         }
     }
@@ -135,17 +144,37 @@ struct EditableTileStrip<Item: Identifiable, Tile: View>: View where Item.ID == 
     private func cell(_ item: Item, index i: Int) -> some View {
         let lifted = dragging == item.id
         let name = title(item)
-        tile(item)
+        Button {
+            if !editing { tapOpen(item) }
+        } label: {
+            tile(item)
+        }
+            .buttonStyle(.plain)
+            #if os(macOS)
+            .focused($focusedTile, equals: item.id)
+            #endif
             .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { [frames] in frames.rects[item.id] = $0 }
-            .scaleEffect(lifted ? 1.07 : (pressed == item.id && !editing ? 0.96 : 1))
+            .scaleEffect(reduceMotion ? 1 : (lifted ? 1.07 : (pressed == item.id && !editing ? 0.96 : 1)))
+            .contextMenu {
+                Button("Open") { editing = false; tapOpen(item) }
+                Button("Edit") { editing = true }
+                Button("Move left") { nudge(item, by: -1) }.disabled(i == 0)
+                Button("Move right") { nudge(item, by: 1) }.disabled(i == shown.count - 1)
+                Button(role: .destructive) { confirmRemoval(item) } label: { Text(removeAction) }
+            }
+            .accessibilityIdentifier("\(idPrefix)-\(name)")
+            .accessibilityActions {
+                Button("Edit") { editing = true }
+                if i > 0 { Button("Move left") { nudge(item, by: -1) } }
+                if i < shown.count - 1 { Button("Move right") { nudge(item, by: 1) } }
+                Button(role: .destructive) { confirmRemoval(item) } label: { Text(removeAction) }
+            }
             .shadow(color: .black.opacity(lifted ? 0.22 : 0), radius: lifted ? 18 : 0, y: lifted ? 10 : 0)
             .modifier(Jiggle(on: editing && !lifted && !reduceMotion, seed: Self.seed(item.id)))
             .overlay(alignment: .topLeading) {
                 if editing && !lifted {
                     Button {
-                        Haptics.warning()
-                        pendingRemove = item
-                        confirming = true
+                        confirmRemoval(item)
                     } label: {
                         Image(systemName: "minus")
                             .font(.system(size: 12, weight: .heavy))
@@ -154,49 +183,53 @@ struct EditableTileStrip<Item: Identifiable, Tile: View>: View where Item.ID == 
                             .background(.regularMaterial, in: .circle)
                             .overlay(Circle().strokeBorder(.black.opacity(0.08), lineWidth: 0.5))
                             .shadow(color: .black.opacity(0.18), radius: 3, y: 1)
-                            .contentShape(.circle.inset(by: -8))
+                            .frame(width: 44, height: 44)
+                            .contentShape(.circle)
                     }
                     .buttonStyle(.plain)
-                    .offset(x: -9, y: -9)
-                    .transition(.scale(scale: 0.2).combined(with: .opacity))
+                    .offset(x: -18, y: -18)
+                    .transition(reduceMotion ? .opacity : .scale(scale: 0.2).combined(with: .opacity))
                     .accessibilityLabel(Text("Remove \(name)"))
                     .accessibilityIdentifier("\(idPrefix)-remove-\(name)")
                 }
             }
             .offset(x: lifted ? dragX : 0)
             .zIndex(lifted ? 10 : 0)
-            .animation(.spring(response: 0.3, dampingFraction: 0.75), value: lifted)
+            .animation(reduceMotion ? nil : .spring(response: 0.3, dampingFraction: 0.75), value: lifted)
             .contentShape(.rect(cornerRadius: 24))
             // The tile is "on" the flipping card while its mini-app is open.
             .opacity(model.appFlip?.sourceKey == "\(idPrefix)-\(item.id)" ? 0 : 1)
-            .onTapGesture {
-                if editing { return }
-                tapOpen(item)
-            }
             .onLongPressGesture(minimumDuration: 0.45) {
                 guard !editing else { return }
                 Haptics.open()
                 editing = true
             } onPressingChanged: { p in
-                withAnimation(.spring(duration: 0.25, bounce: 0.3)) { pressed = p ? item.id : nil }
+                withAnimation(reduceMotion ? nil : .spring(duration: 0.25, bounce: 0.3)) { pressed = p ? item.id : nil }
             }
             .simultaneousGesture(reorder(item), isEnabled: editing)
-            .accessibilityElement(children: .contain)
-            .accessibilityAddTraits(.isButton)
-            .accessibilityLabel(Text(name))
-            .accessibilityIdentifier("\(idPrefix)-\(name)")
-            .accessibilityAction { if !editing { tapOpen(item) } }
-            .accessibilityAction(named: Text("Edit")) { editing = true }
-            .accessibilityAction(named: Text("Move left")) { nudge(item, by: -1) }
-            .accessibilityAction(named: Text("Move right")) { nudge(item, by: 1) }
+    }
+
+    private func confirmRemoval(_ item: Item) {
+        Haptics.warning()
+        pendingRemove = item
+        confirming = true
     }
 
     private func tapOpen(_ item: Item) {
+        #if os(macOS)
+        openedTile = item.id
+        #endif
         if let openFrom, let frame = frames.rects[item.id] {
             openFrom(item, frame, AnyView(tile(item)))
         } else {
             open(item)
         }
+    }
+
+    private func restoreTileFocus() {
+        guard let id = openedTile else { return }
+        focusedTile = items.contains(where: { $0.id == id }) ? id : items.first?.id
+        openedTile = nil
     }
 
     /// Hold a beat, then drag: a quick swipe still scrolls the strip.
@@ -226,7 +259,7 @@ struct EditableTileStrip<Item: Identifiable, Tile: View>: View where Item.ID == 
                 guard dragging != nil else { return }
                 let final = order
                 Haptics.drop()
-                withAnimation(.spring(response: 0.36, dampingFraction: 0.78)) {
+                withAnimation(reduceMotion ? nil : .spring(response: 0.36, dampingFraction: 0.78)) {
                     dragX = 0
                     dragging = nil
                     if final != items.map(\.id) { move(final) }
@@ -246,7 +279,7 @@ struct EditableTileStrip<Item: Identifiable, Tile: View>: View where Item.ID == 
         let j = min(max(i + d, 0), ids.count - 1)
         guard i != j else { return }
         ids.swapAt(i, j)
-        withAnimation(.spring(response: 0.36, dampingFraction: 0.78)) { move(ids) }
+        withAnimation(reduceMotion ? nil : .spring(response: 0.36, dampingFraction: 0.78)) { move(ids) }
     }
 }
 

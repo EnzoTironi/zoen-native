@@ -57,7 +57,8 @@ struct RequestReviewView: View {
                             Button {
                                 model.approve(r)
                             } label: {
-                                Text("Approve").font(.headline).frame(maxWidth: .infinity, minHeight: 34)
+                                Text("Approve").font(.headline).foregroundStyle(ActionGlassForeground())
+                                    .frame(maxWidth: .infinity, minHeight: 34)
                             }
                             .buttonStyle(.glassProminent)
                             .disabled(r.status == .stale)
