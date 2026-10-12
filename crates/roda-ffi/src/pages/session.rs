@@ -164,6 +164,7 @@ pub(crate) struct PageSession {
 pub(super) struct SessionRead {
     pub tag: DocumentTag,
     pub view: DocumentView,
+    pub version: u32,
     pub content_hash: String,
     pub edit_context: String,
     pub unsaved: bool,
@@ -860,6 +861,12 @@ impl PageSession {
         Ok(SessionRead {
             tag: self.tag.clone(),
             view,
+            version: self
+                .plan_history
+                .as_ref()
+                .map_or(it.versions.len() as u32, |history| {
+                    history.metadata.accepted_current.unwrap_or(0)
+                }),
             content_hash,
             edit_context,
             unsaved,

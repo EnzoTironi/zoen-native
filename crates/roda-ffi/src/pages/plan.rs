@@ -18,6 +18,9 @@ use sha2::{Digest, Sha256};
 use crate::engine::{Engine, R};
 use crate::CoreError;
 
+mod api;
+pub use api::{PlanPageBlockDto, PlanPageContentDto, PlanPageDto, PlanProseKindDto};
+
 const MANIFEST_SCHEMA: &str = "plan_v1";
 
 pub(crate) struct PlanSnapshot {
