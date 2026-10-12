@@ -2,7 +2,7 @@
 
 The [README](../README.md) introduces the product. [Roadmap status](roadmap-status.md) is the dated source of truth for implementation, current PR versions, verification and remaining billion-user gates. Read [development setup](dev/setup.md) before running a current-client journey.
 
-The current baseline includes merged native/web consolidation PR 67, private confirmed Plan history PR 68 and native keyboard controls PR 69. The roadmap records their complete CI and source-composition evidence, the native motion follow-up and the separately reviewed 216-case backend unit. The [HIG matrix](product/hig-compliance.md) records actual native build, editor, keyboard and chat/thread journeys. Runtime capabilities retain their separate acceptance boundaries.
+The current verified product baseline is `ff5b519`: native/web consolidation PR 67, private confirmed Plan history PR 68, keyboard controls PR 69 and motion PR 71 are merged. The roadmap records complete CI, source composition and pending shared-main integration units. The [HIG matrix](product/hig-compliance.md) records actual native build, editor, keyboard, settings and chat/thread journeys. PR 70's hosted file-import failure remains open despite its passing FFI suite. Runtime capabilities retain their separate acceptance boundaries.
 
 | Document category | How to read it |
 | --- | --- |
@@ -41,6 +41,7 @@ Technical identifiers inherited from the old project name are tracked in the [Zo
 - [O app de iPhone no Mac, sem simulador](dev/iphone-no-mac.md)
 - [Zoen naming and compatibility](dev/naming.md)
 - [Development setup](dev/setup.md)
+- [Shared-main development workflow](dev/shared-main-workflow.md)
 - [Live Page session API and offline Plan admission](dev/live-page-session.md)
 
 ## Product and design
@@ -93,6 +94,7 @@ Technical identifiers inherited from the old project name are tracked in the [Zo
 ## Research snapshots
 
 - [Research: where Zoen agents run code and drive browsers](research/agent-sandbox.md)
+- [Codex and Grok Build runtime references](research/codex-grok-runtime.md)
 - [Análise crítica do Zoen pelas aulas de "How to Start a Startup" (CS183B, Stanford, 2014)](research/analise-critica-zoen.md)
 - [Apps virais para universitários e concurseiros no Brasil](research/apps-virais-estudantes-concurseiros.md)
 - [Apps virais para estudantes e "concurseiros" fora do Brasil (EUA, Índia, China, Coreia, Japão) + Brilliant como referência](research/apps-virais-estudantes-global.md)

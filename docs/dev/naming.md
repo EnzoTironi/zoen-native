@@ -16,4 +16,4 @@ The product, default agent, repository, application bundle and relay use Zoen. S
 
 Source/package naming can migrate without renaming cryptographic domains. Existing account data, signed history and published protocol compatibility need explicit preservation tests. The remaining legacy names in API/build documentation describe the current code until those changes are integrated.
 
-Backend and native work are being updated in parallel. Publish the migration on a dedicated branch, integrate the latest reviewed source first, then regenerate bindings and validate old-data/new-client journeys before merging it. Avoid moving another owner's files while their changes are uncommitted.
+Backend and native work are being updated in parallel on shared `main`. The Git coordinator integrates small verified migration units directly, with explicit file ownership. Regenerate bindings and validate old-data/new-client journeys together before publishing affected APIs. Avoid moving another owner's files while their changes are uncommitted; preserve cryptographic and persisted compatibility identifiers.

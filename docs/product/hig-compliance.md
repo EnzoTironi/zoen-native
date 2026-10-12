@@ -33,14 +33,25 @@ pending; the quote journey added one local demo reply. Videos are explicitly
 labeled screenshot walkthroughs. Core198 native packaging, physical iOS, Release,
 minimum-OS, assistive technology and the full workflow/settings matrix remain open.
 
-The motion follow-up at product source `47c90fb` passes three full arm64 Debug
+Merged [PR 71](https://github.com/EnzoTironi/zoen-native/pull/71), with motion product source `47c90fb`, passes three full arm64 Debug
 builds with Core193. Separate bounded Mac journeys verify the chat menu/quote jump,
 a local thread reply sent by Cmd-Return and retained after cold reopen, and
 Cards/List/Cards with task/approval filters and zero decisions. All 426 product and
 nine check inputs remain literal after composing with Main 69. Thread initiation
-still uses a swipe. Root changed no system preferences in this unit; the actual
-Reduce Motion/Transparency/Contrast matrix remains open. Its 28-second video uses
-eight unchanged actual captures and a separate provenance title.
+used a swipe in that unit. Its original 28-second video uses eight actual captures.
+A [separate settings unit](https://github.com/EnzoTironi/zoen-native/pull/71#issuecomment-6132977105)
+checks actual Reduce Motion, Reduce Transparency and Increase Contrast behavior,
+with four images and its own screenshot walkthrough; all temporary preferences
+were restored. These bounded checks retain their specific workflow scope.
+
+The current shared-main native unit composes reviewed Core216 libraries with the
+previous Swift ABI and passes three arm64 Debug builds. Native menu actions open
+the correct reply/thread through Tab/Space, and one actual VoiceOver action opens
+the correct thread. VoiceOver and Keyboard Navigation were restored off. An
+inline-reply Escape failure was retained and then corrected: the new build removes
+the reply bar while retaining composer focus. The attachment menu is visible;
+its native picker/review/send journey remains under verification. Complete
+assistive-technology, camera/Photos, physical iOS and Release acceptance remain open.
 
 ## Required evidence
 
@@ -54,11 +65,11 @@ case stays open; source-level corrections remain separate from runtime passes.
 | Area | Acceptance | Current boundary |
 | --- | --- | --- |
 | Window and navigation | System Mac window controls remain visible, usable and clear of content. Resize, fullscreen, split view and keyboard navigation retain one clear content hierarchy. Chats contains direct, group and community conversations. | Current Mac captures use the extended chat/inspector layout, one item header and shared themes. System close/minimize/fullscreen controls are exposed in the initial native AX state. Actual control activation, release resizing/fullscreen/split-view and focus journeys remain required. |
-| Controls and gestures | Use native buttons, menus and dialogs. Every gesture action has an accessible and keyboard alternative, including card editing, reorder and removal. | Request review headers, change events and actionable reply quotes now use native Buttons. Their bounded Mac Tab/Space journeys pass; Plan card opening and confirmed removal/restoration retain prior proof. Creating a reply still used the existing swipe gesture in the quote journey. A keyboard-only reply-creation alternative, full keyboard order and pin reorder/removal remain open. |
+| Controls and gestures | Use native buttons, menus and dialogs. Every gesture action has an accessible and keyboard alternative, including card editing, reorder and removal. | Request review headers, change events and quoted replies use native Buttons. Their bounded Mac Tab/Space journeys pass; Plan card opening and confirmed removal/restoration retain prior proof. The Core216 follow-up adds native Reply/Reply in thread menus and verifies keyboard initiation. Full keyboard order and pin reorder/removal journeys remain open. |
 | Target sizes | Prefer 44 × 44 pt controls on iOS/iPadOS and 28 × 28 pt on Mac; Apple's minima are 28 × 28 and 20 × 20 respectively. Evaluate actual hit regions, spacing and pointer/touch context. | The candidate gives removal and Done controls 44 pt hit heights, and Mac appearance controls 40 pt hit heights within the existing rail. All affected rendered targets and the remaining product controls still require measurement. A 44 pt rule must not be imposed indiscriminately on Mac. |
 | Typography and text enlargement | Use legible system styles, preserve hierarchy and support enlarged content without overlap or losing actions. Default/minimum sizes are 17/11 pt for iOS and 13/10 pt for Mac. | The candidate uses a stacked header and multiline title at accessibility text sizes and increases Mac badge text to 10 pt. Fixed native/editor fonts and the full iOS Dynamic Type/Mac enlargement journeys remain open. Mac does not support Dynamic Type; using its name in source is not proof of enlargement. |
-| Motion | Reduce Motion removes nonessential spatial animation. Necessary changes remain understandable with immediate updates or fades. Gesture tracking still follows the user. | The motion follow-up makes chat quote/search/follow scrolling immediate, removes reply/thread and composer spatial transitions, pauses typing dots, disables header/pinned insertion springs and uses opacity press feedback under Reduce Motion. Request-list/filter transitions follow the preference. The notification card stack and remaining product animation sites still require review. Actual Reduce Motion settings journeys remain open. |
-| Materials and themes | Liquid Glass belongs to navigation and controls; content uses appropriate standard surfaces. Light, dark and system appearances retain legibility. Respect Reduce Transparency and Increase Contrast. | Current Mac light/dark/light switching retains the shared palette, transparent chat overlays and typed Plan content. Contrast measurements, Reduce Transparency/Increase Contrast, system appearance and web preference behavior remain open. |
+| Motion | Reduce Motion removes nonessential spatial animation. Necessary changes remain understandable with immediate updates or fades. Gesture tracking still follows the user. | PR 71 removes nonessential spatial effects from chat, threads, composer, headers and request lists. Its separate actual settings journeys pass within their scope. The current notification card-stack correction suppresses spring/flip/spatial transitions and passes three Debug builds; its reduced-motion runtime journey and remaining product animation sites require verification. |
+| Materials and themes | Liquid Glass belongs to navigation and controls; content uses appropriate standard surfaces. Light, dark and system appearances retain legibility. Respect Reduce Transparency and Increase Contrast. | Current Mac light/dark/light and separate actual Reduce Transparency/Increase Contrast checks retain the shared palette, overlays and Plan content. Measured contrast ratios, system appearance and the full platform/web preference matrix remain open. |
 | Accessibility semantics | VoiceOver exposes meaningful labels, values, state and actions in a coherent order. Decorative art does not create duplicate controls. State is understandable without color. | Native request-review labels and a hidden decorative icon improve the control boundary. Full VoiceOver/Switch Control, duplicate agent/avatar announcement review and coherent complete keyboard order remain required; a button trait or a bounded Tab journey alone is insufficient. |
 | Focus and presentation | Opening a card moves focus into the presentation. Closing or Escape returns it appropriately. Modals retain usable dismiss and confirmation actions. | Current Mac history Escape dismisses only its sheet; subsequent Escape closes the Plan inspector. Creation-menu Escape, text-page history Escape and unsaved line-editor cancellation retain prior proof. The current request-review destination opens with Back focused, and Back restores focus to the originating list button. Change-event opening and quoted-message navigation pass by Tab/Space. Window-scoped Escape handling preserves sheets and marked-text composition in source; actual IME, every presentation and assistive-technology focus journeys remain open. |
 | Layout and localization | Safe areas, window edges, keyboard, long text and right-to-left layouts preserve reading and actions. Avoid obstructing messages with opaque navigation containers. | Earlier pin geometry and a 390 px browser case passed. Enlarged text, RTL, software keyboard and full platform size matrices remain open. |
