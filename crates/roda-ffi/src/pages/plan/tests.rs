@@ -6,6 +6,7 @@ use roda_proto::{Envelope, Sequenced};
 
 mod api;
 mod consumers;
+mod prefix;
 
 struct Fixture {
     engine: Engine,
