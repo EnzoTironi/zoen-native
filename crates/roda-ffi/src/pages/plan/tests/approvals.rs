@@ -600,7 +600,6 @@ fn exact_text_and_cents_select_the_first_duplicate_id_while_done_is_not_hashed()
             text: Some("Cafe\u{301}\r\n😀".into()),
             cost_cents: Some(-17),
             done: Some(true),
-            ..Default::default()
         },
     );
     let request = open(&mut fixture, &agent, &document);
