@@ -76,7 +76,7 @@ fun RichPageEditor(model: ZoenViewModel, state: AppState, item: ItemDetail, modi
             !draftReadable && draft == null -> unreadableDraft
             error is CoreException.Stale -> error.reason
             error is CoreException.Invalid -> error.reason
-            error is CoreException.Storage -> error.message
+            error is CoreException.Storage -> error.detail
             else -> error.message
         }
         if (error is CoreException.Stale) recoveryRequired = true

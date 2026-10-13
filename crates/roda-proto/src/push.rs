@@ -43,7 +43,7 @@ impl ApnsToken {
     pub fn parse(value: &str) -> Result<Self, PushInputError> {
         if value.is_empty()
             || value.len() > MAX_APNS_TOKEN_HEX_BYTES
-            || value.len() % 2 != 0
+            || !value.len().is_multiple_of(2)
             || !value.bytes().all(|byte| byte.is_ascii_hexdigit())
         {
             return Err(PushInputError::Token);
