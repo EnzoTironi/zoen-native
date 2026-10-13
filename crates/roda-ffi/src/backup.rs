@@ -6,6 +6,9 @@
 //! relay can count guesses but never learn or test the password), or by 64 digits only the
 //! person keeps. Restoring makes a new device key certified by the restored identity.
 
+#[cfg(unix)]
+use std::os::unix::fs::DirBuilderExt;
+
 use argon2::{Algorithm, Argon2, Params, Version};
 use chacha20poly1305::{
     aead::{Aead, KeyInit, Payload},
@@ -278,8 +281,40 @@ pub fn open_payload(k: &[u8; 32], identity: &str, sealed: &[u8]) -> R<(Header, V
     Ok((header, plain[12 + n..].to_vec()))
 }
 
-fn temp_path(tag: &str) -> std::path::PathBuf {
-    std::env::temp_dir().join(format!("zoen-{tag}-{}.db", hex::encode(random::<8>())))
+struct SnapshotDatabase {
+    path: std::path::PathBuf,
+}
+
+impl SnapshotDatabase {
+    fn new(database: &str, tag: &str) -> R<Self> {
+        // Android's process temp directory may be /data/local/tmp, outside the app sandbox.
+        let base = if database == ":memory:" {
+            std::env::temp_dir()
+        } else {
+            std::path::Path::new(database)
+                .parent()
+                .filter(|p| !p.as_os_str().is_empty())
+                .unwrap_or_else(|| std::path::Path::new("."))
+                .to_path_buf()
+        };
+        let directory = base.join(format!("zoen-{tag}-{}", hex::encode(random::<16>())));
+        let mut builder = std::fs::DirBuilder::new();
+        #[cfg(unix)]
+        builder.mode(0o700);
+        builder.create(&directory).map_err(storage)?;
+        Ok(Self {
+            path: directory.join("snapshot.db"),
+        })
+    }
+}
+
+impl Drop for SnapshotDatabase {
+    fn drop(&mut self) {
+        remove_db(&self.path);
+        if let Some(directory) = self.path.parent() {
+            let _ = std::fs::remove_dir(directory);
+        }
+    }
 }
 
 /// Removes a temp database and its WAL/SHM siblings.
@@ -296,7 +331,8 @@ impl Engine {
     /// The device database as a backup sees it: only [`KEEP_TABLES`], without this
     /// device's account, MLS bookkeeping or pending invites.
     pub(crate) fn backup_snapshot(&self) -> R<Vec<u8>> {
-        let path = temp_path("backup");
+        let scratch = SnapshotDatabase::new(&self.db_path, "backup")?;
+        let path = &scratch.path;
         let out = (|| -> R<Vec<u8>> {
             self.store
                 .conn()
@@ -305,7 +341,7 @@ impl Engine {
                     [path.to_str().ok_or_else(|| storage("temp path"))?],
                 )
                 .map_err(storage)?;
-            let c = rusqlite::Connection::open(&path).map_err(storage)?;
+            let c = rusqlite::Connection::open(path).map_err(storage)?;
             let names = |sql: &str| -> R<Vec<String>> {
                 let mut st = c.prepare(sql).map_err(storage)?;
                 let rows = st
@@ -332,14 +368,14 @@ impl Engine {
             }
             c.execute_batch(
                 "DELETE FROM meta WHERE key = 'account' OR key = 'relay_name' OR key LIKE 'backup.%'
-                    OR key LIKE 'mls.%' OR key LIKE 'invite:%';
+                    OR key LIKE 'mls.%' OR key LIKE 'invite:%' OR key LIKE 'page.draft.%';
                  VACUUM;",
             )
             .map_err(storage)?;
             drop(c);
-            std::fs::read(&path).map_err(storage)
+            std::fs::read(path).map_err(storage)
         })();
-        remove_db(&path);
+        drop(scratch);
         out
     }
 
@@ -369,9 +405,10 @@ impl Engine {
         if !self.is_empty() {
             self.wipe()?;
         }
-        let path = temp_path("restore");
+        let scratch = SnapshotDatabase::new(&self.db_path, "restore")?;
+        let path = &scratch.path;
         let res = (|| -> R<()> {
-            std::fs::write(&path, db).map_err(storage)?;
+            std::fs::write(path, db).map_err(storage)?;
             let conn = self.store.conn();
             conn.execute(
                 "ATTACH DATABASE ?1 AS bk",
@@ -416,7 +453,7 @@ impl Engine {
             let _ = conn.execute_batch("DETACH DATABASE bk");
             copy
         })();
-        remove_db(&path);
+        drop(scratch);
         res?;
         let device_secret = device.secret();
         let device_id = device.id();
@@ -443,5 +480,89 @@ impl Engine {
             )?;
         }
         Ok(device_secret)
+    }
+}
+
+#[cfg(test)]
+mod snapshot_tests {
+    use super::*;
+    #[cfg(unix)]
+    use std::os::unix::fs::PermissionsExt;
+
+    #[test]
+    fn plaintext_snapshot_stays_beside_the_database_in_a_private_directory() {
+        let database = SnapshotDatabase::new(":memory:", "fixture").unwrap();
+        let scratch = SnapshotDatabase::new(database.path.to_str().unwrap(), "backup").unwrap();
+        let directory = scratch.path.parent().unwrap().to_path_buf();
+        assert_eq!(directory.parent(), database.path.parent());
+        #[cfg(unix)]
+        assert_eq!(
+            std::fs::metadata(&directory).unwrap().permissions().mode() & 0o777,
+            0o700
+        );
+        for ext in ["", "-wal", "-shm", "-journal"] {
+            let mut path = scratch.path.as_os_str().to_owned();
+            path.push(ext);
+            std::fs::write(path, b"private plaintext").unwrap();
+        }
+        drop(scratch);
+        assert!(!directory.exists());
+    }
+
+    #[test]
+    fn successful_and_failed_backup_snapshots_leave_no_plaintext_files() {
+        let database = SnapshotDatabase::new(":memory:", "fixture").unwrap();
+        let engine = Engine::open(database.path.to_str().unwrap()).unwrap();
+        assert!(engine
+            .backup_snapshot()
+            .unwrap()
+            .starts_with(b"SQLite format 3\0"));
+        engine
+            .store
+            .conn()
+            .execute_batch(r#"CREATE TABLE "bad""name" (value TEXT);"#)
+            .unwrap();
+        assert!(engine.backup_snapshot().is_err());
+        assert!(std::fs::read_dir(database.path.parent().unwrap())
+            .unwrap()
+            .all(|entry| {
+                !entry
+                    .unwrap()
+                    .file_name()
+                    .to_string_lossy()
+                    .starts_with("zoen-backup-")
+            }));
+    }
+
+    #[test]
+    fn backup_snapshot_omits_page_draft_keys() {
+        let database = SnapshotDatabase::new(":memory:", "fixture").unwrap();
+        let engine = Engine::open(database.path.to_str().unwrap()).unwrap();
+        engine
+            .store
+            .conn()
+            .execute(
+                "INSERT INTO meta (key, value) VALUES ('page.draft.1', 'secret'), ('kept', 'yes')",
+                [],
+            )
+            .unwrap();
+        let bytes = engine.backup_snapshot().unwrap();
+        let scratch = SnapshotDatabase::new(database.path.to_str().unwrap(), "read").unwrap();
+        std::fs::write(&scratch.path, &bytes).unwrap();
+        let connection = rusqlite::Connection::open(&scratch.path).unwrap();
+        let draft: i64 = connection
+            .query_row(
+                "SELECT COUNT(*) FROM meta WHERE key = 'page.draft.1'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        let kept: String = connection
+            .query_row("SELECT value FROM meta WHERE key = 'kept'", [], |row| {
+                row.get(0)
+            })
+            .unwrap();
+        assert_eq!(draft, 0);
+        assert_eq!(kept, "yes");
     }
 }
