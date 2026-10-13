@@ -93,6 +93,7 @@ struct VersionPreview: View {
     @State private var bump = 0
     @State private var currentVersion: UInt32 = 0
     @State private var canRestore = false
+    @State private var observedPlanHash: String?
 
     var body: some View {
         Group {
@@ -153,6 +154,28 @@ struct VersionPreview: View {
     private func restore() {
         refreshPermission()
         guard canRestore, version.number != currentVersion else { return }
+        if item.kindId == "plan" {
+            guard let hash = observedPlanHash else { return }
+            do {
+                let it = try model.core.restorePlanVersion(itemId: item.id, version: version.number, observedHash: hash)
+                model.refresh()
+                bump += 1
+                model.show(.init(kind: .info, text: String(localized: "Version \(version.number) is back, as version \(it.version).")), seconds: 3)
+                onRestore(it)
+                dismiss()
+            } catch let error as CoreError {
+                model.refresh()
+                if case .Stale = error {
+                    model.show(.init(kind: .info, text: String(localized: "The page changed. Review it before editing.")), seconds: 4)
+                } else {
+                    model.show(.init(kind: .error, text: error.message))
+                }
+            } catch {
+                model.refresh()
+                model.show(.init(kind: .error, text: error.localizedDescription))
+            }
+            return
+        }
         if let it = model.perform({ try model.core.restoreVersion(itemId: item.id, version: version.number) }) {
             var savedVersion = it.version
             if item.kindId == "page" {
@@ -178,7 +201,12 @@ struct VersionPreview: View {
 
     private func refreshPermission() {
         currentVersion = (try? model.core.item(itemId: item.id).version) ?? item.version
-        if item.kindId == "page" {
+        if item.kindId == "plan" {
+            if observedPlanHash == nil {
+                observedPlanHash = try? model.core.planPage(itemId: item.id).contentHash
+            }
+            canRestore = allowsRestore && ((try? model.core.planPage(itemId: item.id).legacyEditAdmitted) ?? false)
+        } else if item.kindId == "page" {
             canRestore = allowsRestore && ((try? model.core.page(itemId: item.id).canEdit) ?? false)
         } else {
             canRestore = allowsRestore

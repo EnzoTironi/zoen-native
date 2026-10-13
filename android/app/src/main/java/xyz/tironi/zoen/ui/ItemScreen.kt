@@ -36,6 +36,7 @@ fun ItemScreen(model: ZoenViewModel, state: AppState, id: String, navigate: (Nav
     val item = state.items.firstOrNull { it.id == id }
     var versions by rememberSaveable(id) { mutableStateOf(false) }
     var restore by remember(id) { mutableStateOf<UInt?>(null) }
+    var restoreHash by remember(id) { mutableStateOf<String?>(null) }
     var planRead by remember(id) { mutableStateOf(PlanReadState()) }
     LaunchedEffect(id, item?.kindId, state.revision) {
         if (item?.kindId == "plan") {
@@ -118,7 +119,10 @@ fun ItemScreen(model: ZoenViewModel, state: AppState, id: String, navigate: (Nav
                     headlineContent = { Text(stringResource(R.string.version, version.number.toInt())) }, supportingContent = {
                     Text(version.note + "\n" + version.author.name + " · " + DateFormat.getDateTimeInstance(DateFormat.SHORT, DateFormat.SHORT).format(Date(version.atMs)))
                 }, leadingContent = { Icon(if (version.isUndo) Icons.Rounded.Undo else Icons.Rounded.History, null) }, trailingContent = {
-                    if (version.number != item.version) TextButton(onClick = { restore = version.number }, enabled = restoreAllowed,
+                    if (version.number != item.version) TextButton(onClick = {
+                        restoreHash = if (item.kindId == "plan") planRead.page?.contentHash else null
+                        restore = version.number
+                    }, enabled = restoreAllowed,
                         modifier = Modifier.testTag("restore-version:${version.number}")) { Text(stringResource(R.string.restore)) }
                     else Icon(Icons.Rounded.Check, stringResource(R.string.saved))
                 })
@@ -130,7 +134,7 @@ fun ItemScreen(model: ZoenViewModel, state: AppState, id: String, navigate: (Nav
             restore = null; versions = false
             val owner = state.me?.id ?: return@TextButton
             model.launch {
-                val fresh = model.pageSaves.restoreVersion(model.repository, id, owner, number)
+                val fresh = model.pageSaves.restoreVersion(model.repository, id, owner, number, restoreHash)
                 model.notify(fresh?.saveError ?: when {
                     fresh?.pendingSync == true -> pendingSync
                     fresh?.unsaved == true -> draftSaved

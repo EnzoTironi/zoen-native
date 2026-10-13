@@ -79,7 +79,7 @@ struct PlanItemView: View {
         .sheet(item: $editing) { value in
             NavigationStack {
                 LineEditor(editing: value, onSave: { save($0) },
-                           onRemove: value.lineId.map { id in { remove(lineId: id, observedVersion: editingVersion, observedHash: editingHash) } },
+                           onRemove: value.lineId.map { id in { remove(lineId: id, observedHash: editingHash) } },
                            allowsChanges: page?.legacyEditAdmitted == true)
             }
             .zoenSheet([.height(value.lineId == nil ? 320 : 390)])
@@ -206,9 +206,7 @@ struct PlanItemView: View {
             Group {
                 if editable {
                     Button {
-                        if admitted(version: page.version, contentHash: page.contentHash) {
-                            apply(model.perform { try model.core.togglePlanLine(itemId: itemId, lineId: line.id) })
-                        }
+                        write { try model.core.togglePlanLine(itemId: itemId, lineId: line.id, observedHash: page.contentHash) }
                     } label: { Image(systemName: line.done ? "checkmark.circle.fill" : "circle").font(.title3) }
                         .buttonStyle(.plain).frame(minWidth: 44, minHeight: 44)
                         .accessibilityLabel(line.done ? String(localized: "Reopen") : String(localized: "Complete"))
@@ -309,22 +307,38 @@ struct PlanItemView: View {
     }
 
     private func save(_ value: EditingLine) -> Bool {
-        guard admitted(version: editingVersion, contentHash: editingHash), let cents = MoneyInput.cents(from: value.amount, locale: AppLocale.locale), cents >= 0 else { return false }
-        let out: EditOutcome?
+        guard let hash = editingHash, let cents = MoneyInput.cents(from: value.amount, locale: AppLocale.locale), cents >= 0 else { return false }
         if let id = value.lineId {
-            out = model.perform { try model.core.editPlanLine(itemId: itemId, lineId: id, text: value.text, costCents: cents) }
-        } else {
-            out = model.perform { try model.core.addPlanLine(itemId: itemId, sectionIndex: value.section, text: value.text, costCents: cents) }
+            return write { try model.core.editPlanLine(itemId: itemId, lineId: id, text: value.text, costCents: cents, observedHash: hash) }
         }
-        apply(out)
-        return out != nil
+        return write { try model.core.addPlanLine(itemId: itemId, sectionIndex: value.section, text: value.text, costCents: cents, observedHash: hash) }
     }
 
-    private func remove(lineId: String, observedVersion: UInt32?, observedHash: String?) -> Bool {
-        guard admitted(version: observedVersion, contentHash: observedHash) else { return false }
-        let out = model.perform { try model.core.removePlanLine(itemId: itemId, lineId: lineId) }
-        apply(out)
-        return out != nil
+    private func remove(lineId: String, observedHash: String?) -> Bool {
+        guard let hash = observedHash else { return false }
+        return write { try model.core.removePlanLine(itemId: itemId, lineId: lineId, observedHash: hash) }
+    }
+
+    @discardableResult
+    private func write(_ work: () throws -> EditOutcome) -> Bool {
+        do {
+            let out = try work()
+            model.refresh()
+            apply(out)
+            return true
+        } catch let error as CoreError {
+            model.refresh()
+            if case .Stale = error {
+                model.show(.init(kind: .info, text: String(localized: "The page changed. Review it before editing.")), seconds: 4)
+                load()
+            } else {
+                model.show(.init(kind: .error, text: error.message))
+            }
+        } catch {
+            model.refresh()
+            model.show(.init(kind: .error, text: error.localizedDescription))
+        }
+        return false
     }
 
     private func apply(_ out: EditOutcome?) {

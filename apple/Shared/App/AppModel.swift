@@ -315,8 +315,20 @@ final class AppModel {
     }
 
     func undo(_ token: UndoToken) {
-        if perform({ try core.undo(token: token) }) != nil {
+        do {
+            _ = try core.undo(token: token)
+            refresh()
             show(.init(kind: .info, text: String(localized: "Undone. The previous version is back (and the history is still there).")), seconds: 3)
+        } catch let error as CoreError {
+            refresh()
+            if case .Stale = error {
+                show(.init(kind: .info, text: String(localized: "The page changed. Review it before editing.")), seconds: 4)
+            } else {
+                show(.init(kind: .error, text: error.message))
+            }
+        } catch {
+            refresh()
+            show(.init(kind: .error, text: error.localizedDescription))
         }
     }
 

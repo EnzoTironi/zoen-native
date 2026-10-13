@@ -66,6 +66,7 @@ fn edit_then_undo_restores_content_and_keeps_history() {
             line.id.clone(),
             "Escuna + mergulho".into(),
             30_000,
+            e.plan_page(plan.id.clone()).unwrap().content_hash,
         )
         .unwrap();
     assert_eq!(out.item.version, 3);
@@ -87,7 +88,13 @@ fn edit_then_undo_restores_content_and_keeps_history() {
     assert_eq!(undone.versions.len(), 4);
 
     // Restaurar a v1 (antes da troca do jantar).
-    let v1 = e.restore_version(plan.id.clone(), 1).unwrap();
+    let v1 = e
+        .restore_plan_version(
+            plan.id.clone(),
+            1,
+            e.plan_page(plan.id.clone()).unwrap().content_hash,
+        )
+        .unwrap();
     assert_eq!(v1.plan.unwrap().total_cents, 134_800);
     assert!(e.verify_all().iter().all(|r| r.valid));
 }
@@ -117,6 +124,7 @@ fn approval_is_bound_to_the_exact_content() {
             line_id.clone(),
             "Pousada Casa Azul · 2 noites".into(),
             60_000,
+            e.plan_page(plan.id.clone()).unwrap().content_hash,
         )
         .unwrap();
     let stale = e
@@ -297,7 +305,12 @@ fn everything_persists_and_reverifies_after_reopen() {
         e.seed_demo_if_empty().unwrap();
         let plan = paraty_plan(&e);
         let line = plan.plan.as_ref().unwrap().sections[0].lines[1].id.clone();
-        e.toggle_plan_line(plan.id.clone(), line).unwrap();
+        e.toggle_plan_line(
+            plan.id.clone(),
+            line.clone(),
+            e.plan_page(plan.id.clone()).unwrap().content_hash,
+        )
+        .unwrap();
         let s = find_space(&e, "Zoen");
         e.send_message(s.id, "Oi Zoen".into()).unwrap();
         (
@@ -876,6 +889,7 @@ fn english_is_the_default_language_for_demo_data_agents_and_money() {
             plan_line_id(&plan),
             "Dinner by the water".into(),
             30_000,
+            e.plan_page(plan.id.clone()).unwrap().content_hash,
         )
         .unwrap();
     let reaction = edit.reaction.unwrap();

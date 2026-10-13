@@ -157,7 +157,9 @@ pub struct PlanPageDto {
     pub unsaved: bool,
     pub pending_sync: bool,
     pub save_error: Option<String>,
-    /// LocalPendingLegacy uses a namespaced local presentation hash, not an edit context.
+    /// Admitted semantic binding. LocalPendingLegacy and DocumentSession share it.
+    /// A pure relay confirmation does not change it. Title, budget, summary, section,
+    /// text, cents, completion, line order, prose, and marks do.
     pub content_hash: String,
     /// None means the exact mathematical total is outside i64, never truncated or zero.
     pub total_cents: Option<i64>,
@@ -204,8 +206,7 @@ impl Engine {
                 "this Item is not a Plan",
             ));
         };
-        let bytes = serde_json::to_vec(document)
-            .map_err(|_| invalid("prévia local indisponível", "local preview is unavailable"))?;
+        let blocks = local_legacy_blocks(it, document);
         Ok(PlanPageDto {
             item_id: it.id.clone(),
             space_id: it.space.clone(),
@@ -216,9 +217,9 @@ impl Engine {
             unsaved: false,
             pending_sync: true,
             save_error: None,
-            content_hash: format!("local-legacy:{}", hex::encode(Sha256::digest(bytes))),
+            content_hash: plan_observed_hash(&blocks),
             total_cents: Self::plan_total(document),
-            blocks: local_legacy_blocks(it, document),
+            blocks,
         })
     }
 
@@ -271,6 +272,7 @@ impl Engine {
                 })
                 .try_fold(0_i128, |total, cents| total.checked_add(i128::from(cents)))
                 .and_then(|total| i64::try_from(total).ok());
+            let blocks: Vec<_> = blocks.iter().map(PlanPageBlockDto::from).collect();
             Ok(PlanPageDto {
                 item_id: it.id.clone(),
                 space_id: it.space.clone(),
@@ -281,9 +283,9 @@ impl Engine {
                 unsaved: read.unsaved,
                 pending_sync: read.pending_sync,
                 save_error: read.save_error,
-                content_hash: read.content_hash,
+                content_hash: plan_observed_hash(&blocks),
                 total_cents,
-                blocks: blocks.iter().map(PlanPageBlockDto::from).collect(),
+                blocks,
             })
         })
     }
@@ -326,4 +328,98 @@ fn local_legacy_blocks(it: &ItemState, document: &PlanDoc) -> Vec<PlanPageBlockD
         }
     }
     blocks
+}
+
+/// One edit binding for both read sources. Presentation and CRDT block ids stay out,
+/// so a pure relay confirmation keeps the value.
+fn plan_observed_hash(blocks: &[PlanPageBlockDto]) -> String {
+    let mut hasher = Sha256::new();
+    hasher.update(b"zoen-plan-observed-v1\0");
+    hasher.update((blocks.len() as u64).to_le_bytes());
+    for block in blocks {
+        hash_observed_block(&mut hasher, block);
+    }
+    hex::encode(hasher.finalize())
+}
+
+fn hash_observed_str(hasher: &mut Sha256, value: &str) {
+    hasher.update((value.len() as u64).to_le_bytes());
+    hasher.update(value.as_bytes());
+}
+
+fn hash_observed_block(hasher: &mut Sha256, block: &PlanPageBlockDto) {
+    match &block.content {
+        PlanPageContentDto::Title { budget_cents } => {
+            hasher.update([1]);
+            match budget_cents {
+                None => hasher.update([0]),
+                Some(cents) => {
+                    hasher.update([1]);
+                    hasher.update(cents.to_le_bytes());
+                }
+            }
+        }
+        PlanPageContentDto::Summary => hasher.update([2]),
+        PlanPageContentDto::Section => hasher.update([3]),
+        PlanPageContentDto::Line {
+            legacy_id,
+            cost_cents,
+            done,
+        } => {
+            hasher.update([4]);
+            hash_observed_str(hasher, legacy_id);
+            hasher.update(cost_cents.to_le_bytes());
+            hasher.update([u8::from(*done)]);
+        }
+        PlanPageContentDto::Prose { kind } => {
+            hasher.update([5]);
+            hash_observed_prose(hasher, kind);
+        }
+    }
+    hash_observed_str(hasher, &block.text);
+    hasher.update((block.spans.len() as u64).to_le_bytes());
+    for span in &block.spans {
+        hasher.update(span.start.to_le_bytes());
+        hasher.update(span.end.to_le_bytes());
+        hash_observed_str(hasher, &span.key);
+        hash_observed_str(hasher, &span.value);
+    }
+}
+
+fn hash_observed_prose(hasher: &mut Sha256, kind: &PlanProseKindDto) {
+    match kind {
+        PlanProseKindDto::Paragraph => hasher.update([1]),
+        PlanProseKindDto::Heading { level, setext } => {
+            hasher.update([2]);
+            hasher.update(level.to_le_bytes());
+            hasher.update([u8::from(*setext)]);
+        }
+        PlanProseKindDto::Bullet { indent } => {
+            hasher.update([3]);
+            hasher.update(indent.to_le_bytes());
+        }
+        PlanProseKindDto::Numbered { indent, number } => {
+            hasher.update([4]);
+            hasher.update(indent.to_le_bytes());
+            hasher.update(number.to_le_bytes());
+        }
+        PlanProseKindDto::Task { indent, checked } => {
+            hasher.update([5]);
+            hasher.update(indent.to_le_bytes());
+            hasher.update([u8::from(*checked)]);
+        }
+        PlanProseKindDto::Quote => hasher.update([6]),
+        PlanProseKindDto::Code { lang } => {
+            hasher.update([7]);
+            hash_observed_str(hasher, lang);
+        }
+        PlanProseKindDto::Divider => hasher.update([8]),
+        PlanProseKindDto::Image { url, alt, title } => {
+            hasher.update([9]);
+            hash_observed_str(hasher, url);
+            hash_observed_str(hasher, alt);
+            hash_observed_str(hasher, title);
+        }
+        PlanProseKindDto::Raw => hasher.update([10]),
+    }
 }

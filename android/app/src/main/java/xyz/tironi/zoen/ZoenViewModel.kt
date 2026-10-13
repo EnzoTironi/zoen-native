@@ -70,7 +70,15 @@ class ZoenViewModel(application: Application) : AndroidViewModel(application) {
         val result = repository.change(block)
         notifyEdit(result)
     }
-    fun undo(token: UndoToken) = launch { repository.change { it.undo(token) } }
+    fun undo(token: UndoToken) = viewModelScope.launch {
+        try { repository.change { it.undo(token) } }
+        catch (error: Exception) {
+            if (error is CancellationException) throw error
+            val text = if (error is CoreException.Stale) getApplication<Application>().getString(R.string.plan_changed)
+                else error.message ?: getApplication<Application>().getString(R.string.something_wrong)
+            messages.send(Notice(text))
+        }
+    }
 
     suspend fun send(spaceId: String, text: String, reply: String? = null, thread: Boolean = false, onStored: () -> Unit = {}) {
         val clean = text.trim()

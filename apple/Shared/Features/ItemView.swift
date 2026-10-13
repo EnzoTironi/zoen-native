@@ -150,6 +150,7 @@ struct VersionsView: View {
     @Environment(\.dismiss) private var dismiss
     let item: ItemDetail
     var allowsRestore = true
+    @State private var observedPlanHash: String?
 
     var body: some View {
         List {
@@ -205,10 +206,34 @@ struct VersionsView: View {
         .frame(minWidth: 560, minHeight: 480)
         .onExitCommand { dismiss() }
         #endif
+        .task {
+            guard item.kindId == "plan", observedPlanHash == nil else { return }
+            observedPlanHash = try? model.core.planPage(itemId: item.id).contentHash
+        }
     }
 
     private func restore(_ v: VersionDto) {
         guard allowsRestore else { return }
+        if item.kindId == "plan" {
+            guard let hash = observedPlanHash else { return }
+            do {
+                _ = try model.core.restorePlanVersion(itemId: item.id, version: v.number, observedHash: hash)
+                model.refresh()
+                model.show(.init(kind: .info, text: String(localized: "Version \(v.number) restored.")), seconds: 3)
+                dismiss()
+            } catch let error as CoreError {
+                model.refresh()
+                if case .Stale = error {
+                    model.show(.init(kind: .info, text: String(localized: "The page changed. Review it before editing.")), seconds: 4)
+                } else {
+                    model.show(.init(kind: .error, text: error.message))
+                }
+            } catch {
+                model.refresh()
+                model.show(.init(kind: .error, text: error.localizedDescription))
+            }
+            return
+        }
         if model.perform({ try model.core.restoreVersion(itemId: item.id, version: v.number) }) != nil {
             model.show(.init(kind: .info, text: String(localized: "Version \(v.number) restored.")), seconds: 3)
             dismiss()

@@ -56,6 +56,7 @@ fun VersionPreviewScreen(model: ZoenViewModel, id: String, number: UInt, back: (
     }
     val content = read.content
     var confirm by remember { mutableStateOf(false) }
+    var observedPlanHash by remember(id, number) { mutableStateOf<String?>(null) }
     var busy by remember { mutableStateOf(false) }
     val saved = stringResource(R.string.saved)
     val pendingSync = stringResource(R.string.page_pending_sync)
@@ -71,7 +72,14 @@ fun VersionPreviewScreen(model: ZoenViewModel, id: String, number: UInt, back: (
         Surface(tonalElevation = 2.dp) { Row(Modifier.fillMaxWidth().navigationBarsPadding().padding(16.dp), horizontalArrangement = Arrangement.End) {
             if (content?.page != null && !model.pageSaves.canRestore(id)) Text(stringResource(R.string.page_recovery_before_restore), Modifier.weight(1f), style = MaterialTheme.typography.bodySmall)
             Button(enabled = content?.canRestore == true && !busy && (content.page == null || model.pageSaves.canRestore(id)),
-                modifier = Modifier.testTag("preview-restore"), onClick = { confirm = true }) { Text(stringResource(R.string.page_restore_version)) }
+                modifier = Modifier.testTag("preview-restore"), onClick = {
+                    model.launch {
+                        observedPlanHash = model.repository.query { core ->
+                            if (core.item(id).kindId == "plan") core.planPage(id).contentHash else null
+                        }
+                        confirm = true
+                    }
+                }) { Text(stringResource(R.string.page_restore_version)) }
         } }
     }) { padding ->
         val historical = content
@@ -132,7 +140,7 @@ fun VersionPreviewScreen(model: ZoenViewModel, id: String, number: UInt, back: (
             confirm = false; busy = true
             model.launch {
                 try {
-                    val fresh = model.pageSaves.restoreVersion(model.repository, id, owner, number)
+                    val fresh = model.pageSaves.restoreVersion(model.repository, id, owner, number, observedPlanHash)
                     model.notify(fresh?.saveError ?: when {
                         fresh?.pendingSync == true -> pendingSync
                         fresh?.unsaved == true -> draftSaved

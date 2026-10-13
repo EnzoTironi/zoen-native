@@ -9,6 +9,9 @@ import xyz.tironi.zoen.data.ZoenRepository
 
 data class PageRestoreResult(val page: PageDto, val draft: PageDraft?, val draftStored: Boolean = true)
 
+internal fun confirmedPlanHash(kindId: String, observedHash: String?): String? =
+    if (kindId == "plan") observedHash else null
+
 class PageSaveCoordinator {
     private class Editor(
         val token: Any,
@@ -85,7 +88,7 @@ class PageSaveCoordinator {
         }
     }
 
-    suspend fun restoreVersion(repository: ZoenRepository, id: String, owner: String, number: UInt): PageDto? = restore(id) { publish ->
+    suspend fun restoreVersion(repository: ZoenRepository, id: String, owner: String, number: UInt, observedPlanHash: String? = null): PageDto? = restore(id) { publish ->
         var restoredPage: PageDto? = null
         var failure: Exception? = null
         repository.change { core ->
@@ -93,10 +96,11 @@ class PageSaveCoordinator {
             val item = core.item(id)
             if (item.kindId != "page") {
                 if (item.kindId == "plan") {
-                    val plan = core.planPage(id)
-                    check(plan.ready && plan.legacyEditAdmitted) { plan.saveError ?: "This plan is read only" }
-                }
-                core.restoreVersion(id, number)
+                    val hash = checkNotNull(confirmedPlanHash(item.kindId, observedPlanHash)) {
+                        "This plan changed. Reopen the editor to use the current version."
+                    }
+                    core.restorePlanVersion(id, number, hash)
+                } else core.restoreVersion(id, number)
             } else {
                 val store = PageDraftStore(repository.vault, repository.localKey("encryptedPageDraft", id, owner))
                 val legacyKey = repository.localKey("pageDraft", id, owner)

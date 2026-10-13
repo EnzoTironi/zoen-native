@@ -27,11 +27,6 @@ fun planPageRows(page: PlanPageDto): List<PlanPageRow> {
     }
 }
 
-fun requirePlanEdit(current: PlanPageDto, observed: PlanPageDto, readOnly: String, changed: String) {
-    check(current.ready && current.legacyEditAdmitted) { current.saveError ?: readOnly }
-    check(current.itemId == observed.itemId && current.contentHash == observed.contentHash) { changed }
-}
-
 fun planCostText(cents: Long): String = BigDecimal.valueOf(cents, 2).toPlainString()
 
 fun parsePlanCents(text: String): Long? {

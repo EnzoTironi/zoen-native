@@ -261,17 +261,20 @@ impl RodaEngine {
         line_id: String,
         text: String,
         cost_cents: i64,
+        observed_hash: String,
     ) -> Result<EditOutcome, CoreError> {
         self.lock()
-            .edit_plan_line(&item_id, &line_id, &text, cost_cents)
+            .edit_plan_line(&item_id, &line_id, &text, cost_cents, &observed_hash)
     }
 
     pub fn toggle_plan_line(
         &self,
         item_id: String,
         line_id: String,
+        observed_hash: String,
     ) -> Result<EditOutcome, CoreError> {
-        self.lock().toggle_plan_line(&item_id, &line_id)
+        self.lock()
+            .toggle_plan_line(&item_id, &line_id, &observed_hash)
     }
 
     pub fn add_plan_line(
@@ -280,21 +283,34 @@ impl RodaEngine {
         section_index: u32,
         text: String,
         cost_cents: i64,
+        observed_hash: String,
     ) -> Result<EditOutcome, CoreError> {
         self.lock()
-            .add_plan_line(&item_id, section_index, &text, cost_cents)
+            .add_plan_line(&item_id, section_index, &text, cost_cents, &observed_hash)
     }
 
     pub fn remove_plan_line(
         &self,
         item_id: String,
         line_id: String,
+        observed_hash: String,
     ) -> Result<EditOutcome, CoreError> {
-        self.lock().remove_plan_line(&item_id, &line_id)
+        self.lock()
+            .remove_plan_line(&item_id, &line_id, &observed_hash)
     }
 
     pub fn undo(&self, token: UndoToken) -> Result<ItemDetail, CoreError> {
         self.lock().undo(&token)
+    }
+
+    pub fn restore_plan_version(
+        &self,
+        item_id: String,
+        version: u32,
+        observed_hash: String,
+    ) -> Result<ItemDetail, CoreError> {
+        self.lock()
+            .restore_plan_version(&item_id, version, &observed_hash)
     }
 
     pub fn restore_version(&self, item_id: String, version: u32) -> Result<ItemDetail, CoreError> {

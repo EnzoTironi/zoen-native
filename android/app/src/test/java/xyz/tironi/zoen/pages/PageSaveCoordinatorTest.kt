@@ -17,6 +17,13 @@ import kotlin.time.Duration.Companion.seconds
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class PageSaveCoordinatorTest {
+    @Test fun planRestoreKeepsTheConfirmationHash() {
+        assertEquals("seen-at-confirm", confirmedPlanHash("plan", "seen-at-confirm"))
+        assertNull(confirmedPlanHash("page", "seen-at-confirm"))
+        assertNull(confirmedPlanHash("file", "seen-at-confirm"))
+        assertNull(confirmedPlanHash("plan", null))
+    }
+
     @Test fun recoveredDraftBlocksRestoreUntilExplicitlyResolved() = runTest(timeout = 3.seconds) {
         val coordinator = PageSaveCoordinator()
         var writes = 0

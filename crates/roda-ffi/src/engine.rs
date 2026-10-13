@@ -1679,15 +1679,34 @@ impl Engine {
             .collect()
     }
 
+    fn page_changed() -> CoreError {
+        CoreError::Stale {
+            reason: t(
+                "A página mudou. Revise antes de editar.",
+                "The page changed. Review it before editing.",
+            ),
+        }
+    }
+
     /// Edita o plano como "eu". Toda edição é uma versão nova → sempre desfazível.
     fn edit_plan(
         &mut self,
         item: &str,
+        observed_hash: &str,
         note: String,
         f: impl FnOnce(&mut PlanDoc) -> R<()>,
     ) -> R<EditOutcome> {
         let me = self.me_id()?;
         self.require_legacy_plan(item)?;
+        let observed = self.plan_page(item)?;
+        if !observed.ready {
+            return Err(CoreError::Invalid {
+                reason: t("o plano ainda não está pronto", "this plan is not ready"),
+            });
+        }
+        if observed.content_hash != observed_hash {
+            return Err(Self::page_changed());
+        }
         let it = self.item_state(item)?;
         let space = it.space.clone();
         let before = it.current().number;
@@ -1754,11 +1773,16 @@ impl Engine {
                 }
             }
         }
+        let detail = self.item(item)?;
+        let binding = self.plan_page(item)?.content_hash;
+        let result_version = detail.version;
         Ok(EditOutcome {
-            item: self.item(item)?,
+            item: detail,
             undo: UndoToken {
                 item_id: item.into(),
                 restore_version: before,
+                observed_hash: binding,
+                result_version,
                 label: note,
             },
             reaction,
@@ -1771,6 +1795,7 @@ impl Engine {
         line: &str,
         text: &str,
         cost_cents: i64,
+        observed_hash: &str,
     ) -> R<EditOutcome> {
         let text = text.trim().to_string();
         if text.is_empty() {
@@ -1784,7 +1809,7 @@ impl Engine {
             });
         }
         let note = tr!("Editou “{}”", "Edited “{}”", text);
-        self.edit_plan(item, note, |doc| {
+        self.edit_plan(item, observed_hash, note, |doc| {
             let l = doc
                 .line_mut(line)
                 .ok_or_else(|| not_found(&t("linha", "line")))?;
@@ -1794,7 +1819,12 @@ impl Engine {
         })
     }
 
-    pub fn toggle_plan_line(&mut self, item: &str, line: &str) -> R<EditOutcome> {
+    pub fn toggle_plan_line(
+        &mut self,
+        item: &str,
+        line: &str,
+        observed_hash: &str,
+    ) -> R<EditOutcome> {
         let (label, done) = {
             let it = self.item_state(item)?;
             match &it.current().content {
@@ -1818,7 +1848,7 @@ impl Engine {
             },
             label
         );
-        self.edit_plan(item, note, |doc| {
+        self.edit_plan(item, observed_hash, note, |doc| {
             doc.line_mut(line)
                 .ok_or_else(|| not_found(&t("linha", "line")))?
                 .done = done;
@@ -1832,6 +1862,7 @@ impl Engine {
         section: u32,
         text: &str,
         cost_cents: i64,
+        observed_hash: &str,
     ) -> R<EditOutcome> {
         let text = text.trim().to_string();
         if text.is_empty() {
@@ -1845,7 +1876,7 @@ impl Engine {
             });
         }
         let note = tr!("Adicionou “{}”", "Added “{}”", text);
-        self.edit_plan(item, note, |doc| {
+        self.edit_plan(item, observed_hash, note, |doc| {
             let s = doc
                 .sections
                 .get_mut(section as usize)
@@ -1860,7 +1891,12 @@ impl Engine {
         })
     }
 
-    pub fn remove_plan_line(&mut self, item: &str, line: &str) -> R<EditOutcome> {
+    pub fn remove_plan_line(
+        &mut self,
+        item: &str,
+        line: &str,
+        observed_hash: &str,
+    ) -> R<EditOutcome> {
         let label = match &self.item_state(item)?.current().content {
             ItemContent::Plan(p) => p
                 .line(line)
@@ -1875,6 +1911,7 @@ impl Engine {
         // "Apagar" uma linha é reversível: a versão anterior continua no log.
         self.edit_plan(
             item,
+            observed_hash,
             tr!("Removeu “{label}”", "Removed “{label}”"),
             |doc| {
                 doc.remove_line(line)
@@ -1886,28 +1923,98 @@ impl Engine {
 
     /// Desfazer = nova versão igual à anterior. Nada é apagado.
     pub fn undo(&mut self, token: &UndoToken) -> R<ItemDetail> {
-        self.restore_version(
+        let it = self.item_state(&token.item_id)?;
+        if it.kind != ItemKind::Plan {
+            return Err(CoreError::Invalid {
+                reason: t("desfazer vale para um plano", "undo applies to a plan"),
+            });
+        }
+        if it.current().number != token.result_version {
+            return Err(Self::page_changed());
+        }
+        let note = tr!(
+            "Desfez: {}",
+            "Undid: {}",
+            token
+                .label
+                .trim_start_matches("Desfez: ")
+                .trim_start_matches("Undid: ")
+        );
+        self.revert_plan(
             &token.item_id,
             token.restore_version,
-            &tr!(
-                "Desfez: {}",
-                "Undid: {}",
-                token
-                    .label
-                    .trim_start_matches("Desfez: ")
-                    .trim_start_matches("Undid: ")
-            ),
+            &token.observed_hash,
+            &note,
         )
+    }
+
+    pub fn restore_plan_version(
+        &mut self,
+        item: &str,
+        version: u32,
+        observed_hash: &str,
+    ) -> R<ItemDetail> {
+        self.revert_plan(
+            item,
+            version,
+            observed_hash,
+            &format!("Restaurou a v{version}"),
+        )
+    }
+
+    fn revert_plan(
+        &mut self,
+        item: &str,
+        version: u32,
+        observed_hash: &str,
+        note: &str,
+    ) -> R<ItemDetail> {
+        let me = self.me_id()?;
+        let it = self.item_state(item)?;
+        if it.kind != ItemKind::Plan {
+            return Err(CoreError::Invalid {
+                reason: t("este Item não é um plano", "this Item is not a plan"),
+            });
+        }
+        if !it.versions.iter().any(|v| v.number == version) {
+            return Err(not_found(&t("versão", "version")));
+        }
+        self.require_legacy_plan(item)?;
+        let observed = self.plan_page(item)?;
+        if !observed.ready {
+            return Err(CoreError::Invalid {
+                reason: t("o plano ainda não está pronto", "this plan is not ready"),
+            });
+        }
+        if observed.content_hash != observed_hash {
+            return Err(Self::page_changed());
+        }
+        let space = it.space.clone();
+        self.append(
+            &space,
+            &me,
+            EventBody::ItemReverted {
+                item: item.into(),
+                to_version: version,
+                note: note.into(),
+            },
+        )?;
+        self.item(item)
     }
 
     pub fn restore_version(&mut self, item: &str, version: u32, note: &str) -> R<ItemDetail> {
         let me = self.me_id()?;
         let it = self.item_state(item)?;
+        if it.kind == ItemKind::Plan {
+            return Err(CoreError::Invalid {
+                reason: t(
+                    "a restauração de um plano exige o vínculo observado",
+                    "a plan restore needs the observed binding",
+                ),
+            });
+        }
         if !it.versions.iter().any(|v| v.number == version) {
             return Err(not_found(&t("versão", "version")));
-        }
-        if it.kind == ItemKind::Plan {
-            self.require_legacy_plan(item)?;
         }
         if it.kind == ItemKind::Page {
             // A page's versions are Loro changes: restoring is a new change, not a copy.
@@ -3340,7 +3447,8 @@ impl Engine {
         }
         if let Some(apps::Effect::AddPlanLine { text, cost_cents }) = applied.effect {
             if let Some(plan) = target_plan {
-                self.add_plan_line(&plan, 0, &text, cost_cents)?;
+                let observed = self.plan_page(&plan)?.content_hash;
+                self.add_plan_line(&plan, 0, &text, cost_cents, &observed)?;
             }
         }
         let view = apps::view(&doc.app, &applied.state, now);

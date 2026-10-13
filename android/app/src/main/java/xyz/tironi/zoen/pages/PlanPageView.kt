@@ -13,6 +13,7 @@ import androidx.compose.material.icons.rounded.Image
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
+import kotlinx.coroutines.CancellationException
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
@@ -45,17 +46,17 @@ fun PlanPageView(model: ZoenViewModel, item: ItemDetail, page: PlanPageDto?, fai
     val changed = stringResource(R.string.plan_changed)
     val editable = fresh && page?.ready == true && page.legacyEditAdmitted && !busy
 
-    fun mutate(observed: PlanPageDto, action: (RodaEngine) -> EditOutcome, completed: () -> Unit = {}) {
+    fun mutate(observed: PlanPageDto, action: (RodaEngine, String) -> EditOutcome, completed: () -> Unit = {}) {
         if (busy) return
         busy = true
         model.launch {
             try {
-                val result = model.repository.change { core ->
-                    requirePlanEdit(core.planPage(item.id), observed, readOnly, changed)
-                    action(core)
-                }
+                val result = model.repository.change { core -> action(core, observed.contentHash) }
                 completed()
                 model.notifyEdit(result)
+            } catch (error: Exception) {
+                if (error is CancellationException) throw error
+                model.notify(if (error is CoreException.Stale) changed else error.message.orEmpty())
             } finally { busy = false }
         }
     }
@@ -107,7 +108,7 @@ fun PlanPageView(model: ZoenViewModel, item: ItemDetail, page: PlanPageDto?, fai
                     is PlanPageContentDto.Line -> Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow)) {
                         Row(Modifier.fillMaxWidth().padding(8.dp), verticalAlignment = Alignment.CenterVertically) {
                             Checkbox(content.done, onCheckedChange = {
-                                mutate(page, { it.togglePlanLine(item.id, content.legacyId) })
+                                mutate(page, { core, hash -> core.togglePlanLine(item.id, content.legacyId, hash) })
                             }, enabled = editable && row.uniqueLine,
                                 modifier = Modifier.testTag(if (row.uniqueLine) "plan-line:${content.legacyId}" else "plan-line-block:${block.id}"))
                             Column(Modifier.weight(1f)) {
@@ -157,9 +158,9 @@ fun PlanPageView(model: ZoenViewModel, item: ItemDetail, page: PlanPageDto?, fai
                 }
             }, confirmButton = {
                 TextButton(enabled = editable && text.isNotBlank() && cents != null, modifier = Modifier.testTag("plan-save-line"), onClick = {
-                    mutate(edit.observed, { core ->
-                        if (line != null) core.editPlanLine(item.id, line.legacyId, text, checkNotNull(cents))
-                        else core.addPlanLine(item.id, checkNotNull(edit.section), text, checkNotNull(cents))
+                    mutate(edit.observed, { core, hash ->
+                        if (line != null) core.editPlanLine(item.id, line.legacyId, text, checkNotNull(cents), hash)
+                        else core.addPlanLine(item.id, checkNotNull(edit.section), text, checkNotNull(cents), hash)
                     }, { editing = null })
                 }) { Text(stringResource(R.string.save)) }
             }, dismissButton = {
@@ -172,7 +173,7 @@ fun PlanPageView(model: ZoenViewModel, item: ItemDetail, page: PlanPageDto?, fai
         AlertDialog(onDismissRequest = { if (!busy) removing = null }, title = { Text(stringResource(R.string.plan_remove_title)) }, text = {
             Text(stringResource(R.string.plan_remove_detail, checkNotNull(edit.block).text))
         }, confirmButton = {
-            TextButton(enabled = editable, onClick = { mutate(edit.observed, { it.removePlanLine(item.id, line.legacyId) }, { removing = null }) },
+            TextButton(enabled = editable, onClick = { mutate(edit.observed, { core, hash -> core.removePlanLine(item.id, line.legacyId, hash) }, { removing = null }) },
                 modifier = Modifier.testTag("plan-confirm-remove")) { Text(stringResource(R.string.delete), color = MaterialTheme.colorScheme.error) }
         }, dismissButton = {
             TextButton(enabled = !busy, onClick = { removing = null }, modifier = Modifier.testTag("plan-cancel-remove")) { Text(stringResource(R.string.cancel)) }
