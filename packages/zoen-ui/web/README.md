@@ -92,8 +92,9 @@ that receipt. A reload while `confirming` is still stored sends the receipt agai
 `AckLink` succeeds when the box is already gone. A failed or timed-out receipt stays
 `confirming` and is retried; that save is never replaced by a pending-only session.
 A transient close must not cancel the
-browser's reconnect timer. This is separate from the receipt: the receipt is not sent
-until that save has finished.
+browser's reconnect timer. A lost `fetch_link` response before `confirming` keeps that
+pending session and reads the same box again, without a new code. This is separate from
+the receipt: the receipt is not sent until that save has finished.
 
 ## Final shared-main checkpoint
 

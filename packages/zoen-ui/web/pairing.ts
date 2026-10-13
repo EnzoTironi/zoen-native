@@ -18,8 +18,11 @@ export class Pairing {
   private transport: AuthenticatedTransport | undefined;
   private poll: ReturnType<typeof setTimeout> | undefined;
   private receiptTimer: ReturnType<typeof setTimeout> | undefined;
+  private fetchTimer: ReturnType<typeof setTimeout> | undefined;
   private receiptAttempt = 0;
+  private fetchAttempt = 0;
   private acking = false;
+  private fetching = false;
   private canceled = false;
   private pending: PendingLink | undefined;
   private confirming: LinkedAccount | undefined;
@@ -93,13 +96,28 @@ export class Pairing {
   }
 
   private async fetch(): Promise<void> {
-    if (!this.pending || this.canceled || !this.transport || this.confirming) return;
-    const result = object(await this.transport.request('fetch_link', this.pending.box_id));
+    if (!this.pending || this.canceled || !this.transport || this.confirming || this.fetching) return;
+    this.fetching = true;
+    let result: Record<string, unknown>;
+    try {
+      result = object(await this.transport.request('fetch_link', this.pending.box_id));
+    } catch (error) {
+      if (this.lostFetch(error)) {
+        this.scheduleFetchRetry();
+        return;
+      }
+      throw error;
+    } finally {
+      this.fetching = false;
+    }
+    if (this.canceled || this.confirming || !this.pending) return;
+    clearTimeout(this.fetchTimer);
+    this.fetchAttempt = 0;
     if (string(result.kind) !== 'link') throw new Error('The relay answered a different pairing request.');
-    if (this.canceled) return;
     if (result.sealed === null) {
       this.poll = setTimeout(() => { void this.fetch().catch((error: unknown) => {
-        if (!this.canceled && !this.confirming && this.connection.kind === 'ready') this.changed({ kind: 'failed', message: message(error) });
+        if (this.canceled || this.confirming || this.lostFetch(error)) return;
+        if (this.connection.kind === 'ready') this.changed({ kind: 'failed', message: message(error) });
       }); }, 700);
       return;
     }
@@ -139,6 +157,10 @@ export class Pairing {
           if (!this.canceled) this.noteReceiptFailure(message(error));
           return;
         }
+        if (this.pending && this.lostFetch(error)) {
+          this.scheduleFetchRetry();
+          return;
+        }
         throw error;
       }
     });
@@ -170,6 +192,32 @@ export class Pairing {
       if (!this.canceled) this.noteReceiptFailure(message(error));
     } finally {
       this.acking = false;
+    }
+  }
+
+  private lostFetch(error: unknown): boolean {
+    const text = message(error);
+    return text === 'The relay request timed out.'
+      || text === 'Connection closed.'
+      || text === 'The relay is not connected.'
+      || text === 'The relay is reconnecting. Try again when connected.';
+  }
+
+  /** A lost read before the account is saved stays on the same pending box. */
+  private scheduleFetchRetry(): void {
+    if (this.canceled || this.confirming || !this.pending) return;
+    clearTimeout(this.fetchTimer);
+    this.fetchAttempt += 1;
+    const delay = Math.min(30_000, 700 * 2 ** Math.min(this.fetchAttempt - 1, 6));
+    this.fetchTimer = setTimeout(() => { void this.retryFetch(); }, delay);
+  }
+
+  private async retryFetch(): Promise<void> {
+    if (this.canceled || this.confirming || !this.pending) return;
+    if (this.connection.kind !== 'ready' || !this.transport) return;
+    try { await this.fetch(); }
+    catch (error) {
+      if (!this.canceled && !this.confirming) this.changed({ kind: 'failed', message: message(error) });
     }
   }
 
@@ -205,6 +253,7 @@ export class Pairing {
     this.canceled = true;
     clearTimeout(this.poll);
     clearTimeout(this.receiptTimer);
+    clearTimeout(this.fetchTimer);
     this.transport?.stop();
   }
 }

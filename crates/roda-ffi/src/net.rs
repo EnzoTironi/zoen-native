@@ -1318,35 +1318,109 @@ async fn device_socket(relay_url: &str, key: &roda_log::Signer) -> Result<(Sink,
 
 /// Waits for a link box as a device with no account yet (ADR 0045): it signs in as itself
 /// (its device key as identity, self-certified), which lets it fetch and nothing else.
+/// A timeout or a dropped socket reconnects and reads the same box until `deadline`.
 pub async fn fetch_link_box(
     relay_url: &str,
     key: &roda_log::Signer,
     id: &str,
     deadline: tokio::time::Instant,
 ) -> Result<Vec<u8>, String> {
-    let (mut sink, mut stream) = device_socket(relay_url, key).await?;
+    let mut losses = 0u32;
+    let mut socket = match device_socket(relay_url, key).await {
+        Ok(socket) => socket,
+        Err(error) if link_transport_lost(&error) => {
+            reopen_link_socket(relay_url, key, deadline, &mut losses).await?
+        }
+        Err(error) => return Err(error),
+    };
     let mut n = 0u64;
     loop {
-        n += 1;
-        let op = Op::FetchLink { id: id.to_string() };
-        send(&mut sink, &ClientFrame::Req { id: n, op }).await?;
-        let result = loop {
-            match recv(&mut stream).await? {
-                ServerFrame::Res { id, result } if id == n => break result,
-                ServerFrame::Error { message, .. } => return Err(message),
-                _ => continue,
+        if tokio::time::Instant::now() >= deadline {
+            return Err("nobody linked this device in time".into());
+        }
+        n = n.wrapping_add(1);
+        if let Err(error) = send(
+            &mut socket.0,
+            &ClientFrame::Req {
+                id: n,
+                op: Op::FetchLink { id: id.to_string() },
+            },
+        )
+        .await
+        {
+            if !link_transport_lost(&error) {
+                return Err(error);
+            }
+            socket = reopen_link_socket(relay_url, key, deadline, &mut losses).await?;
+            n = 0;
+            continue;
+        }
+        let reply = loop {
+            match recv(&mut socket.1).await {
+                Ok(ServerFrame::Res { id: got, result }) if got == n => break Some(result),
+                Ok(ServerFrame::Error { message, .. }) => return Err(message),
+                Ok(_) => continue,
+                Err(error) if link_transport_lost(&error) => break None,
+                Err(error) => return Err(error),
             }
         };
+        let Some(result) = reply else {
+            socket = reopen_link_socket(relay_url, key, deadline, &mut losses).await?;
+            n = 0;
+            continue;
+        };
         match result {
-            Ok(Reply::Link(Some(b))) => return Ok(b),
+            Ok(Reply::Link(Some(sealed))) => return Ok(sealed),
             Ok(Reply::Link(None)) => {}
             Ok(_) => return Err("the relay answered something else".into()),
-            Err(e) => return Err(e),
+            Err(error) => return Err(error),
         }
         if tokio::time::Instant::now() >= deadline {
             return Err("nobody linked this device in time".into());
         }
         tokio::time::sleep(Duration::from_millis(700)).await;
+    }
+}
+
+fn link_transport_lost(error: &str) -> bool {
+    lost_link_socket(error) || error.starts_with("can't reach the relay")
+}
+
+fn lost_link_socket(error: &str) -> bool {
+    error == "relay timed out"
+        || error == "relay closed the connection"
+        || error.contains("closed")
+        || error.contains("reset")
+        || error.contains("broken pipe")
+        || error.contains("Connection")
+        || error.contains("IO error")
+        || error.contains("protocol error")
+}
+
+/// Same capped backoff as a lost web receipt: 700 ms, doubled, at most 30 s.
+async fn reopen_link_socket(
+    relay_url: &str,
+    key: &roda_log::Signer,
+    deadline: tokio::time::Instant,
+    losses: &mut u32,
+) -> Result<(Sink, Stream), String> {
+    loop {
+        if tokio::time::Instant::now() >= deadline {
+            return Err("nobody linked this device in time".into());
+        }
+        *losses = losses.saturating_add(1);
+        let shift = losses.saturating_sub(1).min(6u32);
+        let delay = Duration::from_millis((700u64 << shift).min(30_000));
+        let left = deadline.saturating_duration_since(tokio::time::Instant::now());
+        tokio::time::sleep(delay.min(left)).await;
+        if tokio::time::Instant::now() >= deadline {
+            return Err("nobody linked this device in time".into());
+        }
+        match device_socket(relay_url, key).await {
+            Ok(socket) => return Ok(socket),
+            Err(error) if link_transport_lost(&error) => continue,
+            Err(error) => return Err(error),
+        }
     }
 }
 

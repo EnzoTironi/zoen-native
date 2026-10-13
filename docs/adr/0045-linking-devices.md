@@ -64,7 +64,9 @@ plaintext, and pruning (ADR 0026) must not take away history a new device still 
   delete it. Only that device, within 15 minutes of `created_at`, receives the sealed
   bytes. `AckLink`, sent after the device has saved them, deletes the box, and a repeat
   succeeds. A sweep every 60 seconds deletes boxes older than 15 minutes, and link
-  operations sweep as well. Revoking a device deletes its
+  operations sweep as well. The browser does not read the history box the sponsoring
+  device seals for it yet; that box expires in the 15-minute sweep until U32 brings
+  history to the web. Revoking a device deletes its
   boxes in the same transaction. A `DeliverLink` with a certificate records that
   enrolled device as the reader. Without a certificate, the sponsor's device is the
   reader.
