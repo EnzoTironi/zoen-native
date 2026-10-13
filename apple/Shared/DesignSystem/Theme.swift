@@ -95,10 +95,6 @@ enum Palette {
     static let myBubbleText = textPrimary
     static let otherBubble = bubbleAgent
     static let otherBubbleOnBackdrop = bubbleAgent
-
-    static var actionGradient: LinearGradient {
-        LinearGradient(colors: [fillPrimary, fillPrimary], startPoint: .topLeading, endPoint: .bottomTrailing)
-    }
 }
 
 struct ActionGlassForeground: ShapeStyle {
