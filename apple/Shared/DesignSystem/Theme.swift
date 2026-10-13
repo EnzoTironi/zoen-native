@@ -74,6 +74,10 @@ enum Palette {
     static let composerBg = Color.adaptive(light: "#FFFFFF", dark: "#1D1D1F", lightAlpha: 0.55, darkAlpha: 0.618)
     static let bubbleAgent = Color.adaptive(light: "#FFFFFF", dark: "#1D1D1F", lightAlpha: 0.98, darkAlpha: 0.7)
     static let bubbleUser = Color.adaptive(light: "#FFFFFF", dark: "#1D1D1F", lightAlpha: 0.3, darkAlpha: 0.3)
+    static let bubbleUserOnBackdrop = fillPrimary
+    static let bubbleUserOnBackdropText = onAction
+    static let bubbleAgentOnBackdrop = Color.adaptive(light: "#F5F5F7", dark: "#1D1D1F")
+    static let bubbleAgentOnBackdropText = textPrimary
     static let cellBg = Color.adaptive(light: "#FFFFFF", dark: "#FFFFFF", lightAlpha: 0.6, darkAlpha: 0.05)
     static let strokePrimary = Color.adaptive(light: "#1D1D1F", dark: "#F5F5F7", lightAlpha: 0.14, darkAlpha: 0.14, contrastLightAlpha: 0.3, contrastDarkAlpha: 0.3)
     static let strokeSecondary = Color.adaptive(light: "#1D1D1F", dark: "#F5F5F7", lightAlpha: 0.07, darkAlpha: 0.07)
@@ -91,10 +95,10 @@ enum Palette {
     static let amber = Color(hex: "#FF4D00")
     static let success = Color(hex: "#00A665")
     static let danger = Color.adaptive(light: "#DA2F35", dark: "#F1555B")
-    static let myBubble = bubbleUser
-    static let myBubbleText = textPrimary
+    static let myBubble = bubbleUserOnBackdrop
+    static let myBubbleText = bubbleUserOnBackdropText
     static let otherBubble = bubbleAgent
-    static let otherBubbleOnBackdrop = bubbleAgent
+    static let otherBubbleOnBackdrop = bubbleAgentOnBackdrop
 }
 
 struct ActionGlassForeground: ShapeStyle {

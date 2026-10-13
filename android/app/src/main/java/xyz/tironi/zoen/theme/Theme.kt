@@ -18,9 +18,22 @@ import xyz.tironi.zoen.ui.LocalZoenPalette
 import xyz.tironi.zoen.ui.ZoenPalette
 import xyz.tironi.zoen.ui.zoenIncreasedContrast
 
+private fun Color.washedOnto(base: Color, amount: Float = 0.12f): Color =
+    Color(
+        red = amount * red + (1f - amount) * base.red,
+        green = amount * green + (1f - amount) * base.green,
+        blue = amount * blue + (1f - amount) * base.blue,
+        alpha = 1f,
+    )
+
 private fun ZoenPalette.scheme(): ColorScheme {
     val night = bg.luminance() < 0.5f
     val inverse = if (night) ZoenPalette.light else ZoenPalette.dark
+    // Surface and Card choose text from a container's luminance and ignore alpha.
+    // An opaque wash keeps that choice on the color the reader actually sees.
+    val errorWash = systemRed.washedOnto(bg)
+    val tertiaryWash = systemOrange.washedOnto(bg)
+    val highestWash = fillPrimary.washedOnto(bg)
     return if (night) {
         darkColorScheme(
             primary = fillPrimary,
@@ -33,16 +46,24 @@ private fun ZoenPalette.scheme(): ColorScheme {
             onSecondaryContainer = textPrimary,
             tertiary = systemOrange,
             onTertiary = textOn,
+            tertiaryContainer = tertiaryWash,
+            onTertiaryContainer = textPrimary,
             background = bg,
             onBackground = textPrimary,
             surface = bg,
             onSurface = textPrimary,
+            surfaceContainerLow = cellBg,
+            surfaceContainer = regularBg,
+            surfaceContainerHigh = thinBg,
+            surfaceContainerHighest = highestWash,
             surfaceVariant = cellBg,
             onSurfaceVariant = textSecondary,
             outline = strokePrimary,
             outlineVariant = strokeSecondary,
             error = systemRed,
             onError = textOn,
+            errorContainer = errorWash,
+            onErrorContainer = textPrimary,
             inverseSurface = inverse.bg,
             inverseOnSurface = inverse.textPrimary,
             inversePrimary = inverse.fillPrimary,
@@ -59,16 +80,24 @@ private fun ZoenPalette.scheme(): ColorScheme {
             onSecondaryContainer = textPrimary,
             tertiary = systemOrange,
             onTertiary = textOn,
+            tertiaryContainer = tertiaryWash,
+            onTertiaryContainer = textPrimary,
             background = bg,
             onBackground = textPrimary,
             surface = bg,
             onSurface = textPrimary,
+            surfaceContainerLow = cellBg,
+            surfaceContainer = regularBg,
+            surfaceContainerHigh = thinBg,
+            surfaceContainerHighest = highestWash,
             surfaceVariant = cellBg,
             onSurfaceVariant = textSecondary,
             outline = strokePrimary,
             outlineVariant = strokeSecondary,
             error = systemRed,
             onError = textOn,
+            errorContainer = errorWash,
+            onErrorContainer = textPrimary,
             inverseSurface = inverse.bg,
             inverseOnSurface = inverse.textPrimary,
             inversePrimary = inverse.fillPrimary,
@@ -97,10 +126,10 @@ private fun ColorScheme.palette(): ZoenPalette =
     if (background.luminance() > 0.5f) ZoenPalette.light else ZoenPalette.dark
 
 val ColorScheme.ownMessage: Color
-    get() = palette().bubbleUser
+    get() = palette().bubbleUserOnBackdrop
 
 val ColorScheme.onOwnMessage: Color
-    get() = palette().textPrimary
+    get() = palette().bubbleUserOnBackdropText
 
 val ColorScheme.otherMessage: Color
-    get() = palette().bubbleAgent
+    get() = palette().bubbleAgentOnBackdrop

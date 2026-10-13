@@ -14,6 +14,10 @@
   --zoen-composer-bg: rgb(255 255 255 / 0.55);
   --zoen-bubble-agent: rgb(255 255 255 / 0.98);
   --zoen-bubble-user: rgb(255 255 255 / 0.3);
+  --zoen-bubble-user-on-backdrop: #1d1d1f;
+  --zoen-bubble-user-on-backdrop-text: #f9f9fa;
+  --zoen-bubble-agent-on-backdrop: #f5f5f7;
+  --zoen-bubble-agent-on-backdrop-text: #1d1d1f;
   --zoen-cell-bg: rgb(255 255 255 / 0.6);
   --zoen-stroke-primary: rgb(29 29 31 / 0.14);
   --zoen-stroke-secondary: rgb(29 29 31 / 0.07);
@@ -277,6 +281,10 @@
   --zoen-composer-bg: rgb(29 29 31 / 0.618);
   --zoen-bubble-agent: rgb(29 29 31 / 0.7);
   --zoen-bubble-user: rgb(29 29 31 / 0.3);
+  --zoen-bubble-user-on-backdrop: #f5f5f7;
+  --zoen-bubble-user-on-backdrop-text: #1d1d1f;
+  --zoen-bubble-agent-on-backdrop: #1d1d1f;
+  --zoen-bubble-agent-on-backdrop-text: #f5f5f7;
   --zoen-cell-bg: rgb(255 255 255 / 0.05);
   --zoen-stroke-primary: rgb(245 245 247 / 0.14);
   --zoen-stroke-secondary: rgb(245 245 247 / 0.07);
@@ -306,6 +314,10 @@
     --zoen-composer-bg: rgb(29 29 31 / 0.618);
     --zoen-bubble-agent: rgb(29 29 31 / 0.7);
     --zoen-bubble-user: rgb(29 29 31 / 0.3);
+    --zoen-bubble-user-on-backdrop: #f5f5f7;
+    --zoen-bubble-user-on-backdrop-text: #1d1d1f;
+    --zoen-bubble-agent-on-backdrop: #1d1d1f;
+    --zoen-bubble-agent-on-backdrop-text: #f5f5f7;
     --zoen-cell-bg: rgb(255 255 255 / 0.05);
     --zoen-stroke-primary: rgb(245 245 247 / 0.14);
     --zoen-stroke-secondary: rgb(245 245 247 / 0.07);
