@@ -24,7 +24,9 @@
 //!   commit. Members apply a commit only if it leaves no unlisted reader.
 //! - **Checkpoints:** after its commit lands, after joining, and every 256 sealed entries,
 //!   a device posts its epoch digest. A member whose digest for the same epoch differs
-//!   was shown another group: the Space is marked as forked.
+//!   was shown another group: the Space is marked as forked. A checkpoint whose
+//!   `upto.hash` is not this device's chain hash at `upto.seq` marks that same fork.
+//!   A checkpoint still ahead of the chain waits under `mls.pending_prefix`.
 
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::sync::Mutex;
@@ -66,6 +68,10 @@ type R<T> = Result<T, CoreError>;
 
 /// Single-use key packages a device keeps on the relay, beside its last-resort one.
 const KEY_PACKAGES: usize = 32;
+
+/// Foreign checkpoints one Space may hold while `upto.seq` is still ahead of this
+/// device's chain. Past this, the highest `upto.seq` is the one dropped.
+const PENDING_PREFIX_CAP: usize = 32;
 const META_PUBLISHED: &str = "mls.key_packages";
 /// Log entries between a device's checkpoints in a Space (ADR 0026). Pruning waits on the
 /// slowest member's checkpoint, so readers post them too. `ZOEN_CHECKPOINT_EVERY` changes it
@@ -297,6 +303,19 @@ fn fork_meta(space: &str) -> String {
     format!("mls.fork:{space}")
 }
 
+fn pending_prefix_meta(space: &str) -> String {
+    format!("mls.pending_prefix:{space}")
+}
+
+/// A foreign checkpoint whose `upto.seq` this device has not reached yet.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+struct PendingPrefix {
+    seq: u64,
+    hash: String,
+    epoch: u64,
+    digest: String,
+}
+
 fn storage(e: impl std::fmt::Display) -> CoreError {
     CoreError::Storage {
         message: e.to_string(),
@@ -386,6 +405,10 @@ impl Engine {
                 }
             }
             self.net.mls.mark_group_dirty(space);
+        }
+        let pending: Vec<SpaceId> = self.logs.keys().cloned().collect();
+        for space in pending {
+            self.settle_pending_prefixes(&space);
         }
     }
 
@@ -873,6 +896,7 @@ impl Engine {
             let _ = self.reload();
             return Ingest::Invalid(err.to_string());
         }
+        self.compare_checkpoint(&e);
 
         let _ = self.store.set_synced(&space);
         self.net.synced.insert(space.clone());
@@ -992,6 +1016,7 @@ impl Engine {
         let _ = self.store.set_synced(&space);
         self.net.mls.wake_recovery(&space);
         self.net.synced.insert(space);
+        self.compare_checkpoint(&e);
         Ingest::Applied
     }
 
@@ -1140,27 +1165,154 @@ impl Engine {
         }
     }
 
-    /// Another member's checkpoint: if this device was at that epoch and computed a
-    /// different digest, the two were shown different groups.
+    /// Another member's checkpoint. Two checks share one fork path.
+    ///
+    /// The epoch digest is compared with this device's `digest_meta` for that epoch,
+    /// as before. `upto.hash` is compared with the chain hash at `upto.seq` once that
+    /// position is in the log. Either mismatch stores `fork_meta` and the Space's
+    /// `integrity_error`.
+    ///
+    /// When `upto.seq` is still ahead of the chain, the checkpoint is kept under
+    /// `mls.pending_prefix:{space}` and checked again from here when a later event in
+    /// that Space reaches it, including after this device reopens. The list holds at
+    /// most [`PENDING_PREFIX_CAP`] entries per Space. The same seq, hash, epoch and
+    /// digest are stored once. Past the cap, the entry with the highest `upto.seq` is
+    /// dropped, because this device reaches it last. A new entry further out than that
+    /// one is dropped instead, and the drop is written to the net trace. Once the chain
+    /// includes the seq, the entry is removed whether the prefix matches or forks. A
+    /// match with no stored digest for the epoch is removed too. The digest check does
+    /// not wait for a later epoch record.
     pub(crate) fn compare_checkpoint(&mut self, e: &Event) {
-        let EventBody::Checkpoint { epoch, digest, .. } = &e.body else {
-            return;
-        };
-        if self.me.as_deref() == Some(e.author.as_str()) {
+        if let EventBody::Checkpoint {
+            epoch,
+            digest,
+            upto,
+        } = &e.body
+        {
+            if self.me.as_deref() != Some(e.author.as_str()) {
+                self.observe_checkpoint(&e.space, *epoch, digest, upto);
+            }
+        }
+        self.settle_pending_prefixes(&e.space);
+    }
+
+    fn observe_checkpoint(&mut self, space: &str, epoch: u64, digest: &str, upto: &Seen) {
+        if self.digest_forks(space, epoch, digest) || self.prefix_forks(space, upto) {
+            self.mark_checkpoint_fork(space);
             return;
         }
-        let Ok(Some(mine)) = self.store.meta(&digest_meta(&e.space, *epoch)) else {
-            return;
-        };
-        if mine != *digest {
-            let reason = t(
-                "Membros veem grupos diferentes nesta conversa (possível bifurcação do servidor).",
-                "Members see different groups in this chat (the server may have forked it).",
+        if self.chain_hash_at(space, upto.seq).is_none() {
+            self.remember_pending_prefix(
+                space,
+                PendingPrefix {
+                    seq: upto.seq,
+                    hash: upto.hash.clone(),
+                    epoch,
+                    digest: digest.to_string(),
+                },
             );
-            let _ = self.store.set_meta(&fork_meta(&e.space), &reason);
-            if let Some(s) = self.state.spaces.get_mut(&e.space) {
-                s.integrity_error = Some(reason);
+        }
+    }
+
+    fn settle_pending_prefixes(&mut self, space: &str) {
+        let pending = self.pending_prefixes(space);
+        if pending.is_empty() {
+            return;
+        }
+        let started = pending.len();
+        let mut left = Vec::with_capacity(started);
+        let mut fork = false;
+        for item in pending {
+            let Some(mine) = self.chain_hash_at(space, item.seq) else {
+                left.push(item);
+                continue;
+            };
+            if mine != item.hash || self.digest_forks(space, item.epoch, &item.digest) {
+                fork = true;
             }
+        }
+        if left.len() != started {
+            self.store_pending_prefixes(space, &left);
+        }
+        if fork {
+            self.mark_checkpoint_fork(space);
+        }
+    }
+
+    fn remember_pending_prefix(&mut self, space: &str, item: PendingPrefix) {
+        let mut pending = self.pending_prefixes(space);
+        if pending.iter().any(|have| have == &item) {
+            return;
+        }
+        if pending.len() >= PENDING_PREFIX_CAP {
+            let furthest = pending
+                .iter()
+                .enumerate()
+                .max_by_key(|(_, have)| have.seq)
+                .map(|(index, _)| index)
+                .expect("a full pending list has an entry");
+            if item.seq >= pending[furthest].seq {
+                tracing_like(&format!(
+                    "pending checkpoint prefix dropped space={space} seq={} cap={PENDING_PREFIX_CAP}",
+                    item.seq
+                ));
+                return;
+            }
+            let dropped = pending.remove(furthest);
+            tracing_like(&format!(
+                "pending checkpoint prefix dropped space={space} seq={} cap={PENDING_PREFIX_CAP}",
+                dropped.seq
+            ));
+        }
+        pending.push(item);
+        self.store_pending_prefixes(space, &pending);
+    }
+
+    fn digest_forks(&self, space: &str, epoch: u64, digest: &str) -> bool {
+        self.store
+            .meta(&digest_meta(space, epoch))
+            .ok()
+            .flatten()
+            .is_some_and(|mine| mine != digest)
+    }
+
+    fn prefix_forks(&self, space: &str, upto: &Seen) -> bool {
+        self.chain_hash_at(space, upto.seq)
+            .is_some_and(|mine| mine != upto.hash)
+    }
+
+    fn chain_hash_at(&self, space: &str, seq: u64) -> Option<String> {
+        let event = self.logs.get(space)?.events().get(seq as usize)?;
+        (event.seq == seq).then(|| event.hash.clone())
+    }
+
+    fn pending_prefixes(&self, space: &str) -> Vec<PendingPrefix> {
+        self.store
+            .meta(&pending_prefix_meta(space))
+            .ok()
+            .flatten()
+            .and_then(|raw| serde_json::from_str(&raw).ok())
+            .unwrap_or_default()
+    }
+
+    fn store_pending_prefixes(&self, space: &str, pending: &[PendingPrefix]) {
+        let key = pending_prefix_meta(space);
+        let _ = if pending.is_empty() {
+            self.store.meta_delete(&key)
+        } else {
+            self.store
+                .set_meta(&key, &serde_json::to_string(pending).unwrap_or_default())
+        };
+    }
+
+    fn mark_checkpoint_fork(&mut self, space: &str) {
+        let reason = t(
+            "Membros veem grupos diferentes nesta conversa (possível bifurcação do servidor).",
+            "Members see different groups in this chat (the server may have forked it).",
+        );
+        let _ = self.store.set_meta(&fork_meta(space), &reason);
+        if let Some(s) = self.state.spaces.get_mut(space) {
+            s.integrity_error = Some(reason);
         }
     }
 
@@ -1886,7 +2038,7 @@ pub(crate) fn must_seal(body: &EventBody) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use roda_log::{chain_hash, Author};
+    use roda_log::{chain_hash, Author, Signer};
 
     fn ordered(engine: &Engine, env: Envelope) -> Sequenced {
         let (seq, prev) = engine
@@ -2739,5 +2891,327 @@ mod tests {
             "A's later handshake overtook the held application"
         );
         assert!(offered.iter().all(|env| env.space() != space_a));
+    }
+    const FORK: &str = "Members see different groups in this chat (the server may have forked it).";
+
+    fn member(path: &str) -> (Engine, Author, [u8; 32]) {
+        let mut engine = Engine::open(path).unwrap();
+        let (_, device_secret, _) = engine
+            .create_account("Ana", "ana_u18", "http://relay.test")
+            .unwrap();
+        let author = engine.net.author.clone().unwrap();
+        (engine, author, device_secret)
+    }
+
+    fn post(text: &str) -> EventBody {
+        EventBody::MessagePosted {
+            message: format!("m-{text}"),
+            text: text.into(),
+            attaches: None,
+            reply: None,
+        }
+    }
+
+    fn checkpoint(upto: roda_types::Seen, digest: &str) -> EventBody {
+        EventBody::Checkpoint {
+            upto,
+            epoch: 1,
+            digest: digest.into(),
+        }
+    }
+
+    fn ingest_signed(engine: &mut Engine, author: &Author, space: &str, body: EventBody) {
+        let seq = engine.next_seq(space);
+        let event = author.sign_event(
+            space,
+            &format!("{space}-{seq}"),
+            1_700_000_000_000 + seq as i64,
+            seen(engine, space),
+            body,
+        );
+        let got = engine.ingest(ordered(engine, Envelope::plain(&event)));
+        assert!(
+            matches!(got, Ingest::Applied | Ingest::Confirmed),
+            "ingest {seq}: {got:?}"
+        );
+    }
+
+    fn start_space(engine: &mut Engine, author: &Author, space: &str) {
+        ingest_signed(
+            engine,
+            author,
+            space,
+            EventBody::SpaceCreated {
+                title: space.into(),
+                kind: SpaceKind::Group,
+                privacy: Privacy::EndToEnd,
+            },
+        );
+    }
+
+    fn hash_at(engine: &Engine, space: &str, seq: u64) -> String {
+        engine.logs[space].events()[seq as usize].hash.clone()
+    }
+
+    fn integrity(engine: &Engine, space: &str) -> Option<String> {
+        engine
+            .state
+            .spaces
+            .get(space)
+            .and_then(|s| s.integrity_error.clone())
+    }
+
+    fn pending(engine: &Engine, space: &str) -> Vec<PendingPrefix> {
+        engine
+            .store
+            .meta(&pending_prefix_meta(space))
+            .unwrap()
+            .map(|raw| serde_json::from_str(&raw).unwrap())
+            .unwrap_or_default()
+    }
+
+    #[test]
+    fn divergent_prefix_on_the_local_chain_marks_the_space() {
+        let (mut engine, author, _) = member(":memory:");
+        let space = "prefix-now";
+        start_space(&mut engine, &author, space);
+        ingest_signed(&mut engine, &author, space, post("one"));
+        let peer = Author::root(Signer::generate());
+        ingest_signed(
+            &mut engine,
+            &peer,
+            space,
+            checkpoint(
+                roda_types::Seen {
+                    seq: 0,
+                    hash: "11".repeat(32),
+                },
+                &"ab".repeat(32),
+            ),
+        );
+        assert_eq!(integrity(&engine, space).as_deref(), Some(FORK));
+        assert_eq!(
+            engine.store.meta(&fork_meta(space)).unwrap().as_deref(),
+            Some(FORK)
+        );
+        assert!(pending(&engine, space).is_empty());
+    }
+
+    #[test]
+    fn matching_prefix_does_not_fork() {
+        let (mut engine, author, _) = member(":memory:");
+        let space = "prefix-match";
+        start_space(&mut engine, &author, space);
+        ingest_signed(&mut engine, &author, space, post("one"));
+        let hash = hash_at(&engine, space, 0);
+        let peer = Author::root(Signer::generate());
+        ingest_signed(
+            &mut engine,
+            &peer,
+            space,
+            checkpoint(roda_types::Seen { seq: 0, hash }, &"ab".repeat(32)),
+        );
+        assert_eq!(integrity(&engine, space), None);
+        assert_eq!(engine.store.meta(&fork_meta(space)).unwrap(), None);
+        assert!(pending(&engine, space).is_empty());
+        assert_eq!(engine.logs[space].events().len(), 3);
+    }
+
+    #[test]
+    fn matching_pending_prefix_is_cleared_without_a_fork() {
+        let (mut engine, author, _) = member(":memory:");
+        let space = "prefix-clear";
+        start_space(&mut engine, &author, space);
+        let stored = vec![PendingPrefix {
+            seq: 0,
+            hash: hash_at(&engine, space, 0),
+            epoch: 1,
+            digest: "ab".repeat(32),
+        }];
+        engine
+            .store
+            .set_meta(
+                &pending_prefix_meta(space),
+                &serde_json::to_string(&stored).unwrap(),
+            )
+            .unwrap();
+        ingest_signed(&mut engine, &author, space, post("later"));
+        assert_eq!(integrity(&engine, space), None);
+        assert_eq!(engine.store.meta(&fork_meta(space)).unwrap(), None);
+        assert!(pending(&engine, space).is_empty());
+    }
+
+    #[test]
+    fn pending_prefix_forks_when_the_chain_reaches_it() {
+        let (mut engine, author, _) = member(":memory:");
+        let space = "prefix-later";
+        start_space(&mut engine, &author, space);
+        let peer = Author::root(Signer::generate());
+        let claimed = "22".repeat(32);
+        ingest_signed(
+            &mut engine,
+            &peer,
+            space,
+            checkpoint(
+                roda_types::Seen {
+                    seq: 4,
+                    hash: claimed.clone(),
+                },
+                &"ab".repeat(32),
+            ),
+        );
+        assert_eq!(integrity(&engine, space), None);
+        assert_eq!(
+            pending(&engine, space),
+            vec![PendingPrefix {
+                seq: 4,
+                hash: claimed,
+                epoch: 1,
+                digest: "ab".repeat(32),
+            }]
+        );
+        ingest_signed(&mut engine, &author, space, post("two"));
+        ingest_signed(&mut engine, &author, space, post("three"));
+        assert_eq!(integrity(&engine, space), None);
+        assert_eq!(pending(&engine, space).len(), 1);
+        ingest_signed(&mut engine, &author, space, post("four"));
+        assert_eq!(integrity(&engine, space).as_deref(), Some(FORK));
+        assert_eq!(
+            engine.store.meta(&fork_meta(space)).unwrap().as_deref(),
+            Some(FORK)
+        );
+        assert!(pending(&engine, space).is_empty());
+    }
+
+    #[test]
+    fn pending_prefix_survives_reopen_and_forks_when_reached() {
+        let dir = std::env::temp_dir().join(format!("u18-prefix-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("device.sqlite");
+        let _ = std::fs::remove_file(&path);
+        let path = path.to_str().unwrap().to_string();
+        let space = "prefix-reopen";
+        let claimed = "33".repeat(32);
+        let device_secret = {
+            let (mut engine, author, device_secret) = member(&path);
+            start_space(&mut engine, &author, space);
+            let peer = Author::root(Signer::generate());
+            ingest_signed(
+                &mut engine,
+                &peer,
+                space,
+                checkpoint(
+                    roda_types::Seen {
+                        seq: 4,
+                        hash: claimed.clone(),
+                    },
+                    &"ab".repeat(32),
+                ),
+            );
+            assert_eq!(integrity(&engine, space), None);
+            assert_eq!(pending(&engine, space)[0].seq, 4);
+            device_secret
+        };
+        let mut engine = Engine::open(&path).unwrap();
+        assert!(engine.unlock(Some(device_secret.to_vec())).unwrap());
+        assert_eq!(integrity(&engine, space), None);
+        assert_eq!(
+            pending(&engine, space),
+            vec![PendingPrefix {
+                seq: 4,
+                hash: claimed,
+                epoch: 1,
+                digest: "ab".repeat(32),
+            }]
+        );
+        let author = engine.net.author.clone().unwrap();
+        ingest_signed(&mut engine, &author, space, post("two"));
+        ingest_signed(&mut engine, &author, space, post("three"));
+        assert_eq!(integrity(&engine, space), None);
+        ingest_signed(&mut engine, &author, space, post("four"));
+        assert_eq!(integrity(&engine, space).as_deref(), Some(FORK));
+        assert!(pending(&engine, space).is_empty());
+    }
+
+    #[test]
+    fn divergent_digest_still_marks_the_space() {
+        let (mut engine, author, _) = member(":memory:");
+        let space = "digest-still";
+        start_space(&mut engine, &author, space);
+        engine
+            .store
+            .set_meta(&digest_meta(space, 1), &"aa".repeat(32))
+            .unwrap();
+        let hash = hash_at(&engine, space, 0);
+        let peer = Author::root(Signer::generate());
+        ingest_signed(
+            &mut engine,
+            &peer,
+            space,
+            checkpoint(roda_types::Seen { seq: 0, hash }, &"bb".repeat(32)),
+        );
+        assert_eq!(integrity(&engine, space).as_deref(), Some(FORK));
+        assert_eq!(
+            engine.store.meta(&fork_meta(space)).unwrap().as_deref(),
+            Some(FORK)
+        );
+    }
+
+    #[test]
+    fn pending_prefix_cap_drops_the_furthest_seq() {
+        let (mut engine, author, _) = member(":memory:");
+        let space = "prefix-cap";
+        start_space(&mut engine, &author, space);
+        let peer = Author::root(Signer::generate());
+        for offset in 0..PENDING_PREFIX_CAP {
+            let seq = 1_000 + offset as u64;
+            ingest_signed(
+                &mut engine,
+                &peer,
+                space,
+                checkpoint(
+                    roda_types::Seen {
+                        seq,
+                        hash: format!("{seq:064x}"),
+                    },
+                    &"ab".repeat(32),
+                ),
+            );
+        }
+        let furthest = 1_000 + PENDING_PREFIX_CAP as u64 - 1;
+        ingest_signed(
+            &mut engine,
+            &peer,
+            space,
+            checkpoint(
+                roda_types::Seen {
+                    seq: 500,
+                    hash: format!("{:064x}", 500u64),
+                },
+                &"cd".repeat(32),
+            ),
+        );
+        let kept = pending(&engine, space);
+        assert_eq!(kept.len(), PENDING_PREFIX_CAP);
+        assert!(kept.iter().any(|item| item.seq == 500));
+        assert!(kept.iter().all(|item| item.seq != furthest));
+        assert_eq!(integrity(&engine, space), None);
+        ingest_signed(
+            &mut engine,
+            &peer,
+            space,
+            checkpoint(
+                roda_types::Seen {
+                    seq: 9_000,
+                    hash: format!("{:064x}", 9_000u64),
+                },
+                &"ef".repeat(32),
+            ),
+        );
+        let kept = pending(&engine, space);
+        assert_eq!(kept.len(), PENDING_PREFIX_CAP);
+        assert!(kept.iter().any(|item| item.seq == 500));
+        assert!(kept.iter().all(|item| item.seq != 9_000));
+        assert_eq!(integrity(&engine, space), None);
     }
 }
