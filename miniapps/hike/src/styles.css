@@ -1,6 +1,7 @@
 @import '@zoen/ui/tokens.css';
 html, body, #root { height: 100%; overflow: hidden; background: var(--z-bg); }
 .map { position: absolute; inset: 0; }
+.map.is-concealed { visibility: hidden; pointer-events: none; }
 .offline-map { background: #ECE8DA; }
 .offline-map > svg { display: block; width: 100%; height: 100%; touch-action: none; }
 .offline-controls { position: absolute; right: 12px; top: calc(env(safe-area-inset-top) + 110px); display: grid; overflow: hidden; border-radius: 12px; background: var(--z-surface); border: 1px solid var(--z-hairline); }

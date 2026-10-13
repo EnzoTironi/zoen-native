@@ -29,6 +29,24 @@ export function moveCamera(camera: Camera, size: Size, before: Point, after: Poi
   };
 }
 
+/** A style that never arrives, or misses this bound, leaves the offline route up. */
+export const STYLE_LOAD_BOUND_MS = 8000;
+
+export type MapLoadFault = 'tile' | 'source' | 'style';
+
+/** Tile errors carry `tile`. Source errors carry `sourceId` and no tile. Style load errors carry neither. */
+export function mapLoadFault(event: object): MapLoadFault {
+  if ('tile' in event && event.tile != null) return 'tile';
+  if ('sourceId' in event && typeof event.sourceId === 'string' && event.sourceId.length > 0) return 'source';
+  return 'style';
+}
+
+export function shouldAbandonOnlineMap(event: object | 'timeout', loaded: boolean, elapsedMs = 0, boundMs = STYLE_LOAD_BOUND_MS): boolean {
+  if (loaded) return false;
+  if (event === 'timeout') return elapsedMs >= boundMs;
+  return mapLoadFault(event) === 'style';
+}
+
 export function gesture(points: Point[]): { centre: Point; distance: number } | null {
   if (!points.length) return null;
   const pair = points.slice(0, 2);

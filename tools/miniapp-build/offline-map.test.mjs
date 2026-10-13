@@ -7,7 +7,7 @@ const bundled = await build({
   stdin: { contents: "export * from '../../miniapps/hike/src/mapGeometry'; export { TRAILS } from '../../miniapps/hike/src/trails';", resolveDir: fileURLToPath(new URL('.', import.meta.url)), loader: 'ts' },
   bundle: true, write: false, format: 'esm', platform: 'node', logLevel: 'silent',
 });
-const { fitRoute, moveCamera, initialCamera, gesture, TRAILS } = await import(`data:text/javascript;base64,${Buffer.from(bundled.outputFiles[0].text).toString('base64')}`);
+const { fitRoute, moveCamera, initialCamera, gesture, TRAILS, shouldAbandonOnlineMap, STYLE_LOAD_BOUND_MS } = await import(`data:text/javascript;base64,${Buffer.from(bundled.outputFiles[0].text).toString('base64')}`);
 
 test('every real trail fits above the cards in portrait, landscape and small windows', () => {
   for (const size of [{ width: 360, height: 720 }, { width: 720, height: 360 }, { width: 320, height: 480 }]) {
@@ -41,4 +41,18 @@ test('pinch and pan keep the route under the finger at both zoom limits', () => 
   assert.deepEqual(moveCamera(initialCamera, size, before, after), { zoom: 1, x: 40, y: 20 });
   assert.deepEqual(gesture([{ x: 10, y: 10 }, { x: 30, y: 10 }]), { centre: { x: 20, y: 10 }, distance: 20 });
   assert.equal(gesture([]), null);
+});
+
+test('a tile or source error before load stays online and a style error leaves the offline map', () => {
+  const tile = { sourceId: 'openfreemap', tile: { x: 1, y: 2, z: 3 } };
+  const source = { sourceId: 'openfreemap' };
+  const style = { error: { message: 'Failed to fetch style' } };
+  assert.equal(shouldAbandonOnlineMap(tile, false, 0, STYLE_LOAD_BOUND_MS), false);
+  assert.equal(shouldAbandonOnlineMap(source, false, 0, STYLE_LOAD_BOUND_MS), false);
+  assert.equal(shouldAbandonOnlineMap(style, false, 0, STYLE_LOAD_BOUND_MS), true);
+  assert.equal(shouldAbandonOnlineMap(style, true, 0, STYLE_LOAD_BOUND_MS), false);
+  assert.equal(shouldAbandonOnlineMap(tile, true, STYLE_LOAD_BOUND_MS, STYLE_LOAD_BOUND_MS), false);
+  assert.equal(shouldAbandonOnlineMap('timeout', false, STYLE_LOAD_BOUND_MS - 1, STYLE_LOAD_BOUND_MS), false);
+  assert.equal(shouldAbandonOnlineMap('timeout', false, STYLE_LOAD_BOUND_MS, STYLE_LOAD_BOUND_MS), true);
+  assert.equal(shouldAbandonOnlineMap('timeout', true, STYLE_LOAD_BOUND_MS, STYLE_LOAD_BOUND_MS), false);
 });

@@ -7,7 +7,7 @@
 //! person keeps. Restoring makes a new device key certified by the restored identity.
 
 #[cfg(unix)]
-use std::os::unix::fs::DirBuilderExt;
+use std::os::unix::fs::{DirBuilderExt, OpenOptionsExt, PermissionsExt};
 
 use argon2::{Algorithm, Argon2, Params, Version};
 use chacha20poly1305::{
@@ -281,30 +281,97 @@ pub fn open_payload(k: &[u8; 32], identity: &str, sealed: &[u8]) -> R<(Header, V
     Ok((header, plain[12 + n..].to_vec()))
 }
 
+fn snapshot_root(database: &str) -> std::path::PathBuf {
+    // Android's process temp directory may be /data/local/tmp, outside the app sandbox.
+    if database == ":memory:" {
+        return std::env::temp_dir();
+    }
+    std::path::Path::new(database)
+        .parent()
+        .filter(|parent| !parent.as_os_str().is_empty())
+        .unwrap_or_else(|| std::path::Path::new("."))
+        .to_path_buf()
+}
+
+/// `Drop` does not run after SIGKILL, so the next backup or restore removes only
+/// `zoen-backup-<32 hex>` and `zoen-restore-<32 hex>` directories.
+fn is_snapshot_leftover(name: &std::ffi::OsStr) -> bool {
+    let Some(name) = name.to_str() else {
+        return false;
+    };
+    let Some(rest) = name
+        .strip_prefix("zoen-backup-")
+        .or_else(|| name.strip_prefix("zoen-restore-"))
+    else {
+        return false;
+    };
+    rest.len() == 32
+        && rest
+            .bytes()
+            .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
+}
+
+fn sweep_snapshot_leftovers(database: &str) {
+    let Ok(entries) = std::fs::read_dir(snapshot_root(database)) else {
+        return;
+    };
+    for entry in entries.flatten() {
+        if !is_snapshot_leftover(&entry.file_name()) {
+            continue;
+        }
+        let path = entry.path();
+        let Ok(meta) = std::fs::symlink_metadata(&path) else {
+            continue;
+        };
+        if meta.file_type().is_symlink() {
+            let _ = std::fs::remove_file(&path);
+            continue;
+        }
+        if meta.is_dir() {
+            remove_db(&path.join("snapshot.db"));
+            let _ = std::fs::remove_dir(&path);
+        }
+    }
+}
+
+/// `O_EXCL` fails closed when `snapshot.db` is already a file or a symlink.
+fn create_exclusive_snapshot(path: &std::path::Path) -> R<()> {
+    let mut options = std::fs::OpenOptions::new();
+    options.write(true).create_new(true);
+    #[cfg(unix)]
+    options.mode(0o600);
+    let file = options.open(path).map_err(storage)?;
+    #[cfg(unix)]
+    std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o600)).map_err(storage)?;
+    drop(file);
+    Ok(())
+}
+
 struct SnapshotDatabase {
     path: std::path::PathBuf,
 }
 
 impl SnapshotDatabase {
     fn new(database: &str, tag: &str) -> R<Self> {
-        // Android's process temp directory may be /data/local/tmp, outside the app sandbox.
-        let base = if database == ":memory:" {
-            std::env::temp_dir()
-        } else {
-            std::path::Path::new(database)
-                .parent()
-                .filter(|p| !p.as_os_str().is_empty())
-                .unwrap_or_else(|| std::path::Path::new("."))
-                .to_path_buf()
-        };
-        let directory = base.join(format!("zoen-{tag}-{}", hex::encode(random::<16>())));
+        let directory =
+            snapshot_root(database).join(format!("zoen-{tag}-{}", hex::encode(random::<16>())));
         let mut builder = std::fs::DirBuilder::new();
         #[cfg(unix)]
         builder.mode(0o700);
         builder.create(&directory).map_err(storage)?;
-        Ok(Self {
-            path: directory.join("snapshot.db"),
-        })
+        #[cfg(unix)]
+        if let Err(error) =
+            std::fs::set_permissions(&directory, std::fs::Permissions::from_mode(0o700))
+        {
+            let _ = std::fs::remove_dir(&directory);
+            return Err(storage(error));
+        }
+        let path = directory.join("snapshot.db");
+        if let Err(error) = create_exclusive_snapshot(&path) {
+            let _ = std::fs::remove_dir(&directory);
+            return Err(error);
+        }
+        Ok(Self { path })
     }
 }
 
@@ -331,6 +398,7 @@ impl Engine {
     /// The device database as a backup sees it: only [`KEEP_TABLES`], without this
     /// device's account, MLS bookkeeping or pending invites.
     pub(crate) fn backup_snapshot(&self) -> R<Vec<u8>> {
+        sweep_snapshot_leftovers(&self.db_path);
         let scratch = SnapshotDatabase::new(&self.db_path, "backup")?;
         let path = &scratch.path;
         let out = (|| -> R<Vec<u8>> {
@@ -388,6 +456,7 @@ impl Engine {
         db: &[u8],
         device: roda_log::Signer,
     ) -> R<[u8; 32]> {
+        sweep_snapshot_leftovers(&self.db_path);
         if self.account().is_some() {
             return Err(invalid(t(
                 "Este aparelho já tem uma conta.",
@@ -564,5 +633,104 @@ mod snapshot_tests {
             .unwrap();
         assert_eq!(draft, 0);
         assert_eq!(kept, "yes");
+    }
+
+    #[test]
+    fn next_backup_removes_a_crashed_snapshot_and_keeps_neighbors() {
+        let database = SnapshotDatabase::new(":memory:", "fixture").unwrap();
+        let engine = Engine::open(database.path.to_str().unwrap()).unwrap();
+        let parent = database.path.parent().unwrap();
+        let crashed = parent.join("zoen-backup-0123456789abcdef0123456789abcdef");
+        std::fs::create_dir(&crashed).unwrap();
+        std::fs::write(crashed.join("snapshot.db"), b"plaintext secret").unwrap();
+        std::fs::write(crashed.join("snapshot.db-wal"), b"wal secret").unwrap();
+        let notes = parent.join("field-notes");
+        std::fs::create_dir(&notes).unwrap();
+        std::fs::write(notes.join("keep.txt"), b"stay").unwrap();
+        let note = parent.join("readme.txt");
+        std::fs::write(&note, b"stay-file").unwrap();
+        let almost = parent.join("zoen-backup-short");
+        std::fs::create_dir(&almost).unwrap();
+        std::fs::write(almost.join("snapshot.db"), b"not-ours").unwrap();
+
+        assert!(engine
+            .backup_snapshot()
+            .unwrap()
+            .starts_with(b"SQLite format 3\0"));
+        assert!(!crashed.exists());
+        assert_eq!(std::fs::read(notes.join("keep.txt")).unwrap(), b"stay");
+        assert_eq!(std::fs::read(&note).unwrap(), b"stay-file");
+        assert_eq!(
+            std::fs::read(almost.join("snapshot.db")).unwrap(),
+            b"not-ours"
+        );
+
+        std::fs::remove_dir_all(&notes).unwrap();
+        std::fs::remove_file(&note).unwrap();
+        std::fs::remove_dir_all(&almost).unwrap();
+    }
+
+    #[test]
+    fn restore_removes_a_crashed_snapshot_before_rejecting_the_header() {
+        let database = SnapshotDatabase::new(":memory:", "fixture").unwrap();
+        let mut engine = Engine::open(database.path.to_str().unwrap()).unwrap();
+        let parent = database.path.parent().unwrap();
+        let crashed = parent.join("zoen-restore-fedcba9876543210fedcba9876543210");
+        std::fs::create_dir(&crashed).unwrap();
+        std::fs::write(crashed.join("snapshot.db"), b"plaintext secret").unwrap();
+        std::fs::write(crashed.join("snapshot.db-journal"), b"journal secret").unwrap();
+        let notes = parent.join("field-notes");
+        std::fs::create_dir(&notes).unwrap();
+        std::fs::write(notes.join("keep.txt"), b"stay").unwrap();
+
+        let header = Header {
+            version: 1,
+            identity: "not-the-device".into(),
+            relay_url: "https://relay.invalid".into(),
+            identity_secret: "00".repeat(32),
+            agreement_secret: "11".repeat(32),
+            created_ms: 0,
+        };
+        assert!(engine
+            .restore_snapshot(&header, b"not a database", roda_log::Signer::generate())
+            .is_err());
+        assert!(!crashed.exists());
+        assert_eq!(std::fs::read(notes.join("keep.txt")).unwrap(), b"stay");
+        std::fs::remove_dir_all(&notes).unwrap();
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn exclusive_snapshot_refuses_a_symlink_and_keeps_the_target() {
+        let root =
+            std::env::temp_dir().join(format!("zoen-exclusive-{}", hex::encode(random::<8>())));
+        std::fs::create_dir(&root).unwrap();
+        let victim = root.join("victim");
+        std::fs::write(&victim, b"keep-me").unwrap();
+        let link = root.join("snapshot.db");
+        std::os::unix::fs::symlink(&victim, &link).unwrap();
+        assert!(create_exclusive_snapshot(&link).is_err());
+        assert_eq!(std::fs::read(&victim).unwrap(), b"keep-me");
+        std::fs::remove_dir_all(&root).unwrap();
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn exclusive_snapshot_refuses_a_planted_file_and_creates_mode_0600() {
+        let root =
+            std::env::temp_dir().join(format!("zoen-exclusive-{}", hex::encode(random::<8>())));
+        std::fs::create_dir(&root).unwrap();
+        let planted = root.join("planted.db");
+        std::fs::write(&planted, b"planted").unwrap();
+        assert!(create_exclusive_snapshot(&planted).is_err());
+        assert_eq!(std::fs::read(&planted).unwrap(), b"planted");
+        let created = root.join("snapshot.db");
+        create_exclusive_snapshot(&created).unwrap();
+        assert_eq!(std::fs::read(&created).unwrap(), b"");
+        assert_eq!(
+            std::fs::metadata(&created).unwrap().permissions().mode() & 0o777,
+            0o600
+        );
+        std::fs::remove_dir_all(&root).unwrap();
     }
 }

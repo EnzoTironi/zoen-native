@@ -11,6 +11,7 @@ import { TRAILS, byId, bounds, haversineMi, type Trail, type TrailId } from './t
 import { Photo } from './photos';
 import { L } from './i18n';
 import { OfflineMap } from './OfflineMap';
+import { STYLE_LOAD_BOUND_MS, shouldAbandonOnlineMap } from './mapGeometry';
 
 interface HikeState {
   title: string; area: string; day: string; dayMs?: number;
@@ -176,6 +177,8 @@ function App() {
 
 function MapView({ trail }: { trail: Trail }) {
   const [online, setOnline] = useState(false);
+  const [live, setLive] = useState(false);
+  const [abandoned, setAbandoned] = useState(false);
   useEffect(() => {
     let mounted = true;
     zoen.ready().then(() => {
@@ -183,16 +186,23 @@ function MapView({ trail }: { trail: Trail }) {
     });
     return () => { mounted = false; };
   }, []);
-  return online ? <OnlineMapView trail={trail} /> : <OfflineMap trail={trail} />;
+  if (!online || abandoned) return <OfflineMap trail={trail} />;
+  return <>
+    {!live && <OfflineMap trail={trail} />}
+    <OnlineMapView trail={trail} concealed={!live} onLive={() => setLive(true)} onGiveUp={() => setAbandoned(true)} />
+  </>;
 }
 
-function OnlineMapView({ trail }: { trail: Trail }) {
+function OnlineMapView({ trail, concealed, onLive, onGiveUp }: { trail: Trail; concealed: boolean; onLive: () => void; onGiveUp: () => void }) {
   const el = useRef<HTMLDivElement>(null);
   const map = useRef<maplibregl.Map | null>(null);
   const marker = useRef<maplibregl.Marker | null>(null);
   const ready = useRef(false);
   const latestTrail = useRef(trail);
-  const [failed, setFailed] = useState(false);
+  const onLiveRef = useRef(onLive);
+  const onGiveUpRef = useRef(onGiveUp);
+  onLiveRef.current = onLive;
+  onGiveUpRef.current = onGiveUp;
 
   const show = (t: Trail, animate: boolean) => {
     const m = map.current; if (!m || !ready.current) return;
@@ -204,13 +214,19 @@ function OnlineMapView({ trail }: { trail: Trail }) {
   };
 
   useEffect(() => {
-    if (failed || !el.current) return;
+    if (!el.current) return;
+    const trailhead = latestTrail.current.trailhead;
     let m: maplibregl.Map;
     try {
-      m = new maplibregl.Map({ container: el.current, style: ONLINE_STYLE, center: trail.trailhead, zoom: 11, attributionControl: { compact: true }, pitchWithRotate: false, dragRotate: false });
-    } catch { setFailed(true); return; }
+      m = new maplibregl.Map({ container: el.current, style: ONLINE_STYLE, center: trailhead, zoom: 11, attributionControl: { compact: true }, pitchWithRotate: false, dragRotate: false });
+    } catch { onGiveUpRef.current(); return; }
     map.current = m;
-    m.on('error', () => { if (!ready.current) setFailed(true); });
+    const timer = window.setTimeout(() => {
+      if (shouldAbandonOnlineMap('timeout', ready.current, STYLE_LOAD_BOUND_MS)) onGiveUpRef.current();
+    }, STYLE_LOAD_BOUND_MS);
+    m.on('error', (event) => {
+      if (shouldAbandonOnlineMap(event, ready.current)) onGiveUpRef.current();
+    });
     const pin = document.createElement('div');
     const label = document.createElement('div'); label.className = 'marker'; pin.appendChild(label);
     marker.current = new maplibregl.Marker({ element: pin, anchor: 'bottom', offset: [0, -6] }).setLngLat(trail.trailhead).addTo(m);
@@ -220,14 +236,15 @@ function OnlineMapView({ trail }: { trail: Trail }) {
       m.addLayer({ id: 'route-casing', type: 'line', source: 'route', paint: { 'line-color': '#ffffff', 'line-width': 9, 'line-opacity': 0.95 }, layout: { 'line-cap': 'round', 'line-join': 'round' } });
       m.addLayer({ id: 'route', type: 'line', source: 'route', paint: { 'line-color': '#3D7A28', 'line-width': 4.5 }, layout: { 'line-cap': 'round', 'line-join': 'round' } });
       ready.current = true;
+      onLiveRef.current();
       show(current, false);
     });
-    return () => { ready.current = false; map.current = null; marker.current = null; m.remove(); };
-  }, [failed]);
+    return () => { window.clearTimeout(timer); ready.current = false; map.current = null; marker.current = null; m.remove(); };
+  }, []);
 
   useEffect(() => { latestTrail.current = trail; show(trail, true); }, [trail]);
 
-  return failed ? <OfflineMap trail={trail} /> : <div ref={el} className="map" data-map="online" aria-label={`Map of ${trail.name}`} role="img" />;
+  return <div ref={el} className={concealed ? 'map is-concealed' : 'map'} data-map="online" aria-hidden={concealed} inert={concealed} aria-label={`Map of ${trail.name}`} role="img" />;
 }
 
 // ── detail (matched expansion from the card photo) ──
