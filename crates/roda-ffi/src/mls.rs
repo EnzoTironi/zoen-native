@@ -26,7 +26,8 @@
 //!   a device posts its epoch digest. A member whose digest for the same epoch differs
 //!   was shown another group: the Space is marked as forked. A checkpoint whose
 //!   `upto.hash` is not this device's chain hash at `upto.seq` marks that same fork.
-//!   A checkpoint still ahead of the chain waits under `mls.pending_prefix`.
+//!   A checkpoint still ahead of the chain waits under `mls.pending_prefix`,
+//!   one claim per signing device.
 
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::sync::Mutex;
@@ -69,9 +70,10 @@ type R<T> = Result<T, CoreError>;
 /// Single-use key packages a device keeps on the relay, beside its last-resort one.
 const KEY_PACKAGES: usize = 32;
 
-/// Foreign checkpoints one Space may hold while `upto.seq` is still ahead of this
-/// device's chain. Past this, the highest `upto.seq` is the one dropped.
-const PENDING_PREFIX_CAP: usize = 32;
+/// Defense ceiling on pending prefix claims in one Space. A valid roster stays
+/// under this, because each member device holds one claim. Reaching it refuses
+/// the new device and drops nothing already stored.
+const PENDING_PREFIX_CEILING: usize = 4096;
 const META_PUBLISHED: &str = "mls.key_packages";
 /// Log entries between a device's checkpoints in a Space (ADR 0026). Pruning waits on the
 /// slowest member's checkpoint, so readers post them too. `ZOEN_CHECKPOINT_EVERY` changes it
@@ -307,7 +309,14 @@ fn pending_prefix_meta(space: &str) -> String {
     format!("mls.pending_prefix:{space}")
 }
 
+/// The key that signed the event: the device key when the event carries one,
+/// otherwise the identity key.
+fn signing_device(e: &Event) -> &str {
+    e.device.as_deref().unwrap_or(e.author.as_str())
+}
+
 /// A foreign checkpoint whose `upto.seq` this device has not reached yet.
+/// Stored under the signing device's key, one claim per device.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 struct PendingPrefix {
     seq: u64,
@@ -1170,18 +1179,23 @@ impl Engine {
     /// The epoch digest is compared with this device's `digest_meta` for that epoch,
     /// as before. `upto.hash` is compared with the chain hash at `upto.seq` once that
     /// position is in the log. Either mismatch stores `fork_meta` and the Space's
-    /// `integrity_error`.
+    /// `integrity_error`. A checkpoint whose author is not a current member of the
+    /// Space log is ignored.
     ///
     /// When `upto.seq` is still ahead of the chain, the checkpoint is kept under
     /// `mls.pending_prefix:{space}` and checked again from here when a later event in
-    /// that Space reaches it, including after this device reopens. The list holds at
-    /// most [`PENDING_PREFIX_CAP`] entries per Space. The same seq, hash, epoch and
-    /// digest are stored once. Past the cap, the entry with the highest `upto.seq` is
-    /// dropped, because this device reaches it last. A new entry further out than that
-    /// one is dropped instead, and the drop is written to the net trace. Once the chain
-    /// includes the seq, the entry is removed whether the prefix matches or forks. A
-    /// match with no stored digest for the epoch is removed too. The digest check does
-    /// not wait for a later epoch record.
+    /// that Space reaches it, including after this device reopens. One signing device
+    /// keeps only its highest unreached `upto.seq`. A later claim from that device
+    /// with a higher seq replaces it. A lower or equal seq is ignored. This relies on
+    /// the hash chain: the hash at the higher position commits to every earlier one,
+    /// so a divergence at or before the lower position still fails the higher check.
+    /// A device that leaves the roster keeps the claim it already stored until that
+    /// check runs. The list is bounded by the Space's member devices. Past
+    /// [`PENDING_PREFIX_CEILING`] entries a new device is refused and traced, and
+    /// nothing already stored is dropped. Once the chain includes the seq, the entry
+    /// is removed whether the prefix matches or forks. A match with no stored digest
+    /// for the epoch is removed too. The digest check does not wait for a later
+    /// epoch record.
     pub(crate) fn compare_checkpoint(&mut self, e: &Event) {
         if let EventBody::Checkpoint {
             epoch,
@@ -1190,20 +1204,24 @@ impl Engine {
         } = &e.body
         {
             if self.me.as_deref() != Some(e.author.as_str()) {
-                self.observe_checkpoint(&e.space, *epoch, digest, upto);
+                self.observe_checkpoint(e, *epoch, digest, upto);
             }
         }
         self.settle_pending_prefixes(&e.space);
     }
 
-    fn observe_checkpoint(&mut self, space: &str, epoch: u64, digest: &str, upto: &Seen) {
-        if self.digest_forks(space, epoch, digest) || self.prefix_forks(space, upto) {
-            self.mark_checkpoint_fork(space);
+    fn observe_checkpoint(&mut self, e: &Event, epoch: u64, digest: &str, upto: &Seen) {
+        if !self.author_in_roster(&e.space, &e.author) {
             return;
         }
-        if self.chain_hash_at(space, upto.seq).is_none() {
+        if self.digest_forks(&e.space, epoch, digest) || self.prefix_forks(&e.space, upto) {
+            self.mark_checkpoint_fork(&e.space);
+            return;
+        }
+        if self.chain_hash_at(&e.space, upto.seq).is_none() {
             self.remember_pending_prefix(
-                space,
+                &e.space,
+                signing_device(e),
                 PendingPrefix {
                     seq: upto.seq,
                     hash: upto.hash.clone(),
@@ -1220,11 +1238,11 @@ impl Engine {
             return;
         }
         let started = pending.len();
-        let mut left = Vec::with_capacity(started);
+        let mut left = BTreeMap::new();
         let mut fork = false;
-        for item in pending {
+        for (device, item) in pending {
             let Some(mine) = self.chain_hash_at(space, item.seq) else {
-                left.push(item);
+                left.insert(device, item);
                 continue;
             };
             if mine != item.hash || self.digest_forks(space, item.epoch, &item.digest) {
@@ -1239,33 +1257,31 @@ impl Engine {
         }
     }
 
-    fn remember_pending_prefix(&mut self, space: &str, item: PendingPrefix) {
+    fn remember_pending_prefix(&mut self, space: &str, device: &str, item: PendingPrefix) {
         let mut pending = self.pending_prefixes(space);
-        if pending.iter().any(|have| have == &item) {
-            return;
-        }
-        if pending.len() >= PENDING_PREFIX_CAP {
-            let furthest = pending
-                .iter()
-                .enumerate()
-                .max_by_key(|(_, have)| have.seq)
-                .map(|(index, _)| index)
-                .expect("a full pending list has an entry");
-            if item.seq >= pending[furthest].seq {
-                tracing_like(&format!(
-                    "pending checkpoint prefix dropped space={space} seq={} cap={PENDING_PREFIX_CAP}",
-                    item.seq
-                ));
+        if let Some(existing) = pending.get(device) {
+            if item.seq <= existing.seq {
                 return;
             }
-            let dropped = pending.remove(furthest);
-            tracing_like(&format!(
-                "pending checkpoint prefix dropped space={space} seq={} cap={PENDING_PREFIX_CAP}",
-                dropped.seq
-            ));
+            pending.insert(device.to_string(), item);
+            self.store_pending_prefixes(space, &pending);
+            return;
         }
-        pending.push(item);
+        if pending.len() >= PENDING_PREFIX_CEILING {
+            tracing_like(&format!(
+                "pending checkpoint prefix refused space={space} device={device} seq={} ceiling={PENDING_PREFIX_CEILING}",
+                item.seq
+            ));
+            return;
+        }
+        pending.insert(device.to_string(), item);
         self.store_pending_prefixes(space, &pending);
+    }
+
+    fn author_in_roster(&self, space: &str, identity: &str) -> bool {
+        self.logs
+            .get(space)
+            .is_some_and(|log| fold_roster(log.events().iter()).contains_key(identity))
     }
 
     fn digest_forks(&self, space: &str, epoch: u64, digest: &str) -> bool {
@@ -1286,7 +1302,7 @@ impl Engine {
         (event.seq == seq).then(|| event.hash.clone())
     }
 
-    fn pending_prefixes(&self, space: &str) -> Vec<PendingPrefix> {
+    fn pending_prefixes(&self, space: &str) -> BTreeMap<String, PendingPrefix> {
         self.store
             .meta(&pending_prefix_meta(space))
             .ok()
@@ -1295,7 +1311,7 @@ impl Engine {
             .unwrap_or_default()
     }
 
-    fn store_pending_prefixes(&self, space: &str, pending: &[PendingPrefix]) {
+    fn store_pending_prefixes(&self, space: &str, pending: &BTreeMap<String, PendingPrefix>) {
         let key = pending_prefix_meta(space);
         let _ = if pending.is_empty() {
             self.store.meta_delete(&key)
@@ -2038,6 +2054,8 @@ pub(crate) fn must_seal(body: &EventBody) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::collections::BTreeMap;
+
     use roda_log::{chain_hash, Author, Signer};
 
     fn ordered(engine: &Engine, env: Envelope) -> Sequenced {
@@ -2961,13 +2979,49 @@ mod tests {
             .and_then(|s| s.integrity_error.clone())
     }
 
-    fn pending(engine: &Engine, space: &str) -> Vec<PendingPrefix> {
+    fn device_key(author: &Author) -> String {
+        author
+            .device
+            .clone()
+            .unwrap_or_else(|| author.identity.clone())
+    }
+
+    fn add_member(engine: &mut Engine, owner: &Author, space: &str, peer: &Author) {
+        ingest_signed(
+            engine,
+            owner,
+            space,
+            EventBody::MemberAdded {
+                identity: peer.identity.clone(),
+                role: Role::Member,
+            },
+        );
+    }
+
+    fn pending(engine: &Engine, space: &str) -> BTreeMap<String, PendingPrefix> {
         engine
             .store
             .meta(&pending_prefix_meta(space))
             .unwrap()
             .map(|raw| serde_json::from_str(&raw).unwrap())
             .unwrap_or_default()
+    }
+
+    fn claim(seq: u64, hash: &str) -> EventBody {
+        checkpoint(
+            roda_types::Seen {
+                seq,
+                hash: hash.into(),
+            },
+            &"ab".repeat(32),
+        )
+    }
+
+    fn extend_until(engine: &mut Engine, author: &Author, space: &str, seq: u64) {
+        while engine.next_seq(space) <= seq {
+            let n = engine.next_seq(space);
+            ingest_signed(engine, author, space, post(&format!("reach-{n}")));
+        }
     }
 
     #[test]
@@ -2977,6 +3031,7 @@ mod tests {
         start_space(&mut engine, &author, space);
         ingest_signed(&mut engine, &author, space, post("one"));
         let peer = Author::root(Signer::generate());
+        add_member(&mut engine, &author, space, &peer);
         ingest_signed(
             &mut engine,
             &peer,
@@ -3005,6 +3060,7 @@ mod tests {
         ingest_signed(&mut engine, &author, space, post("one"));
         let hash = hash_at(&engine, space, 0);
         let peer = Author::root(Signer::generate());
+        add_member(&mut engine, &author, space, &peer);
         ingest_signed(
             &mut engine,
             &peer,
@@ -3014,7 +3070,7 @@ mod tests {
         assert_eq!(integrity(&engine, space), None);
         assert_eq!(engine.store.meta(&fork_meta(space)).unwrap(), None);
         assert!(pending(&engine, space).is_empty());
-        assert_eq!(engine.logs[space].events().len(), 3);
+        assert_eq!(engine.logs[space].events().len(), 4);
     }
 
     #[test]
@@ -3022,12 +3078,18 @@ mod tests {
         let (mut engine, author, _) = member(":memory:");
         let space = "prefix-clear";
         start_space(&mut engine, &author, space);
-        let stored = vec![PendingPrefix {
-            seq: 0,
-            hash: hash_at(&engine, space, 0),
-            epoch: 1,
-            digest: "ab".repeat(32),
-        }];
+        let peer = Author::root(Signer::generate());
+        add_member(&mut engine, &author, space, &peer);
+        let mut stored = BTreeMap::new();
+        stored.insert(
+            device_key(&peer),
+            PendingPrefix {
+                seq: 0,
+                hash: hash_at(&engine, space, 0),
+                epoch: 1,
+                digest: "ab".repeat(32),
+            },
+        );
         engine
             .store
             .set_meta(
@@ -3047,40 +3109,39 @@ mod tests {
         let space = "prefix-later";
         start_space(&mut engine, &author, space);
         let peer = Author::root(Signer::generate());
+        add_member(&mut engine, &author, space, &peer);
         let claimed = "22".repeat(32);
-        ingest_signed(
-            &mut engine,
-            &peer,
-            space,
-            checkpoint(
-                roda_types::Seen {
-                    seq: 4,
-                    hash: claimed.clone(),
-                },
-                &"ab".repeat(32),
-            ),
-        );
+        let target = engine.next_seq(space) + 3;
+        ingest_signed(&mut engine, &peer, space, claim(target, &claimed));
         assert_eq!(integrity(&engine, space), None);
         assert_eq!(
-            pending(&engine, space),
-            vec![PendingPrefix {
-                seq: 4,
+            pending(&engine, space).get(&device_key(&peer)),
+            Some(&PendingPrefix {
+                seq: target,
                 hash: claimed,
                 epoch: 1,
                 digest: "ab".repeat(32),
-            }]
+            })
         );
-        ingest_signed(&mut engine, &author, space, post("two"));
-        ingest_signed(&mut engine, &author, space, post("three"));
-        assert_eq!(integrity(&engine, space), None);
-        assert_eq!(pending(&engine, space).len(), 1);
-        ingest_signed(&mut engine, &author, space, post("four"));
+        let quiet = target - engine.next_seq(space);
+        for _ in 0..quiet {
+            ingest_signed(
+                &mut engine,
+                &author,
+                space,
+                post(&format!("before-{target}")),
+            );
+            assert_eq!(integrity(&engine, space), None);
+            assert_eq!(pending(&engine, space).len(), 1);
+        }
+        ingest_signed(&mut engine, &author, space, post("reached"));
         assert_eq!(integrity(&engine, space).as_deref(), Some(FORK));
         assert_eq!(
             engine.store.meta(&fork_meta(space)).unwrap().as_deref(),
             Some(FORK)
         );
         assert!(pending(&engine, space).is_empty());
+        assert_ne!(hash_at(&engine, space, target), "22".repeat(32));
     }
 
     #[test]
@@ -3092,43 +3153,41 @@ mod tests {
         let path = path.to_str().unwrap().to_string();
         let space = "prefix-reopen";
         let claimed = "33".repeat(32);
+        let peer = Author::root(Signer::generate());
         let device_secret = {
             let (mut engine, author, device_secret) = member(&path);
             start_space(&mut engine, &author, space);
-            let peer = Author::root(Signer::generate());
-            ingest_signed(
-                &mut engine,
-                &peer,
-                space,
-                checkpoint(
-                    roda_types::Seen {
-                        seq: 4,
-                        hash: claimed.clone(),
-                    },
-                    &"ab".repeat(32),
-                ),
-            );
+            add_member(&mut engine, &author, space, &peer);
+            assert_eq!(engine.next_seq(space), 2);
+            ingest_signed(&mut engine, &peer, space, claim(5, &claimed));
             assert_eq!(integrity(&engine, space), None);
-            assert_eq!(pending(&engine, space)[0].seq, 4);
+            assert_eq!(
+                pending(&engine, space)
+                    .get(&device_key(&peer))
+                    .map(|item| item.seq),
+                Some(5)
+            );
             device_secret
         };
         let mut engine = Engine::open(&path).unwrap();
         assert!(engine.unlock(Some(device_secret.to_vec())).unwrap());
         assert_eq!(integrity(&engine, space), None);
         assert_eq!(
-            pending(&engine, space),
-            vec![PendingPrefix {
-                seq: 4,
+            pending(&engine, space).get(&device_key(&peer)),
+            Some(&PendingPrefix {
+                seq: 5,
                 hash: claimed,
                 epoch: 1,
                 digest: "ab".repeat(32),
-            }]
+            })
         );
         let author = engine.net.author.clone().unwrap();
-        ingest_signed(&mut engine, &author, space, post("two"));
-        ingest_signed(&mut engine, &author, space, post("three"));
-        assert_eq!(integrity(&engine, space), None);
-        ingest_signed(&mut engine, &author, space, post("four"));
+        let quiet = 5 - engine.next_seq(space);
+        for _ in 0..quiet {
+            ingest_signed(&mut engine, &author, space, post("before-reopen"));
+            assert_eq!(integrity(&engine, space), None);
+        }
+        ingest_signed(&mut engine, &author, space, post("reached-reopen"));
         assert_eq!(integrity(&engine, space).as_deref(), Some(FORK));
         assert!(pending(&engine, space).is_empty());
     }
@@ -3144,6 +3203,7 @@ mod tests {
             .unwrap();
         let hash = hash_at(&engine, space, 0);
         let peer = Author::root(Signer::generate());
+        add_member(&mut engine, &author, space, &peer);
         ingest_signed(
             &mut engine,
             &peer,
@@ -3158,60 +3218,289 @@ mod tests {
     }
 
     #[test]
-    fn pending_prefix_cap_drops_the_furthest_seq() {
+    fn colluding_near_claims_do_not_evict_an_honest_far_claim() {
         let (mut engine, author, _) = member(":memory:");
-        let space = "prefix-cap";
+        let space = "prefix-collude";
         start_space(&mut engine, &author, space);
-        let peer = Author::root(Signer::generate());
-        for offset in 0..PENDING_PREFIX_CAP {
-            let seq = 1_000 + offset as u64;
+        let honest = Author::root(Signer::generate());
+        add_member(&mut engine, &author, space, &honest);
+        let mut colluders = Vec::new();
+        for _ in 0..40 {
+            let peer = Author::root(Signer::generate());
+            add_member(&mut engine, &author, space, &peer);
+            colluders.push(peer);
+        }
+        let near = engine.next_seq(space) + 40 + 8;
+        let far = near + 40;
+        let honest_hash = "44".repeat(32);
+        for (n, peer) in colluders.iter().enumerate() {
             ingest_signed(
                 &mut engine,
-                &peer,
+                peer,
                 space,
-                checkpoint(
-                    roda_types::Seen {
-                        seq,
-                        hash: format!("{seq:064x}"),
-                    },
-                    &"ab".repeat(32),
-                ),
+                claim(near, &format!("{:064x}", n as u64 + 1)),
             );
         }
-        let furthest = 1_000 + PENDING_PREFIX_CAP as u64 - 1;
-        ingest_signed(
-            &mut engine,
-            &peer,
-            space,
-            checkpoint(
-                roda_types::Seen {
-                    seq: 500,
-                    hash: format!("{:064x}", 500u64),
-                },
-                &"cd".repeat(32),
-            ),
-        );
+        ingest_signed(&mut engine, &honest, space, claim(far, &honest_hash));
         let kept = pending(&engine, space);
-        assert_eq!(kept.len(), PENDING_PREFIX_CAP);
-        assert!(kept.iter().any(|item| item.seq == 500));
-        assert!(kept.iter().all(|item| item.seq != furthest));
+        assert_eq!(kept.len(), 41);
+        assert_eq!(
+            kept.get(&device_key(&honest)).map(|item| item.seq),
+            Some(far)
+        );
+        assert_eq!(kept.values().filter(|item| item.seq == near).count(), 40);
         assert_eq!(integrity(&engine, space), None);
+        extend_until(&mut engine, &author, space, near);
+        assert_eq!(integrity(&engine, space).as_deref(), Some(FORK));
+        assert_eq!(
+            pending(&engine, space)
+                .get(&device_key(&honest))
+                .map(|item| item.seq),
+            Some(far)
+        );
+        extend_until(&mut engine, &author, space, far);
+        assert_eq!(integrity(&engine, space).as_deref(), Some(FORK));
+        assert_ne!(hash_at(&engine, space, far), honest_hash);
+        assert!(!pending(&engine, space).contains_key(&device_key(&honest)));
+    }
+
+    #[test]
+    fn same_device_higher_claim_replaces_the_lower_and_catches_an_earlier_fork() {
+        let (mut engine, author, _) = member(":memory:");
+        let space = "prefix-higher";
+        start_space(&mut engine, &author, space);
+        let peer = Author::root(Signer::generate());
+        add_member(&mut engine, &author, space, &peer);
+        let prefix = hash_at(&engine, space, 0);
+        let lower = engine.next_seq(space) + 12;
+        let higher = lower + 10;
+        let lower_hash = "55".repeat(32);
+        let higher_hash = "66".repeat(32);
+        ingest_signed(&mut engine, &peer, space, claim(lower, &lower_hash));
+        assert_eq!(
+            pending(&engine, space)
+                .get(&device_key(&peer))
+                .map(|item| item.seq),
+            Some(lower)
+        );
+        ingest_signed(&mut engine, &peer, space, claim(higher, &higher_hash));
+        assert_eq!(
+            pending(&engine, space).get(&device_key(&peer)),
+            Some(&PendingPrefix {
+                seq: higher,
+                hash: higher_hash.clone(),
+                epoch: 1,
+                digest: "ab".repeat(32),
+            })
+        );
+        assert_eq!(pending(&engine, space).len(), 1);
+        ingest_signed(&mut engine, &peer, space, claim(higher, &"77".repeat(32)));
+        assert_eq!(
+            pending(&engine, space)
+                .get(&device_key(&peer))
+                .map(|item| item.hash.clone()),
+            Some(higher_hash.clone())
+        );
+        ingest_signed(&mut engine, &peer, space, claim(lower, &"77".repeat(32)));
+        assert_eq!(
+            pending(&engine, space)
+                .get(&device_key(&peer))
+                .map(|item| item.seq),
+            Some(higher)
+        );
+        extend_until(&mut engine, &author, space, higher);
+        assert_eq!(integrity(&engine, space).as_deref(), Some(FORK));
+        assert_ne!(hash_at(&engine, space, higher), higher_hash);
+        assert_eq!(hash_at(&engine, space, 0), prefix);
+        assert!(pending(&engine, space).is_empty());
+    }
+
+    #[test]
+    fn two_devices_of_one_member_keep_separate_claims() {
+        let (mut engine, author, _) = member(":memory:");
+        let space = "prefix-devices";
+        start_space(&mut engine, &author, space);
+        let identity = Signer::generate();
+        let phone = Author::device(&identity, Signer::generate());
+        let laptop = Author::device(&identity, Signer::generate());
+        add_member(&mut engine, &author, space, &phone);
+        let near = engine.next_seq(space) + 8;
+        let far = near + 8;
+        ingest_signed(&mut engine, &phone, space, claim(near, &"a1".repeat(32)));
+        ingest_signed(&mut engine, &laptop, space, claim(far, &"b2".repeat(32)));
+        let kept = pending(&engine, space);
+        assert_eq!(kept.len(), 2);
+        assert_ne!(device_key(&phone), device_key(&laptop));
+        assert_eq!(
+            kept.get(&device_key(&phone)).map(|item| item.seq),
+            Some(near)
+        );
+        assert_eq!(
+            kept.get(&device_key(&laptop)).map(|item| item.seq),
+            Some(far)
+        );
+        ingest_signed(&mut engine, &phone, space, claim(far, &"c3".repeat(32)));
+        let kept = pending(&engine, space);
+        assert_eq!(kept.len(), 2);
+        assert_eq!(
+            kept.get(&device_key(&phone)).map(|item| item.hash.clone()),
+            Some("c3".repeat(32))
+        );
+        assert_eq!(
+            kept.get(&device_key(&laptop)).map(|item| item.hash.clone()),
+            Some("b2".repeat(32))
+        );
+    }
+
+    #[test]
+    fn a_non_member_checkpoint_is_ignored() {
+        let (mut engine, author, _) = member(":memory:");
+        let space = "prefix-stranger";
+        start_space(&mut engine, &author, space);
+        ingest_signed(&mut engine, &author, space, post("one"));
+        let stranger = Author::root(Signer::generate());
+        ingest_signed(&mut engine, &stranger, space, claim(0, &"11".repeat(32)));
+        ingest_signed(
+            &mut engine,
+            &stranger,
+            space,
+            claim(9_000, &"12".repeat(32)),
+        );
+        assert_eq!(integrity(&engine, space), None);
+        assert_eq!(engine.store.meta(&fork_meta(space)).unwrap(), None);
+        assert!(pending(&engine, space).is_empty());
+        let peer = Author::root(Signer::generate());
+        add_member(&mut engine, &author, space, &peer);
+        ingest_signed(&mut engine, &peer, space, claim(0, &"11".repeat(32)));
+        assert_eq!(integrity(&engine, space).as_deref(), Some(FORK));
+    }
+
+    #[test]
+    fn an_honest_conversation_with_many_members_ends_with_no_pending_prefix() {
+        let (mut engine, author, _) = member(":memory:");
+        let space = "prefix-honest";
+        start_space(&mut engine, &author, space);
+        let peers: Vec<Author> = (0..12).map(|_| Author::root(Signer::generate())).collect();
+        for peer in &peers {
+            add_member(&mut engine, &author, space, peer);
+        }
+        for round in 0..3 {
+            ingest_signed(&mut engine, &author, space, post(&format!("round-{round}")));
+            let upto = engine.logs[space].head().unwrap();
+            for peer in &peers {
+                ingest_signed(
+                    &mut engine,
+                    peer,
+                    space,
+                    checkpoint(upto.clone(), &"ab".repeat(32)),
+                );
+                assert_eq!(integrity(&engine, space), None);
+                assert!(pending(&engine, space).is_empty());
+            }
+        }
+        assert_eq!(engine.logs[space].events().len(), 1 + 12 + 3 + 36);
+        assert_eq!(integrity(&engine, space), None);
+        assert_eq!(engine.store.meta(&fork_meta(space)).unwrap(), None);
+        assert!(pending(&engine, space).is_empty());
+    }
+
+    #[test]
+    fn a_removed_member_pending_claim_is_kept_until_the_chain_reaches_it() {
+        let (mut engine, author, _) = member(":memory:");
+        let space = "prefix-removed";
+        start_space(&mut engine, &author, space);
+        let peer = Author::root(Signer::generate());
+        add_member(&mut engine, &author, space, &peer);
+        let target = engine.next_seq(space) + 6;
+        ingest_signed(&mut engine, &peer, space, claim(target, &"88".repeat(32)));
+        assert_eq!(
+            pending(&engine, space)
+                .get(&device_key(&peer))
+                .map(|item| item.seq),
+            Some(target)
+        );
+        ingest_signed(
+            &mut engine,
+            &author,
+            space,
+            EventBody::MemberRemoved {
+                identity: peer.identity.clone(),
+            },
+        );
         ingest_signed(
             &mut engine,
             &peer,
             space,
-            checkpoint(
-                roda_types::Seen {
-                    seq: 9_000,
-                    hash: format!("{:064x}", 9_000u64),
-                },
-                &"ef".repeat(32),
-            ),
+            claim(target + 20, &"99".repeat(32)),
         );
+        assert_eq!(
+            pending(&engine, space)
+                .get(&device_key(&peer))
+                .map(|item| item.seq),
+            Some(target)
+        );
+        assert_eq!(pending(&engine, space).len(), 1);
+        assert_eq!(integrity(&engine, space), None);
+        extend_until(&mut engine, &author, space, target);
+        assert_eq!(integrity(&engine, space).as_deref(), Some(FORK));
+        assert!(pending(&engine, space).is_empty());
+    }
+
+    #[test]
+    fn pending_prefix_ceiling_refuses_a_new_device_without_evicting() {
+        let (mut engine, author, _) = member(":memory:");
+        let space = "prefix-ceiling";
+        start_space(&mut engine, &author, space);
+        let held = Author::root(Signer::generate());
+        add_member(&mut engine, &author, space, &held);
+        let mut planted = BTreeMap::new();
+        planted.insert(
+            device_key(&held),
+            PendingPrefix {
+                seq: 40_000,
+                hash: "11".repeat(32),
+                epoch: 1,
+                digest: "ab".repeat(32),
+            },
+        );
+        for n in 1..PENDING_PREFIX_CEILING {
+            planted.insert(
+                format!("device-{n:04}"),
+                PendingPrefix {
+                    seq: 40_000,
+                    hash: format!("{n:064x}"),
+                    epoch: 1,
+                    digest: "ab".repeat(32),
+                },
+            );
+        }
+        assert_eq!(planted.len(), PENDING_PREFIX_CEILING);
+        engine
+            .store
+            .set_meta(
+                &pending_prefix_meta(space),
+                &serde_json::to_string(&planted).unwrap(),
+            )
+            .unwrap();
+        ingest_signed(&mut engine, &held, space, claim(50_000, &"22".repeat(32)));
+        assert_eq!(
+            pending(&engine, space)
+                .get(&device_key(&held))
+                .map(|item| item.seq),
+            Some(50_000)
+        );
+        assert_eq!(pending(&engine, space).len(), PENDING_PREFIX_CEILING);
+        let extra = Author::root(Signer::generate());
+        add_member(&mut engine, &author, space, &extra);
+        ingest_signed(&mut engine, &extra, space, claim(50_001, &"aa".repeat(32)));
         let kept = pending(&engine, space);
-        assert_eq!(kept.len(), PENDING_PREFIX_CAP);
-        assert!(kept.iter().any(|item| item.seq == 500));
-        assert!(kept.iter().all(|item| item.seq != 9_000));
+        assert_eq!(kept.len(), PENDING_PREFIX_CEILING);
+        assert!(!kept.contains_key(&device_key(&extra)));
+        assert_eq!(
+            kept.get(&device_key(&held)).map(|item| item.seq),
+            Some(50_000)
+        );
+        assert_eq!(kept.get("device-0001").map(|item| item.seq), Some(40_000));
         assert_eq!(integrity(&engine, space), None);
     }
 }
