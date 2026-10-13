@@ -1,4 +1,21 @@
 //! Browser boundary. Device signing keys belong to nonexportable WebCrypto, never Rust.
+//!
+//! The saved session is version 2. Version 1 is refused, and the browser pairs again.
+//! The core does not load a version 1 session into the version 2 shape.
+//!
+//! Each Space snapshot stores the digest of every epoch this browser has held.
+//! A checkpoint from another member is compared with any of those digests, including after a reload.
+//! When the local chain already contains `upto.seq`, its hash is compared with `upto.hash`.
+//! A checkpoint whose prefix is still ahead waits in a persisted list of at most 32 entries for that Space.
+//! A digest mismatch or a prefix mismatch sets that Space's integrity error and stops its sends.
+//!
+//! A stale MLS seal is the only temporary refusal that blocks an epoch.
+//! Every other temporary refusal stays in the saved outbox and waits, starting at 1 second and doubling up to 300 seconds.
+//! A permanent refusal marks that send failed.
+//! Publishing an invitation that is already pending is refused.
+//!
+//! A send with no acknowledgement yet is reloaded from the snapshot saved before the frame was sent.
+//! The retry uses the same id, signature, and ciphertext, and the log confirms that send once.
 
 mod client;
 mod link;

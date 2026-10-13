@@ -300,3 +300,640 @@ fn invitation_queues_a_certified_self_add_with_the_original_code_and_no_plain_me
         .queue_message("sp_invite", "plain text forbidden", 3)
         .is_err());
 }
+
+fn publishes(update: &Update) -> Vec<Envelope> {
+    update
+        .frames
+        .iter()
+        .filter_map(|frame| match ClientFrame::decode(frame).unwrap() {
+            ClientFrame::Publish { env } => Some(env),
+            _ => None,
+        })
+        .collect()
+}
+
+fn application(update: &Update) -> Option<Envelope> {
+    publishes(update).into_iter().find(|env| {
+        env.sealed_data()
+            .is_some_and(|(kind, _)| kind == SealedKind::Application)
+    })
+}
+
+fn must_err<T>(result: Result<T, ClientError>) -> ClientError {
+    match result {
+        Err(error) => error,
+        Ok(_) => panic!("expected an error"),
+    }
+}
+
+fn waiting(client: &Client<HostSigner>) -> Option<String> {
+    client.conversations()[0].waiting.clone()
+}
+
+#[test]
+fn saved_session_version_1_is_refused_and_version_2_reloads() {
+    let identity = NativeSigner::from_secret(&[31; 32]);
+    let host = HostSigner(NativeSigner::from_secret(&[32; 32]));
+    let linked = account(&identity, &host.0);
+    let err = must_err(Client::new(
+        linked.clone(),
+        host.clone(),
+        r#"{"version":1,"storage":[],"logs":{},"outbox":{}}"#,
+    ));
+    assert_eq!(err, ClientError::OutOfDate);
+    assert_eq!(
+        err.to_string(),
+        "This browser session is out of date. Pair this browser again."
+    );
+    let mut client = Client::new(linked.clone(), host.clone(), "").unwrap();
+    let snapshot = client.bootstrap().unwrap().snapshot;
+    let value: serde_json::Value = serde_json::from_str(&snapshot).unwrap();
+    assert_eq!(value["version"], 2);
+    Client::new(linked, host, &snapshot).unwrap();
+}
+
+#[test]
+fn a_duplicate_pending_invite_is_refused_and_invite_is_not_defaulted() {
+    let identity = NativeSigner::from_secret(&[33; 32]);
+    let host = HostSigner(NativeSigner::from_secret(&[34; 32]));
+    let linked = account(&identity, &host.0);
+    let mut client = Client::new(linked.clone(), host.clone(), "").unwrap();
+    let first = client
+        .queue_join("sp_invite_dup", Role::Member, "0123456789", 2)
+        .unwrap();
+    let err = must_err(client.queue_join("sp_invite_dup", Role::Member, "0123456789", 3));
+    assert_eq!(err, ClientError::DuplicateInvite);
+    assert_eq!(err.to_string(), "This invitation is already pending.");
+    assert_eq!(publishes(&first).len(), 1);
+    let mut restored = Client::new(linked.clone(), host.clone(), &first.snapshot).unwrap();
+    assert_eq!(
+        must_err(restored.queue_join("sp_invite_dup", Role::Member, "0123456789", 4)),
+        ClientError::DuplicateInvite
+    );
+    let mut value: serde_json::Value = serde_json::from_str(&first.snapshot).unwrap();
+    let pending = value["outbox"]
+        .as_object_mut()
+        .unwrap()
+        .values_mut()
+        .next()
+        .unwrap();
+    let removed = pending.as_object_mut().unwrap().remove("invite");
+    assert_eq!(
+        removed,
+        Some(serde_json::Value::String("0123456789".into()))
+    );
+    let err = must_err(Client::new(linked, host, &value.to_string()));
+    assert_ne!(err, ClientError::OutOfDate);
+    assert_ne!(err, ClientError::DuplicateInvite);
+}
+
+struct WebGroup {
+    sqlite: rusqlite::Connection,
+    phone: NativeSigner,
+    phone_key: NativeSigner,
+    browser: NativeSigner,
+    host: HostSigner,
+    account: LinkedAccount,
+    state_key: [u8; 32],
+    space: String,
+    log: SpaceLog,
+    client: Client<HostSigner>,
+}
+
+impl WebGroup {
+    fn open(tag: u8) -> Self {
+        let phone = NativeSigner::from_secret(&[tag; 32]);
+        let phone_key = NativeSigner::from_secret(&[tag.wrapping_add(1); 32]);
+        let browser = NativeSigner::from_secret(&[tag.wrapping_add(2); 32]);
+        let host = HostSigner(NativeSigner::from_secret(&[tag.wrapping_add(3); 32]));
+        let account = account(&browser, &host.0);
+        let author = Author::device(&phone, phone_key.clone());
+        let mut sqlite = rusqlite::Connection::open_in_memory().unwrap();
+        roda_mls::migrate(&mut sqlite).unwrap();
+        let state_key = [tag.wrapping_add(4); 32];
+        let native = Device::new(
+            &sqlite,
+            state_key,
+            &phone.id(),
+            phone_key.secret(),
+            author.cert.as_deref().unwrap(),
+        )
+        .unwrap();
+        let mut client = Client::new(account.clone(), host.clone(), "").unwrap();
+        let start = client.bootstrap().unwrap();
+        let package = start
+            .frames
+            .iter()
+            .find_map(|frame| match ClientFrame::decode(frame).unwrap() {
+                ClientFrame::Req {
+                    op: Op::PublishKeyPackages { packages, .. },
+                    ..
+                } => packages.into_iter().next(),
+                _ => None,
+            })
+            .unwrap();
+        let space = format!("sp_u2_{tag}");
+        let mut log = SpaceLog::new(&space);
+        client
+            .receive(
+                &clear(
+                    &mut log,
+                    &author,
+                    EventBody::SpaceCreated {
+                        title: "U2".into(),
+                        kind: SpaceKind::Group,
+                        privacy: Privacy::EndToEnd,
+                    },
+                    1,
+                ),
+                1,
+            )
+            .unwrap();
+        client
+            .receive(
+                &clear(
+                    &mut log,
+                    &author,
+                    EventBody::MemberAdded {
+                        identity: browser.id(),
+                        role: Role::Member,
+                    },
+                    2,
+                ),
+                2,
+            )
+            .unwrap();
+        native.create_group(&space).unwrap();
+        let roster = BTreeSet::from([phone.id(), browser.id()]);
+        let commit = native.commit(&space, &[package], &BTreeSet::new()).unwrap();
+        native
+            .open(&space, &commit.commit, &roster, native.leaf())
+            .unwrap();
+        client
+            .receive(
+                &sealed(&mut log, &author, SealedKind::Commit, commit.commit, 3),
+                3,
+            )
+            .unwrap();
+        client
+            .receive(
+                &sealed(
+                    &mut log,
+                    &author,
+                    SealedKind::Welcome,
+                    commit.welcome.unwrap(),
+                    4,
+                ),
+                4,
+            )
+            .unwrap();
+        client.receive(&ServerFrame::SyncDone.encode(), 5).unwrap();
+        assert!(client.conversations()[0].can_send);
+        Self {
+            sqlite,
+            phone,
+            phone_key,
+            browser,
+            host,
+            account,
+            state_key,
+            space,
+            log,
+            client,
+        }
+    }
+
+    fn author(&self) -> Author {
+        Author::device(&self.phone, self.phone_key.clone())
+    }
+
+    fn native(&self) -> Device<'_> {
+        let author = self.author();
+        Device::new(
+            &self.sqlite,
+            self.state_key,
+            &self.phone.id(),
+            self.phone_key.secret(),
+            author.cert.as_deref().unwrap(),
+        )
+        .unwrap()
+    }
+}
+
+fn plain_members(tag: u8) -> (Client<HostSigner>, SpaceLog, Author, String) {
+    let phone = NativeSigner::from_secret(&[tag; 32]);
+    let phone_key = NativeSigner::from_secret(&[tag.wrapping_add(1); 32]);
+    let browser = NativeSigner::from_secret(&[tag.wrapping_add(2); 32]);
+    let host = HostSigner(NativeSigner::from_secret(&[tag.wrapping_add(3); 32]));
+    let author = Author::device(&phone, phone_key);
+    let mut client = Client::new(account(&browser, &host.0), host, "").unwrap();
+    let space = format!("sp_plain_{tag}");
+    let mut log = SpaceLog::new(&space);
+    client
+        .receive(
+            &clear(
+                &mut log,
+                &author,
+                EventBody::SpaceCreated {
+                    title: "Plain".into(),
+                    kind: SpaceKind::Group,
+                    privacy: Privacy::EndToEnd,
+                },
+                1,
+            ),
+            1,
+        )
+        .unwrap();
+    client
+        .receive(
+            &clear(
+                &mut log,
+                &author,
+                EventBody::MemberAdded {
+                    identity: browser.id(),
+                    role: Role::Member,
+                },
+                2,
+            ),
+            2,
+        )
+        .unwrap();
+    client.receive(&ServerFrame::SyncDone.encode(), 3).unwrap();
+    (client, log, author, space)
+}
+
+#[test]
+fn a_checkpoint_with_the_wrong_prefix_marks_the_space() {
+    let (mut client, mut log, author, space) = plain_members(41);
+    let head = log.head().unwrap();
+    client
+        .receive(
+            &clear(
+                &mut log,
+                &author,
+                EventBody::Checkpoint {
+                    upto: Seen {
+                        seq: head.seq,
+                        hash: "not-the-local-hash".into(),
+                    },
+                    epoch: 9,
+                    digest: "ab".repeat(32),
+                },
+                4,
+            ),
+            4,
+        )
+        .unwrap();
+    assert_eq!(waiting(&client).as_deref(), Some(INTEGRITY_ERROR));
+    assert_eq!(
+        must_err(client.queue_message(&space, "stopped", 5)).to_string(),
+        INTEGRITY_ERROR
+    );
+}
+
+#[test]
+fn a_checkpoint_ahead_of_the_chain_is_checked_when_the_chain_arrives() {
+    let (mut client, mut log, author, space) = plain_members(42);
+    let future = log.next_seq() + 3;
+    client
+        .receive(
+            &clear(
+                &mut log,
+                &author,
+                EventBody::Checkpoint {
+                    upto: Seen {
+                        seq: future,
+                        hash: "claimed-hash".into(),
+                    },
+                    epoch: 9,
+                    digest: "cd".repeat(32),
+                },
+                4,
+            ),
+            4,
+        )
+        .unwrap();
+    assert_ne!(waiting(&client).as_deref(), Some(INTEGRITY_ERROR));
+    let mut now = 5;
+    while log.next_seq() <= future {
+        client
+            .receive(
+                &clear(
+                    &mut log,
+                    &author,
+                    EventBody::MessagePosted {
+                        message: format!("msg_{now}"),
+                        text: "later".into(),
+                        attaches: None,
+                        reply: None,
+                    },
+                    now,
+                ),
+                now,
+            )
+            .unwrap();
+        now += 1;
+    }
+    assert_eq!(waiting(&client).as_deref(), Some(INTEGRITY_ERROR));
+    assert_eq!(
+        must_err(client.queue_message(&space, "stopped", now)).to_string(),
+        INTEGRITY_ERROR
+    );
+}
+
+#[test]
+fn an_old_epoch_digest_still_conflicts_after_reload() {
+    let mut group = WebGroup::open(51);
+    let first = group
+        .client
+        .device()
+        .unwrap()
+        .checkpoint(&group.space)
+        .unwrap();
+    let commit = {
+        let native = group.native();
+        let roster = BTreeSet::from([group.phone.id(), group.browser.id()]);
+        let advance = native.commit(&group.space, &[], &BTreeSet::new()).unwrap();
+        native
+            .open(&group.space, &advance.commit, &roster, native.leaf())
+            .unwrap();
+        advance.commit
+    };
+    let author = group.author();
+    group
+        .client
+        .receive(
+            &sealed(&mut group.log, &author, SealedKind::Commit, commit, 6),
+            6,
+        )
+        .unwrap();
+    let second = group
+        .client
+        .device()
+        .unwrap()
+        .checkpoint(&group.space)
+        .unwrap();
+    assert_ne!(first.0, second.0);
+    let snapshot = group.client.update(Vec::new()).unwrap().snapshot;
+    let mut restored = Client::new(group.account.clone(), group.host.clone(), &snapshot).unwrap();
+    let upto = group.log.head().unwrap();
+    restored
+        .receive(
+            &clear(
+                &mut group.log,
+                &author,
+                EventBody::Checkpoint {
+                    upto,
+                    epoch: first.0,
+                    digest: "ab".repeat(32),
+                },
+                7,
+            ),
+            7,
+        )
+        .unwrap();
+    assert_eq!(waiting(&restored).as_deref(), Some(INTEGRITY_ERROR));
+    assert_eq!(
+        must_err(restored.queue_message(&group.space, "stopped", 8)).to_string(),
+        INTEGRITY_ERROR
+    );
+}
+
+#[test]
+fn temporary_refusal_backs_off_durably_up_to_five_minutes_and_a_stale_seal_blocks_the_epoch() {
+    let mut group = WebGroup::open(61);
+    let first = group
+        .client
+        .queue_message(&group.space, "held", 10_000)
+        .unwrap();
+    let held = application(&first).unwrap();
+    let held_id = held.client_id().to_string();
+    let space = group.space.clone();
+    let reject = |permanent: bool, reason: &str| {
+        ServerFrame::Rejected {
+            space: space.clone(),
+            client_id: held_id.clone(),
+            reason: reason.into(),
+            permanent,
+        }
+        .encode()
+    };
+    group
+        .client
+        .receive(&reject(false, "slow down"), 10_000)
+        .unwrap();
+    assert_eq!(
+        group.client.conversations()[0]
+            .messages
+            .iter()
+            .find(|message| message.text == "held")
+            .unwrap()
+            .delivery,
+        "sending"
+    );
+    let second = group
+        .client
+        .queue_message(&group.space, "other", 10_500)
+        .unwrap();
+    let second_id = application(&second).unwrap().client_id().to_string();
+    let ids = publishes(&second)
+        .iter()
+        .map(|env| env.client_id().to_string())
+        .collect::<Vec<_>>();
+    assert!(ids.contains(&second_id));
+    assert!(!ids.contains(&held_id));
+    let early = group
+        .client
+        .receive(
+            &ServerFrame::Pong {
+                server_time_ms: None,
+            }
+            .encode(),
+            10_999,
+        )
+        .unwrap();
+    assert!(!publishes(&early)
+        .iter()
+        .any(|env| env.client_id() == held_id));
+    let due = group
+        .client
+        .receive(
+            &ServerFrame::Pong {
+                server_time_ms: None,
+            }
+            .encode(),
+            11_000,
+        )
+        .unwrap();
+    assert!(publishes(&due).iter().any(|env| env.client_id() == held_id));
+    group
+        .client
+        .receive(&reject(false, "slow down"), 11_000)
+        .unwrap();
+    let early = group
+        .client
+        .receive(
+            &ServerFrame::Pong {
+                server_time_ms: None,
+            }
+            .encode(),
+            12_999,
+        )
+        .unwrap();
+    assert!(!publishes(&early)
+        .iter()
+        .any(|env| env.client_id() == held_id));
+    let due = group
+        .client
+        .receive(
+            &ServerFrame::Pong {
+                server_time_ms: None,
+            }
+            .encode(),
+            13_000,
+        )
+        .unwrap();
+    assert!(publishes(&due).iter().any(|env| env.client_id() == held_id));
+    let mut now = 13_000;
+    for gap in [
+        4_000_i64, 8_000, 16_000, 32_000, 64_000, 128_000, 256_000, 300_000, 300_000,
+    ] {
+        group
+            .client
+            .receive(&reject(false, "slow down"), now)
+            .unwrap();
+        let early = group
+            .client
+            .receive(
+                &ServerFrame::Pong {
+                    server_time_ms: None,
+                }
+                .encode(),
+                now + gap - 1,
+            )
+            .unwrap();
+        assert!(
+            !publishes(&early)
+                .iter()
+                .any(|env| env.client_id() == held_id),
+            "gap {gap}"
+        );
+        let due = group
+            .client
+            .receive(
+                &ServerFrame::Pong {
+                    server_time_ms: None,
+                }
+                .encode(),
+                now + gap,
+            )
+            .unwrap();
+        assert!(
+            publishes(&due).iter().any(|env| env.client_id() == held_id),
+            "gap {gap}"
+        );
+        now += gap;
+    }
+    let held_update = group
+        .client
+        .receive(&reject(false, "slow down"), now)
+        .unwrap();
+    assert!(!publishes(&held_update)
+        .iter()
+        .any(|env| env.client_id() == held_id));
+    let mut restored = Client::new(
+        group.account.clone(),
+        group.host.clone(),
+        &held_update.snapshot,
+    )
+    .unwrap();
+    restored.bootstrap().unwrap();
+    let early = restored
+        .receive(&ServerFrame::SyncDone.encode(), now + 299_999)
+        .unwrap();
+    assert!(!publishes(&early)
+        .iter()
+        .any(|env| env.client_id() == held_id));
+    let due = restored
+        .receive(
+            &ServerFrame::Pong {
+                server_time_ms: None,
+            }
+            .encode(),
+            now + 300_000,
+        )
+        .unwrap();
+    assert!(publishes(&due).iter().any(|env| env.client_id() == held_id));
+    group
+        .client
+        .receive(&reject(true, roda_proto::STALE_SEAL), now)
+        .unwrap();
+    assert_eq!(
+        group.client.conversations()[0]
+            .messages
+            .iter()
+            .find(|message| message.text == "held")
+            .unwrap()
+            .delivery,
+        "sending"
+    );
+    assert!(
+        must_err(group.client.queue_message(&group.space, "blocked", now + 1))
+            .to_string()
+            .contains("Waiting to catch up")
+    );
+    group
+        .client
+        .receive(&reject(true, "you were removed"), now + 1)
+        .unwrap();
+    let conversations = group.client.conversations();
+    let failed = conversations[0]
+        .messages
+        .iter()
+        .find(|message| message.text == "held")
+        .unwrap();
+    assert_eq!(failed.delivery, "failed");
+    assert_eq!(failed.failure.as_deref(), Some("you were removed"));
+}
+
+#[test]
+fn a_send_with_no_ack_reloads_the_same_ciphertext_and_confirms_once() {
+    let mut group = WebGroup::open(71);
+    let sending = group
+        .client
+        .queue_message(&group.space, "once", 11)
+        .unwrap();
+    let env = application(&sending).unwrap();
+    let id = env.client_id().to_string();
+    let sig = env.sig.clone();
+    let ciphertext = env.sealed_data().unwrap().1.to_vec();
+    let mut restored =
+        Client::new(group.account.clone(), group.host.clone(), &sending.snapshot).unwrap();
+    assert!(application(&restored.bootstrap().unwrap()).is_none());
+    let again = restored
+        .receive(&ServerFrame::SyncDone.encode(), 12)
+        .unwrap();
+    let env = application(&again).unwrap();
+    assert_eq!(env.client_id(), id);
+    assert_eq!(env.sig, sig);
+    assert_eq!(env.sealed_data().unwrap().1, ciphertext.as_slice());
+    let wire = sequence(&mut group.log, env);
+    let confirmed = restored.receive(&wire, 13).unwrap();
+    let copies = confirmed.conversations[0]
+        .messages
+        .iter()
+        .filter(|message| message.id == id)
+        .collect::<Vec<_>>();
+    assert_eq!(copies.len(), 1);
+    assert_eq!(copies[0].delivery, "confirmed");
+    assert_eq!(copies[0].text, "once");
+    let duplicate = restored.receive(&wire, 14).unwrap();
+    assert_eq!(
+        duplicate.conversations[0]
+            .messages
+            .iter()
+            .filter(|message| message.id == id)
+            .count(),
+        1
+    );
+}

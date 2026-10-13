@@ -16,6 +16,54 @@ use crate::LinkedAccount;
 
 const PACKAGES_REQUEST: u64 = 0x8000_0001;
 const PROFILES_REQUEST: u64 = 0x8000_0002;
+const SESSION_VERSION: u32 = 2;
+const RETRY_START_MS: u64 = 1_000;
+const RETRY_CEILING_MS: u64 = 300_000;
+const PENDING_CHECKPOINT_LIMIT: usize = 32;
+const INTEGRITY_ERROR: &str =
+    "The encrypted conversation has conflicting membership. Open it on your phone.";
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ClientError {
+    DuplicateInvite,
+    OutOfDate,
+    Other(String),
+}
+
+impl std::fmt::Display for ClientError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::DuplicateInvite => f.write_str("This invitation is already pending."),
+            Self::OutOfDate => {
+                f.write_str("This browser session is out of date. Pair this browser again.")
+            }
+            Self::Other(message) => f.write_str(message),
+        }
+    }
+}
+
+impl From<String> for ClientError {
+    fn from(message: String) -> Self {
+        Self::Other(message)
+    }
+}
+
+impl From<&str> for ClientError {
+    fn from(message: &str) -> Self {
+        Self::Other(message.to_string())
+    }
+}
+
+/// A JSON field that must be present. `null` stays empty. A missing key is refused.
+/// `Option` accepts a missing key as `None`, so it cannot express that rule.
+#[derive(Serialize, Deserialize, Clone)]
+struct JsonField<T>(Option<T>);
+
+impl JsonField<String> {
+    fn as_str(&self) -> Option<&str> {
+        self.0.as_deref()
+    }
+}
 
 #[derive(Serialize, Deserialize, Clone)]
 struct PendingEnvelope {
@@ -25,8 +73,9 @@ struct PendingEnvelope {
     inner: Option<Event>,
     epoch: Option<u64>,
     failure: Option<String>,
-    #[serde(default)]
-    invite: Option<String>,
+    invite: JsonField<String>,
+    retry_not_before_ms: i64,
+    retry_delay_ms: u64,
 }
 
 impl PendingEnvelope {
@@ -35,7 +84,7 @@ impl PendingEnvelope {
             self.content.clone(),
             self.sig.clone(),
             Some(self.cert.clone()),
-            self.invite.clone(),
+            self.invite.0.clone(),
         )
         .ok_or_else(|| "invalid saved envelope".into())
     }
@@ -59,6 +108,16 @@ struct SavedClient {
     joining: BTreeSet<String>,
     blocked_epochs: BTreeMap<String, u64>,
     integrity_errors: BTreeMap<String, String>,
+    epoch_digests: BTreeMap<String, BTreeMap<u64, String>>,
+    pending_checkpoints: BTreeMap<String, Vec<PendingCheckpoint>>,
+}
+
+#[derive(Serialize, Deserialize, Clone, PartialEq, Eq)]
+struct PendingCheckpoint {
+    epoch: u64,
+    digest: String,
+    upto_seq: u64,
+    upto_hash: String,
 }
 
 #[derive(Serialize)]
@@ -101,21 +160,12 @@ pub struct Client<S> {
     synced: bool,
     sent: BTreeSet<String>,
     packages_in_flight: bool,
+    now_ms: i64,
 }
 
 impl<S: Signer> Client<S> {
-    pub fn new(account: LinkedAccount, signer: S, snapshot: &str) -> Result<Self, String> {
-        let saved = if snapshot.is_empty() {
-            SavedClient {
-                version: 1,
-                ..Default::default()
-            }
-        } else {
-            serde_json::from_str::<SavedClient>(snapshot).map_err(|e| e.to_string())?
-        };
-        if saved.version != 1 {
-            return Err("unsupported browser session version".into());
-        }
+    pub fn new(account: LinkedAccount, signer: S, snapshot: &str) -> Result<Self, ClientError> {
+        let saved = load_snapshot(snapshot)?;
         let logs = saved
             .logs
             .iter()
@@ -143,7 +193,7 @@ impl<S: Signer> Client<S> {
             .values
             .write()
             .map_err(|_| "MLS storage lock failed")? = saved.storage.iter().cloned().collect();
-        let client = Self {
+        let mut client = Self {
             account,
             signer,
             provider,
@@ -152,19 +202,22 @@ impl<S: Signer> Client<S> {
             synced: false,
             sent: BTreeSet::new(),
             packages_in_flight: false,
+            now_ms: 0,
         };
         client.device()?;
+        client.restore_checkpoints();
         Ok(client)
     }
 
-    fn device(&self) -> Result<ExternalDevice<'_, OpenMlsRustCrypto, S>, String> {
+    fn device(&self) -> Result<ExternalDevice<'_, OpenMlsRustCrypto, S>, ClientError> {
         let leaf = Leaf {
             identity: self.account.identity.clone(),
             device: self.account.device.clone(),
             cert: self.account.cert.clone(),
         };
         let public = hex::decode(&leaf.device).map_err(|e| e.to_string())?;
-        ExternalDevice::new(&self.provider, &self.signer, leaf, public).map_err(|e| e.to_string())
+        ExternalDevice::new(&self.provider, &self.signer, leaf, public)
+            .map_err(|error| ClientError::from(error.to_string()))
     }
 
     fn roster(&self, space: &str) -> BTreeMap<String, Role> {
@@ -215,12 +268,12 @@ impl<S: Signer> Client<S> {
         metadata
     }
 
-    fn ready_epoch(&self, space: &str) -> Result<u64, String> {
+    fn ready_epoch(&self, space: &str) -> Result<u64, ClientError> {
+        if let Some(error) = self.saved.integrity_errors.get(space) {
+            return Err(error.clone().into());
+        }
         if !self.synced {
             return Err("Catching up with the conversation…".into());
-        }
-        if let Some(error) = self.saved.integrity_errors.get(space) {
-            return Err(error.clone());
         }
         let (_, _, privacy) = self.metadata(space).ok_or("Conversation not found.")?;
         if privacy != Privacy::EndToEnd {
@@ -249,7 +302,7 @@ impl<S: Signer> Client<S> {
         Ok(epoch)
     }
 
-    fn sign_content(&self, content: Vec<u8>, sealed: bool) -> Result<PendingEnvelope, String> {
+    fn sign_content(&self, content: Vec<u8>, sealed: bool) -> Result<PendingEnvelope, ClientError> {
         let hash = if sealed {
             roda_log::content::signed_hash(&content)
         } else {
@@ -268,7 +321,9 @@ impl<S: Signer> Client<S> {
             inner: None,
             epoch: None,
             failure: None,
-            invite: None,
+            invite: JsonField(None),
+            retry_not_before_ms: 0,
+            retry_delay_ms: 0,
         };
         pending.envelope()?.verify().map_err(|e| e.to_string())?;
         Ok(pending)
@@ -279,7 +334,7 @@ impl<S: Signer> Client<S> {
         space: &str,
         body: EventBody,
         now_ms: i64,
-    ) -> Result<PendingEnvelope, String> {
+    ) -> Result<PendingEnvelope, ClientError> {
         let content = SignedContent {
             v: 3,
             space: space.into(),
@@ -294,7 +349,7 @@ impl<S: Signer> Client<S> {
         self.sign_content(content, false)
     }
 
-    fn seal_inner(&self, event: &Event, epoch: u64) -> Result<PendingEnvelope, String> {
+    fn seal_inner(&self, event: &Event, epoch: u64) -> Result<PendingEnvelope, ClientError> {
         let plaintext = InnerEvent {
             content: event.content.clone(),
             sig: event.sig.clone(),
@@ -330,7 +385,8 @@ impl<S: Signer> Client<S> {
         space: &str,
         text: &str,
         now_ms: i64,
-    ) -> Result<Update, String> {
+    ) -> Result<Update, ClientError> {
+        self.now_ms = now_ms;
         if text.trim().is_empty() || text.len() > 32_768 {
             return Err("Write a message of up to 32 KB.".into());
         }
@@ -352,7 +408,7 @@ impl<S: Signer> Client<S> {
         self.update(Vec::new())
     }
 
-    pub fn bootstrap(&mut self) -> Result<Update, String> {
+    pub fn bootstrap(&mut self) -> Result<Update, ClientError> {
         self.synced = false;
         self.sent.clear();
         self.packages_in_flight = false;
@@ -376,12 +432,21 @@ impl<S: Signer> Client<S> {
         role: Role,
         code: &str,
         now_ms: i64,
-    ) -> Result<Update, String> {
+    ) -> Result<Update, ClientError> {
+        self.now_ms = now_ms;
         if !roda_proto::valid_invite_code(code) || space.is_empty() {
             return Err("Invalid invitation.".into());
         }
         if self.roster(space).contains_key(&self.account.identity) {
             return self.update(Vec::new());
+        }
+        if self
+            .saved
+            .outbox
+            .values()
+            .any(|pending| pending.invite.as_str() == Some(code))
+        {
+            return Err(ClientError::DuplicateInvite);
         }
         let mut pending = self.clear_event(
             space,
@@ -391,13 +456,13 @@ impl<S: Signer> Client<S> {
             },
             now_ms,
         )?;
-        pending.invite = Some(code.to_string());
+        pending.invite = JsonField(Some(code.to_string()));
         let id = pending.envelope()?.client_id().to_string();
         self.saved.outbox.insert(id, pending);
         self.update(Vec::new())
     }
 
-    fn prepare_packages(&mut self, first: bool) -> Result<(), String> {
+    fn prepare_packages(&mut self, first: bool) -> Result<(), ClientError> {
         let mut single = self
             .device()?
             .key_packages(32, first)
@@ -410,7 +475,8 @@ impl<S: Signer> Client<S> {
         Ok(())
     }
 
-    pub fn receive(&mut self, bytes: &[u8], now_ms: i64) -> Result<Update, String> {
+    pub fn receive(&mut self, bytes: &[u8], now_ms: i64) -> Result<Update, ClientError> {
+        self.now_ms = now_ms;
         let mut extra = Vec::new();
         match ServerFrame::decode(bytes).map_err(|e| e.to_string())? {
             ServerFrame::Event { ev } => {
@@ -472,7 +538,7 @@ impl<S: Signer> Client<S> {
             ServerFrame::Res {
                 id: PACKAGES_REQUEST,
                 result: Err(error),
-            } => return Err(format!("Could not publish encrypted device keys: {error}")),
+            } => return Err(format!("Could not publish encrypted device keys: {error}").into()),
             ServerFrame::Res {
                 result: Ok(Reply::Profiles(profiles)),
                 ..
@@ -487,13 +553,31 @@ impl<S: Signer> Client<S> {
                 permanent,
                 ..
             } => {
-                if let Some(pending) = self.saved.outbox.get_mut(&client_id) {
-                    if permanent {
-                        pending.failure = Some(reason);
-                    } else if let Some(epoch) = pending.epoch {
-                        self.saved
-                            .blocked_epochs
-                            .insert(pending.envelope()?.space().to_string(), epoch);
+                let stale_seal = reason == roda_proto::STALE_SEAL;
+                let blocked = if stale_seal {
+                    match self.saved.outbox.get(&client_id) {
+                        Some(pending) => match pending.epoch {
+                            Some(epoch) => Some((pending.envelope()?.space().to_string(), epoch)),
+                            None => None,
+                        },
+                        None => None,
+                    }
+                } else {
+                    None
+                };
+                if let Some((space, epoch)) = blocked {
+                    self.saved.blocked_epochs.insert(space, epoch);
+                } else if !stale_seal {
+                    if let Some(pending) = self.saved.outbox.get_mut(&client_id) {
+                        if permanent {
+                            pending.failure = Some(reason);
+                        } else {
+                            let delay = next_retry_delay(pending.retry_delay_ms);
+                            pending.retry_delay_ms = delay;
+                            pending.retry_not_before_ms = self
+                                .now_ms
+                                .saturating_add(i64::try_from(delay).unwrap_or(i64::MAX));
+                        }
                     }
                 }
                 self.sent.remove(&client_id);
@@ -503,7 +587,7 @@ impl<S: Signer> Client<S> {
         self.update(extra)
     }
 
-    fn ask_rejoin(&mut self, now_ms: i64) -> Result<(), String> {
+    fn ask_rejoin(&mut self, now_ms: i64) -> Result<(), ClientError> {
         let mut missing = Vec::new();
         for space in self.logs.keys() {
             if self.metadata(space).is_some_and(|(_, kind, privacy)| {
@@ -534,7 +618,7 @@ impl<S: Signer> Client<S> {
         Ok(())
     }
 
-    fn ingest(&mut self, sequenced: Sequenced, now_ms: i64) -> Result<(), String> {
+    fn ingest(&mut self, sequenced: Sequenced, now_ms: i64) -> Result<(), ClientError> {
         let envelope = &sequenced.env;
         let space = envelope.space().to_string();
         let mut log = self
@@ -598,7 +682,7 @@ impl<S: Signer> Client<S> {
                                     opened = inner_event(&sequenced, &plaintext, &from)
                                 }
                                 Ok(_) => {}
-                                Err(roda_mls::MlsError::Storage(error)) => return Err(error),
+                                Err(roda_mls::MlsError::Storage(error)) => return Err(error.into()),
                                 Err(_) => {}
                             }
                         }
@@ -609,7 +693,7 @@ impl<S: Signer> Client<S> {
                     {
                         match device.join(&space, ciphertext, &roster) {
                             Ok(joined) => landed = joined,
-                            Err(roda_mls::MlsError::Storage(error)) => return Err(error),
+                            Err(roda_mls::MlsError::Storage(error)) => return Err(error.into()),
                             Err(_) => {}
                         }
                     }
@@ -617,7 +701,7 @@ impl<S: Signer> Client<S> {
                         match device.open(&space, ciphertext, &roster, &admitted) {
                             Ok(Opened::Commit { .. }) => landed = true,
                             Ok(_) => {}
-                            Err(roda_mls::MlsError::Storage(error)) => return Err(error),
+                            Err(roda_mls::MlsError::Storage(error)) => return Err(error.into()),
                             Err(_) => {}
                         }
                     }
@@ -645,13 +729,9 @@ impl<S: Signer> Client<S> {
             self.device()?.forget(&space).map_err(|e| e.to_string())?;
             self.saved.joining.remove(&space);
         }
-        if let EventBody::Checkpoint { epoch, digest, .. } = &event.body {
-            if let Ok((ours, expected)) = self.device()?.checkpoint(&space) {
-                if ours == *epoch && expected != *digest {
-                    self.saved.integrity_errors.insert(space.clone(), "The encrypted conversation has conflicting membership. Open it on your phone.".into());
-                }
-            }
-        }
+        self.observe_checkpoint(&event);
+        self.remember_current_epoch(&space);
+        self.settle_pending(&space);
         if landed {
             self.saved.joining.remove(&space);
             if let Ok((epoch, digest)) = self.device()?.checkpoint(&space) {
@@ -675,7 +755,7 @@ impl<S: Signer> Client<S> {
         Ok(())
     }
 
-    pub fn update(&mut self, mut frames: Vec<Vec<u8>>) -> Result<Update, String> {
+    pub fn update(&mut self, mut frames: Vec<Vec<u8>>) -> Result<Update, ClientError> {
         let reseal = self
             .saved
             .outbox
@@ -711,19 +791,15 @@ impl<S: Signer> Client<S> {
             );
             self.packages_in_flight = true;
         }
-        for (id, pending) in self
+        let queued = self
             .saved
             .outbox
             .iter()
-            .filter(|(_, pending)| pending.failure.is_none())
-        {
-            if self.sent.contains(id) {
+            .map(|(id, pending)| (id.clone(), pending.clone()))
+            .collect::<Vec<_>>();
+        for (id, pending) in queued {
+            if !self.should_publish(&id, &pending)? {
                 continue;
-            }
-            if let Some(inner) = &pending.inner {
-                if self.ready_epoch(&inner.space).ok() != pending.epoch {
-                    continue;
-                }
             }
             frames.push(
                 ClientFrame::Publish {
@@ -765,7 +841,7 @@ impl<S: Signer> Client<S> {
                 if inner.space != *space { return None; }
                 self.message_view(inner, if pending.failure.is_some() { "failed" } else { "sending" }, pending.failure.clone())
             }));
-            let waiting = self.ready_epoch(space).err();
+            let waiting = self.ready_epoch(space).err().map(|error| error.to_string());
             let unreadable = self.logs.get(space)?.events().iter().filter(|event| matches!(&event.body, EventBody::Sealed { kind } if kind == "Application")).count();
             Some(ConversationView { id: space.clone(), title, kind: match kind { SpaceKind::Direct=>"direct",SpaceKind::Group=>"group",SpaceKind::Community=>"community",SpaceKind::Personal=>"personal" },
                 can_send: waiting.is_none(), waiting, unreadable, messages })
@@ -800,6 +876,243 @@ impl<S: Signer> Client<S> {
             delivery,
             failure,
         })
+    }
+
+    fn should_publish(&self, id: &str, pending: &PendingEnvelope) -> Result<bool, ClientError> {
+        if pending.failure.is_some()
+            || self.sent.contains(id)
+            || self.now_ms < pending.retry_not_before_ms
+        {
+            return Ok(false);
+        }
+        let space = if let Some(event) = &pending.inner {
+            event.space.clone()
+        } else {
+            pending.envelope()?.space().to_string()
+        };
+        if self.saved.integrity_errors.contains_key(&space) {
+            return Ok(false);
+        }
+        if let Some(event) = &pending.inner {
+            if self.ready_epoch(&event.space).ok() != pending.epoch {
+                return Ok(false);
+            }
+        }
+        Ok(true)
+    }
+
+    fn restore_checkpoints(&mut self) {
+        let spaces = self.logs.keys().cloned().collect::<Vec<_>>();
+        for space in spaces {
+            self.remember_current_epoch(&space);
+            self.audit_checkpoints(&space);
+            self.settle_pending(&space);
+        }
+    }
+
+    fn current_checkpoint(&self, space: &str) -> Option<(u64, String)> {
+        self.device().ok()?.checkpoint(space).ok()
+    }
+
+    fn remember_current_epoch(&mut self, space: &str) {
+        let Some((epoch, digest)) = self.current_checkpoint(space) else {
+            return;
+        };
+        if let Some(existing) = self
+            .saved
+            .epoch_digests
+            .get(space)
+            .and_then(|known| known.get(&epoch).cloned())
+        {
+            if existing != digest {
+                self.mark_integrity(space);
+            }
+            return;
+        }
+        self.saved
+            .epoch_digests
+            .entry(space.to_string())
+            .or_default()
+            .insert(epoch, digest);
+        self.audit_checkpoints(space);
+    }
+
+    fn audit_checkpoints(&mut self, space: &str) {
+        let checkpoints = self
+            .logs
+            .get(space)
+            .map(|log| {
+                log.events()
+                    .iter()
+                    .filter(|event| matches!(event.body, EventBody::Checkpoint { .. }))
+                    .cloned()
+                    .collect::<Vec<_>>()
+            })
+            .unwrap_or_default();
+        for event in checkpoints {
+            if self.saved.integrity_errors.contains_key(space) {
+                return;
+            }
+            self.observe_checkpoint(&event);
+        }
+    }
+
+    fn observe_checkpoint(&mut self, event: &Event) {
+        let EventBody::Checkpoint {
+            epoch,
+            digest,
+            upto,
+        } = &event.body
+        else {
+            return;
+        };
+        if event.author == self.account.identity
+            || self.saved.integrity_errors.contains_key(&event.space)
+        {
+            return;
+        }
+        let digest_conflict = self
+            .saved
+            .epoch_digests
+            .get(&event.space)
+            .and_then(|known| known.get(epoch))
+            .is_some_and(|known| known != digest);
+        if digest_conflict {
+            self.mark_integrity(&event.space);
+            return;
+        }
+        self.note_prefix(&event.space, *epoch, digest.clone(), upto);
+    }
+
+    fn note_prefix(&mut self, space: &str, epoch: u64, digest: String, upto: &Seen) {
+        let local = self.hash_at(space, upto.seq).map(str::to_string);
+        match local.as_deref() {
+            Some(hash) if hash == upto.hash => {}
+            Some(_) => self.mark_integrity(space),
+            None => self.hold_checkpoint(
+                space,
+                PendingCheckpoint {
+                    epoch,
+                    digest,
+                    upto_seq: upto.seq,
+                    upto_hash: upto.hash.clone(),
+                },
+            ),
+        }
+    }
+
+    fn hash_at(&self, space: &str, seq: u64) -> Option<&str> {
+        let event = self
+            .logs
+            .get(space)?
+            .events()
+            .get(usize::try_from(seq).ok()?)?;
+        (event.seq == seq).then_some(event.hash.as_str())
+    }
+
+    fn hold_checkpoint(&mut self, space: &str, item: PendingCheckpoint) {
+        if self.saved.integrity_errors.contains_key(space) {
+            return;
+        }
+        let (conflict, duplicate, full) = match self.saved.pending_checkpoints.get(space) {
+            Some(pending) => {
+                let conflict = pending.iter().any(|held| {
+                    held.upto_seq == item.upto_seq
+                        && (held.upto_hash != item.upto_hash
+                            || (held.epoch == item.epoch && held.digest != item.digest))
+                });
+                let duplicate = pending.iter().any(|held| {
+                    held.upto_seq == item.upto_seq
+                        && held.upto_hash == item.upto_hash
+                        && held.epoch == item.epoch
+                        && held.digest == item.digest
+                });
+                (
+                    conflict,
+                    duplicate,
+                    pending.len() >= PENDING_CHECKPOINT_LIMIT,
+                )
+            }
+            None => (false, false, false),
+        };
+        if conflict || (!duplicate && full) {
+            self.mark_integrity(space);
+        } else if !duplicate {
+            self.saved
+                .pending_checkpoints
+                .entry(space.to_string())
+                .or_default()
+                .push(item);
+        }
+    }
+
+    fn settle_pending(&mut self, space: &str) {
+        let Some(pending) = self.saved.pending_checkpoints.remove(space) else {
+            return;
+        };
+        let mut keep = Vec::new();
+        for item in pending {
+            if self.saved.integrity_errors.contains_key(space) {
+                return;
+            }
+            let digest_conflict = self
+                .saved
+                .epoch_digests
+                .get(space)
+                .and_then(|known| known.get(&item.epoch))
+                .is_some_and(|known| known != &item.digest);
+            if digest_conflict {
+                self.mark_integrity(space);
+                return;
+            }
+            let local = self.hash_at(space, item.upto_seq).map(str::to_string);
+            match local.as_deref() {
+                Some(hash) if hash == item.upto_hash => {}
+                Some(_) => {
+                    self.mark_integrity(space);
+                    return;
+                }
+                None => keep.push(item),
+            }
+        }
+        if !keep.is_empty() && !self.saved.integrity_errors.contains_key(space) {
+            self.saved
+                .pending_checkpoints
+                .insert(space.to_string(), keep);
+        }
+    }
+
+    fn mark_integrity(&mut self, space: &str) {
+        self.saved
+            .integrity_errors
+            .entry(space.to_string())
+            .or_insert_with(|| INTEGRITY_ERROR.to_string());
+        self.saved.pending_checkpoints.remove(space);
+    }
+}
+
+fn load_snapshot(snapshot: &str) -> Result<SavedClient, ClientError> {
+    if snapshot.is_empty() {
+        return Ok(SavedClient {
+            version: SESSION_VERSION,
+            ..Default::default()
+        });
+    }
+    let value: serde_json::Value =
+        serde_json::from_str(snapshot).map_err(|error| error.to_string())?;
+    match value.get("version").and_then(|version| version.as_u64()) {
+        Some(1) => return Err(ClientError::OutOfDate),
+        Some(2) => {}
+        _ => return Err("unsupported browser session version".into()),
+    }
+    serde_json::from_value(value).map_err(|error| error.to_string().into())
+}
+
+fn next_retry_delay(current: u64) -> u64 {
+    if current == 0 {
+        RETRY_START_MS
+    } else {
+        current.saturating_mul(2).min(RETRY_CEILING_MS)
     }
 }
 
