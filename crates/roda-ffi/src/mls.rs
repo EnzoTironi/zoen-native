@@ -3936,4 +3936,108 @@ mod tests {
             sealed.pruned().expect("a sealed event leaves a stub"),
         )
     }
+
+    #[test]
+    fn canonical_sealed_sibling_marks_the_fork_and_refuses_send() {
+        let dir = std::env::temp_dir().join(format!("u18-r6-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("device.sqlite");
+        let path = path.to_str().unwrap().to_string();
+        let space = "sp-sealed-siblings";
+        let device_secret = {
+            let (mut engine, author, device_secret) = member(&path);
+            start_space(&mut engine, &author, space);
+            let peer = Author::root(Signer::generate());
+            add_member(&mut engine, &author, space, &peer);
+
+            let first = ordered(
+                &engine,
+                Envelope::sealed(
+                    &peer,
+                    space,
+                    "peer-only",
+                    1_700_000_000_050,
+                    seen(&engine, space).as_ref(),
+                    Sealed::new(SealedKind::Application, SUITE_ID, vec![1]),
+                ),
+            );
+            assert_eq!(engine.ingest(first), Ingest::Applied);
+            assert_eq!(integrity(&engine, space), None);
+
+            let head = seen(&engine, space).unwrap();
+            let (content, sig) = author.sign_sealed(
+                space,
+                "own-successor",
+                1_700_000_000_100,
+                Some(&head),
+                Sealed::new(SealedKind::Application, SUITE_ID, vec![2, 2]),
+            );
+            let own = event_from_content(
+                content,
+                sig,
+                author.cert.clone(),
+                0,
+                String::new(),
+                String::new(),
+            )
+            .unwrap();
+            engine.store.outbox_put(&own).unwrap();
+            let before = engine.store.outbox().unwrap().len();
+            assert_eq!(before, 1);
+            assert!(!engine.store.outbox().unwrap()[0].failed);
+
+            let frame = ordered(
+                &engine,
+                Envelope::sealed(
+                    &peer,
+                    space,
+                    "peer-successor",
+                    1_700_000_000_200,
+                    Some(&head),
+                    Sealed::new(SealedKind::Application, SUITE_ID, vec![3, 3, 3]),
+                ),
+            );
+            let got = engine.ingest(frame.clone());
+            assert!(
+                matches!(got, Ingest::Applied),
+                "canonical sibling was not stored: {got:?}"
+            );
+            let stored = engine.logs[space].events().last().unwrap();
+            assert_eq!(stored.hash, frame.hash);
+            assert_eq!(stored.author, peer.identity);
+            assert_eq!(stored.seen.as_ref(), Some(&head));
+
+            let phrase = integrity(&engine, space);
+            let sent = engine.send_message(space, "again");
+            let after = engine.store.outbox().unwrap().len();
+            let published = engine.outbox_envelopes().len();
+            assert_eq!(
+                (phrase.as_deref(), sent.is_err(), after, published),
+                (Some(FORK), true, before, 0),
+                "{sent:?}"
+            );
+            assert_eq!(
+                engine.store.outbox().unwrap()[0].event.client_id,
+                "own-successor"
+            );
+            assert!(!engine.store.outbox().unwrap()[0].failed);
+            assert_eq!(
+                engine.store.meta(&fork_meta(space)).unwrap().as_deref(),
+                Some(FORK)
+            );
+            device_secret
+        };
+
+        let mut engine = Engine::open(&path).unwrap();
+        assert!(engine.unlock(Some(device_secret.to_vec())).unwrap());
+        assert_eq!(integrity(&engine, space).as_deref(), Some(FORK));
+        let before = engine.store.outbox().unwrap().len();
+        let sent = engine.send_message(space, "after reopen");
+        assert!(sent.is_err(), "{sent:?}");
+        assert_eq!(sent.unwrap_err().to_string(), FORK);
+        assert_eq!(engine.store.outbox().unwrap().len(), before);
+        assert!(engine.outbox_envelopes().is_empty());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
 }
