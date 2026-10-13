@@ -19,6 +19,41 @@ fn line_id() -> String {
     original().sections[0].lines[0].id.clone()
 }
 
+fn open_private_draft(fixture: &mut Fixture, mutation_id: &str) {
+    fixture
+        .engine
+        .with_document(&fixture.item, ItemKind::Plan, |_, session| {
+            let read = session.read(&fixture.engine)?;
+            let DocumentView::Plan { blocks } = &read.view else {
+                panic!("typed Plan required")
+            };
+            let line = blocks
+                .iter()
+                .find(|block| matches!(block.content, PlanBlockContent::Line { .. }))
+                .unwrap();
+            let edit = PlanBlockEdit {
+                id: line.id.clone(),
+                content: line.content.clone(),
+                text: "Private draft bytes".into(),
+                spans: vec![],
+            };
+            session.apply_from(
+                &fixture.engine,
+                mutation_id,
+                &read.edit_context,
+                DocumentEdit::Plan {
+                    order: &blocks
+                        .iter()
+                        .map(|block| block.id.clone())
+                        .collect::<Vec<_>>(),
+                    changed: &[edit],
+                },
+            )?;
+            Ok(())
+        })
+        .unwrap();
+}
+
 fn assert_plan(got: &PlanDto, expect: &PlanDoc) {
     assert_eq!(got.title, expect.title);
     assert_eq!(got.summary, expect.summary);
@@ -174,12 +209,13 @@ fn semantic_field_changes_move_the_binding() {
             Ok(())
         })
         .unwrap();
-    let marked = fixture
-        .engine
-        .plan_page(&fixture.item)
-        .unwrap()
-        .content_hash;
-    assert!(!seen.contains(&marked));
+    let page = fixture.engine.plan_page(&fixture.item).unwrap();
+    assert!(page.unsaved);
+    assert!(page
+        .blocks
+        .iter()
+        .any(|block| block.text == "Marked prose stays in the binding"));
+    assert_eq!(&page.content_hash, seen.last().expect("plan binding"));
 }
 
 #[test]
@@ -314,5 +350,117 @@ fn remote_event_between_read_and_write_is_refused() {
     assert_eq!(
         fixture.engine.plan_page(&fixture.item).unwrap().blocks[1].text,
         "Remote summary"
+    );
+}
+
+#[test]
+fn unsaved_draft_refuses_a_plan_doc_change_on_every_writer() {
+    let mut fixture = Fixture::new();
+    open_private_draft(&mut fixture, "observed-private-draft");
+    let opened = fixture.engine.plan_page(&fixture.item).unwrap();
+    assert!(opened.unsaved);
+    assert!(opened
+        .blocks
+        .iter()
+        .any(|block| block.text == "Private draft bytes"));
+    let line = line_id();
+    let edited = fixture
+        .engine
+        .edit_plan_line(&fixture.item, &line, "First writer", 3, &opened.content_hash)
+        .unwrap();
+    let bound = fixture.engine.plan_page(&fixture.item).unwrap();
+    assert!(bound.unsaved, "an unsaved private draft stays present");
+    assert!(bound
+        .blocks
+        .iter()
+        .any(|block| block.text == "Private draft bytes"));
+    let hash = bound.content_hash;
+    fixture
+        .engine
+        .edit_plan_line(&fixture.item, &line, "Second writer", 4, &hash)
+        .unwrap();
+    let during = fixture.engine.plan_page(&fixture.item).unwrap();
+    assert!(
+        during.unsaved,
+        "the private draft remains after the PlanDoc change"
+    );
+    assert!(
+        during
+            .blocks
+            .iter()
+            .any(|block| block.text == "Private draft bytes"),
+        "the live draft is not replaced by the PlanDoc"
+    );
+    assert_eq!(
+        fixture
+            .engine
+            .item(&fixture.item)
+            .unwrap()
+            .plan
+            .unwrap()
+            .sections[0]
+            .lines[0]
+            .text,
+        "Second writer"
+    );
+    let before = snapshot(&fixture);
+    assert!(
+        matches!(
+            fixture
+                .engine
+                .edit_plan_line(&fixture.item, &line, "Local after the other writer", 5, &hash),
+            Err(CoreError::Stale { .. })
+        ),
+        "edit_plan_line"
+    );
+    assert!(
+        matches!(
+            fixture.engine.toggle_plan_line(&fixture.item, &line, &hash),
+            Err(CoreError::Stale { .. })
+        ),
+        "toggle_plan_line"
+    );
+    assert!(
+        matches!(
+            fixture
+                .engine
+                .add_plan_line(&fixture.item, 0, "Local line", 1, &hash),
+            Err(CoreError::Stale { .. })
+        ),
+        "add_plan_line"
+    );
+    assert!(
+        matches!(
+            fixture.engine.remove_plan_line(&fixture.item, &line, &hash),
+            Err(CoreError::Stale { .. })
+        ),
+        "remove_plan_line"
+    );
+    assert!(
+        matches!(
+            fixture.engine.undo(&edited.undo),
+            Err(CoreError::Stale { .. })
+        ),
+        "undo"
+    );
+    assert!(
+        matches!(
+            fixture.engine.restore_plan_version(&fixture.item, 1, &hash),
+            Err(CoreError::Stale { .. })
+        ),
+        "restore_plan_version"
+    );
+    assert_eq!(snapshot(&fixture), before);
+    assert_eq!(
+        fixture
+            .engine
+            .item(&fixture.item)
+            .unwrap()
+            .plan
+            .unwrap()
+            .sections[0]
+            .lines[0]
+            .text,
+        "Second writer"
     );
 }

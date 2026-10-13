@@ -157,9 +157,10 @@ pub struct PlanPageDto {
     pub unsaved: bool,
     pub pending_sync: bool,
     pub save_error: Option<String>,
-    /// Admitted semantic binding. LocalPendingLegacy and DocumentSession share it.
-    /// A pure relay confirmation does not change it. Title, budget, summary, section,
-    /// text, cents, completion, line order, prose, and marks do.
+    /// Admitted PlanDoc binding. LocalPendingLegacy and DocumentSession share it.
+    /// A pure relay confirmation does not change it, and a private session draft does
+    /// not move it. Title, budget, summary, section, text, cents, completion, and line
+    /// order of that PlanDoc do.
     pub content_hash: String,
     /// None means the exact mathematical total is outside i64, never truncated or zero.
     pub total_cents: Option<i64>,
@@ -273,6 +274,12 @@ impl Engine {
                 .try_fold(0_i128, |total, cents| total.checked_add(i128::from(cents)))
                 .and_then(|total| i64::try_from(total).ok());
             let blocks: Vec<_> = blocks.iter().map(PlanPageBlockDto::from).collect();
+            let content_hash = match &it.current().content {
+                ItemContent::Plan(document) => {
+                    plan_observed_hash(&local_legacy_blocks(it, document))
+                }
+                _ => plan_observed_hash(&blocks),
+            };
             Ok(PlanPageDto {
                 item_id: it.id.clone(),
                 space_id: it.space.clone(),
@@ -283,7 +290,7 @@ impl Engine {
                 unsaved: read.unsaved,
                 pending_sync: read.pending_sync,
                 save_error: read.save_error,
-                content_hash: plan_observed_hash(&blocks),
+                content_hash,
                 total_cents,
                 blocks,
             })
@@ -330,8 +337,8 @@ fn local_legacy_blocks(it: &ItemState, document: &PlanDoc) -> Vec<PlanPageBlockD
     blocks
 }
 
-/// One edit binding for both read sources. Presentation and CRDT block ids stay out,
-/// so a pure relay confirmation keeps the value.
+/// One edit binding for both read sources, over the PlanDoc the writers mutate.
+/// Presentation and CRDT block ids stay out, so a pure relay confirmation keeps the value.
 fn plan_observed_hash(blocks: &[PlanPageBlockDto]) -> String {
     let mut hasher = Sha256::new();
     hasher.update(b"zoen-plan-observed-v1\0");

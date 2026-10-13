@@ -219,7 +219,7 @@ fn typed_client_read_labels_private_draft_without_leaking_it_into_shared_cards()
     let private = fixture.engine.plan_page(&fixture.item).unwrap();
     assert!(private.unsaved);
     assert_eq!(private.version, current.version);
-    assert_ne!(private.content_hash, current.content_hash);
+    assert_eq!(private.content_hash, current.content_hash);
     assert!(private
         .blocks
         .iter()
