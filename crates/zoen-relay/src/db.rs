@@ -1,6 +1,8 @@
 //! Postgres: the directory (identities, handles, devices). Logs and membership live in
 //! the log store (`crate::log`).
 
+use std::{sync::Arc, time::Duration};
+
 use roda_proto::{AgreementKeyRecord, DeviceSigned, KeyPackageRecord, SealedProfile};
 use roda_types::{Identity, IdentityKind};
 use sqlx::{PgConnection, PgPool, Postgres, Transaction};
@@ -684,6 +686,28 @@ pub async fn sweep_link_boxes(pool: &PgPool) -> Result<(), sqlx::Error> {
         .execute(pool)
         .await?;
     Ok(())
+}
+
+/// Periodic removal of abandoned link boxes. Production waits 60 seconds between passes.
+pub(crate) fn spawn_link_box_sweep(state: &Arc<crate::AppState>) {
+    drop(spawn_link_box_sweep_every(state, Duration::from_secs(60)));
+}
+
+/// Same loop as [`spawn_link_box_sweep`], with the interval the caller chooses.
+pub fn spawn_link_box_sweep_every(
+    state: &Arc<crate::AppState>,
+    every: Duration,
+) -> tokio::task::JoinHandle<()> {
+    let state = Arc::downgrade(state);
+    tokio::spawn(async move {
+        loop {
+            tokio::time::sleep(every).await;
+            let Some(state) = state.upgrade() else { break };
+            if let Err(error) = sweep_link_boxes(&state.pool).await {
+                tracing::warn!(%error, "link box sweep failed");
+            }
+        }
+    })
 }
 
 pub async fn devices_of(

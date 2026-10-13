@@ -20,21 +20,28 @@ function Gate({ children }: { children: React.ReactNode }) {
   return <main className="zw-gate"><section className="zw-pair">{children}</section></main>;
 }
 
-function PairingGate({ runtime, session, linked }: { runtime: Runtime; session: StoredSession; linked: (session: StoredSession) => void }) {
+export function PairingGate({ runtime, session, linked }: { runtime: Runtime; session: StoredSession; linked: (session: StoredSession) => void }) {
   const [relay, setRelay] = useState(() => session.kind === 'pending' ? session.pending.relay : new URLSearchParams(location.search).get('relay') ?? '');
-  const [state, setState] = useState<PairingState | { kind: 'idle' }>({ kind: 'idle' });
+  const [state, setState] = useState<PairingState | { kind: 'idle' }>(() =>
+    session.kind === 'pending' && session.confirming
+      ? { kind: 'confirming', pending: session.pending, account: session.confirming, message: null }
+      : { kind: 'idle' });
   const [qr, setQr] = useState('');
   const [copied, setCopied] = useState(false);
   const running = useRef<Pairing | null>(null);
   const retained = useRef(session);
   const checkFocus = useRef<HTMLDivElement>(null);
   const errorFocus = useRef<HTMLParagraphElement>(null);
+  const confirmFocus = useRef<HTMLParagraphElement>(null);
   function start() {
     running.current?.stop();
     const pairing = new Pairing(runtime.vault, runtime.core, (next) => {
       if (next.kind === 'linked') { linked({ kind: 'linked', account: next.account, snapshot: '' }); return; }
-      if (next.kind === 'waiting') retained.current = { kind: 'pending', pending: next.pending };
-      setState(next);
+      if (next.kind === 'confirming') retained.current = { kind: 'pending', pending: next.pending, confirming: next.account };
+      else if (next.kind === 'waiting' && !(retained.current.kind === 'pending' && retained.current.confirming)) {
+        retained.current = { kind: 'pending', pending: next.pending };
+      }
+      setState((current) => current.kind === 'confirming' && next.kind !== 'confirming' ? current : next);
     });
     running.current = pairing;
     void pairing.start(relay, retained.current);
@@ -42,7 +49,8 @@ function PairingGate({ runtime, session, linked }: { runtime: Runtime; session: 
   useEffect(() => { if (session.kind === 'pending') start(); return () => running.current?.stop(); }, []);
   useEffect(() => {
     if (state.kind === 'waiting') checkFocus.current?.focus();
-    if (state.kind === 'failed') errorFocus.current?.focus();
+    else if (state.kind === 'failed') errorFocus.current?.focus();
+    else if (state.kind === 'confirming') confirmFocus.current?.focus();
   }, [state.kind]);
   useEffect(() => {
     let disposed = false;
@@ -52,27 +60,56 @@ function PairingGate({ runtime, session, linked }: { runtime: Runtime; session: 
     }
     return () => { disposed = true; };
   }, [state.kind === 'waiting' ? state.pending.code : '']);
-  return <Gate>
-    <h1>{invitation ? 'Open your invitation' : 'Zoen on the web'}</h1>
-    <p>{invitation ? 'Link this browser from Zoen on your phone to continue into the conversation.' : 'Link this browser from Zoen on your phone. Your phone approves it as another device of your account.'}</p>
-    {state.kind === 'idle' || state.kind === 'failed' ? <form onSubmit={(event) => { event.preventDefault(); start(); }}>
+  function linkForm() {
+    return <form onSubmit={(event) => { event.preventDefault(); start(); }}>
       <label>Relay address<input type="url" placeholder="https://your-relay.example" value={relay} required autoComplete="url" autoFocus
         onChange={(event) => setRelay(event.target.value)} onBlur={() => { try { setRelay(relayUrl(relay)); } catch { /* Submit reports invalid origins. */ } }} /></label>
       <button className="zw-primary" type="submit">Link this browser</button>
-    </form> : null}
-    {state.kind === 'starting' ? <p role="status">Creating this browser's protected device…</p> : null}
-    {state.kind === 'waiting' ? <>
-      {qr ? <img className="zw-qr" src={qr} alt="Pairing code to scan with Zoen on your phone" /> : <p>Preparing pairing code…</p>}
-      <p>On your phone, open Devices, choose Link device, and scan this code.</p>
-      <div className="zw-check" aria-label={`Check code ${state.pending.check}`} tabIndex={-1} ref={checkFocus}>{state.pending.check}</div>
-      <p className="zw-status">Compare these six digits on both screens before your phone approves the browser.</p>
-      <p className="zw-status" role="status">{state.connection.kind === 'ready' ? 'Waiting for your phone to approve…' :
-        state.connection.kind === 'reconnecting' ? 'Reconnecting to the relay…' : 'Connecting securely…'}</p>
-      <details><summary>Use a text code</summary><p className="zw-code">{state.pending.code}</p>
-        <button className="zw-secondary" onClick={() => { void navigator.clipboard.writeText(state.pending.code).then(() => setCopied(true))
-          .catch(() => setState({ kind: 'failed', message: 'The browser blocked copying. Select the text code to copy it.' })); }}>{copied ? 'Copied' : 'Copy code'}</button></details>
-    </> : null}
-    {state.kind === 'failed' ? <p className="zw-error" role="alert" tabIndex={-1} ref={errorFocus}>{state.message}</p> : null}
+    </form>;
+  }
+  function panel(current: PairingState | { kind: 'idle' }) {
+    switch (current.kind) {
+      case 'idle':
+        return linkForm();
+      case 'failed':
+        return <>
+          {linkForm()}
+          <p className="zw-error" role="alert" tabIndex={-1} ref={errorFocus}>{current.message}</p>
+        </>;
+      case 'starting':
+        return <p role="status">Creating this browser's protected device…</p>;
+      case 'waiting':
+        return <>
+          {qr ? <img className="zw-qr" src={qr} alt="Pairing code to scan with Zoen on your phone" /> : <p>Preparing pairing code…</p>}
+          <p>On your phone, open Devices, choose Link device, and scan this code.</p>
+          <div className="zw-check" aria-label={`Check code ${current.pending.check}`} tabIndex={-1} ref={checkFocus}>{current.pending.check}</div>
+          <p className="zw-status">Compare these six digits on both screens before your phone approves the browser.</p>
+          <p className="zw-status" role="status">{current.connection.kind === 'ready' ? 'Waiting for your phone to approve…' :
+            current.connection.kind === 'reconnecting' ? 'Reconnecting to the relay…' : 'Connecting securely…'}</p>
+          <details><summary>Use a text code</summary><p className="zw-code">{current.pending.code}</p>
+            <button className="zw-secondary" onClick={() => { void navigator.clipboard.writeText(current.pending.code).then(() => setCopied(true))
+              .catch(() => setState({ kind: 'failed', message: 'The browser blocked copying. Select the text code to copy it.' })); }}>{copied ? 'Copied' : 'Copy code'}</button></details>
+        </>;
+      case 'confirming':
+        return <>
+          <p className="zw-status" role="status" tabIndex={-1} ref={confirmFocus} autoFocus>
+            Confirmando a ligação com o seu telefone…
+            {current.message !== null ? ' A confirmação não chegou. A conta continua neste navegador.' : ''}
+          </p>
+          {current.message !== null ? <button type="button" className="zw-secondary" onClick={() => running.current?.retry()}>Tentar de novo</button> : null}
+        </>;
+      case 'linked':
+        return <p role="status">Ligação concluída.</p>;
+      default: {
+        const unreachable: never = current;
+        return unreachable;
+      }
+    }
+  }
+  return <Gate>
+    <h1>{invitation ? 'Open your invitation' : 'Zoen on the web'}</h1>
+    <p>{invitation ? 'Link this browser from Zoen on your phone to continue into the conversation.' : 'Link this browser from Zoen on your phone. Your phone approves it as another device of your account.'}</p>
+    {panel(state)}
   </Gate>;
 }
 

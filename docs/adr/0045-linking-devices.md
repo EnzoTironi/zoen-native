@@ -63,7 +63,8 @@ plaintext, and pruning (ADR 0026) must not take away history a new device still 
   the secret. Each box records the one device that may read it. `FetchLink` does not
   delete it. Only that device, within 15 minutes of `created_at`, receives the sealed
   bytes. `AckLink`, sent after the device has saved them, deletes the box, and a repeat
-  succeeds. A sweep deletes boxes older than 15 minutes. Revoking a device deletes its
+  succeeds. A sweep every 60 seconds deletes boxes older than 15 minutes, and link
+  operations sweep as well. Revoking a device deletes its
   boxes in the same transaction. A `DeliverLink` with a certificate records that
   enrolled device as the reader. Without a certificate, the sponsor's device is the
   reader.

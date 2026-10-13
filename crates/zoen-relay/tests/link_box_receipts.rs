@@ -61,6 +61,7 @@ type Socket = WebSocketStream<MaybeTlsStream<tokio::net::TcpStream>>;
 
 struct TestRelay {
     pool: PgPool,
+    state: Arc<AppState>,
     ws_url: String,
     server: tokio::task::JoinHandle<()>,
     database: String,
@@ -112,7 +113,7 @@ impl TestRelay {
         });
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
         let address = listener.local_addr().unwrap();
-        let app = zoen_relay::router(state);
+        let app = zoen_relay::router(state.clone());
         let server = tokio::spawn(async move {
             axum::serve(
                 listener,
@@ -123,6 +124,7 @@ impl TestRelay {
         });
         Self {
             pool,
+            state,
             ws_url: format!("ws://{address}/v1/sync"),
             server,
             database,
@@ -388,5 +390,46 @@ async fn a_link_box_is_read_twice_then_receipted_and_refused_to_anyone_else() {
 
     let _ = reader.close(None).await;
     let _ = sponsor_socket.close(None).await;
+    test.close().await;
+}
+
+#[tokio::test]
+async fn an_abandoned_link_box_is_removed_by_the_periodic_sweep_alone() {
+    let test = TestRelay::new().await;
+    let abandoned = Signer::generate().id();
+    let fresh = Signer::generate().id();
+    sqlx::query("INSERT INTO link_boxes (id, sealed, device) VALUES ($1, $2, $3)")
+        .bind(&abandoned)
+        .bind([9u8].as_slice())
+        .bind("abandoned-device")
+        .execute(&test.pool)
+        .await
+        .unwrap();
+    sqlx::query("INSERT INTO link_boxes (id, sealed, device) VALUES ($1, $2, $3)")
+        .bind(&fresh)
+        .bind([8u8].as_slice())
+        .bind("fresh-device")
+        .execute(&test.pool)
+        .await
+        .unwrap();
+    sqlx::query("UPDATE link_boxes SET created_at = now() - interval '16 minutes' WHERE id = $1")
+        .bind(&abandoned)
+        .execute(&test.pool)
+        .await
+        .unwrap();
+    assert_eq!(count(&test.pool, &abandoned).await, 1);
+    let sweep = zoen_relay::db::spawn_link_box_sweep_every(&test.state, Duration::from_millis(50));
+    let removed = tokio::time::timeout(Duration::from_secs(2), async {
+        loop {
+            if count(&test.pool, &abandoned).await == 0 {
+                return;
+            }
+            tokio::time::sleep(Duration::from_millis(20)).await;
+        }
+    })
+    .await;
+    assert!(removed.is_ok(), "periodic sweep left the abandoned box");
+    assert_eq!(count(&test.pool, &fresh).await, 1);
+    sweep.abort();
     test.close().await;
 }

@@ -233,6 +233,7 @@ pub async fn build(cfg: &Config) -> anyhow::Result<(Router, Shared)> {
     });
     analytics::spawn(state.clone());
     key_package_claims::spawn(&state);
+    db::spawn_link_box_sweep(&state);
     let app = match cfg.metrics_bind {
         Some(_) => router(state.clone()),
         None => router(state.clone()).merge(metrics_router(state.clone())),

@@ -89,7 +89,9 @@ tests. Reproducibility from a published tagged commit also remains a release gat
 The browser saves the linked account, including a pending session whose `confirming`
 field holds that account, and only then sends `ack_link`. The relay deletes the box on
 that receipt. A reload while `confirming` is still stored sends the receipt again;
-`AckLink` succeeds when the box is already gone. A transient close must not cancel the
+`AckLink` succeeds when the box is already gone. A failed or timed-out receipt stays
+`confirming` and is retried; that save is never replaced by a pending-only session.
+A transient close must not cancel the
 browser's reconnect timer. This is separate from the receipt: the receipt is not sent
 until that save has finished.
 
