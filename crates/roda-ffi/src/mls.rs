@@ -29,6 +29,8 @@
 //!   A checkpoint still ahead of the chain waits under `mls.pending_prefix`,
 //!   one claim per signing device. A signed `seen` that names a held position
 //!   with a different hash marks the same fork and is not appended.
+//!   A member event that is already the next sequence, whose signed `seen`
+//!   is not a held position, marks that same fork and is not fetched again.
 
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::sync::Mutex;
@@ -1256,6 +1258,10 @@ impl Engine {
     /// author signature covers those bytes. The relay's `seq`, `prev` and chain hash
     /// do not. When that signed `seen` names a position this device holds with a
     /// different hash, ingest marks the fork and leaves the event out of the log.
+    /// A member event that is already the next sequence is the same fork when
+    /// that `seen` is not held: the relay assigns the sequence after the author
+    /// signed, so an honest `seen` on this chain is below the event. An event
+    /// whose own sequence is still ahead of the local head stays a gap.
     pub(crate) fn compare_checkpoint(&mut self, e: &Event) -> R<()> {
         if let EventBody::Checkpoint {
             epoch,
@@ -1270,6 +1276,11 @@ impl Engine {
         self.settle_pending_prefixes(&e.space)
     }
 
+    /// `causal` means the signature and the event's own chain link already
+    /// passed, and the signed `seen` did not. The event is this device's next
+    /// sequence. A member whose `seen` disagrees with a held position, or names
+    /// a position this chain does not hold, is fork evidence. Anything else is
+    /// a refusal. Neither result asks the relay for this event again.
     pub(crate) fn refused_member_history(
         &mut self,
         space: &str,
@@ -1277,21 +1288,18 @@ impl Engine {
         seen: SeenAgainst,
         author: &str,
         err: &str,
-        next: u64,
     ) -> Ingest {
         if !causal {
             return Ingest::Invalid(err.to_string());
         }
-        match seen {
-            SeenAgainst::Ahead => Ingest::Gap { next },
-            SeenAgainst::Diverged if self.author_in_roster(space, author) => {
-                if let Err(error) = self.mark_checkpoint_fork(space) {
-                    return Ingest::Invalid(error.to_string());
-                }
-                Ingest::Invalid(err.to_string())
+        let fork = matches!(seen, SeenAgainst::Ahead | SeenAgainst::Diverged)
+            && self.author_in_roster(space, author);
+        if fork {
+            if let Err(error) = self.mark_checkpoint_fork(space) {
+                return Ingest::Invalid(error.to_string());
             }
-            SeenAgainst::Diverged | SeenAgainst::Other => Ingest::Invalid(err.to_string()),
         }
+        Ingest::Invalid(err.to_string())
     }
 
     fn observe_checkpoint(&mut self, e: &Event, epoch: u64, digest: &str, upto: &Seen) -> R<()> {
@@ -3644,7 +3652,7 @@ mod tests {
     }
 
     #[test]
-    fn signed_seen_ahead_of_the_chain_is_a_gap_and_not_a_fork() {
+    fn a_member_seen_at_or_beyond_the_event_seq_is_a_fork() {
         let (mut engine, author, _) = member(":memory:");
         let space = "seen-ahead";
         start_space(&mut engine, &author, space);
@@ -3662,13 +3670,75 @@ mod tests {
             claim(9_000, &"12".repeat(32)),
         );
         let got = deliver(&mut engine, event);
-        assert!(matches!(got, Ingest::Gap { next: n } if n == next));
+        assert!(9_000 >= next);
+        assert!(matches!(got, Ingest::Invalid(_)), "{got:?}");
+        assert_eq!(engine.next_seq(space), next);
+        assert_eq!(integrity(&engine, space).as_deref(), Some(FORK));
+        assert_eq!(
+            engine.store.meta(&fork_meta(space)).unwrap().as_deref(),
+            Some(FORK)
+        );
+        assert!(engine.logs[space]
+            .events()
+            .iter()
+            .all(|e| e.client_id != "seen-ahead"));
+    }
+
+    #[test]
+    fn an_event_ahead_of_the_local_head_stays_a_gap() {
+        let (mut engine, author, _) = member(":memory:");
+        let space = "real-gap";
+        start_space(&mut engine, &author, space);
+        let peer = Author::root(Signer::generate());
+        add_member(&mut engine, &author, space, &peer);
+        let next = engine.next_seq(space);
+        let seen_seq = next - 1;
+        let seen_hash = hash_at(&engine, space, seen_seq);
+        let event = peer.sign_event(
+            space,
+            "real-gap",
+            1_700_000_000_100,
+            Some(roda_types::Seen {
+                seq: seen_seq,
+                hash: seen_hash.clone(),
+            }),
+            claim(seen_seq, &seen_hash),
+        );
+        let mut ev = ordered(&engine, Envelope::plain(&event));
+        ev.seq = next + 3;
+        let got = engine.ingest(ev);
+        assert!(
+            matches!(got, Ingest::Gap { next: n } if n == next),
+            "{got:?}"
+        );
+        assert_eq!(integrity(&engine, space), None);
+        assert_eq!(engine.store.meta(&fork_meta(space)).unwrap(), None);
+    }
+
+    #[test]
+    fn a_non_member_seen_beyond_the_event_is_refused_without_a_fork() {
+        let (mut engine, author, _) = member(":memory:");
+        let space = "seen-stranger-ahead";
+        start_space(&mut engine, &author, space);
+        let stranger = Author::root(Signer::generate());
+        let event = stranger.sign_event(
+            space,
+            "seen-stranger-ahead",
+            1_700_000_000_100,
+            Some(roda_types::Seen {
+                seq: 9_000,
+                hash: "12".repeat(32),
+            }),
+            claim(9_000, &"12".repeat(32)),
+        );
+        let got = deliver(&mut engine, event);
+        assert!(matches!(got, Ingest::Invalid(_)), "{got:?}");
         assert_eq!(integrity(&engine, space), None);
         assert_eq!(engine.store.meta(&fork_meta(space)).unwrap(), None);
         assert!(engine.logs[space]
             .events()
             .iter()
-            .all(|e| e.client_id != "seen-ahead"));
+            .all(|e| e.client_id != "seen-stranger-ahead"));
     }
 
     #[test]

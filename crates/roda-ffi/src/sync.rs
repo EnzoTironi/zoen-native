@@ -9,8 +9,12 @@
 //! - **Ingest:** events from the relay must be the next in their Space, link to the head
 //!   and carry a valid author signature, or they are refused. A member whose signed
 //!   `seen` names a position this device already holds under a different hash is fork
-//!   evidence: the Space is marked and the event is not stored. `seen` lives in the
-//!   signed content. The relay's `seq`, `prev` and chain hash do not.
+//!   evidence: the Space is marked and the event is not stored. So is a member
+//!   event that is already the next sequence when its signed `seen` is not held.
+//!   An honest author signed `seen` below the sequence the relay assigns, and
+//!   sync does not ask for that event again. An event whose own sequence is
+//!   still ahead of the local head stays a gap. `seen` lives in the signed
+//!   content. The relay's `seq`, `prev` and chain hash do not.
 //! - **Reopen:** confirmed events are re-verified from disk, then the outbox is replayed
 //!   on top. Kill the app mid-send and nothing is lost or duplicated.
 
@@ -453,7 +457,7 @@ impl Engine {
             if empty {
                 self.logs.remove(&space);
             }
-            return self.refused_member_history(&space, causal, seen, &author, &err_text, next);
+            return self.refused_member_history(&space, causal, seen, &author, &err_text);
         }
         if let Err(err) = self.store.append_event(&e) {
             // Disk and memory must agree: drop the in-memory copy, it'll come back on sync.

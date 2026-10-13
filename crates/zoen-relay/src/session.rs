@@ -1223,12 +1223,15 @@ impl Session {
                     seq: ev.seq,
                 })
                 .await;
-                self.send(ServerFrame::Event { ev: ev.clone() }).await;
                 let space = ev.env.space().to_string();
-                let n = self
-                    .st
-                    .fanout
-                    .send(&audience, &ServerFrame::Event { ev }, self.hub_id);
+                let n = if fork_histories_hold(&space) {
+                    0
+                } else {
+                    self.send(ServerFrame::Event { ev: ev.clone() }).await;
+                    self.st
+                        .fanout
+                        .send(&audience, &ServerFrame::Event { ev }, self.hub_id)
+                };
                 span.record("audience", audience.len() as i64);
                 span.record("delivered_here", n as i64);
                 if let Some(identity) = joined.filter(|id| id != &self.identity) {
@@ -1256,10 +1259,13 @@ impl Session {
                 .await;
                 let space = ev.env.space().to_string();
                 let is_create = matches!(ev.env.body(), Some(EventBody::SpaceCreated { .. }));
-                let n = self
-                    .st
-                    .fanout
-                    .send(&audience, &ServerFrame::Event { ev }, None);
+                let n = if fork_histories_hold(&space) {
+                    0
+                } else {
+                    self.st
+                        .fanout
+                        .send(&audience, &ServerFrame::Event { ev }, None)
+                };
                 span.record("audience", audience.len() as i64);
                 span.record("delivered_here", n as i64);
                 if let Some(j) = joined {
@@ -1333,6 +1339,37 @@ impl Session {
         span.record("spaces", plan.len() as i64);
         let mut sent = 0usize;
         for (space, mut next, through) in plan {
+            #[cfg(debug_assertions)]
+            if crate::log::sequencer::fork_histories::armed(&space) {
+                let Ok(Ok(full)) = tokio::time::timeout(
+                    Duration::from_secs(5),
+                    self.st
+                        .log
+                        .read(&space, 0, crate::log::sequencer::fork_histories::READ_LIMIT),
+                )
+                .await
+                else {
+                    self.send_sync(ServerFrame::error(
+                        ErrorCode::Unavailable,
+                        "log store unavailable",
+                    ))
+                    .await;
+                    return;
+                };
+                let page =
+                    crate::log::sequencer::fork_histories::view(&space, &self.identity, next, full);
+                for ev in page {
+                    if through.is_some_and(|last| ev.seq > last) {
+                        break;
+                    }
+                    Metrics::inc(&self.st.metrics.sync_events_sent);
+                    sent += 1;
+                    if !self.send_sync(ServerFrame::Event { ev }).await {
+                        return;
+                    }
+                }
+                continue;
+            }
             loop {
                 let Ok(Ok(page)) = tokio::time::timeout(
                     Duration::from_secs(5),
@@ -1375,6 +1412,19 @@ impl Session {
                 .analytics
                 .latency("first_sync_ms", self.started.elapsed());
         }
+    }
+}
+
+/// A named Space is served from sync, not from the live canonical fan-out.
+fn fork_histories_hold(space: &str) -> bool {
+    #[cfg(debug_assertions)]
+    {
+        crate::log::sequencer::fork_histories::armed(space)
+    }
+    #[cfg(not(debug_assertions))]
+    {
+        let _ = space;
+        false
     }
 }
 
