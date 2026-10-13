@@ -4062,6 +4062,20 @@ mod tests {
                 engine.store.meta(&fork_meta(space)).unwrap().as_deref(),
                 Some(FORK)
             );
+            let queued = engine.store.outbox().unwrap().len();
+            engine.reproject_approval_overlay().unwrap();
+            let replayed = integrity(&engine, space);
+            let resent = engine.send_message(space, "after replay");
+            let grown = engine.store.outbox().unwrap().len();
+            let refused = match &resent {
+                Err(crate::CoreError::Invalid { reason }) => reason.clone(),
+                other => format!("{other:?}"),
+            };
+            assert_eq!(
+                (replayed.as_deref(), refused.as_str(), grown),
+                (Some(FORK), FORK, queued),
+                "{resent:?}"
+            );
             device_secret
         };
 
