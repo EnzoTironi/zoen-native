@@ -1936,6 +1936,108 @@ fn diverged_member_checkpoint_parks_live_and_cold_core() {
     );
 }
 
+fn sealed_frame(author: &Author, client_id: &str, seen: Option<&Seen>) -> Envelope {
+    Envelope::sealed(
+        author,
+        SPACE,
+        client_id,
+        1_700_000_000_500,
+        seen,
+        Sealed::new(SealedKind::Application, roda_mls::SUITE_ID, vec![9, 9, 9]),
+    )
+}
+
+#[test]
+fn sealed_member_seen_ahead_marks_the_fork_and_parks_send() {
+    let mut fixture = Fixture::new();
+    fixture.grant("sealed-fork-trust", None);
+    let trigger = fixture.message("Original request");
+    let original = fixture
+        .core
+        .reply(SPACE, &trigger, 400)
+        .unwrap()
+        .intent()
+        .clone();
+    let author = fixture.owner.net.author.clone().unwrap();
+    let ahead = Seen {
+        seq: 9_000,
+        hash: "12".repeat(32),
+    };
+    let next = fixture.core.engine.next_seq(SPACE);
+    let mut late = ordered(
+        &fixture.core.engine,
+        sealed_frame(&author, "sealed-gap", Some(&ahead)),
+    );
+    late.seq = next + 3;
+    let gapped = fixture.core.engine.ingest(late);
+    assert!(
+        matches!(gapped, Ingest::Gap { next: n } if n == next),
+        "{gapped:?}"
+    );
+    assert!(fixture.core.engine.state.spaces[SPACE]
+        .integrity_error
+        .is_none());
+
+    let stranger = roda_log::Author::root(roda_log::Signer::generate());
+    let refused = fixture.core.engine.ingest(ordered(
+        &fixture.core.engine,
+        sealed_frame(&stranger, "sealed-stranger", Some(&ahead)),
+    ));
+    assert!(matches!(refused, Ingest::Invalid(_)), "{refused:?}");
+    let mut forged = sealed_frame(&author, "sealed-forged", Some(&ahead));
+    forged.sig = "00".repeat(64);
+    let forged = fixture
+        .core
+        .engine
+        .ingest(ordered(&fixture.core.engine, forged));
+    assert!(matches!(forged, Ingest::Invalid(_)), "{forged:?}");
+    assert!(fixture.core.engine.state.spaces[SPACE]
+        .integrity_error
+        .is_none());
+    assert_eq!(
+        fixture
+            .core
+            .engine
+            .store
+            .meta(&format!("mls.fork:{SPACE}"))
+            .unwrap(),
+        None
+    );
+    assert_eq!(fixture.core.engine.next_seq(SPACE), next);
+
+    let got = fixture.core.engine.ingest(ordered(
+        &fixture.core.engine,
+        sealed_frame(&author, "sealed-ahead", Some(&ahead)),
+    ));
+    assert!(matches!(got, Ingest::Invalid(_)), "{got:?}");
+    assert!(fixture.core.engine.logs[SPACE]
+        .events()
+        .iter()
+        .all(|event| event.client_id != "sealed-ahead"));
+    assert_eq!(fixture.core.engine.next_seq(SPACE), next);
+    assert_eq!(
+        fixture.core.engine.state.spaces[SPACE]
+            .integrity_error
+            .as_deref(),
+        Some("Members see different groups in this chat (the server may have forked it)."),
+        "sealed member seen ahead did not mark the fork"
+    );
+    assert_eq!(
+        fixture
+            .core
+            .engine
+            .store
+            .meta(&format!("mls.fork:{SPACE}"))
+            .unwrap()
+            .as_deref(),
+        Some("Members see different groups in this chat (the server may have forked it).")
+    );
+    assert!(matches!(
+        fixture.core.refresh(&original, 500),
+        Err(NativeError::NotReady)
+    ));
+}
+
 #[test]
 fn no_default_or_optimistic_grant_can_start_a_reply() {
     let mut fixture = Fixture::new();
