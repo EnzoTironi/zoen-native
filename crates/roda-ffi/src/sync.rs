@@ -7,7 +7,10 @@
 //!   sequence number when the device is online; the confirmed copy replaces the pending
 //!   one in place (same `client_id`, so the UI row never jumps).
 //! - **Ingest:** events from the relay must be the next in their Space, link to the head
-//!   and carry a valid author signature, or they are refused.
+//!   and carry a valid author signature, or they are refused. A member whose signed
+//!   `seen` names a position this device already holds under a different hash is fork
+//!   evidence: the Space is marked and the event is not stored. `seen` lives in the
+//!   signed content. The relay's `seq`, `prev` and chain hash do not.
 //! - **Reopen:** confirmed events are re-verified from disk, then the outbox is replayed
 //!   on top. Kill the app mid-send and nothing is lost or duplicated.
 
@@ -415,7 +418,9 @@ impl Engine {
         let r = self.ingest_plain(e.clone());
         if matches!(r, Ingest::Applied | Ingest::Confirmed) {
             self.mls_membership_changed(&e);
-            self.compare_checkpoint(&e);
+            if let Err(err) = self.compare_checkpoint(&e) {
+                return Ingest::Invalid(err.to_string());
+            }
             self.mls_device_joining(&e);
         }
         r
@@ -440,10 +445,15 @@ impl Engine {
             .entry(space.clone())
             .or_insert_with(|| SpaceLog::new(space.clone()));
         if let Err(err) = log.accept(e.clone()) {
-            if log.is_empty() {
+            let seen = crate::mls::seen_against(log, &e);
+            let author = e.author.clone();
+            let causal = matches!(err, roda_log::LogError::BrokenCausalLink { .. });
+            let err_text = err.to_string();
+            let empty = log.is_empty();
+            if empty {
                 self.logs.remove(&space);
             }
-            return Ingest::Invalid(err.to_string());
+            return self.refused_member_history(&space, causal, seen, &author, &err_text, next);
         }
         if let Err(err) = self.store.append_event(&e) {
             // Disk and memory must agree: drop the in-memory copy, it'll come back on sync.

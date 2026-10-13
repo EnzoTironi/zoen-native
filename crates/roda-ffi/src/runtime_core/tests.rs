@@ -1833,6 +1833,110 @@ fn conflicting_actual_member_checkpoint_parks_live_and_cold_core() {
 }
 
 #[test]
+fn diverged_member_checkpoint_parks_live_and_cold_core() {
+    let mut fixture = Fixture::new();
+    fixture.grant("explicit-trust", None);
+    let trigger = fixture.message("Original request");
+    let original = fixture
+        .core
+        .reply(SPACE, &trigger, 400)
+        .unwrap()
+        .intent()
+        .clone();
+    let author = fixture.owner.net.author.clone().unwrap();
+    let shared = fixture.owner.logs[SPACE].head().unwrap();
+    assert_eq!(fixture.core.engine.logs[SPACE].head(), Some(shared.clone()));
+    let epoch = fixture.core.engine.device().unwrap().epoch(SPACE).unwrap();
+    let digest = fixture
+        .core
+        .engine
+        .store
+        .meta(&format!("mls.digest:{SPACE}:{epoch}"))
+        .unwrap()
+        .unwrap_or_else(|| "aa".repeat(32));
+    let on_owner = author.sign_event(
+        SPACE,
+        "diverge-owner",
+        460,
+        Some(shared.clone()),
+        EventBody::Checkpoint {
+            upto: shared.clone(),
+            epoch,
+            digest: digest.clone(),
+        },
+    );
+    let on_core = author.sign_event(
+        SPACE,
+        "diverge-core",
+        461,
+        Some(shared.clone()),
+        EventBody::Checkpoint {
+            upto: shared,
+            epoch,
+            digest,
+        },
+    );
+    assert_eq!(
+        fixture
+            .owner
+            .ingest(ordered(&fixture.owner, Envelope::plain(&on_owner))),
+        Ingest::Applied
+    );
+    assert_eq!(
+        fixture
+            .core
+            .engine
+            .ingest(ordered(&fixture.core.engine, Envelope::plain(&on_core),)),
+        Ingest::Applied
+    );
+    assert!(fixture.core.engine.state.spaces[SPACE]
+        .integrity_error
+        .is_none());
+    let owner_head = fixture.owner.logs[SPACE].head().unwrap();
+    let core_at_owner_seq = fixture.core.engine.logs[SPACE].events()[owner_head.seq as usize]
+        .hash
+        .clone();
+    assert_ne!(owner_head.hash, core_at_owner_seq);
+    let checkpoint = author.sign_event(
+        SPACE,
+        "fork-checkpoint",
+        470,
+        Some(owner_head),
+        EventBody::Checkpoint {
+            upto: fixture.owner.logs[SPACE].head().unwrap(),
+            epoch: 1,
+            digest: "ab".repeat(32),
+        },
+    );
+    let got = fixture
+        .core
+        .engine
+        .ingest(ordered(&fixture.core.engine, Envelope::plain(&checkpoint)));
+    assert!(matches!(got, Ingest::Invalid(_)));
+    assert!(fixture.core.engine.logs[SPACE]
+        .events()
+        .iter()
+        .all(|event| event.client_id != "fork-checkpoint"));
+    assert_eq!(
+        fixture.core.engine.state.spaces[SPACE]
+            .integrity_error
+            .as_deref(),
+        Some("Members see different groups in this chat (the server may have forked it).")
+    );
+    assert!(matches!(
+        fixture.core.refresh(&original, 500),
+        Err(NativeError::NotReady)
+    ));
+    assert!(matches!(
+        DeviceCore::restore(fixture.core.image().unwrap(), fixture.credential()),
+        Err(NativeError::Credential)
+    ));
+    println!(
+        "JOURNEY honest checkpoint from the other fork parks live send and refuses cold restore"
+    );
+}
+
+#[test]
 fn no_default_or_optimistic_grant_can_start_a_reply() {
     let mut fixture = Fixture::new();
     let trigger = fixture.message("No explicit grant yet");
