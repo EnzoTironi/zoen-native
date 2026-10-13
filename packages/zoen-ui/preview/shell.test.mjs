@@ -284,10 +284,6 @@ test('light, dark, and system colors agree with the native semantic Palette', as
     textTertiary: '--zs-tertiary',
     action: '--zs-action',
     actionDeep: '--zs-action-deep',
-    myBubble: '--zs-bubble-own',
-    myBubbleText: '--zs-bubble-own-ink',
-    otherBubble: '--zs-bubble-other',
-    otherBubbleOnBackdrop: '--zs-bubble-other-on-backdrop',
   };
   for (const [semantic, property] of Object.entries(semantics)) {
     const native = palette.get(semantic);
@@ -295,5 +291,75 @@ test('light, dark, and system colors agree with the native semantic Palette', as
     assert.equal(light.get(property), native.light.toUpperCase(), `Light ${semantic}`);
     assert.equal(dark.get(property), native.dark.toUpperCase(), `Dark ${semantic}`);
     assert.equal(system.get(property), native.dark.toUpperCase(), `System dark ${semantic}`);
+  }
+});
+
+function paletteColor(theme, name, seen = new Set()) {
+  if (seen.has(name)) return null;
+  seen.add(name);
+  const expr = theme.match(new RegExp(`static let ${name} = ([^\\n]+)`))?.[1]?.trim();
+  if (!expr) return null;
+  const adaptive = expr.match(
+    /Color\.adaptive\(light: "(#[\dA-Fa-f]{6})", dark: "(#[\dA-Fa-f]{6})"(?:, lightAlpha: ([0-9.]+), darkAlpha: ([0-9.]+))?/,
+  );
+  if (adaptive) {
+    return {
+      light: { hex: adaptive[1].toUpperCase(), alpha: adaptive[3] == null ? 1 : Number(adaptive[3]) },
+      dark: { hex: adaptive[2].toUpperCase(), alpha: adaptive[4] == null ? 1 : Number(adaptive[4]) },
+    };
+  }
+  const alias = expr.match(/^(\w+)$/);
+  if (!alias) return null;
+  return paletteColor(theme, alias[1], seen);
+}
+
+function shellColor(raw) {
+  const value = raw.trim();
+  const hex = value.match(/^#([\dA-Fa-f]{6})$/);
+  if (hex) return { hex: `#${hex[1].toUpperCase()}`, alpha: 1 };
+  const rgb = value.match(/^rgb\((\d+) (\d+) (\d+) \/ ([0-9.]+)\)$/);
+  if (!rgb) return null;
+  const digits = [rgb[1], rgb[2], rgb[3]].map((part) => Number(part).toString(16).padStart(2, '0'));
+  return { hex: `#${digits.join('').toUpperCase()}`, alpha: Number(rgb[4]) };
+}
+
+function shellColorMap(block) {
+  return new Map(
+    [...block.matchAll(/(--[\w-]+):\s*([^;]+);/g)]
+      .map(([, name, value]) => [name, shellColor(value)])
+      .filter(([, color]) => color),
+  );
+}
+
+test('native sky bubble matches the shell, including alpha', async () => {
+  const [nativeTheme, shellStyles] = await Promise.all([
+    readFile(join(here, '../../../apple/Shared/DesignSystem/Theme.swift'), 'utf8'),
+    readFile(join(here, '../src/shell.css'), 'utf8'),
+  ]);
+  const lightStyles = shellStyles.match(/\.zs-shell \{([^}]+)\}/)?.[1];
+  const darkStyles = shellStyles.match(/\.zs-shell\[data-theme='dark'\] \{([^}]+)\}/)?.[1];
+  const systemStyles = shellStyles.match(/\.zs-shell\[data-theme='system'\] \{([^}]+)\}/)?.[1];
+  assert.ok(lightStyles && darkStyles && systemStyles);
+  const light = shellColorMap(lightStyles);
+  const dark = shellColorMap(darkStyles);
+  const system = shellColorMap(systemStyles);
+  const bubbles = {
+    myBubble: '--zs-bubble-own',
+    myBubbleText: '--zs-bubble-own-ink',
+    otherBubble: '--zs-bubble-other',
+    otherBubbleOnBackdrop: '--zs-bubble-other-on-backdrop',
+  };
+  for (const [semantic, property] of Object.entries(bubbles)) {
+    const native = paletteColor(nativeTheme, semantic);
+    assert.ok(native, `Native Palette.${semantic} must exist`);
+    for (const [label, actual, expected] of [
+      ['Light', light.get(property), native.light],
+      ['Dark', dark.get(property), native.dark],
+      ['System dark', system.get(property), native.dark],
+    ]) {
+      assert.ok(actual, `${label} ${property} must parse`);
+      assert.equal(actual.hex, expected.hex, `${label} ${semantic}`);
+      assert.equal(actual.alpha, expected.alpha, `${label} ${semantic} alpha`);
+    }
   }
 });
