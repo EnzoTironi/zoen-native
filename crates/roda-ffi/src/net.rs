@@ -528,6 +528,9 @@ async fn session(
         }
         let _ = ctx.engine().set_registered(true);
     }
+    if let Err(e) = ack_saved_links(ctx, &mut sink, &mut stream, &mut early).await {
+        return Exit::Retry(e);
+    }
     // Publish the name only after this socket reached Ready and any registration
     // succeeded. A Challenge alone must not establish an HTTP signature domain.
     let _ = ctx.engine().store.set_meta("relay_name", &relay);
@@ -1174,14 +1177,92 @@ pub(crate) fn tracing_like(msg: &str) {
     }
 }
 
-/// Waits for a link box as a device with no account yet (ADR 0045): it signs in as itself
-/// (its device key as identity, self-certified), which lets it fetch and nothing else.
-pub async fn fetch_link_box(
-    relay_url: &str,
-    key: &roda_log::Signer,
-    id: &str,
-    deadline: tokio::time::Instant,
-) -> Result<Vec<u8>, String> {
+/// Box ids saved after the link is durable and not yet receipted. A later session sends them.
+pub(crate) const LINK_RECEIPT: &str = "link.receipt";
+
+pub(crate) fn pending_link_receipts(store: &roda_store::Store) -> Vec<String> {
+    store
+        .meta(LINK_RECEIPT)
+        .ok()
+        .flatten()
+        .map(|saved| {
+            saved
+                .split('\n')
+                .filter(|id| !id.is_empty())
+                .map(str::to_string)
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+pub(crate) fn remember_link_receipt(store: &roda_store::Store, id: &str) -> Result<(), String> {
+    let mut ids = pending_link_receipts(store);
+    if ids.iter().any(|have| have == id) {
+        return Ok(());
+    }
+    ids.push(id.to_string());
+    store
+        .set_meta(LINK_RECEIPT, &ids.join("\n"))
+        .map_err(|e| e.to_string())
+}
+
+pub(crate) fn forget_link_receipt(store: &roda_store::Store, id: &str) -> Result<(), String> {
+    let ids = pending_link_receipts(store)
+        .into_iter()
+        .filter(|have| have != id)
+        .collect::<Vec<_>>();
+    if ids.is_empty() {
+        store.meta_delete(LINK_RECEIPT).map_err(|e| e.to_string())
+    } else {
+        store
+            .set_meta(LINK_RECEIPT, &ids.join("\n"))
+            .map_err(|e| e.to_string())
+    }
+}
+
+async fn ack_saved_links(
+    ctx: &Ctx,
+    sink: &mut Sink,
+    stream: &mut Stream,
+    early: &mut Vec<ServerFrame>,
+) -> Result<(), String> {
+    let ids = pending_link_receipts(&ctx.engine().store);
+    for id in ids {
+        send(
+            sink,
+            &ClientFrame::Req {
+                id: 0,
+                op: Op::AckLink { id: id.clone() },
+            },
+        )
+        .await?;
+        loop {
+            match recv(stream).await? {
+                ServerFrame::Res { id: 0, result } => {
+                    match result {
+                        Ok(Reply::Done) => {
+                            let _ = forget_link_receipt(&ctx.engine().store, &id);
+                        }
+                        Err(message) if message == "not your link box" => {
+                            let _ = forget_link_receipt(&ctx.engine().store, &id);
+                        }
+                        Err(message) => tracing_like(&format!("link receipt: {message}")),
+                        Ok(_) => tracing_like("link receipt: unexpected reply"),
+                    }
+                    break;
+                }
+                ServerFrame::Error { message, .. } => return Err(message),
+                frame if early.len() < 1024 => early.push(frame),
+                _ => return Err("too many frames before the link receipt".into()),
+            }
+        }
+    }
+    Ok(())
+}
+
+/// Signs in as the device key itself. A device being linked has no account yet, and the
+/// same key can still receipt its box after enrollment.
+async fn device_socket(relay_url: &str, key: &roda_log::Signer) -> Result<(Sink, Stream), String> {
     let url = ws_url(relay_url);
     let (ws, _) = tokio::time::timeout(
         Duration::from_secs(10),
@@ -1232,6 +1313,18 @@ pub async fn fetch_link_box(
             _ => continue,
         }
     }
+    Ok((sink, stream))
+}
+
+/// Waits for a link box as a device with no account yet (ADR 0045): it signs in as itself
+/// (its device key as identity, self-certified), which lets it fetch and nothing else.
+pub async fn fetch_link_box(
+    relay_url: &str,
+    key: &roda_log::Signer,
+    id: &str,
+    deadline: tokio::time::Instant,
+) -> Result<Vec<u8>, String> {
+    let (mut sink, mut stream) = device_socket(relay_url, key).await?;
     let mut n = 0u64;
     loop {
         n += 1;
@@ -1254,6 +1347,32 @@ pub async fn fetch_link_box(
             return Err("nobody linked this device in time".into());
         }
         tokio::time::sleep(Duration::from_millis(700)).await;
+    }
+}
+
+/// Receipts a saved link. Success when the box is deleted or was already gone.
+pub async fn ack_link_box(relay_url: &str, key: &roda_log::Signer, id: &str) -> Result<(), String> {
+    let (mut sink, mut stream) = device_socket(relay_url, key).await?;
+    send(
+        &mut sink,
+        &ClientFrame::Req {
+            id: 1,
+            op: Op::AckLink { id: id.to_string() },
+        },
+    )
+    .await?;
+    loop {
+        match recv(&mut stream).await? {
+            ServerFrame::Res { id: 1, result } => {
+                return match result {
+                    Ok(Reply::Done) => Ok(()),
+                    Ok(_) => Err("the relay answered something else".into()),
+                    Err(e) => Err(e),
+                }
+            }
+            ServerFrame::Error { message, .. } => return Err(message),
+            _ => continue,
+        }
     }
 }
 

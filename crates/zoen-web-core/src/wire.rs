@@ -17,6 +17,9 @@ pub fn request(id: u64, kind: &str, value: &str) -> Result<Vec<u8>, String> {
         "fetch_link" => Op::FetchLink {
             id: value.to_string(),
         },
+        "ack_link" => Op::AckLink {
+            id: value.to_string(),
+        },
         "devices" => Op::Devices,
         "preview_invite" => Op::PreviewInvite {
             code: value.to_string(),

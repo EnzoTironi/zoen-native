@@ -554,10 +554,16 @@ async fn an_unlinked_root_holder_cannot_return_with_a_fresh_certificate() {
             .await
             .unwrap()
     );
-    assert!(zoen_relay::db::take_link_box(&test.state.pool, &box_id)
+    assert!(matches!(
+        zoen_relay::db::read_link_box(
+            &test.state.pool,
+            &box_id,
+            primary.device.as_deref().unwrap()
+        )
         .await
-        .unwrap()
-        .is_none());
+        .unwrap(),
+        zoen_relay::db::LinkBoxRead::Missing
+    ));
     // The surviving enrolled device can still change its own directory profile.
     request(
         &mut controller,
@@ -744,21 +750,31 @@ async fn enrollment_and_link_box_delivery_commit_or_rollback_together() {
             .await
             .unwrap()
     );
-    assert_eq!(
-        zoen_relay::db::take_link_box(&test.state.pool, &occupied_id)
-            .await
-            .unwrap(),
-        Some(vec![1])
-    );
+    assert!(matches!(
+        zoen_relay::db::read_link_box(
+            &test.state.pool,
+            &occupied_id,
+            first.device.as_deref().unwrap()
+        )
+        .await
+        .unwrap(),
+        zoen_relay::db::LinkBoxRead::Ready(ref sealed) if sealed == &vec![1]
+    ));
     let invalid_id = Signer::generate().id();
     let bad_cert = Author::device(&Signer::generate(), Signer::generate());
     assert!(request(&mut controller, 5, link_op(&bad_cert, &invalid_id))
         .await
         .is_err());
-    assert!(zoen_relay::db::take_link_box(&test.state.pool, &invalid_id)
+    assert!(matches!(
+        zoen_relay::db::read_link_box(
+            &test.state.pool,
+            &invalid_id,
+            first.device.as_deref().unwrap()
+        )
         .await
-        .unwrap()
-        .is_none());
+        .unwrap(),
+        zoen_relay::db::LinkBoxRead::Missing
+    ));
     assert!(
         !zoen_relay::db::device_known(&test.state.pool, bad_cert.device.as_ref().unwrap())
             .await
@@ -777,12 +793,16 @@ async fn enrollment_and_link_box_delivery_commit_or_rollback_together() {
     )
     .await
     .unwrap();
-    assert_eq!(
-        zoen_relay::db::take_link_box(&test.state.pool, &history_id)
-            .await
-            .unwrap(),
-        Some(vec![2])
-    );
+    assert!(matches!(
+        zoen_relay::db::read_link_box(
+            &test.state.pool,
+            &history_id,
+            first.device.as_deref().unwrap()
+        )
+        .await
+        .unwrap(),
+        zoen_relay::db::LinkBoxRead::Ready(ref sealed) if sealed == &vec![2]
+    ));
     let mut tx = test.state.pool.begin().await.unwrap();
     zoen_relay::db::enroll_device(
         &mut tx,

@@ -825,11 +825,29 @@ impl Session {
                 if !valid_hex64(&id) {
                     return Err("bad link id".into());
                 }
-                Ok(Reply::Link(
-                    db::take_link_box(pool, &id)
-                        .await
-                        .map_err(|e| e.to_string())?,
-                ))
+                let read = db::read_link_box(pool, &id, &self.device)
+                    .await
+                    .map_err(|e| e.to_string())?;
+                let _ = db::sweep_link_boxes(pool).await;
+                match read {
+                    db::LinkBoxRead::Ready(sealed) => Ok(Reply::Link(Some(sealed))),
+                    db::LinkBoxRead::Missing => Ok(Reply::Link(None)),
+                    db::LinkBoxRead::Expired => Err("link expired".into()),
+                    db::LinkBoxRead::OtherDevice => Err("not your link box".into()),
+                }
+            }
+            Op::AckLink { id } => {
+                if !valid_hex64(&id) {
+                    return Err("bad link id".into());
+                }
+                let ack = db::ack_link_box(pool, &id, &self.device)
+                    .await
+                    .map_err(|e| e.to_string())?;
+                let _ = db::sweep_link_boxes(pool).await;
+                match ack {
+                    db::LinkAck::Cleared => Ok(Reply::Done),
+                    db::LinkAck::OtherDevice => Err("not your link box".into()),
+                }
             }
             _ if !registered => Err("register first".into()),
             Op::DeliverLink { id, sealed, device } => {
@@ -842,12 +860,15 @@ impl Session {
                     return Err("bad link box".into());
                 }
                 let authorization = authorization.ok_or("link authorization unavailable")?;
-                if let Some(device) = device {
+                let reader = if let Some(device) = device {
                     db::enroll_device(authorization, &self.identity, &device.device, &device.cert)
                         .await
                         .map_err(|e| e.to_string())?;
-                }
-                if !db::put_link_box(authorization, &id, &sealed)
+                    device.device
+                } else {
+                    self.device.clone()
+                };
+                if !db::put_link_box(authorization, &id, &sealed, &reader)
                     .await
                     .map_err(|e| e.to_string())?
                 {

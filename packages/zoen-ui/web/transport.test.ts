@@ -3,7 +3,8 @@ import assert from 'node:assert/strict';
 import { AuthenticatedTransport, type ConnectionState } from './transport.ts';
 import type { CoreOperation } from './worker-client.ts';
 import { Messages, type MessagesState } from './messages.ts';
-import type { StoredSession } from './session.ts';
+import { parseSession, type LinkedAccount, type PendingLink, type StoredSession } from './session.ts';
+import { Pairing, type PairingState } from './pairing.ts';
 
 // These tests exercise connection/storage ordering. Native protobuf/MLS
 // interoperability requires the separate owned native relay fixture journey.
@@ -175,4 +176,100 @@ test('production send persists the ratchet before emitting and reconnect replays
   assert.equal(socket().sent.length, 3);
   assert.equal(saves.length, 3);
   assert.equal(core.closed, false);
+});
+
+const deviceKey = 'ab'.repeat(32);
+const account: LinkedAccount = {
+  identity: 'cd'.repeat(32), device: deviceKey, cert: 'cert', name: 'Ana', handle: 'ana',
+  relay: 'https://relay.example', primary: 'ef'.repeat(32), primary_hpke: 'hpke', hpke_secret: 'mine',
+  link_secret: 'link', agreement_secret: 'agree', profile_key: 'profile', profile_key_version: 1,
+  profile_seen_version: 1, profile_fields: '{}',
+};
+const pendingLink: PendingLink = {
+  device: deviceKey, relay: 'https://relay.example', hpke_secret: 'mine', secret: 'link',
+  code: 'zoen-link:1:' + '00'.repeat(96), check: '123456', box_id: 'box-1',
+};
+
+function recordedCore(ops: CoreOperation[]) {
+  return {
+    bytes: async (operation: CoreOperation) => {
+      ops.push(operation);
+      return new TextEncoder().encode(operation.kind === 'request' ? JSON.stringify(operation) : operation.kind);
+    },
+    text: async (operation: CoreOperation) => {
+      ops.push(operation);
+      if (operation.kind === 'decode_server') return new TextDecoder().decode(operation.bytes);
+      if (operation.kind === 'complete_link') return JSON.stringify(account);
+      throw new Error(`Unexpected test operation ${operation.kind}.`);
+    },
+  };
+}
+
+async function until(ready: () => boolean) {
+  const started = Date.now();
+  while (!ready()) {
+    if (Date.now() - started > 2000) throw new Error('timed out');
+    await settle();
+  }
+}
+
+test('the browser receipts a link only after the account save, and a reload receipts again', async (t) => {
+  install(t);
+  const ops: CoreOperation[] = [];
+  const saves: StoredSession[] = [];
+  let releaseSave = () => {};
+  const held = new Promise<void>((resolve) => { releaseSave = resolve; });
+  const vault = {
+    device: async () => deviceKey,
+    sign: async () => new Uint8Array(64),
+    save: async (session: StoredSession) => {
+      saves.push(JSON.parse(JSON.stringify(session)) as StoredSession);
+      if (session.kind === 'pending' && session.confirming) await held;
+    },
+  };
+  const states: PairingState[] = [];
+  const pairing = new Pairing(vault, recordedCore(ops), (state) => states.push(state));
+  t.after(() => pairing.stop());
+  await pairing.start('https://relay.example', { kind: 'pending', pending: pendingLink });
+  socket().open(); await settle();
+  socket().frame(challenge); await settle();
+  socket().frame({ kind: 'ready', identity: deviceKey, registered: false });
+  await until(() => ops.some((op) => op.kind === 'request' && op.op === 'fetch_link'));
+  const fetch = ops.find((op) => op.kind === 'request' && op.op === 'fetch_link');
+  assert.ok(fetch && fetch.kind === 'request');
+  socket().frame({ kind: 'response', id: fetch.requestId, value: { kind: 'link', sealed: [9] } });
+  await until(() => saves.some((session) => session.kind === 'pending' && session.confirming !== undefined));
+  assert.equal(ops.some((op) => op.kind === 'request' && op.op === 'ack_link'), false);
+  const confirming = saves.find((session) => session.kind === 'pending' && session.confirming);
+  assert.ok(confirming);
+  const reloaded = parseSession(JSON.stringify(confirming));
+  assert.equal(reloaded.kind, 'pending');
+  if (reloaded.kind === 'pending') assert.deepEqual(reloaded.confirming, account);
+  releaseSave();
+  await until(() => ops.some((op) => op.kind === 'request' && op.op === 'ack_link'));
+  const receipt = ops.find((op) => op.kind === 'request' && op.op === 'ack_link');
+  assert.ok(receipt && receipt.kind === 'request');
+  assert.equal(receipt.value, pendingLink.box_id);
+  socket().frame({ kind: 'response', id: receipt.requestId, value: { kind: 'done' } });
+  await until(() => states.at(-1)?.kind === 'linked');
+  assert.equal(saves.at(-1)?.kind, 'linked');
+
+  const again: CoreOperation[] = [];
+  const resumed: PairingState[] = [];
+  const second = new Pairing(
+    { ...vault, save: async (session: StoredSession) => { saves.push(session); } },
+    recordedCore(again),
+    (state) => resumed.push(state));
+  t.after(() => second.stop());
+  await second.start('https://relay.example', reloaded);
+  socket().open(); await settle();
+  socket().frame(challenge); await settle();
+  socket().frame({ kind: 'ready', identity: deviceKey, registered: false });
+  await until(() => again.some((op) => op.kind === 'request' && op.op === 'ack_link'));
+  assert.equal(again.some((op) => op.kind === 'complete_link' || (op.kind === 'request' && op.op === 'fetch_link')), false);
+  const retry = again.find((op) => op.kind === 'request' && op.op === 'ack_link');
+  assert.ok(retry && retry.kind === 'request');
+  socket().frame({ kind: 'response', id: retry.requestId, value: { kind: 'done' } });
+  await until(() => resumed.at(-1)?.kind === 'linked');
+  assert.equal(saves.at(-1)?.kind, 'linked');
 });

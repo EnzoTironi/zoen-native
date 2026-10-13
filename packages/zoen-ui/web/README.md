@@ -86,11 +86,12 @@ journey have source prepared and await the coordinated compiler/service slot. No
 browser/native interoperability or compiled WASM acceptance is claimed by the Node
 tests. Reproducibility from a published tagged commit also remains a release gate.
 
-The current native relay deletes a link box when `FetchLink` reads it. If the connection
-drops after that deletion and before the response arrives, socket reconnection alone
-cannot recover the box; the phone must approve the retained code again. Receipt-based
-retrieval remains a shared-protocol follow-up. This is distinct from the tested case
-where a transient close must not cancel the browser's reconnect timer.
+The browser saves the linked account, including a pending session whose `confirming`
+field holds that account, and only then sends `ack_link`. The relay deletes the box on
+that receipt. A reload while `confirming` is still stored sends the receipt again;
+`AckLink` succeeds when the box is already gone. A transient close must not cancel the
+browser's reconnect timer. This is separate from the receipt: the receipt is not sent
+until that save has finished.
 
 ## Final shared-main checkpoint
 

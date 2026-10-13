@@ -77,7 +77,7 @@ pub struct PbReq {
     pub id: u64,
     #[prost(
         oneof = "pb_req::Op",
-        tags = "2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17"
+        tags = "2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18"
     )]
     pub op: Option<pb_req::Op>,
 }
@@ -113,6 +113,8 @@ pub mod pb_req {
         DeliverLink(PbLinkBox),
         #[prost(string, tag = "14")]
         FetchLink(String),
+        #[prost(string, tag = "18")]
+        AckLink(String),
         #[prost(message, tag = "15")]
         Devices(PbEmpty),
         #[prost(string, tag = "16")]
@@ -841,6 +843,7 @@ impl ClientFrame {
                         }),
                     }),
                     Op::FetchLink { id } => pb_req::Op::FetchLink(id.clone()),
+                    Op::AckLink { id } => pb_req::Op::AckLink(id.clone()),
                     Op::Devices => pb_req::Op::Devices(PbEmpty {}),
                     Op::Unlink { device } => pb_req::Op::Unlink(device.clone()),
                     Op::SendDevice { to, sealed } => pb_req::Op::SendDevice(PbDeviceMessage {
@@ -923,6 +926,7 @@ impl ClientFrame {
                         }),
                     },
                     pb_req::Op::FetchLink(id) => Op::FetchLink { id },
+                    pb_req::Op::AckLink(id) => Op::AckLink { id },
                     pb_req::Op::Devices(_) => Op::Devices,
                     pb_req::Op::Unlink(device) => Op::Unlink { device },
                     pb_req::Op::SendDevice(m) => Op::SendDevice {
@@ -1524,6 +1528,12 @@ mod tests {
                     id: "history-box".into(),
                     sealed: vec![3, 4],
                     device: None,
+                },
+            },
+            ClientFrame::Req {
+                id: 13,
+                op: Op::AckLink {
+                    id: "receipt-box".into(),
                 },
             },
             ClientFrame::Sync {

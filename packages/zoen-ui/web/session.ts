@@ -24,14 +24,18 @@ export type LinkedAccount = ReturnType<typeof parseAccount>;
 
 export type StoredSession =
   | { kind: 'empty' }
-  | { kind: 'pending'; pending: PendingLink }
+  | { kind: 'pending'; pending: PendingLink; confirming?: LinkedAccount }
   | { kind: 'linked'; account: LinkedAccount; snapshot: string };
 
 export function parseSession(json: string): StoredSession {
   const value = object(JSON.parse(json));
   switch (value.kind) {
     case 'empty': return { kind: 'empty' };
-    case 'pending': return { kind: 'pending', pending: parsePending(JSON.stringify(value.pending)) };
+    case 'pending': {
+      const pending = parsePending(JSON.stringify(value.pending));
+      if (value.confirming === undefined) return { kind: 'pending', pending };
+      return { kind: 'pending', pending, confirming: parseAccount(JSON.stringify(value.confirming)) };
+    }
     case 'linked': return { kind: 'linked', account: parseAccount(JSON.stringify(value.account)), snapshot: string(value.snapshot) };
     default: throw new Error('Unrecognized local session.');
   }

@@ -22,10 +22,12 @@ plaintext, and pruning (ADR 0026) must not take away history a new device still 
    the sponsor's active device row through one transaction that enrolls the target and
    stores the box; both commit or neither does. The existing device records the target as
    active locally and posts `DeviceJoining { device }` in every end-to-end Space it is in.
-3. The new device polls the relay for its box (`FetchLink`, under its temporary
-   self-certified identity), opens it, becomes the account and logs in with its enrolled
-   device key, publishing key packages. Fetching the box remains allowed after enrollment
-   while the device still has its temporary identity; a revoked key is refused.
+3. The new device polls `FetchLink` under its temporary self-certified identity. The
+   relay returns the box and leaves it. The device saves the account, then sends
+   `AckLink`. Only that receipt deletes the box, and a repeated receipt succeeds, so a
+   lost response is retried from the saved account. Fetching stays allowed after
+   enrollment while the device still has its temporary identity; a revoked key is
+   refused. An expired box is refused with `link expired` and then swept.
 4. The existing device (and any other device of the account, or an admin) adds the new leaf
    to every group from a fresh key package (the same path as ADR 0026's rejoin).
    `link_progress` reports groups done / total.
@@ -43,8 +45,10 @@ plaintext, and pruning (ADR 0026) must not take away history a new device still 
   path revives an existing revoked device row.
 - Protocol 4 makes this enrollment mandatory. Versions 2 and 3 receive `UpgradeRequired`
   before authentication: version 3 sponsors sent a box without its certificate and could
-  report success while leaving the target unable to log in. Later history boxes omit
-  the certificate because they do not enroll a device.
+  report success while leaving the target unable to log in. A later history box repeats
+  the already-enrolled device's certificate so the relay records that device as the
+  reader. Enrollment of a device that is already active is idempotent and does not
+  revive a revoked row.
 - The handshake upgrade preserves the `zoen-sync/2` signing domain, signed event formats,
   stored history and local event metadata. It requires upgrading clients and relays, not
   deleting the database.
@@ -54,9 +58,15 @@ plaintext, and pruning (ADR 0026) must not take away history a new device still 
   `psk` = link secret, `psk_id` = `zoen-link-v1`, `info` = `zoen-link-v1:<context>`. Only a
   holder of both the new device's HPKE secret and the QR's secret opens anything, so a relay
   that swaps keys learns nothing, and a box made for another code doesn't open.
-- Boxes on the relay (`link_boxes`, ≤64 KB, single fetch, 15-minute TTL) are addressed by
+- Boxes on the relay (`link_boxes`, ≤64 KB) are addressed by
   `SHA-256("zoen-link-box-v1\0" ‖ secret ‖ label)`: unguessable, and the relay never sees
-  the secret.
+  the secret. Each box records the one device that may read it. `FetchLink` does not
+  delete it. Only that device, within 15 minutes of `created_at`, receives the sealed
+  bytes. `AckLink`, sent after the device has saved them, deletes the box, and a repeat
+  succeeds. A sweep deletes boxes older than 15 minutes. Revoking a device deletes its
+  boxes in the same transaction. A `DeliverLink` with a certificate records that
+  enrolled device as the reader. Without a certificate, the sponsor's device is the
+  reader.
 - Afterwards the two devices keep the link secret and each other's HPKE key as a **peer**
   (in the vault) for device-to-device messages (`SendDevice` → `DeviceMessage`, fanned out to
   the identity's online sessions only), each sealed with the same HPKE setup.
@@ -94,9 +104,10 @@ plaintext, and pruning (ADR 0026) must not take away history a new device still 
   checkpoints, so the ciphertext it gets after joining stays on the relay until it has it.
 
 ### Unlinking
-`zoen unlink DEVICE` / `unlink_device`: the relay commits revocation for that device row,
-closes its sessions and refuses subsequent authentication, request admission and outgoing
-deliveries for that key. A fresh root-certified key also needs authorized enrollment; the
+`zoen unlink DEVICE` / `unlink_device`: the relay commits revocation for that device row
+and deletes that device's link boxes in the same transaction, closes its sessions and
+refuses subsequent authentication, request admission and outgoing deliveries for that
+key. A fresh root-certified key also needs authorized enrollment; the
 revoked device cannot enroll it with its root secret alone. The account's other devices
 remove the revoked leaf from every group. Removing a member from a Space removes all of
 their leaves.

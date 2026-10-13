@@ -209,15 +209,20 @@ impl RodaEngine {
         );
         let secret =
             secret32(hex::decode(&pending.secret).ok()).ok_or_else(|| invalid("link request"))?;
+        let box_id = link::box_id(&secret, "identity");
         let deadline = tokio::time::Instant::now() + Duration::from_millis(timeout_ms);
-        let sealed = crate::net::fetch_link_box(
-            &pending.relay,
-            &device,
-            &link::box_id(&secret, "identity"),
-            deadline,
-        )
-        .await
-        .map_err(invalid)?;
+        let sealed = crate::net::fetch_link_box(&pending.relay, &device, &box_id, deadline)
+            .await
+            .map_err(|e| {
+                if e == "link expired" {
+                    invalid(t(
+                        "A ligação expirou. Peça um código novo.",
+                        "The link expired. Ask for a new code.",
+                    ))
+                } else {
+                    invalid(e)
+                }
+            })?;
         let hpke_secret = hex::decode(&pending.hpke_secret).unwrap_or_default();
         let plain = link::open(&hpke_secret, &secret, "identity", &sealed)
             .ok_or_else(|| invalid(t("O vínculo não abriu.", "The link didn't open.")))?;
@@ -262,6 +267,15 @@ impl RodaEngine {
             }
             e.add_peer(peer);
             e.unlock_profile(Some(agreement))?;
+            // The keys are durable. Remember the box id before the receipt so a crash
+            // here is retried when sync starts, and a repeated AckLink still succeeds.
+            crate::net::remember_link_receipt(&e.store, &box_id).map_err(invalid)?;
+        }
+        if crate::net::ack_link_box(&pending.relay, &device, &box_id)
+            .await
+            .is_ok()
+        {
+            let _ = crate::net::forget_link_receipt(&self.lock().store, &box_id);
         }
         vault.delete(link::VAULT_PENDING.into());
         self.account_dto_pub().ok_or_else(|| invalid("account"))
@@ -328,6 +342,9 @@ impl RodaEngine {
                 "Couldn't store the key in the Keychain.",
             )));
         }
+        self.lock()
+            .store
+            .set_meta(&format!("link.cert.{}", code.device), &b.cert)?;
         self.lock().add_peer(peer);
         match self
             .request(Op::DeliverLink {
@@ -418,11 +435,19 @@ impl RodaEngine {
             &serde_json::to_vec(&manifest).unwrap_or_default(),
         )
         .ok_or_else(|| invalid("sealing"))?;
+        let cert = self
+            .lock()
+            .store
+            .meta(&format!("link.cert.{device_id}"))?
+            .ok_or_else(|| invalid("device certificate"))?;
         match self
             .request(Op::DeliverLink {
                 id: link::box_id(&secret, "history"),
                 sealed,
-                device: None,
+                device: Some(DeviceCertificate {
+                    device: device_id.clone(),
+                    cert,
+                }),
             })
             .await?
         {
@@ -593,8 +618,14 @@ impl RodaEngine {
 
 impl RodaEngine {
     /// The history box: from the device database if an earlier try got it, else from the
-    /// relay (one-time), kept until the bundle is in.
+    /// relay. The relay copy stays until this device receipts it.
     async fn history_manifest(&self, timeout_ms: u64) -> Result<HistoryBox, CoreError> {
+        let pending_receipts = crate::net::pending_link_receipts(&self.lock().store);
+        for id in pending_receipts {
+            if let Ok(Reply::Done) = self.request(Op::AckLink { id: id.clone() }).await {
+                let _ = crate::net::forget_link_receipt(&self.lock().store, &id);
+            }
+        }
         if let Some(m) = self
             .lock()
             .store
@@ -642,6 +673,10 @@ impl RodaEngine {
         self.lock()
             .store
             .set_meta(META_HISTORY, &serde_json::to_string(&m).unwrap_or_default())?;
+        crate::net::remember_link_receipt(&self.lock().store, &id).map_err(invalid)?;
+        if let Ok(Reply::Done) = self.request(Op::AckLink { id: id.clone() }).await {
+            let _ = crate::net::forget_link_receipt(&self.lock().store, &id);
+        }
         Ok(m)
     }
 }

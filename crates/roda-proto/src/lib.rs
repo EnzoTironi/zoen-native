@@ -68,7 +68,11 @@ pub const CAPABILITIES: &[&str] = &[
     "profiles",
     AGENT_OWNER_PROOF,
     KEY_PACKAGE_CLAIM_CAPABILITY,
+    LINK_BOX_RECEIPTS,
 ];
+
+/// The relay keeps a link box until the recorded device receipts it.
+pub const LINK_BOX_RECEIPTS: &str = "link-box-receipts";
 
 /// A database-clock sample from the authenticated, receipt-capable relay connection.
 /// This value is never extrapolated using the device's wall clock.
@@ -471,16 +475,22 @@ pub enum Op {
         operation_id: Option<String>,
     },
     /// Leaves a sealed link box for a device being linked (ADR 0045), under `id` = SHA-256
-    /// of the link secret in its QR code. Only the new device can open it. The identity
-    /// box also enrolls its certified device; history manifests carry no device.
+    /// of the link secret in its QR code. Only the new device can open it. A certificate
+    /// enrolls that device and records it as the only reader. Without one, the sponsor's
+    /// device is the reader.
     DeliverLink {
         id: String,
         sealed: Vec<u8>,
         device: Option<DeviceCertificate>,
     },
-    /// Takes the link box under `id`, if it is there yet. The one op a device being linked
-    /// (signed in as itself, not registered) may use besides registering.
+    /// Reads the link box under `id` without deleting it. Allowed before registration, and
+    /// only for the device recorded on the box.
     FetchLink {
+        id: String,
+    },
+    /// Deletes the link box under `id` after the device has saved the link. A repeat
+    /// succeeds when the box is already gone. Refused before authentication.
+    AckLink {
         id: String,
     },
     /// This identity's devices, unlinked ones included.
@@ -521,6 +531,7 @@ impl Op {
             Op::ClaimKeyPackages { .. } => "claim_key_packages",
             Op::DeliverLink { .. } => "deliver_link",
             Op::FetchLink { .. } => "fetch_link",
+            Op::AckLink { .. } => "ack_link",
             Op::Devices => "devices",
             Op::Unlink { .. } => "unlink",
             Op::SendDevice { .. } => "send_device",

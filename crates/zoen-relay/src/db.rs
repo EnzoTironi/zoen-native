@@ -595,33 +595,95 @@ pub async fn device_revoked(pool: &PgPool, device: &str) -> Result<bool, sqlx::E
     .is_some())
 }
 
-/// Leaves a box; a second one under the same id is refused (they are one-time).
+/// What [`read_link_box`] found. A ready box stays until [`ack_link_box`] or the sweep.
+#[derive(Debug, PartialEq, Eq)]
+pub enum LinkBoxRead {
+    Ready(Vec<u8>),
+    Missing,
+    Expired,
+    OtherDevice,
+}
+
+/// [`ack_link_box`] deletes the caller's box, and also succeeds when it is already gone.
+#[derive(Debug, PartialEq, Eq)]
+pub enum LinkAck {
+    Cleared,
+    OtherDevice,
+}
+
+/// Leaves a box for `device`. A second one under the same id is refused.
 pub async fn put_link_box(
     tx: &mut Transaction<'_, Postgres>,
     id: &str,
     sealed: &[u8],
+    device: &str,
 ) -> Result<bool, sqlx::Error> {
     sqlx::query("DELETE FROM link_boxes WHERE created_at < now() - interval '15 minutes'")
         .execute(&mut **tx)
         .await?;
-    let r =
-        sqlx::query("INSERT INTO link_boxes (id, sealed) VALUES ($1, $2) ON CONFLICT DO NOTHING")
-            .bind(id)
-            .bind(sealed)
-            .execute(&mut **tx)
-            .await?;
+    let r = sqlx::query(
+        "INSERT INTO link_boxes (id, sealed, device) VALUES ($1, $2, $3) ON CONFLICT DO NOTHING",
+    )
+    .bind(id)
+    .bind(sealed)
+    .bind(device)
+    .execute(&mut **tx)
+    .await?;
     Ok(r.rows_affected() == 1)
 }
 
-/// Takes the box under `id` (deleting it), if there is a fresh one.
-pub async fn take_link_box(pool: &PgPool, id: &str) -> Result<Option<Vec<u8>>, sqlx::Error> {
-    sqlx::query_scalar(
-        "DELETE FROM link_boxes WHERE id = $1 AND created_at > now() - interval '15 minutes'
-         RETURNING sealed",
+/// Reads the box under `id` for `device`. Nothing is deleted.
+pub async fn read_link_box(
+    pool: &PgPool,
+    id: &str,
+    device: &str,
+) -> Result<LinkBoxRead, sqlx::Error> {
+    let row: Option<(Vec<u8>, String, bool)> = sqlx::query_as(
+        "SELECT sealed, device, created_at > now() - interval '15 minutes'
+         FROM link_boxes WHERE id = $1",
     )
     .bind(id)
     .fetch_optional(pool)
-    .await
+    .await?;
+    Ok(match row {
+        None => LinkBoxRead::Missing,
+        Some((_, owner, _)) if owner != device => LinkBoxRead::OtherDevice,
+        Some((_, _, false)) => LinkBoxRead::Expired,
+        Some((sealed, _, true)) => LinkBoxRead::Ready(sealed),
+    })
+}
+
+/// Deletes `device`'s box. A missing box is success, so a retry after a lost reply converges.
+pub async fn ack_link_box(pool: &PgPool, id: &str, device: &str) -> Result<LinkAck, sqlx::Error> {
+    for _ in 0..2 {
+        let deleted = sqlx::query("DELETE FROM link_boxes WHERE id = $1 AND device = $2")
+            .bind(id)
+            .bind(device)
+            .execute(pool)
+            .await?;
+        if deleted.rows_affected() == 1 {
+            return Ok(LinkAck::Cleared);
+        }
+        let owner: Option<String> =
+            sqlx::query_scalar("SELECT device FROM link_boxes WHERE id = $1")
+                .bind(id)
+                .fetch_optional(pool)
+                .await?;
+        match owner {
+            None => return Ok(LinkAck::Cleared),
+            Some(owner) if owner == device => continue,
+            Some(_) => return Ok(LinkAck::OtherDevice),
+        }
+    }
+    Ok(LinkAck::OtherDevice)
+}
+
+/// Drops boxes older than 15 minutes. A read does not call this by itself.
+pub async fn sweep_link_boxes(pool: &PgPool) -> Result<(), sqlx::Error> {
+    sqlx::query("DELETE FROM link_boxes WHERE created_at < now() - interval '15 minutes'")
+        .execute(pool)
+        .await?;
+    Ok(())
 }
 
 pub async fn devices_of(
@@ -672,6 +734,10 @@ pub async fn revoke_device(
     .await?;
     sqlx::query("DELETE FROM key_packages WHERE identity = $1 AND device = $2")
         .bind(identity)
+        .bind(device)
+        .execute(&mut **tx)
+        .await?;
+    sqlx::query("DELETE FROM link_boxes WHERE device = $1")
         .bind(device)
         .execute(&mut **tx)
         .await?;
