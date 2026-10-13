@@ -203,7 +203,7 @@ impl RodaEngine {
             .or_else(|| account.as_ref().map(|a| a.relay_url.clone()))
             .ok_or_else(|| invalid("no relay".into()))?;
         let base = crate::net::http_base(&relay);
-        let http = reqwest::Client::builder()
+        let http = crate::https::client()
             .timeout(std::time::Duration::from_secs(15))
             // A redirect cannot establish the authenticated socket's HTTP domain.
             // Keep config cached and report intents queued on redirect responses.

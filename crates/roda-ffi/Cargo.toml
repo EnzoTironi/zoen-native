@@ -31,6 +31,7 @@ tokio = { version = "1", features = ["rt-multi-thread", "sync", "time", "macros"
 tokio-tungstenite = { version = "0.30", default-features = false, features = ["connect", "handshake", "rustls-tls-webpki-roots"] }
 futures-util = { version = "0.3", default-features = false, features = ["sink", "std"] }
 rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12", "logging"] }
+webpki-roots = "1"
 reqwest = { version = "0.13", default-features = false, features = ["rustls-no-provider"] }
 chacha20poly1305.workspace = true
 roda-docs.workspace = true
@@ -45,3 +46,4 @@ hpke-rs = { version = "0.7", default-features = false, features = ["rustcrypto"]
 [dev-dependencies]
 sha2.workspace = true
 prost.workspace = true
+rcgen = { version = "0.14", default-features = false, features = ["ring"] }

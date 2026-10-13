@@ -92,7 +92,7 @@ pub struct DeviceDto {
 }
 
 fn http() -> Result<reqwest::Client, CoreError> {
-    reqwest::Client::builder()
+    crate::https::client()
         .timeout(Duration::from_secs(60))
         .build()
         .map_err(|e| invalid(e.to_string()))

@@ -26,6 +26,7 @@ pub use pages::{
     MarkdownFileDto, PageBlockDto, PageDto, PageEditResult, PlanPageBlockDto, PlanPageContentDto,
     PlanPageDto, PlanPageReadSourceDto, PlanProseKindDto, TextSpanDto,
 };
+mod https;
 mod link;
 mod link_api;
 mod linking;
