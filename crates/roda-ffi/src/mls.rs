@@ -1289,10 +1289,7 @@ impl Engine {
         event: &Event,
     ) -> Ingest {
         let (seen, empty) = {
-            let log = self
-                .logs
-                .get(space)
-                .expect("accept ran on this log");
+            let log = self.logs.get(space).expect("accept ran on this log");
             (seen_against(log, event), log.is_empty())
         };
         if empty {
