@@ -200,9 +200,7 @@ class ZoenRepository(private val context: Context) {
             }
             try {
                 val demo = BuildConfig.DEBUG && (requestDemo || preferences.getBoolean("demo", false))
-                val dir = File(context.noBackupFilesDir, "core").apply { mkdirs() }
-                val name = if (demo) "demo-${Locale.forLanguageTag(locale).language}.sqlite" else "zoen.sqlite"
-                val core = RodaEngine.open(File(dir, name).absolutePath, locale)
+                val core = RodaEngine.open(databaseFile(demo).absolutePath, locale)
                 engine = core
                 openedLanguage = language
                 mutableState.value = mutableState.value.copy(demo = demo)
@@ -313,6 +311,32 @@ class ZoenRepository(private val context: Context) {
     }
 
     suspend fun refresh() = withContext(Dispatchers.IO) { gate.withLock { refreshLocked() } }
+
+    internal suspend fun <T> withDemoDatabaseClosed(block: (File) -> T): T = withContext(Dispatchers.IO) {
+        gate.withLock {
+            check(BuildConfig.DEBUG && mutableState.value.demo)
+            checkNotNull(engine) { "Zoen is still opening." }
+            val file = databaseFile(true)
+            engine?.stopSync()
+            syncRunning = false
+            engine?.destroy()
+            engine = null
+            try {
+                block(file)
+            } finally {
+                engine = RodaEngine.open(file.absolutePath, locale)
+                openedLanguage = Locale.forLanguageTag(locale).language
+                updateSyncLocked()
+                refreshLocked()
+            }
+        }
+    }
+
+    private fun databaseFile(demo: Boolean): File {
+        val dir = File(context.noBackupFilesDir, "core").apply { mkdirs() }
+        val name = if (demo) "demo-${Locale.forLanguageTag(locale).language}.sqlite" else "zoen.sqlite"
+        return File(dir, name)
+    }
 
     suspend fun <T> network(block: suspend (RodaEngine) -> T): T {
         val core = query { it }
