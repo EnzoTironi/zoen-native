@@ -894,6 +894,14 @@ impl Engine {
         }
 
         if self.approval_projection_needs_replay(&e) {
+            if own && self.confirmed_item_already_projected(&e) {
+                self.net.pending.remove(&client_id);
+                if !self.note_own_confirmed(&space, &client_id, e.seq, &e.hash) {
+                    self.state =
+                        Self::merge_space_projections(&self.space_projections, &self.space_order);
+                }
+                return Ingest::Confirmed;
+            }
             if own {
                 self.net.pending.remove(&client_id);
             }
@@ -913,20 +921,10 @@ impl Engine {
                 // The group may owe a commit that waited for this Welcome to land.
                 self.net.mls.mark_group_dirty(space.clone());
             }
-            if let Some(s) = self
-                .space_projections
-                .get_mut(&space)
-                .and_then(|scoped| scoped.spaces.get_mut(&space))
-            {
-                for entry in s.entries.iter_mut().filter(|x| {
-                    x.client_id == client_id
-                        || x.client_id.strip_suffix(":result") == Some(client_id.as_str())
-                }) {
-                    entry.seq = e.seq;
-                    entry.hash = e.hash.clone();
-                }
+            if !self.note_own_confirmed(&space, &client_id, e.seq, &e.hash) {
+                self.state =
+                    Self::merge_space_projections(&self.space_projections, &self.space_order);
             }
-            self.state = Self::merge_space_projections(&self.space_projections, &self.space_order);
             return Ingest::Confirmed;
         }
         if let Err(err) = self.apply_confirmed_event(&e) {

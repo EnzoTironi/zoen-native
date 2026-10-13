@@ -1044,7 +1044,11 @@ async fn media_worker(
     let mut recovery_retries = RecoveryRetries::default();
     loop {
         // ── up ──
+        // sync_idle waits until this queue is empty, so a full batch is drained
+        // before the download pass and the idle sleep.
         let uploads = lock(&engine).pending_uploads(8);
+        let batch = uploads.len();
+        let mut upload_failed = false;
         for (sha, bytes) in uploads {
             let ts = now_ms();
             let sig = key.sign(&blob_put_message(&sha, ts, &relay));
@@ -1073,13 +1077,18 @@ async fn media_worker(
                         &sha[..12],
                         r.status()
                     ));
+                    upload_failed = true;
                     break;
                 }
                 Err(e) => {
                     tracing_like(&format!("media: upload failed: {e}"));
+                    upload_failed = true;
                     break;
                 }
             }
+        }
+        if batch == 8 && !upload_failed {
+            continue;
         }
 
         // Recovery uses a separate bounded download. Only ciphertext is cached, and

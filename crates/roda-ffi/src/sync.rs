@@ -388,7 +388,15 @@ impl Engine {
             .entry(space.to_owned())
             .or_default()
             .apply_checked(&e, &self.identities, &context);
-        self.state = Self::merge_space_projections(&self.space_projections, &self.space_order);
+        if self.approval_replay_needed
+            || !self.state.waiting_spaces.is_empty()
+            || !self.state.requests.is_empty()
+            || !matches!(e.body, EventBody::ItemCreated { .. })
+        {
+            self.state = Self::merge_space_projections(&self.space_projections, &self.space_order);
+        } else {
+            self.state.apply_checked(&e, &self.identities, &context);
+        }
         self.index_dirty = true;
         self.note_unknown(&e);
         self.note_profile_event(&e);
@@ -454,6 +462,13 @@ impl Engine {
             let _ = self.store.outbox_remove(&e.client_id);
         }
         if replay_approval {
+            if own && self.confirmed_item_already_projected(&e) {
+                if !self.note_own_confirmed(&space, &e.client_id, e.seq, &e.hash) {
+                    self.state =
+                        Self::merge_space_projections(&self.space_projections, &self.space_order);
+                }
+                return Ingest::Confirmed;
+            }
             if let Err(err) = self.reproject_approval_overlay() {
                 return Ingest::Invalid(err.to_string());
             }
@@ -465,25 +480,15 @@ impl Engine {
             };
         }
         if own {
-            if let Some(s) = self
-                .space_projections
-                .get_mut(&space)
-                .and_then(|scoped| scoped.spaces.get_mut(&space))
-            {
-                for entry in s.entries.iter_mut().filter(|x| {
-                    x.client_id == e.client_id
-                        || x.client_id.strip_suffix(":result") == Some(e.client_id.as_str())
-                }) {
-                    entry.seq = e.seq;
-                    entry.hash = e.hash.clone();
-                }
+            let joining = matches!(e.body, EventBody::MemberAdded { .. })
+                && !self.is_member_of(&space, &e.author);
+            let had = self.note_own_confirmed(&space, &e.client_id, e.seq, &e.hash);
+            if had && !joining {
+                return Ingest::Confirmed;
             }
             self.state = Self::merge_space_projections(&self.space_projections, &self.space_order);
             // A join we sent before we had the Space's history: project it now.
-            if !self.state.spaces.contains_key(&space)
-                || matches!(e.body, EventBody::MemberAdded { .. })
-                    && !self.is_member_of(&space, &e.author)
-            {
+            if !self.state.spaces.contains_key(&space) || joining {
                 if let Err(err) = self.apply_confirmed_event(&e) {
                     return Ingest::Invalid(err.to_string());
                 }
@@ -497,6 +502,54 @@ impl Engine {
         self.note_unknown(&e);
         self.note_profile_event(&e);
         Ingest::Applied
+    }
+
+    /// True when this own item is already projected and no approval overlay is in flight.
+    pub(crate) fn confirmed_item_already_projected(&self, e: &Event) -> bool {
+        if self.approval_replay_needed
+            || !self.state.waiting_spaces.is_empty()
+            || !self.net.optimistic_approvals.is_empty()
+            || !self.state.requests.is_empty()
+        {
+            return false;
+        }
+        matches!(
+            e.body,
+            EventBody::ItemCreated { .. }
+                | EventBody::ItemVersioned { .. }
+                | EventBody::ItemReverted { .. }
+        )
+    }
+
+    /// Writes the relay seq onto the optimistic entry. Returns whether the Space is on screen.
+    pub(crate) fn note_own_confirmed(
+        &mut self,
+        space: &str,
+        client_id: &str,
+        seq: u64,
+        hash: &str,
+    ) -> bool {
+        let stamp = |entries: &mut Vec<Entry>| {
+            for entry in entries.iter_mut().filter(|entry| {
+                entry.client_id == client_id
+                    || entry.client_id.strip_suffix(":result") == Some(client_id)
+            }) {
+                entry.seq = seq;
+                entry.hash = hash.to_string();
+            }
+        };
+        if let Some(space_state) = self
+            .space_projections
+            .get_mut(space)
+            .and_then(|scoped| scoped.spaces.get_mut(space))
+        {
+            stamp(&mut space_state.entries);
+        }
+        let Some(space_state) = self.state.spaces.get_mut(space) else {
+            return false;
+        };
+        stamp(&mut space_state.entries);
+        true
     }
 
     fn is_member_of(&self, space: &str, who: &str) -> bool {
