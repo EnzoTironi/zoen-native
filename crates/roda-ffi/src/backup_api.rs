@@ -567,6 +567,29 @@ fn decompress(input: &[u8]) -> Result<Vec<u8>, ()> {
     Ok(out)
 }
 
+fn old_version(portuguese: bool) -> CoreError {
+    invalid(say(
+        portuguese,
+        "Este backup foi feito por uma versão antiga. Faça um backup novo no aparelho de origem.",
+        "This backup was made by an older version. Make a new backup on the original device.",
+    ))
+}
+
+/// History after decryption. A raw SQLite file is a backup from before compression
+/// and is not decompressed.
+fn opened_history(packed: &[u8], portuguese: bool) -> Result<Vec<u8>, CoreError> {
+    if packed.starts_with(SQLITE_HEADER) {
+        return Err(old_version(portuguese));
+    }
+    decompress(packed).map_err(|_| {
+        invalid(say(
+            portuguese,
+            "O backup está corrompido.",
+            "The backup is corrupted.",
+        ))
+    })
+}
+
 fn retry_after(response: &reqwest::Response) -> u64 {
     response
         .headers()
@@ -1153,13 +1176,7 @@ impl RodaEngine {
         }
         let sealed = r.bytes().await.map_err(offline)?;
         let (mut header, packed) = backup::open_payload(&k, &s.identity, &sealed)?;
-        let db = decompress(&packed).map_err(|_| {
-            invalid(say(
-                portuguese,
-                "O backup está corrompido.",
-                "The backup is corrupted.",
-            ))
-        })?;
+        let db = opened_history(&packed, portuguese)?;
         // Restore onto the relay the person chose (the backup may predate a move).
         header.relay_url = relay_url.clone();
         let fail = || {
@@ -1326,7 +1343,26 @@ mod tests {
         let (_, opened) = backup::open_payload(&key, "person", &sealed).unwrap();
         assert_eq!(opened, packed);
         assert_ne!(opened, db);
-        assert_eq!(decompress(&opened).unwrap(), db);
+        assert_eq!(opened_history(&opened, true).unwrap(), db);
+    }
+
+    #[test]
+    fn an_old_sqlite_backup_asks_for_a_new_one_in_both_languages() {
+        let mut db = b"SQLite format 3\0".to_vec();
+        db.extend(std::iter::repeat_n(b'b', 64));
+        let key = [9u8; 32];
+        let sealed = backup::seal_payload(&key, &header(), &db).unwrap();
+        let (_, opened) = backup::open_payload(&key, "person", &sealed).unwrap();
+        assert!(opened.starts_with(SQLITE_HEADER));
+        assert_eq!(
+            opened_history(&opened, true).unwrap_err().to_string(),
+            "Este backup foi feito por uma versão antiga. Faça um backup novo no aparelho de origem."
+        );
+        assert_eq!(
+            opened_history(&opened, false).unwrap_err().to_string(),
+            "This backup was made by an older version. Make a new backup on the original device."
+        );
+        assert_eq!(opened_history(&compress(&db), true).unwrap(), db);
     }
 
     #[test]

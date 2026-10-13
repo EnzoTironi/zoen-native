@@ -446,3 +446,20 @@ async fn a_clear_sqlite_header_is_refused_and_not_stored() {
         .is_err());
     relay.close().await;
 }
+
+#[tokio::test]
+async fn a_single_zoenbg1_body_is_refused_and_not_published() {
+    let relay = Harness::open(GIB).await;
+    let mut body = b"ZOENBG1\0".to_vec();
+    body.extend_from_slice(&relay.generation);
+    body.extend_from_slice(b"sealed-but-not-chunked");
+    let (status, response) = relay.put(body).await;
+    assert_eq!(status, axum::http::StatusCode::BAD_REQUEST);
+    let text = String::from_utf8_lossy(&response);
+    assert!(text.contains("chunks"), "{text}");
+    assert!(!text.contains("SQLite format"));
+    assert_eq!(relay.uploads().await, 0);
+    assert_eq!(relay.chunks().await, 0);
+    assert_eq!(relay.blob_bytes().await, None);
+    relay.close().await;
+}

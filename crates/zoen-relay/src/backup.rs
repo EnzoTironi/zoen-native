@@ -14,8 +14,8 @@
 //!   DELETE /v1/backup                 (device-signed)
 //!
 //! The plan answer names the account ceiling before any chunk is stored. Each chunk is
-//! 8 MiB, except the last. A body that still begins with `ZOENBG1` is one complete sealed
-//! object that already fits in that chunk limit.
+//! 8 MiB, except the last. A single body that begins with `ZOENBG1` is refused and is
+//! not stored.
 //!   POST   /v1/backup/restore/start   {handle, blinded?} → {identity, mode, kdf, evaluated?}
 //!   POST   /v1/backup/restore/open    {handle, auth_key} → {wrapped_key, size}
 //!   POST   /v1/backup/restore/enroll  {handle, auth_key, generation, device, cert, sig}
@@ -40,7 +40,7 @@ use chacha20poly1305::{
 use curve25519_dalek::{ristretto::CompressedRistretto, Scalar};
 use object_store::{path::Path as ObjPath, ObjectStoreExt, PutPayload};
 use roda_log::verify_sig;
-use roda_proto::{backup_message, BACKUP_UPLOAD_MAGIC};
+use roda_proto::backup_message;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use sqlx::{PgConnection, Postgres, Row, Transaction};
@@ -634,29 +634,47 @@ pub async fn put_vault(State(st): State<Shared>, headers: HeaderMap, body: Bytes
     StatusCode::NO_CONTENT.into_response()
 }
 
-/// Declares the ceiling, accepts one ciphertext chunk, or stores one sealed object
-/// that already fits in a chunk.
+/// Declares the ceiling or accepts one ciphertext chunk. A single `ZOENBG1` body is refused.
 pub async fn put_blob(State(st): State<Shared>, headers: HeaderMap, body: Bytes) -> Response {
-    let (identity, tx) = match signed_identity(&st, &headers, "blob", &body).await {
+    let (identity, mut tx) = match signed_identity(&st, &headers, "blob", &body).await {
         Ok(i) => i,
         Err(r) => return r,
     };
+    if let Err(response) = passphrase_gate(&st, &mut tx, &identity).await {
+        return response;
+    }
     if body.first() == Some(&b'{') {
         return declare(&st, identity, tx, &body).await;
     }
     if body.len() >= CHUNK_FRAME && body.get(..8) == Some(CHUNK_MAGIC.as_slice()) {
         return accept_chunk(&st, identity, tx, &body).await;
     }
-    const PREFIX: usize = 8 + 32;
-    if body.len() <= PREFIX || body.get(..8) != Some(BACKUP_UPLOAD_MAGIC.as_slice()) {
-        return err(StatusCode::BAD_REQUEST, "backup generation required");
+    if body.starts_with(b"ZOENBG1\0") {
+        return err(StatusCode::BAD_REQUEST, "send this backup in chunks");
     }
-    let generation = hex::encode(&body[8..PREFIX]);
-    let sealed = body.slice(PREFIX..);
-    if sealed.len() as u64 > ceiling_of(&st) {
-        return too_big(ceiling_of(&st));
+    err(StatusCode::BAD_REQUEST, "backup generation required")
+}
+
+async fn passphrase_gate(
+    st: &Shared,
+    tx: &mut Transaction<'static, Postgres>,
+    identity: &str,
+) -> Result<(), Response> {
+    let passphrase: bool = sqlx::query_scalar(
+        "SELECT EXISTS(
+            SELECT 1 FROM backup_vaults WHERE identity = $1 AND mode = 'passphrase'
+            UNION ALL
+            SELECT 1 FROM backup_setups WHERE identity = $1 AND mode = 'passphrase'
+         )",
+    )
+    .bind(identity)
+    .fetch_one(&mut **tx)
+    .await
+    .map_err(|_| unavailable())?;
+    if passphrase {
+        vault(st)?;
     }
-    publish_ciphertext(&st, identity, tx, generation, sealed, Vec::new()).await
+    Ok(())
 }
 
 async fn generation_open(
@@ -1175,7 +1193,6 @@ async fn publish_ciphertext(
     {
         return unavailable();
     }
-    cleanup_keys(st, &partials).await;
     if let Some(old) = active {
         let old_key: Option<String> = old.get("blob_key");
         let old_path = object_key(&identity, old_key.as_deref());
@@ -1183,6 +1200,7 @@ async fn publish_ciphertext(
             cleanup(st, &old_path).await;
         }
     }
+    cleanup_keys(st, &partials).await;
     tracing::info!(identity = %crate::pseudonym::pseudo(&identity), bytes = n, "backup stored");
     StatusCode::CREATED.into_response()
 }

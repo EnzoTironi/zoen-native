@@ -119,6 +119,61 @@ async fn signed_backup_write(
     backup_http(w, &request).await.0
 }
 
+const CHUNK_BYTES: usize = 8 * 1024 * 1024;
+
+fn chunk_frame(
+    generation_hex: &str,
+    index: u32,
+    count: u32,
+    total: u64,
+    payload: &[u8],
+) -> Vec<u8> {
+    let generation = hex::decode(generation_hex).unwrap();
+    let mut body = Vec::with_capacity(56 + payload.len());
+    body.extend_from_slice(b"ZOENBC1\0");
+    body.extend_from_slice(&generation);
+    body.extend_from_slice(&index.to_be_bytes());
+    body.extend_from_slice(&count.to_be_bytes());
+    body.extend_from_slice(&total.to_be_bytes());
+    body.extend_from_slice(payload);
+    body
+}
+
+async fn upload_sealed(
+    w: &World,
+    key: &roda_log::Signer,
+    identity: &str,
+    generation: &str,
+    payload: &[u8],
+) -> u16 {
+    use sha2::{Digest, Sha256};
+    let count = payload.len().div_ceil(CHUNK_BYTES).max(1) as u32;
+    let plan = serde_json::json!({
+        "generation": generation,
+        "total_bytes": payload.len(),
+        "chunks": count,
+        "sha": hex::encode(Sha256::digest(payload)),
+    })
+    .to_string()
+    .into_bytes();
+    let request = signed_backup_request(w, key, identity, "PUT", "blob", "/v1/backup/blob", &plan);
+    let (status, body) = backup_http(w, &request).await;
+    assert_eq!(status, 200, "{}", String::from_utf8_lossy(&body));
+    let answer: serde_json::Value = serde_json::from_slice(&body).expect("plan json");
+    let missing = answer["missing"].as_array().cloned().unwrap_or_default();
+    let total = payload.len() as u64;
+    let mut last = status;
+    for value in missing {
+        let index = u32::try_from(value.as_u64().expect("chunk index")).unwrap();
+        let start = index as usize * CHUNK_BYTES;
+        let end = (start + CHUNK_BYTES).min(payload.len());
+        let frame = chunk_frame(generation, index, count, total, &payload[start..end]);
+        last =
+            signed_backup_write(w, key, identity, "PUT", "blob", "/v1/backup/blob", &frame).await;
+    }
+    last
+}
+
 async fn restore_post(w: &World, path: &str, body: serde_json::Value) -> (u16, Vec<u8>) {
     let body = body.to_string();
     let headers = format!(
@@ -286,18 +341,44 @@ async fn replayed_uploads_use_distinct_objects_and_survive_delayed_cleanup() {
     let generation = w.scalar("SELECT generation FROM backup_vaults").await;
     let sha = w.scalar("SELECT blob_sha FROM backup_vaults").await;
     let original_key = w.scalar("SELECT blob_key FROM backup_vaults").await;
-    let sealed = std::fs::read(w.dir.join("blobs").join(original_key)).unwrap();
-    let body = [
-        roda_proto::BACKUP_UPLOAD_MAGIC.as_slice(),
+    let sealed = std::fs::read(w.dir.join("blobs").join(&original_key)).unwrap();
+    let legacy = [
+        b"ZOENBG1\0".as_slice(),
         hex::decode(&generation).unwrap().as_slice(),
         sealed.as_slice(),
     ]
     .concat();
-    let request =
-        signed_backup_request(&w, &key, &identity, "PUT", "blob", "/v1/backup/blob", &body);
-    assert_eq!(backup_http(&w, &request).await.0, 201);
+    assert_eq!(
+        signed_backup_write(
+            &w,
+            &key,
+            &identity,
+            "PUT",
+            "blob",
+            "/v1/backup/blob",
+            &legacy
+        )
+        .await,
+        400,
+        "a single sealed body was published"
+    );
+    assert_eq!(
+        w.scalar("SELECT blob_key FROM backup_vaults").await,
+        original_key
+    );
+    let mut other = sealed.clone();
+    let last = other.len() - 1;
+    other[last] ^= 0x5a;
+    assert_eq!(
+        upload_sealed(&w, &key, &identity, &generation, &other).await,
+        201
+    );
     let first_key = w.scalar("SELECT blob_key FROM backup_vaults").await;
-    assert_eq!(backup_http(&w, &request).await.0, 201);
+    assert_ne!(first_key, original_key);
+    assert_eq!(
+        upload_sealed(&w, &key, &identity, &generation, &sealed).await,
+        201
+    );
     let second_key = w.scalar("SELECT blob_key FROM backup_vaults").await;
     assert_ne!(first_key, second_key, "a replay reused an object path");
     assert_eq!(w.scalar("SELECT blob_sha FROM backup_vaults").await, sha);
@@ -525,12 +606,7 @@ async fn password_backups_require_explicit_dev_opt_in_and_preserve_existing_data
             "PUT",
             "blob",
             "/v1/backup/blob",
-            [
-                roda_proto::BACKUP_UPLOAD_MAGIC.as_slice(),
-                hex::decode(&generation).unwrap().as_slice(),
-                sealed.as_slice(),
-            ]
-            .concat(),
+            chunk_frame(&generation, 0, 1, sealed.len() as u64, &sealed),
         ),
     ] {
         assert_eq!(
@@ -667,12 +743,28 @@ async fn stalled_backup_storage_is_bounded_and_does_not_block_unlink() {
     let original_key = w.scalar("SELECT blob_key FROM backup_vaults").await;
     let sha = w.scalar("SELECT blob_sha FROM backup_vaults").await;
     let original = store.bytes(&original_key);
-    let body = [
-        roda_proto::BACKUP_UPLOAD_MAGIC.as_slice(),
-        hex::decode(&generation).unwrap().as_slice(),
-        original.as_slice(),
-    ]
-    .concat();
+    assert!(!original.is_empty() && original.len() <= CHUNK_BYTES);
+    let declared = serde_json::json!({
+        "generation": generation,
+        "total_bytes": original.len(),
+        "chunks": 1,
+        "sha": "ab".repeat(32),
+    })
+    .to_string()
+    .into_bytes();
+    assert_eq!(
+        signed_backup_write(
+            &w,
+            &signer,
+            &identity,
+            "PUT",
+            "blob",
+            "/v1/backup/blob",
+            &declared,
+        )
+        .await,
+        200
+    );
     let request = signed_backup_request(
         &w,
         &signer,
@@ -680,7 +772,7 @@ async fn stalled_backup_storage_is_bounded_and_does_not_block_unlink() {
         "PUT",
         "blob",
         "/v1/backup/blob",
-        &body,
+        &chunk_frame(&generation, 0, 1, original.len() as u64, &original),
     );
     store.stall(Some("PUT"));
     let after = store.call_count();
