@@ -52,6 +52,13 @@ cargo test --locked -j2 -p roda-ffi --lib runtime_core::tests::receipt_prefix_ke
 cargo test --locked -j2 -p roda-ffi --lib runtime_core::tests -- --test-threads=1
 cargo test --locked -j2 -p roda-ffi --lib mls::tests -- --test-threads=1
 ```
+### Markdown import performance
+
+`journey_files` measures import through relay acceptance of every sealed page. It exports every page on another device and compares the original bytes. The default hosted budget is 250 ms per page. The F5 measurement corpus had 94 UTF-8 Markdown files under `docs`, with 1,137,578 bytes in total. F7 adds documentation to the imported corpus; the aggregate candidate needs fresh corpus counts, hashes, timing and round-trip evidence.
+
+Debug import spends most of its time on one CPU in Loro documents, message cryptography, and durable-queue decoding. `Cargo.toml` sets `opt-level = 3` for the sampled dependencies `loro-internal`, `loro-kv-store`, `sha2`, `chacha20`, `poly1305`, `serde_json`, `memchr`, and `foldhash`. The four core libraries `roda-docs`, `roda-log`, `roda-mls`, and `roda-store` have the same override because generic code uses the profile of the crate that instantiates it. [Cargo profile overrides](https://doc.rust-lang.org/cargo/reference/profiles.html#overrides-and-generics) explain that boundary. Debug assertions and overflow checks retain the development defaults. The application publish window is five messages per Space, matching the MLS receiver's out-of-order tolerance.
+
+Compare five runs of `cargo test --locked -j2 -p zoen-cli --test journey_files -- --test-threads=1 --nocapture` on each revision. Keep the Rust toolchain, debug settings, two build jobs, disabled incremental compilation, and private Postgres and FoundationDB instances identical. Record the median and range of `IMPORT`, the successful byte count from `ROUND TRIP`, and compile cost from a separate `--timings` run. Profile CPU separately from reported timings. Keep the corpus unchanged between sides. These notes live in the root README so documentation does not add a page to that corpus.
 
 ## Documentation
 
