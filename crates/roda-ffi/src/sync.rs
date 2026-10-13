@@ -13,7 +13,10 @@
 //!   event that is already the next sequence when its signed `seen` is not held.
 //!   An honest author signed `seen` below the sequence the relay assigns, and
 //!   sync does not ask for that event again. An event whose own sequence is
-//!   still ahead of the local head stays a gap. `seen` lives in the signed
+//!   still ahead of the local head stays a gap. A sealed application stored
+//!   while another author's successor of the same `seen` is still queued
+//!   marks that fork too. Queued rows for a forked Space are not published,
+//!   including rows that have not failed. `seen` lives in the signed
 //!   content. The relay's `seq`, `prev` and chain hash do not.
 //! - **Reopen:** confirmed events are re-verified from disk, then the outbox is replayed
 //!   on top. Kill the app mid-send and nothing is lost or duplicated.
@@ -654,6 +657,8 @@ impl Engine {
         // A Welcome goes out only once its commit is in: sent together, a commit held back
         // by the relay (rate limit) would let the Welcome arrive first and be refused.
         let held = self.welcomes_behind_commits();
+        // Ahead of any in-flight application cap: a forked Space publishes nothing.
+        let mut forked = HashMap::new();
         let heads = self.store.outbox_heads().unwrap_or_default();
         let mut in_flight: HashMap<String, usize> = HashMap::new();
         for head in &heads {
@@ -671,6 +676,12 @@ impl Engine {
                 continue;
             }
             if p.failed || sent.contains_key(&p.client_id) || held.contains(&p.client_id) {
+                continue;
+            }
+            if *forked
+                .entry(p.space.clone())
+                .or_insert_with(|| self.fork_recorded(&p.space))
+            {
                 continue;
             }
             // Refused for being clear in a Space that went end-to-end: it waits until this

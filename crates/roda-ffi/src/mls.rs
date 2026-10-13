@@ -31,6 +31,9 @@
 //!   with a different hash marks the same fork and is not appended.
 //!   A member event that is already the next sequence, whose signed `seen`
 //!   is not a held position, marks that same fork and is not fetched again.
+//!   So does a sealed application that shares that `seen` with another
+//!   author's successor still waiting in the outbox, even when this event
+//!   links and is stored.
 
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::sync::Mutex;
@@ -459,9 +462,7 @@ impl Engine {
                 .unwrap_or_default();
             self.net.mls.rosters.insert(space.clone(), roster);
             if let Ok(Some(reason)) = self.store.meta(&fork_meta(&space)) {
-                if let Some(s) = self.state.spaces.get_mut(&space) {
-                    s.integrity_error = Some(reason);
-                }
+                self.show_fork(&space, reason);
             }
             self.net.mls.mark_group_dirty(space);
         }
@@ -958,6 +959,14 @@ impl Engine {
             let _ = self.reload();
             return Ingest::Invalid(err.to_string());
         }
+        // The other author's successor of this seen is still queued. Storing
+        // this one, canonical hash included, is the fork. A later reject is
+        // too late: the next send would already have left.
+        if kind == SealedKind::Application && self.queued_same_seen(&space, &e) {
+            if let Err(err) = self.mark_checkpoint_fork(&space) {
+                return Ingest::Invalid(err.to_string());
+            }
+        }
         if let Err(err) = self.compare_checkpoint(&e) {
             return Ingest::Invalid(err.to_string());
         }
@@ -1369,9 +1378,7 @@ impl Engine {
         }
         self.persist_settlement(space, &left, fork)?;
         if fork {
-            if let Some(s) = self.state.spaces.get_mut(space) {
-                s.integrity_error = Some(fork_reason());
-            }
+            self.show_fork(space, fork_reason());
         }
         Ok(())
     }
@@ -1486,15 +1493,44 @@ impl Engine {
         };
     }
 
+    /// Another author still has a successor of this event's signed `seen` in the outbox.
+    fn queued_same_seen(&self, space: &str, event: &Event) -> bool {
+        let Some(seen) = event.seen.as_ref() else {
+            return false;
+        };
+        self.store.outbox().ok().is_some_and(|rows| {
+            rows.iter().any(|row| {
+                row.event.space == space
+                    && row.event.author != event.author
+                    && row.event.seen.as_ref() == Some(seen)
+            })
+        })
+    }
+
+    pub(crate) fn fork_recorded(&self, space: &str) -> bool {
+        self.store.meta(&fork_meta(space)).ok().flatten().is_some()
+    }
+
     fn mark_checkpoint_fork(&mut self, space: &str) -> R<()> {
         let reason = fork_reason();
         self.store
             .set_meta(&fork_meta(space), &reason)
             .map_err(storage)?;
+        self.show_fork(space, reason);
+        Ok(())
+    }
+
+    /// The phrase has to live on the projection. The next confirmed event
+    /// rebuilds `state` from there and would otherwise drop it.
+    fn show_fork(&mut self, space: &str, reason: String) {
+        if let Some(scoped) = self.space_projections.get_mut(space) {
+            if let Some(s) = scoped.spaces.get_mut(space) {
+                s.integrity_error = Some(reason.clone());
+            }
+        }
         if let Some(s) = self.state.spaces.get_mut(space) {
             s.integrity_error = Some(reason);
         }
-        Ok(())
     }
 
     // ── work for the network task ──
