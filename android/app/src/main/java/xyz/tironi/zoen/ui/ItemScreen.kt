@@ -110,7 +110,8 @@ fun ItemScreen(model: ZoenViewModel, state: AppState, id: String, navigate: (Nav
             }
         }
     }
-    if (versions) ModalBottomSheet(onDismissRequest = { versions = false }) {
+    if (versions) ModalBottomSheet(onDismissRequest = { versions = false },
+        sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)) {
         Text(stringResource(R.string.versions), Modifier.padding(horizontal = 24.dp, vertical = 12.dp), style = MaterialTheme.typography.headlineMedium)
         LazyColumn(Modifier.testTag("item-versions"), contentPadding = PaddingValues(bottom = 24.dp)) {
             items(item.versions.reversed(), key = { it.number.toInt() }) { version ->
