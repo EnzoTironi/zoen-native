@@ -619,6 +619,11 @@ impl Engine {
         self.logs.get(space).map(|l| l.next_seq()).unwrap_or(0)
     }
 
+    /// OpenMLS `SenderRatchetConfiguration` default `out_of_order_tolerance`.
+    /// A generation this far behind one already opened still decrypts; one step
+    /// further is `TooDistantInThePast` and that page never opens on the device.
+    const APPLICATION_IN_FLIGHT: usize = 5;
+
     /// Envelopes still waiting for the relay, oldest first.
     pub fn outbox_envelopes(&self) -> Vec<Envelope> {
         self.outbox_envelopes_except(&HashMap::new())
@@ -627,55 +632,82 @@ impl Engine {
     /// The outbox as envelopes, leaving out the ones already sent on this connection.
     /// Called after every write, so it skips sent entries before any sealing work and asks
     /// each Space's group for its epoch once: a long import stays linear, not quadratic.
+    ///
+    /// At most [`APPLICATION_IN_FLIGHT`] application messages per Space are unpublished
+    /// or still awaiting accept. OpenMLS drops a generation more than that far behind
+    /// the one it has already opened (`TooDistantInThePast`), and a rate-limit reject
+    /// retries the older ciphertext after a later one has been sequenced.
     pub fn outbox_envelopes_except(&self, sent: &HashMap<String, Option<u64>>) -> Vec<Envelope> {
         let mut ready = HashMap::new();
         // A Welcome goes out only once its commit is in: sent together, a commit held back
         // by the relay (rate limit) would let the Welcome arrive first and be refused.
         let held = self.welcomes_behind_commits();
-        self.store
-            .outbox_heads()
-            .unwrap_or_default()
-            .into_iter()
-            .filter(|p| !p.failed && !sent.contains_key(&p.client_id))
-            .filter(|p| !held.contains(&p.client_id))
+        let heads = self.store.outbox_heads().unwrap_or_default();
+        let mut in_flight: HashMap<String, usize> = HashMap::new();
+        for head in &heads {
+            if sent
+                .get(&head.client_id)
+                .is_some_and(|epoch| epoch.is_some())
+            {
+                *in_flight.entry(head.space.clone()).or_default() += 1;
+            }
+        }
+        let mut out = Vec::new();
+        for p in heads {
+            if p.failed || sent.contains_key(&p.client_id) || held.contains(&p.client_id) {
+                continue;
+            }
             // Refused for being clear in a Space that went end-to-end: it waits until this
             // device has caught up with that, then goes out sealed.
-            .filter(|p| {
-                p.last_error.as_deref() != Some(roda_proto::SEAL_REQUIRED) || self.is_e2e(&p.space)
-            })
-            .filter_map(|p| {
-                let event = self.store.outbox_get(&p.client_id).ok().flatten()?;
-                // An offline creation has a predicted genesis link. Its descendants
-                // must wait for confirmation: a retryable creation failure can otherwise
-                // let them reach the relay before the Space exists.
-                if event
-                    .seen
-                    .as_ref()
-                    .is_some_and(|seen| self.next_seq(&event.space) <= seen.seq)
+            if p.last_error.as_deref() == Some(roda_proto::SEAL_REQUIRED) && !self.is_e2e(&p.space)
+            {
+                continue;
+            }
+            let Some(event) = self.store.outbox_get(&p.client_id).ok().flatten() else {
+                continue;
+            };
+            // An offline creation has a predicted genesis link. Its descendants
+            // must wait for confirmation: a retryable creation failure can otherwise
+            // let them reach the relay before the Space exists.
+            if event
+                .seen
+                .as_ref()
+                .is_some_and(|seen| self.next_seq(&event.space) <= seen.seq)
+            {
+                continue;
+            }
+            let Some(mut env) = self.outgoing_envelope_with(&event, &mut ready) else {
+                continue;
+            };
+            if let Some(bytes) = env.recovery() {
+                let Some(reference) = roda_log::recovery::RecoveryRef::parse(bytes) else {
+                    continue;
+                };
+                if !self
+                    .store
+                    .recovery_upload_confirmed(&reference.blob)
+                    .unwrap_or(false)
                 {
-                    return None;
+                    continue;
                 }
-                let mut env = self.outgoing_envelope_with(&event, &mut ready)?;
-                if let Some(bytes) = env.recovery() {
-                    let reference = roda_log::recovery::RecoveryRef::parse(bytes)?;
-                    if !self
-                        .store
-                        .recovery_upload_confirmed(&reference.blob)
-                        .unwrap_or(false)
-                    {
-                        return None;
-                    }
+            }
+            if env.sealed_kind() == Some(SealedKind::Application) {
+                let n = in_flight.get(env.space()).copied().unwrap_or(0);
+                if n >= Self::APPLICATION_IN_FLIGHT {
+                    break;
                 }
-                if !env.is_sealed() {
-                    env.invite = self
-                        .store
-                        .meta(&format!("invite:{}", p.client_id))
-                        .ok()
-                        .flatten();
-                }
-                Some(env)
-            })
-            .collect()
+                *in_flight.entry(env.space().to_string()).or_default() += 1;
+            }
+            if !env.is_sealed() {
+                env.invite = self
+                    .store
+                    .meta(&format!("invite:{}", p.client_id))
+                    .ok()
+                    .flatten();
+            }
+            out.push(env);
+        }
+        out
     }
 
     /// Our queued Welcomes that wait behind a commit of ours still in the outbox.

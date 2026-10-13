@@ -2393,4 +2393,156 @@ mod tests {
         assert_eq!(engine.store.event_count().unwrap(), stored_before + 1);
         engine.logs[space].verify().unwrap();
     }
+
+    /// Twelve sealed pages, delivered in the worst order the publish window allows.
+    /// A seventh generation opened before the first is permanent loss; the outbox
+    /// never offers that sixth in-flight ciphertext.
+    #[test]
+    fn publish_window_keeps_a_reordered_burst_decryptable() {
+        use roda_log::Signer;
+        use roda_mls::sealed::state_key;
+        use std::collections::{BTreeSet, HashMap};
+
+        let mut engine = Engine::open(":memory:").unwrap();
+        let (root_secret, _, _) = engine
+            .create_account("Ana", "ana", "http://relay.test")
+            .unwrap();
+        let author = engine.net.author.clone().unwrap();
+        let space = "sp_ratchet_window";
+        let genesis = Envelope::plain(&author.sign_event(
+            space,
+            "created",
+            1,
+            None,
+            EventBody::SpaceCreated {
+                title: "Window".into(),
+                kind: SpaceKind::Group,
+                privacy: Privacy::EndToEnd,
+            },
+        ));
+        assert_eq!(engine.ingest(ordered(&engine, genesis)), Ingest::Applied);
+        engine.create_mls_group(space).unwrap();
+
+        let peer_author = Author::device(&Signer::from_secret(&root_secret), Signer::generate());
+        let mut peer_conn = Connection::open_in_memory().unwrap();
+        roda_mls::migrate(&mut peer_conn).unwrap();
+        let peer = Device::new(
+            &peer_conn,
+            state_key(&peer_author.key.secret()),
+            &peer_author.identity,
+            peer_author.key.secret(),
+            peer_author.cert.as_deref().unwrap(),
+        )
+        .unwrap();
+        let packages = peer.key_packages(1, false).unwrap();
+        let adding = engine
+            .device()
+            .unwrap()
+            .commit(space, &packages, &Default::default())
+            .unwrap();
+        let commit = Envelope::sealed(
+            &author,
+            space,
+            "add-peer",
+            2,
+            seen(&engine, space).as_ref(),
+            Sealed::new(SealedKind::Commit, SUITE_ID, adding.commit),
+        );
+        assert_eq!(engine.ingest(ordered(&engine, commit)), Ingest::Applied);
+        let roster: BTreeSet<String> = BTreeSet::from([author.identity.clone()]);
+        let welcome_bytes = adding.welcome.unwrap();
+        assert!(peer.join(space, &welcome_bytes, &roster).unwrap());
+        let welcome = Envelope::sealed(
+            &author,
+            space,
+            "welcome-peer",
+            3,
+            seen(&engine, space).as_ref(),
+            Sealed::new(SealedKind::Welcome, SUITE_ID, welcome_bytes),
+        );
+        assert_eq!(engine.ingest(ordered(&engine, welcome)), Ingest::Applied);
+        let sender = engine.device().unwrap().leaf().clone();
+
+        for i in 0..12 {
+            engine
+                .append_synced(
+                    space,
+                    &author,
+                    1_000 + i,
+                    EventBody::MessagePosted {
+                        message: format!("m{i}"),
+                        text: format!("page-{i}"),
+                        attaches: None,
+                        reply: None,
+                    },
+                )
+                .unwrap();
+        }
+        assert!(engine.mls_seal_outbox().unwrap());
+        let mut opened = 0u32;
+        let mut remaining = 12usize;
+        while remaining > 0 {
+            let apps: Vec<_> = engine
+                .outbox_envelopes()
+                .into_iter()
+                .filter(|env| env.sealed_kind() == Some(SealedKind::Application))
+                .collect();
+            assert!(
+                !apps.is_empty() && apps.len() <= 5,
+                "in flight {}, still queued {remaining}",
+                apps.len()
+            );
+            assert!(apps.len() < remaining || remaining <= 5);
+            let mut sent = HashMap::new();
+            for env in &apps {
+                sent.insert(env.client_id().to_string(), Some(0u64));
+            }
+            assert!(
+                engine
+                    .outbox_envelopes_except(&sent)
+                    .iter()
+                    .all(|env| env.sealed_kind() != Some(SealedKind::Application)),
+                "a later generation left while {} were still unaccepted",
+                apps.len()
+            );
+            for env in apps.iter().rev() {
+                let data = env.sealed_data().unwrap().1;
+                match peer.open(space, data, &roster, &sender).unwrap() {
+                    Opened::Application { plaintext, .. } => {
+                        assert!(
+                            plaintext.windows(b"page-".len()).any(|w| w == b"page-"),
+                            "opened bytes are not a page"
+                        );
+                    }
+                    other => panic!("expected an application message, got {other:?}"),
+                }
+                opened += 1;
+            }
+            for env in &apps {
+                assert_eq!(
+                    engine.ingest(ordered(&engine, env.clone())),
+                    Ingest::Confirmed
+                );
+            }
+            remaining -= apps.len();
+        }
+        assert_eq!(opened, 12);
+
+        let mut late = Vec::new();
+        for i in 0..7 {
+            late.push(
+                engine
+                    .device()
+                    .unwrap()
+                    .seal(space, format!("gap-{i}").as_bytes())
+                    .unwrap(),
+            );
+        }
+        peer.open(space, &late[6], &roster, &sender).unwrap();
+        let err = peer.open(space, &late[0], &roster, &sender).unwrap_err();
+        assert!(
+            format!("{err:?}").contains("TooDistantInThePast"),
+            "{err:?}"
+        );
+    }
 }
