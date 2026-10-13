@@ -102,7 +102,7 @@ pub fn router(state: Shared) -> Router {
         .route("/v1/backup/vault", put(backup::put_vault))
         .route(
             "/v1/backup/blob",
-            put(backup::put_blob).layer(DefaultBodyLimit::max(backup::MAX_BACKUP_BYTES + 1024)),
+            put(backup::put_blob).layer(DefaultBodyLimit::max(backup::CHUNK_BODY_LIMIT)),
         )
         .route("/v1/backup", axum::routing::delete(backup::delete))
         .route("/v1/backup/restore/start", post(backup::restore_start))

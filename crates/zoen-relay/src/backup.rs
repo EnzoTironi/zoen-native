@@ -10,8 +10,12 @@
 //!
 //!   POST   /v1/backup/oprf            (device-signed) {blinded} → {evaluated}
 //!   PUT    /v1/backup/vault           (device-signed) {mode, verifier, wrapped_key, kdf}
-//!   PUT    /v1/backup/blob            (device-signed) sealed payload
+//!   PUT    /v1/backup/blob            (device-signed) a JSON plan, then ciphertext chunks
 //!   DELETE /v1/backup                 (device-signed)
+//!
+//! The plan answer names the account ceiling before any chunk is stored. Each chunk is
+//! 8 MiB, except the last. A body that still begins with `ZOENBG1` is one complete sealed
+//! object that already fits in that chunk limit.
 //!   POST   /v1/backup/restore/start   {handle, blinded?} → {identity, mode, kdf, evaluated?}
 //!   POST   /v1/backup/restore/open    {handle, auth_key} → {wrapped_key, size}
 //!   POST   /v1/backup/restore/enroll  {handle, auth_key, generation, device, cert, sig}
@@ -20,7 +24,7 @@
 // Helpers return the refusal itself, ready to send; it's built once per request, never hot.
 #![allow(clippy::result_large_err)]
 
-use std::{sync::Arc, time::Duration};
+use std::{collections::BTreeSet, sync::Arc, time::Duration};
 
 use axum::{
     body::Bytes,
@@ -45,8 +49,17 @@ use crate::Shared;
 
 /// Restore guesses without a success before the vault destroys the OPRF key.
 pub const MAX_GUESSES: i32 = 10;
-/// Largest sealed backup accepted (text history; media stays on the blob path).
-pub const MAX_BACKUP_BYTES: usize = 64 * 1024 * 1024;
+/// Ciphertext bytes in one upload request. A dropped connection loses at most this piece.
+pub const CHUNK_BYTES: usize = 8 * 1024 * 1024;
+/// HTTP body budget for one chunk, including the 56-byte frame.
+pub const CHUNK_BODY_LIMIT: usize = CHUNK_BYTES + 1024;
+/// Hard per-account ceiling. `ZOEN_BACKUP_CEILING_BYTES` may name a lower one.
+pub const ACCOUNT_CEILING_BYTES: u64 = 1024 * 1024 * 1024;
+/// `ZOENBC1` + generation + index + count + total.
+pub const CHUNK_MAGIC: &[u8; 8] = b"ZOENBC1\0";
+const CHUNK_FRAME: usize = 8 + 32 + 4 + 4 + 8;
+const MAX_CHUNKS: u32 = (ACCOUNT_CEILING_BYTES / CHUNK_BYTES as u64) as u32;
+const SQLITE_HEADER: &[u8] = b"SQLite format 3\0";
 const MAX_SKEW_MS: i64 = 5 * 60 * 1000;
 
 #[derive(Clone, Debug)]
@@ -57,6 +70,8 @@ pub struct Settings {
     pub storage_timeout: Duration,
     pub request_timeout: Duration,
     pub lock_timeout: Duration,
+    /// Sealed bytes this relay will keep for one account. Never above [`ACCOUNT_CEILING_BYTES`].
+    pub account_ceiling: u64,
 }
 
 impl Default for Settings {
@@ -66,6 +81,7 @@ impl Default for Settings {
             storage_timeout: Duration::from_secs(15),
             request_timeout: Duration::from_secs(30),
             lock_timeout: Duration::from_secs(5),
+            account_ceiling: ACCOUNT_CEILING_BYTES,
         }
     }
 }
@@ -91,11 +107,28 @@ impl Settings {
             storage_timeout < request_timeout && lock_timeout <= request_timeout,
             "backup storage timeout must be below the request timeout; lock timeout must not exceed it"
         );
+        let account_ceiling = match std::env::var("ZOEN_BACKUP_CEILING_BYTES") {
+            Err(std::env::VarError::NotPresent) => ACCOUNT_CEILING_BYTES,
+            Err(std::env::VarError::NotUnicode(_)) => {
+                anyhow::bail!("ZOEN_BACKUP_CEILING_BYTES must be a byte count")
+            }
+            Ok(value) => {
+                let ceiling: u64 = value.parse().map_err(|_| {
+                    anyhow::anyhow!("ZOEN_BACKUP_CEILING_BYTES must be a byte count")
+                })?;
+                anyhow::ensure!(
+                    (1..=ACCOUNT_CEILING_BYTES).contains(&ceiling),
+                    "ZOEN_BACKUP_CEILING_BYTES must be from 1 to {ACCOUNT_CEILING_BYTES} bytes"
+                );
+                ceiling
+            }
+        };
         Ok(Self {
             dev_allow_unauthenticated_password_backup,
             storage_timeout,
             request_timeout,
             lock_timeout,
+            account_ceiling,
         })
     }
 }
@@ -265,6 +298,94 @@ fn object_key(identity: &str, key: Option<&str>) -> ObjPath {
         Some(key) => ObjPath::from(key),
         None => ObjPath::from(format!("backups/{identity}")),
     }
+}
+
+fn ceiling_of(st: &Shared) -> u64 {
+    st.backup_settings
+        .account_ceiling
+        .min(ACCOUNT_CEILING_BYTES)
+}
+
+fn shows_sqlite(bytes: &[u8]) -> bool {
+    bytes
+        .windows(SQLITE_HEADER.len())
+        .any(|window| window == SQLITE_HEADER)
+}
+
+fn piece_count(total: u64) -> Option<u32> {
+    if total == 0 {
+        return None;
+    }
+    let count = total.div_ceil(CHUNK_BYTES as u64);
+    u32::try_from(count)
+        .ok()
+        .filter(|count| (1..=MAX_CHUNKS).contains(count))
+}
+
+fn piece_len(total: u64, index: u32) -> Option<usize> {
+    let count = piece_count(total)?;
+    if index >= count {
+        return None;
+    }
+    let start = index as u64 * CHUNK_BYTES as u64;
+    Some((total - start).min(CHUNK_BYTES as u64) as usize)
+}
+
+fn hex_token(value: &str) -> Option<String> {
+    let bytes = hex::decode(value).ok()?;
+    if bytes.len() != 32 {
+        return None;
+    }
+    Some(hex::encode(bytes))
+}
+
+fn too_big(ceiling: u64) -> Response {
+    (StatusCode::PAYLOAD_TOO_LARGE, Json(CeilingBody { ceiling })).into_response()
+}
+
+#[derive(Serialize)]
+struct CeilingBody {
+    ceiling: u64,
+}
+
+#[derive(Deserialize)]
+struct PlanReq {
+    generation: String,
+    total_bytes: u64,
+    chunks: u32,
+    sha: String,
+}
+
+#[derive(Serialize)]
+struct PlanResp {
+    ceiling: u64,
+    confirmed: Vec<u32>,
+    missing: Vec<u32>,
+}
+
+struct ChunkFrame<'a> {
+    generation: String,
+    index: u32,
+    count: u32,
+    total: u64,
+    payload: &'a [u8],
+}
+
+fn parse_chunk(body: &[u8]) -> Option<ChunkFrame<'_>> {
+    if body.len() < CHUNK_FRAME || body.get(..8) != Some(CHUNK_MAGIC.as_slice()) {
+        return None;
+    }
+    let generation = hex::encode(&body[8..40]);
+    let index = u32::from_be_bytes(body[40..44].try_into().ok()?);
+    let count = u32::from_be_bytes(body[44..48].try_into().ok()?);
+    let total = u64::from_be_bytes(body[48..56].try_into().ok()?);
+    Some(ChunkFrame {
+        generation,
+        index,
+        count,
+        total,
+        payload: &body[56..],
+    })
 }
 
 fn unavailable() -> Response {
@@ -513,21 +634,430 @@ pub async fn put_vault(State(st): State<Shared>, headers: HeaderMap, body: Bytes
     StatusCode::NO_CONTENT.into_response()
 }
 
-/// Stores the newest sealed backup (replaces the previous one).
+/// Declares the ceiling, accepts one ciphertext chunk, or stores one sealed object
+/// that already fits in a chunk.
 pub async fn put_blob(State(st): State<Shared>, headers: HeaderMap, body: Bytes) -> Response {
-    let (identity, mut tx) = match signed_identity(&st, &headers, "blob", &body).await {
+    let (identity, tx) = match signed_identity(&st, &headers, "blob", &body).await {
         Ok(i) => i,
         Err(r) => return r,
     };
-    const PREFIX: usize = 8 + 32;
-    if body.len() <= PREFIX || body.len() > MAX_BACKUP_BYTES + PREFIX {
-        return err(StatusCode::PAYLOAD_TOO_LARGE, "empty or too large");
+    if body.first() == Some(&b'{') {
+        return declare(&st, identity, tx, &body).await;
     }
-    if body.get(..8) != Some(BACKUP_UPLOAD_MAGIC.as_slice()) {
+    if body.len() >= CHUNK_FRAME && body.get(..8) == Some(CHUNK_MAGIC.as_slice()) {
+        return accept_chunk(&st, identity, tx, &body).await;
+    }
+    const PREFIX: usize = 8 + 32;
+    if body.len() <= PREFIX || body.get(..8) != Some(BACKUP_UPLOAD_MAGIC.as_slice()) {
         return err(StatusCode::BAD_REQUEST, "backup generation required");
     }
     let generation = hex::encode(&body[8..PREFIX]);
-    let body = body.slice(PREFIX..);
+    let sealed = body.slice(PREFIX..);
+    if sealed.len() as u64 > ceiling_of(&st) {
+        return too_big(ceiling_of(&st));
+    }
+    publish_ciphertext(&st, identity, tx, generation, sealed, Vec::new()).await
+}
+
+async fn generation_open(
+    tx: &mut Transaction<'static, Postgres>,
+    identity: &str,
+    generation: &str,
+) -> Result<bool, Response> {
+    let active: bool = sqlx::query_scalar(
+        "SELECT EXISTS(SELECT 1 FROM backup_vaults
+         WHERE identity = $1 AND generation = $2 AND NOT locked)",
+    )
+    .bind(identity)
+    .bind(generation)
+    .fetch_one(&mut **tx)
+    .await
+    .map_err(|_| unavailable())?;
+    if active {
+        return Ok(true);
+    }
+    let setup: Option<i32> =
+        sqlx::query_scalar("SELECT 1 FROM backup_setups WHERE identity = $1 AND generation = $2")
+            .bind(identity)
+            .bind(generation)
+            .fetch_optional(&mut **tx)
+            .await
+            .map_err(|_| unavailable())?;
+    Ok(setup.is_some())
+}
+
+async fn take_partials(
+    tx: &mut Transaction<'static, Postgres>,
+    identity: &str,
+    generation: Option<&str>,
+) -> Result<Vec<String>, Response> {
+    let keys: Vec<String> = match generation {
+        Some(generation) => sqlx::query_scalar(
+            "DELETE FROM backup_chunks WHERE identity = $1 AND generation = $2 RETURNING object_key",
+        )
+        .bind(identity)
+        .bind(generation)
+        .fetch_all(&mut **tx)
+        .await
+        .map_err(|_| unavailable())?,
+        None => sqlx::query_scalar(
+            "DELETE FROM backup_chunks WHERE identity = $1 RETURNING object_key",
+        )
+        .bind(identity)
+        .fetch_all(&mut **tx)
+        .await
+        .map_err(|_| unavailable())?,
+    };
+    let removed = match generation {
+        Some(generation) => {
+            sqlx::query("DELETE FROM backup_uploads WHERE identity = $1 AND generation = $2")
+                .bind(identity)
+                .bind(generation)
+                .execute(&mut **tx)
+                .await
+        }
+        None => {
+            sqlx::query("DELETE FROM backup_uploads WHERE identity = $1")
+                .bind(identity)
+                .execute(&mut **tx)
+                .await
+        }
+    };
+    if removed.is_err() {
+        return Err(unavailable());
+    }
+    Ok(keys)
+}
+
+async fn cleanup_keys(st: &Shared, keys: &[String]) {
+    for key in keys {
+        cleanup(st, &ObjPath::from(key.as_str())).await;
+    }
+}
+
+fn plan_lists(have: &BTreeSet<i32>, chunks: u32) -> (Vec<u32>, Vec<u32>) {
+    let mut confirmed = Vec::new();
+    let mut missing = Vec::new();
+    for index in 0..chunks {
+        if have.contains(&(index as i32)) {
+            confirmed.push(index);
+        } else {
+            missing.push(index);
+        }
+    }
+    (confirmed, missing)
+}
+
+async fn declare(
+    st: &Shared,
+    identity: String,
+    mut tx: Transaction<'static, Postgres>,
+    body: &[u8],
+) -> Response {
+    let ceiling = ceiling_of(st);
+    let Ok(req) = serde_json::from_slice::<PlanReq>(body) else {
+        return err(StatusCode::BAD_REQUEST, "bad request");
+    };
+    if req.total_bytes > ceiling {
+        return too_big(ceiling);
+    }
+    let (Some(generation), Some(sha)) = (hex_token(&req.generation), hex_token(&req.sha)) else {
+        return err(StatusCode::BAD_REQUEST, "bad request");
+    };
+    let Some(chunks) = piece_count(req.total_bytes) else {
+        return err(StatusCode::BAD_REQUEST, "bad request");
+    };
+    if req.chunks != chunks {
+        return err(StatusCode::BAD_REQUEST, "bad request");
+    }
+    let open = match generation_open(&mut tx, &identity, &generation).await {
+        Ok(open) => open,
+        Err(r) => return r,
+    };
+    if !open {
+        return err(
+            StatusCode::CONFLICT,
+            "backup configuration changed; set it up again on this device",
+        );
+    }
+    let published: Option<(Option<String>, Option<i64>)> = match sqlx::query_as(
+        "SELECT blob_sha, blob_bytes FROM backup_vaults
+         WHERE identity = $1 AND generation = $2 AND NOT locked",
+    )
+    .bind(&identity)
+    .bind(&generation)
+    .fetch_optional(&mut *tx)
+    .await
+    {
+        Ok(row) => row,
+        Err(_) => return unavailable(),
+    };
+    let already = published.is_some_and(|(blob_sha, blob_bytes)| {
+        blob_sha.as_deref() == Some(sha.as_str()) && blob_bytes == Some(req.total_bytes as i64)
+    });
+    if already {
+        let orphans = match take_partials(&mut tx, &identity, Some(&generation)).await {
+            Ok(keys) => keys,
+            Err(r) => return r,
+        };
+        if tx.commit().await.is_err() {
+            return unavailable();
+        }
+        cleanup_keys(st, &orphans).await;
+        let (confirmed, missing) = plan_lists(&(0..chunks as i32).collect(), chunks);
+        return Json(PlanResp {
+            ceiling,
+            confirmed,
+            missing,
+        })
+        .into_response();
+    }
+    let existing: Option<(String, i64, i32)> = match sqlx::query_as(
+        "SELECT sha, total_bytes, chunk_count FROM backup_uploads WHERE identity = $1 AND generation = $2",
+    )
+    .bind(&identity)
+    .bind(&generation)
+    .fetch_optional(&mut *tx)
+    .await
+    {
+        Ok(row) => row,
+        Err(_) => return unavailable(),
+    };
+    let mut orphans = Vec::new();
+    let reset = existing.as_ref().is_some_and(|(have_sha, total, count)| {
+        have_sha != &sha || *total != req.total_bytes as i64 || *count != chunks as i32
+    });
+    if existing.is_some() && reset {
+        orphans = match take_partials(&mut tx, &identity, Some(&generation)).await {
+            Ok(keys) => keys,
+            Err(r) => return r,
+        };
+    }
+    if (existing.is_none() || reset)
+        && sqlx::query(
+            "INSERT INTO backup_uploads (identity, generation, total_bytes, chunk_count, sha)
+             VALUES ($1, $2, $3, $4, $5)",
+        )
+        .bind(&identity)
+        .bind(&generation)
+        .bind(req.total_bytes as i64)
+        .bind(chunks as i32)
+        .bind(&sha)
+        .execute(&mut *tx)
+        .await
+        .is_err()
+    {
+        return unavailable();
+    }
+    let indexes: Vec<i32> = match sqlx::query_scalar(
+        "SELECT idx FROM backup_chunks WHERE identity = $1 AND generation = $2 ORDER BY idx",
+    )
+    .bind(&identity)
+    .bind(&generation)
+    .fetch_all(&mut *tx)
+    .await
+    {
+        Ok(rows) => rows,
+        Err(_) => return unavailable(),
+    };
+    if tx.commit().await.is_err() {
+        return unavailable();
+    }
+    cleanup_keys(st, &orphans).await;
+    let (confirmed, missing) = plan_lists(&indexes.into_iter().collect(), chunks);
+    Json(PlanResp {
+        ceiling,
+        confirmed,
+        missing,
+    })
+    .into_response()
+}
+
+async fn read_object(st: &Shared, key: &str) -> Result<Bytes, Response> {
+    match tokio::time::timeout(st.backup_settings.storage_timeout, async {
+        st.blobs.get(&ObjPath::from(key)).await?.bytes().await
+    })
+    .await
+    {
+        Ok(Ok(bytes)) => Ok(bytes),
+        Ok(Err(_)) | Err(_) => Err(err(StatusCode::SERVICE_UNAVAILABLE, "storage unavailable")),
+    }
+}
+
+async fn accept_chunk(
+    st: &Shared,
+    identity: String,
+    mut tx: Transaction<'static, Postgres>,
+    body: &[u8],
+) -> Response {
+    let Some(frame) = parse_chunk(body) else {
+        return err(StatusCode::BAD_REQUEST, "bad request");
+    };
+    if shows_sqlite(frame.payload) {
+        return err(StatusCode::BAD_REQUEST, "backup payload is not sealed");
+    }
+    let upload: Option<(i64, i32, String)> = match sqlx::query_as(
+        "SELECT total_bytes, chunk_count, sha FROM backup_uploads
+         WHERE identity = $1 AND generation = $2",
+    )
+    .bind(&identity)
+    .bind(&frame.generation)
+    .fetch_optional(&mut *tx)
+    .await
+    {
+        Ok(row) => row,
+        Err(_) => return unavailable(),
+    };
+    let Some((total, chunks, sha)) = upload else {
+        return err(StatusCode::CONFLICT, "declare the backup size first");
+    };
+    if total != frame.total as i64
+        || chunks != frame.count as i32
+        || piece_count(frame.total) != Some(frame.count)
+        || piece_len(frame.total, frame.index) != Some(frame.payload.len())
+    {
+        return err(StatusCode::BAD_REQUEST, "bad request");
+    }
+    let have: Option<(String, String)> = match sqlx::query_as(
+        "SELECT sha, object_key FROM backup_chunks
+         WHERE identity = $1 AND generation = $2 AND idx = $3",
+    )
+    .bind(&identity)
+    .bind(&frame.generation)
+    .bind(frame.index as i32)
+    .fetch_optional(&mut *tx)
+    .await
+    {
+        Ok(row) => row,
+        Err(_) => return unavailable(),
+    };
+    let payload_sha = hex::encode(Sha256::digest(frame.payload));
+    if let Some((have_sha, _)) = &have {
+        if have_sha != &payload_sha {
+            return err(StatusCode::CONFLICT, "confirmed piece differs");
+        }
+    } else {
+        let mut object_id = [0u8; 16];
+        if getrandom::getrandom(&mut object_id).is_err() {
+            return unavailable();
+        }
+        let key = format!(
+            "backups/partial/{identity}/{}/{}",
+            frame.generation,
+            hex::encode(object_id)
+        );
+        let path = ObjPath::from(key.as_str());
+        match tokio::time::timeout(
+            st.backup_settings.storage_timeout,
+            st.blobs.put(
+                &path,
+                PutPayload::from_bytes(Bytes::copy_from_slice(frame.payload)),
+            ),
+        )
+        .await
+        {
+            Ok(Ok(_)) => {}
+            Ok(Err(e)) => {
+                tracing::warn!(error = %e, "backup chunk put failed");
+                return err(StatusCode::SERVICE_UNAVAILABLE, "storage unavailable");
+            }
+            Err(_) => return err(StatusCode::SERVICE_UNAVAILABLE, "storage unavailable"),
+        }
+        if sqlx::query(
+            "INSERT INTO backup_chunks (identity, generation, idx, sha, nbytes, object_key)
+             VALUES ($1, $2, $3, $4, $5, $6)",
+        )
+        .bind(&identity)
+        .bind(&frame.generation)
+        .bind(frame.index as i32)
+        .bind(&payload_sha)
+        .bind(frame.payload.len() as i32)
+        .bind(&key)
+        .execute(&mut *tx)
+        .await
+        .is_err()
+        {
+            return unavailable();
+        }
+    }
+    let rows: Vec<(i32, String, i32)> = match sqlx::query_as(
+        "SELECT idx, object_key, nbytes FROM backup_chunks
+         WHERE identity = $1 AND generation = $2 ORDER BY idx",
+    )
+    .bind(&identity)
+    .bind(&frame.generation)
+    .fetch_all(&mut *tx)
+    .await
+    {
+        Ok(rows) => rows,
+        Err(_) => return unavailable(),
+    };
+    if rows.len() != chunks as usize {
+        if tx.commit().await.is_err() {
+            return unavailable();
+        }
+        let status = if have.is_some() {
+            StatusCode::OK
+        } else {
+            StatusCode::CREATED
+        };
+        return status.into_response();
+    }
+    let mut sealed = Vec::with_capacity(total as usize);
+    let mut partials = Vec::with_capacity(rows.len());
+    for (index, key, nbytes) in &rows {
+        if *index as usize != partials.len() {
+            return err(StatusCode::BAD_REQUEST, "bad request");
+        }
+        let bytes = match read_object(st, key).await {
+            Ok(bytes) => bytes,
+            Err(r) => return r,
+        };
+        if bytes.len() != *nbytes as usize {
+            return err(StatusCode::SERVICE_UNAVAILABLE, "storage unavailable");
+        }
+        sealed.extend_from_slice(&bytes);
+        partials.push(key.clone());
+    }
+    if sealed.len() as i64 != total || hex::encode(Sha256::digest(&sealed)) != sha {
+        return err(StatusCode::BAD_REQUEST, "bad request");
+    }
+    if shows_sqlite(&sealed) {
+        let orphans = match take_partials(&mut tx, &identity, Some(&frame.generation)).await {
+            Ok(keys) => keys,
+            Err(r) => return r,
+        };
+        if tx.commit().await.is_err() {
+            return unavailable();
+        }
+        cleanup_keys(st, &orphans).await;
+        return err(StatusCode::BAD_REQUEST, "backup payload is not sealed");
+    }
+    publish_ciphertext(
+        st,
+        identity,
+        tx,
+        frame.generation,
+        Bytes::from(sealed),
+        partials,
+    )
+    .await
+}
+
+async fn publish_ciphertext(
+    st: &Shared,
+    identity: String,
+    mut tx: Transaction<'static, Postgres>,
+    generation: String,
+    body: Bytes,
+    mut partials: Vec<String>,
+) -> Response {
+    if body.is_empty() || body.len() as u64 > ceiling_of(st) {
+        return too_big(ceiling_of(st));
+    }
+    if shows_sqlite(&body) {
+        return err(StatusCode::BAD_REQUEST, "backup payload is not sealed");
+    }
     let active = match sqlx::query(
         "SELECT generation, mode, locked, blob_key FROM backup_vaults WHERE identity = $1 FOR UPDATE",
     )
@@ -566,7 +1096,7 @@ pub async fn put_blob(State(st): State<Shared>, headers: HeaderMap, body: Bytes)
         .expect("matching setup or active vault")
         .get::<String, _>("mode");
     if mode == "passphrase" {
-        if let Err(r) = vault(&st) {
+        if let Err(r) = vault(st) {
             return r;
         }
     }
@@ -631,6 +1161,10 @@ pub async fn put_blob(State(st): State<Shared>, headers: HeaderMap, body: Bytes)
     if r.is_err() {
         return unavailable();
     }
+    match take_partials(&mut tx, &identity, None).await {
+        Ok(keys) => partials.extend(keys),
+        Err(response) => return response,
+    }
     if sqlx::query("DELETE FROM backup_setups WHERE identity = $1 AND generation = $2")
         .bind(&identity)
         .bind(&generation)
@@ -641,11 +1175,12 @@ pub async fn put_blob(State(st): State<Shared>, headers: HeaderMap, body: Bytes)
     {
         return unavailable();
     }
+    cleanup_keys(st, &partials).await;
     if let Some(old) = active {
         let old_key: Option<String> = old.get("blob_key");
         let old_path = object_key(&identity, old_key.as_deref());
         if old_path != path {
-            cleanup(&st, &old_path).await;
+            cleanup(st, &old_path).await;
         }
     }
     tracing::info!(identity = %crate::pseudonym::pseudo(&identity), bytes = n, "backup stored");
@@ -677,9 +1212,14 @@ pub async fn delete(State(st): State<Shared>, headers: HeaderMap, body: Bytes) -
             return unavailable();
         }
     }
+    let partials = match take_partials(&mut tx, &identity, None).await {
+        Ok(keys) => keys,
+        Err(response) => return response,
+    };
     if tx.commit().await.is_err() {
         return unavailable();
     }
+    cleanup_keys(&st, &partials).await;
     if let Some(row) = old {
         let key: Option<String> = row.get("blob_key");
         cleanup(&st, &object_key(&identity, key.as_deref())).await;
