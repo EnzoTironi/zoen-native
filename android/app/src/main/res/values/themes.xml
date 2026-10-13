@@ -1,5 +1,37 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
+    <color name="zoen_bg">#FFFFFF</color>
+    <color name="zoen_text_primary">#1D1D1F</color>
+    <color name="zoen_text_secondary">#801D1D1F</color>
+    <color name="zoen_text_tertiary">#4D1D1D1F</color>
+    <color name="zoen_text_on">#F9F9FA</color>
+    <color name="zoen_fill_primary">#1D1D1F</color>
+    <color name="zoen_thin_bg">#8CFFFFFF</color>
+    <color name="zoen_regular_bg">#AAFFFFFF</color>
+    <color name="zoen_composer_bg">#8CFFFFFF</color>
+    <color name="zoen_bubble_agent">#FAFFFFFF</color>
+    <color name="zoen_bubble_user">#4DFFFFFF</color>
+    <color name="zoen_cell_bg">#99FFFFFF</color>
+    <color name="zoen_stroke_primary">#241D1D1F</color>
+    <color name="zoen_stroke_secondary">#121D1D1F</color>
+    <color name="zoen_stroke_composer">#80F5F5F7</color>
+    <color name="zoen_overlay">#99000000</color>
+    <color name="zoen_system_red">#DA2F35</color>
+    <color name="zoen_system_green">#00A665</color>
+    <color name="zoen_system_orange">#FF4D00</color>
+    <color name="zoen_avatar_blue">#528AFF</color>
+    <color name="zoen_focus_ring">#80000000</color>
 
-    <style name="Theme.Zoen" parent="android:Theme.Material.Light.NoActionBar" />
+    <style name="Theme.Zoen" parent="android:Theme.Material.Light.NoActionBar">
+        <item name="android:colorBackground">@color/zoen_bg</item>
+        <item name="android:windowBackground">@color/zoen_bg</item>
+        <item name="android:textColor">@color/zoen_text_primary</item>
+        <item name="android:textColorPrimary">@color/zoen_text_primary</item>
+        <item name="android:textColorSecondary">@color/zoen_text_secondary</item>
+        <item name="android:fontFamily">sans-serif</item>
+        <item name="android:statusBarColor">@color/zoen_bg</item>
+        <item name="android:navigationBarColor">@color/zoen_bg</item>
+        <item name="android:windowLightStatusBar">true</item>
+        <item name="android:windowLightNavigationBar">true</item>
+    </style>
 </resources>

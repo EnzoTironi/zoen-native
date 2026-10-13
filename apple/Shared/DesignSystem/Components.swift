@@ -318,6 +318,7 @@ struct FilterPills<T: Hashable & Identifiable>: View {
     let label: (T) -> String
     var inset: CGFloat = 16
     @Namespace private var pill
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
         ScrollView(.horizontal, showsIndicators: false) {
@@ -327,12 +328,12 @@ struct FilterPills<T: Hashable & Identifiable>: View {
                     Button {
                         guard !on else { return }
                         Haptics.selectionTick()
-                        withAnimation(.spring(duration: 0.35, bounce: 0.25)) { selection = o }
+                        withAnimation(reduceMotion ? nil : .linear(duration: ZoenMotion.segmentDuration)) { selection = o }
                     } label: {
                         // Selected: a solid brand capsule that slides between chips; the rest are glass.
                         Text(label(o))
                             .font(.subheadline.weight(on ? .bold : .medium))
-                            .foregroundStyle(on ? Color.white : Palette.textPrimary)
+                            .foregroundStyle(on ? Palette.onAction : Palette.textPrimary)
                             .padding(.horizontal, 16)
                             .frame(height: 36)
                             .background {
@@ -346,7 +347,7 @@ struct FilterPills<T: Hashable & Identifiable>: View {
                             }
                             .contentShape(.capsule)
                     }
-                    .buttonStyle(.plain)
+                    .buttonStyle(ZoenPressStyle())
                     .accessibilityAddTraits(on ? .isSelected : [])
                 }
             }

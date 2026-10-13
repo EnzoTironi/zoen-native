@@ -1,50 +1,196 @@
-/* Zoen design tokens. Same values as apple/Shared/DesignSystem/Theme.swift (Palette).
-   The host also pushes MCP style variables (--color-*) which win when present. */
+@import "./primitives.css";
+
 :root {
-  --z-bg: #F4F6FB; --z-surface: #FFFFFF; --z-muted: #ECEFF6; --z-hairline: #E1E5EE;
-  --z-ink: #0E1320; --z-ink-2: #5B6478; --z-ink-3: #8C95A8;
-  --z-action: #3D7A28; --z-action-deep: #2C5E1C; --z-on-action: #FFFFFF;
-  --z-black: #111113; --z-on-black: #FFFFFF;
-  --z-amber: #FFB020; --z-danger: #FF4D5E; --z-success: #22C55E;
-  --z-glass: rgba(255,255,255,.72); --z-glass-stroke: rgba(255,255,255,.65); --z-glass-shadow: 0 8px 28px rgba(14,19,32,.14);
-  --z-radius: 28px; --z-radius-m: 18px; --z-radius-s: 12px;
-  --z-font: -apple-system, system-ui, "SF Pro Text", sans-serif;
-  --z-font-rounded: ui-rounded, -apple-system, system-ui, sans-serif;
-  --z-spring: cubic-bezier(.2, .9, .25, 1.12);
-  --z-ease-out: cubic-bezier(.16, 1, .3, 1);
-  color-scheme: light dark;
+  color-scheme: light;
+  --zoen-bg: #ffffff;
+  --zoen-text-primary: #1d1d1f;
+  --zoen-text-secondary: rgb(29 29 31 / 0.5);
+  --zoen-text-tertiary: rgb(29 29 31 / 0.3);
+  --zoen-text-on: #f9f9fa;
+  --zoen-fill-primary: #1d1d1f;
+  --zoen-white: #ffffff;
+  --zoen-thin-bg: rgb(255 255 255 / 0.55);
+  --zoen-regular-bg: rgb(255 255 255 / 0.668);
+  --zoen-composer-bg: rgb(255 255 255 / 0.55);
+  --zoen-bubble-agent: rgb(255 255 255 / 0.98);
+  --zoen-bubble-user: rgb(255 255 255 / 0.3);
+  --zoen-cell-bg: rgb(255 255 255 / 0.6);
+  --zoen-stroke-primary: rgb(29 29 31 / 0.14);
+  --zoen-stroke-secondary: rgb(29 29 31 / 0.07);
+  --zoen-stroke-composer: rgb(245 245 247 / 0.5);
+  --zoen-hover-wash: rgb(29 29 31 / 0.05);
+  --zoen-hover-wash-on: rgb(249 249 250 / 0.15);
+  --zoen-chip-bg: rgb(29 29 31 / 0.12);
+  --zoen-overlay: rgb(0 0 0 / 0.6);
+  --zoen-avatar-blue: #528aff;
+  --zoen-system-red: #da2f35;
+  --zoen-system-orange: #ff4d00;
+  --zoen-system-green: #00a665;
+  --zoen-focus-ring: rgb(0 0 0 / 0.5);
+  --zoen-row-value: rgb(29 29 31 / 0.5);
+  --zoen-bevel: inset 0 1px 0 rgb(255 255 255 / 0.9), inset 0 -1px 0 rgb(29 29 31 / 0.06);
+  --zoen-sky-image: radial-gradient(120% 100% at 50% 0%, rgb(29 29 31 / 0.06), transparent 70%);
+  --zoen-glass-filter: blur(50px);
+  --zoen-glass-filter-search: blur(8px);
+  --zoen-font: Inter, system-ui, sans-serif;
+  --zoen-font-size-body: 15px;
+  --zoen-line-body: 19px;
+  --zoen-radius-s: 8px;
+  --zoen-radius-m: 12px;
+  --zoen-radius-l: 16px;
+  --zoen-radius-xl: 24px;
+  --zoen-radius-segment: 22px;
+  --zoen-radius-pill: 9999px;
+  --zoen-superellipse-factor: 1.53;
+  --zoen-superellipse-start: 36.7px;
+  --zoen-space-2: 2px;
+  --zoen-space-4: 4px;
+  --zoen-space-8: 8px;
+  --zoen-space-10: 10px;
+  --zoen-space-12: 12px;
+  --zoen-space-16: 16px;
+  --zoen-space-20: 20px;
+  --zoen-space-24: 24px;
+  --zoen-space-32: 32px;
+  --zoen-space-48: 48px;
+  --zoen-press-scale: 0.97;
+  --zoen-press-duration: 120ms;
+  --zoen-segment-duration: 233ms;
+  --zoen-segment-easing: linear(0 0%, 0.056 7%, 0.182 14%, 0.332 21%, 0.48 29%, 0.611 36%, 0.72 43%, 0.807 50%, 0.872 57%, 0.92 64%, 0.954 71%, 0.976 79%, 0.99 86%, 0.999 93%, 1 100%);
+  --zoen-color-duration: 150ms;
+  --zoen-spring: cubic-bezier(0.2, 0.9, 0.25, 1.1);
+  --z-bg: var(--zoen-bg);
+  --z-surface: var(--zoen-regular-bg);
+  --z-muted: var(--zoen-cell-bg);
+  --z-hairline: var(--zoen-stroke-secondary);
+  --z-ink: var(--zoen-text-primary);
+  --z-ink-2: var(--zoen-text-secondary);
+  --z-ink-3: var(--zoen-text-tertiary);
+  --z-action: var(--zoen-fill-primary);
+  --z-action-deep: var(--zoen-fill-primary);
+  --z-on-action: var(--zoen-text-on);
+  --z-black: var(--zoen-fill-primary);
+  --z-on-black: var(--zoen-text-on);
+  --z-amber: var(--zoen-system-orange);
+  --z-danger: var(--zoen-system-red);
+  --z-success: var(--zoen-system-green);
+  --z-glass: var(--zoen-thin-bg);
+  --z-glass-stroke: var(--zoen-stroke-secondary);
+  --z-glass-shadow: none;
+  --z-radius: var(--zoen-radius-xl);
+  --z-radius-m: var(--zoen-radius-m);
+  --z-radius-s: var(--zoen-radius-s);
+  --z-font: var(--zoen-font);
+  --z-font-rounded: var(--zoen-font);
+  --z-spring: var(--zoen-spring);
+  --z-ease-out: ease-out;
 }
+
 :root[data-theme="dark"] {
-  --z-bg: #090D15; --z-surface: #121826; --z-muted: #1A2233; --z-hairline: #253047;
-  --z-ink: #EEF2FA; --z-ink-2: #93A0B8; --z-ink-3: #5F6B82;
-  --z-action: #86C25A; --z-action-deep: #5E9A35; --z-on-action: #0E1320;
-  --z-black: #F2F2F0; --z-on-black: #111113;
-  --z-glass: rgba(24,32,50,.66); --z-glass-stroke: rgba(255,255,255,.10); --z-glass-shadow: 0 8px 28px rgba(0,0,0,.45);
+  color-scheme: dark;
+  --zoen-bg: #000000;
+  --zoen-text-primary: #f5f5f7;
+  --zoen-text-secondary: rgb(245 245 247 / 0.5);
+  --zoen-text-tertiary: rgb(245 245 247 / 0.3);
+  --zoen-text-on: #1d1d1f;
+  --zoen-fill-primary: #f5f5f7;
+  --zoen-thin-bg: rgb(29 29 31 / 0.615);
+  --zoen-regular-bg: rgb(29 29 31 / 0.618);
+  --zoen-composer-bg: rgb(29 29 31 / 0.618);
+  --zoen-bubble-agent: rgb(29 29 31 / 0.7);
+  --zoen-bubble-user: rgb(29 29 31 / 0.3);
+  --zoen-cell-bg: rgb(255 255 255 / 0.05);
+  --zoen-stroke-primary: rgb(245 245 247 / 0.14);
+  --zoen-stroke-secondary: rgb(245 245 247 / 0.07);
+  --zoen-stroke-composer: rgb(29 29 31 / 0.5);
+  --zoen-hover-wash: rgb(245 245 247 / 0.05);
+  --zoen-hover-wash-on: rgb(29 29 31 / 0.08);
+  --zoen-chip-bg: rgb(245 245 247 / 0.12);
+  --zoen-focus-ring: rgb(255 255 255 / 0.5);
+  --zoen-row-value: rgb(255 255 255 / 0.5);
+  --zoen-system-red: #f1555b;
+  --zoen-bevel: none;
+  --zoen-sky-image: radial-gradient(120% 100% at 50% 0%, rgb(245 245 247 / 0.08), transparent 70%);
+  --zoen-glass-filter: blur(50px);
 }
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+    --zoen-bg: #000000;
+    --zoen-text-primary: #f5f5f7;
+    --zoen-text-secondary: rgb(245 245 247 / 0.5);
+    --zoen-text-tertiary: rgb(245 245 247 / 0.3);
+    --zoen-text-on: #1d1d1f;
+    --zoen-fill-primary: #f5f5f7;
+    --zoen-thin-bg: rgb(29 29 31 / 0.615);
+    --zoen-regular-bg: rgb(29 29 31 / 0.618);
+    --zoen-composer-bg: rgb(29 29 31 / 0.618);
+    --zoen-bubble-agent: rgb(29 29 31 / 0.7);
+    --zoen-bubble-user: rgb(29 29 31 / 0.3);
+    --zoen-cell-bg: rgb(255 255 255 / 0.05);
+    --zoen-stroke-primary: rgb(245 245 247 / 0.14);
+    --zoen-stroke-secondary: rgb(245 245 247 / 0.07);
+    --zoen-stroke-composer: rgb(29 29 31 / 0.5);
+    --zoen-hover-wash: rgb(245 245 247 / 0.05);
+    --zoen-hover-wash-on: rgb(29 29 31 / 0.08);
+    --zoen-chip-bg: rgb(245 245 247 / 0.12);
+    --zoen-focus-ring: rgb(255 255 255 / 0.5);
+    --zoen-row-value: rgb(255 255 255 / 0.5);
+    --zoen-system-red: #f1555b;
+    --zoen-bevel: none;
+    --zoen-sky-image: radial-gradient(120% 100% at 50% 0%, rgb(245 245 247 / 0.08), transparent 70%);
+    --zoen-glass-filter: blur(50px);
+  }
+}
+
 * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
-html, body { margin: 0; height: 100%; background: transparent; color: var(--z-ink); font: 16px/1.35 var(--z-font); -webkit-font-smoothing: antialiased; -webkit-user-select: none; user-select: none; overscroll-behavior: none; }
+html, body {
+  margin: 0;
+  height: 100%;
+  background: var(--zoen-bg);
+  color: var(--zoen-text-primary);
+  font: 400 var(--zoen-font-size-body)/var(--zoen-line-body) var(--zoen-font);
+  letter-spacing: normal;
+  -webkit-font-smoothing: antialiased;
+  -webkit-user-select: none;
+  user-select: none;
+  overscroll-behavior: none;
+}
 button { font: inherit; color: inherit; border: 0; background: none; padding: 0; cursor: pointer; }
-.z-glass { background: var(--z-glass); -webkit-backdrop-filter: blur(22px) saturate(1.6); backdrop-filter: blur(22px) saturate(1.6); border: .5px solid var(--z-glass-stroke); box-shadow: var(--z-glass-shadow); }
-.z-pill { display: inline-flex; align-items: center; gap: 6px; height: 36px; padding: 0 14px; border-radius: 999px; font-weight: 600; font-size: 15px; white-space: nowrap; transition: transform .25s var(--z-spring); }
-.z-pill:active { transform: scale(.95); }
-.z-pill.black { background: var(--z-black); color: var(--z-on-black); }
-.z-pill.brand { background: var(--z-action); color: var(--z-on-action); }
-.z-pill.tag { height: 26px; padding: 0 10px; font-size: 13px; background: var(--z-muted); color: var(--z-ink-2); }
-.z-pill.tag.brand-soft { background: color-mix(in srgb, var(--z-action) 16%, transparent); color: var(--z-action); }
-.z-circle { width: 40px; height: 40px; border-radius: 50%; display: grid; place-items: center; transition: transform .25s var(--z-spring); }
-.z-circle:active { transform: scale(.92); }
-.z-card { background: var(--z-surface); border-radius: var(--z-radius); overflow: hidden; box-shadow: 0 10px 30px rgba(14,19,32,.10); }
-.z-title { font: 800 28px/1.1 var(--z-font-rounded); letter-spacing: -.4px; margin: 0; }
-.z-sub { color: var(--z-ink-2); font-size: 15px; margin: 2px 0 0; }
-.z-h { font: 700 17px/1.2 var(--z-font); margin: 0 0 8px; }
+.z-glass {
+  background: var(--zoen-thin-bg);
+  -webkit-backdrop-filter: var(--zoen-glass-filter);
+  backdrop-filter: var(--zoen-glass-filter);
+}
+.z-circle { width: 40px; height: 40px; border-radius: 50%; display: grid; place-items: center; transition: transform var(--zoen-press-duration) ease-out; }
+.z-circle:active { transform: scale(var(--zoen-press-scale)); }
+.z-title { font: 500 20px/1.32 var(--zoen-font); letter-spacing: normal; margin: 0; }
+.z-sub { color: var(--zoen-text-secondary); font-size: 15px; margin: 2px 0 0; }
+.z-h { font: 500 15px/1.17 var(--zoen-font); margin: 0 0 8px; }
 .z-stat-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
-.z-stat { background: var(--z-muted); border-radius: var(--z-radius-m); padding: 12px; }
-.z-stat b { display: block; font: 800 20px/1.1 var(--z-font-rounded); font-variant-numeric: tabular-nums; }
-.z-stat span { color: var(--z-ink-2); font-size: 12px; font-weight: 600; }
+.z-stat { background: var(--zoen-cell-bg); border-radius: var(--zoen-radius-m); padding: 12px; }
+.z-stat b { display: block; font: 500 24px/31.2px var(--zoen-font); font-variant-numeric: tabular-nums; }
+.z-stat span { color: var(--zoen-text-secondary); font-size: 14px; font-weight: 400; }
 .z-avatars { display: inline-flex; }
-.z-avatar { width: 22px; height: 22px; border-radius: 50%; display: grid; place-items: center; font: 700 10px var(--z-font); color: #fff; border: 2px solid var(--z-surface); margin-left: -6px; }
+.z-avatar { width: 22px; height: 22px; border-radius: 50%; display: grid; place-items: center; font: 500 10px var(--zoen-font); color: var(--zoen-text-on-fill, #f9f9fa); border: 2px solid var(--zoen-bg); margin-left: -6px; }
 .z-avatar:first-child { margin-left: 0; }
 .z-snap-x { display: flex; overflow-x: auto; scroll-snap-type: x mandatory; scrollbar-width: none; -webkit-overflow-scrolling: touch; }
 .z-snap-x::-webkit-scrollbar { display: none; }
 .z-snap-x > * { scroll-snap-align: center; flex: none; }
-@media (prefers-reduced-motion: reduce) { * { animation-duration: .01ms !important; transition-duration: .01ms !important; } }
+
+@media (prefers-reduced-motion: reduce) {
+  :root { --zoen-press-duration: 1ms; --zoen-segment-duration: 1ms; --zoen-spring: ease-out; }
+  *, *::before, *::after {
+    animation-duration: 1ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 1ms !important;
+  }
+}
+@media (prefers-reduced-transparency: reduce) {
+  :root { --zoen-glass-filter: none; --zoen-glass-filter-search: none; }
+  .z-glass {
+    background: linear-gradient(var(--zoen-thin-bg), var(--zoen-thin-bg)), var(--zoen-bg);
+    box-shadow: inset 0 0 0 1px var(--zoen-stroke-primary);
+  }
+}

@@ -1,4 +1,37 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <style name="Theme.Zoen" parent="android:Theme.Material.NoActionBar" />
+    <color name="zoen_bg">#000000</color>
+    <color name="zoen_text_primary">#F5F5F7</color>
+    <color name="zoen_text_secondary">#80F5F5F7</color>
+    <color name="zoen_text_tertiary">#4DF5F5F7</color>
+    <color name="zoen_text_on">#1D1D1F</color>
+    <color name="zoen_fill_primary">#F5F5F7</color>
+    <color name="zoen_thin_bg">#9D1D1D1F</color>
+    <color name="zoen_regular_bg">#9E1D1D1F</color>
+    <color name="zoen_composer_bg">#9E1D1D1F</color>
+    <color name="zoen_bubble_agent">#B31D1D1F</color>
+    <color name="zoen_bubble_user">#4D1D1D1F</color>
+    <color name="zoen_cell_bg">#0DFFFFFF</color>
+    <color name="zoen_stroke_primary">#24F5F5F7</color>
+    <color name="zoen_stroke_secondary">#12F5F5F7</color>
+    <color name="zoen_stroke_composer">#801D1D1F</color>
+    <color name="zoen_overlay">#99000000</color>
+    <color name="zoen_system_red">#F1555B</color>
+    <color name="zoen_system_green">#00A665</color>
+    <color name="zoen_system_orange">#FF4D00</color>
+    <color name="zoen_avatar_blue">#528AFF</color>
+    <color name="zoen_focus_ring">#80FFFFFF</color>
+
+    <style name="Theme.Zoen" parent="android:Theme.Material.NoActionBar">
+        <item name="android:colorBackground">@color/zoen_bg</item>
+        <item name="android:windowBackground">@color/zoen_bg</item>
+        <item name="android:textColor">@color/zoen_text_primary</item>
+        <item name="android:textColorPrimary">@color/zoen_text_primary</item>
+        <item name="android:textColorSecondary">@color/zoen_text_secondary</item>
+        <item name="android:fontFamily">sans-serif</item>
+        <item name="android:statusBarColor">@color/zoen_bg</item>
+        <item name="android:navigationBarColor">@color/zoen_bg</item>
+        <item name="android:windowLightStatusBar">false</item>
+        <item name="android:windowLightNavigationBar">false</item>
+    </style>
 </resources>

@@ -21,50 +21,69 @@ extension Color {
     }
 
     /// Cor que muda entre claro e escuro.
-    static func adaptive(light: String, dark: String) -> Color {
+    static func adaptive(light: String, dark: String, lightAlpha: Double = 1, darkAlpha: Double = 1) -> Color {
         #if canImport(UIKit)
-        Color(UIColor { $0.userInterfaceStyle == .dark ? UIColor(hex: dark) : UIColor(hex: light) })
+        Color(UIColor { traits in
+            traits.userInterfaceStyle == .dark
+                ? UIColor(hex: dark, alpha: CGFloat(darkAlpha))
+                : UIColor(hex: light, alpha: CGFloat(lightAlpha))
+        })
         #else
         Color(NSColor(name: nil) { appearance in
-            appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua ? NSColor(hex: dark) : NSColor(hex: light)
+            if appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua {
+                NSColor(hex: dark, alpha: CGFloat(darkAlpha))
+            } else {
+                NSColor(hex: light, alpha: CGFloat(lightAlpha))
+            }
         })
         #endif
     }
 }
 
 extension PlatformColor {
-    convenience init(hex: String) {
+    convenience init(hex: String, alpha: CGFloat = 1) {
         var s = hex.trimmingCharacters(in: .whitespacesAndNewlines)
         if s.hasPrefix("#") { s.removeFirst() }
         var v: UInt64 = 0
         Scanner(string: s).scanHexInt64(&v)
         let r = CGFloat((v >> 16) & 0xFF) / 255, g = CGFloat((v >> 8) & 0xFF) / 255, b = CGFloat(v & 0xFF) / 255
-        self.init(red: r, green: g, blue: b, alpha: 1)
+        self.init(red: r, green: g, blue: b, alpha: alpha)
     }
 }
 
-/// Shared colors for Light and Dark appearance.
 enum Palette {
-    static let background = Color.adaptive(light: "#F4F6FB", dark: "#090D15")
-    static let surface = Color.adaptive(light: "#FFFFFF", dark: "#121826")
-    static let surfaceRaised = Color.adaptive(light: "#FFFFFF", dark: "#182032")
-    static let surfaceMuted = Color.adaptive(light: "#ECEFF6", dark: "#1A2233")
-    static let hairline = Color.adaptive(light: "#E1E5EE", dark: "#253047")
-    static let textPrimary = Color.adaptive(light: "#0E1320", dark: "#EEF2FA")
-    static let textSecondary = Color.adaptive(light: "#5B6478", dark: "#93A0B8")
-    static let textTertiary = Color.adaptive(light: "#8C95A8", dark: "#5F6B82")
-    static let action = Color.adaptive(light: "#3D7A28", dark: "#86C25A")  // moss green: the mascot's fur
-    static let actionDeep = Color.adaptive(light: "#2C5E1C", dark: "#5E9A35")
-    static let onAction = Color.adaptive(light: "#FFFFFF", dark: "#0E1320")
-    static let amber = Color(hex: "#FFB020")
-    static let success = Color(hex: "#22C55E")
-    static let danger = Color(hex: "#FF4D5E")
-    /// Conversa no padrão do Wabi.
-    static let myBubble = Color.adaptive(light: "#111113", dark: "#F2F2F0")
-    static let myBubbleText = Color.adaptive(light: "#FFFFFF", dark: "#111113")
-    static let otherBubble = Color.adaptive(light: "#F2F2F2", dark: "#26272B")
-    /// Over a chat background: opaque white / lifted slate for contrast.
-    static let otherBubbleOnBackdrop = Color.adaptive(light: "#FFFFFF", dark: "#2E2F34")
+    static let background = Color.adaptive(light: "#FFFFFF", dark: "#000000")
+    static let textPrimary = Color.adaptive(light: "#1D1D1F", dark: "#F5F5F7")
+    static let textSecondary = Color.adaptive(light: "#1D1D1F", dark: "#F5F5F7", lightAlpha: 0.5, darkAlpha: 0.5)
+    static let textTertiary = Color.adaptive(light: "#1D1D1F", dark: "#F5F5F7", lightAlpha: 0.3, darkAlpha: 0.3)
+    static let fillPrimary = Color.adaptive(light: "#1D1D1F", dark: "#F5F5F7")
+    static let onAction = Color.adaptive(light: "#F9F9FA", dark: "#1D1D1F")
+    static let thinBg = Color.adaptive(light: "#FFFFFF", dark: "#1D1D1F", lightAlpha: 0.55, darkAlpha: 0.615)
+    static let regularBg = Color.adaptive(light: "#FFFFFF", dark: "#1D1D1F", lightAlpha: 0.668, darkAlpha: 0.618)
+    static let composerBg = Color.adaptive(light: "#FFFFFF", dark: "#1D1D1F", lightAlpha: 0.55, darkAlpha: 0.618)
+    static let bubbleAgent = Color.adaptive(light: "#FFFFFF", dark: "#1D1D1F", lightAlpha: 0.98, darkAlpha: 0.7)
+    static let bubbleUser = Color.adaptive(light: "#FFFFFF", dark: "#1D1D1F", lightAlpha: 0.3, darkAlpha: 0.3)
+    static let cellBg = Color.adaptive(light: "#FFFFFF", dark: "#FFFFFF", lightAlpha: 0.6, darkAlpha: 0.05)
+    static let strokePrimary = Color.adaptive(light: "#1D1D1F", dark: "#F5F5F7", lightAlpha: 0.14, darkAlpha: 0.14)
+    static let strokeSecondary = Color.adaptive(light: "#1D1D1F", dark: "#F5F5F7", lightAlpha: 0.07, darkAlpha: 0.07)
+    static let strokeComposer = Color.adaptive(light: "#F5F5F7", dark: "#1D1D1F", lightAlpha: 0.5, darkAlpha: 0.5)
+    static let overlay = Color.adaptive(light: "#000000", dark: "#000000", lightAlpha: 0.6, darkAlpha: 0.6)
+    static let focusRing = Color.adaptive(light: "#000000", dark: "#FFFFFF", lightAlpha: 0.5, darkAlpha: 0.5)
+    static let rowValue = Color.adaptive(light: "#1D1D1F", dark: "#FFFFFF", lightAlpha: 0.5, darkAlpha: 0.5)
+    static let avatarBlue = Color(hex: "#528AFF")
+    static let surface = regularBg
+    static let surfaceRaised = thinBg
+    static let surfaceMuted = cellBg
+    static let hairline = strokeSecondary
+    static let action = fillPrimary
+    static let actionDeep = fillPrimary
+    static let amber = Color(hex: "#FF4D00")
+    static let success = Color(hex: "#00A665")
+    static let danger = Color.adaptive(light: "#DA2F35", dark: "#F1555B")
+    static let myBubble = bubbleUser
+    static let myBubbleText = textPrimary
+    static let otherBubble = bubbleAgent
+    static let otherBubbleOnBackdrop = bubbleAgent
 
     static var actionGradient: LinearGradient {
         LinearGradient(colors: [action, actionDeep], startPoint: .topLeading, endPoint: .bottomTrailing)
@@ -83,33 +102,14 @@ struct ActionGlassForeground: ShapeStyle {
 // MARK: - Fundo com profundidade (o vidro precisa de algo por baixo)
 
 struct NightBackdrop: View {
-    @Environment(\.colorScheme) private var scheme
-    var body: some View {
-        ZStack {
-            Palette.background
-            MeshGradient(
-                width: 3, height: 3,
-                points: [[0, 0], [0.5, 0], [1, 0], [0, 0.5], [0.55, 0.45], [1, 0.5], [0, 1], [0.5, 1], [1, 1]],
-                colors: scheme == .dark
-                    ? [Color(hex: "#132048"), Color(hex: "#0B1122"), Color(hex: "#24154A"),
-                       Color(hex: "#090D15"), Color(hex: "#0C1426"), Color(hex: "#0A0F1C"),
-                       Color(hex: "#090D15"), Color(hex: "#090D15"), Color(hex: "#090D15")]
-                    : [Color(hex: "#DCE6FF"), Color(hex: "#F1F4FC"), Color(hex: "#ECE3FF"),
-                       Color(hex: "#F4F6FB"), Color(hex: "#F4F6FB"), Color(hex: "#F4F6FB"),
-                       Color(hex: "#F4F6FB"), Color(hex: "#F4F6FB"), Color(hex: "#F4F6FB")]
-            )
-            .opacity(0.9)
-        }
-        .ignoresSafeArea()
-    }
+    var body: some View { SkyBackground() }
 }
 
 // MARK: - Tipografia
 
 extension Font {
-    /// Momento editorial (títulos de Itens): serifada do sistema (New York).
     static func editorial(_ size: CGFloat, weight: Font.Weight = .semibold) -> Font {
-        .system(size: size, weight: weight, design: .serif)
+        .system(size: size, weight: weight)
     }
 }
 
@@ -141,19 +141,32 @@ enum RodaTime {
 
 /// Conteúdo é sólido (nunca vidro): cartões, mensagens, Itens.
 struct SolidCard: ViewModifier {
-    var radius: CGFloat = 22
+    var radius: CGFloat = 24
     var padding: CGFloat = 16
+    @Environment(\.colorScheme) private var scheme
     func body(content: Content) -> some View {
         content
             .padding(padding)
-            .background(Palette.surface, in: .rect(cornerRadius: radius, style: .continuous))
-            .overlay(RoundedRectangle(cornerRadius: radius, style: .continuous).strokeBorder(Palette.hairline.opacity(0.7), lineWidth: 0.5))
-            .shadow(color: .black.opacity(0.06), radius: 12, y: 4)
+            .background(Palette.regularBg, in: Superellipse(radius: radius))
+            .overlay {
+                if scheme == .light {
+                    Superellipse(radius: radius)
+                        .stroke(
+                            LinearGradient(
+                                colors: [Color.white.opacity(0.9), Color(hex: "#1D1D1F").opacity(0.06)],
+                                startPoint: .top,
+                                endPoint: .bottom
+                            ),
+                            lineWidth: 1
+                        )
+                        .allowsHitTesting(false)
+                }
+            }
     }
 }
 
 extension View {
-    func solidCard(radius: CGFloat = 22, padding: CGFloat = 16) -> some View {
+    func solidCard(radius: CGFloat = 24, padding: CGFloat = 16) -> some View {
         modifier(SolidCard(radius: radius, padding: padding))
     }
 }

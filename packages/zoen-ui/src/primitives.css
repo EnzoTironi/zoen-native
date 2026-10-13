@@ -1,0 +1,259 @@
+/* Primitives. Glass lives in tokens.css so .z-glass and --zoen-glass-filter share that file. */
+
+.z-sky {
+  background-color: var(--zoen-bg);
+  background-image: var(--zoen-sky-image);
+  background-repeat: no-repeat;
+  background-size: 100% 33.333%;
+  background-position: top center;
+  color: var(--zoen-text-primary);
+  min-height: 100%;
+}
+
+.z-superellipse {
+  border-radius: var(--zoen-radius-xl);
+  clip-path: shape(from 0 var(--zoen-superellipse-start), curve to var(--zoen-superellipse-start) 0 with 0 16.5px / 16.5px 0, line to calc(100% - var(--zoen-superellipse-start)) 0, curve to 100% var(--zoen-superellipse-start) with calc(100% - 16.5px) 0 / 100% 16.5px, line to 100% calc(100% - var(--zoen-superellipse-start)), curve to calc(100% - var(--zoen-superellipse-start)) 100% with 100% calc(100% - 16.5px) / calc(100% - 16.5px) 100%, line to var(--zoen-superellipse-start) 100%, curve to 0 calc(100% - var(--zoen-superellipse-start)) with 16.5px 100% / 0 calc(100% - 16.5px), close);
+}
+
+.z-pressable { transition: transform var(--zoen-press-duration) ease-out, background-color var(--zoen-color-duration) ease, color var(--zoen-color-duration) ease; }
+.z-pressable:active { transform: scale(var(--zoen-press-scale)); }
+.z-pressable:focus-visible, .z-row:focus-visible {
+  outline: 2px solid var(--zoen-focus-ring);
+  outline-offset: 2px;
+}
+
+.z-pill {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-width: 44px;
+  min-height: 44px;
+  height: 48px;
+  padding: 0 16px;
+  border-radius: var(--zoen-radius-pill);
+  font: 500 15px/1.17 var(--zoen-font);
+  white-space: nowrap;
+}
+.z-pill.black, .z-pill.brand { background: var(--zoen-fill-primary); color: var(--zoen-text-on); }
+.z-pill.tag { height: 26px; min-height: 26px; padding: 0 10px; font-size: 13px; background: var(--zoen-cell-bg); color: var(--zoen-text-secondary); }
+.z-pill.tag.brand-soft { background: var(--zoen-chip-bg); color: var(--zoen-text-primary); }
+
+.z-segmented {
+  --zoen-segment-count: 3;
+  --zoen-segment-index: 0;
+  position: relative;
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: 1fr;
+  height: 48px;
+  padding: 2px;
+  border-radius: var(--zoen-radius-pill);
+  background: var(--zoen-thin-bg);
+  -webkit-backdrop-filter: var(--zoen-glass-filter);
+  backdrop-filter: var(--zoen-glass-filter);
+  isolation: isolate;
+}
+.z-segmented::before {
+  content: "";
+  position: absolute;
+  z-index: 0;
+  top: 2px;
+  bottom: 2px;
+  left: calc(2px + (100% - 4px) / var(--zoen-segment-count) * var(--zoen-segment-index));
+  width: calc((100% - 4px) / var(--zoen-segment-count));
+  border-radius: var(--zoen-radius-segment);
+  background: var(--zoen-fill-primary);
+  transition: left var(--zoen-segment-duration) var(--zoen-segment-easing), width var(--zoen-segment-duration) var(--zoen-segment-easing);
+}
+.z-segmented button {
+  position: relative;
+  z-index: 1;
+  min-height: 44px;
+  border: 0;
+  border-radius: var(--zoen-radius-pill);
+  background: none;
+  color: var(--zoen-text-secondary);
+  font: 500 15px/1.17 var(--zoen-font);
+  transition: color var(--zoen-color-duration) ease, opacity var(--zoen-press-duration) ease-out;
+}
+.z-segmented button[aria-selected="true"] { color: var(--zoen-text-on); }
+.z-segmented button:active { opacity: 0.5; }
+@media (hover: hover) {
+  .z-segmented button:hover { color: var(--zoen-text-primary); }
+  .z-segmented button[aria-selected="true"]:hover { color: var(--zoen-text-on); }
+}
+
+.z-card {
+  background: var(--zoen-regular-bg);
+  border-radius: var(--zoen-radius-xl);
+  padding: 16px;
+  box-shadow: var(--zoen-bevel);
+  color: var(--zoen-text-primary);
+  overflow: hidden;
+}
+.z-card b { display: block; font: 500 24px/31.2px var(--zoen-font); }
+.z-card span { color: var(--zoen-text-secondary); font: 400 14px/18.2px var(--zoen-font); }
+
+.z-composer {
+  position: relative;
+  display: flex;
+  align-items: flex-end;
+  gap: 0;
+  min-height: 48px;
+  border-radius: var(--zoen-radius-xl);
+  background: var(--zoen-composer-bg);
+  -webkit-backdrop-filter: var(--zoen-glass-filter);
+  backdrop-filter: var(--zoen-glass-filter);
+  color: var(--zoen-text-primary);
+}
+.z-composer::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  padding: 1px;
+  background: var(--zoen-stroke-composer);
+  pointer-events: none;
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  mask-composite: exclude;
+}
+.z-composer textarea {
+  flex: 1;
+  min-width: 0;
+  resize: none;
+  border: 0;
+  margin: 0;
+  background: transparent;
+  color: inherit;
+  font: 400 15px/19px var(--zoen-font);
+  padding: 14.5px 8px 14.5px 16px;
+  max-height: 219px;
+  outline: none;
+  transition: color 1s;
+}
+.z-composer textarea::placeholder { color: var(--zoen-text-secondary); }
+.z-composer:focus-within { box-shadow: 0 0 0 2px var(--zoen-text-primary); }
+.z-composer-icon {
+  width: 44px;
+  height: 44px;
+  display: grid;
+  place-items: center;
+  flex: none;
+  border: 0;
+  border-radius: var(--zoen-radius-pill);
+  background: none;
+  color: var(--zoen-text-secondary);
+}
+
+.z-group {
+  width: min(358px, 100%);
+  border-radius: var(--zoen-radius-xl);
+  background: var(--zoen-thin-bg);
+  overflow: hidden;
+}
+.z-row {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  min-height: 56px;
+  padding: 0 16px;
+  border: 0;
+  background: transparent;
+  color: var(--zoen-text-primary);
+  font: 500 15px/1.17 var(--zoen-font);
+  text-align: start;
+}
+.z-row + .z-row::before {
+  content: "";
+  position: absolute;
+  left: 20px;
+  right: 20px;
+  top: 0;
+  height: 1px;
+  background: var(--zoen-stroke-secondary);
+}
+.z-radio-row { min-height: 59.8px; }
+.z-row .z-row-value { margin-left: auto; font-weight: 400; color: var(--zoen-row-value); }
+.z-radio {
+  width: 18px;
+  height: 18px;
+  margin-left: auto;
+  border-radius: 18px;
+  border: 1.5px solid var(--zoen-stroke-primary);
+  display: grid;
+  place-items: center;
+  flex: none;
+}
+.z-row[aria-checked="true"] .z-radio::after {
+  content: "";
+  width: 10px;
+  height: 10px;
+  border-radius: 9999px;
+  background: var(--zoen-fill-primary);
+}
+@media (hover: hover) {
+  .z-row:hover { background: var(--zoen-hover-wash); }
+}
+
+.z-sheet {
+  position: fixed;
+  inset: 0;
+  z-index: 20;
+  display: grid;
+  place-items: stretch;
+}
+.z-sheet[hidden] { display: none; }
+.z-sheet-panel {
+  position: relative;
+  min-height: 100%;
+  padding: 76px 16px 32px;
+  animation: zoen-sheet-in 220ms cubic-bezier(0, 0, 0.2, 1);
+}
+.z-sheet-close {
+  position: absolute;
+  top: 14px;
+  right: 16px;
+  width: 48px;
+  height: 48px;
+  border: 0;
+  border-radius: var(--zoen-radius-pill);
+  background: var(--zoen-thin-bg);
+  color: var(--zoen-text-primary);
+  -webkit-backdrop-filter: var(--zoen-glass-filter);
+  backdrop-filter: var(--zoen-glass-filter);
+}
+@keyframes zoen-sheet-in {
+  from { opacity: 0; transform: translateY(-2%) scale(0.96); filter: blur(4px); }
+  to { opacity: 1; transform: none; filter: none; }
+}
+
+.z-gallery {
+  min-height: 100%;
+  display: grid;
+  align-content: start;
+  gap: 16px;
+  padding: 16px;
+  box-sizing: border-box;
+}
+.z-gallery .z-composer, .z-gallery .z-card, .z-gallery .z-group, .z-gallery .z-segmented { width: min(358px, 100%); }
+
+@media (prefers-reduced-motion: reduce) {
+  .z-pressable:active { transform: none; }
+  .z-segmented::before, .z-sheet-panel { animation: none; transition: none; }
+}
+@media (prefers-reduced-transparency: reduce) {
+  .z-segmented, .z-composer, .z-sheet-close, .z-group {
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+    background-image: linear-gradient(var(--zoen-bg), var(--zoen-bg));
+    box-shadow: inset 0 0 0 1px var(--zoen-stroke-primary);
+  }
+  .z-composer { background-color: var(--zoen-composer-bg); }
+  .z-segmented, .z-sheet-close, .z-group { background-color: var(--zoen-thin-bg); }
+  .z-card { box-shadow: var(--zoen-bevel), inset 0 0 0 1px var(--zoen-stroke-primary); }
+}
