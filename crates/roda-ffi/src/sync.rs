@@ -444,20 +444,15 @@ impl Engine {
         if e.seq > next {
             return Ingest::Gap { next };
         }
-        let log = self
-            .logs
-            .entry(space.clone())
-            .or_insert_with(|| SpaceLog::new(space.clone()));
-        if let Err(err) = log.accept(e.clone()) {
-            let seen = crate::mls::seen_against(log, &e);
-            let author = e.author.clone();
-            let causal = matches!(err, roda_log::LogError::BrokenCausalLink { .. });
-            let err_text = err.to_string();
-            let empty = log.is_empty();
-            if empty {
-                self.logs.remove(&space);
-            }
-            return self.refused_member_history(&space, causal, seen, &author, &err_text);
+        let accept_err = {
+            let log = self
+                .logs
+                .entry(space.clone())
+                .or_insert_with(|| SpaceLog::new(space.clone()));
+            log.accept(e.clone()).err()
+        };
+        if let Some(err) = accept_err {
+            return self.refuse_unaccepted(&space, &err, &e);
         }
         if let Err(err) = self.store.append_event(&e) {
             // Disk and memory must agree: drop the in-memory copy, it'll come back on sync.

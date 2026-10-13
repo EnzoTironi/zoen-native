@@ -906,15 +906,18 @@ impl Engine {
                 Err(err) => return Ingest::Invalid(err.to_string()),
             },
         };
-        let log = self
-            .logs
-            .entry(space.clone())
-            .or_insert_with(|| SpaceLog::new(space.clone()));
-        if let Err(err) = log.accept(e.clone()) {
-            if log.is_empty() {
-                self.logs.remove(&space);
-            }
-            return Ingest::Invalid(err.to_string()); // the transaction rolls back
+        let accept_err = {
+            let log = self
+                .logs
+                .entry(space.clone())
+                .or_insert_with(|| SpaceLog::new(space.clone()));
+            log.accept(e.clone()).err()
+        };
+        if let Some(err) = accept_err {
+            // The fork write uses this connection. It has to follow the rollback,
+            // or the refused event takes the fork meta with it.
+            drop(tx);
+            return self.refuse_unaccepted(&space, &err, &e);
         }
         let mut stored = self.store.append_event(&e).map_err(storage);
         stored = stored
@@ -1037,15 +1040,15 @@ impl Engine {
             Err(err) => return Ingest::Invalid(err.to_string()),
         };
         e.sealed_wire = ev.env.legacy_pruned_hash().map(str::to_string);
-        let log = self
-            .logs
-            .entry(space.clone())
-            .or_insert_with(|| SpaceLog::new(space.clone()));
-        if let Err(err) = log.accept(e.clone()) {
-            if log.is_empty() {
-                self.logs.remove(&space);
-            }
-            return Ingest::Invalid(err.to_string());
+        let accept_err = {
+            let log = self
+                .logs
+                .entry(space.clone())
+                .or_insert_with(|| SpaceLog::new(space.clone()));
+            log.accept(e.clone()).err()
+        };
+        if let Some(err) = accept_err {
+            return self.refuse_unaccepted(&space, &err, &e);
         }
         // No MLS state changes until the stub's signature and chain are accepted.
         // Forgetting a stale group and persisting the verified stub commit together.
@@ -1274,6 +1277,29 @@ impl Engine {
             }
         }
         self.settle_pending_prefixes(&e.space)
+    }
+
+    /// One decision for a failed `accept` on the next sequence, whether the
+    /// body arrived in the clear, sealed, or pruned. The caller already
+    /// returned a gap when the event's own sequence is still ahead.
+    pub(crate) fn refuse_unaccepted(
+        &mut self,
+        space: &str,
+        err: &roda_log::LogError,
+        event: &Event,
+    ) -> Ingest {
+        let (seen, empty) = {
+            let log = self
+                .logs
+                .get(space)
+                .expect("accept ran on this log");
+            (seen_against(log, event), log.is_empty())
+        };
+        if empty {
+            self.logs.remove(space);
+        }
+        let causal = matches!(err, roda_log::LogError::BrokenCausalLink { .. });
+        self.refused_member_history(space, causal, seen, &event.author, &err.to_string())
     }
 
     /// `causal` means the signature and the event's own chain link already
