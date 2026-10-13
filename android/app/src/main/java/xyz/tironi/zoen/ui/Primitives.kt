@@ -1,7 +1,10 @@
 package xyz.tironi.zoen.ui
 
+import android.app.UiModeManager
 import android.os.Build
 import android.provider.Settings
+import android.view.HapticFeedbackConstants
+import android.view.View
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.CubicBezierEasing
 import androidx.compose.animation.core.EaseOut
@@ -143,6 +146,132 @@ enum class ZoenAppearance(val label: String) {
     }
 }
 
+enum class ZoenHaptic {
+    Selection,
+    Send,
+    Record,
+    Lock,
+    Success,
+    Warning,
+    Deny,
+    Error,
+}
+
+private const val HapticMaxPulseMs = 20
+
+fun View.prepareZoenHaptic(kind: ZoenHaptic) {
+    // Android feedback has no prepare step. The touch-down call stays so every platform shares the same moment.
+}
+
+fun View.playZoenHaptic(kind: ZoenHaptic) {
+    performHapticFeedback(
+        when (kind) {
+            ZoenHaptic.Selection, ZoenHaptic.Deny -> HapticFeedbackConstants.CLOCK_TICK
+            ZoenHaptic.Send -> HapticFeedbackConstants.KEYBOARD_TAP
+            ZoenHaptic.Record -> HapticFeedbackConstants.CONTEXT_CLICK
+            ZoenHaptic.Lock, ZoenHaptic.Success ->
+                if (Build.VERSION.SDK_INT >= 30) HapticFeedbackConstants.CONFIRM else HapticFeedbackConstants.CONTEXT_CLICK
+            ZoenHaptic.Warning, ZoenHaptic.Error ->
+                if (Build.VERSION.SDK_INT >= 30) HapticFeedbackConstants.REJECT else HapticFeedbackConstants.LONG_PRESS
+        },
+    )
+}
+
+@Composable
+fun zoenIncreasedContrast(): Boolean {
+    if (Build.VERSION.SDK_INT < 34) return false
+    val context = LocalContext.current
+    return (context.getSystemService(UiModeManager::class.java)?.contrast ?: 0f) > 0f
+}
+
+object ZoenTokens {
+    object Motion {
+        const val threadSwitchMs = 150
+        const val fingerReleaseMs = 240
+        const val statusLineMs = 150
+        const val receiptMs = 150
+        const val queueIntervalMs = 40
+        const val queueMaxPerFrame = 8
+        const val caretMs = 420
+        const val caretHz = 8
+        const val peekMs = 220
+        const val threadPanelMs = 220
+        const val reactionGrowMs = 150
+    }
+
+    object Layout {
+        const val composerBottomInset = 42
+        const val threadPanelWidth = 390
+        const val threadPanelRadius = 24
+        const val threadPanelGap = 16
+        const val threadPanelFrom = 1024
+        const val threadFace = 16
+        const val threadFaceHit = 44
+        const val broadcastChipMs = 4000
+        const val threadRootMaxLines = 3
+        const val threadSwipeOpen = 64
+        const val threadEdgeClose = 24
+        const val summaryMinReplies = 8
+        const val reactionLongPressMs = 350
+        const val reactionTrayMax = 8
+        const val reactionAboveFinger = 8
+        const val editWindowMin = 15
+        const val deleteForAllHours = 48
+        const val pinMax = 3
+        const val liveLocationMin = 15
+    }
+
+    object Signature {
+        const val composerBottomInset = 42
+        const val bubbleAnchorGap = 12
+        const val peekVisible = 8
+        const val voiceArmMs = 80
+        const val voiceLockTravel = 48
+        const val voiceCancelTravel = 72
+        const val receiptDot = 8
+        const val receiptOffset = 4
+        const val statusAboveComposer = 8
+        const val menuAboveAttach = 8
+        const val callButtonHeight = 48
+        const val callButtonMinWidth = 120
+        const val callButtonMinCenterDistance = 80
+        const val terminalMaxWidth390 = 270
+        const val unreadDot = 8
+        const val presenceDot = 8
+        const val presenceBorder = 2
+        const val groupIndent = 16
+        const val signOutGap = 24
+        const val closeBelowSafeArea = 14
+        const val safeTopIslandApprox = 59
+        const val searchDebounceMs = 80
+        const val draftDebounceMs = 150
+        const val localSkeletonAfterMs = 50
+        const val clipboardClearMs = 60000
+        const val caretHz = 8
+        const val relinkChipS = 30
+        const val notificationCollapseS = 5
+        const val chipHitTarget = 44
+        const val flingBlurResumeMs = 80
+    }
+
+    object Feeling {
+        const val coldStartIphoneMs = 400
+        const val coldStartAndroid35Ms = 700
+        const val coldStartAndroid28Ms = 1200
+        const val coldStartWebMs = 1000
+        const val openThreadMs = 100
+        const val sendToBubbleMs = 16
+        const val scrollP99Ms = 8.3
+        const val callStageMs = 150
+        const val callAudioMedianMs = 1500
+        const val callAudioCeilingMs = 3000
+        const val miniAppSnapshotMs = 16
+        const val miniAppHtmlMacMs = 500
+        const val androidBlurFallbackAlpha = 0.92
+        const val hapticMaxPulseMs = HapticMaxPulseMs
+    }
+}
+
 private enum class ZoenGlassRole {
     Nav,
     Search,
@@ -163,7 +292,23 @@ data class ZoenPalette(
     val strokeComposer: Color,
     val rowValue: Color,
     val skyGlow: Color,
+    val textTertiary: Color,
+    val bubbleAgent: Color,
+    val bubbleUser: Color,
+    val cellBg: Color,
+    val systemRed: Color,
+    val systemGreen: Color,
+    val systemOrange: Color,
 ) {
+    fun forContrast(increased: Boolean): ZoenPalette =
+        if (!increased) {
+            this
+        } else {
+            copy(
+                textSecondary = textPrimary.copy(alpha = 0.7f),
+                strokePrimary = textPrimary.copy(alpha = 0.3f),
+            )
+        }
     companion object {
         private fun argb(hex: Long, alpha: Float = 1f): Color {
             val rgb = hex and 0xFFFFFF
@@ -189,6 +334,13 @@ data class ZoenPalette(
             strokeComposer = argb(0xF5F5F7, 0.5f),
             rowValue = argb(0x1D1D1F, 0.5f),
             skyGlow = argb(0x1D1D1F, 0.06f),
+            textTertiary = argb(0x1D1D1F, 0.3f),
+            bubbleAgent = argb(0xFFFFFF, 0.98f),
+            bubbleUser = argb(0xFFFFFF, 0.3f),
+            cellBg = argb(0xFFFFFF, 0.6f),
+            systemRed = argb(0xDA2F35),
+            systemGreen = argb(0x00A665),
+            systemOrange = argb(0xFF4D00),
         )
         val dark = ZoenPalette(
             bg = argb(0x000000),
@@ -204,14 +356,24 @@ data class ZoenPalette(
             strokeComposer = argb(0x1D1D1F, 0.5f),
             rowValue = argb(0xFFFFFF, 0.5f),
             skyGlow = argb(0xF5F5F7, 0.08f),
+            textTertiary = argb(0xF5F5F7, 0.3f),
+            bubbleAgent = argb(0x1D1D1F, 0.7f),
+            bubbleUser = argb(0x1D1D1F, 0.3f),
+            cellBg = argb(0xFFFFFF, 0.05f),
+            systemRed = argb(0xF1555B),
+            systemGreen = argb(0x00A665),
+            systemOrange = argb(0xFF4D00),
         )
 
-        fun resolve(appearance: ZoenAppearance, systemDark: Boolean): ZoenPalette =
-            if (appearance.isDark(systemDark)) dark else light
+        fun resolve(
+            appearance: ZoenAppearance,
+            systemDark: Boolean,
+            increasedContrast: Boolean = false,
+        ): ZoenPalette = (if (appearance.isDark(systemDark)) dark else light).forContrast(increasedContrast)
     }
 }
 
-private val LocalZoenPalette = compositionLocalOf { ZoenPalette.dark }
+val LocalZoenPalette = compositionLocalOf { ZoenPalette.dark }
 private val LocalZoenRoot = compositionLocalOf { IntSize.Zero }
 
 private class SuperellipseShape(private val radius: Dp) : Shape {
@@ -567,10 +729,29 @@ fun ZoenRow(
 }
 
 @Composable
+fun ZoenDialog(modifier: Modifier = Modifier, content: @Composable () -> Unit) {
+    val palette = LocalZoenPalette.current
+    Column(
+        modifier
+            .clip(SuperellipseShape(24.dp))
+            .background(palette.regularBg)
+            .zoenRing(palette.strokePrimary, 24.dp, 1.dp, pill = false),
+    ) {
+        content()
+    }
+}
+
+@Composable
+fun ZoenHostRing(modifier: Modifier = Modifier) {
+    val palette = LocalZoenPalette.current
+    Box(modifier.zoenRing(palette.strokePrimary, 24.dp, 1.dp, pill = false))
+}
+
+@Composable
 fun ZoenPrimitivesGallery() {
     val systemDark = isSystemInDarkTheme()
     var appearance by remember { mutableStateOf(ZoenAppearance.System) }
-    val palette = ZoenPalette.resolve(appearance, systemDark)
+    val palette = ZoenPalette.resolve(appearance, systemDark, zoenIncreasedContrast())
     val reduceMotion = zoenReduceMotion()
     val (reduceTransparency, setReduceTransparency) = rememberReduceTransparency()
     var segment by remember { mutableIntStateOf(0) }

@@ -1,8 +1,17 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <style name="Theme.Zoen" parent="android:Theme.Material.NoActionBar">
-        <item name="android:windowSplashScreenBackground">#090D15</item>
-        <item name="android:windowSplashScreenAnimatedIcon">@drawable/ic_launcher_foreground</item>
+        <item name="android:colorBackground">@color/zoen_bg</item>
+        <item name="android:windowBackground">@color/zoen_bg</item>
+        <item name="android:textColor">@color/zoen_text_primary</item>
+        <item name="android:textColorPrimary">@color/zoen_text_primary</item>
+        <item name="android:textColorSecondary">@color/zoen_text_secondary</item>
+        <item name="android:fontFamily">sans-serif</item>
+        <item name="android:statusBarColor">@color/zoen_bg</item>
+        <item name="android:navigationBarColor">@color/zoen_bg</item>
+        <item name="android:windowLightStatusBar">false</item>
         <item name="android:windowLightNavigationBar">false</item>
+        <item name="android:windowSplashScreenBackground">@color/zoen_bg</item>
+        <item name="android:windowSplashScreenAnimatedIcon">@drawable/ic_launcher_foreground</item>
     </style>
 </resources>

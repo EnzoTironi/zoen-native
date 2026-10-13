@@ -5,6 +5,6 @@
     "verbatimModuleSyntax": true, "skipLibCheck": true, "noEmit": true, "allowImportingTsExtensions": true,
     "lib": ["ES2022", "DOM", "DOM.Iterable", "WebWorker"]
   },
-  "include": ["*.ts", "*.tsx", "../src/shell.tsx", "../preview/styles.d.ts"],
+  "include": ["*.ts", "*.tsx", "../src/shell.tsx", "../src/haptics.ts", "../preview/styles.d.ts"],
   "exclude": ["*.test.ts"]
 }

@@ -33,6 +33,150 @@ enum ZoenMotion {
     }
 }
 
+enum ZoenHapticKind {
+    case selection, send, record, lock, success, warning, deny, error
+}
+
+enum ZoenHaptic {
+    static let maxPulseMs = 20
+
+    static func prepare(_ kind: ZoenHapticKind) {
+        #if os(iOS)
+        generator(kind).prepare()
+        #endif
+    }
+
+    static func play(_ kind: ZoenHapticKind) {
+        #if os(iOS)
+        switch kind {
+        case .selection: Cache.selection.selectionChanged()
+        case .send: Cache.light.impactOccurred()
+        case .record: Cache.medium.impactOccurred()
+        case .lock: Cache.rigid.impactOccurred()
+        case .success: Cache.notification.notificationOccurred(.success)
+        case .warning: Cache.notification.notificationOccurred(.warning)
+        case .deny: Cache.soft.impactOccurred()
+        case .error: Cache.notification.notificationOccurred(.error)
+        }
+        #else
+        let pattern: NSHapticFeedbackManager.FeedbackPattern = switch kind {
+        case .selection, .deny: .alignment
+        default: .generic
+        }
+        NSHapticFeedbackManager.defaultPerformer.perform(pattern, performanceTime: .now)
+        #endif
+    }
+
+    #if os(iOS)
+    private enum Cache {
+        static let selection = UISelectionFeedbackGenerator()
+        static let light = UIImpactFeedbackGenerator(style: .light)
+        static let medium = UIImpactFeedbackGenerator(style: .medium)
+        static let rigid = UIImpactFeedbackGenerator(style: .rigid)
+        static let soft = UIImpactFeedbackGenerator(style: .soft)
+        static let notification = UINotificationFeedbackGenerator()
+    }
+
+    private static func generator(_ kind: ZoenHapticKind) -> UIFeedbackGenerator {
+        switch kind {
+        case .selection: Cache.selection
+        case .send: Cache.light
+        case .record: Cache.medium
+        case .lock: Cache.rigid
+        case .success, .warning, .error: Cache.notification
+        case .deny: Cache.soft
+        }
+    }
+    #endif
+}
+
+enum ZoenTokens {
+    enum Motion {
+        static let threadSwitchMs = 150
+        static let fingerReleaseMs = 240
+        static let statusLineMs = 150
+        static let receiptMs = 150
+        static let queueIntervalMs = 40
+        static let queueMaxPerFrame = 8
+        static let caretMs = 420
+        static let caretHz = 8
+        static let peekMs = 220
+        static let threadPanelMs = 220
+        static let reactionGrowMs = 150
+    }
+
+    enum Layout {
+        static let composerBottomInset: CGFloat = 42
+        static let threadPanelWidth: CGFloat = 390
+        static let threadPanelRadius: CGFloat = 24
+        static let threadPanelGap: CGFloat = 16
+        static let threadPanelFrom: CGFloat = 1024
+        static let threadFace: CGFloat = 16
+        static let threadFaceHit: CGFloat = 44
+        static let broadcastChipMs = 4000
+        static let threadRootMaxLines = 3
+        static let threadSwipeOpen: CGFloat = 64
+        static let threadEdgeClose: CGFloat = 24
+        static let summaryMinReplies = 8
+        static let reactionLongPressMs = 350
+        static let reactionTrayMax = 8
+        static let reactionAboveFinger: CGFloat = 8
+        static let editWindowMin = 15
+        static let deleteForAllHours = 48
+        static let pinMax = 3
+        static let liveLocationMin = 15
+    }
+
+    enum Signature {
+        static let composerBottomInset: CGFloat = 42
+        static let bubbleAnchorGap: CGFloat = 12
+        static let peekVisible: CGFloat = 8
+        static let voiceArmMs = 80
+        static let voiceLockTravel: CGFloat = 48
+        static let voiceCancelTravel: CGFloat = 72
+        static let receiptDot: CGFloat = 8
+        static let receiptOffset: CGFloat = 4
+        static let statusAboveComposer: CGFloat = 8
+        static let menuAboveAttach: CGFloat = 8
+        static let callButtonHeight: CGFloat = 48
+        static let callButtonMinWidth: CGFloat = 120
+        static let callButtonMinCenterDistance: CGFloat = 80
+        static let terminalMaxWidth390: CGFloat = 270
+        static let unreadDot: CGFloat = 8
+        static let presenceDot: CGFloat = 8
+        static let presenceBorder: CGFloat = 2
+        static let groupIndent: CGFloat = 16
+        static let signOutGap: CGFloat = 24
+        static let closeBelowSafeArea: CGFloat = 14
+        static let safeTopIslandApprox: CGFloat = 59
+        static let searchDebounceMs = 80
+        static let draftDebounceMs = 150
+        static let localSkeletonAfterMs = 50
+        static let clipboardClearMs = 60000
+        static let caretHz = 8
+        static let relinkChipS = 30
+        static let notificationCollapseS = 5
+        static let chipHitTarget: CGFloat = 44
+        static let flingBlurResumeMs = 80
+    }
+
+    enum Feeling {
+        static let coldStartIphoneMs = 400
+        static let coldStartAndroid35Ms = 700
+        static let coldStartAndroid28Ms = 1200
+        static let coldStartWebMs = 1000
+        static let openThreadMs = 100
+        static let sendToBubbleMs = 16
+        static let scrollP99Ms = 8.3
+        static let callStageMs = 150
+        static let callAudioMedianMs = 1500
+        static let callAudioCeilingMs = 3000
+        static let miniAppSnapshotMs = 16
+        static let miniAppHtmlMacMs = 500
+        static let androidBlurFallbackAlpha = 0.92
+    }
+}
+
 enum ZoenAppearance: String, CaseIterable, Identifiable {
     case dark, light, system, automatic
     var id: String { rawValue }
@@ -421,6 +565,25 @@ struct ZoenRow: View {
         }
         .buttonStyle(ZoenPressStyle())
         .accessibilityAddTraits(selected == true ? .isSelected : [])
+    }
+}
+
+struct ZoenDialog<Content: View>: View {
+    @ViewBuilder var content: () -> Content
+
+    var body: some View {
+        content()
+            .padding(16)
+            .background(Palette.regularBg, in: Superellipse())
+            .overlay(Superellipse().stroke(Palette.strokePrimary, lineWidth: 1))
+    }
+}
+
+struct ZoenHostRing: View {
+    var body: some View {
+        Superellipse()
+            .stroke(Palette.strokePrimary, lineWidth: 1)
+            .allowsHitTesting(false)
     }
 }
 

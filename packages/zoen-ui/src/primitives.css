@@ -242,6 +242,25 @@
 }
 .z-gallery .z-composer, .z-gallery .z-card, .z-gallery .z-group, .z-gallery .z-segmented { width: min(358px, 100%); }
 
+.z-dialog {
+  background: var(--zoen-regular-bg);
+  border-radius: var(--zoen-radius-xl);
+  box-shadow: inset 0 0 0 var(--zoen-glass-dialog-stroke) var(--zoen-stroke-primary);
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+}
+.z-dialog-scrim {
+  -webkit-backdrop-filter: blur(var(--zoen-glass-overlay-blur));
+  backdrop-filter: blur(var(--zoen-glass-overlay-blur));
+}
+.z-host-ring {
+  background: transparent;
+  border-radius: var(--zoen-radius-xl);
+  box-shadow: inset 0 0 0 var(--zoen-glass-host-ring) var(--zoen-stroke-primary);
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .z-pressable:active { transform: none; }
   .z-segmented::before, .z-sheet-panel { animation: none; transition: none; }

@@ -11,9 +11,9 @@ struct PhaseNote: View {
     let text: String
     var body: some View {
         HStack(alignment: .top, spacing: 12) {
-            Image(systemName: symbol).font(.title3).foregroundStyle(Palette.action)
+            Image(systemName: symbol).font(.title3).foregroundStyle(Palette.fillPrimary)
                 .frame(width: 40, height: 40)
-                .background(Palette.action.opacity(0.12), in: .rect(cornerRadius: 12, style: .continuous))
+                .background(Palette.fillPrimary.opacity(0.12), in: .rect(cornerRadius: 12, style: .continuous))
             VStack(alignment: .leading, spacing: 4) {
                 Text(title).font(.subheadline.weight(.semibold))
                 Text(text).font(.caption).foregroundStyle(Palette.textSecondary)
@@ -40,7 +40,7 @@ struct BudgetRing: View {
 
     var body: some View {
         ZStack {
-            Circle().stroke(Palette.surfaceMuted, lineWidth: lineWidth)
+            Circle().stroke(Palette.cellBg, lineWidth: lineWidth)
             Circle()
                 .trim(from: 0, to: fraction)
                 .stroke(color.gradient, style: StrokeStyle(lineWidth: lineWidth, lineCap: .round))
@@ -71,9 +71,9 @@ struct PlanBudgetBar: View {
                 GeometryReader { geo in
                     let f = max(0, min(1, Double(total) / Double(max(budget, 1))))
                     ZStack(alignment: .leading) {
-                        Capsule().fill(Palette.surfaceMuted)
+                        Capsule().fill(Palette.cellBg)
                         Capsule()
-                            .fill(over ? AnyShapeStyle(Palette.danger.gradient) : AnyShapeStyle(Palette.actionGradient))
+                            .fill(over ? AnyShapeStyle(Palette.danger.gradient) : AnyShapeStyle(Palette.fillPrimary))
                             .frame(width: max(8, geo.size.width * f))
                             .animation(.spring(duration: 0.5), value: total)
                     }
@@ -225,7 +225,7 @@ struct RequestCard: View {
     }
 
     private var iconColor: Color {
-        request.actionLabel == String(localized: "Payment") ? Palette.success : Palette.action
+        request.actionLabel == String(localized: "Payment") ? Palette.success : Palette.fillPrimary
     }
 }
 
@@ -241,7 +241,7 @@ struct Chip: View {
         .foregroundStyle(Palette.textSecondary)
         .padding(.horizontal, 8)
         .padding(.vertical, 4)
-        .background(Palette.surfaceMuted, in: .capsule)
+        .background(Palette.cellBg, in: .capsule)
     }
 }
 
@@ -295,7 +295,7 @@ struct ToastView: View {
                 Text(toast.text).font(.subheadline).lineLimit(3)
                 Spacer(minLength: 0)
             case .info:
-                Image(systemName: "info.circle.fill").foregroundStyle(Palette.action)
+                Image(systemName: "info.circle.fill").foregroundStyle(Palette.fillPrimary)
                 Text(toast.text).font(.subheadline).lineLimit(3)
                 Spacer(minLength: 0)
             }
@@ -338,9 +338,9 @@ struct FilterPills<T: Hashable & Identifiable>: View {
                             .frame(height: 36)
                             .background {
                                 if on {
-                                    Capsule().fill(Palette.action)
+                                    Capsule().fill(Palette.fillPrimary)
                                         .matchedGeometryEffect(id: "selected", in: pill)
-                                        .shadow(color: Palette.action.opacity(0.3), radius: 6, y: 3)
+                                        .shadow(color: Palette.fillPrimary.opacity(0.3), radius: 6, y: 3)
                                 } else {
                                     Capsule().fill(.clear).glassEffect(.regular.interactive(), in: .capsule)
                                 }

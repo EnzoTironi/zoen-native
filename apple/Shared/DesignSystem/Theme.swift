@@ -21,20 +21,31 @@ extension Color {
     }
 
     /// Cor que muda entre claro e escuro.
-    static func adaptive(light: String, dark: String, lightAlpha: Double = 1, darkAlpha: Double = 1) -> Color {
+    static func adaptive(
+        light: String,
+        dark: String,
+        lightAlpha: Double = 1,
+        darkAlpha: Double = 1,
+        contrastLightAlpha: Double? = nil,
+        contrastDarkAlpha: Double? = nil
+    ) -> Color {
         #if canImport(UIKit)
         Color(UIColor { traits in
-            traits.userInterfaceStyle == .dark
-                ? UIColor(hex: dark, alpha: CGFloat(darkAlpha))
-                : UIColor(hex: light, alpha: CGFloat(lightAlpha))
+            let night = traits.userInterfaceStyle == .dark
+            let contrast = traits.accessibilityContrast == .high
+            let alpha = night
+                ? (contrast ? (contrastDarkAlpha ?? darkAlpha) : darkAlpha)
+                : (contrast ? (contrastLightAlpha ?? lightAlpha) : lightAlpha)
+            return UIColor(hex: night ? dark : light, alpha: CGFloat(alpha))
         })
         #else
         Color(NSColor(name: nil) { appearance in
-            if appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua {
-                NSColor(hex: dark, alpha: CGFloat(darkAlpha))
-            } else {
-                NSColor(hex: light, alpha: CGFloat(lightAlpha))
-            }
+            let night = appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
+            let contrast = NSWorkspace.shared.accessibilityDisplayShouldIncreaseContrast
+            let alpha = night
+                ? (contrast ? (contrastDarkAlpha ?? darkAlpha) : darkAlpha)
+                : (contrast ? (contrastLightAlpha ?? lightAlpha) : lightAlpha)
+            return NSColor(hex: night ? dark : light, alpha: CGFloat(alpha))
         })
         #endif
     }
@@ -54,7 +65,7 @@ extension PlatformColor {
 enum Palette {
     static let background = Color.adaptive(light: "#FFFFFF", dark: "#000000")
     static let textPrimary = Color.adaptive(light: "#1D1D1F", dark: "#F5F5F7")
-    static let textSecondary = Color.adaptive(light: "#1D1D1F", dark: "#F5F5F7", lightAlpha: 0.5, darkAlpha: 0.5)
+    static let textSecondary = Color.adaptive(light: "#1D1D1F", dark: "#F5F5F7", lightAlpha: 0.5, darkAlpha: 0.5, contrastLightAlpha: 0.7, contrastDarkAlpha: 0.7)
     static let textTertiary = Color.adaptive(light: "#1D1D1F", dark: "#F5F5F7", lightAlpha: 0.3, darkAlpha: 0.3)
     static let fillPrimary = Color.adaptive(light: "#1D1D1F", dark: "#F5F5F7")
     static let onAction = Color.adaptive(light: "#F9F9FA", dark: "#1D1D1F")
@@ -64,7 +75,7 @@ enum Palette {
     static let bubbleAgent = Color.adaptive(light: "#FFFFFF", dark: "#1D1D1F", lightAlpha: 0.98, darkAlpha: 0.7)
     static let bubbleUser = Color.adaptive(light: "#FFFFFF", dark: "#1D1D1F", lightAlpha: 0.3, darkAlpha: 0.3)
     static let cellBg = Color.adaptive(light: "#FFFFFF", dark: "#FFFFFF", lightAlpha: 0.6, darkAlpha: 0.05)
-    static let strokePrimary = Color.adaptive(light: "#1D1D1F", dark: "#F5F5F7", lightAlpha: 0.14, darkAlpha: 0.14)
+    static let strokePrimary = Color.adaptive(light: "#1D1D1F", dark: "#F5F5F7", lightAlpha: 0.14, darkAlpha: 0.14, contrastLightAlpha: 0.3, contrastDarkAlpha: 0.3)
     static let strokeSecondary = Color.adaptive(light: "#1D1D1F", dark: "#F5F5F7", lightAlpha: 0.07, darkAlpha: 0.07)
     static let strokeComposer = Color.adaptive(light: "#F5F5F7", dark: "#1D1D1F", lightAlpha: 0.5, darkAlpha: 0.5)
     static let overlay = Color.adaptive(light: "#000000", dark: "#000000", lightAlpha: 0.6, darkAlpha: 0.6)
@@ -86,7 +97,7 @@ enum Palette {
     static let otherBubbleOnBackdrop = bubbleAgent
 
     static var actionGradient: LinearGradient {
-        LinearGradient(colors: [action, actionDeep], startPoint: .topLeading, endPoint: .bottomTrailing)
+        LinearGradient(colors: [fillPrimary, fillPrimary], startPoint: .topLeading, endPoint: .bottomTrailing)
     }
 }
 

@@ -59,6 +59,184 @@
   --zoen-segment-easing: linear(0 0%, 0.056 7%, 0.182 14%, 0.332 21%, 0.48 29%, 0.611 36%, 0.72 43%, 0.807 50%, 0.872 57%, 0.92 64%, 0.954 71%, 0.976 79%, 0.99 86%, 0.999 93%, 1 100%);
   --zoen-color-duration: 150ms;
   --zoen-spring: cubic-bezier(0.2, 0.9, 0.25, 1.1);
+  --zoen-font-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  --zoen-motion-thread-switch-duration: 150ms;
+  --zoen-motion-thread-switch-ease: cubic-bezier(0.4, 0, 0.2, 1);
+  --zoen-motion-finger-release: 240ms;
+  --zoen-motion-finger-ease: cubic-bezier(0.4, 0, 0.2, 1);
+  --zoen-motion-status-duration: 150ms;
+  --zoen-motion-status-ease: ease;
+  --zoen-motion-receipt-duration: 150ms;
+  --zoen-motion-receipt-ease: ease;
+  --zoen-motion-queue-interval: 40ms;
+  --zoen-motion-queue-max: 8;
+  --zoen-motion-caret-duration: 420ms;
+  --zoen-motion-caret-ease: cubic-bezier(0.2, 0.9, 0.25, 1.1);
+  --zoen-motion-caret-hz: 8;
+  --zoen-motion-peek-duration: 220ms;
+  --zoen-motion-peek-ease: cubic-bezier(0, 0, 0.2, 1);
+  --zoen-motion-thread-panel-duration: 220ms;
+  --zoen-motion-thread-panel-ease: cubic-bezier(0, 0, 0.2, 1);
+  --zoen-motion-reaction-grow-duration: 150ms;
+  --zoen-motion-reaction-grow-ease: ease;
+  --zoen-layout-composer-bottom: 42px;
+  --zoen-layout-thread-panel-width: 390px;
+  --zoen-layout-thread-panel-radius: 24px;
+  --zoen-layout-thread-panel-blur: 0px;
+  --zoen-layout-thread-panel-gap: 16px;
+  --zoen-layout-thread-panel-from: 1024px;
+  --zoen-layout-thread-face-overlap: 4px;
+  --zoen-layout-thread-face-max: 3;
+  --zoen-layout-thread-face-below: 4px;
+  --zoen-layout-thread-face-visual: 18px;
+  --zoen-layout-thread-face-hit: 44px;
+  --zoen-layout-broadcast-exit: 100ms;
+  --zoen-layout-thread-root-size: 15px;
+  --zoen-layout-thread-root-line: 19px;
+  --zoen-layout-thread-root-weight: 400;
+  --zoen-layout-pin-max: 3;
+  --zoen-layout-live-location: 15min;
+  --zoen-layout-thread-face: 16px;
+  --zoen-layout-broadcast-chip: 4000ms;
+  --zoen-layout-thread-root-lines: 3;
+  --zoen-layout-thread-swipe: 64px;
+  --zoen-layout-thread-edge: 24px;
+  --zoen-layout-summary-replies: 8;
+  --zoen-layout-reaction-hold: 350ms;
+  --zoen-layout-reaction-max: 8;
+  --zoen-layout-reaction-gap: 8px;
+  --zoen-layout-edit-window: 15min;
+  --zoen-layout-delete-for-all: 48h;
+  --zoen-feel-cold-iphone: 400ms;
+  --zoen-feel-cold-android-35: 700ms;
+  --zoen-feel-cold-android-28: 1200ms;
+  --zoen-feel-cold-web: 1000ms;
+  --zoen-feel-open-thread: 100ms;
+  --zoen-feel-send-bubble: 16ms;
+  --zoen-feel-scroll-p99: 8.3ms;
+  --zoen-feel-call-stage: 150ms;
+  --zoen-feel-call-audio: 1500ms;
+  --zoen-feel-call-audio-ceiling: 3000ms;
+  --zoen-feel-miniapp-snapshot: 16ms;
+  --zoen-feel-miniapp-html: 500ms;
+  --zoen-feel-blur-fallback-alpha: 0.92;
+  --zoen-haptic-send: 10ms;
+  --zoen-haptic-error: 20ms 40ms 20ms;
+  --zoen-haptic-max: 20ms;
+  --zoen-glass-dialog-blur: 0px;
+  --zoen-glass-dialog-stroke: 1px;
+  --zoen-glass-overlay-blur: 8px;
+  --zoen-glass-host-ring: 1px;
+  --zoen-sign-composerBottomInset: 42px;
+  --zoen-sign-bubbleAnchorGap: 12px;
+  --zoen-sign-peekVisible: 8px;
+  --zoen-sign-voiceArmMs: 80ms;
+  --zoen-sign-voiceLockTravel: 48px;
+  --zoen-sign-voiceCancelTravel: 72px;
+  --zoen-sign-receiptDot: 8px;
+  --zoen-sign-receiptOffset: 4px;
+  --zoen-sign-statusAboveComposer: 8px;
+  --zoen-sign-menuAboveAttach: 8px;
+  --zoen-sign-callButtonHeight: 48px;
+  --zoen-sign-callButtonMinWidth: 120px;
+  --zoen-sign-callButtonMinCenterDistance: 80px;
+  --zoen-sign-terminalMaxWidth390: 270px;
+  --zoen-sign-unreadDot: 8px;
+  --zoen-sign-presenceDot: 8px;
+  --zoen-sign-presenceBorder: 2px;
+  --zoen-sign-groupIndent: 16px;
+  --zoen-sign-signOutGap: 24px;
+  --zoen-sign-closeBelowSafeArea: 14px;
+  --zoen-sign-safeTopIslandApprox: 59px;
+  --zoen-sign-searchDebounceMs: 80ms;
+  --zoen-sign-draftDebounceMs: 150ms;
+  --zoen-sign-localSkeletonAfterMs: 50ms;
+  --zoen-sign-clipboardClearMs: 60000ms;
+  --zoen-sign-caretHz: 8Hz;
+  --zoen-sign-relinkChipS: 30s;
+  --zoen-sign-notificationCollapseS: 5s;
+  --zoen-sign-chipHitTarget: 44px;
+  --zoen-sign-flingBlurResumeMs: 80ms;
+  --color-background-primary: transparent;
+  --color-background-secondary: light-dark(rgb(255 255 255 / 0.6), rgb(255 255 255 / 0.05));
+  --color-background-tertiary: light-dark(rgb(29 29 31 / 0.05), rgb(245 245 247 / 0.05));
+  --color-background-inverse: light-dark(#1d1d1f, #f5f5f7);
+  --color-background-ghost: light-dark(rgb(29 29 31 / 0.05), rgb(245 245 247 / 0.05));
+  --color-background-info: rgb(82 138 255 / 0.12);
+  --color-background-danger: light-dark(rgb(218 47 53 / 0.12), rgb(241 85 91 / 0.12));
+  --color-background-success: rgb(0 166 101 / 0.12);
+  --color-background-warning: rgb(255 77 0 / 0.12);
+  --color-background-disabled: light-dark(rgb(29 29 31 / 0.05), rgb(245 245 247 / 0.05));
+  --color-text-primary: light-dark(#1d1d1f, #f5f5f7);
+  --color-text-secondary: light-dark(rgb(29 29 31 / 0.5), rgb(245 245 247 / 0.5));
+  --color-text-tertiary: light-dark(rgb(29 29 31 / 0.3), rgb(245 245 247 / 0.3));
+  --color-text-inverse: light-dark(#f9f9fa, #1d1d1f);
+  --color-text-ghost: light-dark(rgb(29 29 31 / 0.3), rgb(245 245 247 / 0.3));
+  --color-text-info: #528aff;
+  --color-text-danger: light-dark(#da2f35, #f1555b);
+  --color-text-success: #00a665;
+  --color-text-warning: #ff4d00;
+  --color-text-disabled: light-dark(rgb(29 29 31 / 0.3), rgb(245 245 247 / 0.3));
+  --color-border-primary: light-dark(rgb(29 29 31 / 0.14), rgb(245 245 247 / 0.14));
+  --color-border-secondary: light-dark(rgb(29 29 31 / 0.07), rgb(245 245 247 / 0.07));
+  --color-border-tertiary: light-dark(rgb(29 29 31 / 0.07), rgb(245 245 247 / 0.07));
+  --color-border-inverse: light-dark(#1d1d1f, #f5f5f7);
+  --color-border-ghost: light-dark(rgb(29 29 31 / 0.07), rgb(245 245 247 / 0.07));
+  --color-border-info: #528aff;
+  --color-border-danger: light-dark(#da2f35, #f1555b);
+  --color-border-success: #00a665;
+  --color-border-warning: #ff4d00;
+  --color-border-disabled: light-dark(rgb(29 29 31 / 0.07), rgb(245 245 247 / 0.07));
+  --color-ring-primary: light-dark(rgb(0 0 0 / 0.5), rgb(255 255 255 / 0.5));
+  --color-ring-secondary: light-dark(rgb(29 29 31 / 0.14), rgb(245 245 247 / 0.14));
+  --color-ring-inverse: light-dark(#f9f9fa, #1d1d1f);
+  --color-ring-info: #528aff;
+  --color-ring-danger: light-dark(#da2f35, #f1555b);
+  --color-ring-success: #00a665;
+  --color-ring-warning: #ff4d00;
+  --font-sans: Inter, system-ui, sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  --font-weight-normal: 400;
+  --font-weight-medium: 500;
+  --font-weight-semibold: 500;
+  --font-weight-bold: 500;
+  --font-text-xs-size: 13px;
+  --font-text-xs-line-height: 16px;
+  --font-text-sm-size: 14px;
+  --font-text-sm-line-height: 18.2px;
+  --font-text-md-size: 15px;
+  --font-text-md-line-height: 19px;
+  --font-text-lg-size: 16px;
+  --font-text-lg-line-height: 21px;
+  --font-heading-xs-size: 15px;
+  --font-heading-xs-line-height: 18px;
+  --font-heading-sm-size: 20px;
+  --font-heading-sm-line-height: 26.4px;
+  --font-heading-md-size: 20px;
+  --font-heading-md-line-height: 26.4px;
+  --font-heading-lg-size: 24px;
+  --font-heading-lg-line-height: 31.2px;
+  --font-heading-xl-size: 32px;
+  --font-heading-xl-line-height: 32px;
+  --font-heading-2xl-size: 32px;
+  --font-heading-2xl-line-height: 32px;
+  --font-heading-3xl-size: 32px;
+  --font-heading-3xl-line-height: 32px;
+  --border-radius-xs: 4px;
+  --border-radius-sm: 8px;
+  --border-radius-md: 12px;
+  --border-radius-lg: 16px;
+  --border-radius-xl: 24px;
+  --border-radius-full: 9999px;
+  --border-width-regular: 1px;
+  --shadow-hairline: none;
+  --shadow-sm: none;
+  --shadow-md: none;
+  --shadow-lg: none;
+  --zoen-motion: full;
+  --zoen-transparency: full;
+  --zoen-slot: timeline;
+  --zoen-font-scale: 1;
   --z-bg: var(--zoen-bg);
   --z-surface: var(--zoen-regular-bg);
   --z-muted: var(--zoen-cell-bg);
@@ -180,7 +358,18 @@ button { font: inherit; color: inherit; border: 0; background: none; padding: 0;
 .z-snap-x > * { scroll-snap-align: center; flex: none; }
 
 @media (prefers-reduced-motion: reduce) {
-  :root { --zoen-press-duration: 1ms; --zoen-segment-duration: 1ms; --zoen-spring: ease-out; }
+  :root {
+    --zoen-press-duration: 1ms;
+    --zoen-segment-duration: 1ms;
+    --zoen-spring: ease-out;
+    --zoen-motion: reduce;
+    --zoen-motion-thread-switch-duration: 1ms;
+    --zoen-motion-finger-release: 0ms;
+    --zoen-motion-caret-duration: 0ms;
+    --zoen-motion-peek-duration: 0ms;
+    --zoen-motion-thread-panel-duration: 1ms;
+    --zoen-motion-reaction-grow-duration: 0ms;
+  }
   *, *::before, *::after {
     animation-duration: 1ms !important;
     animation-iteration-count: 1 !important;
@@ -193,4 +382,33 @@ button { font: inherit; color: inherit; border: 0; background: none; padding: 0;
     background: linear-gradient(var(--zoen-thin-bg), var(--zoen-thin-bg)), var(--zoen-bg);
     box-shadow: inset 0 0 0 1px var(--zoen-stroke-primary);
   }
+}
+
+@media (prefers-contrast: more) {
+  :root {
+    --zoen-stroke-primary: rgb(29 29 31 / 0.3);
+    --zoen-text-secondary: rgb(29 29 31 / 0.7);
+    --color-text-secondary: rgb(29 29 31 / 0.7);
+    --color-border-primary: rgb(29 29 31 / 0.3);
+    --color-ring-secondary: rgb(29 29 31 / 0.3);
+  }
+  :root[data-theme="dark"] {
+    --zoen-stroke-primary: rgb(245 245 247 / 0.3);
+    --zoen-text-secondary: rgb(245 245 247 / 0.7);
+    --color-text-secondary: rgb(245 245 247 / 0.7);
+    --color-border-primary: rgb(245 245 247 / 0.3);
+    --color-ring-secondary: rgb(245 245 247 / 0.3);
+  }
+}
+@media (prefers-contrast: more) and (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --zoen-stroke-primary: rgb(245 245 247 / 0.3);
+    --zoen-text-secondary: rgb(245 245 247 / 0.7);
+    --color-text-secondary: rgb(245 245 247 / 0.7);
+    --color-border-primary: rgb(245 245 247 / 0.3);
+    --color-ring-secondary: rgb(245 245 247 / 0.3);
+  }
+}
+@media (prefers-reduced-transparency: reduce) {
+  :root { --zoen-transparency: reduce; }
 }
