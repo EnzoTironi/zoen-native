@@ -55,11 +55,12 @@ fun FileScreen(model: ZoenViewModel, state: AppState, item: ItemDetail, modifier
     val context = LocalContext.current
     val tooLarge = stringResource(R.string.file_open_too_large)
     val imageTooLarge = stringResource(R.string.file_image_edit_too_large)
+    val somethingWrong = stringResource(R.string.something_wrong)
     val read by produceState(FileRead(), item.id, item.version, state.revision) {
         value = try { FileRead(item.id, item.version, model.repository.query { readFileVersion(it, item.id, item.version, tooLarge) }) }
         catch (error: Exception) {
             if (error is CancellationException) throw error
-            FileRead(item.id, item.version, failure = error.message ?: context.getString(R.string.something_wrong))
+            FileRead(item.id, item.version, failure = error.message ?: somethingWrong)
         }
     }
     val currentRead = read.takeIf { it.id == item.id && it.version == item.version }
