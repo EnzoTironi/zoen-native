@@ -94,6 +94,7 @@ struct VersionPreview: View {
     @State private var currentVersion: UInt32 = 0
     @State private var canRestore = false
     @State private var observedPlanHash: String?
+    @State private var planHashFailed = false
 
     var body: some View {
         Group {
@@ -130,7 +131,26 @@ struct VersionPreview: View {
         .navigationBarTitleDisplayMode(.inline)
         #endif
         .safeAreaInset(edge: .bottom) {
-            if canRestore && version.number != currentVersion {
+            if item.kindId == "plan", observedPlanHash == nil {
+                VStack(spacing: 6) {
+                    if planHashFailed {
+                        Text("Couldn't open this page")
+                            .font(.callout)
+                            .foregroundStyle(Palette.danger)
+                        Button("Try again") {
+                            refreshPermission()
+                            loadObservedPlanHash()
+                        }
+                        .accessibilityIdentifier("version.hash.retry")
+                    } else {
+                        ProgressView()
+                            .accessibilityIdentifier("version.hash.loading")
+                    }
+                }
+                .frame(maxWidth: .infinity)
+                .padding(.horizontal, 18)
+                .padding(.bottom, 8)
+            } else if canRestore && version.number != currentVersion {
                 Button {
                     restore()
                 } label: {
@@ -148,14 +168,20 @@ struct VersionPreview: View {
             }
         }
         .sensoryFeedback(.success, trigger: bump)
-        .task(id: model.revision) { refreshPermission() }
+        .task(id: model.revision) {
+            refreshPermission()
+            loadObservedPlanHash()
+        }
     }
 
     private func restore() {
         refreshPermission()
         guard canRestore, version.number != currentVersion else { return }
         if item.kindId == "plan" {
-            guard let hash = observedPlanHash else { return }
+            guard let hash = observedPlanHash else {
+                model.show(.init(kind: .error, text: String(localized: "Couldn't open this page")), seconds: 4)
+                return
+            }
             do {
                 let it = try model.core.restorePlanVersion(itemId: item.id, version: version.number, observedHash: hash)
                 model.refresh()
@@ -166,7 +192,7 @@ struct VersionPreview: View {
             } catch let error as CoreError {
                 model.refresh()
                 if case .Stale = error {
-                    model.show(.init(kind: .info, text: String(localized: "The page changed. Review it before editing.")), seconds: 4)
+                    model.show(.init(kind: .info, text: error.message), seconds: 4)
                 } else {
                     model.show(.init(kind: .error, text: error.message))
                 }
@@ -202,14 +228,22 @@ struct VersionPreview: View {
     private func refreshPermission() {
         currentVersion = (try? model.core.item(itemId: item.id).version) ?? item.version
         if item.kindId == "plan" {
-            if observedPlanHash == nil {
-                observedPlanHash = try? model.core.planPage(itemId: item.id).contentHash
-            }
             canRestore = allowsRestore && ((try? model.core.planPage(itemId: item.id).legacyEditAdmitted) ?? false)
         } else if item.kindId == "page" {
             canRestore = allowsRestore && ((try? model.core.page(itemId: item.id).canEdit) ?? false)
         } else {
             canRestore = allowsRestore
+        }
+    }
+
+    /// Hash lido na abertura. Restaurar não chama `planPage` de novo para reler o hash.
+    private func loadObservedPlanHash() {
+        guard item.kindId == "plan", observedPlanHash == nil else { return }
+        planHashFailed = false
+        if let hash = try? model.core.planPage(itemId: item.id).contentHash, !hash.isEmpty {
+            observedPlanHash = hash
+        } else {
+            planHashFailed = true
         }
     }
 }

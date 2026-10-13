@@ -30,6 +30,7 @@ import xyz.tironi.zoen.miniapps.SnapshotCard
 import xyz.tironi.zoen.miniapps.WidgetSnapshot
 import xyz.tironi.zoen.pages.styledPageText
 import xyz.tironi.zoen.pages.pageTextStyle
+import xyz.tironi.zoen.pages.planRestoreNotice
 
 private data class HistoricalContent(val item: ItemDetail, val page: PageDto?, val file: FileVersionContent?, val canRestore: Boolean)
 private data class HistoricalRead(val content: HistoricalContent? = null, val failure: String? = null)
@@ -61,6 +62,7 @@ fun VersionPreviewScreen(model: ZoenViewModel, id: String, number: UInt, back: (
     val saved = stringResource(R.string.saved)
     val pendingSync = stringResource(R.string.page_pending_sync)
     val draftSaved = stringResource(R.string.page_draft_saved)
+    val changed = stringResource(R.string.plan_changed)
     Scaffold(snackbarHost = { snackbar?.let { SnackbarHost(it, Modifier.testTag("app-snackbar")) } }, topBar = { ScreenBar(stringResource(R.string.page_preview_version, number.toInt()), back, actions = {
         if (content != null) IconButton(enabled = content.file == null || content.file.bytes != null, onClick = { model.launch {
             val historical = checkNotNull(content)
@@ -147,6 +149,9 @@ fun VersionPreviewScreen(model: ZoenViewModel, id: String, number: UInt, back: (
                         else -> saved
                     })
                     back()
+                } catch (error: Exception) {
+                    if (error is CancellationException) throw error
+                    model.notify(planRestoreNotice(error, changed))
                 } finally { busy = false }
             }
         }) { Text(stringResource(R.string.restore)) }

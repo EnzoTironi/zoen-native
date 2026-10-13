@@ -299,7 +299,10 @@ struct PlanItemView: View {
     private func admitted(version: UInt32?, contentHash: String?) -> Bool {
         guard let current = try? model.core.planPage(itemId: itemId), current.legacyEditAdmitted,
               version == current.version, contentHash == current.contentHash else {
-            model.show(.init(kind: .info, text: String(localized: "The page changed. Review it before editing.")), seconds: 4)
+            model.show(.init(kind: .info, text: AppLocale.pick(
+                "A página mudou. Revise antes de editar.",
+                "The page changed. Review it before editing."
+            )), seconds: 4)
             load()
             return false
         }
@@ -329,7 +332,7 @@ struct PlanItemView: View {
         } catch let error as CoreError {
             model.refresh()
             if case .Stale = error {
-                model.show(.init(kind: .info, text: String(localized: "The page changed. Review it before editing.")), seconds: 4)
+                model.show(.init(kind: .info, text: error.message), seconds: 4)
                 load()
             } else {
                 model.show(.init(kind: .error, text: error.message))

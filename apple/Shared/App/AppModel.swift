@@ -322,7 +322,7 @@ final class AppModel {
         } catch let error as CoreError {
             refresh()
             if case .Stale = error {
-                show(.init(kind: .info, text: String(localized: "The page changed. Review it before editing.")), seconds: 4)
+                show(.init(kind: .info, text: error.message), seconds: 4)
             } else {
                 show(.init(kind: .error, text: error.message))
             }

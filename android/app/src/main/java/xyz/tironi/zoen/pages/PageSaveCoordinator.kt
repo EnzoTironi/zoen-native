@@ -4,6 +4,7 @@ import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
+import xyz.tironi.zoen.core.CoreException
 import xyz.tironi.zoen.core.PageDto
 import xyz.tironi.zoen.data.ZoenRepository
 
@@ -11,6 +12,10 @@ data class PageRestoreResult(val page: PageDto, val draft: PageDraft?, val draft
 
 internal fun confirmedPlanHash(kindId: String, observedHash: String?): String? =
     if (kindId == "plan") observedHash else null
+
+/** Texto de uma restauração de Plano que falhou. Recusa stale usa a frase da página; o resto mantém a mensagem da exceção. Quem chama relança [kotlinx.coroutines.CancellationException] antes. */
+internal fun planRestoreNotice(error: Exception, pageChanged: String): String =
+    if (error is CoreException.Stale) pageChanged else error.message.orEmpty()
 
 class PageSaveCoordinator {
     private class Editor(

@@ -27,6 +27,7 @@ import xyz.tironi.zoen.data.FileAccess
 import xyz.tironi.zoen.miniapps.MiniAppDetailsButton
 import xyz.tironi.zoen.pages.PlanPageView
 import xyz.tironi.zoen.pages.planPageText
+import xyz.tironi.zoen.pages.planRestoreNotice
 
 private data class PlanReadState(val page: PlanPageDto? = null, val revision: Long = -1, val failure: String? = null)
 
@@ -58,6 +59,7 @@ fun ItemScreen(model: ZoenViewModel, state: AppState, id: String, navigate: (Nav
     val pendingSync = stringResource(R.string.page_pending_sync)
     val draftSaved = stringResource(R.string.page_draft_saved)
     val draftRecovery = stringResource(R.string.page_recovery_before_restore)
+    val changed = stringResource(R.string.plan_changed)
     DisposableEffect(id) { model.viewingItem(id); onDispose { model.viewingItem(null) } }
     if (item == null) {
         Scaffold(topBar = { ScreenBar(stringResource(R.string.files), back) }) { padding -> EmptyState(stringResource(R.string.unavailable), stringResource(R.string.unavailable_detail), Modifier.padding(padding)) }
@@ -134,12 +136,17 @@ fun ItemScreen(model: ZoenViewModel, state: AppState, id: String, navigate: (Nav
             restore = null; versions = false
             val owner = state.me?.id ?: return@TextButton
             model.launch {
-                val fresh = model.pageSaves.restoreVersion(model.repository, id, owner, number, restoreHash)
-                model.notify(fresh?.saveError ?: when {
-                    fresh?.pendingSync == true -> pendingSync
-                    fresh?.unsaved == true -> draftSaved
-                    else -> saved
-                })
+                try {
+                    val fresh = model.pageSaves.restoreVersion(model.repository, id, owner, number, restoreHash)
+                    model.notify(fresh?.saveError ?: when {
+                        fresh?.pendingSync == true -> pendingSync
+                        fresh?.unsaved == true -> draftSaved
+                        else -> saved
+                    })
+                } catch (error: Exception) {
+                    if (error is CancellationException) throw error
+                    model.notify(planRestoreNotice(error, changed))
+                }
             }
         }) { Text(stringResource(R.string.restore)) }
     }, dismissButton = { TextButton(onClick = { restore = null }) { Text(stringResource(R.string.cancel)) } }) }
