@@ -12,6 +12,12 @@ use sha2::{Digest, Sha256};
 use crate::group::*;
 use crate::{leaf_of, mls, validate_key_package, Leaf, MlsError, SUITE};
 
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum OwnLeaf {
+    Ours,
+    Removed,
+}
+
 pub struct ExternalDevice<'a, P, S> {
     provider: &'a P,
     signer: &'a S,
@@ -75,17 +81,17 @@ where
         if group.ciphersuite() != SUITE {
             return Err(MlsError::Credential);
         }
-        self.require_own_leaf(&group)?;
+        self.own_leaf(&group)?;
         Ok(group)
     }
 
-    fn require_own_leaf(&self, group: &MlsGroup) -> Result<(), MlsError> {
+    fn own_leaf(&self, group: &MlsGroup) -> Result<OwnLeaf, MlsError> {
         let leaves = group.treesync().leaves();
         let Some(slot) = leaves.get(group.own_leaf_index().usize()) else {
             return Err(MlsError::Credential);
         };
         let Some(node) = slot.as_ref() else {
-            return Err(MlsError::Credential);
+            return Ok(OwnLeaf::Removed);
         };
         if node.signature_key().as_slice() != self.public.as_slice() {
             return Err(MlsError::Credential);
@@ -93,16 +99,25 @@ where
         if leaf_of(node.credential(), node.signature_key().as_slice())? != self.leaf {
             return Err(MlsError::Credential);
         }
-        Ok(())
+        Ok(OwnLeaf::Ours)
     }
 
     pub fn group_state(&self, space: &str) -> Result<GroupState, MlsError> {
-        match self.load(space) {
-            Ok(group) if group.pending_commit().is_some() => Ok(GroupState::Pending),
-            Ok(group) if group.is_active() => Ok(GroupState::Ready),
-            Ok(_) | Err(MlsError::NoGroup) => Ok(GroupState::Missing),
-            Err(error) => Err(error),
+        let group = match self.load(space) {
+            Ok(group) => group,
+            Err(MlsError::NoGroup) => return Ok(GroupState::Missing),
+            Err(error) => return Err(error),
+        };
+        if self.own_leaf(&group)? == OwnLeaf::Removed {
+            return Ok(GroupState::Missing);
         }
+        if group.pending_commit().is_some() {
+            return Ok(GroupState::Pending);
+        }
+        if group.is_active() {
+            return Ok(GroupState::Ready);
+        }
+        Ok(GroupState::Missing)
     }
 
     pub fn key_packages(&self, count: usize, last_resort: bool) -> Result<Vec<Vec<u8>>, MlsError> {
@@ -187,7 +202,10 @@ where
 
     pub fn seal(&self, space: &str, plaintext: &[u8]) -> Result<Vec<u8>, MlsError> {
         let mut group = self.load(space)?;
-        if !group.is_active() || group.pending_commit().is_some() {
+        if self.own_leaf(&group)? == OwnLeaf::Removed
+            || !group.is_active()
+            || group.pending_commit().is_some()
+        {
             return Err(MlsError::Mls("wait for the membership commit".into()));
         }
         group
@@ -215,6 +233,9 @@ where
             })
             .collect::<Result<Vec<_>, MlsError>>()?;
         let mut group = self.load(space)?;
+        if self.own_leaf(&group)? == OwnLeaf::Removed || !group.is_active() {
+            return Err(MlsError::Mls("wait for the membership commit".into()));
+        }
         let gone = group
             .members()
             .filter_map(|member| {
@@ -250,10 +271,13 @@ where
         admitted_sender: &Leaf,
     ) -> Result<Opened, MlsError> {
         let mut group = match self.load(space) {
-            Ok(group) if group.is_active() => group,
-            Ok(_) | Err(MlsError::NoGroup) => return Ok(Opened::NotMember),
+            Ok(group) => group,
+            Err(MlsError::NoGroup) => return Ok(Opened::NotMember),
             Err(error) => return Err(error),
         };
+        if self.own_leaf(&group)? == OwnLeaf::Removed || !group.is_active() {
+            return Ok(Opened::NotMember);
+        }
         let msg = MlsMessageIn::tls_deserialize_exact(data)
             .map_err(|e| MlsError::Decode(e.to_string()))?
             .try_into_protocol_message()
@@ -501,6 +525,14 @@ mod tests {
         );
     }
 
+    fn assert_membership_wait<T>(result: Result<T, MlsError>) {
+        match result {
+            Err(MlsError::Mls(message)) if message == "wait for the membership commit" => {}
+            Err(error) => panic!("expected the membership wait, got {error}"),
+            Ok(_) => panic!("membership change was accepted"),
+        }
+    }
+
     fn admit(
         owner: &ExternalDevice<'_, OpenMlsRustCrypto, HostSigner>,
         joiner: &ExternalDevice<'_, OpenMlsRustCrypto, HostSigner>,
@@ -537,6 +569,7 @@ mod tests {
         assert_credential(other.seal(space, b"stolen"));
         assert_credential(other.open(space, &sealed, &roster, &owner_leaf));
         assert_credential(other.group_state(space));
+        assert_credential(other.forget(space));
         assert_eq!(stored(&provider), before);
         assert_eq!(owner.checkpoint(space).unwrap(), checkpoint);
         let again = owner.seal(space, b"still ours").unwrap();
@@ -647,9 +680,23 @@ mod tests {
             .write_own_leaf_index(&group_id(space), &blank)
             .unwrap();
         let before = stored(&provider_a);
-        assert_credential(a.seal(space, b"blank"));
-        assert_credential(a.open(space, b"blank", &remaining, &leaf_a));
+        assert_membership_wait(a.seal(space, b"blank"));
+        assert_membership_wait(a.commit(space, &[], &BTreeSet::new()));
+        assert_eq!(
+            a.open(space, b"blank", &remaining, &leaf_a).unwrap(),
+            Opened::NotMember
+        );
+        assert_eq!(a.group_state(space).unwrap(), GroupState::Missing);
         assert_eq!(stored(&provider_a), before);
+        a.forget(space).unwrap();
+        assert!(MlsGroup::load(provider_a.storage(), &group_id(space))
+            .unwrap()
+            .is_none());
+        assert!(PublicGroup::load(provider_a.storage(), &group_id(space))
+            .unwrap()
+            .is_none());
+        assert_eq!(a.group_state(space).unwrap(), GroupState::Missing);
+        assert!(matches!(a.seal(space, b"gone"), Err(MlsError::NoGroup)));
     }
 
     #[test]
