@@ -634,9 +634,12 @@ impl Engine {
     /// each Space's group for its epoch once: a long import stays linear, not quadratic.
     ///
     /// At most [`APPLICATION_IN_FLIGHT`] application messages per Space are unpublished
-    /// or still awaiting accept. OpenMLS drops a generation more than that far behind
-    /// the one it has already opened (`TooDistantInThePast`), and a rate-limit reject
-    /// retries the older ciphertext after a later one has been sequenced.
+    /// or still awaiting accept. Once a Space is at that cap, every later head of that
+    /// same Space stays queued, in order, until a confirmation frees a slot. Heads of
+    /// other Spaces keep publishing, each under the same cap. OpenMLS drops a generation
+    /// more than that far behind the one it has already opened (`TooDistantInThePast`),
+    /// and a rate-limit reject retries the older ciphertext after a later one has been
+    /// sequenced.
     pub fn outbox_envelopes_except(&self, sent: &HashMap<String, Option<u64>>) -> Vec<Envelope> {
         let mut ready = HashMap::new();
         // A Welcome goes out only once its commit is in: sent together, a commit held back
@@ -652,8 +655,12 @@ impl Engine {
                 *in_flight.entry(head.space.clone()).or_default() += 1;
             }
         }
+        let mut blocked: HashSet<String> = HashSet::new();
         let mut out = Vec::new();
         for p in heads {
+            if blocked.contains(&p.space) {
+                continue;
+            }
             if p.failed || sent.contains_key(&p.client_id) || held.contains(&p.client_id) {
                 continue;
             }
@@ -694,7 +701,8 @@ impl Engine {
             if env.sealed_kind() == Some(SealedKind::Application) {
                 let n = in_flight.get(env.space()).copied().unwrap_or(0);
                 if n >= Self::APPLICATION_IN_FLIGHT {
-                    break;
+                    blocked.insert(env.space().to_string());
+                    continue;
                 }
                 *in_flight.entry(env.space().to_string()).or_default() += 1;
             }

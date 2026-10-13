@@ -2545,4 +2545,199 @@ mod tests {
             "{err:?}"
         );
     }
+
+    /// Space A already has five application generations in flight. Its sixth
+    /// application, and anything newer in that same Space, stays queued. Space B
+    /// still publishes.
+    #[test]
+    fn publish_window_lets_the_next_space_through() {
+        use roda_log::Signer;
+        use roda_mls::sealed::state_key;
+        use std::collections::{BTreeSet, HashMap};
+
+        let mut engine = Engine::open(":memory:").unwrap();
+        let (root_secret, _, _) = engine
+            .create_account("Ana", "ana", "http://relay.test")
+            .unwrap();
+        let author = engine.net.author.clone().unwrap();
+        let space_a = "sp_cap_a";
+        assert_eq!(
+            engine.ingest(ordered(
+                &engine,
+                Envelope::plain(&author.sign_event(
+                    space_a,
+                    "created-a",
+                    1,
+                    None,
+                    EventBody::SpaceCreated {
+                        title: "A".into(),
+                        kind: SpaceKind::Group,
+                        privacy: Privacy::EndToEnd,
+                    },
+                )),
+            )),
+            Ingest::Applied
+        );
+        engine.create_mls_group(space_a).unwrap();
+
+        let peer_author = Author::device(&Signer::from_secret(&root_secret), Signer::generate());
+        let mut peer_conn = Connection::open_in_memory().unwrap();
+        roda_mls::migrate(&mut peer_conn).unwrap();
+        let peer = Device::new(
+            &peer_conn,
+            state_key(&peer_author.key.secret()),
+            &peer_author.identity,
+            peer_author.key.secret(),
+            peer_author.cert.as_deref().unwrap(),
+        )
+        .unwrap();
+        let packages = peer.key_packages(1, false).unwrap();
+        let adding = engine
+            .device()
+            .unwrap()
+            .commit(space_a, &packages, &Default::default())
+            .unwrap();
+        assert_eq!(
+            engine.ingest(ordered(
+                &engine,
+                Envelope::sealed(
+                    &author,
+                    space_a,
+                    "add-peer",
+                    2,
+                    seen(&engine, space_a).as_ref(),
+                    Sealed::new(SealedKind::Commit, SUITE_ID, adding.commit),
+                ),
+            )),
+            Ingest::Applied
+        );
+        let roster: BTreeSet<String> = BTreeSet::from([author.identity.clone()]);
+        let welcome_bytes = adding.welcome.unwrap();
+        assert!(peer.join(space_a, &welcome_bytes, &roster).unwrap());
+        assert_eq!(
+            engine.ingest(ordered(
+                &engine,
+                Envelope::sealed(
+                    &author,
+                    space_a,
+                    "welcome-peer",
+                    3,
+                    seen(&engine, space_a).as_ref(),
+                    Sealed::new(SealedKind::Welcome, SUITE_ID, welcome_bytes),
+                ),
+            )),
+            Ingest::Applied
+        );
+
+        let space_b = "sp_cap_b";
+        assert_eq!(
+            engine.ingest(ordered(
+                &engine,
+                Envelope::plain(&author.sign_event(
+                    space_b,
+                    "created-b",
+                    1,
+                    None,
+                    EventBody::SpaceCreated {
+                        title: "B".into(),
+                        kind: SpaceKind::Group,
+                        privacy: Privacy::Closed,
+                    },
+                )),
+            )),
+            Ingest::Applied
+        );
+
+        let mut a_messages = Vec::new();
+        for i in 0..6 {
+            a_messages.push(
+                engine
+                    .append_synced(
+                        space_a,
+                        &author,
+                        1_000 + i,
+                        EventBody::MessagePosted {
+                            message: format!("a{i}"),
+                            text: format!("page-{i}"),
+                            attaches: None,
+                            reply: None,
+                        },
+                    )
+                    .unwrap(),
+            );
+        }
+        let b_message = engine
+            .append_synced(
+                space_b,
+                &author,
+                2_000,
+                EventBody::MessagePosted {
+                    message: "b".into(),
+                    text: "other-space".into(),
+                    attaches: None,
+                    reply: None,
+                },
+            )
+            .unwrap();
+        assert!(engine.mls_seal_outbox().unwrap());
+        let handshake = engine
+            .handshake_event(
+                space_a,
+                Sealed::new(SealedKind::Commit, SUITE_ID, b"later-commit".to_vec()),
+            )
+            .unwrap();
+        assert!(matches!(
+            &handshake.body,
+            EventBody::Sealed { kind } if kind == "Commit"
+        ));
+        engine.store.outbox_put(&handshake).unwrap();
+        assert!(a_messages[5].at_ms < b_message.at_ms);
+        assert!(b_message.at_ms < handshake.at_ms);
+
+        let order: Vec<String> = engine
+            .store
+            .outbox()
+            .unwrap()
+            .into_iter()
+            .map(|pending| pending.event.client_id)
+            .collect();
+        let sixth_at = order
+            .iter()
+            .position(|id| id == &a_messages[5].client_id)
+            .unwrap();
+        let b_at = order
+            .iter()
+            .position(|id| id == &b_message.client_id)
+            .unwrap();
+        let handshake_at = order
+            .iter()
+            .position(|id| id == &handshake.client_id)
+            .unwrap();
+        assert!(sixth_at < b_at && b_at < handshake_at);
+
+        let mut sent = HashMap::new();
+        for message in a_messages.iter().take(5) {
+            sent.insert(message.client_id.clone(), Some(0u64));
+        }
+        let offered = engine.outbox_envelopes_except(&sent);
+        assert!(
+            offered
+                .iter()
+                .any(|env| env.client_id() == b_message.client_id),
+            "space B is missing from the publish batch"
+        );
+        assert!(
+            offered
+                .iter()
+                .all(|env| env.client_id() != a_messages[5].client_id),
+            "A's sixth application left while five were in flight"
+        );
+        assert!(
+            offered
+                .iter()
+                .all(|env| env.client_id() != handshake.client_id),
+            "A's later handshake overtook the held application"
+        );
+        assert!(offered.iter().all(|env| env.space() != space_a));
+    }
 }
