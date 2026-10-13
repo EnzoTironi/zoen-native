@@ -671,3 +671,82 @@ test('a lost fetch before confirming keeps the pending box and retries into link
   assert.equal(linkForm(), false);
   assert.equal(ops.some((op) => op.kind === 'create_link'), false);
 });
+
+test('a fetch still inside complete_link cannot replace the linked vault', async (t) => {
+  install(t);
+  const ops: CoreOperation[] = [];
+  const saves: StoredSession[] = [];
+  let current: StoredSession = { kind: 'pending', pending: pendingLink };
+  let releaseFirst = (_account: string) => {};
+  const firstComplete = new Promise<string>((resolve) => { releaseFirst = resolve; });
+  let completions = 0;
+  const core = {
+    bytes: async (operation: CoreOperation) => {
+      ops.push(operation);
+      return new TextEncoder().encode(operation.kind === 'request' ? JSON.stringify(operation) : operation.kind);
+    },
+    text: async (operation: CoreOperation) => {
+      ops.push(operation);
+      if (operation.kind === 'decode_server') return new TextDecoder().decode(operation.bytes);
+      if (operation.kind === 'complete_link') {
+        completions += 1;
+        if (completions === 1) return firstComplete;
+        return JSON.stringify(account);
+      }
+      throw new Error(`Unexpected test operation ${operation.kind}.`);
+    },
+  };
+  const vault = {
+    device: async () => deviceKey,
+    sign: async () => new Uint8Array(64),
+    load: async () => JSON.parse(JSON.stringify(current)) as StoredSession,
+    save: async (session: StoredSession) => {
+      current = JSON.parse(JSON.stringify(session)) as StoredSession;
+      saves.push(current);
+    },
+  };
+  const pairing = new Pairing(vault, core, () => {});
+  t.after(() => pairing.stop());
+  await pairing.start('https://relay.example', { kind: 'pending', pending: pendingLink });
+  socket().open(); await settle();
+  socket().frame(challenge); await settle();
+  socket().frame({ kind: 'ready', identity: deviceKey, registered: false });
+  await until(() => ops.some((op) => op.kind === 'request' && op.op === 'fetch_link'));
+  const first = ops.find((op) => op.kind === 'request' && op.op === 'fetch_link');
+  assert.ok(first && first.kind === 'request');
+  socket().frame({ kind: 'response', id: first.requestId, value: { kind: 'link', sealed: [9] } });
+  await until(() => completions === 1);
+  const opened = socket();
+  opened.close();
+  await settle();
+  t.mock.timers.tick(1_000);
+  await settle();
+  assert.ok(socket() !== opened);
+  socket().open(); await settle();
+  socket().frame(challenge); await settle();
+  socket().frame({ kind: 'ready', identity: deviceKey, registered: false });
+  for (let i = 0; i < 8; i++) await settle();
+  const second = ops.filter((op) => op.kind === 'request' && op.op === 'fetch_link' && op.requestId !== first.requestId).at(-1);
+  let secondLinked = false;
+  if (second && second.kind === 'request') {
+    socket().frame({ kind: 'response', id: second.requestId, value: { kind: 'link', sealed: [9] } });
+    await until(() => ops.some((op) => op.kind === 'request' && op.op === 'ack_link'));
+    const receipt = ops.find((op) => op.kind === 'request' && op.op === 'ack_link');
+    assert.ok(receipt && receipt.kind === 'request');
+    socket().frame({ kind: 'response', id: receipt.requestId, value: { kind: 'done' } });
+    await until(() => current.kind === 'linked');
+    secondLinked = true;
+  }
+  releaseFirst(JSON.stringify(account));
+  for (let i = 0; i < 12; i++) await settle();
+  if (!secondLinked) {
+    await until(() => ops.some((op) => op.kind === 'request' && op.op === 'ack_link'));
+    const receipt = ops.filter((op) => op.kind === 'request' && op.op === 'ack_link').at(-1);
+    assert.ok(receipt && receipt.kind === 'request');
+    socket().frame({ kind: 'response', id: receipt.requestId, value: { kind: 'done' } });
+    await until(() => current.kind === 'linked');
+    for (let i = 0; i < 12; i++) await settle();
+  }
+  assert.equal(current.kind, 'linked');
+  assert.equal(saves.at(-1)?.kind, 'linked');
+});

@@ -81,14 +81,17 @@ export class Pairing {
     return undefined;
   }
 
-  /** A bare pending session cannot replace an account already saved as `confirming`. */
+  /** A pending save loads the vault first and never replaces a durable linked session. */
   private async persist(session: StoredSession): Promise<boolean> {
-    if (session.kind === 'pending' && session.confirming === undefined) {
+    if (session.kind === 'pending') {
       const durable = await this.vault.load();
-      if (durable.kind === 'pending' && durable.confirming !== undefined) return false;
-      if (this.confirming) {
-        await this.vault.save({ kind: 'pending', pending: session.pending, confirming: this.confirming });
-        return true;
+      if (durable.kind === 'linked') return false;
+      if (session.confirming === undefined) {
+        if (durable.kind === 'pending' && durable.confirming !== undefined) return false;
+        if (this.confirming) {
+          await this.vault.save({ kind: 'pending', pending: session.pending, confirming: this.confirming });
+          return true;
+        }
       }
     }
     await this.vault.save(session);
@@ -98,36 +101,45 @@ export class Pairing {
   private async fetch(): Promise<void> {
     if (!this.pending || this.canceled || !this.transport || this.confirming || this.fetching) return;
     this.fetching = true;
-    let result: Record<string, unknown>;
+    let release = true;
     try {
-      result = object(await this.transport.request('fetch_link', this.pending.box_id));
-    } catch (error) {
-      if (this.lostFetch(error)) {
-        this.scheduleFetchRetry();
+      let result: Record<string, unknown>;
+      try {
+        result = object(await this.transport.request('fetch_link', this.pending.box_id));
+      } catch (error) {
+        if (this.lostFetch(error)) {
+          this.scheduleFetchRetry();
+          return;
+        }
+        throw error;
+      }
+      if (this.canceled || this.confirming || !this.pending) return;
+      clearTimeout(this.fetchTimer);
+      this.fetchAttempt = 0;
+      if (string(result.kind) !== 'link') throw new Error('The relay answered a different pairing request.');
+      if (result.sealed === null) {
+        this.poll = setTimeout(() => { void this.fetch().catch((error: unknown) => {
+          if (this.canceled || this.confirming || this.lostFetch(error)) return;
+          if (this.connection.kind === 'ready') this.changed({ kind: 'failed', message: message(error) });
+        }); }, 700);
         return;
       }
-      throw error;
-    } finally {
+      const pending = this.pending;
+      const sealed = bytes(result.sealed);
+      const account = parseAccount(await this.core.text({ kind: 'complete_link', pending: JSON.stringify(pending), sealed }));
+      if (this.canceled || this.confirming || !this.pending) return;
+      // The account is durable before the receipt. A reload sees `confirming` and sends it again.
+      const wrote = await this.persist({ kind: 'pending', pending: this.pending, confirming: account });
+      if (!wrote || this.canceled || this.confirming || !this.pending) return;
+      this.confirming = account;
+      release = false;
       this.fetching = false;
+      if (this.canceled) return;
+      this.changed({ kind: 'confirming', pending: this.pending, account, message: null });
+      await this.ack(account);
+    } finally {
+      if (release) this.fetching = false;
     }
-    if (this.canceled || this.confirming || !this.pending) return;
-    clearTimeout(this.fetchTimer);
-    this.fetchAttempt = 0;
-    if (string(result.kind) !== 'link') throw new Error('The relay answered a different pairing request.');
-    if (result.sealed === null) {
-      this.poll = setTimeout(() => { void this.fetch().catch((error: unknown) => {
-        if (this.canceled || this.confirming || this.lostFetch(error)) return;
-        if (this.connection.kind === 'ready') this.changed({ kind: 'failed', message: message(error) });
-      }); }, 700);
-      return;
-    }
-    const account = parseAccount(await this.core.text({ kind: 'complete_link', pending: JSON.stringify(this.pending), sealed: bytes(result.sealed) }));
-    // The account is durable before the receipt. A reload sees `confirming` and sends it again.
-    await this.persist({ kind: 'pending', pending: this.pending, confirming: account });
-    this.confirming = account;
-    if (this.canceled) return;
-    this.changed({ kind: 'confirming', pending: this.pending, account, message: null });
-    await this.ack(account);
   }
 
   private async confirm(pending: PendingLink, account: LinkedAccount): Promise<void> {
