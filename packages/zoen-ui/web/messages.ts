@@ -70,6 +70,24 @@ export function watchRetry(
 }
 
 const OUT_OF_DATE = 'This browser session is out of date. Pair this browser again.';
+const DUPLICATE_INVITE = 'This invitation is already pending.';
+
+function inviteCopy(language: string): string {
+  if (language.toLowerCase().startsWith('pt')) return 'Este convite já está a caminho.';
+  return 'This invitation is already on its way.';
+}
+
+type CoreEffect =
+  | { kind: 'unpaired' }
+  | { kind: 'refused'; message: string }
+  | { kind: 'fatal'; message: string };
+
+function coreEffect(reason: string, scope: 'action' | 'session', language: string): CoreEffect {
+  if (reason === OUT_OF_DATE) return { kind: 'unpaired' };
+  if (reason === DUPLICATE_INVITE) return { kind: 'refused', message: inviteCopy(language) };
+  if (scope === 'action') return { kind: 'refused', message: reason };
+  return { kind: 'fatal', message: reason };
+}
 
 export type MessagesState =
   | { kind: 'loading' }
@@ -92,13 +110,15 @@ export class Messages {
   private conversations: Conversation[] = [];
   private notice: string | null = null;
   private readonly unpaired: () => void;
+  private readonly language: string;
   private retry: RetryTimer | null = null;
 
-  constructor({ core, vault, session, changed, unpaired }: {
+  constructor({ core, vault, session, changed, unpaired, language }: {
     core: MessageCore; vault: MessageVault; session: LinkedSession; changed: (state: MessagesState) => void;
-    unpaired: () => void;
+    unpaired: () => void; language?: string;
   }) {
     this.core = core; this.vault = vault; this.session = session; this.changed = changed; this.unpaired = unpaired;
+    this.language = language ?? (typeof navigator === 'undefined' ? 'en' : navigator.language);
     this.transport = new AuthenticatedTransport(core, vault, session.account, (connection) => {
       if (this.closed) return;
       this.connection = connection;
@@ -167,7 +187,7 @@ export class Messages {
     return this.enqueue(async () => {
       const update = await this.core.text({ kind: 'delete_conversation', space });
       await this.apply(update, generation);
-    });
+    }, () => null, 'action');
   }
 
   send({ space, text }: { space: string; text: string }): Promise<void> {
@@ -181,7 +201,7 @@ export class Messages {
       this.notice = null;
       const update = await this.core.text({ kind: 'queue_message', space, text, now: Date.now() });
       await this.apply(update, generation);
-    }, () => generation !== this.generation || this.connection.kind !== 'ready' ? 'The connection changed. Try again when connected.' : null);
+    }, () => generation !== this.generation || this.connection.kind !== 'ready' ? 'The connection changed. Try again when connected.' : null, 'action');
   }
 
   async preview(code: string): Promise<Invite> {
@@ -197,27 +217,35 @@ export class Messages {
       this.notice = null;
       const update = await this.core.text({ kind: 'queue_join', space: invite.space, role: invite.role, code, now: Date.now() });
       await this.apply(update, generation);
-    }, () => generation !== this.generation || this.connection.kind !== 'ready' ? 'The connection changed. Try again when connected.' : null);
+    }, () => generation !== this.generation || this.connection.kind !== 'ready' ? 'The connection changed. Try again when connected.' : null, 'action');
   }
 
-  private enqueue(operation: () => Promise<void>, refusal: () => string | null = () => null): Promise<void> {
+  private enqueue(operation: () => Promise<void>, refusal: () => string | null = () => null, scope: 'action' | 'session' = 'session'): Promise<void> {
     const task = this.serial.then(async () => {
       if (this.closed) throw new Error('The browser session is closed. Reload Zoen to reopen it.');
-      const reason = refusal();
-      if (reason) throw new Error(reason);
+      const blocked = refusal();
+      if (blocked) throw new Error(blocked);
       try { await operation(); }
       catch (error) {
-        const reason = message(error);
-        if (reason === OUT_OF_DATE) {
-          try { await this.vault.save({ kind: 'empty' }); }
-          catch (saveError) { this.fail(message(saveError)); throw saveError; }
-          this.stop();
-          this.core.close();
-          this.unpaired();
-          return;
+        const effect = coreEffect(message(error), scope, this.language);
+        switch (effect.kind) {
+          case 'unpaired':
+            try { await this.vault.save({ kind: 'empty' }); }
+            catch (saveError) { this.fail(message(saveError)); throw saveError; }
+            // Pairing calls create_link on this same worker. Closing it leaves the next attempt dead.
+            this.stop();
+            this.unpaired();
+            return;
+          case 'refused':
+            throw new Error(effect.message);
+          case 'fatal':
+            this.fail(effect.message);
+            throw error;
+          default: {
+            const exhaustive: never = effect;
+            return exhaustive;
+          }
         }
-        this.fail(reason);
-        throw error;
       }
     });
     this.serial = task.catch(() => {});
