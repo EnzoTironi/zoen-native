@@ -931,14 +931,16 @@ private struct RequestHistoryRow: View {
 struct WorkingRow: View {
     let agent: Persona
     let label: String
+    @Environment(\.chatBackdrop) private var backdrop
+
     var body: some View {
-        // Same as anyone typing: their face and a grey bubble with three dots.
+        // Same bubble as the message beside it: sky glass, or the opaque pair on a backdrop.
         HStack(alignment: .bottom, spacing: 8) {
             ContactAvatar(persona: agent, size: 26)
             TypingDots()
                 .padding(.horizontal, 14)
                 .padding(.vertical, 13)
-                .background(UnevenRoundedRectangle(topLeadingRadius: 20, bottomLeadingRadius: 4, bottomTrailingRadius: 20, topTrailingRadius: 20, style: .continuous).fill(Palette.otherBubble))
+                .background(UnevenRoundedRectangle(topLeadingRadius: 20, bottomLeadingRadius: 4, bottomTrailingRadius: 20, topTrailingRadius: 20, style: .continuous).fill(backdrop ? Palette.otherBubbleOnBackdrop : Palette.otherBubble))
             Spacer()
         }
         .padding(.top, 10)

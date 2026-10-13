@@ -234,7 +234,7 @@ body {
 .preview-message {
   align-self: flex-start;
   max-width: 76%;
-  background: var(--zs-bubble-other);
+  background: var(--zs-bubble-other-on-backdrop);
   padding: 12px 16px 8px;
   border-radius: 4px 15px 15px 15px;
 }

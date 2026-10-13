@@ -21,6 +21,8 @@ KOTLIN_PALETTE = ROOT / "android/app/src/main/java/xyz/tironi/zoen/ui/Primitives
 KOTLIN_THEME = ROOT / "android/app/src/main/java/xyz/tironi/zoen/theme/Theme.kt"
 CSS = ROOT / "packages/zoen-ui/src/tokens.css"
 SHELL = ROOT / "packages/zoen-ui/src/shell.css"
+SPACE = ROOT / "apple/Shared/Features/SpaceView.swift"
+PREVIEW = ROOT / "packages/zoen-ui/preview/preview.css"
 
 
 def channel(value):
@@ -158,6 +160,13 @@ def css_color(value):
     raise SystemExit("unparsed css color " + value)
 
 
+def shell_color(value):
+    value = value.strip()
+    if value.startswith("#") or value.startswith("rgb("):
+        return css_color(value)
+    return None
+
+
 def shell_blocks():
     text = SHELL.read_text()
 
@@ -165,8 +174,10 @@ def shell_blocks():
         start = text.index(marker) + len(marker)
         end = text.index("\n}", start)
         found = {}
-        for name, value in re.findall(r"(--zs-[\w-]+):\s*(#[0-9A-Fa-f]{6})", text[start:end]):
-            found[name] = (*parse_hex(value), 1.0)
+        for name, value in re.findall(r"(--zs-[\w-]+):\s*([^;]+);", text[start:end]):
+            color = shell_color(value)
+            if color is not None:
+                found[name] = color
         return found
 
     light = block(".zs-shell {")
@@ -204,13 +215,78 @@ def css_pair(light, dark, contrast, theme, contrast_on):
     }
 
 
+def typing_chip_problems():
+    text = SPACE.read_text()
+    start = text.index("struct WorkingRow")
+    end = text.index("\nstruct TypingDots")
+    body = text[start:end]
+    problems = []
+    if "chatBackdrop" not in body:
+        problems.append("WorkingRow does not read chatBackdrop")
+    pair = "backdrop ? Palette.otherBubbleOnBackdrop : Palette.otherBubble"
+    if pair not in body:
+        problems.append("WorkingRow does not use the message-row pair")
+    if "grey" in body.lower():
+        problems.append("WorkingRow still calls the chip grey")
+    return problems
+
+
+def shell_other_problems(swift_resolve):
+    light, dark, system = shell_blocks()
+    problems = []
+    for theme, block in (("light", light), ("dark", dark)):
+        expected = swift_resolve("otherBubble", theme, False)
+        actual = block.get("--zs-bubble-other")
+        if actual != expected:
+            problems.append(f"{theme} --zs-bubble-other {actual} != bubbleAgent {expected}")
+        contrasted = swift_resolve("otherBubble", theme, True)
+        if contrasted != expected:
+            problems.append(f"{theme} increased bubbleAgent changed without a shell override")
+    if system.get("--zs-bubble-other") != dark.get("--zs-bubble-other"):
+        problems.append("system dark --zs-bubble-other differs from the dark theme")
+    preview = PREVIEW.read_text()
+    row = re.search(r"\.preview-message \{([^}]+)\}", preview)
+    background = ""
+    if row:
+        found = re.search(r"background:\s*([^;]+);", row.group(1))
+        background = found.group(1).strip() if found else ""
+    if background != "var(--zs-bubble-other-on-backdrop)":
+        problems.append("preview row background is " + (background or "missing"))
+    shell_text = SHELL.read_text()
+    for chunk in re.findall(r"@media[^{]*prefers-contrast:\s*more[^{]*\{(.*?)\n\}", shell_text, re.S):
+        for value in re.findall(r"--zs-bubble-other:\s*([^;]+);", chunk):
+            color = shell_color(value)
+            allowed = {
+                swift_resolve("otherBubble", "light", True),
+                swift_resolve("otherBubble", "dark", True),
+            }
+            if color not in allowed:
+                problems.append("increased contrast --zs-bubble-other " + value.strip())
+    return problems
+
+
 def main():
+    only = sys.argv[1] if len(sys.argv) > 1 else "all"
+    if only not in ("all", "typing-chip", "shell-other"):
+        print("unknown check " + only)
+        return 2
     swift_resolve, _assigned = swift_colors()
     kotlin_blocks, getters = kotlin_palette()
     css_light, css_dark, css_scheme_dark, css_contrast_light, css_contrast_dark = css_blocks()
     shell_light, shell_dark, shell_system = shell_blocks()
     failed = False
     rows = []
+    chip = typing_chip_problems() if only in ("all", "typing-chip") else []
+    other = shell_other_problems(swift_resolve) if only in ("all", "shell-other") else []
+    for problem in chip + other:
+        print(problem)
+        failed = True
+    if only == "typing-chip":
+        print("typing chip check failed" if chip else "typing chip check passed")
+        return 1 if chip else 0
+    if only == "shell-other":
+        print("shell other check failed" if other else "shell other check passed")
+        return 1 if other else 0
     bubble_names = {
         name
         for name in set(css_dark) | set(css_scheme_dark)
