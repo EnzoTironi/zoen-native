@@ -718,10 +718,11 @@ fn temporary_refusal_backs_off_durably_up_to_five_minutes_and_a_stale_seal_block
         }
         .encode()
     };
-    group
+    let refused = group
         .client
         .receive(&reject(false, "slow down"), 10_000)
         .unwrap();
+    assert_eq!(refused.retry_at_ms, Some(11_000));
     assert_eq!(
         group.client.conversations()[0]
             .messages
@@ -742,29 +743,11 @@ fn temporary_refusal_backs_off_durably_up_to_five_minutes_and_a_stale_seal_block
         .collect::<Vec<_>>();
     assert!(ids.contains(&second_id));
     assert!(!ids.contains(&held_id));
-    let early = group
-        .client
-        .receive(
-            &ServerFrame::Pong {
-                server_time_ms: None,
-            }
-            .encode(),
-            10_999,
-        )
-        .unwrap();
+    let early = group.client.advance(10_999).unwrap();
     assert!(!publishes(&early)
         .iter()
         .any(|env| env.client_id() == held_id));
-    let due = group
-        .client
-        .receive(
-            &ServerFrame::Pong {
-                server_time_ms: None,
-            }
-            .encode(),
-            11_000,
-        )
-        .unwrap();
+    let due = group.client.advance(11_000).unwrap();
     assert!(publishes(&due).iter().any(|env| env.client_id() == held_id));
     group
         .client
@@ -935,5 +918,294 @@ fn a_send_with_no_ack_reloads_the_same_ciphertext_and_confirms_once() {
             .filter(|message| message.id == id)
             .count(),
         1
+    );
+}
+
+fn person(n: u16) -> Author {
+    let mut identity = [0xA5; 32];
+    let mut device = [0x5A; 32];
+    identity[..2].copy_from_slice(&n.to_le_bytes());
+    device[..2].copy_from_slice(&n.to_le_bytes());
+    Author::device(
+        &NativeSigner::from_secret(&identity),
+        NativeSigner::from_secret(&device),
+    )
+}
+
+fn enroll(
+    client: &mut Client<HostSigner>,
+    log: &mut SpaceLog,
+    owner: &Author,
+    member: &Author,
+    now: i64,
+) {
+    client
+        .receive(
+            &clear(
+                log,
+                owner,
+                EventBody::MemberAdded {
+                    identity: member.identity.clone(),
+                    role: Role::Member,
+                },
+                now,
+            ),
+            now,
+        )
+        .unwrap();
+}
+
+fn claim(
+    client: &mut Client<HostSigner>,
+    log: &mut SpaceLog,
+    author: &Author,
+    seq: u64,
+    hash: &str,
+    now: i64,
+) {
+    client
+        .receive(
+            &clear(
+                log,
+                author,
+                EventBody::Checkpoint {
+                    upto: Seen {
+                        seq,
+                        hash: hash.into(),
+                    },
+                    epoch: 4,
+                    digest: "ee".repeat(32),
+                },
+                now,
+            ),
+            now,
+        )
+        .unwrap();
+}
+
+fn fill_until(
+    client: &mut Client<HostSigner>,
+    log: &mut SpaceLog,
+    author: &Author,
+    seq: u64,
+    now: &mut i64,
+) {
+    while log.next_seq() < seq {
+        client
+            .receive(
+                &clear(
+                    log,
+                    author,
+                    EventBody::MessagePosted {
+                        message: format!("msg_{now}"),
+                        text: "later".into(),
+                        attaches: None,
+                        reply: None,
+                    },
+                    *now,
+                ),
+                *now,
+            )
+            .unwrap();
+        *now += 1;
+    }
+}
+
+#[test]
+fn forty_near_claims_do_not_evict_an_honest_far_fork() {
+    let (mut client, mut log, owner, space) = plain_members(81);
+    let mut now = 20_i64;
+    let mut colluders = Vec::new();
+    for n in 0..40 {
+        let author = person(n);
+        enroll(&mut client, &mut log, &owner, &author, now);
+        now += 1;
+        colluders.push(author);
+    }
+    let honest = person(900);
+    enroll(&mut client, &mut log, &owner, &honest, now);
+    now += 1;
+    let cursor = log.next_seq();
+    let near = cursor + 100;
+    let far = cursor + 180;
+    claim(&mut client, &mut log, &honest, far, "far-fork", now);
+    now += 1;
+    for author in &colluders {
+        claim(&mut client, &mut log, author, near, "near-fork", now);
+        now += 1;
+    }
+    assert_ne!(waiting(&client).as_deref(), Some(INTEGRITY_ERROR));
+    for (index, author) in colluders.iter().enumerate() {
+        claim(
+            &mut client,
+            &mut log,
+            author,
+            far + 1 + index as u64,
+            "later-fork",
+            now,
+        );
+        now += 1;
+    }
+    assert_ne!(waiting(&client).as_deref(), Some(INTEGRITY_ERROR));
+    fill_until(&mut client, &mut log, &owner, far, &mut now);
+    assert_ne!(waiting(&client).as_deref(), Some(INTEGRITY_ERROR));
+    client
+        .receive(
+            &clear(
+                &mut log,
+                &owner,
+                EventBody::MessagePosted {
+                    message: format!("msg_{now}"),
+                    text: "fork".into(),
+                    attaches: None,
+                    reply: None,
+                },
+                now,
+            ),
+            now,
+        )
+        .unwrap();
+    assert_eq!(waiting(&client).as_deref(), Some(INTEGRITY_ERROR));
+    assert_eq!(
+        must_err(client.queue_message(&space, "stopped", now + 1)).to_string(),
+        INTEGRITY_ERROR
+    );
+}
+
+#[test]
+fn a_higher_claim_from_the_same_device_replaces_the_lower_and_detects_the_earlier_fork() {
+    let (mut client, mut log, author, space) = plain_members(82);
+    let mut now = 30_i64;
+    let cursor = log.next_seq();
+    let lower = cursor + 8;
+    let higher = cursor + 16;
+    claim(&mut client, &mut log, &author, lower, "lower-fork", now);
+    now += 1;
+    claim(&mut client, &mut log, &author, higher, "higher-fork", now);
+    now += 1;
+    fill_until(&mut client, &mut log, &author, lower + 1, &mut now);
+    assert_ne!(waiting(&client).as_deref(), Some(INTEGRITY_ERROR));
+    fill_until(&mut client, &mut log, &author, higher + 1, &mut now);
+    assert_eq!(waiting(&client).as_deref(), Some(INTEGRITY_ERROR));
+    assert_eq!(
+        must_err(client.queue_message(&space, "stopped", now)).to_string(),
+        INTEGRITY_ERROR
+    );
+}
+
+#[test]
+fn a_checkpoint_from_a_non_member_is_ignored() {
+    let (mut client, mut log, owner, space) = plain_members(83);
+    let stranger = person(77);
+    let head = log.head().unwrap();
+    claim(
+        &mut client,
+        &mut log,
+        &stranger,
+        head.seq,
+        "not-the-local-hash",
+        40,
+    );
+    assert_ne!(waiting(&client).as_deref(), Some(INTEGRITY_ERROR));
+    let head = log.head().unwrap();
+    claim(
+        &mut client,
+        &mut log,
+        &owner,
+        head.seq,
+        "not-the-local-hash",
+        41,
+    );
+    assert_eq!(waiting(&client).as_deref(), Some(INTEGRITY_ERROR));
+    assert_eq!(
+        must_err(client.queue_message(&space, "stopped", 42)).to_string(),
+        INTEGRITY_ERROR
+    );
+}
+
+#[test]
+fn many_honest_checkpoints_out_of_order_raise_no_error() {
+    let (mut client, mut log, owner, _space) = plain_members(84);
+    let mut now = 50_i64;
+    let mut authors = Vec::new();
+    for n in 0..40 {
+        let author = person(2_000 + n);
+        enroll(&mut client, &mut log, &owner, &author, now);
+        now += 1;
+        authors.push(author);
+    }
+    for _ in 0..40 {
+        client
+            .receive(
+                &clear(
+                    &mut log,
+                    &owner,
+                    EventBody::MessagePosted {
+                        message: format!("msg_{now}"),
+                        text: "history".into(),
+                        attaches: None,
+                        reply: None,
+                    },
+                    now,
+                ),
+                now,
+            )
+            .unwrap();
+        now += 1;
+    }
+    let history = log
+        .events()
+        .iter()
+        .filter(|event| matches!(event.body, EventBody::MessagePosted { .. }))
+        .map(|event| (event.seq, event.hash.clone()))
+        .collect::<Vec<_>>();
+    assert_eq!(history.len(), 40);
+    for (author, (seq, hash)) in authors.iter().rev().zip(history.iter().rev()) {
+        claim(&mut client, &mut log, author, *seq, hash, now);
+        now += 1;
+        assert_ne!(waiting(&client).as_deref(), Some(INTEGRITY_ERROR));
+    }
+    let head = log.head().unwrap();
+    claim(
+        &mut client,
+        &mut log,
+        &owner,
+        head.seq,
+        "not-the-local-hash",
+        now,
+    );
+    assert_eq!(waiting(&client).as_deref(), Some(INTEGRITY_ERROR));
+}
+
+#[test]
+fn a_departed_author_keeps_a_pending_fork_until_the_chain_reaches_it() {
+    let (mut client, mut log, owner, space) = plain_members(85);
+    let mut now = 80_i64;
+    let author = person(850);
+    enroll(&mut client, &mut log, &owner, &author, now);
+    now += 1;
+    let far = log.next_seq() + 6;
+    claim(&mut client, &mut log, &author, far, "left-fork", now);
+    now += 1;
+    client
+        .receive(
+            &clear(
+                &mut log,
+                &owner,
+                EventBody::MemberRemoved {
+                    identity: author.identity.clone(),
+                },
+                now,
+            ),
+            now,
+        )
+        .unwrap();
+    now += 1;
+    assert_ne!(waiting(&client).as_deref(), Some(INTEGRITY_ERROR));
+    fill_until(&mut client, &mut log, &owner, far + 1, &mut now);
+    assert_eq!(waiting(&client).as_deref(), Some(INTEGRITY_ERROR));
+    assert_eq!(
+        must_err(client.queue_message(&space, "stopped", now)).to_string(),
+        INTEGRITY_ERROR
     );
 }

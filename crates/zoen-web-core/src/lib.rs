@@ -6,8 +6,16 @@
 //! Each Space snapshot stores the digest of every epoch this browser has held.
 //! A checkpoint from another member is compared with any of those digests, including after a reload.
 //! When the local chain already contains `upto.seq`, its hash is compared with `upto.hash`.
-//! A checkpoint whose prefix is still ahead waits in a persisted list of at most 32 entries for that Space.
+//! A checkpoint whose prefix is still ahead waits under its author device.
+//! Each device keeps only its highest unreached `upto.seq`. A later higher claim from that device replaces the older one, and a lower or equal claim is ignored.
+//! The log is hash-chained, so the hash at that higher position commits to every event at or before it.
+//! Checkpoints from an author that is not a current member device are ignored when they arrive.
+//! A device that later leaves keeps the claim already stored until the chain reaches it.
+//! The map is bounded by member devices. A defensive ceiling of 4096 refuses a new device and leaves the Space unmarked.
 //! A digest mismatch or a prefix mismatch sets that Space's integrity error and stops its sends.
+//!
+//! Each Update carries `retry_at_ms`, the earliest epoch millisecond at which a backed-off send may be published, or null when none is waiting.
+//! `advance(now_ms)` moves the clock to that instant and publishes what is due. `bootstrap` does not take a clock.
 //!
 //! A stale MLS seal is the only temporary refusal that blocks an epoch.
 //! Every other temporary refusal stays in the saved outbox and waits, starting at 1 second and doubling up to 300 seconds.
@@ -120,6 +128,10 @@ mod browser {
                     .map_err(error)?,
             )
             .map_err(error)
+        }
+        pub fn advance(&mut self, now_ms: f64) -> Result<String, JsValue> {
+            serde_json::to_string(&self.client.advance(time(now_ms)?).map_err(error)?)
+                .map_err(error)
         }
         pub fn view(&self) -> Result<String, JsValue> {
             serde_json::to_string(&self.client.conversations()).map_err(error)

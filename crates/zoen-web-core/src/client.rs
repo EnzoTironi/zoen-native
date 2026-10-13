@@ -19,7 +19,7 @@ const PROFILES_REQUEST: u64 = 0x8000_0002;
 const SESSION_VERSION: u32 = 2;
 const RETRY_START_MS: u64 = 1_000;
 const RETRY_CEILING_MS: u64 = 300_000;
-const PENDING_CHECKPOINT_LIMIT: usize = 32;
+const PENDING_CHECKPOINT_CEILING: usize = 4096;
 const INTEGRITY_ERROR: &str =
     "The encrypted conversation has conflicting membership. Open it on your phone.";
 
@@ -109,7 +109,7 @@ struct SavedClient {
     blocked_epochs: BTreeMap<String, u64>,
     integrity_errors: BTreeMap<String, String>,
     epoch_digests: BTreeMap<String, BTreeMap<u64, String>>,
-    pending_checkpoints: BTreeMap<String, Vec<PendingCheckpoint>>,
+    pending_checkpoints: BTreeMap<String, BTreeMap<String, PendingCheckpoint>>,
 }
 
 #[derive(Serialize, Deserialize, Clone, PartialEq, Eq)]
@@ -147,6 +147,7 @@ pub struct Update {
     pub snapshot: String,
     pub frames: Vec<Vec<u8>>,
     pub conversations: Vec<ConversationView>,
+    pub retry_at_ms: Option<i64>,
 }
 
 /// The same OpenMLS crypto, log verification and binary protocol used by native clients.
@@ -424,6 +425,11 @@ impl<S: Signer> Client<S> {
             })
             .collect();
         self.update(vec![ClientFrame::Sync { cursors, all: true }.encode()])
+    }
+
+    pub fn advance(&mut self, now_ms: i64) -> Result<Update, ClientError> {
+        self.now_ms = now_ms;
+        self.update(Vec::new())
     }
 
     pub fn queue_join(
@@ -828,7 +834,19 @@ impl<S: Signer> Client<S> {
             snapshot,
             frames,
             conversations: self.conversations(),
+            retry_at_ms: self.next_retry_at_ms(),
         })
+    }
+
+    fn next_retry_at_ms(&self) -> Option<i64> {
+        self.saved
+            .outbox
+            .values()
+            .filter(|pending| {
+                pending.failure.is_none() && pending.retry_not_before_ms > self.now_ms
+            })
+            .map(|pending| pending.retry_not_before_ms)
+            .min()
     }
 
     pub fn conversations(&self) -> Vec<ConversationView> {
@@ -971,6 +989,9 @@ impl<S: Signer> Client<S> {
         {
             return;
         }
+        let Some(device) = self.member_device(event) else {
+            return;
+        };
         let digest_conflict = self
             .saved
             .epoch_digests
@@ -981,16 +1002,30 @@ impl<S: Signer> Client<S> {
             self.mark_integrity(&event.space);
             return;
         }
-        self.note_prefix(&event.space, *epoch, digest.clone(), upto);
+        self.note_prefix(&event.space, &device, *epoch, digest.clone(), upto);
     }
 
-    fn note_prefix(&mut self, space: &str, epoch: u64, digest: String, upto: &Seen) {
+    fn member_device(&self, event: &Event) -> Option<String> {
+        if !self.roster(&event.space).contains_key(&event.author) {
+            return None;
+        }
+        Some(
+            event
+                .device
+                .clone()
+                .filter(|device| !device.is_empty())
+                .unwrap_or_else(|| event.author.clone()),
+        )
+    }
+
+    fn note_prefix(&mut self, space: &str, device: &str, epoch: u64, digest: String, upto: &Seen) {
         let local = self.hash_at(space, upto.seq).map(str::to_string);
         match local.as_deref() {
             Some(hash) if hash == upto.hash => {}
             Some(_) => self.mark_integrity(space),
             None => self.hold_checkpoint(
                 space,
+                device,
                 PendingCheckpoint {
                     epoch,
                     digest,
@@ -1010,48 +1045,32 @@ impl<S: Signer> Client<S> {
         (event.seq == seq).then_some(event.hash.as_str())
     }
 
-    fn hold_checkpoint(&mut self, space: &str, item: PendingCheckpoint) {
+    fn hold_checkpoint(&mut self, space: &str, device: &str, item: PendingCheckpoint) {
         if self.saved.integrity_errors.contains_key(space) {
             return;
         }
-        let (conflict, duplicate, full) = match self.saved.pending_checkpoints.get(space) {
-            Some(pending) => {
-                let conflict = pending.iter().any(|held| {
-                    held.upto_seq == item.upto_seq
-                        && (held.upto_hash != item.upto_hash
-                            || (held.epoch == item.epoch && held.digest != item.digest))
-                });
-                let duplicate = pending.iter().any(|held| {
-                    held.upto_seq == item.upto_seq
-                        && held.upto_hash == item.upto_hash
-                        && held.epoch == item.epoch
-                        && held.digest == item.digest
-                });
-                (
-                    conflict,
-                    duplicate,
-                    pending.len() >= PENDING_CHECKPOINT_LIMIT,
-                )
+        let pending = self
+            .saved
+            .pending_checkpoints
+            .entry(space.to_string())
+            .or_default();
+        if let Some(existing) = pending.get(device) {
+            if item.upto_seq <= existing.upto_seq {
+                return;
             }
-            None => (false, false, false),
-        };
-        if conflict || (!duplicate && full) {
-            self.mark_integrity(space);
-        } else if !duplicate {
-            self.saved
-                .pending_checkpoints
-                .entry(space.to_string())
-                .or_default()
-                .push(item);
+        } else if pending.len() >= PENDING_CHECKPOINT_CEILING {
+            eprintln!("pending checkpoint ceiling reached for {space}");
+            return;
         }
+        pending.insert(device.to_string(), item);
     }
 
     fn settle_pending(&mut self, space: &str) {
         let Some(pending) = self.saved.pending_checkpoints.remove(space) else {
             return;
         };
-        let mut keep = Vec::new();
-        for item in pending {
+        let mut keep = BTreeMap::new();
+        for (device, item) in pending {
             if self.saved.integrity_errors.contains_key(space) {
                 return;
             }
@@ -1072,7 +1091,9 @@ impl<S: Signer> Client<S> {
                     self.mark_integrity(space);
                     return;
                 }
-                None => keep.push(item),
+                None => {
+                    keep.insert(device, item);
+                }
             }
         }
         if !keep.is_empty() && !self.saved.integrity_errors.contains_key(space) {
