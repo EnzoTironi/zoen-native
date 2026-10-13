@@ -70,3 +70,9 @@ The existing CI matrix retains API28 and API35, both native ABIs, full JVM/lint 
 ## Final source checkpoint
 
 Root reran the unchanged contract-verifier tests: six passed. All 374 Android/workflow/scripts/docs files were frozen for the direct-main checkpoint. Current Kotlin/JNI/device acceptance, Plan atomic writers, bounded voice migration and the pixel-limit fixture remain pending. The new [prelaunch policy](prelaunch-policy.md) requires replacing canonical signatures/callers together rather than adding `From` compatibility aliases. Resume from [the complete handoff](handoff-2026-10-12.md).
+
+## Short viewport history correction (F8)
+
+ItemScreen now opens its shared file/page/plan version sheet expanded with `skipPartiallyExpanded = true`. This removes the partial drag anchor. The observed API28 320-by-640 failure had its version4 row outside the modal root while the list reported zero scroll range; these observations do not establish Material3's internal constraints. No diagnostic hooks are included. Selection, read-only preview and restore admission still use the existing callbacks and gates, with dedicated runtime regression coverage required for the changed opening and dismiss behavior.
+
+`ItemHistoryJourneyTest` uses the real owned demo database and JNI writers, without UI or repository doubles. Independent tests cover a 12-edit signed history with positive scroll range and actual changed scroll position, earliest/latest read-only selection, back, backdrop and downward drag dismissal, and membership loss before opening and while history is already open. The original Plan method and FileVersion shared-component smoke are unchanged. API28 and API35 receipts and actual before/after media live in the separate F8 evidence package; a local passing test does not accept U1 or R41, and F8 requires independent review before reconciliation.
