@@ -281,16 +281,55 @@ pub fn open_payload(k: &[u8; 32], identity: &str, sealed: &[u8]) -> R<(Header, V
     Ok((header, plain[12 + n..].to_vec()))
 }
 
-fn snapshot_root(database: &str) -> std::path::PathBuf {
-    // Android's process temp directory may be /data/local/tmp, outside the app sandbox.
+fn snapshot_root(database: &str) -> R<std::path::PathBuf> {
+    // `:memory:` has no database directory. Engine::open does not receive a cache
+    // path, so this process creates one private 0700 directory and keeps the lock
+    // and every snapshot directory inside it. They are not entries of the shared
+    // temp directory, where another user could plant a name.
     if database == ":memory:" {
-        return std::env::temp_dir();
+        return private_memory_root();
     }
-    std::path::Path::new(database)
+    Ok(std::path::Path::new(database)
         .parent()
         .filter(|parent| !parent.as_os_str().is_empty())
         .unwrap_or_else(|| std::path::Path::new("."))
-        .to_path_buf()
+        .to_path_buf())
+}
+
+fn private_memory_root() -> R<std::path::PathBuf> {
+    static ROOT: std::sync::Mutex<Option<std::path::PathBuf>> = std::sync::Mutex::new(None);
+    let mut slot = ROOT.lock().unwrap_or_else(|poison| poison.into_inner());
+    if let Some(path) = slot.as_ref() {
+        return Ok(path.clone());
+    }
+    let path = create_private_memory_root()?;
+    *slot = Some(path.clone());
+    Ok(path)
+}
+
+fn create_private_memory_root() -> R<std::path::PathBuf> {
+    let directory = std::env::temp_dir().join(format!(
+        "zoen-private-{}-{}",
+        std::process::id(),
+        hex::encode(random::<16>())
+    ));
+    let mut builder = std::fs::DirBuilder::new();
+    #[cfg(unix)]
+    builder.mode(0o700);
+    builder.create(&directory).map_err(storage)?;
+    #[cfg(unix)]
+    {
+        let meta = std::fs::symlink_metadata(&directory).map_err(storage)?;
+        if !meta.is_dir() || meta.file_type().is_symlink() {
+            return Err(storage(t(
+                "A pasta privada do snapshot não é um diretório.",
+                "The private snapshot directory is not a directory.",
+            )));
+        }
+        std::fs::set_permissions(&directory, std::fs::Permissions::from_mode(0o700))
+            .map_err(storage)?;
+    }
+    Ok(directory)
 }
 
 /// `Drop` does not run after SIGKILL, so the next backup or restore removes only
@@ -311,8 +350,8 @@ fn is_snapshot_leftover(name: &std::ffi::OsStr) -> bool {
             .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
 }
 
-fn sweep_snapshot_leftovers(database: &str) {
-    let Ok(entries) = std::fs::read_dir(snapshot_root(database)) else {
+fn sweep_snapshot_leftovers(root: &std::path::Path) {
+    let Ok(entries) = std::fs::read_dir(root) else {
         return;
     };
     for entry in entries.flatten() {
@@ -331,6 +370,133 @@ fn sweep_snapshot_leftovers(database: &str) {
             remove_db(&path.join("snapshot.db"));
             let _ = std::fs::remove_dir(&path);
         }
+    }
+}
+
+const SNAPSHOT_LOCK: &str = "zoen-snapshot.lock";
+
+/// One permanent lock for the folder snapshots are created in. Backup and
+/// restore hold it shared from before `mkdir` until after the directory is
+/// gone. Only a sweep takes it exclusively, and only with `try_lock`, so a
+/// busy folder is left alone. A crashed process drops the flock; the next
+/// idle operation removes that leftover.
+struct SnapshotFolderLock {
+    file: std::fs::File,
+}
+
+const SHARED_LOCK_WAIT: std::time::Duration = std::time::Duration::from_secs(2);
+
+impl SnapshotFolderLock {
+    fn acquire(database: &str) -> R<Self> {
+        let root = snapshot_root(database)?;
+        let path = root.join(SNAPSHOT_LOCK);
+        let file = open_snapshot_lock(&path)?;
+        match file.try_lock() {
+            Ok(()) => {
+                sweep_snapshot_leftovers(&root);
+                file.unlock().map_err(storage)?;
+            }
+            Err(std::fs::TryLockError::WouldBlock) => {}
+            Err(std::fs::TryLockError::Error(error)) => return Err(storage(error)),
+        }
+        lock_shared_bounded(&file)?;
+        Ok(Self { file })
+    }
+}
+
+fn snapshot_lock_symlink() -> CoreError {
+    storage(t(
+        "O arquivo de trava do snapshot é um link simbólico.",
+        "The snapshot lock is a symlink.",
+    ))
+}
+
+fn is_symlink_open_error(error: &std::io::Error) -> bool {
+    error.raw_os_error() == Some(eloop())
+}
+
+#[cfg(unix)]
+fn eloop() -> i32 {
+    #[cfg(any(target_os = "linux", target_os = "android"))]
+    {
+        40
+    }
+    #[cfg(not(any(target_os = "linux", target_os = "android")))]
+    {
+        62
+    }
+}
+
+#[cfg(not(unix))]
+fn eloop() -> i32 {
+    0
+}
+
+/// Opens the permanent lock without following a symlink. `O_NOFOLLOW` covers the
+/// window after the metadata check; `fchmod` then sets 0600 on the descriptor.
+fn open_snapshot_lock(path: &std::path::Path) -> R<std::fs::File> {
+    if std::fs::symlink_metadata(path).is_ok_and(|meta| meta.file_type().is_symlink()) {
+        return Err(snapshot_lock_symlink());
+    }
+    let mut options = std::fs::OpenOptions::new();
+    options.read(true).write(true).create(true);
+    #[cfg(unix)]
+    {
+        options.mode(0o600);
+        options.custom_flags(snapshot_lock_nofollow());
+    }
+    let file = match options.open(path) {
+        Ok(file) => file,
+        Err(error) if is_symlink_open_error(&error) => return Err(snapshot_lock_symlink()),
+        Err(error) => return Err(storage(error)),
+    };
+    let meta = file.metadata().map_err(storage)?;
+    if !meta.file_type().is_file() {
+        return Err(storage(t(
+            "A trava do snapshot não é um arquivo.",
+            "The snapshot lock is not a regular file.",
+        )));
+    }
+    #[cfg(unix)]
+    file.set_permissions(std::fs::Permissions::from_mode(0o600))
+        .map_err(storage)?;
+    Ok(file)
+}
+
+#[cfg(unix)]
+fn snapshot_lock_nofollow() -> i32 {
+    #[cfg(any(target_os = "linux", target_os = "android"))]
+    {
+        0x20000
+    }
+    #[cfg(not(any(target_os = "linux", target_os = "android")))]
+    {
+        0x0100
+    }
+}
+
+fn lock_shared_bounded(file: &std::fs::File) -> R<()> {
+    let started = std::time::Instant::now();
+    loop {
+        match file.try_lock_shared() {
+            Ok(()) => return Ok(()),
+            Err(std::fs::TryLockError::WouldBlock) => {
+                if started.elapsed() >= SHARED_LOCK_WAIT {
+                    return Err(storage(t(
+                        "A pasta de snapshot está em uso.",
+                        "The snapshot folder is busy.",
+                    )));
+                }
+                std::thread::sleep(std::time::Duration::from_millis(20));
+            }
+            Err(std::fs::TryLockError::Error(error)) => return Err(storage(error)),
+        }
+    }
+}
+
+impl Drop for SnapshotFolderLock {
+    fn drop(&mut self) {
+        let _ = self.file.unlock();
     }
 }
 
@@ -354,7 +520,7 @@ struct SnapshotDatabase {
 impl SnapshotDatabase {
     fn new(database: &str, tag: &str) -> R<Self> {
         let directory =
-            snapshot_root(database).join(format!("zoen-{tag}-{}", hex::encode(random::<16>())));
+            snapshot_root(database)?.join(format!("zoen-{tag}-{}", hex::encode(random::<16>())));
         let mut builder = std::fs::DirBuilder::new();
         #[cfg(unix)]
         builder.mode(0o700);
@@ -379,7 +545,12 @@ impl Drop for SnapshotDatabase {
     fn drop(&mut self) {
         remove_db(&self.path);
         if let Some(directory) = self.path.parent() {
-            let _ = std::fs::remove_dir(directory);
+            // The lock stays for the life of the folder. It is unlinked only
+            // when this temp database directory itself is going away.
+            if std::fs::remove_dir(directory).is_err() {
+                let _ = std::fs::remove_file(directory.join(SNAPSHOT_LOCK));
+                let _ = std::fs::remove_dir(directory);
+            }
         }
     }
 }
@@ -394,12 +565,95 @@ fn remove_db(path: &std::path::Path) {
     }
 }
 
+#[cfg(test)]
+struct SnapshotOverlap {
+    armed: bool,
+    need: usize,
+    arrived: Vec<std::path::PathBuf>,
+    go: bool,
+}
+
+#[cfg(test)]
+fn snapshot_overlap() -> &'static (std::sync::Mutex<SnapshotOverlap>, std::sync::Condvar) {
+    static GATE: std::sync::OnceLock<(std::sync::Mutex<SnapshotOverlap>, std::sync::Condvar)> =
+        std::sync::OnceLock::new();
+    GATE.get_or_init(|| {
+        (
+            std::sync::Mutex::new(SnapshotOverlap {
+                armed: false,
+                need: 0,
+                arrived: Vec::new(),
+                go: false,
+            }),
+            std::sync::Condvar::new(),
+        )
+    })
+}
+
+/// When a test arms this, each backup waits until every peer has created its
+/// snapshot directory, then checks those directories are still present.
+#[cfg(test)]
+fn pause_while_snapshot_is_live(directory: &std::path::Path) {
+    let (lock, cv) = snapshot_overlap();
+    let mut guard = lock.lock().unwrap_or_else(|poison| poison.into_inner());
+    if !guard.armed {
+        return;
+    }
+    guard.arrived.push(directory.to_path_buf());
+    if guard.arrived.len() >= guard.need {
+        for path in &guard.arrived {
+            assert!(
+                path.is_dir(),
+                "live snapshot disappeared before its backup ended: {}",
+                path.display()
+            );
+        }
+        guard.go = true;
+        cv.notify_all();
+    }
+    let started = std::time::Instant::now();
+    while guard.armed && !guard.go {
+        let (next, _) = cv
+            .wait_timeout(guard, std::time::Duration::from_millis(20))
+            .unwrap_or_else(|poison| poison.into_inner());
+        guard = next;
+        if started.elapsed() > std::time::Duration::from_secs(3) {
+            panic!(
+                "overlapping backups did not meet (arrived {})",
+                guard.arrived.len()
+            );
+        }
+    }
+}
+
+#[cfg(test)]
+fn arm_snapshot_overlap(need: usize) {
+    let (lock, _) = snapshot_overlap();
+    let mut guard = lock.lock().unwrap_or_else(|poison| poison.into_inner());
+    guard.armed = true;
+    guard.need = need;
+    guard.arrived.clear();
+    guard.go = false;
+}
+
+#[cfg(test)]
+fn disarm_snapshot_overlap() {
+    let (lock, cv) = snapshot_overlap();
+    let mut guard = lock.lock().unwrap_or_else(|poison| poison.into_inner());
+    guard.armed = false;
+    guard.go = true;
+    guard.arrived.clear();
+    cv.notify_all();
+}
+
 impl Engine {
     /// The device database as a backup sees it: only [`KEEP_TABLES`], without this
     /// device's account, MLS bookkeeping or pending invites.
     pub(crate) fn backup_snapshot(&self) -> R<Vec<u8>> {
-        sweep_snapshot_leftovers(&self.db_path);
+        let _lock = SnapshotFolderLock::acquire(&self.db_path)?;
         let scratch = SnapshotDatabase::new(&self.db_path, "backup")?;
+        #[cfg(test)]
+        pause_while_snapshot_is_live(scratch.path.parent().expect("snapshot directory"));
         let path = &scratch.path;
         let out = (|| -> R<Vec<u8>> {
             self.store
@@ -456,13 +710,13 @@ impl Engine {
         db: &[u8],
         device: roda_log::Signer,
     ) -> R<[u8; 32]> {
-        sweep_snapshot_leftovers(&self.db_path);
         if self.account().is_some() {
             return Err(invalid(t(
                 "Este aparelho já tem uma conta.",
                 "This device already has an account.",
             )));
         }
+        let _lock = SnapshotFolderLock::acquire(&self.db_path)?;
         let root_secret: [u8; 32] = hex::decode(&header.identity_secret)
             .ok()
             .and_then(|b| b.try_into().ok())
@@ -556,7 +810,7 @@ impl Engine {
 mod snapshot_tests {
     use super::*;
     #[cfg(unix)]
-    use std::os::unix::fs::PermissionsExt;
+    use std::os::unix::fs::{OpenOptionsExt, PermissionsExt};
 
     #[test]
     fn plaintext_snapshot_stays_beside_the_database_in_a_private_directory() {
@@ -652,6 +906,12 @@ mod snapshot_tests {
         let almost = parent.join("zoen-backup-short");
         std::fs::create_dir(&almost).unwrap();
         std::fs::write(almost.join("snapshot.db"), b"not-ours").unwrap();
+        let regular = parent.join("zoen-restore-11111111111111111111111111111111");
+        std::fs::write(&regular, b"not-a-directory").unwrap();
+        #[cfg(unix)]
+        let link = parent.join("zoen-backup-abcdefabcdefabcdefabcdefabcdefab");
+        #[cfg(unix)]
+        std::os::unix::fs::symlink(&notes, &link).unwrap();
 
         assert!(engine
             .backup_snapshot()
@@ -664,10 +924,14 @@ mod snapshot_tests {
             std::fs::read(almost.join("snapshot.db")).unwrap(),
             b"not-ours"
         );
+        assert_eq!(std::fs::read(&regular).unwrap(), b"not-a-directory");
+        #[cfg(unix)]
+        assert!(std::fs::symlink_metadata(&link).is_err());
 
         std::fs::remove_dir_all(&notes).unwrap();
         std::fs::remove_file(&note).unwrap();
         std::fs::remove_dir_all(&almost).unwrap();
+        std::fs::remove_file(&regular).unwrap();
     }
 
     #[test]
@@ -732,5 +996,489 @@ mod snapshot_tests {
             0o600
         );
         std::fs::remove_dir_all(&root).unwrap();
+    }
+
+    fn open_snapshot_lock(path: &std::path::Path) -> std::fs::File {
+        let mut options = std::fs::OpenOptions::new();
+        options.read(true).write(true).create(true);
+        #[cfg(unix)]
+        options.mode(0o600);
+        options.open(path).unwrap()
+    }
+
+    #[test]
+    fn shared_lock_keeps_a_matching_dir_through_backup() {
+        let database = SnapshotDatabase::new(":memory:", "fixture").unwrap();
+        let engine = Engine::open(database.path.to_str().unwrap()).unwrap();
+        let parent = database.path.parent().unwrap();
+        let lock_path = parent.join("zoen-snapshot.lock");
+        let lock = open_snapshot_lock(&lock_path);
+        lock.lock_shared().unwrap();
+        let live = parent.join("zoen-backup-0123456789abcdef0123456789abcdef");
+        std::fs::create_dir(&live).unwrap();
+        std::fs::write(live.join("snapshot.db"), b"plaintext secret").unwrap();
+
+        assert!(engine
+            .backup_snapshot()
+            .unwrap()
+            .starts_with(b"SQLite format 3\0"));
+        assert_eq!(
+            std::fs::read(live.join("snapshot.db")).unwrap(),
+            b"plaintext secret"
+        );
+        lock.unlock().unwrap();
+        drop(lock);
+        std::fs::remove_dir_all(&live).unwrap();
+        std::fs::remove_file(&lock_path).unwrap();
+    }
+
+    #[test]
+    fn restore_on_an_account_device_leaves_an_in_progress_snapshot() {
+        let database = SnapshotDatabase::new(":memory:", "fixture").unwrap();
+        let mut engine = Engine::open(database.path.to_str().unwrap()).unwrap();
+        engine
+            .create_account("Ana", "ana", "https://relay.invalid")
+            .unwrap();
+        let parent = database.path.parent().unwrap();
+        let live = parent.join("zoen-restore-fedcba9876543210fedcba9876543210");
+        std::fs::create_dir(&live).unwrap();
+        std::fs::write(live.join("snapshot.db"), b"plaintext secret").unwrap();
+        let header = Header {
+            version: 1,
+            identity: "not-the-device".into(),
+            relay_url: "https://relay.invalid".into(),
+            identity_secret: "00".repeat(32),
+            agreement_secret: "11".repeat(32),
+            created_ms: 0,
+        };
+        let error = engine
+            .restore_snapshot(&header, b"not a database", roda_log::Signer::generate())
+            .unwrap_err();
+        let message = error.to_string();
+        assert!(
+            message.contains("already has an account") || message.contains("já tem uma conta"),
+            "{message}"
+        );
+        assert_eq!(
+            std::fs::read(live.join("snapshot.db")).unwrap(),
+            b"plaintext secret"
+        );
+        assert!(!parent.join("zoen-snapshot.lock").exists());
+        std::fs::remove_dir_all(&live).unwrap();
+    }
+
+    fn release_exclusive_database_lock(engine: &Engine) {
+        // Store::open enters WAL under locking_mode=EXCLUSIVE, which stores the
+        // wal-index in heap memory and then refuses to leave exclusive mode.
+        // Delete the journal first so NORMAL can stick, then open WAL again.
+        let conn = engine.store.conn();
+        conn.busy_timeout(std::time::Duration::from_secs(5))
+            .unwrap();
+        let deleted: String = conn
+            .query_row("PRAGMA journal_mode=DELETE", [], |row| row.get(0))
+            .unwrap();
+        assert_eq!(deleted, "delete", "journal stayed {deleted}");
+        let mode: String = conn
+            .query_row("PRAGMA locking_mode=NORMAL", [], |row| row.get(0))
+            .unwrap();
+        assert_eq!(mode, "normal", "locking stayed {mode}");
+        conn.query_row("SELECT count(*) FROM sqlite_master", [], |row| {
+            row.get::<_, i64>(0)
+        })
+        .unwrap();
+        let wal: String = conn
+            .query_row("PRAGMA journal_mode=WAL", [], |row| row.get(0))
+            .unwrap();
+        assert_eq!(wal, "wal", "journal stayed {wal}");
+    }
+
+    fn assert_backup_decrypts(engine: &crate::RodaEngine) {
+        let db = engine.lock().backup_snapshot().expect("backup");
+        let header = Header {
+            version: PAYLOAD_VERSION,
+            identity: "same-file".into(),
+            relay_url: "https://relay.invalid".into(),
+            identity_secret: "ab".repeat(32),
+            agreement_secret: "cd".repeat(32),
+            created_ms: 1,
+        };
+        let key = [7u8; 32];
+        let sealed = seal_payload(&key, &header, &db).expect("seal");
+        let (opened, plain) = open_payload(&key, &header.identity, &sealed).expect("open");
+        assert_eq!(opened.identity, header.identity);
+        assert_eq!(plain, db);
+        assert!(plain.starts_with(b"SQLite format 3\0"));
+    }
+
+    #[test]
+    fn two_engines_backup_the_same_file_concurrently() {
+        let database = SnapshotDatabase::new(":memory:", "fixture").unwrap();
+        let path = database.path.to_str().unwrap().to_string();
+        let left = crate::RodaEngine::open(path.clone(), "pt-BR".into()).unwrap();
+        {
+            let engine = left.lock();
+            engine
+                .store
+                .conn()
+                .execute_batch("CREATE TABLE filler (n INTEGER PRIMARY KEY, blob BLOB);")
+                .unwrap();
+            for n in 0..32 {
+                engine
+                    .store
+                    .conn()
+                    .execute(
+                        "INSERT INTO filler (n, blob) VALUES (?1, zeroblob(8192))",
+                        [n],
+                    )
+                    .unwrap();
+            }
+            release_exclusive_database_lock(&engine);
+        }
+        let right = crate::RodaEngine::open(path, "en".into()).expect("second engine");
+        release_exclusive_database_lock(&right.lock());
+        let barrier = std::sync::Barrier::new(2);
+        std::thread::scope(|scope| {
+            for engine in [&left, &right] {
+                scope.spawn(|| {
+                    for _ in 0..20 {
+                        barrier.wait();
+                        assert_backup_decrypts(engine);
+                    }
+                });
+            }
+        });
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn snapshot_lock_is_mode_0600_under_umask_000() {
+        #[cfg(any(
+            target_os = "macos",
+            target_os = "ios",
+            target_os = "watchos",
+            target_os = "tvos"
+        ))]
+        type Mode = u16;
+        #[cfg(not(any(
+            target_os = "macos",
+            target_os = "ios",
+            target_os = "watchos",
+            target_os = "tvos"
+        )))]
+        type Mode = u32;
+        extern "C" {
+            fn umask(mask: Mode) -> Mode;
+        }
+        struct Restore(Mode);
+        impl Drop for Restore {
+            fn drop(&mut self) {
+                unsafe {
+                    umask(self.0);
+                }
+            }
+        }
+        let _restore = Restore(unsafe { umask(0) });
+        let database = SnapshotDatabase::new(":memory:", "fixture").unwrap();
+        let engine = Engine::open(database.path.to_str().unwrap()).unwrap();
+        engine.backup_snapshot().unwrap();
+        let lock = database.path.parent().unwrap().join("zoen-snapshot.lock");
+        assert_eq!(
+            std::fs::metadata(&lock).unwrap().permissions().mode() & 0o777,
+            0o600
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn memory_snapshots_stay_out_of_the_shared_temp_dir() {
+        let root = snapshot_root(":memory:").unwrap();
+        assert_ne!(
+            root,
+            std::env::temp_dir(),
+            "memory snapshots use the shared temp dir"
+        );
+        let meta = std::fs::symlink_metadata(&root).unwrap();
+        assert!(meta.is_dir());
+        assert!(!meta.file_type().is_symlink());
+        assert_eq!(meta.permissions().mode() & 0o777, 0o700);
+        let engine = Engine::open(":memory:").unwrap();
+        let bytes = engine.backup_snapshot().unwrap();
+        assert!(bytes.starts_with(b"SQLite format 3\0"));
+        let lock = root.join(SNAPSHOT_LOCK);
+        assert!(lock.is_file());
+        assert_ne!(lock.parent().unwrap(), std::env::temp_dir());
+        assert_eq!(
+            std::fs::metadata(&lock).unwrap().permissions().mode() & 0o777,
+            0o600
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn snapshot_lock_refuses_a_symlink() {
+        let database = SnapshotDatabase::new(":memory:", "fixture").unwrap();
+        let engine = Engine::open(database.path.to_str().unwrap()).unwrap();
+        let parent = database.path.parent().unwrap();
+        let target = parent.join("lock-target");
+        std::fs::write(&target, b"secret-target").unwrap();
+        let target_mode = std::fs::metadata(&target).unwrap().permissions().mode();
+        let link = parent.join(SNAPSHOT_LOCK);
+        std::os::unix::fs::symlink(&target, &link).unwrap();
+        let error = engine
+            .backup_snapshot()
+            .expect_err("followed the lock symlink");
+        let message = error.to_string();
+        assert!(
+            message.contains("symlink") || message.contains("link simbólico"),
+            "{message}"
+        );
+        assert_eq!(std::fs::read(&target).unwrap(), b"secret-target");
+        assert_eq!(
+            std::fs::metadata(&target).unwrap().permissions().mode(),
+            target_mode
+        );
+        assert!(std::fs::symlink_metadata(&link)
+            .unwrap()
+            .file_type()
+            .is_symlink());
+    }
+
+    #[test]
+    fn exclusive_lock_holder_returns_a_busy_error() {
+        let database = SnapshotDatabase::new(":memory:", "fixture").unwrap();
+        let path = database.path.to_str().unwrap().to_string();
+        let lock_path = database.path.parent().unwrap().join(SNAPSHOT_LOCK);
+        let held = open_snapshot_lock(&lock_path);
+        held.lock().unwrap();
+        let (tx, rx) = std::sync::mpsc::channel();
+        std::thread::spawn(move || {
+            let engine = Engine::open(&path).unwrap();
+            let started = std::time::Instant::now();
+            let result = engine.backup_snapshot();
+            let _ = tx.send((started.elapsed(), result));
+        });
+        let timed = rx.recv_timeout(std::time::Duration::from_secs(6));
+        drop(held);
+        if timed.is_err() {
+            let _ = rx.recv_timeout(std::time::Duration::from_secs(10));
+        }
+        let (elapsed, result) = timed.expect("backup blocked on the shared lock");
+        let error = result.expect_err("backup took the lock while another handle held it");
+        let message = error.to_string();
+        assert!(
+            message.contains("snapshot folder is busy")
+                || message.contains("pasta de snapshot está em uso"),
+            "{message}"
+        );
+        assert!(
+            elapsed >= std::time::Duration::from_millis(1500),
+            "shared lock returned without waiting: {elapsed:?}"
+        );
+        assert!(
+            elapsed < std::time::Duration::from_secs(5),
+            "shared lock waited too long: {elapsed:?}"
+        );
+    }
+
+    fn assert_blob_restores(bytes: &[u8], key: &str, value: &str) {
+        assert!(bytes.starts_with(b"SQLite format 3\0"));
+        let scratch = SnapshotDatabase::new(":memory:", "read").unwrap();
+        std::fs::write(&scratch.path, bytes).unwrap();
+        let connection = rusqlite::Connection::open(&scratch.path).unwrap();
+        let got: String = connection
+            .query_row("SELECT value FROM meta WHERE key = ?1", [key], |row| {
+                row.get(0)
+            })
+            .unwrap();
+        assert_eq!(got, value);
+    }
+
+    #[test]
+    fn one_engine_serializes_overlapping_backups_and_both_blobs_restore() {
+        let database = SnapshotDatabase::new(":memory:", "fixture").unwrap();
+        let path = database.path.to_str().unwrap().to_string();
+        let engine = crate::RodaEngine::open(path, "en".into()).unwrap();
+        engine
+            .lock()
+            .store
+            .conn()
+            .execute(
+                "INSERT INTO meta (key, value) VALUES ('overlap.marker', 'kept')",
+                [],
+            )
+            .unwrap();
+        let inflight = std::sync::atomic::AtomicUsize::new(0);
+        let blobs = std::thread::scope(|scope| {
+            let handles: Vec<_> = (0..2)
+                .map(|_| {
+                    scope.spawn(|| {
+                        let guard = engine.lock();
+                        let now = inflight.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+                        assert_eq!(now, 0, "one RodaEngine overlapped two backup calls");
+                        let bytes = guard.backup_snapshot().expect("backup");
+                        inflight.fetch_sub(1, std::sync::atomic::Ordering::SeqCst);
+                        bytes
+                    })
+                })
+                .collect();
+            handles
+                .into_iter()
+                .map(|handle| handle.join().unwrap())
+                .collect::<Vec<_>>()
+        });
+        assert_eq!(blobs.len(), 2);
+        for bytes in &blobs {
+            assert_blob_restores(bytes, "overlap.marker", "kept");
+        }
+    }
+
+    #[test]
+    fn two_engines_keep_a_live_snapshot_while_the_other_backup_runs() {
+        let database = SnapshotDatabase::new(":memory:", "fixture").unwrap();
+        let path = database.path.to_str().unwrap().to_string();
+        let left = crate::RodaEngine::open(path.clone(), "en".into()).unwrap();
+        left.lock()
+            .store
+            .conn()
+            .execute(
+                "INSERT INTO meta (key, value) VALUES ('overlap.marker', 'kept')",
+                [],
+            )
+            .unwrap();
+        release_exclusive_database_lock(&left.lock());
+        let right = crate::RodaEngine::open(path, "en".into()).expect("second engine");
+        release_exclusive_database_lock(&right.lock());
+        struct Disarm;
+        impl Drop for Disarm {
+            fn drop(&mut self) {
+                disarm_snapshot_overlap();
+            }
+        }
+        arm_snapshot_overlap(2);
+        let _disarm = Disarm;
+        let blobs = std::thread::scope(|scope| {
+            let handles: Vec<_> = [&left, &right]
+                .into_iter()
+                .map(|engine| scope.spawn(|| engine.lock().backup_snapshot().expect("backup")))
+                .collect();
+            handles
+                .into_iter()
+                .map(|handle| handle.join().unwrap())
+                .collect::<Vec<_>>()
+        });
+        assert_eq!(blobs.len(), 2);
+        for bytes in &blobs {
+            assert_blob_restores(bytes, "overlap.marker", "kept");
+        }
+    }
+
+    #[cfg(unix)]
+    const CROSS_PROCESS_TEST: &str =
+        "backup::snapshot_tests::another_process_holding_the_shared_lock_keeps_the_snapshot";
+
+    #[cfg(unix)]
+    fn hold_shared_snapshot_lock() {
+        let lock_path = std::env::var("ZOEN_R41_HOLD_SNAPSHOT_LOCK").unwrap();
+        let ready = std::env::var("ZOEN_R41_HOLD_READY").unwrap();
+        let release = std::env::var("ZOEN_R41_HOLD_RELEASE").unwrap();
+        let file = std::fs::OpenOptions::new()
+            .read(true)
+            .write(true)
+            .open(lock_path)
+            .unwrap();
+        file.lock_shared().unwrap();
+        std::fs::write(&ready, b"ready").unwrap();
+        let started = std::time::Instant::now();
+        while !std::path::Path::new(&release).exists() {
+            if started.elapsed() > std::time::Duration::from_secs(4) {
+                panic!("parent did not release the lock holder");
+            }
+            std::thread::sleep(std::time::Duration::from_millis(10));
+        }
+        file.unlock().unwrap();
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn another_process_holding_the_shared_lock_keeps_the_snapshot() {
+        if std::env::var_os("ZOEN_R41_HOLD_SNAPSHOT_LOCK").is_some() {
+            hold_shared_snapshot_lock();
+            return;
+        }
+        let started = std::time::Instant::now();
+        let database = SnapshotDatabase::new(":memory:", "fixture").unwrap();
+        let engine = Engine::open(database.path.to_str().unwrap()).unwrap();
+        let parent = database.path.parent().unwrap();
+        let lock_path = parent.join("zoen-snapshot.lock");
+        drop(open_snapshot_lock(&lock_path));
+        let ready = parent.join("holder-ready");
+        let release = parent.join("holder-release");
+        struct ReleaseOnDrop(std::path::PathBuf);
+        impl Drop for ReleaseOnDrop {
+            fn drop(&mut self) {
+                let _ = std::fs::write(&self.0, b"release");
+            }
+        }
+        struct ChildGuard(Option<std::process::Child>);
+        impl Drop for ChildGuard {
+            fn drop(&mut self) {
+                if let Some(child) = self.0.as_mut() {
+                    let _ = child.kill();
+                    let _ = child.wait();
+                }
+            }
+        }
+        let child = std::process::Command::new(std::env::current_exe().unwrap())
+            .arg("--exact")
+            .arg("--test-threads=1")
+            .arg(CROSS_PROCESS_TEST)
+            .env("ZOEN_R41_HOLD_SNAPSHOT_LOCK", &lock_path)
+            .env("ZOEN_R41_HOLD_READY", &ready)
+            .env("ZOEN_R41_HOLD_RELEASE", &release)
+            .stdin(std::process::Stdio::null())
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::inherit())
+            .spawn()
+            .unwrap();
+        let mut child = ChildGuard(Some(child));
+        let release_on_drop = ReleaseOnDrop(release);
+        let wait_started = std::time::Instant::now();
+        while !ready.exists() {
+            if wait_started.elapsed() > std::time::Duration::from_secs(3) {
+                panic!("child did not take the shared lock");
+            }
+            match child.0.as_mut().unwrap().try_wait() {
+                Ok(Some(status)) => panic!("child exited before locking: {status}"),
+                Ok(None) => std::thread::sleep(std::time::Duration::from_millis(10)),
+                Err(error) => panic!("child wait failed: {error}"),
+            }
+        }
+        let live = parent.join("zoen-backup-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa");
+        std::fs::create_dir(&live).unwrap();
+        std::fs::write(live.join("snapshot.db"), b"held by child").unwrap();
+        assert!(engine
+            .backup_snapshot()
+            .unwrap()
+            .starts_with(b"SQLite format 3\0"));
+        assert_eq!(
+            std::fs::read(live.join("snapshot.db")).unwrap(),
+            b"held by child"
+        );
+        drop(release_on_drop);
+        let mut child = child.0.take().unwrap();
+        let wait_exit = std::time::Instant::now();
+        let status = loop {
+            if let Some(status) = child.try_wait().unwrap() {
+                break status;
+            }
+            if wait_exit.elapsed() > std::time::Duration::from_secs(2) {
+                panic!("child did not exit");
+            }
+            std::thread::sleep(std::time::Duration::from_millis(10));
+        };
+        assert!(status.success());
+        assert!(started.elapsed() < std::time::Duration::from_secs(5));
+        std::fs::remove_dir_all(&live).unwrap();
+        std::fs::remove_file(&lock_path).unwrap();
     }
 }
