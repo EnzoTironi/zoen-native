@@ -1,5 +1,7 @@
 # DEVELOPMENT WORKFLOW — SHARED MAIN BRANCH
 
+This document records the 12 October 2026 checkpoint. Later work does not follow it. New work uses one branch per unit. The coordinator merges that branch into `main` after the unit's proof, following the pstack playbooks.
+
 ## Philosophy
 
 Optimize for fast, coordinated AI-agent development.

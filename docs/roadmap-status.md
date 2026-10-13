@@ -1,6 +1,6 @@
 # Roadmap status: the complete Zoen product
 
-Reviewed on 12 October 2026 after PRs 67, 68, 69 and 71 merged. The target is one billion monthly users. Completion requires working client flows, release/accessibility journeys and production evidence. New implementation uses shared `main`, explicit file ownership and one Git coordinator; see [AGENTS.md](../AGENTS.md).
+Reviewed on 12 October 2026 after PRs 67, 68, 69 and 71 merged. The target is one billion monthly users. Completion requires working client flows, release/accessibility journeys and production evidence. New implementation uses one branch per unit. The coordinator merges that branch into `main` after the unit's proof, following the pstack playbooks.
 
 ## Shared-main handoff checkpoint
 
