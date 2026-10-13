@@ -366,7 +366,13 @@ fn unsaved_draft_refuses_a_plan_doc_change_on_every_writer() {
     let line = line_id();
     let edited = fixture
         .engine
-        .edit_plan_line(&fixture.item, &line, "First writer", 3, &opened.content_hash)
+        .edit_plan_line(
+            &fixture.item,
+            &line,
+            "First writer",
+            3,
+            &opened.content_hash,
+        )
         .unwrap();
     let bound = fixture.engine.plan_page(&fixture.item).unwrap();
     assert!(bound.unsaved, "an unsaved private draft stays present");
@@ -406,9 +412,13 @@ fn unsaved_draft_refuses_a_plan_doc_change_on_every_writer() {
     let before = snapshot(&fixture);
     assert!(
         matches!(
-            fixture
-                .engine
-                .edit_plan_line(&fixture.item, &line, "Local after the other writer", 5, &hash),
+            fixture.engine.edit_plan_line(
+                &fixture.item,
+                &line,
+                "Local after the other writer",
+                5,
+                &hash
+            ),
             Err(CoreError::Stale { .. })
         ),
         "edit_plan_line"
