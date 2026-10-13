@@ -16,5 +16,7 @@ declare module '*/core/zoen_web_core.js' {
     receive(bytes: Uint8Array, now: number): string;
     queue_message(space: string, text: string, now: number): string;
     queue_join(space: string, role: string, code: string, now: number): string;
+    advance(now: number): string;
+    delete_conversation(space: string): string;
   }
 }

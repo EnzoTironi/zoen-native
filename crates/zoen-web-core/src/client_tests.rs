@@ -265,11 +265,73 @@ fn native_sqlite_welcome_messages_saved_reload_and_removal_use_shared_mls() {
             15,
         )
         .unwrap();
-    assert!(restored.queue_message(space, "removed", 16).is_err());
+    assert_eq!(
+        must_err(restored.queue_message(space, "removed", 16)).to_string(),
+        "You are no longer a member of this conversation."
+    );
     assert_eq!(
         restored.device().unwrap().group_state(space).unwrap(),
         GroupState::Missing
     );
+    let held = &restored.conversations()[0];
+    assert!(held.removed);
+    assert!(!held.can_send);
+    assert_eq!(held.messages[0].text, "Native to web");
+    assert_eq!(held.messages[1].text, "Web to native");
+    let inner = author.sign_event(
+        space,
+        &roda_types::new_ulid(17),
+        17,
+        log.head(),
+        EventBody::MessagePosted {
+            message: "msg_after_removal".into(),
+            text: "After removal".into(),
+            attaches: None,
+            reply: None,
+        },
+    );
+    let plaintext = InnerEvent {
+        content: inner.content,
+        sig: inner.sig,
+    }
+    .encode();
+    let ciphertext = native.seal(space, &plaintext).unwrap();
+    let (content, sig) = author.sign_sealed(
+        space,
+        &inner.client_id,
+        17,
+        inner.seen.as_ref(),
+        Sealed::new(SealedKind::Application, SUITE_ID, ciphertext),
+    );
+    restored
+        .receive(
+            &sequence(
+                &mut log,
+                Envelope::new(content, sig, author.cert.clone(), None).unwrap(),
+            ),
+            18,
+        )
+        .unwrap();
+    restored
+        .receive(
+            &clear(
+                &mut log,
+                &author,
+                EventBody::MemberAdded {
+                    identity: identity.id(),
+                    role: Role::Member,
+                },
+                19,
+            ),
+            19,
+        )
+        .unwrap();
+    let live = &restored.conversations()[0];
+    assert!(!live.removed);
+    assert_eq!(live.messages.len(), 2);
+    assert_eq!(live.messages[0].text, "Native to web");
+    assert_eq!(live.messages[1].text, "Web to native");
+    assert_eq!(live.unreadable, 1);
 }
 
 #[test]
@@ -1175,6 +1237,248 @@ fn many_honest_checkpoints_out_of_order_raise_no_error() {
         now,
     );
     assert_eq!(waiting(&client).as_deref(), Some(INTEGRITY_ERROR));
+}
+
+#[test]
+fn a_removed_member_keeps_history_until_delete_and_returns_live_when_added() {
+    let phone = NativeSigner::from_secret(&[71; 32]);
+    let phone_key = NativeSigner::from_secret(&[72; 32]);
+    let browser = NativeSigner::from_secret(&[73; 32]);
+    let host = HostSigner(NativeSigner::from_secret(&[74; 32]));
+    let linked = account(&browser, &host.0);
+    let author = Author::device(&phone, phone_key);
+    let mut client = Client::new(linked.clone(), host.clone(), "").unwrap();
+    let space = "sp_removed";
+    let mut log = SpaceLog::new(space);
+    let mut now = 1_i64;
+    client
+        .receive(
+            &clear(
+                &mut log,
+                &author,
+                EventBody::SpaceCreated {
+                    title: "Kept".into(),
+                    kind: SpaceKind::Group,
+                    privacy: Privacy::EndToEnd,
+                },
+                now,
+            ),
+            now,
+        )
+        .unwrap();
+    now += 1;
+    client
+        .receive(
+            &clear(
+                &mut log,
+                &author,
+                EventBody::MemberAdded {
+                    identity: linked.identity.clone(),
+                    role: Role::Member,
+                },
+                now,
+            ),
+            now,
+        )
+        .unwrap();
+    now += 1;
+    client
+        .receive(&ServerFrame::SyncDone.encode(), now)
+        .unwrap();
+    now += 1;
+    client
+        .receive(
+            &clear(
+                &mut log,
+                &author,
+                EventBody::MessagePosted {
+                    message: "msg_before".into(),
+                    text: "Before removal".into(),
+                    attaches: None,
+                    reply: None,
+                },
+                now,
+            ),
+            now,
+        )
+        .unwrap();
+    now += 1;
+    client
+        .receive(
+            &clear(
+                &mut log,
+                &author,
+                EventBody::MemberRemoved {
+                    identity: linked.identity.clone(),
+                },
+                now,
+            ),
+            now,
+        )
+        .unwrap();
+    now += 1;
+    client
+        .receive(
+            &clear(
+                &mut log,
+                &author,
+                EventBody::MessagePosted {
+                    message: "msg_after".into(),
+                    text: "After removal".into(),
+                    attaches: None,
+                    reply: None,
+                },
+                now,
+            ),
+            now,
+        )
+        .unwrap();
+    now += 1;
+    client
+        .receive(
+            &sealed(
+                &mut log,
+                &author,
+                SealedKind::Application,
+                vec![9, 9, 9],
+                now,
+            ),
+            now,
+        )
+        .unwrap();
+    now += 1;
+
+    let view = client
+        .conversations()
+        .into_iter()
+        .find(|conversation| conversation.id == space)
+        .unwrap();
+    assert!(view.removed);
+    assert!(!view.can_send);
+    assert_eq!(view.messages.len(), 1);
+    assert_eq!(view.messages[0].text, "Before removal");
+    assert_eq!(
+        must_err(client.queue_message(space, "no seal", now)).to_string(),
+        "You are no longer a member of this conversation."
+    );
+    assert_eq!(
+        client
+            .conversations()
+            .into_iter()
+            .find(|conversation| conversation.id == space)
+            .unwrap()
+            .messages
+            .len(),
+        1
+    );
+
+    let other = "sp_other";
+    let mut other_log = SpaceLog::new(other);
+    client
+        .receive(
+            &clear(
+                &mut other_log,
+                &author,
+                EventBody::SpaceCreated {
+                    title: "Other".into(),
+                    kind: SpaceKind::Group,
+                    privacy: Privacy::EndToEnd,
+                },
+                now,
+            ),
+            now,
+        )
+        .unwrap();
+    now += 1;
+    client
+        .receive(
+            &clear(
+                &mut other_log,
+                &author,
+                EventBody::MemberAdded {
+                    identity: linked.identity.clone(),
+                    role: Role::Member,
+                },
+                now,
+            ),
+            now,
+        )
+        .unwrap();
+    now += 1;
+    client
+        .receive(
+            &clear(
+                &mut other_log,
+                &author,
+                EventBody::MessagePosted {
+                    message: "msg_other".into(),
+                    text: "Other stays".into(),
+                    attaches: None,
+                    reply: None,
+                },
+                now,
+            ),
+            now,
+        )
+        .unwrap();
+    now += 1;
+    let both = client.conversations();
+    assert_eq!(both.len(), 2);
+    assert_eq!(
+        both.iter()
+            .find(|conversation| conversation.id == other)
+            .unwrap()
+            .messages[0]
+            .text,
+        "Other stays"
+    );
+
+    let deleted = client.delete_conversation(space).unwrap();
+    assert_eq!(deleted.conversations.len(), 1);
+    assert_eq!(deleted.conversations[0].id, other);
+    assert_eq!(deleted.conversations[0].messages[0].text, "Other stays");
+    let mut restored = Client::new(linked.clone(), host, &deleted.snapshot).unwrap();
+    assert_eq!(restored.conversations().len(), 1);
+    assert_eq!(restored.conversations()[0].id, other);
+    assert_eq!(restored.conversations()[0].messages[0].text, "Other stays");
+
+    restored
+        .receive(
+            &clear(
+                &mut log,
+                &author,
+                EventBody::MemberAdded {
+                    identity: linked.identity.clone(),
+                    role: Role::Member,
+                },
+                now,
+            ),
+            now,
+        )
+        .unwrap();
+    let live = restored
+        .conversations()
+        .into_iter()
+        .find(|conversation| conversation.id == space)
+        .unwrap();
+    assert!(!live.removed);
+    assert_eq!(
+        live.messages
+            .iter()
+            .map(|message| message.text.as_str())
+            .collect::<Vec<_>>(),
+        vec!["Before removal", "After removal"]
+    );
+    assert_eq!(
+        restored
+            .conversations()
+            .into_iter()
+            .find(|conversation| conversation.id == other)
+            .unwrap()
+            .messages[0]
+            .text,
+        "Other stays"
+    );
 }
 
 #[test]

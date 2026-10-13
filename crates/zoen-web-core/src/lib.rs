@@ -17,6 +17,9 @@
 //! Each Update carries `retry_at_ms`, the earliest epoch millisecond at which a backed-off send may be published, or null when none is waiting.
 //! `advance(now_ms)` moves the clock to that instant and publishes what is due. `bootstrap` does not take a clock.
 //!
+//! A Space this account was removed from stays listed. Its history stops at that removal, and this browser does not seal or open in it.
+//! Deleting it hides that Space on this browser until a later add puts the account back in the roster.
+//!
 //! A stale MLS seal is the only temporary refusal that blocks an epoch.
 //! Every other temporary refusal stays in the saved outbox and waits, starting at 1 second and doubling up to 300 seconds.
 //! A permanent refusal marks that send failed.
@@ -131,6 +134,10 @@ mod browser {
         }
         pub fn advance(&mut self, now_ms: f64) -> Result<String, JsValue> {
             serde_json::to_string(&self.client.advance(time(now_ms)?).map_err(error)?)
+                .map_err(error)
+        }
+        pub fn delete_conversation(&mut self, space: &str) -> Result<String, JsValue> {
+            serde_json::to_string(&self.client.delete_conversation(space).map_err(error)?)
                 .map_err(error)
         }
         pub fn view(&self) -> Result<String, JsValue> {

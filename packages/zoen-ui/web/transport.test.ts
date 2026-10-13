@@ -125,16 +125,16 @@ const linked: Extract<StoredSession, { kind: 'linked' }> = { kind: 'linked', acc
   ...login, name: 'Web fixture', handle: 'web_fixture', primary: '33'.repeat(32), primary_hpke: '', hpke_secret: '',
   link_secret: '', agreement_secret: '', profile_key: '', profile_key_version: 0, profile_seen_version: 0, profile_fields: '',
 }, snapshot: '' };
-const conversation = { id: 'sp_fixture', title: 'Fixture', kind: 'group', can_send: true, waiting: null, unreadable: 0, messages: [] };
+const conversation = { id: 'sp_fixture', title: 'Fixture', kind: 'group', can_send: true, waiting: null, unreadable: 0, messages: [], removed: false };
 function messagingCore() {
   let closed = false;
   return { ...unitCodec(), close() { closed = true; }, get closed() { return closed; },
     text: async (operation: CoreOperation) => {
       if (operation.kind === 'restore') return JSON.stringify([conversation]);
       if (operation.kind === 'decode_server') return new TextDecoder().decode(operation.bytes);
-      if (operation.kind === 'bootstrap') return JSON.stringify({ snapshot: 'durable bootstrap', frames: [[7]], conversations: [conversation] });
-      if (operation.kind === 'queue_message') return JSON.stringify({ snapshot: 'new MLS send ratchet', frames: [[8]], conversations: [conversation] });
-      if (operation.kind === 'receive') return JSON.stringify({ snapshot: 'received', frames: [], conversations: [conversation] });
+      if (operation.kind === 'bootstrap') return JSON.stringify({ snapshot: 'durable bootstrap', frames: [[7]], conversations: [conversation], retry_at_ms: null });
+      if (operation.kind === 'queue_message') return JSON.stringify({ snapshot: 'new MLS send ratchet', frames: [[8]], conversations: [conversation], retry_at_ms: null });
+      if (operation.kind === 'receive') return JSON.stringify({ snapshot: 'received', frames: [], conversations: [conversation], retry_at_ms: null });
       throw new Error('Unexpected test core operation.');
     } };
 }
@@ -144,7 +144,7 @@ test('production message controller terminates the core and emits nothing when I
   const core = messagingCore();
   const states: MessagesState[] = [];
   const messages = new Messages({ core, session: linked, vault: { ...vault, save: async () => { throw new Error('QuotaExceededError'); } },
-    changed: (state) => states.push(state) });
+    changed: (state) => states.push(state), unpaired: () => {} });
   t.after(() => messages.stop());
   await messages.start(); await authenticate();
   assert.equal(socket().sent.length, 2); // hello/auth only; no MLS/bootstrap frame.
@@ -163,7 +163,7 @@ test('production send persists the ratchet before emitting and reconnect replays
   const messages = new Messages({ core, session: linked, vault: { ...vault, save: async (session) => {
     saves.push(session);
     if (session.kind === 'linked' && session.snapshot === 'new MLS send ratchet') await saving;
-  } }, changed: () => {} });
+  } }, changed: () => {}, unpaired: () => {} });
   t.after(() => messages.stop());
   await messages.start(); await authenticate();
   const first = socket(); assert.equal(first.sent.length, 3);

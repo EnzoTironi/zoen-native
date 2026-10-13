@@ -110,6 +110,8 @@ struct SavedClient {
     integrity_errors: BTreeMap<String, String>,
     epoch_digests: BTreeMap<String, BTreeMap<u64, String>>,
     pending_checkpoints: BTreeMap<String, BTreeMap<String, PendingCheckpoint>>,
+    #[serde(default)]
+    forgotten: BTreeSet<String>,
 }
 
 #[derive(Serialize, Deserialize, Clone, PartialEq, Eq)]
@@ -140,6 +142,7 @@ pub struct ConversationView {
     waiting: Option<String>,
     unreadable: usize,
     messages: Vec<MessageView>,
+    removed: bool,
 }
 
 #[derive(Serialize)]
@@ -243,6 +246,30 @@ impl<S: Signer> Client<S> {
             }
         }
         roster
+    }
+
+    fn removal_seq(&self, space: &str) -> Option<u64> {
+        let mut removed = None;
+        for event in self
+            .logs
+            .get(space)
+            .into_iter()
+            .flat_map(|log| log.events())
+        {
+            match &event.body {
+                EventBody::SpaceCreated { .. } if event.author == self.account.identity => {
+                    removed = None;
+                }
+                EventBody::MemberAdded { identity, .. } if identity == &self.account.identity => {
+                    removed = None;
+                }
+                EventBody::MemberRemoved { identity } if identity == &self.account.identity => {
+                    removed = Some(event.seq);
+                }
+                _ => {}
+            }
+        }
+        removed
     }
 
     fn head(&self, space: &str) -> Option<Seen> {
@@ -672,6 +699,7 @@ impl<S: Signer> Client<S> {
                     && envelope.cert.as_deref() == Some(pending.cert.as_str())
             })
             .cloned();
+        let removed = self.removal_seq(&space).is_some();
         let mut opened = None;
         let mut landed = false;
         if !envelope.is_pruned() {
@@ -682,7 +710,7 @@ impl<S: Signer> Client<S> {
                         if let Some(inner) = own.as_ref().and_then(|pending| pending.inner.clone())
                         {
                             opened = Some(inner);
-                        } else {
+                        } else if !removed {
                             match device.open(&space, ciphertext, &roster, &admitted) {
                                 Ok(Opened::Application { plaintext, from }) => {
                                     opened = inner_event(&sequenced, &plaintext, &from)
@@ -694,8 +722,9 @@ impl<S: Signer> Client<S> {
                         }
                     }
                     SealedKind::Welcome
-                        if device.group_state(&space).map_err(|e| e.to_string())?
-                            == GroupState::Missing =>
+                        if !removed
+                            && device.group_state(&space).map_err(|e| e.to_string())?
+                                == GroupState::Missing =>
                     {
                         match device.join(&space, ciphertext, &roster) {
                             Ok(joined) => landed = joined,
@@ -703,7 +732,7 @@ impl<S: Signer> Client<S> {
                             Err(_) => {}
                         }
                     }
-                    SealedKind::Commit => {
+                    SealedKind::Commit if !removed => {
                         match device.open(&space, ciphertext, &roster, &admitted) {
                             Ok(Opened::Commit { .. }) => landed = true,
                             Ok(_) => {}
@@ -729,6 +758,10 @@ impl<S: Signer> Client<S> {
         if own.is_some() {
             self.saved.outbox.remove(envelope.client_id());
             self.sent.remove(envelope.client_id());
+        }
+        if matches!(&event.body, EventBody::MemberAdded { identity, .. } if identity == &self.account.identity)
+        {
+            self.saved.forgotten.remove(&space);
         }
         if matches!(&event.body, EventBody::MemberRemoved { identity } if identity == &self.account.identity)
         {
@@ -850,20 +883,103 @@ impl<S: Signer> Client<S> {
     }
 
     pub fn conversations(&self) -> Vec<ConversationView> {
-        self.logs.keys().filter_map(|space| {
-            let (title, kind, _) = self.metadata(space)?;
-            if kind == SpaceKind::Personal || !self.roster(space).contains_key(&self.account.identity) { return None; }
-            let mut messages = self.logs.get(space)?.events().iter().filter_map(|event| self.message_view(event, "confirmed", None)).collect::<Vec<_>>();
-            messages.extend(self.saved.outbox.values().filter_map(|pending| {
-                let inner = pending.inner.as_ref()?;
-                if inner.space != *space { return None; }
-                self.message_view(inner, if pending.failure.is_some() { "failed" } else { "sending" }, pending.failure.clone())
-            }));
-            let waiting = self.ready_epoch(space).err().map(|error| error.to_string());
-            let unreadable = self.logs.get(space)?.events().iter().filter(|event| matches!(&event.body, EventBody::Sealed { kind } if kind == "Application")).count();
-            Some(ConversationView { id: space.clone(), title, kind: match kind { SpaceKind::Direct=>"direct",SpaceKind::Group=>"group",SpaceKind::Community=>"community",SpaceKind::Personal=>"personal" },
-                can_send: waiting.is_none(), waiting, unreadable, messages })
-        }).collect()
+        self.logs
+            .keys()
+            .filter_map(|space| {
+                if self.saved.forgotten.contains(space) {
+                    return None;
+                }
+                let (title, kind, _) = self.metadata(space)?;
+                if kind == SpaceKind::Personal {
+                    return None;
+                }
+                let member = self.roster(space).contains_key(&self.account.identity);
+                let removed_at = self.removal_seq(space).filter(|_| !member);
+                if !member && removed_at.is_none() {
+                    return None;
+                }
+                let events = self.logs.get(space)?.events();
+                let visible = |event: &Event| removed_at.is_none_or(|seq| event.seq <= seq);
+                let mut messages = events
+                    .iter()
+                    .filter(|event| visible(event))
+                    .filter_map(|event| self.message_view(event, "confirmed", None))
+                    .collect::<Vec<_>>();
+                if removed_at.is_none() {
+                    messages.extend(self.saved.outbox.values().filter_map(|pending| {
+                        let inner = pending.inner.as_ref()?;
+                        if inner.space != *space {
+                            return None;
+                        }
+                        self.message_view(
+                            inner,
+                            if pending.failure.is_some() {
+                                "failed"
+                            } else {
+                                "sending"
+                            },
+                            pending.failure.clone(),
+                        )
+                    }));
+                }
+                let waiting = if removed_at.is_some() {
+                    None
+                } else {
+                    self.ready_epoch(space).err().map(|error| error.to_string())
+                };
+                let unreadable = events
+                    .iter()
+                    .filter(|event| visible(event))
+                    .filter(|event| {
+                        matches!(&event.body, EventBody::Sealed { kind } if kind == "Application")
+                    })
+                    .count();
+                let removed = removed_at.is_some();
+                Some(ConversationView {
+                    id: space.clone(),
+                    title,
+                    kind: match kind {
+                        SpaceKind::Direct => "direct",
+                        SpaceKind::Group => "group",
+                        SpaceKind::Community => "community",
+                        SpaceKind::Personal => "personal",
+                    },
+                    can_send: !removed && waiting.is_none(),
+                    waiting,
+                    unreadable,
+                    messages,
+                    removed,
+                })
+            })
+            .collect()
+    }
+
+    pub fn delete_conversation(&mut self, space: &str) -> Result<Update, ClientError> {
+        if self.roster(space).contains_key(&self.account.identity)
+            || self.removal_seq(space).is_none()
+        {
+            return Err("This conversation is still active.".into());
+        }
+        self.saved.forgotten.insert(space.to_string());
+        let drop_ids = self
+            .saved
+            .outbox
+            .iter()
+            .filter_map(|(id, pending)| {
+                let pending_space = if let Some(event) = &pending.inner {
+                    event.space.clone()
+                } else {
+                    pending.envelope().ok()?.space().to_string()
+                };
+                (pending_space == space).then(|| id.clone())
+            })
+            .collect::<Vec<_>>();
+        for id in drop_ids {
+            self.sent.remove(&id);
+            self.saved.outbox.remove(&id);
+        }
+        self.saved.joining.remove(space);
+        self.update(Vec::new())
     }
 
     fn message_view(
@@ -908,7 +1024,7 @@ impl<S: Signer> Client<S> {
         } else {
             pending.envelope()?.space().to_string()
         };
-        if self.saved.integrity_errors.contains_key(&space) {
+        if self.saved.integrity_errors.contains_key(&space) || self.removal_seq(&space).is_some() {
             return Ok(false);
         }
         if let Some(event) = &pending.inner {

@@ -14,7 +14,9 @@ export type CoreOperation =
   | { kind: 'bootstrap' }
   | { kind: 'receive'; bytes: Uint8Array; now: number }
   | { kind: 'queue_message'; space: string; text: string; now: number }
-  | { kind: 'queue_join'; space: string; role: string; code: string; now: number };
+  | { kind: 'queue_join'; space: string; role: string; code: string; now: number }
+  | { kind: 'advance'; now: number }
+  | { kind: 'delete_conversation'; space: string };
 
 declare const ZOEN_WORKER_INTEGRITY: string;
 type Awaiting = { resolve: (result: string | Uint8Array) => void; reject: (error: Error) => void; timer: ReturnType<typeof setTimeout> };

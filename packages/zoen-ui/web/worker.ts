@@ -24,6 +24,8 @@ function parseOperation(input: unknown): CoreOperation {
     case 'receive': return { kind: 'receive', bytes: bytes(value.bytes), now: integer(value.now) };
     case 'queue_message': return { kind: 'queue_message', space: string(value.space), text: string(value.text), now: integer(value.now) };
     case 'queue_join': return { kind: 'queue_join', space: string(value.space), role: string(value.role), code: string(value.code), now: integer(value.now) };
+    case 'advance': return { kind: 'advance', now: integer(value.now) };
+    case 'delete_conversation': return { kind: 'delete_conversation', space: string(value.space) };
     default: throw new Error('Invalid browser core operation.');
   }
 }
@@ -54,6 +56,8 @@ function run(operation: CoreOperation): string | Uint8Array {
     case 'receive': return restored().receive(operation.bytes, operation.now);
     case 'queue_message': return restored().queue_message(operation.space, operation.text, operation.now);
     case 'queue_join': return restored().queue_join(operation.space, operation.role, operation.code, operation.now);
+    case 'advance': return restored().advance(operation.now);
+    case 'delete_conversation': return restored().delete_conversation(operation.space);
     default: { const exhaustive: never = operation; throw new Error(`Unknown operation ${exhaustive}`); }
   }
 }

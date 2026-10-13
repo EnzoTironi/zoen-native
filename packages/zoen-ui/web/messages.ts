@@ -22,8 +22,13 @@ function parseConversation(input: unknown) {
   const value = object(input);
   const kind = string(value.kind);
   if (kind !== 'direct' && kind !== 'group' && kind !== 'community' && kind !== 'personal') throw new Error('Invalid conversation kind.');
-  return { id: string(value.id), title: string(value.title), kind, can_send: boolean(value.can_send),
+  const removed = boolean(value.removed);
+  const canSend = boolean(value.can_send);
+  if (removed && canSend) throw new Error('A removed conversation cannot send.');
+  const conversation = { id: string(value.id), title: string(value.title), kind,
     waiting: nullableText(value.waiting), unreadable: integer(value.unreadable), messages: array(value.messages).map(parseMessage) };
+  return removed ? { ...conversation, removed: true as const, can_send: false as const }
+    : { ...conversation, removed: false as const, can_send: canSend };
 }
 export type Conversation = ReturnType<typeof parseConversation>;
 export type Message = ReturnType<typeof parseMessage>;
@@ -39,9 +44,32 @@ export type Invite = ReturnType<typeof parseInvite>;
 
 function parseUpdate(json: string) {
   const value = object(JSON.parse(json));
+  const retry = value.retry_at_ms;
   return { snapshot: string(value.snapshot), frames: array(value.frames).map(bytes),
-    conversations: array(value.conversations).map(parseConversation) };
+    conversations: array(value.conversations).map(parseConversation),
+    retry_at_ms: retry === null ? null : integer(retry) };
 }
+
+export function retryAtMs(json: string): number | null {
+  return parseUpdate(json).retry_at_ms;
+}
+
+export type RetryTimer = { clear(): void };
+
+export function watchRetry(
+  current: RetryTimer | null,
+  retryAt: number | null,
+  now: () => number,
+  schedule: (delayMs: number, fire: () => void) => RetryTimer,
+  advance: (now: number) => void,
+): RetryTimer | null {
+  current?.clear();
+  if (retryAt === null) return null;
+  const delay = Math.max(0, retryAt - now());
+  return schedule(delay, () => advance(now()));
+}
+
+const OUT_OF_DATE = 'This browser session is out of date. Pair this browser again.';
 
 export type MessagesState =
   | { kind: 'loading' }
@@ -63,11 +91,14 @@ export class Messages {
   private generation = 0;
   private conversations: Conversation[] = [];
   private notice: string | null = null;
+  private readonly unpaired: () => void;
+  private retry: RetryTimer | null = null;
 
-  constructor({ core, vault, session, changed }: {
+  constructor({ core, vault, session, changed, unpaired }: {
     core: MessageCore; vault: MessageVault; session: LinkedSession; changed: (state: MessagesState) => void;
+    unpaired: () => void;
   }) {
-    this.core = core; this.vault = vault; this.session = session; this.changed = changed;
+    this.core = core; this.vault = vault; this.session = session; this.changed = changed; this.unpaired = unpaired;
     this.transport = new AuthenticatedTransport(core, vault, session.account, (connection) => {
       if (this.closed) return;
       this.connection = connection;
@@ -112,7 +143,31 @@ export class Messages {
       } });
     if (this.closed) return;
     this.conversations = update.conversations;
+    this.arm(update.retry_at_ms);
     this.publish();
+  }
+
+  private arm(retryAt: number | null): void {
+    this.retry = watchRetry(this.retry, retryAt, () => Date.now(), (delay, fire) => {
+      const id = setTimeout(fire, delay);
+      return { clear() { clearTimeout(id); } };
+    }, () => {
+      void this.enqueue(async () => {
+        if (this.closed || this.connection.kind !== 'ready') return;
+        const generation = this.generation;
+        const update = await this.core.text({ kind: 'advance', now: Date.now() });
+        await this.apply(update, generation);
+      });
+    });
+  }
+
+  deleteConversation(space: string): Promise<void> {
+    if (this.closed) return Promise.reject(new Error('The browser session is closed.'));
+    const generation = this.generation;
+    return this.enqueue(async () => {
+      const update = await this.core.text({ kind: 'delete_conversation', space });
+      await this.apply(update, generation);
+    });
   }
 
   send({ space, text }: { space: string; text: string }): Promise<void> {
@@ -151,7 +206,19 @@ export class Messages {
       const reason = refusal();
       if (reason) throw new Error(reason);
       try { await operation(); }
-      catch (error) { this.fail(message(error)); throw error; }
+      catch (error) {
+        const reason = message(error);
+        if (reason === OUT_OF_DATE) {
+          try { await this.vault.save({ kind: 'empty' }); }
+          catch (saveError) { this.fail(message(saveError)); throw saveError; }
+          this.stop();
+          this.core.close();
+          this.unpaired();
+          return;
+        }
+        this.fail(reason);
+        throw error;
+      }
     });
     this.serial = task.catch(() => {});
     return task;
@@ -167,6 +234,8 @@ export class Messages {
   stop(): void {
     this.closed = true;
     ++this.generation;
+    this.retry?.clear();
+    this.retry = null;
     this.transport.stop();
   }
 }

@@ -76,14 +76,23 @@ function PairingGate({ runtime, session, linked }: { runtime: Runtime; session: 
   </Gate>;
 }
 
-function Thread({ conversation, identity, connected, send }: {
+function conversationCopy(language: string): { removed: string; deleteLabel: string } {
+  if (language.toLowerCase().startsWith('pt')) {
+    return { removed: 'Você não faz mais parte desta conversa.', deleteLabel: 'Apagar conversa' };
+  }
+  return { removed: 'You are no longer a member of this conversation.', deleteLabel: 'Delete conversation' };
+}
+
+function Thread({ conversation, identity, connected, send, remove }: {
   conversation: Conversation; identity: string; connected: boolean; send: (text: string) => Promise<void>;
+  remove: () => Promise<void>;
 }) {
   const [draft, setDraft] = useState('');
   const [sending, setSending] = useState(false);
   const [error, setError] = useState('');
   const end = useRef<HTMLDivElement>(null);
   const canSend = connected && conversation.can_send && !sending;
+  const copy = conversationCopy(navigator.language);
   useEffect(() => { end.current?.scrollIntoView({ block: 'end' }); }, [conversation.messages.length]);
   function submit() {
     if (!canSend || !draft.trim()) return;
@@ -91,7 +100,7 @@ function Thread({ conversation, identity, connected, send }: {
     void send(draft).then(() => setDraft('')).catch((failure: unknown) => setError(message(failure))).finally(() => setSending(false));
   }
   return <section className="zw-thread" aria-label={conversation.title}>
-    {conversation.waiting ? <p className="zw-status" role="status">{conversation.waiting}</p> : null}
+    {conversation.waiting && !conversation.removed ? <p className="zw-status" role="status">{conversation.waiting}</p> : null}
     {conversation.unreadable ? <p className="zw-status">{conversation.unreadable} earlier encrypted {conversation.unreadable === 1 ? 'message is' : 'messages are'} available on your phone.</p> : null}
     <div className="zw-messages" role="log" aria-label="Messages" aria-live="polite">
       {conversation.messages.map((entry) => <article key={entry.id} className={`zw-bubble${entry.author === identity ? ' zw-bubble-own' : ''}`}>
@@ -102,14 +111,17 @@ function Thread({ conversation, identity, connected, send }: {
       <div ref={end} />
     </div>
     {error ? <p className="zw-error" role="alert">{error}</p> : null}
-    <form className="zw-compose" onSubmit={(event) => { event.preventDefault(); submit(); }}>
+    {conversation.removed ? <div className="zw-compose">
+      <p className="zw-status" role="status">{copy.removed}</p>
+      <button className="zw-secondary" type="button" onClick={() => { void remove().catch((failure: unknown) => setError(message(failure))); }}>{copy.deleteLabel}</button>
+    </div> : <form className="zw-compose" onSubmit={(event) => { event.preventDefault(); submit(); }}>
       <label className="zw-compose-label"><span className="zw-sr-only">Message to {conversation.title}</span>
         <textarea value={draft} disabled={!canSend} maxLength={32_768} placeholder={canSend ? 'Message' : conversation.waiting ?? 'Reconnecting…'}
           onChange={(event) => setDraft(event.target.value)} onKeyDown={(event) => {
             if ((event.metaKey || event.ctrlKey) && event.key === 'Enter' && !event.nativeEvent.isComposing) { event.preventDefault(); submit(); }
           }} /></label>
       <button className="zw-primary" type="submit" disabled={!canSend || !draft.trim()}>{sending ? 'Saving…' : 'Send'}</button>
-    </form>
+    </form>}
   </section>;
 }
 
@@ -153,7 +165,9 @@ function Invitation({ code, messages, connected, conversations, notice, opened, 
   </section>;
 }
 
-function Linked({ runtime, session, forget }: { runtime: Runtime; session: Extract<StoredSession, { kind: 'linked' }>; forget: () => void }) {
+function Linked({ runtime, session, forget, unpaired }: {
+  runtime: Runtime; session: Extract<StoredSession, { kind: 'linked' }>; forget: () => void; unpaired: () => void;
+}) {
   const [theme, setTheme] = useState<ShellTheme>('system');
   const [search, setSearch] = useState('');
   const [state, setState] = useState<MessagesState>({ kind: 'loading' });
@@ -161,7 +175,7 @@ function Linked({ runtime, session, forget }: { runtime: Runtime; session: Extra
   const [showInvite, setShowInvite] = useState(invitation !== null);
   const running = useRef<Messages | null>(null);
   useEffect(() => {
-    const messages = new Messages({ ...runtime, session, changed: setState });
+    const messages = new Messages({ ...runtime, session, changed: setState, unpaired });
     running.current = messages;
     void messages.start().catch(() => {});
     return () => { messages.stop(); running.current = null; };
@@ -173,7 +187,8 @@ function Linked({ runtime, session, forget }: { runtime: Runtime; session: Extra
   const status = state.kind === 'loading' ? 'Opening encrypted conversations…' : state.kind === 'failed' ? state.message :
     state.connection.kind === 'ready' ? 'Connected' : state.connection.kind === 'reconnecting' ? 'Reconnecting…' : 'Connecting securely…';
   return <ZoenShell navigation={[{ id: 'chats', label: 'Chats', icon: <ShellIcon name="chats" /> }]} activeNavigationId="chats"
-    onNavigate={() => {}} chats={visible.map((entry) => ({ id: entry.id, title: entry.title, preview: entry.messages.at(-1)?.text ?? entry.waiting ?? 'Encrypted conversation' }))}
+    onNavigate={() => {}} chats={visible.map((entry) => ({ id: entry.id, title: entry.title,
+      preview: entry.removed ? conversationCopy(navigator.language).removed : entry.messages.at(-1)?.text ?? entry.waiting ?? 'Encrypted conversation' }))}
     {...(conversation ? { activeChatId: conversation.id } : {})} onSelectChat={setSelected} searchQuery={search} onSearchChange={setSearch}
     theme={theme} onThemeChange={setTheme} title={conversation?.title ?? 'Chats'} sidebarFooter={<div className="zw-footer"><span>{session.account.name}</span>
       <span className={state.kind === 'failed' ? 'zw-error' : 'zw-status'} role={state.kind === 'failed' ? 'alert' : 'status'}>{status}</span>
@@ -182,7 +197,8 @@ function Linked({ runtime, session, forget }: { runtime: Runtime; session: Extra
     {showInvite && invitation ? <Invitation code={invitation} messages={running} connected={connected} conversations={conversations}
       notice={state.kind === 'active' ? state.notice : state.kind === 'failed' ? state.message : null}
       opened={(space) => { setSelected(space); setShowInvite(false); }} cancel={() => setShowInvite(false)} /> : conversation ? <Thread key={conversation.id} conversation={conversation} identity={session.account.identity} connected={connected}
-      send={(text) => running.current?.send({ space: conversation.id, text }) ?? Promise.reject(new Error('The browser session is closed.'))} /> :
+      send={(text) => running.current?.send({ space: conversation.id, text }) ?? Promise.reject(new Error('The browser session is closed.'))}
+      remove={() => running.current?.deleteConversation(conversation.id) ?? Promise.reject(new Error('The browser session is closed.'))} /> :
       <section className="zw-account"><h1>{state.kind === 'loading' ? 'Opening your conversations' : 'Your conversations'}</h1>
         <p>{connected ? 'Conversations you join on your phone appear here. Keep your phone connected while it adds this browser to each encrypted conversation.' : status}</p></section>}
   </ZoenShell>;
@@ -216,7 +232,7 @@ function App() {
   }, []);
   if (boot.kind === 'loading') return <Gate><h1>Zoen</h1><p role="status">Opening encrypted browser storage…</p></Gate>;
   if (boot.kind === 'unavailable') return <Gate><h1>Open Zoen on your phone</h1><p role="alert">{boot.message}</p></Gate>;
-  if (boot.session.kind === 'linked') return <Linked runtime={boot.runtime} session={boot.session} forget={() => {
+  if (boot.session.kind === 'linked') return <Linked runtime={boot.runtime} session={boot.session} unpaired={() => setBoot({ ...boot, session: { kind: 'empty' } })} forget={() => {
     if (!window.confirm('Forget this browser and its locally stored conversations? Unlink it from Devices on your phone as well.')) return;
     boot.runtime.core.close();
     void boot.runtime.vault.erase().then(() => location.reload()).catch((error: unknown) => setBoot({ kind: 'unavailable', message: message(error) }));
