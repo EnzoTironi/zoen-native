@@ -302,6 +302,9 @@ impl Engine {
         self.net.optimistic_approvals = optimistic;
         self.approval_replay_needed = false;
         self.index_dirty = true;
+        // The rebuild starts from an empty projection, so a stored fork has to
+        // be written back before the next send.
+        self.restore_recorded_forks();
         self.recompute_unknown();
         Ok(())
     }

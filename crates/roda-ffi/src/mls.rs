@@ -1507,8 +1507,21 @@ impl Engine {
         })
     }
 
+    pub(crate) fn recorded_fork(&self, space: &str) -> Option<String> {
+        self.store.meta(&fork_meta(space)).ok().flatten()
+    }
+
     pub(crate) fn fork_recorded(&self, space: &str) -> bool {
-        self.store.meta(&fork_meta(space)).ok().flatten().is_some()
+        self.recorded_fork(space).is_some()
+    }
+
+    pub(crate) fn restore_recorded_forks(&mut self) {
+        let spaces = self.space_order.clone();
+        for space in spaces {
+            if let Some(reason) = self.recorded_fork(&space) {
+                self.show_fork(&space, reason);
+            }
+        }
     }
 
     fn mark_checkpoint_fork(&mut self, space: &str) -> R<()> {

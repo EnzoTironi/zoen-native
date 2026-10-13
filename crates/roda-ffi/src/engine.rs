@@ -1385,6 +1385,7 @@ impl Engine {
             .spaces
             .get(space)
             .and_then(|s| s.integrity_error.clone())
+            .or_else(|| self.recorded_fork(space))
         {
             return Err(CoreError::Invalid { reason });
         }
