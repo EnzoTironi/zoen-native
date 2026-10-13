@@ -449,6 +449,24 @@ fn a_duplicate_pending_invite_is_refused_and_invite_is_not_defaulted() {
     assert_ne!(err, ClientError::DuplicateInvite);
 }
 
+#[test]
+fn a_version_2_snapshot_without_forgotten_is_refused() {
+    let identity = NativeSigner::from_secret(&[81; 32]);
+    let host = HostSigner(NativeSigner::from_secret(&[82; 32]));
+    let linked = account(&identity, &host.0);
+    let mut client = Client::new(linked.clone(), host.clone(), "").unwrap();
+    let snapshot = client.bootstrap().unwrap().snapshot;
+    let mut value: serde_json::Value = serde_json::from_str(&snapshot).unwrap();
+    let removed = value.as_object_mut().unwrap().remove("forgotten");
+    assert_eq!(removed, Some(serde_json::Value::Array(vec![])));
+    let err = must_err(Client::new(linked, host, &value.to_string()));
+    assert_eq!(err, ClientError::OutOfDate);
+    assert_eq!(
+        err.to_string(),
+        "This browser session is out of date. Pair this browser again."
+    );
+}
+
 struct WebGroup {
     sqlite: rusqlite::Connection,
     phone: NativeSigner,

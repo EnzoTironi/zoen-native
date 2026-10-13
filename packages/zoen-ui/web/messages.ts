@@ -56,6 +56,13 @@ export function retryAtMs(json: string): number | null {
 
 export type RetryTimer = { clear(): void };
 
+const MAX_TIMER_MS = 2 ** 31 - 1;
+
+function timerDelay(ms: number): number {
+  if (!Number.isFinite(ms) || ms <= 0) return 0;
+  return ms > MAX_TIMER_MS ? MAX_TIMER_MS : ms;
+}
+
 export function watchRetry(
   current: RetryTimer | null,
   retryAt: number | null,
@@ -65,16 +72,46 @@ export function watchRetry(
 ): RetryTimer | null {
   current?.clear();
   if (retryAt === null) return null;
-  const delay = Math.max(0, retryAt - now());
-  return schedule(delay, () => advance(now()));
+  let active: RetryTimer | null = null;
+  const step = () => {
+    const remaining = retryAt - now();
+    if (remaining <= 0) {
+      advance(now());
+      return;
+    }
+    active = schedule(timerDelay(remaining), step);
+  };
+  step();
+  return { clear() { active?.clear(); } };
 }
 
 const OUT_OF_DATE = 'This browser session is out of date. Pair this browser again.';
 const DUPLICATE_INVITE = 'This invitation is already pending.';
 
+const CORE_REFUSAL_PT: Readonly<Record<string, string>> = {
+  'Invalid invitation.': 'Este convite não é válido.',
+  'Write a message of up to 32 KB.': 'Escreva uma mensagem de até 32 KB.',
+  'This conversation is still active.': 'Esta conversa ainda está ativa.',
+  'You are no longer a member of this conversation.': 'Você não faz mais parte desta conversa.',
+  'You can read this conversation.': 'Você pode ler esta conversa.',
+  'Catching up with the conversation…': 'Sincronizando esta conversa…',
+  'Conversation not found.': 'Não encontrei esta conversa.',
+  'Open this conversation in the native app.': 'Abra esta conversa no aplicativo.',
+  'Waiting for your phone to add this browser to the encrypted conversation…': 'Esperando o celular incluir este navegador na conversa criptografada…',
+  'Waiting for the encrypted membership update…': 'Esperando a atualização de quem está na conversa…',
+  'Waiting to catch up with the encrypted conversation…': 'Esperando alcançar a conversa criptografada…',
+  'The encrypted conversation has conflicting membership. Open it on your phone.': 'A conversa criptografada tem membros em conflito. Abra no celular.',
+};
+
 function inviteCopy(language: string): string {
   if (language.toLowerCase().startsWith('pt')) return 'Este convite já está a caminho.';
   return 'This invitation is already on its way.';
+}
+
+function refusalCopy(language: string, reason: string): string {
+  if (reason === DUPLICATE_INVITE) return inviteCopy(language);
+  if (!language.toLowerCase().startsWith('pt')) return reason;
+  return CORE_REFUSAL_PT[reason] ?? reason;
 }
 
 type CoreEffect =
@@ -84,8 +121,7 @@ type CoreEffect =
 
 function coreEffect(reason: string, scope: 'action' | 'session', language: string): CoreEffect {
   if (reason === OUT_OF_DATE) return { kind: 'unpaired' };
-  if (reason === DUPLICATE_INVITE) return { kind: 'refused', message: inviteCopy(language) };
-  if (scope === 'action') return { kind: 'refused', message: reason };
+  if (reason === DUPLICATE_INVITE || scope === 'action') return { kind: 'refused', message: refusalCopy(language, reason) };
   return { kind: 'fatal', message: reason };
 }
 
@@ -169,7 +205,7 @@ export class Messages {
 
   private arm(retryAt: number | null): void {
     this.retry = watchRetry(this.retry, retryAt, () => Date.now(), (delay, fire) => {
-      const id = setTimeout(fire, delay);
+      const id = setTimeout(fire, timerDelay(delay));
       return { clear() { clearTimeout(id); } };
     }, () => {
       void this.enqueue(async () => {

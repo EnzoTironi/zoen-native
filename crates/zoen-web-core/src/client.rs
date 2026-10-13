@@ -110,7 +110,6 @@ struct SavedClient {
     integrity_errors: BTreeMap<String, String>,
     epoch_digests: BTreeMap<String, BTreeMap<u64, String>>,
     pending_checkpoints: BTreeMap<String, BTreeMap<String, PendingCheckpoint>>,
-    #[serde(default)]
     forgotten: BTreeSet<String>,
 }
 
@@ -1239,7 +1238,11 @@ fn load_snapshot(snapshot: &str) -> Result<SavedClient, ClientError> {
         serde_json::from_str(snapshot).map_err(|error| error.to_string())?;
     match value.get("version").and_then(|version| version.as_u64()) {
         Some(1) => return Err(ClientError::OutOfDate),
-        Some(2) => {}
+        Some(2) => {
+            if value.get("forgotten").is_none() {
+                return Err(ClientError::OutOfDate);
+            }
+        }
         _ => return Err("unsupported browser session version".into()),
     }
     serde_json::from_value(value).map_err(|error| error.to_string().into())

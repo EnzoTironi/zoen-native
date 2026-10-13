@@ -55,6 +55,42 @@ test('one retry timer follows retry_at_ms and advances at that instant', () => {
   assert.deepEqual(advances, [4_500]);
 });
 
+test('a far retry waits in capped steps and advances only at that instant', () => {
+  const ceiling = 2 ** 31 - 1;
+  const scheduled: { delay: number; fire: () => void }[] = [];
+  const advances: number[] = [];
+  let now = 1_000;
+  const retryAt = 1_000 + ceiling + 80_000;
+  let scheduledCount = 0;
+  const schedule = (delay: number, fire: () => void): RetryTimer => {
+    scheduledCount += 1;
+    if (scheduledCount > 4) throw new Error('retry timer is looping');
+    scheduled.push({ delay, fire });
+    if (delay > ceiling) fire();
+    return { clear() {} };
+  };
+  const arm = () => {
+    watchRetry(null, retryAt, () => now, schedule, (at) => {
+      advances.push(at);
+      if (at < retryAt) arm();
+    });
+  };
+  arm();
+  const first = scheduled[0];
+  assert.ok(first);
+  assert.equal(first.delay, ceiling);
+  now = 1_001;
+  first.fire();
+  assert.deepEqual(advances, []);
+  const second = scheduled[1];
+  assert.ok(second);
+  assert.equal(second.delay, ceiling);
+  now = retryAt;
+  second.fire();
+  assert.deepEqual(advances, [retryAt]);
+  assert.equal(scheduledCount, 2);
+});
+
 function liveCore(text: (operation: CoreOperation) => Promise<string>) {
   let terminated = false;
   return {
@@ -183,9 +219,10 @@ async function secondJoinShows(t: test.TestContext, language: string, line: stri
     assert.equal(error.message, line);
     return true;
   });
+  const invalid = language.toLowerCase().startsWith('pt') ? 'Este convite não é válido.' : 'Invalid invitation.';
   await assert.rejects(messages.join({ invite, code: 'ZZZZZZZZZZ' }), (error: unknown) => {
     assert.ok(error instanceof Error);
-    assert.equal(error.message, 'Invalid invitation.');
+    assert.equal(error.message, invalid);
     return true;
   });
   assert.equal(states.at(-1)?.kind, 'active');
@@ -199,4 +236,67 @@ test('a second join in Portuguese keeps the linked session', async (t) => {
 
 test('a second join in English keeps the linked session', async (t) => {
   await secondJoinShows(t, 'en', 'This invitation is already on its way.');
+});
+
+const sendingConversation = {
+  id: 'sp_join', title: 'Kept', kind: 'group', can_send: true, waiting: null, unreadable: 0, messages: [], removed: false,
+};
+
+async function refusedActionsShow(t: test.TestContext, language: string, lines: { invite: string; send: string; remove: string }) {
+  installSocket(t);
+  const states: MessagesState[] = [];
+  const { core, terminated } = liveCore(async (operation) => {
+    if (operation.kind === 'restore') return JSON.stringify([sendingConversation]);
+    if (operation.kind === 'decode_server') return new TextDecoder().decode(operation.bytes);
+    if (operation.kind === 'bootstrap' || operation.kind === 'receive') {
+      return JSON.stringify({ snapshot: 'snapshot', frames: [], conversations: [sendingConversation], retry_at_ms: null });
+    }
+    if (operation.kind === 'queue_join') throw new Error('Invalid invitation.');
+    if (operation.kind === 'queue_message') throw new Error('Write a message of up to 32 KB.');
+    if (operation.kind === 'delete_conversation') throw new Error('This conversation is still active.');
+    throw new Error(operation.kind);
+  });
+  const messages = new Messages({
+    core, language,
+    vault: { save: async () => {}, sign: async () => new Uint8Array(64) },
+    session: { kind: 'linked', account, snapshot: '' },
+    changed: (state) => { states.push(state); },
+    unpaired: () => { throw new Error('pairing'); },
+  });
+  t.after(() => messages.stop());
+  await messages.start();
+  await authenticate();
+  await assert.rejects(messages.join({ invite, code: 'ZZZZZZZZZZ' }), (error: unknown) => {
+    assert.ok(error instanceof Error);
+    assert.equal(error.message, lines.invite);
+    return true;
+  });
+  await assert.rejects(messages.send({ space: 'sp_join', text: 'x'.repeat(32_769) }), (error: unknown) => {
+    assert.ok(error instanceof Error);
+    assert.equal(error.message, lines.send);
+    return true;
+  });
+  await assert.rejects(messages.deleteConversation('sp_join'), (error: unknown) => {
+    assert.ok(error instanceof Error);
+    assert.equal(error.message, lines.remove);
+    return true;
+  });
+  assert.equal(states.at(-1)?.kind, 'active');
+  assert.equal(terminated(), false);
+}
+
+test('a Portuguese session shows refusals in Portuguese', async (t) => {
+  await refusedActionsShow(t, 'pt-BR', {
+    invite: 'Este convite não é válido.',
+    send: 'Escreva uma mensagem de até 32 KB.',
+    remove: 'Esta conversa ainda está ativa.',
+  });
+});
+
+test('an English session shows the core refusal sentences', async (t) => {
+  await refusedActionsShow(t, 'en', {
+    invite: 'Invalid invitation.',
+    send: 'Write a message of up to 32 KB.',
+    remove: 'This conversation is still active.',
+  });
 });
