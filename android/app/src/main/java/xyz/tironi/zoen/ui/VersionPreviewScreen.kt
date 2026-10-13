@@ -39,6 +39,7 @@ private data class HistoricalRead(val content: HistoricalContent? = null, val fa
 fun VersionPreviewScreen(model: ZoenViewModel, id: String, number: UInt, back: () -> Unit, snackbar: SnackbarHostState?) {
     val context = LocalContext.current
     val fileTooLarge = stringResource(R.string.file_open_too_large)
+    val somethingWrong = stringResource(R.string.something_wrong)
     val state by model.state.collectAsState()
     val read by produceState(HistoricalRead(), id, number, state.revision) {
         value = try { model.repository.query { core ->
@@ -52,7 +53,7 @@ fun VersionPreviewScreen(model: ZoenViewModel, id: String, number: UInt, back: (
                 if (item.file != null) readFileVersion(core, id, number, fileTooLarge) else null, canRestore))
         } } catch (error: Exception) {
             if (error is CancellationException) throw error
-            HistoricalRead(failure = error.message ?: context.getString(R.string.something_wrong))
+            HistoricalRead(failure = error.message ?: somethingWrong)
         }
     }
     val content = read.content

@@ -2,3 +2,6 @@
 package_name = "xyz.tironi.zoen.core"
 cdylib_name = "roda_ffi"
 android = true
+
+[defaults.bindings.kotlin.rename]
+"CoreError.Storage.message" = "detail"
