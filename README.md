@@ -43,6 +43,16 @@ scripts/build-core.sh
 
 Apple builds require Xcode, XcodeGen and the Rust Apple targets. Run `scripts/dev-stack.sh` in a separate terminal; it remains attached to the relay. The full Rust suite also requires PostgreSQL, FoundationDB, NATS and the sandbox providers configured by [CI](.github/workflows/ci.yml). Read [development setup](docs/dev/setup.md) before account/device journeys. The [web package](packages/zoen-ui/README.md) describes the reusable shell and preview.
 
+The certified runtime reads reply receipts in batches of at most 64 real history positions. A prefix retains every pending event, retry field, reference, and sealed publication byte for cold restore. Concurrent member messages can share an earlier verified `seen` without proving a fork. A signed `seen` that contradicts the held chain, or an authenticated checkpoint with an incompatible prefix or group digest, still parks sending and rejects cold activation. Restore also requires the exact certified agent device and owner bound to the image.
+
+Run the receipt and fork regressions with:
+
+```sh
+cargo test --locked -j2 -p roda-ffi --lib runtime_core::tests::receipt_prefix_keeps_exact_pending_bytes_and_resumes_beyond_64_real_positions -- --exact --test-threads=1
+cargo test --locked -j2 -p roda-ffi --lib runtime_core::tests -- --test-threads=1
+cargo test --locked -j2 -p roda-ffi --lib mls::tests -- --test-threads=1
+```
+
 ## Documentation
 
 Start with the [documentation index](docs/README.md), [current roadmap](docs/roadmap-status.md), [architecture](docs/architecture.md) and [system design](docs/system-design.md). The [Live Page contract](docs/product/live-pages.md), [session API](docs/dev/live-page-session.md) and [HIG matrix](docs/product/hig-compliance.md) separate implemented behavior from required acceptance. The [source auditor](tools/hig-audit/README.md) is advisory. [Dated history](docs/history/roadmap-2026-10-12-before-consolidation.md) preserves older results.

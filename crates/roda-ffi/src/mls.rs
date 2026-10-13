@@ -31,9 +31,6 @@
 //!   with a different hash marks the same fork and is not appended.
 //!   A member event that is already the next sequence, whose signed `seen`
 //!   is not a held position, marks that same fork and is not fetched again.
-//!   So does a sealed application that shares that `seen` with another
-//!   author's successor still waiting in the outbox, even when this event
-//!   links and is stored.
 
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::sync::Mutex;
@@ -959,14 +956,6 @@ impl Engine {
             let _ = self.reload();
             return Ingest::Invalid(err.to_string());
         }
-        // The other author's successor of this seen is still queued. Storing
-        // this one, canonical hash included, is the fork. A later reject is
-        // too late: the next send would already have left.
-        if kind == SealedKind::Application && self.queued_same_seen(&space, &e) {
-            if let Err(err) = self.mark_checkpoint_fork(&space) {
-                return Ingest::Invalid(err.to_string());
-            }
-        }
         if let Err(err) = self.compare_checkpoint(&e) {
             return Ingest::Invalid(err.to_string());
         }
@@ -1491,20 +1480,6 @@ impl Engine {
             self.store
                 .set_meta(&key, &serde_json::to_string(pending).unwrap_or_default())
         };
-    }
-
-    /// Another author still has a successor of this event's signed `seen` in the outbox.
-    fn queued_same_seen(&self, space: &str, event: &Event) -> bool {
-        let Some(seen) = event.seen.as_ref() else {
-            return false;
-        };
-        self.store.outbox().ok().is_some_and(|rows| {
-            rows.iter().any(|row| {
-                row.event.space == space
-                    && row.event.author != event.author
-                    && row.event.seen.as_ref() == Some(seen)
-            })
-        })
     }
 
     pub(crate) fn recorded_fork(&self, space: &str) -> Option<String> {
@@ -3987,7 +3962,7 @@ mod tests {
     }
 
     #[test]
-    fn canonical_sealed_sibling_marks_the_fork_and_refuses_send() {
+    fn concurrent_sealed_siblings_send_until_a_member_proves_a_fork() {
         let dir = std::env::temp_dir().join(format!("u18-r6-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).unwrap();
@@ -4057,6 +4032,51 @@ mod tests {
             assert_eq!(stored.author, peer.identity);
             assert_eq!(stored.seen.as_ref(), Some(&head));
 
+            assert_eq!(integrity(&engine, space), None);
+            assert_eq!(engine.store.meta(&fork_meta(space)).unwrap(), None);
+            let sent = engine.send_message(space, "concurrent send").unwrap();
+            assert!(matches!(
+                sent.kind,
+                crate::dto::EntryKind::Message { ref text, .. } if text == "concurrent send"
+            ));
+            assert_eq!(engine.store.outbox().unwrap().len(), before + 1);
+            assert_eq!(
+                engine.store.outbox_get("own-successor").unwrap(),
+                Some(own.clone())
+            );
+            let published = engine.outbox_envelopes();
+            assert_eq!(published.len(), 1);
+            assert_eq!(published[0].client_id(), "own-successor");
+            engine.reproject_approval_overlay().unwrap();
+            assert_eq!(integrity(&engine, space), None);
+            assert_eq!(engine.store.meta(&fork_meta(space)).unwrap(), None);
+
+            let next = engine.next_seq(space);
+            let diverged = roda_types::Seen {
+                seq: head.seq,
+                hash: "00".repeat(32),
+            };
+            assert_ne!(diverged.hash, head.hash);
+            let conflicting = ordered(
+                &engine,
+                Envelope::sealed(
+                    &peer,
+                    space,
+                    "peer-conflicting-prefix",
+                    1_700_000_000_300,
+                    Some(&diverged),
+                    Sealed::new(SealedKind::Application, SUITE_ID, vec![4, 4, 4, 4]),
+                ),
+            );
+            conflicting.env.verify().unwrap();
+            let got = engine.ingest(conflicting);
+            assert!(matches!(got, Ingest::Invalid(_)), "{got:?}");
+            assert_eq!(engine.next_seq(space), next);
+            assert!(engine.logs[space]
+                .events()
+                .iter()
+                .all(|event| event.client_id != "peer-conflicting-prefix"));
+            let before = engine.store.outbox().unwrap().len();
             let phrase = integrity(&engine, space);
             let sent = engine.send_message(space, "again");
             let after = engine.store.outbox().unwrap().len();
