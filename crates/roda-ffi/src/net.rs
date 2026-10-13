@@ -1033,7 +1033,7 @@ async fn media_worker(
     key: roda_log::Signer,
     kick: Arc<tokio::sync::Notify>,
 ) {
-    let Ok(http) = reqwest::Client::builder()
+    let Ok(http) = crate::https::client()
         .timeout(Duration::from_secs(60))
         .build()
     else {
