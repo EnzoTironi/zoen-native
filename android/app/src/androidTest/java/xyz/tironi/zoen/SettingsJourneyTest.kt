@@ -98,8 +98,8 @@ class SettingsJourneyTest {
     @Test fun invitesShareTheLinkTheCoreMakes() {
         open()
         val app = ApplicationProvider.getApplicationContext<ZoenApplication>()
-        val core = runBlocking { app.repository.query { Triple(it.account()?.handle, it.friendInviteLink(), runCatching { it.me().handle }.exceptionOrNull() ?: runCatching { it.me().handle }.getOrNull()) } }
-        assertTrue("core link for $core", core.second?.contains("teste_ajustes") == true)
+        val link = runBlocking { app.repository.query { it.friendInviteLink() } }
+        assertTrue("core link: $link", link?.contains("teste_ajustes") == true)
         compose.onNodeWithTag("settings:Invites").performScrollTo().performClick()
         compose.waitUntil(15_000) { compose.onAllNodesWithTag("settings:inviteShare").fetchSemanticsNodes().any { SemanticsProperties.Disabled !in it.config } }
         compose.onNodeWithTag("settings:inviteShare").assertIsDisplayed().assertIsEnabled()
