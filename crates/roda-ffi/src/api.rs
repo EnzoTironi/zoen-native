@@ -190,6 +190,22 @@ impl RodaEngine {
             .map(f)
     }
 
+    /// Spends one use of an agent link on the relay and opens the chat with the agent.
+    async fn redeem_agent_invite(&self, code: String) -> Result<String, CoreError> {
+        let Reply::Preview(p) = self.request(Op::RedeemAgentInvite { code }).await? else {
+            return Err(unexpected());
+        };
+        let agent = p.agent.ok_or_else(|| {
+            invalid(t(
+                "Esse link de agente não vale mais.",
+                "That agent link is no longer valid.",
+            ))
+        })?;
+        let mut e = self.lock();
+        e.put_profiles(std::iter::once((*agent).clone()).chain(p.inviter).collect())?;
+        e.start_direct(&agent.id)
+    }
+
     async fn preview(&self, code: String) -> Result<InvitePreview, CoreError> {
         match self.request(Op::PreviewInvite { code }).await? {
             Reply::Preview(p) => Ok(p),
@@ -595,6 +611,47 @@ impl RodaEngine {
         })
     }
 
+    /// Takes the agent's share link down; the next `create_agent_invite` mints a new one.
+    pub async fn revoke_agent_invite(&self, agent_id: String) -> Result<(), CoreError> {
+        match self.request(Op::RevokeAgentInvite { agent: agent_id }).await? {
+            Reply::Done => Ok(()),
+            _ => Err(unexpected()),
+        }
+    }
+
+    /// Opens what `zoen://agent/<x>` or `https://tryzoen.com/a/<x>` points at: an invite
+    /// code is redeemed, anything else (or a code that doesn't work) is tried as the
+    /// agent's handle. Returns the direct chat with the agent.
+    pub async fn open_agent_link(&self, target: String) -> Result<String, CoreError> {
+        let raw = target.trim();
+        let raw = raw.rsplit('/').next().unwrap_or(raw).trim_start_matches('@');
+        if roda_proto::valid_invite_code(raw) {
+            if let Ok(chat) = self.redeem_agent_invite(raw.to_uppercase()).await {
+                return Ok(chat);
+            }
+        }
+        let handle = raw.to_lowercase();
+        let Reply::Profiles(found) = self
+            .request(Op::Lookup {
+                handle: handle.clone(),
+                prefix: false,
+            })
+            .await?
+        else {
+            return Err(unexpected());
+        };
+        let agent = found
+            .into_iter()
+            .find(|p| p.kind == roda_types::IdentityKind::Agent && p.handle == handle)
+            .ok_or_else(|| CoreError::NotFound {
+                what: t("agente", "agent"),
+            })?;
+        let mut e = self.lock();
+        let id = agent.id.clone();
+        e.put_profiles(vec![agent])?;
+        e.start_direct(&id)
+    }
+
     pub async fn preview_invite(&self, code: String) -> Result<InvitePreviewDto, CoreError> {
         let p = self.preview(normalize_code(&code)).await?;
         let mut e = self.lock();
@@ -625,15 +682,7 @@ impl RodaEngine {
         let code = normalize_code(&code);
         let p = self.preview(code.clone()).await?;
         if p.kind == "agent" {
-            let agent = p.agent.ok_or_else(|| {
-                invalid(t(
-                    "Esse link de agente não vale mais.",
-                    "That agent link is no longer valid.",
-                ))
-            })?;
-            let mut e = self.lock();
-            e.put_profiles(std::iter::once((*agent).clone()).chain(p.inviter).collect())?;
-            return e.start_direct(&agent.id);
+            return self.redeem_agent_invite(code).await;
         }
         self.lock().queue_join(&p.space, p.role, &code)?;
         Ok(p.space)
