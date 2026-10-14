@@ -34,7 +34,7 @@ async fn main() {
     for (i, text) in says.iter().enumerate() {
         let inbound = Turn { space: "dm".into(), from: owner.id.clone(), text: (*text).into() };
         println!("\nBruno: {text}");
-        let mut out = brain.think(&owner.id, "creator", &creator, &history, &inbound).await
+        let mut out = brain.think(&owner.id, "creator", "creator-device", &creator, &history, &inbound).await
             .unwrap_or_else(|e| { eprintln!("model call failed: {e}"); std::process::exit(1) });
         if i == 1 && matches!(out, BrainOut::Say(_)) {
             // One nudge if the model asked another question instead of emitting JSON.
@@ -42,7 +42,7 @@ async fn main() {
             if let BrainOut::Say(t) = &out { println!("Creator: {t}"); history.push(Turn { space: "dm".into(), from: "creator".into(), text: t.clone() }); }
             let ok = Turn { space: "dm".into(), from: owner.id.clone(), text: "Sim, confirmo tudo. Crie agora.".into() };
             println!("\nBruno: {}", ok.text);
-            out = brain.think(&owner.id, "creator", &creator, &history, &ok).await.unwrap_or_else(|e| { eprintln!("model call failed: {e}"); std::process::exit(1) });
+            out = brain.think(&owner.id, "creator", "creator-device", &creator, &history, &ok).await.unwrap_or_else(|e| { eprintln!("model call failed: {e}"); std::process::exit(1) });
         }
         match out {
             BrainOut::Say(t) => { println!("Creator: {t}"); history.push(inbound); history.push(Turn { space: "dm".into(), from: "creator".into(), text: t }); }
@@ -60,7 +60,7 @@ async fn main() {
     println!("state: {}", serde_json::to_string_pretty(&def.state).unwrap());
     let client = Turn { space: "client".into(), from: "client".into(), text: "Oi, queria cortar o cabelo sábado de manhã, tem horário?".into() };
     println!("\nCliente: {}", client.text);
-    match brain.think(&owner.id, &bot.profile.id, &def, &[], &client).await {
+    match brain.think(&owner.id, &bot.profile.id, bot.device_id(), &def, &[], &client).await {
         Ok(BrainOut::Say(t)) => println!("{}: {t}", bot.profile.name),
         Ok(other) => println!("{}: {:?}", bot.profile.name, matches!(other, BrainOut::CreateAgent{..})),
         Err(e) => { eprintln!("model call failed: {e}"); std::process::exit(1) }
