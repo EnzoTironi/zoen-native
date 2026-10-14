@@ -95,6 +95,7 @@ class SettingsJourneyTest {
     @Test fun invitesShareTheLinkTheCoreMakes() {
         open()
         compose.onNodeWithTag("settings:Invites").performClick()
+        compose.waitUntil(10_000) { compose.onAllNodesWithTag("settings:inviteShare").fetchSemanticsNodes().isNotEmpty() }
         compose.onNodeWithTag("settings:inviteShare").assertIsDisplayed()
     }
 
