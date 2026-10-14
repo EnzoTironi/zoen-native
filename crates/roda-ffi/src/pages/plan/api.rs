@@ -274,12 +274,12 @@ impl Engine {
                 .try_fold(0_i128, |total, cents| total.checked_add(i128::from(cents)))
                 .and_then(|total| i64::try_from(total).ok());
             let blocks: Vec<_> = blocks.iter().map(PlanPageBlockDto::from).collect();
-            let content_hash = match &it.current().content {
-                ItemContent::Plan(document) => {
-                    plan_observed_hash(&local_legacy_blocks(it, document))
-                }
-                _ => plan_observed_hash(&blocks),
-            };
+            // The binding is over the PlanDoc the writers mutate. The session-block fallback
+            // is reachable: a Plan Item whose current version is Page content (an accepted
+            // PlanV1 document version, see tests/prefix.rs) has no PlanDoc. No legacy writer
+            // can admit an edit there (`edit_plan` needs a PlanDoc), so this value only has
+            // to be stable and distinct for the read; it is never matched by a write.
+            let content_hash = plan_doc_binding(it).unwrap_or_else(|| plan_observed_hash(&blocks));
             Ok(PlanPageDto {
                 item_id: it.id.clone(),
                 space_id: it.space.clone(),
@@ -295,6 +295,23 @@ impl Engine {
                 blocks,
             })
         })
+    }
+}
+
+/// The admitted PlanDoc binding of the current version, the same value `plan_page`
+/// reports as `content_hash`.
+fn plan_doc_binding(it: &ItemState) -> Option<String> {
+    match &it.current().content {
+        ItemContent::Plan(document) => Some(plan_observed_hash(&local_legacy_blocks(it, document))),
+        _ => None,
+    }
+}
+
+impl Engine {
+    /// Cheap binding read for the undo token: hashes the PlanDoc only.
+    pub(crate) fn plan_doc_hash(&self, item: &str) -> R<String> {
+        plan_doc_binding(self.item_state(item)?)
+            .ok_or_else(|| invalid("este Item não é um plano", "this Item is not a Plan"))
     }
 }
 

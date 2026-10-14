@@ -1698,10 +1698,12 @@ impl Engine {
     }
 
     /// Edita o plano como "eu". Toda edição é uma versão nova → sempre desfazível.
+    /// `observed_hash` é o vínculo que a pessoa viu; `None` só para escritas internas
+    /// (ver `add_plan_line_unbound`), que não vêm de uma tela aberta.
     fn edit_plan(
         &mut self,
         item: &str,
-        observed_hash: &str,
+        observed_hash: Option<&str>,
         note: String,
         f: impl FnOnce(&mut PlanDoc) -> R<()>,
     ) -> R<EditOutcome> {
@@ -1713,7 +1715,7 @@ impl Engine {
                 reason: t("o plano ainda não está pronto", "this plan is not ready"),
             });
         }
-        if observed.content_hash != observed_hash {
+        if observed_hash.is_some_and(|hash| observed.content_hash != hash) {
             return Err(Self::page_changed());
         }
         let it = self.item_state(item)?;
@@ -1783,7 +1785,9 @@ impl Engine {
             }
         }
         let detail = self.item(item)?;
-        let binding = self.plan_page(item)?.content_hash;
+        // The undo token is the only consumer of the "after" binding. Hash the PlanDoc
+        // just written instead of rebuilding the whole page read.
+        let binding = self.plan_doc_hash(item)?;
         let result_version = detail.version;
         Ok(EditOutcome {
             item: detail,
@@ -1818,7 +1822,7 @@ impl Engine {
             });
         }
         let note = tr!("Editou “{}”", "Edited “{}”", text);
-        self.edit_plan(item, observed_hash, note, |doc| {
+        self.edit_plan(item, Some(observed_hash), note, |doc| {
             let l = doc
                 .line_mut(line)
                 .ok_or_else(|| not_found(&t("linha", "line")))?;
@@ -1857,7 +1861,7 @@ impl Engine {
             },
             label
         );
-        self.edit_plan(item, observed_hash, note, |doc| {
+        self.edit_plan(item, Some(observed_hash), note, |doc| {
             doc.line_mut(line)
                 .ok_or_else(|| not_found(&t("linha", "line")))?
                 .done = done;
@@ -1872,6 +1876,32 @@ impl Engine {
         text: &str,
         cost_cents: i64,
         observed_hash: &str,
+    ) -> R<EditOutcome> {
+        self.add_plan_line_at(item, section, text, cost_cents, Some(observed_hash))
+    }
+
+    /// Internal write with no observed binding. A mini-app effect (`AddPlanLine`) is not
+    /// an edit someone made on an open Plan screen, so there is no hash they saw; reading
+    /// the current hash just to pass it back would be a check that can never fail. The
+    /// plan still has to be ready and legacy-editable, and the edit is a new, undoable
+    /// version like any other.
+    fn add_plan_line_unbound(
+        &mut self,
+        item: &str,
+        section: u32,
+        text: &str,
+        cost_cents: i64,
+    ) -> R<EditOutcome> {
+        self.add_plan_line_at(item, section, text, cost_cents, None)
+    }
+
+    fn add_plan_line_at(
+        &mut self,
+        item: &str,
+        section: u32,
+        text: &str,
+        cost_cents: i64,
+        observed_hash: Option<&str>,
     ) -> R<EditOutcome> {
         let text = text.trim().to_string();
         if text.is_empty() {
@@ -1920,7 +1950,7 @@ impl Engine {
         // "Apagar" uma linha é reversível: a versão anterior continua no log.
         self.edit_plan(
             item,
-            observed_hash,
+            Some(observed_hash),
             tr!("Removeu “{label}”", "Removed “{label}”"),
             |doc| {
                 doc.remove_line(line)
@@ -3456,8 +3486,7 @@ impl Engine {
         }
         if let Some(apps::Effect::AddPlanLine { text, cost_cents }) = applied.effect {
             if let Some(plan) = target_plan {
-                let observed = self.plan_page(&plan)?.content_hash;
-                self.add_plan_line(&plan, 0, &text, cost_cents, &observed)?;
+                self.add_plan_line_unbound(&plan, 0, &text, cost_cents)?;
             }
         }
         let view = apps::view(&doc.app, &applied.state, now);
