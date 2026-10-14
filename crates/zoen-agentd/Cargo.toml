@@ -1,6 +1,6 @@
 [package]
 name = "zoen-agentd"
-description = "Zoen agent runtime: tool manifests, tiers (WASM, microVM, browser), sandbox leases and budgets (ADR 0028)."
+description = "Zoen agent runtime: first-class citizens, Creator prompts, tool tiers (WASM, microVM, browser) and budgets (ADR 0028)."
 version.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -8,6 +8,10 @@ publish.workspace = true
 
 [dependencies]
 roda-types.workspace = true
+roda-log.workspace = true
+roda-gate.workspace = true
+# Model gateway boundary; cheap-tier chat uses this when a provider is configured.
+zoen-models = { path = "../zoen-models" }
 serde.workspace = true
 serde_json.workspace = true
 thiserror.workspace = true
@@ -15,6 +19,7 @@ hex.workspace = true
 sha2.workspace = true
 ed25519-dalek.workspace = true
 getrandom.workspace = true
+zeroize.workspace = true
 zoen-egress.workspace = true
 async-trait = "0.1"
 base64 = "0.22"

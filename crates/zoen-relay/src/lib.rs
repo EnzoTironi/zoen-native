@@ -10,6 +10,7 @@
 //! Membership is the only thing the relay must understand, because it decides who may
 //! write and who receives. Everything else is the clients' business.
 
+pub mod agents;
 pub mod analytics;
 pub mod backup;
 pub mod blobs;
