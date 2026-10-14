@@ -115,8 +115,11 @@ enum SettingsScreen: String, Hashable, CaseIterable, Identifiable {
 /// Ajustes as its own stack: opened from Você, closed by the X on any screen.
 struct SettingsRoot: View {
     @Environment(\.dismiss) private var dismiss
-    @State private var path: [SettingsScreen] = []
-    var start: SettingsScreen? = nil
+    @State private var path: [SettingsScreen]
+
+    init(start: SettingsScreen? = nil) {
+        _path = State(initialValue: start.map { [$0] } ?? [])
+    }
 
     var body: some View {
         NavigationStack(path: $path) {
@@ -124,7 +127,6 @@ struct SettingsRoot: View {
                 .navigationDestination(for: SettingsScreen.self) { $0.view }
         }
         .environment(\.settingsClose, SettingsCloseAction { dismiss() })
-        .onAppear { if let start, path.isEmpty { path = [start] } }
     }
 }
 
@@ -151,7 +153,7 @@ struct SettingsHome: View {
     }
 
     var body: some View {
-        SettingsPage(title: "Settings", showsBack: false) {
+        SettingsPage(title: "Settings home", showsBack: false) {
             searchField
             if query.trimmingCharacters(in: .whitespaces).isEmpty {
                 if let me = model.me {

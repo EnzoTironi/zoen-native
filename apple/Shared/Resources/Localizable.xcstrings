@@ -10044,6 +10044,22 @@
           }
         }
       }
+    },
+    "Settings home": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ajustes"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Settings"
+          }
+        }
+      }
     }
   },
   "version": "1.0"
