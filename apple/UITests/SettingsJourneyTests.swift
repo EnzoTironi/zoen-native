@@ -21,8 +21,10 @@ final class SettingsJourneyTests: XCTestCase {
         XCTAssertTrue(open.waitForExistence(timeout: 15), "Ajustes is reachable from Você")
         open.tap()
 
-        app.buttons["settings.preferences"].tap()
-        app.buttons["settings.theme"].tap()
+        app.buttons["settings.preferences"].firstMatch.tap()
+        let theme = app.buttons["settings.theme"].firstMatch
+        XCTAssertTrue(theme.waitForExistence(timeout: 5), "Preferências opens")
+        theme.tap()
         let dark = app.buttons["theme.dark"]
         XCTAssertTrue(dark.waitForExistence(timeout: 5), "Tema lists its choices")
         dark.tap()
@@ -30,7 +32,7 @@ final class SettingsJourneyTests: XCTestCase {
 
         // Back pops exactly one: Tema → Preferências (not all the way home).
         app.buttons["settingsBack"].tap()
-        XCTAssertTrue(app.buttons["settings.theme"].waitForExistence(timeout: 3), "back on Preferências")
+        XCTAssertTrue(app.buttons["settings.theme"].firstMatch.waitForExistence(timeout: 3), "back on Preferências")
         XCTAssertTrue(app.staticTexts["Escuro"].exists, "Preferências shows the new theme")
         app.buttons["settingsBack"].tap()
         XCTAssertTrue(app.textFields["settingsSearch"].waitForExistence(timeout: 3), "back on Ajustes")
