@@ -192,7 +192,7 @@ fn render(c: &Card) -> String {
       <p class="bio">{bio}</p>
       <div class="actions">
         <a class="btn primary" href="{deep}" data-https="{https}">Abrir no app</a>
-        <a class="btn secondary" href="https://tryzoen.com/install">Instalar</a>
+        <a class="btn secondary" href="/install">Instalar</a>
       </div>
       <p class="brand">Zoen</p>
     </div>
@@ -206,7 +206,7 @@ fn render(c: &Card) -> String {
         var https = a.getAttribute("data-https");
         var t = Date.now();
         setTimeout(function () {{
-          if (Date.now() - t < 1600) location.href = "https://tryzoen.com/install";
+          if (Date.now() - t < 1600) location.href = "/install";
         }}, 1200);
         location.href = deep;
         e.preventDefault();
@@ -216,13 +216,12 @@ fn render(c: &Card) -> String {
 </body>
 </html>
 "##,
-        name_initial = esc(
-            &c.name
-                .chars()
-                .next()
-                .map(|ch| ch.to_uppercase().to_string())
-                .unwrap_or_else(|| "?".into())
-        ),
+        name_initial = esc(&c
+            .name
+            .chars()
+            .next()
+            .map(|ch| ch.to_uppercase().to_string())
+            .unwrap_or_else(|| "?".into())),
         name = name,
         handle = handle,
         bio = bio,
@@ -251,7 +250,7 @@ fn not_found() -> String {
   <div>
     <h1>Esse agente não está aqui</h1>
     <p>O link pode ter expirado ou o endereço está errado.</p>
-    <a href="https://tryzoen.com/install">Instalar o Zoen</a>
+    <a href="/install">Instalar o Zoen</a>
   </div>
 </body>
 </html>
@@ -282,4 +281,34 @@ pub async fn assetlinks(State(st): State<Shared>) -> Response {
         serde_json::to_string(&body).unwrap_or_else(|_| "[]".into()),
     )
         .into_response()
+}
+
+/// Where "Instalar" goes: Android → Google Play; everyone else gets a plain note.
+pub async fn install(headers: axum::http::HeaderMap) -> Response {
+    let ua = headers
+        .get(axum::http::header::USER_AGENT)
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or("")
+        .to_lowercase();
+    if ua.contains("android") {
+        return axum::response::Redirect::temporary(
+            "https://play.google.com/store/apps/details?id=xyz.tironi.zoen",
+        )
+        .into_response();
+    }
+    Html(r##"<!doctype html>
+<html lang="pt-BR"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Instalar o Zoen</title>
+<style>
+  body { font-family: -apple-system, system-ui, sans-serif; background: #faf7f0; color: #1d1b16;
+    display: grid; place-items: center; min-height: 100vh; margin: 0; padding: 24px; text-align: center; }
+  h1 { font-size: 22px; margin: 0 0 8px; } p { color: #7a7466; margin: 0 0 16px; line-height: 1.45; }
+  a { color: #1d1b16; font-weight: 600; }
+</style></head><body><div>
+  <h1>Instalar o Zoen</h1>
+  <p>No Android, o Zoen está no Google Play.<br>No iPhone, ele chega em breve.</p>
+  <a href="https://play.google.com/store/apps/details?id=xyz.tironi.zoen">Abrir no Google Play</a>
+</div></body></html>
+"##).into_response()
 }

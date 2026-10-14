@@ -1275,8 +1275,7 @@ impl LogStore for FdbLog {
                             Some(EventBody::SpaceCreated { title, .. }) => title,
                             _ => String::new(),
                         };
-                        let members =
-                            self.cell.members_in(&trx, &inv.0, false).await?.len() as u32;
+                        let members = self.cell.members_in(&trx, &inv.0, false).await?.len() as u32;
                         return Ok(Ok(InviteInfo {
                             role: parse(&inv.1).unwrap_or(Role::Member),
                             space: inv.0,

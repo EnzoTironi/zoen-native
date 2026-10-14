@@ -143,11 +143,9 @@ pub fn router(state: Shared) -> Router {
             "/.well-known/apple-app-site-association",
             get(apple_app_site_association),
         )
-        .route(
-            "/.well-known/assetlinks.json",
-            get(agent_page::assetlinks),
-        )
+        .route("/.well-known/assetlinks.json", get(agent_page::assetlinks))
         .route("/a/{target}", get(agent_page::page))
+        .route("/install", get(agent_page::install))
         .route("/admin", get(analytics::admin::page))
         .route("/admin/metrics", get(analytics::admin::metrics))
         .route("/admin/config", put(analytics::config::put))

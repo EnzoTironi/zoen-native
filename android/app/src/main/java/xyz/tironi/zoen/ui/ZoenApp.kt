@@ -187,7 +187,7 @@ fun ZoenApp(model: ZoenViewModel, deepLink: String?, consumed: () -> Unit) {
                             entry<Thread> { ThreadScreen(model, state, it.space, it.root, navigate, back) }
                             entry<Files> { FilesScreen(model, state, navigate, back) }
                             entry<Folder> { FilesScreen(model, state, navigate, back, it.space) }
-                            entry<Agents> { AgentsScreen(state, navigate, back) }
+                            entry<Agents> { AgentsScreen(model, state, navigate, back) }
                             entry<Context> { ContextScreen(model, state, navigate, back) }
                             entry<Search> { SearchScreen(model, state, navigate, back) }
                             entry<History> { HistoryScreen(model, state, back) }

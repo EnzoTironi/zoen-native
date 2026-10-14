@@ -1087,13 +1087,8 @@ impl Session {
                 if let Some(a) = &i.agent {
                     ids.push(a.clone());
                 }
-                let found = db::profiles(pool, &ids)
-                    .await
-                    .map_err(|e| e.to_string())?;
-                let inviter = found
-                    .iter()
-                    .find(|p| p.id == i.inviter)
-                    .cloned();
+                let found = db::profiles(pool, &ids).await.map_err(|e| e.to_string())?;
+                let inviter = found.iter().find(|p| p.id == i.inviter).cloned();
                 let agent = i
                     .agent
                     .as_ref()

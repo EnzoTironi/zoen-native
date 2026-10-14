@@ -41,8 +41,11 @@ struct AgentsLibraryScreen: View {
 }
 
 struct AgentLibraryCard: View {
+    @Environment(AppModel.self) private var model
     let profile: AgentProfile
-    private var shareLink: String { "https://tryzoen.com/a/\(profile.persona.handle)" }
+    /// A real invite code from the relay (same as the share flow); nil until it arrives.
+    @State private var invite: InviteDto?
+    private var shareLink: String? { invite?.link }
     var body: some View {
         HStack(alignment: .center, spacing: 14) {
             AgentAvatar(persona: profile.persona, size: 52, state: profile.pendingRequests > 0 ? .waiting : .idle)
@@ -57,7 +60,7 @@ struct AgentLibraryCard: View {
                         .foregroundStyle(Palette.action)
                 }
                 .font(.caption.weight(.medium))
-                if profile.persona.isMine {
+                if profile.persona.isMine, let shareLink {
                     Text(shareLink)
                         .font(.caption2.monospaced())
                         .foregroundStyle(Palette.textTertiary)
@@ -65,8 +68,8 @@ struct AgentLibraryCard: View {
                 }
             }
             Spacer(minLength: 6)
-            if profile.persona.isMine {
-                ShareLink(item: URL(string: shareLink)!) {
+            if profile.persona.isMine, let shareLink, let url = URL(string: shareLink) {
+                ShareLink(item: url) {
                     Image(systemName: "square.and.arrow.up")
                         .font(.body.weight(.semibold))
                         .foregroundStyle(Palette.action)
@@ -79,6 +82,10 @@ struct AgentLibraryCard: View {
             Image(systemName: "chevron.right").font(.caption.weight(.bold)).foregroundStyle(Palette.textTertiary)
         }
         .solidCard(radius: 20, padding: 14)
+        .task(id: profile.id) {
+            guard profile.persona.isMine, invite == nil else { return }
+            invite = try? await model.core.createAgentInvite(agentId: profile.id)
+        }
     }
 }
 
