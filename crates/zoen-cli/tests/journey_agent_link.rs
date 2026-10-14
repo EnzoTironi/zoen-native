@@ -223,6 +223,10 @@ async fn agent_links_are_stable_redeemable_revocable_and_the_page_is_hardened() 
             .any(|c| c["/"] == "/a/*"),
         "{aasa}"
     );
+    assert!(
+        !aasa.to_string().contains("/@*"),
+        "only paths the relay serves: {aasa}"
+    );
     let links = get(&w, "/.well-known/assetlinks.json", &[]);
     assert_eq!(links.status, 200);
     let links: serde_json::Value = serde_json::from_str(&links.body).unwrap();

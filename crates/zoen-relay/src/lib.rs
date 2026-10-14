@@ -385,7 +385,7 @@ async fn apple_app_site_association(State(st): State<Shared>) -> axum::response:
     }
     let body = serde_json::json!({
         "applinks": { "details": [{ "appIDs": st.apple_app_ids, "components": [
-            { "/": "/a/*" }, { "/": "/j/*" }, { "/": "/i/*" }, { "/": "/u/*" }, { "/": "/@*" }
+            { "/": "/a/*" }, { "/": "/j/*" }, { "/": "/i/*" }, { "/": "/u/*" }
         ] }] },
         "webcredentials": { "apps": st.apple_app_ids },
     });
