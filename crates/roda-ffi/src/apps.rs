@@ -25,6 +25,9 @@ use crate::i18n::{is_en, t, thousands, ts};
 use crate::tr;
 use serde_json::{json, Value};
 
+mod schedule;
+pub use schedule::Actor;
+
 pub const MIME: &str = "text/html;profile=mcp-app";
 
 pub struct ToolSpec {
@@ -225,34 +228,42 @@ pub fn specs() -> Vec<AppSpec> {
                     "start_schedule",
                     ts("Abrir agenda", "Open schedule"),
                     ts(
-                        "Abre uma agenda com serviços, horários da semana e duração dos slots.",
-                        "Opens a schedule with services, weekly hours and slot length.",
+                        "Abre uma agenda para qualquer negócio. Preencha nome, serviços, preços e horários a partir do que o dono contou.",
+                        "Opens a schedule for any business. Fill in the name, services, prices and hours from what the owner said.",
                     ),
                     json!({
                         "type": "object",
                         "properties": {
+                            "business": {"type": "string", "maxLength": 48, "description": "Business name in the owner's words"},
                             "title": {"type": "string", "maxLength": 40},
-                            "business": {"type": "string", "maxLength": 48},
-                            "trade": {"type": "string", "enum": ["barber", "dentist", "trainer", "custom"]},
-                            "timezone": {"type": "string", "maxLength": 40},
-                            "currency": {"type": "string", "maxLength": 8},
+                            "accentHex": {"type": "string", "pattern": "^#[0-9A-Fa-f]{6}$"},
+                            "timezone": {"type": "string", "maxLength": 40, "description": "IANA zone, e.g. America/Sao_Paulo"},
+                            "currency": {"type": "string", "pattern": "^[A-Za-z]{3}$"},
                             "slotMinutes": {"type": "integer", "minimum": 5, "maximum": 240},
+                            "horizonDays": {"type": "integer", "minimum": 1, "maximum": 365},
                             "services": {
                                 "type": "array",
+                                "minItems": 1,
                                 "maxItems": 12,
                                 "items": {
                                     "type": "object",
                                     "properties": {
-                                        "id": {"type": "string"},
+                                        "id": {"type": "string", "maxLength": 24},
                                         "name": {"type": "string", "maxLength": 40},
                                         "priceCents": {"type": "integer", "minimum": 0},
                                         "minutes": {"type": "integer", "minimum": 5, "maximum": 480}
                                     },
-                                    "required": ["name", "priceCents", "minutes"]
+                                    "required": ["name", "minutes"]
                                 }
                             },
-                            "weeklyHours": {"type": "object"}
-                        }
+                            "weeklyHours": {
+                                "type": "object",
+                                "description": "Keys \"0\" (Sunday) to \"6\"; each a list of [\"HH:MM\", \"HH:MM\"] windows",
+                                "additionalProperties": false,
+                                "patternProperties": {"^[0-6]$": {"type": "array", "maxItems": 4, "items": {"type": "array", "minItems": 2, "maxItems": 2, "items": {"type": "string", "pattern": "^([01][0-9]|2[0-3]):[0-5][0-9]$|^24:00$"}}}}
+                            }
+                        },
+                        "required": ["business", "services", "weeklyHours"]
                     }),
                     &["model"],
                     Reversible,
@@ -262,21 +273,44 @@ pub fn specs() -> Vec<AppSpec> {
                     "schedule_configure",
                     ts("Ajustar agenda", "Configure schedule"),
                     ts(
-                        "Atualiza serviços, horários da semana ou duração dos slots (o agente preenche).",
-                        "Updates services, weekly hours or slot length (the agent fills this in).",
+                        "Dono ou agente: atualiza nome, serviços, horários, fuso ou quem resolve pedidos. Entrada inválida é recusada.",
+                        "Owner or agent: updates the name, services, hours, timezone or who resolves requests. Invalid input is refused.",
                     ),
                     json!({
                         "type": "object",
                         "properties": {
+                            "business": {"type": "string", "maxLength": 48, "description": "Business name in the owner's words"},
                             "title": {"type": "string", "maxLength": 40},
-                            "business": {"type": "string", "maxLength": 48},
-                            "trade": {"type": "string", "enum": ["barber", "dentist", "trainer", "custom"]},
+                            "accentHex": {"type": "string", "pattern": "^#[0-9A-Fa-f]{6}$"},
+                            "timezone": {"type": "string", "maxLength": 40, "description": "IANA zone, e.g. America/Sao_Paulo"},
+                            "currency": {"type": "string", "pattern": "^[A-Za-z]{3}$"},
                             "slotMinutes": {"type": "integer", "minimum": 5, "maximum": 240},
-                            "services": {"type": "array", "maxItems": 12},
-                            "weeklyHours": {"type": "object"}
+                            "horizonDays": {"type": "integer", "minimum": 1, "maximum": 365},
+                            "services": {
+                                "type": "array",
+                                "minItems": 1,
+                                "maxItems": 12,
+                                "items": {
+                                    "type": "object",
+                                    "properties": {
+                                        "id": {"type": "string", "maxLength": 24},
+                                        "name": {"type": "string", "maxLength": 40},
+                                        "priceCents": {"type": "integer", "minimum": 0},
+                                        "minutes": {"type": "integer", "minimum": 5, "maximum": 480}
+                                    },
+                                    "required": ["name", "minutes"]
+                                }
+                            },
+                            "weeklyHours": {
+                                "type": "object",
+                                "description": "Keys \"0\" (Sunday) to \"6\"; each a list of [\"HH:MM\", \"HH:MM\"] windows",
+                                "additionalProperties": false,
+                                "patternProperties": {"^[0-6]$": {"type": "array", "maxItems": 4, "items": {"type": "array", "minItems": 2, "maxItems": 2, "items": {"type": "string", "pattern": "^([01][0-9]|2[0-3]):[0-5][0-9]$|^24:00$"}}}}
+                            },
+                            "resolvers": {"type": "array", "maxItems": 8, "items": {"type": "string"}, "description": "Member ids who may resolve requests (owner only)"}
                         }
                     }),
-                    &["model"],
+                    &["model", "app"],
                     Reversible,
                     false,
                 ),
@@ -292,10 +326,10 @@ pub fn specs() -> Vec<AppSpec> {
                         "properties": {
                             "serviceId": {"type": "string"},
                             "startMs": {"type": "integer"},
-                            "endMs": {"type": "integer"},
+                            "endMs": {"type": "integer", "description": "Optional; must equal startMs + the service length"},
                             "note": {"type": "string", "maxLength": 120}
                         },
-                        "required": ["serviceId", "startMs", "endMs"]
+                        "required": ["serviceId", "startMs"]
                     }),
                     &["app"],
                     Reversible,
@@ -305,14 +339,14 @@ pub fn specs() -> Vec<AppSpec> {
                     "schedule_resolve",
                     ts("Resolver pedido", "Resolve request"),
                     ts(
-                        "O agente confirma, cancela ou ajusta um pedido de horário (casos especiais ficam com ele).",
-                        "The agent confirms, cancels or adjusts a booking request (edge cases stay with them).",
+                        "Dono, agente ou quem resolve: confirma, remarca ou cancela um pedido; num pedido de cancelamento, cancela ou mantém (keep).",
+                        "Owner, agent or resolver: confirms, moves or cancels a request; on a cancel request, cancels or keeps it.",
                     ),
                     json!({
                         "type": "object",
                         "properties": {
                             "bookingId": {"type": "string"},
-                            "action": {"type": "string", "enum": ["confirm", "cancel", "adjust"]},
+                            "action": {"type": "string", "enum": ["confirm", "adjust", "cancel", "keep"]},
                             "startMs": {"type": "integer"},
                             "endMs": {"type": "integer"},
                             "note": {"type": "string", "maxLength": 120}
@@ -496,47 +530,15 @@ pub fn create(app: &str, args: &Value, actor: &str, now: i64) -> Result<(String,
             Ok((title, st))
         }
 
-        "schedule" => {
-            let trade = s(args, "trade").unwrap_or_else(|| "custom".into());
-            let trade = match trade.as_str() {
-                "barber" | "dentist" | "trainer" | "custom" => trade,
-                _ => "custom".into(),
-            };
-            let business = s(args, "business").unwrap_or_else(|| match trade.as_str() {
-                "barber" => t("Barbearia", "Barbershop"),
-                "dentist" => t("Consultório", "Dental office"),
-                "trainer" => t("Personal", "Personal training"),
-                _ => t("Agenda", "Schedule"),
-            });
-            let title = s(args, "title").unwrap_or_else(|| business.clone());
-            let timezone = s(args, "timezone").unwrap_or_else(|| "America/Sao_Paulo".into());
-            let currency = s(args, "currency").unwrap_or_else(|| "BRL".into());
-            let slot = args["slotMinutes"].as_i64().unwrap_or(30).clamp(5, 240);
-            let services = parse_schedule_services(args.get("services"));
-            let weekly = parse_weekly_hours(args.get("weeklyHours"), &trade);
-            let mut st = json!({
-                "title": title.chars().take(40).collect::<String>(),
-                "business": business.chars().take(48).collect::<String>(),
-                "trade": trade,
-                "timezone": timezone,
-                "currency": currency,
-                "slotMinutes": slot,
-                "services": services,
-                "weeklyHours": weekly,
-                "bookings": [],
-                "events": [],
-                "next": 1,
-                "log": []
-            });
-            push_log(
-                &mut st,
-                actor,
-                &t("abriu a agenda", "opened the schedule"),
-                now,
-            );
-            Ok((title.chars().take(40).collect(), st))
-        }
-
+        "schedule" => schedule::create(
+            args,
+            &Actor {
+                id: actor,
+                name: actor,
+                owner: None,
+            },
+            now,
+        ),
         "countdown" => {
             let title = s(args, "title").ok_or_else(|| {
                 t(
@@ -563,6 +565,44 @@ pub fn create(app: &str, args: &Value, actor: &str, now: i64) -> Result<(String,
             "mini-app desconhecido: {app}",
             "unknown mini-app: {app}"
         )),
+    }
+}
+
+/// Creation with who is creating it: apps with roles (the schedule) record the owner and
+/// the agent; the rest only need the name.
+pub fn create_as(
+    app: &str,
+    args: &Value,
+    actor: &Actor,
+    now: i64,
+) -> Result<(String, Value), String> {
+    match app {
+        "schedule" => schedule::create(args, actor, now),
+        _ => create(app, args, actor.name, now),
+    }
+}
+
+/// A tool call with who is calling it (member id, not display name).
+pub fn apply_as(
+    app: &str,
+    tool_name: &str,
+    args: &Value,
+    state: &Value,
+    actor: &Actor,
+    now: i64,
+) -> Result<Applied, String> {
+    match app {
+        "schedule" => schedule::apply(tool_name, args, view(app, state, now), actor, now),
+        _ => apply(app, tool_name, args, state, actor.name, now),
+    }
+}
+
+/// The view a given member receives. Apps with private parts (the schedule's client
+/// names and notes) filter here; the rest are the same for everyone.
+pub fn view_for(app: &str, state: &Value, now: i64, viewer: &str) -> Value {
+    match app {
+        "schedule" => schedule::view_for(&view(app, state, now), viewer, now),
+        _ => view(app, state, now),
     }
 }
 
@@ -756,8 +796,7 @@ pub fn headline(app: &str, state: &Value, now: i64) -> (String, Vec<(String, f64
         }
 
         "schedule" => {
-            let bookings = st_bookings(&v);
-            let open = bookings.iter().filter(|b| b.status == "pending").count();
+            let open = schedule::pending(&v);
             let line = if open > 0 {
                 tr!(
                     "{open} pedido{} aguardando",
@@ -893,14 +932,8 @@ pub fn snapshot(app: &str, state: &Value, item_id: &str, now: i64) -> Option<Val
         }
 
         "schedule" => {
-            let bookings = st_bookings(&v);
-            let open = bookings.iter().filter(|b| b.status == "pending").count();
-            let accent = match v["trade"].as_str().unwrap_or("custom") {
-                "dentist" => "#3D6FBF",
-                "trainer" => "#0F9B8E",
-                "barber" => "#C45C26",
-                _ => "#3D7A28",
-            };
+            let open = schedule::pending(&v);
+            let accent = schedule::accent(&v);
             json!({
                 "template": "stat",
                 "title": v["business"].as_str().unwrap_or(v["title"].as_str().unwrap_or("")),
@@ -1600,261 +1633,6 @@ pub fn apply(
             ))
         }
 
-        ("schedule", "schedule_get_state") => Ok(Applied::new(st, String::new(), String::new())),
-        ("schedule", "schedule_configure") => {
-            if let Some(title) = s(args, "title") {
-                st["title"] = json!(title.chars().take(40).collect::<String>());
-            }
-            if let Some(business) = s(args, "business") {
-                st["business"] = json!(business.chars().take(48).collect::<String>());
-            }
-            if let Some(trade) = s(args, "trade") {
-                if matches!(trade.as_str(), "barber" | "dentist" | "trainer" | "custom") {
-                    st["trade"] = json!(trade);
-                }
-            }
-            if let Some(slot) = args.get("slotMinutes").and_then(|x| x.as_i64()) {
-                st["slotMinutes"] = json!(slot.clamp(5, 240));
-            }
-            if args.get("services").is_some() {
-                st["services"] = json!(parse_schedule_services(args.get("services")));
-            }
-            if args.get("weeklyHours").is_some() {
-                let trade = st["trade"].as_str().unwrap_or("custom").to_string();
-                st["weeklyHours"] = parse_weekly_hours(args.get("weeklyHours"), &trade);
-            }
-            push_log(
-                &mut st,
-                actor,
-                &t("ajustou a agenda", "updated the schedule"),
-                now,
-            );
-            let mut a = Applied::new(
-                st,
-                tr!("{actor} ajustou a agenda", "{actor} updated the schedule"),
-                t("Agenda atualizada.", "Schedule updated."),
-            );
-            a.title = Some(a.state["title"].as_str().unwrap_or("Agenda").to_string());
-            Ok(a)
-        }
-        ("schedule", "schedule_book") => {
-            let service_id =
-                s(args, "serviceId").ok_or_else(|| t("qual serviço?", "which service?"))?;
-            let start = args["startMs"]
-                .as_i64()
-                .ok_or_else(|| t("qual horário?", "which time?"))?;
-            let end = args["endMs"]
-                .as_i64()
-                .ok_or_else(|| t("qual horário?", "which time?"))?;
-            if end <= start {
-                return Err(t("horário inválido", "invalid time"));
-            }
-            let services = st["services"].as_array().cloned().unwrap_or_default();
-            let svc = services
-                .iter()
-                .find(|s| s["id"].as_str() == Some(service_id.as_str()))
-                .ok_or_else(|| t("serviço desconhecido", "unknown service"))?;
-            let svc_name = svc["name"].as_str().unwrap_or(&service_id).to_string();
-            let next = st["next"].as_i64().unwrap_or(1);
-            let booking_id = format!("b{next}");
-            let note = s(args, "note").unwrap_or_default();
-            let booking = json!({
-                "id": booking_id,
-                "serviceId": service_id,
-                "startMs": start,
-                "endMs": end,
-                "by": actor,
-                "status": "pending",
-                "note": note.chars().take(120).collect::<String>()
-            });
-            let event = json!({
-                "id": format!("e{next}"),
-                "kind": "book_request",
-                "bookingId": format!("b{next}"),
-                "status": "open",
-                "at": now,
-                "by": actor
-            });
-            st["next"] = json!(next + 1);
-            st["bookings"]
-                .as_array_mut()
-                .ok_or_else(|| t("estado inválido", "invalid state"))?
-                .push(booking);
-            st["events"]
-                .as_array_mut()
-                .ok_or_else(|| t("estado inválido", "invalid state"))?
-                .push(event);
-            push_log(
-                &mut st,
-                actor,
-                &tr!("pediu {svc_name}", "requested {svc_name}"),
-                now,
-            );
-            let mut a = Applied::new(
-                st,
-                tr!("{actor} pediu {svc_name}", "{actor} requested {svc_name}"),
-                tr!(
-                    "Pedido: {svc_name}. O agente confirma.",
-                    "Request: {svc_name}. The agent confirms."
-                ),
-            );
-            a.comment = Some(tr!(
-                "{actor} pediu {svc_name}. Quer confirmar, remarcar ou cancelar?",
-                "{actor} requested {svc_name}. Confirm, reschedule or cancel?"
-            ));
-            Ok(a)
-        }
-        ("schedule", "schedule_resolve") => {
-            let booking_id =
-                s(args, "bookingId").ok_or_else(|| t("qual pedido?", "which booking?"))?;
-            let action = s(args, "action").ok_or_else(|| {
-                t(
-                    "confirmar, cancelar ou ajustar?",
-                    "confirm, cancel or adjust?",
-                )
-            })?;
-            let idx = st["bookings"]
-                .as_array()
-                .into_iter()
-                .flatten()
-                .position(|b| b["id"].as_str() == Some(booking_id.as_str()))
-                .ok_or_else(|| t("pedido não encontrado", "booking not found"))?;
-            let svc_id = st["bookings"][idx]["serviceId"]
-                .as_str()
-                .unwrap_or("")
-                .to_string();
-            let who = st["bookings"][idx]["by"].as_str().unwrap_or("").to_string();
-            if who == actor {
-                return Err(t(
-                    "quem pediu o horário não pode confirmar o próprio pedido",
-                    "whoever requested the slot can't resolve their own request",
-                ));
-            }
-            let svc_name = service_name(&st, &svc_id);
-            match action.as_str() {
-                "confirm" => {
-                    st["bookings"][idx]["status"] = json!("confirmed");
-                    if let Some(note) = s(args, "note") {
-                        st["bookings"][idx]["note"] =
-                            json!(note.chars().take(120).collect::<String>());
-                    }
-                }
-                "cancel" => {
-                    st["bookings"][idx]["status"] = json!("cancelled");
-                }
-                "adjust" => {
-                    if let Some(start) = args.get("startMs").and_then(|x| x.as_i64()) {
-                        st["bookings"][idx]["startMs"] = json!(start);
-                    }
-                    if let Some(end) = args.get("endMs").and_then(|x| x.as_i64()) {
-                        st["bookings"][idx]["endMs"] = json!(end);
-                    }
-                    let start = st["bookings"][idx]["startMs"].as_i64().unwrap_or(0);
-                    let end = st["bookings"][idx]["endMs"].as_i64().unwrap_or(0);
-                    if end <= start {
-                        return Err(t("horário inválido", "invalid time"));
-                    }
-                    st["bookings"][idx]["status"] = json!("confirmed");
-                    if let Some(note) = s(args, "note") {
-                        st["bookings"][idx]["note"] =
-                            json!(note.chars().take(120).collect::<String>());
-                    }
-                }
-                _ => return Err(t("ação desconhecida", "unknown action")),
-            }
-            if let Some(events) = st["events"].as_array_mut() {
-                for ev in events.iter_mut() {
-                    if ev["bookingId"].as_str() == Some(booking_id.as_str()) {
-                        ev["status"] = json!("resolved");
-                    }
-                }
-            }
-            let what = match action.as_str() {
-                "confirm" => tr!(
-                    "confirmou {svc_name} de {who}",
-                    "confirmed {svc_name} for {who}"
-                ),
-                "cancel" => tr!(
-                    "cancelou {svc_name} de {who}",
-                    "cancelled {svc_name} for {who}"
-                ),
-                _ => tr!(
-                    "ajustou {svc_name} de {who}",
-                    "adjusted {svc_name} for {who}"
-                ),
-            };
-            push_log(&mut st, actor, &what, now);
-            let mut a = Applied::new(st, format!("{actor} {what}"), format!("{what}."));
-            a.comment = Some(format!("{what}."));
-            Ok(a)
-        }
-        ("schedule", "schedule_cancel") => {
-            let booking_id =
-                s(args, "bookingId").ok_or_else(|| t("qual horário?", "which booking?"))?;
-            let idx = st["bookings"]
-                .as_array()
-                .into_iter()
-                .flatten()
-                .position(|b| b["id"].as_str() == Some(booking_id.as_str()))
-                .ok_or_else(|| t("horário não encontrado", "booking not found"))?;
-            if st["bookings"][idx]["by"].as_str() != Some(actor) {
-                return Err(t(
-                    "só quem marcou pode pedir o cancelamento",
-                    "only the person who booked can request a cancellation",
-                ));
-            }
-            if st["bookings"][idx]["status"].as_str() == Some("cancelled") {
-                return Err(t("já está cancelado", "already cancelled"));
-            }
-            let svc_id = st["bookings"][idx]["serviceId"]
-                .as_str()
-                .unwrap_or("")
-                .to_string();
-            let was = st["bookings"][idx]["status"]
-                .as_str()
-                .unwrap_or("pending")
-                .to_string();
-            let svc_name = service_name(&st, &svc_id);
-            if was == "pending" {
-                st["bookings"][idx]["status"] = json!("cancelled");
-            }
-            let next = st["next"].as_i64().unwrap_or(1);
-            st["events"]
-                .as_array_mut()
-                .ok_or_else(|| t("estado inválido", "invalid state"))?
-                .push(json!({
-                    "id": format!("e{next}"),
-                    "kind": "cancel_request",
-                    "bookingId": booking_id,
-                    "status": "open",
-                    "at": now,
-                    "by": actor
-                }));
-            st["next"] = json!(next + 1);
-            push_log(
-                &mut st,
-                actor,
-                &tr!(
-                    "pediu cancelamento de {svc_name}",
-                    "requested cancel of {svc_name}"
-                ),
-                now,
-            );
-            let mut a = Applied::new(
-                st,
-                tr!(
-                    "{actor} pediu cancelamento de {svc_name}",
-                    "{actor} requested cancel of {svc_name}"
-                ),
-                t("Pedido de cancelamento enviado.", "Cancel request sent."),
-            );
-            a.comment = Some(tr!(
-                "{actor} pediu para cancelar {svc_name}. Confirma?",
-                "{actor} asked to cancel {svc_name}. Confirm?"
-            ));
-            Ok(a)
-        }
-
         ("countdown", "countdown_get_state") => Ok(Applied::new(st, String::new(), String::new())),
         (a, tool) => Err(tr!(
             "{a} não tem a ferramenta {tool}",
@@ -2086,125 +1864,6 @@ fn recipe_default() -> Value {
         "cooking": null,
         "log": []
     })
-}
-
-struct SchedBooking {
-    status: String,
-}
-
-fn st_bookings(v: &Value) -> Vec<SchedBooking> {
-    v["bookings"]
-        .as_array()
-        .into_iter()
-        .flatten()
-        .map(|b| SchedBooking {
-            status: b["status"].as_str().unwrap_or("pending").to_string(),
-        })
-        .collect()
-}
-
-fn service_name(v: &Value, id: &str) -> String {
-    v["services"]
-        .as_array()
-        .into_iter()
-        .flatten()
-        .find(|s| s["id"].as_str() == Some(id))
-        .and_then(|s| s["name"].as_str())
-        .unwrap_or(id)
-        .to_string()
-}
-
-fn parse_schedule_services(raw: Option<&Value>) -> Vec<Value> {
-    let Some(arr) = raw.and_then(|x| x.as_array()) else {
-        return vec![
-            json!({ "id": "svc1", "name": t("Atendimento", "Appointment"), "priceCents": 0, "minutes": 30 }),
-        ];
-    };
-    let mut out = Vec::new();
-    for (i, s) in arr.iter().take(12).enumerate() {
-        let name = s["name"].as_str().unwrap_or("").trim();
-        if name.is_empty() {
-            continue;
-        }
-        let id = s["id"]
-            .as_str()
-            .map(str::to_string)
-            .filter(|x| !x.is_empty())
-            .unwrap_or_else(|| format!("svc{}", i + 1));
-        let price = s["priceCents"].as_i64().unwrap_or(0).max(0);
-        let minutes = s["minutes"].as_i64().unwrap_or(30).clamp(5, 480);
-        out.push(json!({
-            "id": id,
-            "name": name.chars().take(40).collect::<String>(),
-            "priceCents": price,
-            "minutes": minutes
-        }));
-    }
-    if out.is_empty() {
-        out.push(json!({ "id": "svc1", "name": t("Atendimento", "Appointment"), "priceCents": 0, "minutes": 30 }));
-    }
-    out
-}
-
-fn default_weekly_hours(trade: &str) -> Value {
-    let open = match trade {
-        "dentist" => json!([["09:00", "12:00"], ["14:00", "18:00"]]),
-        "trainer" => json!([["06:00", "10:00"], ["16:00", "21:00"]]),
-        _ => json!([["09:00", "12:00"], ["14:00", "19:00"]]),
-    };
-    let sat = match trade {
-        "trainer" => json!([["08:00", "12:00"]]),
-        _ => json!([["09:00", "13:00"]]),
-    };
-    json!({
-        "0": [],
-        "1": open,
-        "2": open,
-        "3": open,
-        "4": open,
-        "5": open,
-        "6": sat
-    })
-}
-
-fn parse_weekly_hours(raw: Option<&Value>, trade: &str) -> Value {
-    let Some(obj) = raw.and_then(|x| x.as_object()) else {
-        return default_weekly_hours(trade);
-    };
-    let mut out = serde_json::Map::new();
-    for day in 0..7 {
-        let key = day.to_string();
-        let windows = obj
-            .get(&key)
-            .and_then(|x| x.as_array())
-            .map(|arr| {
-                arr.iter()
-                    .filter_map(|w| {
-                        let a = w.as_array()?;
-                        if a.len() != 2 {
-                            return None;
-                        }
-                        let from = a[0].as_str()?.to_string();
-                        let to = a[1].as_str()?.to_string();
-                        if parse_hm(&from) < parse_hm(&to) {
-                            Some(json!([from, to]))
-                        } else {
-                            None
-                        }
-                    })
-                    .collect::<Vec<_>>()
-            })
-            .unwrap_or_default();
-        out.insert(key, Value::Array(windows));
-    }
-    Value::Object(out)
-}
-
-fn parse_hm(hm: &str) -> i64 {
-    let mut parts = hm.split(':');
-    let h: i64 = parts.next().and_then(|x| x.parse().ok()).unwrap_or(0);
-    let m: i64 = parts.next().and_then(|x| x.parse().ok()).unwrap_or(0);
-    h * 60 + m
 }
 
 /// The three Bay Area trails of the hike demo: id, name, drive minutes from SF, hike hours.
