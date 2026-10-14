@@ -162,8 +162,9 @@ class LauncherWidgetJourneyTest {
             trace.put(JSONObject().put("widgetId", widgetId).put("owner", owner).put("initialItem", initial.id))
             step("Touch the pinned widget on the actual launcher")
             home()
-            val openDeadline = SystemClock.uptimeMillis() + 10_000
             awaitWidget(checkNotNull(configuredTitle))
+            // Budget the Samsung resize dance on its own, after the widget is visible.
+            val openDeadline = SystemClock.uptimeMillis() + 10_000
             if (launcher == "com.sec.android.app.launcher") {
                 // The pin callback arrives before Samsung enters its workspace resize mode.
                 automation.waitForIdle(250, (openDeadline - SystemClock.uptimeMillis()).also { assertTrue(it > 0) })
