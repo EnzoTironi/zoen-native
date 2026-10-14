@@ -7,7 +7,17 @@
 //!   sequence number when the device is online; the confirmed copy replaces the pending
 //!   one in place (same `client_id`, so the UI row never jumps).
 //! - **Ingest:** events from the relay must be the next in their Space, link to the head
-//!   and carry a valid author signature, or they are refused.
+//!   and carry a valid author signature, or they are refused. A member whose signed
+//!   `seen` names a position this device already holds under a different hash is fork
+//!   evidence: the Space is marked and the event is not stored. So is a member
+//!   event that is already the next sequence when its signed `seen` is not held.
+//!   An honest author signed `seen` below the sequence the relay assigns, and
+//!   sync does not ask for that event again. An event whose own sequence is
+//!   still ahead of the local head stays a gap. A sealed application stored
+//!   while another author's successor of the same `seen` is still queued
+//!   marks that fork too. Queued rows for a forked Space are not published,
+//!   including rows that have not failed. `seen` lives in the signed
+//!   content. The relay's `seq`, `prev` and chain hash do not.
 //! - **Reopen:** confirmed events are re-verified from disk, then the outbox is replayed
 //!   on top. Kill the app mid-send and nothing is lost or duplicated.
 
@@ -292,6 +302,9 @@ impl Engine {
         self.net.optimistic_approvals = optimistic;
         self.approval_replay_needed = false;
         self.index_dirty = true;
+        // The rebuild starts from an empty projection, so a stored fork has to
+        // be written back before the next send.
+        self.restore_recorded_forks();
         self.recompute_unknown();
         Ok(())
     }
@@ -388,7 +401,15 @@ impl Engine {
             .entry(space.to_owned())
             .or_default()
             .apply_checked(&e, &self.identities, &context);
-        self.state = Self::merge_space_projections(&self.space_projections, &self.space_order);
+        if self.approval_replay_needed
+            || !self.state.waiting_spaces.is_empty()
+            || !self.state.requests.is_empty()
+            || !matches!(e.body, EventBody::ItemCreated { .. })
+        {
+            self.state = Self::merge_space_projections(&self.space_projections, &self.space_order);
+        } else {
+            self.state.apply_checked(&e, &self.identities, &context);
+        }
         self.index_dirty = true;
         self.note_unknown(&e);
         self.note_profile_event(&e);
@@ -407,7 +428,9 @@ impl Engine {
         let r = self.ingest_plain(e.clone());
         if matches!(r, Ingest::Applied | Ingest::Confirmed) {
             self.mls_membership_changed(&e);
-            self.compare_checkpoint(&e);
+            if let Err(err) = self.compare_checkpoint(&e) {
+                return Ingest::Invalid(err.to_string());
+            }
             self.mls_device_joining(&e);
         }
         r
@@ -427,15 +450,15 @@ impl Engine {
         if e.seq > next {
             return Ingest::Gap { next };
         }
-        let log = self
-            .logs
-            .entry(space.clone())
-            .or_insert_with(|| SpaceLog::new(space.clone()));
-        if let Err(err) = log.accept(e.clone()) {
-            if log.is_empty() {
-                self.logs.remove(&space);
-            }
-            return Ingest::Invalid(err.to_string());
+        let accept_err = {
+            let log = self
+                .logs
+                .entry(space.clone())
+                .or_insert_with(|| SpaceLog::new(space.clone()));
+            log.accept(e.clone()).err()
+        };
+        if let Some(err) = accept_err {
+            return self.refuse_unaccepted(&space, &err, &e);
         }
         if let Err(err) = self.store.append_event(&e) {
             // Disk and memory must agree: drop the in-memory copy, it'll come back on sync.
@@ -454,6 +477,13 @@ impl Engine {
             let _ = self.store.outbox_remove(&e.client_id);
         }
         if replay_approval {
+            if own && self.confirmed_item_already_projected(&e) {
+                if !self.note_own_confirmed(&space, &e.client_id, e.seq, &e.hash) {
+                    self.state =
+                        Self::merge_space_projections(&self.space_projections, &self.space_order);
+                }
+                return Ingest::Confirmed;
+            }
             if let Err(err) = self.reproject_approval_overlay() {
                 return Ingest::Invalid(err.to_string());
             }
@@ -465,25 +495,15 @@ impl Engine {
             };
         }
         if own {
-            if let Some(s) = self
-                .space_projections
-                .get_mut(&space)
-                .and_then(|scoped| scoped.spaces.get_mut(&space))
-            {
-                for entry in s.entries.iter_mut().filter(|x| {
-                    x.client_id == e.client_id
-                        || x.client_id.strip_suffix(":result") == Some(e.client_id.as_str())
-                }) {
-                    entry.seq = e.seq;
-                    entry.hash = e.hash.clone();
-                }
+            let joining = matches!(e.body, EventBody::MemberAdded { .. })
+                && !self.is_member_of(&space, &e.author);
+            let had = self.note_own_confirmed(&space, &e.client_id, e.seq, &e.hash);
+            if had && !joining {
+                return Ingest::Confirmed;
             }
             self.state = Self::merge_space_projections(&self.space_projections, &self.space_order);
             // A join we sent before we had the Space's history: project it now.
-            if !self.state.spaces.contains_key(&space)
-                || matches!(e.body, EventBody::MemberAdded { .. })
-                    && !self.is_member_of(&space, &e.author)
-            {
+            if !self.state.spaces.contains_key(&space) || joining {
                 if let Err(err) = self.apply_confirmed_event(&e) {
                     return Ingest::Invalid(err.to_string());
                 }
@@ -497,6 +517,54 @@ impl Engine {
         self.note_unknown(&e);
         self.note_profile_event(&e);
         Ingest::Applied
+    }
+
+    /// True when this own item is already projected and no approval overlay is in flight.
+    pub(crate) fn confirmed_item_already_projected(&self, e: &Event) -> bool {
+        if self.approval_replay_needed
+            || !self.state.waiting_spaces.is_empty()
+            || !self.net.optimistic_approvals.is_empty()
+            || !self.state.requests.is_empty()
+        {
+            return false;
+        }
+        matches!(
+            e.body,
+            EventBody::ItemCreated { .. }
+                | EventBody::ItemVersioned { .. }
+                | EventBody::ItemReverted { .. }
+        )
+    }
+
+    /// Writes the relay seq onto the optimistic entry. Returns whether the Space is on screen.
+    pub(crate) fn note_own_confirmed(
+        &mut self,
+        space: &str,
+        client_id: &str,
+        seq: u64,
+        hash: &str,
+    ) -> bool {
+        let stamp = |entries: &mut Vec<Entry>| {
+            for entry in entries.iter_mut().filter(|entry| {
+                entry.client_id == client_id
+                    || entry.client_id.strip_suffix(":result") == Some(client_id)
+            }) {
+                entry.seq = seq;
+                entry.hash = hash.to_string();
+            }
+        };
+        if let Some(space_state) = self
+            .space_projections
+            .get_mut(space)
+            .and_then(|scoped| scoped.spaces.get_mut(space))
+        {
+            stamp(&mut space_state.entries);
+        }
+        let Some(space_state) = self.state.spaces.get_mut(space) else {
+            return false;
+        };
+        stamp(&mut space_state.entries);
+        true
     }
 
     fn is_member_of(&self, space: &str, who: &str) -> bool {
@@ -566,6 +634,11 @@ impl Engine {
         self.logs.get(space).map(|l| l.next_seq()).unwrap_or(0)
     }
 
+    /// OpenMLS `SenderRatchetConfiguration` default `out_of_order_tolerance`.
+    /// A generation this far behind one already opened still decrypts; one step
+    /// further is `TooDistantInThePast` and that page never opens on the device.
+    const APPLICATION_IN_FLIGHT: usize = 5;
+
     /// Envelopes still waiting for the relay, oldest first.
     pub fn outbox_envelopes(&self) -> Vec<Envelope> {
         self.outbox_envelopes_except(&HashMap::new())
@@ -574,55 +647,98 @@ impl Engine {
     /// The outbox as envelopes, leaving out the ones already sent on this connection.
     /// Called after every write, so it skips sent entries before any sealing work and asks
     /// each Space's group for its epoch once: a long import stays linear, not quadratic.
+    ///
+    /// At most [`APPLICATION_IN_FLIGHT`] application messages per Space are unpublished
+    /// or still awaiting accept. Once a Space is at that cap, every later head of that
+    /// same Space stays queued, in order, until a confirmation frees a slot. Heads of
+    /// other Spaces keep publishing, each under the same cap. OpenMLS drops a generation
+    /// more than that far behind the one it has already opened (`TooDistantInThePast`),
+    /// and a rate-limit reject retries the older ciphertext after a later one has been
+    /// sequenced.
     pub fn outbox_envelopes_except(&self, sent: &HashMap<String, Option<u64>>) -> Vec<Envelope> {
         let mut ready = HashMap::new();
         // A Welcome goes out only once its commit is in: sent together, a commit held back
         // by the relay (rate limit) would let the Welcome arrive first and be refused.
         let held = self.welcomes_behind_commits();
-        self.store
-            .outbox_heads()
-            .unwrap_or_default()
-            .into_iter()
-            .filter(|p| !p.failed && !sent.contains_key(&p.client_id))
-            .filter(|p| !held.contains(&p.client_id))
+        // Ahead of any in-flight application cap: a forked Space publishes nothing.
+        let mut forked = HashMap::new();
+        let heads = self.store.outbox_heads().unwrap_or_default();
+        let mut in_flight: HashMap<String, usize> = HashMap::new();
+        for head in &heads {
+            if sent
+                .get(&head.client_id)
+                .is_some_and(|epoch| epoch.is_some())
+            {
+                *in_flight.entry(head.space.clone()).or_default() += 1;
+            }
+        }
+        let mut blocked: HashSet<String> = HashSet::new();
+        let mut out = Vec::new();
+        for p in heads {
+            if blocked.contains(&p.space) {
+                continue;
+            }
+            if p.failed || sent.contains_key(&p.client_id) || held.contains(&p.client_id) {
+                continue;
+            }
+            if *forked
+                .entry(p.space.clone())
+                .or_insert_with(|| self.fork_recorded(&p.space))
+            {
+                continue;
+            }
             // Refused for being clear in a Space that went end-to-end: it waits until this
             // device has caught up with that, then goes out sealed.
-            .filter(|p| {
-                p.last_error.as_deref() != Some(roda_proto::SEAL_REQUIRED) || self.is_e2e(&p.space)
-            })
-            .filter_map(|p| {
-                let event = self.store.outbox_get(&p.client_id).ok().flatten()?;
-                // An offline creation has a predicted genesis link. Its descendants
-                // must wait for confirmation: a retryable creation failure can otherwise
-                // let them reach the relay before the Space exists.
-                if event
-                    .seen
-                    .as_ref()
-                    .is_some_and(|seen| self.next_seq(&event.space) <= seen.seq)
+            if p.last_error.as_deref() == Some(roda_proto::SEAL_REQUIRED) && !self.is_e2e(&p.space)
+            {
+                continue;
+            }
+            let Some(event) = self.store.outbox_get(&p.client_id).ok().flatten() else {
+                continue;
+            };
+            // An offline creation has a predicted genesis link. Its descendants
+            // must wait for confirmation: a retryable creation failure can otherwise
+            // let them reach the relay before the Space exists.
+            if event
+                .seen
+                .as_ref()
+                .is_some_and(|seen| self.next_seq(&event.space) <= seen.seq)
+            {
+                continue;
+            }
+            let Some(mut env) = self.outgoing_envelope_with(&event, &mut ready) else {
+                continue;
+            };
+            if let Some(bytes) = env.recovery() {
+                let Some(reference) = roda_log::recovery::RecoveryRef::parse(bytes) else {
+                    continue;
+                };
+                if !self
+                    .store
+                    .recovery_upload_confirmed(&reference.blob)
+                    .unwrap_or(false)
                 {
-                    return None;
+                    continue;
                 }
-                let mut env = self.outgoing_envelope_with(&event, &mut ready)?;
-                if let Some(bytes) = env.recovery() {
-                    let reference = roda_log::recovery::RecoveryRef::parse(bytes)?;
-                    if !self
-                        .store
-                        .recovery_upload_confirmed(&reference.blob)
-                        .unwrap_or(false)
-                    {
-                        return None;
-                    }
+            }
+            if env.sealed_kind() == Some(SealedKind::Application) {
+                let n = in_flight.get(env.space()).copied().unwrap_or(0);
+                if n >= Self::APPLICATION_IN_FLIGHT {
+                    blocked.insert(env.space().to_string());
+                    continue;
                 }
-                if !env.is_sealed() {
-                    env.invite = self
-                        .store
-                        .meta(&format!("invite:{}", p.client_id))
-                        .ok()
-                        .flatten();
-                }
-                Some(env)
-            })
-            .collect()
+                *in_flight.entry(env.space().to_string()).or_default() += 1;
+            }
+            if !env.is_sealed() {
+                env.invite = self
+                    .store
+                    .meta(&format!("invite:{}", p.client_id))
+                    .ok()
+                    .flatten();
+            }
+            out.push(env);
+        }
+        out
     }
 
     /// Our queued Welcomes that wait behind a commit of ours still in the outbox.

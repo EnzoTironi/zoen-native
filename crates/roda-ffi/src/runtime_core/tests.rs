@@ -1194,6 +1194,113 @@ fn receipt_source_message(fixture: &mut Fixture, index: usize) -> Sequenced {
 }
 
 #[test]
+fn concurrent_receipt_prefix_restores_only_the_matching_certified_device() {
+    let mut fixture = Fixture::new();
+    fixture.grant("concurrent-prefix-trust", None);
+    let trigger = fixture.message("Concurrent receipt input");
+    let original = fixture
+        .core
+        .reply(SPACE, &trigger, 400)
+        .unwrap()
+        .intent()
+        .clone();
+    let prepared = fixture
+        .core
+        .prepare_reply(&original, "Retained concurrent output", 500)
+        .unwrap();
+    let cid = prepared.envelope().client_id().to_string();
+    let pending = fixture.core.snapshot_outbox().unwrap();
+    let next = receipt_source_message(&mut fixture, 0);
+    assert_eq!(next.env.seen(), prepared.envelope().seen());
+    assert_ne!(next.env.author(), prepared.envelope().author());
+    next.env.verify().unwrap();
+    let ReplyReceipt::Prefix(prefix) = fixture
+        .core
+        .receive_reply_progress(&original, &cid, vec![next])
+        .unwrap()
+    else {
+        panic!("the concurrent owner message is not the reply receipt");
+    };
+    assert!(fixture.core.snapshot_outbox().unwrap() == pending);
+    let other = Fixture::new_in("other-certified-device");
+    assert!(matches!(
+        DeviceCore::restore(
+            NativeImage::decode_bounded(prefix.image().as_bytes().to_vec()).unwrap(),
+            other.credential(),
+        ),
+        Err(NativeError::Credential)
+    ));
+    let mut cold = DeviceCore::restore(
+        NativeImage::decode_bounded(prefix.image().as_bytes().to_vec()).unwrap(),
+        fixture.credential(),
+    )
+    .unwrap();
+    assert!(cold.snapshot_outbox().unwrap() == pending);
+    let accepted = ordered(&fixture.owner, prepared.envelope().clone());
+    assert_eq!(fixture.owner.ingest(accepted.clone()), Ingest::Applied);
+    let ReplyReceipt::Accepted(receipt) = cold
+        .receive_reply_progress(&original, &cid, vec![accepted.clone()])
+        .unwrap()
+    else {
+        panic!("the original pending reply must produce acceptance");
+    };
+    assert_eq!(receipt.accepted().hash, accepted.hash);
+    assert_eq!(receipt.reference_digest(), prepared.reference_digest());
+    assert_eq!(receipt.publish_digest(), prepared.publish_digest());
+    assert_eq!(cold.engine.store.outbox_len().unwrap(), 0);
+    println!("JOURNEY concurrent same-prefix owner message preserves the original pending reply through cold restore; a different real certified agent is refused and only the original reply produces acceptance");
+}
+
+#[test]
+fn conflicting_sealed_seen_blocks_cold_restore_with_valid_pending_credentials() {
+    let mut fixture = Fixture::new();
+    fixture.grant("conflicting-prefix-trust", None);
+    let trigger = fixture.message("Original retained input");
+    let original = fixture
+        .core
+        .reply(SPACE, &trigger, 400)
+        .unwrap()
+        .intent()
+        .clone();
+    let prepared = fixture
+        .core
+        .prepare_reply(&original, "Original retained output", 500)
+        .unwrap();
+    let before = fixture.core.retained_head(SPACE).unwrap().unwrap();
+    let pending = fixture.core.snapshot_outbox().unwrap();
+    let source = receipt_source_message(&mut fixture, 0);
+    assert_eq!(source.env.seen(), prepared.envelope().seen());
+    let diverged = Seen {
+        seq: before.seq,
+        hash: "00".repeat(32),
+    };
+    assert_ne!(diverged.hash, before.hash);
+    let (kind, bytes) = source.env.sealed_data().unwrap();
+    let author = fixture.owner.net.author.as_ref().unwrap();
+    let conflicting = Envelope::sealed(
+        author,
+        SPACE,
+        source.env.client_id(),
+        source.env.at_ms(),
+        Some(&diverged),
+        Sealed::new(kind, roda_mls::SUITE_ID, bytes.to_vec()),
+    );
+    conflicting.verify().unwrap();
+    let frame = ordered(&fixture.core.engine, conflicting);
+    let got = fixture.core.engine.ingest(frame);
+    assert!(matches!(got, Ingest::Invalid(_)), "{got:?}");
+    assert_eq!(fixture.core.retained_head(SPACE).unwrap(), Some(before));
+    assert!(fixture.core.snapshot_outbox().unwrap() == pending);
+    assert!(fixture.core.engine.fork_recorded(SPACE));
+    assert!(fixture.core.engine.outbox_envelopes().is_empty());
+    assert!(matches!(
+        DeviceCore::restore(fixture.core.image().unwrap(), fixture.credential()),
+        Err(NativeError::Credential)
+    ));
+    println!("JOURNEY a member's real signature over a conflicting held-prefix hash preserves the pending reply but parks publication and rejects cold restore with the matching certified device");
+}
+
+#[test]
 fn receipt_prefix_keeps_exact_pending_bytes_and_resumes_beyond_64_real_positions() {
     use sha2::{Digest, Sha256};
     let mut fixture = Fixture::new();
@@ -1830,6 +1937,212 @@ fn conflicting_actual_member_checkpoint_parks_live_and_cold_core() {
         Err(NativeError::Credential)
     ));
     println!("JOURNEY signed member checkpoint with conflicting group digest parks live core and refuses cold restore");
+}
+
+#[test]
+fn diverged_member_checkpoint_parks_live_and_cold_core() {
+    let mut fixture = Fixture::new();
+    fixture.grant("explicit-trust", None);
+    let trigger = fixture.message("Original request");
+    let original = fixture
+        .core
+        .reply(SPACE, &trigger, 400)
+        .unwrap()
+        .intent()
+        .clone();
+    let author = fixture.owner.net.author.clone().unwrap();
+    let shared = fixture.owner.logs[SPACE].head().unwrap();
+    assert_eq!(fixture.core.engine.logs[SPACE].head(), Some(shared.clone()));
+    let epoch = fixture.core.engine.device().unwrap().epoch(SPACE).unwrap();
+    let digest = fixture
+        .core
+        .engine
+        .store
+        .meta(&format!("mls.digest:{SPACE}:{epoch}"))
+        .unwrap()
+        .unwrap_or_else(|| "aa".repeat(32));
+    let on_owner = author.sign_event(
+        SPACE,
+        "diverge-owner",
+        460,
+        Some(shared.clone()),
+        EventBody::Checkpoint {
+            upto: shared.clone(),
+            epoch,
+            digest: digest.clone(),
+        },
+    );
+    let on_core = author.sign_event(
+        SPACE,
+        "diverge-core",
+        461,
+        Some(shared.clone()),
+        EventBody::Checkpoint {
+            upto: shared,
+            epoch,
+            digest,
+        },
+    );
+    assert_eq!(
+        fixture
+            .owner
+            .ingest(ordered(&fixture.owner, Envelope::plain(&on_owner))),
+        Ingest::Applied
+    );
+    assert_eq!(
+        fixture
+            .core
+            .engine
+            .ingest(ordered(&fixture.core.engine, Envelope::plain(&on_core),)),
+        Ingest::Applied
+    );
+    assert!(fixture.core.engine.state.spaces[SPACE]
+        .integrity_error
+        .is_none());
+    let owner_head = fixture.owner.logs[SPACE].head().unwrap();
+    let core_at_owner_seq = fixture.core.engine.logs[SPACE].events()[owner_head.seq as usize]
+        .hash
+        .clone();
+    assert_ne!(owner_head.hash, core_at_owner_seq);
+    let checkpoint = author.sign_event(
+        SPACE,
+        "fork-checkpoint",
+        470,
+        Some(owner_head),
+        EventBody::Checkpoint {
+            upto: fixture.owner.logs[SPACE].head().unwrap(),
+            epoch: 1,
+            digest: "ab".repeat(32),
+        },
+    );
+    let got = fixture
+        .core
+        .engine
+        .ingest(ordered(&fixture.core.engine, Envelope::plain(&checkpoint)));
+    assert!(matches!(got, Ingest::Invalid(_)));
+    assert!(fixture.core.engine.logs[SPACE]
+        .events()
+        .iter()
+        .all(|event| event.client_id != "fork-checkpoint"));
+    assert_eq!(
+        fixture.core.engine.state.spaces[SPACE]
+            .integrity_error
+            .as_deref(),
+        Some("Members see different groups in this chat (the server may have forked it).")
+    );
+    assert!(matches!(
+        fixture.core.refresh(&original, 500),
+        Err(NativeError::NotReady)
+    ));
+    assert!(matches!(
+        DeviceCore::restore(fixture.core.image().unwrap(), fixture.credential()),
+        Err(NativeError::Credential)
+    ));
+    println!(
+        "JOURNEY honest checkpoint from the other fork parks live send and refuses cold restore"
+    );
+}
+
+fn sealed_frame(author: &Author, client_id: &str, seen: Option<&Seen>) -> Envelope {
+    Envelope::sealed(
+        author,
+        SPACE,
+        client_id,
+        1_700_000_000_500,
+        seen,
+        Sealed::new(SealedKind::Application, roda_mls::SUITE_ID, vec![9, 9, 9]),
+    )
+}
+
+#[test]
+fn sealed_member_seen_ahead_marks_the_fork_and_parks_send() {
+    let mut fixture = Fixture::new();
+    fixture.grant("sealed-fork-trust", None);
+    let trigger = fixture.message("Original request");
+    let original = fixture
+        .core
+        .reply(SPACE, &trigger, 400)
+        .unwrap()
+        .intent()
+        .clone();
+    let author = fixture.owner.net.author.clone().unwrap();
+    let ahead = Seen {
+        seq: 9_000,
+        hash: "12".repeat(32),
+    };
+    let next = fixture.core.engine.next_seq(SPACE);
+    let mut late = ordered(
+        &fixture.core.engine,
+        sealed_frame(&author, "sealed-gap", Some(&ahead)),
+    );
+    late.seq = next + 3;
+    let gapped = fixture.core.engine.ingest(late);
+    assert!(
+        matches!(gapped, Ingest::Gap { next: n } if n == next),
+        "{gapped:?}"
+    );
+    assert!(fixture.core.engine.state.spaces[SPACE]
+        .integrity_error
+        .is_none());
+
+    let stranger = roda_log::Author::root(roda_log::Signer::generate());
+    let refused = fixture.core.engine.ingest(ordered(
+        &fixture.core.engine,
+        sealed_frame(&stranger, "sealed-stranger", Some(&ahead)),
+    ));
+    assert!(matches!(refused, Ingest::Invalid(_)), "{refused:?}");
+    let mut forged = sealed_frame(&author, "sealed-forged", Some(&ahead));
+    forged.sig = "00".repeat(64);
+    let forged = fixture
+        .core
+        .engine
+        .ingest(ordered(&fixture.core.engine, forged));
+    assert!(matches!(forged, Ingest::Invalid(_)), "{forged:?}");
+    assert!(fixture.core.engine.state.spaces[SPACE]
+        .integrity_error
+        .is_none());
+    assert_eq!(
+        fixture
+            .core
+            .engine
+            .store
+            .meta(&format!("mls.fork:{SPACE}"))
+            .unwrap(),
+        None
+    );
+    assert_eq!(fixture.core.engine.next_seq(SPACE), next);
+
+    let got = fixture.core.engine.ingest(ordered(
+        &fixture.core.engine,
+        sealed_frame(&author, "sealed-ahead", Some(&ahead)),
+    ));
+    assert!(matches!(got, Ingest::Invalid(_)), "{got:?}");
+    assert!(fixture.core.engine.logs[SPACE]
+        .events()
+        .iter()
+        .all(|event| event.client_id != "sealed-ahead"));
+    assert_eq!(fixture.core.engine.next_seq(SPACE), next);
+    assert_eq!(
+        fixture.core.engine.state.spaces[SPACE]
+            .integrity_error
+            .as_deref(),
+        Some("Members see different groups in this chat (the server may have forked it)."),
+        "sealed member seen ahead did not mark the fork"
+    );
+    assert_eq!(
+        fixture
+            .core
+            .engine
+            .store
+            .meta(&format!("mls.fork:{SPACE}"))
+            .unwrap()
+            .as_deref(),
+        Some("Members see different groups in this chat (the server may have forked it).")
+    );
+    assert!(matches!(
+        fixture.core.refresh(&original, 500),
+        Err(NativeError::NotReady)
+    ));
 }
 
 #[test]

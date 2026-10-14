@@ -113,7 +113,18 @@ fun ItemScreen(model: ZoenViewModel, state: AppState, id: String, navigate: (Nav
             }
         }
     }
-    if (versions) ModalBottomSheet(onDismissRequest = { versions = false }) {
+    if (versions) {
+        // Back, the backdrop and a downward drag all ask the sheet to hide. On slow devices that
+        // request can arrive while the opening animation is still running, and the opening
+        // animation then wins and cancels the hide, leaving the sheet open. Remember the request
+        // and close the sheet once the hide ends, whether it finished or was cancelled.
+        var closing by remember { mutableStateOf(false) }
+        val historySheet = rememberModalBottomSheetState(skipPartiallyExpanded = true,
+            confirmValueChange = { target -> if (target == SheetValue.Hidden) closing = true; true })
+        LaunchedEffect(closing) {
+            if (closing) try { historySheet.hide() } finally { versions = false }
+        }
+        ModalBottomSheet(onDismissRequest = { versions = false }, sheetState = historySheet) {
         Text(stringResource(R.string.versions), Modifier.padding(horizontal = 24.dp, vertical = 12.dp), style = MaterialTheme.typography.headlineMedium)
         LazyColumn(Modifier.testTag("item-versions"), contentPadding = PaddingValues(bottom = 24.dp)) {
             items(item.versions.reversed(), key = { it.number.toInt() }) { version ->
@@ -129,6 +140,7 @@ fun ItemScreen(model: ZoenViewModel, state: AppState, id: String, navigate: (Nav
                     else Icon(Icons.Rounded.Check, stringResource(R.string.saved))
                 })
             }
+        }
         }
     }
     restore?.let { number -> AlertDialog(onDismissRequest = { restore = null }, title = { Text(stringResource(R.string.restore)) }, text = { Text(stringResource(R.string.restore_question)) }, confirmButton = {

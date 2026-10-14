@@ -24,7 +24,13 @@
 //!   commit. Members apply a commit only if it leaves no unlisted reader.
 //! - **Checkpoints:** after its commit lands, after joining, and every 256 sealed entries,
 //!   a device posts its epoch digest. A member whose digest for the same epoch differs
-//!   was shown another group: the Space is marked as forked.
+//!   was shown another group: the Space is marked as forked. A checkpoint whose
+//!   `upto.hash` is not this device's chain hash at `upto.seq` marks that same fork.
+//!   A checkpoint still ahead of the chain waits under `mls.pending_prefix`,
+//!   one claim per signing device. A signed `seen` that names a held position
+//!   with a different hash marks the same fork and is not appended.
+//!   A member event that is already the next sequence, whose signed `seen`
+//!   is not a held position, marks that same fork and is not fetched again.
 
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::sync::Mutex;
@@ -66,6 +72,11 @@ type R<T> = Result<T, CoreError>;
 
 /// Single-use key packages a device keeps on the relay, beside its last-resort one.
 const KEY_PACKAGES: usize = 32;
+
+/// Defense ceiling on pending prefix claims in one Space. A valid roster stays
+/// under this, because each member device holds one claim. Reaching it refuses
+/// the new device and drops nothing already stored.
+const PENDING_PREFIX_CEILING: usize = 4096;
 const META_PUBLISHED: &str = "mls.key_packages";
 /// Log entries between a device's checkpoints in a Space (ADR 0026). Pruning waits on the
 /// slowest member's checkpoint, so readers post them too. `ZOEN_CHECKPOINT_EVERY` changes it
@@ -297,6 +308,73 @@ fn fork_meta(space: &str) -> String {
     format!("mls.fork:{space}")
 }
 
+fn pending_prefix_meta(space: &str) -> String {
+    format!("mls.pending_prefix:{space}")
+}
+
+fn pending_refusal_meta(space: &str) -> String {
+    format!("mls.pending_prefix_refused:{space}")
+}
+
+fn fork_reason() -> String {
+    t(
+        "Membros veem grupos diferentes nesta conversa (possível bifurcação do servidor).",
+        "Members see different groups in this chat (the server may have forked it).",
+    )
+}
+
+#[cfg(test)]
+thread_local! {
+    static CRASH_AFTER_FORK_META: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+}
+
+#[cfg(test)]
+fn crash_after_fork_meta() -> bool {
+    CRASH_AFTER_FORK_META.with(std::cell::Cell::get)
+}
+
+#[cfg(test)]
+fn set_crash_after_fork_meta(crash: bool) {
+    CRASH_AFTER_FORK_META.with(|flag| flag.set(crash));
+}
+
+/// How a signed `seen` sits against the log this device holds.
+pub(crate) enum SeenAgainst {
+    /// `seen.seq` is not a position in the log.
+    Ahead,
+    /// The position is held and its hash is not `seen.hash`.
+    Diverged,
+    /// No signed `seen`, or the held hash matches.
+    Other,
+}
+
+pub(crate) fn seen_against(log: &SpaceLog, e: &Event) -> SeenAgainst {
+    let Some(seen) = &e.seen else {
+        return SeenAgainst::Other;
+    };
+    match log.events().get(seen.seq as usize) {
+        Some(held) if held.seq == seen.seq && held.hash != seen.hash => SeenAgainst::Diverged,
+        Some(held) if held.seq == seen.seq => SeenAgainst::Other,
+        _ => SeenAgainst::Ahead,
+    }
+}
+
+/// The key that signed the event: the device key when the event carries one,
+/// otherwise the identity key.
+fn signing_device(e: &Event) -> &str {
+    e.device.as_deref().unwrap_or(e.author.as_str())
+}
+
+/// A foreign checkpoint whose `upto.seq` this device has not reached yet.
+/// Stored under the signing device's key, one claim per device.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+struct PendingPrefix {
+    seq: u64,
+    hash: String,
+    epoch: u64,
+    digest: String,
+}
+
 fn storage(e: impl std::fmt::Display) -> CoreError {
     CoreError::Storage {
         message: e.to_string(),
@@ -381,11 +459,13 @@ impl Engine {
                 .unwrap_or_default();
             self.net.mls.rosters.insert(space.clone(), roster);
             if let Ok(Some(reason)) = self.store.meta(&fork_meta(&space)) {
-                if let Some(s) = self.state.spaces.get_mut(&space) {
-                    s.integrity_error = Some(reason);
-                }
+                self.show_fork(&space, reason);
             }
             self.net.mls.mark_group_dirty(space);
+        }
+        let pending: Vec<SpaceId> = self.logs.keys().cloned().collect();
+        for space in pending {
+            let _ = self.settle_pending_prefixes(&space);
         }
     }
 
@@ -824,15 +904,18 @@ impl Engine {
                 Err(err) => return Ingest::Invalid(err.to_string()),
             },
         };
-        let log = self
-            .logs
-            .entry(space.clone())
-            .or_insert_with(|| SpaceLog::new(space.clone()));
-        if let Err(err) = log.accept(e.clone()) {
-            if log.is_empty() {
-                self.logs.remove(&space);
-            }
-            return Ingest::Invalid(err.to_string()); // the transaction rolls back
+        let accept_err = {
+            let log = self
+                .logs
+                .entry(space.clone())
+                .or_insert_with(|| SpaceLog::new(space.clone()));
+            log.accept(e.clone()).err()
+        };
+        if let Some(err) = accept_err {
+            // The fork write uses this connection. It has to follow the rollback,
+            // or the refused event takes the fork meta with it.
+            drop(tx);
+            return self.refuse_unaccepted(&space, &err, &e);
         }
         let mut stored = self.store.append_event(&e).map_err(storage);
         stored = stored
@@ -873,6 +956,9 @@ impl Engine {
             let _ = self.reload();
             return Ingest::Invalid(err.to_string());
         }
+        if let Err(err) = self.compare_checkpoint(&e) {
+            return Ingest::Invalid(err.to_string());
+        }
 
         let _ = self.store.set_synced(&space);
         self.net.synced.insert(space.clone());
@@ -894,6 +980,14 @@ impl Engine {
         }
 
         if self.approval_projection_needs_replay(&e) {
+            if own && self.confirmed_item_already_projected(&e) {
+                self.net.pending.remove(&client_id);
+                if !self.note_own_confirmed(&space, &client_id, e.seq, &e.hash) {
+                    self.state =
+                        Self::merge_space_projections(&self.space_projections, &self.space_order);
+                }
+                return Ingest::Confirmed;
+            }
             if own {
                 self.net.pending.remove(&client_id);
             }
@@ -913,20 +1007,10 @@ impl Engine {
                 // The group may owe a commit that waited for this Welcome to land.
                 self.net.mls.mark_group_dirty(space.clone());
             }
-            if let Some(s) = self
-                .space_projections
-                .get_mut(&space)
-                .and_then(|scoped| scoped.spaces.get_mut(&space))
-            {
-                for entry in s.entries.iter_mut().filter(|x| {
-                    x.client_id == client_id
-                        || x.client_id.strip_suffix(":result") == Some(client_id.as_str())
-                }) {
-                    entry.seq = e.seq;
-                    entry.hash = e.hash.clone();
-                }
+            if !self.note_own_confirmed(&space, &client_id, e.seq, &e.hash) {
+                self.state =
+                    Self::merge_space_projections(&self.space_projections, &self.space_order);
             }
-            self.state = Self::merge_space_projections(&self.space_projections, &self.space_order);
             return Ingest::Confirmed;
         }
         if let Err(err) = self.apply_confirmed_event(&e) {
@@ -954,15 +1038,15 @@ impl Engine {
             Err(err) => return Ingest::Invalid(err.to_string()),
         };
         e.sealed_wire = ev.env.legacy_pruned_hash().map(str::to_string);
-        let log = self
-            .logs
-            .entry(space.clone())
-            .or_insert_with(|| SpaceLog::new(space.clone()));
-        if let Err(err) = log.accept(e.clone()) {
-            if log.is_empty() {
-                self.logs.remove(&space);
-            }
-            return Ingest::Invalid(err.to_string());
+        let accept_err = {
+            let log = self
+                .logs
+                .entry(space.clone())
+                .or_insert_with(|| SpaceLog::new(space.clone()));
+            log.accept(e.clone()).err()
+        };
+        if let Some(err) = accept_err {
+            return self.refuse_unaccepted(&space, &err, &e);
         }
         // No MLS state changes until the stub's signature and chain are accepted.
         // Forgetting a stale group and persisting the verified stub commit together.
@@ -994,6 +1078,9 @@ impl Engine {
         let _ = self.store.set_synced(&space);
         self.net.mls.wake_recovery(&space);
         self.net.synced.insert(space);
+        if let Err(err) = self.compare_checkpoint(&e) {
+            return Ingest::Invalid(err.to_string());
+        }
         Ingest::Applied
     }
 
@@ -1142,27 +1229,295 @@ impl Engine {
         }
     }
 
-    /// Another member's checkpoint: if this device was at that epoch and computed a
-    /// different digest, the two were shown different groups.
-    pub(crate) fn compare_checkpoint(&mut self, e: &Event) {
-        let EventBody::Checkpoint { epoch, digest, .. } = &e.body else {
-            return;
+    /// Another member's checkpoint. Two checks share one fork path.
+    ///
+    /// The epoch digest is compared with this device's `digest_meta` for that epoch,
+    /// as before. `upto.hash` is compared with the chain hash at `upto.seq` once that
+    /// position is in the log. Either mismatch stores `fork_meta` and the Space's
+    /// `integrity_error`. A checkpoint whose author is not a current member of the
+    /// Space log is ignored.
+    ///
+    /// When `upto.seq` is still ahead of the chain, the checkpoint is kept under
+    /// `mls.pending_prefix:{space}` and checked again from here when a later event in
+    /// that Space reaches it, including after this device reopens. One signing device
+    /// keeps only its highest unreached `upto.seq`. A later claim from that device
+    /// with a higher seq replaces it. A lower or equal seq is ignored. This relies on
+    /// the hash chain: the hash at the higher position commits to every earlier one,
+    /// so a divergence at or before the lower position still fails the higher check.
+    /// A device that leaves the roster keeps the claim it already stored until that
+    /// check runs. The list is bounded by the Space's member devices. Past
+    /// [`PENDING_PREFIX_CEILING`] entries a new device is refused. The refusal count
+    /// is `mls.pending_prefix_refused:{space}`, read by [`Engine::pending_prefix_refusals`].
+    /// Nothing already stored is dropped. Settling writes `fork_meta` and then the
+    /// pending list in one store transaction, so a crash keeps the fork or the claim.
+    /// Once the chain includes the seq, the entry is removed whether the prefix
+    /// matches or forks. A match with no stored digest for the epoch is removed too.
+    /// The digest check does not wait for a later epoch record.
+    ///
+    /// A checkpoint that never reaches this function can still be fork evidence.
+    /// `seen` is protobuf field 7 of the signed content (`seq` and `hash`). The
+    /// author signature covers those bytes. The relay's `seq`, `prev` and chain hash
+    /// do not. When that signed `seen` names a position this device holds with a
+    /// different hash, ingest marks the fork and leaves the event out of the log.
+    /// A member event that is already the next sequence is the same fork when
+    /// that `seen` is not held: the relay assigns the sequence after the author
+    /// signed, so an honest `seen` on this chain is below the event. An event
+    /// whose own sequence is still ahead of the local head stays a gap.
+    pub(crate) fn compare_checkpoint(&mut self, e: &Event) -> R<()> {
+        if let EventBody::Checkpoint {
+            epoch,
+            digest,
+            upto,
+        } = &e.body
+        {
+            if self.me.as_deref() != Some(e.author.as_str()) {
+                self.observe_checkpoint(e, *epoch, digest, upto)?;
+            }
+        }
+        self.settle_pending_prefixes(&e.space)
+    }
+
+    /// One decision for a failed `accept` on the next sequence, whether the
+    /// body arrived in the clear, sealed, or pruned. The caller already
+    /// returned a gap when the event's own sequence is still ahead.
+    pub(crate) fn refuse_unaccepted(
+        &mut self,
+        space: &str,
+        err: &roda_log::LogError,
+        event: &Event,
+    ) -> Ingest {
+        let (seen, empty) = {
+            let log = self.logs.get(space).expect("accept ran on this log");
+            (seen_against(log, event), log.is_empty())
         };
-        if self.me.as_deref() == Some(e.author.as_str()) {
+        if empty {
+            self.logs.remove(space);
+        }
+        let causal = matches!(err, roda_log::LogError::BrokenCausalLink { .. });
+        self.refused_member_history(space, causal, seen, &event.author, &err.to_string())
+    }
+
+    /// `causal` means the signature and the event's own chain link already
+    /// passed, and the signed `seen` did not. The event is this device's next
+    /// sequence. A member whose `seen` disagrees with a held position, or names
+    /// a position this chain does not hold, is fork evidence. Anything else is
+    /// a refusal. Neither result asks the relay for this event again.
+    pub(crate) fn refused_member_history(
+        &mut self,
+        space: &str,
+        causal: bool,
+        seen: SeenAgainst,
+        author: &str,
+        err: &str,
+    ) -> Ingest {
+        if !causal {
+            return Ingest::Invalid(err.to_string());
+        }
+        let fork = matches!(seen, SeenAgainst::Ahead | SeenAgainst::Diverged)
+            && self.author_in_roster(space, author);
+        if fork {
+            if let Err(error) = self.mark_checkpoint_fork(space) {
+                return Ingest::Invalid(error.to_string());
+            }
+        }
+        Ingest::Invalid(err.to_string())
+    }
+
+    fn observe_checkpoint(&mut self, e: &Event, epoch: u64, digest: &str, upto: &Seen) -> R<()> {
+        if !self.author_in_roster(&e.space, &e.author) {
+            return Ok(());
+        }
+        if self.digest_forks(&e.space, epoch, digest) || self.prefix_forks(&e.space, upto) {
+            return self.mark_checkpoint_fork(&e.space);
+        }
+        if self.chain_hash_at(&e.space, upto.seq).is_none() {
+            self.remember_pending_prefix(
+                &e.space,
+                signing_device(e),
+                PendingPrefix {
+                    seq: upto.seq,
+                    hash: upto.hash.clone(),
+                    epoch,
+                    digest: digest.to_string(),
+                },
+            );
+        }
+        Ok(())
+    }
+
+    fn settle_pending_prefixes(&mut self, space: &str) -> R<()> {
+        let pending = self.pending_prefixes(space);
+        if pending.is_empty() {
+            return Ok(());
+        }
+        let started = pending.len();
+        let mut left = BTreeMap::new();
+        let mut fork = false;
+        for (device, item) in pending {
+            let Some(mine) = self.chain_hash_at(space, item.seq) else {
+                left.insert(device, item);
+                continue;
+            };
+            if mine != item.hash || self.digest_forks(space, item.epoch, &item.digest) {
+                fork = true;
+            }
+        }
+        if !fork && left.len() == started {
+            return Ok(());
+        }
+        self.persist_settlement(space, &left, fork)?;
+        if fork {
+            self.show_fork(space, fork_reason());
+        }
+        Ok(())
+    }
+
+    fn persist_settlement(
+        &self,
+        space: &str,
+        pending: &BTreeMap<String, PendingPrefix>,
+        fork: bool,
+    ) -> R<()> {
+        let tx = self.store.conn().unchecked_transaction().map_err(storage)?;
+        if fork {
+            self.store
+                .set_meta(&fork_meta(space), &fork_reason())
+                .map_err(storage)?;
+            #[cfg(test)]
+            if crash_after_fork_meta() {
+                tx.commit().map_err(storage)?;
+                return Err(storage("fork meta committed before pending removal"));
+            }
+        }
+        let key = pending_prefix_meta(space);
+        if pending.is_empty() {
+            self.store.meta_delete(&key).map_err(storage)?;
+        } else {
+            let json = serde_json::to_string(pending).map_err(storage)?;
+            self.store.set_meta(&key, &json).map_err(storage)?;
+        }
+        tx.commit().map_err(storage)?;
+        Ok(())
+    }
+
+    fn remember_pending_prefix(&mut self, space: &str, device: &str, item: PendingPrefix) {
+        let mut pending = self.pending_prefixes(space);
+        if let Some(existing) = pending.get(device) {
+            if item.seq <= existing.seq {
+                return;
+            }
+            pending.insert(device.to_string(), item);
+            self.store_pending_prefixes(space, &pending);
             return;
         }
-        let Ok(Some(mine)) = self.store.meta(&digest_meta(&e.space, *epoch)) else {
+        if pending.len() >= PENDING_PREFIX_CEILING {
+            self.note_prefix_refusal(space, device, item.seq);
             return;
+        }
+        pending.insert(device.to_string(), item);
+        self.store_pending_prefixes(space, &pending);
+    }
+
+    fn note_prefix_refusal(&self, space: &str, device: &str, seq: u64) {
+        let count = self.pending_prefix_refusals(space).saturating_add(1);
+        let _ = self
+            .store
+            .set_meta(&pending_refusal_meta(space), &count.to_string());
+        tracing_like(&format!(
+            "pending checkpoint prefix refused space={space} device={device} seq={seq} ceiling={PENDING_PREFIX_CEILING} count={count}"
+        ));
+    }
+
+    /// How many new pending claims this Space has refused at the defensive ceiling.
+    /// Stored at `mls.pending_prefix_refused:{space}`.
+    pub(crate) fn pending_prefix_refusals(&self, space: &str) -> u64 {
+        self.store
+            .meta(&pending_refusal_meta(space))
+            .ok()
+            .flatten()
+            .and_then(|raw| raw.parse().ok())
+            .unwrap_or(0)
+    }
+
+    fn author_in_roster(&self, space: &str, identity: &str) -> bool {
+        self.logs
+            .get(space)
+            .is_some_and(|log| fold_roster(log.events().iter()).contains_key(identity))
+    }
+
+    fn digest_forks(&self, space: &str, epoch: u64, digest: &str) -> bool {
+        self.store
+            .meta(&digest_meta(space, epoch))
+            .ok()
+            .flatten()
+            .is_some_and(|mine| mine != digest)
+    }
+
+    fn prefix_forks(&self, space: &str, upto: &Seen) -> bool {
+        self.chain_hash_at(space, upto.seq)
+            .is_some_and(|mine| mine != upto.hash)
+    }
+
+    fn chain_hash_at(&self, space: &str, seq: u64) -> Option<String> {
+        let event = self.logs.get(space)?.events().get(seq as usize)?;
+        (event.seq == seq).then(|| event.hash.clone())
+    }
+
+    fn pending_prefixes(&self, space: &str) -> BTreeMap<String, PendingPrefix> {
+        self.store
+            .meta(&pending_prefix_meta(space))
+            .ok()
+            .flatten()
+            .and_then(|raw| serde_json::from_str(&raw).ok())
+            .unwrap_or_default()
+    }
+
+    fn store_pending_prefixes(&self, space: &str, pending: &BTreeMap<String, PendingPrefix>) {
+        let key = pending_prefix_meta(space);
+        let _ = if pending.is_empty() {
+            self.store.meta_delete(&key)
+        } else {
+            self.store
+                .set_meta(&key, &serde_json::to_string(pending).unwrap_or_default())
         };
-        if mine != *digest {
-            let reason = t(
-                "Membros veem grupos diferentes nesta conversa (possível bifurcação do servidor).",
-                "Members see different groups in this chat (the server may have forked it).",
-            );
-            let _ = self.store.set_meta(&fork_meta(&e.space), &reason);
-            if let Some(s) = self.state.spaces.get_mut(&e.space) {
-                s.integrity_error = Some(reason);
+    }
+
+    pub(crate) fn recorded_fork(&self, space: &str) -> Option<String> {
+        self.store.meta(&fork_meta(space)).ok().flatten()
+    }
+
+    pub(crate) fn fork_recorded(&self, space: &str) -> bool {
+        self.recorded_fork(space).is_some()
+    }
+
+    pub(crate) fn restore_recorded_forks(&mut self) {
+        let spaces = self.space_order.clone();
+        for space in spaces {
+            if let Some(reason) = self.recorded_fork(&space) {
+                self.show_fork(&space, reason);
             }
+        }
+    }
+
+    fn mark_checkpoint_fork(&mut self, space: &str) -> R<()> {
+        let reason = fork_reason();
+        self.store
+            .set_meta(&fork_meta(space), &reason)
+            .map_err(storage)?;
+        self.show_fork(space, reason);
+        Ok(())
+    }
+
+    /// The phrase has to live on the projection. The next confirmed event
+    /// rebuilds `state` from there and would otherwise drop it.
+    fn show_fork(&mut self, space: &str, reason: String) {
+        if let Some(scoped) = self.space_projections.get_mut(space) {
+            if let Some(s) = scoped.spaces.get_mut(space) {
+                s.integrity_error = Some(reason.clone());
+            }
+        }
+        if let Some(s) = self.state.spaces.get_mut(space) {
+            s.integrity_error = Some(reason);
         }
     }
 
@@ -1888,7 +2243,9 @@ pub(crate) fn must_seal(body: &EventBody) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use roda_log::{chain_hash, Author};
+    use std::collections::BTreeMap;
+
+    use roda_log::{chain_hash, Author, Signer};
 
     fn ordered(engine: &Engine, env: Envelope) -> Sequenced {
         let (seq, prev) = engine
@@ -2394,5 +2751,1376 @@ mod tests {
         assert!(engine.net.mls.rejoin.contains(space));
         assert_eq!(engine.store.event_count().unwrap(), stored_before + 1);
         engine.logs[space].verify().unwrap();
+    }
+
+    /// Twelve sealed pages, delivered in the worst order the publish window allows.
+    /// A seventh generation opened before the first is permanent loss; the outbox
+    /// never offers that sixth in-flight ciphertext.
+    #[test]
+    fn publish_window_keeps_a_reordered_burst_decryptable() {
+        use roda_log::Signer;
+        use roda_mls::sealed::state_key;
+        use std::collections::{BTreeSet, HashMap};
+
+        let mut engine = Engine::open(":memory:").unwrap();
+        let (root_secret, _, _) = engine
+            .create_account("Ana", "ana", "http://relay.test")
+            .unwrap();
+        let author = engine.net.author.clone().unwrap();
+        let space = "sp_ratchet_window";
+        let genesis = Envelope::plain(&author.sign_event(
+            space,
+            "created",
+            1,
+            None,
+            EventBody::SpaceCreated {
+                title: "Window".into(),
+                kind: SpaceKind::Group,
+                privacy: Privacy::EndToEnd,
+            },
+        ));
+        assert_eq!(engine.ingest(ordered(&engine, genesis)), Ingest::Applied);
+        engine.create_mls_group(space).unwrap();
+
+        let peer_author = Author::device(&Signer::from_secret(&root_secret), Signer::generate());
+        let mut peer_conn = Connection::open_in_memory().unwrap();
+        roda_mls::migrate(&mut peer_conn).unwrap();
+        let peer = Device::new(
+            &peer_conn,
+            state_key(&peer_author.key.secret()),
+            &peer_author.identity,
+            peer_author.key.secret(),
+            peer_author.cert.as_deref().unwrap(),
+        )
+        .unwrap();
+        let packages = peer.key_packages(1, false).unwrap();
+        let adding = engine
+            .device()
+            .unwrap()
+            .commit(space, &packages, &Default::default())
+            .unwrap();
+        let commit = Envelope::sealed(
+            &author,
+            space,
+            "add-peer",
+            2,
+            seen(&engine, space).as_ref(),
+            Sealed::new(SealedKind::Commit, SUITE_ID, adding.commit),
+        );
+        assert_eq!(engine.ingest(ordered(&engine, commit)), Ingest::Applied);
+        let roster: BTreeSet<String> = BTreeSet::from([author.identity.clone()]);
+        let welcome_bytes = adding.welcome.unwrap();
+        assert!(peer.join(space, &welcome_bytes, &roster).unwrap());
+        let welcome = Envelope::sealed(
+            &author,
+            space,
+            "welcome-peer",
+            3,
+            seen(&engine, space).as_ref(),
+            Sealed::new(SealedKind::Welcome, SUITE_ID, welcome_bytes),
+        );
+        assert_eq!(engine.ingest(ordered(&engine, welcome)), Ingest::Applied);
+        let sender = engine.device().unwrap().leaf().clone();
+
+        for i in 0..12 {
+            engine
+                .append_synced(
+                    space,
+                    &author,
+                    1_000 + i,
+                    EventBody::MessagePosted {
+                        message: format!("m{i}"),
+                        text: format!("page-{i}"),
+                        attaches: None,
+                        reply: None,
+                    },
+                )
+                .unwrap();
+        }
+        assert!(engine.mls_seal_outbox().unwrap());
+        let mut opened = 0u32;
+        let mut remaining = 12usize;
+        while remaining > 0 {
+            let apps: Vec<_> = engine
+                .outbox_envelopes()
+                .into_iter()
+                .filter(|env| env.sealed_kind() == Some(SealedKind::Application))
+                .collect();
+            assert!(
+                !apps.is_empty() && apps.len() <= 5,
+                "in flight {}, still queued {remaining}",
+                apps.len()
+            );
+            assert!(apps.len() < remaining || remaining <= 5);
+            let mut sent = HashMap::new();
+            for env in &apps {
+                sent.insert(env.client_id().to_string(), Some(0u64));
+            }
+            assert!(
+                engine
+                    .outbox_envelopes_except(&sent)
+                    .iter()
+                    .all(|env| env.sealed_kind() != Some(SealedKind::Application)),
+                "a later generation left while {} were still unaccepted",
+                apps.len()
+            );
+            for env in apps.iter().rev() {
+                let data = env.sealed_data().unwrap().1;
+                match peer.open(space, data, &roster, &sender).unwrap() {
+                    Opened::Application { plaintext, .. } => {
+                        assert!(
+                            plaintext.windows(b"page-".len()).any(|w| w == b"page-"),
+                            "opened bytes are not a page"
+                        );
+                    }
+                    other => panic!("expected an application message, got {other:?}"),
+                }
+                opened += 1;
+            }
+            for env in &apps {
+                assert_eq!(
+                    engine.ingest(ordered(&engine, env.clone())),
+                    Ingest::Confirmed
+                );
+            }
+            remaining -= apps.len();
+        }
+        assert_eq!(opened, 12);
+
+        let mut late = Vec::new();
+        for i in 0..7 {
+            late.push(
+                engine
+                    .device()
+                    .unwrap()
+                    .seal(space, format!("gap-{i}").as_bytes())
+                    .unwrap(),
+            );
+        }
+        peer.open(space, &late[6], &roster, &sender).unwrap();
+        let err = peer.open(space, &late[0], &roster, &sender).unwrap_err();
+        assert!(
+            format!("{err:?}").contains("TooDistantInThePast"),
+            "{err:?}"
+        );
+    }
+
+    /// Space A already has five application generations in flight. Its sixth
+    /// application, and anything newer in that same Space, stays queued. Space B
+    /// still publishes.
+    #[test]
+    fn publish_window_lets_the_next_space_through() {
+        use roda_log::Signer;
+        use roda_mls::sealed::state_key;
+        use std::collections::{BTreeSet, HashMap};
+
+        let mut engine = Engine::open(":memory:").unwrap();
+        let (root_secret, _, _) = engine
+            .create_account("Ana", "ana", "http://relay.test")
+            .unwrap();
+        let author = engine.net.author.clone().unwrap();
+        let space_a = "sp_cap_a";
+        assert_eq!(
+            engine.ingest(ordered(
+                &engine,
+                Envelope::plain(&author.sign_event(
+                    space_a,
+                    "created-a",
+                    1,
+                    None,
+                    EventBody::SpaceCreated {
+                        title: "A".into(),
+                        kind: SpaceKind::Group,
+                        privacy: Privacy::EndToEnd,
+                    },
+                )),
+            )),
+            Ingest::Applied
+        );
+        engine.create_mls_group(space_a).unwrap();
+
+        let peer_author = Author::device(&Signer::from_secret(&root_secret), Signer::generate());
+        let mut peer_conn = Connection::open_in_memory().unwrap();
+        roda_mls::migrate(&mut peer_conn).unwrap();
+        let peer = Device::new(
+            &peer_conn,
+            state_key(&peer_author.key.secret()),
+            &peer_author.identity,
+            peer_author.key.secret(),
+            peer_author.cert.as_deref().unwrap(),
+        )
+        .unwrap();
+        let packages = peer.key_packages(1, false).unwrap();
+        let adding = engine
+            .device()
+            .unwrap()
+            .commit(space_a, &packages, &Default::default())
+            .unwrap();
+        assert_eq!(
+            engine.ingest(ordered(
+                &engine,
+                Envelope::sealed(
+                    &author,
+                    space_a,
+                    "add-peer",
+                    2,
+                    seen(&engine, space_a).as_ref(),
+                    Sealed::new(SealedKind::Commit, SUITE_ID, adding.commit),
+                ),
+            )),
+            Ingest::Applied
+        );
+        let roster: BTreeSet<String> = BTreeSet::from([author.identity.clone()]);
+        let welcome_bytes = adding.welcome.unwrap();
+        assert!(peer.join(space_a, &welcome_bytes, &roster).unwrap());
+        assert_eq!(
+            engine.ingest(ordered(
+                &engine,
+                Envelope::sealed(
+                    &author,
+                    space_a,
+                    "welcome-peer",
+                    3,
+                    seen(&engine, space_a).as_ref(),
+                    Sealed::new(SealedKind::Welcome, SUITE_ID, welcome_bytes),
+                ),
+            )),
+            Ingest::Applied
+        );
+
+        let space_b = "sp_cap_b";
+        assert_eq!(
+            engine.ingest(ordered(
+                &engine,
+                Envelope::plain(&author.sign_event(
+                    space_b,
+                    "created-b",
+                    1,
+                    None,
+                    EventBody::SpaceCreated {
+                        title: "B".into(),
+                        kind: SpaceKind::Group,
+                        privacy: Privacy::Closed,
+                    },
+                )),
+            )),
+            Ingest::Applied
+        );
+
+        let mut a_messages = Vec::new();
+        for i in 0..6 {
+            a_messages.push(
+                engine
+                    .append_synced(
+                        space_a,
+                        &author,
+                        1_000 + i,
+                        EventBody::MessagePosted {
+                            message: format!("a{i}"),
+                            text: format!("page-{i}"),
+                            attaches: None,
+                            reply: None,
+                        },
+                    )
+                    .unwrap(),
+            );
+        }
+        let b_message = engine
+            .append_synced(
+                space_b,
+                &author,
+                2_000,
+                EventBody::MessagePosted {
+                    message: "b".into(),
+                    text: "other-space".into(),
+                    attaches: None,
+                    reply: None,
+                },
+            )
+            .unwrap();
+        assert!(engine.mls_seal_outbox().unwrap());
+        let handshake = engine
+            .handshake_event(
+                space_a,
+                Sealed::new(SealedKind::Commit, SUITE_ID, b"later-commit".to_vec()),
+            )
+            .unwrap();
+        assert!(matches!(
+            &handshake.body,
+            EventBody::Sealed { kind } if kind == "Commit"
+        ));
+        engine.store.outbox_put(&handshake).unwrap();
+        assert!(a_messages[5].at_ms < b_message.at_ms);
+        assert!(b_message.at_ms < handshake.at_ms);
+
+        let order: Vec<String> = engine
+            .store
+            .outbox()
+            .unwrap()
+            .into_iter()
+            .map(|pending| pending.event.client_id)
+            .collect();
+        let sixth_at = order
+            .iter()
+            .position(|id| id == &a_messages[5].client_id)
+            .unwrap();
+        let b_at = order
+            .iter()
+            .position(|id| id == &b_message.client_id)
+            .unwrap();
+        let handshake_at = order
+            .iter()
+            .position(|id| id == &handshake.client_id)
+            .unwrap();
+        assert!(sixth_at < b_at && b_at < handshake_at);
+
+        let mut sent = HashMap::new();
+        for message in a_messages.iter().take(5) {
+            sent.insert(message.client_id.clone(), Some(0u64));
+        }
+        let offered = engine.outbox_envelopes_except(&sent);
+        assert!(
+            offered
+                .iter()
+                .any(|env| env.client_id() == b_message.client_id),
+            "space B is missing from the publish batch"
+        );
+        assert!(
+            offered
+                .iter()
+                .all(|env| env.client_id() != a_messages[5].client_id),
+            "A's sixth application left while five were in flight"
+        );
+        assert!(
+            offered
+                .iter()
+                .all(|env| env.client_id() != handshake.client_id),
+            "A's later handshake overtook the held application"
+        );
+        assert!(offered.iter().all(|env| env.space() != space_a));
+    }
+    const FORK: &str = "Members see different groups in this chat (the server may have forked it).";
+
+    fn member(path: &str) -> (Engine, Author, [u8; 32]) {
+        let mut engine = Engine::open(path).unwrap();
+        let (_, device_secret, _) = engine
+            .create_account("Ana", "ana_u18", "http://relay.test")
+            .unwrap();
+        let author = engine.net.author.clone().unwrap();
+        (engine, author, device_secret)
+    }
+
+    fn post(text: &str) -> EventBody {
+        EventBody::MessagePosted {
+            message: format!("m-{text}"),
+            text: text.into(),
+            attaches: None,
+            reply: None,
+        }
+    }
+
+    fn checkpoint(upto: roda_types::Seen, digest: &str) -> EventBody {
+        EventBody::Checkpoint {
+            upto,
+            epoch: 1,
+            digest: digest.into(),
+        }
+    }
+
+    fn ingest_signed(engine: &mut Engine, author: &Author, space: &str, body: EventBody) {
+        let seq = engine.next_seq(space);
+        let event = author.sign_event(
+            space,
+            &format!("{space}-{seq}"),
+            1_700_000_000_000 + seq as i64,
+            seen(engine, space),
+            body,
+        );
+        let got = engine.ingest(ordered(engine, Envelope::plain(&event)));
+        assert!(
+            matches!(got, Ingest::Applied | Ingest::Confirmed),
+            "ingest {seq}: {got:?}"
+        );
+    }
+
+    fn start_space(engine: &mut Engine, author: &Author, space: &str) {
+        ingest_signed(
+            engine,
+            author,
+            space,
+            EventBody::SpaceCreated {
+                title: space.into(),
+                kind: SpaceKind::Group,
+                privacy: Privacy::EndToEnd,
+            },
+        );
+    }
+
+    fn hash_at(engine: &Engine, space: &str, seq: u64) -> String {
+        engine.logs[space].events()[seq as usize].hash.clone()
+    }
+
+    fn integrity(engine: &Engine, space: &str) -> Option<String> {
+        engine
+            .state
+            .spaces
+            .get(space)
+            .and_then(|s| s.integrity_error.clone())
+    }
+
+    fn device_key(author: &Author) -> String {
+        author
+            .device
+            .clone()
+            .unwrap_or_else(|| author.identity.clone())
+    }
+
+    fn add_member(engine: &mut Engine, owner: &Author, space: &str, peer: &Author) {
+        ingest_signed(
+            engine,
+            owner,
+            space,
+            EventBody::MemberAdded {
+                identity: peer.identity.clone(),
+                role: Role::Member,
+            },
+        );
+    }
+
+    fn pending(engine: &Engine, space: &str) -> BTreeMap<String, PendingPrefix> {
+        engine
+            .store
+            .meta(&pending_prefix_meta(space))
+            .unwrap()
+            .map(|raw| serde_json::from_str(&raw).unwrap())
+            .unwrap_or_default()
+    }
+
+    fn claim(seq: u64, hash: &str) -> EventBody {
+        checkpoint(
+            roda_types::Seen {
+                seq,
+                hash: hash.into(),
+            },
+            &"ab".repeat(32),
+        )
+    }
+
+    fn extend_until(engine: &mut Engine, author: &Author, space: &str, seq: u64) {
+        while engine.next_seq(space) <= seq {
+            let n = engine.next_seq(space);
+            ingest_signed(engine, author, space, post(&format!("reach-{n}")));
+        }
+    }
+
+    #[test]
+    fn divergent_prefix_on_the_local_chain_marks_the_space() {
+        let (mut engine, author, _) = member(":memory:");
+        let space = "prefix-now";
+        start_space(&mut engine, &author, space);
+        ingest_signed(&mut engine, &author, space, post("one"));
+        let peer = Author::root(Signer::generate());
+        add_member(&mut engine, &author, space, &peer);
+        ingest_signed(
+            &mut engine,
+            &peer,
+            space,
+            checkpoint(
+                roda_types::Seen {
+                    seq: 0,
+                    hash: "11".repeat(32),
+                },
+                &"ab".repeat(32),
+            ),
+        );
+        assert_eq!(integrity(&engine, space).as_deref(), Some(FORK));
+        assert_eq!(
+            engine.store.meta(&fork_meta(space)).unwrap().as_deref(),
+            Some(FORK)
+        );
+        assert!(pending(&engine, space).is_empty());
+    }
+
+    #[test]
+    fn matching_prefix_does_not_fork() {
+        let (mut engine, author, _) = member(":memory:");
+        let space = "prefix-match";
+        start_space(&mut engine, &author, space);
+        ingest_signed(&mut engine, &author, space, post("one"));
+        let hash = hash_at(&engine, space, 0);
+        let peer = Author::root(Signer::generate());
+        add_member(&mut engine, &author, space, &peer);
+        ingest_signed(
+            &mut engine,
+            &peer,
+            space,
+            checkpoint(roda_types::Seen { seq: 0, hash }, &"ab".repeat(32)),
+        );
+        assert_eq!(integrity(&engine, space), None);
+        assert_eq!(engine.store.meta(&fork_meta(space)).unwrap(), None);
+        assert!(pending(&engine, space).is_empty());
+        assert_eq!(engine.logs[space].events().len(), 4);
+    }
+
+    #[test]
+    fn matching_pending_prefix_is_cleared_without_a_fork() {
+        let (mut engine, author, _) = member(":memory:");
+        let space = "prefix-clear";
+        start_space(&mut engine, &author, space);
+        let peer = Author::root(Signer::generate());
+        add_member(&mut engine, &author, space, &peer);
+        let mut stored = BTreeMap::new();
+        stored.insert(
+            device_key(&peer),
+            PendingPrefix {
+                seq: 0,
+                hash: hash_at(&engine, space, 0),
+                epoch: 1,
+                digest: "ab".repeat(32),
+            },
+        );
+        engine
+            .store
+            .set_meta(
+                &pending_prefix_meta(space),
+                &serde_json::to_string(&stored).unwrap(),
+            )
+            .unwrap();
+        ingest_signed(&mut engine, &author, space, post("later"));
+        assert_eq!(integrity(&engine, space), None);
+        assert_eq!(engine.store.meta(&fork_meta(space)).unwrap(), None);
+        assert!(pending(&engine, space).is_empty());
+    }
+
+    #[test]
+    fn pending_prefix_forks_when_the_chain_reaches_it() {
+        let (mut engine, author, _) = member(":memory:");
+        let space = "prefix-later";
+        start_space(&mut engine, &author, space);
+        let peer = Author::root(Signer::generate());
+        add_member(&mut engine, &author, space, &peer);
+        let claimed = "22".repeat(32);
+        let target = engine.next_seq(space) + 3;
+        ingest_signed(&mut engine, &peer, space, claim(target, &claimed));
+        assert_eq!(integrity(&engine, space), None);
+        assert_eq!(
+            pending(&engine, space).get(&device_key(&peer)),
+            Some(&PendingPrefix {
+                seq: target,
+                hash: claimed,
+                epoch: 1,
+                digest: "ab".repeat(32),
+            })
+        );
+        let quiet = target - engine.next_seq(space);
+        for _ in 0..quiet {
+            ingest_signed(
+                &mut engine,
+                &author,
+                space,
+                post(&format!("before-{target}")),
+            );
+            assert_eq!(integrity(&engine, space), None);
+            assert_eq!(pending(&engine, space).len(), 1);
+        }
+        ingest_signed(&mut engine, &author, space, post("reached"));
+        assert_eq!(integrity(&engine, space).as_deref(), Some(FORK));
+        assert_eq!(
+            engine.store.meta(&fork_meta(space)).unwrap().as_deref(),
+            Some(FORK)
+        );
+        assert!(pending(&engine, space).is_empty());
+        assert_ne!(hash_at(&engine, space, target), "22".repeat(32));
+    }
+
+    #[test]
+    fn pending_prefix_survives_reopen_and_forks_when_reached() {
+        let dir = std::env::temp_dir().join(format!("u18-prefix-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("device.sqlite");
+        let _ = std::fs::remove_file(&path);
+        let path = path.to_str().unwrap().to_string();
+        let space = "prefix-reopen";
+        let claimed = "33".repeat(32);
+        let peer = Author::root(Signer::generate());
+        let device_secret = {
+            let (mut engine, author, device_secret) = member(&path);
+            start_space(&mut engine, &author, space);
+            add_member(&mut engine, &author, space, &peer);
+            assert_eq!(engine.next_seq(space), 2);
+            ingest_signed(&mut engine, &peer, space, claim(5, &claimed));
+            assert_eq!(integrity(&engine, space), None);
+            assert_eq!(
+                pending(&engine, space)
+                    .get(&device_key(&peer))
+                    .map(|item| item.seq),
+                Some(5)
+            );
+            device_secret
+        };
+        let mut engine = Engine::open(&path).unwrap();
+        assert!(engine.unlock(Some(device_secret.to_vec())).unwrap());
+        assert_eq!(integrity(&engine, space), None);
+        assert_eq!(
+            pending(&engine, space).get(&device_key(&peer)),
+            Some(&PendingPrefix {
+                seq: 5,
+                hash: claimed,
+                epoch: 1,
+                digest: "ab".repeat(32),
+            })
+        );
+        let author = engine.net.author.clone().unwrap();
+        let quiet = 5 - engine.next_seq(space);
+        for _ in 0..quiet {
+            ingest_signed(&mut engine, &author, space, post("before-reopen"));
+            assert_eq!(integrity(&engine, space), None);
+        }
+        ingest_signed(&mut engine, &author, space, post("reached-reopen"));
+        assert_eq!(integrity(&engine, space).as_deref(), Some(FORK));
+        assert!(pending(&engine, space).is_empty());
+    }
+
+    #[test]
+    fn divergent_digest_still_marks_the_space() {
+        let (mut engine, author, _) = member(":memory:");
+        let space = "digest-still";
+        start_space(&mut engine, &author, space);
+        engine
+            .store
+            .set_meta(&digest_meta(space, 1), &"aa".repeat(32))
+            .unwrap();
+        let hash = hash_at(&engine, space, 0);
+        let peer = Author::root(Signer::generate());
+        add_member(&mut engine, &author, space, &peer);
+        ingest_signed(
+            &mut engine,
+            &peer,
+            space,
+            checkpoint(roda_types::Seen { seq: 0, hash }, &"bb".repeat(32)),
+        );
+        assert_eq!(integrity(&engine, space).as_deref(), Some(FORK));
+        assert_eq!(
+            engine.store.meta(&fork_meta(space)).unwrap().as_deref(),
+            Some(FORK)
+        );
+    }
+
+    #[test]
+    fn colluding_near_claims_do_not_evict_an_honest_far_claim() {
+        let (mut engine, author, _) = member(":memory:");
+        let space = "prefix-collude";
+        start_space(&mut engine, &author, space);
+        let honest = Author::root(Signer::generate());
+        add_member(&mut engine, &author, space, &honest);
+        let mut colluders = Vec::new();
+        for _ in 0..40 {
+            let peer = Author::root(Signer::generate());
+            add_member(&mut engine, &author, space, &peer);
+            colluders.push(peer);
+        }
+        let near = engine.next_seq(space) + 40 + 8;
+        let far = near + 40;
+        let honest_hash = "44".repeat(32);
+        for (n, peer) in colluders.iter().enumerate() {
+            ingest_signed(
+                &mut engine,
+                peer,
+                space,
+                claim(near, &format!("{:064x}", n as u64 + 1)),
+            );
+        }
+        ingest_signed(&mut engine, &honest, space, claim(far, &honest_hash));
+        let kept = pending(&engine, space);
+        assert_eq!(kept.len(), 41);
+        assert_eq!(
+            kept.get(&device_key(&honest)).map(|item| item.seq),
+            Some(far)
+        );
+        assert_eq!(kept.values().filter(|item| item.seq == near).count(), 40);
+        assert_eq!(integrity(&engine, space), None);
+        extend_until(&mut engine, &author, space, near);
+        assert_eq!(integrity(&engine, space).as_deref(), Some(FORK));
+        assert_eq!(
+            pending(&engine, space)
+                .get(&device_key(&honest))
+                .map(|item| item.seq),
+            Some(far)
+        );
+        extend_until(&mut engine, &author, space, far);
+        assert_eq!(integrity(&engine, space).as_deref(), Some(FORK));
+        assert_ne!(hash_at(&engine, space, far), honest_hash);
+        assert!(!pending(&engine, space).contains_key(&device_key(&honest)));
+    }
+
+    #[test]
+    fn same_device_higher_claim_replaces_the_lower_and_catches_an_earlier_fork() {
+        let (mut engine, author, _) = member(":memory:");
+        let space = "prefix-higher";
+        start_space(&mut engine, &author, space);
+        let peer = Author::root(Signer::generate());
+        add_member(&mut engine, &author, space, &peer);
+        let prefix = hash_at(&engine, space, 0);
+        let lower = engine.next_seq(space) + 12;
+        let higher = lower + 10;
+        let lower_hash = "55".repeat(32);
+        let higher_hash = "66".repeat(32);
+        ingest_signed(&mut engine, &peer, space, claim(lower, &lower_hash));
+        assert_eq!(
+            pending(&engine, space)
+                .get(&device_key(&peer))
+                .map(|item| item.seq),
+            Some(lower)
+        );
+        ingest_signed(&mut engine, &peer, space, claim(higher, &higher_hash));
+        assert_eq!(
+            pending(&engine, space).get(&device_key(&peer)),
+            Some(&PendingPrefix {
+                seq: higher,
+                hash: higher_hash.clone(),
+                epoch: 1,
+                digest: "ab".repeat(32),
+            })
+        );
+        assert_eq!(pending(&engine, space).len(), 1);
+        ingest_signed(&mut engine, &peer, space, claim(higher, &"77".repeat(32)));
+        assert_eq!(
+            pending(&engine, space)
+                .get(&device_key(&peer))
+                .map(|item| item.hash.clone()),
+            Some(higher_hash.clone())
+        );
+        ingest_signed(&mut engine, &peer, space, claim(lower, &"77".repeat(32)));
+        assert_eq!(
+            pending(&engine, space)
+                .get(&device_key(&peer))
+                .map(|item| item.seq),
+            Some(higher)
+        );
+        extend_until(&mut engine, &author, space, higher);
+        assert_eq!(integrity(&engine, space).as_deref(), Some(FORK));
+        assert_ne!(hash_at(&engine, space, higher), higher_hash);
+        assert_eq!(hash_at(&engine, space, 0), prefix);
+        assert!(pending(&engine, space).is_empty());
+    }
+
+    #[test]
+    fn two_devices_of_one_member_keep_separate_claims() {
+        let (mut engine, author, _) = member(":memory:");
+        let space = "prefix-devices";
+        start_space(&mut engine, &author, space);
+        let identity = Signer::generate();
+        let phone = Author::device(&identity, Signer::generate());
+        let laptop = Author::device(&identity, Signer::generate());
+        add_member(&mut engine, &author, space, &phone);
+        let near = engine.next_seq(space) + 8;
+        let far = near + 8;
+        ingest_signed(&mut engine, &phone, space, claim(near, &"a1".repeat(32)));
+        ingest_signed(&mut engine, &laptop, space, claim(far, &"b2".repeat(32)));
+        let kept = pending(&engine, space);
+        assert_eq!(kept.len(), 2);
+        assert_ne!(device_key(&phone), device_key(&laptop));
+        assert_eq!(
+            kept.get(&device_key(&phone)).map(|item| item.seq),
+            Some(near)
+        );
+        assert_eq!(
+            kept.get(&device_key(&laptop)).map(|item| item.seq),
+            Some(far)
+        );
+        ingest_signed(&mut engine, &phone, space, claim(far, &"c3".repeat(32)));
+        let kept = pending(&engine, space);
+        assert_eq!(kept.len(), 2);
+        assert_eq!(
+            kept.get(&device_key(&phone)).map(|item| item.hash.clone()),
+            Some("c3".repeat(32))
+        );
+        assert_eq!(
+            kept.get(&device_key(&laptop)).map(|item| item.hash.clone()),
+            Some("b2".repeat(32))
+        );
+    }
+
+    #[test]
+    fn a_non_member_checkpoint_is_ignored() {
+        let (mut engine, author, _) = member(":memory:");
+        let space = "prefix-stranger";
+        start_space(&mut engine, &author, space);
+        ingest_signed(&mut engine, &author, space, post("one"));
+        let stranger = Author::root(Signer::generate());
+        ingest_signed(&mut engine, &stranger, space, claim(0, &"11".repeat(32)));
+        ingest_signed(
+            &mut engine,
+            &stranger,
+            space,
+            claim(9_000, &"12".repeat(32)),
+        );
+        assert_eq!(integrity(&engine, space), None);
+        assert_eq!(engine.store.meta(&fork_meta(space)).unwrap(), None);
+        assert!(pending(&engine, space).is_empty());
+        let peer = Author::root(Signer::generate());
+        add_member(&mut engine, &author, space, &peer);
+        ingest_signed(&mut engine, &peer, space, claim(0, &"11".repeat(32)));
+        assert_eq!(integrity(&engine, space).as_deref(), Some(FORK));
+    }
+
+    #[test]
+    fn an_honest_conversation_with_many_members_ends_with_no_pending_prefix() {
+        let (mut engine, author, _) = member(":memory:");
+        let space = "prefix-honest";
+        start_space(&mut engine, &author, space);
+        let peers: Vec<Author> = (0..12).map(|_| Author::root(Signer::generate())).collect();
+        for peer in &peers {
+            add_member(&mut engine, &author, space, peer);
+        }
+        for round in 0..3 {
+            ingest_signed(&mut engine, &author, space, post(&format!("round-{round}")));
+            let upto = engine.logs[space].head().unwrap();
+            for peer in &peers {
+                ingest_signed(
+                    &mut engine,
+                    peer,
+                    space,
+                    checkpoint(upto.clone(), &"ab".repeat(32)),
+                );
+                assert_eq!(integrity(&engine, space), None);
+                assert!(pending(&engine, space).is_empty());
+            }
+        }
+        assert_eq!(engine.logs[space].events().len(), 1 + 12 + 3 + 36);
+        assert_eq!(integrity(&engine, space), None);
+        assert_eq!(engine.store.meta(&fork_meta(space)).unwrap(), None);
+        assert!(pending(&engine, space).is_empty());
+    }
+
+    #[test]
+    fn a_removed_member_pending_claim_is_kept_until_the_chain_reaches_it() {
+        let (mut engine, author, _) = member(":memory:");
+        let space = "prefix-removed";
+        start_space(&mut engine, &author, space);
+        let peer = Author::root(Signer::generate());
+        add_member(&mut engine, &author, space, &peer);
+        let target = engine.next_seq(space) + 6;
+        ingest_signed(&mut engine, &peer, space, claim(target, &"88".repeat(32)));
+        assert_eq!(
+            pending(&engine, space)
+                .get(&device_key(&peer))
+                .map(|item| item.seq),
+            Some(target)
+        );
+        ingest_signed(
+            &mut engine,
+            &author,
+            space,
+            EventBody::MemberRemoved {
+                identity: peer.identity.clone(),
+            },
+        );
+        ingest_signed(
+            &mut engine,
+            &peer,
+            space,
+            claim(target + 20, &"99".repeat(32)),
+        );
+        assert_eq!(
+            pending(&engine, space)
+                .get(&device_key(&peer))
+                .map(|item| item.seq),
+            Some(target)
+        );
+        assert_eq!(pending(&engine, space).len(), 1);
+        assert_eq!(integrity(&engine, space), None);
+        extend_until(&mut engine, &author, space, target);
+        assert_eq!(integrity(&engine, space).as_deref(), Some(FORK));
+        assert!(pending(&engine, space).is_empty());
+    }
+
+    #[test]
+    fn pending_prefix_ceiling_refuses_a_new_device_without_evicting() {
+        let (mut engine, author, _) = member(":memory:");
+        let space = "prefix-ceiling";
+        start_space(&mut engine, &author, space);
+        let held = Author::root(Signer::generate());
+        add_member(&mut engine, &author, space, &held);
+        let mut planted = BTreeMap::new();
+        planted.insert(
+            device_key(&held),
+            PendingPrefix {
+                seq: 40_000,
+                hash: "11".repeat(32),
+                epoch: 1,
+                digest: "ab".repeat(32),
+            },
+        );
+        for n in 1..PENDING_PREFIX_CEILING {
+            planted.insert(
+                format!("device-{n:04}"),
+                PendingPrefix {
+                    seq: 40_000,
+                    hash: format!("{n:064x}"),
+                    epoch: 1,
+                    digest: "ab".repeat(32),
+                },
+            );
+        }
+        assert_eq!(planted.len(), PENDING_PREFIX_CEILING);
+        engine
+            .store
+            .set_meta(
+                &pending_prefix_meta(space),
+                &serde_json::to_string(&planted).unwrap(),
+            )
+            .unwrap();
+        ingest_signed(&mut engine, &held, space, claim(50_000, &"22".repeat(32)));
+        assert_eq!(
+            pending(&engine, space)
+                .get(&device_key(&held))
+                .map(|item| item.seq),
+            Some(50_000)
+        );
+        assert_eq!(pending(&engine, space).len(), PENDING_PREFIX_CEILING);
+        let extra = Author::root(Signer::generate());
+        add_member(&mut engine, &author, space, &extra);
+        ingest_signed(&mut engine, &extra, space, claim(50_001, &"aa".repeat(32)));
+        let kept = pending(&engine, space);
+        assert_eq!(kept.len(), PENDING_PREFIX_CEILING);
+        assert!(!kept.contains_key(&device_key(&extra)));
+        assert_eq!(
+            kept.get(&device_key(&held)).map(|item| item.seq),
+            Some(50_000)
+        );
+        assert_eq!(kept.get("device-0001").map(|item| item.seq), Some(40_000));
+        assert_eq!(integrity(&engine, space), None);
+        assert_eq!(engine.pending_prefix_refusals(space), 1);
+    }
+
+    fn deliver(engine: &mut Engine, event: Event) -> Ingest {
+        engine.ingest(ordered(engine, Envelope::plain(&event)))
+    }
+
+    #[test]
+    fn a_member_seen_at_or_beyond_the_event_seq_is_a_fork() {
+        let (mut engine, author, _) = member(":memory:");
+        let space = "seen-ahead";
+        start_space(&mut engine, &author, space);
+        let peer = Author::root(Signer::generate());
+        add_member(&mut engine, &author, space, &peer);
+        let next = engine.next_seq(space);
+        let event = peer.sign_event(
+            space,
+            "seen-ahead",
+            1_700_000_000_100,
+            Some(roda_types::Seen {
+                seq: 9_000,
+                hash: "12".repeat(32),
+            }),
+            claim(9_000, &"12".repeat(32)),
+        );
+        let got = deliver(&mut engine, event);
+        assert!(9_000 >= next);
+        assert!(matches!(got, Ingest::Invalid(_)), "{got:?}");
+        assert_eq!(engine.next_seq(space), next);
+        assert_eq!(integrity(&engine, space).as_deref(), Some(FORK));
+        assert_eq!(
+            engine.store.meta(&fork_meta(space)).unwrap().as_deref(),
+            Some(FORK)
+        );
+        assert!(engine.logs[space]
+            .events()
+            .iter()
+            .all(|e| e.client_id != "seen-ahead"));
+    }
+
+    #[test]
+    fn an_event_ahead_of_the_local_head_stays_a_gap() {
+        let (mut engine, author, _) = member(":memory:");
+        let space = "real-gap";
+        start_space(&mut engine, &author, space);
+        let peer = Author::root(Signer::generate());
+        add_member(&mut engine, &author, space, &peer);
+        let next = engine.next_seq(space);
+        let seen_seq = next - 1;
+        let seen_hash = hash_at(&engine, space, seen_seq);
+        let event = peer.sign_event(
+            space,
+            "real-gap",
+            1_700_000_000_100,
+            Some(roda_types::Seen {
+                seq: seen_seq,
+                hash: seen_hash.clone(),
+            }),
+            claim(seen_seq, &seen_hash),
+        );
+        let mut ev = ordered(&engine, Envelope::plain(&event));
+        ev.seq = next + 3;
+        let got = engine.ingest(ev);
+        assert!(
+            matches!(got, Ingest::Gap { next: n } if n == next),
+            "{got:?}"
+        );
+        assert_eq!(integrity(&engine, space), None);
+        assert_eq!(engine.store.meta(&fork_meta(space)).unwrap(), None);
+    }
+
+    #[test]
+    fn a_non_member_seen_beyond_the_event_is_refused_without_a_fork() {
+        let (mut engine, author, _) = member(":memory:");
+        let space = "seen-stranger-ahead";
+        start_space(&mut engine, &author, space);
+        let stranger = Author::root(Signer::generate());
+        let event = stranger.sign_event(
+            space,
+            "seen-stranger-ahead",
+            1_700_000_000_100,
+            Some(roda_types::Seen {
+                seq: 9_000,
+                hash: "12".repeat(32),
+            }),
+            claim(9_000, &"12".repeat(32)),
+        );
+        let got = deliver(&mut engine, event);
+        assert!(matches!(got, Ingest::Invalid(_)), "{got:?}");
+        assert_eq!(integrity(&engine, space), None);
+        assert_eq!(engine.store.meta(&fork_meta(space)).unwrap(), None);
+        assert!(engine.logs[space]
+            .events()
+            .iter()
+            .all(|e| e.client_id != "seen-stranger-ahead"));
+    }
+
+    #[test]
+    fn a_forged_signature_is_refused_without_a_fork() {
+        let (mut engine, author, _) = member(":memory:");
+        let space = "seen-forged";
+        start_space(&mut engine, &author, space);
+        let peer = Author::root(Signer::generate());
+        add_member(&mut engine, &author, space, &peer);
+        let mut event = peer.sign_event(
+            space,
+            "seen-forged",
+            1_700_000_000_100,
+            Some(roda_types::Seen {
+                seq: 0,
+                hash: "11".repeat(32),
+            }),
+            claim(0, &"11".repeat(32)),
+        );
+        event.sig = "00".repeat(64);
+        let got = deliver(&mut engine, event);
+        assert!(matches!(got, Ingest::Invalid(_)));
+        assert_eq!(integrity(&engine, space), None);
+        assert_eq!(engine.store.meta(&fork_meta(space)).unwrap(), None);
+        assert!(engine.logs[space]
+            .events()
+            .iter()
+            .all(|e| e.client_id != "seen-forged"));
+    }
+
+    #[test]
+    fn a_non_member_diverged_seen_is_refused_without_a_fork() {
+        let (mut engine, author, _) = member(":memory:");
+        let space = "seen-stranger";
+        start_space(&mut engine, &author, space);
+        ingest_signed(&mut engine, &author, space, post("one"));
+        let stranger = Author::root(Signer::generate());
+        let event = stranger.sign_event(
+            space,
+            "seen-stranger",
+            1_700_000_000_100,
+            Some(roda_types::Seen {
+                seq: 0,
+                hash: "11".repeat(32),
+            }),
+            claim(0, &"11".repeat(32)),
+        );
+        let got = deliver(&mut engine, event);
+        assert!(matches!(got, Ingest::Invalid(_)));
+        assert_eq!(integrity(&engine, space), None);
+        assert_eq!(engine.store.meta(&fork_meta(space)).unwrap(), None);
+        assert!(pending(&engine, space).is_empty());
+        assert!(engine.logs[space]
+            .events()
+            .iter()
+            .all(|e| e.client_id != "seen-stranger"));
+    }
+
+    #[test]
+    fn a_crash_after_fork_meta_still_reports_the_fork_after_reopen() {
+        set_crash_after_fork_meta(false);
+        let dir = std::env::temp_dir().join(format!("u18-crash-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("device.sqlite");
+        let _ = std::fs::remove_file(&path);
+        let path = path.to_str().unwrap().to_string();
+        let space = "prefix-crash";
+        let device_secret = {
+            let (mut engine, author, device_secret) = member(&path);
+            start_space(&mut engine, &author, space);
+            let peer = Author::root(Signer::generate());
+            add_member(&mut engine, &author, space, &peer);
+            let mut stored = BTreeMap::new();
+            stored.insert(
+                device_key(&peer),
+                PendingPrefix {
+                    seq: 0,
+                    hash: "11".repeat(32),
+                    epoch: 1,
+                    digest: "ab".repeat(32),
+                },
+            );
+            engine
+                .store
+                .set_meta(
+                    &pending_prefix_meta(space),
+                    &serde_json::to_string(&stored).unwrap(),
+                )
+                .unwrap();
+            set_crash_after_fork_meta(true);
+            let failed = engine.settle_pending_prefixes(space);
+            set_crash_after_fork_meta(false);
+            assert!(failed.is_err());
+            assert_eq!(
+                engine.store.meta(&fork_meta(space)).unwrap().as_deref(),
+                Some(FORK)
+            );
+            assert!(engine
+                .store
+                .meta(&pending_prefix_meta(space))
+                .unwrap()
+                .is_some());
+            device_secret
+        };
+        let mut engine = Engine::open(&path).unwrap();
+        assert!(engine.unlock(Some(device_secret.to_vec())).unwrap());
+        assert_eq!(integrity(&engine, space).as_deref(), Some(FORK));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn a_pending_claim_settles_through_a_pruned_stub() {
+        let (mut engine, author, _) = member(":memory:");
+        let peer = Author::root(Signer::generate());
+        for (space, mismatch) in [("prefix-pruned-match", false), ("prefix-pruned-fork", true)] {
+            start_space(&mut engine, &author, space);
+            add_member(&mut engine, &author, space, &peer);
+            let frame = pruned_frame(&engine, &author, space);
+            let claimed = if mismatch {
+                "11".repeat(32)
+            } else {
+                frame.hash.clone()
+            };
+            let mut stored = BTreeMap::new();
+            stored.insert(
+                device_key(&peer),
+                PendingPrefix {
+                    seq: frame.seq,
+                    hash: claimed,
+                    epoch: 1,
+                    digest: "ab".repeat(32),
+                },
+            );
+            engine
+                .store
+                .set_meta(
+                    &pending_prefix_meta(space),
+                    &serde_json::to_string(&stored).unwrap(),
+                )
+                .unwrap();
+            assert!(matches!(
+                engine.ingest(frame),
+                Ingest::Applied | Ingest::Confirmed
+            ));
+            assert!(pending(&engine, space).is_empty());
+            if mismatch {
+                assert_eq!(integrity(&engine, space).as_deref(), Some(FORK));
+            } else {
+                assert_eq!(integrity(&engine, space), None);
+                assert_eq!(engine.store.meta(&fork_meta(space)).unwrap(), None);
+            }
+        }
+    }
+
+    fn pruned_frame(engine: &Engine, author: &Author, space: &str) -> Sequenced {
+        let seen = engine.logs.get(space).and_then(SpaceLog::head);
+        let seq = engine.next_seq(space);
+        let sealed = Envelope::sealed(
+            author,
+            space,
+            &format!("{space}-pruned-{seq}"),
+            1_700_000_000_000 + seq as i64,
+            seen.as_ref(),
+            roda_log::content::Sealed::new(
+                roda_log::content::SealedKind::Application,
+                1,
+                vec![7, 7, 7, 7],
+            ),
+        );
+        ordered(
+            engine,
+            sealed.pruned().expect("a sealed event leaves a stub"),
+        )
+    }
+
+    #[test]
+    fn concurrent_sealed_siblings_send_until_a_member_proves_a_fork() {
+        let dir = std::env::temp_dir().join(format!("u18-r6-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("device.sqlite");
+        let path = path.to_str().unwrap().to_string();
+        let space = "sp-sealed-siblings";
+        let device_secret = {
+            let (mut engine, author, device_secret) = member(&path);
+            start_space(&mut engine, &author, space);
+            let peer = Author::root(Signer::generate());
+            add_member(&mut engine, &author, space, &peer);
+
+            let first = ordered(
+                &engine,
+                Envelope::sealed(
+                    &peer,
+                    space,
+                    "peer-only",
+                    1_700_000_000_050,
+                    seen(&engine, space).as_ref(),
+                    Sealed::new(SealedKind::Application, SUITE_ID, vec![1]),
+                ),
+            );
+            assert_eq!(engine.ingest(first), Ingest::Applied);
+            assert_eq!(integrity(&engine, space), None);
+
+            let head = seen(&engine, space).unwrap();
+            let (content, sig) = author.sign_sealed(
+                space,
+                "own-successor",
+                1_700_000_000_100,
+                Some(&head),
+                Sealed::new(SealedKind::Application, SUITE_ID, vec![2, 2]),
+            );
+            let own = event_from_content(
+                content,
+                sig,
+                author.cert.clone(),
+                0,
+                String::new(),
+                String::new(),
+            )
+            .unwrap();
+            engine.store.outbox_put(&own).unwrap();
+            let before = engine.store.outbox().unwrap().len();
+            assert_eq!(before, 1);
+            assert!(!engine.store.outbox().unwrap()[0].failed);
+
+            let frame = ordered(
+                &engine,
+                Envelope::sealed(
+                    &peer,
+                    space,
+                    "peer-successor",
+                    1_700_000_000_200,
+                    Some(&head),
+                    Sealed::new(SealedKind::Application, SUITE_ID, vec![3, 3, 3]),
+                ),
+            );
+            let got = engine.ingest(frame.clone());
+            assert!(
+                matches!(got, Ingest::Applied),
+                "canonical sibling was not stored: {got:?}"
+            );
+            let stored = engine.logs[space].events().last().unwrap();
+            assert_eq!(stored.hash, frame.hash);
+            assert_eq!(stored.author, peer.identity);
+            assert_eq!(stored.seen.as_ref(), Some(&head));
+
+            assert_eq!(integrity(&engine, space), None);
+            assert_eq!(engine.store.meta(&fork_meta(space)).unwrap(), None);
+            let sent = engine.send_message(space, "concurrent send").unwrap();
+            assert!(matches!(
+                sent.kind,
+                crate::dto::EntryKind::Message { ref text, .. } if text == "concurrent send"
+            ));
+            assert_eq!(engine.store.outbox().unwrap().len(), before + 1);
+            assert_eq!(
+                engine.store.outbox_get("own-successor").unwrap(),
+                Some(own.clone())
+            );
+            let published = engine.outbox_envelopes();
+            assert_eq!(published.len(), 1);
+            assert_eq!(published[0].client_id(), "own-successor");
+            engine.reproject_approval_overlay().unwrap();
+            assert_eq!(integrity(&engine, space), None);
+            assert_eq!(engine.store.meta(&fork_meta(space)).unwrap(), None);
+
+            let next = engine.next_seq(space);
+            let diverged = roda_types::Seen {
+                seq: head.seq,
+                hash: "00".repeat(32),
+            };
+            assert_ne!(diverged.hash, head.hash);
+            let conflicting = ordered(
+                &engine,
+                Envelope::sealed(
+                    &peer,
+                    space,
+                    "peer-conflicting-prefix",
+                    1_700_000_000_300,
+                    Some(&diverged),
+                    Sealed::new(SealedKind::Application, SUITE_ID, vec![4, 4, 4, 4]),
+                ),
+            );
+            conflicting.env.verify().unwrap();
+            let got = engine.ingest(conflicting);
+            assert!(matches!(got, Ingest::Invalid(_)), "{got:?}");
+            assert_eq!(engine.next_seq(space), next);
+            assert!(engine.logs[space]
+                .events()
+                .iter()
+                .all(|event| event.client_id != "peer-conflicting-prefix"));
+            let before = engine.store.outbox().unwrap().len();
+            let phrase = integrity(&engine, space);
+            let sent = engine.send_message(space, "again");
+            let after = engine.store.outbox().unwrap().len();
+            let published = engine.outbox_envelopes().len();
+            assert_eq!(
+                (phrase.as_deref(), sent.is_err(), after, published),
+                (Some(FORK), true, before, 0),
+                "{sent:?}"
+            );
+            assert_eq!(
+                engine.store.outbox().unwrap()[0].event.client_id,
+                "own-successor"
+            );
+            assert!(!engine.store.outbox().unwrap()[0].failed);
+            assert_eq!(
+                engine.store.meta(&fork_meta(space)).unwrap().as_deref(),
+                Some(FORK)
+            );
+            let queued = engine.store.outbox().unwrap().len();
+            engine.reproject_approval_overlay().unwrap();
+            let replayed = integrity(&engine, space);
+            let resent = engine.send_message(space, "after replay");
+            let grown = engine.store.outbox().unwrap().len();
+            let refused = match &resent {
+                Err(crate::CoreError::Invalid { reason }) => reason.clone(),
+                other => format!("{other:?}"),
+            };
+            assert_eq!(
+                (replayed.as_deref(), refused.as_str(), grown),
+                (Some(FORK), FORK, queued),
+                "{resent:?}"
+            );
+            device_secret
+        };
+
+        let mut engine = Engine::open(&path).unwrap();
+        assert!(engine.unlock(Some(device_secret.to_vec())).unwrap());
+        assert_eq!(integrity(&engine, space).as_deref(), Some(FORK));
+        let before = engine.store.outbox().unwrap().len();
+        let sent = engine.send_message(space, "after reopen");
+        assert!(sent.is_err(), "{sent:?}");
+        assert_eq!(sent.unwrap_err().to_string(), FORK);
+        assert_eq!(engine.store.outbox().unwrap().len(), before);
+        assert!(engine.outbox_envelopes().is_empty());
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }

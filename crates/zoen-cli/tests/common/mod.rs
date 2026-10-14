@@ -79,6 +79,35 @@ fn rand_hex(n: usize) -> String {
     hex::encode(b)
 }
 
+/// Postgres rejects an unquoted name that contains `-` (or anything outside
+/// `[a-z0-9_]`). The cell and the temp dir use this same identifier.
+fn database_ident(name: &str, suffix: &str) -> String {
+    const MAX: usize = 63;
+    let body: String = name
+        .chars()
+        .map(|c| match c {
+            'a'..='z' | '0'..='9' | '_' => c,
+            _ => '_',
+        })
+        .collect();
+    let prefix = "zoen_t_";
+    let tail = format!("_{suffix}");
+    let room = MAX.saturating_sub(prefix.len() + tail.len());
+    let body: String = body.chars().take(room).collect();
+    format!("{prefix}{body}{tail}")
+}
+
+#[test]
+fn database_ident_maps_hyphens_and_stays_within_63() {
+    let db = database_ident("page-completion", "ab12");
+    assert_eq!(db, "zoen_t_page_completion_ab12");
+    assert!(db.chars().all(|c| matches!(c, 'a'..='z' | '0'..='9' | '_')));
+    let long = database_ident(&"n-".repeat(80), "abcd");
+    assert!(long.len() <= 63, "{long}");
+    assert!(long.starts_with("zoen_t_"));
+    assert!(long.ends_with("_abcd"));
+}
+
 pub struct World {
     pub dir: PathBuf,
     pub db_url: String,
@@ -128,7 +157,7 @@ impl World {
     ) -> World {
         let admin = std::env::var("ZOEN_TEST_PG")
             .expect("set ZOEN_TEST_PG=postgres://user@host:port/postgres");
-        let db = format!("zoen_t_{name}_{}", rand_hex(4));
+        let db = database_ident(name, &rand_hex(4));
         let mut c = PgConnection::connect(&admin).await.expect("connect admin");
         sqlx::query(sqlx::AssertSqlSafe(format!("CREATE DATABASE {db}")))
             .execute(&mut c)

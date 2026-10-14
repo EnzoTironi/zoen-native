@@ -7,6 +7,7 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
+import android.system.Os
 import androidx.core.content.ContextCompat
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -20,6 +21,7 @@ class ZoenApplication : Application() {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     override fun onCreate() {
         super.onCreate()
+        Os.setenv("TMPDIR", cacheDir.absolutePath, true)
         getSystemService(NotificationManager::class.java).createNotificationChannel(
             NotificationChannel("activity", getString(R.string.activity), NotificationManager.IMPORTANCE_DEFAULT)
         )

@@ -70,9 +70,30 @@ pub struct Net {
     rt: Option<tokio::runtime::Runtime>,
     cmd: mpsc::UnboundedSender<Cmd>,
     status: watch::Receiver<NetStatus>,
+    engine: EngineLease,
 }
 
 type Shared = Arc<Mutex<Engine>>;
+
+#[derive(Clone)]
+struct EngineLease(Arc<Mutex<Option<Shared>>>);
+
+impl EngineLease {
+    fn new(engine: Shared) -> Self {
+        Self(Arc::new(Mutex::new(Some(engine))))
+    }
+
+    fn with<T>(&self, work: impl FnOnce(&mut Engine) -> T) -> Option<T> {
+        let holder = self.0.lock().unwrap_or_else(|p| p.into_inner());
+        holder.as_ref().map(|engine| work(&mut lock(engine)))
+    }
+
+    fn revoke(&self) {
+        let engine = self.0.lock().unwrap_or_else(|p| p.into_inner()).take();
+        // Finish releasing ownership here; task cancellation is asynchronous.
+        drop(engine);
+    }
+}
 
 fn lock(e: &Shared) -> std::sync::MutexGuard<'_, Engine> {
     e.lock().unwrap_or_else(|p| p.into_inner())
@@ -137,9 +158,10 @@ impl Net {
                 let _ = poke_tx.send(Cmd::Flush);
             }));
         }
+        let engine = EngineLease::new(engine);
         rt.spawn(run(
             Ctx {
-                engine,
+                engine: engine.clone(),
                 listener,
                 status: status_tx,
                 lang,
@@ -152,6 +174,7 @@ impl Net {
             rt: Some(rt),
             cmd: cmd_tx,
             status: status_rx,
+            engine,
         })
     }
 
@@ -198,6 +221,7 @@ impl Drop for Net {
             // Safe from inside another async runtime too.
             rt.shutdown_background();
         }
+        self.engine.revoke();
     }
 }
 
@@ -220,7 +244,7 @@ impl RequestHandle {
 }
 
 struct Ctx {
-    engine: Shared,
+    engine: EngineLease,
     listener: Option<Arc<dyn CoreListener>>,
     status: watch::Sender<NetStatus>,
     lang: crate::i18n::Lang,
@@ -242,14 +266,16 @@ impl Ctx {
     fn notify_connection(&self) {
         if let Some(l) = &self.listener {
             let st = self.status.borrow().clone();
-            let pending = lock(&self.engine).outbox_len();
+            let Some(pending) = self.engine(|engine| engine.outbox_len()) else {
+                return;
+            };
             l.on_connection(crate::ConnectionDto::from_status(&st, pending));
         }
     }
 
-    fn engine(&self) -> std::sync::MutexGuard<'_, Engine> {
+    fn engine<T>(&self, work: impl FnOnce(&mut Engine) -> T) -> Option<T> {
         crate::i18n::set(self.lang);
-        lock(&self.engine)
+        self.engine.with(work)
     }
 }
 
@@ -433,8 +459,17 @@ async fn session(
     cmd_rx: &mut mpsc::UnboundedReceiver<Cmd>,
     backoff: &mut Duration,
 ) -> Exit {
+    macro_rules! engine {
+        ($work:expr) => {
+            match ctx.engine($work) {
+                Some(value) => value,
+                None => return Exit::Stop,
+            }
+        };
+    }
+
     let Some((identity, key, cert, profile, registered, relay_url)) =
-        ctx.engine().net_credentials()
+        engine!(|engine| engine.net_credentials())
     else {
         return Exit::Blocked("locked: no account key on this device".into());
     };
@@ -526,13 +561,13 @@ async fn session(
                 Exit::Retry(e)
             };
         }
-        let _ = ctx.engine().set_registered(true);
+        let _ = engine!(|engine| engine.set_registered(true));
     }
     // Publish the name only after this socket reached Ready and any registration
     // succeeded. A Challenge alone must not establish an HTTP signature domain.
-    let _ = ctx.engine().store.set_meta("relay_name", &relay);
+    let _ = engine!(|engine| engine.store.set_meta("relay_name", &relay));
     *backoff = Duration::from_millis(500);
-    ctx.engine().profiles_session_start(profiles);
+    engine!(|engine| engine.profiles_session_start(profiles));
     // Encrypted media moves over HTTP beside the socket, for as long as this session lives.
     let media_kick = Arc::new(tokio::sync::Notify::new());
     let _media = AbortOnDrop(tokio::spawn(media_worker(
@@ -556,7 +591,7 @@ async fn session(
     });
 
     // ── catch up, then flush what we wrote offline ──
-    let cursors = ctx.engine().cursors();
+    let cursors = engine!(|engine| engine.cursors());
     if let Err(e) = send(&mut sink, &ClientFrame::Sync { cursors, all: true }).await {
         return Exit::Retry(e);
     }
@@ -609,7 +644,7 @@ async fn session(
                     ServerFrame::Event { ev } => {
                         let space = ev.env.space().to_string();
                         let client_id = ev.env.client_id().to_string();
-                        let r = ctx.engine().ingest(ev);
+                        let r = engine!(|engine| engine.ingest(ev));
                         if r == Ingest::Confirmed { sent.remove(&client_id); }
                         match r {
                             Ingest::Confirmed => {
@@ -636,10 +671,10 @@ async fn session(
                     ServerFrame::Rejected { space, client_id, reason, permanent } => {
                         let sent_epoch = sent.remove(&client_id).flatten();
                         let recoverable = reason == roda_proto::STALE_SEAL || reason == roda_proto::SEAL_REQUIRED;
-                        if ctx.engine().reject(&client_id, &reason, permanent, sent_epoch) { dirty.insert(space); }
+                        if engine!(|engine| engine.reject(&client_id, &reason, permanent, sent_epoch)) { dirty.insert(space); }
                         if !permanent {
                             // Transient (rate limit, db hiccup): retry shortly.
-                            let poke = ctx.engine().net.poke.is_some();
+                            let poke = engine!(|engine| engine.net.poke.is_some());
                             if poke { tokio::time::sleep(Duration::from_millis(500)).await; }
                         }
                         if !permanent || recoverable {
@@ -661,11 +696,11 @@ async fn session(
                         }
                     }
                     ServerFrame::Presence { identity, online } => {
-                        ctx.engine().set_presence(&identity, online);
+                        engine!(|engine| engine.set_presence(&identity, online));
                         if let Some(l) = &ctx.listener { l.on_presence(identity, online); }
                     }
                     ServerFrame::Joined { space } => {
-                        let next = ctx.engine().next_seq(&space);
+                        let next = engine!(|engine| engine.next_seq(&space));
                         let c = vec![roda_proto::Cursor { space, next_seq: next }];
                         if let Err(e) = send(&mut sink, &ClientFrame::Sync { cursors: c, all: false }).await { break Exit::Retry(e) }
                     }
@@ -673,10 +708,10 @@ async fn session(
                         let first = !ctx.status.borrow().synced;
                         if first {
                             ctx.status.send_modify(|s| s.synced = true);
-                            ctx.engine().mls_refresh_checkpoints();
-                            ctx.engine().net.link.ask_devices = true;
+                            engine!(|engine| engine.mls_refresh_checkpoints());
+                            engine!(|engine| engine.net.link.ask_devices = true);
                         }
-                        if let Err(e) = ctx.engine().mls_ask_rejoin() { tracing_like(&format!("rejoin: {e}")); }
+                        if let Err(e) = engine!(|engine| engine.mls_ask_rejoin()) { tracing_like(&format!("rejoin: {e}")); }
                         // Anything still pending after a full catch-up goes out again (it
                         // may have needed the Space to exist first).
                         if let Err(e) = flush(ctx, &mut sink, &mut sent).await { break Exit::Retry(e) }
@@ -686,7 +721,7 @@ async fn session(
                         match waiting.remove(&id) {
                             Some(Waiting::External(tx)) => { let _ = tx.send(result); }
                             Some(Waiting::Devices) => {
-                                if let Ok(Reply::Devices(list)) = result { ctx.engine().devices_arrived(list); }
+                                if let Ok(Reply::Devices(list)) = result { engine!(|engine| engine.devices_arrived(list)); }
                                 if let Err(e) = flush(ctx, &mut sink, &mut sent).await { break Exit::Retry(e) }
                             }
                             Some(Waiting::Ignored) => {
@@ -694,28 +729,29 @@ async fn session(
                             }
                             Some(Waiting::Profiles(asked)) => {
                                 profiles_inflight = None;
-                                let mut eng = ctx.engine();
-                                if let Ok(Reply::Profiles(list)) = result {
-                                    if !list.is_empty() && eng.put_profiles(list).is_ok() {
-                                        dirty.insert(String::new());
+                                engine!(|eng| {
+                                    if let Ok(Reply::Profiles(list)) = result {
+                                        if !list.is_empty() && eng.put_profiles(list).is_ok() {
+                                            dirty.insert(String::new());
+                                        }
                                     }
-                                }
-                                eng.profiles_answered(&asked);
+                                    eng.profiles_answered(&asked);
+                                });
                             }
                             Some(Waiting::AgreementPublished(public)) => {
                                 let ok = matches!(result, Ok(Reply::Done));
-                                if ok { ctx.engine().agreement_published(&public); } else { tracing_like(&format!("agreement key refused: {result:?}")); }
+                                if ok { engine!(|engine| engine.agreement_published(&public)); } else { tracing_like(&format!("agreement key refused: {result:?}")); }
                                 settle(&mut traffic.agreement, ok);
                             }
                             Some(Waiting::ProfileUploaded(version)) => {
                                 let ok = matches!(result, Ok(Reply::Done));
                                 let answer = result.map(|_| ());
-                                ctx.engine().profile_upload_answered(version, answer);
+                                engine!(|engine| engine.profile_upload_answered(version, answer));
                                 settle(&mut traffic.upload, ok);
                             }
                             Some(Waiting::AgreementKeys(asked)) => {
                                 let ok = if let Ok(Reply::AgreementKeys(list)) = result {
-                                    ctx.engine().agreement_keys_arrived(list, &asked);
+                                    engine!(|engine| engine.agreement_keys_arrived(list, &asked));
                                     true
                                 } else { false };
                                 settle(&mut traffic.keys, ok);
@@ -723,7 +759,7 @@ async fn session(
                             Some(Waiting::SealedProfiles(asked)) => {
                                 opening = None;
                                 let ok = if let Ok(Reply::SealedProfiles(list)) = result {
-                                    let changed = ctx.engine().sealed_profiles_arrived(list, &asked);
+                                    let changed = engine!(|engine| engine.sealed_profiles_arrived(list, &asked));
                                     if !changed.is_empty() {
                                         dirty.insert(String::new());
                                         media_kick.notify_one();
@@ -735,7 +771,7 @@ async fn session(
                             }
                             Some(Waiting::KeyPackagesPublished) => {
                                 let ok = matches!(result, Ok(Reply::Done));
-                                ctx.engine().mls_key_packages_published(result.map(|_| ()));
+                                engine!(|engine| engine.mls_key_packages_published(result.map(|_| ())));
                                 settle(&mut traffic.key_packages, ok);
                             }
                             Some(Waiting::Claimed { space, operation }) => {
@@ -744,15 +780,15 @@ async fn session(
                                     Ok(other) => Err(format!("unexpected {other:?}")),
                                     Err(e) => Err(e),
                                 };
-                                ctx.engine().mls_claimed(&space, &operation, packages);
+                                engine!(|engine| engine.mls_claimed(&space, &operation, packages));
                                 if let Err(e) = flush(ctx, &mut sink, &mut sent).await { break Exit::Retry(e) }
                             }
                             None => {}
                         }
                     }
-                    ServerFrame::ProfileChanged { identity, .. } => ctx.engine().profile_changed(&identity),
-                    ServerFrame::KeyPackagesLow { device, remaining } => ctx.engine().mls_key_packages_low(&device, remaining),
-                    ServerFrame::DeviceMessage { from, to, sealed } => ctx.engine().device_message(&from, &to, &sealed),
+                    ServerFrame::ProfileChanged { identity, .. } => engine!(|engine| engine.profile_changed(&identity)),
+                    ServerFrame::KeyPackagesLow { device, remaining } => engine!(|engine| engine.mls_key_packages_low(&device, remaining)),
+                    ServerFrame::DeviceMessage { from, to, sealed } => engine!(|engine| engine.device_message(&from, &to, &sealed)),
                     ServerFrame::Pong { server_time_ms } => {
                         if clock_negotiated {
                             claim_clock = server_time_ms.and_then(KeyPackageClaimClock::from_server_ms).map(ClaimClockSample::new);
@@ -766,7 +802,7 @@ async fn session(
                 None | Some(Cmd::Stop) => break Exit::Stop,
                 Some(Cmd::Flush) => {
                     // A profile edit needs a fresh login to re-register.
-                    let needs_register = ctx.engine().account().map(|a| !a.registered).unwrap_or(false);
+                    let needs_register = engine!(|engine| engine.account().map(|a| !a.registered).unwrap_or(false));
                     if needs_register { break Exit::Retry("re-registering".into()) }
                     if let Err(e) = flush(ctx, &mut sink, &mut sent).await { break Exit::Retry(e) }
                     media_kick.notify_one();
@@ -791,7 +827,7 @@ async fn session(
                     continue;
                 }
                 if profiles_inflight.is_none() {
-                    let unknown = ctx.engine().take_unknown();
+                    let unknown = engine!(|engine| engine.take_unknown());
                     if !unknown.is_empty() {
                         let id = next_id; next_id += 1;
                         if let Err(e) = send(&mut sink, &ClientFrame::Req { id, op: Op::Profiles { ids: unknown.clone() } }).await { break Exit::Retry(e) }
@@ -799,7 +835,7 @@ async fn session(
                         profiles_inflight = Some(tokio::time::Instant::now());
                     }
                 }
-                let shared = ctx.engine().profile_share_pass();
+                let shared = engine!(|engine| engine.profile_share_pass());
                 match shared {
                     Ok(true) => if let Err(e) = flush(ctx, &mut sink, &mut sent).await { break Exit::Retry(e) },
                     Ok(false) => {}
@@ -807,14 +843,14 @@ async fn session(
                 }
                 let mut reqs: Vec<(Op, Waiting)> = Vec::new();
                 if free(&mut traffic.agreement) {
-                    let publish = ctx.engine().agreement_to_publish();
+                    let publish = engine!(|engine| engine.agreement_to_publish());
                     if let Some((public, signed)) = publish {
                         traffic.agreement = Some(tokio::time::Instant::now() + PROFILE_TIMEOUT);
                         reqs.push((Op::PublishAgreementKey { public: public.clone(), signed }, Waiting::AgreementPublished(public)));
                     }
                 }
                 if free(&mut traffic.upload) {
-                    let upload = ctx.engine().profile_to_upload();
+                    let upload = engine!(|engine| engine.profile_to_upload());
                     if let Some(profile) = upload {
                         traffic.upload = Some(tokio::time::Instant::now() + PROFILE_TIMEOUT);
                         let version = profile.version;
@@ -822,14 +858,14 @@ async fn session(
                     }
                 }
                 if free(&mut traffic.keys) {
-                    let ids = ctx.engine().take_need_agreement();
+                    let ids = engine!(|engine| engine.take_need_agreement());
                     if !ids.is_empty() {
                         traffic.keys = Some(tokio::time::Instant::now() + PROFILE_TIMEOUT);
                         reqs.push((Op::AgreementKeys { ids: ids.clone() }, Waiting::AgreementKeys(ids)));
                     }
                 }
                 if free(&mut traffic.profiles) {
-                    let ids = ctx.engine().take_need_profiles();
+                    let ids = engine!(|engine| engine.take_need_profiles());
                     if !ids.is_empty() {
                         traffic.profiles = Some(tokio::time::Instant::now() + PROFILE_TIMEOUT);
                         opening = Some(tokio::time::Instant::now());
@@ -837,25 +873,25 @@ async fn session(
                     }
                 }
                 if free(&mut traffic.key_packages) {
-                    let publish = ctx.engine().mls_key_packages_to_publish();
+                    let publish = engine!(|engine| engine.mls_key_packages_to_publish());
                     if let Some((packages, last_resort)) = publish {
                         traffic.key_packages = Some(tokio::time::Instant::now() + PROFILE_TIMEOUT);
                         reqs.push((Op::PublishKeyPackages { packages, last_resort }, Waiting::KeyPackagesPublished));
                     }
                 }
-                for (to, sealed) in ctx.engine().take_device_outbox() {
+                for (to, sealed) in engine!(|engine| engine.take_device_outbox()) {
                     tracing_like(&format!("device message to {} ({} bytes)", &to[..12.min(to.len())], sealed.len()));
                     reqs.push((Op::SendDevice { to, sealed }, Waiting::Ignored));
                 }
-                if ctx.engine().take_ask_devices() {
+                if engine!(|engine| engine.take_ask_devices()) {
                     reqs.push((Op::Devices, Waiting::Devices));
                 }
-                match ctx.engine().mls_recovery_pass() {
+                match engine!(|engine| engine.mls_recovery_pass()) {
                     Ok(true) => media_kick.notify_one(),
                     Ok(false) => {}
                     Err(e) => tracing_like(&format!("group recovery: {e}")),
                 }
-                let claim = ctx.engine().mls_to_claim(claim_clock.as_ref().and_then(ClaimClockSample::fresh));
+                let claim = engine!(|engine| engine.mls_to_claim(claim_clock.as_ref().and_then(ClaimClockSample::fresh)));
                 match claim {
                     Ok(Some((space, ids, operation))) => reqs.push((
                         Op::ClaimKeyPackages { ids, operation_id: Some(operation.clone()) },
@@ -871,13 +907,13 @@ async fn session(
                     }
                     Err(_) => {},
                 }
-                let checkpoints = ctx.engine().mls_checkpoints();
+                let checkpoints = engine!(|engine| engine.mls_checkpoints());
                 match checkpoints {
                     Ok(true) => if let Err(e) = flush(ctx, &mut sink, &mut sent).await { break Exit::Retry(e) },
                     Ok(false) => {}
                     Err(e) => tracing_like(&format!("checkpoints: {e}")),
                 }
-                let sealed = ctx.engine().mls_seal_outbox();
+                let sealed = engine!(|engine| engine.mls_seal_outbox());
                 match sealed {
                     Ok(true) => if let Err(e) = flush(ctx, &mut sink, &mut sent).await { break Exit::Retry(e) },
                     Ok(false) => {}
@@ -910,7 +946,7 @@ async fn session(
         }
     };
     // Include unsent claims if writing a batch failed before their waiting entry existed.
-    ctx.engine().mls_claims_disconnected();
+    engine!(|engine| engine.mls_claims_disconnected());
     for (_, w) in waiting {
         if let Waiting::External(tx) = w {
             let _ = tx.send(Err("offline".into()));
@@ -957,7 +993,9 @@ async fn flush(
     if !ctx.status.borrow().synced {
         return Ok(());
     }
-    let envs = ctx.engine().outbox_envelopes_except(sent);
+    let envs = ctx
+        .engine(|engine| engine.outbox_envelopes_except(sent))
+        .ok_or_else(|| "offline".to_string())?;
     for env in envs {
         if let std::collections::hash_map::Entry::Vacant(entry) =
             sent.entry(env.client_id().to_string())
@@ -1026,14 +1064,23 @@ impl RecoveryRetries {
 /// Uploads queued encrypted copies and downloads the ones the chats need, retrying with
 /// backoff (a peer's event can arrive before their upload finishes).
 async fn media_worker(
-    engine: Shared,
+    engine: EngineLease,
     listener: Option<Arc<dyn CoreListener>>,
     base: String,
     relay: String,
     key: roda_log::Signer,
     kick: Arc<tokio::sync::Notify>,
 ) {
-    let Ok(http) = reqwest::Client::builder()
+    macro_rules! engine {
+        ($work:expr) => {
+            match engine.with($work) {
+                Some(value) => value,
+                None => return,
+            }
+        };
+    }
+
+    let Ok(http) = crate::https::client()
         .timeout(Duration::from_secs(60))
         .build()
     else {
@@ -1044,7 +1091,11 @@ async fn media_worker(
     let mut recovery_retries = RecoveryRetries::default();
     loop {
         // ── up ──
-        let uploads = lock(&engine).pending_uploads(8);
+        // sync_idle waits until this queue is empty, so a full batch is drained
+        // before the download pass and the idle sleep.
+        let uploads = engine!(|engine| engine.pending_uploads(8));
+        let batch = uploads.len();
+        let mut upload_failed = false;
         for (sha, bytes) in uploads {
             let ts = now_ms();
             let sig = key.sign(&blob_put_message(&sha, ts, &relay));
@@ -1057,7 +1108,7 @@ async fn media_worker(
                 .send()
                 .await;
             match res {
-                Ok(r) if r.status().is_success() => lock(&engine).upload_done(&sha),
+                Ok(r) if r.status().is_success() => engine!(|engine| engine.upload_done(&sha)),
                 Ok(r) if matches!(r.status().as_u16(), 400 | 413) => {
                     // The relay will never take it (corrupt or too big): don't loop forever.
                     tracing_like(&format!(
@@ -1065,7 +1116,7 @@ async fn media_worker(
                         &sha[..12],
                         r.status()
                     ));
-                    lock(&engine).upload_refused(&sha);
+                    engine!(|engine| engine.upload_refused(&sha));
                 }
                 Ok(r) => {
                     tracing_like(&format!(
@@ -1073,18 +1124,23 @@ async fn media_worker(
                         &sha[..12],
                         r.status()
                     ));
+                    upload_failed = true;
                     break;
                 }
                 Err(e) => {
                     tracing_like(&format!("media: upload failed: {e}"));
+                    upload_failed = true;
                     break;
                 }
             }
         }
+        if batch == 8 && !upload_failed {
+            continue;
+        }
 
         // Recovery uses a separate bounded download. Only ciphertext is cached, and
         // its content address must match the signed commit before MLS sees any bytes.
-        let wanted = lock(&engine).wanted_recovery_contexts();
+        let wanted = engine!(|engine| engine.wanted_recovery_contexts());
         if let Some(reference) = recovery_retries.next(wanted, tokio::time::Instant::now()) {
             let bytes = bounded_blob(
                 &http,
@@ -1092,8 +1148,12 @@ async fn media_worker(
                 roda_log::recovery::MAX_RECOVERY_BLOB_BYTES,
             )
             .await;
-            if bytes.is_some_and(|bytes| lock(&engine).recovery_context_arrived(&reference, &bytes))
-            {
+            if match bytes {
+                Some(bytes) => {
+                    engine!(|engine| engine.recovery_context_arrived(&reference, &bytes))
+                }
+                None => false,
+            } {
                 recovery_retries.complete(&reference);
             } else {
                 recovery_retries.defer(reference, tokio::time::Instant::now());
@@ -1101,7 +1161,7 @@ async fn media_worker(
         }
 
         // ── down ──
-        let wanted = lock(&engine).wanted_media();
+        let wanted = engine!(|engine| engine.wanted_media());
         let now = tokio::time::Instant::now();
         let mut changed: Vec<String> = Vec::new();
         for w in wanted {
@@ -1112,7 +1172,10 @@ async fn media_worker(
                 Ok(r) if r.status().is_success() => r.bytes().await.ok(),
                 _ => None,
             };
-            let ok = got.is_some_and(|b| lock(&engine).media_arrived(&w, &b));
+            let ok = match got {
+                Some(bytes) => engine!(|engine| engine.media_arrived(&w, &bytes)),
+                None => false,
+            };
             if ok {
                 retry_at.remove(&w.blob);
                 if let Some(id) = &w.profile {
@@ -1269,7 +1332,7 @@ mod tests {
     };
     use roda_mls::{sealed::state_key, Device, Opened, SUITE_ID};
     use roda_proto::{Envelope, Sequenced};
-    use roda_types::{EventBody, Privacy, Seen, SpaceKind, GENESIS_PREV};
+    use roda_types::{EventBody, Privacy, Role, Seen, SpaceKind, GENESIS_PREV};
     use std::sync::{
         atomic::{AtomicUsize, Ordering},
         mpsc as channel,
@@ -1324,6 +1387,193 @@ mod tests {
             retries.by_space.is_empty(),
             "cached, removed or restored groups need no retry state"
         );
+    }
+
+    #[test]
+    fn engine_lease_revocation_waits_for_current_work_and_finishes_storage_release() {
+        let path = std::env::temp_dir().join(roda_types::new_id("lease-revoke"));
+        let path = path.to_str().unwrap();
+        let lease = EngineLease::new(Arc::new(Mutex::new(Engine::open(path).unwrap())));
+        let (entered, active) = channel::channel();
+        let (release, released) = channel::channel();
+        let worker_lease = lease.clone();
+        let worker = std::thread::spawn(move || {
+            worker_lease
+                .with(|engine| {
+                    engine.store.set_meta("lease-proof", "committed").unwrap();
+                    entered.send(()).unwrap();
+                    released.recv_timeout(Duration::from_secs(5)).unwrap();
+                })
+                .unwrap();
+        });
+        active.recv_timeout(Duration::from_secs(5)).unwrap();
+        assert!(matches!(
+            lease.0.try_lock(),
+            Err(std::sync::TryLockError::WouldBlock)
+        ));
+        let (revoking, began) = channel::channel();
+        let (completed, done) = channel::channel();
+        let revoke_lease = lease.clone();
+        let revoker = std::thread::spawn(move || {
+            revoking.send(()).unwrap();
+            revoke_lease.revoke();
+            completed.send(()).unwrap();
+        });
+        began.recv_timeout(Duration::from_secs(5)).unwrap();
+        assert!(matches!(done.try_recv(), Err(channel::TryRecvError::Empty)));
+        release.send(()).unwrap();
+        done.recv_timeout(Duration::from_secs(5)).unwrap();
+        let reopened = Engine::open(path).unwrap();
+        assert_eq!(
+            reopened.store.meta("lease-proof").unwrap().as_deref(),
+            Some("committed")
+        );
+        assert!(lease.with(|_| ()).is_none());
+        worker.join().unwrap();
+        revoker.join().unwrap();
+        drop(reopened);
+        std::fs::remove_file(path).unwrap();
+    }
+
+    #[test]
+    fn poisoned_engine_lease_still_revokes_and_releases_storage() {
+        let path = std::env::temp_dir().join(roda_types::new_id("lease-poison"));
+        let path = path.to_str().unwrap();
+        let lease = EngineLease::new(Arc::new(Mutex::new(Engine::open(path).unwrap())));
+        let panic = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            lease.with(|engine| {
+                engine.store.set_meta("poison-proof", "committed").unwrap();
+                panic!("controlled Engine closure panic");
+            });
+        }));
+        assert!(panic.is_err());
+        assert_eq!(
+            lease
+                .with(|engine| engine.store.meta("poison-proof").unwrap())
+                .flatten()
+                .as_deref(),
+            Some("committed")
+        );
+        lease.revoke();
+        let reopened = Engine::open(path).unwrap();
+        assert_eq!(
+            reopened.store.meta("poison-proof").unwrap().as_deref(),
+            Some("committed")
+        );
+        drop(reopened);
+        std::fs::remove_file(path).unwrap();
+    }
+
+    #[test]
+    fn blocked_media_upload_releases_storage_and_preserves_ciphertext() {
+        use std::io::Read;
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let url = format!("http://{}", listener.local_addr().unwrap());
+        let path = std::env::temp_dir().join(roda_types::new_id("media-stop"));
+        let path = path.to_str().unwrap();
+        let mut engine = Engine::open(path).unwrap();
+        engine
+            .create_account("Media stop", "media_stop", &url)
+            .unwrap();
+        engine.set_registered(true).unwrap();
+        let media = engine
+            .put_media(b"actual attachment", "image/png", 1, 1)
+            .unwrap();
+        let mut media = roda_types::MediaRef {
+            sha256: media.sha256,
+            mime: media.mime,
+            width: media.width,
+            height: media.height,
+            bytes: media.bytes,
+            key: None,
+            blob: None,
+        };
+        engine.seal_for_relay(&mut media).unwrap();
+        let queued = engine.pending_uploads(8);
+        assert_eq!(queued.len(), 1);
+        let (started, uploading) = channel::channel();
+        let (release, released) = channel::channel();
+        let relay = std::thread::spawn(move || {
+            let (socket, _) = listener.accept().unwrap();
+            socket
+                .set_read_timeout(Some(Duration::from_secs(5)))
+                .unwrap();
+            let mut socket = tokio_tungstenite::tungstenite::accept(socket).unwrap();
+            let Message::Binary(hello) = socket.read().unwrap() else {
+                panic!("hello")
+            };
+            let ClientFrame::Hello {
+                identity, device, ..
+            } = ClientFrame::decode(&hello).unwrap()
+            else {
+                panic!("hello")
+            };
+            let nonce = "lease-media-nonce";
+            let relay_name = "lease-media-local-relay";
+            socket
+                .send(Message::Binary(
+                    ServerFrame::Challenge {
+                        nonce: nonce.into(),
+                        relay: relay_name.into(),
+                        protocol: PROTOCOL_VERSION,
+                        capabilities: Vec::new(),
+                        server_time_ms: None,
+                    }
+                    .encode()
+                    .into(),
+                ))
+                .unwrap();
+            let Message::Binary(auth) = socket.read().unwrap() else {
+                panic!("auth")
+            };
+            let ClientFrame::Auth { sig } = ClientFrame::decode(&auth).unwrap() else {
+                panic!("auth")
+            };
+            assert!(roda_log::verify_sig(
+                &device,
+                &auth_message(nonce, relay_name),
+                &sig
+            ));
+            socket
+                .send(Message::Binary(
+                    ServerFrame::Ready {
+                        identity,
+                        registered: true,
+                    }
+                    .encode()
+                    .into(),
+                ))
+                .unwrap();
+            let (mut http, _) = listener.accept().unwrap();
+            http.set_read_timeout(Some(Duration::from_secs(5))).unwrap();
+            let mut headers = Vec::new();
+            let mut byte = [0u8; 1];
+            while !headers.ends_with(b"\r\n\r\n") {
+                http.read_exact(&mut byte).unwrap();
+                headers.push(byte[0]);
+                assert!(headers.len() < 16 * 1024);
+            }
+            let headers = String::from_utf8(headers).unwrap();
+            assert!(headers.starts_with("PUT /v1/blobs/"));
+            assert!(headers.contains(&format!("x-zoen-device: {device}")));
+            started.send(()).unwrap();
+            released.recv_timeout(Duration::from_secs(5)).unwrap();
+        });
+        let net = Net::start(Arc::new(Mutex::new(engine)), None, crate::i18n::Lang::En).unwrap();
+        uploading.recv_timeout(Duration::from_secs(5)).unwrap();
+        let began = std::time::Instant::now();
+        drop(net);
+        let reopened = Engine::open(path).unwrap();
+        eprintln!(
+            "blocked_media stop_reopen_us={}",
+            began.elapsed().as_micros()
+        );
+        assert_eq!(reopened.pending_uploads(8), queued);
+        assert!(reopened.account().is_some());
+        release.send(()).unwrap();
+        relay.join().unwrap();
+        drop(reopened);
+        std::fs::remove_file(path).unwrap();
     }
 
     async fn request(socket: &mut RelaySocket) -> ClientFrame {
@@ -1521,7 +1771,7 @@ mod tests {
         });
         let (maintenance, mut maintenance_started) = mpsc::unbounded_channel();
         let ctx = Ctx {
-            engine: engine.clone(),
+            engine: EngineLease::new(engine.clone()),
             listener: None,
             status,
             lang: crate::i18n::Lang::En,
@@ -1975,7 +2225,7 @@ mod tests {
         let work_passes = passes.clone();
         let work_engine = engine.clone();
         let ctx = Ctx {
-            engine,
+            engine: EngineLease::new(engine),
             listener: None,
             status,
             lang: crate::i18n::Lang::En,
@@ -2005,5 +2255,182 @@ mod tests {
         let mut backoff = Duration::from_millis(500);
         let _ = session(&ctx, &mut commands, &mut backoff).await;
         relay.join().unwrap();
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn member_seen_beyond_the_next_sequence_is_fetched_once_then_forks() {
+        let _ = rustls::crypto::ring::default_provider().install_default();
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let url = format!("ws://{}", listener.local_addr().unwrap());
+        let mut engine = Engine::open(":memory:").unwrap();
+        engine.create_account("Ana", "ana", &url).unwrap();
+        engine.set_registered(true).unwrap();
+        let author = engine.net.author.clone().unwrap();
+        let space = "seen-loop";
+        let mut head = None;
+        let created = sequence(
+            Envelope::plain(&author.sign_event(
+                space,
+                "created",
+                1,
+                None,
+                EventBody::SpaceCreated {
+                    title: space.into(),
+                    kind: SpaceKind::Group,
+                    privacy: Privacy::Closed,
+                },
+            )),
+            &mut head,
+        );
+        assert_eq!(engine.ingest(created), Ingest::Applied);
+        let peer = roda_log::Author::root(roda_log::Signer::generate());
+        let added = sequence(
+            Envelope::plain(&author.sign_event(
+                space,
+                "add-peer",
+                2,
+                head.clone(),
+                EventBody::MemberAdded {
+                    identity: peer.identity.clone(),
+                    role: Role::Member,
+                },
+            )),
+            &mut head,
+        );
+        assert_eq!(engine.ingest(added), Ingest::Applied);
+        let next = engine.next_seq(space);
+        let bad = sequence(
+            Envelope::plain(&peer.sign_event(
+                space,
+                "seen-loop",
+                3,
+                Some(Seen {
+                    seq: next + 8,
+                    hash: "12".repeat(32),
+                }),
+                EventBody::MessagePosted {
+                    message: "other-fork".into(),
+                    text: "other-fork".into(),
+                    attaches: None,
+                    reply: None,
+                },
+            )),
+            &mut head,
+        );
+        assert_eq!(bad.seq, next);
+        let engine = Arc::new(Mutex::new(engine));
+        let (cmd, mut commands) = mpsc::unbounded_channel();
+        let (status, _) = watch::channel(NetStatus {
+            state: ConnState::Connecting,
+            synced: false,
+            error: None,
+            registered: true,
+            authenticated_relay: None,
+        });
+        let relay_engine = engine.clone();
+        let relay_space = space.to_string();
+        let relay = async move {
+            let (socket, _) = listener.accept().await.unwrap();
+            let mut socket = tokio_tungstenite::accept_async(socket).await.unwrap();
+            let ClientFrame::Hello { identity, .. } = request(&mut socket).await else {
+                panic!("hello");
+            };
+            reply(
+                &mut socket,
+                ServerFrame::Challenge {
+                    nonce: "seen-loop".into(),
+                    relay: "seen-loop".into(),
+                    protocol: PROTOCOL_VERSION,
+                    capabilities: Vec::new(),
+                    server_time_ms: None,
+                },
+            )
+            .await;
+            assert!(matches!(
+                request(&mut socket).await,
+                ClientFrame::Auth { .. }
+            ));
+            reply(
+                &mut socket,
+                ServerFrame::Ready {
+                    identity,
+                    registered: true,
+                },
+            )
+            .await;
+            assert!(matches!(
+                request(&mut socket).await,
+                ClientFrame::Sync { all: true, .. }
+            ));
+            reply(&mut socket, ServerFrame::Event { ev: bad }).await;
+            let deadline = tokio::time::Instant::now() + Duration::from_secs(1);
+            let mut refetches = 0u32;
+            loop {
+                let left = deadline.saturating_duration_since(tokio::time::Instant::now());
+                if left.is_zero() {
+                    break;
+                }
+                let frame = match tokio::time::timeout(left, request(&mut socket)).await {
+                    Ok(frame) => frame,
+                    Err(_) => break,
+                };
+                match frame {
+                    ClientFrame::Sync { .. } => {
+                        refetches += 1;
+                        break;
+                    }
+                    ClientFrame::Req { id, .. } => {
+                        reply(
+                            &mut socket,
+                            ServerFrame::Res {
+                                id,
+                                result: Ok(Reply::Done),
+                            },
+                        )
+                        .await;
+                    }
+                    ClientFrame::Ping => {
+                        reply(
+                            &mut socket,
+                            ServerFrame::Pong {
+                                server_time_ms: None,
+                            },
+                        )
+                        .await;
+                    }
+                    ClientFrame::Publish { .. } => {}
+                    other => panic!("unexpected {other:?}"),
+                }
+            }
+            let guard = lock(&relay_engine);
+            let integrity = guard.state.spaces[&relay_space].integrity_error.clone();
+            let stored = guard.logs[&relay_space]
+                .events()
+                .iter()
+                .any(|event| event.client_id == "seen-loop");
+            drop(guard);
+            cmd.send(Cmd::Stop).unwrap();
+            (refetches, integrity, stored)
+        };
+        let ctx = Ctx {
+            engine: EngineLease::new(engine),
+            listener: None,
+            status,
+            lang: crate::i18n::Lang::En,
+            maintenance_work: None,
+        };
+        let mut backoff = Duration::from_millis(500);
+        let (_exit, (refetches, integrity, stored)) =
+            tokio::time::timeout(Duration::from_secs(15), async {
+                tokio::join!(session(&ctx, &mut commands, &mut backoff), relay)
+            })
+            .await
+            .expect("seen-loop sync stalled");
+        assert_eq!(refetches, 0, "sync asked for the same next event again");
+        assert_eq!(
+            integrity.as_deref(),
+            Some("Members see different groups in this chat (the server may have forked it).")
+        );
+        assert!(!stored, "the refused event was appended");
     }
 }

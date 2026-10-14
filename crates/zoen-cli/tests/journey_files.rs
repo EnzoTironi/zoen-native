@@ -126,7 +126,9 @@ async fn pages_and_files_travel_byte_for_byte() {
     let started = std::time::Instant::now();
     for batch in expected.chunks(100) {
         let mut args = vec![
-            "page".to_string(),
+            "--timeout".to_string(),
+            "120000".into(),
+            "page".into(),
             "import".into(),
             space.clone(),
             "--root".into(),

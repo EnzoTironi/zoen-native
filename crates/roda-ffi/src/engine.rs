@@ -1380,6 +1380,15 @@ impl Engine {
     }
 
     pub fn send_message(&mut self, space: &str, text: &str) -> R<TimelineEntry> {
+        if let Some(reason) = self
+            .state
+            .spaces
+            .get(space)
+            .and_then(|s| s.integrity_error.clone())
+            .or_else(|| self.recorded_fork(space))
+        {
+            return Err(CoreError::Invalid { reason });
+        }
         let me = self.me_id()?;
         self.post_as(space, &me, text, None)
     }

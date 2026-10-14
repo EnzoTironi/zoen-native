@@ -3,6 +3,7 @@ package xyz.tironi.zoen
 import android.graphics.drawable.AnimatedImageDrawable
 import android.os.ParcelFileDescriptor
 import android.os.SystemClock
+import android.provider.Settings
 import android.view.View
 import android.view.ViewGroup
 import android.widget.ImageView
@@ -32,7 +33,8 @@ class AvatarPlaybackJourneyTest {
         val originalScale = shell("settings get global animator_duration_scale").trim()
         val show = mutableStateOf(true)
         try {
-            shell("settings put global animator_duration_scale 1")
+            setMotion(1f)
+            awaitWindowFocus()
             val asset = AvatarArt.assets(compose.activity).first()
             compose.setContent {
                 ZoenTheme { Box(Modifier.fillMaxSize()) { if (show.value) AvatarDrawing(asset, 96) } }
@@ -47,11 +49,11 @@ class AvatarPlaybackJourneyTest {
                 } == true
             }
             CommittedWindowCapture.save(compose.activity, "experience", "native-avatar-live")
-            shell("settings put global animator_duration_scale 0")
+            setMotion(0f)
             awaitNative { !animation.isRunning }
             awaitNative { findImage(compose.activity.window.decorView) == null }
             CommittedWindowCapture.save(compose.activity, "experience", "native-avatar-live-reduced-motion")
-            shell("settings put global animator_duration_scale 1")
+            setMotion(1f)
             awaitNative {
                 findImage(compose.activity.window.decorView)?.let {
                     image = it
@@ -62,6 +64,7 @@ class AvatarPlaybackJourneyTest {
             compose.activityRule.scenario.moveToState(Lifecycle.State.STARTED)
             awaitNative { !animation.isRunning }
             compose.activityRule.scenario.moveToState(Lifecycle.State.RESUMED)
+            awaitWindowFocus()
             awaitNative { animation.isRunning }
             instrumentation.runOnMainSync { image.visibility = View.INVISIBLE }
             awaitNative { !animation.isRunning }
@@ -78,17 +81,33 @@ class AvatarPlaybackJourneyTest {
         }
     }
 
-    private fun awaitNative(condition: () -> Boolean) {
-        val deadline = SystemClock.elapsedRealtime() + 3_000
+    // Playback depends on state the system delivers asynchronously (window focus, the animator
+    // setting and its observer). Each wait polls that state on the main thread frame by frame and
+    // fails only when the state never arrives within a safety bound.
+    private fun awaitNative(condition: () -> Boolean) = awaitState("Native avatar did not reach its required state", condition)
+
+    private fun awaitWindowFocus() = awaitState("The test window never received focus") { compose.activity.hasWindowFocus() }
+
+    private fun setMotion(scale: Float) {
+        shell("settings put global animator_duration_scale ${if (scale == 0f) "0" else "1"}")
+        awaitState("The animator setting was not applied") {
+            Settings.Global.getFloat(compose.activity.contentResolver, Settings.Global.ANIMATOR_DURATION_SCALE, 1f) == scale
+        }
+    }
+
+    private fun awaitState(message: String, condition: () -> Boolean) {
+        val bound = SystemClock.elapsedRealtime() + SAFETY_BOUND_MS
         while (true) {
             var reached = false
             instrumentation.runOnMainSync { reached = condition() }
             if (reached) return
-            assertTrue("Native avatar did not reach its required state within 3000 ms", SystemClock.elapsedRealtime() < deadline)
+            assertTrue(message, SystemClock.elapsedRealtime() < bound)
             compose.mainClock.advanceTimeByFrame()
             Thread.sleep(10)
         }
     }
+
+    private companion object { const val SAFETY_BOUND_MS = 20_000L }
 
     private fun findImage(view: View): ImageView? {
         if (view is ImageView && view.drawable is AnimatedImageDrawable) return view

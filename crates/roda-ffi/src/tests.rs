@@ -1677,3 +1677,165 @@ fn inline_replies_quote_and_thread_replies_gather_under_the_root() {
         "replies are signed like any message"
     );
 }
+
+#[test]
+fn immediate_cold_reopen_after_sync_stop() {
+    let folder = std::env::temp_dir().join(roda_types::new_id("net-cold-reopen"));
+    std::fs::create_dir_all(&folder).unwrap();
+    let mut failures = Vec::new();
+    for sample in 0..32 {
+        let path = folder
+            .join(format!("{sample}.sqlite"))
+            .to_string_lossy()
+            .to_string();
+        let plain = RodaEngine::open(path.clone(), "en".into()).unwrap();
+        drop(plain);
+        let core = RodaEngine::open(path.clone(), "en".into()).unwrap();
+        core.create_account(
+            "Lifecycle".into(),
+            format!("lifecycle_{sample}"),
+            "http://127.0.0.1:9".into(),
+            Arc::new(MemVault::default()),
+        )
+        .unwrap();
+        core.start_sync(None).unwrap();
+        let began = std::time::Instant::now();
+        core.stop_sync();
+        core.stop_sync();
+        drop(core);
+        let elapsed = began.elapsed();
+        match RodaEngine::open(path, "en".into()) {
+            Ok(reopened) => {
+                reopened
+                    .lock()
+                    .store
+                    .set_meta("reopen-proof", "written")
+                    .unwrap();
+                assert_eq!(
+                    reopened
+                        .lock()
+                        .store
+                        .meta("reopen-proof")
+                        .unwrap()
+                        .as_deref(),
+                    Some("written")
+                );
+                drop(reopened);
+            }
+            Err(error) => failures.push(format!("sample={sample} error={error}")),
+        }
+        eprintln!(
+            "cold_reopen sample={sample} stop_destroy_us={}",
+            elapsed.as_micros()
+        );
+    }
+    std::fs::remove_dir_all(folder).unwrap();
+    assert!(
+        failures.is_empty(),
+        "{} immediate reopen failures: {failures:?}",
+        failures.len()
+    );
+}
+
+#[test]
+fn immediate_cold_reopen_after_implicit_sync_drop() {
+    for sample in 0..32 {
+        let path = std::env::temp_dir().join(roda_types::new_id("implicit-net-drop"));
+        let path = path.to_string_lossy().to_string();
+        let core = RodaEngine::open(path.clone(), "en".into()).unwrap();
+        core.create_account(
+            "Lifecycle".into(),
+            format!("implicit_{sample}"),
+            "http://127.0.0.1:9".into(),
+            Arc::new(MemVault::default()),
+        )
+        .unwrap();
+        core.start_sync(None).unwrap();
+        drop(core);
+        let reopened = RodaEngine::open(path.clone(), "en".into()).unwrap();
+        reopened
+            .lock()
+            .store
+            .set_meta("reopen-proof", "written")
+            .unwrap();
+        assert_eq!(
+            reopened
+                .lock()
+                .store
+                .meta("reopen-proof")
+                .unwrap()
+                .as_deref(),
+            Some("written")
+        );
+        drop(reopened);
+        std::fs::remove_file(path).unwrap();
+    }
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn immediate_cold_reopen_inside_an_unrelated_runtime() {
+    immediate_cold_reopen_after_sync_stop();
+    immediate_cold_reopen_after_implicit_sync_drop();
+}
+
+#[test]
+fn callback_can_stop_and_destroy_its_core_before_immediate_reopen() {
+    use std::sync::mpsc;
+    use std::time::Duration;
+    struct Listener {
+        core: Mutex<Option<Arc<RodaEngine>>>,
+        release: Mutex<mpsc::Receiver<()>>,
+        done: mpsc::Sender<()>,
+    }
+    impl CoreListener for Listener {
+        fn on_connection(&self, _: ConnectionDto) {
+            let core = self.core.lock().unwrap().take();
+            if let Some(core) = core {
+                self.release
+                    .lock()
+                    .unwrap()
+                    .recv_timeout(Duration::from_secs(5))
+                    .unwrap();
+                assert_eq!(std::thread::current().name(), Some("zoen-net"));
+                core.stop_sync();
+                core.stop_sync();
+                drop(core);
+                self.done.send(()).unwrap();
+            }
+        }
+        fn on_change(&self, _: Vec<String>) {}
+        fn on_ephemeral(&self, _: String, _: String, _: String, _: String) {}
+        fn on_presence(&self, _: String, _: bool) {}
+        fn on_error(&self, _: String) {}
+        fn on_profile_changed(&self, _: String) {}
+    }
+    let path = std::env::temp_dir().join(roda_types::new_id("reentrant-net-drop"));
+    let path = path.to_string_lossy().to_string();
+    let core = RodaEngine::open(path.clone(), "en".into()).unwrap();
+    core.create_account(
+        "Reentrant".into(),
+        "reentrant".into(),
+        "http://127.0.0.1:9".into(),
+        Arc::new(MemVault::default()),
+    )
+    .unwrap();
+    let (release, released) = mpsc::channel();
+    let (done, completed) = mpsc::channel();
+    let listener = Arc::new(Listener {
+        core: Mutex::new(Some(core.clone())),
+        release: Mutex::new(released),
+        done,
+    });
+    core.start_sync(Some(listener)).unwrap();
+    drop(core);
+    release.send(()).unwrap();
+    completed.recv_timeout(Duration::from_secs(5)).unwrap();
+    let reopened = RodaEngine::open(path.clone(), "en".into()).unwrap();
+    reopened
+        .lock()
+        .store
+        .set_meta("callback-proof", "written")
+        .unwrap();
+    drop(reopened);
+    std::fs::remove_file(path).unwrap();
+}
