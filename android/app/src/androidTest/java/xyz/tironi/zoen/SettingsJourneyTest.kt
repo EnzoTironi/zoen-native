@@ -2,6 +2,7 @@ package xyz.tironi.zoen
 
 import androidx.activity.ComponentActivity
 import androidx.compose.runtime.*
+import androidx.compose.runtime.snapshots.SnapshotStateList
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.lifecycle.ViewModelProvider
