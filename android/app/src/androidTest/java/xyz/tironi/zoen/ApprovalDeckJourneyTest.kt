@@ -3,12 +3,14 @@ package xyz.tironi.zoen
 import android.content.Intent
 import android.graphics.Bitmap
 import android.os.ParcelFileDescriptor
+import android.os.SystemClock
 import android.util.Log
 import android.view.WindowManager
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createEmptyComposeRule
+import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.ViewModelProvider
 import androidx.test.core.app.ActivityScenario
 import androidx.test.core.app.ApplicationProvider
@@ -28,6 +30,7 @@ import xyz.tironi.zoen.core.*
 @RunWith(AndroidJUnit4::class)
 @OptIn(ExperimentalTestApi::class)
 class ApprovalDeckJourneyTest {
+    @get:Rule(order = -1) val sampler = MainThreadSampler() // DIAGNOSTIC
     @get:Rule(order = 0) val deadline = Timeout.seconds(120)
     @get:Rule(order = 1) val compose = createEmptyComposeRule(effectContext = StandardTestDispatcher())
     private val app get() = ApplicationProvider.getApplicationContext<ZoenApplication>()
@@ -183,8 +186,7 @@ class ApprovalDeckJourneyTest {
     @Test fun enlargedTextScrollsOverTheCardWithoutMakingADecision() {
         val originalFont = shell("settings get system font_scale").trim()
         try {
-            shell("settings put system font_scale 2.0")
-            scenario.recreate()
+            applyFontScale(2f) { shell("settings put system font_scale 2.0") }
             scenario.onActivity {
                 assertEquals(2f, it.resources.configuration.fontScale, .01f)
                 model = ViewModelProvider(it)[ZoenViewModel::class.java]
@@ -214,8 +216,35 @@ class ApprovalDeckJourneyTest {
             capture("font200-buttons-after-reading-scroll")
             Evidence.outputFile("approvals", "font200-reading-scroll-receipt.txt").writeText("PASS: four actual vertical finger swipes at 200% text expose every decision button; no pending choice, signed event or rejection feedback is produced, and sensitive standing approval remains disabled.\n")
         } finally {
-            if (originalFont == "null") shell("settings delete system font_scale") else shell("settings put system font_scale $originalFont")
-            scenario.recreate()
+            applyFontScale(originalFont.toFloatOrNull() ?: 1f) {
+                if (originalFont == "null") shell("settings delete system font_scale") else shell("settings put system font_scale $originalFont")
+            }
+        }
+    }
+
+    // A font_scale write reaches the app as an asynchronous configuration change, and the system
+    // relaunches the Activity when it arrives. Recreating right after the write races that relaunch:
+    // the test can read the old scale, hold an Activity the system is destroying, or leave a late
+    // relaunch to land in the next test. Wait for the resumed Activity to carry the new scale.
+    private fun applyFontScale(expected: Float, write: () -> Unit) {
+        write()
+        var recreated = false
+        val limit = SystemClock.uptimeMillis() + 30_000
+        while (true) {
+            val applied = runCatching {
+                var scale = 0f
+                scenario.onActivity { scale = it.resources.configuration.fontScale }
+                scenario.state == Lifecycle.State.RESUMED && kotlin.math.abs(scale - expected) < .01f
+            }.getOrDefault(false)
+            if (applied) break
+            check(SystemClock.uptimeMillis() < limit) { "font_scale $expected never reached the resumed Activity" }
+            if (!recreated && SystemClock.uptimeMillis() > limit - 20_000 &&
+                kotlin.math.abs(app.resources.configuration.fontScale - expected) < .01f) {
+                // The process has the new scale but the system kept this Activity: rebuild it once.
+                recreated = true
+                scenario.recreate()
+            }
+            SystemClock.sleep(50)
         }
     }
 
