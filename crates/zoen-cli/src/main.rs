@@ -1434,7 +1434,13 @@ async fn main() {
             }
             let it = item(&e, &cli.args[0]);
             let n: u32 = cli.args[1].parse().unwrap_or_else(|_| usage());
-            let d = e.restore_version(it.id, n).unwrap_or_else(|err| die(err));
+            let d = if it.kind_id == "plan" {
+                let observed = e.plan_page(it.id.clone()).unwrap_or_else(|err| die(err));
+                e.restore_plan_version(it.id, n, observed.content_hash)
+                    .unwrap_or_else(|err| die(err))
+            } else {
+                e.restore_version(it.id, n).unwrap_or_else(|err| die(err))
+            };
             e.wait_until_idle(timeout).await;
             println!("v{}", d.version);
         }

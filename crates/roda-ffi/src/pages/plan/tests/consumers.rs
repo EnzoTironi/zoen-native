@@ -15,19 +15,33 @@ fn legacy_line_addition_refuses_negative_cost_without_publishing_zero() {
     let before = storage(&fixture);
     for cents in [-1, -1_025, i64::MIN] {
         assert!(matches!(
-            fixture
-                .engine
-                .add_plan_line(&fixture.item, 0, "Credit", cents),
+            {
+                let observed_hash = fixture
+                    .engine
+                    .plan_page(&fixture.item)
+                    .unwrap()
+                    .content_hash;
+                fixture
+                    .engine
+                    .add_plan_line(&fixture.item, 0, "Credit", cents, &observed_hash)
+            },
             Err(CoreError::Invalid { .. })
         ));
         assert_eq!(storage(&fixture), before);
         assert_eq!(fixture.engine.item(&fixture.item).unwrap().version, 1);
     }
     for cents in [0, 1_025] {
-        let outcome = fixture
-            .engine
-            .add_plan_line(&fixture.item, 0, "Exact cost", cents)
-            .unwrap();
+        let outcome = {
+            let observed_hash = fixture
+                .engine
+                .plan_page(&fixture.item)
+                .unwrap()
+                .content_hash;
+            fixture
+                .engine
+                .add_plan_line(&fixture.item, 0, "Exact cost", cents, &observed_hash)
+        }
+        .unwrap();
         let plan = outcome.item.plan.unwrap();
         let added = plan.sections[0].lines.last().unwrap();
         assert_eq!(added.text, "Exact cost");
@@ -41,16 +55,34 @@ fn legacy_line_addition_refuses_an_unrepresentable_total_before_writing() {
     let mut fixture = Fixture::new();
     let before = storage(&fixture);
     assert!(matches!(
-        fixture
-            .engine
-            .add_plan_line(&fixture.item, 0, "Too much", i64::MAX),
+        {
+            let observed_hash = fixture
+                .engine
+                .plan_page(&fixture.item)
+                .unwrap()
+                .content_hash;
+            fixture
+                .engine
+                .add_plan_line(&fixture.item, 0, "Too much", i64::MAX, &observed_hash)
+        },
         Err(CoreError::Invalid { .. })
     ));
     assert_eq!(storage(&fixture), before);
-    let outcome = fixture
-        .engine
-        .add_plan_line(&fixture.item, 0, "Exact upper total", i64::MAX - 193)
-        .unwrap();
+    let outcome = {
+        let observed_hash = fixture
+            .engine
+            .plan_page(&fixture.item)
+            .unwrap()
+            .content_hash;
+        fixture.engine.add_plan_line(
+            &fixture.item,
+            0,
+            "Exact upper total",
+            i64::MAX - 193,
+            &observed_hash,
+        )
+    }
+    .unwrap();
     assert_eq!(outcome.item.plan.unwrap().total_cents, i64::MAX);
 }
 
@@ -279,25 +311,53 @@ fn legacy_writers_refuse_before_mutating_after_cutover_or_while_it_is_pending() 
         }
         let before = storage(&fixture);
         let line = original().sections[0].lines[0].id.clone();
-        assert!(fixture
-            .engine
-            .edit_plan_line(&fixture.item, &line, "Old edit", 777)
-            .is_err());
+        assert!({
+            let observed_hash = fixture
+                .engine
+                .plan_page(&fixture.item)
+                .unwrap()
+                .content_hash;
+            fixture
+                .engine
+                .edit_plan_line(&fixture.item, &line, "Old edit", 777, &observed_hash)
+        }
+        .is_err());
         assert_eq!(storage(&fixture), before);
-        assert!(fixture
-            .engine
-            .toggle_plan_line(&fixture.item, &line)
-            .is_err());
+        assert!({
+            let observed_hash = fixture
+                .engine
+                .plan_page(&fixture.item)
+                .unwrap()
+                .content_hash;
+            fixture
+                .engine
+                .toggle_plan_line(&fixture.item, &line, &observed_hash)
+        }
+        .is_err());
         assert_eq!(storage(&fixture), before);
-        assert!(fixture
-            .engine
-            .add_plan_line(&fixture.item, 0, "Old insertion", 777)
-            .is_err());
+        assert!({
+            let observed_hash = fixture
+                .engine
+                .plan_page(&fixture.item)
+                .unwrap()
+                .content_hash;
+            fixture
+                .engine
+                .add_plan_line(&fixture.item, 0, "Old insertion", 777, &observed_hash)
+        }
+        .is_err());
         assert_eq!(storage(&fixture), before);
-        assert!(fixture
-            .engine
-            .remove_plan_line(&fixture.item, &line)
-            .is_err());
+        assert!({
+            let observed_hash = fixture
+                .engine
+                .plan_page(&fixture.item)
+                .unwrap()
+                .content_hash;
+            fixture
+                .engine
+                .remove_plan_line(&fixture.item, &line, &observed_hash)
+        }
+        .is_err());
         assert_eq!(storage(&fixture), before);
         assert!(fixture
             .engine

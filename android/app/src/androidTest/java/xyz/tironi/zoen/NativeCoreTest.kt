@@ -29,7 +29,7 @@ class NativeCoreTest {
             core.setTrust(agent.persona.id, chat.id, TrustLevelDto.ACT)
             val prompt = "A trip up to $1,500"
             val plan = checkNotNull(core.agentCreatePlan(chat.id, agent.persona.id, prompt, LocalPlanner.plan(prompt, "en"), "Local planner", 0).item)
-            core.togglePlanLine(plan.id, plan.plan!!.sections.first().lines.first().id)
+            core.togglePlanLine(plan.id, plan.plan!!.sections.first().lines.first().id, core.planPage(plan.id).contentHash)
             val markdown = "# Android note\n\nThis page survives a restart.\n"
             val page = core.pageImportMarkdown(chat.id, "note.md", markdown)
             val bytes = "an offline attachment".toByteArray()

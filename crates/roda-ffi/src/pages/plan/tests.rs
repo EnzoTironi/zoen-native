@@ -7,6 +7,7 @@ use roda_proto::{Envelope, Sequenced};
 mod api;
 mod approvals;
 mod consumers;
+mod observed;
 mod prefix;
 
 struct Fixture {

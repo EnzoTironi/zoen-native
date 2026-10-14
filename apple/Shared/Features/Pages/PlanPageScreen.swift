@@ -79,7 +79,7 @@ struct PlanItemView: View {
         .sheet(item: $editing) { value in
             NavigationStack {
                 LineEditor(editing: value, onSave: { save($0) },
-                           onRemove: value.lineId.map { id in { remove(lineId: id, observedVersion: editingVersion, observedHash: editingHash) } },
+                           onRemove: value.lineId.map { id in { remove(lineId: id, observedHash: editingHash) } },
                            allowsChanges: page?.legacyEditAdmitted == true)
             }
             .zoenSheet([.height(value.lineId == nil ? 320 : 390)])
@@ -206,9 +206,7 @@ struct PlanItemView: View {
             Group {
                 if editable {
                     Button {
-                        if admitted(version: page.version, contentHash: page.contentHash) {
-                            apply(model.perform { try model.core.togglePlanLine(itemId: itemId, lineId: line.id) })
-                        }
+                        write { try model.core.togglePlanLine(itemId: itemId, lineId: line.id, observedHash: page.contentHash) }
                     } label: { Image(systemName: line.done ? "checkmark.circle.fill" : "circle").font(.title3) }
                         .buttonStyle(.plain).frame(minWidth: 44, minHeight: 44)
                         .accessibilityLabel(line.done ? String(localized: "Reopen") : String(localized: "Complete"))
@@ -301,7 +299,10 @@ struct PlanItemView: View {
     private func admitted(version: UInt32?, contentHash: String?) -> Bool {
         guard let current = try? model.core.planPage(itemId: itemId), current.legacyEditAdmitted,
               version == current.version, contentHash == current.contentHash else {
-            model.show(.init(kind: .info, text: String(localized: "The page changed. Review it before editing.")), seconds: 4)
+            model.show(.init(kind: .info, text: AppLocale.pick(
+                "A página mudou. Revise antes de editar.",
+                "The page changed. Review it before editing."
+            )), seconds: 4)
             load()
             return false
         }
@@ -309,22 +310,23 @@ struct PlanItemView: View {
     }
 
     private func save(_ value: EditingLine) -> Bool {
-        guard admitted(version: editingVersion, contentHash: editingHash), let cents = MoneyInput.cents(from: value.amount, locale: AppLocale.locale), cents >= 0 else { return false }
-        let out: EditOutcome?
+        guard let hash = editingHash, let cents = MoneyInput.cents(from: value.amount, locale: AppLocale.locale), cents >= 0 else { return false }
         if let id = value.lineId {
-            out = model.perform { try model.core.editPlanLine(itemId: itemId, lineId: id, text: value.text, costCents: cents) }
-        } else {
-            out = model.perform { try model.core.addPlanLine(itemId: itemId, sectionIndex: value.section, text: value.text, costCents: cents) }
+            return write { try model.core.editPlanLine(itemId: itemId, lineId: id, text: value.text, costCents: cents, observedHash: hash) }
         }
-        apply(out)
-        return out != nil
+        return write { try model.core.addPlanLine(itemId: itemId, sectionIndex: value.section, text: value.text, costCents: cents, observedHash: hash) }
     }
 
-    private func remove(lineId: String, observedVersion: UInt32?, observedHash: String?) -> Bool {
-        guard admitted(version: observedVersion, contentHash: observedHash) else { return false }
-        let out = model.perform { try model.core.removePlanLine(itemId: itemId, lineId: lineId) }
+    private func remove(lineId: String, observedHash: String?) -> Bool {
+        guard let hash = observedHash else { return false }
+        return write { try model.core.removePlanLine(itemId: itemId, lineId: lineId, observedHash: hash) }
+    }
+
+    @discardableResult
+    private func write(_ work: () throws -> EditOutcome) -> Bool {
+        guard let out = model.planWrite(onStale: { load() }, work) else { return false }
         apply(out)
-        return out != nil
+        return true
     }
 
     private func apply(_ out: EditOutcome?) {
