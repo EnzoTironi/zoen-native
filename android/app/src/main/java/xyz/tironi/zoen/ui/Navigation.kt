@@ -24,6 +24,8 @@ import kotlinx.serialization.Serializable
 @Serializable data class Request(val id: String) : NavKey
 @Serializable data class Appearance(val space: String) : NavKey
 @Serializable data object Widgets : NavKey
+/** Ajustes. `page` is a [SettingsPage] name; null is the Ajustes home. */
+@Serializable data class SettingsRoute(val page: String? = null) : NavKey
 @Serializable data object Browser : NavKey
 @Serializable data class VersionPreview(val id: String, val number: UInt) : NavKey
 

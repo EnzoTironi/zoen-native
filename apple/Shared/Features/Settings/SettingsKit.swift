@@ -4,12 +4,13 @@ import SwiftUI
 /// groups, so each new screen stays a few lines (see `SettingsScreens.swift`).
 ///
 /// Look: neutral grouped cards, one 48pt back circle and one 48pt close circle, and
-/// control outlines in `textTertiary` (≥ 3:1 against the card in light and dark).
+/// control outlines in `controlOutline` (≥ 3:1 against the card in light and dark).
 enum SettingsStyle {
     static let card = Color.adaptive(light: "#F3F4F7", dark: "#151A24")
     static let cardEdge = Palette.hairline
-    /// Rings, outlined buttons: 3.1:1 on the light card, 3.2:1 on the dark one.
-    static let controlOutline = Palette.textTertiary
+    /// Rings, field and button outlines: 3.45:1 on the light card (3.8:1 on white),
+    /// 3.9:1 on the dark card.
+    static let controlOutline = Color.adaptive(light: "#7A8396", dark: "#6B7790")
     static let radius: CGFloat = 16
     static let rowHeight: CGFloat = 52
     static let button: CGFloat = 48

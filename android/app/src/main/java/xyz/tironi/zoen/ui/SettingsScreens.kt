@@ -147,6 +147,7 @@ fun ContextScreen(model: ZoenViewModel, state: AppState, navigate: (NavKey) -> U
                 item { xyz.tironi.zoen.background.NotificationSettings(model) }
                 item { xyz.tironi.zoen.background.BackgroundConnectionSettings(model) }
             }
+            item { SettingsRow(Icons.Rounded.Settings, stringResource(R.string.st_settings), onClick = { navigate(SettingsRoute()) }) }
             item { SettingsRow(Icons.Rounded.Widgets, stringResource(R.string.widgets), onClick = { navigate(Widgets) }) }
             item { SettingsRow(Icons.Rounded.PersonOutline, stringResource(R.string.profile), onClick = { state.me?.let { navigate(Person(it.id)) } }) }
             item { SettingsRow(Icons.Rounded.VerifiedUser, stringResource(R.string.signed_log), onClick = { navigate(History) }) }

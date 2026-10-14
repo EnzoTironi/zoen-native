@@ -7,6 +7,11 @@ import androidx.compose.material3.Typography
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import xyz.tironi.zoen.R
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.text.TextStyle
@@ -54,7 +59,26 @@ private val typography = Typography(
 
 @Composable
 fun ZoenTheme(content: @Composable () -> Unit) {
-    MaterialTheme(colorScheme = if (isSystemInDarkTheme()) dark else light, typography = typography, content = content)
+    val context = androidx.compose.ui.platform.LocalContext.current
+    remember(context) { AppAppearance.load(context) }
+    val darkMode = when (AppAppearance.mode) { "dark" -> true; "light" -> false; else -> isSystemInDarkTheme() }
+    MaterialTheme(colorScheme = if (darkMode) dark else light, typography = typography, content = content)
+}
+
+/** The app's light/dark choice from Ajustes › Tema: "auto" follows the device. */
+object AppAppearance {
+    private const val KEY = "appearance"
+    val modes = listOf("auto" to R.string.st_automatic, "light" to R.string.st_light, "dark" to R.string.st_dark)
+    var mode by mutableStateOf("auto")
+        private set
+    fun load(context: android.content.Context) {
+        mode = context.getSharedPreferences("zoen", android.content.Context.MODE_PRIVATE).getString(KEY, "auto") ?: "auto"
+    }
+    fun set(context: android.content.Context, value: String) {
+        mode = value
+        context.getSharedPreferences("zoen", android.content.Context.MODE_PRIVATE).edit().putString(KEY, value).apply()
+    }
+    fun label(): Int = modes.firstOrNull { it.first == mode }?.second ?: R.string.st_automatic
 }
 
 val ColorScheme.ownMessage: Color
