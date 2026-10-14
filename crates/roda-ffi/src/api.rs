@@ -204,6 +204,49 @@ impl RodaEngine {
     }
 }
 
+/// Server-side agent runtime only; deliberately outside the native FFI surface.
+impl RodaEngine {
+    /// Agent citizen account (server-side runtime). Not exported to native apps.
+    pub fn create_agent_account(
+        &self,
+        name: String,
+        handle: String,
+        relay_url: String,
+        root_secret: Vec<u8>,
+        owner: String,
+        proof_json: String,
+        vault: Arc<dyn SecretVault>,
+    ) -> Result<AccountDto, CoreError> {
+        let root: [u8; 32] = root_secret
+            .as_slice()
+            .try_into()
+            .map_err(|_| invalid("agent key"))?;
+        let proof: roda_types::AgentOwnerProof =
+            serde_json::from_str(&proof_json).map_err(|_| invalid("agent proof"))?;
+        {
+            let mut e = self.lock();
+            let (root, device, agreement) =
+                e.create_agent_account(&name, &handle, &relay_url, root, &owner, proof)?;
+            if !vault.save(VAULT_IDENTITY.into(), root.to_vec())
+                || !vault.save(VAULT_DEVICE.into(), device.to_vec())
+                || !vault.save(VAULT_AGREEMENT.into(), agreement.to_vec())
+            {
+                let _ = e.wipe();
+                let _ = e.store.meta_delete("account");
+                return Err(invalid("vault"));
+            }
+        }
+        self.account_dto().ok_or_else(|| invalid("account"))
+    }
+
+    /// Owner side of ADR 0049: this unlocked device signs the agent root, as JSON.
+    pub fn authorize_agent_json(&self, agent_id: String) -> Result<String, CoreError> {
+        let proof = self.lock().authorize_agent(&agent_id)?;
+        serde_json::to_string(&proof).map_err(|_| invalid("proof"))
+    }
+
+}
+
 #[uniffi::export]
 impl RodaEngine {
     /// The account on this device, if any.

@@ -863,6 +863,43 @@ impl Engine {
         handle: &str,
         relay_url: &str,
     ) -> R<([u8; 32], [u8; 32], [u8; 32])> {
+        self.create_account_as(name, handle, relay_url, Signer::generate(), None)
+    }
+
+    /// An Agent citizen's own account: its root key, a fresh certified device and the
+    /// owner device's proof (ADR 0049). Same registration, MLS and sync as a person.
+    pub fn create_agent_account(
+        &mut self,
+        name: &str,
+        handle: &str,
+        relay_url: &str,
+        root_secret: [u8; 32],
+        owner: &str,
+        proof: roda_types::AgentOwnerProof,
+    ) -> R<([u8; 32], [u8; 32], [u8; 32])> {
+        let root = Signer::from_secret(&root_secret);
+        if !roda_log::agent_owner::verify(owner, &root.id(), &proof) {
+            return Err(CoreError::Forbidden {
+                reason: "invalid agent owner proof".into(),
+            });
+        }
+        self.create_account_as(
+            name,
+            handle,
+            relay_url,
+            root,
+            Some((owner.to_string(), proof)),
+        )
+    }
+
+    fn create_account_as(
+        &mut self,
+        name: &str,
+        handle: &str,
+        relay_url: &str,
+        root: Signer,
+        agent: Option<(String, roda_types::AgentOwnerProof)>,
+    ) -> R<([u8; 32], [u8; 32], [u8; 32])> {
         if self.net.account.is_some() {
             return Err(CoreError::Invalid {
                 reason: t(
@@ -887,18 +924,22 @@ impl Engine {
         if !self.is_empty() {
             self.wipe()?;
         }
-        let root = Signer::generate();
         let device = Signer::generate();
         let author = Author::device(&root, device.clone());
+        let is_agent = agent.is_some();
+        let (owner, owner_proof) = match agent {
+            Some((o, p)) => (Some(o), Some(Box::new(p))),
+            None => (None, None),
+        };
         let me = Identity {
-            owner_proof: None,
+            owner_proof,
             id: root.id(),
-            kind: IdentityKind::Person,
+            kind: if is_agent { IdentityKind::Agent } else { IdentityKind::Person },
             name: name.to_string(),
             handle: handle.clone(),
             tint_hex: tint_for(&root.id()),
             glyph: None,
-            owner: None,
+            owner,
             bio: String::new(),
         };
         self.store.put_identity(&me, None)?;
@@ -915,7 +956,9 @@ impl Engine {
         })?;
         self.net.author = Some(author);
         let agreement = self.init_profile(&me.id, &me.name)?;
-        self.seed_personal_agent(&me.id)?;
+        if !is_agent {
+            self.seed_personal_agent(&me.id)?;
+        }
         Ok((root.secret(), device.secret(), agreement))
     }
 
