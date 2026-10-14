@@ -150,10 +150,46 @@ struct VersionsView: View {
     @Environment(\.dismiss) private var dismiss
     let item: ItemDetail
     var allowsRestore = true
+    @State private var planBinding: PlanBinding = .loading
+
+    private enum PlanBinding {
+        case loading
+        case ready(String)
+        case failed
+    }
+
+    /// Hash captured when the sheet opens. Restore never reads `planPage` again.
+    private var capturedPlanHash: String? {
+        if case .ready(let hash) = planBinding { return hash }
+        return nil
+    }
+
+    private var planRestoreAvailable: Bool {
+        item.kindId != "plan" || capturedPlanHash != nil
+    }
 
     var body: some View {
         List {
             Section {
+                if item.kindId == "plan" {
+                    if case .loading = planBinding {
+                        HStack {
+                            Spacer()
+                            ProgressView()
+                                .accessibilityIdentifier("legacy-version.hash.loading")
+                            Spacer()
+                        }
+                    } else if case .failed = planBinding {
+                        VStack(alignment: .leading, spacing: 6) {
+                            Text("Couldn't open this page")
+                                .font(.callout)
+                                .foregroundStyle(Palette.danger)
+                            Button("Try again") { Task { await loadPlanHash() } }
+                                .accessibilityIdentifier("legacy-version.hash.retry")
+                        }
+                        .accessibilityIdentifier("legacy-version.hash.error")
+                    }
+                }
                 ForEach(item.versions) { v in
                     HStack(alignment: .top, spacing: 12) {
                         Avatar(persona: v.author, size: 30)
@@ -169,7 +205,7 @@ struct VersionsView: View {
                             if let t = v.totalCents { Text(Money.format(t)).font(.caption.weight(.medium)).monospacedDigit() }
                         }
                         #if os(macOS)
-                        if v.number != item.version {
+                        if v.number != item.version, planRestoreAvailable {
                             Button("Restore", systemImage: "clock.arrow.circlepath") { restore(v) }
                                 .accessibilityIdentifier("legacy-version.restore.\(v.number)")
                                 .disabled(!allowsRestore)
@@ -178,12 +214,14 @@ struct VersionsView: View {
                     }
                     .padding(.vertical, 4)
                     .swipeActions {
-                        if v.number != item.version {
+                        if v.number != item.version, planRestoreAvailable {
                             Button("Restore") { restore(v) }.tint(Palette.action).disabled(!allowsRestore)
                         }
                     }
                     .contextMenu {
-                        if v.number != item.version { Button("Restore this version", systemImage: "clock.arrow.circlepath") { restore(v) }.disabled(!allowsRestore) }
+                        if v.number != item.version, planRestoreAvailable {
+                            Button("Restore this version", systemImage: "clock.arrow.circlepath") { restore(v) }.disabled(!allowsRestore)
+                        }
                     }
                 }
             } footer: {
@@ -205,10 +243,42 @@ struct VersionsView: View {
         .frame(minWidth: 560, minHeight: 480)
         .onExitCommand { dismiss() }
         #endif
+        .task { await loadPlanHash() }
+    }
+
+    private func loadPlanHash() async {
+        guard item.kindId == "plan" else { return }
+        if capturedPlanHash != nil { return }
+        planBinding = .loading
+        do {
+            let hash = try model.core.planPage(itemId: item.id).contentHash
+            if Task.isCancelled { return }
+            if hash.isEmpty { planBinding = .failed } else { planBinding = .ready(hash) }
+        } catch {
+            if Task.isCancelled { return }
+            planBinding = .failed
+        }
     }
 
     private func restore(_ v: VersionDto) {
         guard allowsRestore else { return }
+        if item.kindId == "plan" {
+            guard let hash = capturedPlanHash else {
+                model.show(.init(kind: .error, text: String(localized: "Couldn't open this page")), seconds: 4)
+                return
+            }
+            // After a stale refusal, drop the captured hash and read it again so the sheet
+            // offers Restore against the plan as it is now.
+            let restored = model.planWrite(onStale: {
+                planBinding = .loading
+                Task { await loadPlanHash() }
+            }) { try model.core.restorePlanVersion(itemId: item.id, version: v.number, observedHash: hash) }
+            if restored != nil {
+                model.show(.init(kind: .info, text: String(localized: "Version \(v.number) restored.")), seconds: 3)
+                dismiss()
+            }
+            return
+        }
         if model.perform({ try model.core.restoreVersion(itemId: item.id, version: v.number) }) != nil {
             model.show(.init(kind: .info, text: String(localized: "Version \(v.number) restored.")), seconds: 3)
             dismiss()
