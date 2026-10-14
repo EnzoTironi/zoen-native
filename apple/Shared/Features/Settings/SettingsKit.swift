@@ -23,7 +23,7 @@ struct SettingsCloseAction {
 }
 
 private struct SettingsCloseKey: EnvironmentKey {
-    static let defaultValue = SettingsCloseAction(close: {})
+    static var defaultValue: SettingsCloseAction { SettingsCloseAction(close: {}) }
 }
 
 extension EnvironmentValues {
