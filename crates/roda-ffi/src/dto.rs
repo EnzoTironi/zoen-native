@@ -327,6 +327,10 @@ pub struct UndoToken {
     pub item_id: String,
     /// Versão para a qual "Desfazer" volta.
     pub restore_version: u32,
+    /// Admitted semantic binding after this mutation.
+    pub observed_hash: String,
+    /// Item version this mutation created.
+    pub result_version: u32,
     pub label: String,
 }
 

@@ -93,6 +93,8 @@ struct VersionPreview: View {
     @State private var bump = 0
     @State private var currentVersion: UInt32 = 0
     @State private var canRestore = false
+    @State private var observedPlanHash: String?
+    @State private var planHashFailed = false
 
     var body: some View {
         Group {
@@ -129,7 +131,26 @@ struct VersionPreview: View {
         .navigationBarTitleDisplayMode(.inline)
         #endif
         .safeAreaInset(edge: .bottom) {
-            if canRestore && version.number != currentVersion {
+            if item.kindId == "plan", observedPlanHash == nil {
+                VStack(spacing: 6) {
+                    if planHashFailed {
+                        Text("Couldn't open this page")
+                            .font(.callout)
+                            .foregroundStyle(Palette.danger)
+                        Button("Try again") {
+                            refreshPermission()
+                            loadObservedPlanHash()
+                        }
+                        .accessibilityIdentifier("version.hash.retry")
+                    } else {
+                        ProgressView()
+                            .accessibilityIdentifier("version.hash.loading")
+                    }
+                }
+                .frame(maxWidth: .infinity)
+                .padding(.horizontal, 18)
+                .padding(.bottom, 8)
+            } else if canRestore && version.number != currentVersion {
                 Button {
                     restore()
                 } label: {
@@ -147,12 +168,35 @@ struct VersionPreview: View {
             }
         }
         .sensoryFeedback(.success, trigger: bump)
-        .task(id: model.revision) { refreshPermission() }
+        .task(id: model.revision) {
+            refreshPermission()
+            loadObservedPlanHash()
+        }
     }
 
     private func restore() {
         refreshPermission()
         guard canRestore, version.number != currentVersion else { return }
+        if item.kindId == "plan" {
+            guard let hash = observedPlanHash else {
+                model.show(.init(kind: .error, text: String(localized: "Couldn't open this page")), seconds: 4)
+                return
+            }
+            // After a stale refusal, drop the captured hash and read it again so the person
+            // can review the current plan and restore against it.
+            let restored = model.planWrite(onStale: {
+                observedPlanHash = nil
+                refreshPermission()
+                loadObservedPlanHash()
+            }) { try model.core.restorePlanVersion(itemId: item.id, version: version.number, observedHash: hash) }
+            if let it = restored {
+                bump += 1
+                model.show(.init(kind: .info, text: String(localized: "Version \(version.number) is back, as version \(it.version).")), seconds: 3)
+                onRestore(it)
+                dismiss()
+            }
+            return
+        }
         if let it = model.perform({ try model.core.restoreVersion(itemId: item.id, version: version.number) }) {
             var savedVersion = it.version
             if item.kindId == "page" {
@@ -178,10 +222,23 @@ struct VersionPreview: View {
 
     private func refreshPermission() {
         currentVersion = (try? model.core.item(itemId: item.id).version) ?? item.version
-        if item.kindId == "page" {
+        if item.kindId == "plan" {
+            canRestore = allowsRestore && ((try? model.core.planPage(itemId: item.id).legacyEditAdmitted) ?? false)
+        } else if item.kindId == "page" {
             canRestore = allowsRestore && ((try? model.core.page(itemId: item.id).canEdit) ?? false)
         } else {
             canRestore = allowsRestore
+        }
+    }
+
+    /// Hash lido na abertura. Restaurar não chama `planPage` de novo para reler o hash.
+    private func loadObservedPlanHash() {
+        guard item.kindId == "plan", observedPlanHash == nil else { return }
+        planHashFailed = false
+        if let hash = try? model.core.planPage(itemId: item.id).contentHash, !hash.isEmpty {
+            observedPlanHash = hash
+        } else {
+            planHashFailed = true
         }
     }
 }

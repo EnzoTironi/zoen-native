@@ -27,6 +27,7 @@ import xyz.tironi.zoen.data.FileAccess
 import xyz.tironi.zoen.miniapps.MiniAppDetailsButton
 import xyz.tironi.zoen.pages.PlanPageView
 import xyz.tironi.zoen.pages.planPageText
+import xyz.tironi.zoen.pages.planWrite
 
 private data class PlanReadState(val page: PlanPageDto? = null, val revision: Long = -1, val failure: String? = null)
 
@@ -36,6 +37,15 @@ fun ItemScreen(model: ZoenViewModel, state: AppState, id: String, navigate: (Nav
     val item = state.items.firstOrNull { it.id == id }
     var versions by rememberSaveable(id) { mutableStateOf(false) }
     var restore by remember(id) { mutableStateOf<UInt?>(null) }
+    // The binding the version sheet saw when it opened. Restore never re-reads it at tap time.
+    var sheetHash by remember(id) { mutableStateOf<String?>(null) }
+    // Bumped by a stale refusal so the sheet re-reads the binding before the next restore.
+    var sheetReload by remember(id) { mutableIntStateOf(0) }
+    LaunchedEffect(id, versions, item?.kindId, sheetReload) {
+        sheetHash = null
+        if (versions && item?.kindId == "plan") sheetHash = try { model.repository.query { it.planPage(id).contentHash } }
+            catch (error: Exception) { if (error is CancellationException) throw error; null }
+    }
     var planRead by remember(id) { mutableStateOf(PlanReadState()) }
     LaunchedEffect(id, item?.kindId, state.revision) {
         if (item?.kindId == "plan") {
@@ -48,7 +58,8 @@ fun ItemScreen(model: ZoenViewModel, state: AppState, id: String, navigate: (Nav
     }
     val planFresh = planRead.revision == state.revision
     val historyAvailable = item?.kindId != "plan" || planFresh && planRead.page?.legacyEditAdmitted == true
-    val restoreAllowed = historyAvailable && (item?.kindId != "page" || model.pageSaves.canRestore(id))
+    val restoreAllowed = historyAvailable && (item?.kindId != "page" || model.pageSaves.canRestore(id)) &&
+        (item?.kindId != "plan" || sheetHash != null)
     val context = LocalContext.current
     val focus = LocalFocusManager.current
     val fileUnavailable = stringResource(R.string.file_not_ready)
@@ -57,6 +68,7 @@ fun ItemScreen(model: ZoenViewModel, state: AppState, id: String, navigate: (Nav
     val pendingSync = stringResource(R.string.page_pending_sync)
     val draftSaved = stringResource(R.string.page_draft_saved)
     val draftRecovery = stringResource(R.string.page_recovery_before_restore)
+    val changed = stringResource(R.string.plan_changed)
     DisposableEffect(id) { model.viewingItem(id); onDispose { model.viewingItem(null) } }
     if (item == null) {
         Scaffold(topBar = { ScreenBar(stringResource(R.string.files), back) }) { padding -> EmptyState(stringResource(R.string.unavailable), stringResource(R.string.unavailable_detail), Modifier.padding(padding)) }
@@ -139,15 +151,19 @@ fun ItemScreen(model: ZoenViewModel, state: AppState, id: String, navigate: (Nav
     }
     restore?.let { number -> AlertDialog(onDismissRequest = { restore = null }, title = { Text(stringResource(R.string.restore)) }, text = { Text(stringResource(R.string.restore_question)) }, confirmButton = {
         TextButton(enabled = restoreAllowed, modifier = Modifier.testTag("confirm-restore-version"), onClick = {
-            restore = null; versions = false
+            val observed = sheetHash
+            restore = null
             val owner = state.me?.id ?: return@TextButton
             model.launch {
-                val fresh = model.pageSaves.restoreVersion(model.repository, id, owner, number)
-                model.notify(fresh?.saveError ?: when {
-                    fresh?.pendingSync == true -> pendingSync
-                    fresh?.unsaved == true -> draftSaved
-                    else -> saved
-                })
+                model.planWrite(changed, onStale = { sheetReload++ }) {
+                    val fresh = model.pageSaves.restoreVersion(model.repository, id, owner, number, observed)
+                    versions = false
+                    model.notify(fresh?.saveError ?: when {
+                        fresh?.pendingSync == true -> pendingSync
+                        fresh?.unsaved == true -> draftSaved
+                        else -> saved
+                    })
+                }
             }
         }) { Text(stringResource(R.string.restore)) }
     }, dismissButton = { TextButton(onClick = { restore = null }) { Text(stringResource(R.string.cancel)) } }) }
