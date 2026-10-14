@@ -567,12 +567,12 @@ private fun InvitesPage(model: ZoenViewModel, state: AppState, back: () -> Unit,
     val context = LocalContext.current
     val inviteMessage = stringResource(R.string.st_invite_message)
     val link by produceState<String?>(null, state.account) { value = runCatching { model.repository.query { it.friendInviteLink() } }.getOrNull() }
-    SettingsScaffold(stringResource(R.string.st_invites), back, close, bottom = link?.let { l -> {
-        PrimaryButton(stringResource(R.string.st_invite_someone), tag = "settings:inviteShare") {
-            val text = inviteMessage + " " + l
-            context.startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND).setType("text/plain").putExtra(Intent.EXTRA_TEXT, text), null))
+    SettingsScaffold(stringResource(R.string.st_invites), back, close, bottom = {
+        PrimaryButton(stringResource(R.string.st_invite_someone), busy = link == null, tag = "settings:inviteShare") {
+            val l = link ?: return@PrimaryButton
+            context.startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND).setType("text/plain").putExtra(Intent.EXTRA_TEXT, "$inviteMessage $l"), null))
         }
-    } }) {
+    }) {
         Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(SettingsTone.radius)).background(SettingsTone.card()).padding(20.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Icon(Icons.Rounded.CardGiftcard, null)
             Text(stringResource(R.string.st_invites_title), style = MaterialTheme.typography.titleLarge)

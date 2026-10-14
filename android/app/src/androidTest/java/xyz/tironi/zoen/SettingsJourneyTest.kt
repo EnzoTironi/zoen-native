@@ -1,5 +1,8 @@
 package xyz.tironi.zoen
 
+import androidx.compose.ui.test.performScrollTo
+import androidx.compose.ui.test.assertIsEnabled
+import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.activity.ComponentActivity
 import androidx.compose.runtime.*
 import androidx.compose.runtime.snapshots.SnapshotStateList
@@ -97,9 +100,9 @@ class SettingsJourneyTest {
         val app = ApplicationProvider.getApplicationContext<ZoenApplication>()
         val core = runBlocking { app.repository.query { Triple(it.account()?.handle, it.friendInviteLink(), runCatching { it.me().handle }.exceptionOrNull() ?: runCatching { it.me().handle }.getOrNull()) } }
         assertTrue("core link for $core", core.second?.contains("teste_ajustes") == true)
-        compose.onNodeWithTag("settings:Invites").performClick()
-        compose.waitUntil(10_000) { compose.onAllNodesWithTag("settings:inviteShare").fetchSemanticsNodes().isNotEmpty() }
-        compose.onNodeWithTag("settings:inviteShare").assertIsDisplayed()
+        compose.onNodeWithTag("settings:Invites").performScrollTo().performClick()
+        compose.waitUntil(15_000) { compose.onAllNodesWithTag("settings:inviteShare").fetchSemanticsNodes().any { SemanticsProperties.Disabled !in it.config } }
+        compose.onNodeWithTag("settings:inviteShare").assertIsDisplayed().assertIsEnabled()
     }
 
     @Test fun disappearingMessagesShowsEveryOptionDisabled() {
