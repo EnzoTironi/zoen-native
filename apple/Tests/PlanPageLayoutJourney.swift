@@ -63,6 +63,27 @@ struct PlanPageLayoutJourney {
                    "The actual generated Swift/Core read renders every seeded priced row with exact costs")
         try expect(actual.title?.text.utf8.elementsEqual(detail.title.utf8) == true && page.totalCents == detail.plan?.totalCents,
                    "The actual document read agrees with the existing Plan title and total")
+
+        // Journey: the version sheet captures the binding when it opens, the plan changes
+        // underneath it, and restoring with the captured hash is refused without appending.
+        let sheetHash = try core.planPage(itemId: itemId).contentHash
+        let editLine = try unwrap(legacyLines.first)
+        _ = try core.editPlanLine(itemId: itemId, lineId: editLine.id, text: "Changed under the sheet",
+                                  costCents: editLine.costCents, observedHash: sheetHash)
+        let changed = try core.item(itemId: itemId)
+        var refusedAsStale = false
+        do {
+            _ = try core.restorePlanVersion(itemId: itemId, version: 1, observedHash: sheetHash)
+        } catch let error as CoreError {
+            if case .Stale = error { refusedAsStale = true }
+        }
+        let after = try core.item(itemId: itemId)
+        try expect(refusedAsStale, "Restoring with the hash seen when the sheet opened is refused as stale")
+        try expect(after.version == changed.version && after.versions.count == changed.versions.count,
+                   "A refused restore appends no version")
+        let fresh = try core.planPage(itemId: itemId).contentHash
+        let restored = try core.restorePlanVersion(itemId: itemId, version: 1, observedHash: fresh)
+        try expect(restored.version == changed.version + 1, "Re-reading the binding gives the person a way forward")
         print("RESULT \(passed) passed; 0 failed")
     }
 

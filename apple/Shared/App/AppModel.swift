@@ -315,13 +315,24 @@ final class AppModel {
     }
 
     func undo(_ token: UndoToken) {
-        do {
-            _ = try core.undo(token: token)
-            refresh()
+        if planWrite({ try core.undo(token: token) }) != nil {
             show(.init(kind: .info, text: String(localized: "Undone. The previous version is back (and the history is still there).")), seconds: 3)
+        }
+    }
+
+    /// The one place a Plan write (edit, undo, restore) turns a refusal into a notice.
+    /// Refreshes either way. A stale refusal is informational and calls `onStale` so the
+    /// caller can re-read its observed binding; anything else is an error. Nil on failure.
+    @discardableResult
+    func planWrite<T>(onStale: () -> Void = {}, _ work: () throws -> T) -> T? {
+        do {
+            let out = try work()
+            refresh()
+            return out
         } catch let error as CoreError {
             refresh()
             if case .Stale = error {
+                onStale()
                 show(.init(kind: .info, text: error.message), seconds: 4)
             } else {
                 show(.init(kind: .error, text: error.message))
@@ -330,6 +341,7 @@ final class AppModel {
             refresh()
             show(.init(kind: .error, text: error.localizedDescription))
         }
+        return nil
     }
 
     /// Toda edição é uma versão nova; mostramos "Desfazer". A reação do agente (se houver)

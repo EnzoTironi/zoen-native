@@ -267,21 +267,15 @@ struct VersionsView: View {
                 model.show(.init(kind: .error, text: String(localized: "Couldn't open this page")), seconds: 4)
                 return
             }
-            do {
-                _ = try model.core.restorePlanVersion(itemId: item.id, version: v.number, observedHash: hash)
-                model.refresh()
+            // After a stale refusal, drop the captured hash and read it again so the sheet
+            // offers Restore against the plan as it is now.
+            let restored = model.planWrite(onStale: {
+                planBinding = .loading
+                Task { await loadPlanHash() }
+            }) { try model.core.restorePlanVersion(itemId: item.id, version: v.number, observedHash: hash) }
+            if restored != nil {
                 model.show(.init(kind: .info, text: String(localized: "Version \(v.number) restored.")), seconds: 3)
                 dismiss()
-            } catch let error as CoreError {
-                model.refresh()
-                if case .Stale = error {
-                    model.show(.init(kind: .info, text: error.message), seconds: 4)
-                } else {
-                    model.show(.init(kind: .error, text: error.message))
-                }
-            } catch {
-                model.refresh()
-                model.show(.init(kind: .error, text: error.localizedDescription))
             }
             return
         }

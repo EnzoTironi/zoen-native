@@ -182,23 +182,18 @@ struct VersionPreview: View {
                 model.show(.init(kind: .error, text: String(localized: "Couldn't open this page")), seconds: 4)
                 return
             }
-            do {
-                let it = try model.core.restorePlanVersion(itemId: item.id, version: version.number, observedHash: hash)
-                model.refresh()
+            // After a stale refusal, drop the captured hash and read it again so the person
+            // can review the current plan and restore against it.
+            let restored = model.planWrite(onStale: {
+                observedPlanHash = nil
+                refreshPermission()
+                loadObservedPlanHash()
+            }) { try model.core.restorePlanVersion(itemId: item.id, version: version.number, observedHash: hash) }
+            if let it = restored {
                 bump += 1
                 model.show(.init(kind: .info, text: String(localized: "Version \(version.number) is back, as version \(it.version).")), seconds: 3)
                 onRestore(it)
                 dismiss()
-            } catch let error as CoreError {
-                model.refresh()
-                if case .Stale = error {
-                    model.show(.init(kind: .info, text: error.message), seconds: 4)
-                } else {
-                    model.show(.init(kind: .error, text: error.message))
-                }
-            } catch {
-                model.refresh()
-                model.show(.init(kind: .error, text: error.localizedDescription))
             }
             return
         }

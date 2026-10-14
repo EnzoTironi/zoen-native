@@ -324,24 +324,9 @@ struct PlanItemView: View {
 
     @discardableResult
     private func write(_ work: () throws -> EditOutcome) -> Bool {
-        do {
-            let out = try work()
-            model.refresh()
-            apply(out)
-            return true
-        } catch let error as CoreError {
-            model.refresh()
-            if case .Stale = error {
-                model.show(.init(kind: .info, text: error.message), seconds: 4)
-                load()
-            } else {
-                model.show(.init(kind: .error, text: error.message))
-            }
-        } catch {
-            model.refresh()
-            model.show(.init(kind: .error, text: error.localizedDescription))
-        }
-        return false
+        guard let out = model.planWrite(onStale: { load() }, work) else { return false }
+        apply(out)
+        return true
     }
 
     private func apply(_ out: EditOutcome?) {
