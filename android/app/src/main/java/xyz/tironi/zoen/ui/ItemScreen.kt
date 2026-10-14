@@ -27,7 +27,7 @@ import xyz.tironi.zoen.data.FileAccess
 import xyz.tironi.zoen.miniapps.MiniAppDetailsButton
 import xyz.tironi.zoen.pages.PlanPageView
 import xyz.tironi.zoen.pages.planPageText
-import xyz.tironi.zoen.pages.planRestoreNotice
+import xyz.tironi.zoen.pages.planWrite
 
 private data class PlanReadState(val page: PlanPageDto? = null, val revision: Long = -1, val failure: String? = null)
 
@@ -37,7 +37,13 @@ fun ItemScreen(model: ZoenViewModel, state: AppState, id: String, navigate: (Nav
     val item = state.items.firstOrNull { it.id == id }
     var versions by rememberSaveable(id) { mutableStateOf(false) }
     var restore by remember(id) { mutableStateOf<UInt?>(null) }
-    var restoreHash by remember(id) { mutableStateOf<String?>(null) }
+    // The binding the version sheet saw when it opened. Restore never re-reads it at tap time.
+    var sheetHash by remember(id) { mutableStateOf<String?>(null) }
+    LaunchedEffect(id, versions, item?.kindId) {
+        sheetHash = null
+        if (versions && item?.kindId == "plan") sheetHash = try { model.repository.query { it.planPage(id).contentHash } }
+            catch (error: Exception) { if (error is CancellationException) throw error; null }
+    }
     var planRead by remember(id) { mutableStateOf(PlanReadState()) }
     LaunchedEffect(id, item?.kindId, state.revision) {
         if (item?.kindId == "plan") {
@@ -50,7 +56,8 @@ fun ItemScreen(model: ZoenViewModel, state: AppState, id: String, navigate: (Nav
     }
     val planFresh = planRead.revision == state.revision
     val historyAvailable = item?.kindId != "plan" || planFresh && planRead.page?.legacyEditAdmitted == true
-    val restoreAllowed = historyAvailable && (item?.kindId != "page" || model.pageSaves.canRestore(id))
+    val restoreAllowed = historyAvailable && (item?.kindId != "page" || model.pageSaves.canRestore(id)) &&
+        (item?.kindId != "plan" || sheetHash != null)
     val context = LocalContext.current
     val focus = LocalFocusManager.current
     val fileUnavailable = stringResource(R.string.file_not_ready)
@@ -132,10 +139,7 @@ fun ItemScreen(model: ZoenViewModel, state: AppState, id: String, navigate: (Nav
                     headlineContent = { Text(stringResource(R.string.version, version.number.toInt())) }, supportingContent = {
                     Text(version.note + "\n" + version.author.name + " · " + DateFormat.getDateTimeInstance(DateFormat.SHORT, DateFormat.SHORT).format(Date(version.atMs)))
                 }, leadingContent = { Icon(if (version.isUndo) Icons.Rounded.Undo else Icons.Rounded.History, null) }, trailingContent = {
-                    if (version.number != item.version) TextButton(onClick = {
-                        restoreHash = if (item.kindId == "plan") planRead.page?.contentHash else null
-                        restore = version.number
-                    }, enabled = restoreAllowed,
+                    if (version.number != item.version) TextButton(onClick = { restore = version.number }, enabled = restoreAllowed,
                         modifier = Modifier.testTag("restore-version:${version.number}")) { Text(stringResource(R.string.restore)) }
                     else Icon(Icons.Rounded.Check, stringResource(R.string.saved))
                 })
@@ -145,19 +149,17 @@ fun ItemScreen(model: ZoenViewModel, state: AppState, id: String, navigate: (Nav
     }
     restore?.let { number -> AlertDialog(onDismissRequest = { restore = null }, title = { Text(stringResource(R.string.restore)) }, text = { Text(stringResource(R.string.restore_question)) }, confirmButton = {
         TextButton(enabled = restoreAllowed, modifier = Modifier.testTag("confirm-restore-version"), onClick = {
+            val observed = sheetHash
             restore = null; versions = false
             val owner = state.me?.id ?: return@TextButton
             model.launch {
-                try {
-                    val fresh = model.pageSaves.restoreVersion(model.repository, id, owner, number, restoreHash)
+                model.planWrite(changed) {
+                    val fresh = model.pageSaves.restoreVersion(model.repository, id, owner, number, observed)
                     model.notify(fresh?.saveError ?: when {
                         fresh?.pendingSync == true -> pendingSync
                         fresh?.unsaved == true -> draftSaved
                         else -> saved
                     })
-                } catch (error: Exception) {
-                    if (error is CancellationException) throw error
-                    model.notify(planRestoreNotice(error, changed))
                 }
             }
         }) { Text(stringResource(R.string.restore)) }

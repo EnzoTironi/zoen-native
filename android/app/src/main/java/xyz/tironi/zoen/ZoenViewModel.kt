@@ -12,6 +12,7 @@ import kotlinx.coroutines.launch
 import kotlinx.serialization.json.*
 import xyz.tironi.zoen.core.*
 import xyz.tironi.zoen.agent.*
+import xyz.tironi.zoen.pages.planWrite
 
 data class Notice(val text: String, val undo: UndoToken? = null)
 
@@ -71,13 +72,8 @@ class ZoenViewModel(application: Application) : AndroidViewModel(application) {
         notifyEdit(result)
     }
     fun undo(token: UndoToken) = viewModelScope.launch {
-        try { repository.change { it.undo(token) } }
-        catch (error: Exception) {
-            if (error is CancellationException) throw error
-            val text = if (error is CoreException.Stale) getApplication<Application>().getString(R.string.plan_changed)
-                else error.message ?: getApplication<Application>().getString(R.string.something_wrong)
-            messages.send(Notice(text))
-        }
+        val app = getApplication<Application>()
+        planWrite(app.getString(R.string.plan_changed), app.getString(R.string.something_wrong)) { repository.change { it.undo(token) } }
     }
 
     suspend fun send(spaceId: String, text: String, reply: String? = null, thread: Boolean = false, onStored: () -> Unit = {}) {

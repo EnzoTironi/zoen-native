@@ -13,7 +13,6 @@ import androidx.compose.material.icons.rounded.Image
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
-import kotlinx.coroutines.CancellationException
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
@@ -51,12 +50,10 @@ fun PlanPageView(model: ZoenViewModel, item: ItemDetail, page: PlanPageDto?, fai
         busy = true
         model.launch {
             try {
-                val result = model.repository.change { core -> action(core, observed.contentHash) }
-                completed()
-                model.notifyEdit(result)
-            } catch (error: Exception) {
-                if (error is CancellationException) throw error
-                model.notify(if (error is CoreException.Stale) changed else error.message.orEmpty())
+                model.planWrite(changed) { model.repository.change { core -> action(core, observed.contentHash) } }?.let { result ->
+                    completed()
+                    model.notifyEdit(result)
+                }
             } finally { busy = false }
         }
     }

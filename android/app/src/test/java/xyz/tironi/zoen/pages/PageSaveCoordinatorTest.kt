@@ -29,12 +29,13 @@ class PageSaveCoordinatorTest {
         val stale = CoreException.Stale("A página mudou. Revise antes de editar.")
         val phrase = "Este plano mudou. Reabra o editor para usar a versão atual."
         assertEquals("reason=A página mudou. Revise antes de editar.", stale.message)
-        assertEquals(phrase, planRestoreNotice(stale, phrase))
+        assertEquals(phrase, planWriteNotice(stale, phrase))
     }
 
     @Test fun otherPlanRestoreFailureKeepsTheExceptionMessage() {
-        assertEquals("disk full", planRestoreNotice(IllegalStateException("disk full"), "ignored"))
-        assertEquals("", planRestoreNotice(IllegalStateException(), "ignored"))
+        assertEquals("disk full", planWriteNotice(IllegalStateException("disk full"), "ignored"))
+        assertEquals("", planWriteNotice(IllegalStateException(), "ignored"))
+        assertEquals("Something went wrong", planWriteNotice(IllegalStateException(), "ignored", "Something went wrong"))
     }
 
     @Test fun recoveredDraftBlocksRestoreUntilExplicitlyResolved() = runTest(timeout = 3.seconds) {

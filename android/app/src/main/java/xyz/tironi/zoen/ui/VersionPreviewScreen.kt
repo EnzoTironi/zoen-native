@@ -30,7 +30,7 @@ import xyz.tironi.zoen.miniapps.SnapshotCard
 import xyz.tironi.zoen.miniapps.WidgetSnapshot
 import xyz.tironi.zoen.pages.styledPageText
 import xyz.tironi.zoen.pages.pageTextStyle
-import xyz.tironi.zoen.pages.planRestoreNotice
+import xyz.tironi.zoen.pages.planWrite
 
 private data class HistoricalContent(val item: ItemDetail, val page: PageDto?, val file: FileVersionContent?, val canRestore: Boolean)
 private data class HistoricalRead(val content: HistoricalContent? = null, val failure: String? = null)
@@ -58,7 +58,16 @@ fun VersionPreviewScreen(model: ZoenViewModel, id: String, number: UInt, back: (
     }
     val content = read.content
     var confirm by remember { mutableStateOf(false) }
+    // Captured when the preview opens, like Apple's loadObservedPlanHash. A stale refusal bumps
+    // [hashLoad] so the binding is read again and the person can retry against the current plan.
     var observedPlanHash by remember(id, number) { mutableStateOf<String?>(null) }
+    var hashLoad by remember(id, number) { mutableIntStateOf(0) }
+    LaunchedEffect(id, number, hashLoad) {
+        observedPlanHash = null
+        observedPlanHash = try { model.repository.query { core ->
+            if (core.item(id).kindId == "plan") core.planPage(id).contentHash else null
+        } } catch (error: Exception) { if (error is CancellationException) throw error; null }
+    }
     var busy by remember { mutableStateOf(false) }
     val saved = stringResource(R.string.saved)
     val pendingSync = stringResource(R.string.page_pending_sync)
@@ -74,15 +83,9 @@ fun VersionPreviewScreen(model: ZoenViewModel, id: String, number: UInt, back: (
     }) }, bottomBar = {
         Surface(tonalElevation = 2.dp) { Row(Modifier.fillMaxWidth().navigationBarsPadding().padding(16.dp), horizontalArrangement = Arrangement.End) {
             if (content?.page != null && !model.pageSaves.canRestore(id)) Text(stringResource(R.string.page_recovery_before_restore), Modifier.weight(1f), style = MaterialTheme.typography.bodySmall)
-            Button(enabled = content?.canRestore == true && !busy && (content.page == null || model.pageSaves.canRestore(id)),
-                modifier = Modifier.testTag("preview-restore"), onClick = {
-                    model.launch {
-                        observedPlanHash = model.repository.query { core ->
-                            if (core.item(id).kindId == "plan") core.planPage(id).contentHash else null
-                        }
-                        confirm = true
-                    }
-                }) { Text(stringResource(R.string.page_restore_version)) }
+            Button(enabled = content?.canRestore == true && !busy && (content.page == null || model.pageSaves.canRestore(id)) &&
+                    (content.item.kindId != "plan" || observedPlanHash != null),
+                modifier = Modifier.testTag("preview-restore"), onClick = { confirm = true }) { Text(stringResource(R.string.page_restore_version)) }
         } }
     }) { padding ->
         val historical = content
@@ -143,16 +146,15 @@ fun VersionPreviewScreen(model: ZoenViewModel, id: String, number: UInt, back: (
             confirm = false; busy = true
             model.launch {
                 try {
-                    val fresh = model.pageSaves.restoreVersion(model.repository, id, owner, number, observedPlanHash)
-                    model.notify(fresh?.saveError ?: when {
-                        fresh?.pendingSync == true -> pendingSync
-                        fresh?.unsaved == true -> draftSaved
-                        else -> saved
-                    })
-                    back()
-                } catch (error: Exception) {
-                    if (error is CancellationException) throw error
-                    model.notify(planRestoreNotice(error, changed))
+                    model.planWrite(changed, onStale = { hashLoad++ }) {
+                        val fresh = model.pageSaves.restoreVersion(model.repository, id, owner, number, observedPlanHash)
+                        model.notify(fresh?.saveError ?: when {
+                            fresh?.pendingSync == true -> pendingSync
+                            fresh?.unsaved == true -> draftSaved
+                            else -> saved
+                        })
+                        back()
+                    }
                 } finally { busy = false }
             }
         }) { Text(stringResource(R.string.restore)) }
