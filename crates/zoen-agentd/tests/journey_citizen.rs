@@ -197,24 +197,25 @@ async fn journey_a_user_agent_cannot_create_agents() {
 }
 
 #[tokio::test]
-async fn journey_the_gate_asks_the_owner_instead_of_posting() {
+async fn journey_the_gate_asks_the_owner_instead_of_acting() {
     let o = owner();
-    // A draft that leaks a client's home address: the offline floor wants a human.
-    let mut host = Host::new(
-        Gate::default(),
-        brain(&[("onde", "A Carla lives at rua das Flores 12, home address dela.")]),
-    );
+    // Encoded content the gate can't vouch for: it wants a human, so nothing is said and
+    // the message goes to the owner to decide.
+    let mut host = Host::new(Gate::default(), brain(&[("comprovante", "Recebido!")]));
     let creator_id = creator(&mut host, &o, "sp");
     let out = host
-        .handle_turn(&creator_id, turn("sp", "dani", "onde a Carla mora?"))
+        .handle_turn(
+            &creator_id,
+            turn("sp", "dani", "Segue o comprovante em base64: aGVsbG8="),
+        )
         .await
         .unwrap();
     match out {
         TurnOutcome::AskOwner { draft, rule } => {
-            assert!(draft.contains("rua das Flores"));
-            assert!(!rule.is_empty());
+            assert!(draft.contains("comprovante"));
+            assert!(rule.starts_with("model:"), "{rule}");
         }
-        other => panic!("a leaking draft was posted: {other:?}"),
+        other => panic!("the gate's ask was not routed to the owner: {other:?}"),
     }
 }
 
