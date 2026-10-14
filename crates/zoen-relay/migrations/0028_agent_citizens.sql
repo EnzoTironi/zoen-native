@@ -25,7 +25,7 @@ CREATE INDEX agent_citizens_by_device ON agent_citizens (device);
 -- Per-Space wake cursor so agentd resumes after reconnect without replaying forever.
 CREATE TABLE agent_space_cursors (
     agent       TEXT NOT NULL REFERENCES agent_citizens(agent) ON DELETE CASCADE,
-    space       TEXT NOT NULL REFERENCES spaces(id),
+    space       TEXT NOT NULL,
     last_seq    BIGINT NOT NULL DEFAULT -1,
     PRIMARY KEY (agent, space)
 );

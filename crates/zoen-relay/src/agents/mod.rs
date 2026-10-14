@@ -2,9 +2,16 @@
 //!
 //! The relay stores an opaque definition blob and which device claimed the Agent identity.
 //! It never runs the model. `zoen-agentd` claims the row, publishes key packages, and wakes
-//! on Closed-space traffic for members while the owner is offline.
+//! through the relay's ordinary fan-out: the agent's own session is a member like anyone.
 
 use sqlx::{PgPool, Postgres, Transaction};
+
+/// Rows of `agent_citizens`, for operators and the agent's resume point.
+pub async fn citizens(pool: &PgPool) -> Result<Vec<(String, String, String)>, sqlx::Error> {
+    sqlx::query_as("SELECT agent, device, kind FROM agent_citizens ORDER BY claimed_at")
+        .fetch_all(pool)
+        .await
+}
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CitizenClaim {
@@ -93,24 +100,6 @@ pub async fn claim_citizen(
     .execute(&mut **tx)
     .await?;
     Ok(())
-}
-
-/// Agent members of a Space that have a claimed runtime device (eligible to wake).
-pub async fn wake_candidates(
-    pool: &PgPool,
-    space: &str,
-) -> Result<Vec<(String, String)>, sqlx::Error> {
-    sqlx::query_as(
-        r#"
-        SELECT c.agent, c.device
-        FROM members m
-        JOIN agent_citizens c ON c.agent = m.identity
-        WHERE m.space = $1
-        "#,
-    )
-    .bind(space)
-    .fetch_all(pool)
-    .await
 }
 
 /// Advance the agent's cursor after it applied traffic through `seq` (inclusive).

@@ -198,6 +198,26 @@ pub async fn register(
         enroll_device(tx, &profile.id, device, cert)
             .await
             .map_err(|e| e.to_string())?;
+        if profile.kind == IdentityKind::Agent {
+            // The agent's first device is its runtime: it becomes a citizen the relay
+            // can account for while the owner is offline (migration 0028).
+            crate::agents::claim_citizen(
+                tx,
+                &crate::agents::CitizenClaim {
+                    agent: profile.id.clone(),
+                    device: device.to_string(),
+                    kind: "User".into(),
+                    definition: Vec::new(),
+                    definition_version: 1,
+                    avatar_style: "hand-drawn-animated".into(),
+                    avatar_glyph: profile.glyph.clone(),
+                    avatar_tint: Some(profile.tint_hex.clone()),
+                    avatar_asset: None,
+                },
+            )
+            .await
+            .map_err(|e| e.to_string())?;
+        }
     } else {
         let active = sqlx::query_scalar::<_, bool>(
             "SELECT identity = $1 AND revoked_at IS NULL FROM devices WHERE device = $2 FOR SHARE",
