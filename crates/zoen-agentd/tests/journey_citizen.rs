@@ -101,7 +101,11 @@ async fn journey_owner_offline_creator_proposes_and_owner_device_approves_the_bo
     let out = host
         .handle_turn(
             &creator_id,
-            turn(dm, &o.person.id, "Quero um bot de agenda pro meu salão. Pode criar?"),
+            turn(
+                dm,
+                &o.person.id,
+                "Quero um bot de agenda pro meu salão. Pode criar?",
+            ),
         )
         .await
         .unwrap();
@@ -130,7 +134,10 @@ async fn journey_owner_offline_creator_proposes_and_owner_device_approves_the_bo
 
     let client_chat = "sp_client";
     host.invite(&bot_id, client_chat).unwrap();
-    assert_eq!(host.memberships(&bot_id).unwrap(), &[client_chat.to_string()]);
+    assert_eq!(
+        host.memberships(&bot_id).unwrap(),
+        &[client_chat.to_string()]
+    );
     let client_out = host
         .handle_turn(&bot_id, turn(client_chat, "client", "Oi, tem horário?"))
         .await
@@ -155,7 +162,10 @@ async fn journey_a_non_owner_cannot_make_the_creator_create_an_agent() {
     let group = "sp_group";
     let creator_id = creator(&mut host, &o, group);
     let out = host
-        .handle_turn(&creator_id, turn(group, "carla", "Pode criar um bot pra mim?"))
+        .handle_turn(
+            &creator_id,
+            turn(group, "carla", "Pode criar um bot pra mim?"),
+        )
         .await
         .unwrap();
     assert_eq!(

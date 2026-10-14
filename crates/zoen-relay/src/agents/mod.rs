@@ -120,6 +120,9 @@ async fn runtime(pool: &PgPool, agent: &str, device: &str) -> Result<(), AgentCi
     }
 }
 
+/// kind, definition_version, definition, paused, revoked, device.
+type StateRow = (Option<String>, i32, Vec<u8>, bool, bool, String);
+
 /// Status, definition and cursors for the signed-in runtime. Cursors of Spaces the agent
 /// is no longer in (`member_of`) are dropped here: membership lives in FoundationDB.
 pub async fn state(
@@ -128,7 +131,7 @@ pub async fn state(
     device: &str,
     member_of: &[String],
 ) -> Result<AgentStateRecord, AgentCitizenError> {
-    let row: Option<(Option<String>, i32, Vec<u8>, bool, bool, String)> = sqlx::query_as(
+    let row: Option<StateRow> = sqlx::query_as(
         "SELECT kind, definition_version, definition, paused_at IS NOT NULL, revoked_at IS NOT NULL, device
          FROM agent_citizens WHERE agent = $1",
     )

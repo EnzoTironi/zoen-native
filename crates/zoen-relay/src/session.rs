@@ -19,8 +19,8 @@ use axum::extract::ws::{Message, WebSocket};
 use futures_util::{SinkExt, StreamExt};
 use roda_log::{device_cert_message, verify_sig};
 use roda_proto::{
-    auth_message, negotiate, normalize_handle, AgentRequest, ClientFrame, ErrorCode, Op, Reply, ServerFrame,
-    MIN_PROTOCOL_VERSION, PROTOCOL_VERSION,
+    auth_message, negotiate, normalize_handle, AgentRequest, ClientFrame, ErrorCode, Op, Reply,
+    ServerFrame, MIN_PROTOCOL_VERSION, PROTOCOL_VERSION,
 };
 use roda_types::{EventBody, IdentityKind};
 use tokio::sync::{mpsc, Notify};

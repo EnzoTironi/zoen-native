@@ -7,9 +7,10 @@ use prost::Message;
 use roda_types::{Identity, IdentityKind, Role};
 
 use crate::{
-    AgentAction, AgentRequest, AgentStateRecord, AgreementKeyRecord, ClientFrame, Cursor, DeviceCertificate, DeviceRecord, DeviceSigned,
-    Envelope, EphemeralKind, ErrorCode, InviteCreated, InvitePreview, KeyPackageRecord, Op, Reply,
-    SealedProfile, Sequenced, ServerFrame,
+    AgentAction, AgentRequest, AgentStateRecord, AgreementKeyRecord, ClientFrame, Cursor,
+    DeviceCertificate, DeviceRecord, DeviceSigned, Envelope, EphemeralKind, ErrorCode,
+    InviteCreated, InvitePreview, KeyPackageRecord, Op, Reply, SealedProfile, Sequenced,
+    ServerFrame,
 };
 
 /// Why a frame didn't decode.
@@ -509,7 +510,7 @@ pub struct PbReady {
 pub struct PbRes {
     #[prost(uint64, tag = "1")]
     pub id: u64,
-    #[prost(oneof = "pb_res::R", tags = "2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12")]
+    #[prost(oneof = "pb_res::R", tags = "2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13")]
     pub r: Option<pb_res::R>,
 }
 
@@ -1306,6 +1307,55 @@ impl ServerFrame {
     }
 }
 
+fn agent_req_to(a: &AgentRequest) -> PbAgentReq {
+    let mut pb = PbAgentReq::default();
+    match a {
+        AgentRequest::State => pb.op = "state".into(),
+        AgentRequest::Advance { space, seq } => {
+            pb.op = "advance".into();
+            pb.space = space.clone();
+            pb.seq = *seq;
+        }
+        AgentRequest::Define {
+            agent,
+            version,
+            kind,
+            definition,
+        } => {
+            pb.op = "define".into();
+            pb.agent = agent.clone();
+            pb.version = *version;
+            pb.kind = kind.clone();
+            pb.definition = definition.clone();
+        }
+        AgentRequest::Control { agent, action } => {
+            pb.op = action.id().into();
+            pb.agent = agent.clone();
+        }
+    }
+    pb
+}
+
+fn agent_req_from(pb: PbAgentReq) -> Result<AgentRequest, DecodeError> {
+    Ok(match pb.op.as_str() {
+        "state" => AgentRequest::State,
+        "advance" => AgentRequest::Advance {
+            space: pb.space,
+            seq: pb.seq,
+        },
+        "define" => AgentRequest::Define {
+            agent: pb.agent,
+            version: pb.version,
+            kind: pb.kind,
+            definition: pb.definition,
+        },
+        other => AgentRequest::Control {
+            agent: pb.agent,
+            action: AgentAction::parse(other).ok_or_else(|| bad("agent op"))?,
+        },
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1745,53 +1795,40 @@ mod tests {
         }
         assert!(ClientFrame::decode(&[]).is_err());
     }
-}
 
-fn agent_req_to(a: &AgentRequest) -> PbAgentReq {
-    let mut pb = PbAgentReq::default();
-    match a {
-        AgentRequest::State => pb.op = "state".into(),
-        AgentRequest::Advance { space, seq } => {
-            pb.op = "advance".into();
-            pb.space = space.clone();
-            pb.seq = *seq;
+    #[test]
+    fn agent_requests_round_trip() {
+        use crate::{AgentAction, AgentRequest, AgentStateRecord};
+        for op in [
+            Op::Agent(AgentRequest::State),
+            Op::Agent(AgentRequest::Advance {
+                space: "sp".into(),
+                seq: 7,
+            }),
+            Op::Agent(AgentRequest::Define {
+                agent: "a".into(),
+                version: 2,
+                kind: "User".into(),
+                definition: b"{}".to_vec(),
+            }),
+            Op::Agent(AgentRequest::Control {
+                agent: "a".into(),
+                action: AgentAction::Revoke,
+            }),
+        ] {
+            let f = ClientFrame::Req { id: 1, op };
+            assert_eq!(ClientFrame::decode(&f.encode()).unwrap(), f);
         }
-        AgentRequest::Define {
-            agent,
-            version,
-            kind,
-            definition,
-        } => {
-            pb.op = "define".into();
-            pb.agent = agent.clone();
-            pb.version = *version;
-            pb.kind = kind.clone();
-            pb.definition = definition.clone();
-        }
-        AgentRequest::Control { agent, action } => {
-            pb.op = action.id().into();
-            pb.agent = agent.clone();
-        }
+        let r = ServerFrame::Res {
+            id: 1,
+            result: Ok(Reply::AgentState(AgentStateRecord {
+                status: "paused".into(),
+                kind: "Creator".into(),
+                definition_version: 3,
+                definition: b"{}".to_vec(),
+                cursors: vec![("sp".into(), 9)],
+            })),
+        };
+        assert_eq!(ServerFrame::decode(&r.encode()).unwrap(), r);
     }
-    pb
-}
-
-fn agent_req_from(pb: PbAgentReq) -> Result<AgentRequest, DecodeError> {
-    Ok(match pb.op.as_str() {
-        "state" => AgentRequest::State,
-        "advance" => AgentRequest::Advance {
-            space: pb.space,
-            seq: pb.seq,
-        },
-        "define" => AgentRequest::Define {
-            agent: pb.agent,
-            version: pb.version,
-            kind: pb.kind,
-            definition: pb.definition,
-        },
-        other => AgentRequest::Control {
-            agent: pb.agent,
-            action: AgentAction::parse(other).ok_or_else(|| bad("agent op"))?,
-        },
-    })
 }

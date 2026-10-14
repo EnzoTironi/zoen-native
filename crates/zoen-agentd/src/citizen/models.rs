@@ -102,7 +102,6 @@ impl ModelBrain {
     pub fn model(&self) -> &str {
         &self.model
     }
-
 }
 
 #[async_trait]

@@ -52,10 +52,17 @@ impl AgentSpec {
 pub enum TurnOutcome {
     /// Nothing to say (or the agent is paused).
     Silence,
-    Say { text: String },
+    Say {
+        text: String,
+    },
     /// The gate wants the owner to decide: the draft (or held inbound) goes to the owner.
-    AskOwner { draft: String, rule: String },
-    Blocked { reason: String },
+    AskOwner {
+        draft: String,
+        rule: String,
+    },
+    Blocked {
+        reason: String,
+    },
     /// A pending agent for the owner to approve, and the Creator's own words to the chat.
     ProposeAgent {
         spec: AgentSpec,

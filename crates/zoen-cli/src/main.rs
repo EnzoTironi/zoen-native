@@ -489,6 +489,7 @@ async fn main() {
         let handle = cli.flag("--handle").unwrap_or_else(|| usage());
         let owner = cli.flag("--owner").unwrap_or_else(|| usage());
         let proof = cli.flag("--proof").unwrap_or_else(|| usage());
+        let def_path = cli.flag("--definition").unwrap_or_else(|| usage());
         let relay = cli
             .flag("--relay")
             .or_else(|| std::env::var("ZOEN_RELAY").ok())
@@ -501,6 +502,10 @@ async fn main() {
         e.start_sync(None).unwrap_or_else(|err| die(err));
         let c = e.wait_until_idle(timeout).await;
         let a = e.account().unwrap_or_else(|| die("account"));
+        if a.registered {
+            // The real kind and definition, recorded on the relay at registration.
+            agent::define_first(&e, &def_path).await;
+        }
         println!(
             "agent @{} ({}) {}",
             a.handle,
@@ -618,7 +623,6 @@ async fn main() {
     }
     let me = e.account().map(|a| a.identity_id).unwrap_or_default();
     let watching = cmd == "watch";
-    let _hosting = cmd == "agent-host";
     if !offline {
         let listener: Option<Arc<dyn CoreListener>> = if watching {
             Some(Arc::new(Printer {
@@ -1023,8 +1027,40 @@ async fn main() {
             );
         }
         "agent-host" => {
-            let def = cli.flag("--definition").unwrap_or_else(|| usage());
-            agent::host(&e, &home, &def, for_secs).await;
+            agent::host(&e, &home, for_secs).await;
+        }
+        // Owner controls over an agent you answer for: `agent-pause @bot`, `agent-resume @bot`,
+        // `agent-revoke @bot`, `agent-define @bot --definition def.json --version N`.
+        "agent-pause" | "agent-resume" | "agent-revoke" | "agent-define" => {
+            let who = cli.args.first().cloned().unwrap_or_else(|| usage());
+            let h = who.trim_start_matches('@').to_string();
+            let id = if who.starts_with('@') {
+                e.find_people(h.clone())
+                    .await
+                    .unwrap_or_else(|err| die(err))
+                    .into_iter()
+                    .find(|p| p.handle == h)
+                    .map(|p| p.id)
+                    .unwrap_or_else(|| die(format!("@{h} isn't on Zoen")))
+            } else {
+                who.clone()
+            };
+            let r = if cmd == "agent-define" {
+                let def =
+                    agent::read_definition(&cli.flag("--definition").unwrap_or_else(|| usage()));
+                let version: u32 = cli
+                    .flag("--version")
+                    .and_then(|v| v.parse().ok())
+                    .unwrap_or(def.version);
+                let bytes = def.encode().unwrap_or_else(|err| die(err));
+                e.agent_define(id, version, def.kind.relay_kind().into(), bytes)
+                    .await
+            } else {
+                e.agent_control(id, cmd.trim_start_matches("agent-").to_string())
+                    .await
+            };
+            r.unwrap_or_else(|err| die(err));
+            println!("{} {who}", cmd.trim_start_matches("agent-"));
         }
         "watch" => {
             println!(

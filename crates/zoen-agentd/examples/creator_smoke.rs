@@ -47,10 +47,15 @@ async fn main() {
         println!("\nBruno: {text}");
         let mut out = brain
             .think(
-                    TurnContext { agent: "creator", device: "creator-device", owner: &owner.id, definition: &creator },
-                    &history,
-                    &inbound,
-                )
+                TurnContext {
+                    agent: "creator",
+                    device: "creator-device",
+                    owner: &owner.id,
+                    definition: &creator,
+                },
+                &history,
+                &inbound,
+            )
             .await
             .unwrap_or_else(|e| {
                 eprintln!("model call failed: {e}");
@@ -75,7 +80,12 @@ async fn main() {
             println!("\nBruno: {}", ok.text);
             out = brain
                 .think(
-                    TurnContext { agent: "creator", device: "creator-device", owner: &owner.id, definition: &creator },
+                    TurnContext {
+                        agent: "creator",
+                        device: "creator-device",
+                        owner: &owner.id,
+                        definition: &creator,
+                    },
                     &history,
                     &ok,
                 )
@@ -97,7 +107,11 @@ async fn main() {
             }
             BrainOut::Silence => println!("Creator: (silence)"),
             c @ BrainOut::CreateAgent { .. } => {
-                if let BrainOut::CreateAgent { confirmation: Some(c), .. } = &c {
+                if let BrainOut::CreateAgent {
+                    confirmation: Some(c),
+                    ..
+                } = &c
+                {
                     println!("Creator: {c}");
                 }
                 println!("Creator: (create_agent → owner approval)");
@@ -133,7 +147,12 @@ async fn main() {
     println!("\nCliente: {}", client.text);
     match brain
         .think(
-            TurnContext { agent: &bot.profile.id, device: bot.device_id(), owner: &owner.id, definition: &def },
+            TurnContext {
+                agent: &bot.profile.id,
+                device: bot.device_id(),
+                owner: &owner.id,
+                definition: &def,
+            },
             &[],
             &client,
         )

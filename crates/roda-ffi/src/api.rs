@@ -263,7 +263,10 @@ impl RodaEngine {
 
     /// The relay's record for this agent runtime: status, definition and cursors.
     pub async fn agent_state(&self) -> Result<roda_proto::AgentStateRecord, CoreError> {
-        match self.request(Op::Agent(roda_proto::AgentRequest::State)).await? {
+        match self
+            .request(Op::Agent(roda_proto::AgentRequest::State))
+            .await?
+        {
             Reply::AgentState(s) => Ok(s),
             _ => Err(unexpected()),
         }
