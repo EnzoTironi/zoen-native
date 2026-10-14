@@ -50,6 +50,11 @@ final class SettingsJourneyTests: XCTestCase {
         // The X closes Ajustes from anywhere.
         app.buttons["settingsClose"].tap()
         XCTAssertTrue(open.waitForExistence(timeout: 5), "closed back to Você")
+
+        // Leave the theme as we found it.
+        open.tap()
+        app.buttons["settings.theme"].tap()
+        app.buttons["theme.auto"].tap()
     }
 
     @MainActor
