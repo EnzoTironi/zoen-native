@@ -6,14 +6,13 @@
 //! live in prompts and free JSON state.
 
 mod creator;
-mod models;
 mod host;
+mod models;
 mod profile;
 
 pub use creator::{creator_definition, CREATOR_HANDLE, CREATOR_NAME};
 pub use host::{parse_reply, Brain, BrainOut, Host, HostError, ScriptedBrain, Turn, TurnOutcome};
 pub use models::{system_prompt, CheapTierAuthority, ModelBrain, CHEAP_CHAT_PROFILE, CHEAP_MODEL};
 pub use profile::{
-    claim_citizen, AgentKind, Avatar, Citizen, CitizenRecord, Definition, ModelTier,
-    AVATAR_STYLE,
+    claim_citizen, AgentKind, Avatar, Citizen, CitizenRecord, Definition, ModelTier, AVATAR_STYLE,
 };

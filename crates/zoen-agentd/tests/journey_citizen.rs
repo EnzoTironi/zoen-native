@@ -90,10 +90,7 @@ fn journey_owner_offline_creator_mints_booking_bot_and_it_joins_chat() {
     assert_eq!(child.profile.handle, "agenda-bruno");
     assert_eq!(child.definition.kind, AgentKind::User);
     assert_eq!(child.definition.model_tier, ModelTier::Cheap);
-    assert_eq!(
-        child.definition.state["business"],
-        json!("barbershop")
-    );
+    assert_eq!(child.definition.state["business"], json!("barbershop"));
     // No hard-coded booking module: domain lives in free JSON state.
     assert!(child.definition.state.get("availability").is_some());
     assert_eq!(child.avatar.style, AVATAR_STYLE);
@@ -138,7 +135,12 @@ fn journey_owner_offline_creator_mints_booking_bot_and_it_joins_chat() {
 fn journey_gate_blocks_injected_inbound_before_the_brain() {
     struct Fixed(String);
     impl HttpTransport for Fixed {
-        fn post_json(&self, _url: &str, _bearer: Option<&str>, _body: &str) -> Result<String, String> {
+        fn post_json(
+            &self,
+            _url: &str,
+            _bearer: Option<&str>,
+            _body: &str,
+        ) -> Result<String, String> {
             Ok(self.0.clone())
         }
     }

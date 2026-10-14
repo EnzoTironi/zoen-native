@@ -19,15 +19,13 @@ pub struct Turn {
 }
 
 #[derive(Clone, Debug, PartialEq)]
+#[allow(clippy::large_enum_variant)]
 pub enum TurnOutcome {
     Silence,
     Say { text: String },
     AskOwner { text: String },
     Blocked { reason: String },
-    Created {
-        child: CitizenRecord,
-        reply: String,
-    },
+    Created { child: CitizenRecord, reply: String },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
@@ -79,9 +77,7 @@ impl Brain for ScriptedBrain {
             .find(|(k, _)| inbound.text.to_lowercase().contains(&k.to_lowercase()))
             .map(|(_, v)| v.clone())
             .unwrap_or_else(|| match def.kind {
-                AgentKind::Creator => {
-                    "Tell me the agent's name and what it should do.".into()
-                }
+                AgentKind::Creator => "Tell me the agent's name and what it should do.".into(),
                 AgentKind::User => def
                     .state
                     .get("greeting")
@@ -270,7 +266,10 @@ impl Host {
         let hist_key = format!("{agent}:{}", inbound.space);
         let history = self.history.get(&hist_key).cloned().unwrap_or_default();
         let out = self.brain.think(&def, &history, &inbound);
-        self.history.entry(hist_key.clone()).or_default().push(inbound.clone());
+        self.history
+            .entry(hist_key.clone())
+            .or_default()
+            .push(inbound.clone());
 
         match out {
             BrainOut::Say(text) => self.say_gated(agent, &inbound.space, text),
@@ -318,6 +317,7 @@ impl Host {
         }
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn create_child(
         &mut self,
         creator_id: &str,

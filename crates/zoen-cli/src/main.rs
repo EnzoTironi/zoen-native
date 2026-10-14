@@ -478,7 +478,10 @@ async fn main() {
                 r.to_vec()
             }
         };
-        println!("{}", roda_ffi::agent_id_for_root(root).unwrap_or_else(|err| die(err)));
+        println!(
+            "{}",
+            roda_ffi::agent_id_for_root(root).unwrap_or_else(|err| die(err))
+        );
         return;
     }
     if cmd == "agent-init" {
@@ -490,7 +493,9 @@ async fn main() {
             .flag("--relay")
             .or_else(|| std::env::var("ZOEN_RELAY").ok())
             .unwrap_or_else(|| "http://127.0.0.1:8787".into());
-        let root = vault.load("agent_root".into()).unwrap_or_else(|| die("run agent-keys first"));
+        let root = vault
+            .load("agent_root".into())
+            .unwrap_or_else(|| die("run agent-keys first"));
         e.create_agent_account(name, handle, relay, root, owner, proof, vault.clone())
             .unwrap_or_else(|err| die(err));
         e.start_sync(None).unwrap_or_else(|err| die(err));
@@ -500,7 +505,11 @@ async fn main() {
             "agent @{} ({}) {}",
             a.handle,
             &a.identity_id[..12],
-            if a.registered { "registered".to_string() } else { c.error.unwrap_or_default() }
+            if a.registered {
+                "registered".to_string()
+            } else {
+                c.error.unwrap_or_default()
+            }
         );
         e.stop_sync();
         return;
@@ -1008,7 +1017,10 @@ async fn main() {
         }
         "authorize-agent" => {
             let id = cli.args.first().cloned().unwrap_or_else(|| usage());
-            println!("{}", e.authorize_agent_json(id).unwrap_or_else(|err| die(err)));
+            println!(
+                "{}",
+                e.authorize_agent_json(id).unwrap_or_else(|err| die(err))
+            );
         }
         "agent-host" => {
             let def = cli.flag("--definition").unwrap_or_else(|| usage());

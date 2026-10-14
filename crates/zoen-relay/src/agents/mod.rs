@@ -50,23 +50,21 @@ pub async fn claim_citizen(
     if !valid_kind(&claim.kind) {
         return Err(AgentCitizenError::Kind);
     }
-    let row: Option<(String,)> = sqlx::query_as(
-        "SELECT kind FROM identities WHERE id = $1 FOR SHARE",
-    )
-    .bind(&claim.agent)
-    .fetch_optional(&mut **tx)
-    .await?;
+    let row: Option<(String,)> =
+        sqlx::query_as("SELECT kind FROM identities WHERE id = $1 FOR SHARE")
+            .bind(&claim.agent)
+            .fetch_optional(&mut **tx)
+            .await?;
     match row.as_ref().map(|(k,)| k.as_str()) {
         Some("Agent") => {}
         _ => return Err(AgentCitizenError::NotAgent),
     }
-    let device_ok: Option<(String,)> = sqlx::query_as(
-        "SELECT device FROM devices WHERE device = $1 AND identity = $2 FOR SHARE",
-    )
-    .bind(&claim.device)
-    .bind(&claim.agent)
-    .fetch_optional(&mut **tx)
-    .await?;
+    let device_ok: Option<(String,)> =
+        sqlx::query_as("SELECT device FROM devices WHERE device = $1 AND identity = $2 FOR SHARE")
+            .bind(&claim.device)
+            .bind(&claim.agent)
+            .fetch_optional(&mut **tx)
+            .await?;
     if device_ok.is_none() {
         return Err(AgentCitizenError::Device);
     }
@@ -122,9 +120,11 @@ pub async fn advance_cursor(
     .bind(seq)
     .execute(pool)
     .await?;
-    sqlx::query("UPDATE agent_citizens SET last_wake_at = now(), last_seen_at = now() WHERE agent = $1")
-        .bind(agent)
-        .execute(pool)
-        .await?;
+    sqlx::query(
+        "UPDATE agent_citizens SET last_wake_at = now(), last_seen_at = now() WHERE agent = $1",
+    )
+    .bind(agent)
+    .execute(pool)
+    .await?;
     Ok(())
 }

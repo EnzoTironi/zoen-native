@@ -934,7 +934,11 @@ impl Engine {
         let me = Identity {
             owner_proof,
             id: root.id(),
-            kind: if is_agent { IdentityKind::Agent } else { IdentityKind::Person },
+            kind: if is_agent {
+                IdentityKind::Agent
+            } else {
+                IdentityKind::Person
+            },
             name: name.to_string(),
             handle: handle.clone(),
             tint_hex: tint_for(&root.id()),

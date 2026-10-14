@@ -11,9 +11,8 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::sync::Mutex;
 use std::time::Duration;
 use zoen_models::{
-    Admission, AdmissionError, AttemptContext, DispatchAuthority, DispatchRequest,
-    EndpointPolicy, GatewayConfig, InputMessage, ModelGateway, ModelLimits, ModelRequest,
-    Operation, OutputBlock,
+    Admission, AdmissionError, AttemptContext, DispatchAuthority, DispatchRequest, EndpointPolicy,
+    GatewayConfig, InputMessage, ModelGateway, ModelLimits, ModelRequest, Operation, OutputBlock,
 };
 
 pub const CHEAP_CHAT_PROFILE: &str = zoen_models::CHAT_PROFILE;
@@ -29,14 +28,23 @@ pub struct CheapTierAuthority {
 
 impl CheapTierAuthority {
     pub fn new(daily_cap: u32) -> Self {
-        Self { daily_cap, seen: Mutex::default(), used: Mutex::default() }
+        Self {
+            daily_cap,
+            seen: Mutex::default(),
+            used: Mutex::default(),
+        }
     }
 }
 
 #[async_trait]
 impl DispatchAuthority for CheapTierAuthority {
     async fn admit(&self, r: &DispatchRequest) -> Result<Admission, AdmissionError> {
-        if !self.seen.lock().unwrap().insert(r.context.attempt_id.clone()) {
+        if !self
+            .seen
+            .lock()
+            .unwrap()
+            .insert(r.context.attempt_id.clone())
+        {
             return Ok(Admission::AlreadyKnown);
         }
         let day = std::time::SystemTime::now()
@@ -62,8 +70,12 @@ pub struct ModelBrain {
 impl ModelBrain {
     /// Workers AI when the token and account are configured; `None` otherwise.
     pub fn workers_ai_from_env() -> Option<Self> {
-        let key = std::env::var("CLOUDFLARE_WORKERS_AI_TOKEN").ok().filter(|k| !k.is_empty())?;
-        let account = std::env::var("CLOUDFLARE_ACCOUNT_ID").ok().filter(|a| !a.is_empty())?;
+        let key = std::env::var("CLOUDFLARE_WORKERS_AI_TOKEN")
+            .ok()
+            .filter(|k| !k.is_empty())?;
+        let account = std::env::var("CLOUDFLARE_ACCOUNT_ID")
+            .ok()
+            .filter(|a| !a.is_empty())?;
         let model = std::env::var("ZOEN_CHEAP_MODEL").unwrap_or_else(|_| CHEAP_MODEL.into());
         let gateway = ModelGateway::new(GatewayConfig {
             base_url: format!("https://api.cloudflare.com/client/v4/accounts/{account}/ai/v1"),
@@ -80,7 +92,11 @@ impl ModelBrain {
             },
         })
         .ok()?;
-        Some(Self { gateway, authority: CheapTierAuthority::new(500), model })
+        Some(Self {
+            gateway,
+            authority: CheapTierAuthority::new(500),
+            model,
+        })
     }
 
     pub fn model(&self) -> &str {
@@ -96,17 +112,25 @@ impl ModelBrain {
         history: &[Turn],
         inbound: &Turn,
     ) -> Result<BrainOut, String> {
-        let mut messages = vec![InputMessage::System { text: system_prompt(def) }];
+        let mut messages = vec![InputMessage::System {
+            text: system_prompt(def),
+        }];
         for t in history.iter().rev().take(16).rev() {
             if t.from == agent {
                 messages.push(InputMessage::Assistant {
-                    blocks: vec![OutputBlock::Text { text: t.text.clone() }],
+                    blocks: vec![OutputBlock::Text {
+                        text: t.text.clone(),
+                    }],
                 });
             } else {
-                messages.push(InputMessage::User { text: t.text.clone() });
+                messages.push(InputMessage::User {
+                    text: t.text.clone(),
+                });
             }
         }
-        messages.push(InputMessage::User { text: inbound.text.clone() });
+        messages.push(InputMessage::User {
+            text: inbound.text.clone(),
+        });
         let attempt = roda_types::new_id("att");
         let request = ModelRequest {
             context: AttemptContext {
@@ -130,7 +154,9 @@ impl ModelBrain {
             .complete(request, &self.authority)
             .await
             .map_err(|e| e.to_string())?;
-        let blocks = result.output.map_err(|f| format!("model output failed: {f:?}"))?;
+        let blocks = result
+            .output
+            .map_err(|f| format!("model output failed: {f:?}"))?;
         let text: String = blocks
             .into_iter()
             .filter_map(|b| match b {

@@ -18,19 +18,14 @@ pub enum AgentKind {
     User,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ModelTier {
     /// Cheap default (GLM-5.3-Flash class). Always the starting tier.
+    #[default]
     Cheap,
     Standard,
     Premium,
-}
-
-impl Default for ModelTier {
-    fn default() -> Self {
-        ModelTier::Cheap
-    }
 }
 
 /// Hand-drawn animated face. Glyph + tint stand in until `asset` is filled.
