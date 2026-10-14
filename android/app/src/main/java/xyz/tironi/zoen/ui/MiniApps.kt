@@ -44,7 +44,6 @@ fun MiniAppScreen(model: ZoenViewModel, state: AppState, item: ItemDetail, modif
     var hasHtml by remember(app.appId) { mutableStateOf(app.appId in setOf("pet", "poll", "list", "hike", "schedule")) }
     val preferences = model.repository.preferences
     var html by remember(app.appId, state.revision) { mutableStateOf(preferences.getBoolean("miniapps.html:${app.appId}", app.appId !in nativeMiniApps) || app.appId !in nativeMiniApps) }
-    android.util.Log.i("ZoenDiag", "miniapp compose ${app.appId} hasHtml=$hasHtml html=$html rev=${state.revision}")
     LaunchedEffect(app.appId) { hasHtml = model.repository.query { core -> core.appSpecs().any { it.id == app.appId && it.hasView } } }
     if (hasHtml && html) {
         Column(modifier.fillMaxSize()) {

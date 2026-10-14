@@ -37,14 +37,12 @@ internal fun NativePetReveal(name: String, onDone: () -> Unit) {
     var active by remember(owner) { mutableStateOf(owner.lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)) }
     var elapsed by rememberSaveable { mutableDoubleStateOf(0.0) }
     val finish by rememberUpdatedState(onDone)
-    DisposableEffect(Unit) { android.util.Log.i("ZoenDiag", "reveal enter motion=$motion active=$active elapsed=$elapsed"); onDispose { android.util.Log.i("ZoenDiag", "reveal exit elapsed=$elapsed") } }
     DisposableEffect(owner) {
         val observer = LifecycleEventObserver { _, _ -> active = owner.lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED) }
         owner.lifecycle.addObserver(observer)
         onDispose { owner.lifecycle.removeObserver(observer) }
     }
     LaunchedEffect(active, motion) {
-        android.util.Log.i("ZoenDiag", "reveal effect active=$active motion=$motion elapsed=$elapsed")
         if (!active) return@LaunchedEffect
         if (!motion) {
             elapsed = 3.2
@@ -57,7 +55,6 @@ internal fun NativePetReveal(name: String, onDone: () -> Unit) {
                 previous = now
             }
         }
-        android.util.Log.i("ZoenDiag", "reveal finish elapsed=$elapsed")
         finish()
     }
     val renderer = remember { InkCanvasRenderer() }

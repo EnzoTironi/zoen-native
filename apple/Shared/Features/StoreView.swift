@@ -75,7 +75,7 @@ enum StoreSeed {
                      creator: "zoen", doodle: .roda, accentHex: "#3D7A28", category: .productivity, uses: "—", rating: "—", community: p("Comunidade Zoen", "Zoen community"), handle: "zoen"),
         StoreListing(id: "schedule", kind: .miniApp, name: p("Agenda", "Schedule"),
                      blurb: p("Horários livres e preços. O cliente marca; o agente confirma.", "Free slots and prices. The client books; the agent confirms."),
-                     about: p("Template genérico de agenda para barbeiro, dentista ou personal. Serviços, horários da semana e reservas viram eventos para o agente.", "Generic booking template for a barber, dentist or trainer. Services, weekly hours and bookings become events for the agent."),
+                     about: p("Agenda para qualquer negócio. Conte ao agente o que você faz; ele monta serviços, preços e horários, e cada pedido vira um evento para ele resolver.", "A schedule for any business. Tell the agent what you do; it sets up services, prices and hours, and every request becomes an event it resolves."),
                      creator: "zoen", doodle: .notepad, accentHex: "#C45C26", category: .productivity, uses: "—", rating: "—", community: p("Negócios locais", "Local businesses")),
         StoreListing(id: "hike", kind: .miniApp, name: p("Trilha de sábado", "Saturday hike"),
                      blurb: p("Compare trilhas, votem e montem o dia com caronas.", "Compare trails, vote and plan the day with rides."),
