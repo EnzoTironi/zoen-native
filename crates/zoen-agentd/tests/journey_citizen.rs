@@ -39,11 +39,11 @@ fn journey_owner_offline_creator_mints_booking_bot_and_it_joins_chat() {
     let mut replies = BTreeMap::new();
     replies.insert(
         "pode criar".to_string(),
-        r#"Beleza.
+        r##"Beleza.
 ```json
 {"create_agent":{"name":"Agenda do Bruno","handle":"agenda-bruno","persona":"You are Bruno's booking assistant. Help clients pick a haircut slot. Read hours and services from your state. Never invent prices.","rules":["Only confirm slots listed in state.availability","Never take payment","Speak Portuguese"],"state":{"business":"barbershop","hours":{"mon-fri":"09:00-19:00"},"services":[{"name":"corte","minutes":30}],"availability":["2026-10-15T15:00-03:00"]},"glyph":"calendar","tint_hex":"#19B5A5"}}
 ```
-"#
+"##
         .into(),
     );
     let brain = ScriptedBrain { replies };
