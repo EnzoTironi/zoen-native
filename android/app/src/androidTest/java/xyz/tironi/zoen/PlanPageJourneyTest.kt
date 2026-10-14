@@ -141,7 +141,7 @@ class PlanPageJourneyTest {
         compose.onNodeWithTag("plan-line:$legacyId").performTouchInput { click() }
         compose.onAllNodesWithTag("plan-edit:${original.id}").assertCountEquals(0)
         compose.onNodeWithTag("item-history").assertIsNotEnabled()
-        assertNotNull(runCatching { runBlocking { app.repository.change { it.togglePlanLine(item.id, legacyId, read().contentHash) } } }.exceptionOrNull())
+        assertNotNull(runCatching { runBlocking { app.repository.change { it.togglePlanLine(item.id, legacyId, it.planPage(item.id).contentHash) } } }.exceptionOrNull())
         lateinit var model: ZoenViewModel
         scenario.onActivity { model = ViewModelProvider(it)[ZoenViewModel::class.java] }
         assertNotNull(runCatching { runBlocking { model.pageSaves.restoreVersion(app.repository, item.id, app.repository.state.value.me!!.id, 1u, readonly.contentHash) } }.exceptionOrNull())
