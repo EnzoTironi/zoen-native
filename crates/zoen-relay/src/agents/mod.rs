@@ -19,7 +19,7 @@ pub struct CitizenClaim {
     pub avatar_asset: Option<String>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
+#[derive(Debug, thiserror::Error)]
 pub enum AgentCitizenError {
     #[error("agent identity is missing or not an Agent")]
     NotAgent,
