@@ -82,8 +82,12 @@ internal class MascotCanvasView(context: Context) : View(context) {
         if (!scheduled && !framePending && canAnimate()) {
             if (lastTick == 0L) lastTick = SystemClock.uptimeMillis()
             scheduled = true
-            // The rig and boiling lines use the original 12 fps body / 10 fps head cadence.
-            postDelayed(tick, if (head) 100L else 83L)
+            // The rig and boiling lines use the original 12 fps body / 10 fps head cadence. Ticks land
+            // on shared clock boundaries so every mascot on screen (a header head plus one per Zoen
+            // chat row) redraws in the same frame; free-running timers drift out of phase and turn N
+            // mascots into N window frames per period, which saturates the main thread on slow GPUs.
+            val period = if (head) 100L else 83L
+            postDelayed(tick, period - SystemClock.uptimeMillis() % period)
         }
     }
     fun pause() { removeCallbacks(tick); frameCommit.cancel(); scheduled = false; framePending = false; lastTick = 0 }
