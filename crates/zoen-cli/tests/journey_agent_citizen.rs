@@ -211,3 +211,57 @@ async fn a_barber_creates_a_booking_bot_and_a_client_books_while_he_is_offline()
     let _ = creator.kill();
     let _ = bot.kill();
 }
+
+#[tokio::test(flavor = "multi_thread")]
+async fn an_agent_joins_a_space_as_a_real_mls_member() {
+    let w = World::new("agent_space_member").await;
+    w.init("bruno", "Bruno");
+    w.init("carla", "Carla");
+    w.init("dani", "Dani");
+
+    // The booking bot is a citizen with its own device; its runtime is up before the invite.
+    citizen(&w, "bruno", "bot", "Agenda do Bruno", "agenda_bruno");
+    let def = zoen_agentd::Definition {
+        version: 1,
+        kind: zoen_agentd::AgentKind::User,
+        persona: "You are Bruno's booking assistant.".into(),
+        rules: vec!["Speak Portuguese".into()],
+        state: serde_json::json!({"availability": ["sábado 10h"], "greeting": "Oi!"}),
+        model_tier: zoen_agentd::ModelTier::Cheap,
+    };
+    let bot_def = w.dir.join("bot.json");
+    std::fs::write(&bot_def, serde_json::to_vec(&def).unwrap()).unwrap();
+    let mut bot = host(&w, "bot", &bot_def);
+
+    // An end-to-end Space with several people. A message before the invite stays sealed
+    // to the epoch the agent was never part of.
+    w.zoen("bruno", &["group", "Barbearia", "@carla", "@dani"]);
+    w.zoen("bruno", &["send", "Barbearia", "antes do bot: pode criar"]);
+    assert!(w
+        .zoen("carla", &["read", "Barbearia"])
+        .contains("antes do bot"));
+
+    // Bruno invites the agent: an MLS Add commit plus a Welcome to its own device.
+    w.zoen("bruno", &["add", "Barbearia", "@agenda_bruno"]);
+
+    // Carla (not the inviter) writes; the agent decrypts, wakes and replies in the group.
+    w.zoen("carla", &["send", "Barbearia", "Oi! Tem horário sábado?"]);
+    read_until(&w, "carla", "Barbearia", "sábado 10h livre", &mut bot);
+    // Every other member opens the agent's ciphertext too.
+    read_until(&w, "bruno", "Barbearia", "sábado 10h livre", &mut bot);
+    read_until(&w, "dani", "Barbearia", "sábado 10h livre", &mut bot);
+
+    // A second turn from another member keeps working in the same epoch chain.
+    w.zoen("dani", &["send", "Barbearia", "Confirmo pra Carla"]);
+    read_until(&w, "carla", "Barbearia", "Fechado: sábado 10h", &mut bot);
+    let bruno = read_until(&w, "bruno", "Barbearia", "Fechado: sábado 10h", &mut bot);
+
+    // The agent answered only what it could open: the pre-invite "pode criar" never
+    // reached its brain (the Creator-style JSON reply would have shown up here).
+    assert!(!bruno.contains("Combinado"), "{bruno}");
+    let _ = bot.kill();
+    let _ = bot.wait();
+
+    // The agent is a citizen with its own MLS device, not a relay-side reader.
+    assert_eq!(w.count("SELECT count(*) FROM agent_citizens").await, 1);
+}
