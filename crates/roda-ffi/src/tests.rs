@@ -1047,6 +1047,91 @@ fn hike_votes_decide_plan_and_album() {
     .unwrap();
 }
 
+
+#[test]
+fn schedule_book_goes_to_agent_then_resolve() {
+    let e = seeded();
+    let crew = find_space(&e, "Turma do Sábado");
+    let zoen = zoen(&e);
+    let services = r#"{"business":"Barbearia do João","trade":"barber","title":"Agenda do João","slotMinutes":30,"services":[{"id":"cut","name":"Corte","priceCents":4500,"minutes":30},{"id":"beard","name":"Barba","priceCents":3500,"minutes":20}]}"#;
+    e.agent_create_app(
+        crew.id.clone(),
+        zoen.id.clone(),
+        "start_schedule".into(),
+        services.into(),
+        "test".into(),
+        "agenda".into(),
+    )
+    .unwrap();
+    let item = e
+        .items()
+        .into_iter()
+        .find(|i| i.app.as_ref().map(|a| a.app_id == "schedule").unwrap_or(false))
+        .expect("schedule");
+    let r = e.read_app_resource("ui://roda/schedule".into()).unwrap();
+    let manifest: serde_json::Value = serde_json::from_str(&r.manifest_json).unwrap();
+    use sha2::Digest;
+    assert_eq!(
+        manifest["sha256"].as_str().unwrap(),
+        format!("{:x}", sha2::Sha256::digest(r.text.as_bytes()))
+    );
+    assert_eq!(manifest["id"], "schedule");
+    assert!(manifest["capabilities"][0]["purpose"]
+        .as_str()
+        .unwrap()
+        .contains("agenda"));
+    // Client asks for a slot — becomes a pending booking + open event for the agent.
+    let start = 1_900_000_000_000i64;
+    let end = start + 30 * 60_000;
+    let out = e
+        .app_call_tool(
+            item.id.clone(),
+            "schedule_book".into(),
+            format!(r#"{{"serviceId":"cut","startMs":{start},"endMs":{end}}}"#),
+            false,
+        )
+        .unwrap();
+    let v: serde_json::Value =
+        serde_json::from_str(&out.item.unwrap().app.unwrap().view_json).unwrap();
+    assert_eq!(v["bookings"][0]["status"], "pending");
+    assert_eq!(v["events"][0]["kind"], "book_request");
+    assert_eq!(v["events"][0]["status"], "open");
+    let booking_id = v["bookings"][0]["id"].as_str().unwrap().to_string();
+    // Agent confirms (edge cases stay with the agent, not hard rules).
+    let out = e
+        .app_call_tool(
+            item.id.clone(),
+            "schedule_resolve".into(),
+            format!(r#"{{"bookingId":"{booking_id}","action":"confirm"}}"#),
+            false,
+        )
+        .unwrap();
+    let v: serde_json::Value =
+        serde_json::from_str(&out.item.unwrap().app.unwrap().view_json).unwrap();
+    assert_eq!(v["bookings"][0]["status"], "confirmed");
+    assert_eq!(v["events"][0]["status"], "resolved");
+    // Client cancel request on a confirmed booking stays for the agent.
+    e.app_call_tool(
+        item.id.clone(),
+        "schedule_cancel".into(),
+        format!(r#"{{"bookingId":"{booking_id}"}}"#),
+        false,
+    )
+    .unwrap();
+    let out = e
+        .app_call_tool(item.id.clone(), "schedule_get_state".into(), "{}".into(), false)
+        .unwrap();
+    let v: serde_json::Value =
+        serde_json::from_str(&out.item.unwrap().app.unwrap().view_json).unwrap();
+    assert!(
+        v["events"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|ev| ev["kind"] == "cancel_request" && ev["status"] == "open")
+    );
+}
+
 #[test]
 fn device_grants_are_per_mini_app_logged_and_revocable() {
     let e = seeded();

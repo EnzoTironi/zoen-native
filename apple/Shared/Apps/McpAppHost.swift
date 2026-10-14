@@ -65,6 +65,7 @@ enum McpHost {
         case "poll": "chart.bar.fill"
         case "countdown": "airplane"
         case "hike": "figure.hiking"
+        case "schedule": "calendar"
         default: "checklist"
         }
     }
@@ -75,6 +76,7 @@ enum McpHost {
         case "poll": Color(hex: "#5B8DEF")
         case "countdown": Color(hex: "#E9846B")
         case "hike": Color(hex: "#3D7A28")
+        case "schedule": Color(hex: "#C45C26")
         default: Color(hex: "#3FB27F")
         }
     }

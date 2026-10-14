@@ -11,6 +11,7 @@ object AppChooser {
         fun contains(vararg words: String) = words.any(t::contains)
         return when {
             contains("trilha", "hike", "hiking", " trail", "caminhada", "trekking") -> "hike"
+            contains("barbeiro", "barbearia", "agenda", "dentista", "personal trainer", "agendamento", "barber", "schedule", "dentist") -> "schedule"
             contains("adot", "adopt", "bichinho", "burro", "burrinho", "jumento", "donkey", "tamagotchi", "pet do grupo", "group pet", "a pet", "mascot") -> "pet"
             contains("enquete", "votar", "votacao", "vamos decidir", "decide ai", "qual voces preferem", " poll", " vote", "let's decide", "let’s decide") ||
                 ((contains(" ou ", " or ")) && t.contains('?') && !contains("planej", "plan ")) -> "poll"
@@ -76,6 +77,41 @@ object AppChooser {
             when (kind) {
                 "pet" -> put("name", petName(prompt) ?: pick(locale, "Donkey", "Jumento"))
                 "hike" -> { put("day", hikeDay(prompt, locale)); put("area", "Bay Area") }
+                "schedule" -> {
+                    val foldedPrompt = folded(prompt)
+                    fun has(vararg words: String) = words.any(foldedPrompt::contains)
+                    val trade = when {
+                        has("dentista", "dentist") -> "dentist"
+                        has("personal", "trainer", "treino") -> "trainer"
+                        has("barbeiro", "barbearia", "barber", "barba", "corte") -> "barber"
+                        else -> "custom"
+                    }
+                    val business = when (trade) {
+                        "dentist" -> pick(locale, "Dental office", "Consultório")
+                        "trainer" -> "Personal"
+                        "barber" -> pick(locale, "Barbershop", "Barbearia")
+                        else -> pick(locale, "Schedule", "Agenda")
+                    }
+                    put("business", business); put("trade", trade); put("title", business); put("slotMinutes", if (trade == "trainer") 60 else 30)
+                    putJsonArray("services") {
+                        fun svc(id: String, en: String, pt: String, price: Int, minutes: Int) =
+                            add(buildJsonObject {
+                                put("id", id); put("name", pick(locale, en, pt)); put("priceCents", price); put("minutes", minutes)
+                            })
+                        when (trade) {
+                            "dentist" -> {
+                                svc("clean", "Cleaning", "Limpeza", 18000, 45)
+                                svc("check", "Check-up", "Consulta", 25000, 30)
+                            }
+                            "trainer" -> svc("session", "Session", "Treino", 12000, 60)
+                            "barber" -> {
+                                svc("cut", "Haircut", "Corte", 4500, 30)
+                                svc("beard", "Beard", "Barba", 3500, 20)
+                            }
+                            else -> svc("svc1", "Appointment", "Atendimento", 0, 30)
+                        }
+                    }
+                }
                 "recipe" -> put("servings", (Regex("\\d+").find(prompt)?.value?.toIntOrNull() ?: 3).coerceIn(1, 12))
                 "poll" -> { val (question, options) = pollParts(prompt, locale); put("question", question); putJsonArray("options") { options.forEach { add(it) } } }
                 "list" -> {

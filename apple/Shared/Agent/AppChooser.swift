@@ -44,6 +44,8 @@ enum AppChooser {
         if recipe.contains(where: t.contains) { return "recipe" }
         let list = ["lista do que levar", "o que levar", "checklist", "lista compartilhada", "lista de compras", "quem leva o que", "what to bring", "packing list", "shared list", "shopping list", "who brings what"]
         if list.contains(where: t.contains) { return "list" }
+        let schedule = ["barbeiro", "barbearia", "agenda", "marcar horario", "marcar horário", "dentista", "personal trainer", "agendamento", "barber", "schedule", "book an appointment", "dentist", "personal trainer"]
+        if schedule.contains(where: t.contains) { return "schedule" }
         return nil
     }
 
@@ -54,7 +56,7 @@ enum AppChooser {
         let timeout = d.object(forKey: "RodaAppAITimeout") != nil ? d.double(forKey: "RodaAppAITimeout") : onDeviceTimeout
         #if canImport(FoundationModels)
         // The on-device model's schema doesn't cover the hike yet: local rules pick the day.
-        if case .onDevice = planner.availability, timeout > 0, kind != "hike" {
+        if case .onDevice = planner.availability, timeout > 0, kind != "hike", kind != "schedule" {
             do {
                 let g = try await withTimeout(seconds: timeout) { try await generate(prompt: prompt, kind: kind) }
                 if let choice = g { return choice }
@@ -76,6 +78,8 @@ enum AppChooser {
             return AppChoice(startTool: "start_maptap", argsJSON: "{}", engineLabel: label)
         case "hike":
             return AppChoice(startTool: "start_hike", argsJSON: json(["day": hikeDay(prompt), "area": "Bay Area"]), engineLabel: label)
+        case "schedule":
+            return AppChoice(startTool: "start_schedule", argsJSON: scheduleArgs(prompt), engineLabel: label)
         case "recipe":
             let n = Int(prompt.split(whereSeparator: { !$0.isNumber }).first ?? "") ?? 3
             return AppChoice(startTool: "start_recipe", argsJSON: json(["servings": min(12, max(1, n))]), engineLabel: label)
@@ -86,6 +90,47 @@ enum AppChooser {
             let items = AppLocale.isPortuguese ? ["Protetor solar", "Carregador", "Roupa de banho", "Documentos", "Remédios"] : ["Sunscreen", "Charger", "Swimsuit", "Documents", "Meds"]
             return AppChoice(startTool: "start_list", argsJSON: json(["title": AppLocale.pick("O que levar", "What to bring"), "items": items]), engineLabel: label)
         }
+    }
+
+
+    static func scheduleArgs(_ prompt: String) -> String {
+        let t = prompt.lowercased().folding(options: .diacriticInsensitive, locale: nil)
+        let trade: String
+        if ["dentista", "dentist"].contains(where: t.contains) { trade = "dentist" }
+        else if ["personal", "trainer", "treino"].contains(where: t.contains) { trade = "trainer" }
+        else if ["barbeiro", "barbearia", "barber", "barba", "corte"].contains(where: t.contains) { trade = "barber" }
+        else { trade = "custom" }
+        let business: String = {
+            switch trade {
+            case "dentist": return AppLocale.pick("Consultório", "Dental office")
+            case "trainer": return AppLocale.pick("Personal", "Personal training")
+            case "barber": return AppLocale.pick("Barbearia", "Barbershop")
+            default: return AppLocale.pick("Agenda", "Schedule")
+            }
+        }()
+        let services: [[String: Any]] = {
+            switch trade {
+            case "dentist":
+                return [
+                    ["id": "clean", "name": AppLocale.pick("Limpeza", "Cleaning"), "priceCents": 18000, "minutes": 45],
+                    ["id": "check", "name": AppLocale.pick("Consulta", "Check-up"), "priceCents": 25000, "minutes": 30],
+                ]
+            case "trainer":
+                return [
+                    ["id": "session", "name": AppLocale.pick("Treino", "Session"), "priceCents": 12000, "minutes": 60],
+                    ["id": "eval", "name": AppLocale.pick("Avaliação", "Assessment"), "priceCents": 15000, "minutes": 45],
+                ]
+            case "barber":
+                return [
+                    ["id": "cut", "name": AppLocale.pick("Corte", "Haircut"), "priceCents": 4500, "minutes": 30],
+                    ["id": "beard", "name": AppLocale.pick("Barba", "Beard"), "priceCents": 3500, "minutes": 20],
+                    ["id": "combo", "name": AppLocale.pick("Corte + barba", "Cut + beard"), "priceCents": 7000, "minutes": 50],
+                ]
+            default:
+                return [["id": "svc1", "name": AppLocale.pick("Atendimento", "Appointment"), "priceCents": 0, "minutes": 30]]
+            }
+        }()
+        return json(["business": business, "trade": trade, "title": business, "services": services, "slotMinutes": trade == "trainer" ? 60 : 30])
     }
 
     /// "…on saturday" / "…no domingo" → the day, in the app's language.

@@ -1,0 +1,21 @@
+{
+  "id": "schedule",
+  "name": "Agenda",
+  "description": "Horários livres, serviços e preços. O cliente marca; o agente confirma o que for especial.",
+  "capabilities": [
+    {
+      "id": "calendar.add",
+      "purpose": "Colocar o horário marcado na sua agenda. Você vê o evento antes de salvar."
+    }
+  ],
+  "allowedDomains": [],
+  "networkPurpose": "",
+  "linkDomains": [],
+  "sha256": "5bea9cd46490ebac050b79d52df413c7f6153e38f6e7c9ecc6f646ee349c45e6",
+  "bytes": 213610,
+  "deps": {
+    "scheduler": "0.26.0",
+    "react": "19.1.1",
+    "react-dom": "19.1.1"
+  }
+}

@@ -111,7 +111,7 @@ class AgentPlanner(private val model: OnDeviceModel = GeminiNanoModel(), private
 
     suspend fun chooseApp(prompt: String, locale: String, context: PlannerContext?): AppChoice? {
         val kind = AppChooser.kind(prompt) ?: return null
-        if (kind in setOf("hike", "countdown")) return AppChooser.fallback(prompt, kind, locale, fallbackLabel(locale))
+        if (kind in setOf("hike", "countdown", "schedule")) return AppChooser.fallback(prompt, kind, locale, fallbackLabel(locale))
         val schema = "{\"kind\":\"$kind\",\"title\":\"short title\",\"petName\":\"name or empty\",\"options\":[\"short option\",\"short option\"]}"
         val ask = "Configure a shared mini-app in ${language(locale)}. Kind must be one of pet,poll,list,maptap,recipe. Do not invent places. Output only JSON matching $schema. Options: poll has 2-6, list has up to 8.\n${context?.promptBlock().orEmpty()}\nRequest: ${prompt.take(1500)}"
         val (choice, label) = generate(locale, ask, 12_000, 400) { AppChooser.parse(it, prompt, locale) }
