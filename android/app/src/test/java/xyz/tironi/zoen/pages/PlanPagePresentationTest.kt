@@ -63,16 +63,4 @@ class PlanPagePresentationTest {
         assertTrue(rendered.getStringAnnotations(0, rendered.length).isEmpty())
     }
 
-    @Test fun writeAdmissionAndObservedContentAreBothRequired() {
-        val observed = page()
-        requirePlanEdit(observed, observed, "read only", "changed")
-        listOf(observed.copy(legacyEditAdmitted = false), observed.copy(ready = false), observed.copy(contentHash = "new"),
-            observed.copy(itemId = "other")).forEach { current ->
-            val failure = runCatching { requirePlanEdit(current, observed, "read only", "changed") }.exceptionOrNull()
-            assertTrue(failure is IllegalStateException)
-        }
-        assertEquals("saved draft is read only", runCatching {
-            requirePlanEdit(observed.copy(legacyEditAdmitted = false, saveError = "saved draft is read only"), observed, "read only", "changed")
-        }.exceptionOrNull()?.message)
-    }
 }

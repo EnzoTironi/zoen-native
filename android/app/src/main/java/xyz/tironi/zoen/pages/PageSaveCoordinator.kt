@@ -1,13 +1,36 @@
 package xyz.tironi.zoen.pages
 
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
+import xyz.tironi.zoen.core.CoreException
 import xyz.tironi.zoen.core.PageDto
+import xyz.tironi.zoen.ZoenViewModel
 import xyz.tironi.zoen.data.ZoenRepository
 
 data class PageRestoreResult(val page: PageDto, val draft: PageDraft?, val draftStored: Boolean = true)
+
+internal fun confirmedPlanHash(kindId: String, observedHash: String?): String? =
+    if (kindId == "plan") observedHash else null
+
+/** Texto de uma escrita de Plano recusada. Recusa stale usa a frase da página; o resto mantém a mensagem da exceção, ou [fallback]. */
+internal fun planWriteNotice(error: Exception, pageChanged: String, fallback: String = ""): String =
+    if (error is CoreException.Stale) pageChanged else error.message?.takeIf { it.isNotEmpty() } ?: fallback
+
+/**
+ * The one place a Plan write (edit, undo, restore) turns a refusal into a notice.
+ * Runs [block]; on failure shows [planWriteNotice], calls [onStale] for a stale refusal so the
+ * caller can re-read the binding, and returns null. Cancellation is rethrown.
+ */
+internal suspend fun <T> ZoenViewModel.planWrite(pageChanged: String, fallback: String = "", onStale: () -> Unit = {}, block: suspend () -> T): T? =
+    try { block() } catch (error: Exception) {
+        if (error is CancellationException) throw error
+        if (error is CoreException.Stale) onStale()
+        notify(planWriteNotice(error, pageChanged, fallback))
+        null
+    }
 
 class PageSaveCoordinator {
     private class Editor(
@@ -85,7 +108,7 @@ class PageSaveCoordinator {
         }
     }
 
-    suspend fun restoreVersion(repository: ZoenRepository, id: String, owner: String, number: UInt): PageDto? = restore(id) { publish ->
+    suspend fun restoreVersion(repository: ZoenRepository, id: String, owner: String, number: UInt, observedPlanHash: String? = null): PageDto? = restore(id) { publish ->
         var restoredPage: PageDto? = null
         var failure: Exception? = null
         repository.change { core ->
@@ -93,10 +116,11 @@ class PageSaveCoordinator {
             val item = core.item(id)
             if (item.kindId != "page") {
                 if (item.kindId == "plan") {
-                    val plan = core.planPage(id)
-                    check(plan.ready && plan.legacyEditAdmitted) { plan.saveError ?: "This plan is read only" }
-                }
-                core.restoreVersion(id, number)
+                    // No observed hash means the sheet never saw a binding: refuse like a stale write,
+                    // so the caller shows R.string.plan_changed and re-reads.
+                    val hash = confirmedPlanHash(item.kindId, observedPlanHash) ?: throw CoreException.Stale("")
+                    core.restorePlanVersion(id, number, hash)
+                } else core.restoreVersion(id, number)
             } else {
                 val store = PageDraftStore(repository.vault, repository.localKey("encryptedPageDraft", id, owner))
                 val legacyKey = repository.localKey("pageDraft", id, owner)

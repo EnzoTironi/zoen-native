@@ -141,10 +141,10 @@ class PlanPageJourneyTest {
         compose.onNodeWithTag("plan-line:$legacyId").performTouchInput { click() }
         compose.onAllNodesWithTag("plan-edit:${original.id}").assertCountEquals(0)
         compose.onNodeWithTag("item-history").assertIsNotEnabled()
-        assertNotNull(runCatching { runBlocking { app.repository.change { it.togglePlanLine(item.id, legacyId) } } }.exceptionOrNull())
+        assertNotNull(runCatching { runBlocking { app.repository.change { it.togglePlanLine(item.id, legacyId, it.planPage(item.id).contentHash) } } }.exceptionOrNull())
         lateinit var model: ZoenViewModel
         scenario.onActivity { model = ViewModelProvider(it)[ZoenViewModel::class.java] }
-        assertNotNull(runCatching { runBlocking { model.pageSaves.restoreVersion(app.repository, item.id, app.repository.state.value.me!!.id, 1u) } }.exceptionOrNull())
+        assertNotNull(runCatching { runBlocking { model.pageSaves.restoreVersion(app.repository, item.id, app.repository.state.value.me!!.id, 1u, readonly.contentHash) } }.exceptionOrNull())
         assertEquals(readonly.contentHash, read().contentHash)
         assertEquals(readonly.version, read().version)
         capture("removed-member-read-only-admission")
@@ -168,7 +168,7 @@ class PlanPageJourneyTest {
             val line = initial.blocks.first { it.content is PlanPageContentDto.Line }.content as PlanPageContentDto.Line
             val exact = "Keep cafe\u0301 😀\r\nNEL\u0085paragraph\u2029bytes"
             val cents = 9_007_199_254_740_991L
-            core.editPlanLine(created.id, line.legacyId, exact, cents)
+            core.editPlanLine(created.id, line.legacyId, exact, cents, initial.contentHash)
             val saved = core.planPage(created.id)
             core.destroy()
             core = RodaEngine.open(database, "en")
@@ -183,7 +183,7 @@ class PlanPageJourneyTest {
             assertEquals(exact, retained.text)
             assertEquals(cents, (retained.content as PlanPageContentDto.Line).costCents)
             val version = core.item(created.id).version
-            core.restoreVersion(created.id, 1u)
+            core.restorePlanVersion(created.id, 1u, reopened.contentHash)
             assertEquals(version + 1u, core.item(created.id).version)
             assertTrue(core.verifyAll().all { it.valid })
         } finally {

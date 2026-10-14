@@ -9,10 +9,17 @@ fn legacy_edit_flag_admits_the_owner_and_active_member_without_writing_on_read()
     assert!(read.ready);
     assert!(read.legacy_edit_admitted);
     assert_eq!(storage(&fixture), before);
-    let added = fixture
-        .engine
-        .add_plan_line(&fixture.item, 0, "Exact native cost", 1_025)
-        .unwrap();
+    let added = {
+        let observed_hash = fixture
+            .engine
+            .plan_page(&fixture.item)
+            .unwrap()
+            .content_hash;
+        fixture
+            .engine
+            .add_plan_line(&fixture.item, 0, "Exact native cost", 1_025, &observed_hash)
+    }
+    .unwrap();
     assert_eq!(added.item.plan.unwrap().total_cents, 1_218);
     let pending_read = fixture.engine.plan_page(&fixture.item).unwrap();
     assert!(pending_read.legacy_edit_admitted);
@@ -49,10 +56,17 @@ fn legacy_edit_flag_admits_the_owner_and_active_member_without_writing_on_read()
             .legacy_edit_admitted
     );
     assert_eq!(storage(&fixture), before);
-    let added = fixture
-        .engine
-        .add_plan_line(&fixture.item, 0, "Exact zero", 0)
-        .unwrap();
+    let added = {
+        let observed_hash = fixture
+            .engine
+            .plan_page(&fixture.item)
+            .unwrap()
+            .content_hash;
+        fixture
+            .engine
+            .add_plan_line(&fixture.item, 0, "Exact zero", 0, &observed_hash)
+    }
+    .unwrap();
     assert_eq!(
         added.item.plan.unwrap().sections[0]
             .lines
@@ -77,10 +91,17 @@ fn legacy_edit_flag_and_actual_mutations_refuse_reader_removed_and_unsigned_acto
     assert!(read.ready);
     assert!(!read.legacy_edit_admitted);
     assert_eq!(storage(&fixture), before);
-    assert!(fixture
-        .engine
-        .add_plan_line(&fixture.item, 0, "Refused reader", 1)
-        .is_err());
+    assert!({
+        let observed_hash = fixture
+            .engine
+            .plan_page(&fixture.item)
+            .unwrap()
+            .content_hash;
+        fixture
+            .engine
+            .add_plan_line(&fixture.item, 0, "Refused reader", 1, &observed_hash)
+    }
+    .is_err());
     assert_eq!(storage(&fixture), before);
 
     fixture.ordered(EventBody::MemberAdded {
@@ -105,10 +126,17 @@ fn legacy_edit_flag_and_actual_mutations_refuse_reader_removed_and_unsigned_acto
             .unwrap()
             .legacy_edit_admitted
     );
-    assert!(fixture
-        .engine
-        .add_plan_line(&fixture.item, 0, "Refused removal", 1)
-        .is_err());
+    assert!({
+        let observed_hash = fixture
+            .engine
+            .plan_page(&fixture.item)
+            .unwrap()
+            .content_hash;
+        fixture
+            .engine
+            .add_plan_line(&fixture.item, 0, "Refused removal", 1, &observed_hash)
+    }
+    .is_err());
     assert_eq!(storage(&fixture), before);
 
     fixture.engine.me = None;
@@ -120,10 +148,17 @@ fn legacy_edit_flag_and_actual_mutations_refuse_reader_removed_and_unsigned_acto
             .unwrap()
             .legacy_edit_admitted
     );
-    assert!(fixture
-        .engine
-        .add_plan_line(&fixture.item, 0, "Refused identity", 1)
-        .is_err());
+    assert!({
+        let observed_hash = fixture
+            .engine
+            .plan_page(&fixture.item)
+            .unwrap()
+            .content_hash;
+        fixture
+            .engine
+            .add_plan_line(&fixture.item, 0, "Refused identity", 1, &observed_hash)
+    }
+    .is_err());
     assert_eq!(storage(&fixture), before);
 }
 
@@ -153,10 +188,17 @@ fn legacy_edit_flag_refuses_pending_and_ordered_canonical_cutover() {
     let read = fixture.engine.plan_page(&fixture.item).unwrap();
     assert!(read.pending_sync);
     assert!(!read.legacy_edit_admitted);
-    assert!(fixture
-        .engine
-        .add_plan_line(&fixture.item, 0, "Refused pending", 1)
-        .is_err());
+    assert!({
+        let observed_hash = fixture
+            .engine
+            .plan_page(&fixture.item)
+            .unwrap()
+            .content_hash;
+        fixture
+            .engine
+            .add_plan_line(&fixture.item, 0, "Refused pending", 1, &observed_hash)
+    }
+    .is_err());
     assert_eq!(storage(&fixture), before);
     deliver(&mut fixture.engine, &pending, Ingest::Confirmed);
     let before = storage(&fixture);
@@ -164,10 +206,17 @@ fn legacy_edit_flag_refuses_pending_and_ordered_canonical_cutover() {
     assert!(read.ready);
     assert!(!read.pending_sync);
     assert!(!read.legacy_edit_admitted);
-    assert!(fixture
-        .engine
-        .add_plan_line(&fixture.item, 0, "Refused cutover", 1)
-        .is_err());
+    assert!({
+        let observed_hash = fixture
+            .engine
+            .plan_page(&fixture.item)
+            .unwrap()
+            .content_hash;
+        fixture
+            .engine
+            .add_plan_line(&fixture.item, 0, "Refused cutover", 1, &observed_hash)
+    }
+    .is_err());
     assert_eq!(storage(&fixture), before);
 }
 
@@ -221,10 +270,21 @@ fn private_plan_draft_disables_legacy_controls_without_changing_the_existing_mut
         original()
     );
     assert!(fixture.engine.require_legacy_plan(&fixture.item).is_ok());
-    let outcome = fixture
-        .engine
-        .add_plan_line(&fixture.item, 0, "Existing backend policy", 0)
-        .unwrap();
+    let outcome = {
+        let observed_hash = fixture
+            .engine
+            .plan_page(&fixture.item)
+            .unwrap()
+            .content_hash;
+        fixture.engine.add_plan_line(
+            &fixture.item,
+            0,
+            "Existing backend policy",
+            0,
+            &observed_hash,
+        )
+    }
+    .unwrap();
     assert_eq!(
         outcome.item.plan.unwrap().sections[0]
             .lines
@@ -262,10 +322,17 @@ fn missing_or_damaged_payload_never_admits_legacy_editing_before_or_after_recove
     let missing = fixture.engine.plan_page(&fixture.item).unwrap();
     assert!(!missing.ready);
     assert!(!missing.legacy_edit_admitted);
-    assert!(fixture
-        .engine
-        .add_plan_line(&fixture.item, 0, "Missing payload", 1)
-        .is_err());
+    assert!({
+        let observed_hash = fixture
+            .engine
+            .plan_page(&fixture.item)
+            .unwrap()
+            .content_hash;
+        fixture
+            .engine
+            .add_plan_line(&fixture.item, 0, "Missing payload", 1, &observed_hash)
+    }
+    .is_err());
     assert_eq!(storage(&fixture), before);
     fixture
         .engine
@@ -276,10 +343,17 @@ fn missing_or_damaged_payload_never_admits_legacy_editing_before_or_after_recove
     let damaged = fixture.engine.plan_page(&fixture.item).unwrap();
     assert!(!damaged.ready);
     assert!(!damaged.legacy_edit_admitted);
-    assert!(fixture
-        .engine
-        .add_plan_line(&fixture.item, 0, "Damaged payload", 1)
-        .is_err());
+    assert!({
+        let observed_hash = fixture
+            .engine
+            .plan_page(&fixture.item)
+            .unwrap()
+            .content_hash;
+        fixture
+            .engine
+            .add_plan_line(&fixture.item, 0, "Damaged payload", 1, &observed_hash)
+    }
+    .is_err());
     assert_eq!(storage(&fixture), before);
     assert!(!fixture
         .engine
@@ -295,10 +369,17 @@ fn missing_or_damaged_payload_never_admits_legacy_editing_before_or_after_recove
     assert!(recovered.ready);
     assert_eq!(fixture.engine.media(&hash).unwrap(), Some(bytes.clone()));
     assert!(!recovered.legacy_edit_admitted);
-    assert!(fixture
-        .engine
-        .add_plan_line(&fixture.item, 0, "Recovered cutover", 1)
-        .is_err());
+    assert!({
+        let observed_hash = fixture
+            .engine
+            .plan_page(&fixture.item)
+            .unwrap()
+            .content_hash;
+        fixture
+            .engine
+            .add_plan_line(&fixture.item, 0, "Recovered cutover", 1, &observed_hash)
+    }
+    .is_err());
     assert_eq!(storage(&fixture), before);
     assert!(fixture
         .engine
@@ -319,10 +400,17 @@ fn legacy_edit_flag_refuses_unrepresentable_total_and_nonlegacy_current_content(
     assert!(read.ready);
     assert_eq!(read.total_cents, None);
     assert!(!read.legacy_edit_admitted);
-    assert!(overflow
-        .engine
-        .add_plan_line(&overflow.item, 0, "Unrepresentable", 0)
-        .is_err());
+    assert!({
+        let observed_hash = overflow
+            .engine
+            .plan_page(&overflow.item)
+            .unwrap()
+            .content_hash;
+        overflow
+            .engine
+            .add_plan_line(&overflow.item, 0, "Unrepresentable", 0, &observed_hash)
+    }
+    .is_err());
     assert_eq!(storage(&overflow), before);
 
     let mut malformed = Fixture::new();
@@ -343,10 +431,17 @@ fn legacy_edit_flag_refuses_unrepresentable_total_and_nonlegacy_current_content(
         .engine
         .require_legacy_plan(&malformed.item)
         .is_ok());
-    assert!(malformed
-        .engine
-        .add_plan_line(&malformed.item, 0, "Nonlegacy current", 0)
-        .is_err());
+    assert!({
+        let observed_hash = malformed
+            .engine
+            .plan_page(&malformed.item)
+            .unwrap()
+            .content_hash;
+        malformed
+            .engine
+            .add_plan_line(&malformed.item, 0, "Nonlegacy current", 0, &observed_hash)
+    }
+    .is_err());
     assert_eq!(storage(&malformed), before);
 }
 
@@ -371,7 +466,8 @@ fn signed_offline_creation_keeps_two_legacy_edits_without_an_authenticated_page_
     assert_eq!(created.total_cents, Some(193));
     assert_eq!(created.blocks[0].text, original().title);
     assert_eq!(created.blocks[1].text, original().summary);
-    assert!(created.content_hash.starts_with("local-legacy:"));
+    assert_eq!(created.content_hash.len(), 64);
+    assert!(created.content_hash.chars().all(|c| c.is_ascii_hexdigit()));
     assert!(created
         .blocks
         .iter()
@@ -383,10 +479,13 @@ fn signed_offline_creation_keeps_two_legacy_edits_without_an_authenticated_page_
     assert!(fixture.engine.require_legacy_plan(&item).is_ok());
     assert_eq!(storage(&fixture), before);
 
-    let first = fixture
-        .engine
-        .add_plan_line(&item, 0, "Offline first", 25)
-        .unwrap();
+    let first = {
+        let observed_hash = fixture.engine.plan_page(&item).unwrap().content_hash;
+        fixture
+            .engine
+            .add_plan_line(&item, 0, "Offline first", 25, &observed_hash)
+    }
+    .unwrap();
     assert_eq!(first.item.plan.unwrap().total_cents, 218);
     let first_event = fixture
         .engine
@@ -397,10 +496,13 @@ fn signed_offline_creation_keeps_two_legacy_edits_without_an_authenticated_page_
         .find(|pending| pending.event.client_id != creation.client_id)
         .unwrap()
         .event;
-    let second = fixture
-        .engine
-        .add_plan_line(&item, 0, "Offline second", 30)
-        .unwrap();
+    let second = {
+        let observed_hash = fixture.engine.plan_page(&item).unwrap().content_hash;
+        fixture
+            .engine
+            .add_plan_line(&item, 0, "Offline second", 30, &observed_hash)
+    }
+    .unwrap();
     assert_eq!(second.item.plan.unwrap().total_cents, 248);
     let pending = fixture.engine.store.outbox().unwrap();
     assert_eq!(pending.len(), 3);
@@ -453,10 +555,17 @@ fn signed_offline_creation_keeps_two_legacy_edits_without_an_authenticated_page_
 #[test]
 fn typed_legacy_controls_preserve_two_offline_edits_despite_the_crdt_session_gate() {
     let mut fixture = Fixture::new();
-    let first = fixture
-        .engine
-        .add_plan_line(&fixture.item, 0, "Offline first", 5)
-        .unwrap();
+    let first = {
+        let observed_hash = fixture
+            .engine
+            .plan_page(&fixture.item)
+            .unwrap()
+            .content_hash;
+        fixture
+            .engine
+            .add_plan_line(&fixture.item, 0, "Offline first", 5, &observed_hash)
+    }
+    .unwrap();
     assert_eq!(first.item.plan.unwrap().total_cents, 198);
     let first_event = fixture.engine.store.outbox().unwrap()[0].event.clone();
     let before = storage(&fixture);
@@ -481,10 +590,17 @@ fn typed_legacy_controls_preserve_two_offline_edits_despite_the_crdt_session_gat
     assert!(fixture.engine.require_legacy_plan(&fixture.item).is_ok());
     assert_eq!(storage(&fixture), before);
 
-    let second = fixture
-        .engine
-        .add_plan_line(&fixture.item, 0, "Offline second", 5)
-        .unwrap();
+    let second = {
+        let observed_hash = fixture
+            .engine
+            .plan_page(&fixture.item)
+            .unwrap()
+            .content_hash;
+        fixture
+            .engine
+            .add_plan_line(&fixture.item, 0, "Offline second", 5, &observed_hash)
+    }
+    .unwrap();
     assert_eq!(second.item.plan.unwrap().total_cents, 203);
     let pending = fixture.engine.store.outbox().unwrap();
     assert_eq!(pending.len(), 2);
@@ -535,10 +651,17 @@ fn legacy_admission_and_actual_writes_preserve_missing_key_and_relay_account_ref
             .unwrap()
             .legacy_edit_admitted
     );
-    assert!(fixture
-        .engine
-        .add_plan_line(&fixture.item, 0, "Missing key", 0)
-        .is_err());
+    assert!({
+        let observed_hash = fixture
+            .engine
+            .plan_page(&fixture.item)
+            .unwrap()
+            .content_hash;
+        fixture
+            .engine
+            .add_plan_line(&fixture.item, 0, "Missing key", 0, &observed_hash)
+    }
+    .is_err());
     assert_eq!(storage(&fixture), before);
     fixture.engine.signers.insert(fixture.owner.clone(), signer);
 
@@ -578,10 +701,13 @@ fn legacy_admission_and_actual_writes_preserve_missing_key_and_relay_account_ref
             .legacy_edit_admitted
     );
     assert_eq!(storage(&relay), before);
-    relay
-        .engine
-        .add_plan_line(&relay.item, 0, "Matching relay signer", 0)
-        .unwrap();
+    {
+        let observed_hash = relay.engine.plan_page(&relay.item).unwrap().content_hash;
+        relay
+            .engine
+            .add_plan_line(&relay.item, 0, "Matching relay signer", 0, &observed_hash)
+    }
+    .unwrap();
     relay.engine.me = Some(other_writer.clone());
     assert!(relay.engine.state.writer(&relay.space, &other_writer));
     assert!(relay.engine.author_for(&other_writer).is_ok());
@@ -590,10 +716,13 @@ fn legacy_admission_and_actual_writes_preserve_missing_key_and_relay_account_ref
     let read = relay.engine.plan_page(&relay.item).unwrap();
     assert_eq!(read.source, PlanPageReadSourceDto::LocalPendingLegacy);
     assert!(!read.legacy_edit_admitted);
-    assert!(relay
-        .engine
-        .add_plan_line(&relay.item, 0, "Wrong relay signer", 0)
-        .is_err());
+    assert!({
+        let observed_hash = relay.engine.plan_page(&relay.item).unwrap().content_hash;
+        relay
+            .engine
+            .add_plan_line(&relay.item, 0, "Wrong relay signer", 0, &observed_hash)
+    }
+    .is_err());
     assert_eq!(storage(&relay), before);
 }
 
@@ -618,10 +747,13 @@ fn a_typed_local_pending_creation_never_admits_reader_or_removed_member_writes()
     assert_eq!(read.source, PlanPageReadSourceDto::LocalPendingLegacy);
     assert!(read.ready);
     assert!(!read.legacy_edit_admitted);
-    assert!(fixture
-        .engine
-        .add_plan_line(&item, 0, "Offline reader", 0)
-        .is_err());
+    assert!({
+        let observed_hash = fixture.engine.plan_page(&item).unwrap().content_hash;
+        fixture
+            .engine
+            .add_plan_line(&item, 0, "Offline reader", 0, &observed_hash)
+    }
+    .is_err());
     assert_eq!(storage(&fixture), before);
     fixture.ordered(EventBody::MemberRemoved { identity: reader });
     let before = storage(&fixture);
@@ -632,9 +764,12 @@ fn a_typed_local_pending_creation_never_admits_reader_or_removed_member_writes()
             .unwrap()
             .legacy_edit_admitted
     );
-    assert!(fixture
-        .engine
-        .add_plan_line(&item, 0, "Offline removed", 0)
-        .is_err());
+    assert!({
+        let observed_hash = fixture.engine.plan_page(&item).unwrap().content_hash;
+        fixture
+            .engine
+            .add_plan_line(&item, 0, "Offline removed", 0, &observed_hash)
+    }
+    .is_err());
     assert_eq!(storage(&fixture), before);
 }

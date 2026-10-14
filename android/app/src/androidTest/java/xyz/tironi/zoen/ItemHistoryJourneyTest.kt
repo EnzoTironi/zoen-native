@@ -47,9 +47,12 @@ class ItemHistoryJourneyTest {
     }
     private fun signedEdits(count: Int) {
         val line = page().blocks.first { it.content is PlanPageContentDto.Line }.content as PlanPageContentDto.Line
-        repeat(count) { index -> runBlocking { app.repository.change {
-            it.editPlanLine(item.id, line.legacyId, "History checkpoint ${index + 1} café 😀", (index + 1).toLong())
-        } } }
+        repeat(count) { index ->
+            val observed = page().contentHash
+            runBlocking { app.repository.change {
+                it.editPlanLine(item.id, line.legacyId, "History checkpoint ${index + 1} café 😀", (index + 1).toLong(), observed)
+            } }
+        }
     }
     private fun shell(command: String) {
         ParcelFileDescriptor.AutoCloseInputStream(
@@ -155,6 +158,28 @@ class ItemHistoryJourneyTest {
         compose.onAllNodesWithTag("confirm-restore-version").assertCountEquals(0)
         assertEquals(before, detail())
         capture("open-history-admission-disabled")
+    }
+
+    @Test fun planChangedUnderAnOpenHistoryRefusesRestoreThenRestoresAfterReread() {
+        open(); history()
+        compose.waitUntil(10_000) { compose.onAllNodes(hasTestTag("restore-version:1") and isEnabled()).fetchSemanticsNodes().isNotEmpty() }
+        signedEdits(1)
+        val changed = detail()
+        assertEquals(item.version + 1u, changed.version)
+        compose.onNodeWithTag("item-versions").performScrollToNode(hasTestTag("restore-version:1"))
+        compose.onNodeWithTag("restore-version:1").performClick()
+        compose.onNodeWithTag("confirm-restore-version").performClick()
+        compose.waitUntil(10_000) { compose.onAllNodesWithText(app.getString(R.string.plan_changed)).fetchSemanticsNodes().isNotEmpty() }
+        assertEquals(changed, detail())
+        capture("stale-restore-refused")
+        // The refusal re-reads the binding; the still-open sheet can now restore what it shows.
+        compose.waitUntil(10_000) { compose.onAllNodes(hasTestTag("restore-version:1") and isEnabled()).fetchSemanticsNodes().isNotEmpty() }
+        compose.onNodeWithTag("item-versions").performScrollToNode(hasTestTag("restore-version:1"))
+        compose.onNodeWithTag("restore-version:1").performClick()
+        compose.onNodeWithTag("confirm-restore-version").performClick()
+        compose.waitUntil(10_000) { detail().version == changed.version + 1u }
+        compose.waitUntil(10_000) { compose.onAllNodesWithTag("item-versions").fetchSemanticsNodes().isEmpty() }
+        capture("stale-restore-after-reread")
     }
 
     @Test fun membershipLossDisablesOpeningHistory() {

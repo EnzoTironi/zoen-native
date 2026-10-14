@@ -10,6 +10,7 @@ import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.*
 import org.junit.Test
+import xyz.tironi.zoen.core.CoreException
 import xyz.tironi.zoen.core.PageBlockDto
 import xyz.tironi.zoen.core.PageDto
 import xyz.tironi.zoen.core.SecretVault
@@ -17,6 +18,26 @@ import kotlin.time.Duration.Companion.seconds
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class PageSaveCoordinatorTest {
+    @Test fun planRestoreKeepsTheConfirmationHash() {
+        assertEquals("seen-at-confirm", confirmedPlanHash("plan", "seen-at-confirm"))
+        assertNull(confirmedPlanHash("page", "seen-at-confirm"))
+        assertNull(confirmedPlanHash("file", "seen-at-confirm"))
+        assertNull(confirmedPlanHash("plan", null))
+    }
+
+    @Test fun stalePlanRestoreUsesThePageChangedPhrase() {
+        val stale = CoreException.Stale("A página mudou. Revise antes de editar.")
+        val phrase = "Este plano mudou. Reabra o editor para usar a versão atual."
+        assertEquals("reason=A página mudou. Revise antes de editar.", stale.message)
+        assertEquals(phrase, planWriteNotice(stale, phrase))
+    }
+
+    @Test fun otherPlanRestoreFailureKeepsTheExceptionMessage() {
+        assertEquals("disk full", planWriteNotice(IllegalStateException("disk full"), "ignored"))
+        assertEquals("", planWriteNotice(IllegalStateException(), "ignored"))
+        assertEquals("Something went wrong", planWriteNotice(IllegalStateException(), "ignored", "Something went wrong"))
+    }
+
     @Test fun recoveredDraftBlocksRestoreUntilExplicitlyResolved() = runTest(timeout = 3.seconds) {
         val coordinator = PageSaveCoordinator()
         var writes = 0
