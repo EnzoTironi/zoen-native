@@ -603,7 +603,7 @@ impl RodaEngine {
             profiles.push(i);
         }
         if let Some(a) = p.agent.clone() {
-            profiles.push(a);
+            profiles.push(*a);
         }
         if !profiles.is_empty() {
             e.put_profiles(profiles)?;
@@ -632,7 +632,7 @@ impl RodaEngine {
                 ))
             })?;
             let mut e = self.lock();
-            e.put_profiles(std::iter::once(agent.clone()).chain(p.inviter).collect())?;
+            e.put_profiles(std::iter::once((*agent).clone()).chain(p.inviter).collect())?;
             return e.start_direct(&agent.id);
         }
         self.lock().queue_join(&p.space, p.role, &code)?;

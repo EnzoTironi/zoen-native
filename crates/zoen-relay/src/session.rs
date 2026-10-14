@@ -927,7 +927,7 @@ impl Session {
                 ttl_secs,
             } => {
                 let invite = if let Some(agent) = agent {
-                    let profiles = db::profiles(pool, &[agent.clone()])
+                    let profiles = db::profiles(pool, std::slice::from_ref(&agent))
                         .await
                         .map_err(|e| e.to_string())?;
                     let profile = profiles.first().ok_or("unknown agent")?;
@@ -1092,7 +1092,8 @@ impl Session {
                 let agent = i
                     .agent
                     .as_ref()
-                    .and_then(|id| found.iter().find(|p| p.id == *id).cloned());
+                    .and_then(|id| found.iter().find(|p| p.id == *id).cloned())
+                    .map(Box::new);
                 let kind = if i.agent.is_some() {
                     "agent".into()
                 } else {

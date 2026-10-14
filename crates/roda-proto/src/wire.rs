@@ -532,8 +532,8 @@ pub struct PbInvitePreview {
     /// `space` or `agent`; empty on the wire means space (legacy).
     #[prost(string, tag = "6")]
     pub kind: String,
-    #[prost(message, optional, tag = "7")]
-    pub agent: Option<PbProfile>,
+    #[prost(message, optional, boxed, tag = "7")]
+    pub agent: Option<Box<PbProfile>>,
 }
 
 #[derive(Clone, PartialEq, Message)]
@@ -1013,7 +1013,7 @@ impl ServerFrame {
                         members: p.members,
                         inviter: p.inviter.as_ref().map(profile_to),
                         kind: p.kind.clone(),
-                        agent: p.agent.as_ref().map(profile_to),
+                        agent: p.agent.as_deref().map(profile_to).map(Box::new),
                     }),
                     Ok(Reply::Done) => pb_res::R::Done(PbEmpty {}),
                     Ok(Reply::AgreementKeys(ks)) => pb_res::R::AgreementKeys(PbAgreementKeys {
@@ -1158,7 +1158,7 @@ impl ServerFrame {
                         } else {
                             p.kind
                         },
-                        agent: p.agent.map(profile_from).transpose()?,
+                        agent: p.agent.map(|a| profile_from(*a)).transpose()?.map(Box::new),
                     })),
                     pb_res::R::Done(_) => Ok(Reply::Done),
                     pb_res::R::AgreementKeys(ks) => Ok(Reply::AgreementKeys(

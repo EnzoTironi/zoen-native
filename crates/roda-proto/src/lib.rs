@@ -593,7 +593,7 @@ pub struct InvitePreview {
     /// `space` or `agent`.
     pub kind: String,
     /// Present when `kind` is `agent`.
-    pub agent: Option<Identity>,
+    pub agent: Option<Box<Identity>>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
