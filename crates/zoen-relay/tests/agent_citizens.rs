@@ -168,6 +168,11 @@ async fn definitions_are_versioned_and_owner_controlled() {
     let bd = dev(&bot_dev);
     let bruno_d = dev(&bruno_dev);
 
+    // The runtime can't make itself a Creator, not even with its first definition.
+    assert!(matches!(
+        agents::define(&d.pool, &bot.id, bd, &bot.id, 1, "Creator", b"{}").await,
+        Err(AgentCitizenError::Owner)
+    ));
     // The runtime records its first definition at registration, once.
     agents::define(&d.pool, &bot.id, bd, &bot.id, 1, "User", b"{\"v\":1}")
         .await

@@ -152,6 +152,16 @@ async fn a_barber_creates_a_booking_bot_and_a_client_books_while_he_is_offline()
         "zoen_creator",
         &creator_def,
     );
+    // The Creator kind is the owner's call: the agent can't make itself one.
+    w.zoen(
+        "bruno",
+        &[
+            "agent-define",
+            "@zoen_creator",
+            "--definition",
+            creator_def.to_str().unwrap(),
+        ],
+    );
     let mut creator = host(&w, "creator", &[]);
     assert_eq!(
         w.scalar("SELECT c.kind FROM agent_citizens c JOIN identities i ON i.id = c.agent WHERE i.handle = 'zoen_creator'").await,
@@ -357,14 +367,17 @@ async fn an_agent_joins_a_space_as_a_real_mls_member() {
     let ask = note(&ask, "ask_owner").expect("ask")["ask_owner"].clone();
     assert!(ask["draft"].as_str().unwrap().contains("comprovante"));
 
-    // Paused by the owner: silence, and the paused message is not answered later.
+    // Paused by the owner: silence while paused, and the message that arrived meanwhile
+    // is answered once the owner resumes, so no client is left without a reply.
     w.zoen("bruno", &["agent-pause", "@agenda_bruno"]);
     w.zoen("dani", &["send", "Barbearia", "Confirmo pra Carla"]);
     std::thread::sleep(Duration::from_secs(4));
+    let paused = w.zoen("bruno", &["read", "Barbearia"]);
+    assert!(!paused.contains("Fechado: sábado 10h"), "{paused}");
     w.zoen("bruno", &["agent-resume", "@agenda_bruno"]);
+    read_until(&w, "bruno", "Barbearia", "Fechado: sábado 10h", &mut bot);
     w.zoen("dani", &["send", "Barbearia", "Obrigada!"]);
     let bruno = read_until(&w, "bruno", "Barbearia", "De nada!", &mut bot);
-    assert!(!bruno.contains("Fechado: sábado 10h"), "{bruno}");
     assert!(!bruno.contains("Recebido!"), "{bruno}");
 
     // The owner versions the definition; the agent itself can't redefine itself.

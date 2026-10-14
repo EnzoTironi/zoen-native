@@ -26,6 +26,9 @@ use zoen_agentd::{AgentSpec, Brain, Definition, Runtime, Turn, TurnContext, Turn
 const HISTORY: usize = 16;
 /// A message whose brain call keeps failing is skipped after this many tries.
 const MAX_TRIES: u32 = 3;
+/// At most this many unanswered messages per Space are answered in one go (after a pause
+/// or a long outage); older ones are skipped, never replayed in bulk.
+const BACKLOG_CAP: usize = 20;
 /// The runtime stops after this many refused or failed state reads in a row (~30 s).
 const MAX_STATE_FAILURES: u32 = 6;
 
@@ -112,9 +115,17 @@ fn say(line: impl std::fmt::Display) {
     let _ = std::io::stdout().flush();
 }
 
-/// The agent's first definition, at registration (`agent-init --definition`).
+/// The agent's first definition, at registration (`agent-init --definition`). Only a
+/// plain User agent defines itself; a Creator's kind is the owner's call (`agent-define`).
 pub async fn define_first(e: &Arc<RodaEngine>, def_path: &str) {
     let def: Definition = read_definition(def_path);
+    if def.kind.relay_kind() != "User" {
+        say(format_args!(
+            "kind {} is set by the owner: agent-define",
+            def.kind.relay_kind()
+        ));
+        return;
+    }
     let me = e
         .account()
         .unwrap_or_else(|| crate::die("no account"))
@@ -247,10 +258,15 @@ pub async fn host(e: &Arc<RodaEngine>, home: &Path, for_secs: Option<u64>) {
                 continue;
             }
         };
-        let paused = status.status == "paused";
         for (space, seq) in status.cursors {
             let c = cursors.entry(space).or_insert(seq);
             *c = (*c).max(seq);
+        }
+        if status.status == "paused" {
+            // Paused: answer nothing and keep the cursors where they are, so whatever
+            // arrives now is answered (capped, through the gate) once the owner resumes.
+            wait(&waker, deadline).await;
+            continue;
         }
 
         for s in e.spaces() {
@@ -261,17 +277,30 @@ pub async fn host(e: &Arc<RodaEngine>, home: &Path, for_secs: Option<u64>) {
             let Ok(tl) = e.timeline(s.id.clone()) else {
                 continue;
             };
-            let from = cursors.get(&s.id).copied().unwrap_or(0);
+            let mut from = cursors.get(&s.id).copied().unwrap_or(0);
+            let pending: Vec<u64> = tl
+                .iter()
+                .filter(|t| t.seq > from && t.author.id != cx.me)
+                .map(|t| t.seq)
+                .collect();
+            if pending.len() > BACKLOG_CAP {
+                let skip_to = pending[pending.len() - BACKLOG_CAP - 1];
+                say(format_args!(
+                    "skipping {} old messages",
+                    pending.len() - BACKLOG_CAP
+                ));
+                if e.agent_advance(s.id.clone(), skip_to).await.is_err() {
+                    continue;
+                }
+                cursors.insert(s.id.clone(), skip_to);
+                from = skip_to;
+            }
             for (i, t) in tl.iter().enumerate() {
                 if t.seq <= from || t.author.id == cx.me {
                     continue;
                 }
                 last_activity = Instant::now();
-                let handled = if paused {
-                    true
-                } else {
-                    turn(e, &cx, &def, &s.id, &tl[..i], t).await
-                };
+                let handled = turn(e, &cx, &def, &s.id, &tl[..i], t).await;
                 let key = (s.id.clone(), t.seq);
                 if !handled {
                     let n = tries.entry(key).or_insert(0);
@@ -328,8 +357,13 @@ async fn turn(
     {
         return true;
     }
-    if already_told_owner(e, cx, &t.id) {
-        return true;
+    if let Some(note) = owner_note(e, cx, &t.id) {
+        // Told the owner already. A proposal's confirmation may still be owed to the chat
+        // (the reply failed after the note went out): send it now, from the note.
+        return match note["agent_proposal"]["confirmation"].as_str() {
+            Some(c) => reply(e, space, c, &t.id),
+            None => true,
+        };
     }
     let history: Vec<Turn> = before
         .iter()
@@ -389,7 +423,7 @@ fn reply(e: &Arc<RodaEngine>, space: &str, text: &str, source: &str) -> bool {
         Ok(_) => {
             say(format_args!(
                 "woke in {} -> replied",
-                &space[..space.len().min(10)]
+                space.chars().take(10).collect::<String>()
             ));
             true
         }
@@ -413,7 +447,8 @@ fn propose(
     if !tell_owner(
         e,
         cx,
-        json!({"agent_proposal": {"source": t.id, "space": space, "spec": spec}}),
+        json!({"agent_proposal": {"source": t.id, "space": space, "spec": spec,
+                                  "confirmation": confirmation}}),
     ) {
         return false;
     }
@@ -442,13 +477,16 @@ fn tell_owner(e: &Arc<RodaEngine>, cx: &Ctx, body: serde_json::Value) -> bool {
     }
 }
 
-fn already_told_owner(e: &Arc<RodaEngine>, cx: &Ctx, source: &str) -> bool {
-    let Ok(dm) = e.start_direct(cx.owner.clone()) else {
-        return false;
-    };
+/// Our earlier note to the owner about `source`, if one went out.
+fn owner_note(e: &Arc<RodaEngine>, cx: &Ctx, source: &str) -> Option<serde_json::Value> {
+    let dm = e.start_direct(cx.owner.clone()).ok()?;
     let needle = format!("\"source\":\"{source}\"");
-    e.timeline(dm)
-        .unwrap_or_default()
-        .iter()
-        .any(|m| m.author.id == cx.me && text_of(m).is_some_and(|x| x.contains(&needle)))
+    e.timeline(dm).unwrap_or_default().iter().find_map(|m| {
+        let x = text_of(m).filter(|x| m.author.id == cx.me && x.contains(&needle))?;
+        let body = x
+            .trim()
+            .trim_start_matches("```json")
+            .trim_end_matches("```");
+        Some(serde_json::from_str(body.trim()).unwrap_or(serde_json::Value::Null))
+    })
 }

@@ -212,7 +212,8 @@ pub async fn advance_cursor(
 }
 
 /// A new definition version. The owner may always define; the agent's own runtime only
-/// its first definition (registration), never a later one.
+/// its first definition (registration), never a later one, and only as a plain User agent:
+/// the kind (Creator) is the owner's call, never the agent's own.
 pub async fn define(
     pool: &PgPool,
     caller: &str,
@@ -240,7 +241,7 @@ pub async fn define(
         return Err(AgentCitizenError::Revoked);
     }
     let by_owner = caller == owner;
-    let by_runtime = caller == agent && caller_device == device && current == 0;
+    let by_runtime = caller == agent && caller_device == device && current == 0 && kind == "User";
     if !by_owner && !by_runtime {
         return Err(AgentCitizenError::Owner);
     }
