@@ -4,7 +4,7 @@
 //! are present. Each turn is one admitted attempt under [`CheapTierAuthority`], a bounded
 //! per-owner daily cap. That is a staging guard, not the durable financial authority (U10).
 
-use super::host::{parse_reply, BrainOut, Turn};
+use super::host::{parse_reply, Brain, BrainOut, Turn, TurnContext};
 use super::profile::Definition;
 use async_trait::async_trait;
 use std::collections::{BTreeMap, BTreeSet};
@@ -103,15 +103,17 @@ impl ModelBrain {
         &self.model
     }
 
-    pub async fn think(
+}
+
+#[async_trait]
+impl Brain for ModelBrain {
+    async fn think(
         &self,
-        owner: &str,
-        agent: &str,
-        device: &str,
-        def: &Definition,
+        cx: TurnContext<'_>,
         history: &[Turn],
         inbound: &Turn,
     ) -> Result<BrainOut, String> {
+        let (owner, agent, device, def) = (cx.owner, cx.agent, cx.device, cx.definition);
         let mut messages = vec![InputMessage::System {
             text: system_prompt(def),
         }];

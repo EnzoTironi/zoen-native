@@ -9,9 +9,7 @@
 use roda_log::{Author, Signer};
 use roda_types::{Identity, IdentityKind};
 use zoen_agentd::citizen::{BrainOut, ModelBrain};
-use zoen_agentd::{
-    claim_citizen, creator_definition, AgentKind, Avatar, Definition, ModelTier, Turn,
-};
+use zoen_agentd::{approve_agent, creator_definition, Brain, Turn, TurnContext};
 
 #[tokio::main]
 async fn main() {
@@ -49,13 +47,10 @@ async fn main() {
         println!("\nBruno: {text}");
         let mut out = brain
             .think(
-                &owner.id,
-                "creator",
-                "creator-device",
-                &creator,
-                &history,
-                &inbound,
-            )
+                    TurnContext { agent: "creator", device: "creator-device", owner: &owner.id, definition: &creator },
+                    &history,
+                    &inbound,
+                )
             .await
             .unwrap_or_else(|e| {
                 eprintln!("model call failed: {e}");
@@ -80,10 +75,7 @@ async fn main() {
             println!("\nBruno: {}", ok.text);
             out = brain
                 .think(
-                    &owner.id,
-                    "creator",
-                    "creator-device",
-                    &creator,
+                    TurnContext { agent: "creator", device: "creator-device", owner: &owner.id, definition: &creator },
                     &history,
                     &ok,
                 )
@@ -103,43 +95,24 @@ async fn main() {
                     text: t,
                 });
             }
+            BrainOut::Silence => println!("Creator: (silence)"),
             c @ BrainOut::CreateAgent { .. } => {
-                println!("Creator: (create_agent)");
+                if let BrainOut::CreateAgent { confirmation: Some(c), .. } = &c {
+                    println!("Creator: {c}");
+                }
+                println!("Creator: (create_agent → owner approval)");
                 spec = Some(c);
                 break;
             }
         }
     }
-    let Some(BrainOut::CreateAgent {
-        name,
-        handle,
-        persona,
-        rules,
-        state,
-        glyph,
-        tint_hex,
-    }) = spec
-    else {
+    let Some(BrainOut::CreateAgent { spec, .. }) = spec else {
         eprintln!("\nCreator did not emit create_agent");
         std::process::exit(1);
     };
-    let def = Definition {
-        version: 1,
-        kind: AgentKind::User,
-        persona,
-        rules,
-        state,
-        model_tier: ModelTier::Cheap,
-    };
-    let bot = claim_citizen(
-        &owner_dev,
-        &owner,
-        name,
-        handle,
-        Avatar::hand_drawn(tint_hex, glyph),
-        def.clone(),
-    )
-    .expect("claim");
+    // Bruno's device approves the proposal: only the owner signs a new citizen.
+    let bot = approve_agent(&owner_dev, &owner, &spec).expect("approve");
+    let def = spec.definition.clone();
     println!(
         "\ncitizen: {} @{} id {}… owner-proof ok",
         bot.profile.name,
@@ -160,21 +133,14 @@ async fn main() {
     println!("\nCliente: {}", client.text);
     match brain
         .think(
-            &owner.id,
-            &bot.profile.id,
-            bot.device_id(),
-            &def,
+            TurnContext { agent: &bot.profile.id, device: bot.device_id(), owner: &owner.id, definition: &def },
             &[],
             &client,
         )
         .await
     {
         Ok(BrainOut::Say(t)) => println!("{}: {t}", bot.profile.name),
-        Ok(other) => println!(
-            "{}: {:?}",
-            bot.profile.name,
-            matches!(other, BrainOut::CreateAgent { .. })
-        ),
+        Ok(other) => println!("{}: {other:?}", bot.profile.name),
         Err(e) => {
             eprintln!("model call failed: {e}");
             std::process::exit(1)

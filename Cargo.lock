@@ -7748,6 +7748,7 @@ dependencies = [
  "wasmtime",
  "wasmtime-wasi",
  "zeroize",
+ "zoen-agentd",
  "zoen-egress",
  "zoen-models",
 ]

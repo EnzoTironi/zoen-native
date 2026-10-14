@@ -1,15 +1,18 @@
-//! In-process durable host: gates inbound/outbound, runs a brain, claims children.
-//! Exact code only for crypto, sync membership and permissions; the brain is prompts.
+//! One turn of an agent citizen, shared by every host (in-process and `zoen agent-host`):
+//! gate inbound → brain (prompt + free JSON state) → gate the action → outcome.
+//!
+//! The host never holds the owner's keys. Creating an agent produces an [`AgentSpec`] the
+//! owner's own device approves and signs (ADR 0049); only the owner's requests count.
 
-use super::profile::{
-    claim_citizen, AgentKind, Avatar, Citizen, CitizenRecord, Definition, ModelTier,
-};
+use super::profile::{AgentKind, Avatar, CitizenRecord, Definition, ModelTier};
+use async_trait::async_trait;
 use roda_gate::{Check, Gate, Outcome, Point};
-use roda_log::Author;
-use roda_types::{Identity, IdentityKind};
-use serde::Deserialize;
-use serde_json::{json, Value};
+use serde::{Deserialize, Serialize};
+use serde_json::Value;
 use std::collections::BTreeMap;
+
+/// The capability a Creator's `create_agent` action is gated as.
+pub const CREATE_AGENT_CAPABILITY: &str = "agent.create";
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Turn {
@@ -18,14 +21,46 @@ pub struct Turn {
     pub text: String,
 }
 
+/// Who is thinking: the agent, its runtime device, the Person it answers to, its definition.
+#[derive(Clone, Copy, Debug)]
+pub struct TurnContext<'a> {
+    pub agent: &'a str,
+    pub device: &'a str,
+    pub owner: &'a str,
+    pub definition: &'a Definition,
+}
+
+/// A new agent, as the Creator proposes it. Only the owner's device turns it into a
+/// citizen ([`super::approve_agent`]).
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct AgentSpec {
+    pub name: String,
+    pub handle: String,
+    pub glyph: String,
+    pub tint_hex: String,
+    pub definition: Definition,
+}
+
+impl AgentSpec {
+    pub fn avatar(&self) -> Avatar {
+        Avatar::hand_drawn(self.tint_hex.clone(), self.glyph.clone())
+    }
+}
+
 #[derive(Clone, Debug, PartialEq)]
 #[allow(clippy::large_enum_variant)]
 pub enum TurnOutcome {
+    /// Nothing to say (or the agent is paused).
     Silence,
     Say { text: String },
-    AskOwner { text: String },
+    /// The gate wants the owner to decide: the draft (or held inbound) goes to the owner.
+    AskOwner { draft: String, rule: String },
     Blocked { reason: String },
-    Created { child: CitizenRecord, reply: String },
+    /// A pending agent for the owner to approve, and the Creator's own words to the chat.
+    ProposeAgent {
+        spec: AgentSpec,
+        confirmation: Option<String>,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
@@ -34,62 +69,31 @@ pub enum HostError {
     Unknown,
     #[error("agent is not a member of that Space")]
     NotMember,
-    #[error("only a Person owner can authorize agents")]
-    Owner,
-    #[error("invalid create_agent payload")]
-    Create,
-    #[error("definition encode failed")]
-    Definition,
+    #[error("the brain failed: {0}")]
+    Brain(String),
 }
 
-/// Produces the next action from persona + history. Production uses zoen-models;
-/// journeys use [`ScriptedBrain`].
-pub trait Brain: Send + Sync {
-    fn think(&self, def: &Definition, history: &[Turn], inbound: &Turn) -> BrainOut;
-}
-
+/// What the brain wants to do. Production is [`super::ModelBrain`].
 #[derive(Clone, Debug, PartialEq)]
+#[allow(clippy::large_enum_variant)]
 pub enum BrainOut {
+    Silence,
     Say(String),
     CreateAgent {
-        name: String,
-        handle: String,
-        persona: String,
-        rules: Vec<String>,
-        state: Value,
-        glyph: String,
-        tint_hex: String,
+        spec: AgentSpec,
+        /// The model's own words around the action, if any.
+        confirmation: Option<String>,
     },
 }
 
-/// Parses a `create_agent` JSON fence from model text, else treats the whole reply as say.
-#[derive(Default)]
-pub struct ScriptedBrain {
-    /// Fixed replies keyed by substring match on the inbound text (journey only).
-    pub replies: BTreeMap<String, String>,
-}
-
-impl Brain for ScriptedBrain {
-    fn think(&self, def: &Definition, _history: &[Turn], inbound: &Turn) -> BrainOut {
-        let reply = self
-            .replies
-            .iter()
-            .find(|(k, _)| inbound.text.to_lowercase().contains(&k.to_lowercase()))
-            .map(|(_, v)| v.clone())
-            .unwrap_or_else(|| match def.kind {
-                AgentKind::Creator => "Tell me the agent's name and what it should do.".into(),
-                AgentKind::User => def
-                    .state
-                    .get("greeting")
-                    .and_then(|g| g.as_str())
-                    .unwrap_or("How can I help?")
-                    .to_string(),
-            });
-        if let Some(created) = parse_create_agent(&reply) {
-            return created;
-        }
-        BrainOut::Say(reply)
-    }
+#[async_trait]
+pub trait Brain: Send + Sync {
+    async fn think(
+        &self,
+        cx: TurnContext<'_>,
+        history: &[Turn],
+        inbound: &Turn,
+    ) -> Result<BrainOut, String>;
 }
 
 #[derive(Deserialize)]
@@ -119,102 +123,177 @@ fn default_tint() -> String {
     "#7C5CFF".into()
 }
 
-/// Model text → a create_agent action or plain speech.
+/// Model text → an action or speech. Only a fenced ```json block can be an action; any
+/// other JSON-looking text is just speech.
 pub fn parse_reply(text: &str) -> BrainOut {
-    parse_create_agent(text).unwrap_or_else(|| BrainOut::Say(text.trim().to_string()))
-}
-
-fn parse_create_agent(text: &str) -> Option<BrainOut> {
-    let json_str = extract_json_fence(text)?;
-    let wire: CreateAgentWire = serde_json::from_str(&json_str).ok()?;
-    let b = wire.create_agent;
-    if b.name.trim().is_empty() || b.handle.trim().is_empty() {
-        return None;
-    }
-    Some(BrainOut::CreateAgent {
-        name: b.name,
-        handle: b.handle,
-        persona: b.persona,
-        rules: b.rules,
-        state: b.state,
-        glyph: b.glyph,
-        tint_hex: b.tint_hex,
-    })
-}
-
-fn extract_json_fence(text: &str) -> Option<String> {
-    if let Some(start) = text.find("```json") {
-        let rest = &text[start + 7..];
-        let end = rest.find("```")?;
-        return Some(rest[..end].trim().to_string());
+    if let Some((before, json, after)) = json_fence(text) {
+        if let Ok(wire) = serde_json::from_str::<CreateAgentWire>(json) {
+            let b = wire.create_agent;
+            if !b.name.trim().is_empty() && !b.handle.trim().is_empty() {
+                let words = format!("{} {}", before.trim(), after.trim());
+                let words = words.trim();
+                return BrainOut::CreateAgent {
+                    spec: AgentSpec {
+                        name: b.name,
+                        handle: b.handle,
+                        glyph: b.glyph,
+                        tint_hex: b.tint_hex,
+                        definition: Definition {
+                            version: 1,
+                            kind: AgentKind::User,
+                            persona: b.persona,
+                            rules: b.rules,
+                            state: b.state,
+                            model_tier: ModelTier::Cheap,
+                        },
+                    },
+                    confirmation: (!words.is_empty()).then(|| words.to_string()),
+                };
+            }
+        }
     }
     let t = text.trim();
-    if t.starts_with('{') && t.contains("create_agent") {
-        return Some(t.to_string());
+    if t.is_empty() {
+        BrainOut::Silence
+    } else {
+        BrainOut::Say(t.to_string())
     }
-    None
 }
 
+fn json_fence(text: &str) -> Option<(&str, &str, &str)> {
+    let start = text.find("```json")?;
+    let rest = &text[start + 7..];
+    let end = rest.find("```")?;
+    Some((&text[..start], rest[..end].trim(), &rest[end + 3..]))
+}
+
+/// The gate and the brain: one turn, the same for every host.
+pub struct Runtime {
+    pub gate: Gate,
+    pub brain: Box<dyn Brain>,
+}
+
+impl Runtime {
+    pub fn new(gate: Gate, brain: Box<dyn Brain>) -> Self {
+        Self { gate, brain }
+    }
+
+    /// `Err` only when the brain failed: the caller retries rather than moving on.
+    pub async fn turn(
+        &self,
+        cx: TurnContext<'_>,
+        history: &[Turn],
+        inbound: &Turn,
+    ) -> Result<TurnOutcome, HostError> {
+        let d = self.gate.check(&Check::new(Point::Inbound, &inbound.text));
+        match d.outcome {
+            Outcome::Block => return Ok(TurnOutcome::Blocked { reason: d.rule }),
+            Outcome::Ask => {
+                return Ok(TurnOutcome::AskOwner {
+                    draft: inbound.text.clone(),
+                    rule: d.rule,
+                })
+            }
+            Outcome::Allow => {}
+        }
+        let out = self
+            .brain
+            .think(cx, history, inbound)
+            .await
+            .map_err(HostError::Brain)?;
+        Ok(match out {
+            BrainOut::Silence => TurnOutcome::Silence,
+            BrainOut::Say(text) => self.outbound(text),
+            BrainOut::CreateAgent { spec, confirmation } => {
+                self.propose(cx, inbound, spec, confirmation)
+            }
+        })
+    }
+
+    fn outbound(&self, text: String) -> TurnOutcome {
+        let d = self.gate.check(&Check::new(Point::Outbound, &text));
+        match d.outcome {
+            Outcome::Allow => TurnOutcome::Say { text },
+            Outcome::Ask => TurnOutcome::AskOwner {
+                draft: text,
+                rule: d.rule,
+            },
+            Outcome::Block => TurnOutcome::Blocked { reason: d.rule },
+        }
+    }
+
+    /// `create_agent` is an action: only a Creator, only for its owner, through the gate.
+    /// Allow and Ask both end at the owner's approval; the owner signs or nothing exists.
+    fn propose(
+        &self,
+        cx: TurnContext<'_>,
+        inbound: &Turn,
+        spec: AgentSpec,
+        confirmation: Option<String>,
+    ) -> TurnOutcome {
+        if cx.definition.kind != AgentKind::Creator {
+            return TurnOutcome::Blocked {
+                reason: "create-agent:not-a-creator".into(),
+            };
+        }
+        if inbound.from != cx.owner {
+            return TurnOutcome::Blocked {
+                reason: "create-agent:not-the-owner".into(),
+            };
+        }
+        let mut check = Check::new(
+            Point::ToolCall,
+            format!(
+                "{CREATE_AGENT_CAPABILITY} @{}: {}",
+                spec.handle,
+                serde_json::to_string(&spec.definition).unwrap_or_default()
+            ),
+        );
+        check.capability = Some(CREATE_AGENT_CAPABILITY.into());
+        check.user_intent = Some(inbound.text.clone());
+        let d = self.gate.check(&check);
+        if d.outcome == Outcome::Block {
+            return TurnOutcome::Blocked { reason: d.rule };
+        }
+        let confirmation = confirmation.and_then(|c| match self.outbound(c) {
+            TurnOutcome::Say { text } => Some(text),
+            _ => None,
+        });
+        TurnOutcome::ProposeAgent { spec, confirmation }
+    }
+}
+
+/// In-process host for many citizens: membership is exact code, turns are [`Runtime`].
+/// History is the Space's own timeline as this host saw it.
 pub struct Host {
-    gate: Gate,
-    brain: Box<dyn Brain>,
+    runtime: Runtime,
     citizens: BTreeMap<String, Hosted>,
-    /// Owner person profiles keyed by identity id (for authorizing children).
-    owners: BTreeMap<String, Identity>,
-    /// Owner authors (certified devices) for claim_citizen.
-    owner_authors: BTreeMap<String, Author>,
-    history: BTreeMap<String, Vec<Turn>>,
+    history: BTreeMap<(String, String), Vec<Turn>>,
 }
 
 struct Hosted {
-    citizen: Citizen,
-    memberships: Vec<String>,
+    record: CitizenRecord,
 }
 
 impl Host {
     pub fn new(gate: Gate, brain: Box<dyn Brain>) -> Self {
         Self {
-            gate,
-            brain,
+            runtime: Runtime::new(gate, brain),
             citizens: BTreeMap::new(),
-            owners: BTreeMap::new(),
-            owner_authors: BTreeMap::new(),
             history: BTreeMap::new(),
         }
     }
 
-    pub fn remember_owner(&mut self, person: Identity, author: Author) -> Result<(), HostError> {
-        if person.kind != IdentityKind::Person || author.identity != person.id {
-            return Err(HostError::Owner);
-        }
-        self.owner_authors.insert(person.id.clone(), author);
-        self.owners.insert(person.id.clone(), person);
-        Ok(())
-    }
-
-    pub fn enroll(&mut self, citizen: Citizen) -> CitizenRecord {
-        let record = CitizenRecord {
-            profile: citizen.profile.clone(),
-            device: citizen.device_id().to_string(),
-            cert: citizen.author.cert.clone().unwrap_or_default(),
-            definition: citizen.definition.clone(),
-            avatar: citizen.avatar.clone(),
-            memberships: Vec::new(),
-        };
-        self.citizens.insert(
-            citizen.id().to_string(),
-            Hosted {
-                citizen,
-                memberships: Vec::new(),
-            },
-        );
-        record
+    /// Hosts a citizen. The host keeps its public record only; keys stay with its device.
+    pub fn enroll(&mut self, record: CitizenRecord) {
+        self.citizens
+            .insert(record.profile.id.clone(), Hosted { record });
     }
 
     pub fn invite(&mut self, agent: &str, space: &str) -> Result<(), HostError> {
         let h = self.citizens.get_mut(agent).ok_or(HostError::Unknown)?;
-        if !h.memberships.iter().any(|s| s == space) {
-            h.memberships.push(space.into());
+        if !h.record.memberships.iter().any(|s| s == space) {
+            h.record.memberships.push(space.into());
         }
         Ok(())
     }
@@ -224,167 +303,48 @@ impl Host {
             .citizens
             .get(agent)
             .ok_or(HostError::Unknown)?
+            .record
             .memberships)
     }
 
     pub fn record(&self, agent: &str) -> Result<CitizenRecord, HostError> {
-        let h = self.citizens.get(agent).ok_or(HostError::Unknown)?;
-        Ok(CitizenRecord {
-            profile: h.citizen.profile.clone(),
-            device: h.citizen.device_id().to_string(),
-            cert: h.citizen.author.cert.clone().unwrap_or_default(),
-            definition: h.citizen.definition.clone(),
-            avatar: h.citizen.avatar.clone(),
-            memberships: h.memberships.clone(),
-        })
-    }
-
-    /// Owner offline: the host still answers as the agent in Spaces it belongs to.
-    pub fn handle_turn(&mut self, agent: &str, inbound: Turn) -> Result<TurnOutcome, HostError> {
-        let member = {
-            let h = self.citizens.get(agent).ok_or(HostError::Unknown)?;
-            h.memberships.iter().any(|s| s == &inbound.space)
-        };
-        if !member {
-            return Err(HostError::NotMember);
-        }
-
-        let inbound_check = self.gate.check(&Check::new(Point::Inbound, &inbound.text));
-        if inbound_check.outcome == Outcome::Block {
-            return Ok(TurnOutcome::Blocked {
-                reason: inbound_check.rule,
-            });
-        }
-
-        let def = self
+        Ok(self
             .citizens
             .get(agent)
             .ok_or(HostError::Unknown)?
-            .citizen
-            .definition
-            .clone();
-        let hist_key = format!("{agent}:{}", inbound.space);
-        let history = self.history.get(&hist_key).cloned().unwrap_or_default();
-        let out = self.brain.think(&def, &history, &inbound);
-        self.history
-            .entry(hist_key.clone())
-            .or_default()
-            .push(inbound.clone());
-
-        match out {
-            BrainOut::Say(text) => self.say_gated(agent, &inbound.space, text),
-            BrainOut::CreateAgent {
-                name,
-                handle,
-                persona,
-                rules,
-                state,
-                glyph,
-                tint_hex,
-            } => self.create_child(
-                agent,
-                &inbound.space,
-                name,
-                handle,
-                persona,
-                rules,
-                state,
-                glyph,
-                tint_hex,
-            ),
-        }
+            .record
+            .clone())
     }
 
-    fn say_gated(
+    /// Owner offline: the host still answers as the agent in Spaces it belongs to.
+    pub async fn handle_turn(
         &mut self,
         agent: &str,
-        space: &str,
-        text: String,
+        inbound: Turn,
     ) -> Result<TurnOutcome, HostError> {
-        let d = self.gate.check(&Check::new(Point::Outbound, &text));
-        match d.outcome {
-            Outcome::Allow => {
-                let hist_key = format!("{agent}:{space}");
-                self.history.entry(hist_key).or_default().push(Turn {
-                    space: space.into(),
-                    from: agent.into(),
-                    text: text.clone(),
-                });
-                Ok(TurnOutcome::Say { text })
-            }
-            Outcome::Ask => Ok(TurnOutcome::AskOwner { text }),
-            Outcome::Block => Ok(TurnOutcome::Blocked { reason: d.rule }),
+        let h = self.citizens.get(agent).ok_or(HostError::Unknown)?;
+        if !h.record.memberships.iter().any(|s| s == &inbound.space) {
+            return Err(HostError::NotMember);
         }
-    }
-
-    #[allow(clippy::too_many_arguments)]
-    fn create_child(
-        &mut self,
-        creator_id: &str,
-        space: &str,
-        name: String,
-        handle: String,
-        persona: String,
-        rules: Vec<String>,
-        state: Value,
-        glyph: String,
-        tint_hex: String,
-    ) -> Result<TurnOutcome, HostError> {
-        let creator = self.citizens.get(creator_id).ok_or(HostError::Unknown)?;
-        if creator.citizen.definition.kind != AgentKind::Creator {
-            return Err(HostError::Create);
-        }
-        let owner_id = creator
-            .citizen
-            .profile
-            .owner
-            .clone()
-            .ok_or(HostError::Owner)?;
-        let owner = self.owners.get(&owner_id).ok_or(HostError::Owner)?.clone();
-        let owner_author = self
-            .owner_authors
-            .get(&owner_id)
-            .ok_or(HostError::Owner)?
-            .clone();
-
-        let definition = Definition {
-            version: 1,
-            kind: AgentKind::User,
-            persona,
-            rules,
-            state,
-            model_tier: ModelTier::Cheap,
+        let owner = h.record.profile.owner.clone().unwrap_or_default();
+        let key = (agent.to_string(), inbound.space.clone());
+        let history = self.history.get(&key).cloned().unwrap_or_default();
+        let cx = TurnContext {
+            agent,
+            device: &h.record.device,
+            owner: &owner,
+            definition: &h.record.definition,
         };
-        let avatar = Avatar::hand_drawn(tint_hex, glyph);
-        let child = claim_citizen(&owner_author, &owner, name, handle, avatar, definition)
-            .map_err(|_| HostError::Create)?;
-        let reply = format!(
-            "Pronto: {} (@{}) já é um cidadão Zoen. Convide-o para o chat quando quiser.",
-            child.profile.name, child.profile.handle
-        );
-        // Track in creator state without deterministic booking logic.
-        if let Some(h) = self.citizens.get_mut(creator_id) {
-            let list = h
-                .citizen
-                .definition
-                .state
-                .as_object_mut()
-                .map(|o| o.entry("created_agents").or_insert_with(|| json!([])));
-            if let Some(Value::Array(arr)) = list {
-                arr.push(json!({
-                    "id": child.profile.id,
-                    "handle": child.profile.handle,
-                }));
-            }
+        let out = self.runtime.turn(cx, &history, &inbound).await?;
+        let log = self.history.entry(key).or_default();
+        log.push(inbound.clone());
+        if let TurnOutcome::Say { text } = &out {
+            log.push(Turn {
+                space: inbound.space,
+                from: agent.to_string(),
+                text: text.clone(),
+            });
         }
-        let record = self.enroll(child);
-        let say = self.say_gated(creator_id, space, reply)?;
-        match say {
-            TurnOutcome::Say { text } => Ok(TurnOutcome::Created {
-                child: record,
-                reply: text,
-            }),
-            other => Ok(other),
-        }
+        Ok(out)
     }
 }

@@ -109,6 +109,18 @@ impl Citizen {
         *self.device_secret
     }
 
+    /// The public record a host keeps; no secrets.
+    pub fn record(&self) -> CitizenRecord {
+        CitizenRecord {
+            profile: self.profile.clone(),
+            device: self.device_id().to_string(),
+            cert: self.author.cert.clone().unwrap_or_default(),
+            definition: self.definition.clone(),
+            avatar: self.avatar.clone(),
+            memberships: Vec::new(),
+        }
+    }
+
     /// Sealed definition bytes for the relay's opaque `agent_citizens.definition` column.
     pub fn definition_bytes(&self) -> Result<Vec<u8>, serde_json::Error> {
         self.definition.encode()
@@ -124,6 +136,22 @@ pub struct CitizenRecord {
     pub definition: Definition,
     pub avatar: Avatar,
     pub memberships: Vec<String>,
+}
+
+/// The owner's device approves a Creator's proposal: the only way a proposed agent exists.
+pub fn approve_agent(
+    owner: &Author,
+    owner_person: &Identity,
+    spec: &super::AgentSpec,
+) -> Result<Citizen, ClaimError> {
+    claim_citizen(
+        owner,
+        owner_person,
+        spec.name.clone(),
+        spec.handle.clone(),
+        spec.avatar(),
+        spec.definition.clone(),
+    )
 }
 
 /// Owner's certified device authorizes a new agent citizen with its own MLS root and device.
@@ -190,4 +218,14 @@ pub enum ClaimError {
     Owner,
     #[error("agent profile needs a name and handle")]
     Profile,
+}
+
+impl AgentKind {
+    /// The relay's spelling (`agent_citizens.kind`).
+    pub fn relay_kind(self) -> &'static str {
+        match self {
+            AgentKind::Creator => "Creator",
+            AgentKind::User => "User",
+        }
+    }
 }

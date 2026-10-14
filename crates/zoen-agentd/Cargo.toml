@@ -32,5 +32,10 @@ wasmtime-wasi = { version = "49", default-features = false, features = ["p2"] }
 bytes = "1"
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync", "time", "process", "fs", "io-util"] }
 
+[features]
+# Journey seams: the scripted brain and fault points. Never in a production build.
+scripted = []
+
 [dev-dependencies]
 tempfile = "3"
+zoen-agentd = { path = ".", features = ["scripted"] }

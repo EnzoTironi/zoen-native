@@ -249,6 +249,63 @@ impl RodaEngine {
         self.account_dto().ok_or_else(|| invalid("account"))
     }
 
+    /// The Person this agent account answers to (ADR 0049), from its own profile.
+    pub fn agent_owner(&self) -> Option<String> {
+        let e = self.lock();
+        let me = e.me_id().ok()?;
+        e.store
+            .identities()
+            .ok()?
+            .into_iter()
+            .find(|(i, _)| i.id == me)
+            .and_then(|(i, _)| i.owner)
+    }
+
+    /// The relay's record for this agent runtime: status, definition and cursors.
+    pub async fn agent_state(&self) -> Result<roda_proto::AgentStateRecord, CoreError> {
+        match self.request(Op::Agent(roda_proto::AgentRequest::State)).await? {
+            Reply::AgentState(s) => Ok(s),
+            _ => Err(unexpected()),
+        }
+    }
+
+    /// This agent runtime handled `space` through `seq` (inclusive).
+    pub async fn agent_advance(&self, space: String, seq: u64) -> Result<(), CoreError> {
+        self.agent_done(roda_proto::AgentRequest::Advance { space, seq })
+            .await
+    }
+
+    /// A new definition version for `agent` (owner, or the agent's own first one).
+    pub async fn agent_define(
+        &self,
+        agent: String,
+        version: u32,
+        kind: String,
+        definition: Vec<u8>,
+    ) -> Result<(), CoreError> {
+        self.agent_done(roda_proto::AgentRequest::Define {
+            agent,
+            version,
+            kind,
+            definition,
+        })
+        .await
+    }
+
+    /// Owner: "pause", "resume" or "revoke" one of your agents.
+    pub async fn agent_control(&self, agent: String, action: String) -> Result<(), CoreError> {
+        let action = roda_proto::AgentAction::parse(&action).ok_or_else(|| invalid("action"))?;
+        self.agent_done(roda_proto::AgentRequest::Control { agent, action })
+            .await
+    }
+
+    async fn agent_done(&self, req: roda_proto::AgentRequest) -> Result<(), CoreError> {
+        match self.request(Op::Agent(req)).await? {
+            Reply::Done => Ok(()),
+            _ => Err(unexpected()),
+        }
+    }
+
     /// Owner side of ADR 0049: this unlocked device signs the agent root, as JSON.
     pub fn authorize_agent_json(&self, agent_id: String) -> Result<String, CoreError> {
         let proof = self.lock().authorize_agent(&agent_id)?;

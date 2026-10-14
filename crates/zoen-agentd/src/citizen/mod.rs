@@ -9,10 +9,15 @@ mod creator;
 mod host;
 mod models;
 mod profile;
+pub mod testing;
 
 pub use creator::{creator_definition, CREATOR_HANDLE, CREATOR_NAME};
-pub use host::{parse_reply, Brain, BrainOut, Host, HostError, ScriptedBrain, Turn, TurnOutcome};
+pub use host::{
+    parse_reply, AgentSpec, Brain, BrainOut, Host, HostError, Runtime, Turn, TurnContext,
+    TurnOutcome, CREATE_AGENT_CAPABILITY,
+};
 pub use models::{system_prompt, CheapTierAuthority, ModelBrain, CHEAP_CHAT_PROFILE, CHEAP_MODEL};
 pub use profile::{
-    claim_citizen, AgentKind, Avatar, Citizen, CitizenRecord, Definition, ModelTier, AVATAR_STYLE,
+    approve_agent, claim_citizen, AgentKind, Avatar, Citizen, CitizenRecord, ClaimError,
+    Definition, ModelTier, AVATAR_STYLE,
 };
