@@ -43,22 +43,22 @@ struct SettingsPage<Content: View, Footer: View>: View {
     @ViewBuilder var footer: Footer
 
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 16) { content }
-                .padding(.horizontal, 16)
-                .padding(.top, 8)
-                .padding(.bottom, 24)
-                .frame(maxWidth: 560)
-                .frame(maxWidth: .infinity)
-        }
-        .scrollDismissesKeyboard(.interactively)
-        .safeAreaInset(edge: .top, spacing: 0) { SettingsTopBar(title: title, showsBack: showsBack) }
-        .safeAreaInset(edge: .bottom, spacing: 0) {
+        VStack(spacing: 0) {
+            SettingsTopBar(title: title, showsBack: showsBack)
+            ScrollView {
+                VStack(alignment: .leading, spacing: 16) { content }
+                    .padding(.horizontal, 16)
+                    .padding(.top, 8)
+                    .padding(.bottom, 24)
+                    .frame(maxWidth: 560, alignment: .leading)
+                    .frame(maxWidth: .infinity)
+            }
+            .scrollDismissesKeyboard(.interactively)
             footer
                 .padding(.horizontal, 16)
-                .padding(.bottom, 8)
                 .frame(maxWidth: 560)
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         .background(Palette.background.ignoresSafeArea())
         #if os(iOS)
         .toolbar(.hidden, for: .navigationBar)
