@@ -1047,97 +1047,394 @@ fn hike_votes_decide_plan_and_album() {
     .unwrap();
 }
 
-#[test]
-fn schedule_book_goes_to_agent_then_resolve() {
-    let e = seeded();
-    let crew = find_space(&e, "Turma do Sábado");
-    let zoen = zoen(&e);
-    let services = r#"{"business":"Barbearia do João","trade":"barber","title":"Agenda do João","slotMinutes":30,"services":[{"id":"cut","name":"Corte","priceCents":4500,"minutes":30},{"id":"beard","name":"Barba","priceCents":3500,"minutes":20}]}"#;
+// ── Agenda (generic booking) ──
+
+const SCHEDULE_ARGS: &str = r#"{"business":"Barbearia do João","services":[{"id":"Corte!","name":"Corte","priceCents":4500,"minutes":30},{"name":"Corte + barba","priceCents":7000,"minutes":60},{"id":"corte","name":"Corte infantil","priceCents":3500,"minutes":30}],"weeklyHours":{"1":[["09:00","12:00"],["14:00","19:00"]],"2":[["09:00","12:00"],["14:00","19:00"]],"3":[["09:00","12:00"],["14:00","19:00"]],"4":[["09:00","12:00"],["14:00","19:00"]],"5":[["09:00","12:00"],["14:00","19:00"]],"6":[["09:00","13:00"]]},"slotMinutes":30,"timezone":"America/Sao_Paulo"}"#;
+
+/// `hh:mm` São Paulo time on the next Monday–Saturday at least two days from now.
+fn sp_slot(hh: u32, mm: u32) -> i64 {
+    use chrono::{Datelike, TimeZone};
+    let tz = chrono_tz::America::Sao_Paulo;
+    let mut day = chrono::DateTime::from_timestamp_millis(crate::engine::now_ms())
+        .unwrap()
+        .with_timezone(&tz)
+        .date_naive()
+        + chrono::Days::new(2);
+    while day.weekday() == chrono::Weekday::Sun {
+        day = day + chrono::Days::new(1);
+    }
+    tz.from_local_datetime(&day.and_hms_opt(hh, mm, 0).unwrap())
+        .single()
+        .unwrap()
+        .timestamp_millis()
+}
+
+fn schedule_item(e: &RodaEngine) -> (String, Persona) {
+    let crew = find_space(e, "Turma do Sábado");
+    let zoen = zoen(e);
     e.agent_create_app(
         crew.id.clone(),
         zoen.id.clone(),
         "start_schedule".into(),
-        services.into(),
+        SCHEDULE_ARGS.into(),
         "test".into(),
-        "agenda".into(),
+        "o João quer uma agenda".into(),
     )
     .unwrap();
     let item = e
         .items()
         .into_iter()
-        .find(|i| {
-            i.app
-                .as_ref()
-                .map(|a| a.app_id == "schedule")
-                .unwrap_or(false)
-        })
+        .find(|i| i.app.as_ref().is_some_and(|a| a.app_id == "schedule"))
         .expect("schedule");
+    (item.id, zoen)
+}
+
+/// (structured view the caller received, whether the call was refused)
+fn sched_call(
+    e: &RodaEngine,
+    item: &str,
+    who: &str,
+    tool: &str,
+    args: String,
+) -> (serde_json::Value, bool) {
+    let out = if who == "me" {
+        e.app_call_tool(item.into(), tool.into(), args, false)
+    } else {
+        e.demo_member_app_call(item.into(), who.into(), tool.into(), args)
+    }
+    .unwrap();
+    let r: serde_json::Value = serde_json::from_str(&out.result_json).unwrap();
+    (
+        r["structuredContent"].clone(),
+        r["isError"].as_bool().unwrap_or(false),
+    )
+}
+
+fn book(e: &RodaEngine, item: &str, who: &str, svc: &str, start: i64) -> (serde_json::Value, bool) {
+    sched_call(
+        e,
+        item,
+        who,
+        "schedule_book",
+        format!(r#"{{"serviceId":"{svc}","startMs":{start},"note":"alergia a lâmina"}}"#),
+    )
+}
+
+#[test]
+fn schedule_journey_client_books_agent_resolves_privately() {
+    let e = seeded();
+    let (item, zoen) = schedule_item(&e);
     let r = e.read_app_resource("ui://roda/schedule".into()).unwrap();
     let manifest: serde_json::Value = serde_json::from_str(&r.manifest_json).unwrap();
     use sha2::Digest;
     assert_eq!(
         manifest["sha256"].as_str().unwrap(),
-        format!("{:x}", sha2::Sha256::digest(r.text.as_bytes()))
+        format!("{:x}", sha2::Sha256::digest(r.text.as_bytes())),
+        "manifest hash matches schedule.html"
     );
-    assert_eq!(manifest["id"], "schedule");
-    assert!(manifest["capabilities"][0]["purpose"]
-        .as_str()
-        .unwrap()
-        .contains("agenda"));
-    // Client asks for a slot — becomes a pending booking + open event for the agent.
-    let start = 1_900_000_000_000i64;
-    let end = start + 30 * 60_000;
-    // Marina (a client) books; I am the business side resolving it.
-    let out = e
-        .demo_member_app_call(
-            item.id.clone(),
-            "marina".into(),
-            "schedule_book".into(),
-            format!(r#"{{"serviceId":"cut","startMs":{start},"endMs":{end}}}"#),
+    assert_eq!(
+        manifest["sha256"].as_str().unwrap(),
+        format!(
+            "{:x}",
+            sha2::Sha256::digest(include_bytes!("../apps/schedule.html"))
         )
-        .unwrap();
-    let v: serde_json::Value =
-        serde_json::from_str(&out.item.unwrap().app.unwrap().view_json).unwrap();
-    assert_eq!(v["bookings"][0]["status"], "pending");
-    assert_eq!(v["events"][0]["kind"], "book_request");
-    assert_eq!(v["events"][0]["status"], "open");
-    let booking_id = v["bookings"][0]["id"].as_str().unwrap().to_string();
-    // Agent confirms (edge cases stay with the agent, not hard rules).
-    let out = e
-        .app_call_tool(
-            item.id.clone(),
-            "schedule_resolve".into(),
-            format!(r#"{{"bookingId":"{booking_id}","action":"confirm"}}"#),
-            false,
-        )
-        .unwrap();
-    let v: serde_json::Value =
-        serde_json::from_str(&out.item.unwrap().app.unwrap().view_json).unwrap();
-    assert_eq!(v["bookings"][0]["status"], "confirmed");
-    assert_eq!(v["events"][0]["status"], "resolved");
-    // Client cancel request on a confirmed booking stays for the agent.
-    e.demo_member_app_call(
-        item.id.clone(),
-        "marina".into(),
-        "schedule_cancel".into(),
-        format!(r#"{{"bookingId":"{booking_id}"}}"#),
-    )
-    .unwrap();
-    let out = e
-        .app_call_tool(
-            item.id.clone(),
-            "schedule_get_state".into(),
-            "{}".into(),
-            false,
-        )
-        .unwrap();
-    let v: serde_json::Value =
-        serde_json::from_str(&out.item.unwrap().app.unwrap().view_json).unwrap();
-    assert!(v["events"]
+    );
+    // Services were sanitized and deduped; the business is free-form, no trade.
+    let (v, _) = sched_call(&e, &item, "me", "schedule_get_state", "{}".into());
+    let ids: Vec<&str> = v["services"]
         .as_array()
         .unwrap()
         .iter()
-        .any(|ev| ev["kind"] == "cancel_request" && ev["status"] == "open"));
+        .map(|s| s["id"].as_str().unwrap())
+        .collect();
+    assert_eq!(ids, ["corte", "corte-barba", "corte-2"]);
+    assert!(v.get("trade").is_none());
+    assert_eq!(v["viewer"]["role"], "owner");
+
+    let start = sp_slot(10, 0);
+    let (v, err) = book(&e, &item, "marina", "corte", start);
+    assert!(!err, "{v}");
+    assert_eq!(v["viewer"]["role"], "client");
+    assert_eq!(v["bookings"][0]["status"], "pending");
+    assert_eq!(v["bookings"][0]["endMs"], start + 30 * 60_000);
+    assert_eq!(v["events"][0]["kind"], "book_request");
+    let booking = v["bookings"][0]["id"].as_str().unwrap().to_string();
+    let marina_id = v["bookings"][0]["byId"].as_str().unwrap().to_string();
+
+    // Another client sees the time as busy, never who booked it or the note.
+    let (v, _) = sched_call(&e, &item, "lucas", "schedule_get_state", "{}".into());
+    assert_eq!(v["bookings"].as_array().unwrap().len(), 0);
+    assert_eq!(v["events"].as_array().unwrap().len(), 0);
+    assert_eq!(v["busy"][0]["startMs"], start);
+    let raw = v.to_string();
+    assert!(
+        !raw.contains("Marina") && !raw.contains(&marina_id) && !raw.contains("alergia"),
+        "{raw}"
+    );
+    // …and cannot resolve or cancel it.
+    let resolve = |action: &str| format!(r#"{{"bookingId":"{booking}","action":"{action}"}}"#);
+    assert!(sched_call(&e, &item, "lucas", "schedule_resolve", resolve("confirm")).1);
+    assert!(
+        sched_call(
+            &e,
+            &item,
+            "lucas",
+            "schedule_cancel",
+            format!(r#"{{"bookingId":"{booking}"}}"#)
+        )
+        .1
+    );
+    // The booker can't confirm their own request either.
+    assert!(sched_call(&e, &item, "marina", "schedule_resolve", resolve("confirm")).1);
+    // The owner sees everything, matched by member id.
+    let (v, _) = sched_call(&e, &item, "me", "schedule_get_state", "{}".into());
+    assert_eq!(v["bookings"][0]["byId"], marina_id.as_str());
+    assert_eq!(v["bookings"][0]["note"], "alergia a lâmina");
+
+    // The agent persona resolves.
+    let (v, err) = sched_call(
+        &e,
+        &item,
+        &zoen.handle,
+        "schedule_resolve",
+        resolve("confirm"),
+    );
+    assert!(!err, "{v}");
+    assert_eq!(v["viewer"]["role"], "agent");
+    assert_eq!(v["bookings"][0]["status"], "confirmed");
+    assert_eq!(v["events"][0]["status"], "resolved");
+    assert_eq!(v["events"][0]["resolution"], "confirmed");
+    assert_eq!(v["events"][0]["resolvedBy"], zoen.id.as_str());
+
+    // A cancel request on a confirmed booking goes to the agent, who can keep it…
+    let cancel = format!(r#"{{"bookingId":"{booking}"}}"#);
+    let (v, err) = sched_call(&e, &item, "marina", "schedule_cancel", cancel.clone());
+    assert!(!err, "{v}");
+    assert_eq!(v["bookings"][0]["status"], "confirmed");
+    assert!(
+        sched_call(&e, &item, "marina", "schedule_cancel", cancel.clone()).1,
+        "one open request at a time"
+    );
+    let (v, err) = sched_call(&e, &item, &zoen.handle, "schedule_resolve", resolve("keep"));
+    assert!(!err, "{v}");
+    assert_eq!(v["bookings"][0]["status"], "confirmed");
+    // …or cancel it. The event history stays.
+    sched_call(&e, &item, "marina", "schedule_cancel", cancel);
+    let (v, err) = sched_call(
+        &e,
+        &item,
+        &zoen.handle,
+        "schedule_resolve",
+        resolve("cancel"),
+    );
+    assert!(!err, "{v}");
+    assert_eq!(v["bookings"][0]["status"], "cancelled");
+    let events = v["events"].as_array().unwrap();
+    let res: Vec<(&str, &str)> = events
+        .iter()
+        .map(|e| {
+            (
+                e["kind"].as_str().unwrap(),
+                e["resolution"].as_str().unwrap_or(""),
+            )
+        })
+        .collect();
+    assert_eq!(
+        res,
+        [
+            ("book_request", "confirmed"),
+            ("cancel_request", "kept"),
+            ("cancel_request", "cancelled")
+        ]
+    );
+    assert!(events.iter().all(|e| e["status"] == "resolved"));
+    let ids: Vec<&str> = events.iter().map(|e| e["id"].as_str().unwrap()).collect();
+    assert!(ids.iter().all(|id| id.starts_with('e')) && ids.windows(2).all(|w| w[0] != w[1]));
+}
+
+#[test]
+fn schedule_rejects_double_booking_outside_hours_and_past() {
+    let e = seeded();
+    let (item, zoen) = schedule_item(&e);
+    let start = sp_slot(14, 0);
+    assert!(!book(&e, &item, "marina", "corte-barba", start).1);
+    // Same slot, and an overlapping one, are refused for anyone, pending or confirmed.
+    assert!(book(&e, &item, "lucas", "corte", start).1);
+    assert!(book(&e, &item, "lucas", "corte", start + 30 * 60_000).1);
+    assert!(
+        !book(&e, &item, "lucas", "corte", start + 60 * 60_000).1,
+        "right after is free"
+    );
+    // Outside hours, lunch, off-grid, past, beyond the horizon, or a wrong length.
+    assert!(book(&e, &item, "ana", "corte", sp_slot(20, 0)).1);
+    assert!(book(&e, &item, "ana", "corte", sp_slot(11, 45)).1);
+    assert!(
+        book(&e, &item, "ana", "corte-barba", sp_slot(11, 30)).1,
+        "would run into lunch"
+    );
+    assert!(
+        book(&e, &item, "ana", "corte", sp_slot(9, 10)).1,
+        "off the slot grid"
+    );
+    assert!(book(&e, &item, "ana", "corte", start - 7 * 86_400_000).1);
+    assert!(book(&e, &item, "ana", "corte", start + 90 * 86_400_000).1);
+    assert!(book(&e, &item, "ana", "nope", sp_slot(9, 0)).1);
+    let wrong = sp_slot(9, 0);
+    assert!(
+        sched_call(
+            &e,
+            &item,
+            "ana",
+            "schedule_book",
+            format!(
+                r#"{{"serviceId":"corte","startMs":{wrong},"endMs":{}}}"#,
+                wrong + 5 * 60_000
+            )
+        )
+        .1
+    );
+    // The agent can't move or confirm into a taken slot either.
+    let (v, _) = sched_call(&e, &item, "me", "schedule_get_state", "{}".into());
+    let lucas_booking = v["bookings"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|b| b["startMs"] == start + 60 * 60_000)
+        .unwrap()["id"]
+        .as_str()
+        .unwrap()
+        .to_string();
+    let adjust =
+        format!(r#"{{"bookingId":"{lucas_booking}","action":"adjust","startMs":{start}}}"#);
+    assert!(sched_call(&e, &item, &zoen.handle, "schedule_resolve", adjust).1);
+    let free = sp_slot(16, 0);
+    let adjust = format!(r#"{{"bookingId":"{lucas_booking}","action":"adjust","startMs":{free}}}"#);
+    let (v, err) = sched_call(&e, &item, &zoen.handle, "schedule_resolve", adjust);
+    assert!(!err, "{v}");
+    let moved = v["bookings"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|b| b["id"] == lucas_booking.as_str())
+        .unwrap();
+    assert_eq!(
+        (moved["startMs"].as_i64(), moved["status"].as_str()),
+        (Some(free), Some("confirmed"))
+    );
+}
+
+#[test]
+fn schedule_caps_spam_and_only_owner_or_agent_configure() {
+    let e = seeded();
+    let (item, zoen) = schedule_item(&e);
+    assert!(!book(&e, &item, "marina", "corte", sp_slot(9, 0)).1);
+    assert!(!book(&e, &item, "marina", "corte", sp_slot(9, 30)).1);
+    let (v, err) = book(&e, &item, "marina", "corte", sp_slot(10, 0));
+    assert!(err, "a third open booking is refused: {v}");
+    // A withdrawn request frees the spot.
+    let (v, _) = sched_call(&e, &item, "marina", "schedule_get_state", "{}".into());
+    let first = v["bookings"][0]["id"].as_str().unwrap().to_string();
+    let (v, err) = sched_call(
+        &e,
+        &item,
+        "marina",
+        "schedule_cancel",
+        format!(r#"{{"bookingId":"{first}"}}"#),
+    );
+    assert!(!err, "{v}");
+    assert_eq!(v["bookings"][0]["status"], "cancelled");
+    assert_eq!(v["events"][0]["resolution"], "withdrawn");
+    assert!(!book(&e, &item, "marina", "corte", sp_slot(10, 0)).1);
+
+    // Clients can't configure; the agent can, with valid input only.
+    let hours = r#"{"weeklyHours":{"1":[["08:00","12:00"]]}}"#;
+    assert!(sched_call(&e, &item, "lucas", "schedule_configure", hours.into()).1);
+    for bad in [
+        r#"{"weeklyHours":{"1":[["8:00","12:00"]]}}"#,
+        r#"{"weeklyHours":{"1":[["12:00","08:00"]]}}"#,
+        r#"{"weeklyHours":{"1":[["08:00","12:00"],["11:00","13:00"]]}}"#,
+        r#"{"weeklyHours":{"mon":[["08:00","12:00"]]}}"#,
+        r#"{"weeklyHours":[]}"#,
+        r#"{"services":[]}"#,
+        r#"{"services":[{"name":"Corte"}]}"#,
+        r#"{"services":[{"name":"","minutes":30}]}"#,
+        r#"{"slotMinutes":2}"#,
+        r#"{"timezone":"Mars/Olympus"}"#,
+        r#"{"accentHex":"red"}"#,
+    ] {
+        let (v, err) = sched_call(&e, &item, &zoen.handle, "schedule_configure", bad.into());
+        assert!(err, "{bad} should be refused: {v}");
+    }
+    assert!(
+        sched_call(
+            &e,
+            &item,
+            &zoen.handle,
+            "schedule_configure",
+            r#"{"resolvers":["x"]}"#.into()
+        )
+        .1,
+        "only the owner names resolvers"
+    );
+    let (v, err) = sched_call(&e, &item, &zoen.handle, "schedule_configure", r##"{"business":"Studio Lia","accentHex":"#aa3355","services":[{"name":"Pilates","minutes":50,"priceCents":9000}]}"##.into());
+    assert!(!err, "{v}");
+    assert_eq!(
+        (v["business"].as_str(), v["accentHex"].as_str()),
+        (Some("Studio Lia"), Some("#AA3355"))
+    );
+    assert_eq!(v["services"][0]["id"], "pilates");
+    // The owner names a resolver, who can then resolve.
+    let (v, _) = sched_call(&e, &item, "lucas", "schedule_get_state", "{}".into());
+    let lucas_id = v["viewer"]["id"].as_str().unwrap().to_string();
+    assert!(
+        !sched_call(
+            &e,
+            &item,
+            "me",
+            "schedule_configure",
+            format!(r#"{{"resolvers":["{lucas_id}"]}}"#)
+        )
+        .1
+    );
+    let (v, _) = sched_call(&e, &item, "lucas", "schedule_get_state", "{}".into());
+    assert_eq!(v["viewer"]["role"], "resolver");
+    let pending = v["bookings"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|b| b["status"] == "pending")
+        .unwrap()["id"]
+        .as_str()
+        .unwrap()
+        .to_string();
+    assert!(
+        !sched_call(
+            &e,
+            &item,
+            "lucas",
+            "schedule_resolve",
+            format!(r#"{{"bookingId":"{pending}","action":"confirm"}}"#)
+        )
+        .1
+    );
+}
+
+#[test]
+fn start_schedule_refuses_bad_input_instead_of_defaults() {
+    let e = seeded();
+    let crew = find_space(&e, "Turma do Sábado");
+    let zoen = zoen(&e);
+    let bad = r#"{"business":"X","services":[{"name":"A","minutes":30}],"weeklyHours":{"1":[["9:00","12:00"]]}}"#;
+    assert!(e
+        .agent_create_app(
+            crew.id,
+            zoen.id,
+            "start_schedule".into(),
+            bad.into(),
+            "test".into(),
+            "agenda".into()
+        )
+        .is_err());
 }
 
 #[test]
