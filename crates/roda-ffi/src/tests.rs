@@ -1047,7 +1047,6 @@ fn hike_votes_decide_plan_and_album() {
     .unwrap();
 }
 
-
 #[test]
 fn schedule_book_goes_to_agent_then_resolve() {
     let e = seeded();
@@ -1066,7 +1065,12 @@ fn schedule_book_goes_to_agent_then_resolve() {
     let item = e
         .items()
         .into_iter()
-        .find(|i| i.app.as_ref().map(|a| a.app_id == "schedule").unwrap_or(false))
+        .find(|i| {
+            i.app
+                .as_ref()
+                .map(|a| a.app_id == "schedule")
+                .unwrap_or(false)
+        })
         .expect("schedule");
     let r = e.read_app_resource("ui://roda/schedule".into()).unwrap();
     let manifest: serde_json::Value = serde_json::from_str(&r.manifest_json).unwrap();
@@ -1119,17 +1123,20 @@ fn schedule_book_goes_to_agent_then_resolve() {
     )
     .unwrap();
     let out = e
-        .app_call_tool(item.id.clone(), "schedule_get_state".into(), "{}".into(), false)
+        .app_call_tool(
+            item.id.clone(),
+            "schedule_get_state".into(),
+            "{}".into(),
+            false,
+        )
         .unwrap();
     let v: serde_json::Value =
         serde_json::from_str(&out.item.unwrap().app.unwrap().view_json).unwrap();
-    assert!(
-        v["events"]
-            .as_array()
-            .unwrap()
-            .iter()
-            .any(|ev| ev["kind"] == "cancel_request" && ev["status"] == "open")
-    );
+    assert!(v["events"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .any(|ev| ev["kind"] == "cancel_request" && ev["status"] == "open"));
 }
 
 #[test]

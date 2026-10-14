@@ -528,7 +528,12 @@ pub fn create(app: &str, args: &Value, actor: &str, now: i64) -> Result<(String,
                 "next": 1,
                 "log": []
             });
-            push_log(&mut st, actor, &t("abriu a agenda", "opened the schedule"), now);
+            push_log(
+                &mut st,
+                actor,
+                &t("abriu a agenda", "opened the schedule"),
+                now,
+            );
             Ok((title.chars().take(40).collect(), st))
         }
 
@@ -763,7 +768,9 @@ pub fn headline(app: &str, state: &Value, now: i64) -> (String, Vec<(String, f64
                 tr!(
                     "{} · marque um horário",
                     "{} · book a slot",
-                    v["business"].as_str().unwrap_or(v["title"].as_str().unwrap_or(""))
+                    v["business"]
+                        .as_str()
+                        .unwrap_or(v["title"].as_str().unwrap_or(""))
                 )
             };
             (line, vec![])
@@ -1627,16 +1634,12 @@ pub fn apply(
                 tr!("{actor} ajustou a agenda", "{actor} updated the schedule"),
                 t("Agenda atualizada.", "Schedule updated."),
             );
-            a.title = Some(
-                a.state["title"]
-                    .as_str()
-                    .unwrap_or("Agenda")
-                    .to_string(),
-            );
+            a.title = Some(a.state["title"].as_str().unwrap_or("Agenda").to_string());
             Ok(a)
         }
         ("schedule", "schedule_book") => {
-            let service_id = s(args, "serviceId").ok_or_else(|| t("qual serviço?", "which service?"))?;
+            let service_id =
+                s(args, "serviceId").ok_or_else(|| t("qual serviço?", "which service?"))?;
             let start = args["startMs"]
                 .as_i64()
                 .ok_or_else(|| t("qual horário?", "which time?"))?;
@@ -1689,10 +1692,7 @@ pub fn apply(
             );
             let mut a = Applied::new(
                 st,
-                tr!(
-                    "{actor} pediu {svc_name}",
-                    "{actor} requested {svc_name}"
-                ),
+                tr!("{actor} pediu {svc_name}", "{actor} requested {svc_name}"),
                 tr!(
                     "Pedido: {svc_name}. O agente confirma.",
                     "Request: {svc_name}. The agent confirms."
@@ -1705,22 +1705,32 @@ pub fn apply(
             Ok(a)
         }
         ("schedule", "schedule_resolve") => {
-            let booking_id = s(args, "bookingId").ok_or_else(|| t("qual pedido?", "which booking?"))?;
-            let action = s(args, "action").ok_or_else(|| t("confirmar, cancelar ou ajustar?", "confirm, cancel or adjust?"))?;
+            let booking_id =
+                s(args, "bookingId").ok_or_else(|| t("qual pedido?", "which booking?"))?;
+            let action = s(args, "action").ok_or_else(|| {
+                t(
+                    "confirmar, cancelar ou ajustar?",
+                    "confirm, cancel or adjust?",
+                )
+            })?;
             let idx = st["bookings"]
                 .as_array()
                 .into_iter()
                 .flatten()
                 .position(|b| b["id"].as_str() == Some(booking_id.as_str()))
                 .ok_or_else(|| t("pedido não encontrado", "booking not found"))?;
-            let svc_id = st["bookings"][idx]["serviceId"].as_str().unwrap_or("").to_string();
+            let svc_id = st["bookings"][idx]["serviceId"]
+                .as_str()
+                .unwrap_or("")
+                .to_string();
             let who = st["bookings"][idx]["by"].as_str().unwrap_or("").to_string();
             let svc_name = service_name(&st, &svc_id);
             match action.as_str() {
                 "confirm" => {
                     st["bookings"][idx]["status"] = json!("confirmed");
                     if let Some(note) = s(args, "note") {
-                        st["bookings"][idx]["note"] = json!(note.chars().take(120).collect::<String>());
+                        st["bookings"][idx]["note"] =
+                            json!(note.chars().take(120).collect::<String>());
                     }
                 }
                 "cancel" => {
@@ -1740,7 +1750,8 @@ pub fn apply(
                     }
                     st["bookings"][idx]["status"] = json!("confirmed");
                     if let Some(note) = s(args, "note") {
-                        st["bookings"][idx]["note"] = json!(note.chars().take(120).collect::<String>());
+                        st["bookings"][idx]["note"] =
+                            json!(note.chars().take(120).collect::<String>());
                     }
                 }
                 _ => return Err(t("ação desconhecida", "unknown action")),
@@ -1753,9 +1764,18 @@ pub fn apply(
                 }
             }
             let what = match action.as_str() {
-                "confirm" => tr!("confirmou {svc_name} de {who}", "confirmed {svc_name} for {who}"),
-                "cancel" => tr!("cancelou {svc_name} de {who}", "cancelled {svc_name} for {who}"),
-                _ => tr!("ajustou {svc_name} de {who}", "adjusted {svc_name} for {who}"),
+                "confirm" => tr!(
+                    "confirmou {svc_name} de {who}",
+                    "confirmed {svc_name} for {who}"
+                ),
+                "cancel" => tr!(
+                    "cancelou {svc_name} de {who}",
+                    "cancelled {svc_name} for {who}"
+                ),
+                _ => tr!(
+                    "ajustou {svc_name} de {who}",
+                    "adjusted {svc_name} for {who}"
+                ),
             };
             push_log(&mut st, actor, &what, now);
             let mut a = Applied::new(st, format!("{actor} {what}"), format!("{what}."));
@@ -1763,7 +1783,8 @@ pub fn apply(
             Ok(a)
         }
         ("schedule", "schedule_cancel") => {
-            let booking_id = s(args, "bookingId").ok_or_else(|| t("qual horário?", "which booking?"))?;
+            let booking_id =
+                s(args, "bookingId").ok_or_else(|| t("qual horário?", "which booking?"))?;
             let idx = st["bookings"]
                 .as_array()
                 .into_iter()
@@ -1779,8 +1800,14 @@ pub fn apply(
             if st["bookings"][idx]["status"].as_str() == Some("cancelled") {
                 return Err(t("já está cancelado", "already cancelled"));
             }
-            let svc_id = st["bookings"][idx]["serviceId"].as_str().unwrap_or("").to_string();
-            let was = st["bookings"][idx]["status"].as_str().unwrap_or("pending").to_string();
+            let svc_id = st["bookings"][idx]["serviceId"]
+                .as_str()
+                .unwrap_or("")
+                .to_string();
+            let was = st["bookings"][idx]["status"]
+                .as_str()
+                .unwrap_or("pending")
+                .to_string();
             let svc_name = service_name(&st, &svc_id);
             if was == "pending" {
                 st["bookings"][idx]["status"] = json!("cancelled");
@@ -1801,7 +1828,10 @@ pub fn apply(
             push_log(
                 &mut st,
                 actor,
-                &tr!("pediu cancelamento de {svc_name}", "requested cancel of {svc_name}"),
+                &tr!(
+                    "pediu cancelamento de {svc_name}",
+                    "requested cancel of {svc_name}"
+                ),
                 now,
             );
             let mut a = Applied::new(
@@ -2052,11 +2082,8 @@ fn recipe_default() -> Value {
     })
 }
 
-
 struct SchedBooking {
     status: String,
-    start_ms: i64,
-    service_id: String,
 }
 
 fn st_bookings(v: &Value) -> Vec<SchedBooking> {
@@ -2066,8 +2093,6 @@ fn st_bookings(v: &Value) -> Vec<SchedBooking> {
         .flatten()
         .map(|b| SchedBooking {
             status: b["status"].as_str().unwrap_or("pending").to_string(),
-            start_ms: b["startMs"].as_i64().unwrap_or(0),
-            service_id: b["serviceId"].as_str().unwrap_or("").to_string(),
         })
         .collect()
 }
@@ -2085,7 +2110,9 @@ fn service_name(v: &Value, id: &str) -> String {
 
 fn parse_schedule_services(raw: Option<&Value>) -> Vec<Value> {
     let Some(arr) = raw.and_then(|x| x.as_array()) else {
-        return vec![json!({ "id": "svc1", "name": t("Atendimento", "Appointment"), "priceCents": 0, "minutes": 30 })];
+        return vec![
+            json!({ "id": "svc1", "name": t("Atendimento", "Appointment"), "priceCents": 0, "minutes": 30 }),
+        ];
     };
     let mut out = Vec::new();
     for (i, s) in arr.iter().take(12).enumerate() {
