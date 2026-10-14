@@ -10,7 +10,6 @@ import androidx.test.core.app.ActivityScenario
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import java.io.File
-import java.util.Locale
 import java.util.UUID
 import kotlinx.coroutines.runBlocking
 import org.junit.After
@@ -36,16 +35,33 @@ class FileVersionJourneyTest {
     @Before fun createOwnedFixture() {
         folder = File(app.noBackupFilesDir, "file-version-${UUID.randomUUID()}").apply { mkdirs() }
         database = File(folder, "demo.sqlite")
-        core = RodaEngine.open(database.absolutePath, "en")
+        openCore()
         assertTrue(core.seedDemoIfEmpty())
+    }
+
+    private fun openCore() {
+        core = RodaEngine.open(database.absolutePath, "en")
+    }
+
+    private fun closeCore() {
+        if (::core.isInitialized) core.destroy()
+    }
+
+    private fun <T> whileClosed(block: () -> T): T {
+        closeCore()
+        try {
+            return block()
+        } finally {
+            openCore()
+        }
     }
 
     private fun addFile(name: String, mime: String, bytes: ByteArray) =
         core.fileAdd(core.spaces().first { it.counterpart?.handle == "zoen" }.id, name, name, mime, bytes, null)
 
     private fun reopen() {
-        core.destroy()
-        core = RodaEngine.open(database.absolutePath, "en")
+        closeCore()
+        openCore()
     }
 
     private fun cache(database: File, sha: String): ContentValues {
@@ -62,12 +78,14 @@ class FileVersionJourneyTest {
     private fun removeCache(database: File, sha: String) {
         SQLiteDatabase.openDatabase(database.absolutePath, null, SQLiteDatabase.OPEN_READWRITE).use {
             assertEquals(1, it.delete("media", "sha256 = ?", arrayOf(sha)))
+            it.rawQuery("PRAGMA wal_checkpoint(TRUNCATE)", null).use { cursor -> cursor.moveToFirst() }
         }
     }
 
     private fun putCache(database: File, row: ContentValues) {
         SQLiteDatabase.openDatabase(database.absolutePath, null, SQLiteDatabase.OPEN_READWRITE).use {
             assertTrue(it.insertWithOnConflict("media", null, row, SQLiteDatabase.CONFLICT_REPLACE) >= 0)
+            it.rawQuery("PRAGMA wal_checkpoint(TRUNCATE)", null).use { cursor -> cursor.moveToFirst() }
         }
     }
 
@@ -111,19 +129,15 @@ class FileVersionJourneyTest {
         val bytes = "One uniquely owned chunk ${UUID.randomUUID()}".toByteArray()
         val item = addFile("pending.txt", "text/plain", bytes)
         val sha = checkNotNull(item.file).sha256
-        val row = cache(database, sha)
-        removeCache(database, sha)
-        reopen()
+        val row = whileClosed { cache(database, sha).also { removeCache(database, sha) } }
         val pending = readFileVersion(core, item.id, item.version, tooLarge)
         assertFalse(pending.info.ready)
         assertNull(pending.bytes)
         assertEquals(item.versions, core.item(item.id).versions)
-        putCache(database, row)
-        reopen()
+        whileClosed { putCache(database, row) }
         assertArrayEquals(bytes, readFileVersion(core, item.id, item.version, tooLarge).bytes)
         val malformed = ContentValues(row).apply { put("bytes", ByteArray(bytes.size + 1)) }
-        putCache(database, malformed)
-        reopen()
+        whileClosed { putCache(database, malformed) }
         assertFalse(core.fileInfoAt(item.id, item.version).ready)
         assertTrue(runCatching { readFileVersion(core, item.id, item.version, tooLarge) }.exceptionOrNull() is CoreException.Invalid)
         assertEquals(item.version, core.item(item.id).version)
@@ -140,33 +154,27 @@ class FileVersionJourneyTest {
         val item = runBlocking { app.repository.change {
             it.fileAdd(checkNotNull(app.repository.state.value.zoenChat).id, name, name, "text/plain", bytes, null)
         } }
-        val demo = File(app.noBackupFilesDir, "core/demo-${Locale.forLanguageTag(app.repository.locale).language}.sqlite")
         val sha = checkNotNull(item.file).sha256
-        val row = cache(demo, sha)
-        removeCache(demo, sha)
+        val row = runBlocking { app.repository.withDemoDatabaseClosed { file -> cache(file, sha).also { removeCache(file, sha) } } }
         try {
-            runBlocking { app.repository.refresh() }
             scenario = ActivityScenario.launch(Intent(app, MainActivity::class.java).putExtra("demo", true)
                 .setAction(Intent.ACTION_VIEW).setData(Uri.parse("zoen://item/${item.id}")))
             compose.waitUntil(15_000) { compose.onAllNodesWithTag("file-pending-pieces").fetchSemanticsNodes().isNotEmpty() }
             compose.onAllNodesWithTag("file-export").assertCountEquals(0)
             compose.onAllNodesWithTag("file-open-with").assertCountEquals(0)
             capture("pending-piece-has-no-export")
-            putCache(demo, row)
-            runBlocking { app.repository.refresh() }
+            runBlocking { app.repository.withDemoDatabaseClosed { file -> putCache(file, row) } }
             compose.waitUntil(10_000) { compose.onAllNodesWithTag("file-export").fetchSemanticsNodes().isNotEmpty() }
             compose.onNodeWithText(bytes.toString(Charsets.UTF_8)).assertIsDisplayed()
             assertEquals(item.version, app.repository.state.value.items.single { it.id == item.id }.version)
             capture("same-version-retries-arriving-piece")
 
-            putCache(demo, ContentValues(row).apply { put("bytes", ByteArray(bytes.size + 1)) })
-            runBlocking { app.repository.refresh() }
+            runBlocking { app.repository.withDemoDatabaseClosed { file -> putCache(file, ContentValues(row).apply { put("bytes", ByteArray(bytes.size + 1)) }) } }
             compose.waitUntil(10_000) { compose.onAllNodesWithTag("file-read-error").fetchSemanticsNodes().isNotEmpty() }
             compose.onAllNodesWithTag("file-export").assertCountEquals(0)
             compose.onAllNodesWithTag("file-open-with").assertCountEquals(0)
             capture("malformed-cache-is-an-error")
-            putCache(demo, row)
-            runBlocking { app.repository.refresh() }
+            runBlocking { app.repository.withDemoDatabaseClosed { file -> putCache(file, row) } }
             compose.waitUntil(10_000) { compose.onAllNodesWithTag("file-export").fetchSemanticsNodes().isNotEmpty() }
 
             val changedName = "encoded-${UUID.randomUUID()}.json"
@@ -185,7 +193,7 @@ class FileVersionJourneyTest {
             compose.onNodeWithTag("preview-share").assertIsEnabled()
             assertEquals(2u, app.repository.state.value.items.single { it.id == item.id }.version)
             capture("historical-name-mime-and-payload")
-        } finally { putCache(demo, row) }
+        } finally { runBlocking { app.repository.withDemoDatabaseClosed { file -> putCache(file, row) } } }
     }
 
     private fun capture(name: String) {
@@ -197,7 +205,7 @@ class FileVersionJourneyTest {
 
     @After fun close() {
         scenario?.close()
-        if (::core.isInitialized) core.destroy()
+        closeCore()
         if (::folder.isInitialized) folder.deleteRecursively()
     }
 }

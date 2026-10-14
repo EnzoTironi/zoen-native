@@ -1194,6 +1194,113 @@ fn receipt_source_message(fixture: &mut Fixture, index: usize) -> Sequenced {
 }
 
 #[test]
+fn concurrent_receipt_prefix_restores_only_the_matching_certified_device() {
+    let mut fixture = Fixture::new();
+    fixture.grant("concurrent-prefix-trust", None);
+    let trigger = fixture.message("Concurrent receipt input");
+    let original = fixture
+        .core
+        .reply(SPACE, &trigger, 400)
+        .unwrap()
+        .intent()
+        .clone();
+    let prepared = fixture
+        .core
+        .prepare_reply(&original, "Retained concurrent output", 500)
+        .unwrap();
+    let cid = prepared.envelope().client_id().to_string();
+    let pending = fixture.core.snapshot_outbox().unwrap();
+    let next = receipt_source_message(&mut fixture, 0);
+    assert_eq!(next.env.seen(), prepared.envelope().seen());
+    assert_ne!(next.env.author(), prepared.envelope().author());
+    next.env.verify().unwrap();
+    let ReplyReceipt::Prefix(prefix) = fixture
+        .core
+        .receive_reply_progress(&original, &cid, vec![next])
+        .unwrap()
+    else {
+        panic!("the concurrent owner message is not the reply receipt");
+    };
+    assert!(fixture.core.snapshot_outbox().unwrap() == pending);
+    let other = Fixture::new_in("other-certified-device");
+    assert!(matches!(
+        DeviceCore::restore(
+            NativeImage::decode_bounded(prefix.image().as_bytes().to_vec()).unwrap(),
+            other.credential(),
+        ),
+        Err(NativeError::Credential)
+    ));
+    let mut cold = DeviceCore::restore(
+        NativeImage::decode_bounded(prefix.image().as_bytes().to_vec()).unwrap(),
+        fixture.credential(),
+    )
+    .unwrap();
+    assert!(cold.snapshot_outbox().unwrap() == pending);
+    let accepted = ordered(&fixture.owner, prepared.envelope().clone());
+    assert_eq!(fixture.owner.ingest(accepted.clone()), Ingest::Applied);
+    let ReplyReceipt::Accepted(receipt) = cold
+        .receive_reply_progress(&original, &cid, vec![accepted.clone()])
+        .unwrap()
+    else {
+        panic!("the original pending reply must produce acceptance");
+    };
+    assert_eq!(receipt.accepted().hash, accepted.hash);
+    assert_eq!(receipt.reference_digest(), prepared.reference_digest());
+    assert_eq!(receipt.publish_digest(), prepared.publish_digest());
+    assert_eq!(cold.engine.store.outbox_len().unwrap(), 0);
+    println!("JOURNEY concurrent same-prefix owner message preserves the original pending reply through cold restore; a different real certified agent is refused and only the original reply produces acceptance");
+}
+
+#[test]
+fn conflicting_sealed_seen_blocks_cold_restore_with_valid_pending_credentials() {
+    let mut fixture = Fixture::new();
+    fixture.grant("conflicting-prefix-trust", None);
+    let trigger = fixture.message("Original retained input");
+    let original = fixture
+        .core
+        .reply(SPACE, &trigger, 400)
+        .unwrap()
+        .intent()
+        .clone();
+    let prepared = fixture
+        .core
+        .prepare_reply(&original, "Original retained output", 500)
+        .unwrap();
+    let before = fixture.core.retained_head(SPACE).unwrap().unwrap();
+    let pending = fixture.core.snapshot_outbox().unwrap();
+    let source = receipt_source_message(&mut fixture, 0);
+    assert_eq!(source.env.seen(), prepared.envelope().seen());
+    let diverged = Seen {
+        seq: before.seq,
+        hash: "00".repeat(32),
+    };
+    assert_ne!(diverged.hash, before.hash);
+    let (kind, bytes) = source.env.sealed_data().unwrap();
+    let author = fixture.owner.net.author.as_ref().unwrap();
+    let conflicting = Envelope::sealed(
+        author,
+        SPACE,
+        source.env.client_id(),
+        source.env.at_ms(),
+        Some(&diverged),
+        Sealed::new(kind, roda_mls::SUITE_ID, bytes.to_vec()),
+    );
+    conflicting.verify().unwrap();
+    let frame = ordered(&fixture.core.engine, conflicting);
+    let got = fixture.core.engine.ingest(frame);
+    assert!(matches!(got, Ingest::Invalid(_)), "{got:?}");
+    assert_eq!(fixture.core.retained_head(SPACE).unwrap(), Some(before));
+    assert!(fixture.core.snapshot_outbox().unwrap() == pending);
+    assert!(fixture.core.engine.fork_recorded(SPACE));
+    assert!(fixture.core.engine.outbox_envelopes().is_empty());
+    assert!(matches!(
+        DeviceCore::restore(fixture.core.image().unwrap(), fixture.credential()),
+        Err(NativeError::Credential)
+    ));
+    println!("JOURNEY a member's real signature over a conflicting held-prefix hash preserves the pending reply but parks publication and rejects cold restore with the matching certified device");
+}
+
+#[test]
 fn receipt_prefix_keeps_exact_pending_bytes_and_resumes_beyond_64_real_positions() {
     use sha2::{Digest, Sha256};
     let mut fixture = Fixture::new();
