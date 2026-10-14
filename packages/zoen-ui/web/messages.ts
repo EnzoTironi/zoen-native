@@ -190,9 +190,11 @@ export class Messages {
   }
 
   private async apply(json: string, generation: number): Promise<void> {
+    // Forgetting this browser stops the session before the vault is erased; an update already in flight must not write it back.
+    if (this.closed) return;
     const update = parseUpdate(json);
     await persistBeforeOutgoing({ snapshot: { ...this.session, snapshot: update.snapshot },
-      save: (snapshot) => this.vault.save(snapshot), frames: update.frames, emit: (frame) => {
+      save: (snapshot) => this.closed ? Promise.resolve() : this.vault.save(snapshot), frames: update.frames, emit: (frame) => {
         // A reconnect bootstraps again from the saved outbox; never emit stale frames.
         if (this.closed || this.connection.kind !== 'ready' || generation !== this.generation) return;
         this.transport.send(frame);

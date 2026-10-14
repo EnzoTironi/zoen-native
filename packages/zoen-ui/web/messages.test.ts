@@ -300,3 +300,41 @@ test('an English session shows the core refusal sentences', async (t) => {
     remove: 'This conversation is still active.',
   });
 });
+
+test('forgetting this browser while a message is sending never writes the conversation back', async (t) => {
+  installSocket(t);
+  const states: MessagesState[] = [];
+  const saved: StoredSession[] = [];
+  let release: (value: string) => void = () => {};
+  const { core } = liveCore(async (operation) => {
+    if (operation.kind === 'restore') return JSON.stringify([sendingConversation]);
+    if (operation.kind === 'decode_server') return new TextDecoder().decode(operation.bytes);
+    if (operation.kind === 'bootstrap' || operation.kind === 'receive') {
+      return JSON.stringify({ snapshot: 'before', frames: [], conversations: [sendingConversation], retry_at_ms: null });
+    }
+    if (operation.kind === 'queue_message') {
+      return new Promise<string>((resolve) => { release = resolve; });
+    }
+    throw new Error(operation.kind);
+  });
+  const messages = new Messages({
+    core, language: 'en',
+    vault: { save: async (session) => { saved.push(session); }, sign: async () => new Uint8Array(64) },
+    session: { kind: 'linked', account, snapshot: '' },
+    changed: (state) => { states.push(state); },
+    unpaired: () => { throw new Error('pairing'); },
+  });
+  await messages.start();
+  await authenticate();
+  const before = saved.length;
+  const sending = messages.send({ space: 'sp_join', text: 'hello' });
+  await settle();
+  messages.stop();
+  core.close();
+  release(JSON.stringify({ snapshot: 'after', frames: [], conversations: [sendingConversation], retry_at_ms: Date.now() + 1000 }));
+  await sending.catch(() => {});
+  t.mock.timers.tick(5_000);
+  await settle();
+  assert.equal(saved.length, before);
+  assert.ok(states.every((state) => state.kind !== 'failed'));
+});
