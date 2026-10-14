@@ -160,7 +160,7 @@ class ItemHistoryJourneyTest {
         capture("open-history-admission-disabled")
     }
 
-    @Test fun planChangedUnderAnOpenHistoryRefusesRestoreAndAppendsNothing() {
+    @Test fun planChangedUnderAnOpenHistoryRefusesRestoreThenRestoresAfterReread() {
         open(); history()
         compose.waitUntil(10_000) { compose.onAllNodes(hasTestTag("restore-version:1") and isEnabled()).fetchSemanticsNodes().isNotEmpty() }
         signedEdits(1)
@@ -172,6 +172,14 @@ class ItemHistoryJourneyTest {
         compose.waitUntil(10_000) { compose.onAllNodesWithText(app.getString(R.string.plan_changed)).fetchSemanticsNodes().isNotEmpty() }
         assertEquals(changed, detail())
         capture("stale-restore-refused")
+        // The refusal re-reads the binding; the still-open sheet can now restore what it shows.
+        compose.waitUntil(10_000) { compose.onAllNodes(hasTestTag("restore-version:1") and isEnabled()).fetchSemanticsNodes().isNotEmpty() }
+        compose.onNodeWithTag("item-versions").performScrollToNode(hasTestTag("restore-version:1"))
+        compose.onNodeWithTag("restore-version:1").performClick()
+        compose.onNodeWithTag("confirm-restore-version").performClick()
+        compose.waitUntil(10_000) { detail().version == changed.version + 1u }
+        compose.waitUntil(10_000) { compose.onAllNodesWithTag("item-versions").fetchSemanticsNodes().isEmpty() }
+        capture("stale-restore-after-reread")
     }
 
     @Test fun membershipLossDisablesOpeningHistory() {

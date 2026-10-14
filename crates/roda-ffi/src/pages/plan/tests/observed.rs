@@ -474,3 +474,21 @@ fn unsaved_draft_refuses_a_plan_doc_change_on_every_writer() {
         "Second writer"
     );
 }
+
+#[test]
+fn restoring_a_missing_version_is_a_clean_not_found_and_appends_nothing() {
+    let mut fixture = Fixture::new();
+    let observed = fixture
+        .engine
+        .plan_page(&fixture.item)
+        .unwrap()
+        .content_hash;
+    let before = snapshot(&fixture);
+    assert!(matches!(
+        fixture
+            .engine
+            .restore_plan_version(&fixture.item, 999, &observed),
+        Err(CoreError::NotFound { .. })
+    ));
+    assert_eq!(snapshot(&fixture), before);
+}

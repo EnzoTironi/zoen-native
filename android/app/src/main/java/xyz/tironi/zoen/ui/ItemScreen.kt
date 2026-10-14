@@ -39,7 +39,9 @@ fun ItemScreen(model: ZoenViewModel, state: AppState, id: String, navigate: (Nav
     var restore by remember(id) { mutableStateOf<UInt?>(null) }
     // The binding the version sheet saw when it opened. Restore never re-reads it at tap time.
     var sheetHash by remember(id) { mutableStateOf<String?>(null) }
-    LaunchedEffect(id, versions, item?.kindId) {
+    // Bumped by a stale refusal so the sheet re-reads the binding before the next restore.
+    var sheetReload by remember(id) { mutableIntStateOf(0) }
+    LaunchedEffect(id, versions, item?.kindId, sheetReload) {
         sheetHash = null
         if (versions && item?.kindId == "plan") sheetHash = try { model.repository.query { it.planPage(id).contentHash } }
             catch (error: Exception) { if (error is CancellationException) throw error; null }
@@ -150,11 +152,12 @@ fun ItemScreen(model: ZoenViewModel, state: AppState, id: String, navigate: (Nav
     restore?.let { number -> AlertDialog(onDismissRequest = { restore = null }, title = { Text(stringResource(R.string.restore)) }, text = { Text(stringResource(R.string.restore_question)) }, confirmButton = {
         TextButton(enabled = restoreAllowed, modifier = Modifier.testTag("confirm-restore-version"), onClick = {
             val observed = sheetHash
-            restore = null; versions = false
+            restore = null
             val owner = state.me?.id ?: return@TextButton
             model.launch {
-                model.planWrite(changed) {
+                model.planWrite(changed, onStale = { sheetReload++ }) {
                     val fresh = model.pageSaves.restoreVersion(model.repository, id, owner, number, observed)
+                    versions = false
                     model.notify(fresh?.saveError ?: when {
                         fresh?.pendingSync == true -> pendingSync
                         fresh?.unsaved == true -> draftSaved
