@@ -66,10 +66,13 @@ async fn agent_invite_opens_a_chat_and_public_page_shows_the_agent() {
     assert!(body.contains("Agenda o horário"), "purpose on page");
     assert!(body.contains("Abrir no app"), "open CTA");
     assert!(body.contains("Instalar"), "install CTA");
+    assert!(
+        body.contains(&format!("zoen://agent/{}", inv.code)),
+        "deep link: {body}"
+    );
     let (status, body, _) = http(w.port, "GET", "/install", &[], "");
     assert_eq!(status, 200);
     assert!(body.contains("Instalar o Zoen"));
-    assert!(body.contains(&format!("zoen://agent/{}", inv.code)));
 
     let (status, body, _) = http(w.port, "GET", "/a/barbeiro", &[], "");
     assert_eq!(status, 200, "public page for handle");
@@ -116,7 +119,7 @@ fn http(port: u16, method: &str, path: &str, _h: &[(&str, &str)], _b: &str) -> (
     let mut s = std::net::TcpStream::connect(("127.0.0.1", port)).unwrap();
     write!(
         s,
-        "{method} {path} HTTP/1.1\r\nHost: 127.0.0.1\r\nConnection: close\r\n\r\n"
+        "{method} {path} HTTP/1.0\r\nHost: 127.0.0.1\r\nConnection: close\r\n\r\n"
     )
     .unwrap();
     let mut out = String::new();
