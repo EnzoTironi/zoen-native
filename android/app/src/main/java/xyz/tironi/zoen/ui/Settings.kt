@@ -26,7 +26,6 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
-import androidx.compose.material.icons.automirrored.rounded.ChevronRight
 import androidx.compose.material.icons.automirrored.rounded.Chat
 import androidx.compose.material.icons.rounded.*
 import androidx.compose.material3.*
@@ -195,7 +194,7 @@ private fun SRow(icon: ImageVector?, title: String, subtitle: String? = null, va
             subtitle?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = alpha)) }
         }
         value?.let { Text(it, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = alpha), textAlign = TextAlign.End) }
-        if (chevron && clickable) Icon(Icons.AutoMirrored.Rounded.ChevronRight, null, Modifier.size(18.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
+        if (chevron && clickable) Icon(Icons.Rounded.ChevronRight, null, Modifier.size(18.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
     }
 }
 
@@ -296,7 +295,7 @@ private fun SettingsHome(state: AppState, navigate: (NavKey) -> Unit, close: () 
                         verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp)) {
                         Avatar(me, size = 52)
                         Column(Modifier.weight(1f)) { Text(me.name, style = MaterialTheme.typography.titleMedium); Text("@${me.handle}", color = MaterialTheme.colorScheme.onSurfaceVariant) }
-                        Icon(Icons.AutoMirrored.Rounded.ChevronRight, null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Icon(Icons.Rounded.ChevronRight, null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                 }
                 sections.forEach { (header, pages) -> Group(header) { pages.forEachIndexed { i, p -> if (i > 0) RowDivider(); NavRow(p, navigate) } } }
