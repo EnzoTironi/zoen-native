@@ -275,7 +275,8 @@ private fun SettingsHome(state: AppState, navigate: (NavKey) -> Unit, close: () 
     var query by rememberSaveable { mutableStateOf("") }
     val context = LocalContext.current
     val q = settingsFold(query.trim())
-    val results = if (q.isEmpty()) emptyList() else SettingsPage.entries.filter { settingsFold(context.getString(it.title) + " " + it.keywords).contains(q) }
+    val titles = SettingsPage.entries.associateWith { stringResource(it.title) }
+    val results = if (q.isEmpty()) emptyList() else SettingsPage.entries.filter { settingsFold(titles.getValue(it) + " " + it.keywords).contains(q) }
     SettingsScaffold(stringResource(R.string.st_settings), null, close) {
         Row(
             Modifier.fillMaxWidth().height(48.dp).clip(CircleShape).background(SettingsTone.card()).border(1.dp, SettingsTone.outline(), CircleShape).padding(start = 16.dp),
@@ -492,7 +493,9 @@ private fun AccessibilityPage(back: () -> Unit, close: () -> Unit) = SettingsSca
     val animationsOff = AndroidSettings.Global.getFloat(resolver, AndroidSettings.Global.ANIMATOR_DURATION_SCALE, 1f) == 0f
     val fontScale = LocalDensity.current.fontScale
     val highContrast = runCatching { AndroidSettings.Secure.getInt(resolver, "high_text_contrast_enabled", 0) == 1 }.getOrDefault(false)
-    val onOff = { on: Boolean -> context.getString(if (on) R.string.st_on else R.string.st_off) }
+    val onText = stringResource(R.string.st_on)
+    val offText = stringResource(R.string.st_off)
+    val onOff = { on: Boolean -> if (on) onText else offText }
     Group {
         SRow(Icons.Rounded.Animation, stringResource(R.string.st_reduce_motion), value = onOff(animationsOff)); RowDivider()
         SRow(Icons.Rounded.Contrast, stringResource(R.string.st_contrast), value = onOff(highContrast)); RowDivider()
@@ -562,10 +565,11 @@ private fun PlansPage(state: AppState, navigate: (NavKey) -> Unit, back: () -> U
 @Composable
 private fun InvitesPage(model: ZoenViewModel, state: AppState, back: () -> Unit, close: () -> Unit) {
     val context = LocalContext.current
+    val inviteMessage = stringResource(R.string.st_invite_message)
     val link by produceState<String?>(null, state.account) { value = runCatching { model.repository.query { it.friendInviteLink() } }.getOrNull() }
     SettingsScaffold(stringResource(R.string.st_invites), back, close, bottom = link?.let { l -> {
         PrimaryButton(stringResource(R.string.st_invite_someone), tag = "settings:inviteShare") {
-            val text = context.getString(R.string.st_invite_message) + " " + l
+            val text = inviteMessage + " " + l
             context.startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND).setType("text/plain").putExtra(Intent.EXTRA_TEXT, text), null))
         }
     } }) {

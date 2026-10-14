@@ -32,6 +32,9 @@ mod tests {
         let a = attribution_from_link(&link).unwrap();
         assert_eq!(a.kind, SourceKind::Friend);
         assert_eq!(space("AB12"), "https://tryzoen.com/j/AB12");
-        assert_eq!(attribution_from_link(&space("AB12CD34EF")).unwrap().kind, SourceKind::Space);
+        assert_eq!(
+            attribution_from_link(&space("AB12CD34EF")).unwrap().kind,
+            SourceKind::Space
+        );
     }
 }
