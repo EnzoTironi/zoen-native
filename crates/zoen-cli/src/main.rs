@@ -8,6 +8,8 @@
 //! Every command is a fresh process: open the database, load the key from the vault,
 //! connect, catch up, act, flush, exit. Killing it at any point loses nothing.
 
+mod agent;
+
 use std::{
     io::Write,
     path::{Path, PathBuf},
@@ -284,7 +286,7 @@ fn open(home: &Path) -> Arc<RodaEngine> {
     }
 }
 
-fn die(msg: impl std::fmt::Display) -> ! {
+pub(crate) fn die(msg: impl std::fmt::Display) -> ! {
     eprintln!("error: {msg}");
     std::process::exit(1)
 }
@@ -463,6 +465,47 @@ async fn main() {
         return;
     }
 
+    // Agent citizens (server-side runtime). Keys first, so the owner can authorize the id.
+    if cmd == "agent-keys" {
+        let root = match vault.load("agent_root".into()) {
+            Some(r) => r,
+            None => {
+                let mut r = [0u8; 32];
+                getrandom_fill(&mut r);
+                if !vault.save("agent_root".into(), r.to_vec()) {
+                    die("vault");
+                }
+                r.to_vec()
+            }
+        };
+        println!("{}", roda_ffi::agent_id_for_root(root).unwrap_or_else(|err| die(err)));
+        return;
+    }
+    if cmd == "agent-init" {
+        let name = cli.flag("--name").unwrap_or_else(|| usage());
+        let handle = cli.flag("--handle").unwrap_or_else(|| usage());
+        let owner = cli.flag("--owner").unwrap_or_else(|| usage());
+        let proof = cli.flag("--proof").unwrap_or_else(|| usage());
+        let relay = cli
+            .flag("--relay")
+            .or_else(|| std::env::var("ZOEN_RELAY").ok())
+            .unwrap_or_else(|| "http://127.0.0.1:8787".into());
+        let root = vault.load("agent_root".into()).unwrap_or_else(|| die("run agent-keys first"));
+        e.create_agent_account(name, handle, relay, root, owner, proof, vault.clone())
+            .unwrap_or_else(|err| die(err));
+        e.start_sync(None).unwrap_or_else(|err| die(err));
+        let c = e.wait_until_idle(timeout).await;
+        let a = e.account().unwrap_or_else(|| die("account"));
+        println!(
+            "agent @{} ({}) {}",
+            a.handle,
+            &a.identity_id[..12],
+            if a.registered { "registered".to_string() } else { c.error.unwrap_or_default() }
+        );
+        e.stop_sync();
+        return;
+    }
+
     if cmd == "init" {
         let name = cli.flag("--name").unwrap_or_else(|| usage());
         let handle = cli.flag("--handle").unwrap_or_else(|| usage());
@@ -566,6 +609,7 @@ async fn main() {
     }
     let me = e.account().map(|a| a.identity_id).unwrap_or_default();
     let watching = cmd == "watch";
+    let _hosting = cmd == "agent-host";
     if !offline {
         let listener: Option<Arc<dyn CoreListener>> = if watching {
             Some(Arc::new(Printer {
@@ -961,6 +1005,14 @@ async fn main() {
             if bad > 0 {
                 std::process::exit(3);
             }
+        }
+        "authorize-agent" => {
+            let id = cli.args.first().cloned().unwrap_or_else(|| usage());
+            println!("{}", e.authorize_agent_json(id).unwrap_or_else(|err| die(err)));
+        }
+        "agent-host" => {
+            let def = cli.flag("--definition").unwrap_or_else(|| usage());
+            agent::host(&e, &home, &def, for_secs).await;
         }
         "watch" => {
             println!(
@@ -1431,4 +1483,9 @@ async fn main() {
         _ => usage(),
     }
     e.stop_sync();
+}
+
+fn getrandom_fill(buf: &mut [u8]) {
+    let mut f = std::fs::File::open("/dev/urandom").unwrap_or_else(|err| die(err));
+    std::io::Read::read_exact(&mut f, buf).unwrap_or_else(|err| die(err));
 }

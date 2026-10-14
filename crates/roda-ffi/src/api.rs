@@ -204,6 +204,12 @@ impl RodaEngine {
     }
 }
 
+/// The Agent identity id a root secret signs as (server-side runtime).
+pub fn agent_id_for_root(root: Vec<u8>) -> Result<String, CoreError> {
+    let root: [u8; 32] = root.as_slice().try_into().map_err(|_| invalid("agent key"))?;
+    Ok(roda_log::Signer::from_secret(&root).id())
+}
+
 /// Server-side agent runtime only; deliberately outside the native FFI surface.
 impl RodaEngine {
     /// Agent citizen account (server-side runtime). Not exported to native apps.

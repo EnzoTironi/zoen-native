@@ -7763,7 +7763,9 @@ dependencies = [
  "hkdf 0.12.4",
  "opentelemetry-proto",
  "prost",
+ "reqwest",
  "roda-ffi",
+ "roda-gate",
  "roda-log",
  "roda-proto",
  "roda-store",
@@ -7774,6 +7776,7 @@ dependencies = [
  "sqlx",
  "tokio",
  "tokio-tungstenite 0.30.0",
+ "zoen-agentd",
 ]
 
 [[package]]
