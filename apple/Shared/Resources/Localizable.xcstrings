@@ -4543,7 +4543,7 @@
         "pt-BR": {
           "stringUnit": {
             "state": "translated",
-            "value": "Configurações"
+            "value": "Ajustes"
           }
         }
       }
@@ -10041,22 +10041,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "de %@ nos limites que você definiu"
-          }
-        }
-      }
-    },
-    "Settings home": {
-      "localizations": {
-        "pt-BR": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Ajustes"
-          }
-        },
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Settings"
           }
         }
       }

@@ -1,7 +1,7 @@
 import SwiftUI
 import RodaCore
 
-/// Aba 4: você, seus agentes, seus Itens, segurança e uma única tela de configurações.
+/// Aba 4: você, seus agentes, seus Itens, segurança e uma única tela de ajustes.
 struct YouScreen: View {
     @Environment(AppModel.self) private var model
     @State private var confirmReset = false

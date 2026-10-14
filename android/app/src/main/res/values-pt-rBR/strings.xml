@@ -8,7 +8,7 @@
   <string name="files">Arquivos</string>
   <string name="context">Seu contexto</string>
   <string name="search">Buscar</string>
-  <string name="settings">Configurações</string>
+  <string name="settings">Ajustes</string>
   <string name="back">Voltar</string>
   <string name="close">Fechar</string>
   <string name="more">Mais opções</string>
@@ -66,7 +66,7 @@
   <string name="name">Nome</string>
   <string name="handle">Usuário</string>
   <string name="relay">Endereço do servidor</string>
-  <string name="connection_settings">Configurações da conexão</string>
+  <string name="connection_settings">Ajustes da conexão</string>
   <string name="finish">Abrir Zoen</string>
   <string name="opening">Abrindo Zoen…</string>
   <string name="creating">Criando sua conta…</string>
@@ -180,7 +180,7 @@
   <string name="offline">Sem conexão. As mudanças ficam na fila de envio.</string>
   <string name="connecting">Conectando…</string>
   <string name="key_missing">A chave deste aparelho está indisponível. Sua conta precisa das chaves originais para assinar.</string>
-  <string name="notification_settings">Configurações de notificações</string>
+  <string name="notification_settings">Ajustes de notificações</string>
   <string name="device_permissions">Permissões dos mini-apps</string>
   <string name="revoke">Revogar</string>
   <string name="no_permissions">Nenhuma permissão salva</string>

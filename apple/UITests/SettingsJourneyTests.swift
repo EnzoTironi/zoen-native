@@ -6,7 +6,7 @@ final class SettingsJourneyTests: XCTestCase {
     private func launch(_ extra: [String] = []) -> XCUIApplication {
         let app = XCUIApplication()
         app.launchArguments = [
-            "-RodaFreshStart", "YES", "-RodaDemo", "YES",
+            "-RodaFreshStart", "YES", "-RodaAccount", "Teste Ajustes:teste_ajustes",
             "-RodaTab", "you", "-AppleLanguages", "(pt-BR)", "-AppleLocale", "pt_BR",
         ] + extra
         app.launch()
@@ -69,11 +69,32 @@ final class SettingsJourneyTests: XCTestCase {
     }
 
     @MainActor
+    func testDisappearingMessagesShowsEveryOptionDisabled() throws {
+        continueAfterFailure = false
+        let app = launch(["-RodaSettings", "disappearing"])
+        for id in ["disappear.off", "disappear.24h", "disappear.7d", "disappear.90d"] {
+            let option = app.buttons[id]
+            XCTAssertTrue(option.waitForExistence(timeout: 15), "\(id) is listed")
+            XCTAssertFalse(option.isEnabled, "\(id) is disabled while the feature is unavailable")
+            XCTAssertFalse(option.isSelected, "no option pretends to be chosen")
+        }
+    }
+
+    @MainActor
+    func testProfileShowsTheRealAccount() throws {
+        continueAfterFailure = false
+        let app = launch(["-RodaSettings", "x"])
+        XCTAssertTrue(app.staticTexts["@teste_ajustes"].waitForExistence(timeout: 15), "the account's own @, nothing else")
+        XCTAssertFalse(app.staticTexts["Nenhuma conta neste aparelho"].exists)
+    }
+
+    @MainActor
     func testInvitesExplainsTheRewardAndShares() throws {
         continueAfterFailure = false
         let app = launch(["-RodaSettings", "invites"])
         XCTAssertTrue(app.staticTexts["1 mês de Business a cada 5 amigos"].waitForExistence(timeout: 15), "the rule is stated")
         let share = app.buttons["inviteShare"]
+        XCTAssertTrue(share.waitForExistence(timeout: 5), "the core gave a link to share")
         if share.exists {
             share.tap()
             XCTAssertTrue(app.otherElements["ActivityListView"].waitForExistence(timeout: 5)

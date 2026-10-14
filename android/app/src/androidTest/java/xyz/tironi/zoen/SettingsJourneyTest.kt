@@ -24,10 +24,16 @@ import xyz.tironi.zoen.ui.*
 class SettingsJourneyTest {
     @get:Rule val compose = createAndroidComposeRule<ComponentActivity>()
 
-    private fun open(): SnapshotStateList<NavKey> {
+    /** A real local account (no demo data); `account = false` signs out first. */
+    private fun open(account: Boolean = true): SnapshotStateList<NavKey> {
         val app = ApplicationProvider.getApplicationContext<ZoenApplication>()
-        app.repository.preferences.edit().putBoolean("demo", true).putBoolean("onboarded", true).commit()
-        runBlocking { app.repository.boot(true); app.repository.resetDemo() }
+        app.repository.preferences.edit().putBoolean("demo", false).putBoolean("onboarded", true).commit()
+        runBlocking {
+            app.repository.boot(false)
+            if (app.repository.state.value.account != null) app.repository.signOut()
+            app.repository.boot(false)
+            if (account) app.repository.createAccount("Teste Ajustes", "teste_ajustes", "http://10.0.2.2:18787")
+        }
         val model = ViewModelProvider(compose.activity)[ZoenViewModel::class.java]
         val stack = mutableStateListOf<NavKey>(Home, SettingsRoute())
         compose.setContent {
@@ -73,5 +79,25 @@ class SettingsJourneyTest {
         open()
         compose.onNodeWithTag("settings:Backup").performClick()
         compose.onNodeWithTag("settings:restore").assertHasNoClickAction()
+    }
+
+    @Test fun invitesShareTheLinkTheCoreMakes() {
+        open()
+        compose.onNodeWithTag("settings:Invites").performClick()
+        compose.onNodeWithTag("settings:inviteShare").assertIsDisplayed()
+    }
+
+    @Test fun disappearingMessagesShowsEveryOptionDisabled() {
+        open()
+        compose.onNodeWithTag("settings:Disappearing").performScrollTo().performClick()
+        listOf("off", "24h", "7d", "90d").forEach { compose.onNodeWithTag("disappear:$it").assertIsNotEnabled().assertIsNotSelected() }
+    }
+
+    @Test fun withoutAnAccountNothingShowsSomeonesIdentity() {
+        open(account = false)
+        compose.onNodeWithText("@", substring = true).assertDoesNotExist()
+        compose.onNodeWithTag("settings:Plans").performScrollTo().performClick()
+        compose.onNodeWithTag("settings:back").assertExists()
+        compose.onNodeWithText("R$", substring = true).assertDoesNotExist()
     }
 }

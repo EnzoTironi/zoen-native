@@ -153,10 +153,11 @@ struct SettingsHome: View {
     }
 
     var body: some View {
-        SettingsPage(title: "Settings home", showsBack: false) {
+        SettingsPage(title: "Settings", showsBack: false) {
             searchField
             if query.trimmingCharacters(in: .whitespaces).isEmpty {
-                if let me = model.me {
+                // Identity comes from the account only, so nothing here contradicts "no account".
+                if model.sync.account != nil, let me = model.me {
                     NavigationLink(value: SettingsScreen.profile) {
                         HStack(spacing: 14) {
                             PersonAvatar(persona: me, size: 52)
@@ -275,7 +276,7 @@ struct ProfileSettings: View {
 
     var body: some View {
         SettingsPage(title: "Profile") {
-            if let me = model.me {
+            if model.sync.account != nil, let me = model.me {
                 VStack(spacing: 8) {
                     PersonAvatar(persona: me, size: 72)
                     Text(me.name).font(.title3.weight(.semibold)).foregroundStyle(Palette.textPrimary)
@@ -705,13 +706,13 @@ struct DisappearingSettings: View {
         SettingsPage(title: "Disappearing messages") {
             SettingsCaption("New messages in a Space vanish after the time you pick, for everyone.")
             SettingsGroup {
-                SettingsRadioRow(title: "Off", selected: true, id: "disappear.off") {}
-                SettingsRadioRow(title: "24 hours", selected: false) {}
-                SettingsRadioRow(title: "7 days", selected: false) {}
-                SettingsRadioRow(title: "90 days", selected: false) {}
+                SettingsRadioRow(title: "Off", subtitle: "Soon", selected: false, id: "disappear.off") {}
+                SettingsRadioRow(title: "24 hours", subtitle: "Soon", selected: false, id: "disappear.24h") {}
+                SettingsRadioRow(title: "7 days", subtitle: "Soon", selected: false, id: "disappear.7d") {}
+                SettingsRadioRow(title: "90 days", subtitle: "Soon", selected: false, id: "disappear.90d") {}
             }
             .disabled(true)
-            .opacity(0.6)
+            .accessibilityHint(Text("Unavailable"))
             SettingsCaption("Not available yet: today every message stays. When it arrives, you'll pick the time here for each Space, and older messages won't change.")
         }
     }
@@ -723,7 +724,7 @@ struct PlansSettings: View {
     @Environment(AppModel.self) private var model
 
     var body: some View {
-        let mine = model.agents.filter { $0.persona.isMine }
+        let mine = model.sync.account == nil ? [] : model.agents.filter { $0.persona.isMine }
         let limit = mine.compactMap(\.budgetLimitCents).reduce(0, +)
         let spent = mine.compactMap(\.budgetSpentCents).reduce(0, +)
         SettingsPage(title: "Credits and plans") {
@@ -792,7 +793,7 @@ struct InvitesSettings: View {
             .background(SettingsStyle.card, in: .rect(cornerRadius: SettingsStyle.radius, style: .continuous))
             SettingsCaption("Friends who joined with your link show up here as they become active.")
         } footer: {
-            if let handle = model.sync.account?.handle ?? model.me?.handle, let url = URL(string: "https://tryzoen.com/@\(handle)") {
+            if let link = model.core.friendInviteLink(), let url = URL(string: link) {
                 ShareLink(item: url, message: Text("Come talk to me on Zoen")) {
                     Text("Invite someone")
                         .font(.body.weight(.semibold))

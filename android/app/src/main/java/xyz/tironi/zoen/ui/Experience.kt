@@ -29,13 +29,19 @@ internal fun rememberMotionEnabled(): Boolean {
 internal enum class ZoenFeedback { Tap, Selection, Open, Dismiss, PickUp, Drop, Send, Confirm, Reject, RecordStart, RecordLock }
 
 internal class ZoenHaptics(private val view: View) {
+    /** "Remove animations" (Android's reduce motion) also quiets haptics. The request is
+     *  still logged, with `suppressed=true`, so journeys can check the decision. */
     fun perform(feedback: ZoenFeedback): Boolean {
         val effect = feedbackConstant(feedback, Build.VERSION.SDK_INT)
-        val accepted = view.performHapticFeedback(effect)
-        if (xyz.tironi.zoen.BuildConfig.DEBUG) android.util.Log.d("ZoenFeedback", "$feedback effect=$effect accepted=$accepted")
+        val suppressed = reduceMotion(view)
+        val accepted = !suppressed && view.performHapticFeedback(effect)
+        if (xyz.tironi.zoen.BuildConfig.DEBUG) android.util.Log.d("ZoenFeedback", "$feedback effect=$effect accepted=$accepted suppressed=$suppressed")
         return accepted
     }
 }
+
+internal fun reduceMotion(view: View): Boolean =
+    Settings.Global.getFloat(view.context.contentResolver, Settings.Global.ANIMATOR_DURATION_SCALE, 1f) == 0f
 
 // Platform effects preserve the user's setting and the device's actuator tuning.
 internal fun feedbackConstant(feedback: ZoenFeedback, api: Int): Int = when (feedback) {

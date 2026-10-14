@@ -87,10 +87,11 @@ enum class SettingsPage(val title: Int, val icon: ImageVector, val keywords: Str
 
 /** Tokens: neutral cards, 48dp back/close circles, control outlines ≥ 3:1 on the card. */
 private object SettingsTone {
-    @Composable fun card() = if (isSystemInDarkTheme()) Color(0xFF151A24) else Color(0xFFF3F4F7)
+    @Composable fun darkMode() = when (AppAppearance.mode) { "dark" -> true; "light" -> false; else -> isSystemInDarkTheme() }
+    @Composable fun card() = if (darkMode()) Color(0xFF151A24) else Color(0xFFF3F4F7)
     @Composable fun edge() = MaterialTheme.colorScheme.outlineVariant
-    /** 3.45:1 on the light card (3.8:1 on white), 3.9:1 on the dark card. */
-    @Composable fun outline() = if (isSystemInDarkTheme()) Color(0xFF6B7790) else Color(0xFF7A8396)
+    /** Measured: light #646D80 on the card #F3F4F7 = 4.9:1 (5.4:1 on white); dark #6B7790 on #151A24 = 3.9:1. */
+    @Composable fun outline() = if (darkMode()) Color(0xFF6B7790) else Color(0xFF646D80)
     val radius = 16.dp
 }
 
@@ -115,7 +116,7 @@ fun SettingsScreen(model: ZoenViewModel, state: AppState, page: String?, navigat
         SettingsPage.Plans -> PlansPage(state, navigate, back, close)
         SettingsPage.Discover -> SimplePage(p, back, close) { SettingsEmpty(Icons.Rounded.Explore, R.string.st_discover_empty, R.string.st_discover_detail) }
         SettingsPage.Moderation -> SimplePage(p, back, close) { SettingsEmpty(Icons.Rounded.Flag, R.string.st_moderation_empty, R.string.st_moderation_detail) }
-        SettingsPage.Invites -> InvitesPage(state, back, close)
+        SettingsPage.Invites -> InvitesPage(model, state, back, close)
         SettingsPage.Wallet -> SimplePage(p, back, close) { SettingsEmpty(Icons.Rounded.CreditCard, R.string.st_wallet_empty, R.string.st_wallet_detail); Caption(R.string.st_wallet_caption) }
     }
 }
@@ -220,7 +221,7 @@ private fun RadioRow(title: String, selected: Boolean, subtitle: String? = null,
         }
         val dot by animateFloatAsState(if (selected) 1f else 0f, spring(Spring.DampingRatioNoBouncy, Spring.StiffnessMedium), label = "dot")
         val ring = if (selected) MaterialTheme.colorScheme.onSurface else SettingsTone.outline()
-        Box(Modifier.size(20.dp).border(1.5.dp, ring.copy(alpha = alpha), CircleShape), contentAlignment = Alignment.Center) {
+        Box(Modifier.size(20.dp).border(1.5.dp, ring, CircleShape), contentAlignment = Alignment.Center) {
             Box(Modifier.size(10.dp).scale(0.25f + 0.75f * dot).clip(CircleShape).background(MaterialTheme.colorScheme.onSurface.copy(alpha = dot * alpha)))
         }
     }
@@ -290,7 +291,8 @@ private fun SettingsHome(state: AppState, navigate: (NavKey) -> Unit, close: () 
         }
         when {
             q.isEmpty() -> {
-                state.me?.let { me ->
+                // Identity only from the account, so nothing contradicts "no account".
+                state.me?.takeIf { state.account != null }?.let { me ->
                     Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(SettingsTone.radius)).background(SettingsTone.card()).clickable { navigate(SettingsRoute(SettingsPage.Profile.name)) }.padding(16.dp),
                         verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp)) {
                         Avatar(me, size = 52)
@@ -313,7 +315,7 @@ private fun SettingsHome(state: AppState, navigate: (NavKey) -> Unit, close: () 
 @Composable
 private fun ProfilePage(state: AppState, navigate: (NavKey) -> Unit, back: () -> Unit, close: () -> Unit) = SettingsScaffold(stringResource(R.string.st_profile), back, close) {
     val acct = state.account
-    state.me?.let { me ->
+    state.me?.takeIf { acct != null }?.let { me ->
         Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Avatar(me, size = 72); Text(me.name, style = MaterialTheme.typography.titleLarge)
         }
@@ -528,17 +530,18 @@ private fun AboutPage(navigate: (NavKey) -> Unit, back: () -> Unit, close: () ->
 private fun DisappearingPage(back: () -> Unit, close: () -> Unit) = SettingsScaffold(stringResource(R.string.st_disappearing), back, close) {
     Caption(R.string.st_disappearing_caption)
     Group {
-        RadioRow(stringResource(R.string.st_off), true, enabled = false, tag = "disappear:off") {}; RowDivider()
-        RadioRow(stringResource(R.string.st_24h), false, enabled = false) {}; RowDivider()
-        RadioRow(stringResource(R.string.st_7d), false, enabled = false) {}; RowDivider()
-        RadioRow(stringResource(R.string.st_90d), false, enabled = false) {}
+        val soon = stringResource(R.string.st_soon)
+        RadioRow(stringResource(R.string.st_off), false, soon, enabled = false, tag = "disappear:off") {}; RowDivider()
+        RadioRow(stringResource(R.string.st_24h), false, soon, enabled = false, tag = "disappear:24h") {}; RowDivider()
+        RadioRow(stringResource(R.string.st_7d), false, soon, enabled = false, tag = "disappear:7d") {}; RowDivider()
+        RadioRow(stringResource(R.string.st_90d), false, soon, enabled = false, tag = "disappear:90d") {}
     }
     Caption(R.string.st_disappearing_unavailable)
 }
 
 @Composable
 private fun PlansPage(state: AppState, navigate: (NavKey) -> Unit, back: () -> Unit, close: () -> Unit) = SettingsScaffold(stringResource(R.string.st_plans), back, close) {
-    val mine = state.agents.filter { it.persona.isMine }
+    val mine = if (state.account == null) emptyList() else state.agents.filter { it.persona.isMine }
     val limit = mine.mapNotNull { it.budgetLimitCents }.sum()
     val spent = mine.mapNotNull { it.budgetSpentCents }.sum()
     val money = { cents: Long -> NumberFormat.getCurrencyInstance().format(cents / 100.0) }
@@ -557,12 +560,12 @@ private fun PlansPage(state: AppState, navigate: (NavKey) -> Unit, back: () -> U
 }
 
 @Composable
-private fun InvitesPage(state: AppState, back: () -> Unit, close: () -> Unit) {
+private fun InvitesPage(model: ZoenViewModel, state: AppState, back: () -> Unit, close: () -> Unit) {
     val context = LocalContext.current
-    val handle = state.account?.handle ?: state.me?.handle
-    SettingsScaffold(stringResource(R.string.st_invites), back, close, bottom = handle?.let { h -> {
+    val link by produceState<String?>(null, state.account) { value = runCatching { model.repository.query { it.friendInviteLink() } }.getOrNull() }
+    SettingsScaffold(stringResource(R.string.st_invites), back, close, bottom = link?.let { l -> {
         PrimaryButton(stringResource(R.string.st_invite_someone), tag = "settings:inviteShare") {
-            val text = context.getString(R.string.st_invite_message) + " https://tryzoen.com/@$h"
+            val text = context.getString(R.string.st_invite_message) + " " + l
             context.startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND).setType("text/plain").putExtra(Intent.EXTRA_TEXT, text), null))
         }
     } }) {

@@ -8,9 +8,9 @@ import SwiftUI
 enum SettingsStyle {
     static let card = Color.adaptive(light: "#F3F4F7", dark: "#151A24")
     static let cardEdge = Palette.hairline
-    /// Rings, field and button outlines: 3.45:1 on the light card (3.8:1 on white),
-    /// 3.9:1 on the dark card.
-    static let controlOutline = Color.adaptive(light: "#7A8396", dark: "#6B7790")
+    /// Rings, field and button outlines. Measured (WCAG relative luminance):
+    /// light #646D80 on the card #F3F4F7 = 4.9:1, on white 5.4:1; dark #6B7790 on #151A24 = 3.9:1.
+    static let controlOutline = Color.adaptive(light: "#646D80", dark: "#6B7790")
     static let radius: CGFloat = 16
     static let rowHeight: CGFloat = 52
     static let button: CGFloat = 48
@@ -248,6 +248,7 @@ struct RowPress: ButtonStyle {
 /// One choice of many: the ring-with-dot marker from Tema. Selection is also carried by
 /// the accessibility trait, not only by the dot.
 struct SettingsRadioRow: View {
+    @Environment(\.isEnabled) private var enabled
     let title: LocalizedStringKey
     var subtitle: LocalizedStringKey? = nil
     let selected: Bool
@@ -261,7 +262,7 @@ struct SettingsRadioRow: View {
         } label: {
             HStack(spacing: 12) {
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(title).font(.body.weight(.medium)).foregroundStyle(Palette.textPrimary)
+                    Text(title).font(.body.weight(.medium)).foregroundStyle(enabled ? Palette.textPrimary : Palette.textSecondary)
                     if let subtitle { Text(subtitle).font(.footnote).foregroundStyle(Palette.textSecondary) }
                 }
                 Spacer()
