@@ -73,6 +73,7 @@ extension AppModel {
     func captureAcquisition(_ url: URL) {
         let source = core.growthCaptureLink(link: url.absoluteString)
         // Already set up: an agent link opens the chat with the agent right away.
+        // The stored source is first-touch only, so read this link's own target.
         if !OnboardingFlow.shouldShow, let target = agentTarget(url) ?? (source.kind == "agent" ? source.target : nil) {
             var route = OnboardingRoute()
             route.landing = "agent"
@@ -81,7 +82,7 @@ extension AppModel {
         }
     }
 
-    /// `zoen://agent/<x>` or `https://tryzoen.com/a/<x>`.
+    /// `zoen://agent/<x>` or `https://tryzoen.com/a/<x>`; the core decides code or handle.
     private func agentTarget(_ url: URL) -> String? {
         let parts = url.pathComponents.filter { $0 != "/" }
         if url.scheme == "zoen", url.host == "agent" { return parts.last }
@@ -114,16 +115,7 @@ extension AppModel {
                 go(.space(id))
                 return true
             case "agent":
-                // Invite code → join_invite opens the chat; handle → find the agent and start chatting.
-                if target.count == 10, target.unicodeScalars.allSatisfy({ CharacterSet.alphanumerics.contains($0) }) {
-                    let id = try await core.joinInvite(code: target)
-                    refresh()
-                    go(.space(id))
-                    return true
-                }
-                let people = try await core.findPeople(query: target)
-                guard let agent = people.first(where: { $0.handle.lowercased() == target.lowercased() }) else { return false }
-                let id = try core.startDirect(identityId: agent.id)
+                let id = try await core.openAgentLink(target: target)
                 refresh()
                 go(.space(id))
                 return true

@@ -613,7 +613,10 @@ impl RodaEngine {
 
     /// Takes the agent's share link down; the next `create_agent_invite` mints a new one.
     pub async fn revoke_agent_invite(&self, agent_id: String) -> Result<(), CoreError> {
-        match self.request(Op::RevokeAgentInvite { agent: agent_id }).await? {
+        match self
+            .request(Op::RevokeAgentInvite { agent: agent_id })
+            .await?
+        {
             Reply::Done => Ok(()),
             _ => Err(unexpected()),
         }
@@ -624,7 +627,11 @@ impl RodaEngine {
     /// agent's handle. Returns the direct chat with the agent.
     pub async fn open_agent_link(&self, target: String) -> Result<String, CoreError> {
         let raw = target.trim();
-        let raw = raw.rsplit('/').next().unwrap_or(raw).trim_start_matches('@');
+        let raw = raw
+            .rsplit('/')
+            .next()
+            .unwrap_or(raw)
+            .trim_start_matches('@');
         if roda_proto::valid_invite_code(raw) {
             if let Ok(chat) = self.redeem_agent_invite(raw.to_uppercase()).await {
                 return Ok(chat);

@@ -54,6 +54,8 @@ pub struct Config {
     pub apple_app_ids: Vec<String>,
     /// Android packages for Digital Asset Links (`assetlinks.json`).
     pub android_packages: Vec<AndroidPackage>,
+    /// Store listing `/install` sends Android to; `None` shows the "em breve" page.
+    pub android_store_url: Option<String>,
     /// FoundationDB cluster file (`None` = `FDB_CLUSTER_FILE` or the system default).
     pub fdb_cluster_file: Option<String>,
     /// Key prefix for this cell's data; tests use a fresh one each.
@@ -88,6 +90,7 @@ pub struct AppState {
     pub blobs: Arc<dyn object_store::ObjectStore>,
     pub apple_app_ids: Vec<String>,
     pub android_packages: Vec<AndroidPackage>,
+    pub android_store_url: Option<String>,
     /// Guards password backups (ADR 0046); `None` = only recovery-key backups.
     pub backup_vault: Option<Arc<dyn backup::Vault>>,
     pub backup_settings: backup::Settings,
@@ -241,6 +244,7 @@ pub async fn build(cfg: &Config) -> anyhow::Result<(Router, Shared)> {
         blobs,
         apple_app_ids: cfg.apple_app_ids.clone(),
         android_packages: cfg.android_packages.clone(),
+        android_store_url: cfg.android_store_url.clone(),
         backup_vault: backup_vault(),
         backup_settings: backup::Settings::from_env()?,
         analytics,

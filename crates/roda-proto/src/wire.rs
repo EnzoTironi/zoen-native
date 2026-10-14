@@ -820,9 +820,7 @@ impl ClientFrame {
                     }),
                     Op::PreviewInvite { code } => pb_req::Op::PreviewInvite(code.clone()),
                     Op::RedeemAgentInvite { code } => pb_req::Op::RedeemAgentInvite(code.clone()),
-                    Op::RevokeAgentInvite { agent } => {
-                        pb_req::Op::RevokeAgentInvite(agent.clone())
-                    }
+                    Op::RevokeAgentInvite { agent } => pb_req::Op::RevokeAgentInvite(agent.clone()),
                     Op::PublishAgreementKey { public, signed } => {
                         pb_req::Op::PublishAgreementKey(PbAgreementKey {
                             identity: String::new(),

@@ -92,9 +92,7 @@ fun ZoenApp(model: ZoenViewModel, deepLink: String?, consumed: () -> Unit) {
             val uri = deepLink?.let(Uri::parse) ?: return@LaunchedEffect
             model.repository.query { it.growthCaptureLink(uri.toString()) }
             fun openAgent(target: String) = model.launch {
-                val chat = if (target.length == 10 && target.all { it.isLetterOrDigit() }) model.repository.network { it.joinInvite(target) }
-                else model.repository.network { core -> core.findPeople(target).firstOrNull { it.handle.equals(target, true) } }?.let { a -> model.repository.change { core -> core.startDirect(a.id) } }
-                chat?.let { navigate(Chat(it)) }
+                navigate(Chat(model.repository.network { it.openAgentLink(target) }))
             }
             if (uri.scheme == "zoen") when (uri.host) {
                 "app", "item" -> uri.lastPathSegment?.let { navigate(Item(it)) }

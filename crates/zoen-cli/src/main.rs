@@ -901,7 +901,10 @@ async fn main() {
         }
         "agent" => {
             let target = cli.args.first().cloned().unwrap_or_else(|| usage());
-            let chat = e.open_agent_link(target).await.unwrap_or_else(|err| die(err));
+            let chat = e
+                .open_agent_link(target)
+                .await
+                .unwrap_or_else(|err| die(err));
             e.wait_until_idle(timeout).await;
             println!("{chat}");
         }

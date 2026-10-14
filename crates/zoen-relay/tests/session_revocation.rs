@@ -247,6 +247,7 @@ impl TestRelay {
             backup_settings: Default::default(),
             apple_app_ids: Vec::new(),
             android_packages: Vec::new(),
+            android_store_url: None,
         });
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
         let address = listener.local_addr().unwrap();

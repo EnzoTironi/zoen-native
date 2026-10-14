@@ -25,8 +25,8 @@ struct AgentsLibraryScreen: View {
                         .buttonStyle(.plain)
                 }
                 if segment == 0 && list.isEmpty {
-                    PhaseNote(symbol: "sparkles", title: String(localized: "Nenhum agente ainda"),
-                              text: String(localized: "Quando você criar um, o link dele aparece aqui para compartilhar."))
+                    PhaseNote(symbol: "sparkles", title: String(localized: "No agents yet"),
+                              text: String(localized: "When you create one, its link shows up here to share."))
                 }
             }
             .padding(.horizontal, 16)

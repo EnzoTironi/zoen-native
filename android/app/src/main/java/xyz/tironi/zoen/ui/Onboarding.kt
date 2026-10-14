@@ -228,14 +228,7 @@ fun Onboarding(model: ZoenViewModel, modifier: Modifier = Modifier, acquisitionL
                                             friend?.let { model.repository.change { core -> core.startDirect(it.id) } }
                                         }
                                         "space" -> route.target?.let { target -> model.repository.network { it.joinInvite(target) } }
-                                        "agent" -> route.target?.let { target ->
-                                            if (target.length == 10 && target.all { it.isLetterOrDigit() }) {
-                                                model.repository.network { it.joinInvite(target) }
-                                            } else {
-                                                val agent = model.repository.network { core -> core.findPeople(target).firstOrNull { it.handle.equals(target, true) } }
-                                                agent?.let { model.repository.change { core -> core.startDirect(it.id) } }
-                                            }
-                                        }
+                                        "agent" -> route.target?.let { target -> model.repository.network { it.openAgentLink(target) } }
                                         else -> null
                                     }
                                 } catch (e: Exception) { if (e is CancellationException) throw e; null }

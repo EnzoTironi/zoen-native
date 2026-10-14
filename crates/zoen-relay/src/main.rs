@@ -9,6 +9,7 @@
 //!   ZOEN_APPLE_APP_IDS  comma-separated TEAMID.bundle IDs for apple-app-site-association
 //!   ZOEN_ANDROID_PACKAGE  package name for assetlinks.json (default xyz.tironi.zoen when fingerprints set)
 //!   ZOEN_ANDROID_FINGERPRINTS  comma-separated SHA-256 cert fingerprints for Digital Asset Links
+//!   ZOEN_ANDROID_STORE_URL  Play listing for /install on Android (unset = "em breve" page)
 //!   LOG_FORMAT=json     structured logs (default: pretty)
 //!   RUST_LOG            tracing filter (default: info)
 //!   OTEL_EXPORTER_OTLP_ENDPOINT  export traces and logs over OTLP/HTTP (unset = stdout only);
@@ -151,6 +152,10 @@ async fn relay() -> anyhow::Result<()> {
                     .collect()
             })
             .unwrap_or_default(),
+        android_store_url: std::env::var("ZOEN_ANDROID_STORE_URL")
+            .ok()
+            .map(|v| v.trim().to_owned())
+            .filter(|v| v.starts_with("https://")),
         android_packages: {
             let fingerprints: Vec<String> = std::env::var("ZOEN_ANDROID_FINGERPRINTS")
                 .map(|v| {
