@@ -171,13 +171,11 @@ impl Card {
     }
 }
 
-/// "Abrir no app": iOS keeps the https universal link (the `href`); elsewhere it tries the
-/// app's scheme and goes to `/install` only if the page is still showing 1.5 s later.
+/// "Abrir no app": on every platform it tries the app's scheme and goes to `/install` only
+/// if the page is still showing 1.5 s later (leaving the page cancels the fallback).
 const OPEN_SCRIPT: &str = r#"(function () {
   var a = document.getElementById("open");
   if (!a) return;
-  var ua = navigator.userAgent;
-  if (/iPhone|iPad|iPod/.test(ua) || (/Macintosh/.test(ua) && navigator.maxTouchPoints > 1)) return;
   a.addEventListener("click", function (e) {
     e.preventDefault();
     var timer = setTimeout(function () { location.href = "/install"; }, 1500);
@@ -422,9 +420,34 @@ mod tests {
         }
     }
 
-    #[test]
-    fn script_hash_matches_what_the_page_carries() {
-        assert!(OPEN_SCRIPT_HASH.starts_with("'sha256-"));
+    #[tokio::test]
+    async fn script_hash_matches_what_the_page_carries() {
         assert!(!OPEN_SCRIPT.contains("</script"));
+        let res = doc(
+            StatusCode::OK,
+            "t",
+            PLAIN_CSS,
+            "<p>x</p>",
+            Some(OPEN_SCRIPT),
+        );
+        let csp = res.headers()[header::CONTENT_SECURITY_POLICY]
+            .to_str()
+            .unwrap()
+            .to_string();
+        assert!(
+            csp.contains(&format!("script-src {}", csp_hash(OPEN_SCRIPT))),
+            "{csp}"
+        );
+        let body = axum::body::to_bytes(res.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let html = String::from_utf8(body.to_vec()).unwrap();
+        assert!(html.contains(&format!("<script>{OPEN_SCRIPT}</script>")));
+    }
+
+    #[test]
+    fn open_script_has_no_platform_early_return() {
+        assert!(!OPEN_SCRIPT.contains("iPhone"));
+        assert!(OPEN_SCRIPT.contains("/install"));
     }
 }
