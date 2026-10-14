@@ -6,7 +6,7 @@ import org.junit.rules.TestWatcher
 import org.junit.runner.Description
 
 // DIAGNOSTIC (temporary): samples the main thread so a failure shows what keeps it busy.
-internal class MainThreadSampler : TestWatcher() {
+class MainThreadSampler : TestWatcher() {
     @Volatile private var running = false
     private val samples = HashMap<String, Int>()
     private var thread: Thread? = null
