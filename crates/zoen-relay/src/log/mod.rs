@@ -122,7 +122,8 @@ pub trait LogStore: Send + Sync {
     ) -> Result<InviteCreated, String>;
     async fn preview_invite(&self, code: &str) -> Result<InviteInfo, String>;
     /// Spends one use of an agent link in one transaction; refused past `max_uses`.
-    async fn redeem_agent_invite(&self, code: &str) -> Result<InviteInfo, String>;
+    /// Each person counts once: `who` is stored with the invite in the same transaction.
+    async fn redeem_agent_invite(&self, code: &str, who: &str) -> Result<InviteInfo, String>;
     /// Takes the agent's live link down. Ownership is checked by the caller.
     async fn revoke_agent_invite(&self, agent: &str) -> Result<(), String>;
 }

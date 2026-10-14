@@ -119,7 +119,7 @@ impl LogStore for BlockedLog {
     async fn preview_invite(&self, _: &str) -> Result<InviteInfo, String> {
         Err("not used".into())
     }
-    async fn redeem_agent_invite(&self, _: &str) -> Result<InviteInfo, String> {
+    async fn redeem_agent_invite(&self, _: &str, _: &str) -> Result<InviteInfo, String> {
         Err("not used".into())
     }
     async fn revoke_agent_invite(&self, _: &str) -> Result<(), String> {

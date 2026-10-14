@@ -66,6 +66,13 @@ async fn log_command(args: &[String]) -> anyhow::Result<()> {
             }
             Ok(())
         }
+        [cmd, code] if cmd == "expire-agent-invite" => {
+            anyhow::ensure!(
+                log.expire_agent_invite(code).await.map_err(anyhow::Error::msg)?,
+                "no such agent invite"
+            );
+            Ok(())
+        }
         [cmd, name] if cmd == "drop-cell" => {
             anyhow::ensure!(
                 *name == cell,
@@ -74,7 +81,7 @@ async fn log_command(args: &[String]) -> anyhow::Result<()> {
             Ok(log.drop_cell().await?)
         }
         _ => anyhow::bail!(
-            "usage: zoen-relay log read <space> | spaces <identity> | drop-cell <cell>"
+            "usage: zoen-relay log read <space> | spaces <identity> | expire-agent-invite <code> | drop-cell <cell>"
         ),
     }
 }

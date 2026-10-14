@@ -212,6 +212,11 @@ type Invite = (String, String, String, i64, i64, i64);
 /// Agent share link: (agent_id, created_by, expires_ms, max_uses, uses).
 type AgentInvite = (String, String, i64, i64, i64);
 
+/// Who already spent a use of an agent link (one use per person per code).
+fn redeemers(root: &Subspace, code: &str) -> Subspace {
+    root.subspace(&("ainvr", code_hash(code)))
+}
+
 fn agent_info(inv: AgentInvite) -> InviteInfo {
     InviteInfo {
         role: Role::Member,
@@ -386,6 +391,27 @@ impl FdbLog {
         })
     }
     /// Clears every key of this cell (decommissioning a cell, throwaway test cells).
+    /// Ops (and tests): ends an agent link now, as if its lifetime had run out.
+    pub async fn expire_agent_invite(&self, code: &str) -> Result<bool, String> {
+        let key = self.cell.root.pack(&("ainv", code_hash(code)));
+        self.cell
+            .db
+            .run(|trx, _| {
+                let key = key.clone();
+                async move {
+                    let Some(v) = trx.get(&key, false).await? else {
+                        return Ok(false);
+                    };
+                    let mut inv: AgentInvite = unpack(&v).map_err(|e| custom(e.to_string()))?;
+                    inv.2 = now_ms() - 1;
+                    trx.set(&key, &pack(&inv));
+                    Ok(true)
+                }
+            })
+            .await
+            .map_err(|e| e.to_string())
+    }
+
     pub async fn drop_cell(&self) -> Result<(), StoreError> {
         let (begin, end) = self.cell.root.range();
         self.cell
@@ -1220,7 +1246,7 @@ impl LogStore for FdbLog {
         if agent.is_empty() || who.is_empty() {
             return Err("agent invite needs an agent and an owner".into());
         }
-        let ttl_ms = ttl_secs.clamp(1, 365 * 24 * 3600) as i64 * 1000;
+        let ttl_ms = ttl_secs.clamp(60, 365 * 24 * 3600) as i64 * 1000;
         let max = max_uses.clamp(1, 10_000) as i64;
         let root = &self.cell.root;
         let idx = root.pack(&("aidx", agent));
@@ -1241,6 +1267,8 @@ impl LogStore for FdbLog {
                                 return Ok(Ok((code, inv.2)));
                             }
                             trx.clear(&key);
+                            let (b, e) = redeemers(root, &code).range();
+                            trx.clear_range(&b, &e);
                         }
                     }
                     let code = random_code();
@@ -1263,23 +1291,33 @@ impl LogStore for FdbLog {
         })
     }
 
-    async fn redeem_agent_invite(&self, code: &str) -> Result<InviteInfo, String> {
-        let key = self.cell.root.pack(&("ainv", code_hash(code)));
+    async fn redeem_agent_invite(&self, code: &str, who: &str) -> Result<InviteInfo, String> {
+        let root = &self.cell.root;
+        let key = root.pack(&("ainv", code_hash(code)));
+        let mine = redeemers(root, code).pack(&who);
         let r = self
             .cell
             .db
             .run(|trx, _| {
-                let key = key.clone();
+                let (key, mine) = (key.clone(), mine.clone());
                 async move {
                     let Some(v) = trx.get(&key, false).await? else {
                         return Ok(Err("invite expired or already used"));
                     };
                     let mut inv: AgentInvite = unpack(&v).map_err(|e| custom(e.to_string()))?;
-                    if inv.2 <= now_ms() || inv.4 >= inv.3 {
+                    if inv.2 <= now_ms() {
+                        return Ok(Err("invite expired or already used"));
+                    }
+                    // One use per person: someone who already redeemed it opens it again free.
+                    if trx.get(&mine, false).await?.is_some() {
+                        return Ok(Ok(inv));
+                    }
+                    if inv.4 >= inv.3 {
                         return Ok(Err("invite expired or already used"));
                     }
                     inv.4 += 1;
                     trx.set(&key, &pack(&inv));
+                    trx.set(&mine, &[]);
                     Ok(Ok(inv))
                 }
             })
@@ -1300,6 +1338,8 @@ impl LogStore for FdbLog {
                     if let Some(v) = trx.get(&idx, false).await? {
                         let code: String = unpack(&v).map_err(|e| custom(e.to_string()))?;
                         trx.clear(&root.pack(&("ainv", code_hash(&code))));
+                        let (b, e) = redeemers(root, &code).range();
+                        trx.clear_range(&b, &e);
                         trx.clear(&idx);
                     }
                     Ok(())
