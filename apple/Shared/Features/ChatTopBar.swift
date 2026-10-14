@@ -369,7 +369,7 @@ struct ZoenBackButton: View {
         } label: {
             ZoenIcon(.back, size: size)
                 .foregroundStyle(Palette.textPrimary)
-                .frame(width: chrome == .floating ? 44 : 34, height: chrome == .floating ? 44 : 34)
+                .frame(width: 48, height: 48)
                 .contentShape(.circle)
         }
         .modifier(BackChrome(chrome: chrome))

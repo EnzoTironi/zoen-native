@@ -5,6 +5,8 @@ import RodaCore
 struct YouScreen: View {
     @Environment(AppModel.self) private var model
     @State private var confirmReset = false
+    @State private var settingsOpen = false
+    @State private var settingsStart: SettingsScreen? = nil
 
     var body: some View {
         List {
@@ -32,6 +34,13 @@ struct YouScreen: View {
                         }
                     }
                 }
+            }
+
+            Section {
+                Button { Haptics.open(); settingsOpen = true } label: {
+                    Label("Settings", systemImage: "gearshape").foregroundStyle(Palette.textPrimary)
+                }
+                .accessibilityIdentifier("openSettings")
             }
 
             AccountSection()
@@ -104,6 +113,14 @@ struct YouScreen: View {
         .scrollContentBackground(.hidden)
         .background(NightBackdrop())
         .navigationTitle("Your context")
+        .sheet(isPresented: $settingsOpen) { SettingsRoot(start: settingsStart).environment(model) }
+        .onAppear {
+            // `-RodaSettings tema`: opens Ajustes on that screen (journey tests, screenshots).
+            if let raw = UserDefaults.standard.string(forKey: "RodaSettings"), !settingsOpen {
+                settingsStart = SettingsScreen(rawValue: raw)
+                settingsOpen = true
+            }
+        }
         .confirmationDialog("Erase everything and restart the demo story?", isPresented: $confirmReset, titleVisibility: .visible) {
             Button("Restart", role: .destructive) {
                 model.perform { try model.core.resetDemo() }

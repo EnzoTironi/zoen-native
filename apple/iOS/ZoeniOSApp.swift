@@ -4,6 +4,7 @@ import RodaCore
 @main
 struct ZoeniOSApp: App {
     @State private var model = AppModel()
+    @AppStorage(AppAppearance.key) private var appearance = AppAppearance.auto.rawValue
     @Environment(\.scenePhase) private var phase
 
     var body: some Scene {
@@ -11,7 +12,7 @@ struct ZoeniOSApp: App {
             RootView()
                 .environment(model)
                 .tint(Palette.action)
-                .preferredColorScheme(AppModel.launchColorScheme)
+                .preferredColorScheme(AppAppearance(rawValue: appearance)?.scheme)
                 .task { await model.applyLaunchOptions() }
                 // Friend, Space and campaign links: where this install came from (ADR 0044).
                 .onOpenURL { model.captureAcquisition($0) }
