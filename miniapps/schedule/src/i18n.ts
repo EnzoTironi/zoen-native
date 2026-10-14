@@ -41,10 +41,15 @@ const PT: Record<string, string> = {
   'When': 'Quando',
   'What': 'O quê',
   'Open hours': 'Horário de funcionamento',
-  'barber': 'barbeiro',
-  'dentist': 'dentista',
-  'trainer': 'personal',
-  'custom': 'agenda',
+  'Requests': 'Pedidos',
+  'No open requests': 'Nenhum pedido aberto',
+  'Wants to cancel': 'Quer cancelar',
+  'Keep': 'Manter',
+  'Decline': 'Recusar',
+  'Cancel requested': 'Cancelamento pedido',
+  'Request cancelled': 'Pedido cancelado',
+  'The agent is setting up this schedule': 'O agente está montando esta agenda',
+  'You can add it to your calendar once it’s confirmed': 'Quando for confirmado, dá para pôr na sua agenda',
 };
 
 // PT-BR is the default; English only when the host says so.

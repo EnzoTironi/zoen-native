@@ -1,27 +1,26 @@
-// Agenda: generic booking template. Agent fills services, hours and slot length;
-// clients pick a free slot; the booking is an event the agent resolves (edge cases stay with the agent).
+// Agenda: a booking template for any business. The agent fills the name, services and
+// hours from the owner's words; clients pick a free slot; each request is an event the
+// agent resolves. The core filters what each person sees: clients get busy times only.
 import { createRoot } from 'react-dom/client';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import './styles.css';
 import { zoen, useZoenState, useMembers, GlassCircle, Pill } from '@zoen/ui';
-import type { Member } from '@zoen/miniapp-sdk';
 import {
-  type ScheduleState, type Service, type Booking,
-  freeSlots, formatMoney, formatTime, formatDayLabel, tradeAccent,
-  startOfLocalDay, addDays, 
+  type ScheduleState, type Booking, type ScheduleEvent, type Ymd,
+  DEFAULT_ACCENT, freeSlots, formatMoney, formatTime, formatDayLabel, weekdayShort,
+  todayIn, addDays, weekday, sameDay, dayKey, dayOf,
 } from './slots';
 import { L, isPt } from './i18n';
 
 const DEMO: ScheduleState = {
-  title: 'Agenda do João',
-  business: 'Barbearia do João',
-  trade: 'barber',
+  title: 'Studio',
+  business: 'Studio',
+  accentHex: null,
   timezone: 'America/Sao_Paulo',
   currency: 'BRL',
   services: [
-    { id: 'cut', name: 'Corte', priceCents: 4500, minutes: 30 },
-    { id: 'beard', name: 'Barba', priceCents: 3500, minutes: 20 },
-    { id: 'combo', name: 'Corte + barba', priceCents: 7000, minutes: 50 },
+    { id: 'session', name: 'Sessão', priceCents: 9000, minutes: 50 },
+    { id: 'quick', name: 'Retorno', priceCents: 4000, minutes: 30 },
   ],
   weeklyHours: {
     '0': [],
@@ -29,128 +28,123 @@ const DEMO: ScheduleState = {
     '2': [['09:00', '12:00'], ['14:00', '19:00']],
     '3': [['09:00', '12:00'], ['14:00', '19:00']],
     '4': [['09:00', '12:00'], ['14:00', '19:00']],
-    '5': [['09:00', '12:00'], ['14:00', '20:00']],
+    '5': [['09:00', '12:00'], ['14:00', '19:00']],
     '6': [['09:00', '13:00']],
   },
   slotMinutes: 30,
+  horizonDays: 60,
+  configured: true,
   bookings: [],
   events: [],
+  busy: [],
+  viewer: { id: 'me', role: 'client' },
   next: 1,
-  log: [],
 };
 
-const DEMO_MEMBERS: Member[] = [
-  { id: 'me', name: 'Enzo', initials: 'E', color: '#4F7BEF', isMe: true },
-  { id: 'j', name: 'João', initials: 'J', color: '#C45C26', isMe: false },
-];
+/** Offline preview only: mirrors the core's book/cancel so the template can be tried. */
+function demoCall(s: ScheduleState, tool: string, args: Record<string, any>): ScheduleState {
+  const n: ScheduleState = structuredClone(s);
+  const now = Date.now();
+  if (tool === 'schedule_book') {
+    const svc = n.services.find((x) => x.id === args.serviceId);
+    if (!svc) throw new Error(L('Something went wrong'));
+    const id = `b${n.next++}`;
+    n.bookings.push({
+      id, serviceId: svc.id, serviceName: svc.name, minutes: svc.minutes,
+      startMs: args.startMs, endMs: args.startMs + svc.minutes * 60_000,
+      byId: n.viewer.id, status: 'pending',
+    });
+    n.events.push({ id: `e${n.next++}`, kind: 'book_request', bookingId: id, status: 'open', at: now, by: n.viewer.id });
+  }
+  if (tool === 'schedule_cancel') {
+    const b = n.bookings.find((x) => x.id === args.bookingId && x.byId === n.viewer.id);
+    if (!b || b.status === 'cancelled') throw new Error(L('Something went wrong'));
+    if (b.status === 'pending') {
+      b.status = 'cancelled';
+      for (const e of n.events) if (e.bookingId === b.id && e.status === 'open') { e.status = 'resolved'; e.resolution = 'withdrawn'; }
+    } else {
+      n.events.push({ id: `e${n.next++}`, kind: 'cancel_request', bookingId: b.id, status: 'open', at: now, by: n.viewer.id });
+    }
+  }
+  n.busy = n.bookings.filter((b) => b.status !== 'cancelled').map(({ startMs, endMs }) => ({ startMs, endMs }));
+  return n;
+}
 
 function useSchedule() {
   const live = useZoenState<ScheduleState>();
   const [local, setLocal] = useState<ScheduleState>(DEMO);
   const hosted = zoen.capabilities.host !== 'none' && zoen.capabilities.host !== 'unknown';
   const state = (hosted && live?.services ? live : local) as ScheduleState;
-  const membersLive = useMembers();
-  const members = membersLive.length ? membersLive : DEMO_MEMBERS;
-  const me = members.find((m) => m.isMe) ?? members[0];
   const call = useCallback(async (tool: string, args: Record<string, any> = {}) => {
     if (hosted) return zoen.state.call(tool, args);
-    setLocal((s) => {
-      const n: ScheduleState = JSON.parse(JSON.stringify(s));
-      if (tool === 'schedule_book') {
-        const svc = n.services.find((x) => x.id === args.serviceId)!;
-        const id = `b${n.next++}`;
-        const booking: Booking = {
-          id, serviceId: svc.id, startMs: args.startMs, endMs: args.endMs,
-          by: me.name, status: 'pending', note: args.note || '',
-        };
-        n.bookings.push(booking);
-        n.events.push({ id: `e${id}`, kind: 'book_request', bookingId: id, status: 'open', at: Date.now(), by: me.name });
-      }
-      if (tool === 'schedule_cancel') {
-        const b = n.bookings.find((x) => x.id === args.bookingId);
-        if (b && b.by === me.name) {
-          b.status = 'cancelled';
-          n.events.push({ id: `e${n.next++}`, kind: 'cancel_request', bookingId: b.id, status: 'open', at: Date.now(), by: me.name });
-        }
-      }
-      return n;
-    });
-  }, [hosted, me?.name]);
-  return { state, members, me, call, hosted };
+    setLocal((s) => demoCall(s, tool, args));
+  }, [hosted]);
+  return { state, call, hosted };
 }
 
+const openCancel = (events: ScheduleEvent[], b: Booking) =>
+  events.some((e) => e.bookingId === b.id && e.kind === 'cancel_request' && e.status === 'open');
+
 function App() {
-  const { state, me, call, hosted } = useSchedule();
+  const { state, call, hosted } = useSchedule();
+  const members = useMembers();
   const locale = isPt() ? 'pt-BR' : (zoen.locale || 'en');
-  const accent = tradeAccent(state.trade);
-  const [svcId, setSvcId] = useState<string | null>(state.services[0]?.id ?? null);
-  const [day, setDay] = useState(() => startOfLocalDay(new Date()));
+  const tz = state.timezone || 'America/Sao_Paulo';
+  const accent = state.accentHex || DEFAULT_ACCENT;
+  const staff = state.viewer?.role && state.viewer.role !== 'client';
+  const today = todayIn(tz);
+  const [svcId, setSvcId] = useState<string | null>(null);
+  const [day, setDay] = useState<Ymd>(today);
   const [pick, setPick] = useState<{ startMs: number; endMs: number } | null>(null);
   const [confirm, setConfirm] = useState(false);
-  const [success, setSuccess] = useState<Booking | null>(null);
+  const [sent, setSent] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
-  const [, setReady] = useState(false);
-  useEffect(() => { zoen.ready().then(() => setReady(true)); }, []);
-  useEffect(() => {
-    document.documentElement.style.setProperty('--accent', accent);
-  }, [accent]);
+  useEffect(() => { zoen.ready(); }, []);
 
   const service = state.services.find((s) => s.id === svcId) ?? state.services[0];
-  const days = useMemo(() => Array.from({ length: 14 }, (_, i) => addDays(startOfLocalDay(new Date()), i)), []);
-  const slots = useMemo(() => {
-    if (!service) return [];
-    return freeSlots({
-      day, service, weeklyHours: state.weeklyHours,
-      slotMinutes: state.slotMinutes, bookings: state.bookings,
-    });
-  }, [day, service, state.weeklyHours, state.slotMinutes, state.bookings]);
-
+  const horizon = Math.min(state.horizonDays || 60, 21);
+  const days = useMemo(() => Array.from({ length: horizon }, (_, i) => addDays(today, i)), [dayKey(today), horizon]);
+  const slots = useMemo(() => (service ? freeSlots({ day, service, state }) : []),
+    [dayKey(day), service, state.weeklyHours, state.slotMinutes, state.busy, tz, state.horizonDays]);
   const mine = state.bookings
-    .filter((b) => b.by === me.name && b.status !== 'cancelled')
+    .filter((b) => b.byId === state.viewer?.id && b.status !== 'cancelled')
     .sort((a, b) => a.startMs - b.startMs);
+  const requests = staff ? state.events.filter((e) => e.status === 'open') : [];
+  const closed = !(state.weeklyHours[String(weekday(day))]?.length);
 
   const say = (t: string) => { setToast(t); setTimeout(() => setToast(null), 2200); };
-  const closed = !(state.weeklyHours[String(day.getDay())]?.length);
+  const fail = (e: any) => { zoen.haptics.warning(); say(e?.message || L('Something went wrong')); };
+  const when = (ms: number) => `${formatDayLabel(dayOf(ms, tz), locale, today)} · ${formatTime(ms, tz, locale)}`;
+  const nameOf = (b: Booking) => b.byName || members.find((m) => m.id === b.byId)?.name || '';
 
   const requestBook = async () => {
     if (!service || !pick) return;
     try {
-      await call('schedule_book', {
-        serviceId: service.id, startMs: pick.startMs, endMs: pick.endMs, note: '',
-      });
+      await call('schedule_book', { serviceId: service.id, startMs: pick.startMs });
       zoen.haptics.success();
       setConfirm(false);
-      setSuccess({
-        id: 'local', serviceId: service.id, startMs: pick.startMs, endMs: pick.endMs,
-        by: me.name, status: 'pending',
-      });
       setPick(null);
-      say(L('Request sent to the agent'));
-    } catch (e: any) {
-      zoen.haptics.warning();
-      say(e?.message || L('Something went wrong'));
-    }
+      setSent(true);
+    } catch (e) { fail(e); }
   };
-
-  const cancelMine = async (id: string) => {
+  const cancelMine = async (b: Booking) => {
     try {
-      await call('schedule_cancel', { bookingId: id });
+      await call('schedule_cancel', { bookingId: b.id });
       zoen.haptics.select();
-      say(L('Cancel request sent'));
-    } catch (e: any) {
-      zoen.haptics.warning();
-      say(e?.message || L('Something went wrong'));
-    }
+      say(L(b.status === 'pending' ? 'Request cancelled' : 'Cancel request sent'));
+    } catch (e) { fail(e); }
   };
-
+  const resolve = async (bookingId: string, action: 'confirm' | 'cancel' | 'keep') => {
+    try {
+      await call('schedule_resolve', { bookingId, action });
+      zoen.haptics.success();
+    } catch (e) { fail(e); }
+  };
   const addToCal = async (b: Booking) => {
-    const svc = state.services.find((s) => s.id === b.serviceId);
     try {
       const r = await zoen.native.calendar.add({
-        title: `${state.business}: ${svc?.name ?? L('Booked')}`,
-        startMs: b.startMs, endMs: b.endMs,
-        location: state.business,
-        notes: state.title,
+        title: `${state.business}: ${b.serviceName}`,
+        startMs: b.startMs, endMs: b.endMs, location: state.business,
       });
       say(r.saved ? L('Added to your calendar') : L('Not added'));
     } catch (e: any) {
@@ -159,7 +153,6 @@ function App() {
   };
 
   const mark = (state.business || state.title || '?').trim().charAt(0).toUpperCase();
-  const tradeLabel = L(state.trade in { barber: 1, dentist: 1, trainer: 1, custom: 1 } ? state.trade : 'custom');
 
   return (
     <div className="app" style={{ ['--accent' as any]: accent }}>
@@ -173,107 +166,127 @@ function App() {
           <div className="mark" style={{ background: accent }} aria-hidden="true">{mark}</div>
           <div style={{ minWidth: 0 }}>
             <b>{state.business || state.title}</b>
-            <span>{tradeLabel} · {state.services.length} {L('services')}</span>
+            <span>{state.services.length} {L('services')}</span>
           </div>
         </div>
       </div>
 
       <div className="scroll">
-        <section>
-          <h2 className="section-title">{L('Services')}</h2>
-          <div className="services" role="radiogroup" aria-label={L('Services')}>
-            {state.services.map((s) => (
-              <button
-                key={s.id}
-                className="svc"
-                role="radio"
-                aria-checked={service?.id === s.id}
-                onClick={() => { zoen.haptics.select(); setSvcId(s.id); setPick(null); }}
-              >
-                <b>{s.name}</b>
-                <div className="meta">
-                  <span className="price">{formatMoney(s.priceCents, state.currency, locale)}</span>
-                  <span className="dur">{s.minutes} {L('min')}</span>
-                </div>
-              </button>
-            ))}
-          </div>
-        </section>
-
-        <section>
-          <h2 className="section-title">{L('Pick a day')}</h2>
-          <div className="days" role="radiogroup" aria-label={L('Pick a day')}>
-            {days.map((d) => {
-              const open = !!(state.weeklyHours[String(d.getDay())]?.length);
-              const selected = startOfLocalDay(d).getTime() === day.getTime();
-              return (
-                <button
-                  key={d.toISOString()}
-                  className="day"
-                  role="radio"
-                  aria-checked={selected}
-                  aria-disabled={!open}
-                  disabled={!open}
-                  onClick={() => { zoen.haptics.select(); setDay(startOfLocalDay(d)); setPick(null); }}
-                >
-                  <span className="wd">{formatDayLabel(d, locale).split(' ')[0].replace(/[.,]+$/, '')}</span>
-                  <span className="dn">{d.getDate()}</span>
-                </button>
-              );
-            })}
-          </div>
-        </section>
-
-        <section>
-          <h2 className="section-title">{L('Pick a time')}</h2>
-          {!service ? (
-            <div className="empty">{L('Choose a service first')}</div>
-          ) : closed ? (
-            <div className="empty">{L('Closed today')}</div>
-          ) : slots.length === 0 ? (
-            <div className="empty">{L('No free slots')}</div>
-          ) : (
-            <div className="slots" role="radiogroup" aria-label={L('Pick a time')}>
-              {slots.map((s) => (
-                <button
-                  key={s.startMs}
-                  className="slot"
-                  role="radio"
-                  aria-checked={pick?.startMs === s.startMs}
-                  onClick={() => { zoen.haptics.select(); setPick(s); }}
-                >
-                  {formatTime(s.startMs, locale)}
-                </button>
-              ))}
-            </div>
-          )}
-        </section>
-
-        <section>
-          <h2 className="section-title">{L('My bookings')}</h2>
-          {mine.length === 0 ? (
-            <div className="empty">{L('Nothing booked yet')}</div>
-          ) : (
-            <div className="mine">
-              {mine.map((b) => {
-                const svc = state.services.find((s) => s.id === b.serviceId);
-                return (
-                  <div key={b.id} className="mine-row">
-                    <div>
-                      <b>{svc?.name ?? L('Booked')}</b>
-                      <span>
-                        {formatDayLabel(new Date(b.startMs), locale)} · {formatTime(b.startMs, locale)}
-                        {' · '}
-                        <span className={`badge ${b.status}`}>{L(b.status === 'pending' ? 'Pending' : 'Confirmed')}</span>
-                      </span>
-                    </div>
-                    <Pill tone="glass" onClick={() => cancelMine(b.id)}>{L('Cancel booking')}</Pill>
+        {!state.configured ? (
+          <div className="empty setup">{L('The agent is setting up this schedule')}</div>
+        ) : (
+          <>
+            {staff && (
+              <section>
+                <h2 className="section-title">{L('Requests')}</h2>
+                {requests.length === 0 ? (
+                  <div className="empty">{L('No open requests')}</div>
+                ) : (
+                  <div className="mine">
+                    {requests.map((ev) => {
+                      const b = state.bookings.find((x) => x.id === ev.bookingId);
+                      if (!b) return null;
+                      const cancelAsk = ev.kind === 'cancel_request';
+                      return (
+                        <div key={ev.id} className="mine-row">
+                          <div>
+                            <b>{b.serviceName}{nameOf(b) && ` · ${nameOf(b)}`}</b>
+                            <span>{when(b.startMs)}{cancelAsk && ` · ${L('Wants to cancel')}`}</span>
+                          </div>
+                          <div className="row-actions">
+                            <Pill tone="glass" onClick={() => resolve(b.id, cancelAsk ? 'keep' : 'cancel')}>{L(cancelAsk ? 'Keep' : 'Decline')}</Pill>
+                            <Pill tone="brand" style={{ background: accent }} onClick={() => resolve(b.id, cancelAsk ? 'cancel' : 'confirm')}>{L(cancelAsk ? 'Cancel booking' : 'Confirm')}</Pill>
+                          </div>
+                        </div>
+                      );
+                    })}
                   </div>
-                );
-              })}
-            </div>
-          )}
-        </section>
+                )}
+              </section>
+            )}
+
+            <section>
+              <h2 className="section-title">{L('Services')}</h2>
+              <div className="services" role="radiogroup" aria-label={L('Services')}>
+                {state.services.map((s) => (
+                  <button key={s.id} className="svc" role="radio" aria-checked={service?.id === s.id}
+                    onClick={() => { zoen.haptics.select(); setSvcId(s.id); setPick(null); }}>
+                    <b>{s.name}</b>
+                    <div className="meta">
+                      <span className="price">{formatMoney(s.priceCents, state.currency, locale)}</span>
+                      <span className="dur">{s.minutes} {L('min')}</span>
+                    </div>
+                  </button>
+                ))}
+              </div>
+            </section>
+
+            <section>
+              <h2 className="section-title">{L('Pick a day')}</h2>
+              <div className="days" role="radiogroup" aria-label={L('Pick a day')}>
+                {days.map((d) => {
+                  const open = !!(state.weeklyHours[String(weekday(d))]?.length);
+                  return (
+                    <button key={dayKey(d)} className="day" role="radio" aria-checked={sameDay(d, day)}
+                      aria-disabled={!open} disabled={!open}
+                      onClick={() => { zoen.haptics.select(); setDay(d); setPick(null); }}>
+                      <span className="wd">{sameDay(d, today) ? L('Today') : weekdayShort(d, locale)}</span>
+                      <span className="dn">{d.d}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            </section>
+
+            <section>
+              <h2 className="section-title">{L('Pick a time')}</h2>
+              {!service ? (
+                <div className="empty">{L('Choose a service first')}</div>
+              ) : closed ? (
+                <div className="empty">{L('Closed today')}</div>
+              ) : slots.length === 0 ? (
+                <div className="empty">{L('No free slots')}</div>
+              ) : (
+                <div className="slots" role="radiogroup" aria-label={L('Pick a time')}>
+                  {slots.map((s) => (
+                    <button key={s.startMs} className="slot" role="radio" aria-checked={pick?.startMs === s.startMs}
+                      onClick={() => { zoen.haptics.select(); setPick(s); }}>
+                      {formatTime(s.startMs, tz, locale)}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </section>
+
+            <section>
+              <h2 className="section-title">{L('My bookings')}</h2>
+              {mine.length === 0 ? (
+                <div className="empty">{L('Nothing booked yet')}</div>
+              ) : (
+                <div className="mine">
+                  {mine.map((b) => {
+                    const asked = openCancel(state.events, b);
+                    const badge = asked ? 'Cancel requested' : b.status === 'pending' ? 'Pending' : 'Confirmed';
+                    return (
+                      <div key={b.id} className="mine-row">
+                        <div>
+                          <b>{b.serviceName}</b>
+                          <span>{when(b.startMs)}{' · '}<span className={`badge ${asked ? 'pending' : b.status}`}>{L(badge)}</span></span>
+                        </div>
+                        <div className="row-actions">
+                          {b.status === 'confirmed' && !asked && (
+                            <Pill tone="glass" onClick={() => addToCal(b)}>{L('Add to calendar')}</Pill>
+                          )}
+                          {!asked && <Pill tone="glass" onClick={() => cancelMine(b)}>{L('Cancel booking')}</Pill>}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </section>
+          </>
+        )}
       </div>
 
       {pick && service && (
@@ -281,7 +294,7 @@ function App() {
           <div style={{ padding: '0 8px', minWidth: 0 }}>
             <b style={{ display: 'block', fontSize: 14 }}>{service.name}</b>
             <span style={{ fontSize: 13, color: 'var(--z-ink-2)' }}>
-              {formatTime(pick.startMs, locale)} · {formatMoney(service.priceCents, state.currency, locale)}
+              {formatTime(pick.startMs, tz, locale)} · {formatMoney(service.priceCents, state.currency, locale)}
             </span>
           </div>
           <Pill tone="brand" style={{ background: accent }} onClick={() => { zoen.haptics.tap(); setConfirm(true); }}>
@@ -295,7 +308,7 @@ function App() {
           <div className="sheet-card" onClick={(e) => e.stopPropagation()}>
             <h2>{L('Confirm')}</h2>
             <div className="sheet-row"><span>{L('What')}</span><b>{service.name}</b></div>
-            <div className="sheet-row"><span>{L('When')}</span><b>{formatDayLabel(new Date(pick.startMs), locale)} · {formatTime(pick.startMs, locale)}</b></div>
+            <div className="sheet-row"><span>{L('When')}</span><b>{when(pick.startMs)}</b></div>
             <div className="sheet-row"><span>{L('Price')}</span><b>{formatMoney(service.priceCents, state.currency, locale)}</b></div>
             <div className="sheet-row"><span>{L('Duration')}</span><b>{service.minutes} {L('min')}</b></div>
             <p style={{ margin: 0, color: 'var(--z-ink-2)', fontSize: 14 }}>{L('Waiting for confirmation')}</p>
@@ -307,17 +320,16 @@ function App() {
         </div>
       )}
 
-      {success && (
+      {sent && (
         <div className="success" role="status">
           <div className="success-card">
             <div className="stamp" aria-hidden="true">
               <svg width="32" height="32" viewBox="0 0 32 32"><path d="M7 17l6 6 12-14" stroke="currentColor" strokeWidth="3.2" fill="none" strokeLinecap="round" strokeLinejoin="round" /></svg>
             </div>
             <h2>{L('Ask sent')}</h2>
-            <p>{L('Request sent to the agent')}</p>
+            <p>{L('You can add it to your calendar once it’s confirmed')}</p>
             <div className="sheet-actions">
-              <Pill tone="glass" onClick={() => addToCal(success)}>{L('Add to calendar')}</Pill>
-              <Pill tone="brand" style={{ background: accent }} onClick={() => setSuccess(null)}>{L('Close')}</Pill>
+              <Pill tone="brand" style={{ background: accent }} onClick={() => setSent(false)}>{L('Close')}</Pill>
             </div>
           </div>
         </div>
@@ -328,7 +340,4 @@ function App() {
   );
 }
 
-// Silence unused import in production builds that tree-shake demo helpers.
-
-zoen.ready();
 createRoot(document.getElementById('root')!).render(<App />);

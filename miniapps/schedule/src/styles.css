@@ -68,6 +68,8 @@ html, body, #root { height: 100%; overflow: hidden; background: var(--z-bg); }
   padding: 14px; border-radius: 18px; background: var(--z-surface);
   box-shadow: 0 6px 18px rgba(14,19,32,.06);
 }
+.row-actions { display: flex; gap: 6px; flex-wrap: wrap; justify-content: flex-end; }
+.empty.setup { padding: 40px 20px; }
 .mine-row b { display: block; font: 700 15px/1.2 var(--z-font); }
 .mine-row span { font-size: 13px; color: var(--z-ink-2); }
 .badge {
