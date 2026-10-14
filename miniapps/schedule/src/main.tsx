@@ -173,7 +173,7 @@ function App() {
           <div className="mark" style={{ background: accent }} aria-hidden="true">{mark}</div>
           <div style={{ minWidth: 0 }}>
             <b>{state.business || state.title}</b>
-            <span>{tradeLabel} · {state.services.length} {L('Services').toLowerCase()}</span>
+            <span>{tradeLabel} · {state.services.length} {L('services')}</span>
           </div>
         </div>
       </div>
@@ -216,7 +216,7 @@ function App() {
                   disabled={!open}
                   onClick={() => { zoen.haptics.select(); setDay(startOfLocalDay(d)); setPick(null); }}
                 >
-                  <span className="wd">{formatDayLabel(d, locale).split(' ')[0]}</span>
+                  <span className="wd">{formatDayLabel(d, locale).split(' ')[0].replace(/[.,]+$/, '')}</span>
                   <span className="dn">{d.getDate()}</span>
                 </button>
               );

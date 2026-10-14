@@ -4,7 +4,7 @@ import { zoen } from '@zoen/ui';
 const PT: Record<string, string> = {
   'Close': 'Fechar',
   'Back': 'Voltar',
-  'Services': 'Serviços',
+  'Services': 'Serviços', 'services': 'serviços',
   'Pick a day': 'Escolha o dia',
   'Pick a time': 'Escolha o horário',
   'Book': 'Marcar',
@@ -47,6 +47,6 @@ const PT: Record<string, string> = {
   'custom': 'agenda',
 };
 
-export const L = (s: string) => (zoen.locale.toLowerCase().startsWith('pt') ? PT[s] ?? s : s);
-
-export const isPt = () => zoen.locale.toLowerCase().startsWith('pt');
+// PT-BR is the default; English only when the host says so.
+export const isPt = () => !zoen.locale.toLowerCase().startsWith('en') || zoen.capabilities.host === 'none' || zoen.capabilities.host === 'unknown';
+export const L = (s: string) => (isPt() ? PT[s] ?? s : s);

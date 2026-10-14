@@ -141,3 +141,5 @@ html, body, #root { height: 100%; overflow: hidden; background: var(--z-bg); }
   .sheet, .sheet-card, .toast, .success, .success-card { animation: none; }
   .svc, .day, .slot, .sticky .z-pill { transition: none; }
 }
+.scroll > section { min-width: 0; display: grid; gap: 10px; }
+.top, .scroll { max-width: 560px; width: 100%; margin: 0 auto; }
