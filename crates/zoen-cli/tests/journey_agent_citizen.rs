@@ -1,0 +1,127 @@
+//! The barber v1 base, end to end over a real relay (Postgres with migration 0028, FDB):
+//! the agents are first-class citizens with their own accounts, devices and MLS leaves,
+//! running server-side while their owner is offline. Models are scripted here; the
+//! real-model run is `cargo run -p zoen-agentd --example creator_smoke`.
+
+mod common;
+use common::World;
+use std::process::Child;
+use std::time::{Duration, Instant};
+
+const SCRIPT: &str = r##"{
+  "pode criar": "Combinado.\n```json\n{\"create_agent\":{\"name\":\"Agenda do Bruno\",\"handle\":\"agenda_bruno\",\"persona\":\"You are Bruno's booking assistant. Offer only slots from state.availability.\",\"rules\":[\"Never take payment\",\"Speak Portuguese\"],\"state\":{\"business\":\"barbearia\",\"services\":[{\"name\":\"corte\",\"minutes\":30}],\"availability\":[\"sábado 10h\"]},\"glyph\":\"calendar\",\"tint_hex\":\"#19B5A5\"}}\n```",
+  "tem horário": "Tenho sábado 10h livre para corte. Confirmo?",
+  "confirmo": "Fechado: sábado 10h, corte. Até lá!",
+  "ainda": "Sim, sábado 10h continua seu."
+}"##;
+
+fn host(w: &World, who: &str, def: &std::path::Path) -> Child {
+    let script = w.dir.join("script.json");
+    std::fs::write(&script, SCRIPT).unwrap();
+    w.spawn_zoen_env(
+        who,
+        &["agent-host", "--definition", def.to_str().unwrap(), "--for", "240"],
+        &[
+            ("ZOEN_AGENT_SCRIPT", script.to_str().unwrap()),
+            ("ZOEN_AGENT_GATE", "offline"),
+        ],
+    )
+}
+
+fn citizen(w: &World, owner: &str, who: &str, name: &str, handle: &str) -> String {
+    let id = w.zoen(who, &["agent-keys"]).trim().to_string();
+    let proof = w.zoen(owner, &["authorize-agent", &id]).trim().to_string();
+    let out = w.zoen(
+        who,
+        &["agent-init", "--name", name, "--handle", handle, "--owner", &full_id(w, owner), "--proof", &proof],
+    );
+    assert!(out.contains("registered"), "{out}");
+    id
+}
+
+fn full_id(w: &World, who: &str) -> String {
+    let db = w.dir.join(who).join("zoen.sqlite");
+    let c = rusqlite::Connection::open(db).unwrap();
+    let v: String = c
+        .query_row("SELECT value FROM meta WHERE key = 'account'", [], |r| r.get(0))
+        .unwrap();
+    serde_json::from_str::<serde_json::Value>(&v).unwrap()["identity"]
+        .as_str()
+        .unwrap()
+        .to_string()
+}
+
+fn read_until(w: &World, who: &str, chat: &str, needle: &str) -> String {
+    let deadline = Instant::now() + Duration::from_secs(60);
+    loop {
+        let out = w.try_zoen(who, &["read", chat]).unwrap_or_default();
+        if out.contains(needle) {
+            return out;
+        }
+        assert!(Instant::now() < deadline, "{who} never read {needle:?}:\n{out}");
+        std::thread::sleep(Duration::from_millis(500));
+    }
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_barber_creates_a_booking_bot_and_a_client_books_while_he_is_offline() {
+    let w = World::new("agent_citizen").await;
+    w.init("bruno", "Bruno");
+
+    // The Creator is its own citizen: keys, owner proof from Bruno's device, account.
+    citizen(&w, "bruno", "creator", "Creator", "zoen_creator");
+    let creator_def = w.dir.join("creator.json");
+    std::fs::write(
+        &creator_def,
+        serde_json::to_vec(&zoen_agentd::creator_definition()).unwrap(),
+    )
+    .unwrap();
+    let mut creator = host(&w, "creator", &creator_def);
+
+    // Bruno asks in a DM (end-to-end) and goes offline.
+    w.zoen("bruno", &["dm", "@zoen_creator", "Quero um bot de agenda pro salão. Pode criar?"]);
+    let spec_path = w.dir.join("creator").join("created").join("agenda_bruno.json");
+    let deadline = Instant::now() + Duration::from_secs(60);
+    while !spec_path.exists() {
+        assert!(Instant::now() < deadline, "creator never woke on the DM");
+        std::thread::sleep(Duration::from_millis(300));
+    }
+    read_until(&w, "bruno", "@zoen_creator", "Agenda do Bruno");
+    let spec: serde_json::Value = serde_json::from_slice(&std::fs::read(&spec_path).unwrap()).unwrap();
+    // Prompt + free JSON state, no booking code.
+    assert_eq!(spec["definition"]["state"]["business"], "barbearia");
+    assert_eq!(spec["definition"]["model_tier"], "cheap");
+
+    // Bruno's device authorizes the new citizen once; its runtime takes it from there.
+    citizen(&w, "bruno", "bot", spec["name"].as_str().unwrap(), spec["handle"].as_str().unwrap());
+    let bot_def = w.dir.join("bot.json");
+    std::fs::write(&bot_def, serde_json::to_vec(&spec["definition"]).unwrap()).unwrap();
+    let mut bot = host(&w, "bot", &bot_def);
+
+    // A client books with the bot. Bruno's phone is not running.
+    w.init("carla", "Carla");
+    w.zoen("carla", &["dm", "@agenda_bruno", "Oi! Tem horário sábado?"]);
+    read_until(&w, "carla", "@agenda_bruno", "sábado 10h livre");
+    w.zoen("carla", &["send", "@agenda_bruno", "Confirmo, por favor"]);
+    read_until(&w, "carla", "@agenda_bruno", "Fechado: sábado 10h");
+
+    // Durable: the bot's runtime restarts and still answers what arrived meanwhile.
+    bot.kill().unwrap();
+    let _ = bot.wait();
+    w.zoen("carla", &["send", "@agenda_bruno", "Ainda está de pé?"]);
+    let mut bot = host(&w, "bot", &bot_def);
+    read_until(&w, "carla", "@agenda_bruno", "continua seu");
+
+    // Both agents are citizens on the relay (migration 0028), each with its own device.
+    assert_eq!(w.count("SELECT count(*) FROM agent_citizens").await, 2);
+    assert_eq!(
+        w.count("SELECT count(DISTINCT device) FROM agent_citizens c JOIN identities i ON i.id = c.agent WHERE i.kind = 'Agent'").await,
+        2
+    );
+    // The DM is end-to-end: the bot read Carla only as an MLS member.
+    let carla_chats = w.zoen("carla", &["chats"]);
+    assert!(carla_chats.contains("Agenda do Bruno"), "{carla_chats}");
+
+    let _ = creator.kill();
+    let _ = bot.kill();
+}
