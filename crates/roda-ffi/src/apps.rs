@@ -319,7 +319,7 @@ pub fn specs() -> Vec<AppSpec> {
                         },
                         "required": ["bookingId", "action"]
                     }),
-                    &["model"],
+                    &["model", "app"],
                     Reversible,
                     false,
                 ),
@@ -1724,6 +1724,12 @@ pub fn apply(
                 .unwrap_or("")
                 .to_string();
             let who = st["bookings"][idx]["by"].as_str().unwrap_or("").to_string();
+            if who == actor {
+                return Err(t(
+                    "quem pediu o horário não pode confirmar o próprio pedido",
+                    "whoever requested the slot can't resolve their own request",
+                ));
+            }
             let svc_name = service_name(&st, &svc_id);
             match action.as_str() {
                 "confirm" => {

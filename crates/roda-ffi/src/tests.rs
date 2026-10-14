@@ -1087,12 +1087,13 @@ fn schedule_book_goes_to_agent_then_resolve() {
     // Client asks for a slot — becomes a pending booking + open event for the agent.
     let start = 1_900_000_000_000i64;
     let end = start + 30 * 60_000;
+    // Marina (a client) books; I am the business side resolving it.
     let out = e
-        .app_call_tool(
+        .demo_member_app_call(
             item.id.clone(),
+            "marina".into(),
             "schedule_book".into(),
             format!(r#"{{"serviceId":"cut","startMs":{start},"endMs":{end}}}"#),
-            false,
         )
         .unwrap();
     let v: serde_json::Value =
@@ -1115,11 +1116,11 @@ fn schedule_book_goes_to_agent_then_resolve() {
     assert_eq!(v["bookings"][0]["status"], "confirmed");
     assert_eq!(v["events"][0]["status"], "resolved");
     // Client cancel request on a confirmed booking stays for the agent.
-    e.app_call_tool(
+    e.demo_member_app_call(
         item.id.clone(),
+        "marina".into(),
         "schedule_cancel".into(),
         format!(r#"{{"bookingId":"{booking_id}"}}"#),
-        false,
     )
     .unwrap();
     let out = e
