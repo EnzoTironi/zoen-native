@@ -445,6 +445,15 @@ pub enum Op {
     PreviewInvite {
         code: String,
     },
+    /// Spends one use of an agent link, atomically against its `max_uses`, and returns
+    /// its preview. Space codes are redeemed by joining instead.
+    RedeemAgentInvite {
+        code: String,
+    },
+    /// The owner takes an agent's share link down; the next `CreateInvite` mints a new one.
+    RevokeAgentInvite {
+        agent: IdentityId,
+    },
     /// Publishes this identity's X25519 key for receiving profile keys (ADR 0016).
     PublishAgreementKey {
         public: String,
@@ -515,6 +524,8 @@ impl Op {
             Op::Profiles { .. } => "profiles",
             Op::CreateInvite { .. } => "create_invite",
             Op::PreviewInvite { .. } => "preview_invite",
+            Op::RedeemAgentInvite { .. } => "redeem_agent_invite",
+            Op::RevokeAgentInvite { .. } => "revoke_agent_invite",
             Op::PublishAgreementKey { .. } => "publish_agreement_key",
             Op::AgreementKeys { .. } => "agreement_keys",
             Op::PutProfile { .. } => "put_profile",

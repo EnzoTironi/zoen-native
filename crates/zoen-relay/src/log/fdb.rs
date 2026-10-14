@@ -17,6 +17,7 @@
 //! ("i", identity, space)               -> ""            membership by identity
 //! ("inv", code_hash)                   -> (space, role, created_by, expires_ms, max_uses, uses)
 //! ("ainv", code_hash)                  -> (agent, created_by, expires_ms, max_uses, uses)
+//! ("aidx", agent)                      -> code          the agent's one live share link
 //! ```
 //!
 //! Appends to one Space go through its in-memory queue ([`super::sequencer`], ADR 0023).
@@ -210,6 +211,17 @@ fn store_err(e: FdbBindingError) -> StoreError {
 type Invite = (String, String, String, i64, i64, i64);
 /// Agent share link: (agent_id, created_by, expires_ms, max_uses, uses).
 type AgentInvite = (String, String, i64, i64, i64);
+
+fn agent_info(inv: AgentInvite) -> InviteInfo {
+    InviteInfo {
+        role: Role::Member,
+        space: String::new(),
+        inviter: inv.1,
+        title: String::new(),
+        members: 0,
+        agent: Some(inv.0),
+    }
+}
 
 impl FdbLog {
     /// `cluster_file` = `None` uses the default (`FDB_CLUSTER_FILE` or the system file).
@@ -1208,48 +1220,93 @@ impl LogStore for FdbLog {
         if agent.is_empty() || who.is_empty() {
             return Err("agent invite needs an agent and an owner".into());
         }
-        let expires = now_ms() + ttl_secs.clamp(60, 365 * 24 * 3600) as i64 * 1000;
+        let ttl_ms = ttl_secs.clamp(1, 365 * 24 * 3600) as i64 * 1000;
         let max = max_uses.clamp(1, 10_000) as i64;
-        let code = random_code();
-        let key = self.cell.root.pack(&("ainv", code_hash(&code)));
-        let who = who.to_string();
-        let agent = agent.to_string();
+        let root = &self.cell.root;
+        let idx = root.pack(&("aidx", agent));
+        let r = self
+            .cell
+            .db
+            .run(|trx, _| {
+                let idx = idx.clone();
+                let (who, agent) = (who.to_string(), agent.to_string());
+                async move {
+                    let now = now_ms();
+                    if let Some(v) = trx.get(&idx, false).await? {
+                        let code: String = unpack(&v).map_err(|e| custom(e.to_string()))?;
+                        let key = root.pack(&("ainv", code_hash(&code)));
+                        if let Some(v) = trx.get(&key, false).await? {
+                            let inv: AgentInvite = unpack(&v).map_err(|e| custom(e.to_string()))?;
+                            if inv.2 > now && inv.4 < inv.3 {
+                                return Ok(Ok((code, inv.2)));
+                            }
+                            trx.clear(&key);
+                        }
+                    }
+                    let code = random_code();
+                    let key = root.pack(&("ainv", code_hash(&code)));
+                    if trx.get(&key, false).await?.is_some() {
+                        return Ok(Err("invite code collision"));
+                    }
+                    let expires = now + ttl_ms;
+                    trx.set(&key, &pack(&(agent, who, expires, max, 0i64)));
+                    trx.set(&idx, &pack(&code));
+                    Ok(Ok((code, expires)))
+                }
+            })
+            .await
+            .map_err(|e| e.to_string())?;
+        let (code, expires_at_ms) = r.map_err(str::to_string)?;
+        Ok(InviteCreated {
+            code,
+            expires_at_ms,
+        })
+    }
+
+    async fn redeem_agent_invite(&self, code: &str) -> Result<InviteInfo, String> {
+        let key = self.cell.root.pack(&("ainv", code_hash(code)));
         let r = self
             .cell
             .db
             .run(|trx, _| {
                 let key = key.clone();
-                let who = who.clone();
-                let agent = agent.clone();
-                let code = code.clone();
                 async move {
-                    if !roda_proto::valid_invite_code(&code) {
-                        return Ok(Err("invalid invite code"));
+                    let Some(v) = trx.get(&key, false).await? else {
+                        return Ok(Err("invite expired or already used"));
+                    };
+                    let mut inv: AgentInvite = unpack(&v).map_err(|e| custom(e.to_string()))?;
+                    if inv.2 <= now_ms() || inv.4 >= inv.3 {
+                        return Ok(Err("invite expired or already used"));
                     }
-                    if let Some(existing) = trx.get(&key, false).await? {
-                        let inv: AgentInvite =
-                            unpack(&existing).map_err(|e| custom(e.to_string()))?;
-                        if inv.0 != agent || inv.1 != who || inv.3 != max {
-                            return Ok(Err("invite code collision"));
-                        }
-                    } else {
-                        trx.set(&key, &pack(&(agent, who, expires, max, 0i64)));
-                    }
-                    let stored = trx
-                        .get(&key, true)
-                        .await?
-                        .ok_or_else(|| custom("invite missing after mint"))?;
-                    let inv: AgentInvite = unpack(&stored).map_err(|e| custom(e.to_string()))?;
-                    Ok(Ok(inv.2))
+                    inv.4 += 1;
+                    trx.set(&key, &pack(&inv));
+                    Ok(Ok(inv))
                 }
             })
             .await
             .map_err(|e| e.to_string())?;
-        let expires = r.map_err(str::to_string)?;
-        Ok(InviteCreated {
-            code,
-            expires_at_ms: expires,
-        })
+        let inv = r.map_err(str::to_string)?;
+        Ok(agent_info(inv))
+    }
+
+    async fn revoke_agent_invite(&self, agent: &str) -> Result<(), String> {
+        let root = &self.cell.root;
+        let idx = root.pack(&("aidx", agent));
+        self.cell
+            .db
+            .run(|trx, _| {
+                let idx = idx.clone();
+                async move {
+                    if let Some(v) = trx.get(&idx, false).await? {
+                        let code: String = unpack(&v).map_err(|e| custom(e.to_string()))?;
+                        trx.clear(&root.pack(&("ainv", code_hash(&code))));
+                        trx.clear(&idx);
+                    }
+                    Ok(())
+                }
+            })
+            .await
+            .map_err(|e| e.to_string())
     }
 
     async fn preview_invite(&self, code: &str) -> Result<InviteInfo, String> {
@@ -1292,14 +1349,7 @@ impl LogStore for FdbLog {
                     if inv.2 <= now_ms() || inv.4 >= inv.3 {
                         return Ok(Err("invite expired or already used"));
                     }
-                    Ok(Ok(InviteInfo {
-                        role: Role::Member,
-                        space: String::new(),
-                        inviter: inv.1,
-                        title: String::new(),
-                        members: 0,
-                        agent: Some(inv.0),
-                    }))
+                    Ok(Ok(agent_info(inv)))
                 }
             })
             .await

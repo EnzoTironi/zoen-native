@@ -77,7 +77,7 @@ pub struct PbReq {
     pub id: u64,
     #[prost(
         oneof = "pb_req::Op",
-        tags = "2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17"
+        tags = "2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19"
     )]
     pub op: Option<pb_req::Op>,
 }
@@ -119,6 +119,10 @@ pub mod pb_req {
         Unlink(String),
         #[prost(message, tag = "17")]
         SendDevice(PbDeviceMessage),
+        #[prost(string, tag = "18")]
+        RedeemAgentInvite(String),
+        #[prost(string, tag = "19")]
+        RevokeAgentInvite(String),
     }
 }
 
@@ -815,6 +819,10 @@ impl ClientFrame {
                         agent: agent.clone(),
                     }),
                     Op::PreviewInvite { code } => pb_req::Op::PreviewInvite(code.clone()),
+                    Op::RedeemAgentInvite { code } => pb_req::Op::RedeemAgentInvite(code.clone()),
+                    Op::RevokeAgentInvite { agent } => {
+                        pb_req::Op::RevokeAgentInvite(agent.clone())
+                    }
                     Op::PublishAgreementKey { public, signed } => {
                         pb_req::Op::PublishAgreementKey(PbAgreementKey {
                             identity: String::new(),
@@ -908,6 +916,8 @@ impl ClientFrame {
                         ttl_secs: c.ttl_secs,
                     },
                     pb_req::Op::PreviewInvite(code) => Op::PreviewInvite { code },
+                    pb_req::Op::RedeemAgentInvite(code) => Op::RedeemAgentInvite { code },
+                    pb_req::Op::RevokeAgentInvite(agent) => Op::RevokeAgentInvite { agent },
                     pb_req::Op::PublishAgreementKey(k) => Op::PublishAgreementKey {
                         public: k.public,
                         signed: signed_from(k.signed)?,
@@ -1483,6 +1493,14 @@ mod tests {
             ClientFrame::Req {
                 id: 3,
                 op: Op::PreviewInvite { code: "X".into() },
+            },
+            ClientFrame::Req {
+                id: 30,
+                op: Op::RedeemAgentInvite { code: "X".into() },
+            },
+            ClientFrame::Req {
+                id: 31,
+                op: Op::RevokeAgentInvite { agent: "a".into() },
             },
             ClientFrame::Req {
                 id: 4,
