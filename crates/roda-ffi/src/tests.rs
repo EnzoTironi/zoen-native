@@ -398,7 +398,7 @@ fn zoen(e: &RodaEngine) -> Persona {
 fn mcp_specs_follow_the_apps_extension() {
     let e = seeded();
     let specs = e.app_specs();
-    assert_eq!(specs.len(), 7);
+    assert_eq!(specs.len(), 8);
     for s in &specs {
         assert!(s.resource_uri.starts_with("ui://"));
         assert!(
