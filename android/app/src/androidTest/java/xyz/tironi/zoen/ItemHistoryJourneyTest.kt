@@ -160,6 +160,20 @@ class ItemHistoryJourneyTest {
         capture("open-history-admission-disabled")
     }
 
+    @Test fun planChangedUnderAnOpenHistoryRefusesRestoreAndAppendsNothing() {
+        open(); history()
+        compose.waitUntil(10_000) { compose.onAllNodes(hasTestTag("restore-version:1") and isEnabled()).fetchSemanticsNodes().isNotEmpty() }
+        signedEdits(1)
+        val changed = detail()
+        assertEquals(item.version + 1u, changed.version)
+        compose.onNodeWithTag("item-versions").performScrollToNode(hasTestTag("restore-version:1"))
+        compose.onNodeWithTag("restore-version:1").performClick()
+        compose.onNodeWithTag("confirm-restore-version").performClick()
+        compose.waitUntil(10_000) { compose.onAllNodesWithText(app.getString(R.string.plan_changed)).fetchSemanticsNodes().isNotEmpty() }
+        assertEquals(changed, detail())
+        capture("stale-restore-refused")
+    }
+
     @Test fun membershipLossDisablesOpeningHistory() {
         open()
         runBlocking { app.repository.change { it.leaveSpace(item.spaceId) } }
