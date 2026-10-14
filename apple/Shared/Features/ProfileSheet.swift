@@ -264,7 +264,7 @@ struct ProfileSheet: View {
 }
 
 /// Own profile editor (photo + name + bio). Handle stays in Account settings.
-private struct ProfileEditorSheet: View {
+struct ProfileEditorSheet: View {
     @Environment(AppModel.self) private var model
     @Environment(\.dismiss) private var dismiss
     let persona: Persona
