@@ -30,7 +30,6 @@ import xyz.tironi.zoen.core.*
 @RunWith(AndroidJUnit4::class)
 @OptIn(ExperimentalTestApi::class)
 class ApprovalDeckJourneyTest {
-    @get:Rule(order = -1) val sampler = MainThreadSampler() // DIAGNOSTIC
     @get:Rule(order = 0) val deadline = Timeout.seconds(120)
     @get:Rule(order = 1) val compose = createEmptyComposeRule(effectContext = StandardTestDispatcher())
     private val app get() = ApplicationProvider.getApplicationContext<ZoenApplication>()
