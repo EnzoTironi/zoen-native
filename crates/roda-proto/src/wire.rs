@@ -7,7 +7,7 @@ use prost::Message;
 use roda_types::{Identity, IdentityKind, Role};
 
 use crate::{
-    AgreementKeyRecord, ClientFrame, Cursor, DeviceCertificate, DeviceRecord, DeviceSigned,
+    AgentAction, AgentRequest, AgentStateRecord, AgreementKeyRecord, ClientFrame, Cursor, DeviceCertificate, DeviceRecord, DeviceSigned,
     Envelope, EphemeralKind, ErrorCode, InviteCreated, InvitePreview, KeyPackageRecord, Op, Reply,
     SealedProfile, Sequenced, ServerFrame,
 };
@@ -77,7 +77,7 @@ pub struct PbReq {
     pub id: u64,
     #[prost(
         oneof = "pb_req::Op",
-        tags = "2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17"
+        tags = "2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18"
     )]
     pub op: Option<pb_req::Op>,
 }
@@ -119,7 +119,50 @@ pub mod pb_req {
         Unlink(String),
         #[prost(message, tag = "17")]
         SendDevice(PbDeviceMessage),
+        #[prost(message, tag = "18")]
+        Agent(PbAgentReq),
     }
+}
+
+/// `op`: "state", "advance", "define", "pause", "resume" or "revoke".
+#[derive(Clone, PartialEq, Message)]
+pub struct PbAgentReq {
+    #[prost(string, tag = "1")]
+    pub op: String,
+    #[prost(string, tag = "2")]
+    pub agent: String,
+    #[prost(string, tag = "3")]
+    pub space: String,
+    #[prost(uint64, tag = "4")]
+    pub seq: u64,
+    #[prost(uint32, tag = "5")]
+    pub version: u32,
+    #[prost(string, tag = "6")]
+    pub kind: String,
+    #[prost(bytes = "vec", tag = "7")]
+    pub definition: Vec<u8>,
+}
+
+#[derive(Clone, PartialEq, Message)]
+pub struct PbAgentCursor {
+    #[prost(string, tag = "1")]
+    pub space: String,
+    #[prost(uint64, tag = "2")]
+    pub seq: u64,
+}
+
+#[derive(Clone, PartialEq, Message)]
+pub struct PbAgentState {
+    #[prost(string, tag = "1")]
+    pub status: String,
+    #[prost(string, tag = "2")]
+    pub kind: String,
+    #[prost(uint32, tag = "3")]
+    pub definition_version: u32,
+    #[prost(bytes = "vec", tag = "4")]
+    pub definition: Vec<u8>,
+    #[prost(message, repeated, tag = "5")]
+    pub cursors: Vec<PbAgentCursor>,
 }
 
 #[derive(Clone, PartialEq, Message)]
@@ -497,6 +540,8 @@ pub mod pb_res {
         Link(PbLinkBox),
         #[prost(message, tag = "12")]
         Devices(PbDevices),
+        #[prost(message, tag = "13")]
+        AgentState(PbAgentState),
     }
 }
 
@@ -848,6 +893,7 @@ impl ClientFrame {
                         to: to.clone(),
                         sealed: sealed.clone(),
                     }),
+                    Op::Agent(a) => pb_req::Op::Agent(agent_req_to(a)),
                 }),
             }),
             ClientFrame::Publish { env } => F::Publish(envelope_to(env)),
@@ -929,6 +975,7 @@ impl ClientFrame {
                         to: m.to,
                         sealed: m.sealed,
                     },
+                    pb_req::Op::Agent(a) => Op::Agent(agent_req_from(a)?),
                 },
             },
             // Only the relay prunes: a device can't hand it a stub.
@@ -1023,6 +1070,20 @@ impl ServerFrame {
                         id: String::new(),
                         sealed: sealed.clone().unwrap_or_default(),
                         device: None,
+                    }),
+                    Ok(Reply::AgentState(a)) => pb_res::R::AgentState(PbAgentState {
+                        status: a.status.clone(),
+                        kind: a.kind.clone(),
+                        definition_version: a.definition_version,
+                        definition: a.definition.clone(),
+                        cursors: a
+                            .cursors
+                            .iter()
+                            .map(|(space, seq)| PbAgentCursor {
+                                space: space.clone(),
+                                seq: *seq,
+                            })
+                            .collect(),
                     }),
                     Ok(Reply::Devices(ds)) => pb_res::R::Devices(PbDevices {
                         devices: ds
@@ -1167,6 +1228,13 @@ impl ServerFrame {
                     pb_res::R::Link(b) => {
                         Ok(Reply::Link((!b.sealed.is_empty()).then_some(b.sealed)))
                     }
+                    pb_res::R::AgentState(a) => Ok(Reply::AgentState(AgentStateRecord {
+                        status: a.status,
+                        kind: a.kind,
+                        definition_version: a.definition_version,
+                        definition: a.definition,
+                        cursors: a.cursors.into_iter().map(|c| (c.space, c.seq)).collect(),
+                    })),
                     pb_res::R::Devices(ds) => Ok(Reply::Devices(
                         ds.devices
                             .into_iter()
@@ -1677,4 +1745,53 @@ mod tests {
         }
         assert!(ClientFrame::decode(&[]).is_err());
     }
+}
+
+fn agent_req_to(a: &AgentRequest) -> PbAgentReq {
+    let mut pb = PbAgentReq::default();
+    match a {
+        AgentRequest::State => pb.op = "state".into(),
+        AgentRequest::Advance { space, seq } => {
+            pb.op = "advance".into();
+            pb.space = space.clone();
+            pb.seq = *seq;
+        }
+        AgentRequest::Define {
+            agent,
+            version,
+            kind,
+            definition,
+        } => {
+            pb.op = "define".into();
+            pb.agent = agent.clone();
+            pb.version = *version;
+            pb.kind = kind.clone();
+            pb.definition = definition.clone();
+        }
+        AgentRequest::Control { agent, action } => {
+            pb.op = action.id().into();
+            pb.agent = agent.clone();
+        }
+    }
+    pb
+}
+
+fn agent_req_from(pb: PbAgentReq) -> Result<AgentRequest, DecodeError> {
+    Ok(match pb.op.as_str() {
+        "state" => AgentRequest::State,
+        "advance" => AgentRequest::Advance {
+            space: pb.space,
+            seq: pb.seq,
+        },
+        "define" => AgentRequest::Define {
+            agent: pb.agent,
+            version: pb.version,
+            kind: pb.kind,
+            definition: pb.definition,
+        },
+        other => AgentRequest::Control {
+            agent: pb.agent,
+            action: AgentAction::parse(other).ok_or_else(|| bad("agent op"))?,
+        },
+    })
 }

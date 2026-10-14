@@ -107,6 +107,9 @@ pub fn decode_server(bytes: &[u8]) -> Result<ServerMessage, String> {
             id,
             value: match reply {
                 Reply::Link(sealed) => serde_json::json!({"kind":"link","sealed":sealed}),
+                Reply::AgentState(a) => {
+                    serde_json::json!({"kind":"agent_state","status":a.status,"definition_version":a.definition_version})
+                }
                 Reply::Devices(devices) => {
                     serde_json::json!({"kind":"devices","devices":devices.iter().map(|d| serde_json::json!({"device":d.device,"revoked":d.revoked})).collect::<Vec<_>>()})
                 }

@@ -496,6 +496,70 @@ pub enum Op {
         to: String,
         sealed: Vec<u8>,
     },
+    /// Agent citizens (migration 0028): the runtime's own state and cursors, or an
+    /// owner's control over an agent it answers for.
+    Agent(AgentRequest),
+}
+
+/// What an agent runtime or its owner asks the relay about an agent citizen.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum AgentRequest {
+    /// The signed-in agent: its status, current definition and per-Space cursors.
+    State,
+    /// The signed-in agent handled its Space through `seq` (inclusive).
+    Advance { space: SpaceId, seq: u64 },
+    /// A new definition version. The owner may always; the agent only for its first.
+    Define {
+        agent: IdentityId,
+        version: u32,
+        kind: String,
+        definition: Vec<u8>,
+    },
+    /// Owner only.
+    Control {
+        agent: IdentityId,
+        action: AgentAction,
+    },
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum AgentAction {
+    Pause,
+    Resume,
+    /// Final: the agent's runtime device is revoked too.
+    Revoke,
+}
+
+impl AgentAction {
+    pub fn id(self) -> &'static str {
+        match self {
+            AgentAction::Pause => "pause",
+            AgentAction::Resume => "resume",
+            AgentAction::Revoke => "revoke",
+        }
+    }
+
+    pub fn parse(s: &str) -> Option<Self> {
+        match s {
+            "pause" => Some(AgentAction::Pause),
+            "resume" => Some(AgentAction::Resume),
+            "revoke" => Some(AgentAction::Revoke),
+            _ => None,
+        }
+    }
+}
+
+/// The relay's single source of truth for an agent runtime.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct AgentStateRecord {
+    /// "active", "paused" or "revoked".
+    pub status: String,
+    /// "Creator" or "User"; empty until the first definition.
+    pub kind: String,
+    pub definition_version: u32,
+    pub definition: Vec<u8>,
+    /// Last handled seq per Space.
+    pub cursors: Vec<(SpaceId, u64)>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -524,6 +588,10 @@ impl Op {
             Op::Devices => "devices",
             Op::Unlink { .. } => "unlink",
             Op::SendDevice { .. } => "send_device",
+            Op::Agent(AgentRequest::State) => "agent_state",
+            Op::Agent(AgentRequest::Advance { .. }) => "agent_advance",
+            Op::Agent(AgentRequest::Define { .. }) => "agent_define",
+            Op::Agent(AgentRequest::Control { .. }) => "agent_control",
         }
     }
 }
@@ -563,6 +631,7 @@ pub enum Reply {
     /// FetchLink: the sealed box, `None` while nobody left one.
     Link(Option<Vec<u8>>),
     Devices(Vec<DeviceRecord>),
+    AgentState(AgentStateRecord),
 }
 
 /// One of an identity's devices, as the directory has it.

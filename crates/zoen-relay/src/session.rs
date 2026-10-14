@@ -19,7 +19,7 @@ use axum::extract::ws::{Message, WebSocket};
 use futures_util::{SinkExt, StreamExt};
 use roda_log::{device_cert_message, verify_sig};
 use roda_proto::{
-    auth_message, negotiate, normalize_handle, ClientFrame, ErrorCode, Op, Reply, ServerFrame,
+    auth_message, negotiate, normalize_handle, AgentRequest, ClientFrame, ErrorCode, Op, Reply, ServerFrame,
     MIN_PROTOCOL_VERSION, PROTOCOL_VERSION,
 };
 use roda_types::{EventBody, IdentityKind};
@@ -771,6 +771,48 @@ impl Session {
         Metrics::inc(&self.st.metrics.ephemeral_forwarded);
     }
 
+    /// Agent citizens: the runtime's own state and cursors, or an owner's control.
+    async fn agent(&self, req: AgentRequest) -> Result<Reply, String> {
+        use crate::agents;
+        let pool = &self.st.pool;
+        let me = &self.identity;
+        let r = match req {
+            AgentRequest::State => {
+                let member_of = self
+                    .st
+                    .log
+                    .spaces_of(me)
+                    .await
+                    .map_err(|_| "membership unavailable")?;
+                return agents::state(pool, me, &self.device, &member_of)
+                    .await
+                    .map(Reply::AgentState)
+                    .map_err(|e| e.to_string());
+            }
+            AgentRequest::Advance { space, seq } => {
+                if !matches!(self.st.log.role(&space, me).await, Ok(Some(_))) {
+                    return Err(agents::AgentCitizenError::NotMember.to_string());
+                }
+                agents::advance_cursor(pool, me, &self.device, &space, seq).await
+            }
+            AgentRequest::Define {
+                agent,
+                version,
+                kind,
+                definition,
+            } => {
+                if definition.len() > 64 * 1024 {
+                    return Err("definition too large".into());
+                }
+                agents::define(pool, me, &self.device, &agent, version, &kind, &definition).await
+            }
+            AgentRequest::Control { agent, action } => {
+                agents::control(pool, me, &agent, action).await
+            }
+        };
+        r.map(|()| Reply::Done).map_err(|e| e.to_string())
+    }
+
     async fn request(
         &mut self,
         op: Op,
@@ -855,6 +897,7 @@ impl Session {
                 }
                 Ok(Reply::Done)
             }
+            Op::Agent(req) => self.agent(req).await,
             Op::Devices => Ok(Reply::Devices(
                 db::devices_of(pool, &self.identity)
                     .await

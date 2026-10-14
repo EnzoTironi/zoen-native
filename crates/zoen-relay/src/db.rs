@@ -206,9 +206,6 @@ pub async fn register(
                 &crate::agents::CitizenClaim {
                     agent: profile.id.clone(),
                     device: device.to_string(),
-                    kind: "User".into(),
-                    definition: Vec::new(),
-                    definition_version: 1,
                     avatar_style: "hand-drawn-animated".into(),
                     avatar_glyph: profile.glyph.clone(),
                     avatar_tint: Some(profile.tint_hex.clone()),
