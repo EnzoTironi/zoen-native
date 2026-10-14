@@ -123,6 +123,11 @@ fn default_tint() -> String {
     "#7C5CFF".into()
 }
 
+/// Model text → a create_agent action or plain speech.
+pub fn parse_reply(text: &str) -> BrainOut {
+    parse_create_agent(text).unwrap_or_else(|| BrainOut::Say(text.trim().to_string()))
+}
+
 fn parse_create_agent(text: &str) -> Option<BrainOut> {
     let json_str = extract_json_fence(text)?;
     let wire: CreateAgentWire = serde_json::from_str(&json_str).ok()?;
