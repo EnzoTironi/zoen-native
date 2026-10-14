@@ -338,3 +338,55 @@ test('forgetting this browser while a message is sending never writes the conver
   assert.equal(saved.length, before);
   assert.ok(states.every((state) => state.kind !== 'failed'));
 });
+
+type MidAction = 'send' | 'receive' | 'join' | 'delete';
+
+async function forgetDuring(t: test.TestContext, action: MidAction) {
+  installSocket(t);
+  const states: MessagesState[] = [];
+  const saved: StoredSession[] = [];
+  let ready = false;
+  let pending: (value: string) => void = () => {};
+  const late = JSON.stringify({ snapshot: 'late', frames: [], conversations: [sendingConversation], retry_at_ms: Date.now() + 1000 });
+  const hold = () => new Promise<string>((resolve) => { pending = resolve; ready = true; });
+  const operationFor = { send: 'queue_message', receive: 'receive', join: 'queue_join', delete: 'delete_conversation' }[action];
+  let bootstrapped = false;
+  const { core } = liveCore(async (operation) => {
+    if (operation.kind === 'restore') return JSON.stringify([sendingConversation]);
+    if (operation.kind === 'decode_server') return new TextDecoder().decode(operation.bytes);
+    if (operation.kind === operationFor && (operation.kind !== 'receive' || bootstrapped)) return hold();
+    if (operation.kind === 'bootstrap' || operation.kind === 'receive') {
+      bootstrapped = true;
+      return JSON.stringify({ snapshot: 'before', frames: [], conversations: [sendingConversation], retry_at_ms: null });
+    }
+    throw new Error(operation.kind);
+  });
+  const messages = new Messages({
+    core, language: 'pt-BR',
+    vault: { save: async (session) => { saved.push(session); }, sign: async () => new Uint8Array(64) },
+    session: { kind: 'linked', account, snapshot: '' },
+    changed: (state) => { states.push(state); },
+    unpaired: () => { throw new Error('pairing'); },
+  });
+  await messages.start();
+  await authenticate();
+  const before = saved.length;
+  const running = action === 'send' ? messages.send({ space: 'sp_join', text: 'oi' }) :
+    action === 'join' ? messages.join({ invite, code: 'ABC2345678' }) :
+      action === 'delete' ? messages.deleteConversation('sp_join') :
+        (Socket.instances.at(-1)?.frame({ kind: 'event' }), Promise.resolve());
+  await settle(); await settle();
+  assert.equal(ready, true, `${action} reached the core before the person forgot this browser`);
+  messages.stop();
+  core.close();
+  pending(late);
+  await running.catch(() => {});
+  t.mock.timers.tick(5_000);
+  await settle();
+  assert.equal(saved.length, before, `${action} wrote the conversation back after forgetting`);
+  assert.ok(states.every((state) => state.kind !== 'failed'), `${action} flashed a failure after forgetting`);
+}
+
+for (const action of ['send', 'receive', 'join', 'delete'] as const) {
+  test(`forgetting this browser in the middle of ${action} leaves nothing behind`, async (t) => { await forgetDuring(t, action); });
+}

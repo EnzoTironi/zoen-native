@@ -40,4 +40,37 @@ button:disabled { cursor: default; opacity: .55; }
   .zw-pair input { background: #101a13; color: #edf4ef; }
   .zw-code { background: #233529; }
 }
-@media (prefers-reduced-motion: reduce) { * { scroll-behavior: auto !important; } }
+/* Forget this browser: an occasional, destructive choice. Enter 200ms, exit 150ms, strong ease-out; opacity only under reduced motion. */
+.zw-danger { border: 0; border-radius: 10px; padding: 10px 16px; background: #a12828; color: #fff; font-weight: 600; }
+.zw-forget { border: 0; padding: 0; background: transparent; color: #17251c; font-size: 15px; max-width: min(100vw - 32px, 420px); overscroll-behavior: contain;
+  opacity: 1; scale: 1; transition-property: opacity, scale, display, overlay; transition-duration: 200ms; transition-timing-function: cubic-bezier(0.23, 1, 0.32, 1); transition-behavior: allow-discrete; }
+.zw-forget:not([open]) { opacity: 0; scale: .96; transition-duration: 150ms; }
+@starting-style { .zw-forget[open] { opacity: 0; scale: .96; } }
+.zw-forget::backdrop { background: oklch(0 0 0 / 0.32); opacity: 1; transition: opacity 200ms cubic-bezier(0.23, 1, 0.32, 1), display 200ms allow-discrete, overlay 200ms allow-discrete; }
+.zw-forget:not([open])::backdrop { opacity: 0; }
+@starting-style { .zw-forget[open]::backdrop { opacity: 0; } }
+.zw-forget-card { padding: 24px; border-radius: 24px; background: #fff; border: 1px solid transparent;
+  box-shadow: 0 0 0 1px oklch(0 0 0 / 0.06), 0 2px 4px oklch(0 0 0 / 0.04), 0 16px 48px oklch(0 0 0 / 0.14); }
+.zw-forget-card h2 { margin: 0 0 8px; font-size: 20px; letter-spacing: -.3px; }
+.zw-forget-card p { margin: 0; line-height: 1.5; color: #526159; text-wrap: pretty; }
+.zw-forget-card strong { display: block; margin-bottom: 4px; color: inherit; font-weight: 600; }
+.zw-forget-card p strong { color: #17251c; }
+.zw-forget-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 20px; }
+/* The dialog lives in the sidebar footer, whose muted small text must not leak into it. */
+.zw-forget .zw-secondary { color: #17251c; font-size: 15px; }
+.zw-forget .zw-danger { color: #fff; font-size: 15px; }
+.zw-secondary, .zw-danger, .zw-primary { transition-property: scale; transition-duration: 150ms; transition-timing-function: ease-out; }
+.zw-secondary:not(:disabled):active, .zw-danger:not(:disabled):active, .zw-primary:not(:disabled):active { scale: .96; }
+@media (prefers-color-scheme: dark) {
+  .zw-forget, .zw-forget .zw-secondary { color: #edf4ef; }
+  .zw-forget-card { background: #18261d; box-shadow: 0 0 0 1px oklch(1 0 0 / 0.08), 0 16px 48px oklch(0 0 0 / 0.5); }
+  .zw-forget-card p { color: #b2c2b8; }
+  .zw-forget-card p strong { color: #edf4ef; }
+  .zw-danger { background: #c43c3c; }
+}
+@media (prefers-reduced-motion: reduce) {
+  * { scroll-behavior: auto !important; }
+  .zw-forget, .zw-forget:not([open]) { scale: 1; }
+  @starting-style { .zw-forget[open] { scale: 1; } }
+  .zw-secondary:not(:disabled):active, .zw-danger:not(:disabled):active, .zw-primary:not(:disabled):active { scale: 1; }
+}

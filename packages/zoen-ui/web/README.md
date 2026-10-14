@@ -17,6 +17,8 @@ without its keys is refused without replacing them. Only one tab holds the clien
 Lock. Forgetting the browser deletes its local database; revoke its device from the
 phone to remove its relay authorization.
 
+Forgetting starts from a Zoen dialog in the person's language (`forget.ts`). It names how many conversations leave this browser, says the phone keeps them, and focuses Keep first. Confirming stops the live session before the core closes and the vault is erased, so a send, receive, join or delete already in flight cannot write the conversation back (`messages.test.ts`, the forget-mid-action journeys). The browser does not unlink itself yet: the person removes it from Devices on the phone.
+
 OpenMLS runs in a dedicated worker. It signs through a bounded SharedArrayBuffer bridge
 to the main thread's nonexportable key. The device adapter checks the ciphersuite,
 certificate, public key, signer proof and generated KeyPackage leaf. Closing the worker

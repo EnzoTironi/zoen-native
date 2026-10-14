@@ -8,6 +8,7 @@ import { Pairing, type PairingState } from './pairing.ts';
 import { Messages, type Conversation, type Invite, type MessagesState } from './messages.ts';
 import { inviteFromPath, relayUrl, type StoredSession } from './session.ts';
 import { BrowserVault } from './vault.ts';
+import { ForgetDialog, forgetCopy } from './forget.ts';
 import { CoreWorker } from './worker-client.ts';
 import './web.css';
 
@@ -173,6 +174,7 @@ function Linked({ runtime, session, forget, unpaired }: {
   const [state, setState] = useState<MessagesState>({ kind: 'loading' });
   const [selected, setSelected] = useState('');
   const [showInvite, setShowInvite] = useState(invitation !== null);
+  const [forgetting, setForgetting] = useState(false);
   const running = useRef<Messages | null>(null);
   useEffect(() => {
     const messages = new Messages({ ...runtime, session, changed: setState, unpaired });
@@ -193,7 +195,9 @@ function Linked({ runtime, session, forget, unpaired }: {
     theme={theme} onThemeChange={setTheme} title={conversation?.title ?? 'Chats'} sidebarFooter={<div className="zw-footer"><span>{session.account.name}</span>
       <span className={state.kind === 'failed' ? 'zw-error' : 'zw-status'} role={state.kind === 'failed' ? 'alert' : 'status'}>{status}</span>
       {state.kind === 'failed' ? <button className="zw-secondary" onClick={() => location.reload()}>Reload Zoen</button> : null}
-      <button className="zw-secondary" onClick={() => forget(() => running.current?.stop())}>Forget this browser</button></div>} emptySidebar={search ? 'No matching conversations' : 'Your linked conversations'}>
+      <button className="zw-secondary" onClick={() => setForgetting(true)}>{forgetCopy(navigator.language, conversations.length).open}</button>
+      <ForgetDialog language={navigator.language} count={conversations.length} open={forgetting} keep={() => setForgetting(false)}
+        forget={() => { setForgetting(false); forget(() => running.current?.stop()); }} /></div>} emptySidebar={search ? 'No matching conversations' : 'Your linked conversations'}>
     {showInvite && invitation ? <Invitation code={invitation} messages={running} connected={connected} conversations={conversations}
       notice={state.kind === 'active' ? state.notice : state.kind === 'failed' ? state.message : null}
       opened={(space) => { setSelected(space); setShowInvite(false); }} cancel={() => setShowInvite(false)} /> : conversation ? <Thread key={conversation.id} conversation={conversation} identity={session.account.identity} connected={connected}
@@ -233,7 +237,6 @@ function App() {
   if (boot.kind === 'loading') return <Gate><h1>Zoen</h1><p role="status">Opening encrypted browser storage…</p></Gate>;
   if (boot.kind === 'unavailable') return <Gate><h1>Open Zoen on your phone</h1><p role="alert">{boot.message}</p></Gate>;
   if (boot.session.kind === 'linked') return <Linked runtime={boot.runtime} session={boot.session} unpaired={() => setBoot({ ...boot, session: { kind: 'empty' } })} forget={(stop) => {
-    if (!window.confirm('Forget this browser and its locally stored conversations? Unlink it from Devices on your phone as well.')) return;
     stop();
     boot.runtime.core.close();
     void boot.runtime.vault.erase().then(() => location.reload()).catch((error: unknown) => setBoot({ kind: 'unavailable', message: message(error) }));
