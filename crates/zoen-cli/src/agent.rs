@@ -26,6 +26,8 @@ use zoen_agentd::{AgentSpec, Brain, Definition, Runtime, Turn, TurnContext, Turn
 const HISTORY: usize = 16;
 /// A message whose brain call keeps failing is skipped after this many tries.
 const MAX_TRIES: u32 = 3;
+/// The runtime stops after this many refused or failed state reads in a row (~30 s).
+const MAX_STATE_FAILURES: u32 = 6;
 
 struct ReqwestTransport(reqwest::Client);
 impl HttpTransport for ReqwestTransport {
@@ -191,6 +193,7 @@ pub async fn host(e: &Arc<RodaEngine>, home: &Path, for_secs: Option<u64>) {
     let mut backoff = Duration::from_secs(1);
     let mut offline_since: Option<Instant> = None;
     let mut last_activity = Instant::now();
+    let mut failures = 0u32;
     loop {
         if deadline.is_some_and(|d| Instant::now() >= d) {
             break;
@@ -217,8 +220,17 @@ pub async fn host(e: &Arc<RodaEngine>, home: &Path, for_secs: Option<u64>) {
         }
 
         let status = match e.agent_state().await {
-            Ok(s) => s,
-            Err(_) => {
+            Ok(s) => {
+                failures = 0;
+                s
+            }
+            Err(err) => {
+                // The relay refuses a revoked runtime device; the engine retries the rest.
+                failures += 1;
+                if failures >= MAX_STATE_FAILURES {
+                    say(format_args!("relay unreachable or refused: {err}"));
+                    break;
+                }
                 wait(&waker, deadline).await;
                 continue;
             }

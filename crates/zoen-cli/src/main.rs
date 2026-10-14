@@ -217,6 +217,11 @@ fn usage() -> ! {
          keys CHAT                        an end-to-end chat's group: epoch, digest, members\n\
          send CHAT TEXT [--offline]      CHAT = @handle, title or space id\n\
          read CHAT [--older]              --older: ask your other device for an older page\n\
+         agent-keys | agent-init --name N --handle H --owner ID --proof JSON --definition FILE\n\
+         agent-host [--for SECS]          run this agent citizen (relay-backed cursors)\n\
+         authorize-agent AGENT_ID         owner: sign an agent's root\n\
+         agent-pause|agent-resume|agent-revoke @AGENT   owner controls\n\
+         agent-define @AGENT --definition FILE [--version N]\n\
          link-request [--relay URL]       new device: show a code, become your account, get history\n\
          link CODE                        existing device: link the device showing CODE\n\
          history                          new device: finish (resume) the history transfer\n\
