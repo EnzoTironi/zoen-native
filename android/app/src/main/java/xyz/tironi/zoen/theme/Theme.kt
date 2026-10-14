@@ -71,8 +71,9 @@ object AppAppearance {
     val modes = listOf("auto" to R.string.st_automatic, "light" to R.string.st_light, "dark" to R.string.st_dark)
     var mode by mutableStateOf("auto")
         private set
-    fun load(context: android.content.Context) {
+    fun load(context: android.content.Context): String {
         mode = context.getSharedPreferences("zoen", android.content.Context.MODE_PRIVATE).getString(KEY, "auto") ?: "auto"
+        return mode
     }
     fun set(context: android.content.Context, value: String) {
         mode = value
