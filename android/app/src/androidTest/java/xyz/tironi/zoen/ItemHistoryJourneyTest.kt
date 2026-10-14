@@ -47,9 +47,12 @@ class ItemHistoryJourneyTest {
     }
     private fun signedEdits(count: Int) {
         val line = page().blocks.first { it.content is PlanPageContentDto.Line }.content as PlanPageContentDto.Line
-        repeat(count) { index -> runBlocking { app.repository.change {
-            it.editPlanLine(item.id, line.legacyId, "History checkpoint ${index + 1} café 😀", (index + 1).toLong())
-        } } }
+        repeat(count) { index ->
+            val observed = page().contentHash
+            runBlocking { app.repository.change {
+                it.editPlanLine(item.id, line.legacyId, "History checkpoint ${index + 1} café 😀", (index + 1).toLong(), observed)
+            } }
+        }
     }
     private fun shell(command: String) {
         ParcelFileDescriptor.AutoCloseInputStream(
