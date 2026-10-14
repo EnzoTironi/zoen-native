@@ -151,6 +151,14 @@ async fn agent_links_are_stable_redeemable_revocable_and_the_page_is_hardened() 
         .await
         .is_err());
     assert_eq!(get(&w, &format!("/a/{}", a.code), &[]).status, 404);
+    // The app says the link died, instead of failing silently or as "not found".
+    for dead in [a.code.clone(), "ABCDEFGHJK".into()] {
+        let err = w.try_zoen("cliente", &["agent", &dead]).unwrap_err();
+        assert!(
+            err.contains("no longer valid") || err.contains("não vale mais"),
+            "{dead}: {err}"
+        );
+    }
     let b = create(&mut owner, &barbeiro, 50, 3600)
         .await
         .expect("new link");
@@ -175,7 +183,12 @@ async fn agent_links_are_stable_redeemable_revocable_and_the_page_is_hardened() 
     assert!(!page.body.contains("alert(1)"), "{}", page.body);
     assert!(page.body.contains(">A</div>"), "no glyph: the initial");
     redeem(&mut stranger, &c.code).await.expect("first use");
-    let err = redeem(&mut stranger, &c.code).await.unwrap_err();
+    // The same person again counts once: still fine, and the only use isn't spent twice.
+    redeem(&mut stranger, &c.code)
+        .await
+        .expect("same person, same code: no second use");
+    let mut outro = RawClient::connect(&w.relay_url(), "outro").await;
+    let err = redeem(&mut outro, &c.code).await.unwrap_err();
     assert!(err.contains("expired or already used"), "{err}");
     assert_eq!(get(&w, &format!("/a/{}", c.code), &[]).status, 404);
     let d = create(&mut owner, &agenda, 1, 3600)
@@ -185,17 +198,31 @@ async fn agent_links_are_stable_redeemable_revocable_and_the_page_is_hardened() 
 
     // An expired link: no preview, no page, no redeem.
     revoke(&mut owner, &agenda).await.expect("revoke");
+    let before = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_millis() as i64;
     let e = create(&mut owner, &agenda, 10, 1)
         .await
         .expect("short link");
-    tokio::time::sleep(std::time::Duration::from_millis(2200)).await;
+    assert!(
+        e.expires_at_ms - before >= 59_000,
+        "agent links live at least 60 s"
+    );
+    redeem(&mut stranger, &e.code)
+        .await
+        .expect("live before expiry");
+    w.expire_agent_invite(&e.code);
     assert!(owner
         .request(Op::PreviewInvite {
             code: e.code.clone()
         })
         .await
         .is_err());
-    assert!(redeem(&mut stranger, &e.code).await.is_err());
+    assert!(
+        redeem(&mut stranger, &e.code).await.is_err(),
+        "an earlier redeemer can't reopen an expired link either"
+    );
     assert_eq!(get(&w, &format!("/a/{}", e.code), &[]).status, 404);
 
     // Install: no store listing yet, so Android gets the same "em breve" page, not a 404.
