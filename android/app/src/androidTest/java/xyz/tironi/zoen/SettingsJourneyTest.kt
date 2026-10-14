@@ -13,6 +13,7 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
+import org.junit.After
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -28,13 +29,17 @@ class SettingsJourneyTest {
     /** A real local account (no demo data); `account = false` signs out first. */
     private fun open(account: Boolean = true): SnapshotStateList<NavKey> {
         val app = ApplicationProvider.getApplicationContext<ZoenApplication>()
-        app.repository.preferences.edit().putBoolean("demo", false).putBoolean("onboarded", true).commit()
         runBlocking {
-            app.repository.boot(false)
-            if (app.repository.state.value.account != null) app.repository.signOut()
-            app.repository.boot(false)
+            // Close whatever engine is open (often the demo one) and reopen the real database,
+            // so signing out never erases the demo identity other journeys rely on.
+            app.repository.leaveDemo()
+            if (app.repository.state.value.account != null) {
+                app.repository.signOut()
+                app.repository.leaveDemo()
+            }
             if (account) app.repository.createAccount("Teste Ajustes", "teste_ajustes", "http://10.0.2.2:18787")
         }
+        app.repository.preferences.edit().putBoolean("onboarded", true).commit()
         val model = ViewModelProvider(compose.activity)[ZoenViewModel::class.java]
         val stack = mutableStateListOf<NavKey>(Home, SettingsRoute())
         compose.setContent {
@@ -49,6 +54,11 @@ class SettingsJourneyTest {
             }
         }
         return stack
+    }
+
+    /** Hand the next journey back the demo world it expects. */
+    @After fun restoreDemo() = runBlocking {
+        ApplicationProvider.getApplicationContext<ZoenApplication>().repository.useDemo()
     }
 
     @Test fun pickDarkThemeBackPopsOneScreenAndCloseLeavesAjustes() {
