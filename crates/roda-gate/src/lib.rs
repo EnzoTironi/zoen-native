@@ -15,7 +15,7 @@
 //!    that the engine appends to the Space's signed event log.
 //!
 //! Providers: [`SystemOneHttp`] (Jev in production, Laya or Kev locally: same wire format,
-//! only base URL and key change), [`OpenAIDecisions`] (`/v1/decisions`, `gpt-6-luna`),
+//! only base URL and key change), [`Clef`] (Cloudflare Workers AI, the same questions), [`OpenAIDecisions`] (`/v1/decisions`, `gpt-6-luna`),
 //! [`OnDevice`] (Apple Foundation Models through an FFI callback) and [`Mock`]
 //! (deterministic, for tests and as the offline floor).
 
@@ -24,7 +24,9 @@ mod providers;
 pub mod redact;
 
 pub use mock::Mock;
-pub use providers::{HttpTransport, OnDevice, OnDeviceJudge, OpenAIDecisions, SystemOneHttp};
+pub use providers::{
+    Clef, ClefModel, HttpTransport, OnDevice, OnDeviceJudge, OpenAIDecisions, SystemOneHttp,
+};
 
 use roda_grants::consent::{self, Verdict};
 use serde::{Deserialize, Serialize};
