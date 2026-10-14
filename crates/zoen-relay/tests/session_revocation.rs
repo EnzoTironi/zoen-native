@@ -107,6 +107,15 @@ impl LogStore for BlockedLog {
     ) -> Result<InviteCreated, String> {
         Err("not used".into())
     }
+    async fn create_agent_invite(
+        &self,
+        _: &str,
+        _: &str,
+        _: u32,
+        _: u64,
+    ) -> Result<InviteCreated, String> {
+        Err("not used".into())
+    }
     async fn preview_invite(&self, _: &str) -> Result<InviteInfo, String> {
         Err("not used".into())
     }
@@ -231,6 +240,7 @@ impl TestRelay {
             backup_vault: None,
             backup_settings: Default::default(),
             apple_app_ids: Vec::new(),
+            android_packages: Vec::new(),
         });
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
         let address = listener.local_addr().unwrap();

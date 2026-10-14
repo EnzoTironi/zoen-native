@@ -35,13 +35,29 @@ import xyz.tironi.zoen.data.AppState
 
 @Composable
 fun AgentsScreen(state: AppState, navigate: (NavKey) -> Unit, back: () -> Unit) {
+    val context = LocalContext.current
     Scaffold(topBar = { ScreenBar(stringResource(R.string.agents), back) }) { padding ->
         LazyColumn(Modifier.padding(padding), contentPadding = PaddingValues(24.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             if (state.agents.isEmpty()) item { EmptyState(stringResource(R.string.no_agents), stringResource(R.string.no_agents_detail)) }
             items(state.agents, key = { it.persona.id }) { agent ->
+                val link = "https://tryzoen.com/a/${agent.persona.handle}"
                 Card(onClick = { navigate(Agent(agent.persona.id)) }, colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow)) {
                     Column(Modifier.fillMaxWidth().padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) { Avatar(agent.persona, size = 54); Column { Text(agent.persona.name, style = MaterialTheme.typography.titleLarge); Text(agent.persona.bio, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) } }
+                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                            Avatar(agent.persona, size = 54)
+                            Column(Modifier.weight(1f)) {
+                                Text(agent.persona.name, style = MaterialTheme.typography.titleLarge)
+                                Text(agent.persona.bio, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                if (agent.persona.isMine) {
+                                    Text(link, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
+                                }
+                            }
+                            if (agent.persona.isMine) {
+                                IconButton(onClick = {
+                                    context.startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND).setType("text/plain").putExtra(Intent.EXTRA_TEXT, link), null))
+                                }) { Icon(Icons.Rounded.Share, contentDescription = stringResource(R.string.share)) }
+                            }
+                        }
                         if (agent.budgetLimitCents != null) {
                             val ratio = (agent.budgetSpentCents ?: 0).toFloat() / agent.budgetLimitCents!!.coerceAtLeast(1)
                             LinearProgressIndicator(progress = { ratio.coerceIn(0f, 1f) }, modifier = Modifier.fillMaxWidth())

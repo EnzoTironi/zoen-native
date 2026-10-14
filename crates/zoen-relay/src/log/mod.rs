@@ -64,6 +64,8 @@ pub struct InviteInfo {
     pub inviter: String,
     pub title: String,
     pub members: u32,
+    /// Agent identity id when this invite opens a chat with an agent.
+    pub agent: Option<String>,
 }
 
 #[derive(Debug)]
@@ -106,6 +108,14 @@ pub trait LogStore: Send + Sync {
         who: &str,
         space: &str,
         role: Role,
+        max_uses: u32,
+        ttl_secs: u64,
+    ) -> Result<InviteCreated, String>;
+    /// Shareable agent link: opens a direct chat with the agent (first-class citizen).
+    async fn create_agent_invite(
+        &self,
+        who: &str,
+        agent: &str,
         max_uses: u32,
         ttl_secs: u64,
     ) -> Result<InviteCreated, String>;

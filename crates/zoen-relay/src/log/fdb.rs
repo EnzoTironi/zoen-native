@@ -16,6 +16,7 @@
 //! ("s", space, "pruned")               -> first seq not pruned
 //! ("i", identity, space)               -> ""            membership by identity
 //! ("inv", code_hash)                   -> (space, role, created_by, expires_ms, max_uses, uses)
+//! ("ainv", code_hash)                  -> (agent, created_by, expires_ms, max_uses, uses)
 //! ```
 //!
 //! Appends to one Space go through its in-memory queue ([`super::sequencer`], ADR 0023).
@@ -207,6 +208,8 @@ fn store_err(e: FdbBindingError) -> StoreError {
 }
 
 type Invite = (String, String, String, i64, i64, i64);
+/// Agent share link: (agent_id, created_by, expires_ms, max_uses, uses).
+type AgentInvite = (String, String, i64, i64, i64);
 
 impl FdbLog {
     /// `cluster_file` = `None` uses the default (`FDB_CLUSTER_FILE` or the system file).
@@ -1195,36 +1198,108 @@ impl LogStore for FdbLog {
         .unwrap_or_else(|_| Err("relay routing deadline exceeded".into()))
     }
 
-    async fn preview_invite(&self, code: &str) -> Result<InviteInfo, String> {
-        let key = self.cell.root.pack(&("inv", code_hash(code)));
-        self.cell
+    async fn create_agent_invite(
+        &self,
+        who: &str,
+        agent: &str,
+        max_uses: u32,
+        ttl_secs: u64,
+    ) -> Result<InviteCreated, String> {
+        if agent.is_empty() || who.is_empty() {
+            return Err("agent invite needs an agent and an owner".into());
+        }
+        let expires = now_ms() + ttl_secs.clamp(60, 365 * 24 * 3600) as i64 * 1000;
+        let max = max_uses.clamp(1, 10_000) as i64;
+        let code = random_code();
+        let key = self.cell.root.pack(&("ainv", code_hash(&code)));
+        let who = who.to_string();
+        let agent = agent.to_string();
+        let r = self
+            .cell
             .db
             .run(|trx, _| {
                 let key = key.clone();
+                let who = who.clone();
+                let agent = agent.clone();
+                let code = code.clone();
                 async move {
-                    let Some(v) = trx.get(&key, false).await? else {
+                    if !roda_proto::valid_invite_code(&code) {
+                        return Ok(Err("invalid invite code"));
+                    }
+                    if let Some(existing) = trx.get(&key, false).await? {
+                        let inv: AgentInvite =
+                            unpack(&existing).map_err(|e| custom(e.to_string()))?;
+                        if inv.0 != agent || inv.1 != who || inv.3 != max {
+                            return Ok(Err("invite code collision"));
+                        }
+                    } else {
+                        trx.set(&key, &pack(&(agent, who, expires, max, 0i64)));
+                    }
+                    let stored = trx
+                        .get(&key, true)
+                        .await?
+                        .ok_or_else(|| custom("invite missing after mint"))?;
+                    let inv: AgentInvite = unpack(&stored).map_err(|e| custom(e.to_string()))?;
+                    Ok(Ok(inv.2))
+                }
+            })
+            .await
+            .map_err(|e| e.to_string())?;
+        let expires = r.map_err(str::to_string)?;
+        Ok(InviteCreated {
+            code,
+            expires_at_ms: expires,
+        })
+    }
+
+    async fn preview_invite(&self, code: &str) -> Result<InviteInfo, String> {
+        let space_key = self.cell.root.pack(&("inv", code_hash(code)));
+        let agent_key = self.cell.root.pack(&("ainv", code_hash(code)));
+        self.cell
+            .db
+            .run(|trx, _| {
+                let space_key = space_key.clone();
+                let agent_key = agent_key.clone();
+                async move {
+                    if let Some(v) = trx.get(&space_key, false).await? {
+                        let inv: Invite = unpack(&v).map_err(|e| custom(e.to_string()))?;
+                        if inv.3 <= now_ms() || inv.5 >= inv.4 {
+                            return Ok(Err("invite expired or already used"));
+                        }
+                        let title = match self
+                            .cell
+                            .entry(&trx, &inv.0, 0, false)
+                            .await?
+                            .and_then(|e| e.env.body())
+                        {
+                            Some(EventBody::SpaceCreated { title, .. }) => title,
+                            _ => String::new(),
+                        };
+                        let members =
+                            self.cell.members_in(&trx, &inv.0, false).await?.len() as u32;
+                        return Ok(Ok(InviteInfo {
+                            role: parse(&inv.1).unwrap_or(Role::Member),
+                            space: inv.0,
+                            inviter: inv.2,
+                            title,
+                            members,
+                            agent: None,
+                        }));
+                    }
+                    let Some(v) = trx.get(&agent_key, false).await? else {
                         return Ok(Err("invite expired or already used"));
                     };
-                    let inv: Invite = unpack(&v).map_err(|e| custom(e.to_string()))?;
-                    if inv.3 <= now_ms() || inv.5 >= inv.4 {
+                    let inv: AgentInvite = unpack(&v).map_err(|e| custom(e.to_string()))?;
+                    if inv.2 <= now_ms() || inv.4 >= inv.3 {
                         return Ok(Err("invite expired or already used"));
                     }
-                    let title = match self
-                        .cell
-                        .entry(&trx, &inv.0, 0, false)
-                        .await?
-                        .and_then(|e| e.env.body())
-                    {
-                        Some(EventBody::SpaceCreated { title, .. }) => title,
-                        _ => String::new(),
-                    };
-                    let members = self.cell.members_in(&trx, &inv.0, false).await?.len() as u32;
                     Ok(Ok(InviteInfo {
-                        role: parse(&inv.1).unwrap_or(Role::Member),
-                        space: inv.0,
-                        inviter: inv.2,
-                        title,
-                        members,
+                        role: Role::Member,
+                        space: String::new(),
+                        inviter: inv.1,
+                        title: String::new(),
+                        members: 0,
+                        agent: Some(inv.0),
                     }))
                 }
             })

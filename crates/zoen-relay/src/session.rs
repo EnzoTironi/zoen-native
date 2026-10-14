@@ -921,15 +921,31 @@ impl Session {
             }
             Op::CreateInvite {
                 space,
+                agent,
                 role,
                 max_uses,
                 ttl_secs,
             } => {
-                let invite = self
-                    .st
-                    .log
-                    .create_invite(&self.identity, &space, role, max_uses, ttl_secs)
-                    .await?;
+                let invite = if let Some(agent) = agent {
+                    let profiles = db::profiles(pool, &[agent.clone()])
+                        .await
+                        .map_err(|e| e.to_string())?;
+                    let profile = profiles.first().ok_or("unknown agent")?;
+                    if profile.kind != IdentityKind::Agent
+                        || profile.owner.as_deref() != Some(self.identity.as_str())
+                    {
+                        return Err("only the owner shares an agent".into());
+                    }
+                    self.st
+                        .log
+                        .create_agent_invite(&self.identity, &agent, max_uses, ttl_secs)
+                        .await?
+                } else {
+                    self.st
+                        .log
+                        .create_invite(&self.identity, &space, role, max_uses, ttl_secs)
+                        .await?
+                };
                 self.st.analytics.count("invites_created", 1);
                 Ok(Reply::Invite(invite))
             }
@@ -1067,17 +1083,39 @@ impl Session {
                     .check(&self.identity)
                     .map_err(limits::slow_down)?;
                 let i = self.st.log.preview_invite(&code).await?;
-                let inviter = db::profiles(pool, &[i.inviter])
+                let mut ids = vec![i.inviter.clone()];
+                if let Some(a) = &i.agent {
+                    ids.push(a.clone());
+                }
+                let found = db::profiles(pool, &ids)
                     .await
-                    .map_err(|e| e.to_string())?
-                    .into_iter()
-                    .next();
+                    .map_err(|e| e.to_string())?;
+                let inviter = found
+                    .iter()
+                    .find(|p| p.id == i.inviter)
+                    .cloned();
+                let agent = i
+                    .agent
+                    .as_ref()
+                    .and_then(|id| found.iter().find(|p| p.id == *id).cloned());
+                let kind = if i.agent.is_some() {
+                    "agent".into()
+                } else {
+                    "space".into()
+                };
+                let title = if let Some(a) = &agent {
+                    a.name.clone()
+                } else {
+                    i.title
+                };
                 Ok(Reply::Preview(roda_proto::InvitePreview {
                     space: i.space,
                     role: i.role,
-                    title: i.title,
+                    title,
                     members: i.members,
                     inviter,
+                    kind,
+                    agent,
                 }))
             }
         }

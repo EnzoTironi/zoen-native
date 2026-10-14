@@ -92,7 +92,7 @@ impl ConnectionDto {
 #[derive(Debug, Clone, PartialEq, uniffi::Record)]
 pub struct InviteDto {
     pub code: String,
-    /// `zoen://join/CODE` (universal link once the domain and AASA exist).
+    /// Space: `zoen://join/CODE`. Agent: `https://tryzoen.com/a/CODE`.
     pub link: String,
     pub expires_at_ms: i64,
 }
@@ -103,6 +103,10 @@ pub struct InvitePreviewDto {
     pub title: String,
     pub members: u32,
     pub inviter: Option<Persona>,
+    /// `space` or `agent`.
+    pub kind: String,
+    /// Agent persona when `kind` is `agent`.
+    pub agent: Option<Persona>,
 }
 
 fn invalid(reason: impl Into<String>) -> CoreError {
@@ -554,6 +558,7 @@ impl RodaEngine {
         let Reply::Invite(c) = self
             .request(Op::CreateInvite {
                 space: space_id,
+                agent: None,
                 role: Role::Member,
                 max_uses: 50,
                 ttl_secs: 7 * 24 * 3600,
@@ -569,29 +574,67 @@ impl RodaEngine {
         })
     }
 
+    /// Shareable link for an agent (first-class citizen). Opens a chat with the agent.
+    pub async fn create_agent_invite(&self, agent_id: String) -> Result<InviteDto, CoreError> {
+        let Reply::Invite(c) = self
+            .request(Op::CreateInvite {
+                space: String::new(),
+                agent: Some(agent_id),
+                role: Role::Member,
+                max_uses: 10_000,
+                ttl_secs: 365 * 24 * 3600,
+            })
+            .await?
+        else {
+            return Err(unexpected());
+        };
+        Ok(InviteDto {
+            link: format!("https://tryzoen.com/a/{}", c.code),
+            code: c.code,
+            expires_at_ms: c.expires_at_ms,
+        })
+    }
+
     pub async fn preview_invite(&self, code: String) -> Result<InvitePreviewDto, CoreError> {
         let p = self.preview(normalize_code(&code)).await?;
         let mut e = self.lock();
-        let inviter = match p.inviter {
-            Some(i) => {
-                let id = i.id.clone();
-                e.put_profiles(vec![i])?;
-                Some(e.persona(&id))
-            }
-            None => None,
-        };
+        let mut profiles = Vec::new();
+        if let Some(i) = p.inviter.clone() {
+            profiles.push(i);
+        }
+        if let Some(a) = p.agent.clone() {
+            profiles.push(a);
+        }
+        if !profiles.is_empty() {
+            e.put_profiles(profiles)?;
+        }
+        let inviter = p.inviter.as_ref().map(|i| e.persona(&i.id));
+        let agent = p.agent.as_ref().map(|a| e.persona(&a.id));
         Ok(InvitePreviewDto {
             space_id: p.space,
             title: p.title,
             members: p.members,
             inviter,
+            kind: p.kind,
+            agent,
         })
     }
 
-    /// Joins with a code or link. Returns the Space id; its history arrives with sync.
+    /// Joins with a code or link. Returns the Space id (or the direct chat with an agent).
     pub async fn join_invite(&self, code: String) -> Result<String, CoreError> {
         let code = normalize_code(&code);
         let p = self.preview(code.clone()).await?;
+        if p.kind == "agent" {
+            let agent = p.agent.ok_or_else(|| {
+                invalid(t(
+                    "Esse link de agente não vale mais.",
+                    "That agent link is no longer valid.",
+                ))
+            })?;
+            let mut e = self.lock();
+            e.put_profiles(std::iter::once(agent.clone()).chain(p.inviter).collect())?;
+            return e.start_direct(&agent.id);
+        }
         self.lock().queue_join(&p.space, p.role, &code)?;
         Ok(p.space)
     }

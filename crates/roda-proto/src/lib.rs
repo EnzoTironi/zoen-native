@@ -436,6 +436,8 @@ pub enum Op {
     },
     CreateInvite {
         space: SpaceId,
+        /// When set, this invite opens a chat with the agent instead of joining a Space.
+        agent: Option<IdentityId>,
         role: Role,
         max_uses: u32,
         ttl_secs: u64,
@@ -588,6 +590,10 @@ pub struct InvitePreview {
     pub title: String,
     pub members: u32,
     pub inviter: Option<Identity>,
+    /// `space` or `agent`.
+    pub kind: String,
+    /// Present when `kind` is `agent`.
+    pub agent: Option<Identity>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]

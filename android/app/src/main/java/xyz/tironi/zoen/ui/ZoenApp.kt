@@ -91,12 +91,18 @@ fun ZoenApp(model: ZoenViewModel, deepLink: String?, consumed: () -> Unit) {
         LaunchedEffect(deepLink, state.me) {
             val uri = deepLink?.let(Uri::parse) ?: return@LaunchedEffect
             model.repository.query { it.growthCaptureLink(uri.toString()) }
+            fun openAgent(target: String) = model.launch {
+                val chat = if (target.length == 10 && target.all { it.isLetterOrDigit() }) model.repository.network { it.joinInvite(target) }
+                else model.repository.network { core -> core.findPeople(target).firstOrNull { it.handle.equals(target, true) } }?.let { a -> model.repository.change { core -> core.startDirect(a.id) } }
+                chat?.let { navigate(Chat(it)) }
+            }
             if (uri.scheme == "zoen") when (uri.host) {
                 "app", "item" -> uri.lastPathSegment?.let { navigate(Item(it)) }
                 "chat" -> uri.lastPathSegment?.let { navigate(Chat(it)) }
                 "join" -> navigate(Join(uri.lastPathSegment.orEmpty()))
                 "request" -> uri.lastPathSegment?.let { navigate(Request(it)) }
                 "widgets" -> navigate(Widgets)
+                "agent" -> uri.lastPathSegment?.let { openAgent(it) }
                 "friend" -> uri.lastPathSegment?.let { handle ->
                     model.launch {
                         val friend = model.repository.network { core -> core.findPeople(handle).firstOrNull { it.handle.equals(handle, true) } }
@@ -106,6 +112,7 @@ fun ZoenApp(model: ZoenViewModel, deepLink: String?, consumed: () -> Unit) {
             }
             if (uri.scheme == "https" && (uri.host == "tryzoen.com" || uri.host == "zoen.app" || uri.host?.endsWith(".tryzoen.com") == true)) {
                 if (uri.pathSegments.firstOrNull() == "j") navigate(Join(uri.lastPathSegment.orEmpty()))
+                else if (uri.pathSegments.firstOrNull() == "a") uri.lastPathSegment?.let { openAgent(it) }
                 else uri.pathSegments.firstOrNull()?.takeIf { it.startsWith("@") }?.removePrefix("@")?.let { handle ->
                     model.launch {
                         val friend = model.repository.network { core -> core.findPeople(handle).firstOrNull { it.handle.equals(handle, true) } }

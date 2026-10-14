@@ -328,6 +328,9 @@ pub struct PbCreateInvite {
     pub max_uses: u32,
     #[prost(uint64, tag = "4")]
     pub ttl_secs: u64,
+    /// Agent identity id; empty means a Space invite.
+    #[prost(string, optional, tag = "5")]
+    pub agent: Option<String>,
 }
 
 #[derive(Clone, PartialEq, Message)]
@@ -526,6 +529,11 @@ pub struct PbInvitePreview {
     pub members: u32,
     #[prost(message, optional, tag = "5")]
     pub inviter: Option<PbProfile>,
+    /// `space` or `agent`; empty on the wire means space (legacy).
+    #[prost(string, tag = "6")]
+    pub kind: String,
+    #[prost(message, optional, tag = "7")]
+    pub agent: Option<PbProfile>,
 }
 
 #[derive(Clone, PartialEq, Message)]
@@ -795,6 +803,7 @@ impl ClientFrame {
                     Op::Profiles { ids } => pb_req::Op::Profiles(PbIds { ids: ids.clone() }),
                     Op::CreateInvite {
                         space,
+                        agent,
                         role,
                         max_uses,
                         ttl_secs,
@@ -803,6 +812,7 @@ impl ClientFrame {
                         role: role_to(*role),
                         max_uses: *max_uses,
                         ttl_secs: *ttl_secs,
+                        agent: agent.clone(),
                     }),
                     Op::PreviewInvite { code } => pb_req::Op::PreviewInvite(code.clone()),
                     Op::PublishAgreementKey { public, signed } => {
@@ -892,6 +902,7 @@ impl ClientFrame {
                     pb_req::Op::Profiles(p) => Op::Profiles { ids: p.ids },
                     pb_req::Op::CreateInvite(c) => Op::CreateInvite {
                         space: c.space,
+                        agent: c.agent.filter(|a| !a.is_empty()),
                         role: role_from(c.role)?,
                         max_uses: c.max_uses,
                         ttl_secs: c.ttl_secs,
@@ -1001,6 +1012,8 @@ impl ServerFrame {
                         title: p.title.clone(),
                         members: p.members,
                         inviter: p.inviter.as_ref().map(profile_to),
+                        kind: p.kind.clone(),
+                        agent: p.agent.as_ref().map(profile_to),
                     }),
                     Ok(Reply::Done) => pb_res::R::Done(PbEmpty {}),
                     Ok(Reply::AgreementKeys(ks)) => pb_res::R::AgreementKeys(PbAgreementKeys {
@@ -1140,6 +1153,12 @@ impl ServerFrame {
                         title: p.title,
                         members: p.members,
                         inviter: p.inviter.map(profile_from).transpose()?,
+                        kind: if p.kind.is_empty() {
+                            "space".into()
+                        } else {
+                            p.kind
+                        },
+                        agent: p.agent.map(profile_from).transpose()?,
                     })),
                     pb_res::R::Done(_) => Ok(Reply::Done),
                     pb_res::R::AgreementKeys(ks) => Ok(Reply::AgreementKeys(
@@ -1345,6 +1364,8 @@ mod tests {
                     title: "t".into(),
                     members: 3,
                     inviter: Some(profile),
+                    kind: "space".into(),
+                    agent: None,
                 })),
             },
             ServerFrame::Res {
@@ -1453,6 +1474,7 @@ mod tests {
                 id: 2,
                 op: Op::CreateInvite {
                     space: "sp".into(),
+                    agent: None,
                     role: Role::Admin,
                     max_uses: 5,
                     ttl_secs: 60,

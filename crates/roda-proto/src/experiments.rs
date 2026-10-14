@@ -84,7 +84,7 @@ pub struct Onboarding {
 pub struct Flow {
     /// Screen ids the app knows; unknown ones are skipped by the app.
     pub steps: Vec<String>,
-    /// `home`, `chat_with_inviter` or `space`.
+    /// `home`, `chat_with_inviter`, `space` or `agent`.
     pub landing: String,
     #[serde(default)]
     pub copy: BTreeMap<String, String>,
@@ -114,6 +114,8 @@ pub enum SourceKind {
     Friend,
     /// A Space invite: `zoen://join/<code>`, `https://tryzoen.com/j/<code>`.
     Space,
+    /// An agent link: `zoen://agent/<handle|code>`, `https://tryzoen.com/a/<handle|code>`.
+    Agent,
     /// An ad or creator campaign with no friend or Space behind it.
     Campaign,
     /// Nothing: App Store search, word of mouth.
@@ -125,6 +127,7 @@ impl SourceKind {
         match self {
             SourceKind::Friend => "friend",
             SourceKind::Space => "space",
+            SourceKind::Agent => "agent",
             SourceKind::Campaign => "campaign",
             SourceKind::Organic => "organic",
         }
@@ -134,6 +137,7 @@ impl SourceKind {
         Some(match s {
             "friend" => SourceKind::Friend,
             "space" => SourceKind::Space,
+            "agent" => SourceKind::Agent,
             "campaign" => SourceKind::Campaign,
             "organic" => SourceKind::Organic,
             _ => return None,
@@ -149,7 +153,7 @@ pub struct Attribution {
     pub kind: SourceKind,
     #[serde(default)]
     pub campaign: Option<String>,
-    /// Local only: the friend's handle or the Space invite code.
+    /// Local only: the friend's handle, Space invite code, or agent handle/code.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub target: Option<String>,
 }
@@ -217,6 +221,7 @@ pub fn attribution_from_link(link: &str) -> Option<Attribution> {
         ["friend" | "u", h, ..] => (SourceKind::Friend, clean_target(h)),
         [h, ..] if h.starts_with('@') => (SourceKind::Friend, clean_target(h)),
         ["join" | "j", code, ..] => (SourceKind::Space, clean_target(code)),
+        ["agent" | "a", h, ..] => (SourceKind::Agent, clean_target(h)),
         _ if campaign.is_some() => (SourceKind::Campaign, None),
         _ => (SourceKind::Organic, None),
     };
@@ -421,6 +426,9 @@ impl RemoteConfig {
             "space" if source.kind == SourceKind::Space && source.target.is_some() => {
                 flow.landing.clone()
             }
+            "agent" if source.kind == SourceKind::Agent && source.target.is_some() => {
+                flow.landing.clone()
+            }
             _ => "home".into(),
         };
         OnboardingPlan {
@@ -439,7 +447,7 @@ impl RemoteConfig {
 }
 
 fn landing_needs_target(l: &str) -> bool {
-    matches!(l, "chat_with_inviter" | "space")
+    matches!(l, "chat_with_inviter" | "space" | "agent")
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
@@ -516,6 +524,11 @@ mod tests {
         assert_eq!(
             (s.kind, s.target.as_deref()),
             (SourceKind::Space, Some("AB12CD34EF"))
+        );
+        let a = attribution_from_link("https://tryzoen.com/a/barbeiro").unwrap();
+        assert_eq!(
+            (a.kind, a.target.as_deref()),
+            (SourceKind::Agent, Some("barbeiro"))
         );
         let c = attribution_from_link("https://tryzoen.com/?utm_campaign=Ads-X").unwrap();
         assert_eq!(

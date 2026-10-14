@@ -7,6 +7,8 @@
 //!   ZOEN_BLOB_DIR       ./blobs
 //!   ZOEN_METRICS_BIND   serve /metrics only on this private address (default: the public one)
 //!   ZOEN_APPLE_APP_IDS  comma-separated TEAMID.bundle IDs for apple-app-site-association
+//!   ZOEN_ANDROID_PACKAGE  package name for assetlinks.json (default xyz.tironi.zoen when fingerprints set)
+//!   ZOEN_ANDROID_FINGERPRINTS  comma-separated SHA-256 cert fingerprints for Digital Asset Links
 //!   LOG_FORMAT=json     structured logs (default: pretty)
 //!   RUST_LOG            tracing filter (default: info)
 //!   OTEL_EXPORTER_OTLP_ENDPOINT  export traces and logs over OTLP/HTTP (unset = stdout only);
@@ -149,6 +151,26 @@ async fn relay() -> anyhow::Result<()> {
                     .collect()
             })
             .unwrap_or_default(),
+        android_packages: {
+            let fingerprints: Vec<String> = std::env::var("ZOEN_ANDROID_FINGERPRINTS")
+                .map(|v| {
+                    v.split(',')
+                        .map(|s| s.trim().to_owned())
+                        .filter(|s| !s.is_empty())
+                        .collect()
+                })
+                .unwrap_or_default();
+            if fingerprints.is_empty() {
+                Vec::new()
+            } else {
+                let package_name = std::env::var("ZOEN_ANDROID_PACKAGE")
+                    .unwrap_or_else(|_| "xyz.tironi.zoen".into());
+                vec![zoen_relay::AndroidPackage {
+                    package_name,
+                    fingerprints,
+                }]
+            }
+        },
     })
     .await
 }
