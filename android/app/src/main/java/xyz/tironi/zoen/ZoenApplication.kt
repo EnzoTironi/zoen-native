@@ -26,6 +26,7 @@ class ZoenApplication : Application() {
             NotificationChannel("activity", getString(R.string.activity), NotificationManager.IMPORTANCE_DEFAULT)
         )
         val notifications = ActivityNotifications(this)
+        xyz.tironi.zoen.background.Push.start(this, repository)
         ContextCompat.registerReceiver(this, object : BroadcastReceiver() {
             override fun onReceive(context: Context, intent: Intent) {
                 xyz.tironi.zoen.widgets.ZoenWidgetProvider.updateAll(this@ZoenApplication, forceLocked =

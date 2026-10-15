@@ -490,7 +490,9 @@ struct SpaceView: View {
         switch pick {
         case .members, .agents, .settings: model.go(.participants(spaceId))
         case .files, .pages: model.go(.folder(spaceId))
-        case .mute: model.show(.init(kind: .info, text: String(localized: "Muted on this device.")))
+        case .mute:
+            let muted = MutedChats.toggle(spaceId)
+            model.show(.init(kind: .info, text: muted ? String(localized: "Muted on this device.") : String(localized: "Notifications on.")))
         }
     }
 

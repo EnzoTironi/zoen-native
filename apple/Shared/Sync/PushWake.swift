@@ -1,14 +1,21 @@
 import Foundation
 import CoreFoundation
 
-/// roda-proto::push v1 carries only an untrusted hint to resume authenticated sync.
+/// A content-free wake from the relay (ADR 0047). The payload never carries message
+/// content: the app syncs, decrypts on the device and decides whether to notify.
 struct PushWake: Equatable, Sendable {
+    /// Optional untrusted sync hint. Empty means "catch up on everything".
     let spaceId: String
     let eventSequence: UInt64
+
+    static let catchUp = PushWake(spaceId: "", eventSequence: 0)
+
     private init(spaceId: String, eventSequence: UInt64) {
         self.spaceId = spaceId
         self.eventSequence = eventSequence
     }
+
+    var isCatchUp: Bool { spaceId.isEmpty }
 
     static func decode(_ payload: Data) -> PushWake? {
         guard payload.count <= 4096,
@@ -18,6 +25,12 @@ struct PushWake: Equatable, Sendable {
     }
 
     static func decode(_ fields: [AnyHashable: Any]) -> PushWake? {
+        // What the relay sends: exactly {"aps":{"content-available":1}}.
+        if fields.count == 1, let aps = fields["aps"] as? [String: Any],
+           aps.count == 1, oneInteger(aps["content-available"]) {
+            return .catchUp
+        }
+        // Optional hint (never content): aps + zoen.{v,space_id,event_seq}
         guard fields.count == 2,
               let aps = fields["aps"] as? [String: Any], aps.count == 1,
               oneInteger(aps["content-available"]),
@@ -53,6 +66,14 @@ enum PushEnvironment: String, Equatable, Sendable {
         case "development": self = .sandbox
         case "production": self = .production
         default: return nil
+        }
+    }
+
+    /// Wire platform string the relay expects.
+    var platform: String {
+        switch self {
+        case .sandbox: "apns-sandbox"
+        case .production: "apns"
         }
     }
 }

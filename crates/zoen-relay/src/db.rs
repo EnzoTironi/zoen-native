@@ -694,3 +694,60 @@ pub async fn revoke_device(
         .await?;
     Ok(r.rows_affected() == 1)
 }
+
+/// Sets (or, with an empty token, clears) this device's push token. A token moves with
+/// its device: any other row holding it is dropped.
+pub async fn set_push_token(
+    pool: &PgPool,
+    identity: &str,
+    device: &str,
+    platform: &str,
+    token: &str,
+) -> Result<(), sqlx::Error> {
+    let mut tx = pool.begin().await?;
+    sqlx::query("DELETE FROM push_tokens WHERE (identity = $1 AND device = $2) OR (token = $3 AND $3 <> '')")
+        .bind(identity)
+        .bind(device)
+        .bind(token)
+        .execute(&mut *tx)
+        .await?;
+    if !token.is_empty() {
+        sqlx::query(
+            "INSERT INTO push_tokens (identity, device, platform, token) VALUES ($1, $2, $3, $4)",
+        )
+        .bind(identity)
+        .bind(device)
+        .bind(platform)
+        .bind(token)
+        .execute(&mut *tx)
+        .await?;
+    }
+    tx.commit().await
+}
+
+/// Push tokens of the still-linked devices of `ids`.
+pub async fn push_targets(
+    pool: &PgPool,
+    ids: &[String],
+) -> Result<Vec<crate::push::Target>, sqlx::Error> {
+    let rows: Vec<(String, String)> = sqlx::query_as(
+        "SELECT p.platform, p.token FROM push_tokens p
+         JOIN devices d ON d.identity = p.identity AND d.device = p.device AND d.revoked_at IS NULL
+         WHERE p.identity = ANY($1)",
+    )
+    .bind(ids)
+    .fetch_all(pool)
+    .await?;
+    Ok(rows
+        .into_iter()
+        .map(|(platform, token)| crate::push::Target { platform, token })
+        .collect())
+}
+
+pub async fn drop_push_token(pool: &PgPool, token: &str) -> Result<(), sqlx::Error> {
+    sqlx::query("DELETE FROM push_tokens WHERE token = $1")
+        .bind(token)
+        .execute(pool)
+        .await
+        .map(|_| ())
+}

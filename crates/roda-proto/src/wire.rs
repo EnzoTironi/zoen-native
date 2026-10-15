@@ -59,6 +59,14 @@ pub mod pb_client_frame {
 pub struct PbEmpty {}
 
 #[derive(Clone, PartialEq, Message)]
+pub struct PbPushToken {
+    #[prost(string, tag = "1")]
+    pub platform: String,
+    #[prost(string, tag = "2")]
+    pub token: String,
+}
+
+#[derive(Clone, PartialEq, Message)]
 pub struct PbHello {
     #[prost(uint32, tag = "1")]
     pub protocol: u32,
@@ -78,7 +86,7 @@ pub struct PbReq {
     pub id: u64,
     #[prost(
         oneof = "pb_req::Op",
-        tags = "2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20"
+        tags = "2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21"
     )]
     pub op: Option<pb_req::Op>,
 }
@@ -126,6 +134,8 @@ pub mod pb_req {
         RevokeAgentInvite(String),
         #[prost(message, tag = "20")]
         Agent(PbAgentReq),
+        #[prost(message, tag = "21")]
+        RegisterPush(PbPushToken),
     }
 }
 
@@ -867,6 +877,10 @@ impl ClientFrame {
                     Op::PreviewInvite { code } => pb_req::Op::PreviewInvite(code.clone()),
                     Op::RedeemAgentInvite { code } => pb_req::Op::RedeemAgentInvite(code.clone()),
                     Op::RevokeAgentInvite { agent } => pb_req::Op::RevokeAgentInvite(agent.clone()),
+                    Op::RegisterPush { platform, token } => pb_req::Op::RegisterPush(PbPushToken {
+                        platform: platform.clone(),
+                        token: token.clone(),
+                    }),
                     Op::PublishAgreementKey { public, signed } => {
                         pb_req::Op::PublishAgreementKey(PbAgreementKey {
                             identity: String::new(),
@@ -963,6 +977,10 @@ impl ClientFrame {
                     pb_req::Op::PreviewInvite(code) => Op::PreviewInvite { code },
                     pb_req::Op::RedeemAgentInvite(code) => Op::RedeemAgentInvite { code },
                     pb_req::Op::RevokeAgentInvite(agent) => Op::RevokeAgentInvite { agent },
+                    pb_req::Op::RegisterPush(p) => Op::RegisterPush {
+                        platform: p.platform,
+                        token: p.token,
+                    },
                     pb_req::Op::PublishAgreementKey(k) => Op::PublishAgreementKey {
                         public: k.public,
                         signed: signed_from(k.signed)?,
@@ -1614,6 +1632,13 @@ mod tests {
             ClientFrame::Req {
                 id: 3,
                 op: Op::PreviewInvite { code: "X".into() },
+            },
+            ClientFrame::Req {
+                id: 31,
+                op: Op::RegisterPush {
+                    platform: "fcm".into(),
+                    token: "t".into(),
+                },
             },
             ClientFrame::Req {
                 id: 30,
