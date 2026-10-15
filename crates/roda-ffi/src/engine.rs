@@ -2441,7 +2441,31 @@ impl Engine {
                 "Neste aparelho · Apple Intelligence quando disponível",
                 "On this device · Apple Intelligence when available",
             ),
+            owner_notes_pending: self.owner_notes_pending(agent),
         }
+    }
+
+    /// Your agent's notes asking for you, in your direct chat with it, since you last
+    /// wrote there (answering is what clears them).
+    fn owner_notes_pending(&self, agent: &str) -> u32 {
+        let (Some(me), Some(author)) = (self.me.as_deref(), self.identities.get(agent)) else {
+            return 0;
+        };
+        self.state
+            .spaces
+            .values()
+            .filter(|s| s.kind == SpaceKind::Direct && s.members.iter().any(|(m, _)| m == agent))
+            .map(|s| {
+                crate::agent_notes::pending_owner_notes(
+                    me,
+                    author,
+                    s.entries.iter().map(|e| match &e.body {
+                        EntryBody::Message { text, .. } => (e.author.as_str(), Some(text.as_str())),
+                        _ => (e.author.as_str(), None),
+                    }),
+                )
+            })
+            .sum()
     }
 
     pub fn set_trust(&mut self, agent: &str, space: &str, level: TrustLevel) -> R<()> {

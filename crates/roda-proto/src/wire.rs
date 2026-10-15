@@ -1355,6 +1355,10 @@ fn agent_req_to(a: &AgentRequest) -> PbAgentReq {
             pb.kind = kind.clone();
             pb.definition = definition.clone();
         }
+        AgentRequest::Status { agent } => {
+            pb.op = "status".into();
+            pb.agent = agent.clone();
+        }
         AgentRequest::Control { agent, action } => {
             pb.op = action.id().into();
             pb.agent = agent.clone();
@@ -1376,6 +1380,7 @@ fn agent_req_from(pb: PbAgentReq) -> Result<AgentRequest, DecodeError> {
             kind: pb.kind,
             definition: pb.definition,
         },
+        "status" => AgentRequest::Status { agent: pb.agent },
         other => AgentRequest::Control {
             agent: pb.agent,
             action: AgentAction::parse(other).ok_or_else(|| bad("agent op"))?,
@@ -1839,6 +1844,9 @@ mod tests {
         use crate::{AgentAction, AgentRequest, AgentStateRecord};
         for op in [
             Op::Agent(AgentRequest::State),
+            Op::Agent(AgentRequest::Status {
+                agent: "bot".into(),
+            }),
             Op::Agent(AgentRequest::Advance {
                 space: "sp".into(),
                 seq: 7,

@@ -806,6 +806,12 @@ impl Session {
                 }
                 agents::define(pool, me, &self.device, &agent, version, &kind, &definition).await
             }
+            AgentRequest::Status { agent } => {
+                return agents::owner_status(pool, me, &agent)
+                    .await
+                    .map(Reply::AgentState)
+                    .map_err(|e| e.to_string());
+            }
             AgentRequest::Control { agent, action } => {
                 agents::control(pool, me, &agent, action).await
             }

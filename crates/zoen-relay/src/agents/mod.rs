@@ -177,6 +177,40 @@ pub async fn state(
     })
 }
 
+/// Owner only: an agent's status for its owner's app ("active", "paused" or "revoked"),
+/// with its kind and definition version. Never the definition or cursors.
+pub async fn owner_status(
+    pool: &PgPool,
+    caller: &str,
+    agent: &str,
+) -> Result<AgentStateRecord, AgentCitizenError> {
+    let row: Option<(String, Option<String>, i32, bool, bool)> = sqlx::query_as(
+        "SELECT owner, kind, definition_version, paused_at IS NOT NULL, revoked_at IS NOT NULL
+         FROM agent_citizens WHERE agent = $1",
+    )
+    .bind(agent)
+    .fetch_optional(pool)
+    .await?;
+    let Some((owner, kind, version, paused, revoked)) = row else {
+        return Err(AgentCitizenError::NotAgent);
+    };
+    if caller != owner {
+        return Err(AgentCitizenError::Owner);
+    }
+    let status = match (revoked, paused) {
+        (true, _) => "revoked",
+        (_, true) => "paused",
+        _ => "active",
+    };
+    Ok(AgentStateRecord {
+        status: status.into(),
+        kind: kind.unwrap_or_default(),
+        definition_version: version.max(0) as u32,
+        definition: Vec::new(),
+        cursors: Vec::new(),
+    })
+}
+
 /// Advance the runtime's cursor after it handled traffic through `seq` (inclusive).
 /// The caller checked membership. Never moves backwards.
 pub async fn advance_cursor(

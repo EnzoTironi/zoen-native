@@ -9,7 +9,7 @@ use roda_proto::{EphemeralKind, InvitePreview, Op, Reply};
 use roda_types::{new_id, EventBody, Identity, Privacy, Role, SpaceKind};
 
 use crate::{
-    dto::{GroupKeysDto, Persona, PrivacyDto},
+    dto::{AgentControl, AgentStatus, GroupKeysDto, Persona, PrivacyDto},
     i18n::t,
     net::{ConnState, Net, NetStatus},
     profile::{PhotoChange, ProfileDto, VAULT_AGREEMENT},
@@ -736,6 +736,47 @@ impl RodaEngine {
             code: c.code,
             expires_at_ms: c.expires_at_ms,
         })
+    }
+
+    /// Owner: one of your agents' status on the relay.
+    pub async fn agent_status(&self, agent_id: String) -> Result<AgentStatus, CoreError> {
+        let Reply::AgentState(s) = self
+            .request(Op::Agent(roda_proto::AgentRequest::Status {
+                agent: agent_id,
+            }))
+            .await?
+        else {
+            return Err(unexpected());
+        };
+        match s.status.as_str() {
+            "active" => Ok(AgentStatus::Active),
+            "paused" => Ok(AgentStatus::Paused),
+            "revoked" => Ok(AgentStatus::Revoked),
+            _ => Err(unexpected()),
+        }
+    }
+
+    /// Owner: pause, resume or revoke one of your agents. Revoking is final and also
+    /// takes its share link down.
+    pub async fn control_agent(
+        &self,
+        agent_id: String,
+        action: AgentControl,
+    ) -> Result<(), CoreError> {
+        let action = match action {
+            AgentControl::Pause => roda_proto::AgentAction::Pause,
+            AgentControl::Resume => roda_proto::AgentAction::Resume,
+            AgentControl::Revoke => roda_proto::AgentAction::Revoke,
+        };
+        self.agent_done(roda_proto::AgentRequest::Control {
+            agent: agent_id.clone(),
+            action,
+        })
+        .await?;
+        if action == roda_proto::AgentAction::Revoke {
+            let _ = self.revoke_agent_invite(agent_id).await;
+        }
+        Ok(())
     }
 
     /// Takes the agent's share link down; the next `create_agent_invite` mints a new one.
