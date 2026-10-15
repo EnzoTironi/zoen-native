@@ -461,6 +461,12 @@ pub enum Op {
     RevokeAgentInvite {
         agent: IdentityId,
     },
+    /// Registers this device's push token ("apns", "apns-sandbox" or "fcm"); an empty
+    /// token removes it. The relay only ever sends a content-free wake to it.
+    RegisterPush {
+        platform: String,
+        token: String,
+    },
     /// Publishes this identity's X25519 key for receiving profile keys (ADR 0016).
     PublishAgreementKey {
         public: String,
@@ -599,6 +605,7 @@ impl Op {
             Op::PreviewInvite { .. } => "preview_invite",
             Op::RedeemAgentInvite { .. } => "redeem_agent_invite",
             Op::RevokeAgentInvite { .. } => "revoke_agent_invite",
+            Op::RegisterPush { .. } => "register_push",
             Op::PublishAgreementKey { .. } => "publish_agreement_key",
             Op::AgreementKeys { .. } => "agreement_keys",
             Op::PutProfile { .. } => "put_profile",

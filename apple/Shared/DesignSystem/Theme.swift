@@ -129,6 +129,11 @@ enum RodaTime {
         return date.formatted(.dateTime.day().month(.abbreviated))
     }
 
+    /// Clock time only, as inside a bubble (day headers carry the date).
+    static func clock(_ ms: Int64) -> String {
+        Date(timeIntervalSince1970: TimeInterval(ms) / 1000).formatted(.dateTime.hour().minute())
+    }
+
     static func relative(_ ms: Int64) -> String {
         let date = Date(timeIntervalSince1970: TimeInterval(ms) / 1000)
         let secs = Date.now.timeIntervalSince(date)

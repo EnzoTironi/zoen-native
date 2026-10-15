@@ -109,6 +109,12 @@ struct PushWakeJourney {
         action["approval"] = "anything"
         try check(PushWake.decode(action) == nil, "Unexpected action-bearing payload was accepted")
         try check(PushWake.decode(Data(repeating: 32, count: 4097)) == nil, "Oversized wake was accepted")
+        try check(PushWake.decode(Data(#"{"aps":{"content-available":1}}"#.utf8))?.isCatchUp == true,
+                  "The relay's content-free wake was rejected")
+        try check(PushWake.decode(Data(#"{"aps":{"content-available":1,"alert":"hi"}}"#.utf8)) == nil,
+                  "A wake carrying an alert was accepted")
+        try check(PushWake.decode(Data(#"{"aps":{"content-available":1},"body":"x"}"#.utf8)) == nil,
+                  "A wake carrying extra content was accepted")
         note("PASS exact versioned wake fields and UInt64 cursors without coercion")
 
         let config = PushConfiguration(apsEntitlement: "development", topic: "xyz.tironi.zoen")!
