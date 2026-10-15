@@ -37,9 +37,11 @@ class OwnerAgentNoteCardTest {
 
     private val agent = Persona("agenda", PersonaKind.AGENT, "Agenda do Bruno", "agenda_bruno", "A", "#19B5A5", null, "", "bruno", "Bruno", null, false, true)
 
-    @Test fun parsesOnlyTheTwoNoteShapes() {
+    @Test fun parsesOnlyTheKnownNoteShapes() {
         assertEquals(OwnerAgentNote.Ask("s1", "carla", "Oi"), OwnerAgentNote.parse("""{"ask_owner":{"space":"s1","from":"carla","draft":"Oi","rule":"r"}}"""))
         assertEquals(OwnerAgentNote.Proposal("s1", "Agenda", "agenda"), OwnerAgentNote.parse("""{"agent_proposal":{"space":"s1","source":"m","spec":{"name":"Agenda","handle":"agenda"}}}"""))
+        assertEquals(OwnerAgentNote.Booking("s1", false, "Carla", "Corte", "seg 10:00"), OwnerAgentNote.parse("""{"booking":{"space":"s1","kind":"new","client":"Carla","service":"Corte","when":"seg 10:00","source":"m"}}"""))
+        assertEquals(true, (OwnerAgentNote.parse("""{"booking":{"kind":"cancelled"}}""") as OwnerAgentNote.Booking).cancelled)
         assertNull(OwnerAgentNote.parse("""{"grant_admin":{}}"""))
         assertNull(OwnerAgentNote.parse("not json"))
     }
@@ -49,6 +51,7 @@ class OwnerAgentNoteCardTest {
         val notes = listOf(
             OwnerAgentNote.Ask("barbearia", "carla", "Oi Carla! Recebi o comprovante, já confirmo seu horário de sábado às 10h."),
             OwnerAgentNote.Proposal("dm", "Agenda do Salão", "agenda_salao"),
+            OwnerAgentNote.Booking("barbearia", false, "Carla", "Corte", "sáb 10:00"),
         )
         compose.setContent {
             val base = LocalContext.current
@@ -70,7 +73,9 @@ class OwnerAgentNoteCardTest {
         compose.onNodeWithText("Seu agente precisa de você").assertIsDisplayed()
         compose.onNodeWithText("Antes de responder a Carla, ele quer que você veja a resposta.").assertIsDisplayed()
         compose.onNodeWithText("Seu agente quer criar um agente").assertIsDisplayed()
-        assertEquals(2, compose.onAllNodesWithTag("owner-note").fetchSemanticsNodes().size)
+        compose.onNodeWithText("Novo agendamento").assertIsDisplayed()
+        compose.onNodeWithText("Carla marcou Corte, sáb 10:00.").assertIsDisplayed()
+        assertEquals(3, compose.onAllNodesWithTag("owner-note").fetchSemanticsNodes().size)
         CommittedWindowCapture.save(compose.activity, "owner-notes", "owner-notes-pt")
         compose.onAllNodesWithTag("owner-note-open")[0].performClick()
         compose.runOnIdle { assertEquals(listOf("barbearia"), opened) }

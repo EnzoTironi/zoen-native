@@ -346,6 +346,17 @@ async fn turn(
     before: &[TimelineEntry],
     t: &TimelineEntry,
 ) -> bool {
+    if let EntryKind::ItemEdited { item_id, version, .. } = &t.kind {
+        // A client booked or cancelled in a mini-app: tell the owner, once.
+        return match e.booking_note(item_id.clone(), *version) {
+            Some(n) if owner_note(e, cx, &t.id).is_none() => {
+                let mut n: serde_json::Value = serde_json::from_str(&n).unwrap_or_default();
+                n["booking"]["source"] = t.id.clone().into();
+                tell_owner(e, cx, n)
+            }
+            _ => true,
+        };
+    }
     let Some(text) = text_of(t) else {
         return true;
     };

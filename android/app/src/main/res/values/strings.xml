@@ -259,4 +259,9 @@
   <string name="owner_note_proposal_body">It only starts working after you approve.</string>
   <string name="owner_note_open">Open conversation</string>
   <string name="owner_note_someone">someone</string>
+  <string name="owner_note_booking_title">New booking</string>
+  <string name="owner_note_booking_cancelled_title">Booking cancelled</string>
+  <string name="owner_note_booking_body">%1$s booked %2$s, %3$s.</string>
+  <string name="owner_note_booking_cancelled_body">%1$s cancelled %2$s, %3$s.</string>
+  <string name="owner_note_someone_cap">Someone</string>
 </resources>

@@ -8,6 +8,8 @@ import RodaCore
 enum OwnerAgentNote: Equatable {
     case ask(space: String, from: String, draft: String)
     case proposal(space: String, name: String, handle: String)
+    /// A client booked (`cancelled == false`) or cancelled in the agent's schedule.
+    case booking(space: String, cancelled: Bool, client: String, service: String, when: String)
 
     init?(json: String) {
         guard let data = json.data(using: .utf8),
@@ -22,13 +24,19 @@ enum OwnerAgentNote: Equatable {
             self = .proposal(space: p["space"] as? String ?? "",
                              name: spec["name"] as? String ?? "",
                              handle: spec["handle"] as? String ?? "")
+        } else if let b = root["booking"] as? [String: Any] {
+            self = .booking(space: b["space"] as? String ?? "",
+                            cancelled: b["kind"] as? String == "cancelled",
+                            client: b["client"] as? String ?? "",
+                            service: b["service"] as? String ?? "",
+                            when: b["when"] as? String ?? "")
         } else {
             return nil
         }
     }
 
     var space: String {
-        switch self { case .ask(let s, _, _), .proposal(let s, _, _): s }
+        switch self { case .ask(let s, _, _), .proposal(let s, _, _), .booking(let s, _, _, _, _): s }
     }
 }
 
@@ -110,6 +118,7 @@ struct OwnerAgentNoteCard: View {
         switch note {
         case .ask: "Seu agente precisa de você"
         case .proposal: "Seu agente quer criar um agente"
+        case .booking(_, let cancelled, _, _, _): cancelled ? "Agendamento cancelado" : "Novo agendamento"
         }
     }
 
@@ -136,6 +145,10 @@ struct OwnerAgentNoteCard: View {
             .foregroundStyle(Palette.textPrimary)
             Text("Ele só começa a funcionar depois que você aprovar.")
                 .font(.callout).foregroundStyle(Palette.textSecondary)
+        case .booking(_, let cancelled, let client, let service, let when):
+            let who = client.isEmpty ? String(localized: "Alguém") : client
+            Text(cancelled ? "\(who) cancelou \(service), \(when)." : "\(who) marcou \(service), \(when).")
+                .font(.callout).foregroundStyle(Palette.textPrimary)
         }
     }
 }

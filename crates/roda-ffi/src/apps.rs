@@ -597,6 +597,16 @@ pub fn apply_as(
     }
 }
 
+/// The owner's note for what a client just did in a mini-app (only the schedule speaks).
+pub(crate) fn owner_note_for(prev: &AppDoc, next: &AppDoc, by: &str) -> Option<Value> {
+    if next.app != "schedule" {
+        return None;
+    }
+    let p: Value = serde_json::from_str(&prev.state_json).ok()?;
+    let n: Value = serde_json::from_str(&next.state_json).ok()?;
+    schedule::booking_change(&p, &n, by)
+}
+
 /// The view a given member receives. Apps with private parts (the schedule's client
 /// names and notes) filter here; the rest are the same for everyone.
 pub fn view_for(app: &str, state: &Value, now: i64, viewer: &str) -> Value {
