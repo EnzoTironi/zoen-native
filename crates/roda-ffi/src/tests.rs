@@ -2230,3 +2230,59 @@ fn callback_can_stop_and_destroy_its_core_before_immediate_reopen() {
     drop(reopened);
     std::fs::remove_file(path).unwrap();
 }
+
+#[test]
+fn the_agent_books_only_for_the_member_it_is_serving() {
+    let e = seeded();
+    let (item, zoen) = schedule_item(&e);
+    let ana = e
+        .personas()
+        .into_iter()
+        .find(|p| p.handle == "ana")
+        .unwrap();
+    let lucas = e
+        .personas()
+        .into_iter()
+        .find(|p| p.handle == "lucas")
+        .unwrap();
+    let call = |serving: Option<&str>, for_id: &str, start: i64| {
+        let args = format!(
+            r#"{{"serviceId":"corte","startMs":{start},"forId":"{for_id}","forName":"Anything"}}"#
+        );
+        let out = e
+            .lock()
+            .app_call_as(&item, &zoen.id, "schedule_book", &args, false, serving)
+            .unwrap();
+        let r: serde_json::Value = serde_json::from_str(&out.result_json).unwrap();
+        r["isError"].as_bool().unwrap_or(false)
+    };
+    // Lucas talks the agent into booking under Ana's name: refused.
+    assert!(call(Some(&lucas.id), &ana.id, sp_slot(9, 0)));
+    // With nobody being served, the agent names no client at all.
+    assert!(call(None, &ana.id, sp_slot(9, 0)));
+    // Serving Ana, it books for Ana.
+    assert!(!call(Some(&ana.id), &ana.id, sp_slot(9, 0)));
+    // Human staff still name any client.
+    let (_, err) = sched_call(
+        &e,
+        &item,
+        "me",
+        "schedule_book",
+        format!(
+            r#"{{"serviceId":"corte","startMs":{},"forId":"{}","forName":"Lucas"}}"#,
+            sp_slot(10, 0),
+            lucas.id
+        ),
+    );
+    assert!(!err);
+    let (v, _) = sched_call(&e, &item, "me", "schedule_get_state", "{}".into());
+    let fors: Vec<&str> = v["bookings"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|b| b["forId"].as_str().unwrap())
+        .collect();
+    assert_eq!(fors, vec![ana.id.as_str(), lucas.id.as_str()]);
+    // The agent's booking carries Ana's profile name, not the "Ana" the call passed.
+    assert_eq!(v["bookings"][0]["forName"], ana.name.as_str());
+}

@@ -3313,7 +3313,22 @@ impl Engine {
         confirmed: bool,
     ) -> R<AppCallOutcome> {
         let me = self.me_id()?;
-        self.app_call_as(item, &me, tool_name, args_json, confirmed)
+        self.app_call_as(item, &me, tool_name, args_json, confirmed, None)
+    }
+
+    /// `tools/call` from this device's agent while it answers `serving` (the author of the
+    /// message it is replying to): a booking it makes can only be for that member.
+    /// When the agent turn loop gains tools it must route them here with `t.author.id`
+    /// as `serving`; `app_call_tool` gives an agent no one to book for.
+    pub fn agent_call_tool(
+        &mut self,
+        item: &str,
+        tool_name: &str,
+        args_json: &str,
+        serving: &str,
+    ) -> R<AppCallOutcome> {
+        let me = self.me_id()?;
+        self.app_call_as(item, &me, tool_name, args_json, false, Some(serving))
     }
 
     /// Demonstração: a ação de outro membro chegando como se viesse do aparelho dele
@@ -3326,7 +3341,7 @@ impl Engine {
         args_json: &str,
     ) -> R<AppCallOutcome> {
         let who = self.member_by_handle(item, member_handle)?;
-        self.app_call_as(item, &who, tool_name, args_json, false)
+        self.app_call_as(item, &who, tool_name, args_json, false, None)
     }
 
     /// Demonstração: mensagem de outro membro (como se tivesse chegado pela sincronização).
@@ -3354,13 +3369,14 @@ impl Engine {
             .ok_or_else(|| not_found(&t("membro deste Espaço", "member of this Space")))
     }
 
-    fn app_call_as(
+    pub(crate) fn app_call_as(
         &mut self,
         item: &str,
         actor_id: &str,
         tool_name: &str,
         args_json: &str,
         confirmed: bool,
+        serving: Option<&str>,
     ) -> R<AppCallOutcome> {
         let it = self.item_state(item)?.clone();
         let ItemContent::App(doc) = it.current().content.clone() else {
@@ -3448,14 +3464,27 @@ impl Engine {
             }
             _ => {}
         }
-        let args: Value = serde_json::from_str(args_json).unwrap_or(json!({}));
+        let mut args: Value = serde_json::from_str(args_json).unwrap_or(json!({}));
         let actor_owner = self.identities.get(&me).and_then(|a| a.owner.clone());
         let caller = apps::Actor {
             id: &me,
             name: &actor,
             owner: actor_owner.as_deref(),
         };
-        let applied = match apps::apply_as(&doc.app, tool_name, &args, &state, &caller, now) {
+        // An agent acts for whoever it is serving, never for a client a message names.
+        // Its name comes from the served member's profile, not from whatever the call says.
+        let pinned = match (&actor_owner, serving) {
+            (Some(_), Some(s)) => apps::pin_client(&mut args, Some(s)).map(|_| {
+                if let Some(a) = args.as_object_mut().filter(|a| a.contains_key("forId")) {
+                    a.insert("forName".into(), self.persona(s).name.into());
+                }
+            }),
+            (Some(_), None) => apps::pin_client(&mut args, None),
+            (None, _) => Ok(()),
+        };
+        let applied = match pinned
+            .and_then(|_| apps::apply_as(&doc.app, tool_name, &args, &state, &caller, now))
+        {
             Ok(a) => a,
             Err(msg) => {
                 let view = apps::view_for(&doc.app, &state, now, &me);
