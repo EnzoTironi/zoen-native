@@ -484,7 +484,7 @@ fun TimelineRow(model: ZoenViewModel, entry: TimelineEntry, navigate: (NavKey) -
                                 val mentionColor = if (mine) LocalContentColor.current else MaterialTheme.colorScheme.primary
                                 Box { SelectionContainer { Text(buildAnnotatedString { append(kind.text); Regex("(?<![\\w.])@[\\p{L}\\p{N}_.]+").findAll(kind.text).forEach { match -> addStyle(SpanStyle(color = mentionColor, fontWeight = FontWeight.SemiBold), match.range.first, match.range.last + 1) }
                                     // A clear run as wide as the meta, so it never sits on the last line's words.
-                                    withStyle(SpanStyle(color = androidx.compose.ui.graphics.Color.Transparent, fontSize = MaterialTheme.typography.labelSmall.fontSize)) { append(if (mine) "\u2002\u2007\u2007\u2007\u2007\u2007\u2007\u2007" else "\u2002\u2007\u2007\u2007\u2007\u2007") } }, style = MaterialTheme.typography.bodyLarge) }
+                                    withStyle(SpanStyle(color = androidx.compose.ui.graphics.Color.Transparent, fontSize = MaterialTheme.typography.labelSmall.fontSize)) { append(bubbleMetaReserve(entry.atMs, mine)) } }, style = MaterialTheme.typography.bodyLarge) }
                                     // WhatsApp: time and tick inside the bubble, bottom right.
                                     BubbleMeta(entry.atMs, if (mine) entry.delivery else null, Modifier.align(Alignment.BottomEnd).offset(y = 3.dp)) }
                             }
@@ -579,6 +579,10 @@ fun ThreadScreen(model: ZoenViewModel, state: AppState, space: String, root: Str
     } }
 }
 
+
+/** A clear run as wide as the meta ("12:11 PM ✓"), in figure spaces. */
+internal fun bubbleMetaReserve(atMs: Long, mine: Boolean): String =
+    "\u2002" + "\u2007".repeat(DateFormat.getTimeInstance(DateFormat.SHORT).format(Date(atMs)).length + if (mine) 3 else 1)
 
 /** Time and delivery tick (sending: clock, sent: one tick, refused: error). The receipts
  *  work adds the double tick and read colour here. */

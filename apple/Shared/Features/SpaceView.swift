@@ -685,8 +685,10 @@ struct BubbleMeta: View {
     let delivery: Delivery?
     let mine: Bool
 
-    /// Spaces wide enough for "00:00" plus a tick, so text wraps before the meta.
-    static func reserve(mine: Bool) -> String { mine ? "\u{2002}\u{2007}\u{2007}\u{2007}\u{2007}\u{2007}\u{2007}\u{2007}" : "\u{2002}\u{2007}\u{2007}\u{2007}\u{2007}\u{2007}" }
+    /// Figure spaces as wide as the time ("12:11 PM") plus a tick, so text wraps before the meta.
+    static func reserve(atMs: Int64, mine: Bool) -> String {
+        "\u{2002}" + String(repeating: "\u{2007}", count: RodaTime.clock(atMs).count + (mine ? 3 : 1))
+    }
 
     var body: some View {
         HStack(spacing: 3) {
@@ -820,7 +822,7 @@ struct MessageRow: View {
                             }
                             // WhatsApp: time and ticks sit inside the bubble, bottom right. A clear
                             // run of the same width at the end of the text keeps them off the last line.
-                            Text("\(Text(attributed(text)))\(Text(verbatim: BubbleMeta.reserve(mine: mine)).font(.caption2).foregroundStyle(.clear))")
+                            Text("\(Text(attributed(text)))\(Text(verbatim: BubbleMeta.reserve(atMs: atMs, mine: mine)).font(.caption2).foregroundStyle(.clear))")
                                 .font(.body)
                                 .foregroundStyle(mine ? Palette.myBubbleText : Palette.textPrimary)
                                 .overlay(alignment: .bottomTrailing) {
