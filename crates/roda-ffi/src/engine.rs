@@ -123,7 +123,12 @@ pub(crate) struct MessageMarks {
 impl MessageMarks {
     /// Folds one annotation from `by` over a message written by `author`. Returns the new
     /// text for an edit. Only the author edits or deletes; a deleted message stays deleted.
-    pub(crate) fn apply(&mut self, author: &str, by: &str, note: &roda_types::Annotation) -> Option<String> {
+    pub(crate) fn apply(
+        &mut self,
+        author: &str,
+        by: &str,
+        note: &roda_types::Annotation,
+    ) -> Option<String> {
         use roda_types::Annotation as A;
         if self.deleted || (note.author_only() && author != by) {
             return None;
@@ -330,7 +335,13 @@ impl State {
                     let found = s.entries.iter_mut().rev().find(|x| x.id() == target);
                     if let Some(Entry {
                         author,
-                        body: EntryBody::Message { text, attaches, marks, .. },
+                        body:
+                            EntryBody::Message {
+                                text,
+                                attaches,
+                                marks,
+                                ..
+                            },
                         ..
                     }) = found
                     {
@@ -1513,30 +1524,44 @@ impl Engine {
     pub fn annotate(&mut self, space: &str, target: &str, note: roda_types::Annotation) -> R<()> {
         let me = self.me_id()?;
         let s = self.space_state(space)?;
-        let Some(Entry { author, body: EntryBody::Message { marks, .. }, .. }) =
-            s.entries.iter().find(|e| e.id() == target)
+        let Some(Entry {
+            author,
+            body: EntryBody::Message { marks, .. },
+            ..
+        }) = s.entries.iter().find(|e| e.id() == target)
         else {
             return Err(not_found(&t("Mensagem", "Message")));
         };
         if marks.deleted || (note.author_only() && *author != me) {
             return Err(CoreError::Forbidden {
-                reason: t("só quem escreveu edita ou apaga", "only the author can edit or delete"),
+                reason: t(
+                    "só quem escreveu edita ou apaga",
+                    "only the author can edit or delete",
+                ),
             });
         }
         if let roda_types::Annotation::Edit { text } = &note {
             if text.trim().is_empty() {
-                return Err(CoreError::Invalid { reason: t("mensagem vazia", "empty message") });
+                return Err(CoreError::Invalid {
+                    reason: t("mensagem vazia", "empty message"),
+                });
             }
         }
         if !self.is_member(space, &me) {
             return Err(CoreError::Forbidden {
-                reason: t("só membros escrevem neste Espaço", "only members can write in this Space"),
+                reason: t(
+                    "só membros escrevem neste Espaço",
+                    "only members can write in this Space",
+                ),
             });
         }
         self.append(
             space,
             &me,
-            EventBody::MessageAnnotated { target: target.to_string(), note },
+            EventBody::MessageAnnotated {
+                target: target.to_string(),
+                note,
+            },
         )?;
         Ok(())
     }
@@ -1545,8 +1570,12 @@ impl Engine {
     pub fn forward(&mut self, from_space: &str, target: &str, to_space: &str) -> R<TimelineEntry> {
         let me = self.me_id()?;
         let s = self.space_state(from_space)?;
-        let Some(EntryBody::Message { text, attaches, marks, .. }) =
-            s.entries.iter().find(|e| e.id() == target).map(|e| &e.body)
+        let Some(EntryBody::Message {
+            text,
+            attaches,
+            marks,
+            ..
+        }) = s.entries.iter().find(|e| e.id() == target).map(|e| &e.body)
         else {
             return Err(not_found(&t("Mensagem", "Message")));
         };
@@ -1556,7 +1585,10 @@ impl Engine {
         let (text, attaches) = (text.clone(), attaches.clone());
         if !self.is_member(to_space, &me) {
             return Err(CoreError::Forbidden {
-                reason: t("só membros escrevem neste Espaço", "only members can write in this Space"),
+                reason: t(
+                    "só membros escrevem neste Espaço",
+                    "only members can write in this Space",
+                ),
             });
         }
         self.append(

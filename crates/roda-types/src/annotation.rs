@@ -12,11 +12,15 @@ use serde::{Deserialize, Serialize};
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
 pub enum Annotation {
     /// New text for the whole message (author only). The latest edit wins.
-    Edit { text: String },
+    Edit {
+        text: String,
+    },
     /// Delete for everyone (author only). Final: later edits are ignored.
     Delete,
     /// One reaction per person per message (WhatsApp): a new one replaces the old.
-    React { emoji: String },
+    React {
+        emoji: String,
+    },
     Unreact,
 }
 

@@ -2348,10 +2348,18 @@ fn ticks_follow_the_lowest_read_up_to_watermark() {
 fn edits_deletes_and_reactions_fold_over_the_original() {
     let dir = std::env::temp_dir().join(format!("roda-test-{}", roda_types::new_id("t")));
     std::fs::create_dir_all(&dir).unwrap();
-    let e = RodaEngine::open(dir.join("a.sqlite").to_string_lossy().into(), "pt-BR".into()).unwrap();
+    let e = RodaEngine::open(
+        dir.join("a.sqlite").to_string_lossy().into(),
+        "pt-BR".into(),
+    )
+    .unwrap();
     e.seed_demo_if_empty().unwrap();
     let spaces = e.spaces();
-    let s = spaces.iter().find(|s| s.members.len() >= 2).expect("a chat").clone();
+    let s = spaces
+        .iter()
+        .find(|s| s.members.len() >= 2)
+        .expect("a chat")
+        .clone();
     let mine = e.send_message(s.id.clone(), "oi".into()).unwrap();
     let theirs = e
         .timeline(s.id.clone())
@@ -2359,17 +2367,33 @@ fn edits_deletes_and_reactions_fold_over_the_original() {
         .into_iter()
         .find(|t| !t.author.is_me && matches!(t.kind, EntryKind::Message { .. }))
         .expect("someone else's message");
-    let find = |id: &str| e.timeline(s.id.clone()).unwrap().into_iter().find(|t| t.id == id).unwrap();
+    let find = |id: &str| {
+        e.timeline(s.id.clone())
+            .unwrap()
+            .into_iter()
+            .find(|t| t.id == id)
+            .unwrap()
+    };
 
-    e.edit_message(s.id.clone(), mine.id.clone(), "olá".into()).unwrap();
+    e.edit_message(s.id.clone(), mine.id.clone(), "olá".into())
+        .unwrap();
     let m = find(&mine.id);
     assert!(m.edited);
     assert!(matches!(m.kind, EntryKind::Message { ref text, .. } if text == "olá"));
-    assert!(e.edit_message(s.id.clone(), theirs.id.clone(), "x".into()).is_err(), "only the author edits");
-    assert!(e.delete_message(s.id.clone(), theirs.id.clone()).is_err(), "only the author deletes");
+    assert!(
+        e.edit_message(s.id.clone(), theirs.id.clone(), "x".into())
+            .is_err(),
+        "only the author edits"
+    );
+    assert!(
+        e.delete_message(s.id.clone(), theirs.id.clone()).is_err(),
+        "only the author deletes"
+    );
 
-    e.react(s.id.clone(), theirs.id.clone(), Some("👍".into())).unwrap();
-    e.react(s.id.clone(), theirs.id.clone(), Some("❤️".into())).unwrap();
+    e.react(s.id.clone(), theirs.id.clone(), Some("👍".into()))
+        .unwrap();
+    e.react(s.id.clone(), theirs.id.clone(), Some("❤️".into()))
+        .unwrap();
     let t = find(&theirs.id);
     assert_eq!(t.reactions.len(), 1, "one reaction per person");
     assert_eq!(t.reactions[0].emoji, "❤️");
@@ -2381,9 +2405,15 @@ fn edits_deletes_and_reactions_fold_over_the_original() {
     let m = find(&mine.id);
     assert!(m.deleted);
     assert!(matches!(m.kind, EntryKind::Message { ref text, .. } if text.is_empty()));
-    assert!(e.edit_message(s.id.clone(), mine.id.clone(), "volta".into()).is_err(), "deleted is final");
+    assert!(
+        e.edit_message(s.id.clone(), mine.id.clone(), "volta".into())
+            .is_err(),
+        "deleted is final"
+    );
 
     let other = spaces.iter().find(|x| x.id != s.id).expect("another chat");
-    let f = e.forward_message(s.id.clone(), theirs.id.clone(), other.id.clone()).unwrap();
+    let f = e
+        .forward_message(s.id.clone(), theirs.id.clone(), other.id.clone())
+        .unwrap();
     assert!(f.forwarded);
 }
