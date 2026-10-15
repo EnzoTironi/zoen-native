@@ -88,6 +88,19 @@ impl RodaEngine {
         i18n::set(self.lang);
         self.inner.lock().unwrap_or_else(|p| p.into_inner())
     }
+
+    /// The agent host's `tools/call`, made while answering `serving` (the author of the
+    /// message being replied to). Not exported: only the agent runtime calls it.
+    pub fn agent_call_tool(
+        &self,
+        item_id: &str,
+        tool: &str,
+        args_json: &str,
+        serving: &str,
+    ) -> Result<AppCallOutcome, CoreError> {
+        self.lock()
+            .agent_call_tool(item_id, tool, args_json, serving)
+    }
 }
 
 #[uniffi::export]

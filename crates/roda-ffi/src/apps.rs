@@ -585,6 +585,30 @@ pub fn create_as(
 }
 
 /// A tool call with who is calling it (member id, not display name).
+/// An agent's call may name a client (`forId`/`forName`) only as the member it is serving:
+/// the author of the message it is answering. A missing `forId` is filled with them; any
+/// other `forId`, or naming a client with nobody being served, is refused.
+pub fn pin_client(args: &mut Value, serving: Option<&str>) -> Result<(), String> {
+    let Some(a) = args.as_object_mut() else {
+        return Ok(());
+    };
+    let named = |k: &str| a.get(k).is_some_and(|v| !v.is_null());
+    if !named("forId") && !named("forName") {
+        return Ok(());
+    }
+    match (serving, a.get("forId").filter(|v| !v.is_null())) {
+        (Some(s), None) => {
+            a.insert("forId".into(), s.into());
+            Ok(())
+        }
+        (Some(s), Some(f)) if f.as_str() == Some(s) => Ok(()),
+        _ => Err(t(
+            "o agente só marca para quem está atendendo",
+            "the agent only books for the member it's serving",
+        )),
+    }
+}
+
 pub fn apply_as(
     app: &str,
     tool_name: &str,
