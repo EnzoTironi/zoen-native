@@ -16,8 +16,10 @@ import kotlin.math.sqrt
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
@@ -75,16 +77,19 @@ class VoiceRecorder(private val context: Context, private val scope: CoroutineSc
                                 peak = max(peak, abs(sample))
                             }
                             val level = (.06f + sqrt(peak / 32768f) * .94f).coerceAtMost(1f)
-                            mutableState.value = mutableState.value.copy(seconds = frames.toDouble() / rate, levels = (mutableState.value.levels + level).takeLast(64))
-                            if (frames >= rate * 600) {
-                                reading.set(false)
-                                mutableState.value = mutableState.value.copy(phase = RecordingPhase.LOCKED)
+                            val seconds = frames.toDouble() / rate
+                            val full = frames >= rate * 600
+                            if (full) reading.set(false)
+                            // The UI reads this state: publish on main, where lock() and finish() also write it.
+                            withContext(Dispatchers.Main) {
+                                mutableState.update { it.copy(seconds = seconds, levels = (it.levels + level).takeLast(64), phase = if (full && it.phase == RecordingPhase.HOLDING) RecordingPhase.LOCKED else it.phase) }
                             }
                         }
                     }
                 } catch (error: Exception) {
+                    if (error is kotlinx.coroutines.CancellationException) throw error
                     reading.set(false)
-                    mutableState.value = mutableState.value.copy(phase = RecordingPhase.LOCKED, error = error.message)
+                    withContext(Dispatchers.Main + NonCancellable) { mutableState.update { if (it.phase == RecordingPhase.IDLE) it else it.copy(phase = RecordingPhase.LOCKED, error = error.message) } }
                 }
             }
             true
