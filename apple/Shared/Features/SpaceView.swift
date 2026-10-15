@@ -619,6 +619,12 @@ struct EntryView: View {
         case .background(let dto):
             BackgroundChangeRow(author: entry.author, background: ChatBackground(dto: dto),
                                 spaceId: entry.id, layout: PhotoBackgroundLayout(dto: dto))
+        case .message(let text, _) where model.ownerAgentNote(entry, text: text) != nil:
+            OwnerAgentNoteCard(agent: entry.author, note: model.ownerAgentNote(entry, text: text)!,
+                               fresh: Date().timeIntervalSince1970 * 1000 - Double(entry.atMs) < 15_000)
+                .padding(.top, 10)
+                .padding(.leading, 44)
+                .frame(maxWidth: .infinity, alignment: .leading)
         case .message(let text, let card):
             VStack(alignment: entry.author.isMe ? .trailing : .leading, spacing: 3) {
                 MessageRow(author: entry.author, text: text, card: card, atMs: entry.atMs,
