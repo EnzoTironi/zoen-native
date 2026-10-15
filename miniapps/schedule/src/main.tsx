@@ -41,6 +41,9 @@ const DEMO: ScheduleState = {
   next: 1,
 };
 
+/** Theirs when they made it or the agent booked it in their name (the core's `is_for`). */
+const isFor = (b: Booking, id?: string) => !!id && (b.byId === id || b.forId === id);
+
 /** Offline preview only: mirrors the core's book/cancel so the template can be tried. */
 function demoCall(s: ScheduleState, tool: string, args: Record<string, any>): ScheduleState {
   const n: ScheduleState = structuredClone(s);
@@ -57,7 +60,7 @@ function demoCall(s: ScheduleState, tool: string, args: Record<string, any>): Sc
     n.events.push({ id: `e${n.next++}`, kind: 'book_request', bookingId: id, status: 'open', at: now, by: n.viewer.id });
   }
   if (tool === 'schedule_cancel') {
-    const b = n.bookings.find((x) => x.id === args.bookingId && x.byId === n.viewer.id);
+    const b = n.bookings.find((x) => x.id === args.bookingId && isFor(x, n.viewer.id));
     if (!b || b.status === 'cancelled') throw new Error(L('Something went wrong'));
     if (b.status === 'pending') {
       b.status = 'cancelled';
@@ -107,17 +110,17 @@ function App() {
   const slots = useMemo(() => (service ? freeSlots({ day, service, state }) : []),
     [dayKey(day), service, state.weeklyHours, state.slotMinutes, state.busy, tz, state.horizonDays]);
   const mine = state.bookings
-    .filter((b) => b.byId === state.viewer?.id && b.status !== 'cancelled')
+    .filter((b) => isFor(b, state.viewer?.id) && b.status !== 'cancelled')
     .sort((a, b) => a.startMs - b.startMs);
   // Booked at the same moment as someone else, who got the slot first.
-  const taken = state.bookings.filter((b) => b.byId === state.viewer?.id && b.conflict && b.endMs > Date.now());
+  const taken = state.bookings.filter((b) => isFor(b, state.viewer?.id) && b.conflict && b.endMs > Date.now());
   const requests = staff ? state.events.filter((e) => e.status === 'open') : [];
   const closed = !(state.weeklyHours[String(weekday(day))]?.length);
 
   const say = (t: string) => { setToast(t); setTimeout(() => setToast(null), 2200); };
   const fail = (e: any) => { zoen.haptics.warning(); say(e?.message || L('Something went wrong')); };
   const when = (ms: number) => `${formatDayLabel(dayOf(ms, tz), locale, today)} · ${formatTime(ms, tz, locale)}`;
-  const nameOf = (b: Booking) => b.byName || members.find((m) => m.id === b.byId)?.name || '';
+  const nameOf = (b: Booking) => b.forName || b.byName || members.find((m) => m.id === b.byId)?.name || '';
 
   const requestBook = async () => {
     if (!service || !pick) return;
