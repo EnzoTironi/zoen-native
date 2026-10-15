@@ -43,6 +43,11 @@ android {
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         ndk { abiFilters += coreAbis.get().split(",") }
         buildConfigField("String", "RELAY_URL", "\"https://relay.tryzoen.com\"")
+        // Firebase (FCM wakes, ADR 0047): set in ~/.gradle/gradle.properties or with -P.
+        // All empty = push off, the app still runs. See docs/dev/push.md.
+        for (key in listOf("FIREBASE_PROJECT_ID", "FIREBASE_APP_ID", "FIREBASE_API_KEY", "FIREBASE_SENDER_ID")) {
+            buildConfigField("String", key, "\"${(findProperty("zoen.$key") as String?).orEmpty()}\"")
+        }
     }
     sourceSets {
         getByName("main") {
@@ -93,6 +98,7 @@ dependencies {
     implementation("androidx.webkit:webkit:1.16.0")
     implementation("androidx.exifinterface:exifinterface:1.4.2")
     implementation("com.squareup.okhttp3:okhttp:5.4.0")
+    implementation("com.google.firebase:firebase-messaging:25.0.1")
     implementation("com.google.mlkit:genai-prompt:1.0.0-beta2")
     implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.10.0")
     implementation("androidx.media3:media3-transformer:1.9.3")

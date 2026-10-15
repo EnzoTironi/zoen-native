@@ -20,6 +20,8 @@
 //!   ZOEN_NATS_URL       NATS for fan-out between relay nodes (--nats; unset = single node)
 //!   ZOEN_LIMITS         rate-limit overrides, e.g. `publish_device=20/s:60,register_ip=5/h:10`
 //!   ZOEN_CLIENT_IP_HEADER  edge header carrying the client address (`fly-client-ip` on Fly)
+//!   ZOEN_APNS_KEY_P8, ZOEN_APNS_KEY_ID, ZOEN_APNS_TEAM_ID, ZOEN_APNS_TOPIC  APNs wakes (all four, or off)
+//!   ZOEN_FCM_SERVICE_ACCOUNT  Firebase service-account JSON for FCM wakes (unset = off)
 //!
 //! Dev: `zoen-relay --embedded-pg .tools/pg` downloads and runs a private Postgres
 //! (needs the `embedded-pg` feature).

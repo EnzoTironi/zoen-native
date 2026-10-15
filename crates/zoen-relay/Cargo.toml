@@ -59,7 +59,9 @@ opentelemetry-otlp = { version = "0.33", default-features = false, features = ["
 tracing-opentelemetry = "0.34"
 opentelemetry-appender-tracing = "0.33"
 # Daily aggregate export to PostHog (analytics/export.rs); ring, like roda-ffi.
-reqwest = { version = "0.13", default-features = false, features = ["rustls-no-provider"] }
+reqwest = { version = "0.13", default-features = false, features = ["rustls-no-provider", "http2"] }
+# Signs APNs (ES256) and FCM (RS256) JWTs; already in the tree through rustls.
+ring = "0.17"
 rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12", "logging"] }
 
 [dev-dependencies]

@@ -61,10 +61,14 @@ struct ConversationsList: View {
     var query: String = ""
     var onOpen: (String) -> Void
     var selected: String? = nil
+    /// The "Archived" screen lists the archived chats instead.
+    var archive = false
+    @State private var archiveOpen = false
 
     private var filtered: [SpaceSummary] {
         let q = query.trimmingCharacters(in: .whitespaces).folding(options: [.caseInsensitive, .diacriticInsensitive], locale: .current)
-        let inbox = model.orderedSpaces.filter { model.chatFilter.includes($0) }
+        let source = archive ? model.archivedSpaces : model.orderedSpaces
+        let inbox = archive ? source : source.filter { model.chatFilter.includes($0) }
         guard !q.isEmpty else { return inbox }
         return inbox.filter { s in
             ([s.title, s.lastPreview] + s.members.map(\.name)).joined(separator: " ")
@@ -75,11 +79,19 @@ struct ConversationsList: View {
 
     var body: some View {
         LazyVStack(alignment: .leading, spacing: 2) {
+            // WhatsApp: "Archived" sits above the chats while you have any.
+            if !archive, query.isEmpty, !model.archivedSpaces.isEmpty {
+                ArchivedEntry(count: model.archivedSpaces.count, unread: model.archivedSpaces.filter { $0.unread > 0 }.count) {
+                    archiveOpen = true
+                }
+                .transition(.opacity.combined(with: .move(edge: .top)))
+            }
             ForEach(filtered) { space in
                 Button {
                     onOpen(space.id)
                 } label: {
-                    ConversationRow(space: space, pinned: model.isPinned(space), working: model.working[space.id] != nil, selected: selected == space.id)
+                    ConversationRow(space: space, pinned: !archive && model.isPinned(space), muted: model.isMuted(space),
+                                    working: model.working[space.id] != nil, selected: selected == space.id)
                 }
                 .buttonStyle(.plain)
                 .contextMenu {
@@ -89,20 +101,75 @@ struct ConversationsList: View {
                     Button { model.perform { try model.core.markRead(spaceId: space.id) } } label: {
                         Label { Text("Mark as read") } icon: { ZoenGlyph.check.menuImage }
                     }
+                    Button { withAnimation(.timingCurve(0.25, 1, 0.5, 1, duration: 0.28)) { _ = model.toggleMute(space.id) } } label: {
+                        Label(model.isMuted(space) ? "Unmute" : "Mute",
+                              systemImage: model.isMuted(space) ? "bell" : "bell.slash")
+                    }
+                    Button { withAnimation(.timingCurve(0.25, 1, 0.5, 1, duration: 0.32)) { model.toggleArchive(space) } } label: {
+                        Label(archive ? "Unarchive" : "Archive", systemImage: archive ? "tray.and.arrow.up" : "archivebox")
+                    }
                 }
             }
-            if filtered.isEmpty && !query.isEmpty {
+            if archive && filtered.isEmpty {
+                InkEmptyState(pose: .map, title: String(localized: "No archived chats"))
+            } else if filtered.isEmpty && !query.isEmpty {
                 InkEmptyState(pose: .map, title: String(localized: "Nothing for “\(query)”"))
             } else if filtered.isEmpty && model.chatFilter != .all {
                 InkEmptyState(pose: .map, title: String(localized: "No chats in this filter"))
             }
         }
+        .sheet(isPresented: $archiveOpen) {
+            NavigationStack {
+                ScrollView {
+                    ConversationsList(onOpen: { id in archiveOpen = false; onOpen(id) }, archive: true)
+                        .padding(.top, 8)
+                }
+                .navigationTitle("Archived")
+                #if os(iOS)
+                .navigationBarTitleDisplayMode(.inline)
+                #endif
+                .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Done") { archiveOpen = false } } }
+            }
+            .presentationDetents([.large])
+        }
+    }
+}
+
+/// The "Archived" row at the top of the list (WhatsApp).
+struct ArchivedEntry: View {
+    let count: Int
+    let unread: Int
+    var onOpen: () -> Void
+
+    var body: some View {
+        Button(action: onOpen) {
+            HStack(spacing: 14) {
+                Image(systemName: "archivebox")
+                    .font(.system(size: 19, weight: .medium))
+                    .foregroundStyle(Palette.textSecondary)
+                    .frame(width: 56, height: 28)
+                Text("Archived")
+                    .font(.body.weight(.medium))
+                    .foregroundStyle(Palette.textPrimary)
+                Spacer()
+                Text(verbatim: unread > 0 ? "\(unread)" : "\(count)")
+                    .font(.footnote.weight(unread > 0 ? .semibold : .regular))
+                    .foregroundStyle(unread > 0 ? Palette.action : Palette.textTertiary)
+            }
+            .padding(.horizontal, 20)
+            .padding(.vertical, 8)
+            .contentShape(.rect)
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(Text("Archived, \(count)"))
+        .accessibilityIdentifier("archived-chats")
     }
 }
 
 struct ConversationRow: View {
     let space: SpaceSummary
     var pinned = false
+    var muted = false
     var working = false
     var selected = false
 
@@ -136,12 +203,19 @@ struct ConversationRow: View {
                     .font(.subheadline)
                     .lineLimit(1)
                     Spacer(minLength: 6)
+                    if muted {
+                        Image(systemName: "bell.slash.fill")
+                            .font(.system(size: 12))
+                            .foregroundStyle(Palette.textTertiary)
+                            .transition(.scale.combined(with: .opacity))
+                    }
                     if pinned {
                         ZoenIcon(.pin, size: 13)
                             .foregroundStyle(Palette.textTertiary)
                     }
                     if unread {
-                        Circle().fill(Palette.action).frame(width: 10, height: 10)
+                        // Ando: mention and unread are different states; muted unread goes grey.
+                        UnreadBadge(count: space.unread, muted: muted)
                             .transition(.scale.combined(with: .opacity))
                     }
                 }
@@ -156,8 +230,13 @@ struct ConversationRow: View {
     }
 
     private var authorPrefix: String {
+        // Mine: a tick (WhatsApp) instead of "You:".
+        if space.lastAuthor?.isMe == true { return "✓ " }
+        return otherPrefix
+    }
+
+    private var otherPrefix: String {
         guard let a = space.lastAuthor else { return "" }
-        if a.isMe { return String(localized: "You: ") }
         if space.kind == .direct { return "" }
         return "\(a.name): "
     }
@@ -169,8 +248,9 @@ struct ConversationRow: View {
         else if space.kind == .group { parts.append(String(localized: "Group")) }
         else if space.kind == .community { parts.append(String(localized: "Community")) }
         if pinned { parts.append(String(localized: "Pinned")) }
+        if muted { parts.append(String(localized: "Muted")) }
         if space.unread > 0 { parts.append(String(localized: "\(space.unread) unread")) }
-        parts.append(authorPrefix + space.lastPreview)
+        parts.append((space.lastAuthor?.isMe == true ? String(localized: "You: ") : otherPrefix) + space.lastPreview)
         parts.append(RodaTime.short(space.lastAtMs))
         return parts.joined(separator: ", ")
     }
@@ -178,6 +258,22 @@ struct ConversationRow: View {
 
 /// Chat avatar: anyone 1:1 gets their round face (agents included), and groups, spaces and
 /// communities a glossy sphere in the chat's own colour.
+/// Unread count pill; grey when the chat is muted (WhatsApp, Ando).
+struct UnreadBadge: View {
+    let count: UInt32
+    var muted = false
+
+    var body: some View {
+        Text(verbatim: count > 99 ? "99+" : "\(count)")
+            .font(.caption2.weight(.bold).monospacedDigit())
+            .foregroundStyle(.white)
+            .padding(.horizontal, 6)
+            .frame(minWidth: 20, minHeight: 20)
+            .background(muted ? Palette.textTertiary : Palette.action, in: .capsule)
+            .contentTransition(.numericText())
+    }
+}
+
 struct ChatAvatar: View {
     let space: SpaceSummary
     var size: CGFloat = 56

@@ -1242,8 +1242,32 @@ final class AppModel {
 
     /// Chats in Home order: pinned first (in pin order), then by recency.
     var orderedSpaces: [SpaceSummary] {
-        let pinned = chatPins.compactMap { k in spaces.first { pinKey($0) == k } }
-        return pinned + spaces.filter { !chatPins.contains(pinKey($0)) }
+        let live = spaces.filter { !archived.contains($0.id) }
+        let pinned = chatPins.compactMap { k in live.first { pinKey($0) == k } }
+        return pinned + live.filter { !chatPins.contains(pinKey($0)) }
+    }
+
+    /// Archived chats (WhatsApp): out of the list until you open "Archived". On this device.
+    private(set) var archived: Set<String> = Set(UserDefaults.standard.stringArray(forKey: "RodaArchivedChats") ?? [])
+    /// Chats whose notifications are off on this device (push and in-app).
+    private(set) var muted: Set<String> = MutedChats.all
+
+    var archivedSpaces: [SpaceSummary] { spaces.filter { archived.contains($0.id) } }
+
+    func toggleArchive(_ space: SpaceSummary) {
+        if archived.remove(space.id) == nil { archived.insert(space.id) }
+        UserDefaults.standard.set(Array(archived).sorted(), forKey: "RodaArchivedChats")
+        revision &+= 1
+    }
+
+    func isMuted(_ space: SpaceSummary) -> Bool { muted.contains(space.id) }
+
+    @discardableResult
+    func toggleMute(_ spaceId: String) -> Bool {
+        let now = MutedChats.toggle(spaceId)
+        muted = MutedChats.all
+        revision &+= 1
+        return now
     }
 
     /// Troca de destino (barra ou menu radial). Tocar no destino atual volta à raiz.
