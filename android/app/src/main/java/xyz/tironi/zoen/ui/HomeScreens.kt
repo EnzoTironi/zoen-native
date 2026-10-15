@@ -67,6 +67,7 @@ fun ConversationsScreen(model: ZoenViewModel, state: AppState, navigate: (NavKey
     var archived by remember { mutableStateOf(model.repository.preferences.getStringSet("archived", emptySet())!!.toSet()) }
     var muted by remember { mutableStateOf(model.repository.preferences.getStringSet(MUTED_CHATS, emptySet())!!.toSet()) }
     var showArchived by rememberSaveable { mutableStateOf(false) }
+    androidx.activity.compose.BackHandler(showArchived) { showArchived = false }
     val haptics = rememberZoenHaptics()
     val working by model.working.collectAsStateWithLifecycle()
     val archivedChats = state.spaces.filter { it.id in archived }
