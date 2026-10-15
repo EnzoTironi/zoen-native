@@ -3538,6 +3538,37 @@ impl Engine {
             (Some(_), None) => apps::pin_client(&mut args, None),
             (None, _) => Ok(()),
         };
+        // The same agent call for the same source message already landed (a restart
+        // between the call and the host's journal): report it instead of failing on it.
+        if let (Ok(()), Some(_), Some(text)) = (
+            &pinned,
+            &actor_owner,
+            apps::replayed(&doc.app, tool_name, &args, &state),
+        ) {
+            let view = apps::view_for(&doc.app, &state, now, &me);
+            return Ok(AppCallOutcome {
+                status: AppCallStatus::Done,
+                result_json: apps::call_tool_result(&text, &view, false).to_string(),
+                message: text,
+                confirm_title: None,
+                confirm_detail: None,
+                item: Some(self.item(item)?),
+            });
+        }
+        // Serving someone, the agent may only do what they could do themselves (a client
+        // can't resolve requests or change the hours by asking it to).
+        let pinned = pinned.and_then(|_| match (&actor_owner, serving) {
+            (Some(_), Some(s)) => {
+                let name = self.persona(s).name;
+                let them = apps::Actor {
+                    id: s,
+                    name: &name,
+                    owner: None,
+                };
+                apps::apply_as(&doc.app, tool_name, &args, &state, &them, now).map(|_| ())
+            }
+            _ => Ok(()),
+        });
         let applied = match pinned
             .and_then(|_| apps::apply_as(&doc.app, tool_name, &args, &state, &caller, now))
         {
