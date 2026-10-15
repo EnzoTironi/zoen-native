@@ -2428,8 +2428,10 @@ fn chat_prefs_live_in_my_personal_space_and_last_one_wins() {
         e.seed_demo_if_empty().unwrap();
         let s = e.spaces().into_iter().next().expect("a chat");
         assert!(!s.pinned && !s.archived && !s.muted);
-        e.set_chat_prefs(s.id.clone(), true, false, Some(i64::MAX)).unwrap();
-        e.set_chat_prefs(s.id.clone(), true, true, Some(i64::MAX)).unwrap();
+        e.set_chat_prefs(s.id.clone(), true, false, Some(i64::MAX))
+            .unwrap();
+        e.set_chat_prefs(s.id.clone(), true, true, Some(i64::MAX))
+            .unwrap();
         s.id
     };
     // Replayed from the log, like a freshly linked device would.
@@ -2438,5 +2440,8 @@ fn chat_prefs_live_in_my_personal_space_and_last_one_wins() {
     assert!(s.pinned && s.archived && s.muted);
     e.set_chat_prefs(id.clone(), false, false, Some(1)).unwrap();
     let s = e.lock().space_summary(&id).unwrap();
-    assert!(!s.pinned && !s.archived && !s.muted, "a mute in the past is no mute");
+    assert!(
+        !s.pinned && !s.archived && !s.muted,
+        "a mute in the past is no mute"
+    );
 }

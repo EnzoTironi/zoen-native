@@ -627,9 +627,12 @@ impl Engine {
                 state.spaces.insert(space.clone(), projected.clone());
             }
             // Only a Personal Space projects prefs (checked when applied).
-            state
-                .chat_prefs
-                .extend(scoped.chat_prefs.iter().map(|(k, v)| (k.clone(), v.clone())));
+            state.chat_prefs.extend(
+                scoped
+                    .chat_prefs
+                    .iter()
+                    .map(|(k, v)| (k.clone(), v.clone())),
+            );
             for (item, projected) in &scoped.items {
                 if item_spaces.get(item.as_str()) == Some(&1) {
                     state.items.insert(item.clone(), projected.clone());
@@ -1640,7 +1643,10 @@ impl Engine {
         self.append(
             &personal,
             &me,
-            EventBody::ChatPrefsSet { space: space.to_string(), prefs },
+            EventBody::ChatPrefsSet {
+                space: space.to_string(),
+                prefs,
+            },
         )?;
         Ok(())
     }
