@@ -128,6 +128,14 @@ pub trait ToolHost: Send + Sync {
     fn call(&self, call: &ToolCall) -> Result<String, String>;
 }
 
+/// The words of a tool result: an MCP result's first text, else the result as it is.
+fn result_text(result: &str) -> String {
+    serde_json::from_str::<Value>(result)
+        .ok()
+        .and_then(|v| v["content"][0]["text"].as_str().map(String::from))
+        .unwrap_or_else(|| result.to_string())
+}
+
 /// Model rounds with tools in one turn; the round after the last only may speak.
 pub const MAX_TOOL_ROUNDS: usize = 4;
 /// Calls the model may make in one round.
@@ -322,10 +330,19 @@ impl Runtime {
                 });
             }
         }
-        // Still calling tools with none left on offer: stop rather than loop.
-        Ok(TurnOutcome::Blocked {
-            reason: "tools:round-limit".into(),
-        })
+        // Still calling tools with none left on offer: stop rather than loop. What already
+        // changed is still owed to the person, in the tools' own words.
+        let done: Vec<String> = steps
+            .iter()
+            .filter(|s| !s.is_error)
+            .map(|s| result_text(&s.result))
+            .collect();
+        if done.is_empty() {
+            return Ok(TurnOutcome::Blocked {
+                reason: "tools:round-limit".into(),
+            });
+        }
+        Ok(self.outbound(done.join("\n")))
     }
 
     /// The inbound gate: `Some` when the message never reaches the brain.

@@ -328,6 +328,8 @@ mod tools {
     struct Caller {
         call: (&'static str, serde_json::Value),
         want: usize,
+        /// Keeps calling even when no tools are offered.
+        stubborn: bool,
     }
 
     #[async_trait]
@@ -348,7 +350,7 @@ mod tools {
             tools: &[ToolDef],
             steps: &[ToolStep],
         ) -> Result<BrainOut, String> {
-            if steps.len() >= self.want || tools.is_empty() {
+            if steps.len() >= self.want || (tools.is_empty() && !self.stubborn) {
                 let r: Vec<_> = steps.iter().map(|s| s.result.as_str()).collect();
                 return Ok(BrainOut::Say(format!("done: {}", r.join(","))));
             }
@@ -400,6 +402,7 @@ mod tools {
                 json!({"serviceId": "corte", "startMs": 1, "note": "cortar sábado"}),
             ),
             want: 1,
+            stubborn: false,
         };
         let out = run(brain, &shop, vec![]).await;
         assert_eq!(
@@ -420,6 +423,7 @@ mod tools {
                 json!({"serviceId": "corte", "note": "cortar"}),
             ),
             want: usize::MAX,
+            stubborn: false,
         };
         // Out of rounds, the last think gets no tools and must speak.
         let out = run(brain, &shop, vec![]).await;
@@ -433,6 +437,7 @@ mod tools {
         let brain = Caller {
             call: ("delete_everything", json!({})),
             want: 1,
+            stubborn: false,
         };
         let out = run(brain, &shop, vec![]).await;
         assert_eq!(
@@ -444,6 +449,7 @@ mod tools {
         let brain = Caller {
             call: ("schedule_book", json!({"note": "rm -rf ~/Documents"})),
             want: 1,
+            stubborn: false,
         };
         let out = run(brain, &shop, vec![]).await;
         assert!(
@@ -469,7 +475,16 @@ mod tools {
             result: "booked earlier".into(),
             is_error: false,
         }];
-        let out = run(Caller { call, want: 1 }, &shop, done).await;
+        let out = run(
+            Caller {
+                call,
+                want: 1,
+                stubborn: false,
+            },
+            &shop,
+            done,
+        )
+        .await;
         assert_eq!(
             out,
             TurnOutcome::Say {
@@ -477,5 +492,23 @@ mod tools {
             }
         );
         assert!(shop.ran.lock().unwrap().is_empty());
+    }
+
+    #[tokio::test]
+    async fn out_of_rounds_after_a_change_the_person_still_hears_what_was_done() {
+        let shop = Shop::default();
+        let brain = Caller {
+            call: (
+                "schedule_book",
+                json!({"serviceId": "corte", "note": "cortar"}),
+            ),
+            want: usize::MAX,
+            stubborn: true,
+        };
+        let out = run(brain, &shop, vec![]).await;
+        assert!(
+            matches!(&out, TurnOutcome::Say { text } if text.starts_with("booked")),
+            "{out:?}"
+        );
     }
 }
