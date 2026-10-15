@@ -222,10 +222,13 @@ struct ReplyComposerBar: View {
     }
 }
 
-/// "3 respostas" under a thread's root: tiny faces of who replied, then the count.
+/// Under a thread's root (Slack/Ando): faces of who replied, "N replies", when the last one
+/// came, and an unread dot when there's something I haven't seen in a thread I follow.
 struct ThreadRepliesChip: View {
     let count: UInt32
     var faces: [Persona] = []
+    var lastReplyMs: Int64 = 0
+    var unread: UInt32 = 0
     var action: () -> Void
 
     var body: some View {
@@ -240,10 +243,21 @@ struct ThreadRepliesChip: View {
                 Text(count == 1 ? String(localized: "1 reply") : String(localized: "\(Int(count)) replies"))
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(Palette.action)
+                if lastReplyMs > 0 {
+                    Text(RodaTime.short(lastReplyMs))
+                        .font(.caption2)
+                        .foregroundStyle(Palette.textTertiary)
+                }
+                if unread > 0 {
+                    Circle().fill(Palette.action).frame(width: 7, height: 7)
+                        .transition(.scale.combined(with: .opacity))
+                        .accessibilityLabel("\(Int(unread)) unread")
+                }
                 Image(systemName: "chevron.right").font(.system(size: 9, weight: .bold)).foregroundStyle(Palette.action.opacity(0.7))
             }
             .padding(.horizontal, 8).padding(.vertical, 4)
             .background(Palette.action.opacity(0.1), in: .capsule)
+            .animation(Motion.wabi, value: unread)
         }
         .buttonStyle(PressScaleStyle())
         .accessibilityIdentifier("thread-chip")
@@ -269,7 +283,10 @@ struct ThreadSheet: View {
     let rootId: String
     @State private var entries: [TimelineEntry] = []
     @State private var draft = ""
+    @State private var alsoInChat = false
     @FocusState private var focused: Bool
+
+    private var following: Bool { entries.first?.threadFollowing ?? false }
 
     var body: some View {
         NavigationStack {
@@ -304,10 +321,23 @@ struct ThreadSheet: View {
             }
             .background(Palette.background.ignoresSafeArea())
             .safeAreaBar(edge: .bottom, spacing: 0) {
-                Composer(text: $draft, placeholder: String(localized: "Reply in thread"), focused: $focused, busy: false) {
-                    let text = draft
-                    draft = ""
-                    if model.sendReply(text, to: rootId, thread: true, in: spaceId) { reload() }
+                VStack(alignment: .leading, spacing: 0) {
+                    Toggle(isOn: $alsoInChat) {
+                        Text("Also send to chat").font(.footnote)
+                    }
+                    .toggleStyle(.checkmark)
+                    .padding(.horizontal, 18)
+                    .padding(.bottom, 4)
+                    .accessibilityIdentifier("thread-also-in-chat")
+                    Composer(text: $draft, placeholder: String(localized: "Reply in thread"), focused: $focused, busy: false) {
+                        let text = draft.trimmingCharacters(in: .whitespacesAndNewlines)
+                        draft = ""
+                        guard !text.isEmpty else { return }
+                        Haptics.send()
+                        model.perform { try model.core.sendThreadReply(spaceId: spaceId, text: text, rootId: rootId, alsoInChat: alsoInChat) }
+                        alsoInChat = false
+                        reload()
+                    }
                 }
             }
             .navigationTitle(Text("Thread"))
@@ -318,6 +348,17 @@ struct ThreadSheet: View {
                 ToolbarItem(placement: .cancellationAction) {
                     Button { dismiss() } label: { Text("Close") }
                         .accessibilityIdentifier("thread-close")
+                }
+                ToolbarItem(placement: .primaryAction) {
+                    Button {
+                        Haptics.selectionTick()
+                        model.perform { try model.core.setThreadFollow(spaceId: spaceId, rootId: rootId, follow: !following) }
+                        reload()
+                    } label: {
+                        Label(following ? "Following" : "Follow", systemImage: following ? "bell.fill" : "bell")
+                            .contentTransition(.symbolEffect(.replace))
+                    }
+                    .accessibilityIdentifier("thread-follow")
                 }
             }
         }
@@ -341,10 +382,99 @@ struct ThreadSheet: View {
     }
 
     private func reload() {
-        withAnimation(reduceMotion ? nil : .spring(duration: 0.4, bounce: 0.2)) {
+        withAnimation(reduceMotion ? nil : Motion.wabi) {
             entries = (try? model.core.thread(spaceId: spaceId, rootId: rootId)) ?? []
         }
+        try? model.core.markThreadRead(spaceId: spaceId, rootId: rootId)
     }
 }
 
 struct ThreadRef: Identifiable, Equatable { let id: String }
+
+/// Checkbox-style toggle (Slack's "Also send to channel").
+struct CheckmarkToggleStyle: ToggleStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        Button { configuration.isOn.toggle() } label: {
+            HStack(spacing: 8) {
+                Image(systemName: configuration.isOn ? "checkmark.square.fill" : "square")
+                    .foregroundStyle(configuration.isOn ? Palette.action : Palette.textTertiary)
+                    .contentTransition(.symbolEffect(.replace))
+                configuration.label.foregroundStyle(Palette.textSecondary)
+            }
+        }
+        .buttonStyle(.plain)
+        .animation(Motion.wabi, value: configuration.isOn)
+    }
+}
+
+extension ToggleStyle where Self == CheckmarkToggleStyle {
+    static var checkmark: CheckmarkToggleStyle { .init() }
+}
+
+/// Threads I follow across all my chats, newest reply first. Unread and mentions are
+/// distinct (Ando): a dot for unread, "@N" for mentions.
+struct ThreadsInboxView: View {
+    @Environment(AppModel.self) private var model
+    @State private var threads: [ThreadSummary] = []
+    @State private var open: ThreadSummary?
+
+    var body: some View {
+        List(threads, id: \.root.id) { t in
+            Button { open = t } label: {
+                HStack(alignment: .top, spacing: 12) {
+                    Avatar(persona: t.root.author, size: 36)
+                    VStack(alignment: .leading, spacing: 3) {
+                        HStack {
+                            Text(t.spaceTitle).font(.subheadline.weight(t.root.threadUnread > 0 ? .bold : .semibold))
+                            Spacer()
+                            Text(RodaTime.short(t.root.threadLastReplyMs)).font(.caption2).foregroundStyle(Palette.textTertiary)
+                        }
+                        Text(MessageReplies.snippet(t.root)).font(.subheadline).foregroundStyle(Palette.textPrimary).lineLimit(1)
+                        if let last = t.lastReply {
+                            Text("\(last.author.isMe ? String(localized: "You") : last.author.name): \(MessageReplies.snippet(last))")
+                                .font(.footnote).foregroundStyle(Palette.textSecondary).lineLimit(1)
+                        }
+                    }
+                    if t.mentions > 0 {
+                        Text("@\(Int(t.mentions))").font(.caption.weight(.bold)).foregroundStyle(.white)
+                            .padding(.horizontal, 6).frame(height: 20).background(Palette.action, in: Capsule())
+                    } else if t.root.threadUnread > 0 {
+                        Circle().fill(Palette.action).frame(width: 9, height: 9).padding(.top, 6)
+                    }
+                }
+            }
+            .buttonStyle(.plain)
+        }
+        .listStyle(.plain)
+        .overlay { if threads.isEmpty { InkEmptyState(pose: .map, title: String(localized: "No threads yet")) } }
+        .navigationTitle("Threads")
+        .task(id: model.revision) { threads = model.core.threads() }
+        .threadPanel(item: $open) { t in ThreadSheet(spaceId: t.spaceId, rootId: t.root.id) }
+    }
+}
+
+extension ThreadSummary: Identifiable { public var id: String { root.id } }
+
+extension View {
+    /// A thread opens as a side panel where there's room (Mac, iPad, landscape) and as a
+    /// sheet on iPhone (Ando).
+    func threadPanel<Item: Identifiable, Panel: View>(item: Binding<Item?>, @ViewBuilder panel: @escaping (Item) -> Panel) -> some View {
+        modifier(ThreadPanel(item: item, panel: panel))
+    }
+}
+
+private struct ThreadPanel<Item: Identifiable, Panel: View>: ViewModifier {
+    @Binding var item: Item?
+    let panel: (Item) -> Panel
+    @Environment(\.horizontalSizeClass) private var size
+
+    func body(content: Content) -> some View {
+        if size == .regular {
+            content.inspector(isPresented: Binding(get: { item != nil }, set: { if !$0 { item = nil } })) {
+                if let item { panel(item).inspectorColumnWidth(min: 320, ideal: 380, max: 480) }
+            }
+        } else {
+            content.sheet(item: $item) { panel($0).presentationDetents([.large]) }
+        }
+    }
+}

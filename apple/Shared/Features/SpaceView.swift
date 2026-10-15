@@ -48,7 +48,8 @@ struct SpaceView: View {
     @State private var editText = ""
     @State private var deleteTarget: TimelineEntry?
     /// The main timeline: thread replies live in their thread, not here.
-    private var visible: [TimelineEntry] { entries.filter { $0.inThread == nil } }
+    /// The chat: everything but thread-only replies (a reply also sent to the chat shows).
+    private var visible: [TimelineEntry] { entries.filter { $0.inThread == nil || $0.alsoInChat } }
 
     private var space: SpaceSummary? { model.space(spaceId) }
     private var workingAgent: Persona? { model.working[spaceId] }
@@ -250,10 +251,7 @@ struct SpaceView: View {
                     }
                 }
             }
-            .sheet(item: $thread) { t in
-                ThreadSheet(spaceId: spaceId, rootId: t.id)
-                    .presentationDetents([.large])
-            }
+            .threadPanel(item: $thread) { t in ThreadSheet(spaceId: spaceId, rootId: t.id) }
             .onChange(of: draft) { _, text in model.sync.typingChanged(spaceId, text: text) }
             // The agent's browser card shows up (or asks for you): bring it into view.
             .onChange(of: model.browser.phase) { _, _ in
@@ -699,7 +697,8 @@ struct EntryView: View {
                         .padding(.leading, entry.author.isMe ? 0 : 44)
                 }
                 if entry.threadReplies > 0 {
-                    ThreadRepliesChip(count: entry.threadReplies, faces: threadFaces) { onSwipe?(.thread) }
+                    ThreadRepliesChip(count: entry.threadReplies, faces: entry.threadParticipants.isEmpty ? threadFaces : entry.threadParticipants,
+                                      lastReplyMs: entry.threadLastReplyMs, unread: entry.threadFollowing ? entry.threadUnread : 0) { onSwipe?(.thread) }
                         .padding(.leading, entry.author.isMe ? 0 : 44)
                         .transition(reduceMotion ? .opacity : .scale(scale: 0.6, anchor: .topLeading).combined(with: .opacity))
                 }

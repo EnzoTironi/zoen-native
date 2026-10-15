@@ -62,6 +62,7 @@ struct ConversationsList: View {
     var onOpen: (String) -> Void
     var selected: String? = nil
     @State private var showArchived = false
+    @State private var showThreads = false
 
     private var filtered: [SpaceSummary] {
         let q = query.trimmingCharacters(in: .whitespaces).folding(options: [.caseInsensitive, .diacriticInsensitive], locale: .current)
@@ -76,6 +77,9 @@ struct ConversationsList: View {
 
     var body: some View {
         LazyVStack(alignment: .leading, spacing: 2) {
+            if query.isEmpty && model.spaces.contains(where: { $0.kind != .direct }) {
+                ThreadsRow(unread: model.spaces.reduce(0) { $0 + Int($1.threadsUnread) }) { showThreads = true }
+            }
             if query.isEmpty && !model.archivedSpaces.isEmpty {
                 ArchivedRow(count: model.archivedSpaces.count, open: $showArchived)
             }
@@ -107,6 +111,8 @@ struct ConversationsList: View {
                     } label: { Label(space.archived ? "Unarchive" : "Archive", systemImage: space.archived ? "tray.and.arrow.up" : "archivebox") }
                 }
             }
+            Color.clear.frame(height: 0)
+                .sheet(isPresented: $showThreads) { NavigationStack { ThreadsInboxView() } }
             if filtered.isEmpty && !query.isEmpty {
                 InkEmptyState(pose: .map, title: String(localized: "Nothing for “\(query)”"))
             } else if filtered.isEmpty && model.chatFilter != .all {
@@ -162,7 +168,15 @@ struct ConversationRow: View {
                         ZoenIcon(.pin, size: 13)
                             .foregroundStyle(Palette.textTertiary)
                     }
-                    if unread {
+                    if space.mentions > 0 {
+                        // Ando: a mention is its own state, with its count.
+                        Text("@\(Int(space.mentions))")
+                            .font(.caption2.weight(.bold).monospacedDigit())
+                            .foregroundStyle(.white)
+                            .padding(.horizontal, 6).frame(height: 18)
+                            .background(Palette.action, in: Capsule())
+                            .accessibilityLabel("\(Int(space.mentions)) mentions")
+                    } else if unread {
                         Circle().fill(Palette.action).frame(width: 10, height: 10)
                             .transition(.scale.combined(with: .opacity))
                     }
@@ -464,5 +478,36 @@ struct ArchivedRow: View {
         }
         .buttonStyle(.plain)
         .accessibilityIdentifier("archived-row")
+    }
+}
+
+/// "Threads" at the top of the list: the inbox of threads I follow, with an unread count.
+struct ThreadsRow: View {
+    let unread: Int
+    var open: () -> Void
+
+    var body: some View {
+        Button {
+            Haptics.tap()
+            open()
+        } label: {
+            HStack(spacing: 14) {
+                Image(systemName: "bubble.left.and.text.bubble.right")
+                    .font(.system(size: 17, weight: .semibold))
+                    .frame(width: 56)
+                Text("Threads").font(.body.weight(unread > 0 ? .semibold : .medium))
+                Spacer()
+                if unread > 0 {
+                    Text("\(unread)").font(.caption.weight(.bold).monospacedDigit()).foregroundStyle(.white)
+                        .padding(.horizontal, 7).frame(height: 20).background(Palette.action, in: Capsule())
+                }
+            }
+            .foregroundStyle(Palette.textPrimary)
+            .padding(.horizontal, 16)
+            .frame(height: 48)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityIdentifier("threads-row")
     }
 }
