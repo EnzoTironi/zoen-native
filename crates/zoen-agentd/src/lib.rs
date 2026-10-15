@@ -1,19 +1,16 @@
 //! # zoen-agentd
 //!
-//! The agent runtime's tool side (ADR 0028). An agent's tools run in the cheapest tier that
-//! their signed manifest allows:
+//! The agent runtime (ADR 0028 + M3 citizen base). An agent is a first-class Zoen citizen:
+//! its own MLS identity and device, profile, avatar, Space membership and invites. The host
+//! holds that device on the relay while the owner is offline. Tools still run in the cheapest
+//! tier their signed manifest allows (WASM, microVM, browser) under Grants.
 //!
-//! - **T0**: no sandbox, or a WASM component in-process;
-//! - **T1**: a microVM for real code (Firecracker in production; gVisor stands in during P0);
-//! - **T2**: a browser microVM.
-//!
-//! A model can never ask for a heavier tier: only a tool's signed [`manifest::ToolManifest`]
-//! can, and only a Grant from the owner lets it run there ([`router`]). Sandboxes start lazily
-//! on the first call that needs one, stop after an idle period and are torn down at the end of
-//! the task ([`session`]). Every second is charged to the owner's daily budget ([`budget`]).
+//! Exact code covers crypto, sync and permissions. Persona, rules and free JSON state are
+//! prompts — including the Creator agent that mints user agents from conversation.
 
 pub mod browser;
 pub mod budget;
+pub mod citizen;
 pub mod manifest;
 pub mod router;
 pub mod sandbox;
@@ -21,6 +18,11 @@ pub mod session;
 pub mod wasm;
 
 pub use browser::{BrowserCall, BrowserTools};
+pub use citizen::{
+    approve_agent, claim_citizen, creator_definition, AgentKind, AgentSpec, Avatar, Brain, Citizen,
+    CitizenRecord, Definition, Host, HostError, ModelTier, Runtime, Turn, TurnContext, TurnOutcome,
+    AVATAR_STYLE, CHEAP_CHAT_PROFILE, CREATOR_HANDLE, CREATOR_NAME,
+};
 pub use manifest::{EgressRule, Needs, SecretBinding, SignedManifest, ToolManifest};
 pub use router::{Route, Router, Tier};
 pub use sandbox::{ExecOutput, ExecRequest, Lease, SandboxError, SandboxProvider, SandboxSpec};

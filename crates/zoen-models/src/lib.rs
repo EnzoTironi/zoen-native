@@ -100,7 +100,8 @@ impl ModelGateway {
             || url.password().is_some()
             || url.query().is_some()
             || url.fragment().is_some()
-            || url.path().trim_end_matches('/') != "/v1"
+            || !(url.path().trim_end_matches('/') == "/v1"
+                || url.path().trim_end_matches('/').ends_with("/ai/v1"))
             || !validation::identifier(&config.model)
             || !validation::identifier(&config.credential_ref)
             || config.api_key.is_empty()

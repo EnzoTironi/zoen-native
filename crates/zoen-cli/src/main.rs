@@ -8,6 +8,8 @@
 //! Every command is a fresh process: open the database, load the key from the vault,
 //! connect, catch up, act, flush, exit. Killing it at any point loses nothing.
 
+mod agent;
+
 use std::{
     io::Write,
     path::{Path, PathBuf},
@@ -215,6 +217,11 @@ fn usage() -> ! {
          keys CHAT                        an end-to-end chat's group: epoch, digest, members\n\
          send CHAT TEXT [--offline]      CHAT = @handle, title or space id\n\
          read CHAT [--older]              --older: ask your other device for an older page\n\
+         agent-keys | agent-init --name N --handle H --owner ID --proof JSON --definition FILE\n\
+         agent-host [--for SECS]          run this agent citizen (relay-backed cursors)\n\
+         authorize-agent AGENT_ID         owner: sign an agent's root\n\
+         agent-pause|agent-resume|agent-revoke @AGENT   owner controls\n\
+         agent-define @AGENT --definition FILE [--version N]\n\
          link-request [--relay URL]       new device: show a code, become your account, get history\n\
          link CODE                        existing device: link the device showing CODE\n\
          history                          new device: finish (resume) the history transfer\n\
@@ -285,7 +292,7 @@ fn open(home: &Path) -> Arc<RodaEngine> {
     }
 }
 
-fn die(msg: impl std::fmt::Display) -> ! {
+pub(crate) fn die(msg: impl std::fmt::Display) -> ! {
     eprintln!("error: {msg}");
     std::process::exit(1)
 }
@@ -461,6 +468,61 @@ async fn main() {
         for (k, v) in copy {
             println!("copy.{k}={v}");
         }
+        return;
+    }
+
+    // Agent citizens (server-side runtime). Keys first, so the owner can authorize the id.
+    if cmd == "agent-keys" {
+        let root = match vault.load("agent_root".into()) {
+            Some(r) => r,
+            None => {
+                let mut r = [0u8; 32];
+                getrandom_fill(&mut r);
+                if !vault.save("agent_root".into(), r.to_vec()) {
+                    die("vault");
+                }
+                r.to_vec()
+            }
+        };
+        println!(
+            "{}",
+            roda_ffi::agent_id_for_root(root).unwrap_or_else(|err| die(err))
+        );
+        return;
+    }
+    if cmd == "agent-init" {
+        let name = cli.flag("--name").unwrap_or_else(|| usage());
+        let handle = cli.flag("--handle").unwrap_or_else(|| usage());
+        let owner = cli.flag("--owner").unwrap_or_else(|| usage());
+        let proof = cli.flag("--proof").unwrap_or_else(|| usage());
+        let def_path = cli.flag("--definition").unwrap_or_else(|| usage());
+        let relay = cli
+            .flag("--relay")
+            .or_else(|| std::env::var("ZOEN_RELAY").ok())
+            .unwrap_or_else(|| "http://127.0.0.1:8787".into());
+        let root = vault
+            .load("agent_root".into())
+            .unwrap_or_else(|| die("run agent-keys first"));
+        e.create_agent_account(name, handle, relay, root, owner, proof, vault.clone())
+            .unwrap_or_else(|err| die(err));
+        e.start_sync(None).unwrap_or_else(|err| die(err));
+        let c = e.wait_until_idle(timeout).await;
+        let a = e.account().unwrap_or_else(|| die("account"));
+        if a.registered {
+            // The real kind and definition, recorded on the relay at registration.
+            agent::define_first(&e, &def_path).await;
+        }
+        println!(
+            "agent @{} ({}) {}",
+            a.handle,
+            &a.identity_id[..12],
+            if a.registered {
+                "registered".to_string()
+            } else {
+                c.error.unwrap_or_default()
+            }
+        );
+        e.stop_sync();
         return;
     }
 
@@ -972,6 +1034,49 @@ async fn main() {
                 std::process::exit(3);
             }
         }
+        "authorize-agent" => {
+            let id = cli.args.first().cloned().unwrap_or_else(|| usage());
+            println!(
+                "{}",
+                e.authorize_agent_json(id).unwrap_or_else(|err| die(err))
+            );
+        }
+        "agent-host" => {
+            agent::host(&e, &home, for_secs).await;
+        }
+        // Owner controls over an agent you answer for: `agent-pause @bot`, `agent-resume @bot`,
+        // `agent-revoke @bot`, `agent-define @bot --definition def.json --version N`.
+        "agent-pause" | "agent-resume" | "agent-revoke" | "agent-define" => {
+            let who = cli.args.first().cloned().unwrap_or_else(|| usage());
+            let h = who.trim_start_matches('@').to_string();
+            let id = if who.starts_with('@') {
+                e.find_people(h.clone())
+                    .await
+                    .unwrap_or_else(|err| die(err))
+                    .into_iter()
+                    .find(|p| p.handle == h)
+                    .map(|p| p.id)
+                    .unwrap_or_else(|| die(format!("@{h} isn't on Zoen")))
+            } else {
+                who.clone()
+            };
+            let r = if cmd == "agent-define" {
+                let def =
+                    agent::read_definition(&cli.flag("--definition").unwrap_or_else(|| usage()));
+                let version: u32 = cli
+                    .flag("--version")
+                    .and_then(|v| v.parse().ok())
+                    .unwrap_or(def.version);
+                let bytes = def.encode().unwrap_or_else(|err| die(err));
+                e.agent_define(id, version, def.kind.relay_kind().into(), bytes)
+                    .await
+            } else {
+                e.agent_control(id, cmd.trim_start_matches("agent-").to_string())
+                    .await
+            };
+            r.unwrap_or_else(|err| die(err));
+            println!("{} {who}", cmd.trim_start_matches("agent-"));
+        }
         "watch" => {
             println!(
                 "watching as @{} (Ctrl-C to stop)",
@@ -1447,4 +1552,9 @@ async fn main() {
         _ => usage(),
     }
     e.stop_sync();
+}
+
+fn getrandom_fill(buf: &mut [u8]) {
+    let mut f = std::fs::File::open("/dev/urandom").unwrap_or_else(|err| die(err));
+    std::io::Read::read_exact(&mut f, buf).unwrap_or_else(|err| die(err));
 }

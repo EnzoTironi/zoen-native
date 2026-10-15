@@ -11,6 +11,7 @@
 //! write and who receives. Everything else is the clients' business.
 
 mod agent_page;
+pub mod agents;
 pub mod analytics;
 pub mod backup;
 pub mod blobs;

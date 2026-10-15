@@ -7735,6 +7735,8 @@ dependencies = [
  "getrandom 0.2.17",
  "hex",
  "reqwest",
+ "roda-gate",
+ "roda-log",
  "roda-types",
  "rustls",
  "serde",
@@ -7745,7 +7747,10 @@ dependencies = [
  "tokio",
  "wasmtime",
  "wasmtime-wasi",
+ "zeroize",
+ "zoen-agentd",
  "zoen-egress",
+ "zoen-models",
 ]
 
 [[package]]
@@ -7759,7 +7764,9 @@ dependencies = [
  "hkdf 0.12.4",
  "opentelemetry-proto",
  "prost",
+ "reqwest",
  "roda-ffi",
+ "roda-gate",
  "roda-log",
  "roda-proto",
  "roda-store",
@@ -7770,6 +7777,7 @@ dependencies = [
  "sqlx",
  "tokio",
  "tokio-tungstenite 0.30.0",
+ "zoen-agentd",
 ]
 
 [[package]]
@@ -7890,6 +7898,7 @@ dependencies = [
  "serde_json",
  "sha2 0.10.9",
  "sqlx",
+ "thiserror 2.0.21",
  "tokio",
  "tokio-tungstenite 0.30.0",
  "tower-http",

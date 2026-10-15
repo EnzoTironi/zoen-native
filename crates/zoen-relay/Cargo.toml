@@ -39,6 +39,7 @@ chacha20poly1305.workspace = true
 curve25519-dalek.workspace = true
 hkdf.workspace = true
 anyhow = "1"
+thiserror.workspace = true
 axum = { version = "0.8", features = ["ws", "macros"] }
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync", "time", "signal", "net", "fs", "io-util"] }
 futures-util = { version = "0.3", default-features = false, features = ["sink", "std"] }

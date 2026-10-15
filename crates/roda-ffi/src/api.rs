@@ -239,6 +239,118 @@ impl RodaEngine {
     }
 }
 
+/// The Agent identity id a root secret signs as (server-side runtime).
+pub fn agent_id_for_root(root: Vec<u8>) -> Result<String, CoreError> {
+    let root: [u8; 32] = root
+        .as_slice()
+        .try_into()
+        .map_err(|_| invalid("agent key"))?;
+    Ok(roda_log::Signer::from_secret(&root).id())
+}
+
+/// Server-side agent runtime only; deliberately outside the native FFI surface.
+impl RodaEngine {
+    /// Agent citizen account (server-side runtime). Not exported to native apps.
+    #[allow(clippy::too_many_arguments)]
+    pub fn create_agent_account(
+        &self,
+        name: String,
+        handle: String,
+        relay_url: String,
+        root_secret: Vec<u8>,
+        owner: String,
+        proof_json: String,
+        vault: Arc<dyn SecretVault>,
+    ) -> Result<AccountDto, CoreError> {
+        let root: [u8; 32] = root_secret
+            .as_slice()
+            .try_into()
+            .map_err(|_| invalid("agent key"))?;
+        let proof: roda_types::AgentOwnerProof =
+            serde_json::from_str(&proof_json).map_err(|_| invalid("agent proof"))?;
+        {
+            let mut e = self.lock();
+            let (root, device, agreement) =
+                e.create_agent_account(&name, &handle, &relay_url, root, &owner, proof)?;
+            if !vault.save(VAULT_IDENTITY.into(), root.to_vec())
+                || !vault.save(VAULT_DEVICE.into(), device.to_vec())
+                || !vault.save(VAULT_AGREEMENT.into(), agreement.to_vec())
+            {
+                let _ = e.wipe();
+                let _ = e.store.meta_delete("account");
+                return Err(invalid("vault"));
+            }
+        }
+        self.account_dto().ok_or_else(|| invalid("account"))
+    }
+
+    /// The Person this agent account answers to (ADR 0049), from its own profile.
+    pub fn agent_owner(&self) -> Option<String> {
+        let e = self.lock();
+        let me = e.me_id().ok()?;
+        e.store
+            .identities()
+            .ok()?
+            .into_iter()
+            .find(|(i, _)| i.id == me)
+            .and_then(|(i, _)| i.owner)
+    }
+
+    /// The relay's record for this agent runtime: status, definition and cursors.
+    pub async fn agent_state(&self) -> Result<roda_proto::AgentStateRecord, CoreError> {
+        match self
+            .request(Op::Agent(roda_proto::AgentRequest::State))
+            .await?
+        {
+            Reply::AgentState(s) => Ok(s),
+            _ => Err(unexpected()),
+        }
+    }
+
+    /// This agent runtime handled `space` through `seq` (inclusive).
+    pub async fn agent_advance(&self, space: String, seq: u64) -> Result<(), CoreError> {
+        self.agent_done(roda_proto::AgentRequest::Advance { space, seq })
+            .await
+    }
+
+    /// A new definition version for `agent` (owner, or the agent's own first one).
+    pub async fn agent_define(
+        &self,
+        agent: String,
+        version: u32,
+        kind: String,
+        definition: Vec<u8>,
+    ) -> Result<(), CoreError> {
+        self.agent_done(roda_proto::AgentRequest::Define {
+            agent,
+            version,
+            kind,
+            definition,
+        })
+        .await
+    }
+
+    /// Owner: "pause", "resume" or "revoke" one of your agents.
+    pub async fn agent_control(&self, agent: String, action: String) -> Result<(), CoreError> {
+        let action = roda_proto::AgentAction::parse(&action).ok_or_else(|| invalid("action"))?;
+        self.agent_done(roda_proto::AgentRequest::Control { agent, action })
+            .await
+    }
+
+    async fn agent_done(&self, req: roda_proto::AgentRequest) -> Result<(), CoreError> {
+        match self.request(Op::Agent(req)).await? {
+            Reply::Done => Ok(()),
+            _ => Err(unexpected()),
+        }
+    }
+
+    /// Owner side of ADR 0049: this unlocked device signs the agent root, as JSON.
+    pub fn authorize_agent_json(&self, agent_id: String) -> Result<String, CoreError> {
+        let proof = self.lock().authorize_agent(&agent_id)?;
+        serde_json::to_string(&proof).map_err(|_| invalid("proof"))
+    }
+}
+
 #[uniffi::export]
 impl RodaEngine {
     /// The account on this device, if any.
