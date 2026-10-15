@@ -43,8 +43,8 @@ class OwnerAgentNoteCardTest {
     @Test fun parsesOnlyTheKnownNoteShapes() {
         assertEquals(OwnerAgentNote.Ask("s1", "carla", "Oi"), OwnerAgentNote.parse("""{"ask_owner":{"space":"s1","from":"carla","draft":"Oi","rule":"r"}}"""))
         assertEquals(OwnerAgentNote.Proposal("s1", "Agenda", "agenda"), OwnerAgentNote.parse("""{"agent_proposal":{"space":"s1","source":"m","spec":{"name":"Agenda","handle":"agenda"}}}"""))
-        assertEquals(OwnerAgentNote.Booking("s1", false, "Carla", "Corte", "seg 10:00"), OwnerAgentNote.parse("""{"booking":{"space":"s1","kind":"new","client":"Carla","service":"Corte","when":"seg 10:00","source":"m"}}"""))
-        assertEquals(true, (OwnerAgentNote.parse("""{"booking":{"kind":"cancelled"}}""") as OwnerAgentNote.Booking).cancelled)
+        assertEquals(OwnerAgentNote.Booking("s1", "new", "Carla", "Corte", "seg 10:00"), OwnerAgentNote.parse("""{"booking":{"space":"s1","kind":"new","client":"Carla","service":"Corte","when":"seg 10:00","source":"m"}}"""))
+        assertEquals("cancel_request", (OwnerAgentNote.parse("""{"booking":{"kind":"cancel_request"}}""") as OwnerAgentNote.Booking).kind)
         assertNull(OwnerAgentNote.parse("""{"grant_admin":{}}"""))
         assertNull(OwnerAgentNote.parse("not json"))
     }
@@ -54,7 +54,7 @@ class OwnerAgentNoteCardTest {
         val notes = listOf(
             OwnerAgentNote.Ask("barbearia", "carla", "Oi Carla! Recebi o comprovante, já confirmo seu horário de sábado às 10h."),
             OwnerAgentNote.Proposal("dm", "Agenda do Salão", "agenda_salao"),
-            OwnerAgentNote.Booking("barbearia", false, "Carla", "Corte", "sáb 10:00"),
+            OwnerAgentNote.Booking("barbearia", "new", "Carla", "Corte", "sáb 10:00"),
         )
         compose.setContent {
             val base = LocalContext.current

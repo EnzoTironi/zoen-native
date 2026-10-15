@@ -165,7 +165,7 @@ mod tests {
         );
         assert_eq!(
             owner_note_for(&confirmed, &asked, "carla").unwrap()["booking"]["kind"],
-            "cancelled"
+            "cancel_request"
         );
 
         // Staff confirming or declining, or someone else's write: nothing for the owner.

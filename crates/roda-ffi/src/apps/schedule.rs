@@ -488,7 +488,7 @@ fn local(tz: Tz, ms: i64) -> Option<chrono::DateTime<Tz>> {
 }
 
 /// What the client `by` did to their own booking between two versions of a schedule, as
-/// the owner's `booking` note: a new request, or a withdrawal / cancel request. Changes by
+/// the owner's `booking` note: `new`, `cancelled` (withdrawn) or `cancel_request`. Changes by
 /// anyone else (staff, the agent) say nothing.
 pub(crate) fn booking_change(prev: &Value, next: &Value, by: &str) -> Option<Value> {
     let asks_cancel = |st: &Value, id: &Value| {
@@ -506,7 +506,7 @@ pub(crate) fn booking_change(prev: &Value, next: &Value, by: &str) -> Option<Val
                 None if b["status"] == "pending" => "new",
                 Some(o) if o["status"] == "pending" && b["status"] == "cancelled" => "cancelled",
                 Some(_) if asks_cancel(next, &b["id"]) && !asks_cancel(prev, &b["id"]) => {
-                    "cancelled"
+                    "cancel_request"
                 }
                 _ => return None,
             };

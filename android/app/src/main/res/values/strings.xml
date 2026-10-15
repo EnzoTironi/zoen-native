@@ -263,5 +263,7 @@
   <string name="owner_note_booking_cancelled_title">Booking cancelled</string>
   <string name="owner_note_booking_body">%1$s booked %2$s, %3$s.</string>
   <string name="owner_note_booking_cancelled_body">%1$s cancelled %2$s, %3$s.</string>
+  <string name="owner_note_booking_cancel_request_title">Cancellation request</string>
+  <string name="owner_note_booking_cancel_request_body">%1$s asked to cancel %2$s, %3$s.</string>
   <string name="owner_note_someone_cap">Someone</string>
 </resources>
