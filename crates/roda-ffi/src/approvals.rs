@@ -390,6 +390,7 @@ impl State {
                     text: receipt.message.clone(),
                     attaches: receipt.created_item.clone(),
                     reply: None,
+                    marks: Default::default(),
                 },
             });
             s.last_at_ms = s.last_at_ms.max(e.at_ms);

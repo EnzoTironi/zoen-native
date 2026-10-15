@@ -254,6 +254,7 @@ impl Fixture {
             text: text.into(),
             attaches: None,
             reply: None,
+            forwarded: false,
         })
         .await
     }

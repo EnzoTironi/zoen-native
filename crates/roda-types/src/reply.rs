@@ -57,6 +57,7 @@ mod tests {
             text: "sim".into(),
             attaches: None,
             reply: Some(ReplyRef::thread("h1")),
+            forwarded: false,
         };
         let json = serde_json::to_string(&new).unwrap();
         assert!(json.contains(r#""reply":{"to":"h1","thread":true}"#));
@@ -68,6 +69,7 @@ mod tests {
             text: "oi".into(),
             attaches: None,
             reply: None,
+            forwarded: false,
         };
         assert!(!serde_json::to_string(&plain).unwrap().contains("reply"));
     }
@@ -83,6 +85,7 @@ mod tests {
             text: "sim".into(),
             attaches: None,
             reply: Some(ReplyRef::inline("h1")),
+            forwarded: false,
         })
         .unwrap();
         let OldBody::MessagePosted { text } = serde_json::from_str(&json).unwrap();

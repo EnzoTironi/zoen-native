@@ -131,6 +131,7 @@ impl Engine {
                 text: text.to_string(),
                 attaches: None,
                 reply: Some(reply),
+                forwarded: false,
             },
         )?;
         let s = self.space_state(space)?;

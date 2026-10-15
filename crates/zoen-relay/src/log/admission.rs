@@ -518,6 +518,7 @@ mod tests {
             text: "oi".into(),
             attaches: None,
             reply: None,
+            forwarded: false,
         }
     }
 

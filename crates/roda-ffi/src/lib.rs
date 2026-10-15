@@ -201,6 +201,50 @@ impl RodaEngine {
         Ok(())
     }
 
+    /// Edits my message (only the author can).
+    pub fn edit_message(
+        &self,
+        space_id: String,
+        message_id: String,
+        text: String,
+    ) -> Result<(), CoreError> {
+        self.lock().annotate(
+            &space_id,
+            &message_id,
+            roda_types::Annotation::Edit { text },
+        )
+    }
+
+    /// Deletes my message for everyone (only the author can).
+    pub fn delete_message(&self, space_id: String, message_id: String) -> Result<(), CoreError> {
+        self.lock()
+            .annotate(&space_id, &message_id, roda_types::Annotation::Delete)
+    }
+
+    /// Sets my one reaction on a message (`None` removes it).
+    pub fn react(
+        &self,
+        space_id: String,
+        message_id: String,
+        emoji: Option<String>,
+    ) -> Result<(), CoreError> {
+        let note = match emoji {
+            Some(emoji) => roda_types::Annotation::React { emoji },
+            None => roda_types::Annotation::Unreact,
+        };
+        self.lock().annotate(&space_id, &message_id, note)
+    }
+
+    pub fn forward_message(
+        &self,
+        from_space_id: String,
+        message_id: String,
+        to_space_id: String,
+    ) -> Result<TimelineEntry, CoreError> {
+        self.lock()
+            .forward(&from_space_id, &message_id, &to_space_id)
+    }
+
     pub fn send_message(&self, space_id: String, text: String) -> Result<TimelineEntry, CoreError> {
         self.lock().send_message(&space_id, &text)
     }

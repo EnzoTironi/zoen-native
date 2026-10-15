@@ -391,6 +391,7 @@ fn waiting_approval_holds_later_denial_grants_messages_and_usage_in_order() {
         text: "Held suffix".into(),
         attaches: None,
         reply: None,
+        forwarded: false,
     });
     assert!(fixture.engine.state.grants.is_empty());
     assert!(fixture.engine.state.usage.is_empty());

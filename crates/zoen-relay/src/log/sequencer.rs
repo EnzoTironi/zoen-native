@@ -543,6 +543,7 @@ pub(crate) mod fork_histories {
                 text: text.into(),
                 attaches: None,
                 reply: None,
+                forwarded: false,
             }
         }
 
@@ -852,6 +853,7 @@ mod tests {
             text: format!("text {i}"),
             attaches: None,
             reply: None,
+            forwarded: false,
         };
         Envelope::plain(&author.sign_event(space, &format!("c{i:04}"), 0, None, body))
     }

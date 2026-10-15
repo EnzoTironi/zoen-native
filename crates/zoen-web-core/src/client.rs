@@ -342,6 +342,7 @@ impl<S: Signer> Client<S> {
                 text: text.into(),
                 attaches: None,
                 reply: None,
+                forwarded: false,
             },
             now_ms,
         )?;

@@ -1875,6 +1875,7 @@ fn encrypted_exact_source_and_peer_readability() {
                 text: "peer after typed Plan".into(),
                 attaches: None,
                 reply: None,
+                forwarded: false,
             },
         )
         .unwrap();

@@ -43,6 +43,12 @@ struct SpaceView: View {
     @State private var headerMenu = false
     /// Drag-right on a message (or its "N respostas"): its thread.
     @State private var thread: ThreadRef?
+    /// Long-pressed message (actions overlay), and the follow-ups it can start.
+    @State private var actionTarget: TimelineEntry?
+    @State private var forwardTarget: ThreadRef?
+    @State private var editTarget: TimelineEntry?
+    @State private var editText = ""
+    @State private var deleteTarget: TimelineEntry?
     /// The main timeline: thread replies live in their thread, not here.
     private var visible: [TimelineEntry] { entries.filter { $0.inThread == nil } }
 
@@ -93,6 +99,7 @@ struct SpaceView: View {
                                           thread = ThreadRef(id: entry.id)
                                       }
                                   },
+                                  onLongPress: { actionTarget = entry },
                                   onJump: { id in
                                       withAnimation(reduceMotion ? nil : .smooth(duration: 0.45)) { proxy.scrollTo(id, anchor: .center) }
                                       withAnimation(.easeOut(duration: 0.25)) { highlighted = id }
@@ -214,6 +221,43 @@ struct SpaceView: View {
             #else
             .sheet(isPresented: Bindable(model.browser).screenOpen) { LiveViewScreen().frame(minWidth: 420, minHeight: 720) }
             #endif
+            .overlay {
+                if let target = actionTarget {
+                    MessageActionsOverlay(
+                        spaceId: spaceId, entry: target,
+                        onReply: {
+                            withAnimation(reduceMotion ? nil : Motion.wabi) { replyTo = target }
+                            composerFocused = true
+                        },
+                        onForward: { forwardTarget = ThreadRef(id: target.id) },
+                        onEdit: {
+                            if case .message(let text, _) = target.kind { editText = text }
+                            editTarget = target
+                        },
+                        onDelete: { deleteTarget = target },
+                        onClose: { actionTarget = nil })
+                }
+            }
+            .sheet(item: $forwardTarget) { t in
+                ForwardSheet(fromSpaceId: spaceId, messageId: t.id).presentationDetents([.medium, .large])
+            }
+            .alert("Edit message", isPresented: Binding(get: { editTarget != nil }, set: { if !$0 { editTarget = nil } })) {
+                TextField("Message", text: $editText)
+                Button("Save") {
+                    if let t = editTarget {
+                        model.perform { try model.core.editMessage(spaceId: spaceId, messageId: t.id, text: editText) }
+                    }
+                }
+                Button("Cancel", role: .cancel) {}
+            }
+            .confirmationDialog("Delete for everyone?", isPresented: Binding(get: { deleteTarget != nil }, set: { if !$0 { deleteTarget = nil } }), titleVisibility: .visible) {
+                Button("Delete for everyone", role: .destructive) {
+                    if let t = deleteTarget {
+                        Haptics.remove()
+                        model.perform { try model.core.deleteMessage(spaceId: spaceId, messageId: t.id) }
+                    }
+                }
+            }
             .sheet(item: $thread) { t in
                 ThreadSheet(spaceId: spaceId, rootId: t.id)
                     .presentationDetents([.large])
@@ -606,6 +650,8 @@ struct EntryView: View {
     var threadFaces: [Persona] = []
     /// Drag left (reply) / right (thread); nil = no message gestures here.
     var onSwipe: ((MessageSwipeIntent) -> Void)? = nil
+    /// Long-press a message: its actions and reactions.
+    var onLongPress: (() -> Void)? = nil
     /// Tap a quote: scroll to the message it answers.
     var onJump: ((String) -> Void)? = nil
     @Environment(AppModel.self) private var model
@@ -636,12 +682,32 @@ struct EntryView: View {
                 .padding(.top, 10)
                 .padding(.leading, 44)
                 .frame(maxWidth: .infinity, alignment: .leading)
+        case .message where entry.deleted:
+            DeletedBubble(mine: entry.author.isMe)
+                .frame(maxWidth: .infinity, alignment: entry.author.isMe ? .trailing : .leading)
+                .padding(.top, grouped ? 0 : 10)
         case .message(let text, let card):
             VStack(alignment: entry.author.isMe ? .trailing : .leading, spacing: 3) {
+                if entry.forwarded {
+                    Label("Forwarded", systemImage: "arrowshape.turn.up.right")
+                        .font(.caption2.italic())
+                        .foregroundStyle(Palette.textTertiary)
+                        .padding(.leading, entry.author.isMe ? 0 : 44)
+                }
                 MessageRow(author: entry.author, text: text, card: card, atMs: entry.atMs, delivery: entry.delivery,
                            grouped: grouped && entry.replyTo == nil, endsRun: endsRun, isDirect: isDirect, onOpenItem: onOpenItem,
                            quote: entry.replyTo, onQuote: { onJump?($0) }, onIntent: onSwipe)
                     .modifier(MessageSwipe(enabled: onSwipe != nil) { onSwipe?($0) })
+                    .onLongPressGesture(minimumDuration: 0.35) { onLongPress?() }
+                if !entry.reactions.isEmpty {
+                    ReactionChips(spaceId: spaceId, entry: entry)
+                        .padding(.leading, entry.author.isMe ? 0 : 44)
+                        .padding(.top, -8)
+                }
+                if entry.edited {
+                    Text("Edited").font(.caption2).foregroundStyle(Palette.textTertiary)
+                        .padding(.leading, entry.author.isMe ? 0 : 44)
+                }
                 if entry.threadReplies > 0 {
                     ThreadRepliesChip(count: entry.threadReplies, faces: threadFaces) { onSwipe?(.thread) }
                         .padding(.leading, entry.author.isMe ? 0 : 44)

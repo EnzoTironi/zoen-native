@@ -1737,6 +1737,7 @@ mod tests {
                     text: "Written offline, already sealed".into(),
                     attaches: None,
                     reply: None,
+                    forwarded: false,
                 },
             )
             .unwrap();
@@ -1753,6 +1754,7 @@ mod tests {
                     text: "Written offline, still plaintext".into(),
                     attaches: None,
                     reply: None,
+                    forwarded: false,
                 },
             )
             .unwrap();
@@ -2328,6 +2330,7 @@ mod tests {
                     text: "other-fork".into(),
                     attaches: None,
                     reply: None,
+                    forwarded: false,
                 },
             )),
             &mut head,
