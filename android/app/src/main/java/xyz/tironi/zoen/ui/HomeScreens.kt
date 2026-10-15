@@ -192,8 +192,8 @@ private fun ConversationRow(chat: SpaceSummary, pinned: Boolean, working: String
 @Composable
 private fun conversationPreview(space: SpaceSummary): String {
     val preview = if (xyz.tironi.zoen.media.VoiceNoteRef.parse(space.lastPreview) != null) stringResource(R.string.media_voice_message) else space.lastPreview
-    // Mine: a tick (WhatsApp) instead of "You:".
-    if (space.lastAuthor?.isMe == true) return "✓ $preview"
+    // Mine: the real ticks sit before the preview (WhatsApp) instead of "You:".
+    if (space.lastAuthor?.isMe == true) return preview
     val author = space.lastAuthor?.let { if (space.counterpart == null) it.name else "" }.orEmpty()
     return if (author.isBlank()) preview else "$author: $preview"
 }
