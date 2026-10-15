@@ -7,6 +7,9 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.ui.test.performScrollTo
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.CompositionLocalProvider
@@ -60,7 +63,7 @@ class OwnerAgentNoteCardTest {
             CompositionLocalProvider(LocalContext provides ctx, LocalConfiguration provides conf) {
                 ZoenTheme {
                     Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
-                        Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                        Column(Modifier.verticalScroll(rememberScrollState()).padding(20.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
                             notes.forEach { note ->
                                 Box { OwnerAgentNoteCard(agent, note, personName = { if (it == "carla") "Carla" else null }, fresh = true, open = { opened += it }) }
                             }
@@ -73,11 +76,12 @@ class OwnerAgentNoteCardTest {
         compose.onNodeWithText("Seu agente precisa de você").assertIsDisplayed()
         compose.onNodeWithText("Antes de responder a Carla, ele quer que você veja a resposta.").assertIsDisplayed()
         compose.onNodeWithText("Seu agente quer criar um agente").assertIsDisplayed()
-        compose.onNodeWithText("Novo agendamento").assertIsDisplayed()
-        compose.onNodeWithText("Carla marcou Corte, sáb 10:00.").assertIsDisplayed()
         assertEquals(3, compose.onAllNodesWithTag("owner-note").fetchSemanticsNodes().size)
         CommittedWindowCapture.save(compose.activity, "owner-notes", "owner-notes-pt")
-        compose.onAllNodesWithTag("owner-note-open")[0].performClick()
+        compose.onNodeWithText("Carla marcou Corte, sáb 10:00.").performScrollTo().assertIsDisplayed()
+        compose.onNodeWithText("Novo agendamento").assertIsDisplayed()
+        CommittedWindowCapture.save(compose.activity, "owner-notes", "owner-notes-booking-pt")
+        compose.onAllNodesWithTag("owner-note-open")[0].performScrollTo().performClick()
         compose.runOnIdle { assertEquals(listOf("barbearia"), opened) }
     }
 }
