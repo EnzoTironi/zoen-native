@@ -1,7 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import QRCode from 'qrcode';
-import { ShellIcon, ZoenShell, type ShellTheme } from '../src/shell.tsx';
 import { message } from './boundary.ts';
 import { unavailableCapability } from './capabilities.ts';
 import { Pairing, type PairingState } from './pairing.ts';
@@ -10,6 +9,8 @@ import { inviteFromPath, relayUrl, type StoredSession } from './session.ts';
 import { BrowserVault } from './vault.ts';
 import { CoreWorker } from './worker-client.ts';
 import './web.css';
+import './messenger.css';
+import { Messenger } from './messenger.tsx';
 
 type Runtime = { vault: BrowserVault; core: CoreWorker };
 type Boot = { kind: 'loading' } | { kind: 'unavailable'; message: string } |
@@ -53,64 +54,27 @@ function PairingGate({ runtime, session, linked }: { runtime: Runtime; session: 
     return () => { disposed = true; };
   }, [state.kind === 'waiting' ? state.pending.code : '']);
   return <Gate>
-    <h1>{invitation ? 'Open your invitation' : 'Zoen on the web'}</h1>
-    <p>{invitation ? 'Link this browser from Zoen on your phone to continue into the conversation.' : 'Link this browser from Zoen on your phone. Your phone approves it as another device of your account.'}</p>
+    <h1>{invitation ? 'Abra seu convite' : 'Zoen no navegador'}</h1>
+    <p>{invitation ? 'Conecte este navegador pelo Zoen no seu celular para entrar direto na conversa.' : 'Conecte este navegador pelo Zoen no seu celular. Ele aprova este navegador como mais um aparelho seu.'}</p>
     {state.kind === 'idle' || state.kind === 'failed' ? <form onSubmit={(event) => { event.preventDefault(); start(); }}>
-      <label>Relay address<input type="url" placeholder="https://your-relay.example" value={relay} required autoComplete="url" autoFocus
+      <label>Endereço do servidor<input type="url" placeholder="https://relay.tryzoen.com" value={relay} required autoComplete="url" autoFocus
         onChange={(event) => setRelay(event.target.value)} onBlur={() => { try { setRelay(relayUrl(relay)); } catch { /* Submit reports invalid origins. */ } }} /></label>
-      <button className="zw-primary" type="submit">Link this browser</button>
+      <button className="zw-primary glass" type="submit">Conectar este navegador</button>
     </form> : null}
-    {state.kind === 'starting' ? <p role="status">Creating this browser's protected device…</p> : null}
+    {state.kind === 'starting' ? <p role="status">Preparando este navegador com segurança…</p> : null}
     {state.kind === 'waiting' ? <>
-      {qr ? <img className="zw-qr" src={qr} alt="Pairing code to scan with Zoen on your phone" /> : <p>Preparing pairing code…</p>}
-      <p>On your phone, open Devices, choose Link device, and scan this code.</p>
-      <div className="zw-check" aria-label={`Check code ${state.pending.check}`} tabIndex={-1} ref={checkFocus}>{state.pending.check}</div>
-      <p className="zw-status">Compare these six digits on both screens before your phone approves the browser.</p>
-      <p className="zw-status" role="status">{state.connection.kind === 'ready' ? 'Waiting for your phone to approve…' :
-        state.connection.kind === 'reconnecting' ? 'Reconnecting to the relay…' : 'Connecting securely…'}</p>
-      <details><summary>Use a text code</summary><p className="zw-code">{state.pending.code}</p>
+      {qr ? <img className="zw-qr" src={qr} alt="Código para escanear com o Zoen no seu celular" /> : <p>Preparando o código…</p>}
+      <p>No celular, abra Aparelhos, toque em Conectar aparelho e escaneie este código.</p>
+      <div className="zw-check" aria-label={`Código de conferência ${state.pending.check}`} tabIndex={-1} ref={checkFocus}>{state.pending.check}</div>
+      <p className="zw-status">Confira se os seis números são iguais nas duas telas antes de aprovar no celular.</p>
+      <p className="zw-status" role="status">{state.connection.kind === 'ready' ? 'Esperando a aprovação no celular…' :
+        state.connection.kind === 'reconnecting' ? 'Reconectando…' : 'Conectando…'}</p>
+      <details><summary>Usar código em texto</summary><p className="zw-code">{state.pending.code}</p>
         <button className="zw-secondary" onClick={() => { void navigator.clipboard.writeText(state.pending.code).then(() => setCopied(true))
-          .catch(() => setState({ kind: 'failed', message: 'The browser blocked copying. Select the text code to copy it.' })); }}>{copied ? 'Copied' : 'Copy code'}</button></details>
+          .catch(() => setState({ kind: 'failed', message: 'O navegador bloqueou a cópia. Selecione o código para copiar.' })); }}>{copied ? 'Copiado' : 'Copiar código'}</button></details>
     </> : null}
     {state.kind === 'failed' ? <p className="zw-error" role="alert" tabIndex={-1} ref={errorFocus}>{state.message}</p> : null}
   </Gate>;
-}
-
-function Thread({ conversation, identity, connected, send }: {
-  conversation: Conversation; identity: string; connected: boolean; send: (text: string) => Promise<void>;
-}) {
-  const [draft, setDraft] = useState('');
-  const [sending, setSending] = useState(false);
-  const [error, setError] = useState('');
-  const end = useRef<HTMLDivElement>(null);
-  const canSend = connected && conversation.can_send && !sending;
-  useEffect(() => { end.current?.scrollIntoView({ block: 'end' }); }, [conversation.messages.length]);
-  function submit() {
-    if (!canSend || !draft.trim()) return;
-    setSending(true); setError('');
-    void send(draft).then(() => setDraft('')).catch((failure: unknown) => setError(message(failure))).finally(() => setSending(false));
-  }
-  return <section className="zw-thread" aria-label={conversation.title}>
-    {conversation.waiting ? <p className="zw-status" role="status">{conversation.waiting}</p> : null}
-    {conversation.unreadable ? <p className="zw-status">{conversation.unreadable} earlier encrypted {conversation.unreadable === 1 ? 'message is' : 'messages are'} available on your phone.</p> : null}
-    <div className="zw-messages" role="log" aria-label="Messages" aria-live="polite">
-      {conversation.messages.map((entry) => <article key={entry.id} className={`zw-bubble${entry.author === identity ? ' zw-bubble-own' : ''}`}>
-        <strong>{entry.name || 'You'}</strong><div>{entry.text}</div>
-        <small>{Number.isFinite(new Date(entry.at_ms).getTime()) ? <time dateTime={new Date(entry.at_ms).toISOString()}>{new Date(entry.at_ms).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</time> : 'Time unavailable'}
-          {entry.delivery === 'sending' ? ' · Sending…' : entry.delivery === 'failed' ? ` · ${entry.failure || 'Send failed'}` : ''}</small>
-      </article>)}
-      <div ref={end} />
-    </div>
-    {error ? <p className="zw-error" role="alert">{error}</p> : null}
-    <form className="zw-compose" onSubmit={(event) => { event.preventDefault(); submit(); }}>
-      <label className="zw-compose-label"><span className="zw-sr-only">Message to {conversation.title}</span>
-        <textarea value={draft} disabled={!canSend} maxLength={32_768} placeholder={canSend ? 'Message' : conversation.waiting ?? 'Reconnecting…'}
-          onChange={(event) => setDraft(event.target.value)} onKeyDown={(event) => {
-            if ((event.metaKey || event.ctrlKey) && event.key === 'Enter' && !event.nativeEvent.isComposing) { event.preventDefault(); submit(); }
-          }} /></label>
-      <button className="zw-primary" type="submit" disabled={!canSend || !draft.trim()}>{sending ? 'Saving…' : 'Send'}</button>
-    </form>
-  </section>;
 }
 
 type InviteState = { kind: 'idle' } | { kind: 'loading' } | { kind: 'ready'; invite: Invite } |
@@ -126,7 +90,7 @@ function InviteLoader({ code, messages, changed }: {
       .catch((error: unknown) => { if (!disposed) changed({ kind: 'failed', message: message(error) }); });
     return () => { disposed = true; };
   }, [code, messages, changed]);
-  return <p role="status">Opening the invitation…</p>;
+  return <p role="status">Abrindo o convite…</p>;
 }
 function Invitation({ code, messages, connected, conversations, notice, opened, cancel }: {
   code: string; messages: React.RefObject<Messages | null>; connected: boolean; conversations: Conversation[];
@@ -136,26 +100,24 @@ function Invitation({ code, messages, connected, conversations, notice, opened, 
   useEffect(() => {
     if ((state.kind === 'ready' || state.kind === 'joining') && conversations.some((conversation) => conversation.id === state.invite.space)) opened(state.invite.space);
   }, [state, conversations]);
-  return <section className="zw-account"><h1>{state.kind === 'ready' || state.kind === 'joining' ? state.invite.title : 'Your invitation'}</h1>
-    {state.kind === 'idle' || state.kind === 'loading' ? connected ? <InviteLoader code={code} messages={messages} changed={setState} /> : <p role="status">Connecting securely…</p> : null}
-    {state.kind === 'ready' ? <><p>{state.invite.members} {state.invite.members === 1 ? 'member' : 'members'}</p>
-      <button className="zw-primary" disabled={!connected} onClick={() => {
+  return <section className="zw-account"><h1>{state.kind === 'ready' || state.kind === 'joining' ? state.invite.title : 'Seu convite'}</h1>
+    {state.kind === 'idle' || state.kind === 'loading' ? connected ? <InviteLoader code={code} messages={messages} changed={setState} /> : <p role="status">Conectando…</p> : null}
+    {state.kind === 'ready' ? <><p>{state.invite.members} {state.invite.members === 1 ? 'pessoa' : 'pessoas'}</p>
+      <button className="zw-primary glass" disabled={!connected} onClick={() => {
         if (!messages.current) return;
         const invite = state.invite;
         setState({ kind: 'joining', invite });
         void messages.current.join({ invite, code }).catch((error: unknown) => setState({ kind: 'failed', message: message(error) }));
-      }}>Join conversation</button></> : null}
-    {state.kind === 'joining' ? <p role="status">{notice ? 'The invitation could not be accepted.' : 'Waiting for the conversation to confirm your membership…'}</p> : null}
+      }}>Entrar na conversa</button></> : null}
+    {state.kind === 'joining' ? <p role="status">{notice ? 'Não deu para aceitar o convite.' : 'Entrando na conversa…'}</p> : null}
     {notice || state.kind === 'failed' ? <p className="zw-error" role="alert">{state.kind === 'failed' ? state.message : notice}</p> : null}
-    <div className="zw-pair-actions"><a className="zw-secondary" href={`zoen://join/${code}`}>Open in the native app</a>
-      <button className="zw-secondary" onClick={cancel}>Back to chats</button>
-      {state.kind === 'failed' || notice ? <button className="zw-secondary" disabled={!connected} onClick={() => setState({ kind: 'idle' })}>Try again</button> : null}</div>
+    <div className="zw-pair-actions"><a className="zw-secondary" href={`zoen://join/${code}`}>Abrir no app</a>
+      <button className="zw-secondary" onClick={cancel}>Voltar para as conversas</button>
+      {state.kind === 'failed' || notice ? <button className="zw-secondary" disabled={!connected} onClick={() => setState({ kind: 'idle' })}>Tentar de novo</button> : null}</div>
   </section>;
 }
 
 function Linked({ runtime, session, forget }: { runtime: Runtime; session: Extract<StoredSession, { kind: 'linked' }>; forget: () => void }) {
-  const [theme, setTheme] = useState<ShellTheme>('system');
-  const [search, setSearch] = useState('');
   const [state, setState] = useState<MessagesState>({ kind: 'loading' });
   const [selected, setSelected] = useState('');
   const [showInvite, setShowInvite] = useState(invitation !== null);
@@ -167,25 +129,17 @@ function Linked({ runtime, session, forget }: { runtime: Runtime; session: Extra
     return () => { messages.stop(); running.current = null; };
   }, [runtime, session]);
   const conversations = state.kind === 'loading' ? [] : state.conversations;
-  const visible = conversations.filter((conversation) => conversation.title.toLocaleLowerCase().includes(search.toLocaleLowerCase()));
-  const conversation = conversations.find((entry) => entry.id === selected) ?? visible[0];
   const connected = state.kind === 'active' && state.connection.kind === 'ready';
-  const status = state.kind === 'loading' ? 'Opening encrypted conversations…' : state.kind === 'failed' ? state.message :
-    state.connection.kind === 'ready' ? 'Connected' : state.connection.kind === 'reconnecting' ? 'Reconnecting…' : 'Connecting securely…';
-  return <ZoenShell navigation={[{ id: 'chats', label: 'Chats', icon: <ShellIcon name="chats" /> }]} activeNavigationId="chats"
-    onNavigate={() => {}} chats={visible.map((entry) => ({ id: entry.id, title: entry.title, preview: entry.messages.at(-1)?.text ?? entry.waiting ?? 'Encrypted conversation' }))}
-    {...(conversation ? { activeChatId: conversation.id } : {})} onSelectChat={setSelected} searchQuery={search} onSearchChange={setSearch}
-    theme={theme} onThemeChange={setTheme} title={conversation?.title ?? 'Chats'} sidebarFooter={<div className="zw-footer"><span>{session.account.name}</span>
-      <span className={state.kind === 'failed' ? 'zw-error' : 'zw-status'} role={state.kind === 'failed' ? 'alert' : 'status'}>{status}</span>
-      {state.kind === 'failed' ? <button className="zw-secondary" onClick={() => location.reload()}>Reload Zoen</button> : null}
-      <button className="zw-secondary" onClick={forget}>Forget this browser</button></div>} emptySidebar={search ? 'No matching conversations' : 'Your linked conversations'}>
+  const status = state.kind === 'loading' ? 'Abrindo suas conversas…' : state.kind === 'failed' ? 'Algo deu errado. Recarregue a página.' :
+    state.connection.kind === 'ready' ? 'Conectado' : state.connection.kind === 'reconnecting' ? 'Reconectando…' : 'Conectando…';
+  return <Messenger conversations={conversations} identity={session.account.identity} name={session.account.name} connected={connected} status={status}
+    messages={running} selected={selected} select={(id) => { setSelected(id); setShowInvite(false); }}
+    footer={<>{state.kind === 'failed' ? <button className="zw-secondary" onClick={() => location.reload()}>Recarregar</button> : null}
+      <button className="zw-secondary" onClick={forget}>Sair</button></>}>
     {showInvite && invitation ? <Invitation code={invitation} messages={running} connected={connected} conversations={conversations}
       notice={state.kind === 'active' ? state.notice : state.kind === 'failed' ? state.message : null}
-      opened={(space) => { setSelected(space); setShowInvite(false); }} cancel={() => setShowInvite(false)} /> : conversation ? <Thread key={conversation.id} conversation={conversation} identity={session.account.identity} connected={connected}
-      send={(text) => running.current?.send({ space: conversation.id, text }) ?? Promise.reject(new Error('The browser session is closed.'))} /> :
-      <section className="zw-account"><h1>{state.kind === 'loading' ? 'Opening your conversations' : 'Your conversations'}</h1>
-        <p>{connected ? 'Conversations you join on your phone appear here. Keep your phone connected while it adds this browser to each encrypted conversation.' : status}</p></section>}
-  </ZoenShell>;
+      opened={(space) => { setSelected(space); setShowInvite(false); }} cancel={() => setShowInvite(false)} /> : undefined}
+  </Messenger>;
 }
 
 function App() {
@@ -199,7 +153,7 @@ function App() {
       if (closed) return;
       if (unavailable) { setBoot({ kind: 'unavailable', message: unavailable }); return; }
       await navigator.locks.request('zoen-browser-client', { ifAvailable: true }, async (lock) => {
-        if (!lock) { setBoot({ kind: 'unavailable', message: 'Zoen is already open in another tab. Continue there or close it first.' }); return; }
+        if (!lock) { setBoot({ kind: 'unavailable', message: 'O Zoen já está aberto em outra aba. Continue por lá ou feche a outra aba.' }); return; }
         const vault = await BrowserVault.open();
         let core: CoreWorker | undefined;
         try {
@@ -214,10 +168,10 @@ function App() {
     }).catch((error: unknown) => { if (!closed) setBoot({ kind: 'unavailable', message: message(error) }); });
     return () => { closed = true; runtime?.core.close(); release(); };
   }, []);
-  if (boot.kind === 'loading') return <Gate><h1>Zoen</h1><p role="status">Opening encrypted browser storage…</p></Gate>;
-  if (boot.kind === 'unavailable') return <Gate><h1>Open Zoen on your phone</h1><p role="alert">{boot.message}</p></Gate>;
+  if (boot.kind === 'loading') return <Gate><h1>Zoen</h1><p role="status">Abrindo…</p></Gate>;
+  if (boot.kind === 'unavailable') return <Gate><h1>Abra o Zoen no seu celular</h1><p role="alert">{boot.message}</p></Gate>;
   if (boot.session.kind === 'linked') return <Linked runtime={boot.runtime} session={boot.session} forget={() => {
-    if (!window.confirm('Forget this browser and its locally stored conversations? Unlink it from Devices on your phone as well.')) return;
+    if (!window.confirm('Sair deste navegador e apagar as conversas guardadas aqui? Remova também em Aparelhos no seu celular.')) return;
     boot.runtime.core.close();
     void boot.runtime.vault.erase().then(() => location.reload()).catch((error: unknown) => setBoot({ kind: 'unavailable', message: message(error) }));
   }} />;

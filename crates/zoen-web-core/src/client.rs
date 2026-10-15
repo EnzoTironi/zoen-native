@@ -59,17 +59,58 @@ struct SavedClient {
     joining: BTreeSet<String>,
     blocked_epochs: BTreeMap<String, u64>,
     integrity_errors: BTreeMap<String, String>,
+    /// Per Space, each member's (delivered, read) watermarks, as the relay replays them.
+    #[serde(default)]
+    receipts: BTreeMap<String, BTreeMap<String, (u64, u64)>>,
+}
+
+#[derive(Serialize)]
+pub struct Reaction {
+    emoji: String,
+    count: usize,
+    mine: bool,
+}
+
+#[derive(Serialize)]
+pub struct Quote {
+    id: String,
+    name: String,
+    text: String,
 }
 
 #[derive(Serialize)]
 pub struct MessageView {
     id: String,
+    /// Timeline entry id (event hash) once the relay ordered it: the target of replies,
+    /// threads, reactions, edits and deletes.
+    entry: Option<String>,
+    seq: Option<u64>,
     author: String,
     name: String,
     text: String,
     at_ms: i64,
     delivery: &'static str,
     failure: Option<String>,
+    /// For my own ordered messages: "sent", "delivered" or "read" by everyone else.
+    ticks: Option<&'static str>,
+    edited: bool,
+    deleted: bool,
+    forwarded: bool,
+    reactions: Vec<Reaction>,
+    /// Inline reply: the quoted message.
+    quote: Option<Quote>,
+    /// Thread reply: the root it belongs to (shown only in the thread panel).
+    thread: Option<String>,
+    replies: usize,
+    repliers: Vec<String>,
+    last_reply_ms: Option<i64>,
+}
+
+#[derive(Default)]
+struct Folded {
+    text: Option<String>,
+    deleted: bool,
+    reactions: BTreeMap<String, String>,
 }
 
 #[derive(Serialize)]
@@ -80,6 +121,9 @@ pub struct ConversationView {
     can_send: bool,
     waiting: Option<String>,
     unreadable: usize,
+    unread: usize,
+    mentions: usize,
+    members: usize,
     messages: Vec<MessageView>,
 }
 
@@ -331,6 +375,32 @@ impl<S: Signer> Client<S> {
         text: &str,
         now_ms: i64,
     ) -> Result<Update, String> {
+        self.queue_post(space, text, None, false, now_ms)
+    }
+
+    /// A message, optionally an inline reply (`thread == false`) or a thread reply to
+    /// `reply`, or forwarded. Thread replies always point at the root, like native.
+    pub fn queue_post(
+        &mut self,
+        space: &str,
+        text: &str,
+        reply: Option<(String, bool)>,
+        forwarded: bool,
+        now_ms: i64,
+    ) -> Result<Update, String> {
+        let reply = match reply {
+            Some((to, thread)) => {
+                let target = self
+                    .posted(space, &to)
+                    .ok_or("That message is no longer available.")?;
+                let to = match target {
+                    Some(root) if thread && root.thread => root.to,
+                    _ => to,
+                };
+                Some(roda_types::ReplyRef { to, thread })
+            }
+            None => None,
+        };
         if text.trim().is_empty() || text.len() > 32_768 {
             return Err("Write a message of up to 32 KB.".into());
         }
@@ -341,8 +411,8 @@ impl<S: Signer> Client<S> {
                 message: roda_types::new_secret_id("msg"),
                 text: text.into(),
                 attaches: None,
-                reply: None,
-                forwarded: false,
+                reply,
+                forwarded,
             },
             now_ms,
         )?;
@@ -351,6 +421,118 @@ impl<S: Signer> Client<S> {
         let pending = self.seal_inner(&event, epoch)?;
         self.saved.outbox.insert(event.client_id.clone(), pending);
         self.update(Vec::new())
+    }
+
+    /// Edit, delete for everyone, react or unreact. Same encrypted path as messages.
+    pub fn queue_annotation(
+        &mut self,
+        space: &str,
+        target: &str,
+        note: roda_types::Annotation,
+        now_ms: i64,
+    ) -> Result<Update, String> {
+        let author = self
+            .logs
+            .get(space)
+            .and_then(|log| log.events().iter().find(|e| e.hash == target))
+            .filter(|e| matches!(e.body, EventBody::MessagePosted { .. }))
+            .map(|e| e.author.clone())
+            .ok_or("That message is no longer available.")?;
+        if note.author_only() && author != self.account.identity {
+            return Err("Only the person who sent this message can change it.".into());
+        }
+        if let roda_types::Annotation::Edit { text } = &note {
+            if text.trim().is_empty() || text.len() > 32_768 {
+                return Err("Write a message of up to 32 KB.".into());
+            }
+        }
+        let epoch = self.ready_epoch(space)?;
+        let inner = self.clear_event(
+            space,
+            EventBody::MessageAnnotated {
+                target: target.into(),
+                note,
+            },
+            now_ms,
+        )?;
+        let event = inner
+            .envelope()?
+            .plain_event()
+            .ok_or("invalid inner message")?;
+        let pending = self.seal_inner(&event, epoch)?;
+        self.saved.outbox.insert(event.client_id.clone(), pending);
+        self.update(Vec::new())
+    }
+
+    /// I have read this conversation up to its newest event: tell my devices and the
+    /// other members (one watermark, like native).
+    pub fn mark_read(&mut self, space: &str) -> Result<Update, String> {
+        let Some(last) = self
+            .logs
+            .get(space)
+            .and_then(|log| log.next_seq().checked_sub(1))
+        else {
+            return self.update(Vec::new());
+        };
+        let me = self.account.identity.clone();
+        let mine = self
+            .saved
+            .receipts
+            .entry(space.into())
+            .or_default()
+            .entry(me)
+            .or_default();
+        if mine.1 >= last {
+            return self.update(Vec::new());
+        }
+        *mine = (mine.0.max(last), last);
+        self.update(vec![ClientFrame::Ephemeral {
+            space: space.into(),
+            kind: roda_proto::EphemeralKind::Read { seq: last },
+        }
+        .encode()])
+    }
+
+    /// Delivered watermarks for every Space whose newest event this device now holds.
+    fn delivered(&mut self) -> Vec<Vec<u8>> {
+        let me = self.account.identity.clone();
+        let mut frames = Vec::new();
+        for (space, log) in &self.logs {
+            let Some(last) = log.next_seq().checked_sub(1) else {
+                continue;
+            };
+            let mine = self
+                .saved
+                .receipts
+                .entry(space.clone())
+                .or_default()
+                .entry(me.clone())
+                .or_default();
+            if mine.0 < last {
+                mine.0 = last;
+                frames.push(
+                    ClientFrame::Ephemeral {
+                        space: space.clone(),
+                        kind: roda_proto::EphemeralKind::Delivered { seq: last },
+                    }
+                    .encode(),
+                );
+            }
+        }
+        frames
+    }
+
+    /// The reply link of the message with this entry id in `space`, if it is a message.
+    fn posted(&self, space: &str, entry: &str) -> Option<Option<roda_types::ReplyRef>> {
+        self.logs
+            .get(space)?
+            .events()
+            .iter()
+            .find(|e| e.hash == entry)
+            .and_then(|e| match &e.body {
+                EventBody::MessagePosted { reply, .. } => Some(reply.clone()),
+                _ => None,
+            })
     }
 
     pub fn bootstrap(&mut self) -> Result<Update, String> {
@@ -427,10 +609,41 @@ impl<S: Signer> Client<S> {
                     }
                     .encode()]);
                 }
+                let author = ev.env.author().to_string();
                 self.ingest(ev, now_ms)?;
+                if self.synced {
+                    extra.extend(self.delivered());
+                    if !self.saved.profiles.contains_key(&author) {
+                        extra.push(
+                            ClientFrame::Req {
+                                id: PROFILES_REQUEST,
+                                op: Op::Profiles { ids: vec![author] },
+                            }
+                            .encode(),
+                        );
+                    }
+                }
+            }
+            ServerFrame::Ephemeral { space, from, kind } => {
+                let mark = match kind {
+                    roda_proto::EphemeralKind::Read { seq } => Some((seq, seq)),
+                    roda_proto::EphemeralKind::Delivered { seq } => Some((seq, 0)),
+                    _ => None,
+                };
+                if let Some((delivered, read)) = mark {
+                    let entry = self
+                        .saved
+                        .receipts
+                        .entry(space)
+                        .or_default()
+                        .entry(from)
+                        .or_default();
+                    *entry = (entry.0.max(delivered), entry.1.max(read));
+                }
             }
             ServerFrame::SyncDone => {
                 self.synced = true;
+                extra.extend(self.delivered());
                 self.ask_rejoin(now_ms)?;
                 let ids = self
                     .logs
@@ -759,17 +972,93 @@ impl<S: Signer> Client<S> {
     pub fn conversations(&self) -> Vec<ConversationView> {
         self.logs.keys().filter_map(|space| {
             let (title, kind, _) = self.metadata(space)?;
-            if kind == SpaceKind::Personal || !self.roster(space).contains_key(&self.account.identity) { return None; }
-            let mut messages = self.logs.get(space)?.events().iter().filter_map(|event| self.message_view(event, "confirmed", None)).collect::<Vec<_>>();
+            let roster = self.roster(space);
+            if kind == SpaceKind::Personal || !roster.contains_key(&self.account.identity) { return None; }
+            let events = self.logs.get(space)?.events();
+            let me = &self.account.identity;
+            // A direct chat is named after the other person, like every messenger.
+            let title = match roster.keys().find(|m| *m != me) {
+                Some(other) if kind == SpaceKind::Direct => self.saved.profiles.get(other)
+                    .map(|p| if p.name.is_empty() { format!("@{}", p.handle) } else { p.name.clone() })
+                    .unwrap_or_else(|| if title.is_empty() { "Conversa".into() } else { title.clone() }),
+                _ => title,
+            };
+            // Fold annotations over their targets. Readers enforce authorship.
+            let authors: BTreeMap<&str, &str> = events.iter().filter(|e| matches!(e.body, EventBody::MessagePosted { .. }))
+                .map(|e| (e.hash.as_str(), e.author.as_str())).collect();
+            let mut folded: BTreeMap<String, Folded> = BTreeMap::new();
+            for event in events {
+                let EventBody::MessageAnnotated { target, note } = &event.body else { continue };
+                let Some(author) = authors.get(target.as_str()) else { continue };
+                if note.author_only() && *author != event.author { continue; }
+                let f = folded.entry(target.clone()).or_default();
+                match note {
+                    roda_types::Annotation::Edit { text } if !f.deleted => f.text = Some(text.clone()),
+                    roda_types::Annotation::Delete => { f.deleted = true; f.text = None; f.reactions.clear(); }
+                    roda_types::Annotation::React { emoji } if !f.deleted => { f.reactions.insert(event.author.clone(), emoji.clone()); }
+                    roda_types::Annotation::Unreact => { f.reactions.remove(&event.author); }
+                    _ => {}
+                }
+            }
+            let receipts = self.saved.receipts.get(space);
+            let others: Vec<&String> = roster.keys().filter(|m| *m != me).collect();
+            let watermark = |pick: fn(&(u64, u64)) -> u64| -> u64 {
+                others.iter().map(|m| receipts.and_then(|r| r.get(*m)).map(pick).unwrap_or(0)).min().unwrap_or(0)
+            };
+            let (all_delivered, all_read) = (watermark(|r| r.0.max(r.1)), watermark(|r| r.1));
+            let my_read = receipts.and_then(|r| r.get(me)).map(|r| r.1).unwrap_or(0);
+            let mut messages = events.iter().filter_map(|event| {
+                let mut view = self.message_view(event, "confirmed", None)?;
+                view.entry = Some(event.hash.clone());
+                view.seq = Some(event.seq);
+                if event.author == *me {
+                    view.ticks = Some(if others.is_empty() || event.seq > all_delivered { "sent" } else if event.seq > all_read { "delivered" } else { "read" });
+                }
+                if let Some(f) = folded.get(&event.hash) {
+                    view.deleted = f.deleted;
+                    if f.deleted { view.text.clear(); }
+                    if let Some(text) = &f.text { view.text = text.clone(); view.edited = true; }
+                    let mut counts: BTreeMap<&str, (usize, bool)> = BTreeMap::new();
+                    for (who, emoji) in &f.reactions {
+                        let c = counts.entry(emoji.as_str()).or_default();
+                        c.0 += 1; c.1 |= who == me;
+                    }
+                    view.reactions = counts.into_iter().map(|(emoji, (count, mine))| Reaction { emoji: emoji.into(), count, mine }).collect();
+                }
+                Some(view)
+            }).collect::<Vec<_>>();
             messages.extend(self.saved.outbox.values().filter_map(|pending| {
                 let inner = pending.inner.as_ref()?;
                 if inner.space != *space { return None; }
                 self.message_view(inner, if pending.failure.is_some() { "failed" } else { "sending" }, pending.failure.clone())
             }));
+            // Quotes and thread summaries resolve against the folded views.
+            let by_entry: BTreeMap<String, (String, String, i64, String)> = messages.iter().filter_map(|m| m.entry.clone().map(|e| (e, (m.name.clone(), if m.deleted { String::new() } else { m.text.clone() }, m.at_ms, m.author.clone())))).collect();
+            let mut threads: BTreeMap<String, (usize, Vec<String>, i64)> = BTreeMap::new();
+            for m in &messages {
+                if let Some(root) = &m.thread {
+                    let t = threads.entry(root.clone()).or_default();
+                    t.0 += 1; t.2 = t.2.max(m.at_ms);
+                    if !t.1.contains(&m.name) { t.1.push(m.name.clone()); }
+                }
+            }
+            for m in &mut messages {
+                if let Some(Quote { id, name, text }) = &mut m.quote {
+                    if let Some((n, t, _, _)) = by_entry.get(id) { *name = n.clone(); *text = t.clone(); }
+                }
+                if let Some(entry) = &m.entry {
+                    if let Some((count, who, last)) = threads.get(entry) {
+                        m.replies = *count; m.repliers = who.iter().take(3).cloned().collect(); m.last_reply_ms = Some(*last);
+                    }
+                }
+            }
+            let mention = format!("@{}", self.account.name.to_lowercase());
+            let incoming = messages.iter().filter(|m| m.author != *me && !m.deleted && m.seq.is_some_and(|s| s > my_read) && (my_read > 0 || m.seq.is_some()));
+            let (unread, mentions) = incoming.fold((0, 0), |(u, n), m| (u + 1, n + usize::from(!self.account.name.is_empty() && m.text.to_lowercase().contains(&mention))));
             let waiting = self.ready_epoch(space).err();
-            let unreadable = self.logs.get(space)?.events().iter().filter(|event| matches!(&event.body, EventBody::Sealed { kind } if kind == "Application")).count();
+            let unreadable = events.iter().filter(|event| matches!(&event.body, EventBody::Sealed { kind } if kind == "Application")).count();
             Some(ConversationView { id: space.clone(), title, kind: match kind { SpaceKind::Direct=>"direct",SpaceKind::Group=>"group",SpaceKind::Community=>"community",SpaceKind::Personal=>"personal" },
-                can_send: waiting.is_none(), waiting, unreadable, messages })
+                can_send: waiting.is_none(), waiting, unreadable, unread, mentions, members: roster.len(), messages })
         }).collect()
     }
 
@@ -779,7 +1068,13 @@ impl<S: Signer> Client<S> {
         delivery: &'static str,
         failure: Option<String>,
     ) -> Option<MessageView> {
-        let EventBody::MessagePosted { text, .. } = &event.body else {
+        let EventBody::MessagePosted {
+            text,
+            reply,
+            forwarded,
+            ..
+        } = &event.body
+        else {
             return None;
         };
         let name = if event.author == self.account.identity {
@@ -788,18 +1083,39 @@ impl<S: Signer> Client<S> {
             self.saved
                 .profiles
                 .get(&event.author)
-                .map(|profile| profile.name.clone())
-                .filter(|name| !name.is_empty())
-                .unwrap_or_else(|| event.author.chars().take(12).collect())
+                .map(|profile| {
+                    if profile.name.is_empty() {
+                        format!("@{}", profile.handle)
+                    } else {
+                        profile.name.clone()
+                    }
+                })
+                .unwrap_or_else(|| "Alguém".into())
         };
         Some(MessageView {
             id: event.client_id.clone(),
+            entry: None,
+            seq: None,
             author: event.author.clone(),
             name,
             text: text.clone(),
             at_ms: event.at_ms,
             delivery,
             failure,
+            ticks: None,
+            edited: false,
+            deleted: false,
+            forwarded: *forwarded,
+            reactions: Vec::new(),
+            quote: reply.as_ref().filter(|r| !r.thread).map(|r| Quote {
+                id: r.to.clone(),
+                name: String::new(),
+                text: String::new(),
+            }),
+            thread: reply.as_ref().filter(|r| r.thread).map(|r| r.to.clone()),
+            replies: 0,
+            repliers: Vec::new(),
+            last_reply_ms: None,
         })
     }
 }

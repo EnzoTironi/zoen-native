@@ -14,8 +14,16 @@ function parseMessage(input: unknown) {
   const value = object(input);
   const delivery = string(value.delivery);
   if (delivery !== 'confirmed' && delivery !== 'sending' && delivery !== 'failed') throw new Error('Invalid message delivery state.');
-  return { id: string(value.id), author: publicKey(value.author), name: string(value.name), text: string(value.text),
-    at_ms: timestamp(value.at_ms), delivery, failure: nullableText(value.failure) };
+  const ticks = value.ticks === null || value.ticks === undefined ? null : string(value.ticks);
+  if (ticks !== null && ticks !== 'sent' && ticks !== 'delivered' && ticks !== 'read') throw new Error('Invalid message receipt.');
+  const quote = value.quote ? object(value.quote) : null;
+  return { id: string(value.id), entry: value.entry ? string(value.entry) : null, author: publicKey(value.author), name: string(value.name), text: string(value.text),
+    at_ms: timestamp(value.at_ms), delivery, failure: nullableText(value.failure), ticks: ticks as 'sent' | 'delivered' | 'read' | null,
+    edited: value.edited === true, deleted: value.deleted === true, forwarded: value.forwarded === true,
+    reactions: array(value.reactions ?? []).map((r) => { const x = object(r); return { emoji: string(x.emoji), count: integer(x.count), mine: x.mine === true }; }),
+    quote: quote ? { id: string(quote.id), name: string(quote.name), text: string(quote.text) } : null,
+    thread: value.thread ? string(value.thread) : null, replies: integer(value.replies ?? 0),
+    repliers: array(value.repliers ?? []).map(string), last_reply_ms: typeof value.last_reply_ms === 'number' ? value.last_reply_ms : null };
 }
 
 function parseConversation(input: unknown) {
@@ -23,7 +31,8 @@ function parseConversation(input: unknown) {
   const kind = string(value.kind);
   if (kind !== 'direct' && kind !== 'group' && kind !== 'community' && kind !== 'personal') throw new Error('Invalid conversation kind.');
   return { id: string(value.id), title: string(value.title), kind, can_send: boolean(value.can_send),
-    waiting: nullableText(value.waiting), unreadable: integer(value.unreadable), messages: array(value.messages).map(parseMessage) };
+    waiting: nullableText(value.waiting), unreadable: integer(value.unreadable),
+    unread: integer(value.unread ?? 0), mentions: integer(value.mentions ?? 0), members: integer(value.members ?? 0), messages: array(value.messages).map(parseMessage) };
 }
 export type Conversation = ReturnType<typeof parseConversation>;
 export type Message = ReturnType<typeof parseMessage>;
@@ -41,6 +50,14 @@ function parseUpdate(json: string) {
   const value = object(JSON.parse(json));
   return { snapshot: string(value.snapshot), frames: array(value.frames).map(bytes),
     conversations: array(value.conversations).map(parseConversation) };
+}
+
+/** Core refusals arrive in English; people see plain Portuguese. */
+function plain(reason: string): string {
+  if (/no longer available/i.test(reason)) return 'Essa mensagem não está mais disponível.';
+  if (/Only the person/i.test(reason)) return 'Só quem enviou pode mudar esta mensagem.';
+  if (/32 KB/i.test(reason)) return 'A mensagem está longa demais.';
+  return 'Não deu para fazer isso agora. Tente de novo.';
 }
 
 export type MessagesState =
@@ -129,6 +146,40 @@ export class Messages {
     }, () => generation !== this.generation || this.connection.kind !== 'ready' ? 'The connection changed. Try again when connected.' : null);
   }
 
+  /** Post with an optional inline reply, thread reply or forward. Refusals stay non-fatal. */
+  post({ space, text, replyTo = '', thread = false, forwarded = false }: { space: string; text: string; replyTo?: string; thread?: boolean; forwarded?: boolean }): Promise<void> {
+    return this.act(space, { kind: 'queue_post', space, text, replyTo, thread, forwarded, now: Date.now() });
+  }
+
+  /** Reaction, edit or delete for everyone, in the shared annotation shape. */
+  annotate(space: string, target: string, note: { React: { emoji: string } } | 'Unreact' | { Edit: { text: string } } | 'Delete'): Promise<void> {
+    return this.act(space, { kind: 'queue_annotation', space, target, note: JSON.stringify(note), now: Date.now() });
+  }
+
+  markRead(space: string): Promise<void> {
+    if (this.closed || this.connection.kind !== 'ready') return Promise.resolve();
+    const conversation = this.conversations.find((c) => c.id === space);
+    if (!conversation?.unread) return Promise.resolve();
+    const generation = this.generation;
+    return this.enqueue(async () => { await this.apply(await this.core.text({ kind: 'mark_read', space }), generation); }, () => null, false).catch(() => {});
+  }
+
+  private act(space: string, operation: Parameters<MessageCore['text']>[0]): Promise<void> {
+    if (this.closed) return Promise.reject(new Error('Recarregue o Zoen para abrir esta sessão de novo.'));
+    if (this.connection.kind !== 'ready') return Promise.reject(new Error('Sem conexão agora. Tente de novo em instantes.'));
+    if (!this.conversations.find((conversation) => conversation.id === space)?.can_send) {
+      return Promise.reject(new Error('Esta conversa ainda está sendo preparada no seu celular.'));
+    }
+    const generation = this.generation;
+    return this.enqueue(async () => {
+      this.notice = null;
+      let update: string;
+      try { update = await this.core.text(operation); }
+      catch (error) { throw Object.assign(new Error(plain(message(error))), { soft: true }); }
+      await this.apply(update, generation);
+    }, () => generation !== this.generation || this.connection.kind !== 'ready' ? 'A conexão mudou. Tente de novo.' : null, false);
+  }
+
   async preview(code: string): Promise<Invite> {
     if (this.closed) throw new Error('The browser session is closed.');
     return parseInvite(await this.transport.request('preview_invite', code));
@@ -145,13 +196,13 @@ export class Messages {
     }, () => generation !== this.generation || this.connection.kind !== 'ready' ? 'The connection changed. Try again when connected.' : null);
   }
 
-  private enqueue(operation: () => Promise<void>, refusal: () => string | null = () => null): Promise<void> {
+  private enqueue(operation: () => Promise<void>, refusal: () => string | null = () => null, fatal = true): Promise<void> {
     const task = this.serial.then(async () => {
       if (this.closed) throw new Error('The browser session is closed. Reload Zoen to reopen it.');
       const reason = refusal();
       if (reason) throw new Error(reason);
       try { await operation(); }
-      catch (error) { this.fail(message(error)); throw error; }
+      catch (error) { if (fatal || !(error as { soft?: boolean }).soft) this.fail(message(error)); throw error; }
     });
     this.serial = task.catch(() => {});
     return task;
