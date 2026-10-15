@@ -40,12 +40,19 @@ pub fn fault(point: &str) {
 
 #[cfg(feature = "scripted")]
 pub mod scripted {
-    use super::super::host::{parse_reply, Brain, BrainOut, Turn, TurnContext};
+    use super::super::host::{
+        parse_reply, Brain, BrainOut, ToolCall, ToolDef, ToolStep, Turn, TurnContext,
+    };
     use async_trait::async_trait;
     use std::collections::BTreeMap;
 
     /// Fixed replies keyed by a case-insensitive substring of the inbound text. Parsed like
     /// model output; no match is silence.
+    ///
+    /// A reply may carry a fenced ```tools block (a JSON array of `{"name", "arguments"}`):
+    /// a deterministic stand-in for a model that calls tools. The first think makes those
+    /// calls; once their results are in, it says the rest of the reply, or the refusal when
+    /// a call failed.
     #[derive(Default)]
     pub struct ScriptedBrain {
         pub replies: BTreeMap<String, String>,
@@ -59,13 +66,58 @@ pub mod scripted {
             _history: &[Turn],
             inbound: &Turn,
         ) -> Result<BrainOut, String> {
+            self.think_with_tools(_cx, _history, inbound, &[], &[])
+                .await
+        }
+
+        async fn think_with_tools(
+            &self,
+            _cx: TurnContext<'_>,
+            _history: &[Turn],
+            inbound: &Turn,
+            tools: &[ToolDef],
+            steps: &[ToolStep],
+        ) -> Result<BrainOut, String> {
             let t = inbound.text.to_lowercase();
-            Ok(self
+            let Some((_, v)) = self
                 .replies
                 .iter()
                 .find(|(k, _)| t.contains(&k.to_lowercase()))
-                .map(|(_, v)| parse_reply(v))
-                .unwrap_or(BrainOut::Silence))
+            else {
+                return Ok(BrainOut::Silence);
+            };
+            let Some((before, json, after)) = fence(v) else {
+                return Ok(parse_reply(v));
+            };
+            if let Some(failed) = steps.iter().find(|s| s.is_error) {
+                // The words of an MCP tool result, not its structured payload.
+                let v: serde_json::Value = serde_json::from_str(&failed.result).unwrap_or_default();
+                let why = v["content"][0]["text"].as_str().unwrap_or(&failed.result);
+                return Ok(BrainOut::Say(format!("Não deu: {why}")));
+            }
+            if steps.is_empty() && !tools.is_empty() {
+                let calls: Vec<serde_json::Value> =
+                    serde_json::from_str(json).map_err(|e| format!("script tools: {e}"))?;
+                return Ok(BrainOut::CallTools(
+                    calls
+                        .into_iter()
+                        .enumerate()
+                        .map(|(i, c)| ToolCall {
+                            id: format!("call_{i}"),
+                            name: c["name"].as_str().unwrap_or_default().to_string(),
+                            arguments: c["arguments"].clone(),
+                        })
+                        .collect(),
+                ));
+            }
+            Ok(parse_reply(&format!("{}{}", before, after)))
         }
+    }
+
+    fn fence(text: &str) -> Option<(&str, &str, &str)> {
+        let start = text.find("```tools")?;
+        let rest = &text[start + 8..];
+        let end = rest.find("```")?;
+        Some((&text[..start], rest[..end].trim(), &rest[end + 3..]))
     }
 }
