@@ -789,10 +789,7 @@ impl RodaEngine {
     /// Registers this device's push token with the relay ("apns", "apns-sandbox" or "fcm").
     /// An empty token clears it. The relay only ever sends a content-free wake.
     pub async fn register_push(&self, platform: String, token: String) -> Result<(), CoreError> {
-        match self
-            .request(Op::RegisterPush { platform, token })
-            .await?
-        {
+        match self.request(Op::RegisterPush { platform, token }).await? {
             Reply::Done => Ok(()),
             _ => Err(unexpected()),
         }
