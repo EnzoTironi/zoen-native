@@ -3,12 +3,16 @@ import { createPortal } from 'react-dom';
 import { message as reason } from './boundary.ts';
 import type { Chunk, FileDoc, Messages } from './messages.ts';
 
+/** The sender picks the type. A blob: URL shares our origin, so only inert media types
+ *  keep theirs; HTML, SVG and the rest open as plain bytes and can only be downloaded. */
+const safeMime = (mime: string) => /^(image\/(png|jpeg|gif|webp|avif|heic)|video\/(mp4|webm|quicktime)|audio\/(webm|mp4|mpeg|ogg|aac|wav))$/.test(mime) ? mime : 'application/octet-stream';
+
 /** Decrypted files live only in memory, once per file, for this tab. */
 const opened = new Map<string, Promise<string>>();
 function openUrl(messages: Messages, key: string, chunks: Chunk[], mime: string): Promise<string> {
   let url = opened.get(key);
   if (!url) {
-    url = messages.openFile(chunks, mime).then((blob) => URL.createObjectURL(blob));
+    url = messages.openFile(chunks, safeMime(mime)).then((blob) => URL.createObjectURL(blob));
     url.catch(() => opened.delete(key));
     opened.set(key, url);
   }
