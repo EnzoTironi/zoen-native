@@ -596,7 +596,7 @@ fun ThreadScreen(model: ZoenViewModel, state: AppState, space: String, root: Str
             }, enabled = text.isNotBlank() && !sending && !state.keyMissing) { ZoenIcon(ZoenGlyph.Send, stringResource(R.string.send)) }
         }
     }) { padding -> LazyColumn(Modifier.padding(padding), state = list, contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-        items(entries, key = { it.id }) { entry -> TimelineRow(model, spaceId, entry, navigate, onReply = { replyTo = entry.id }, onThread = null, onQuote = { id ->
+        items(entries, key = { it.id }) { entry -> TimelineRow(model, space, entry, navigate, onReply = { replyTo = entry.id }, onThread = null, onQuote = { id ->
             val index = entries.indexOfFirst { it.id == id }
             if (index >= 0) scrollScope.launch { if (motion) list.animateScrollToItem(index) else list.scrollToItem(index) } else navigate(Chat(space, id))
         }) }
