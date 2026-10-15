@@ -1369,7 +1369,9 @@ mod tests {
             json!({"bookingId": late, "action": "keep"}),
             at(8, 7),
         );
-        assert!(open_events(&kept, &late).is_empty());
+        // Keeping answers the hours flag only; the booking request itself is still the
+        // agent's to confirm.
+        assert_eq!(open_events(&kept, &late), vec!["book_request".to_string()]);
         let later = call(
             &kept,
             &AGENT,
