@@ -388,6 +388,29 @@ fun TimelineRow(model: ZoenViewModel, entry: TimelineEntry, navigate: (NavKey) -
     val locale = LocalConfiguration.current.locales[0].toLanguageTag()
     when (val kind = entry.kind) {
         is EntryKind.Message -> {
+            // Only your own agent's notes become cards, and only the core decides that. A
+            // candidate (agent author, fenced JSON) stays hidden until the core has answered,
+            // so the raw JSON never flashes in the chat.
+            val candidate = entry.author.kind == PersonaKind.AGENT && !entry.author.isMe && kind.text.trimStart().startsWith("```json")
+            var noteChecked by remember(entry.id) { mutableStateOf(!candidate) }
+            val ownerNote by produceState<OwnerAgentNote?>(null, entry.id) {
+                if (candidate) {
+                    value = runCatching { model.repository.query { it.ownerAgentNote(entry.author.id, kind.text) } }.getOrNull()?.let(OwnerAgentNote::parse)
+                    noteChecked = true
+                }
+            }
+            if (!noteChecked) return
+            ownerNote?.let { note ->
+                val state by model.state.collectAsStateWithLifecycle()
+                Row(Modifier.fillMaxWidth().padding(top = 6.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Spacer(Modifier.width(36.dp))
+                    OwnerAgentNoteCard(entry.author, note,
+                        personName = { id -> state.spaces.asSequence().flatMap { it.members }.firstOrNull { it.id == id }?.name },
+                        fresh = System.currentTimeMillis() - entry.atMs < 15_000,
+                        open = { navigate(Chat(it)) })
+                }
+                return
+            }
             val mine = entry.author.isMe
             var swipe by remember(entry.id) { mutableFloatStateOf(0f) }
             val threshold = with(LocalDensity.current) { 72.dp.toPx() }
