@@ -74,6 +74,8 @@ pub(crate) enum EntryBody {
         attaches: Option<ItemId>,
         /// Inline reply / thread reply link (see `roda_types::reply`).
         reply: Option<roda_types::ReplyRef>,
+        /// Edits, delete for everyone and reactions folded over the original.
+        marks: MessageMarks,
     },
     ItemEdited {
         item: ItemId,
@@ -106,6 +108,44 @@ pub(crate) struct Entry {
     pub author: IdentityId,
     pub at_ms: i64,
     pub body: EntryBody,
+}
+
+/// What later `MessageAnnotated` events did to a message.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub(crate) struct MessageMarks {
+    pub edited: bool,
+    pub deleted: bool,
+    pub forwarded: bool,
+    /// One reaction per person, in the order people first reacted.
+    pub reactions: Vec<(IdentityId, String)>,
+}
+
+impl MessageMarks {
+    /// Folds one annotation from `by` over a message written by `author`. Returns the new
+    /// text for an edit. Only the author edits or deletes; a deleted message stays deleted.
+    pub(crate) fn apply(&mut self, author: &str, by: &str, note: &roda_types::Annotation) -> Option<String> {
+        use roda_types::Annotation as A;
+        if self.deleted || (note.author_only() && author != by) {
+            return None;
+        }
+        match note {
+            A::Edit { text } => {
+                self.edited = true;
+                return Some(text.trim().to_string());
+            }
+            A::Delete => {
+                self.deleted = true;
+                self.reactions.clear();
+                return Some(String::new());
+            }
+            A::React { emoji } => match self.reactions.iter_mut().find(|(who, _)| who == by) {
+                Some(mine) => mine.1 = emoji.clone(),
+                None => self.reactions.push((by.to_string(), emoji.clone())),
+            },
+            A::Unreact => self.reactions.retain(|(who, _)| who != by),
+        }
+        None
+    }
 }
 
 impl Entry {
@@ -269,6 +309,7 @@ impl State {
                 text,
                 attaches,
                 reply,
+                forwarded,
                 ..
             } => {
                 if let Some(s) = self.spaces.get_mut(&e.space) {
@@ -276,8 +317,30 @@ impl State {
                         text: text.clone(),
                         attaches: attaches.clone(),
                         reply: reply.clone(),
+                        marks: MessageMarks {
+                            forwarded: *forwarded,
+                            ..Default::default()
+                        },
                     }));
                     s.last_at_ms = s.last_at_ms.max(e.at_ms);
+                }
+            }
+            EventBody::MessageAnnotated { target, note } => {
+                if let Some(s) = self.spaces.get_mut(&e.space) {
+                    let found = s.entries.iter_mut().rev().find(|x| x.id() == target);
+                    if let Some(Entry {
+                        author,
+                        body: EntryBody::Message { text, attaches, marks, .. },
+                        ..
+                    }) = found
+                    {
+                        if let Some(new_text) = marks.apply(author, &e.author, note) {
+                            *text = new_text;
+                            if marks.deleted {
+                                *attaches = None;
+                            }
+                        }
+                    }
                 }
             }
             EventBody::BackgroundSet { background } => {
@@ -1145,7 +1208,30 @@ impl Engine {
             },
         };
         let (reply_to, in_thread) = self.reply_parts(e);
+        let marks = match &e.body {
+            EntryBody::Message { marks, .. } => marks.clone(),
+            _ => MessageMarks::default(),
+        };
+        let me = self.me.clone().unwrap_or_default();
+        let mut reactions: Vec<ReactionDto> = Vec::new();
+        for (who, emoji) in &marks.reactions {
+            match reactions.iter_mut().find(|r| &r.emoji == emoji) {
+                Some(r) => r.people.push(self.persona(who)),
+                None => reactions.push(ReactionDto {
+                    emoji: emoji.clone(),
+                    people: vec![self.persona(who)],
+                    mine: false,
+                }),
+            }
+        }
+        for r in &mut reactions {
+            r.mine = r.people.iter().any(|p| p.id == me);
+        }
         TimelineEntry {
+            edited: marks.edited,
+            deleted: marks.deleted,
+            forwarded: marks.forwarded,
+            reactions,
             id: e.id().to_string(),
             seq: e.seq,
             author: self.persona(&e.author),
@@ -1161,6 +1247,9 @@ impl Engine {
     fn preview(&self, s: &SpaceState) -> (String, Option<Persona>) {
         for e in s.entries.iter().rev() {
             let text = match &e.body {
+                EntryBody::Message { marks, .. } if marks.deleted => {
+                    t("Mensagem apagada", "Message deleted")
+                }
                 EntryBody::Message { text, attaches, .. } => {
                     match attaches.as_deref().and_then(|i| self.card(i)) {
                         Some(c) if text.is_empty() => format!("{} · {}", c.kind_label, c.title),
@@ -1419,6 +1508,72 @@ impl Engine {
         self.post_as(space, &me, text, None)
     }
 
+    /// Edit, delete for everyone, react or unreact on a message in `space`. Only the author
+    /// may edit or delete; everyone in the Space may react.
+    pub fn annotate(&mut self, space: &str, target: &str, note: roda_types::Annotation) -> R<()> {
+        let me = self.me_id()?;
+        let s = self.space_state(space)?;
+        let Some(Entry { author, body: EntryBody::Message { marks, .. }, .. }) =
+            s.entries.iter().find(|e| e.id() == target)
+        else {
+            return Err(not_found(&t("Mensagem", "Message")));
+        };
+        if marks.deleted || (note.author_only() && *author != me) {
+            return Err(CoreError::Forbidden {
+                reason: t("só quem escreveu edita ou apaga", "only the author can edit or delete"),
+            });
+        }
+        if let roda_types::Annotation::Edit { text } = &note {
+            if text.trim().is_empty() {
+                return Err(CoreError::Invalid { reason: t("mensagem vazia", "empty message") });
+            }
+        }
+        if !self.is_member(space, &me) {
+            return Err(CoreError::Forbidden {
+                reason: t("só membros escrevem neste Espaço", "only members can write in this Space"),
+            });
+        }
+        self.append(
+            space,
+            &me,
+            EventBody::MessageAnnotated { target: target.to_string(), note },
+        )?;
+        Ok(())
+    }
+
+    /// Sends a copy of a message (text and attachment) to another chat, marked forwarded.
+    pub fn forward(&mut self, from_space: &str, target: &str, to_space: &str) -> R<TimelineEntry> {
+        let me = self.me_id()?;
+        let s = self.space_state(from_space)?;
+        let Some(EntryBody::Message { text, attaches, marks, .. }) =
+            s.entries.iter().find(|e| e.id() == target).map(|e| &e.body)
+        else {
+            return Err(not_found(&t("Mensagem", "Message")));
+        };
+        if marks.deleted {
+            return Err(not_found(&t("Mensagem", "Message")));
+        }
+        let (text, attaches) = (text.clone(), attaches.clone());
+        if !self.is_member(to_space, &me) {
+            return Err(CoreError::Forbidden {
+                reason: t("só membros escrevem neste Espaço", "only members can write in this Space"),
+            });
+        }
+        self.append(
+            to_space,
+            &me,
+            EventBody::MessagePosted {
+                message: new_id("msg"),
+                text,
+                attaches,
+                reply: None,
+                forwarded: true,
+            },
+        )?;
+        let s = self.space_state(to_space)?;
+        Ok(self.entry_dto(s.entries.last().expect("acabou de entrar")))
+    }
+
     pub(crate) fn post_as(
         &mut self,
         space: &str,
@@ -1448,6 +1603,7 @@ impl Engine {
                 text: text.to_string(),
                 attaches,
                 reply: None,
+                forwarded: false,
             },
         )?;
         let s = self.space_state(space)?;
@@ -3775,6 +3931,13 @@ fn event_label(b: &EventBody) -> String {
             attaches: Some(_), ..
         } => t("Mensagem com Item", "Message with Item"),
         EventBody::MessagePosted { .. } => t("Mensagem", "Message"),
+        EventBody::MessageAnnotated { note, .. } => match note {
+            roda_types::Annotation::Edit { .. } => t("Mensagem editada", "Message edited"),
+            roda_types::Annotation::Delete => t("Mensagem apagada", "Message deleted"),
+            roda_types::Annotation::React { .. } | roda_types::Annotation::Unreact => {
+                t("Reação", "Reaction")
+            }
+        },
         EventBody::ItemCreated { content, .. } => {
             tr!("Item criado: {}", "Item created: {}", content.title())
         }

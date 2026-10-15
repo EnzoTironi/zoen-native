@@ -303,6 +303,7 @@ pub async fn run(conn: Conn, plan: Plan, mut rx: mpsc::Receiver<Publish>) -> any
                         text: due_us.to_string(),
                         attaches: None,
                         reply: None,
+                        forwarded: false,
                     },
                 );
                 let env = Envelope::plain(&e);

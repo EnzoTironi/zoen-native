@@ -184,6 +184,7 @@ async fn an_end_to_end_group_leaves_the_relay_only_ciphertext() {
         text: "texto aberto".into(),
         attaches: None,
         reply: None,
+        forwarded: false,
     };
     let refused = mallory.publish_body(space, seen, clear).await.unwrap_err();
     assert_eq!(refused, roda_proto::SEAL_REQUIRED);

@@ -581,6 +581,7 @@ mod tests {
                 text: "Bora pra Paraty?".into(),
                 attaches: None,
                 reply: None,
+                forwarded: false,
             },
         );
         log.append(
@@ -591,6 +592,7 @@ mod tests {
                 text: "Bora!".into(),
                 attaches: None,
                 reply: None,
+                forwarded: false,
             },
         );
         (log, enzo, marina)
@@ -646,6 +648,7 @@ mod tests {
                     text: "Bora pra Búzios?".into(),
                     attaches: None,
                     reply: None,
+                    forwarded: false,
                 },
             )))
         });
@@ -664,6 +667,7 @@ mod tests {
             text: "Bora pra Búzios?".into(),
             attaches: None,
             reply: None,
+            forwarded: false,
         };
         assert_eq!(
             SpaceLog::from_events("sp_paraty", events).unwrap_err(),
@@ -682,6 +686,7 @@ mod tests {
                     text: "Não vou.".into(),
                     attaches: None,
                     reply: None,
+                    forwarded: false,
                 },
             )))
         });
@@ -763,6 +768,7 @@ mod tests {
                 text: "Concordo".into(),
                 attaches: None,
                 reply: None,
+                forwarded: false,
             },
         );
         let mut forked = SpaceLog::new("sp_paraty");
@@ -804,6 +810,7 @@ mod tests {
                 text: "Vamos sábado".into(),
                 attaches: None,
                 reply: None,
+                forwarded: false,
             },
         );
         let mut fake = SpaceLog::new("sp_fork");
@@ -816,6 +823,7 @@ mod tests {
                 text: "Cancelado".into(),
                 attaches: None,
                 reply: None,
+                forwarded: false,
             },
         );
         let answer = Author::root(enzo.clone()).sign_event(
@@ -828,6 +836,7 @@ mod tests {
                 text: "Confirmado".into(),
                 attaches: None,
                 reply: None,
+                forwarded: false,
             },
         );
         let mut shown = answer;
@@ -857,6 +866,7 @@ mod tests {
                 text: "?".into(),
                 attaches: None,
                 reply: None,
+                forwarded: false,
             },
         );
         let mut e = blind;
@@ -961,6 +971,7 @@ mod tests {
                 text: "oi".into(),
                 attaches: None,
                 reply: None,
+                forwarded: false,
             },
         );
         log.sequence(e);
@@ -999,6 +1010,7 @@ mod tests {
                     text: "x".into(),
                     attaches: None,
                     reply: None,
+                    forwarded: false,
                 },
             ))
             .clone();

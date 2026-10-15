@@ -14,6 +14,8 @@
 //! (ver `roda-log`). Nenhuma tela mostra o log; ele é a fonte da verdade.
 
 pub mod owner_budget;
+pub mod annotation;
+pub use annotation::Annotation;
 pub mod reply;
 pub use reply::ReplyRef;
 use serde::{Deserialize, Serialize};
@@ -518,6 +520,15 @@ pub enum EventBody {
         /// bytes are exactly what older peers expect.
         #[serde(default, skip_serializing_if = "Option::is_none")]
         reply: Option<ReplyRef>,
+        /// Forwarded from another chat (shown as "Forwarded"). Absent when false, so plain
+        /// messages keep their exact bytes.
+        #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+        forwarded: bool,
+    },
+    /// An edit, delete for everyone or reaction on an earlier message (see [`annotation`]).
+    MessageAnnotated {
+        target: String,
+        note: Annotation,
     },
     ItemCreated {
         item: ItemId,

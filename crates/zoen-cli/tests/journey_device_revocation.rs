@@ -120,6 +120,7 @@ async fn revoke_live_sockets(two_nodes: bool, miss_bus_invalidation: bool) {
             text: "must not land".into(),
             attaches: None,
             reply: None,
+            forwarded: false,
         },
     );
     syncing
@@ -145,6 +146,7 @@ async fn revoke_live_sockets(two_nodes: bool, miss_bus_invalidation: bool) {
                 text: "the surviving device still writes".into(),
                 attaches: None,
                 reply: None,
+                forwarded: false,
             },
         )
         .await

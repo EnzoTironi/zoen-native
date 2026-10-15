@@ -223,6 +223,7 @@ impl Fixture {
                 text: text.into(),
                 attaches: None,
                 reply: None,
+                forwarded: false,
             },
             300,
         )
@@ -294,7 +295,7 @@ fn prepared_reply_preserves_exact_native_outbox_through_cold_restore_and_confirm
     );
     assert!(matches!(
         &pending[0].event.body,
-        EventBody::MessagePosted { message, text, attaches: None, reply: None }
+        EventBody::MessagePosted { message, text, attaches: None, reply: None, forwarded: false, }
             if message == prepared.message() && text == "Retained model result\n"
     ));
     assert_eq!(cold.engine.outbox_envelopes(), vec![envelope.clone()]);
@@ -310,7 +311,7 @@ fn prepared_reply_preserves_exact_native_outbox_through_cold_restore_and_confirm
     let received = fixture.owner.logs[SPACE].events().last().unwrap();
     assert!(matches!(
         &received.body,
-        EventBody::MessagePosted { message, text, attaches: None, reply: None }
+        EventBody::MessagePosted { message, text, attaches: None, reply: None, forwarded: false, }
             if message == prepared.message() && text == "Retained model result\n"
     ));
     cold.ingest(vec![frame.clone()]).unwrap();
@@ -341,6 +342,7 @@ fn colliding_native_reply(fixture: &Fixture, prepared: &PreparedReply) -> Envelo
             text: "Different native result".into(),
             attaches: None,
             reply: None,
+            forwarded: false,
         },
     );
     let bytes = fork
@@ -510,6 +512,7 @@ fn own_echo_requires_valid_original_inner_and_historical_sealing_copy() {
                         text: "Another genuinely signed native inner".into(),
                         attaches: None,
                         reply: None,
+                        forwarded: false,
                     },
                 );
                 roda_log::verify_author(&pending).unwrap();
@@ -1184,6 +1187,7 @@ fn receipt_source_message(fixture: &mut Fixture, index: usize) -> Sequenced {
                 text: format!("Historical position {index}"),
                 attaches: None,
                 reply: None,
+                forwarded: false,
             },
         )
         .unwrap();
@@ -1444,6 +1448,7 @@ fn receipt_prefix_validates_original_pending_before_reading_unrelated_history() 
                         text: "Different certified output".into(),
                         attaches: None,
                         reply: None,
+                        forwarded: false,
                     },
                 );
                 fixture.core.engine.store.outbox_remove(&cid).unwrap();
@@ -1752,6 +1757,7 @@ fn failed_opening_record_rolls_back_log_and_ratchet_and_discards_workspace() {
                 text: "Open atomically".into(),
                 attaches: None,
                 reply: None,
+                forwarded: false,
             },
         )
         .unwrap();
@@ -1799,6 +1805,7 @@ fn whole_image_keeps_non_openmls_provider_tables_and_real_pending_outbox() {
                 text: "Retain protocol queue".into(),
                 attaches: None,
                 reply: None,
+                forwarded: false,
             },
         )
         .unwrap();
@@ -1881,6 +1888,7 @@ fn own_echo_is_context_only_and_mismatching_mls_sender_cannot_refresh() {
             text: "Outer agent differs from actual owner MLS leaf".into(),
             attaches: None,
             reply: None,
+            forwarded: false,
         },
     );
     let plaintext = roda_log::content::InnerEvent {

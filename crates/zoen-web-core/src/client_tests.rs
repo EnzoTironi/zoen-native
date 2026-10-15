@@ -172,6 +172,7 @@ fn native_sqlite_welcome_messages_saved_reload_and_removal_use_shared_mls() {
             text: "Native to web".into(),
             attaches: None,
             reply: None,
+            forwarded: false,
         },
     );
     let plaintext = InnerEvent {

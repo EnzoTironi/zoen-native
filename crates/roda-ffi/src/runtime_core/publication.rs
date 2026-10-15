@@ -103,6 +103,7 @@ impl DeviceCore {
                         text: text.into(),
                         attaches: None,
                         reply: None,
+                        forwarded: false,
                     },
                 )
                 .map_err(|_| NativeError::Storage)?;

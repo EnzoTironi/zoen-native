@@ -69,6 +69,7 @@ fn msg(text: &str) -> EventBody {
         text: text.into(),
         attaches: None,
         reply: None,
+        forwarded: false,
     }
 }
 
@@ -333,6 +334,7 @@ pub(crate) fn seed(e: &mut Engine) -> Result<(), CoreError> {
             ),
             attaches: Some(summary),
             reply: None,
+            forwarded: false,
         },
     )?;
     e.append_at(
@@ -470,6 +472,7 @@ pub(crate) fn seed(e: &mut Engine) -> Result<(), CoreError> {
             ),
             attaches: Some(task),
             reply: None,
+            forwarded: false,
         },
     )?;
     e.append_at(
@@ -688,7 +691,7 @@ pub(crate) fn seed(e: &mut Engine) -> Result<(), CoreError> {
             ),
         },
     )?;
-    e.append_at(&paraty, &zoen, at(187), EventBody::MessagePosted { message: new_id("msg"), text: t(&t("Montei o plano: ônibus, 2 noites na Casa Azul e escuna. R$ 1.348 de R$ 1.500 · sobra R$ 152.", "Here's the plan: bus, 2 nights at Casa Azul and a schooner. $1,348 of $1,500 · $152 left."), "Here's the plan: bus, 2 nights at Casa Azul and a schooner. $1,348 of $1,500 · $152 left."), attaches: Some(plan_item.clone()), reply: None })?;
+    e.append_at(&paraty, &zoen, at(187), EventBody::MessagePosted { message: new_id("msg"), text: t(&t("Montei o plano: ônibus, 2 noites na Casa Azul e escuna. R$ 1.348 de R$ 1.500 · sobra R$ 152.", "Here's the plan: bus, 2 nights at Casa Azul and a schooner. $1,348 of $1,500 · $152 left."), "Here's the plan: bus, 2 nights at Casa Azul and a schooner. $1,348 of $1,500 · $152 left."), attaches: Some(plan_item.clone()), reply: None, forwarded: false, })?;
     e.append_at(
         &paraty,
         &zoen,
@@ -755,6 +758,7 @@ pub(crate) fn seed(e: &mut Engine) -> Result<(), CoreError> {
             ),
             attaches: Some(trip.clone()),
             reply: None,
+            forwarded: false,
         },
     )?;
 
@@ -990,6 +994,7 @@ fn seed_turma_apps(
             ),
             attaches: Some(hike.clone()),
             reply: None,
+            forwarded: false,
         },
     )?;
     e.append_at(
@@ -1088,6 +1093,7 @@ fn seed_turma_apps(
             ),
             attaches: Some(pet.clone()),
             reply: None,
+            forwarded: false,
         },
     )?;
 
@@ -1149,6 +1155,7 @@ fn seed_turma_apps(
             ),
             attaches: Some(maptap),
             reply: None,
+            forwarded: false,
         },
     )?;
 
@@ -1252,6 +1259,7 @@ fn seed_coastal_hike(
             ),
             attaches: Some(hike),
             reply: None,
+            forwarded: false,
         },
     )?;
     Ok(())

@@ -149,6 +149,25 @@ pub struct TimelineEntry {
     /// On a thread root: how many replies its thread has.
     #[uniffi(default = 0)]
     pub thread_replies: u32,
+    /// The author changed the text after posting.
+    #[uniffi(default = false)]
+    pub edited: bool,
+    /// Deleted for everyone: the text is gone; apps show "This message was deleted".
+    #[uniffi(default = false)]
+    pub deleted: bool,
+    #[uniffi(default = false)]
+    pub forwarded: bool,
+    /// Grouped by emoji, in the order they first appeared.
+    #[uniffi(default = [])]
+    pub reactions: Vec<ReactionDto>,
+}
+
+#[derive(Debug, Clone, PartialEq, uniffi::Record)]
+pub struct ReactionDto {
+    pub emoji: String,
+    pub people: Vec<Persona>,
+    /// I am one of them (tapping the chip removes mine).
+    pub mine: bool,
 }
 
 /// What an inline reply shows of the message it answers.
