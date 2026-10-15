@@ -9,6 +9,8 @@ import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.*
+import androidx.compose.material.icons.automirrored.rounded.ArrowBack
+import androidx.compose.foundation.clickable
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -60,13 +62,17 @@ fun ConversationsScreen(model: ZoenViewModel, state: AppState, navigate: (NavKey
     var selectedChat by rememberSaveable { mutableStateOf<String?>(null) }
     var searching by rememberSaveable { mutableStateOf(false) }
     var query by rememberSaveable { mutableStateOf("") }
-    var pinned by remember { mutableStateOf(model.repository.preferences.getStringSet("pins", setOf("zoen"))!!.toSet()) }
+    var showArchived by rememberSaveable { mutableStateOf(false) }
     var filter by rememberSaveable { mutableStateOf(ChatInboxFilter.All) }
     val haptics = rememberZoenHaptics()
     val working by model.working.collectAsStateWithLifecycle()
-    val chats = state.spaces.filter { filter.includes(it) && matchesSpace(it, query) }
+    // Pin, archive and mute are mine on every device: they come from the core.
+    val archived = state.spaces.filter { it.archived }
+    val chats = state.spaces.filter { (it.archived == (showArchived && query.isBlank())) && filter.includes(it) && matchesSpace(it, query) }
         .sortedByDescending { it.lastAtMs }
-        .sortedByDescending { it.id in pinned || it.counterpart?.handle in pinned }
+        .sortedByDescending { it.pinned }
+    fun prefs(chat: SpaceSummary, pinned: Boolean = chat.pinned, archived: Boolean = chat.archived, mutedUntil: Long? = chat.mutedUntilMs) =
+        model.launch { model.repository.change { it.setChatPrefs(chat.id, pinned, archived, mutedUntil) } }
     val list: @Composable () -> Unit = {
         Scaffold(topBar = { HomeBar(stringResource(R.string.app_name), state, navigate, onStore = { store = true }, onSearch = { searching = !searching }) }, containerColor = MaterialTheme.colorScheme.background, contentWindowInsets = WindowInsets(0, 0, 0, 0)) { padding ->
             LazyColumn(Modifier.fillMaxSize().padding(padding).testTag("conversation-list"), contentPadding = PaddingValues(bottom = 16.dp)) {
@@ -82,16 +88,20 @@ fun ConversationsScreen(model: ZoenViewModel, state: AppState, navigate: (NavKey
                     }
                 }
                 item { ChatFilterMenu(filter) { filter = it; haptics.perform(ZoenFeedback.Selection) } }
+                if (query.isBlank() && archived.isNotEmpty()) item(key = "archived") {
+                    ListItem(headlineContent = { Text(stringResource(if (showArchived) R.string.chats else R.string.archived)) },
+                        leadingContent = { Icon(if (showArchived) Icons.AutoMirrored.Rounded.ArrowBack else Icons.Rounded.Archive, null, Modifier.padding(horizontal = 16.dp)) },
+                        trailingContent = { if (!showArchived) Text(archived.size.toString(), style = MaterialTheme.typography.labelMedium) },
+                        modifier = Modifier.animateItem().testTag("archived-row").clickable { haptics.perform(ZoenFeedback.Selection); showArchived = !showArchived })
+                }
                 items(chats, key = { it.id }) { chat ->
-                    val isPinned = chat.id in pinned || chat.counterpart?.handle in pinned
-                    ConversationRow(chat, isPinned, working = working[chat.id], selected = split && selectedChat == chat.id,
+                    ConversationRow(chat, chat.pinned, working = working[chat.id], selected = split && selectedChat == chat.id,
                         onClick = { if (split) selectedChat = chat.id else navigate(Chat(chat.id)) },
-                        onPin = {
-                            val key = if (chat.counterpart?.handle == "zoen") "zoen" else chat.id
-                            pinned = if (isPinned) pinned - key else pinned + key
-                            model.repository.preferences.edit().putStringSet("pins", pinned).apply()
-                        },
+                        onPin = { prefs(chat, pinned = !chat.pinned) },
                         onRead = { model.launch { model.repository.change { it.markRead(chat.id) } } },
+                        onArchive = { prefs(chat, archived = !chat.archived) },
+                        onMute = { until -> prefs(chat, mutedUntil = until) },
+                        modifier = Modifier.animateItem(),
                     )
                 }
                 if (chats.isEmpty()) item {
@@ -118,10 +128,10 @@ fun ConversationsScreen(model: ZoenViewModel, state: AppState, navigate: (NavKey
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
-private fun ConversationRow(chat: SpaceSummary, pinned: Boolean, working: String?, selected: Boolean, onClick: () -> Unit, onPin: () -> Unit, onRead: () -> Unit) {
+private fun ConversationRow(chat: SpaceSummary, pinned: Boolean, working: String?, selected: Boolean, onClick: () -> Unit, onPin: () -> Unit, onRead: () -> Unit, onArchive: () -> Unit = {}, onMute: (Long?) -> Unit = {}, modifier: Modifier = Modifier) {
     var menu by remember { mutableStateOf(false) }
     val haptics = rememberZoenHaptics()
-    Box {
+    Box(modifier) {
         Row(Modifier.fillMaxWidth().testTag("chat:${chat.counterpart?.handle ?: chat.id}").background(if (selected) MaterialTheme.colorScheme.primaryContainer else Color.Transparent)
             .combinedClickable(hapticFeedbackEnabled = false, onClick = { haptics.perform(ZoenFeedback.Tap); onClick() }, onLongClick = { haptics.perform(ZoenFeedback.Open); menu = true }).padding(horizontal = 20.dp, vertical = 10.dp),
             verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp)) {
@@ -138,11 +148,18 @@ private fun ConversationRow(chat: SpaceSummary, pinned: Boolean, working: String
                 Text(DateFormat.getTimeInstance(DateFormat.SHORT).format(Date(chat.lastAtMs)), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 if (chat.unread > 0u) Badge(containerColor = MaterialTheme.colorScheme.primary, contentColor = MaterialTheme.colorScheme.onPrimary) { Text(chat.unread.toString()) }
                 else if (pinned) Icon(Icons.Rounded.PushPin, stringResource(R.string.pinned), Modifier.size(16.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                if (chat.muted) Icon(Icons.Rounded.NotificationsOff, stringResource(R.string.muted), Modifier.size(14.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         }
         DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
             DropdownMenuItem(text = { Text(stringResource(if (pinned) R.string.unpin else R.string.pin)) }, leadingIcon = { Icon(Icons.Rounded.PushPin, null) }, onClick = { menu = false; onPin() })
             DropdownMenuItem(text = { Text(stringResource(R.string.chat_mark_read)) }, leadingIcon = { Icon(Icons.Rounded.DoneAll, null) }, onClick = { menu = false; onRead() })
+            if (chat.muted) DropdownMenuItem(text = { Text(stringResource(R.string.unmute)) }, leadingIcon = { Icon(Icons.Rounded.Notifications, null) }, onClick = { menu = false; onMute(null) })
+            else {
+                DropdownMenuItem(text = { Text(stringResource(R.string.mute_8h)) }, leadingIcon = { Icon(Icons.Rounded.NotificationsOff, null) }, onClick = { menu = false; onMute(System.currentTimeMillis() + 8 * 3_600_000L) })
+                DropdownMenuItem(text = { Text(stringResource(R.string.mute_always)) }, leadingIcon = { Icon(Icons.Rounded.NotificationsOff, null) }, onClick = { menu = false; onMute(Long.MAX_VALUE) })
+            }
+            DropdownMenuItem(text = { Text(stringResource(if (chat.archived) R.string.unarchive else R.string.archive)) }, leadingIcon = { Icon(if (chat.archived) Icons.Rounded.Unarchive else Icons.Rounded.Archive, null) }, onClick = { menu = false; onArchive() })
         }
     }
 }

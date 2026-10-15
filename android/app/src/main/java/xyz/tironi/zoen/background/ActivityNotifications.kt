@@ -36,6 +36,7 @@ class ActivityNotifications(private val context: Context) {
             val former = oldSpaces[space.id]
             if (former != null && space.eventCount <= former.eventCount || space.lastAuthor?.isMe != false) return@forEach
             if (context.getSharedPreferences("zoen", Context.MODE_PRIVATE).getBoolean("muted.person:${state.me.id}:${space.lastAuthor?.id}", false)) return@forEach
+            if (space.muted) return@forEach
             if (visible && activeSpace == space.id) return@forEach
             val preview = if (xyz.tironi.zoen.media.VoiceNoteRef.parse(space.lastPreview) != null) context.getString(R.string.media_voice_message) else space.lastPreview
             notify("chat:${space.id}", space.title, preview, "zoen://chat/${space.id}", NotificationCompat.CATEGORY_MESSAGE)

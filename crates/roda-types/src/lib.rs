@@ -525,6 +525,13 @@ pub enum EventBody {
         #[serde(default, skip_serializing_if = "std::ops::Not::not")]
         forwarded: bool,
     },
+    /// How I keep one of my chats (pinned, archived, muted). Lives only in my Personal
+    /// Space, so it syncs across my own devices and nobody else ever sees it. The whole
+    /// record is restated each time: the latest one wins.
+    ChatPrefsSet {
+        space: SpaceId,
+        prefs: ChatPrefs,
+    },
     /// An edit, delete for everyone or reaction on an earlier message (see [`annotation`]).
     MessageAnnotated {
         target: String,
@@ -612,6 +619,17 @@ pub enum EventBody {
     Unsupported {
         kind: String,
     },
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug, Default, PartialEq, Eq)]
+pub struct ChatPrefs {
+    #[serde(default)]
+    pub pinned: bool,
+    #[serde(default)]
+    pub archived: bool,
+    /// Muted until this time (ms since epoch); `i64::MAX` = always. Absent = not muted.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub muted_until_ms: Option<i64>,
 }
 
 /// One recipient's copy of a profile key: X25519 with a fresh ephemeral key, then

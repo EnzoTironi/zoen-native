@@ -235,6 +235,8 @@ pub(crate) struct State {
     pub usage: Vec<(IdentityId, i64, i64)>, // (agente, centavos, quando)
     pub(crate) plan_origins: HashMap<ItemId, PlanOrigin>,
     pub(crate) waiting_spaces: HashSet<SpaceId>,
+    /// My per-chat prefs (pin, archive, mute), from my Personal Space.
+    pub(crate) chat_prefs: HashMap<SpaceId, roda_types::ChatPrefs>,
 }
 
 impl State {
@@ -323,6 +325,15 @@ impl State {
                         },
                     }));
                     s.last_at_ms = s.last_at_ms.max(e.at_ms);
+                }
+            }
+            EventBody::ChatPrefsSet { space, prefs } => {
+                // Only my own Personal Space carries prefs; anywhere else they mean nothing.
+                let mine = self.spaces.get(&e.space).is_some_and(|s| {
+                    s.kind == SpaceKind::Personal && s.members.iter().any(|(m, _)| *m == e.author)
+                });
+                if mine {
+                    self.chat_prefs.insert(space.clone(), prefs.clone());
                 }
             }
             EventBody::MessageAnnotated { target, note } => {
@@ -604,6 +615,10 @@ impl Engine {
             if let Some(projected) = scoped.spaces.get(space) {
                 state.spaces.insert(space.clone(), projected.clone());
             }
+            // Only a Personal Space projects prefs (checked when applied).
+            state
+                .chat_prefs
+                .extend(scoped.chat_prefs.iter().map(|(k, v)| (k.clone(), v.clone())));
             for (item, projected) in &scoped.items {
                 if item_spaces.get(item.as_str()) == Some(&1) {
                     state.items.insert(item.clone(), projected.clone());
@@ -1415,7 +1430,13 @@ impl Engine {
             .values()
             .filter(|r| r.space == id && r.status == ReqStatus::Pending)
             .count() as u32;
+        let prefs = self.state.chat_prefs.get(id).cloned().unwrap_or_default();
+        let muted = prefs.muted_until_ms.is_some_and(|until| until > now_ms());
         Ok(SpaceSummary {
+            pinned: prefs.pinned,
+            archived: prefs.archived,
+            muted,
+            muted_until_ms: prefs.muted_until_ms.filter(|_| muted),
             id: s.id.clone(),
             title: counterpart
                 .as_ref()
@@ -1572,6 +1593,24 @@ impl Engine {
         )?;
         let s = self.space_state(to_space)?;
         Ok(self.entry_dto(s.entries.last().expect("acabou de entrar")))
+    }
+
+    /// Pins, archives or mutes one of my chats on all my devices (my Personal Space).
+    pub fn set_chat_prefs(&mut self, space: &str, prefs: roda_types::ChatPrefs) -> R<()> {
+        let me = self.me_id()?;
+        self.space_state(space)?;
+        if self.state.chat_prefs.get(space) == Some(&prefs) {
+            return Ok(());
+        }
+        let personal = self
+            .personal_space()
+            .ok_or_else(|| not_found(&t("Espaço pessoal", "Personal Space")))?;
+        self.append(
+            &personal,
+            &me,
+            EventBody::ChatPrefsSet { space: space.to_string(), prefs },
+        )?;
+        Ok(())
     }
 
     pub(crate) fn post_as(
@@ -3931,6 +3970,7 @@ fn event_label(b: &EventBody) -> String {
             attaches: Some(_), ..
         } => t("Mensagem com Item", "Message with Item"),
         EventBody::MessagePosted { .. } => t("Mensagem", "Message"),
+        EventBody::ChatPrefsSet { .. } => t("Preferências da conversa", "Chat preferences"),
         EventBody::MessageAnnotated { note, .. } => match note {
             roda_types::Annotation::Edit { .. } => t("Mensagem editada", "Message edited"),
             roda_types::Annotation::Delete => t("Mensagem apagada", "Message deleted"),

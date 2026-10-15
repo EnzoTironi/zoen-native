@@ -61,6 +61,7 @@ struct ConversationsList: View {
     var query: String = ""
     var onOpen: (String) -> Void
     var selected: String? = nil
+    @State private var showArchived = false
 
     private var filtered: [SpaceSummary] {
         let q = query.trimmingCharacters(in: .whitespaces).folding(options: [.caseInsensitive, .diacriticInsensitive], locale: .current)
@@ -75,7 +76,10 @@ struct ConversationsList: View {
 
     var body: some View {
         LazyVStack(alignment: .leading, spacing: 2) {
-            ForEach(filtered) { space in
+            if query.isEmpty && !model.archivedSpaces.isEmpty {
+                ArchivedRow(count: model.archivedSpaces.count, open: $showArchived)
+            }
+            ForEach(showArchived && query.isEmpty ? model.archivedSpaces : filtered) { space in
                 Button {
                     onOpen(space.id)
                 } label: {
@@ -89,6 +93,18 @@ struct ConversationsList: View {
                     Button { model.perform { try model.core.markRead(spaceId: space.id) } } label: {
                         Label { Text("Mark as read") } icon: { ZoenGlyph.check.menuImage }
                     }
+                    if space.muted {
+                        Button { model.mute(space, until: nil) } label: { Label("Unmute", systemImage: "bell") }
+                    } else {
+                        Menu {
+                            Button("8 hours") { model.mute(space, until: Int64(Date().addingTimeInterval(8 * 3600).timeIntervalSince1970 * 1000)) }
+                            Button("1 week") { model.mute(space, until: Int64(Date().addingTimeInterval(7 * 86400).timeIntervalSince1970 * 1000)) }
+                            Button("Always") { model.mute(space, until: Int64.max) }
+                        } label: { Label("Mute", systemImage: "bell.slash") }
+                    }
+                    Button {
+                        withAnimation(Motion.wabi) { model.toggleArchive(space) }
+                    } label: { Label(space.archived ? "Unarchive" : "Archive", systemImage: space.archived ? "tray.and.arrow.up" : "archivebox") }
                 }
             }
             if filtered.isEmpty && !query.isEmpty {
@@ -136,6 +152,12 @@ struct ConversationRow: View {
                     .font(.subheadline)
                     .lineLimit(1)
                     Spacer(minLength: 6)
+                    if space.muted {
+                        Image(systemName: "bell.slash.fill")
+                            .font(.system(size: 11))
+                            .foregroundStyle(Palette.textTertiary)
+                            .accessibilityLabel("Muted")
+                    }
                     if pinned {
                         ZoenIcon(.pin, size: 13)
                             .foregroundStyle(Palette.textTertiary)
@@ -413,5 +435,34 @@ struct ConnectionDot: View {
             .accessibilityElement(children: .combine)
             .transition(.opacity.combined(with: .scale(scale: 0.9)))
         }
+    }
+}
+
+/// WhatsApp's "Archived" row at the top of the list; tapping swaps the list in place.
+struct ArchivedRow: View {
+    let count: Int
+    @Binding var open: Bool
+
+    var body: some View {
+        Button {
+            Haptics.tap()
+            withAnimation(Motion.wabi) { open.toggle() }
+        } label: {
+            HStack(spacing: 14) {
+                Image(systemName: open ? "chevron.backward" : "archivebox")
+                    .font(.system(size: 17, weight: .semibold))
+                    .frame(width: 56)
+                    .contentTransition(.symbolEffect(.replace))
+                Text(open ? "Chats" : "Archived").font(.body.weight(.medium))
+                Spacer()
+                if !open { Text("\(count)").font(.footnote.monospacedDigit()).foregroundStyle(Palette.textTertiary) }
+            }
+            .foregroundStyle(Palette.textPrimary)
+            .padding(.horizontal, 16)
+            .frame(height: 48)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityIdentifier("archived-row")
     }
 }

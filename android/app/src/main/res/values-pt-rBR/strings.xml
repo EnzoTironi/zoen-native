@@ -109,6 +109,13 @@
   <string name="edited">editada</string>
   <string name="edit_message">Editar mensagem</string>
   <string name="forward_to">Encaminhar para…</string>
+  <string name="archived">Arquivadas</string>
+  <string name="unmute">Reativar som</string>
+  <string name="mute_8h">Silenciar por 8 horas</string>
+  <string name="mute_always">Silenciar sempre</string>
+  <string name="archive">Arquivar</string>
+  <string name="unarchive">Desarquivar</string>
+  <string name="muted">Silenciada</string>
   <string name="receipt_sending">Enviando</string>
   <string name="receipt_sent">Enviada</string>
   <string name="receipt_delivered">Entregue</string>
