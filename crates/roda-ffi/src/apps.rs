@@ -327,7 +327,9 @@ pub fn specs() -> Vec<AppSpec> {
                             "serviceId": {"type": "string"},
                             "startMs": {"type": "integer"},
                             "endMs": {"type": "integer", "description": "Optional; must equal startMs + the service length"},
-                            "note": {"type": "string", "maxLength": 120}
+                            "note": {"type": "string", "maxLength": 120},
+                            "forId": {"type": "string", "description": "Staff or agent only: the member this booking is for"},
+                            "forName": {"type": "string", "maxLength": 48, "description": "Staff or agent only: the client's name"}
                         },
                         "required": ["serviceId", "startMs"]
                     }),

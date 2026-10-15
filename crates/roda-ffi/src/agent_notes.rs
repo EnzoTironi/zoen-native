@@ -152,7 +152,7 @@ mod tests {
         use serde_json::json;
         for who in ["carla", "bot"] {
             let b = |status: &str| {
-                json!([{"id": "b1", "byId": who, "byName": "Carla",
+                json!([{"id": "b1", "byId": who, "byName": "Zoen", "forName": "Carla",
                 "serviceName": "Corte", "startMs": 1_893_970_800_000_i64, "status": status}])
             };
             let req = |res: &str| json!([{"bookingId": "b1", "kind": "book_request", "status": res, "resolution": res}]);
@@ -160,10 +160,7 @@ mod tests {
             let booked = sched(b("pending"), req("open"));
             let note = owner_note_for(&empty, &booked, who).expect("new booking");
             assert_eq!(note["booking"]["kind"], "new");
-            assert_eq!(
-                note["booking"]["client"],
-                if who == "bot" { "" } else { "Carla" }
-            );
+            assert_eq!(note["booking"]["client"], "Carla");
             let s = format!("```json\n{note}\n```");
             let bruno = Signer::generate();
             assert!(owner_agent_note(&bruno.id(), Some(&owned_agent(&bruno)), &s).is_some());

@@ -528,12 +528,7 @@ pub(crate) fn booking_change(prev: &Value, next: &Value, by: &str) -> Option<Val
                 }
                 _ => return None,
             };
-            // The agent books under its own name; the card then says "Alguém".
-            let client = if role(next, by) == Role::Agent {
-                json!("")
-            } else {
-                b["byName"].clone()
-            };
+            let client = b.get("forName").unwrap_or(&b["byName"]);
             Some(json!({"booking": {
                 "kind": kind,
                 "client": client,
@@ -960,6 +955,11 @@ fn apply_tool(
             let end = check_slot(&st, start, minutes, now, None)?;
             let id = next_id(&mut st, "b");
             let svc_name = svc["name"].as_str().unwrap_or_default().to_string();
+            // Who the booking is for: the actor, or the client staff or the agent names.
+            let (for_id, for_name) = match (who.staff(), s(args, "forName")) {
+                (true, Some(n)) => (s(args, "forId").unwrap_or_default(), n),
+                _ => (actor.id.to_string(), actor.name.to_string()),
+            };
             st["bookings"]
                 .as_array_mut()
                 .ok_or_else(|| t("estado inválido", "invalid state"))?
@@ -973,6 +973,8 @@ fn apply_tool(
                     "endMs": end,
                     "byId": actor.id,
                     "byName": clean(actor.name, 48),
+                    "forId": for_id,
+                    "forName": clean(&for_name, 48),
                     "status": "pending",
                     "note": note(args).unwrap_or_default(),
                     "at": now
@@ -1299,6 +1301,28 @@ mod tests {
             .filter(|e| e["bookingId"] == id && e["status"] == "open")
             .map(|e| e["kind"].as_str().unwrap().to_string())
             .collect()
+    }
+
+    #[test]
+    fn the_agent_books_for_a_client_and_the_owner_note_names_them() {
+        let base = open_schedule();
+        let args = json!({"serviceId": "corte", "startMs": at(10, 0),
+            "forId": "carla", "forName": "Carla"});
+        let st = call(&base, &AGENT, "schedule_book", args.clone(), at(8, 0));
+        let b = booking(&st, "bot")[0];
+        assert_eq!(
+            (&b["forId"], &b["forName"]),
+            (&json!("carla"), &json!("Carla"))
+        );
+        let note = booking_change(&base, &st, "bot").expect("agent booking notifies");
+        assert_eq!(note["booking"]["client"], "Carla");
+        // A client can't book in someone else's name.
+        let st = call(&base, &DANI, "schedule_book", args, at(8, 0));
+        assert_eq!(booking(&st, "dani")[0]["forName"], "Dani");
+        assert_eq!(
+            booking_change(&base, &st, "dani").unwrap()["booking"]["client"],
+            "Dani"
+        );
     }
 
     #[test]
