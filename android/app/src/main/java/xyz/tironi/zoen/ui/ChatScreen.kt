@@ -636,6 +636,7 @@ fun ReceiptTicks(delivery: Delivery, base: androidx.compose.ui.graphics.Color = 
     )
     val label = stringResource(when (delivery) { Delivery.READ -> R.string.receipt_read; Delivery.DELIVERED -> R.string.receipt_delivered; Delivery.FAILED -> R.string.receipt_failed; Delivery.SENT -> R.string.receipt_sent; else -> R.string.receipt_sending })
     Icon(icon, label, Modifier.size(15.dp), tint = tint)
+}
 
 /** A clear run as wide as the meta ("12:11 PM ✓"), in figure spaces. */
 internal fun bubbleMetaReserve(atMs: Long, mine: Boolean): String =
