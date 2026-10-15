@@ -116,6 +116,16 @@
   <string name="archive">Arquivar</string>
   <string name="unarchive">Desarquivar</string>
   <string name="muted">Silenciada</string>
+  <string name="thread_follow">Seguir</string>
+  <string name="thread_following">Seguindo</string>
+  <string name="thread_also_in_chat">Também enviar na conversa</string>
+  <string name="threads">Threads</string>
+  <string name="threads_empty">Nenhuma thread ainda</string>
+  <string name="mentions_count">@%1$d</string>
+  <plurals name="thread_replies">
+    <item quantity="one">%d resposta</item>
+    <item quantity="other">%d respostas</item>
+  </plurals>
   <string name="receipt_sending">Enviando</string>
   <string name="receipt_sent">Enviada</string>
   <string name="receipt_delivered">Entregue</string>

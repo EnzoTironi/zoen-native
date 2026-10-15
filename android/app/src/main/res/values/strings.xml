@@ -116,6 +116,16 @@
   <string name="archive">Archive</string>
   <string name="unarchive">Unarchive</string>
   <string name="muted">Muted</string>
+  <string name="thread_follow">Follow</string>
+  <string name="thread_following">Following</string>
+  <string name="thread_also_in_chat">Also send to chat</string>
+  <string name="threads">Threads</string>
+  <string name="threads_empty">No threads yet</string>
+  <string name="mentions_count">@%1$d</string>
+  <plurals name="thread_replies">
+    <item quantity="one">%d reply</item>
+    <item quantity="other">%d replies</item>
+  </plurals>
   <string name="receipt_sending">Sending</string>
   <string name="receipt_sent">Sent</string>
   <string name="receipt_delivered">Delivered</string>

@@ -63,6 +63,8 @@ fun ConversationsScreen(model: ZoenViewModel, state: AppState, navigate: (NavKey
     var searching by rememberSaveable { mutableStateOf(false) }
     var query by rememberSaveable { mutableStateOf("") }
     var showArchived by rememberSaveable { mutableStateOf(false) }
+    var showThreads by rememberSaveable { mutableStateOf(false) }
+    val threads by produceState(emptyList<ThreadSummary>(), state.revision, showThreads) { if (showThreads) value = model.repository.query { it.threads() } }
     var filter by rememberSaveable { mutableStateOf(ChatInboxFilter.All) }
     val haptics = rememberZoenHaptics()
     val working by model.working.collectAsStateWithLifecycle()
@@ -88,6 +90,27 @@ fun ConversationsScreen(model: ZoenViewModel, state: AppState, navigate: (NavKey
                     }
                 }
                 item { ChatFilterMenu(filter) { filter = it; haptics.perform(ZoenFeedback.Selection) } }
+                if (query.isBlank() && state.spaces.any { it.counterpart == null }) item(key = "threads") {
+                    val unread = state.spaces.sumOf { it.threadsUnread.toInt() }
+                    ListItem(headlineContent = { Text(stringResource(R.string.threads), fontWeight = if (unread > 0) FontWeight.SemiBold else null) },
+                        leadingContent = { Icon(if (showThreads) Icons.AutoMirrored.Rounded.ArrowBack else Icons.Rounded.Forum, null, Modifier.padding(horizontal = 16.dp)) },
+                        trailingContent = { if (unread > 0 && !showThreads) Badge { Text(unread.toString()) } },
+                        modifier = Modifier.animateItem().testTag("threads-row").clickable { haptics.perform(ZoenFeedback.Selection); showThreads = !showThreads })
+                }
+                if (showThreads) {
+                    items(threads, key = { "t:" + it.root.id }) { t ->
+                        ListItem(headlineContent = { Text(t.spaceTitle, fontWeight = if (t.root.threadUnread > 0u) FontWeight.Bold else FontWeight.SemiBold) },
+                            supportingContent = { Text((t.lastReply ?: t.root).let { e -> (if (e.author.isMe) stringResource(R.string.files_you) else e.author.name) + ": " + ((e.kind as? EntryKind.Message)?.text ?: "") }, maxLines = 1, overflow = TextOverflow.Ellipsis) },
+                            leadingContent = { Avatar(t.root.author, size = 40) },
+                            trailingContent = {
+                                if (t.mentions > 0u) Badge { Text(stringResource(R.string.mentions_count, t.mentions.toInt())) }
+                                else if (t.root.threadUnread > 0u) Box(Modifier.size(9.dp).background(MaterialTheme.colorScheme.primary, androidx.compose.foundation.shape.CircleShape))
+                            },
+                            modifier = Modifier.animateItem().clickable { navigate(Thread(t.spaceId, t.root.id)) })
+                    }
+                    if (threads.isEmpty()) item { Text(stringResource(R.string.threads_empty), Modifier.padding(24.dp), color = MaterialTheme.colorScheme.onSurfaceVariant) }
+                    return@LazyColumn
+                }
                 if (query.isBlank() && archived.isNotEmpty()) item(key = "archived") {
                     ListItem(headlineContent = { Text(stringResource(if (showArchived) R.string.chats else R.string.archived)) },
                         leadingContent = { Icon(if (showArchived) Icons.AutoMirrored.Rounded.ArrowBack else Icons.Rounded.Archive, null, Modifier.padding(horizontal = 16.dp)) },
@@ -146,7 +169,9 @@ private fun ConversationRow(chat: SpaceSummary, pinned: Boolean, working: String
             }
             Column(horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text(DateFormat.getTimeInstance(DateFormat.SHORT).format(Date(chat.lastAtMs)), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                if (chat.unread > 0u) Badge(containerColor = MaterialTheme.colorScheme.primary, contentColor = MaterialTheme.colorScheme.onPrimary) { Text(chat.unread.toString()) }
+                // Ando: a mention is its own state, with its count; plain unread is a number.
+                if (chat.mentions > 0u) Badge(containerColor = MaterialTheme.colorScheme.primary, contentColor = MaterialTheme.colorScheme.onPrimary) { Text(stringResource(R.string.mentions_count, chat.mentions.toInt())) }
+                else if (chat.unread > 0u) Badge(containerColor = MaterialTheme.colorScheme.primary, contentColor = MaterialTheme.colorScheme.onPrimary) { Text(chat.unread.toString()) }
                 else if (pinned) Icon(Icons.Rounded.PushPin, stringResource(R.string.pinned), Modifier.size(16.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
                 if (chat.muted) Icon(Icons.Rounded.NotificationsOff, stringResource(R.string.muted), Modifier.size(14.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
             }
