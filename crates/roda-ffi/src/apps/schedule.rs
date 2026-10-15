@@ -776,6 +776,26 @@ fn note(args: &Value) -> Option<String> {
     args["note"].as_str().map(|n| clean(n, 120))
 }
 
+/// A booking the agent already made for this `ref` and slot, still standing: what to
+/// tell the client again.
+pub fn replayed(tool_name: &str, args: &Value, st: &Value) -> Option<String> {
+    let r = args["ref"]
+        .as_str()
+        .filter(|r| tool_name == "schedule_book" && !r.is_empty())?;
+    let b = st["bookings"].as_array()?.iter().find(|b| {
+        b["ref"].as_str() == Some(&clean(r, 64))
+            && b["startMs"] == args["startMs"]
+            && b["forId"] == args["forId"]
+            && matches!(b["status"].as_str(), Some("pending" | "confirmed"))
+    })?;
+    let when = when_label(st, b["startMs"].as_i64().unwrap_or(0));
+    Some(tr!(
+        "Já pedido: {}, {when}. O agente confirma.",
+        "Already requested: {}, {when}. The agent confirms.",
+        b["serviceName"].as_str().unwrap_or_default()
+    ))
+}
+
 /// A tool call. Every change bumps `rev`, so a write that two devices made from the same
 /// state can be told apart from one made on top of the other (see [`reconcile`]).
 pub fn apply(
@@ -907,10 +927,6 @@ fn apply_tool(
                     "Agenda atualizada. Ficaram fora do novo horário: {list}.",
                     "Schedule updated. Now outside the new hours: {list}."
                 );
-                a.comment = Some(tr!(
-                    "Com o novo horário, estes ficaram de fora: {list}. Remarco, cancelo ou mantenho?",
-                    "With the new hours, these fall outside: {list}. Reschedule, cancel or keep?"
-                ));
             }
             Ok(a)
         }
@@ -985,6 +1001,13 @@ fn apply_tool(
                     "note": note(args).unwrap_or_default(),
                     "at": now
                 }));
+            // The agent's host stamps the message it was answering, so a rerun after a
+            // crash finds this booking instead of asking for the slot again.
+            if let Some(r) = args["ref"].as_str().filter(|_| who == Role::Agent) {
+                if let Some(b) = st["bookings"].as_array_mut().and_then(|b| b.last_mut()) {
+                    b["ref"] = json!(clean(r, 64));
+                }
+            }
             push_event(&mut st, "book_request", &id, actor.id, now)?;
             push_log(
                 &mut st,
@@ -994,7 +1017,7 @@ fn apply_tool(
             );
             trim(&mut st, now);
             let when = when_label(&st, start);
-            let mut a = Applied::new(
+            let a = Applied::new(
                 st,
                 tr!(
                     "Novo pedido: {svc_name}, {when}",
@@ -1005,10 +1028,8 @@ fn apply_tool(
                     "Request: {svc_name}, {when}. The agent confirms."
                 ),
             );
-            a.comment = Some(tr!(
-                "Novo pedido: {svc_name}, {when}. Confirmo, remarco ou cancelo?",
-                "New request: {svc_name}, {when}. Confirm, reschedule or cancel?"
-            ));
+            // Staff hear of it from the agent's `booking` note to the owner, never in the
+            // chat the request came from (clients may be reading it).
             Ok(a)
         }
         "schedule_resolve" => {
@@ -1213,19 +1234,14 @@ fn apply_tool(
                     );
                     trim(&mut st, now);
                     let when = when_label(&st, b["startMs"].as_i64().unwrap_or(0));
-                    let mut a = Applied::new(
+                    Applied::new(
                         st,
                         tr!(
                             "Pedido de cancelamento: {svc_name}, {when}",
                             "Cancel request: {svc_name}, {when}"
                         ),
                         t("Pedido de cancelamento enviado.", "Cancel request sent."),
-                    );
-                    a.comment = Some(tr!(
-                        "Pediram para cancelar {svc_name}, {when}. Cancelo ou mantenho?",
-                        "Someone asked to cancel {svc_name}, {when}. Cancel or keep?"
-                    ));
-                    a
+                    )
                 }
                 _ => return Err(t("já está cancelado", "already cancelled")),
             };
@@ -1307,6 +1323,28 @@ mod tests {
             .filter(|e| e["bookingId"] == id && e["status"] == "open")
             .map(|e| e["kind"].as_str().unwrap().to_string())
             .collect()
+    }
+
+    #[test]
+    fn an_agent_booking_is_found_again_by_its_source_message() {
+        let base = open_schedule();
+        let args = json!({"serviceId": "corte", "startMs": at(10, 0),
+            "forId": "carla", "forName": "Carla", "ref": "m1"});
+        assert!(replayed("schedule_book", &args, &base).is_none());
+        let st = call(&base, &AGENT, "schedule_book", args.clone(), at(8, 0));
+        assert!(replayed("schedule_book", &args, &st).is_some());
+        // Another message, another client or another slot is a new request.
+        let other = |k: &str, v: Value| {
+            let mut a = args.clone();
+            a[k] = v;
+            replayed("schedule_book", &a, &st)
+        };
+        assert!(other("ref", json!("m2")).is_none());
+        assert!(other("forId", json!("dani")).is_none());
+        assert!(other("startMs", json!(at(11, 0))).is_none());
+        // Only the agent's stamp counts.
+        let st = call(&base, &CARLA, "schedule_book", args.clone(), at(8, 0));
+        assert!(replayed("schedule_book", &args, &st).is_none());
     }
 
     #[test]
@@ -1446,8 +1484,9 @@ mod tests {
         let hours = json!({"weeklyHours": {"1": [["09:00", "15:00"]]}});
         let applied = apply("schedule_configure", &hours, st.clone(), &AGENT, at(8, 5)).unwrap();
         assert!(
-            applied.comment.as_deref().unwrap_or("").contains("17:00"),
-            "{:?}",
+            applied.text.contains("17:00") && applied.comment.is_none(),
+            "{:?} {:?}",
+            applied.text,
             applied.comment
         );
         let st = applied.state;

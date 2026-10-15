@@ -2285,6 +2285,21 @@ fn the_agent_books_only_for_the_member_it_is_serving() {
     assert_eq!(fors, vec![ana.id.as_str(), lucas.id.as_str()]);
     // The agent's booking carries Ana's profile name, not the "Ana" the call passed.
     assert_eq!(v["bookings"][0]["forName"], ana.name.as_str());
+    // Serving Ana, the agent can't do what Ana can't: confirming is staff's call.
+    let bid = v["bookings"][0]["id"].as_str().unwrap().to_string();
+    let confirm = format!(r#"{{"bookingId":"{bid}","action":"confirm"}}"#);
+    let out = e
+        .lock()
+        .app_call_as(
+            &item,
+            &zoen.id,
+            "schedule_resolve",
+            &confirm,
+            false,
+            Some(&ana.id),
+        )
+        .unwrap();
+    assert!(out.message.contains("resolve"), "{}", out.result_json);
 }
 
 #[test]
