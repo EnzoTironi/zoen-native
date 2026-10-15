@@ -623,6 +623,14 @@ pub fn apply_as(
     }
 }
 
+/// An agent call that already landed for the same `ref` (its source message), as the
+/// result to report again. Only the schedule books, so only it replays.
+pub fn replayed(app: &str, tool_name: &str, args: &Value, state: &Value) -> Option<String> {
+    (app == "schedule")
+        .then(|| schedule::replayed(tool_name, args, state))
+        .flatten()
+}
+
 /// The owner's note for what a client just did in a mini-app (only the schedule speaks).
 pub(crate) fn owner_note_for(prev: &AppDoc, next: &AppDoc, by: &str) -> Option<Value> {
     if next.app != "schedule" {

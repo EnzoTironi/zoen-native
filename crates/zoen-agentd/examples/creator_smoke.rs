@@ -105,7 +105,7 @@ async fn main() {
                     text: t,
                 });
             }
-            BrainOut::Silence => println!("Creator: (silence)"),
+            BrainOut::Silence | BrainOut::CallTools(_) => println!("Creator: (silence)"),
             c @ BrainOut::CreateAgent { .. } => {
                 if let BrainOut::CreateAgent {
                     confirmation: Some(c),
