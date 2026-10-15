@@ -130,7 +130,7 @@ fun ConversationsScreen(model: ZoenViewModel, state: AppState, navigate: (NavKey
                 }
                 if (chats.isEmpty()) item {
                     EmptyState(stringResource(if (filter != ChatInboxFilter.All) R.string.chat_filter_empty else R.string.chat_empty_title), if (filter != ChatInboxFilter.All) "" else stringResource(R.string.chat_empty_detail)) {
-                        Button(onClick = { navigate(NewChat) }) { Text(stringResource(R.string.new_chat)) }
+                        GlassButton(onClick = { navigate(NewChat) }) { Text(stringResource(R.string.new_chat)) }
                     }
                 }
             }
@@ -261,7 +261,7 @@ private fun ActivityList(model: ZoenViewModel, state: AppState, navigate: (NavKe
             item { Text(stringResource(R.string.pending), style = MaterialTheme.typography.headlineMedium) }
             val approvable = pending.filter { it.status == RequestStatus.PENDING }
             if (approvable.size > 1) item {
-                OutlinedButton(onClick = { review = approvable.toList() }, enabled = !busy) { Text(stringResource(R.string.approve_all)) }
+                GlassOutlinedButton(onClick = { review = approvable.toList() }, enabled = !busy) { Text(stringResource(R.string.approve_all)) }
             }
             if (pending.isEmpty()) item { EmptyState(stringResource(R.string.all_clear), stringResource(R.string.all_clear_detail)) }
             items(pending, key = { it.id }) { request -> RequestCard(request, { navigate(Request(request.id)) }) }

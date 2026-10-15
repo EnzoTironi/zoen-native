@@ -1,5 +1,7 @@
 package xyz.tironi.zoen.miniapps
 
+import xyz.tironi.zoen.ui.GlassOutlinedButton
+
 import android.content.ActivityNotFoundException
 import android.content.Intent
 import android.net.Uri
@@ -36,7 +38,7 @@ fun MiniAppWebProviderGate(modifier: Modifier = Modifier): Boolean {
         Column(modifier.testTag("mcp-web-unsupported").fillMaxWidth().padding(24.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
             Text(stringResource(R.string.miniapp_webview_update_title), style = MaterialTheme.typography.titleLarge)
             Text(stringResource(R.string.miniapp_webview_update_detail))
-            OutlinedButton(onClick = {
+            GlassOutlinedButton(onClick = {
                 try { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://play.google.com/store/apps/details?id=com.google.android.webview"))) }
                 catch (_: ActivityNotFoundException) { /* The visible instruction remains usable without a browser. */ }
             }, modifier = Modifier.testTag("mcp-web-update")) { Text(stringResource(R.string.miniapp_webview_update)) }

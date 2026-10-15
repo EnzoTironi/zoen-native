@@ -203,14 +203,14 @@ struct AppConfirmSheet: View {
                         .foregroundStyle(request.destructive ? AnyShapeStyle(Color.white) : AnyShapeStyle(ActionGlassForeground()))
                         .frame(maxWidth: .infinity).frame(height: 50)
                 }
-                .buttonStyle(.glassProminent)
+                .buttonStyle(.wabiGlassProminent)
                 .tint(request.destructive ? Palette.danger : Palette.action)
                 Button {
                     Haptics.dismiss(); request.decide(false); onDone()
                 } label: {
                     Text("Not now").font(.headline).frame(maxWidth: .infinity).frame(height: 50)
                 }
-                .buttonStyle(.glass)
+                .buttonStyle(.wabiGlass)
             }
         }
         .padding(.horizontal, 22)

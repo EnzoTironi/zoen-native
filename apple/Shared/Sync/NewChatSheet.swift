@@ -249,7 +249,7 @@ struct NewChatSheet: View {
                 Button { Task { await join() } } label: {
                     Text("Join \(preview.title)").frame(maxWidth: .infinity)
                 }
-                .buttonStyle(.borderedProminent)
+                .buttonStyle(.wabiGlassProminent)
                 .disabled(working)
             }
         } footer: {

@@ -219,7 +219,7 @@ struct AgentDetailView: View {
                     }
                     Spacer()
                     Button("+" + Money.format(2_000)) { model.perform { try model.core.raiseBudget(agentId: p.id, extraCents: 2_000) } }
-                        .buttonStyle(.glass)
+                        .buttonStyle(.wabiGlass)
                 }
                 .solidCard()
             } else {

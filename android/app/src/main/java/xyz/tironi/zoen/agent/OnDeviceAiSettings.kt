@@ -1,5 +1,7 @@
 package xyz.tironi.zoen.agent
 
+import xyz.tironi.zoen.ui.GlassButton
+
 import androidx.compose.foundation.layout.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -27,7 +29,7 @@ fun OnDeviceAiSettings(model: ZoenViewModel) {
             }, availability.downloadedBytes / (1024 * 1024)), style = MaterialTheme.typography.bodyMedium)
             Text(stringResource(R.string.agent_ai_privacy), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             if (availability.status in setOf(ModelStatus.Checking, ModelStatus.Downloading)) LinearProgressIndicator(Modifier.fillMaxWidth())
-            else if (availability.status == ModelStatus.Downloadable) Button(onClick = { model.launch { model.planner.downloadModel() } }) { Text(stringResource(R.string.agent_ai_download)) }
+            else if (availability.status == ModelStatus.Downloadable) GlassButton(onClick = { model.launch { model.planner.downloadModel() } }) { Text(stringResource(R.string.agent_ai_download)) }
             else if (availability.status in setOf(ModelStatus.Failed, ModelStatus.Unavailable)) TextButton(onClick = { model.launch { model.planner.refreshAvailability() } }) { Text(stringResource(R.string.agent_ai_retry)) }
         }
     }

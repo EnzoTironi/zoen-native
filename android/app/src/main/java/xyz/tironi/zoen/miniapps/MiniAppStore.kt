@@ -1,5 +1,8 @@
 package xyz.tironi.zoen.miniapps
 
+import xyz.tironi.zoen.ui.GlassButton
+import xyz.tironi.zoen.ui.GlassOutlinedButton
+
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
@@ -144,7 +147,7 @@ private fun MiniAppInstallSheet(model: ZoenViewModel, state: AppState, spec: App
                 if (spec.id in setOf("poll", "list")) OutlinedTextField(choices, { choices = it.take(2_000) }, Modifier.fillMaxWidth(), label = { Text(stringResource(if (spec.id == "poll") R.string.miniapp_options else R.string.miniapp_list_items)) }, minLines = 3)
                 if (spec.id == "countdown") {
                     OutlinedTextField(place, { place = it.take(32) }, Modifier.fillMaxWidth(), label = { Text(stringResource(R.string.miniapp_place)) }, singleLine = true)
-                    OutlinedButton(onClick = { pickDate = true }) {
+                    GlassOutlinedButton(onClick = { pickDate = true }) {
                         Icon(Icons.Rounded.CalendarMonth, null); Spacer(Modifier.width(8.dp))
                         Text(java.text.DateFormat.getDateTimeInstance(java.text.DateFormat.MEDIUM, java.text.DateFormat.SHORT).format(java.util.Date(target)))
                     }
@@ -166,7 +169,7 @@ private fun MiniAppInstallSheet(model: ZoenViewModel, state: AppState, spec: App
                 SectionLabel(stringResource(R.string.miniapp_tools))
                 spec.tools.filter { "app" in it.visibility }.forEach { tool -> Text(tool.title + " · " + tool.actionLabel, style = MaterialTheme.typography.bodySmall) }
             }
-            item { Button(onClick = { confirmation = true }, enabled = selectedSpace != null && requiredValid && start != null && !busy, modifier = Modifier.fillMaxWidth().testTag("store-install")) { if (busy) CircularProgressIndicator(Modifier.size(20.dp)) else Text(stringResource(R.string.miniapp_install)) } }
+            item { GlassButton(onClick = { confirmation = true }, enabled = selectedSpace != null && requiredValid && start != null && !busy, modifier = Modifier.fillMaxWidth().testTag("store-install")) { if (busy) CircularProgressIndicator(Modifier.size(20.dp)) else Text(stringResource(R.string.miniapp_install)) } }
         }
     }
     if (pickDate) DatePickerDialog(onDismissRequest = { pickDate = false }, confirmButton = {

@@ -1,5 +1,8 @@
 package xyz.tironi.zoen.agent
 
+import xyz.tironi.zoen.ui.GlassButton
+import xyz.tironi.zoen.ui.GlassOutlinedButton
+
 import android.app.Activity
 import android.content.Context
 import android.content.ContextWrapper
@@ -52,8 +55,8 @@ fun AgentBrowserCard(browser: AgentBrowser, spaceId: String, open: () -> Unit) {
                 BrowserPhase.NeedsYou, BrowserPhase.Waiting -> {
                     Text(stringResource(R.string.agent_browser_needs_password, session.agent.name), style = MaterialTheme.typography.bodySmall)
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        if (state.phase == BrowserPhase.NeedsYou) OutlinedButton(onClick = browser::notNow, Modifier.weight(1f).testTag("browser-not-now")) { Text(stringResource(R.string.agent_browser_not_now)) }
-                        Button(onClick = { browser.takeOver(); open() }, Modifier.weight(1f).testTag("browser-takeover")) { Text(stringResource(R.string.agent_browser_take_over)) }
+                        if (state.phase == BrowserPhase.NeedsYou) GlassOutlinedButton(onClick = browser::notNow, Modifier.weight(1f).testTag("browser-not-now")) { Text(stringResource(R.string.agent_browser_not_now)) }
+                        GlassButton(onClick = { browser.takeOver(); open() }, Modifier.weight(1f).testTag("browser-takeover")) { Text(stringResource(R.string.agent_browser_take_over)) }
                     }
                 }
                 BrowserPhase.Driving -> Text(stringResource(R.string.agent_browser_stopped, session.agent.name), style = MaterialTheme.typography.bodySmall)
@@ -106,12 +109,12 @@ fun AgentBrowserScreen(browser: AgentBrowser, back: () -> Unit) {
                         OutlinedTextField(password, { new -> if (new.codePointCount(0, new.length) <= 1024) { browser.typeChanged(password, new); password = new } },
                             Modifier.fillMaxWidth().testTag("browser-password"), label = { Text(stringResource(R.string.agent_browser_password)) }, singleLine = true,
                             visualTransformation = PasswordVisualTransformation(), keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password, autoCorrectEnabled = false))
-                        Button(onClick = { password = ""; browser.done() }, enabled = state.ownership.typed > 0 && !state.failure, modifier = Modifier.fillMaxWidth().testTag("browser-done")) { Text(stringResource(R.string.agent_browser_done)) }
+                        GlassButton(onClick = { password = ""; browser.done() }, enabled = state.ownership.typed > 0 && !state.failure, modifier = Modifier.fillMaxWidth().testTag("browser-done")) { Text(stringResource(R.string.agent_browser_done)) }
                     }
-                    BrowserPhase.NeedsYou, BrowserPhase.Waiting -> Button(onClick = browser::takeOver, modifier = Modifier.fillMaxWidth().testTag("browser-takeover-screen"), enabled = !state.failure) { Text(stringResource(R.string.agent_browser_take_over)) }
+                    BrowserPhase.NeedsYou, BrowserPhase.Waiting -> GlassButton(onClick = browser::takeOver, modifier = Modifier.fillMaxWidth().testTag("browser-takeover-screen"), enabled = !state.failure) { Text(stringResource(R.string.agent_browser_take_over)) }
                     BrowserPhase.Finished -> {
                         Text(stringResource(R.string.agent_browser_finished))
-                        OutlinedButton(onClick = close, Modifier.fillMaxWidth().testTag("browser-back-to-chat")) { Text(stringResource(R.string.agent_browser_back)) }
+                        GlassOutlinedButton(onClick = close, Modifier.fillMaxWidth().testTag("browser-back-to-chat")) { Text(stringResource(R.string.agent_browser_back)) }
                     }
                     BrowserPhase.Browsing -> Text(stringResource(R.string.agent_browser_watching))
                 }

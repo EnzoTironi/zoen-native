@@ -247,7 +247,7 @@ fun SearchScreen(model: ZoenViewModel, state: AppState, navigate: (NavKey) -> Un
                 } else if (error != null) {
                     item("error") {
                         EmptyState(stringResource(R.string.search_failed), error) {
-                            OutlinedButton(onClick = { retry++ }) { Text(stringResource(R.string.retry)) }
+                            GlassOutlinedButton(onClick = { retry++ }) { Text(stringResource(R.string.retry)) }
                         }
                     }
                 } else if (!loading && hits.isEmpty() && catalog.isEmpty()) {

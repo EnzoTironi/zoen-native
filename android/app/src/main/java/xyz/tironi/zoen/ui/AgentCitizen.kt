@@ -145,7 +145,7 @@ fun AgentCitizenActions(
                         Text(stringResource(R.string.agent_turn_off_detail), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onErrorContainer)
                         Row(Modifier.align(Alignment.End), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                             TextButton(onClick = { confirm = false; haptics.perform(ZoenFeedback.Dismiss) }) { Text(stringResource(R.string.cancel)) }
-                            Button(
+                            GlassButton(
                                 onClick = { confirm = false; haptics.perform(ZoenFeedback.Reject); onRevoke() },
                                 colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error, contentColor = MaterialTheme.colorScheme.onError),
                                 modifier = Modifier.testTag("agent-revoke-confirm"),

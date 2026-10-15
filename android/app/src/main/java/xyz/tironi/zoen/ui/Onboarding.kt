@@ -139,7 +139,7 @@ fun Onboarding(model: ZoenViewModel, modifier: Modifier = Modifier, acquisitionL
                 detail?.let { Text(it, Modifier.fillMaxWidth(), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, textAlign = TextAlign.Center) }
                 when (step) {
                     OnboardingStep.Hello -> if (route.flow == "default") {
-                        OutlinedButton(onClick = {
+                        GlassOutlinedButton(onClick = {
                             val clipboard = context.getSystemService(android.content.ClipboardManager::class.java)
                             val invite = clipboard.primaryClip?.takeIf { it.itemCount > 0 }?.getItemAt(0)?.coerceToText(context)?.toString()?.trim()
                             if (invite.isNullOrEmpty() || invite.length > 8192 || Uri.parse(invite).scheme !in listOf("https", "zoen")) model.notify(pasteError)
@@ -195,7 +195,7 @@ fun Onboarding(model: ZoenViewModel, modifier: Modifier = Modifier, acquisitionL
             }
         }
         Column(Modifier.widthIn(max = 560.dp).fillMaxWidth().align(Alignment.CenterHorizontally).padding(24.dp), verticalArrangement = Arrangement.spacedBy(4.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-            Button(onClick = {
+            GlassButton(onClick = {
                 when (step) {
                     OnboardingStep.Profile -> {
                         busy = true

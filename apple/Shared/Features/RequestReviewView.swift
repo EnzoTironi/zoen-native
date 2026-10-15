@@ -60,7 +60,7 @@ struct RequestReviewView: View {
                                 Text("Approve").font(.headline).foregroundStyle(ActionGlassForeground())
                                     .frame(maxWidth: .infinity, minHeight: 34)
                             }
-                            .buttonStyle(.glassProminent)
+                            .buttonStyle(.wabiGlassProminent)
                             .disabled(r.status == .stale)
 
                             if let item = r.itemId {
@@ -69,7 +69,7 @@ struct RequestReviewView: View {
                                 } label: {
                                     Text("Edit in the plan").font(.headline).frame(maxWidth: .infinity, minHeight: 34)
                                 }
-                                .buttonStyle(.glass)
+                                .buttonStyle(.wabiGlass)
                             }
 
                             Button(role: .destructive) {
@@ -77,7 +77,7 @@ struct RequestReviewView: View {
                             } label: {
                                 Text("Decline").font(.headline).frame(maxWidth: .infinity, minHeight: 34)
                             }
-                            .buttonStyle(.glass)
+                            .buttonStyle(.wabiGlass)
                             .tint(Palette.danger)
                         }
                     }

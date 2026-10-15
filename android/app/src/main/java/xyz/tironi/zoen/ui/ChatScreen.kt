@@ -247,7 +247,7 @@ fun ChatScreen(model: ZoenViewModel, state: AppState, spaceId: String, navigate:
     if (space == null) {
         Scaffold(topBar = { ScreenBar(stringResource(R.string.chats), back) }) { padding ->
             EmptyState(stringResource(R.string.unavailable), stringResource(R.string.unavailable_detail), Modifier.padding(padding)) {
-                OutlinedButton(onClick = { model.launch { model.repository.refresh() } }) { Text(stringResource(R.string.retry)) }
+                GlassOutlinedButton(onClick = { model.launch { model.repository.refresh() } }) { Text(stringResource(R.string.retry)) }
             }
         }
         return
@@ -570,7 +570,7 @@ fun TimelineRow(model: ZoenViewModel, spaceId: String, entry: TimelineEntry, nav
                         request?.let { Text(listOfNotNull(it.agent.name, it.costCents?.let { cost -> formatMoney(cost, locale) }).joinToString(" · "), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
                     }
                     when (request?.status) {
-                        RequestStatus.PENDING -> Button(enabled = request?.agent?.isMine == true && !approving, onClick = {
+                        RequestStatus.PENDING -> GlassButton(enabled = request?.agent?.isMine == true && !approving, onClick = {
                             approving = true
                             model.launch { try { val result = model.repository.change { it.approveRequest(kind.requestId) }; model.notify(result.message) } finally { approving = false } }
                         }) { Text(stringResource(R.string.approve)) }
