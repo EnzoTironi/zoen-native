@@ -19,7 +19,7 @@
 //! `app` = a interface chama). O estado compartilhado mora num Item versionado; quem
 //! decide se uma chamada pode rodar é o `roda-grants` (no `engine`), não este módulo.
 
-use roda_types::ActionClass;
+use roda_types::{ActionClass, AppDoc};
 
 use crate::i18n::{is_en, t, thousands, ts};
 use crate::tr;
