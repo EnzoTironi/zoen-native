@@ -83,7 +83,8 @@ impl Receipts {
             let wanted: std::collections::HashSet<&str> =
                 spaces.iter().map(String::as_str).collect();
             let p = self.pending.lock().unwrap_or_else(|e| e.into_inner());
-            for ((s, who), (d, r)) in p.iter() {
+            let f = self.inflight.lock().unwrap_or_else(|e| e.into_inner());
+            for ((s, who), (d, r)) in p.iter().chain(f.iter()) {
                 if wanted.contains(s.as_str()) {
                     let w = by
                         .entry(s.clone())
