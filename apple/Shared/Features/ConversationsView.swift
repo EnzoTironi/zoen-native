@@ -61,12 +61,15 @@ struct ConversationsList: View {
     var query: String = ""
     var onOpen: (String) -> Void
     var selected: String? = nil
-    @State private var showArchived = false
     @State private var showThreads = false
+    /// The "Archived" screen lists the archived chats instead.
+    var archive = false
+    @State private var archiveOpen = false
 
     private var filtered: [SpaceSummary] {
         let q = query.trimmingCharacters(in: .whitespaces).folding(options: [.caseInsensitive, .diacriticInsensitive], locale: .current)
-        let inbox = model.orderedSpaces.filter { model.chatFilter.includes($0) }
+        let source = archive ? model.archivedSpaces : model.orderedSpaces
+        let inbox = archive ? source : source.filter { model.chatFilter.includes($0) }
         guard !q.isEmpty else { return inbox }
         return inbox.filter { s in
             ([s.title, s.lastPreview] + s.members.map(\.name)).joined(separator: " ")
@@ -77,17 +80,22 @@ struct ConversationsList: View {
 
     var body: some View {
         LazyVStack(alignment: .leading, spacing: 2) {
-            if query.isEmpty && model.spaces.contains(where: { $0.kind != .direct }) {
+            if !archive, query.isEmpty, model.spaces.contains(where: { $0.kind != .direct }) {
                 ThreadsRow(unread: model.spaces.reduce(0) { $0 + Int($1.threadsUnread) }) { showThreads = true }
             }
-            if query.isEmpty && !model.archivedSpaces.isEmpty {
-                ArchivedRow(count: model.archivedSpaces.count, open: $showArchived)
+            // WhatsApp: "Archived" sits above the chats while you have any.
+            if !archive, query.isEmpty, !model.archivedSpaces.isEmpty {
+                ArchivedEntry(count: model.archivedSpaces.count, unread: model.archivedSpaces.filter { $0.unread > 0 }.count) {
+                    archiveOpen = true
+                }
+                .transition(.opacity.combined(with: .move(edge: .top)))
             }
-            ForEach(showArchived && query.isEmpty ? model.archivedSpaces : filtered) { space in
+            ForEach(filtered) { space in
                 Button {
                     onOpen(space.id)
                 } label: {
-                    ConversationRow(space: space, pinned: model.isPinned(space), working: model.working[space.id] != nil, selected: selected == space.id)
+                    ConversationRow(space: space, pinned: !archive && model.isPinned(space), muted: model.isMuted(space),
+                                    working: model.working[space.id] != nil, selected: selected == space.id)
                 }
                 .buttonStyle(.plain)
                 .contextMenu {
@@ -97,34 +105,77 @@ struct ConversationsList: View {
                     Button { model.perform { try model.core.markRead(spaceId: space.id) } } label: {
                         Label { Text("Mark as read") } icon: { ZoenGlyph.check.menuImage }
                     }
-                    if space.muted {
-                        Button { model.mute(space, until: nil) } label: { Label("Unmute", systemImage: "bell") }
-                    } else {
-                        Menu {
-                            Button("8 hours") { model.mute(space, until: Int64(Date().addingTimeInterval(8 * 3600).timeIntervalSince1970 * 1000)) }
-                            Button("1 week") { model.mute(space, until: Int64(Date().addingTimeInterval(7 * 86400).timeIntervalSince1970 * 1000)) }
-                            Button("Always") { model.mute(space, until: Int64.max) }
-                        } label: { Label("Mute", systemImage: "bell.slash") }
+                    Button { withAnimation(.timingCurve(0.25, 1, 0.5, 1, duration: 0.28)) { _ = model.toggleMute(space.id) } } label: {
+                        Label(model.isMuted(space) ? "Unmute" : "Mute",
+                              systemImage: model.isMuted(space) ? "bell" : "bell.slash")
                     }
-                    Button {
-                        withAnimation(Motion.wabi) { model.toggleArchive(space) }
-                    } label: { Label(space.archived ? "Unarchive" : "Archive", systemImage: space.archived ? "tray.and.arrow.up" : "archivebox") }
+                    Button { withAnimation(.timingCurve(0.25, 1, 0.5, 1, duration: 0.32)) { model.toggleArchive(space) } } label: {
+                        Label(archive ? "Unarchive" : "Archive", systemImage: archive ? "tray.and.arrow.up" : "archivebox")
+                    }
                 }
             }
             Color.clear.frame(height: 0)
                 .sheet(isPresented: $showThreads) { NavigationStack { ThreadsInboxView() } }
-            if filtered.isEmpty && !query.isEmpty {
+            if archive && filtered.isEmpty {
+                InkEmptyState(pose: .map, title: String(localized: "No archived chats"))
+            } else if filtered.isEmpty && !query.isEmpty {
                 InkEmptyState(pose: .map, title: String(localized: "Nothing for “\(query)”"))
             } else if filtered.isEmpty && model.chatFilter != .all {
                 InkEmptyState(pose: .map, title: String(localized: "No chats in this filter"))
             }
         }
+        .sheet(isPresented: $archiveOpen) {
+            NavigationStack {
+                ScrollView {
+                    ConversationsList(onOpen: { id in archiveOpen = false; onOpen(id) }, archive: true)
+                        .padding(.top, 8)
+                }
+                .navigationTitle("Archived")
+                #if os(iOS)
+                .navigationBarTitleDisplayMode(.inline)
+                #endif
+                .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Done") { archiveOpen = false } } }
+            }
+            .presentationDetents([.large])
+        }
+    }
+}
+
+/// The "Archived" row at the top of the list (WhatsApp).
+struct ArchivedEntry: View {
+    let count: Int
+    let unread: Int
+    var onOpen: () -> Void
+
+    var body: some View {
+        Button(action: onOpen) {
+            HStack(spacing: 14) {
+                Image(systemName: "archivebox")
+                    .font(.system(size: 19, weight: .medium))
+                    .foregroundStyle(Palette.textSecondary)
+                    .frame(width: 56, height: 28)
+                Text("Archived")
+                    .font(.body.weight(.medium))
+                    .foregroundStyle(Palette.textPrimary)
+                Spacer()
+                Text(verbatim: unread > 0 ? "\(unread)" : "\(count)")
+                    .font(.footnote.weight(unread > 0 ? .semibold : .regular))
+                    .foregroundStyle(unread > 0 ? Palette.action : Palette.textTertiary)
+            }
+            .padding(.horizontal, 20)
+            .padding(.vertical, 8)
+            .contentShape(.rect)
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(Text("Archived, \(count)"))
+        .accessibilityIdentifier("archived-chats")
     }
 }
 
 struct ConversationRow: View {
     let space: SpaceSummary
     var pinned = false
+    var muted = false
     var working = false
     var selected = false
 
@@ -158,11 +209,11 @@ struct ConversationRow: View {
                     .font(.subheadline)
                     .lineLimit(1)
                     Spacer(minLength: 6)
-                    if space.muted {
+                    if muted {
                         Image(systemName: "bell.slash.fill")
-                            .font(.system(size: 11))
+                            .font(.system(size: 12))
                             .foregroundStyle(Palette.textTertiary)
-                            .accessibilityLabel("Muted")
+                            .transition(.scale.combined(with: .opacity))
                     }
                     if pinned {
                         ZoenIcon(.pin, size: 13)
@@ -177,7 +228,7 @@ struct ConversationRow: View {
                             .background(Palette.action, in: Capsule())
                             .accessibilityLabel("\(Int(space.mentions)) mentions")
                     } else if unread {
-                        Circle().fill(Palette.action).frame(width: 10, height: 10)
+                        UnreadBadge(count: space.unread, muted: muted)
                             .transition(.scale.combined(with: .opacity))
                     }
                 }
@@ -192,8 +243,13 @@ struct ConversationRow: View {
     }
 
     private var authorPrefix: String {
+        // Mine: the real ticks sit before the preview (WhatsApp) instead of "You:".
+        if space.lastAuthor?.isMe == true { return "" }
+        return otherPrefix
+    }
+
+    private var otherPrefix: String {
         guard let a = space.lastAuthor else { return "" }
-        if a.isMe { return String(localized: "You: ") }
         if space.kind == .direct { return "" }
         return "\(a.name): "
     }
@@ -205,8 +261,9 @@ struct ConversationRow: View {
         else if space.kind == .group { parts.append(String(localized: "Group")) }
         else if space.kind == .community { parts.append(String(localized: "Community")) }
         if pinned { parts.append(String(localized: "Pinned")) }
+        if muted { parts.append(String(localized: "Muted")) }
         if space.unread > 0 { parts.append(String(localized: "\(space.unread) unread")) }
-        parts.append(authorPrefix + space.lastPreview)
+        parts.append((space.lastAuthor?.isMe == true ? String(localized: "You: ") : otherPrefix) + space.lastPreview)
         parts.append(RodaTime.short(space.lastAtMs))
         return parts.joined(separator: ", ")
     }
@@ -214,6 +271,22 @@ struct ConversationRow: View {
 
 /// Chat avatar: anyone 1:1 gets their round face (agents included), and groups, spaces and
 /// communities a glossy sphere in the chat's own colour.
+/// Unread count pill; grey when the chat is muted (WhatsApp, Ando).
+struct UnreadBadge: View {
+    let count: UInt32
+    var muted = false
+
+    var body: some View {
+        Text(verbatim: count > 99 ? "99+" : "\(count)")
+            .font(.caption2.weight(.bold).monospacedDigit())
+            .foregroundStyle(.white)
+            .padding(.horizontal, 6)
+            .frame(minWidth: 20, minHeight: 20)
+            .background(muted ? Palette.textTertiary : Palette.action, in: .capsule)
+            .contentTransition(.numericText())
+    }
+}
+
 struct ChatAvatar: View {
     let space: SpaceSummary
     var size: CGFloat = 56
@@ -449,35 +522,6 @@ struct ConnectionDot: View {
             .accessibilityElement(children: .combine)
             .transition(.opacity.combined(with: .scale(scale: 0.9)))
         }
-    }
-}
-
-/// WhatsApp's "Archived" row at the top of the list; tapping swaps the list in place.
-struct ArchivedRow: View {
-    let count: Int
-    @Binding var open: Bool
-
-    var body: some View {
-        Button {
-            Haptics.tap()
-            withAnimation(Motion.wabi) { open.toggle() }
-        } label: {
-            HStack(spacing: 14) {
-                Image(systemName: open ? "chevron.backward" : "archivebox")
-                    .font(.system(size: 17, weight: .semibold))
-                    .frame(width: 56)
-                    .contentTransition(.symbolEffect(.replace))
-                Text(open ? "Chats" : "Archived").font(.body.weight(.medium))
-                Spacer()
-                if !open { Text("\(count)").font(.footnote.monospacedDigit()).foregroundStyle(Palette.textTertiary) }
-            }
-            .foregroundStyle(Palette.textPrimary)
-            .padding(.horizontal, 16)
-            .frame(height: 48)
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .accessibilityIdentifier("archived-row")
     }
 }
 
