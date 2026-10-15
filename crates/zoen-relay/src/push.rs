@@ -408,9 +408,12 @@ impl Pusher {
 mod tests {
     use super::*;
 
+    /// URL, headers, body.
+    type Call = (String, Vec<(String, String)>, String);
+
     #[derive(Default)]
     struct Mock {
-        calls: Mutex<Vec<(String, Vec<(String, String)>, String)>>,
+        calls: Mutex<Vec<Call>>,
         replies: Mutex<Vec<(u16, String)>>,
     }
 
