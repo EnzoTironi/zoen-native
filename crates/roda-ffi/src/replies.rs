@@ -81,6 +81,18 @@ impl Engine {
         to: &str,
         thread: bool,
     ) -> R<TimelineEntry> {
+        self.reply_with(space, author, text, to, thread, false)
+    }
+
+    pub(crate) fn reply_with(
+        &mut self,
+        space: &str,
+        author: &str,
+        text: &str,
+        to: &str,
+        thread: bool,
+        also_in_chat: bool,
+    ) -> R<TimelineEntry> {
         if !self.is_member(space, author) {
             return Err(CoreError::Forbidden {
                 reason: t(
@@ -119,7 +131,10 @@ impl Engine {
             _ => to.to_string(),
         };
         let reply = if thread {
-            ReplyRef::thread(to)
+            ReplyRef {
+                also_in_chat,
+                ..ReplyRef::thread(to)
+            }
         } else {
             ReplyRef::inline(to)
         };

@@ -2445,3 +2445,65 @@ fn chat_prefs_live_in_my_personal_space_and_last_one_wins() {
         "a mute in the past is no mute"
     );
 }
+
+#[test]
+fn threads_follow_count_and_stay_out_of_the_chat_unread() {
+    let dir = std::env::temp_dir().join(format!("roda-test-{}", roda_types::new_id("t")));
+    std::fs::create_dir_all(&dir).unwrap();
+    let e = RodaEngine::open(
+        dir.join("th.sqlite").to_string_lossy().into(),
+        "pt-BR".into(),
+    )
+    .unwrap();
+    e.seed_demo_if_empty().unwrap();
+    let s = e
+        .spaces()
+        .into_iter()
+        .find(|s| s.members.len() >= 3)
+        .expect("a group");
+    let me = e.lock().me.clone().unwrap();
+    let other = s
+        .members
+        .iter()
+        .find(|m| m.id != me && m.kind == PersonaKind::Person)
+        .map(|m| m.id.clone());
+    let root = e.send_message(s.id.clone(), "plano?".into()).unwrap();
+    e.mark_read(s.id.clone()).unwrap();
+    let before = e.lock().space_summary(&s.id).unwrap().unread;
+
+    // I started it: following, and it is in my Threads inbox once it has a reply.
+    e.send_thread_reply(s.id.clone(), "eu topo".into(), root.id.clone(), false)
+        .unwrap();
+    let inbox = e.threads();
+    assert!(inbox
+        .iter()
+        .any(|t| t.root.id == root.id && t.root.thread_following));
+    if let Some(other) = other {
+        if e.lock()
+            .reply_with(&s.id, &other, "@nobody bora", &root.id, true, false)
+            .is_ok()
+        {
+            let sum = e.lock().space_summary(&s.id).unwrap();
+            assert_eq!(sum.unread, before, "a thread reply is not chat unread");
+            assert_eq!(sum.threads_unread, 1);
+            e.mark_thread_read(s.id.clone(), root.id.clone()).unwrap();
+            assert_eq!(e.lock().space_summary(&s.id).unwrap().threads_unread, 0);
+        }
+    }
+    // Also send to chat: the reply carries the flag the main timeline shows.
+    let both = e
+        .send_thread_reply(s.id.clone(), "vale pra todos".into(), root.id.clone(), true)
+        .unwrap();
+    assert!(both.also_in_chat && both.in_thread.is_some());
+    // Unfollow wins over automatic.
+    e.set_thread_follow(s.id.clone(), root.id.clone(), Some(false))
+        .unwrap();
+    assert!(!e.threads().iter().any(|t| t.root.id == root.id));
+    let tl = e.timeline(s.id.clone()).unwrap();
+    let r = tl.iter().find(|t| t.id == root.id).unwrap();
+    assert_eq!(
+        r.thread_participants.len(),
+        1.max(r.thread_participants.len())
+    );
+    assert!(r.thread_last_reply_ms > 0 && !r.thread_following);
+}

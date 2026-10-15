@@ -242,6 +242,8 @@ pub(crate) struct State {
     pub(crate) waiting_spaces: HashSet<SpaceId>,
     /// My per-chat prefs (pin, archive, mute), from my Personal Space.
     pub(crate) chat_prefs: HashMap<SpaceId, roda_types::ChatPrefs>,
+    /// My state per thread, (space, root) → (follow override, read up to).
+    pub(crate) thread_state: HashMap<(SpaceId, String), (Option<bool>, u64)>,
 }
 
 impl State {
@@ -330,6 +332,23 @@ impl State {
                         },
                     }));
                     s.last_at_ms = s.last_at_ms.max(e.at_ms);
+                }
+            }
+            EventBody::ThreadStateSet {
+                space,
+                root,
+                follow,
+                read_up_to,
+            } => {
+                let mine = self.spaces.get(&e.space).is_some_and(|s| {
+                    s.kind == SpaceKind::Personal && s.members.iter().any(|(m, _)| *m == e.author)
+                });
+                if mine {
+                    let slot = self
+                        .thread_state
+                        .entry((space.clone(), root.clone()))
+                        .or_insert((None, 0));
+                    *slot = (*follow, slot.1.max(*read_up_to));
                 }
             }
             EventBody::ChatPrefsSet { space, prefs } => {
@@ -597,7 +616,7 @@ impl From<roda_store::StoreError> for CoreError {
     }
 }
 
-fn not_found(what: &str) -> CoreError {
+pub(crate) fn not_found(what: &str) -> CoreError {
     CoreError::NotFound {
         what: what.to_string(),
     }
@@ -633,6 +652,9 @@ impl Engine {
                     .iter()
                     .map(|(k, v)| (k.clone(), v.clone())),
             );
+            state
+                .thread_state
+                .extend(scoped.thread_state.iter().map(|(k, v)| (k.clone(), *v)));
             for (item, projected) in &scoped.items {
                 if item_spaces.get(item.as_str()) == Some(&1) {
                     state.items.insert(item.clone(), projected.clone());
@@ -1056,7 +1078,7 @@ impl Engine {
             })
     }
 
-    fn personal_space(&self) -> Option<SpaceId> {
+    pub(crate) fn personal_space(&self) -> Option<SpaceId> {
         self.space_order
             .iter()
             .find(|s| {
@@ -1270,6 +1292,11 @@ impl Engine {
             reply_to,
             in_thread,
             thread_replies: 0,
+            thread_participants: Vec::new(),
+            thread_last_reply_ms: 0,
+            thread_unread: 0,
+            thread_following: false,
+            also_in_chat: matches!(&e.body, EntryBody::Message { reply: Some(r), .. } if r.thread && r.also_in_chat),
         }
     }
 
@@ -1436,8 +1463,17 @@ impl Engine {
             .entries
             .iter()
             .filter(|e| e.author != me && read_seq.map(|r| e.seq > r).unwrap_or(true))
-            .filter(|e| matches!(e.body, EntryBody::Message { .. }))
+            .filter(|e| {
+                matches!(e.body, EntryBody::Message { .. }) && !crate::threads::thread_only(e)
+            })
             .count() as u32;
+        let mentions = s
+            .entries
+            .iter()
+            .filter(|e| e.author != me && read_seq.map(|r| e.seq > r).unwrap_or(true))
+            .filter(|e| !crate::threads::thread_only(e) && self.mentions_me(e))
+            .count() as u32;
+        let threads_unread = self.threads_unread(id);
         let pending = self
             .state
             .requests
@@ -1447,6 +1483,8 @@ impl Engine {
         let prefs = self.state.chat_prefs.get(id).cloned().unwrap_or_default();
         let muted = prefs.muted_until_ms.is_some_and(|until| until > now_ms());
         Ok(SpaceSummary {
+            mentions,
+            threads_unread,
             pinned: prefs.pinned,
             archived: prefs.archived,
             muted,
@@ -1526,6 +1564,7 @@ impl Engine {
         let s = self.space_state(space)?;
         let mut out: Vec<TimelineEntry> = s.entries.iter().map(|e| self.entry_dto(e)).collect();
         crate::replies::count_thread_replies(&mut out);
+        self.fill_thread_roots(space, &mut out);
         Ok(out)
     }
 
@@ -4009,6 +4048,7 @@ fn event_label(b: &EventBody) -> String {
         } => t("Mensagem com Item", "Message with Item"),
         EventBody::MessagePosted { .. } => t("Mensagem", "Message"),
         EventBody::ChatPrefsSet { .. } => t("Preferências da conversa", "Chat preferences"),
+        EventBody::ThreadStateSet { .. } => t("Estado da thread", "Thread state"),
         EventBody::MessageAnnotated { note, .. } => match note {
             roda_types::Annotation::Edit { .. } => t("Mensagem editada", "Message edited"),
             roda_types::Annotation::Delete => t("Mensagem apagada", "Message deleted"),

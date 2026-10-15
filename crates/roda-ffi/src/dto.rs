@@ -78,6 +78,12 @@ pub struct SpaceSummary {
     /// Ticks for the last message when I wrote it (the chat list shows them).
     #[uniffi(default = None)]
     pub last_delivery: Option<Delivery>,
+    /// Unread messages that @mention me (Ando shows these as a count, apart from unread).
+    #[uniffi(default = 0)]
+    pub mentions: u32,
+    /// Unread replies in threads I follow (they don't count in `unread`).
+    #[uniffi(default = 0)]
+    pub threads_unread: u32,
     /// My prefs for this chat, synced across my devices.
     #[uniffi(default = false)]
     pub pinned: bool,
@@ -158,6 +164,19 @@ pub struct TimelineEntry {
     /// On a thread root: how many replies its thread has.
     #[uniffi(default = 0)]
     pub thread_replies: u32,
+    /// On a thread root: who replied (first-reply order), when the last reply came, how
+    /// many I haven't read and whether I follow it.
+    #[uniffi(default = [])]
+    pub thread_participants: Vec<Persona>,
+    #[uniffi(default = 0)]
+    pub thread_last_reply_ms: i64,
+    #[uniffi(default = 0)]
+    pub thread_unread: u32,
+    #[uniffi(default = false)]
+    pub thread_following: bool,
+    /// A thread reply also sent to the chat: the main timeline shows it too.
+    #[uniffi(default = false)]
+    pub also_in_chat: bool,
     /// The author changed the text after posting.
     #[uniffi(default = false)]
     pub edited: bool,
@@ -666,4 +685,16 @@ pub struct UniversalResults {
     pub hits: Vec<UniversalHit>,
     /// Query time in microseconds (index refresh included).
     pub took_us: u64,
+}
+
+/// One row of the Threads inbox.
+#[derive(Debug, Clone, PartialEq, uniffi::Record)]
+pub struct ThreadSummary {
+    pub space_id: String,
+    pub space_title: String,
+    /// The root, with its thread_* fields filled.
+    pub root: TimelineEntry,
+    pub last_reply: Option<TimelineEntry>,
+    /// Unread replies that @mention me.
+    pub mentions: u32,
 }
