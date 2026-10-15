@@ -91,7 +91,47 @@ pub enum BrainOut {
         /// The model's own words around the action, if any.
         confirmation: Option<String>,
     },
+    /// Calls to the tools it was offered; the results come back on its next think.
+    CallTools(Vec<ToolCall>),
 }
+
+/// A tool the model may call this turn (a mini-app tool from its chat, as its manifest
+/// declares it).
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct ToolDef {
+    pub name: String,
+    pub description: String,
+    pub parameters: Value,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct ToolCall {
+    pub id: String,
+    pub name: String,
+    pub arguments: Value,
+}
+
+/// A call and what came back, in the order they ran.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct ToolStep {
+    pub call: ToolCall,
+    pub result: String,
+    pub is_error: bool,
+}
+
+/// Where a turn's tool calls run. The host owns permissions and exactness (who the call
+/// is for, the mini-app's own rules); the model only picks the tool and the arguments.
+pub trait ToolHost: Send + Sync {
+    fn tools(&self) -> Vec<ToolDef>;
+    /// Runs one call that already passed the gate. `Err` is a result for the model to
+    /// read (refused, invalid), not a failed turn.
+    fn call(&self, call: &ToolCall) -> Result<String, String>;
+}
+
+/// Model rounds with tools in one turn; the round after the last only may speak.
+pub const MAX_TOOL_ROUNDS: usize = 4;
+/// Calls the model may make in one round.
+pub const MAX_CALLS_PER_ROUND: usize = 4;
 
 #[async_trait]
 pub trait Brain: Send + Sync {
@@ -101,6 +141,20 @@ pub trait Brain: Send + Sync {
         history: &[Turn],
         inbound: &Turn,
     ) -> Result<BrainOut, String>;
+
+    /// One think with `tools` on offer and this turn's `steps` so far. A brain that can't
+    /// call tools just thinks.
+    async fn think_with_tools(
+        &self,
+        cx: TurnContext<'_>,
+        history: &[Turn],
+        inbound: &Turn,
+        tools: &[ToolDef],
+        steps: &[ToolStep],
+    ) -> Result<BrainOut, String> {
+        let _ = (tools, steps);
+        self.think(cx, history, inbound).await
+    }
 }
 
 #[derive(Deserialize)]
@@ -192,29 +246,111 @@ impl Runtime {
         history: &[Turn],
         inbound: &Turn,
     ) -> Result<TurnOutcome, HostError> {
-        let d = self.gate.check(&Check::new(Point::Inbound, &inbound.text));
-        match d.outcome {
-            Outcome::Block => return Ok(TurnOutcome::Blocked { reason: d.rule }),
-            Outcome::Ask => {
-                return Ok(TurnOutcome::AskOwner {
-                    draft: inbound.text.clone(),
-                    rule: d.rule,
-                })
-            }
-            Outcome::Allow => {}
+        if let Some(held) = self.inbound(inbound) {
+            return Ok(held);
         }
         let out = self
             .brain
             .think(cx, history, inbound)
             .await
             .map_err(HostError::Brain)?;
-        Ok(match out {
+        Ok(self.settle(cx, inbound, out))
+    }
+
+    /// A turn that may call `host`'s tools: up to [`MAX_TOOL_ROUNDS`] rounds, each call
+    /// through the gate (as a tool call, against what the person just said) and then the
+    /// host. `done` are steps an earlier, interrupted run of this same turn already took:
+    /// the model reads them instead of running them again.
+    pub async fn turn_with_tools(
+        &self,
+        cx: TurnContext<'_>,
+        history: &[Turn],
+        inbound: &Turn,
+        host: &dyn ToolHost,
+        done: Vec<ToolStep>,
+    ) -> Result<TurnOutcome, HostError> {
+        if let Some(held) = self.inbound(inbound) {
+            return Ok(held);
+        }
+        let tools = host.tools();
+        let mut steps = done;
+        for round in 0..=MAX_TOOL_ROUNDS {
+            let offer: &[ToolDef] = if round < MAX_TOOL_ROUNDS { &tools } else { &[] };
+            let out = self
+                .brain
+                .think_with_tools(cx, history, inbound, offer, &steps)
+                .await
+                .map_err(HostError::Brain)?;
+            let BrainOut::CallTools(calls) = out else {
+                return Ok(self.settle(cx, inbound, out));
+            };
+            if offer.is_empty() {
+                break;
+            }
+            for call in calls.into_iter().take(MAX_CALLS_PER_ROUND) {
+                let (result, is_error) = match tools.iter().find(|t| t.name == call.name) {
+                    None => (format!("unknown tool: {}", call.name), true),
+                    Some(def) => {
+                        let mut check = Check::new(
+                            Point::ToolCall,
+                            format!(
+                                "mini-app tool {} ({}) {}",
+                                call.name, def.description, call.arguments
+                            ),
+                        );
+                        check.user_intent = Some(inbound.text.clone());
+                        let d = self.gate.check(&check);
+                        match d.outcome {
+                            Outcome::Block => (format!("blocked: {}", d.rule), true),
+                            Outcome::Ask => {
+                                return Ok(TurnOutcome::AskOwner {
+                                    draft: format!("{} {}", call.name, call.arguments),
+                                    rule: d.rule,
+                                })
+                            }
+                            Outcome::Allow => match host.call(&call) {
+                                Ok(r) => (r, false),
+                                Err(r) => (r, true),
+                            },
+                        }
+                    }
+                };
+                steps.push(ToolStep {
+                    call,
+                    result,
+                    is_error,
+                });
+            }
+        }
+        // Still calling tools with none left on offer: stop rather than loop.
+        Ok(TurnOutcome::Blocked {
+            reason: "tools:round-limit".into(),
+        })
+    }
+
+    /// The inbound gate: `Some` when the message never reaches the brain.
+    fn inbound(&self, inbound: &Turn) -> Option<TurnOutcome> {
+        let d = self.gate.check(&Check::new(Point::Inbound, &inbound.text));
+        match d.outcome {
+            Outcome::Block => Some(TurnOutcome::Blocked { reason: d.rule }),
+            Outcome::Ask => Some(TurnOutcome::AskOwner {
+                draft: inbound.text.clone(),
+                rule: d.rule,
+            }),
+            Outcome::Allow => None,
+        }
+    }
+
+    fn settle(&self, cx: TurnContext<'_>, inbound: &Turn, out: BrainOut) -> TurnOutcome {
+        match out {
             BrainOut::Silence => TurnOutcome::Silence,
             BrainOut::Say(text) => self.outbound(text),
             BrainOut::CreateAgent { spec, confirmation } => {
                 self.propose(cx, inbound, spec, confirmation)
             }
-        })
+            // Nobody offered tools: a call is nothing to say.
+            BrainOut::CallTools(_) => TurnOutcome::Silence,
+        }
     }
 
     fn outbound(&self, text: String) -> TurnOutcome {
