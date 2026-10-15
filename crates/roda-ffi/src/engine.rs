@@ -1316,12 +1316,14 @@ impl Engine {
             Some(err) => (tr!("⚠︎ Log inválido: {err}", "⚠︎ Invalid log: {err}"), None),
             None => self.preview(s),
         };
-        let read_seq: Option<u64> = self
-            .store
-            .meta(&format!("read:{id}"))
-            .ok()
-            .flatten()
-            .and_then(|v| v.parse().ok());
+        let read_seq = self.read_up_to(id);
+        let last_delivery = s
+            .entries
+            .iter()
+            .rev()
+            .find(|e| matches!(e.body, EntryBody::Message { .. }))
+            .filter(|e| e.author == me)
+            .map(|e| self.delivery(e));
         let unread = s
             .entries
             .iter()
@@ -1352,6 +1354,7 @@ impl Engine {
             last_author,
             last_at_ms: s.last_at_ms,
             unread,
+            last_delivery,
             pending_requests: pending,
             event_count: self.logs.get(id).map(|l| l.len() as u64).unwrap_or(0),
         })
@@ -1375,14 +1378,34 @@ impl Engine {
             .collect())
     }
 
-    pub fn mark_read(&self, space: &str) -> R<()> {
+    /// Marks the chat read here and returns the watermark to tell the others (and my other
+    /// devices), if it moved.
+    pub fn mark_read(&self, space: &str) -> R<Option<u64>> {
         let s = self.space_state(space)?;
         // Max, not last: my own pending messages sit at the end with no relay seq yet.
-        if let Some(seq) = s.entries.iter().map(|e| e.seq).max() {
-            self.store
-                .set_meta(&format!("read:{space}"), &seq.to_string())?;
+        Ok(s.entries
+            .iter()
+            .map(|e| e.seq)
+            .max()
+            .filter(|seq| self.raise_read(space, *seq)))
+    }
+
+    pub(crate) fn read_up_to(&self, space: &str) -> Option<u64> {
+        self.store
+            .meta(&format!("read:{space}"))
+            .ok()
+            .flatten()
+            .and_then(|v| v.parse().ok())
+    }
+
+    /// Raises (never lowers) this person's read watermark for a Space.
+    pub(crate) fn raise_read(&self, space: &str, seq: u64) -> bool {
+        if self.read_up_to(space).is_some_and(|r| r >= seq) {
+            return false;
         }
-        Ok(())
+        self.store
+            .set_meta(&format!("read:{space}"), &seq.to_string())
+            .is_ok()
     }
 
     pub fn timeline(&self, space: &str) -> R<Vec<TimelineEntry>> {

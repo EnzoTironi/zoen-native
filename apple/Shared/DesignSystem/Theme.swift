@@ -62,6 +62,8 @@ enum Palette {
     /// Conversa no padrão do Wabi.
     static let myBubble = Color.adaptive(light: "#111113", dark: "#F2F2F0")
     static let myBubbleText = Color.adaptive(light: "#FFFFFF", dark: "#111113")
+    /// Read ✓✓: blue that holds on both my bubble (black light, white dark) and the list.
+    static let receiptRead = Color.adaptive(light: "#53BDEB", dark: "#1F8FD8")
     static let otherBubble = Color.adaptive(light: "#F2F2F2", dark: "#26272B")
     /// Over a chat background: opaque white / lifted slate for contrast.
     static let otherBubbleOnBackdrop = Color.adaptive(light: "#FFFFFF", dark: "#2E2F34")

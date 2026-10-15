@@ -193,6 +193,9 @@ struct ConversationRow: View {
                         if working, let agent = space.members.first(where: { $0.kind == .agent && $0.isMine }) {
                             Text("\(agent.name) is typing…").foregroundStyle(Palette.action)
                         } else {
+                            if let ticks = space.lastDelivery {
+                                ReceiptTicks(delivery: ticks, base: Palette.textTertiary)
+                            }
                             Text("\(authorPrefix)\(VoiceNoteRef.preview(space.lastPreview) ?? space.lastPreview)")
                                 .foregroundStyle(unread ? Palette.textPrimary.opacity(0.8) : Palette.textSecondary)
                         }
@@ -227,8 +230,8 @@ struct ConversationRow: View {
     }
 
     private var authorPrefix: String {
-        // Mine: a tick (WhatsApp) instead of "You:".
-        if space.lastAuthor?.isMe == true { return "✓ " }
+        // Mine: the real ticks sit before the preview (WhatsApp) instead of "You:".
+        if space.lastAuthor?.isMe == true { return "" }
         return otherPrefix
     }
 

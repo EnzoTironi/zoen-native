@@ -428,7 +428,7 @@ pub struct PbEphemeral {
     pub space: String,
     #[prost(string, tag = "2")]
     pub from: String,
-    #[prost(oneof = "pb_ephemeral::Kind", tags = "3, 4, 5, 6")]
+    #[prost(oneof = "pb_ephemeral::Kind", tags = "3, 4, 5, 6, 7")]
     pub kind: Option<pb_ephemeral::Kind>,
 }
 
@@ -445,6 +445,8 @@ pub mod pb_ephemeral {
         Status(String),
         #[prost(uint64, tag = "6")]
         Read(u64),
+        #[prost(uint64, tag = "7")]
+        Delivered(u64),
     }
 }
 
@@ -797,6 +799,7 @@ fn ephemeral_to(space: &str, from: &str, k: &EphemeralKind) -> PbEphemeral {
             EphemeralKind::StoppedTyping => Kind::StoppedTyping(PbEmpty {}),
             EphemeralKind::Status { status } => Kind::Status(status.clone()),
             EphemeralKind::Read { seq } => Kind::Read(*seq),
+            EphemeralKind::Delivered { seq } => Kind::Delivered(*seq),
         }),
     }
 }
@@ -808,6 +811,7 @@ fn ephemeral_kind(k: Option<pb_ephemeral::Kind>) -> Result<EphemeralKind, Decode
         Kind::StoppedTyping(_) => EphemeralKind::StoppedTyping,
         Kind::Status(status) => EphemeralKind::Status { status },
         Kind::Read(seq) => EphemeralKind::Read { seq },
+        Kind::Delivered(seq) => EphemeralKind::Delivered { seq },
     })
 }
 

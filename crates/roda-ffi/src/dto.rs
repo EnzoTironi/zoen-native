@@ -75,6 +75,9 @@ pub struct SpaceSummary {
     pub last_author: Option<Persona>,
     pub last_at_ms: i64,
     pub unread: u32,
+    /// Ticks for the last message when I wrote it (the chat list shows them).
+    #[uniffi(default = None)]
+    pub last_delivery: Option<Delivery>,
     pub pending_requests: u32,
     pub event_count: u64,
 }
@@ -157,12 +160,16 @@ pub struct ReplyQuote {
 }
 
 /// `Local`: a Space that lives only on this device. `Sending`: signed and queued for the
-/// relay (offline-safe). `Sent`: the relay ordered it. `Failed`: the relay refused it.
+/// relay (offline-safe). `Sent`: the relay ordered it (✓). `Delivered`: every other member
+/// has it on a device (✓✓). `Read`: every other member read it (blue ✓✓). `Failed`: the
+/// relay refused it.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, uniffi::Enum)]
 pub enum Delivery {
     Local,
     Sending,
     Sent,
+    Delivered,
+    Read,
     Failed,
 }
 

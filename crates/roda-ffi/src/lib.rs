@@ -185,8 +185,20 @@ impl RodaEngine {
         self.lock().timeline(&space_id)
     }
 
+    /// Marks the chat read on this device and tells the others (blue ✓✓) and my other
+    /// devices (their unread clears too) with one "read up to" watermark.
     pub fn mark_read(&self, space_id: String) -> Result<(), CoreError> {
-        self.lock().mark_read(&space_id)
+        let (seq, synced) = {
+            let engine = self.lock();
+            (
+                engine.mark_read(&space_id)?,
+                engine.net.synced.contains(&space_id),
+            )
+        };
+        if let (Some(seq), true) = (seq, synced) {
+            self.with_net(|n| n.ephemeral(space_id, roda_proto::EphemeralKind::Read { seq }));
+        }
+        Ok(())
     }
 
     pub fn send_message(&self, space_id: String, text: String) -> Result<TimelineEntry, CoreError> {

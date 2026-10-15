@@ -314,6 +314,7 @@ pub async fn host(e: &Arc<RodaEngine>, home: &Path, for_secs: Option<u64>) {
                 cursors.insert(s.id.clone(), skip_to);
                 from = skip_to;
             }
+            let mut caught_up = true;
             for (i, t) in tl.iter().enumerate() {
                 if t.seq <= from || skip(t) {
                     continue;
@@ -325,15 +326,22 @@ pub async fn host(e: &Arc<RodaEngine>, home: &Path, for_secs: Option<u64>) {
                     let n = tries.entry(key).or_insert(0);
                     *n += 1;
                     if *n < MAX_TRIES {
+                        caught_up = false;
                         break; // retry this message on the next wake, in order
                     }
                     say(format_args!("giving up on seq {}", t.seq));
                 }
                 fault("before-advance");
                 if e.agent_advance(s.id.clone(), t.seq).await.is_err() {
+                    caught_up = false;
                     break;
                 }
                 cursors.insert(s.id.clone(), t.seq);
+            }
+            // An agent is a member like any other: once it has processed the chat it says
+            // so with the same "read up to" watermark, so groups with agents reach ✓✓ read.
+            if caught_up && !pending.is_empty() {
+                let _ = e.mark_read(s.id.clone());
             }
         }
         wait(&waker, deadline).await;

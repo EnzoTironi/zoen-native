@@ -164,7 +164,10 @@ private fun ConversationRow(chat: SpaceSummary, pinned: Boolean, working: String
             else SpaceAvatar(chat, size = 56)
             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 Text(chat.title, style = MaterialTheme.typography.titleMedium, fontWeight = if (chat.unread > 0u) FontWeight.Bold else FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                Text(if (working != null) stringResource(R.string.person_typing, working) else conversationPreview(chat), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                    if (working == null) chat.lastDelivery?.let { ReceiptTicks(it) }
+                    Text(if (working != null) stringResource(R.string.person_typing, working) else conversationPreview(chat), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                }
             }
             Column(horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text(DateFormat.getTimeInstance(DateFormat.SHORT).format(Date(chat.lastAtMs)), style = MaterialTheme.typography.labelSmall,
@@ -189,8 +192,8 @@ private fun ConversationRow(chat: SpaceSummary, pinned: Boolean, working: String
 @Composable
 private fun conversationPreview(space: SpaceSummary): String {
     val preview = if (xyz.tironi.zoen.media.VoiceNoteRef.parse(space.lastPreview) != null) stringResource(R.string.media_voice_message) else space.lastPreview
-    // Mine: a tick (WhatsApp) instead of "You:".
-    if (space.lastAuthor?.isMe == true) return "✓ $preview"
+    // Mine: the real ticks sit before the preview (WhatsApp) instead of "You:".
+    if (space.lastAuthor?.isMe == true) return preview
     val author = space.lastAuthor?.let { if (space.counterpart == null) it.name else "" }.orEmpty()
     return if (author.isBlank()) preview else "$author: $preview"
 }

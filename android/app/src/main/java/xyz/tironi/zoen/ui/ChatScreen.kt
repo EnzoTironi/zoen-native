@@ -582,6 +582,27 @@ fun ThreadScreen(model: ZoenViewModel, state: AppState, space: String, root: Str
     } }
 }
 
+/** Time's companion: ✓ sent, ✓✓ delivered, blue ✓✓ read (aggregated "read up to"). */
+@Composable
+fun ReceiptTicks(delivery: Delivery, base: androidx.compose.ui.graphics.Color = MaterialTheme.colorScheme.onSurfaceVariant) {
+    val icon = when (delivery) {
+        Delivery.FAILED -> Icons.Rounded.ErrorOutline
+        Delivery.SENDING, Delivery.LOCAL -> Icons.Rounded.Schedule
+        Delivery.SENT -> Icons.Rounded.Done
+        Delivery.DELIVERED, Delivery.READ -> Icons.Rounded.DoneAll
+    }
+    val tint by androidx.compose.animation.animateColorAsState(
+        when (delivery) {
+            Delivery.READ -> androidx.compose.ui.graphics.Color(0xFF53BDEB)
+            Delivery.FAILED -> MaterialTheme.colorScheme.error
+            else -> base
+        },
+        androidx.compose.animation.core.tween(280, easing = androidx.compose.animation.core.CubicBezierEasing(0.25f, 1f, 0.5f, 1f)),
+        label = "ticks",
+    )
+    val label = stringResource(when (delivery) { Delivery.READ -> R.string.receipt_read; Delivery.DELIVERED -> R.string.receipt_delivered; Delivery.FAILED -> R.string.receipt_failed; Delivery.SENT -> R.string.receipt_sent; else -> R.string.receipt_sending })
+    Icon(icon, label, Modifier.size(15.dp), tint = tint)
+}
 
 /** A clear run as wide as the meta ("12:11 PM ✓"), in figure spaces. */
 internal fun bubbleMetaReserve(atMs: Long, mine: Boolean): String =
@@ -593,7 +614,7 @@ internal fun bubbleMetaReserve(atMs: Long, mine: Boolean): String =
 internal fun BubbleMeta(atMs: Long, delivery: Delivery?, modifier: Modifier = Modifier) {
     Row(modifier.clearAndSetSemantics { }, verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(3.dp)) {
         Text(DateFormat.getTimeInstance(DateFormat.SHORT).format(Date(atMs)), style = MaterialTheme.typography.labelSmall, color = LocalContentColor.current.copy(alpha = 0.62f))
-        if (delivery != null) Icon(when (delivery) { Delivery.FAILED -> Icons.Rounded.ErrorOutline; Delivery.SENDING -> Icons.Rounded.Schedule; else -> Icons.Rounded.Done }, null, Modifier.size(14.dp),
-            tint = if (delivery == Delivery.FAILED) MaterialTheme.colorScheme.error else LocalContentColor.current.copy(alpha = 0.62f))
+        // ✓ sent, ✓✓ delivered, blue ✓✓ read (aggregated "read up to").
+        if (delivery != null) ReceiptTicks(delivery, LocalContentColor.current.copy(alpha = 0.62f))
     }
 }

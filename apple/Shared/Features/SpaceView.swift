@@ -697,7 +697,8 @@ struct BubbleMeta: View {
                 switch delivery {
                 case .sending: Image(systemName: "clock").imageScale(.small)
                 case .failed: Image(systemName: "exclamationmark.circle.fill").foregroundStyle(Palette.danger)
-                default: Image(systemName: "checkmark").imageScale(.small)
+                // ✓ sent, ✓✓ delivered, blue ✓✓ read (aggregated "read up to").
+                default: ReceiptTicks(delivery: delivery, base: Palette.myBubbleText.opacity(0.62))
                 }
             }
         }
@@ -733,6 +734,44 @@ struct DeliveryMark: View {
             EmptyView()
         }
     }
+}
+
+/// ✓ / ✓✓ / read ✓✓: the second tick draws in and the pair turns blue with the Wabi curve.
+struct ReceiptTicks: View {
+    let delivery: Delivery
+    /// Unread ticks: muted on my bubble by default; the chat list passes its own grey.
+    var base: Color = Palette.myBubbleText.opacity(0.62)
+
+    private var double: Bool { delivery == .delivered || delivery == .read }
+
+    var body: some View {
+        switch delivery {
+        case .sending, .local:
+            Image(systemName: "clock").font(.system(size: 10, weight: .semibold))
+                .accessibilityLabel("Sending")
+        case .failed:
+            Image(systemName: "exclamationmark.circle.fill").font(.system(size: 11, weight: .semibold))
+                .foregroundStyle(Palette.danger)
+                .accessibilityLabel("Not delivered")
+        default:
+            ZStack(alignment: .leading) {
+                Image(systemName: "checkmark")
+                Image(systemName: "checkmark")
+                    .offset(x: 5)
+                    .opacity(double ? 1 : 0)
+                    .scaleEffect(double ? 1 : 0.4, anchor: .leading)
+            }
+            .font(.system(size: 10, weight: .bold))
+            .padding(.trailing, 5)
+            .foregroundStyle(delivery == .read ? Palette.receiptRead : base)
+            .accessibilityLabel(delivery == .read ? "Read" : double ? "Delivered" : "Sent")
+        }
+    }
+}
+
+enum Motion {
+    /// Wabi's ease: cubic-bezier(.25, 1, .5, 1), standard length.
+    static let wabi = Animation.timingCurve(0.25, 1, 0.5, 1, duration: 0.28)
 }
 
 private extension VerticalAlignment {

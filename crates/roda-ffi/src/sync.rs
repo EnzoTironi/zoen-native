@@ -67,6 +67,12 @@ pub struct NetState {
     /// Identities seen in logs whose profile this device doesn't have yet.
     pub unknown: HashSet<IdentityId>,
     pub presence: HashMap<IdentityId, bool>,
+    /// Space → member → (delivered up to, read up to). Aggregated watermarks, never per
+    /// message; the relay replays the newest on every sync, so nothing is stored here.
+    pub receipts: HashMap<SpaceId, HashMap<IdentityId, (u64, u64)>>,
+    /// Space → the highest seq this device already said it has (so `Delivered` goes out
+    /// once per new head, not once per event).
+    pub delivered_sent: HashMap<SpaceId, u64>,
     /// Wakes the network task (set while sync runs).
     pub poke: Option<Box<dyn Fn() + Send>>,
     pub profiles: crate::profile::ProfileNet,
@@ -327,7 +333,7 @@ impl Engine {
         } else if self.net.pending.contains_key(source) {
             Delivery::Sending
         } else if self.net.synced.contains(&e.space) {
-            Delivery::Sent
+            self.receipt_for(e)
         } else {
             Delivery::Local
         }
@@ -1320,6 +1326,80 @@ impl Engine {
         self.net.pending.insert(client_id, space.to_string());
         self.net.wake();
         Ok(())
+    }
+
+    /// ✓, ✓✓ or read for one of my messages: the lowest watermark across everyone else in
+    /// the Space (a group shows read only when all have read, like WhatsApp).
+    fn receipt_for(&self, e: &Entry) -> Delivery {
+        let me = self.me.as_deref().unwrap_or_default();
+        let Some(space) = self.state.spaces.get(&e.space) else {
+            return Delivery::Sent;
+        };
+        if e.author != me {
+            return Delivery::Sent;
+        }
+        let marks = self.net.receipts.get(&e.space);
+        let mut others = space
+            .members
+            .iter()
+            .map(|(m, _)| m)
+            .filter(|m| *m != me)
+            .peekable();
+        if others.peek().is_none() {
+            return Delivery::Sent;
+        }
+        let (mut delivered, mut read) = (true, true);
+        for m in others {
+            let (d, r) = marks.and_then(|x| x.get(m)).copied().unwrap_or((0, 0));
+            read &= r >= e.seq;
+            delivered &= d.max(r) >= e.seq;
+        }
+        match (read, delivered) {
+            (true, _) => Delivery::Read,
+            (_, true) => Delivery::Delivered,
+            _ => Delivery::Sent,
+        }
+    }
+
+    /// A member's receipt arrived (live or replayed). From my own identity it is another of
+    /// my devices: a read there is a read here. Returns whether anything changed.
+    pub fn receipt(&mut self, space: &str, from: &str, delivered: u64, read: u64) -> bool {
+        if self.me.as_deref() == Some(from) {
+            return read > 0 && self.raise_read(space, read);
+        }
+        let mark = self
+            .net
+            .receipts
+            .entry(space.to_string())
+            .or_default()
+            .entry(from.to_string())
+            .or_insert((0, 0));
+        let next = (mark.0.max(delivered).max(read), mark.1.max(read));
+        let changed = next != *mark;
+        *mark = next;
+        changed
+    }
+
+    /// The `Delivered` watermark to announce for `space`, when its head moved past the last
+    /// one announced and the head is someone else's message.
+    pub fn delivered_to_announce(&mut self, space: &str) -> Option<u64> {
+        let me = self.me.clone().unwrap_or_default();
+        let s = self.state.spaces.get(space)?;
+        let head = s
+            .entries
+            .iter()
+            .filter(|e| e.author != me)
+            .map(|e| e.seq)
+            .max()?;
+        let last = self
+            .net
+            .delivered_sent
+            .entry(space.to_string())
+            .or_insert(0);
+        (head > *last).then(|| {
+            *last = head;
+            head
+        })
     }
 
     pub fn set_presence(&mut self, who: &str, online: bool) {

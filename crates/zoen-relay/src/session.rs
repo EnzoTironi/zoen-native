@@ -753,10 +753,24 @@ impl Session {
         let Ok(members) = self.st.log.members(&space).await else {
             return;
         };
+        let receipt = match kind {
+            roda_proto::EphemeralKind::Read { seq } => Some((0, seq)),
+            roda_proto::EphemeralKind::Delivered { seq } => Some((seq, 0)),
+            _ => None,
+        };
+        if let Some((delivered, read)) = receipt {
+            if let Err(error) =
+                db::raise_receipt(&self.st.pool, &space, &self.identity, delivered, read).await
+            {
+                tracing::warn!(%error, "receipt not kept");
+            }
+        }
+        // Receipts also reach my other devices (read on the phone clears the Mac), never
+        // this session itself.
         let to: Vec<String> = members
             .into_iter()
             .map(|(m, _)| m)
-            .filter(|m| *m != self.identity)
+            .filter(|m| receipt.is_some() || *m != self.identity)
             .collect();
         let n = self.st.fanout.send(
             &to,
@@ -765,7 +779,7 @@ impl Session {
                 from: self.identity.clone(),
                 kind,
             },
-            None,
+            self.hub_id,
         );
         tracing::Span::current().record("delivered_here", n as i64);
         Metrics::inc(&self.st.metrics.ephemeral_forwarded);
@@ -1575,6 +1589,9 @@ impl Session {
                     break;
                 }
             }
+            if through.is_none() && !self.replay_receipts(&space).await {
+                return;
+            }
         }
         span.record("events", sent as i64);
         if !self.send_sync(ServerFrame::SyncDone).await {
@@ -1587,6 +1604,34 @@ impl Session {
                 .analytics
                 .latency("first_sync_ms", self.started.elapsed());
         }
+    }
+}
+
+impl Session {
+    /// The newest receipt watermarks of a Space, so a device that was away still learns
+    /// what was delivered and read while it was gone.
+    async fn replay_receipts(&self, space: &str) -> bool {
+        let Ok(rows) = db::receipts(&self.st.pool, space).await else {
+            return true;
+        };
+        for (from, delivered, read) in rows {
+            for kind in [
+                roda_proto::EphemeralKind::Delivered {
+                    seq: delivered as u64,
+                },
+                roda_proto::EphemeralKind::Read { seq: read as u64 },
+            ] {
+                let frame = ServerFrame::Ephemeral {
+                    space: space.to_string(),
+                    from: from.clone(),
+                    kind,
+                };
+                if !self.send_sync(frame).await {
+                    return false;
+                }
+            }
+        }
+        true
     }
 }
 
