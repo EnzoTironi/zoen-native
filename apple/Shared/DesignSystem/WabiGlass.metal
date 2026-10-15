@@ -54,7 +54,7 @@ static float alongCSS(float2 p, float2 size, float degreesCSS) {
 
     // 4. the shine: a 200%-wide gradient whose position slides 0% → 25% on press
     float u = (alongCSS(position, size, -45.0) + shine) * 0.5;
-    light += smoothstep(0.20, 0.40, u) * (1.0 - smoothstep(0.50, 0.55, u)) * 0.5;
+    light += smoothstep(0.20, 0.40, u) * (1.0 - smoothstep(0.50, 0.55, u)) * mix(0.5, 0.16, prominent);
 
     light = saturate(light);
     dark = saturate(dark);

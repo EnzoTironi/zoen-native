@@ -161,7 +161,7 @@ half4 main(float2 p) {
     dark += ring * conic * 0.5;
     light += ring * mix(0.5, 0.0, y);
     float u = (alongCSS(p, -45.0) + shine) * 0.5;
-    light += smoothstep(0.20, 0.40, u) * (1.0 - smoothstep(0.50, 0.55, u)) * 0.5;
+    light += smoothstep(0.20, 0.40, u) * (1.0 - smoothstep(0.50, 0.55, u)) * mix(0.5, 0.16, prominent);
     light = clamp(light, 0.0, 1.0);
     dark = clamp(dark, 0.0, 1.0);
     float alpha = light + dark - light * dark;
