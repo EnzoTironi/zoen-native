@@ -704,7 +704,11 @@ pub async fn raise_receipt(
     delivered: u64,
     read: u64,
 ) -> Result<(), sqlx::Error> {
-    let delivered = delivered.max(read);
+    // Clamp so a bogus u64 can't wrap to a negative BIGINT.
+    let (delivered, read) = (
+        delivered.max(read).min(i64::MAX as u64),
+        read.min(i64::MAX as u64),
+    );
     sqlx::query(
         "INSERT INTO space_receipts (space, identity, delivered, read) VALUES ($1, $2, $3, $4)
          ON CONFLICT (space, identity) DO UPDATE SET
