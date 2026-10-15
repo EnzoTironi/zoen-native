@@ -527,6 +527,8 @@ pub enum AgentRequest {
         kind: String,
         definition: Vec<u8>,
     },
+    /// Owner only: one of your agents' status ("active", "paused" or "revoked").
+    Status { agent: IdentityId },
     /// Owner only.
     Control {
         agent: IdentityId,
@@ -606,6 +608,7 @@ impl Op {
             Op::Agent(AgentRequest::Advance { .. }) => "agent_advance",
             Op::Agent(AgentRequest::Define { .. }) => "agent_define",
             Op::Agent(AgentRequest::Control { .. }) => "agent_control",
+            Op::Agent(AgentRequest::Status { .. }) => "agent_status",
         }
     }
 }

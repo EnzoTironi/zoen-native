@@ -395,6 +395,27 @@ pub struct AgentProfile {
     pub pending_requests: u32,
     pub approvals_streak: u32,
     pub runs_on: String,
+    /// Your own agent's notes asking for you (`ask_owner`, `agent_proposal`) in your
+    /// chat with it since you last wrote there. Always 0 for other people's agents.
+    pub owner_notes_pending: u32,
+}
+
+/// An agent's status, as its owner sees it on the relay.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, uniffi::Enum)]
+pub enum AgentStatus {
+    Active,
+    Paused,
+    /// Final: the agent no longer answers anyone.
+    Revoked,
+}
+
+/// What an owner can do to one of their agents.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, uniffi::Enum)]
+pub enum AgentControl {
+    Pause,
+    Resume,
+    /// Final, like `AgentStatus::Revoked`.
+    Revoke,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, uniffi::Enum)]

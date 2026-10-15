@@ -227,9 +227,26 @@ async fn definitions_are_versioned_and_owner_controlled() {
             .status,
         "paused"
     );
+    // The owner's app reads the same status; nobody else can.
+    let seen = agents::owner_status(&d.pool, &bruno.id, &bot.id)
+        .await
+        .unwrap();
+    assert_eq!(seen.status, "paused");
+    assert!(seen.definition.is_empty() && seen.cursors.is_empty());
+    assert!(matches!(
+        agents::owner_status(&d.pool, &carla.id, &bot.id).await,
+        Err(AgentCitizenError::Owner)
+    ));
     agents::control(&d.pool, &bruno.id, &bot.id, AgentAction::Resume)
         .await
         .unwrap();
+    assert_eq!(
+        agents::owner_status(&d.pool, &bruno.id, &bot.id)
+            .await
+            .unwrap()
+            .status,
+        "active"
+    );
     agents::control(&d.pool, &bruno.id, &bot.id, AgentAction::Revoke)
         .await
         .unwrap();
@@ -247,6 +264,13 @@ async fn definitions_are_versioned_and_owner_controlled() {
             .await
             .unwrap();
     assert!(device_revoked);
+    assert_eq!(
+        agents::owner_status(&d.pool, &bruno.id, &bot.id)
+            .await
+            .unwrap()
+            .status,
+        "revoked"
+    );
     assert!(matches!(
         agents::advance_cursor(&d.pool, &bot.id, bd, "sp", 1).await,
         Err(AgentCitizenError::Revoked)

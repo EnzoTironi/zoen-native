@@ -79,4 +79,27 @@
     <string name="agent_group_people">Pessoas</string>
     <string name="agent_group_history">Os agentes leem o histórico desde que entraram. Participantes podem chamar seus agentes com uma @menção.</string>
     <string name="agent_group_background">Fundo</string>
+    <string name="agent_status_active">Ativo</string>
+    <string name="agent_status_paused">Pausado</string>
+    <string name="agent_status_revoked">Desligado</string>
+    <plurals name="agent_waiting_for_you">
+        <item quantity="one">%d esperando você</item>
+        <item quantity="other">%d esperando você</item>
+    </plurals>
+    <plurals name="agent_in_chats">
+        <item quantity="one">Em %d conversa</item>
+        <item quantity="other">Em %d conversas</item>
+    </plurals>
+    <string name="agent_someones">De %1$s · %2$s</string>
+    <string name="agent_someone">Alguém</string>
+    <string name="agent_talk">Conversar</string>
+    <string name="agent_share_link">Compartilhar link</string>
+    <string name="agent_pause">Pausar</string>
+    <string name="agent_resume">Retomar</string>
+    <string name="agent_turn_off">Desligar de vez</string>
+    <string name="agent_turn_off_question">Desligar %1$s?</string>
+    <string name="agent_turn_off_detail">Ele para de responder todo mundo e o link deixa de funcionar. Não dá para desfazer. Para parar só por um tempo, use Pausar.</string>
+    <string name="agent_mine">Seus</string>
+    <string name="agent_in_your_chats">Nas suas conversas</string>
+    <string name="agent_unreachable">Não deu para falar com o Zoen. Confira sua conexão e tente de novo.</string>
 </resources>

@@ -92,6 +92,8 @@ final class AppModel {
     /// Owner-agent note cards already resolved, per message id.
     @ObservationIgnored var ownerNoteCache: [String: OwnerAgentNote] = [:]
     private(set) var agents: [AgentProfile] = []
+    /// Your agents' status on the relay (owner-only), shared by the list and the profile.
+    let agentStatuses = AgentStatuses()
     private(set) var mentions: [Mention] = []
     private(set) var stats: CoreStats?
     private(set) var revision = 0
