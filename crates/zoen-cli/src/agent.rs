@@ -9,8 +9,14 @@
 //! per-Space cursors come from it and go back to it, one message at a time, only once the
 //! message is handled (sent, or deliberately silent or blocked). A reply is idempotent on
 //! its source message, so a restart mid-turn neither repeats nor loses one.
+//!
+//! In a turn the model may call the tools of the mini-apps in that chat (a client asks for
+//! Saturday 10h; the agent books it). Every call goes through `agent_call_tool` serving the
+//! author of the message, so a booking is only ever for them. Each call that ran is
+//! journaled under its source message before anything else happens: a restart mid-turn
+//! hands the model what already ran instead of running it twice.
 
-use roda_ffi::{ConnectionDto, CoreListener, EntryKind, RodaEngine, TimelineEntry};
+use roda_ffi::{AppCallStatus, ConnectionDto, CoreListener, EntryKind, RodaEngine, TimelineEntry};
 use roda_gate::{Clef, ClefModel, Gate, HttpTransport};
 use serde_json::json;
 use std::collections::{BTreeMap, BTreeSet};
@@ -20,7 +26,10 @@ use std::time::{Duration, Instant};
 use tokio::sync::Notify;
 use zoen_agentd::citizen::testing::{fault, scripted_brain_from_env};
 use zoen_agentd::citizen::ModelBrain;
-use zoen_agentd::{AgentSpec, Brain, Definition, Runtime, Turn, TurnContext, TurnOutcome};
+use zoen_agentd::{
+    AgentSpec, Brain, Definition, Runtime, ToolCall, ToolDef, ToolHost, ToolStep, Turn,
+    TurnContext, TurnOutcome,
+};
 
 /// History the brain sees: the Space's last messages before the one it answers.
 const HISTORY: usize = 16;
@@ -31,6 +40,8 @@ const MAX_TRIES: u32 = 3;
 const BACKLOG_CAP: usize = 20;
 /// The runtime stops after this many refused or failed state reads in a row (~30 s).
 const MAX_STATE_FAILURES: u32 = 6;
+/// Source messages whose tool steps the journal keeps (older ones are long answered).
+const JOURNAL_KEEP: usize = 200;
 
 struct ReqwestTransport(reqwest::Client);
 impl HttpTransport for ReqwestTransport {
@@ -148,6 +159,8 @@ struct Ctx {
     device: String,
     owner: String,
     runtime: Runtime,
+    /// Tool steps already run, per source message (`agent-tool-steps.json`).
+    journal: std::path::PathBuf,
 }
 
 /// Runs the wake loop for `for_secs` (or until revoked).
@@ -165,6 +178,7 @@ pub async fn host(e: &Arc<RodaEngine>, home: &Path, for_secs: Option<u64>) {
         device: acct.device_id.clone(),
         owner,
         runtime,
+        journal: home.join("agent-tool-steps.json"),
     };
     let waker = Arc::new(Waker::default());
     e.stop_sync();
@@ -410,7 +424,13 @@ async fn turn(
         owner: &cx.owner,
         definition: def,
     };
-    let out = match cx.runtime.turn(tc, &history, &inbound).await {
+    let tools = SpaceTools::new(e, cx, space, &t.author.id, &t.id);
+    let done = tools.done();
+    let out = match cx
+        .runtime
+        .turn_with_tools(tc, &history, &inbound, &tools, done)
+        .await
+    {
         Ok(o) => o,
         Err(err) => {
             say(format_args!("turn failed: {err}"));
@@ -508,4 +528,145 @@ fn owner_note(e: &Arc<RodaEngine>, cx: &Ctx, source: &str) -> Option<serde_json:
             .trim_end_matches("```");
         Some(serde_json::from_str(body.trim()).unwrap_or(serde_json::Value::Null))
     })
+}
+
+/// The mini-app tools of one chat, for one turn: calls run as the agent serving `serving`.
+struct SpaceTools<'a> {
+    e: &'a Arc<RodaEngine>,
+    journal: &'a Path,
+    source: &'a str,
+    serving: &'a str,
+    /// Model-facing name → (item, tool).
+    names: Vec<(ToolDef, String, String)>,
+}
+
+impl<'a> SpaceTools<'a> {
+    fn new(
+        e: &'a Arc<RodaEngine>,
+        cx: &'a Ctx,
+        space: &str,
+        serving: &'a str,
+        source: &'a str,
+    ) -> Self {
+        let mut names: Vec<(ToolDef, String, String)> = Vec::new();
+        for t in e.agent_tools(space) {
+            // Two mini-apps with the same tool: the second is `name_2`, and so on.
+            let mut name = t.name.clone();
+            let mut n = 1;
+            while names.iter().any(|(d, _, _)| d.name == name) {
+                n += 1;
+                name = format!("{}_{n}", t.name);
+            }
+            let def = ToolDef {
+                name,
+                description: format!("{} (mini-app \"{}\")", t.description, t.item_title),
+                parameters: t.schema,
+            };
+            names.push((def, t.item_id, t.name));
+        }
+        Self {
+            e,
+            journal: &cx.journal,
+            source,
+            serving,
+            names,
+        }
+    }
+
+    fn load(&self) -> Vec<(String, Vec<ToolStep>)> {
+        std::fs::read(self.journal)
+            .ok()
+            .and_then(|b| serde_json::from_slice(&b).ok())
+            .unwrap_or_default()
+    }
+
+    /// What an earlier run of this turn already did.
+    fn done(&self) -> Vec<ToolStep> {
+        self.load()
+            .into_iter()
+            .find(|(s, _)| s == self.source)
+            .map(|(_, steps)| steps)
+            .unwrap_or_default()
+    }
+
+    fn record(&self, step: ToolStep) {
+        let mut all = self.load();
+        match all.iter_mut().find(|(s, _)| s == self.source) {
+            Some((_, steps)) => steps.push(step),
+            None => all.push((self.source.to_string(), vec![step])),
+        }
+        let drop = all.len().saturating_sub(JOURNAL_KEEP);
+        all.drain(..drop);
+        let tmp = self.journal.with_extension("tmp");
+        let ok = serde_json::to_vec(&all)
+            .ok()
+            .and_then(|b| std::fs::write(&tmp, b).ok())
+            .and_then(|_| std::fs::rename(&tmp, self.journal).ok());
+        if ok.is_none() {
+            say("tool journal write failed");
+        }
+    }
+}
+
+impl ToolHost for SpaceTools<'_> {
+    fn tools(&self) -> Vec<ToolDef> {
+        self.names.iter().map(|(d, _, _)| d.clone()).collect()
+    }
+
+    fn call(&self, call: &ToolCall) -> Result<String, String> {
+        // The same call already ran for this message (before a restart): its result, again.
+        if let Some(s) = self
+            .done()
+            .into_iter()
+            .find(|s| s.call.name == call.name && s.call.arguments == call.arguments)
+        {
+            return if s.is_error {
+                Err(s.result)
+            } else {
+                Ok(s.result)
+            };
+        }
+        let Some((_, item, tool)) = self.names.iter().find(|(d, _, _)| d.name == call.name) else {
+            return Err(format!("unknown tool: {}", call.name));
+        };
+        let args = if call.arguments.is_object() {
+            call.arguments.to_string()
+        } else {
+            "{}".into()
+        };
+        let res = match self.e.agent_call_tool(item, tool, &args, self.serving) {
+            Ok(o) => match o.status {
+                AppCallStatus::Done => {
+                    let v: serde_json::Value =
+                        serde_json::from_str(&o.result_json).unwrap_or_default();
+                    if v["isError"].as_bool() == Some(true) {
+                        Err(o.result_json)
+                    } else {
+                        Ok(o.result_json)
+                    }
+                }
+                AppCallStatus::NeedsConfirmation => {
+                    Err(format!("needs the owner's confirmation: {}", o.message))
+                }
+                AppCallStatus::Denied => Err(format!("denied: {}", o.message)),
+            },
+            Err(err) => Err(err.to_string()),
+        };
+        // Only calls that changed something need to survive a restart; a failed or
+        // read-only call is cheap and safe to run again.
+        if res.is_ok() {
+            self.record(ToolStep {
+                call: call.clone(),
+                result: res.clone().unwrap_or_default(),
+                is_error: false,
+            });
+            fault("after-tool");
+        }
+        say(format_args!(
+            "tool {} -> {}",
+            call.name,
+            if res.is_ok() { "ok" } else { "refused" }
+        ));
+        res
+    }
 }
