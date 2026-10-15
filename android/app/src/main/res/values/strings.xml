@@ -252,4 +252,11 @@
   </plurals>
   <string name="dash_carrot_toast">You got %1$d carrots!</string>
   <string name="dash_jump_toast">Nice jump!</string>
+  <string name="owner_note_ask_title">Your agent needs you</string>
+  <string name="owner_note_proposal_title">Your agent wants to create an agent</string>
+  <string name="owner_note_ask_body">Before replying to %1$s, it wants you to see the answer.</string>
+  <string name="owner_note_draft">Suggested reply</string>
+  <string name="owner_note_proposal_body">It only starts working after you approve.</string>
+  <string name="owner_note_open">Open conversation</string>
+  <string name="owner_note_someone">someone</string>
 </resources>
