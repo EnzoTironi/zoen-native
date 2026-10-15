@@ -1167,8 +1167,8 @@ impl Session {
                 Ok(Reply::Done)
             }
             Op::RegisterPush { platform, token } => {
-                if !crate::push::valid_platform(&platform) || token.len() > 4096 {
-                    return Err("unknown push platform".into());
+                if !crate::push::valid_platform(&platform) || !crate::push::valid_token(&token) {
+                    return Err("bad push registration".into());
                 }
                 db::set_push_token(
                     &self.st.pool,
