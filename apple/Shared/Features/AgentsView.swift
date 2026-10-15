@@ -1,32 +1,24 @@
 import SwiftUI
 import RodaCore
 
-/// "Seus agentes" (poster #026): seus agentes e, em Explorar, os de outras pessoas
-/// que convivem com você. Cada cartão mostra dono, função e onde está disponível.
+/// "Seus agentes": the agents you own and the ones you talk to, as citizens. Each row
+/// shows who it is, whether it's on (yours only: the relay tells owners) and how many
+/// of its notes are waiting for you.
 struct AgentsLibraryScreen: View {
     @Environment(AppModel.self) private var model
-    @State private var segment = 0
+
+    private var mine: [AgentProfile] { model.agents.filter(\.persona.isMine) }
+    private var others: [AgentProfile] { model.agents.filter { !$0.persona.isMine } }
 
     var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 16) {
-                Text("Agents are members: they have an owner, a role, per-chat permissions and a budget. Whoever owns the agent pays for it.")
-                    .font(.subheadline).foregroundStyle(Palette.textSecondary)
-                    .padding(.horizontal, 4)
-                Picker("", selection: $segment) {
-                    Text("My agents").tag(0)
-                    Text("Other people’s").tag(1)
-                }
-                .pickerStyle(.segmented)
-
-                let list = model.agents.filter { segment == 0 ? $0.persona.isMine : !$0.persona.isMine }
-                ForEach(list) { a in
-                    NavigationLink(value: Route.agent(a.id)) { AgentLibraryCard(profile: a) }
-                        .buttonStyle(.plain)
-                }
-                if segment == 0 && list.isEmpty {
+            VStack(alignment: .leading, spacing: 22) {
+                section(String(localized: "Agents you own"), mine, id: "agents.mine") {
                     PhaseNote(symbol: "sparkles", title: String(localized: "No agents yet"),
-                              text: String(localized: "When you create one, its link shows up here to share."))
+                              text: String(localized: "When you create one, it shows up here with its link to share."))
+                }
+                if !others.isEmpty {
+                    section(String(localized: "In your chats"), others, id: "agents.others") { EmptyView() }
                 }
             }
             .padding(.horizontal, 16)
@@ -37,55 +29,55 @@ struct AgentsLibraryScreen: View {
         .scrollEdgeEffectStyle(.soft, for: .top)
         .background(NightBackdrop())
         .navigationTitle("Your agents")
+        .task(id: mine.map(\.id)) { await model.agentStatuses.load(mine.map(\.id), core: model.core) }
+    }
+
+    private func section<Empty: View>(_ title: String, _ list: [AgentProfile], id: String,
+                                      @ViewBuilder empty: () -> Empty) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            SectionHeader(title: title)
+            if list.isEmpty { empty() }
+            ForEach(list) { a in
+                NavigationLink(value: Route.agent(a.id)) { AgentLibraryCard(profile: a) }
+                    .buttonStyle(PressScaleStyle())
+                    .accessibilityIdentifier("agentRow.\(a.persona.handle)")
+            }
+        }
+        .accessibilityIdentifier(id)
     }
 }
 
 struct AgentLibraryCard: View {
     @Environment(AppModel.self) private var model
     let profile: AgentProfile
-    /// A real invite code from the relay (same as the share flow); nil until it arrives.
-    @State private var invite: InviteDto?
-    private var shareLink: String? { invite?.link }
+    private var status: AgentStatus? { model.agentStatuses.known[profile.id] }
+
     var body: some View {
         HStack(alignment: .center, spacing: 14) {
-            AgentAvatar(persona: profile.persona, size: 52, state: profile.pendingRequests > 0 ? .waiting : .idle)
-            VStack(alignment: .leading, spacing: 3) {
+            AgentAvatar(persona: profile.persona, size: 52, state: profile.ownerNotesPending > 0 ? .waiting : .idle)
+                .saturation(status == .revoked ? 0 : 1)
+            VStack(alignment: .leading, spacing: 5) {
                 Text(profile.persona.name).font(.headline).foregroundStyle(Palette.textPrimary)
-                Text(profile.persona.bio).font(.subheadline).foregroundStyle(Palette.textSecondary).lineLimit(2)
-                HStack(spacing: 6) {
-                    Text(profile.persona.isMine ? String(localized: "You") : String(localized: "\(profile.persona.ownerName ?? "")’s"))
-                        .foregroundStyle(Palette.textSecondary)
-                    Text("·").foregroundStyle(Palette.textTertiary)
-                    Text(profile.spaces.count == 1 ? String(localized: "In 1 chat") : String(localized: "In \(profile.spaces.count) chats"))
-                        .foregroundStyle(Palette.action)
-                }
-                .font(.caption.weight(.medium))
-                if profile.persona.isMine, let shareLink {
-                    Text(shareLink)
-                        .font(.caption2.monospaced())
-                        .foregroundStyle(Palette.textTertiary)
-                        .lineLimit(1)
+                Text(subtitle).font(.subheadline).foregroundStyle(Palette.textSecondary).lineLimit(1)
+                if status != nil || profile.ownerNotesPending > 0 {
+                    HStack(spacing: 6) {
+                        if let status { AgentStatusPill(status: status) }
+                        if profile.ownerNotesPending > 0 { AgentPendingBadge(count: profile.ownerNotesPending) }
+                    }
+                    .animation(.easeOut(duration: 0.2), value: status)
                 }
             }
             Spacer(minLength: 6)
-            if profile.persona.isMine, let shareLink, let url = URL(string: shareLink) {
-                ShareLink(item: url) {
-                    Image(systemName: "square.and.arrow.up")
-                        .font(.body.weight(.semibold))
-                        .foregroundStyle(Palette.action)
-                }
-                .buttonStyle(.plain)
-            }
-            if let s = profile.budgetSpentCents, let l = profile.budgetLimitCents {
-                BudgetRing(spent: s, limit: l, size: 30, lineWidth: 4)
-            }
             Image(systemName: "chevron.right").font(.caption.weight(.bold)).foregroundStyle(Palette.textTertiary)
         }
         .solidCard(radius: 20, padding: 14)
-        .task(id: profile.id) {
-            guard profile.persona.isMine, invite == nil else { return }
-            invite = try? await model.core.createAgentInvite(agentId: profile.id)
-        }
+        .contentShape(.rect)
+    }
+
+    private var subtitle: String {
+        let chats = profile.spaces.count == 1 ? String(localized: "In 1 chat") : String(localized: "In \(profile.spaces.count) chats")
+        if profile.persona.isMine { return chats }
+        return String(localized: "\(profile.persona.ownerName ?? String(localized: "Someone"))’s · \(chats)")
     }
 }
 

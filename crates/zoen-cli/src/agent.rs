@@ -425,9 +425,6 @@ async fn turn(
         definition: def,
     };
     let tools = SpaceTools::new(e, cx, space, &t.author.id, &t.id);
-    if !tools.names.is_empty() {
-        profile_of(e, &t.author.id).await;
-    }
     let done = tools.done();
     let out = match cx
         .runtime
@@ -531,20 +528,6 @@ fn owner_note(e: &Arc<RodaEngine>, cx: &Ctx, source: &str) -> Option<serde_json:
             .trim_end_matches("```");
         Some(serde_json::from_str(body.trim()).unwrap_or(serde_json::Value::Null))
     })
-}
-
-/// Waits a little for `who`'s profile to open on this device, so what the agent books in
-/// their name carries their name, not their @handle.
-async fn profile_of(e: &Arc<RodaEngine>, who: &str) {
-    let deadline = Instant::now() + Duration::from_secs(10);
-    while e
-        .get_profile(who.to_string())
-        .is_ok_and(|p| p.name.is_none())
-        && Instant::now() < deadline
-    {
-        e.wait_until_idle(1000).await;
-        tokio::time::sleep(Duration::from_millis(250)).await;
-    }
 }
 
 /// The mini-app tools of one chat, for one turn: calls run as the agent serving `serving`.

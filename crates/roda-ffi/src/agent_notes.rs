@@ -28,6 +28,24 @@ pub(crate) fn owner_agent_note(me: &str, author: Option<&Identity>, text: &str) 
     (obj.len() == 1 && KEYS.iter().any(|k| obj.contains_key(*k))).then(|| v.to_string())
 }
 
+/// How many of `agent`'s notes asking for `me` (`ask_owner`, `agent_proposal`) came after
+/// `me` last wrote, over a chat's `(author, message text)` entries, oldest first.
+pub(crate) fn pending_owner_notes<'a>(
+    me: &str,
+    agent: &Identity,
+    entries: impl DoubleEndedIterator<Item = (&'a str, Option<&'a str>)>,
+) -> u32 {
+    entries
+        .rev()
+        .take_while(|(author, _)| *author != me)
+        .filter(|(author, _)| *author == agent.id)
+        .filter_map(|(_, text)| owner_agent_note(me, Some(agent), text?))
+        .filter(|n| {
+            serde_json::from_str::<serde_json::Value>(n).is_ok_and(|v| v.get("booking").is_none())
+        })
+        .count() as u32
+}
+
 #[uniffi::export]
 impl RodaEngine {
     /// The card JSON for a message from `author_id`, only when that author is your own
@@ -88,6 +106,37 @@ mod tests {
     }
 
     const NOTE: &str = "```json\n{\"agent_proposal\":{\"source\":\"m1\",\"spec\":{}}}\n```";
+
+    #[test]
+    fn pending_notes_are_the_asks_since_the_owner_last_wrote() {
+        let bruno = Signer::generate();
+        let me = bruno.id();
+        let bot = owned_agent(&bruno);
+        let ask = "```json\n{\"ask_owner\":{\"question\":\"Posso?\"}}\n```";
+        let booking = "```json\n{\"booking\":{\"kind\":\"new\"}}\n```";
+        let a = bot.id.as_str();
+        let chat = |rows: &[(&'static str, Option<&'static str>)]| {
+            rows.iter()
+                .map(|(who, t)| (if *who == "me" { me.as_str() } else { a }, *t))
+                .collect::<Vec<_>>()
+        };
+        let rows = chat(&[
+            ("bot", Some(NOTE)),
+            ("me", Some("ok")),
+            ("bot", Some(ask)),
+            ("bot", Some("oi")),
+            ("bot", Some(booking)),
+            ("bot", None),
+            ("bot", Some(NOTE)),
+        ]);
+        assert_eq!(pending_owner_notes(&me, &bot, rows.into_iter()), 2);
+        let answered = chat(&[("bot", Some(ask)), ("me", Some("pode"))]);
+        assert_eq!(pending_owner_notes(&me, &bot, answered.into_iter()), 0);
+        // Someone else's agent never asks you for anything.
+        let theirs = owned_agent(&Signer::generate());
+        let rows = vec![(theirs.id.as_str(), Some(NOTE))];
+        assert_eq!(pending_owner_notes(&me, &theirs, rows.into_iter()), 0);
+    }
 
     #[test]
     fn only_the_owners_own_agent_gets_a_card() {

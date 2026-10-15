@@ -10064,6 +10064,146 @@
           }
         }
       }
+    },
+    "Couldn’t reach Zoen. Check your connection and try again.": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Não deu para falar com o Zoen. Confira sua conexão e tente de novo."
+          }
+        }
+      }
+    },
+    "Turned off": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Desligado"
+          }
+        }
+      }
+    },
+    "1 waiting for you": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "1 esperando você"
+          }
+        }
+      }
+    },
+    "%lld waiting for you": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld esperando você"
+          }
+        }
+      }
+    },
+    "Share link": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Compartilhar link"
+          }
+        }
+      }
+    },
+    "Resume": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Retomar"
+          }
+        }
+      }
+    },
+    "Turn off for good": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Desligar de vez"
+          }
+        }
+      }
+    },
+    "Turn off %@? It stops answering everyone, and its link stops working": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Desligar %@? Ele para de responder todo mundo e o link deixa de funcionar"
+          }
+        }
+      }
+    },
+    "This can’t be undone. To pause for a while, use Pause.": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Não dá para desfazer. Para parar só por um tempo, use Pausar."
+          }
+        }
+      }
+    },
+    "Agents you own": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Seus"
+          }
+        }
+      }
+    },
+    "In your chats": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Nas suas conversas"
+          }
+        }
+      }
+    },
+    "When you create one, it shows up here with its link to share.": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Quando você criar um, ele aparece aqui com o link para compartilhar."
+          }
+        }
+      }
+    },
+    "Someone": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Alguém"
+          }
+        }
+      }
+    },
+    "Talk": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Conversar"
+          }
+        }
+      }
     }
   },
   "version": "1.0"

@@ -179,11 +179,13 @@ struct AgentDetailView: View {
                     .frame(maxWidth: .infinity)
                     .padding(.top, 8)
 
+                    AgentCitizenActions(profile: p)
                     budget(p)
                     AgentActivitySection(agentId: agentId)
                     trust(p)
                     if !previews.isEmpty { decisionTable }
                     permissionsLinks(p)
+                    AgentDangerZone(profile: p)
                 }
                 .padding(.horizontal, 18)
                 .padding(.bottom, 30)

@@ -25,6 +25,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.navigation3.runtime.NavKey
@@ -33,42 +34,35 @@ import xyz.tironi.zoen.ZoenViewModel
 import xyz.tironi.zoen.core.*
 import xyz.tironi.zoen.data.AppState
 
+/** Seus agentes: the ones you own (with their status on the relay) and the ones you
+ *  talk to. Statuses are owner-only, so other people's agents show who owns them. */
 @Composable
 fun AgentsScreen(model: ZoenViewModel, state: AppState, navigate: (NavKey) -> Unit, back: () -> Unit) {
-    val context = LocalContext.current
+    val mine = state.agents.filter { it.persona.isMine }
+    val others = state.agents.filterNot { it.persona.isMine }
+    val statuses = rememberAgentStatuses(model, mine.map { it.persona.id }, state.revision)
     Scaffold(topBar = { ScreenBar(stringResource(R.string.agents), back) }) { padding ->
-        LazyColumn(Modifier.padding(padding), contentPadding = PaddingValues(24.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            if (state.agents.isEmpty()) item { EmptyState(stringResource(R.string.no_agents), stringResource(R.string.no_agents_detail)) }
-            items(state.agents, key = { it.persona.id }) { agent ->
-                val link by produceState<String?>(null, agent.persona.id) {
-                    if (agent.persona.isMine) value = try { model.repository.network { it.createAgentInvite(agent.persona.id) }.link } catch (e: Exception) { if (e is CancellationException) throw e; null }
-                }
-                Card(onClick = { navigate(Agent(agent.persona.id)) }, colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow)) {
-                    Column(Modifier.fillMaxWidth().padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                            Avatar(agent.persona, size = 54)
-                            Column(Modifier.weight(1f)) {
-                                Text(agent.persona.name, style = MaterialTheme.typography.titleLarge)
-                                Text(agent.persona.bio, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                                link?.let { link ->
-                                    Text(link, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
-                                }
-                            }
-                            link?.let { link ->
-                                IconButton(onClick = {
-                                    context.startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND).setType("text/plain").putExtra(Intent.EXTRA_TEXT, link), null))
-                                }) { Icon(Icons.Rounded.Share, contentDescription = stringResource(R.string.share)) }
-                            }
-                        }
-                        if (agent.budgetLimitCents != null) {
-                            val ratio = (agent.budgetSpentCents ?: 0).toFloat() / agent.budgetLimitCents!!.coerceAtLeast(1)
-                            LinearProgressIndicator(progress = { ratio.coerceIn(0f, 1f) }, modifier = Modifier.fillMaxWidth())
-                        } else Text(stringResource(R.string.agent_owned, agent.persona.ownerName.orEmpty()), style = MaterialTheme.typography.bodySmall)
-                    }
-                }
-            }
+        LazyColumn(Modifier.padding(padding).testTag("agents-list"), contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            item { SectionLabel(stringResource(R.string.agent_mine)) }
+            if (mine.isEmpty()) item { EmptyState(stringResource(R.string.no_agents), stringResource(R.string.no_agents_detail)) }
+            items(mine, key = { it.persona.id }) { agent -> AgentCitizenRow(agent, statuses[agent.persona.id]) { navigate(Agent(agent.persona.id)) } }
+            if (others.isNotEmpty()) item { SectionLabel(stringResource(R.string.agent_in_your_chats), Modifier.padding(top = 12.dp)) }
+            items(others, key = { it.persona.id }) { agent -> AgentCitizenRow(agent, null) { navigate(Agent(agent.persona.id)) } }
         }
     }
+}
+
+/** Each of your agents' status from the relay; missing while offline or still loading. */
+@Composable
+private fun rememberAgentStatuses(model: ZoenViewModel, ids: List<String>, revision: Long): Map<String, AgentStatus> {
+    val statuses by produceState(emptyMap<String, AgentStatus>(), ids, revision) {
+        val found = mutableMapOf<String, AgentStatus>()
+        for (id in ids) {
+            try { found[id] = model.repository.network { it.agentStatus(id) } } catch (e: Exception) { if (e is CancellationException) throw e }
+            value = found.toMap()
+        }
+    }
+    return statuses
 }
 
 fun trustLabel(level: TrustLevelDto): Int = when (level) {
@@ -89,9 +83,36 @@ fun AgentScreen(model: ZoenViewModel, state: AppState, id: String, back: () -> U
     }
     val activity by produceState<List<AgentActivityDto>>(emptyList(), id, state.revision) { value = model.repository.query { it.agentActivity(id) } }
     if (profile == null) return
+    val context = LocalContext.current
+    val unreachable = stringResource(R.string.agent_unreachable)
+    val mine = profile.persona.isMine
+    var reload by remember { mutableIntStateOf(0) }
+    var busy by remember { mutableStateOf(false) }
+    val status = rememberAgentStatuses(model, if (mine) listOf(id) else emptyList(), state.revision + reload)[id]
+    val link by produceState<String?>(null, id, mine) {
+        if (mine) value = try { model.repository.network { it.createAgentInvite(id) }.link } catch (e: Exception) { if (e is CancellationException) throw e; null }
+    }
+    fun control(action: AgentControl) {
+        if (busy) return
+        busy = true
+        model.launch {
+            try { model.repository.network { it.controlAgent(id, action) } }
+            catch (e: Exception) { if (e is CancellationException) throw e; android.widget.Toast.makeText(context, unreachable, android.widget.Toast.LENGTH_LONG).show() }
+            finally { busy = false; reload++ }
+        }
+    }
     Scaffold(topBar = { ScreenBar(profile.persona.name, back) }) { padding ->
         LazyColumn(Modifier.padding(padding), contentPadding = PaddingValues(24.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
             item { Avatar(profile.persona, size = 96); Text(profile.persona.name, style = MaterialTheme.typography.headlineMedium); Text(profile.persona.bio, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+            item {
+                AgentCitizenActions(
+                    profile, status, link, busy,
+                    onChat = { model.launch { val chat = state.spaces.firstOrNull { it.counterpart?.id == id }?.id ?: model.repository.change { it.startDirect(id) }; navigate?.invoke(Chat(chat)) } },
+                    onShare = { context.startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND).setType("text/plain").putExtra(Intent.EXTRA_TEXT, it), null)) },
+                    onPauseToggle = { pause -> control(if (pause) AgentControl.PAUSE else AgentControl.RESUME) },
+                    onRevoke = { control(AgentControl.REVOKE) },
+                )
+            }
             if (profile.persona.handle == "zoen") item { OnDeviceAiSettings(model) }
             if (profile.persona.handle != "zoen") item { AgentDrawingChooser(profile.persona) }
             if (profile.budgetLimitCents != null) item {
