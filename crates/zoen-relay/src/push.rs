@@ -31,6 +31,13 @@ pub fn valid_platform(p: &str) -> bool {
     matches!(p, APNS | APNS_SANDBOX | FCM)
 }
 
+/// Tokens go into provider URLs: only the characters APNs (hex) and FCM tokens use.
+pub fn valid_token(t: &str) -> bool {
+    t.len() <= 4096
+        && t.bytes()
+            .all(|b| b.is_ascii_alphanumeric() || matches!(b, b':' | b'_' | b'-'))
+}
+
 /// One device token to wake.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Target {
@@ -396,9 +403,9 @@ impl Pusher {
         Ok(match status {
             200 => Outcome::Sent,
             404 => Outcome::Gone,
-            400 if body.contains("UNREGISTERED") || body.contains("INVALID_ARGUMENT") => {
-                Outcome::Gone
-            }
+            // Only UNREGISTERED means a dead token; INVALID_ARGUMENT can be our own bad
+            // payload, and treating it as Gone would wipe every Android token.
+            400 | 403 if body.contains("UNREGISTERED") => Outcome::Gone,
             s => Outcome::Failed(format!("fcm {s}")),
         })
     }
@@ -527,6 +534,8 @@ mod tests {
     fn platforms() {
         assert!(valid_platform("fcm") && valid_platform("apns") && valid_platform("apns-sandbox"));
         assert!(!valid_platform("web"));
+        assert!(valid_token("a1:B_-") && valid_token(""));
+        assert!(!valid_token("abc/../x") && !valid_token("a?b"));
     }
 }
 
