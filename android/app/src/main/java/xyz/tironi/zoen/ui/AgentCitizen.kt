@@ -133,20 +133,29 @@ fun AgentCitizenActions(
             }
         }
         if (mine && status != null && status != AgentStatus.REVOKED) {
-            TextButton(onClick = { haptics.perform(ZoenFeedback.Open); confirm = true }, enabled = !busy, modifier = Modifier.testTag("agent-revoke")) {
-                Icon(Icons.Rounded.PowerSettingsNew, null, tint = MaterialTheme.colorScheme.error)
-                Spacer(Modifier.width(8.dp))
-                Text(stringResource(R.string.agent_turn_off), color = MaterialTheme.colorScheme.error)
+            // Final, so it asks right where you tapped, in plain words (like iOS).
+            AnimatedContent(confirm, transitionSpec = { fadeIn(tween(150)) togetherWith fadeOut(tween(150)) }, label = "revoke") { asking ->
+                if (!asking) TextButton(onClick = { haptics.perform(ZoenFeedback.Open); confirm = true }, enabled = !busy, modifier = Modifier.testTag("agent-revoke")) {
+                    Icon(Icons.Rounded.PowerSettingsNew, null, tint = MaterialTheme.colorScheme.error)
+                    Spacer(Modifier.width(8.dp))
+                    Text(stringResource(R.string.agent_turn_off), color = MaterialTheme.colorScheme.error)
+                } else Surface(color = MaterialTheme.colorScheme.errorContainer, shape = RoundedCornerShape(16.dp), modifier = Modifier.fillMaxWidth().testTag("agent-revoke-ask")) {
+                    Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                        Text(stringResource(R.string.agent_turn_off_question, profile.persona.name), style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onErrorContainer)
+                        Text(stringResource(R.string.agent_turn_off_detail), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onErrorContainer)
+                        Row(Modifier.align(Alignment.End), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            TextButton(onClick = { confirm = false; haptics.perform(ZoenFeedback.Dismiss) }) { Text(stringResource(R.string.cancel)) }
+                            Button(
+                                onClick = { confirm = false; haptics.perform(ZoenFeedback.Reject); onRevoke() },
+                                colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error, contentColor = MaterialTheme.colorScheme.onError),
+                                modifier = Modifier.testTag("agent-revoke-confirm"),
+                            ) { Text(stringResource(R.string.agent_turn_off)) }
+                        }
+                    }
+                }
             }
         }
     }
-    if (confirm) AlertDialog(
-        onDismissRequest = { confirm = false },
-        title = { Text(stringResource(R.string.agent_turn_off_question, profile.persona.name)) },
-        text = { Text(stringResource(R.string.agent_turn_off_detail)) },
-        confirmButton = { TextButton(onClick = { confirm = false; haptics.perform(ZoenFeedback.Reject); onRevoke() }, Modifier.testTag("agent-revoke-confirm")) { Text(stringResource(R.string.agent_turn_off), color = MaterialTheme.colorScheme.error) } },
-        dismissButton = { TextButton(onClick = { confirm = false; haptics.perform(ZoenFeedback.Dismiss) }) { Text(stringResource(R.string.cancel)) } },
-    )
 }
 
 @Composable
