@@ -108,6 +108,24 @@ impl Engine {
                 reason: t("mensagem vazia", "empty message"),
             });
         }
+        let reply = self.reply_ref(space, to, thread)?;
+        self.append(
+            space,
+            author,
+            EventBody::MessagePosted {
+                message: roda_types::new_id("msg"),
+                text: text.to_string(),
+                attaches,
+                reply: Some(reply),
+                forwarded: false,
+            },
+        )?;
+        let s = self.space_state(space)?;
+        Ok(self.entry_dto(s.entries.last().expect("just appended")))
+    }
+
+    /// Validate before storing a voice file, so a bad target cannot post it to the main chat.
+    pub(crate) fn reply_ref(&self, space: &str, to: &str, thread: bool) -> R<ReplyRef> {
         let s = self.space_state(space)?;
         let Some(target) = s.entries.iter().find(|e| e.id() == to) else {
             return Err(CoreError::NotFound {
@@ -131,24 +149,11 @@ impl Engine {
             Some(r) if thread && r.thread => r.to.clone(),
             _ => to.to_string(),
         };
-        let reply = if thread {
+        Ok(if thread {
             ReplyRef::thread(to)
         } else {
             ReplyRef::inline(to)
-        };
-        self.append(
-            space,
-            author,
-            EventBody::MessagePosted {
-                message: roda_types::new_id("msg"),
-                text: text.to_string(),
-                attaches,
-                reply: Some(reply),
-                forwarded: false,
-            },
-        )?;
-        let s = self.space_state(space)?;
-        Ok(self.entry_dto(s.entries.last().expect("just appended")))
+        })
     }
 
     /// The thread under `root`: the root message, then its replies oldest first.

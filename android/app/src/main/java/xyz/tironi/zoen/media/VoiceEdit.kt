@@ -156,7 +156,7 @@ data class VoiceNoteRef(val id: String, val ms: Long, val levels: List<Float>, v
     val marker: String get() = "⟦voice:$id:$ms:${levels.joinToString("") { (it.coerceIn(0f, 1f) * 15).roundToInt().toString(16) }}⟧" + if (transcript.isEmpty()) "" else "\n$transcript"
     companion object {
         /** A note sent as an audio file: `id` is its Item, played through the core. */
-        fun from(voice: xyz.tironi.zoen.core.VoiceNoteDto) = VoiceNoteRef(voice.itemId, voice.ms.toLong(), voice.levels, voice.transcript)
+        fun from(voice: xyz.tironi.zoen.core.VoiceNoteDto) = VoiceNoteRef(voice.itemId, voice.ms.coerceAtMost(Long.MAX_VALUE.toULong()).toLong(), voice.levels, voice.transcript)
 
         /** Backward compatibility: notes from builds that sent only a text marker. */
         fun parse(text: String): VoiceNoteRef? {

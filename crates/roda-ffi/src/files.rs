@@ -325,7 +325,7 @@ impl Engine {
             return Err(invalid("não é um áudio", "not audio"));
         }
         let me = self.me_id()?;
-        if !self.is_member(space, &me) {
+        if !self.state.writer(space, &me) {
             return Err(CoreError::Forbidden {
                 reason: t(
                     "só membros mandam mensagens de voz",
@@ -333,6 +333,9 @@ impl Engine {
                 ),
             });
         }
+        let reply = reply_to
+            .map(|to| self.reply_ref(space, to, thread))
+            .transpose()?;
         let item = new_id("it");
         let ext = match mime.split(';').next().unwrap_or_default() {
             "audio/webm" => "webm",
@@ -356,6 +359,7 @@ impl Engine {
             ms,
             levels: roda_types::VoiceMeta::encode(levels),
             transcript: transcript.trim().to_string(),
+            reply,
         });
         self.store
             .set_meta(&format!("file_key:{item}"), &hex::encode(key))?;
@@ -370,9 +374,6 @@ impl Engine {
             },
         )?;
         self.index_dirty = true;
-        if let Some(to) = reply_to {
-            return self.reply_with(space, &me, "", Some(item), to, thread);
-        }
         let s = self.space_state(space)?;
         Ok(self.entry_dto(s.entries.last().expect("just appended")))
     }
@@ -437,9 +438,14 @@ impl Engine {
         self.store
             .set_meta(&format!("file_key:{item}"), &hex::encode(key))?;
         let (name, mime) = format.unwrap_or((&cur.name, &cur.mime));
-        let doc = self.file_doc(
+        let mut doc = self.file_doc(
             &space, &key, name, &cur.path, mime, bytes, thumbnail, &prior,
         )?;
+        // Renaming or changing a preview keeps the same audio. A byte edit invalidates
+        // its timings and transcript (removed words must not survive in metadata).
+        if doc.sha256 == cur.sha256 && doc.mime.starts_with("audio/") {
+            doc.voice = cur.voice.clone();
+        }
         if doc.sha256 == cur.sha256
             && doc.name == cur.name
             && doc.mime == cur.mime

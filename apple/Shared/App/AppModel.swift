@@ -490,12 +490,9 @@ final class AppModel {
             try core.sendVoiceNote(spaceId: spaceId, bytes: audio, mime: "audio/mp4", ms: UInt64(max(0, clip.ms)),
                                    levels: levels, transcript: text, replyTo: replyTo, thread: thread)
         }) else { return }
-        // Keep my own copy under the note's id so it plays at once, before any download.
-        if let item = entry.voice?.itemId {
-            let mine = VoiceStore.url(item)
-            VoiceStore.delete(mine)
-            if (try? FileManager.default.moveItem(at: clip.url, to: mine)) == nil { VoiceStore.delete(clip.url) }
-        }
+        if pendingVoiceFlight == clip.id { pendingVoiceFlight = entry.voice?.itemId }
+        // The core keeps the local bytes and selects the latest signed file version.
+        VoiceStore.delete(clip.url)
         Haptics.send()
     }
 

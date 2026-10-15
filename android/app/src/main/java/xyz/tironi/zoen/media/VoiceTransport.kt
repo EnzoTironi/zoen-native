@@ -13,24 +13,21 @@ object VoiceTransport {
      * A voice note is an end-to-end encrypted audio file (the core seals it in chunks and
      * queues the pieces for the relay like any file) tagged with its length, waveform and
      * transcript, so the other person's phone, Mac and web can play it. One core call: the
-     * file and, for a reply, the message pointing at it.
+     * file and its reply/thread destination travel in the same signed event.
      */
     suspend fun send(repository: ZoenRepository, clip: VoiceClip, transcript: String, space: String, reply: String? = null, thread: Boolean = false): TimelineEntry {
         val bytes = withContext(Dispatchers.IO) { clip.file.readBytes() }
         val entry = repository.change { core ->
             core.sendVoiceNote(space, bytes, "audio/mp4", clip.ms.coerceAtLeast(0).toULong(), clip.detail, transcript, reply, thread)
         }
-        // Keep my copy under the note's id so it plays at once, before any download.
-        withContext(Dispatchers.IO) {
-            val id = entry.voice?.itemId
-            if (id == null || !clip.file.renameTo(File(clip.file.parentFile, "$id.m4a"))) clip.delete()
-        }
+        // The core already has the bytes locally. Read through it so later file versions
+        // cannot be shadowed by an unversioned copy of the original recording.
+        withContext(Dispatchers.IO) { clip.delete() }
         return entry
     }
 
-    /** The audio: my own copy, else the encrypted file from the core (`null` until it arrives). */
+    /** The current audio from the core (`null` until its encrypted pieces arrive). */
     suspend fun localFile(context: Context, repository: ZoenRepository, reference: VoiceNoteRef): File? = withContext(Dispatchers.IO) {
-        File(VoiceRecorder.directory(context), "${reference.id}.m4a").takeIf { it.isFile }?.let { return@withContext it }
         val bytes = repository.query { core ->
             runCatching { core.fileBytes(reference.id, null) }.getOrNull()
                 ?: runCatching { core.media(reference.id) }.getOrNull()

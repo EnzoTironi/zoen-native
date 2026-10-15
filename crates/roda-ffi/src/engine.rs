@@ -323,18 +323,29 @@ impl State {
                 forwarded,
                 ..
             } => {
-                let voice_attached = attaches.as_ref().is_some_and(|i| {
-                    self.items.get(i).is_some_and(
-                        |it| matches!(&it.current().content, ItemContent::File(d) if d.is_voice()),
-                    )
-                });
+                // Older Android builds posted the file, then a marker naming its Item.
+                let legacy_voice = text
+                    .strip_prefix("⟦voice:")
+                    .and_then(|body| body.split_once(':'))
+                    .map(|(item, _)| item);
+                let voice_item = attaches.as_deref().or(legacy_voice);
+                let voice_attached = !forwarded
+                    && ((text.is_empty() && reply.is_some()) || legacy_voice.is_some())
+                    && self.writer(&e.space, &e.author)
+                    && voice_item.is_some_and(|i| {
+                        self.items.get(i).is_some_and(|it| {
+                            it.space == e.space
+                                && it.versions.first().is_some_and(|v| v.author == e.author)
+                                && matches!(&it.current().content, ItemContent::File(d) if d.is_voice())
+                        })
+                    });
                 if let Some(s) = self.spaces.get_mut(&e.space) {
-                    // A voice reply posts the note, then this message pointing at it: show it
-                    // once, where the reply is.
-                    if let Some(item) = attaches.as_ref().filter(|_| voice_attached) {
+                    // Only the author's reply/legacy marker replaces the implicit file
+                    // message. Forwarding must leave the original entry in place.
+                    if let Some(item) = voice_item.filter(|_| voice_attached) {
                         if let Some(at) = s.entries.iter().rposition(|x| {
                             x.author == e.author
-                                && matches!(&x.body, EntryBody::Message { text, attaches: Some(a), reply: None, .. } if a == item && text.is_empty())
+                                && matches!(&x.body, EntryBody::Message { text, attaches: Some(a), reply: None, marks } if a == item && text.is_empty() && !marks.forwarded)
                         }) {
                             s.entries.remove(at);
                         }
@@ -422,7 +433,7 @@ impl State {
                             s.entries.push(entry(EntryBody::Message {
                                 text: String::new(),
                                 attaches: Some(item.clone()),
-                                reply: None,
+                                reply: doc.voice.as_ref().and_then(|meta| meta.reply.clone()),
                                 marks: MessageMarks::default(),
                             }));
                             s.last_at_ms = s.last_at_ms.max(e.at_ms);
@@ -1696,6 +1707,20 @@ impl Engine {
                 reason: t(
                     "só membros escrevem neste Espaço",
                     "only members can write in this Space",
+                ),
+            });
+        }
+        // An attachment id only resolves in its own Space. Forwarding voice across
+        // Spaces needs a fresh file and chunk keys for the destination's audience.
+        if from_space != to_space
+            && attaches
+                .as_deref()
+                .is_some_and(|item| self.voice_of(from_space, item).is_some())
+        {
+            return Err(CoreError::Invalid {
+                reason: t(
+                    "esta mensagem de voz ainda não pode ser encaminhada a outra conversa",
+                    "this voice message cannot be forwarded to another chat yet",
                 ),
             });
         }

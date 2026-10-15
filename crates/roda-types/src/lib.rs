@@ -319,6 +319,9 @@ pub struct VoiceMeta {
     /// Transcribed on the sender's device (may be empty).
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub transcript: String,
+    /// Keep the note and its reply/thread destination in the same signed event.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reply: Option<ReplyRef>,
 }
 
 impl VoiceMeta {
@@ -326,6 +329,7 @@ impl VoiceMeta {
     pub fn bars(&self) -> Vec<f32> {
         self.levels
             .chars()
+            .take(160)
             .filter_map(|c| c.to_digit(16))
             .map(|d| d as f32 / 15.0)
             .collect()
@@ -348,10 +352,10 @@ impl FileDoc {
     /// A voice note: tagged as one, or an audio file recorded under `VoiceNotes/` (older
     /// web builds sent recordings named "Mensagem de voz.*" without the tag).
     pub fn is_voice(&self) -> bool {
-        self.voice.is_some()
-            || (self.mime.starts_with("audio/")
-                && (self.path.starts_with("VoiceNotes/")
-                    || self.name.starts_with("Mensagem de voz")))
+        self.mime.starts_with("audio/")
+            && (self.voice.is_some()
+                || self.path.starts_with("VoiceNotes/")
+                || self.name.starts_with("Mensagem de voz"))
     }
 }
 
@@ -923,5 +927,37 @@ mod tests {
                 "new optional fields must not alter historical signed body bytes"
             );
         }
+    }
+
+    #[test]
+    fn historical_file_bytes_are_preserved_without_voice_metadata() {
+        let bytes =
+            r#"{"name":"song.mp3","mime":"audio/mpeg","bytes":3,"sha256":"abc","chunks":[]}"#;
+        let mut file: FileDoc = serde_json::from_str(bytes).unwrap();
+        assert!(file.voice.is_none());
+        assert!(!file.is_voice());
+        assert_eq!(serde_json::to_string(&file).unwrap(), bytes);
+        file.voice = Some(VoiceMeta::default());
+        assert!(file.is_voice());
+        file.mime = "image/png".into();
+        assert!(
+            !file.is_voice(),
+            "a tag cannot turn a non-audio file into audio"
+        );
+        let old_meta = r#"{"ms":1200,"levels":"08f","transcript":"Original"}"#;
+        let meta: VoiceMeta = serde_json::from_str(old_meta).unwrap();
+        assert!(meta.reply.is_none());
+        assert_eq!(serde_json::to_string(&meta).unwrap(), old_meta);
+    }
+
+    #[test]
+    fn voice_waveforms_are_bounded_on_send_and_receive() {
+        let meta = VoiceMeta {
+            levels: "f".repeat(1000),
+            ..VoiceMeta::default()
+        };
+        assert_eq!(meta.bars(), vec![1.0; 160]);
+        assert_eq!(VoiceMeta::encode(&vec![0.5; 1000]).len(), 160);
+        assert_eq!(VoiceMeta::encode(&[f32::NAN, -1.0, 2.0]), "00f");
     }
 }
