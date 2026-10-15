@@ -1074,7 +1074,8 @@ fn sp_slot(hh: u32, mm: u32) -> i64 {
         .with_timezone(&tz)
         .date_naive()
         + chrono::Days::new(2);
-    while day.weekday() == chrono::Weekday::Sun {
+    // Weekdays only: Saturday closes at 13:00, so afternoon slots would fail on Thursdays.
+    while matches!(day.weekday(), chrono::Weekday::Sat | chrono::Weekday::Sun) {
         day = day + chrono::Days::new(1);
     }
     tz.from_local_datetime(&day.and_hms_opt(hh, mm, 0).unwrap())
