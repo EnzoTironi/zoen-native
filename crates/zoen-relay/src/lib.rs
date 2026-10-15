@@ -307,6 +307,7 @@ pub async fn serve(cfg: Config) -> anyhow::Result<()> {
             let _ = tcp.set_nodelay(true);
         });
     tracing::info!(bind = %cfg.bind, relay = %cfg.relay_name, "zoen-relay listening");
+    let last = state.clone();
     axum::serve(
         listener,
         app.into_make_service_with_connect_info::<std::net::SocketAddr>(),
@@ -319,6 +320,10 @@ pub async fn serve(cfg: Config) -> anyhow::Result<()> {
         }
     })
     .await?;
+    // Sessions have drained: write the receipts they raised, so a deploy loses none.
+    if let Err(e) = last.receipts.flush(&last.pool, &last.metrics).await {
+        tracing::warn!(error = %e, "receipt flush at shutdown failed");
+    }
     Ok(())
 }
 

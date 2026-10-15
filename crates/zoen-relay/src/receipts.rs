@@ -24,6 +24,11 @@ type Key = (String, String);
 #[derive(Default)]
 pub struct Receipts {
     pending: Mutex<HashMap<Key, (u64, u64)>>,
+    /// The batch being written right now: still read by replays until it commits, so a
+    /// sync during a flush can't miss a watermark that is in neither the table nor `pending`.
+    inflight: Mutex<HashMap<Key, (u64, u64)>>,
+    /// One flush at a time (the timer and shutdown can overlap).
+    flushing: tokio::sync::Mutex<()>,
 }
 
 impl Receipts {
@@ -50,7 +55,8 @@ impl Receipts {
             .map(|(who, d, r)| (who, (d, r)))
             .collect();
         let p = self.pending.lock().unwrap_or_else(|e| e.into_inner());
-        for ((s, who), (d, r)) in p.iter() {
+        let f = self.inflight.lock().unwrap_or_else(|e| e.into_inner());
+        for ((s, who), (d, r)) in p.iter().chain(f.iter()) {
             if s == space {
                 let w = rows.entry(who.clone()).or_default();
                 w.0 = w.0.max(*d as i64);
@@ -62,13 +68,31 @@ impl Receipts {
 
     /// Writes everything pending; on failure the batch is folded back in for the next try.
     pub async fn flush(&self, pool: &PgPool, metrics: &Metrics) -> Result<usize, sqlx::Error> {
+        let _one = self.flushing.lock().await;
         let batch: Vec<(Key, (u64, u64))> = {
             let mut p = self.pending.lock().unwrap_or_else(|e| e.into_inner());
             if p.is_empty() {
                 return Ok(0);
             }
-            std::mem::take(&mut *p).into_iter().collect()
+            let taken = std::mem::take(&mut *p);
+            let mut f = self.inflight.lock().unwrap_or_else(|e| e.into_inner());
+            f.clone_from(&taken);
+            taken.into_iter().collect()
         };
+        let result = self.write(pool, metrics, &batch).await;
+        self.inflight
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .clear();
+        result
+    }
+
+    async fn write(
+        &self,
+        pool: &PgPool,
+        metrics: &Metrics,
+        batch: &[(Key, (u64, u64))],
+    ) -> Result<usize, sqlx::Error> {
         let n = batch.len();
         for (i, chunk) in batch.chunks(CHUNK).enumerate() {
             if let Err(e) = crate::db::raise_receipts(pool, chunk).await {
