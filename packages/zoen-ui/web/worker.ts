@@ -23,6 +23,9 @@ function parseOperation(input: unknown): CoreOperation {
     case 'bootstrap': return { kind: 'bootstrap' };
     case 'receive': return { kind: 'receive', bytes: bytes(value.bytes), now: integer(value.now) };
     case 'queue_message': return { kind: 'queue_message', space: string(value.space), text: string(value.text), now: integer(value.now) };
+    case 'queue_post': return { kind: 'queue_post', space: string(value.space), text: string(value.text), replyTo: string(value.replyTo), thread: value.thread === true, forwarded: value.forwarded === true, now: integer(value.now) };
+    case 'queue_annotation': return { kind: 'queue_annotation', space: string(value.space), target: string(value.target), note: string(value.note), now: integer(value.now) };
+    case 'mark_read': return { kind: 'mark_read', space: string(value.space) };
     case 'queue_join': return { kind: 'queue_join', space: string(value.space), role: string(value.role), code: string(value.code), now: integer(value.now) };
     default: throw new Error('Invalid browser core operation.');
   }
@@ -53,6 +56,9 @@ function run(operation: CoreOperation): string | Uint8Array {
     case 'bootstrap': return restored().bootstrap();
     case 'receive': return restored().receive(operation.bytes, operation.now);
     case 'queue_message': return restored().queue_message(operation.space, operation.text, operation.now);
+    case 'queue_post': return restored().queue_post(operation.space, operation.text, operation.replyTo || undefined, operation.thread, operation.forwarded, operation.now);
+    case 'queue_annotation': return restored().queue_annotation(operation.space, operation.target, operation.note, operation.now);
+    case 'mark_read': return restored().mark_read(operation.space);
     case 'queue_join': return restored().queue_join(operation.space, operation.role, operation.code, operation.now);
     default: { const exhaustive: never = operation; throw new Error(`Unknown operation ${exhaustive}`); }
   }
