@@ -109,6 +109,8 @@ function App() {
   const mine = state.bookings
     .filter((b) => b.byId === state.viewer?.id && b.status !== 'cancelled')
     .sort((a, b) => a.startMs - b.startMs);
+  // Booked at the same moment as someone else, who got the slot first.
+  const taken = state.bookings.filter((b) => b.byId === state.viewer?.id && b.conflict && b.endMs > Date.now());
   const requests = staff ? state.events.filter((e) => e.status === 'open') : [];
   const closed = !(state.weeklyHours[String(weekday(day))]?.length);
 
@@ -186,16 +188,19 @@ function App() {
                     {requests.map((ev) => {
                       const b = state.bookings.find((x) => x.id === ev.bookingId);
                       if (!b) return null;
+                      // A cancel request and an hours flag both end in keep or cancel.
                       const cancelAsk = ev.kind === 'cancel_request';
+                      const outside = ev.kind === 'outside_hours';
+                      const keepOrCancel = cancelAsk || outside;
                       return (
                         <div key={ev.id} className="mine-row">
                           <div>
                             <b>{b.serviceName}{nameOf(b) && ` · ${nameOf(b)}`}</b>
-                            <span>{when(b.startMs)}{cancelAsk && ` · ${L('Wants to cancel')}`}</span>
+                            <span>{when(b.startMs)}{cancelAsk && ` · ${L('Wants to cancel')}`}{outside && ` · ${L('Outside the new hours')}`}</span>
                           </div>
                           <div className="row-actions">
-                            <Pill tone="glass" onClick={() => resolve(b.id, cancelAsk ? 'keep' : 'cancel')}>{L(cancelAsk ? 'Keep' : 'Decline')}</Pill>
-                            <Pill tone="brand" style={{ background: accent }} onClick={() => resolve(b.id, cancelAsk ? 'cancel' : 'confirm')}>{L(cancelAsk ? 'Cancel booking' : 'Confirm')}</Pill>
+                            <Pill tone="glass" onClick={() => resolve(b.id, keepOrCancel ? 'keep' : 'cancel')}>{L(keepOrCancel ? 'Keep' : 'Decline')}</Pill>
+                            <Pill tone="brand" style={{ background: accent }} onClick={() => resolve(b.id, keepOrCancel ? 'cancel' : 'confirm')}>{L(keepOrCancel ? 'Cancel booking' : 'Confirm')}</Pill>
                           </div>
                         </div>
                       );
@@ -260,6 +265,11 @@ function App() {
 
             <section>
               <h2 className="section-title">{L('My bookings')}</h2>
+              {taken.map((b) => (
+                <div key={b.id} className="empty" role="status">
+                  {L('Someone booked this time just before you')}{`: ${b.serviceName}, ${when(b.startMs)}. `}{L('Pick another time.')}
+                </div>
+              ))}
               {mine.length === 0 ? (
                 <div className="empty">{L('Nothing booked yet')}</div>
               ) : (
