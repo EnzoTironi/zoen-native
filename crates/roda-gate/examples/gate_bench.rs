@@ -3,6 +3,12 @@
 //!   GATE_PROVIDERS="kev-0.8b=http://127.0.0.1:8009#kev-latest,laya-typed=http://127.0.0.1:8010#typed-decisions" \
 //!   cargo run -p roda-gate --example gate_bench
 //!
+//! Cloudflare Clef on Workers AI takes `cloudflare` as its URL, with CLOUDFLARE_ACCOUNT_ID and
+//! CLOUDFLARE_API_TOKEN (Workers AI read) in the environment:
+//!
+//!   GATE_FIXTURES=heldout GATE_PROVIDERS="clef=cloudflare#clef,clef-flash=cloudflare#clef-flash" \
+//!   cargo run -p roda-gate --example gate_bench
+//!
 //! Bearer tokens (Jev, Laya Studio) come from GATE_BEARER_<NAME> in a dev .env; never from
 //! the repo. Reports, per provider: model alone and gate (hard rules + model), with the
 //! default thresholds and the "escalate to ask" ones.
@@ -208,6 +214,26 @@ fn main() {
         ))
         .ok();
         let (n, u, m, b) = (name.to_string(), url, model, bearer);
+        if u == "cloudflare" {
+            let var = |k: &str| std::env::var(k).unwrap_or_else(|_| panic!("{k} is not set"));
+            let (account, token) = (var("CLOUDFLARE_ACCOUNT_ID"), var("CLOUDFLARE_API_TOKEN"));
+            let model = match m.as_deref() {
+                Some("clef-flash") => ClefModel::Flash,
+                _ => ClefModel::Clef,
+            };
+            providers.push((
+                n,
+                Box::new(move || {
+                    Box::new(Clef {
+                        transport: Arc::new(Curl),
+                        account: account.clone(),
+                        token: token.clone(),
+                        model,
+                    }) as Box<dyn DecisionProvider>
+                }),
+            ));
+            continue;
+        }
         providers.push((
             n.clone(),
             Box::new(move || {

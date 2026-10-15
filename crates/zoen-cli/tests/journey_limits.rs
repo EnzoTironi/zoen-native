@@ -51,7 +51,9 @@ async fn a_fast_sender_is_slowed_down_and_loses_nothing() {
 /// before the relay spends anything on signatures or storage.
 #[tokio::test]
 async fn a_publish_flood_is_refused_with_a_retry_hint() {
-    let w = World::with_env("limits_flood", &[("ZOEN_LIMITS", "publish_device=5/s:5")]).await;
+    // A refill slow enough that no token comes back during the burst, however slow the
+    // machine: exactly the first five publishes reach the space check, the rest are refused.
+    let w = World::with_env("limits_flood", &[("ZOEN_LIMITS", "publish_device=5/m:5")]).await;
     let mut m = RawClient::connect(&w.relay_url(), "mallory").await;
     let mut answers = Vec::new();
     for i in 0..12 {
@@ -61,9 +63,14 @@ async fn a_publish_flood_is_refused_with_a_retry_hint() {
         .iter()
         .filter(|a| a.starts_with("slow down"))
         .collect();
-    assert!(slowed.len() >= 6, "{answers:?}");
+    assert!(
+        answers[..5].iter().all(|a| a == "unknown space"),
+        "{answers:?}"
+    );
+    assert_eq!(slowed.len(), 7, "{answers:?}");
+    // One token per 12 s: the hint must point at the next refill, not now and not later.
     let hint = retry_hint(slowed[0]).expect("a retry hint");
-    assert!(hint.as_millis() > 0 && hint.as_secs() < 2, "{hint:?}");
+    assert!(hint.as_millis() > 0 && hint.as_secs() <= 12, "{hint:?}");
 }
 
 /// Accounts per address, handle lookups per account, and handshakes per address.

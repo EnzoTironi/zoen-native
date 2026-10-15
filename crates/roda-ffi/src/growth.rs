@@ -23,10 +23,10 @@ const META_EXPOSURES: &str = "growth:exposures";
 
 #[derive(Debug, Clone, PartialEq, uniffi::Record)]
 pub struct AcquisitionDto {
-    /// `friend`, `space`, `campaign` or `organic`.
+    /// `friend`, `space`, `agent`, `campaign` or `organic`.
     pub kind: String,
     pub campaign: Option<String>,
-    /// The friend's handle or the Space invite code; stays on this device.
+    /// The friend's handle, Space code, or agent handle/code; stays on this device.
     pub target: Option<String>,
 }
 
@@ -36,7 +36,7 @@ pub struct OnboardingPlanDto {
     /// Screen ids in order (`hello`, `profile`, `areas`, `plan`, `agents`, `notifications`,
     /// `location`, `done`); the app skips ids it doesn't know.
     pub steps: Vec<String>,
-    /// `home`, `chat_with_inviter` or `space`.
+    /// `home`, `chat_with_inviter`, `space` or `agent`.
     pub landing: String,
     pub landing_target: Option<String>,
     /// Copy overrides for this flow and arm, `{target}` already filled in.

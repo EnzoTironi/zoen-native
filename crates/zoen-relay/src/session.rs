@@ -19,8 +19,8 @@ use axum::extract::ws::{Message, WebSocket};
 use futures_util::{SinkExt, StreamExt};
 use roda_log::{device_cert_message, verify_sig};
 use roda_proto::{
-    auth_message, negotiate, normalize_handle, ClientFrame, ErrorCode, Op, Reply, ServerFrame,
-    MIN_PROTOCOL_VERSION, PROTOCOL_VERSION,
+    auth_message, negotiate, normalize_handle, AgentRequest, ClientFrame, ErrorCode, Op, Reply,
+    ServerFrame, MIN_PROTOCOL_VERSION, PROTOCOL_VERSION,
 };
 use roda_types::{EventBody, IdentityKind};
 use tokio::sync::{mpsc, Notify};
@@ -771,6 +771,48 @@ impl Session {
         Metrics::inc(&self.st.metrics.ephemeral_forwarded);
     }
 
+    /// Agent citizens: the runtime's own state and cursors, or an owner's control.
+    async fn agent(&self, req: AgentRequest) -> Result<Reply, String> {
+        use crate::agents;
+        let pool = &self.st.pool;
+        let me = &self.identity;
+        let r = match req {
+            AgentRequest::State => {
+                let member_of = self
+                    .st
+                    .log
+                    .spaces_of(me)
+                    .await
+                    .map_err(|_| "membership unavailable")?;
+                return agents::state(pool, me, &self.device, &member_of)
+                    .await
+                    .map(Reply::AgentState)
+                    .map_err(|e| e.to_string());
+            }
+            AgentRequest::Advance { space, seq } => {
+                if !matches!(self.st.log.role(&space, me).await, Ok(Some(_))) {
+                    return Err(agents::AgentCitizenError::NotMember.to_string());
+                }
+                agents::advance_cursor(pool, me, &self.device, &space, seq).await
+            }
+            AgentRequest::Define {
+                agent,
+                version,
+                kind,
+                definition,
+            } => {
+                if definition.len() > 64 * 1024 {
+                    return Err("definition too large".into());
+                }
+                agents::define(pool, me, &self.device, &agent, version, &kind, &definition).await
+            }
+            AgentRequest::Control { agent, action } => {
+                agents::control(pool, me, &agent, action).await
+            }
+        };
+        r.map(|()| Reply::Done).map_err(|e| e.to_string())
+    }
+
     async fn request(
         &mut self,
         op: Op,
@@ -855,6 +897,7 @@ impl Session {
                 }
                 Ok(Reply::Done)
             }
+            Op::Agent(req) => self.agent(req).await,
             Op::Devices => Ok(Reply::Devices(
                 db::devices_of(pool, &self.identity)
                     .await
@@ -921,15 +964,23 @@ impl Session {
             }
             Op::CreateInvite {
                 space,
+                agent,
                 role,
                 max_uses,
                 ttl_secs,
             } => {
-                let invite = self
-                    .st
-                    .log
-                    .create_invite(&self.identity, &space, role, max_uses, ttl_secs)
-                    .await?;
+                let invite = if let Some(agent) = agent {
+                    self.own_agent(&agent).await?;
+                    self.st
+                        .log
+                        .create_agent_invite(&self.identity, &agent, max_uses, ttl_secs)
+                        .await?
+                } else {
+                    self.st
+                        .log
+                        .create_invite(&self.identity, &space, role, max_uses, ttl_secs)
+                        .await?
+                };
                 self.st.analytics.count("invites_created", 1);
                 Ok(Reply::Invite(invite))
             }
@@ -1061,26 +1112,78 @@ impl Session {
                 ))
             }
             Op::PreviewInvite { code } => {
-                self.st
-                    .limits
-                    .invite_account
-                    .check(&self.identity)
-                    .map_err(limits::slow_down)?;
+                self.spend_invite_guess()?;
                 let i = self.st.log.preview_invite(&code).await?;
-                let inviter = db::profiles(pool, &[i.inviter])
-                    .await
-                    .map_err(|e| e.to_string())?
-                    .into_iter()
-                    .next();
-                Ok(Reply::Preview(roda_proto::InvitePreview {
-                    space: i.space,
-                    role: i.role,
-                    title: i.title,
-                    members: i.members,
-                    inviter,
-                }))
+                self.preview(i).await
+            }
+            Op::RedeemAgentInvite { code } => {
+                self.spend_invite_guess()?;
+                let i = self
+                    .st
+                    .log
+                    .redeem_agent_invite(&code, &self.identity)
+                    .await?;
+                self.st.analytics.count("agent_invites_redeemed", 1);
+                self.preview(i).await
+            }
+            Op::RevokeAgentInvite { agent } => {
+                self.own_agent(&agent).await?;
+                self.st.log.revoke_agent_invite(&agent).await?;
+                Ok(Reply::Done)
             }
         }
+    }
+
+    fn spend_invite_guess(&self) -> Result<(), String> {
+        self.st
+            .limits
+            .invite_account
+            .check(&self.identity)
+            .map_err(limits::slow_down)
+    }
+
+    /// Only an agent's owner shares or revokes its link.
+    async fn own_agent(&self, agent: &str) -> Result<(), String> {
+        let profiles = db::profiles(&self.st.pool, &[agent.to_string()])
+            .await
+            .map_err(|e| e.to_string())?;
+        let profile = profiles.first().ok_or("unknown agent")?;
+        if profile.kind != IdentityKind::Agent
+            || profile.owner.as_deref() != Some(self.identity.as_str())
+        {
+            return Err("only the owner shares an agent".into());
+        }
+        Ok(())
+    }
+
+    async fn preview(&self, i: crate::log::InviteInfo) -> Result<Reply, String> {
+        let mut ids = vec![i.inviter.clone()];
+        ids.extend(i.agent.clone());
+        let found = db::profiles(&self.st.pool, &ids)
+            .await
+            .map_err(|e| e.to_string())?;
+        let inviter = found.iter().find(|p| p.id == i.inviter).cloned();
+        let agent = i
+            .agent
+            .as_ref()
+            .and_then(|id| found.iter().find(|p| p.id == *id).cloned())
+            .map(Box::new);
+        if i.agent.is_some() && agent.is_none() {
+            return Err("unknown agent".into());
+        }
+        let (kind, title) = match &agent {
+            Some(a) => ("agent", a.name.clone()),
+            None => ("space", i.title),
+        };
+        Ok(Reply::Preview(roda_proto::InvitePreview {
+            space: i.space,
+            role: i.role,
+            title,
+            members: i.members,
+            inviter,
+            kind: kind.into(),
+            agent,
+        }))
     }
 
     /// What the metrics learn from a sequenced envelope: its kind and who it went to,
