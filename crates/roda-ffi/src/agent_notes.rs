@@ -2,6 +2,7 @@
 //! power (approve an agent, release a gated draft), so the apps render them as cards only
 //! when the author is the owner's own agent; from anyone else they stay plain text.
 
+use roda_log::agent_owner::profile_authorized;
 use roda_types::{Identity, IdentityKind};
 
 use crate::RodaEngine;
@@ -12,7 +13,13 @@ const KEYS: [&str; 2] = ["agent_proposal", "ask_owner"];
 /// The note's JSON when `author` is an Agent owned by `me` and `text` is one fenced note.
 pub(crate) fn owner_agent_note(me: &str, author: Option<&Identity>, text: &str) -> Option<String> {
     let a = author?;
-    if a.kind != IdentityKind::Agent || a.owner.as_deref() != Some(me) || a.id == me {
+    // The stored `owner` field alone is a claim; only a profile whose ownership proof
+    // verifies (signed by one of the owner's certified devices) may speak with power.
+    if a.kind != IdentityKind::Agent
+        || a.owner.as_deref() != Some(me)
+        || a.id == me
+        || !profile_authorized(a)
+    {
         return None;
     }
     let body = text.trim().strip_prefix("```json")?.strip_suffix("```")?;
@@ -38,6 +45,17 @@ impl RodaEngine {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use roda_log::{agent_owner::authorize, Author, Signer};
+
+    /// An agent profile carrying a real ownership proof from `owner`'s certified device.
+    fn owned_agent(owner: &Signer) -> Identity {
+        let agent = Signer::generate().id();
+        let proof = authorize(&Author::device(owner, Signer::generate()), &agent).unwrap();
+        Identity {
+            owner_proof: Some(Box::new(proof)),
+            ..id(&agent, IdentityKind::Agent, Some(&owner.id()))
+        }
+    }
 
     fn id(id: &str, kind: IdentityKind, owner: Option<&str>) -> Identity {
         Identity {
@@ -57,21 +75,38 @@ mod tests {
 
     #[test]
     fn only_the_owners_own_agent_gets_a_card() {
-        let mine = id("bot", IdentityKind::Agent, Some("bruno"));
-        assert!(owner_agent_note("bruno", Some(&mine), NOTE).is_some());
+        let bruno = Signer::generate();
+        let me = bruno.id();
+        let mine = owned_agent(&bruno);
+        assert!(owner_agent_note(&me, Some(&mine), NOTE).is_some());
         let ask = "```json\n{\"ask_owner\":{\"draft\":\"x\"}}\n```";
-        assert!(owner_agent_note("bruno", Some(&mine), ask).is_some());
+        assert!(owner_agent_note(&me, Some(&mine), ask).is_some());
 
         // Someone else's agent, a person, an unknown author: plain text.
-        let theirs = id("bot2", IdentityKind::Agent, Some("carla"));
-        assert!(owner_agent_note("bruno", Some(&theirs), NOTE).is_none());
+        let theirs = owned_agent(&Signer::generate());
+        assert!(owner_agent_note(&me, Some(&theirs), NOTE).is_none());
         let carla = id("carla", IdentityKind::Person, None);
-        assert!(owner_agent_note("bruno", Some(&carla), NOTE).is_none());
-        assert!(owner_agent_note("bruno", None, NOTE).is_none());
+        assert!(owner_agent_note(&me, Some(&carla), NOTE).is_none());
+        assert!(owner_agent_note(&me, None, NOTE).is_none());
 
         // Other shapes from our own agent stay text too.
-        assert!(owner_agent_note("bruno", Some(&mine), "oi").is_none());
+        assert!(owner_agent_note(&me, Some(&mine), "oi").is_none());
         let other = "```json\n{\"grant_admin\":{}}\n```";
-        assert!(owner_agent_note("bruno", Some(&mine), other).is_none());
+        assert!(owner_agent_note(&me, Some(&mine), other).is_none());
+    }
+
+    #[test]
+    fn a_claimed_owner_without_a_valid_proof_gets_no_card() {
+        let bruno = Signer::generate();
+        let me = bruno.id();
+        // Claims Bruno as owner but carries no proof.
+        let bare = id(&Signer::generate().id(), IdentityKind::Agent, Some(&me));
+        assert!(owner_agent_note(&me, Some(&bare), NOTE).is_none());
+        // Carries a proof, but it was signed by someone else's device.
+        let forged = Identity {
+            owner: Some(me.clone()),
+            ..owned_agent(&Signer::generate())
+        };
+        assert!(owner_agent_note(&me, Some(&forged), NOTE).is_none());
     }
 }
