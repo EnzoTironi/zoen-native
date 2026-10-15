@@ -1,4 +1,5 @@
 import SwiftUI
+import RodaCore
 
 /// A note your own agent sends you: it needs your say before answering someone, or it
 /// wants to create a new agent. The core decides whether a message is one of these
