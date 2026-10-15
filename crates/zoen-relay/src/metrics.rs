@@ -13,6 +13,8 @@ pub struct Metrics {
     pub blobs_stored: AtomicU64,
     pub blob_bytes_stored: AtomicU64,
     pub upgrade_required: AtomicU64,
+    pub receipts_flushed: AtomicU64,
+    pub receipt_flushes: AtomicU64,
 }
 
 impl Metrics {
@@ -103,6 +105,18 @@ impl Metrics {
             "Handshakes refused because the client is too old",
             "counter",
             self.upgrade_required.load(Relaxed),
+        );
+        put(
+            "zoen_relay_receipts_flushed_total",
+            "Receipt watermarks written to Postgres (after folding)",
+            "counter",
+            self.receipts_flushed.load(Relaxed),
+        );
+        put(
+            "zoen_relay_receipt_flushes_total",
+            "Batched receipt statements",
+            "counter",
+            self.receipt_flushes.load(Relaxed),
         );
         s
     }

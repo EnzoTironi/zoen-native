@@ -249,6 +249,7 @@ impl TestRelay {
             android_packages: Vec::new(),
             android_store_url: None,
             push: Arc::new(zoen_relay::push::Pusher::disabled()),
+            receipts: Default::default(),
         });
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
         let address = listener.local_addr().unwrap();
