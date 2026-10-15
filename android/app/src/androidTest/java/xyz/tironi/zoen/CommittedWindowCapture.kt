@@ -62,6 +62,17 @@ internal object CommittedWindowCapture {
                         else if (!started.get() && !cancelled.get()) decor.postInvalidateOnAnimation()
                     }
                     activity.window.addOnFrameMetricsAvailableListener(checkNotNull(legacy), Handler(activity.mainLooper))
+                    // Frame metrics are only reported for frames the renderer actually draws; an idle
+                    // window on an old emulator can skip the invalidation and never report one. The
+                    // window still has a committed buffer, so copy it after a bounded wait.
+                    val watchdog = Handler(activity.mainLooper)
+                    fun nudge(left: Int) {
+                        watchdog.postDelayed({
+                            if (started.get() || cancelled.get()) return@postDelayed
+                            if (left > 0) { decor.postInvalidateOnAnimation(); nudge(left - 1) } else checkNotNull(commit).run()
+                        }, 750)
+                    }
+                    nudge(2)
                 }
                 decor.postInvalidateOnAnimation()
             }
