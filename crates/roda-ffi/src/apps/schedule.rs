@@ -494,11 +494,11 @@ fn local(tz: Tz, ms: i64) -> Option<chrono::DateTime<Tz>> {
     chrono::DateTime::from_timestamp_millis(ms).map(|d| d.with_timezone(&tz))
 }
 
-/// What `by` did to a booking that is theirs ([`is_for`]), between two versions of a schedule, as the
-/// owner's `booking` note: `new`, `cancelled` (withdrawn) or `cancel_request`. A client
-/// acting for themselves and the agent booking for a client both speak; the owner and
-/// resolvers stay silent, and so does staff declining or cancelling (that resolves the
-/// request as "cancelled", not "withdrawn").
+/// What `by` did to a booking that is theirs ([`is_for`]), between two versions of a
+/// schedule, as the owner's `booking` note: `new`, `cancelled` (withdrawn) or
+/// `cancel_request`. A client acting for themselves and the agent booking for a client both
+/// speak; the owner and resolvers stay silent, and so does staff declining or cancelling
+/// (that resolves the request as "cancelled", not "withdrawn").
 pub(crate) fn booking_change(prev: &Value, next: &Value, by: &str) -> Option<Value> {
     if !matches!(role(next, by), Role::Client | Role::Agent) {
         return None;

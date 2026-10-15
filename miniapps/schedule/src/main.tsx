@@ -41,10 +41,10 @@ const DEMO: ScheduleState = {
   next: 1,
 };
 
-/** Offline preview only: mirrors the core's book/cancel so the template can be tried. */
-// Theirs when they made it or the agent booked it in their name.
+/** Theirs when they made it or the agent booked it in their name (the core's `is_for`). */
 const isFor = (b: Booking, id?: string) => !!id && (b.byId === id || b.forId === id);
 
+/** Offline preview only: mirrors the core's book/cancel so the template can be tried. */
 function demoCall(s: ScheduleState, tool: string, args: Record<string, any>): ScheduleState {
   const n: ScheduleState = structuredClone(s);
   const now = Date.now();
