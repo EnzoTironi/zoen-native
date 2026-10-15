@@ -139,7 +139,7 @@ export function useRecorder(done: (clip: { bytes: Uint8Array; mime: string; seco
   async function start() {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      const mime = ['audio/webm;codecs=opus', 'audio/mp4', 'audio/webm'].find((m) => MediaRecorder.isTypeSupported(m)) ?? '';
+      const mime = ['audio/mp4;codecs=mp4a.40.2', 'audio/mp4', 'audio/webm;codecs=opus', 'audio/webm'].find((m) => MediaRecorder.isTypeSupported(m)) ?? '';
       const recorder = new MediaRecorder(stream, mime ? { mimeType: mime } : {});
       const context = new AudioContext(); void context.resume(); const analyser = context.createAnalyser(); analyser.fftSize = 256;
       context.createMediaStreamSource(stream).connect(analyser);
