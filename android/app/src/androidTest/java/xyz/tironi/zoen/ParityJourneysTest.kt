@@ -229,6 +229,8 @@ class ParityJourneysTest {
         assertTrue("Expected bold [0, 6) after save; actual spans: $savedSpans", savedSpans.any { it.key == "b" && it.start == 0u && it.end == 6u })
         assertEquals(original.blocks.filter { it.kind in listOf("code", "image") }, persisted.blocks.filter { it.kind in listOf("code", "image") })
         compose.onNodeWithContentDescription(application.getString(R.string.versions)).performClick()
+        // The versions sheet loads its rows after it opens; click the row once it is in the merged tree.
+        compose.waitUntil(10_000) { compose.onAllNodesWithText(application.getString(R.string.version, 1)).fetchSemanticsNodes().size == 1 }
         compose.onNodeWithText(application.getString(R.string.version, 1)).performClick()
         compose.waitUntil(10_000) { compose.onAllNodesWithText("Editable paragraph").fetchSemanticsNodes().size == 1 }
         compose.onNodeWithText("Editable paragraph").assertExists().assertIsDisplayed()

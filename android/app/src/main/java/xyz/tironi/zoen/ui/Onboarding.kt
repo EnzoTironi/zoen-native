@@ -228,6 +228,7 @@ fun Onboarding(model: ZoenViewModel, modifier: Modifier = Modifier, acquisitionL
                                             friend?.let { model.repository.change { core -> core.startDirect(it.id) } }
                                         }
                                         "space" -> route.target?.let { target -> model.repository.network { it.joinInvite(target) } }
+                                        "agent" -> route.target?.let { target -> model.repository.network { it.openAgentLink(target) } }
                                         else -> null
                                     }
                                 } catch (e: Exception) { if (e is CancellationException) throw e; null }

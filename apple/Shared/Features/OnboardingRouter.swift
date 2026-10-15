@@ -7,7 +7,7 @@ import RodaCore
 struct OnboardingRoute {
     var flow = "default"
     var steps: [OnboardingFlow.Step] = OnboardingFlow.Step.allCases
-    /// `home`, `chat_with_inviter` or `space`.
+    /// `home`, `chat_with_inviter`, `space` or `agent`.
     var landing = "home"
     var target: String?
     var copy: [String: String] = [:]
@@ -71,7 +71,23 @@ extension AppModel {
     /// A link opened the app (custom scheme or universal link): remember where this install
     /// came from (first touch only; the friend or code never leaves the device).
     func captureAcquisition(_ url: URL) {
-        _ = core.growthCaptureLink(link: url.absoluteString)
+        let source = core.growthCaptureLink(link: url.absoluteString)
+        // Already set up: an agent link opens the chat with the agent right away.
+        // The stored source is first-touch only, so read this link's own target.
+        if !OnboardingFlow.shouldShow, let target = agentTarget(url) ?? (source.kind == "agent" ? source.target : nil) {
+            var route = OnboardingRoute()
+            route.landing = "agent"
+            route.target = target
+            Task { _ = await land(route) }
+        }
+    }
+
+    /// `zoen://agent/<x>` or `https://tryzoen.com/a/<x>`; the core decides code or handle.
+    private func agentTarget(_ url: URL) -> String? {
+        let parts = url.pathComponents.filter { $0 != "/" }
+        if url.scheme == "zoen", url.host == "agent" { return parts.last }
+        if url.scheme == "https", parts.first == "a", parts.count >= 2 { return parts[1] }
+        return nil
     }
 
     /// Refreshes the remote config and sends what's pending (source once, arms shown).
@@ -81,7 +97,7 @@ extension AppModel {
     }
 
     /// Where onboarding ends: the chat with the friend who invited, the Space of the link,
-    /// or the usual home. Falls back to home if the friend or Space can't be reached.
+    /// the agent of the link, or the usual home. Falls back to home if they can't be reached.
     func land(_ route: OnboardingRoute) async -> Bool {
         guard let target = route.target, !target.isEmpty else { return false }
         do {
@@ -95,6 +111,11 @@ extension AppModel {
                 return true
             case "space":
                 let id = try await core.joinInvite(code: target)
+                refresh()
+                go(.space(id))
+                return true
+            case "agent":
+                let id = try await core.openAgentLink(target: target)
                 refresh()
                 go(.space(id))
                 return true

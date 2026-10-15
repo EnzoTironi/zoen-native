@@ -234,6 +234,7 @@ impl Device {
             id: 2,
             op: Op::CreateInvite {
                 space: space.into(),
+                agent: None,
                 role: Role::Member,
                 max_uses: 1,
                 ttl_secs: 60,

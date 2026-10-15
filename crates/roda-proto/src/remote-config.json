@@ -42,6 +42,18 @@
           "onboarding.hello.body@en": "Pick your name and you’re in."
         }
       },
+      "agent_link": {
+        "steps": ["hello", "profile", "done"],
+        "landing": "agent",
+        "copy": {
+          "onboarding.hello.title@pt": "{target} te espera no Zoen.",
+          "onboarding.hello.title@en": "{target} is waiting for you on Zoen.",
+          "onboarding.hello.body@pt": "Escolhe seu nome e a conversa com o agente já abre.",
+          "onboarding.hello.body@en": "Pick your name and the chat with the agent opens right away.",
+          "onboarding.done.title@pt": "Pronto. Fala com o agente.",
+          "onboarding.done.title@en": "Done. Talk to the agent."
+        }
+      },
       "campaign_study": {
         "steps": ["hello", "profile", "areas", "notifications", "done"],
         "landing": "home",
@@ -58,6 +70,7 @@
         "arms": { "control": "default", "direct": "friend_invite" }
       },
       { "source": "space", "flow": "space_link" },
+      { "source": "agent", "flow": "agent_link" },
       { "campaign": "ads_concurso", "flow": "campaign_study" },
       { "flow": "default" }
     ]

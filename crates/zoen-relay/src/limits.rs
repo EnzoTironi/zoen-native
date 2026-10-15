@@ -137,6 +137,8 @@ pub struct Limits {
     pub lookup_account: Limiter,
     /// Invite previews per account (code guessing).
     pub invite_account: Limiter,
+    /// Public agent pages (`GET /a/{target}`) per client IP (code and handle guessing).
+    pub agent_page_ip: Limiter,
     /// Uploaded blob kilobytes per device.
     pub blob_kib_device: Limiter,
     /// Backup writes per device (ADR 0046).
@@ -157,6 +159,7 @@ impl Limits {
             request_device: Limiter::new("request_device", Quota::per_second(50, 200)),
             lookup_account: Limiter::new("lookup_account", Quota::per_minute(60, 60)),
             invite_account: Limiter::new("invite_account", Quota::per_minute(30, 30)),
+            agent_page_ip: Limiter::new("agent_page_ip", Quota::per_minute(60, 60)),
             blob_kib_device: Limiter::new(
                 "blob_kib_device",
                 Quota::per_minute(100 * 1024, 200 * 1024),
@@ -197,6 +200,7 @@ impl Limits {
             &mut self.request_device,
             &mut self.lookup_account,
             &mut self.invite_account,
+            &mut self.agent_page_ip,
             &mut self.blob_kib_device,
             &mut self.backup_device,
             &mut self.backup_restore_ip,
@@ -204,7 +208,7 @@ impl Limits {
         ]
     }
 
-    fn all(&self) -> [&Limiter; 12] {
+    fn all(&self) -> [&Limiter; 13] {
         [
             &self.connect_ip,
             &self.register_ip,
@@ -214,6 +218,7 @@ impl Limits {
             &self.request_device,
             &self.lookup_account,
             &self.invite_account,
+            &self.agent_page_ip,
             &self.blob_kib_device,
             &self.backup_device,
             &self.backup_restore_ip,
