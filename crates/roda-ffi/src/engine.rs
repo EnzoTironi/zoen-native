@@ -3318,6 +3318,8 @@ impl Engine {
 
     /// `tools/call` from this device's agent while it answers `serving` (the author of the
     /// message it is replying to): a booking it makes can only be for that member.
+    /// When the agent turn loop gains tools it must route them here with `t.author.id`
+    /// as `serving`; `app_call_tool` gives an agent no one to book for.
     pub fn agent_call_tool(
         &mut self,
         item: &str,
@@ -3470,9 +3472,15 @@ impl Engine {
             owner: actor_owner.as_deref(),
         };
         // An agent acts for whoever it is serving, never for a client a message names.
-        let pinned = match actor_owner {
-            Some(_) => apps::pin_client(&mut args, serving),
-            None => Ok(()),
+        // Its name comes from the served member's profile, not from whatever the call says.
+        let pinned = match (&actor_owner, serving) {
+            (Some(_), Some(s)) => apps::pin_client(&mut args, Some(s)).map(|_| {
+                if let Some(a) = args.as_object_mut().filter(|a| a.contains_key("forId")) {
+                    a.insert("forName".into(), self.persona(s).name.into());
+                }
+            }),
+            (Some(_), None) => apps::pin_client(&mut args, None),
+            (None, _) => Ok(()),
         };
         let applied = match pinned
             .and_then(|_| apps::apply_as(&doc.app, tool_name, &args, &state, &caller, now))

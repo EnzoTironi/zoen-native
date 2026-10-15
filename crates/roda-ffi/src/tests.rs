@@ -2247,7 +2247,7 @@ fn the_agent_books_only_for_the_member_it_is_serving() {
         .unwrap();
     let call = |serving: Option<&str>, for_id: &str, start: i64| {
         let args = format!(
-            r#"{{"serviceId":"corte","startMs":{start},"forId":"{for_id}","forName":"Ana"}}"#
+            r#"{{"serviceId":"corte","startMs":{start},"forId":"{for_id}","forName":"Anything"}}"#
         );
         let out = e
             .lock()
@@ -2283,4 +2283,6 @@ fn the_agent_books_only_for_the_member_it_is_serving() {
         .map(|b| b["forId"].as_str().unwrap())
         .collect();
     assert_eq!(fors, vec![ana.id.as_str(), lucas.id.as_str()]);
+    // The agent's booking carries Ana's profile name, not the "Ana" the call passed.
+    assert_eq!(v["bookings"][0]["forName"], ana.name.as_str());
 }
