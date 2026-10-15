@@ -13,10 +13,14 @@ export type Booking = {
   byName?: string; // owner, agent and resolvers only
   status: 'pending' | 'confirmed' | 'cancelled';
   note?: string;
+  /** Booked at the same moment as someone who got the slot first (kept as cancelled). */
+  conflict?: boolean;
+  /** Upcoming, but outside the opening hours since they changed. */
+  outsideHours?: boolean;
 };
 export type ScheduleEvent = {
   id: string;
-  kind: 'book_request' | 'cancel_request';
+  kind: 'book_request' | 'cancel_request' | 'outside_hours';
   bookingId: string;
   status: 'open' | 'resolved';
   resolution?: string;

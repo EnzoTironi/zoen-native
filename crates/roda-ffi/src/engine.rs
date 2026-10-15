@@ -319,9 +319,12 @@ impl State {
             } => {
                 if let Some(it) = self.items.get_mut(item) {
                     let number = it.versions.len() as u32 + 1;
+                    let content =
+                        crate::apps::reconcile_concurrent(&it.current().content, content, e.at_ms)
+                            .unwrap_or_else(|| content.clone());
                     it.versions.push(Version {
                         number,
-                        content: content.clone(),
+                        content,
                         author: e.author.clone(),
                         at_ms: e.at_ms,
                         note: note.clone(),
