@@ -101,6 +101,14 @@
   <string name="reply">Reply</string>
   <string name="thread">Open thread</string>
   <string name="replies">Replies</string>
+  <string name="forward">Forward</string>
+  <string name="delete_for_everyone">Delete for everyone</string>
+  <string name="delete_for_everyone_q">Delete for everyone?</string>
+  <string name="forwarded">Forwarded</string>
+  <string name="message_deleted">This message was deleted</string>
+  <string name="edited">edited</string>
+  <string name="edit_message">Edit message</string>
+  <string name="forward_to">Forward to…</string>
   <string name="receipt_sending">Sending</string>
   <string name="receipt_sent">Sent</string>
   <string name="receipt_delivered">Delivered</string>

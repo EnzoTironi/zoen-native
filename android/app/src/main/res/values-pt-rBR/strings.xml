@@ -101,6 +101,14 @@
   <string name="reply">Responder</string>
   <string name="thread">Abrir respostas</string>
   <string name="replies">Respostas</string>
+  <string name="forward">Encaminhar</string>
+  <string name="delete_for_everyone">Apagar para todos</string>
+  <string name="delete_for_everyone_q">Apagar para todos?</string>
+  <string name="forwarded">Encaminhada</string>
+  <string name="message_deleted">Esta mensagem foi apagada</string>
+  <string name="edited">editada</string>
+  <string name="edit_message">Editar mensagem</string>
+  <string name="forward_to">Encaminhar para…</string>
   <string name="receipt_sending">Enviando</string>
   <string name="receipt_sent">Enviada</string>
   <string name="receipt_delivered">Entregue</string>
