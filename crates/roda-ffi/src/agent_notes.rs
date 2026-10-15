@@ -127,7 +127,8 @@ mod tests {
     }
 
     fn sched(bookings: serde_json::Value, events: serde_json::Value) -> roda_types::AppDoc {
-        let st = serde_json::json!({"timezone": "America/Sao_Paulo", "bookings": bookings, "events": events});
+        let st = serde_json::json!({"timezone": "America/Sao_Paulo", "ownerId": "bruno",
+            "agentId": "bot", "resolvers": ["dani"], "bookings": bookings, "events": events});
         roda_types::AppDoc {
             app: "schedule".into(),
             resource_uri: String::new(),
@@ -136,41 +137,69 @@ mod tests {
         }
     }
 
+    fn kind(n: Option<serde_json::Value>) -> Option<String> {
+        n.map(|n| {
+            n["booking"]["kind"]
+                .as_str()
+                .unwrap_or_default()
+                .to_string()
+        })
+    }
+
     #[test]
-    fn a_clients_booking_and_cancel_become_owner_notes() {
+    fn booking_changes_by_clients_or_the_agent_become_owner_notes() {
         use crate::apps::owner_note_for;
         use serde_json::json;
-        let b = |status: &str| {
-            json!([{"id": "b1", "byId": "carla", "byName": "Carla",
-            "serviceName": "Corte", "startMs": 1_893_970_800_000_i64, "status": status}])
-        };
-        let empty = sched(json!([]), json!([]));
-        let booked = sched(b("pending"), json!([]));
-        let note = owner_note_for(&empty, &booked, "carla").expect("new booking");
-        assert_eq!(note["booking"]["kind"], "new");
-        assert_eq!(note["booking"]["client"], "Carla");
-        let s = format!("```json\n{note}\n```");
-        let bruno = Signer::generate();
-        assert!(owner_agent_note(&bruno.id(), Some(&owned_agent(&bruno)), &s).is_some());
+        for who in ["carla", "bot"] {
+            let b = |status: &str| {
+                json!([{"id": "b1", "byId": who, "byName": "Carla",
+                "serviceName": "Corte", "startMs": 1_893_970_800_000_i64, "status": status}])
+            };
+            let req = |res: &str| json!([{"bookingId": "b1", "kind": "book_request", "status": res, "resolution": res}]);
+            let empty = sched(json!([]), json!([]));
+            let booked = sched(b("pending"), req("open"));
+            let note = owner_note_for(&empty, &booked, who).expect("new booking");
+            assert_eq!(note["booking"]["kind"], "new");
+            assert_eq!(
+                note["booking"]["client"],
+                if who == "bot" { "" } else { "Carla" }
+            );
+            let s = format!("```json\n{note}\n```");
+            let bruno = Signer::generate();
+            assert!(owner_agent_note(&bruno.id(), Some(&owned_agent(&bruno)), &s).is_some());
 
-        let withdrawn = sched(b("cancelled"), json!([]));
-        assert_eq!(
-            owner_note_for(&booked, &withdrawn, "carla").unwrap()["booking"]["kind"],
-            "cancelled"
-        );
-        let confirmed = sched(b("confirmed"), json!([]));
-        let asked = sched(
-            b("confirmed"),
-            json!([{"bookingId": "b1", "kind": "cancel_request", "status": "open"}]),
-        );
-        assert_eq!(
-            owner_note_for(&confirmed, &asked, "carla").unwrap()["booking"]["kind"],
-            "cancel_request"
-        );
+            let withdrawn = sched(b("cancelled"), req("withdrawn"));
+            assert_eq!(
+                kind(owner_note_for(&booked, &withdrawn, who)).as_deref(),
+                Some("cancelled")
+            );
+            let confirmed = sched(b("confirmed"), req("confirmed"));
+            let ask = json!([{"bookingId": "b1", "kind": "cancel_request", "status": "open"}]);
+            let asked = sched(b("confirmed"), ask);
+            assert_eq!(
+                kind(owner_note_for(&confirmed, &asked, who)).as_deref(),
+                Some("cancel_request")
+            );
 
-        // Staff confirming or declining, or someone else's write: nothing for the owner.
-        assert!(owner_note_for(&booked, &confirmed, "bot").is_none());
-        assert!(owner_note_for(&booked, &withdrawn, "bot").is_none());
-        assert!(owner_note_for(&empty, &booked, "dani").is_none());
+            // Staff confirming or cancelling (resolution "cancelled") says nothing, even
+            // when the agent does it to a booking it made.
+            let declined = sched(b("cancelled"), req("cancelled"));
+            assert!(owner_note_for(&booked, &confirmed, who).is_none());
+            assert!(owner_note_for(&booked, &declined, who).is_none());
+            // The owner, a resolver, or someone else touching it: silent.
+            for other in ["bruno", "dani", "eva"] {
+                assert!(owner_note_for(&empty, &booked, other).is_none());
+                assert!(owner_note_for(&booked, &withdrawn, other).is_none());
+            }
+        }
+        // The owner or a resolver booking for themselves: silent too.
+        for staff in ["bruno", "dani"] {
+            let own = sched(
+                json!([{"id": "b2", "byId": staff, "byName": "X", "serviceName": "Corte",
+                "startMs": 1_893_970_800_000_i64, "status": "pending"}]),
+                json!([]),
+            );
+            assert!(owner_note_for(&sched(json!([]), json!([])), &own, staff).is_none());
+        }
     }
 }

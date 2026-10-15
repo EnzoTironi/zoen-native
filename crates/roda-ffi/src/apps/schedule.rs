@@ -487,13 +487,20 @@ fn local(tz: Tz, ms: i64) -> Option<chrono::DateTime<Tz>> {
     chrono::DateTime::from_timestamp_millis(ms).map(|d| d.with_timezone(&tz))
 }
 
-/// What the client `by` did to their own booking between two versions of a schedule, as
-/// the owner's `booking` note: `new`, `cancelled` (withdrawn) or `cancel_request`. Changes by
-/// anyone else (staff, the agent) say nothing.
+/// What `by` did to a booking they made, between two versions of a schedule, as the
+/// owner's `booking` note: `new`, `cancelled` (withdrawn) or `cancel_request`. A client
+/// acting for themselves and the agent booking for a client both speak; the owner and
+/// resolvers stay silent, and so does staff declining or cancelling (that resolves the
+/// request as "cancelled", not "withdrawn").
 pub(crate) fn booking_change(prev: &Value, next: &Value, by: &str) -> Option<Value> {
-    let asks_cancel = |st: &Value, id: &Value| {
+    if !matches!(role(next, by), Role::Client | Role::Agent) {
+        return None;
+    }
+    let event = |st: &Value, id: &Value, kind: &str, status: &str| {
         st["events"].as_array().into_iter().flatten().any(|e| {
-            &e["bookingId"] == id && e["kind"] == "cancel_request" && e["status"] == "open"
+            &e["bookingId"] == id
+                && e["kind"] == kind
+                && (e["status"] == status || e["resolution"] == status)
         })
     };
     let before = prev["bookings"].as_array().cloned().unwrap_or_default();
@@ -502,17 +509,33 @@ pub(crate) fn booking_change(prev: &Value, next: &Value, by: &str) -> Option<Val
         .iter()
         .filter(|b| b["byId"] == by)
         .find_map(|b| {
-            let kind = match before.iter().find(|o| o["id"] == b["id"]) {
+            let id = &b["id"];
+            let kind = match before.iter().find(|o| &o["id"] == id) {
                 None if b["status"] == "pending" => "new",
-                Some(o) if o["status"] == "pending" && b["status"] == "cancelled" => "cancelled",
-                Some(_) if asks_cancel(next, &b["id"]) && !asks_cancel(prev, &b["id"]) => {
+                Some(o)
+                    if o["status"] == "pending"
+                        && b["status"] == "cancelled"
+                        && event(next, id, "book_request", "withdrawn") =>
+                {
+                    "cancelled"
+                }
+                Some(_)
+                    if event(next, id, "cancel_request", "open")
+                        && !event(prev, id, "cancel_request", "open") =>
+                {
                     "cancel_request"
                 }
                 _ => return None,
             };
+            // The agent books under its own name; the card then says "Alguém".
+            let client = if role(next, by) == Role::Agent {
+                json!("")
+            } else {
+                b["byName"].clone()
+            };
             Some(json!({"booking": {
                 "kind": kind,
-                "client": b["byName"],
+                "client": client,
                 "service": b["serviceName"],
                 "when": when_label(next, b["startMs"].as_i64().unwrap_or(0)),
             }}))
