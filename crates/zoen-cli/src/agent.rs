@@ -346,7 +346,10 @@ async fn turn(
     before: &[TimelineEntry],
     t: &TimelineEntry,
 ) -> bool {
-    if let EntryKind::ItemEdited { item_id, version, .. } = &t.kind {
+    if let EntryKind::ItemEdited {
+        item_id, version, ..
+    } = &t.kind
+    {
         // A client booked or cancelled in a mini-app: tell the owner, once.
         return match e.booking_note(item_id.clone(), *version) {
             Some(n) if owner_note(e, cx, &t.id).is_none() => {
