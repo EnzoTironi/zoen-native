@@ -503,7 +503,7 @@ fun TimelineRow(model: ZoenViewModel, entry: TimelineEntry, navigate: (NavKey) -
                 }
                 Row(Modifier.padding(top = 5.dp, start = 8.dp, end = 8.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(5.dp)) {
                     Text(DateFormat.getTimeInstance(DateFormat.SHORT).format(Date(entry.atMs)), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    if (mine) Icon(when (entry.delivery) { Delivery.FAILED -> Icons.Rounded.ErrorOutline; Delivery.SENDING -> Icons.Rounded.Schedule; Delivery.SENT -> Icons.Rounded.DoneAll; Delivery.LOCAL -> Icons.Rounded.Done }, null, Modifier.size(14.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                    if (mine) ReceiptTicks(entry.delivery)
                 }
                 if (entry.threadReplies > 0u && onThread != null) TextButton(onClick = onThread) { Text("${entry.threadReplies} " + stringResource(R.string.replies)) }
                 }
@@ -567,4 +567,26 @@ fun ThreadScreen(model: ZoenViewModel, state: AppState, space: String, root: Str
             if (index >= 0) scrollScope.launch { if (motion) list.animateScrollToItem(index) else list.scrollToItem(index) } else navigate(Chat(space, id))
         }) }
     } }
+}
+
+/** Time's companion: ✓ sent, ✓✓ delivered, blue ✓✓ read (aggregated "read up to"). */
+@Composable
+fun ReceiptTicks(delivery: Delivery, base: androidx.compose.ui.graphics.Color = MaterialTheme.colorScheme.onSurfaceVariant) {
+    val icon = when (delivery) {
+        Delivery.FAILED -> Icons.Rounded.ErrorOutline
+        Delivery.SENDING, Delivery.LOCAL -> Icons.Rounded.Schedule
+        Delivery.SENT -> Icons.Rounded.Done
+        Delivery.DELIVERED, Delivery.READ -> Icons.Rounded.DoneAll
+    }
+    val tint by androidx.compose.animation.animateColorAsState(
+        when (delivery) {
+            Delivery.READ -> androidx.compose.ui.graphics.Color(0xFF53BDEB)
+            Delivery.FAILED -> MaterialTheme.colorScheme.error
+            else -> base
+        },
+        androidx.compose.animation.core.tween(280, easing = androidx.compose.animation.core.CubicBezierEasing(0.25f, 1f, 0.5f, 1f)),
+        label = "ticks",
+    )
+    val label = stringResource(when (delivery) { Delivery.READ -> R.string.receipt_read; Delivery.DELIVERED -> R.string.receipt_delivered; Delivery.FAILED -> R.string.receipt_failed; Delivery.SENT -> R.string.receipt_sent; else -> R.string.receipt_sending })
+    Icon(icon, label, Modifier.size(15.dp), tint = tint)
 }

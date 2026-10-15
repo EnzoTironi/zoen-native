@@ -629,7 +629,8 @@ struct EntryView: View {
             VStack(alignment: entry.author.isMe ? .trailing : .leading, spacing: 3) {
                 MessageRow(author: entry.author, text: text, card: card, atMs: entry.atMs,
                            grouped: grouped && entry.replyTo == nil, endsRun: endsRun, isDirect: isDirect, onOpenItem: onOpenItem,
-                           quote: entry.replyTo, onQuote: { onJump?($0) }, onIntent: onSwipe)
+                           quote: entry.replyTo, onQuote: { onJump?($0) }, onIntent: onSwipe,
+                           delivery: entry.author.isMe ? entry.delivery : nil)
                     .modifier(MessageSwipe(enabled: onSwipe != nil) { onSwipe?($0) })
                 if entry.threadReplies > 0 {
                     ThreadRepliesChip(count: entry.threadReplies, faces: threadFaces) { onSwipe?(.thread) }
@@ -691,6 +692,60 @@ struct DeliveryMark: View {
     }
 }
 
+/// Time plus ✓ / ✓✓ / read ✓✓ inside my bubble. The second tick draws in and the pair
+/// turns blue with the Wabi curve when a receipt lands; nothing moves with Reduce Motion.
+struct BubbleStamp: View {
+    let atMs: Int64
+    let delivery: Delivery?
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    var body: some View {
+        HStack(spacing: 3) {
+            Text(RodaTime.short(atMs)).font(.caption2.monospacedDigit())
+            if let delivery { ReceiptTicks(delivery: delivery) }
+        }
+        .foregroundStyle(Palette.myBubbleText.opacity(0.62))
+        .animation(reduceMotion ? nil : Motion.wabi, value: delivery)
+    }
+}
+
+struct ReceiptTicks: View {
+    let delivery: Delivery
+    /// Unread ticks: muted on my bubble by default; the chat list passes its own grey.
+    var base: Color = Palette.myBubbleText.opacity(0.62)
+
+    private var double: Bool { delivery == .delivered || delivery == .read }
+
+    var body: some View {
+        switch delivery {
+        case .sending, .local:
+            Image(systemName: "clock").font(.system(size: 10, weight: .semibold))
+                .accessibilityLabel("Sending")
+        case .failed:
+            Image(systemName: "exclamationmark.circle.fill").font(.system(size: 11, weight: .semibold))
+                .foregroundStyle(Palette.danger)
+                .accessibilityLabel("Not delivered")
+        default:
+            ZStack(alignment: .leading) {
+                Image(systemName: "checkmark")
+                Image(systemName: "checkmark")
+                    .offset(x: 5)
+                    .opacity(double ? 1 : 0)
+                    .scaleEffect(double ? 1 : 0.4, anchor: .leading)
+            }
+            .font(.system(size: 10, weight: .bold))
+            .padding(.trailing, 5)
+            .foregroundStyle(delivery == .read ? Palette.receiptRead : base)
+            .accessibilityLabel(delivery == .read ? "Read" : double ? "Delivered" : "Sent")
+        }
+    }
+}
+
+enum Motion {
+    /// Wabi's ease: cubic-bezier(.25, 1, .5, 1), standard length.
+    static let wabi = Animation.timingCurve(0.25, 1, 0.5, 1, duration: 0.28)
+}
+
 private extension VerticalAlignment {
     /// Where a sender's face sits beside a message: the text bubble's bottom when there is
     /// one, otherwise the bottom of the row.
@@ -714,10 +769,14 @@ struct MessageRow: View {
     var quote: ReplyQuote? = nil
     var onQuote: ((String) -> Void)? = nil
     var onIntent: ((MessageSwipeIntent) -> Void)? = nil
+    /// My messages: time and ticks sit inside the bubble, bottom trailing (WhatsApp).
+    var delivery: Delivery? = nil
     @Environment(\.chatBackdrop) private var backdrop
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     private static let face: CGFloat = 36
+    /// Hark bubble radius; the tail corner stays tight.
+    private static let radius: CGFloat = 24
 
     var body: some View {
         let mine = author.isMe
@@ -781,16 +840,21 @@ struct MessageRow: View {
                             Text(attributed(text))
                                 .font(.body)
                                 .foregroundStyle(mine ? Palette.myBubbleText : Palette.textPrimary)
+                            if mine {
+                                BubbleStamp(atMs: atMs, delivery: delivery)
+                                    .frame(maxWidth: .infinity, alignment: .trailing)
+                                    .padding(.top, -2)
+                            }
                         }
                             .padding(.horizontal, quote == nil ? 14 : 10)
                             .padding(.top, quote == nil ? 9 : 8)
                             .padding(.bottom, 9)
                             .background {
                                 if mine {
-                                    UnevenRoundedRectangle(topLeadingRadius: 20, bottomLeadingRadius: 20, bottomTrailingRadius: grouped ? 20 : 4, topTrailingRadius: 20, style: .continuous)
+                                    UnevenRoundedRectangle(topLeadingRadius: Self.radius, bottomLeadingRadius: Self.radius, bottomTrailingRadius: grouped ? Self.radius : 4, topTrailingRadius: Self.radius, style: .continuous)
                                         .fill(Palette.myBubble)
                                 } else {
-                                    UnevenRoundedRectangle(topLeadingRadius: 20, bottomLeadingRadius: grouped ? 20 : 4, bottomTrailingRadius: 20, topTrailingRadius: 20, style: .continuous)
+                                    UnevenRoundedRectangle(topLeadingRadius: Self.radius, bottomLeadingRadius: grouped ? Self.radius : 4, bottomTrailingRadius: Self.radius, topTrailingRadius: Self.radius, style: .continuous)
                                         .fill(backdrop ? Palette.otherBubbleOnBackdrop : Palette.otherBubble)
                                 }
                             }

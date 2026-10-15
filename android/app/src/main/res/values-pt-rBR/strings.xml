@@ -101,6 +101,11 @@
   <string name="reply">Responder</string>
   <string name="thread">Abrir respostas</string>
   <string name="replies">Respostas</string>
+  <string name="receipt_sending">Enviando</string>
+  <string name="receipt_sent">Enviada</string>
+  <string name="receipt_delivered">Entregue</string>
+  <string name="receipt_read">Lida</string>
+  <string name="receipt_failed">Não entregue</string>
   <string name="copy">Copiar</string>
   <string name="copied">Copiado</string>
   <string name="share">Compartilhar</string>
