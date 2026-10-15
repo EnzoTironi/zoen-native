@@ -145,6 +145,21 @@ pub async fn put(
     }
 }
 
+/// CORS for the browser client: GET and signed PUT from any origin, no credentials.
+pub fn cors() -> tower_http::cors::CorsLayer {
+    use axum::http::{HeaderName, Method};
+    tower_http::cors::CorsLayer::new()
+        .allow_origin(tower_http::cors::Any)
+        .allow_methods([Method::GET, Method::PUT])
+        .allow_headers([
+            header::CONTENT_TYPE,
+            HeaderName::from_static("x-zoen-device"),
+            HeaderName::from_static("x-zoen-ts"),
+            HeaderName::from_static("x-zoen-sig"),
+        ])
+        .max_age(std::time::Duration::from_secs(86_400))
+}
+
 pub async fn get(State(st): State<Shared>, Path(sha): Path<String>) -> Response {
     if !valid_sha(&sha) {
         return err(StatusCode::BAD_REQUEST, "bad hash");
@@ -155,6 +170,10 @@ pub async fn get(State(st): State<Shared>, Path(sha): Path<String>) -> Response 
                 [
                     (header::CONTENT_TYPE, "application/octet-stream"),
                     (header::CACHE_CONTROL, "public, max-age=31536000, immutable"),
+                    (
+                        header::HeaderName::from_static("cross-origin-resource-policy"),
+                        "cross-origin",
+                    ),
                 ],
                 b,
             )

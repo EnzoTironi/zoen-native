@@ -104,6 +104,8 @@ pub struct MessageView {
     replies: usize,
     repliers: Vec<String>,
     last_reply_ms: Option<i64>,
+    /// A shared file, photo, video or voice note (the chunks to fetch and open).
+    file: Option<roda_types::FileDoc>,
 }
 
 #[derive(Default)]
@@ -423,6 +425,36 @@ impl<S: Signer> Client<S> {
         self.update(Vec::new())
     }
 
+    /// A file, photo, video or voice note whose chunks the host already uploaded.
+    pub fn queue_file(
+        &mut self,
+        space: &str,
+        doc: roda_types::FileDoc,
+        now_ms: i64,
+    ) -> Result<Update, String> {
+        if doc.chunks.is_empty() {
+            return Err("file empty or too large".into());
+        }
+        let epoch = self.ready_epoch(space)?;
+        let inner = self.clear_event(
+            space,
+            EventBody::ItemCreated {
+                item: roda_types::new_secret_id("it"),
+                kind: roda_types::ItemKind::File,
+                content: roda_types::ItemContent::File(doc),
+                origin: "Adicionado".into(),
+            },
+            now_ms,
+        )?;
+        let event = inner
+            .envelope()?
+            .plain_event()
+            .ok_or("invalid inner message")?;
+        let pending = self.seal_inner(&event, epoch)?;
+        self.saved.outbox.insert(event.client_id.clone(), pending);
+        self.update(Vec::new())
+    }
+
     /// Edit, delete for everyone, react or unreact. Same encrypted path as messages.
     pub fn queue_annotation(
         &mut self,
@@ -435,7 +467,7 @@ impl<S: Signer> Client<S> {
             .logs
             .get(space)
             .and_then(|log| log.events().iter().find(|e| e.hash == target))
-            .filter(|e| matches!(e.body, EventBody::MessagePosted { .. }))
+            .filter(|e| is_post(&e.body))
             .map(|e| e.author.clone())
             .ok_or("That message is no longer available.")?;
         if note.author_only() && author != self.account.identity {
@@ -531,6 +563,7 @@ impl<S: Signer> Client<S> {
             .find(|e| e.hash == entry)
             .and_then(|e| match &e.body {
                 EventBody::MessagePosted { reply, .. } => Some(reply.clone()),
+                body if is_post(body) => Some(None),
                 _ => None,
             })
     }
@@ -984,7 +1017,7 @@ impl<S: Signer> Client<S> {
                 _ => title,
             };
             // Fold annotations over their targets. Readers enforce authorship.
-            let authors: BTreeMap<&str, &str> = events.iter().filter(|e| matches!(e.body, EventBody::MessagePosted { .. }))
+            let authors: BTreeMap<&str, &str> = events.iter().filter(|e| is_post(&e.body))
                 .map(|e| (e.hash.as_str(), e.author.as_str())).collect();
             let mut folded: BTreeMap<String, Folded> = BTreeMap::new();
             for event in events {
@@ -1068,14 +1101,18 @@ impl<S: Signer> Client<S> {
         delivery: &'static str,
         failure: Option<String>,
     ) -> Option<MessageView> {
-        let EventBody::MessagePosted {
-            text,
-            reply,
-            forwarded,
-            ..
-        } = &event.body
-        else {
-            return None;
+        let (text, reply, forwarded, file) = match &event.body {
+            EventBody::MessagePosted {
+                text,
+                reply,
+                forwarded,
+                ..
+            } => (text.clone(), reply.clone(), *forwarded, None),
+            EventBody::ItemCreated {
+                content: roda_types::ItemContent::File(doc),
+                ..
+            } => (String::new(), None, false, Some(doc.clone())),
+            _ => return None,
         };
         let name = if event.author == self.account.identity {
             self.account.name.clone()
@@ -1098,14 +1135,14 @@ impl<S: Signer> Client<S> {
             seq: None,
             author: event.author.clone(),
             name,
-            text: text.clone(),
+            text,
             at_ms: event.at_ms,
             delivery,
             failure,
             ticks: None,
             edited: false,
             deleted: false,
-            forwarded: *forwarded,
+            forwarded,
             reactions: Vec::new(),
             quote: reply.as_ref().filter(|r| !r.thread).map(|r| Quote {
                 id: r.to.clone(),
@@ -1116,8 +1153,20 @@ impl<S: Signer> Client<S> {
             replies: 0,
             repliers: Vec::new(),
             last_reply_ms: None,
+            file,
         })
     }
+}
+
+fn is_post(body: &EventBody) -> bool {
+    matches!(
+        body,
+        EventBody::MessagePosted { .. }
+            | EventBody::ItemCreated {
+                content: roda_types::ItemContent::File(_),
+                ..
+            }
+    )
 }
 
 fn inner_event(sequenced: &Sequenced, plaintext: &[u8], from: &Leaf) -> Option<Event> {

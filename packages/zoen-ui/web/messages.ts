@@ -23,8 +23,24 @@ function parseMessage(input: unknown) {
     reactions: array(value.reactions ?? []).map((r) => { const x = object(r); return { emoji: string(x.emoji), count: integer(x.count), mine: x.mine === true }; }),
     quote: quote ? { id: string(quote.id), name: string(quote.name), text: string(quote.text) } : null,
     thread: value.thread ? string(value.thread) : null, replies: integer(value.replies ?? 0),
-    repliers: array(value.repliers ?? []).map(string), last_reply_ms: typeof value.last_reply_ms === 'number' ? value.last_reply_ms : null };
+    repliers: array(value.repliers ?? []).map(string), last_reply_ms: typeof value.last_reply_ms === 'number' ? value.last_reply_ms : null,
+    file: value.file ? parseFile(value.file) : null };
 }
+
+const HASH = /^[0-9a-f]{64}$/;
+function parseChunk(input: unknown) {
+  const v = object(input);
+  const chunk = { sha256: string(v.sha256), bytes: integer(v.bytes), blob: string(v.blob), key: string(v.key) };
+  if (![chunk.sha256, chunk.blob, chunk.key].every((h) => HASH.test(h))) throw new Error('Invalid file chunk.');
+  return chunk;
+}
+function parseFile(input: unknown) {
+  const v = object(input);
+  return { name: string(v.name), mime: string(v.mime), bytes: integer(v.bytes), sha256: string(v.sha256),
+    chunks: array(v.chunks).map(parseChunk), thumb: v.thumb ? parseChunk(v.thumb) : null };
+}
+export type FileDoc = ReturnType<typeof parseFile>;
+export type Chunk = ReturnType<typeof parseChunk>;
 
 function parseConversation(input: unknown) {
   const value = object(input);
@@ -154,6 +170,63 @@ export class Messages {
   /** Reaction, edit or delete for everyone, in the shared annotation shape. */
   annotate(space: string, target: string, note: { React: { emoji: string } } | 'Unreact' | { Edit: { text: string } } | 'Delete'): Promise<void> {
     return this.act(space, { kind: 'queue_annotation', space, target, note: JSON.stringify(note), now: Date.now() });
+  }
+
+  /** Seal like native, upload every encrypted chunk, then post the file into the chat. */
+  async sendFile(space: string, file: { name: string; mime: string; bytes: Uint8Array; thumb?: Uint8Array | null }, progress?: (done: number, total: number) => void): Promise<void> {
+    if (file.bytes.length > 25 * 1024 * 1024 * 20) throw new Error('Este arquivo é grande demais para o navegador.');
+    let framed: Uint8Array;
+    try { framed = await this.core.bytes({ kind: 'seal_file', name: file.name.replace(/[\\/\0]/g, '_').slice(0, 255) || 'arquivo', mime: file.mime || 'application/octet-stream', bytes: file.bytes, thumb: file.thumb ?? new Uint8Array() }); }
+    catch { throw new Error('Não deu para preparar este arquivo.'); }
+    const length = new DataView(framed.buffer, framed.byteOffset).getUint32(0, true);
+    const head = object(JSON.parse(new TextDecoder().decode(framed.subarray(4, 4 + length))));
+    const uploads = array(head.uploads).map((u) => { const x = object(u); return { blob: string(x.blob), len: integer(x.len) }; });
+    let offset = 4 + length;
+    for (const [i, upload] of uploads.entries()) {
+      await this.upload(upload.blob, framed.subarray(offset, offset + upload.len));
+      offset += upload.len;
+      progress?.(i + 1, uploads.length);
+    }
+    await this.act(space, { kind: 'queue_file', space, doc: JSON.stringify(head.doc), now: Date.now() });
+  }
+
+  /** The same encrypted chunks, named again in another chat: nothing to upload. */
+  forwardFile(space: string, doc: FileDoc): Promise<void> {
+    return this.act(space, { kind: 'queue_file', space, doc: JSON.stringify(doc), now: Date.now() });
+  }
+
+  private async upload(blob: string, sealed: Uint8Array): Promise<void> {
+    for (let attempt = 0; ; attempt++) {
+      const ts = Date.now();
+      const payload = await this.core.bytes({ kind: 'blob_put_message', sha: blob, ts, relay: this.transport.relayName });
+      const sig = Array.from(await this.vault.sign(payload), (b) => b.toString(16).padStart(2, '0')).join('');
+      try {
+        const response = await fetch(`${this.base()}/v1/blobs/${blob}`, { method: 'PUT', body: Uint8Array.from(sealed),
+          headers: { 'content-type': 'application/octet-stream', 'x-zoen-device': this.session.account.device, 'x-zoen-ts': String(ts), 'x-zoen-sig': sig } });
+        if (response.ok) return;
+        if (response.status === 413) throw Object.assign(new Error('Este arquivo é grande demais.'), { final: true });
+        if (response.status < 500 && response.status !== 429) throw Object.assign(new Error('O servidor recusou o arquivo.'), { final: true });
+      } catch (error) { if ((error as { final?: boolean }).final || attempt >= 3) throw error instanceof Error && (error as { final?: boolean }).final ? error : new Error('Sem conexão para enviar o arquivo. Tente de novo.'); }
+      await new Promise((r) => setTimeout(r, 800 * 2 ** attempt));
+    }
+  }
+
+  private base(): string { return new URL(this.session.account.relay).origin; }
+
+  /** Fetches, checks and opens a file's chunks. Throws plain Portuguese on failure. */
+  async openFile(chunks: Chunk[], mime: string): Promise<Blob> {
+    const parts: BlobPart[] = [];
+    for (const chunk of chunks) {
+      let sealed: Uint8Array;
+      try {
+        const response = await fetch(`${this.base()}/v1/blobs/${chunk.blob}`);
+        if (!response.ok) throw new Error(String(response.status));
+        sealed = new Uint8Array(await response.arrayBuffer());
+      } catch { throw new Error('O arquivo ainda está chegando. Tente de novo em instantes.'); }
+      try { parts.push(Uint8Array.from(await this.core.bytes({ kind: 'open_chunk', chunk: JSON.stringify(chunk), sealed }))); }
+      catch { throw new Error('Não deu para abrir este arquivo.'); }
+    }
+    return new Blob(parts, { type: mime });
   }
 
   markRead(space: string): Promise<void> {

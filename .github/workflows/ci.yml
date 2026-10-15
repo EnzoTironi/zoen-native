@@ -98,3 +98,68 @@ jobs:
 
       - name: Tests and journeys
         run: cargo test --workspace --no-fail-fast
+
+  # The web client end to end: two CLI "phones" link two headless Chromes through a real relay
+  # (Postgres + FoundationDB) and chat, react, thread, and send photos, video, files and voice.
+  web-e2e:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Toolchain
+        run: |
+          rustup toolchain install "$RUST_TOOLCHAIN" --profile minimal
+          rustup default "$RUST_TOOLCHAIN"
+          rustup target add wasm32-unknown-unknown
+
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        with:
+          key: web-e2e
+
+      - name: Postgres and FoundationDB
+        run: |
+          pg=""
+          for attempt in 1 2 3; do
+            for img in public.ecr.aws/docker/library/postgres:17-alpine mirror.gcr.io/library/postgres:17-alpine; do
+              docker pull -q "$img" && { pg="$img"; break 2; }
+            done
+            sleep $((attempt * 15))
+          done
+          test -n "$pg"
+          docker run -d --name pg -p 5432:5432 -e POSTGRES_USER=zoen -e POSTGRES_HOST_AUTH_METHOD=trust "$pg"
+          scripts/fdb.sh up
+          eval "$(scripts/fdb.sh env)"
+          for v in FDB_CLUSTER_FILE LIBRARY_PATH LD_LIBRARY_PATH; do echo "$v=${!v}" >> "$GITHUB_ENV"; done
+          for _ in $(seq 1 30); do docker exec pg pg_isready -U zoen >/dev/null 2>&1 && break; sleep 1; done
+
+      - name: Build relay, CLI and web
+        run: |
+          cargo install wasm-bindgen-cli --version 0.2.129 --locked
+          cargo build -p zoen-relay -p zoen-cli
+          cd packages/zoen-ui && npm ci && node web/build.mjs
+
+      - name: Two people on the web
+        env:
+          ZOEN_LIMITS: connect_ip=100000/s:100000,register_ip=100000/s:100000
+          ZOEN_SHOTS: ${{ runner.temp }}/web-shots
+        run: |
+          mkdir -p .dev/blobs
+          DATABASE_URL="$ZOEN_TEST_PG" ZOEN_RELAY_NAME=zoen-ci ZOEN_BLOB_DIR=.dev/blobs \
+            target/debug/zoen-relay --bind 127.0.0.1:8790 > relay.log 2>&1 &
+          (cd packages/zoen-ui && node web/server.mjs > ../../web.log 2>&1 &)
+          for _ in $(seq 1 60); do curl -sf http://127.0.0.1:4174/ >/dev/null && curl -s http://127.0.0.1:8790/ >/dev/null && break; sleep 1; done
+          cd packages/zoen-ui/web/e2e && npm i --no-save playwright-core@1.64.1
+          RELAY=http://127.0.0.1:8790 ZOEN_CLI="$GITHUB_WORKSPACE/target/debug/zoen" CHROME="$(command -v google-chrome)" node two-people.mjs
+
+      - name: Logs and screenshots
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: web-e2e
+          path: |
+            relay.log
+            web.log
+            ${{ runner.temp }}/web-shots

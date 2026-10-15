@@ -8,6 +8,9 @@ declare module '*/core/zoen_web_core.js' {
   export function auth(signature: string): Uint8Array;
   export function request(id: number, kind: string, value: string): Uint8Array;
   export function decode_server(bytes: Uint8Array): string;
+  export function seal_file(name: string, mime: string, bytes: Uint8Array, thumb: Uint8Array): Uint8Array;
+  export function open_chunk(chunk: string, sealed: Uint8Array): Uint8Array;
+  export function blob_put_message(sha: string, ts: number, relay: string): Uint8Array;
   export class BrowserCore {
     constructor(account: string, snapshot: string);
     free(): void;
@@ -18,6 +21,7 @@ declare module '*/core/zoen_web_core.js' {
     queue_post(space: string, text: string, replyTo: string | undefined, thread: boolean, forwarded: boolean, now: number): string;
     queue_annotation(space: string, target: string, note: string, now: number): string;
     mark_read(space: string): string;
+    queue_file(space: string, doc: string, now: number): string;
     queue_join(space: string, role: string, code: string, now: number): string;
   }
 }
