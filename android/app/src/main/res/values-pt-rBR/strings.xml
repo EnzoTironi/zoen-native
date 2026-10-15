@@ -259,4 +259,11 @@
   <string name="owner_note_proposal_body">Ele só começa a funcionar depois que você aprovar.</string>
   <string name="owner_note_open">Abrir conversa</string>
   <string name="owner_note_someone">alguém</string>
+  <string name="owner_note_booking_title">Novo agendamento</string>
+  <string name="owner_note_booking_cancelled_title">Agendamento cancelado</string>
+  <string name="owner_note_booking_body">%1$s marcou %2$s, %3$s.</string>
+  <string name="owner_note_booking_cancelled_body">%1$s cancelou %2$s, %3$s.</string>
+  <string name="owner_note_booking_cancel_request_title">Pedido de cancelamento</string>
+  <string name="owner_note_booking_cancel_request_body">%1$s pediu para cancelar %2$s, %3$s.</string>
+  <string name="owner_note_someone_cap">Alguém</string>
 </resources>

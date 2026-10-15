@@ -31,6 +31,8 @@ sealed interface OwnerAgentNote {
     val space: String
     data class Ask(override val space: String, val from: String, val draft: String) : OwnerAgentNote
     data class Proposal(override val space: String, val name: String, val handle: String) : OwnerAgentNote
+    /** A client booked, cancelled, or asked to cancel ([kind] new / cancelled / cancel_request). */
+    data class Booking(override val space: String, val kind: String, val client: String, val service: String, val time: String) : OwnerAgentNote
 
     companion object {
         fun parse(json: String): OwnerAgentNote? = runCatching {
@@ -41,6 +43,9 @@ sealed interface OwnerAgentNote {
             root.optJSONObject("agent_proposal")?.let {
                 val spec = it.optJSONObject("spec") ?: JSONObject()
                 return@runCatching Proposal(it.optString("space"), spec.optString("name"), spec.optString("handle"))
+            }
+            root.optJSONObject("booking")?.let {
+                return@runCatching Booking(it.optString("space"), it.optString("kind"), it.optString("client"), it.optString("service"), it.optString("when"))
             }
             null
         }.getOrNull()
@@ -75,7 +80,15 @@ fun OwnerAgentNoteCard(agent: Persona, note: OwnerAgentNote, personName: (String
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 Avatar(agent, size = 28, contact = true)
                 Column {
-                    Text(stringResource(if (note is OwnerAgentNote.Ask) R.string.owner_note_ask_title else R.string.owner_note_proposal_title),
+                    Text(stringResource(when (note) {
+                        is OwnerAgentNote.Ask -> R.string.owner_note_ask_title
+                        is OwnerAgentNote.Proposal -> R.string.owner_note_proposal_title
+                        is OwnerAgentNote.Booking -> when (note.kind) {
+                            "cancelled" -> R.string.owner_note_booking_cancelled_title
+                            "cancel_request" -> R.string.owner_note_booking_cancel_request_title
+                            else -> R.string.owner_note_booking_title
+                        }
+                    }),
                         style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
                     Text(agent.name, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
@@ -98,6 +111,15 @@ fun OwnerAgentNoteCard(agent: Persona, note: OwnerAgentNote, personName: (String
                         if (note.handle.isNotBlank()) Text("@${note.handle}", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                     Text(stringResource(R.string.owner_note_proposal_body), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+                is OwnerAgentNote.Booking -> {
+                    val who = note.client.ifBlank { stringResource(R.string.owner_note_someone_cap) }
+                    Text(stringResource(when (note.kind) {
+                        "cancelled" -> R.string.owner_note_booking_cancelled_body
+                        "cancel_request" -> R.string.owner_note_booking_cancel_request_body
+                        else -> R.string.owner_note_booking_body
+                    }, who, note.service, note.time),
+                        style = MaterialTheme.typography.bodyMedium)
                 }
             }
             val press = remember { MutableInteractionSource() }

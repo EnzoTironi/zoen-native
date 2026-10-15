@@ -327,7 +327,9 @@ pub fn specs() -> Vec<AppSpec> {
                             "serviceId": {"type": "string"},
                             "startMs": {"type": "integer"},
                             "endMs": {"type": "integer", "description": "Optional; must equal startMs + the service length"},
-                            "note": {"type": "string", "maxLength": 120}
+                            "note": {"type": "string", "maxLength": 120},
+                            "forId": {"type": "string", "description": "Staff or agent only: the member this booking is for"},
+                            "forName": {"type": "string", "maxLength": 48, "description": "Staff or agent only: the client's name"}
                         },
                         "required": ["serviceId", "startMs"]
                     }),
@@ -595,6 +597,16 @@ pub fn apply_as(
         "schedule" => schedule::apply(tool_name, args, view(app, state, now), actor, now),
         _ => apply(app, tool_name, args, state, actor.name, now),
     }
+}
+
+/// The owner's note for what a client just did in a mini-app (only the schedule speaks).
+pub(crate) fn owner_note_for(prev: &AppDoc, next: &AppDoc, by: &str) -> Option<Value> {
+    if next.app != "schedule" {
+        return None;
+    }
+    let p: Value = serde_json::from_str(&prev.state_json).ok()?;
+    let n: Value = serde_json::from_str(&next.state_json).ok()?;
+    schedule::booking_change(&p, &n, by)
 }
 
 /// Folding a new version of a shared mini-app on top of the current one: apps whose

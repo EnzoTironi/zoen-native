@@ -278,9 +278,14 @@ pub async fn host(e: &Arc<RodaEngine>, home: &Path, for_secs: Option<u64>) {
                 continue;
             };
             let mut from = cursors.get(&s.id).copied().unwrap_or(0);
+            // Our own messages are skipped, but not our own mini-app edits: a booking we
+            // made for a client in chat still tells the owner.
+            let skip = |t: &TimelineEntry| {
+                t.author.id == cx.me && !matches!(t.kind, EntryKind::ItemEdited { .. })
+            };
             let pending: Vec<u64> = tl
                 .iter()
-                .filter(|t| t.seq > from && t.author.id != cx.me)
+                .filter(|t| t.seq > from && !skip(t))
                 .map(|t| t.seq)
                 .collect();
             if pending.len() > BACKLOG_CAP {
@@ -296,7 +301,7 @@ pub async fn host(e: &Arc<RodaEngine>, home: &Path, for_secs: Option<u64>) {
                 from = skip_to;
             }
             for (i, t) in tl.iter().enumerate() {
-                if t.seq <= from || t.author.id == cx.me {
+                if t.seq <= from || skip(t) {
                     continue;
                 }
                 last_activity = Instant::now();
@@ -346,6 +351,20 @@ async fn turn(
     before: &[TimelineEntry],
     t: &TimelineEntry,
 ) -> bool {
+    if let EntryKind::ItemEdited {
+        item_id, version, ..
+    } = &t.kind
+    {
+        // A client booked or cancelled in a mini-app: tell the owner, once.
+        return match e.booking_note(item_id.clone(), *version) {
+            Some(n) if owner_note(e, cx, &t.id).is_none() => {
+                let mut n: serde_json::Value = serde_json::from_str(&n).unwrap_or_default();
+                n["booking"]["source"] = t.id.clone().into();
+                tell_owner(e, cx, n)
+            }
+            _ => true,
+        };
+    }
     let Some(text) = text_of(t) else {
         return true;
     };

@@ -7,6 +7,9 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.ui.test.performScrollTo
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.CompositionLocalProvider
@@ -37,9 +40,11 @@ class OwnerAgentNoteCardTest {
 
     private val agent = Persona("agenda", PersonaKind.AGENT, "Agenda do Bruno", "agenda_bruno", "A", "#19B5A5", null, "", "bruno", "Bruno", null, false, true)
 
-    @Test fun parsesOnlyTheTwoNoteShapes() {
+    @Test fun parsesOnlyTheKnownNoteShapes() {
         assertEquals(OwnerAgentNote.Ask("s1", "carla", "Oi"), OwnerAgentNote.parse("""{"ask_owner":{"space":"s1","from":"carla","draft":"Oi","rule":"r"}}"""))
         assertEquals(OwnerAgentNote.Proposal("s1", "Agenda", "agenda"), OwnerAgentNote.parse("""{"agent_proposal":{"space":"s1","source":"m","spec":{"name":"Agenda","handle":"agenda"}}}"""))
+        assertEquals(OwnerAgentNote.Booking("s1", "new", "Carla", "Corte", "seg 10:00"), OwnerAgentNote.parse("""{"booking":{"space":"s1","kind":"new","client":"Carla","service":"Corte","when":"seg 10:00","source":"m"}}"""))
+        assertEquals("cancel_request", (OwnerAgentNote.parse("""{"booking":{"kind":"cancel_request"}}""") as OwnerAgentNote.Booking).kind)
         assertNull(OwnerAgentNote.parse("""{"grant_admin":{}}"""))
         assertNull(OwnerAgentNote.parse("not json"))
     }
@@ -49,6 +54,7 @@ class OwnerAgentNoteCardTest {
         val notes = listOf(
             OwnerAgentNote.Ask("barbearia", "carla", "Oi Carla! Recebi o comprovante, já confirmo seu horário de sábado às 10h."),
             OwnerAgentNote.Proposal("dm", "Agenda do Salão", "agenda_salao"),
+            OwnerAgentNote.Booking("barbearia", "new", "Carla", "Corte", "sáb 10:00"),
         )
         compose.setContent {
             val base = LocalContext.current
@@ -57,7 +63,7 @@ class OwnerAgentNoteCardTest {
             CompositionLocalProvider(LocalContext provides ctx, LocalConfiguration provides conf) {
                 ZoenTheme {
                     Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
-                        Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                        Column(Modifier.verticalScroll(rememberScrollState()).padding(20.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
                             notes.forEach { note ->
                                 Box { OwnerAgentNoteCard(agent, note, personName = { if (it == "carla") "Carla" else null }, fresh = true, open = { opened += it }) }
                             }
@@ -70,9 +76,12 @@ class OwnerAgentNoteCardTest {
         compose.onNodeWithText("Seu agente precisa de você").assertIsDisplayed()
         compose.onNodeWithText("Antes de responder a Carla, ele quer que você veja a resposta.").assertIsDisplayed()
         compose.onNodeWithText("Seu agente quer criar um agente").assertIsDisplayed()
-        assertEquals(2, compose.onAllNodesWithTag("owner-note").fetchSemanticsNodes().size)
+        assertEquals(3, compose.onAllNodesWithTag("owner-note").fetchSemanticsNodes().size)
         CommittedWindowCapture.save(compose.activity, "owner-notes", "owner-notes-pt")
-        compose.onAllNodesWithTag("owner-note-open")[0].performClick()
+        compose.onNodeWithText("Carla marcou Corte, sáb 10:00.").performScrollTo().assertIsDisplayed()
+        compose.onNodeWithText("Novo agendamento").assertIsDisplayed()
+        CommittedWindowCapture.save(compose.activity, "owner-notes", "owner-notes-booking-pt")
+        compose.onAllNodesWithTag("owner-note-open")[0].performScrollTo().performClick()
         compose.runOnIdle { assertEquals(listOf("barbearia"), opened) }
     }
 }

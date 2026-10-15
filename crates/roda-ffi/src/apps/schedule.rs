@@ -488,6 +488,56 @@ fn local(tz: Tz, ms: i64) -> Option<chrono::DateTime<Tz>> {
     chrono::DateTime::from_timestamp_millis(ms).map(|d| d.with_timezone(&tz))
 }
 
+/// What `by` did to a booking they made, between two versions of a schedule, as the
+/// owner's `booking` note: `new`, `cancelled` (withdrawn) or `cancel_request`. A client
+/// acting for themselves and the agent booking for a client both speak; the owner and
+/// resolvers stay silent, and so does staff declining or cancelling (that resolves the
+/// request as "cancelled", not "withdrawn").
+pub(crate) fn booking_change(prev: &Value, next: &Value, by: &str) -> Option<Value> {
+    if !matches!(role(next, by), Role::Client | Role::Agent) {
+        return None;
+    }
+    let event = |st: &Value, id: &Value, kind: &str, status: &str| {
+        st["events"].as_array().into_iter().flatten().any(|e| {
+            &e["bookingId"] == id
+                && e["kind"] == kind
+                && (e["status"] == status || e["resolution"] == status)
+        })
+    };
+    let before = prev["bookings"].as_array().cloned().unwrap_or_default();
+    next["bookings"]
+        .as_array()?
+        .iter()
+        .filter(|b| b["byId"] == by)
+        .find_map(|b| {
+            let id = &b["id"];
+            let kind = match before.iter().find(|o| &o["id"] == id) {
+                None if b["status"] == "pending" => "new",
+                Some(o)
+                    if o["status"] == "pending"
+                        && b["status"] == "cancelled"
+                        && event(next, id, "book_request", "withdrawn") =>
+                {
+                    "cancelled"
+                }
+                Some(_)
+                    if event(next, id, "cancel_request", "open")
+                        && !event(prev, id, "cancel_request", "open") =>
+                {
+                    "cancel_request"
+                }
+                _ => return None,
+            };
+            let client = b.get("forName").unwrap_or(&b["byName"]);
+            Some(json!({"booking": {
+                "kind": kind,
+                "client": client,
+                "service": b["serviceName"],
+                "when": when_label(next, b["startMs"].as_i64().unwrap_or(0)),
+            }}))
+        })
+}
+
 fn when_label(st: &Value, ms: i64) -> String {
     let tz = st["timezone"]
         .as_str()
@@ -905,6 +955,11 @@ fn apply_tool(
             let end = check_slot(&st, start, minutes, now, None)?;
             let id = next_id(&mut st, "b");
             let svc_name = svc["name"].as_str().unwrap_or_default().to_string();
+            // Who the booking is for: the actor, or the client staff or the agent names.
+            let (for_id, for_name) = match (who.staff(), s(args, "forName")) {
+                (true, Some(n)) => (s(args, "forId").unwrap_or_default(), n),
+                _ => (actor.id.to_string(), actor.name.to_string()),
+            };
             st["bookings"]
                 .as_array_mut()
                 .ok_or_else(|| t("estado inválido", "invalid state"))?
@@ -918,6 +973,8 @@ fn apply_tool(
                     "endMs": end,
                     "byId": actor.id,
                     "byName": clean(actor.name, 48),
+                    "forId": for_id,
+                    "forName": clean(&for_name, 48),
                     "status": "pending",
                     "note": note(args).unwrap_or_default(),
                     "at": now
@@ -1244,6 +1301,28 @@ mod tests {
             .filter(|e| e["bookingId"] == id && e["status"] == "open")
             .map(|e| e["kind"].as_str().unwrap().to_string())
             .collect()
+    }
+
+    #[test]
+    fn the_agent_books_for_a_client_and_the_owner_note_names_them() {
+        let base = open_schedule();
+        let args = json!({"serviceId": "corte", "startMs": at(10, 0),
+            "forId": "carla", "forName": "Carla"});
+        let st = call(&base, &AGENT, "schedule_book", args.clone(), at(8, 0));
+        let b = booking(&st, "bot")[0];
+        assert_eq!(
+            (&b["forId"], &b["forName"]),
+            (&json!("carla"), &json!("Carla"))
+        );
+        let note = booking_change(&base, &st, "bot").expect("agent booking notifies");
+        assert_eq!(note["booking"]["client"], "Carla");
+        // A client can't book in someone else's name.
+        let st = call(&base, &DANI, "schedule_book", args, at(8, 0));
+        assert_eq!(booking(&st, "dani")[0]["forName"], "Dani");
+        assert_eq!(
+            booking_change(&base, &st, "dani").unwrap()["booking"]["client"],
+            "Dani"
+        );
     }
 
     #[test]

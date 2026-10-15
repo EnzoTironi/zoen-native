@@ -8,6 +8,8 @@ import RodaCore
 enum OwnerAgentNote: Equatable {
     case ask(space: String, from: String, draft: String)
     case proposal(space: String, name: String, handle: String)
+    /// A client booked, cancelled, or asked to cancel (`kind`: new / cancelled / cancel_request).
+    case booking(space: String, kind: String, client: String, service: String, when: String)
 
     init?(json: String) {
         guard let data = json.data(using: .utf8),
@@ -22,13 +24,19 @@ enum OwnerAgentNote: Equatable {
             self = .proposal(space: p["space"] as? String ?? "",
                              name: spec["name"] as? String ?? "",
                              handle: spec["handle"] as? String ?? "")
+        } else if let b = root["booking"] as? [String: Any] {
+            self = .booking(space: b["space"] as? String ?? "",
+                            kind: b["kind"] as? String ?? "new",
+                            client: b["client"] as? String ?? "",
+                            service: b["service"] as? String ?? "",
+                            when: b["when"] as? String ?? "")
         } else {
             return nil
         }
     }
 
     var space: String {
-        switch self { case .ask(let s, _, _), .proposal(let s, _, _): s }
+        switch self { case .ask(let s, _, _), .proposal(let s, _, _), .booking(let s, _, _, _, _): s }
     }
 }
 
@@ -110,6 +118,9 @@ struct OwnerAgentNoteCard: View {
         switch note {
         case .ask: "Seu agente precisa de você"
         case .proposal: "Seu agente quer criar um agente"
+        case .booking(_, "cancelled", _, _, _): "Agendamento cancelado"
+        case .booking(_, "cancel_request", _, _, _): "Pedido de cancelamento"
+        case .booking: "Novo agendamento"
         }
     }
 
@@ -136,6 +147,12 @@ struct OwnerAgentNoteCard: View {
             .foregroundStyle(Palette.textPrimary)
             Text("Ele só começa a funcionar depois que você aprovar.")
                 .font(.callout).foregroundStyle(Palette.textSecondary)
+        case .booking(_, let kind, let client, let service, let when):
+            let who = client.isEmpty ? String(localized: "Alguém") : client
+            Text(kind == "cancelled" ? "\(who) cancelou \(service), \(when)."
+                 : kind == "cancel_request" ? "\(who) pediu para cancelar \(service), \(when)."
+                 : "\(who) marcou \(service), \(when).")
+                .font(.callout).foregroundStyle(Palette.textPrimary)
         }
     }
 }
