@@ -704,7 +704,11 @@ pub async fn raise_receipt(
     delivered: u64,
     read: u64,
 ) -> Result<(), sqlx::Error> {
-    let delivered = delivered.max(read);
+    // Clamp so a bogus u64 can't wrap to a negative BIGINT.
+    let (delivered, read) = (
+        delivered.max(read).min(i64::MAX as u64),
+        read.min(i64::MAX as u64),
+    );
     sqlx::query(
         "INSERT INTO space_receipts (space, identity, delivered, read) VALUES ($1, $2, $3, $4)
          ON CONFLICT (space, identity) DO UPDATE SET
@@ -726,6 +730,8 @@ pub async fn receipts(pool: &PgPool, space: &str) -> Result<Vec<(String, i64, i6
         .bind(space)
         .fetch_all(pool)
         .await
+}
+
 /// Sets (or, with an empty token, clears) this device's push token. A token moves with
 /// its device: any other row holding it is dropped.
 pub async fn set_push_token(

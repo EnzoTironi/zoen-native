@@ -63,6 +63,7 @@ import androidx.compose.animation.core.spring
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.semantics.text
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.sp
 import androidx.compose.foundation.layout.heightIn
@@ -501,7 +502,9 @@ fun TimelineRow(model: ZoenViewModel, spaceId: String, entry: TimelineEntry, nav
                                 val mentionColor = if (mine) LocalContentColor.current else MaterialTheme.colorScheme.primary
                                 Box { SelectionContainer { Text(buildAnnotatedString { append(kind.text); Regex("(?<![\\w.])@[\\p{L}\\p{N}_.]+").findAll(kind.text).forEach { match -> addStyle(SpanStyle(color = mentionColor, fontWeight = FontWeight.SemiBold), match.range.first, match.range.last + 1) }
                                     // A clear run as wide as the meta, so it never sits on the last line's words.
-                                    withStyle(SpanStyle(color = androidx.compose.ui.graphics.Color.Transparent, fontSize = MaterialTheme.typography.labelSmall.fontSize)) { append(bubbleMetaReserve(entry.atMs, mine)) } }, style = MaterialTheme.typography.bodyLarge) }
+                                    withStyle(SpanStyle(color = androidx.compose.ui.graphics.Color.Transparent, fontSize = MaterialTheme.typography.labelSmall.fontSize)) { append(bubbleMetaReserve(entry.atMs, mine)) } }, style = MaterialTheme.typography.bodyLarge,
+                                        // Readers and tests see the message, not the meta reserve.
+                                        modifier = Modifier.clearAndSetSemantics { text = androidx.compose.ui.text.AnnotatedString(kind.text) }) }
                                     // WhatsApp: time and tick inside the bubble, bottom right.
                                     BubbleMeta(entry.atMs, if (mine) entry.delivery else null, Modifier.align(Alignment.BottomEnd).offset(y = 3.dp)) }
                             }
