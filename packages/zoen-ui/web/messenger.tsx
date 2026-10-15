@@ -178,9 +178,10 @@ export function Messenger({ conversations, identity, name, connected, status, me
   useEffect(() => { setReply(null); setEditing(null); setThreadRoot(null); }, [conversation?.id]);
   useEffect(() => {
     if (!conversation?.unread || !connected) return;
-    const read = () => { if (document.visibilityState === 'visible') void messages.current?.markRead(conversation.id); };
-    read(); document.addEventListener('visibilitychange', read);
-    return () => document.removeEventListener('visibilitychange', read);
+    // Read means seen: the tab is visible and the window has focus, like WhatsApp Web.
+    const read = () => { if (document.visibilityState === 'visible' && document.hasFocus()) void messages.current?.markRead(conversation.id); };
+    read(); document.addEventListener('visibilitychange', read); window.addEventListener('focus', read);
+    return () => { document.removeEventListener('visibilitychange', read); window.removeEventListener('focus', read); };
   }, [conversation?.id, conversation?.unread, connected]);
 
   const space = conversation?.id ?? '';

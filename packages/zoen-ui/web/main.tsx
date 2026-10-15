@@ -173,6 +173,8 @@ function App() {
   if (boot.session.kind === 'linked') return <Linked runtime={boot.runtime} session={boot.session} forget={() => {
     if (!window.confirm('Sair deste navegador e apagar as conversas guardadas aqui? Remova também em Aparelhos no seu celular.')) return;
     boot.runtime.core.close();
+    // Chat preferences and followed threads live in localStorage; leave nothing behind.
+    localStorage.removeItem('zoen.chat-prefs'); localStorage.removeItem('zoen.thread-follow');
     void boot.runtime.vault.erase().then(() => location.reload()).catch((error: unknown) => setBoot({ kind: 'unavailable', message: message(error) }));
   }} />;
   return <PairingGate runtime={boot.runtime} session={boot.session} linked={(session) => setBoot({ ...boot, session })} />;
