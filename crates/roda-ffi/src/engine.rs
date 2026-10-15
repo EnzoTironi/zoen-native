@@ -133,6 +133,10 @@ impl MessageMarks {
         if self.deleted || (note.author_only() && author != by) {
             return None;
         }
+        // A reaction is one emoji (with modifiers); anything longer is a forged event.
+        if matches!(note, A::React { emoji } if emoji.is_empty() || emoji.len() > 32) {
+            return None;
+        }
         match note {
             A::Edit { text } => {
                 self.edited = true;
@@ -1612,6 +1616,13 @@ impl Engine {
                     "only the author can edit or delete",
                 ),
             });
+        }
+        if let roda_types::Annotation::React { emoji } = &note {
+            if emoji.is_empty() || emoji.len() > 32 {
+                return Err(CoreError::Invalid {
+                    reason: t("reação inválida", "invalid reaction"),
+                });
+            }
         }
         if let roda_types::Annotation::Edit { text } = &note {
             if text.trim().is_empty() {
