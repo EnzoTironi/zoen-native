@@ -157,7 +157,9 @@ async fn offline_writes_flush_after_the_relay_comes_back() {
     w.zoen("bruno", &["send", "Ideias", "anotar isso", "--offline"]);
 
     w.start_relay();
-    let s = w.zoen("bruno", &["sync"]);
+    // `sync` returns as soon as the outbox drains; the bound only has to cover a cold relay
+    // on a busy runner (the 8 s default did not).
+    let s = w.zoen("bruno", &["sync", "--timeout", "30000"]);
     assert!(s.contains("pending=0"), "{s}");
     let errors: String = rusqlite::Connection::open(w.dir.join("bruno/zoen.sqlite"))
         .unwrap()
