@@ -4553,7 +4553,7 @@
         "pt-BR": {
           "stringUnit": {
             "state": "translated",
-            "value": "Configurações"
+            "value": "Ajustes"
           }
         }
       }
@@ -8921,6 +8921,1146 @@
           "stringUnit": {
             "state": "translated",
             "value": "Não foi possível tirar a foto"
+          }
+        }
+      }
+    },
+    "1 month of Business for every 5 friends": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "1 mês de Business a cada 5 amigos"
+          }
+        }
+      }
+    },
+    "24 hours": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "24 horas"
+          }
+        }
+      }
+    },
+    "7 days": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "7 dias"
+          }
+        }
+      }
+    },
+    "90 days": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "90 dias"
+          }
+        }
+      }
+    },
+    "A code from your phone will confirm it's you when a new device signs in.": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Um código do seu celular vai confirmar que é você quando um aparelho novo entrar."
+          }
+        }
+      }
+    },
+    "About": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sobre"
+          }
+        }
+      }
+    },
+    "Accessibility": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Acessibilidade"
+          }
+        }
+      }
+    },
+    "Account": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Conta"
+          }
+        }
+      }
+    },
+    "Active": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ativo"
+          }
+        }
+      }
+    },
+    "Another device": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Outro aparelho"
+          }
+        }
+      }
+    },
+    "Ask an agent to do something later, and it shows up here.": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Peça a um agente para fazer algo mais tarde, e a tarefa aparece aqui."
+          }
+        }
+      }
+    },
+    "Authenticator app": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "App autenticador"
+          }
+        }
+      }
+    },
+    "Automatic": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Automático"
+          }
+        }
+      }
+    },
+    "Back up now": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Fazer cópia agora"
+          }
+        }
+      }
+    },
+    "Backup and recovery": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Cópia e recuperação"
+          }
+        }
+      }
+    },
+    "Backup is off": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Cópia de segurança desligada"
+          }
+        }
+      }
+    },
+    "Backup is on": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Cópia de segurança ligada"
+          }
+        }
+      }
+    },
+    "Backup password": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Senha da cópia"
+          }
+        }
+      }
+    },
+    "Business free": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Business grátis"
+          }
+        }
+      }
+    },
+    "Cards and Pix arrive with paid plans and mini-app purchases.": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Cartões e Pix chegam junto com os planos pagos e as compras nos mini-apps."
+          }
+        }
+      }
+    },
+    "Change in device settings": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Mudar nos ajustes do aparelho"
+          }
+        }
+      }
+    },
+    "Chats and keys on this device are deleted. Without a backup or another signed-in device, they can't be recovered.": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "As conversas e as chaves deste aparelho são apagadas. Sem uma cópia ou outro aparelho conectado, não dá para recuperar."
+          }
+        }
+      }
+    },
+    "Code %@": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Código %@"
+          }
+        }
+      }
+    },
+    "Code by text message": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Código por mensagem de texto"
+          }
+        }
+      }
+    },
+    "Come talk to me on Zoen": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Vem conversar comigo no Zoen"
+          }
+        }
+      }
+    },
+    "Coming before launch": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Chega antes do lançamento"
+          }
+        }
+      }
+    },
+    "Couldn't load your devices": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Não deu para carregar seus aparelhos"
+          }
+        }
+      }
+    },
+    "Create your account to choose a name and an @ that friends can find.": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Crie sua conta para escolher um nome e um @ que os amigos encontrem."
+          }
+        }
+      }
+    },
+    "Credits and plans": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Créditos e planos"
+          }
+        }
+      }
+    },
+    "Devices": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Aparelhos"
+          }
+        }
+      }
+    },
+    "Devices signed in to your account.": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Aparelhos conectados à sua conta."
+          }
+        }
+      }
+    },
+    "Disappearing messages": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Mensagens temporárias"
+          }
+        }
+      }
+    },
+    "Erase": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Apagar"
+          }
+        }
+      }
+    },
+    "Erase data on this device": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Apagar dados deste aparelho"
+          }
+        }
+      }
+    },
+    "Erase data on this device?": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Apagar os dados deste aparelho?"
+          }
+        }
+      }
+    },
+    "Erasing here doesn't delete your account. Your chats come back when you sign in again with another device.": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Apagar aqui não apaga sua conta. Suas conversas voltam quando você entrar de novo com outro aparelho."
+          }
+        }
+      }
+    },
+    "Feedback": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Feedback"
+          }
+        }
+      }
+    },
+    "Follows your device": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Igual ao aparelho"
+          }
+        }
+      }
+    },
+    "Free": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Grátis"
+          }
+        }
+      }
+    },
+    "Friends who joined with your link show up here as they become active.": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Os amigos que entraram pelo seu link aparecem aqui conforme ficam ativos."
+          }
+        }
+      }
+    },
+    "Help": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ajuda"
+          }
+        }
+      }
+    },
+    "Increase contrast": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Mais contraste"
+          }
+        }
+      }
+    },
+    "Invite friends with your link. Every 5 who become active give you 1 month of the Business plan. No limit.": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Convide amigos com o seu link. A cada 5 que ficam ativos, você ganha 1 mês do plano Business. Sem limite."
+          }
+        }
+      }
+    },
+    "Invite someone": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Convidar alguém"
+          }
+        }
+      }
+    },
+    "Invites": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Convites"
+          }
+        }
+      }
+    },
+    "Language": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Idioma"
+          }
+        }
+      }
+    },
+    "Larger": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Maior"
+          }
+        }
+      }
+    },
+    "Last backup: %@": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Última cópia: %@"
+          }
+        }
+      }
+    },
+    "Meanwhile: your messages are end-to-end encrypted, and Zoen's servers can't read them.": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Enquanto isso: suas mensagens são criptografadas de ponta a ponta, e os servidores do Zoen não conseguem lê-las."
+          }
+        }
+      }
+    },
+    "Moderation": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Moderação"
+          }
+        }
+      }
+    },
+    "New messages in a Space vanish after the time you pick, for everyone.": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "As mensagens novas de um Espaço somem depois do prazo que você escolher, para todo mundo."
+          }
+        }
+      }
+    },
+    "No account on this device": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Nenhuma conta neste aparelho"
+          }
+        }
+      }
+    },
+    "No agent spending yet": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Nenhum gasto de agentes ainda"
+          }
+        }
+      }
+    },
+    "No backup yet": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Nenhuma cópia ainda"
+          }
+        }
+      }
+    },
+    "No payment methods": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Nenhuma forma de pagamento"
+          }
+        }
+      }
+    },
+    "No public communities yet": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ainda não há comunidades públicas"
+          }
+        }
+      }
+    },
+    "No reports": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Nenhuma denúncia"
+          }
+        }
+      }
+    },
+    "No results": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Nenhum resultado"
+          }
+        }
+      }
+    },
+    "No scheduled tasks": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Nenhuma tarefa agendada"
+          }
+        }
+      }
+    },
+    "Not available on this device yet": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ainda não disponível neste aparelho"
+          }
+        }
+      }
+    },
+    "Not available yet. Today a new device only gets in with approval from one that's already signed in.": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ainda não disponível. Hoje um aparelho novo só entra com a aprovação de um que já está conectado."
+          }
+        }
+      }
+    },
+    "Not available yet: today every message stays. When it arrives, you'll pick the time here for each Space, and older messages won't change.": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ainda não disponível: hoje todas as mensagens ficam. Quando chegar, você escolhe o prazo aqui para cada Espaço, e as mensagens antigas não mudam."
+          }
+        }
+      }
+    },
+    "Nothing in Settings matches “%@”. Try another word, like “theme” or “password”.": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Nada nos Ajustes combina com “%@”. Tente outra palavra, como “tema” ou “senha”."
+          }
+        }
+      }
+    },
+    "Now": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Agora"
+          }
+        }
+      }
+    },
+    "Off": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Desligado"
+          }
+        }
+      }
+    },
+    "On": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ligado"
+          }
+        }
+      }
+    },
+    "Once you create your account, the devices signed in to it show up here.": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Depois de criar sua conta, os aparelhos conectados a ela aparecem aqui."
+          }
+        }
+      }
+    },
+    "Paid plans aren't on sale yet. Meanwhile, every 5 active friends you invite give you 1 month of Business.": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Os planos pagos ainda não estão à venda. Enquanto isso, a cada 5 amigos ativos que você convida, você ganha 1 mês de Business."
+          }
+        }
+      }
+    },
+    "Password": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Senha"
+          }
+        }
+      }
+    },
+    "People find you by your @. Your name and photo travel encrypted, only to people you talk to.": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "As pessoas te encontram pelo seu @. Seu nome e sua foto viajam criptografados, só para quem conversa com você."
+          }
+        }
+      }
+    },
+    "Pick a password with at least 8 characters. We can't recover it for you: after 10 wrong tries the backup locks for good.": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Escolha uma senha com pelo menos 8 caracteres. Não temos como recuperá-la: depois de 10 tentativas erradas, a cópia fica trancada para sempre."
+          }
+        }
+      }
+    },
+    "Preferences": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Preferências"
+          }
+        }
+      }
+    },
+    "Profile": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Perfil"
+          }
+        }
+      }
+    },
+    "Recommended · works without signal": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Recomendado · funciona sem sinal"
+          }
+        }
+      }
+    },
+    "Reduce motion": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Menos movimento"
+          }
+        }
+      }
+    },
+    "Reduce transparency": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Menos transparência"
+          }
+        }
+      }
+    },
+    "Reports from your Spaces show up here. The reported person never knows who reported.": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "As denúncias dos seus Espaços aparecem aqui. A pessoa denunciada nunca sabe quem denunciou."
+          }
+        }
+      }
+    },
+    "Restore from a backup": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Restaurar de uma cópia"
+          }
+        }
+      }
+    },
+    "Restoring happens when you sign in on a new device: choose “I already have an account” and type your backup password.": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "A restauração acontece quando você entra num aparelho novo: escolha “Já tenho conta” e digite a senha da cópia."
+          }
+        }
+      }
+    },
+    "Results": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Resultados"
+          }
+        }
+      }
+    },
+    "Search settings": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Buscar nos ajustes"
+          }
+        }
+      }
+    },
+    "Security": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Segurança"
+          }
+        }
+      }
+    },
+    "Smaller": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Menor"
+          }
+        }
+      }
+    },
+    "Soon": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Em breve"
+          }
+        }
+      }
+    },
+    "Tell us what we can do better.": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Conte o que podemos melhorar."
+          }
+        }
+      }
+    },
+    "Terms and privacy": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Termos e privacidade"
+          }
+        }
+      }
+    },
+    "Text message": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "SMS"
+          }
+        }
+      }
+    },
+    "Text size": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tamanho do texto"
+          }
+        }
+      }
+    },
+    "The app and the mini-apps change together.": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "O app e os mini-apps mudam juntos."
+          }
+        }
+      }
+    },
+    "The language follows your device. Tap it to change it in the device settings.": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "O idioma segue o do aparelho. Toque para mudar nos ajustes do aparelho."
+          }
+        }
+      }
+    },
+    "The terms of use and the privacy policy will be here before Zoen opens to everyone.": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Os termos de uso e a política de privacidade vão estar aqui antes de o Zoen abrir para todo mundo."
+          }
+        }
+      }
+    },
+    "Theme": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tema"
+          }
+        }
+      }
+    },
+    "This device": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Este aparelho"
+          }
+        }
+      }
+    },
+    "To add one, open Zoen on the new device and choose to sign in with this one.": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Para adicionar um, abra o Zoen no aparelho novo e escolha entrar com este."
+          }
+        }
+      }
+    },
+    "Turn on backup": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ligar a cópia"
+          }
+        }
+      }
+    },
+    "Turn on with a password": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ligar com uma senha"
+          }
+        }
+      }
+    },
+    "Two-step verification": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Duas etapas"
+          }
+        }
+      }
+    },
+    "Unavailable": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Indisponível"
+          }
+        }
+      }
+    },
+    "Username": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Usuário"
+          }
+        }
+      }
+    },
+    "Version": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Versão"
+          }
+        }
+      }
+    },
+    "Wallet": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Carteira"
+          }
+        }
+      }
+    },
+    "What would make Zoen better for you?": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "O que deixaria o Zoen melhor para você?"
+          }
+        }
+      }
+    },
+    "When people open their Spaces to everyone, you'll find them here. For now, join with a friend's invite link.": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Quando as pessoas abrirem seus Espaços para todo mundo, você vai encontrá-los aqui. Por enquanto, entre pelo link de convite de um amigo."
+          }
+        }
+      }
+    },
+    "When they do, card details stay with the payment processor. Zoen never stores the number.": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Quando chegarem, os dados do cartão ficam com o processador de pagamento. O Zoen nunca guarda o número."
+          }
+        }
+      }
+    },
+    "When your agents work for you, what they spend this month shows up here.": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Quando seus agentes trabalharem para você, o que eles gastarem no mês aparece aqui."
+          }
+        }
+      }
+    },
+    "Your agents this month": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Seus agentes neste mês"
+          }
+        }
+      }
+    },
+    "Your chats live only on your devices": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Suas conversas ficam só nos seus aparelhos"
+          }
+        }
+      }
+    },
+    "Your current plan": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Seu plano atual"
+          }
+        }
+      }
+    },
+    "Your messages are end-to-end encrypted. Only your devices hold the keys.": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Suas mensagens são criptografadas de ponta a ponta. Só os seus aparelhos têm as chaves."
+          }
+        }
+      }
+    },
+    "Your plan": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Seu plano"
+          }
+        }
+      }
+    },
+    "Zoen follows your device. Whatever you change there also applies to the mini-apps.": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "O Zoen segue o seu aparelho. O que você mudar lá vale também para os mini-apps."
+          }
+        }
+      }
+    },
+    "Zoen: friends, communities, apps and agents in one place.": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Zoen: amigos, comunidades, apps e agentes num lugar só."
+          }
+        }
+      }
+    },
+    "%lld items": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld itens"
+          }
+        }
+      }
+    },
+    "of %@ in budgets you set": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "de %@ nos limites que você definiu"
           }
         }
       }

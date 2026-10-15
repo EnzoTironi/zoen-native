@@ -1,10 +1,11 @@
 import SwiftUI
 import RodaCore
 
-/// Aba 4: você, seus agentes, seus Itens, segurança e uma única tela de configurações.
+/// Aba 4: você, seus agentes, seus Itens, segurança e uma única tela de ajustes.
 struct YouScreen: View {
     @Environment(AppModel.self) private var model
     @State private var confirmReset = false
+    @State private var settings: SettingsLaunch? = nil
 
     var body: some View {
         List {
@@ -32,6 +33,13 @@ struct YouScreen: View {
                         }
                     }
                 }
+            }
+
+            Section {
+                Button { Haptics.open(); settings = SettingsLaunch(start: nil) } label: {
+                    Label("Settings", systemImage: "gearshape").foregroundStyle(Palette.textPrimary)
+                }
+                .accessibilityIdentifier("openSettings")
             }
 
             AccountSection()
@@ -104,6 +112,13 @@ struct YouScreen: View {
         .scrollContentBackground(.hidden)
         .background(NightBackdrop())
         .navigationTitle("Your context")
+        .sheet(item: $settings) { SettingsRoot(start: $0.start).environment(model) }
+        .onAppear {
+            // `-RodaSettings tema`: opens Ajustes on that screen (journey tests, screenshots).
+            if let raw = UserDefaults.standard.string(forKey: "RodaSettings"), settings == nil {
+                settings = SettingsLaunch(start: SettingsScreen(rawValue: raw))
+            }
+        }
         .confirmationDialog("Erase everything and restart the demo story?", isPresented: $confirmReset, titleVisibility: .visible) {
             Button("Restart", role: .destructive) {
                 model.perform { try model.core.resetDemo() }
@@ -428,4 +443,10 @@ struct ItemsListView: View {
         .navigationTitle("Items")
         .task(id: model.revision) { items = model.core.items() }
     }
+}
+
+/// One opening of Ajustes, optionally straight on a screen.
+struct SettingsLaunch: Identifiable {
+    let id = UUID()
+    let start: SettingsScreen?
 }

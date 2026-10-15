@@ -316,3 +316,14 @@ impl RodaEngine {
         })
     }
 }
+
+#[uniffi::export]
+impl RodaEngine {
+    /// Your personal invite link (`https://tryzoen.com/@handle`), or `None` without an
+    /// account. Friends who join through it count toward the Business reward.
+    pub fn friend_invite_link(&self) -> Option<String> {
+        self.account_dto()
+            .filter(|a| !a.handle.trim().is_empty())
+            .map(|a| roda_proto::links::friend(&a.handle))
+    }
+}

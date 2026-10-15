@@ -23,6 +23,7 @@
 //! too far behind, which then resumes from its cursors.
 
 pub mod experiments;
+pub mod links;
 pub mod push;
 pub mod wire;
 

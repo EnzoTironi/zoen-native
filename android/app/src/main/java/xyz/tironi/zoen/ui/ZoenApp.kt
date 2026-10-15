@@ -196,6 +196,7 @@ fun ZoenApp(model: ZoenViewModel, deepLink: String?, consumed: () -> Unit) {
                             entry<Join> { JoinScreen(model, it.code, navigate, back) }
                             entry<Request> { RequestScreen(model, state, it.id, navigate, back) }
                             entry<Appearance> { ChatAppearanceScreen(model, it.space, back) }
+                            entry<SettingsRoute> { SettingsScreen(model, state, it.page, navigate, back) { while (stack.size > 1 && stack.lastOrNull() is SettingsRoute) stack.removeLastOrNull() } }
                             entry<Widgets> { xyz.tironi.zoen.widgets.WidgetsScreen(state, back) }
                             entry<Browser> { xyz.tironi.zoen.agent.AgentBrowserScreen(model.browser, back) }
                             entry<VersionPreview> { route -> VersionPreviewScreen(model, route.id, route.number, back, snackbar.takeIf { stack.lastOrNull() == route }) }

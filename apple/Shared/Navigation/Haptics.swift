@@ -19,6 +19,15 @@ enum Haptics {
     private static let notify = UINotificationFeedbackGenerator()
     #endif
 
+    /// Reduce Motion also quiets haptics: no surprise buzzes for people who asked for calm.
+    private static var allowed: Bool {
+        #if os(iOS)
+        !UIAccessibility.isReduceMotionEnabled
+        #else
+        !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
+        #endif
+    }
+
     static func prepare() {
         #if os(iOS)
         soft.prepare(); tick.prepare(); medium.prepare(); notify.prepare()
@@ -27,6 +36,7 @@ enum Haptics {
 
     /// The chat header grows into its menu.
     static func menuOpen() {
+        guard allowed else { return }
         #if os(iOS)
         soft.impactOccurred(intensity: 0.8)
         #endif
@@ -34,6 +44,7 @@ enum Haptics {
 
     /// The header menu folds back.
     static func menuClose() {
+        guard allowed else { return }
         #if os(iOS)
         light.impactOccurred(intensity: 0.45)
         #endif
@@ -41,6 +52,7 @@ enum Haptics {
 
     /// A tile lifts under the finger (edit mode).
     static func pickUp() {
+        guard allowed else { return }
         #if os(iOS)
         rigid.impactOccurred(intensity: 0.75)
         #elseif os(macOS)
@@ -50,6 +62,7 @@ enum Haptics {
 
     /// A tile settles into its new place.
     static func drop() {
+        guard allowed else { return }
         #if os(iOS)
         soft.impactOccurred(intensity: 0.9)
         #elseif os(macOS)
@@ -59,6 +72,7 @@ enum Haptics {
 
     /// Something was removed (after you confirmed it).
     static func remove() {
+        guard allowed else { return }
         #if os(iOS)
         medium.impactOccurred(intensity: 0.85)
         #elseif os(macOS)
@@ -68,6 +82,7 @@ enum Haptics {
 
     /// Menu opened.
     static func open() {
+        guard allowed else { return }
         #if os(iOS)
         medium.impactOccurred()
         #elseif os(macOS)
@@ -77,6 +92,7 @@ enum Haptics {
 
     /// O dedo cruzou para outro item.
     static func selectionTick() {
+        guard allowed else { return }
         #if os(iOS)
         tick.selectionChanged()
         tick.prepare()
@@ -87,6 +103,7 @@ enum Haptics {
 
     /// Soltou em cima de um item.
     static func commit() {
+        guard allowed else { return }
         #if os(iOS)
         notify.notificationOccurred(.success)
         #elseif os(macOS)
@@ -96,6 +113,7 @@ enum Haptics {
 
     /// Algo precisa da sua confirmação.
     static func warning() {
+        guard allowed else { return }
         #if os(iOS)
         notify.notificationOccurred(.warning)
         #elseif os(macOS)
@@ -105,6 +123,7 @@ enum Haptics {
 
     /// Toque leve de ação (cada toque num mini-app).
     static func action() {
+        guard allowed else { return }
         #if os(iOS)
         rigid.impactOccurred(intensity: 0.7)
         #elseif os(macOS)
@@ -114,6 +133,7 @@ enum Haptics {
 
     /// Closed without choosing.
     static func dismiss() {
+        guard allowed else { return }
         #if os(iOS)
         soft.impactOccurred(intensity: 0.7)
         #endif
@@ -121,6 +141,7 @@ enum Haptics {
 
     /// Light tap (the Search button).
     static func tap() {
+        guard allowed else { return }
         #if os(iOS)
         light.impactOccurred(intensity: 0.8)
         #endif
@@ -128,6 +149,7 @@ enum Haptics {
 
     /// Sending a message (light impact — never on scroll).
     static func send() {
+        guard allowed else { return }
         #if os(iOS)
         light.impactOccurred(intensity: 0.55)
         #endif
@@ -135,6 +157,7 @@ enum Haptics {
 
     /// Voice-record lock (rigid).
     static func recordLock() {
+        guard allowed else { return }
         #if os(iOS)
         rigid.impactOccurred(intensity: 1.0)
         #endif
@@ -142,6 +165,7 @@ enum Haptics {
 
     /// Soft tick for pull-to-refresh or a gentle settle.
     static func settle() {
+        guard allowed else { return }
         #if os(iOS)
         soft.impactOccurred(intensity: 0.5)
         #endif

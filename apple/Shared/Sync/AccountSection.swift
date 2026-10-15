@@ -88,7 +88,7 @@ struct AccountSection: View {
 }
 
 /// Name and @ after sign-up. A changed @ is re-registered with the relay right away.
-private struct ProfileEditor: View {
+struct ProfileEditor: View {
     @Environment(AppModel.self) private var model
     @Environment(\.dismiss) private var dismiss
     let account: AccountDto

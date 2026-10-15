@@ -121,7 +121,7 @@ Tudo vira Evento assinado no log do Espaço → sync, offline, desfazer, auditor
 | 8. Comunidades e criadores (12) | Espaço público + Espaços-filhos + Ofertas | Ativar e revisar comunidade somem: publicar um Espaço é um toggle. Canais = Espaços-filhos. Membros e papéis usam a mesma tela de Info. | 1 | 9 | 2 |
 | 9. Conteúdo e acessos (12) | Oferta + Concessão | Revisar assinatura some (o Apple Pay, o Pix ou o checkout já confirmam). Expirado e negado são **um componente "trancado"**. A biblioteca de compras some: o que você comprou aparece em Itens. | 1 | 9 | 2 |
 | 10. Presença pública e Studio (7) | Espaço público + Item (post) + Concessão (publicar) | Studio deixa de ser uma tela: rascunhos ficam no seu perfil e as sugestões dos agentes vão para Atividade. "Edição invalida aprovação" vira uma regra automática (a aprovação fica presa ao hash da versão). | 1 | 5 | 1 |
-| 11. Portabilidade e preferências (12) | Evento (log) + Identidade | Réplicas, conflito e migração somem da UI: o CRDT e o log resolvem, e a migração é um assistente avançado. A tela de Configurações duplicada some. | 2 | 5 | 5 |
+| 11. Portabilidade e preferências (12) | Evento (log) + Identidade | Réplicas, conflito e migração somem da UI: o CRDT e o log resolvem, e a migração é um assistente avançado. A tela de Ajustes duplicada some. | 2 | 5 | 5 |
 | **Total (133)** | | | **19** | **88** | **26** |
 
 **Em números:** 114 das 133 telas (86%) deixam de precisar de design próprio. 26 (20%) somem por completo, porque a regra do sistema as torna desnecessárias. 88 viram estados de ~12 componentes reutilizáveis: cartão de pedido, recibo, estado trancado, pílula de privacidade, folha Nova, folha Conceder, Versões, Comparar, medidor de orçamento, banner offline, toast de desfazer e checkout. Somando a aba nova "Você", o app inteiro cabe em **20 telas**.
@@ -141,7 +141,7 @@ Tudo vira Evento assinado no log do Espaço → sync, offline, desfazer, auditor
 1. **Conversas:** todos os seus Espaços numa lista só. DMs com pessoas, com agentes e grupos aparecem misturados por recência. Comunidades aparecem como **pilhas** que abrem seus canais (Espaços-filhos). Filtros em pílula: Todas · Pessoas · Agentes · Comunidades (#011 melhorado).
 2. **Atividade:** *o que precisa de você e o que está sendo feito por você.* Topo: pedidos de agentes em lote. Meio: tarefas em andamento, com progresso ao vivo (#051). Embaixo: menções e respostas. É aqui que o modelo de confiança vive (#024 promovido a aba).
 3. **Explorar:** Rede (Seguindo/Para você), comunidades e agentes públicos. É o motor de crescimento e a vitrine dos criadores (#091 + #115 numa tela só).
-4. **Você:** seu perfil público e seus rascunhos, além de **Agentes**, **Itens** (todos os arquivos e docs, de todos os Espaços), **Memória** (o que os agentes sabem de você), **Acessos** (assinaturas, compras e o que você concedeu), **Segurança** e **Configurações**. Uma única tela de configurações.
+4. **Você:** seu perfil público e seus rascunhos, além de **Agentes**, **Itens** (todos os arquivos e docs, de todos os Espaços), **Memória** (o que os agentes sabem de você), **Acessos** (assinaturas, compras e o que você concedeu), **Segurança** e **Ajustes**. Uma única tela de ajustes.
 5. **Botão de vidro à direita** (o padrão de "search tab" do iOS 26): busca global. Puxado para cima, vira **Nova** (conversa, grupo, agente, Item).
 
 **Por que "Agentes" não é aba:** uma aba de agentes trata o agente como ferramenta. Na tese, agente é **membro**: ele aparece onde as pessoas aparecem (Conversas, Atividade, perfis). Configurar agentes é raro e mora em Você. Além disso, o botão central elevado dos posters é um padrão Android/Instagram que briga com a tab bar em cápsula do Liquid Glass.
@@ -168,7 +168,7 @@ Tudo vira Evento assinado no log do Espaço → sync, offline, desfazer, auditor
 | 15 | Você (hub) | *nova* |
 | 16 | Você › Memória | #082, #083, #090 |
 | 17 | Você › Segurança | #130, #004, #125 |
-| 18 | Você › Configurações | #132, #133, #128 (Avançado) |
+| 18 | Você › Ajustes | #132, #133, #128 (Avançado) |
 | 19 | Entrar | #005, #006, #007 |
 | 20 | Conectar aparelho | #008, #009, #010 |
 
@@ -219,7 +219,7 @@ As palavras "chave privada", "assinador" e "backup criptografado" **nunca aparec
 - **Regra de quem paga, numa frase:** *quem é dono do agente paga o agente.* Nas comunidades, o criador decide quanto do orçamento dos agentes dele cada tier inclui (ver §6).
 
 ### Onde mora a infraestrutura
-Em Você › Configurações › **Avançado**, fechado por padrão: provedor de modelo, onde os agentes rodam, relay/host do Espaço, armazenamento e exportar/mover Espaço. Para quase todos os usuários, isso é "Automático". A única infra que aparece na superfície é um selo de privacidade no cabeçalho do Espaço: 🔒 *Ponta a ponta*, ou 🌐 *Público*.
+Em Você › Ajustes › **Avançado**, fechado por padrão: provedor de modelo, onde os agentes rodam, relay/host do Espaço, armazenamento e exportar/mover Espaço. Para quase todos os usuários, isso é "Automático". A única infra que aparece na superfície é um selo de privacidade no cabeçalho do Espaço: 🔒 *Ponta a ponta*, ou 🌐 *Público*.
 
 ### Direção visual (alinhada ao PR 211)
 - **Pele do PR 211:** Zoen Night (cinzas azulados), Mona Sans com o itálico do Instrument Serif só em momentos editoriais, e um azul de ação.
@@ -842,7 +842,7 @@ apple/
 | Pro a R$ 59 (#101) vs R$ 49 (#103–#108) | **Uma fonte de verdade:** os tiers são Ofertas definidas uma vez (#103), e todas as telas leem dali. Exemplo canônico: Aberto R$ 0 · Membro R$ 29 · Pro R$ 49. |
 | "Uso de agentes independe do plano" (#101) vs "20 tarefas/mês no Pro" (#103/#104) | **Regra única:** *quem é dono do agente paga o agente.* Os agentes do criador gastam o orçamento do criador, e cada tier define **quanto desse orçamento** o membro pode usar ("inclui 20 tarefas com os agentes da Ana"). Seus agentes pessoais gastam o seu orçamento, em qualquer lugar. A tela #101 passa a dizer isso. |
 | Sessão reservada "o criador não recebe" (#027) vs "visível para você e para ela" (#104) | **A privacidade é uma propriedade do Espaço, escolhida ao começar e fixa no cabeçalho:** 🔒 *Só você* (o criador não é membro e recebe só contagens agregadas de uso) ou 👥 *Com a Ana*. O checkout (#104) diz "Você escolhe por conversa: só você ou com a Ana". E é honesto: "o agente roda em [provedor]". |
-| Duas telas de Configurações (#131 vs #132) | **Uma só**, em Você › Configurações, com seções Conta · Notificações · Privacidade e aparelhos · Agentes · Acessos e pagamentos · Aparência · Dados · Avançado · Ajuda. |
+| Duas telas de Ajustes (#131 vs #132) | **Uma só**, em Você › Ajustes, com seções Conta · Notificações · Privacidade e aparelhos · Agentes · Acessos e pagamentos · Aparência · Dados · Avançado · Ajuda. |
 | Em "Seus agentes" a aba ativa é Conversas (#026); Atividade e Busca sem aba; ícone de Rede trocando | **Uma regra de navegação:** toda tela pertence a exatamente uma aba (Agentes → Você; Atividade é aba; Busca é o botão de vidro), e há um conjunto de ícones fechado, com um ícone por destino, sempre. |
 | Agente desenhado de 3 jeitos (AG, ícone, cubo 3D) | **Squircle + glifo + mini-avatar do dono** (§3). Cor e glifo pertencem à Identidade do agente e aparecem iguais em todo lugar. |
 | Mesma comunidade com 284 e com 0 membros; datas de 2024/2025/2026 misturadas | Um **roteiro de dados fictícios** único para o pitch: um mês, um elenco e uma história contínua (o "Plano de expansão"). |
@@ -1001,9 +1001,9 @@ Legenda: **Tela** = continua como tela própria (19). **Estado/componente** = vi
 | 125 | Exportar e restaurar | Estado/componente | Você › Dados |
 | 126 | Migração interrompida | Some | Avançado, guiado pelo sistema |
 | 127 | Migração retomada e cliente atualizado | Some | Idem |
-| 128 | Mudar de provedores | Estado/componente | Configurações › Avançado › Provedores |
+| 128 | Mudar de provedores | Estado/componente | Ajustes › Avançado › Provedores |
 | 129 | Concessão revogada após reconexão | Estado/componente | Estado do Item |
 | 130 | Privacidade e dispositivos | Tela | Você › Segurança (aparelhos, chave, backup) |
-| 131 | Navegar até as preferências | Some | Configurações duplicada |
-| 132 | Configurações gerais | Tela | Você › Configurações (única) |
-| 133 | Aparência e acessibilidade | Estado/componente | Seção de Configurações |
+| 131 | Navegar até as preferências | Some | Ajustes duplicada |
+| 132 | Ajustes gerais | Tela | Você › Ajustes (única) |
+| 133 | Aparência e acessibilidade | Estado/componente | Seção de Ajustes |

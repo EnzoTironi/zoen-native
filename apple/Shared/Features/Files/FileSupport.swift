@@ -197,7 +197,7 @@ struct QuickLookView: UIViewControllerRepresentable {
 
 /// Full-screen Quick Look with Markup; a saved markup comes back as new bytes.
 @MainActor
-final class MarkupPresenter: NSObject, QLPreviewControllerDataSource, QLPreviewControllerDelegate {
+final class MarkupPresenter: NSObject, @preconcurrency QLPreviewControllerDataSource, @preconcurrency QLPreviewControllerDelegate {
     nonisolated let file: AttachmentFile
     private var use: AttachmentFile.Use?
     private let onSave: @MainActor @Sendable (AttachmentFile) -> Void
