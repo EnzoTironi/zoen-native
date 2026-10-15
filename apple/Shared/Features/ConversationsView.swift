@@ -230,8 +230,8 @@ struct ConversationRow: View {
     }
 
     private var authorPrefix: String {
-        // Mine: a tick (WhatsApp) instead of "You:".
-        if space.lastAuthor?.isMe == true { return "✓ " }
+        // Mine: the real ticks sit before the preview (WhatsApp) instead of "You:".
+        if space.lastAuthor?.isMe == true { return "" }
         return otherPrefix
     }
 
