@@ -89,7 +89,7 @@ class VoiceRecorder(private val context: Context, private val scope: CoroutineSc
                 } catch (error: Exception) {
                     if (error is kotlinx.coroutines.CancellationException) throw error
                     reading.set(false)
-                    withContext(Dispatchers.Main + NonCancellable) { mutableState.update { it.copy(phase = RecordingPhase.LOCKED, error = error.message) } }
+                    withContext(Dispatchers.Main + NonCancellable) { mutableState.update { if (it.phase == RecordingPhase.IDLE) it else it.copy(phase = RecordingPhase.LOCKED, error = error.message) } }
                 }
             }
             true
