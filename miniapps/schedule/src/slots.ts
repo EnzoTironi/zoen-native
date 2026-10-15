@@ -11,6 +11,9 @@ export type Booking = {
   endMs: number;
   byId: string;
   byName?: string; // owner, agent and resolvers only
+  /** Who it is for, when the agent or staff booked in a client's name. */
+  forId?: string;
+  forName?: string;
   status: 'pending' | 'confirmed' | 'cancelled';
   note?: string;
   /** Booked at the same moment as someone who got the slot first (kept as cancelled). */

@@ -418,6 +418,12 @@ fn occupies(b: &Value, now: i64) -> bool {
         && b["endMs"].as_i64().unwrap_or(0) > now
 }
 
+/// A booking is `id`'s when they made it or it was made for them (the agent or staff
+/// booking in their name), so they see and cancel it like one of their own.
+fn is_for(b: &Value, id: &str) -> bool {
+    b["byId"].as_str() == Some(id) || b["forId"].as_str() == Some(id)
+}
+
 fn busy(st: &Value, now: i64) -> Vec<Value> {
     let mut out: Vec<(i64, i64)> = st["bookings"]
         .as_array()
@@ -451,7 +457,7 @@ pub fn view_for(st: &Value, viewer: &str, now: i64) -> Value {
         .as_array()
         .into_iter()
         .flatten()
-        .filter(|b| b["byId"].as_str() == Some(viewer))
+        .filter(|b| is_for(b, viewer))
         .cloned()
         .collect();
     let ids: Vec<&str> = mine.iter().filter_map(|b| b["id"].as_str()).collect();
@@ -488,7 +494,7 @@ fn local(tz: Tz, ms: i64) -> Option<chrono::DateTime<Tz>> {
     chrono::DateTime::from_timestamp_millis(ms).map(|d| d.with_timezone(&tz))
 }
 
-/// What `by` did to a booking they made, between two versions of a schedule, as the
+/// What `by` did to a booking that is theirs ([`is_for`]), between two versions of a schedule, as the
 /// owner's `booking` note: `new`, `cancelled` (withdrawn) or `cancel_request`. A client
 /// acting for themselves and the agent booking for a client both speak; the owner and
 /// resolvers stay silent, and so does staff declining or cancelling (that resolves the
@@ -508,7 +514,7 @@ pub(crate) fn booking_change(prev: &Value, next: &Value, by: &str) -> Option<Val
     next["bookings"]
         .as_array()?
         .iter()
-        .filter(|b| b["byId"] == by)
+        .filter(|b| is_for(b, by))
         .find_map(|b| {
             let id = &b["id"];
             let kind = match before.iter().find(|o| &o["id"] == id) {
@@ -943,7 +949,7 @@ fn apply_tool(
                     .as_array()
                     .into_iter()
                     .flatten()
-                    .filter(|b| b["byId"].as_str() == Some(actor.id) && occupies(b, now))
+                    .filter(|b| is_for(b, actor.id) && occupies(b, now))
                     .count();
                 if open >= MAX_OPEN_PER_MEMBER {
                     return Err(tr!(
@@ -1153,7 +1159,7 @@ fn apply_tool(
         "schedule_cancel" => {
             let idx = booking_index(&st, args)?;
             let b = st["bookings"][idx].clone();
-            if b["byId"].as_str() != Some(actor.id) {
+            if !is_for(&b, actor.id) {
                 return Err(t(
                     "só quem marcou pode pedir o cancelamento",
                     "only the person who booked can request a cancellation",
@@ -1323,6 +1329,43 @@ mod tests {
             booking_change(&base, &st, "dani").unwrap()["booking"]["client"],
             "Dani"
         );
+    }
+
+    #[test]
+    fn a_client_sees_and_cancels_what_the_agent_booked_for_them() {
+        let base = open_schedule();
+        let args = json!({"serviceId": "corte", "startMs": at(10, 0),
+            "forId": "carla", "forName": "Carla"});
+        let st = call(&base, &AGENT, "schedule_book", args, at(8, 0));
+        let st = book(&st, &DANI, at(11, 0), at(8, 0));
+        let id = booking(&st, "bot")[0]["id"].clone();
+        // Carla sees hers with its events; Dani's stays busy-only, for both clients.
+        let v = view_for(&st, "carla", at(8, 0));
+        let ids: Vec<&Value> = v["bookings"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|b| &b["id"])
+            .collect();
+        assert_eq!(ids, vec![&id]);
+        assert!(v["events"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .all(|e| e["bookingId"] == id));
+        assert_eq!(v["busy"].as_array().unwrap().len(), 2);
+        let d = view_for(&st, "dani", at(8, 0));
+        assert!(d["bookings"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .all(|b| b["byId"] == "dani"));
+        // Dani can't cancel it; Carla can, and the owner hears it from her.
+        let cancel = json!({"bookingId": id});
+        assert!(apply("schedule_cancel", &cancel, st.clone(), &DANI, at(9, 0)).is_err());
+        let done = call(&st, &CARLA, "schedule_cancel", cancel, at(9, 0));
+        assert_eq!(booking(&done, "bot")[0]["status"], "cancelled");
+        assert!(booking_change(&st, &done, "carla").is_some());
     }
 
     #[test]
