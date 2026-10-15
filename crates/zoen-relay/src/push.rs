@@ -41,6 +41,8 @@ pub fn valid_token(t: &str) -> bool {
 /// One device token to wake.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Target {
+    pub identity: String,
+    pub device: String,
     pub platform: String,
     pub token: String,
 }
@@ -468,6 +470,8 @@ mod tests {
 
     fn target(p: &str) -> Target {
         Target {
+            identity: "i".into(),
+            device: "d".into(),
             platform: p.into(),
             token: "abc".into(),
         }
@@ -595,6 +599,8 @@ mod fcm_tests {
         };
         let p = Pusher::new(m.clone(), None, Some(cfg)).unwrap();
         let t = Target {
+            identity: "i".into(),
+            device: "d".into(),
             platform: FCM.into(),
             token: "tok".into(),
         };

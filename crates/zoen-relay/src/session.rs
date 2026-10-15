@@ -1170,8 +1170,10 @@ impl Session {
         }
     }
 
-    /// Wakes the devices of every member with no live session. The push carries nothing;
-    /// the app syncs, decrypts and decides itself whether to notify.
+    /// Wakes every device of the audience that has no live session here, per device: my
+    /// phone still wakes while my Mac is online. The push carries nothing; the app syncs,
+    /// decrypts and decides itself whether to notify. (With several relay nodes a device
+    /// connected to another node may get a redundant silent wake; harmless.)
     fn wake_away(&self, audience: &[String]) {
         if !self.st.push.enabled() {
             return;
@@ -1180,17 +1182,16 @@ impl Session {
         let me = self.identity.clone();
         let audience: Vec<String> = audience.iter().filter(|a| **a != me).cloned().collect();
         tokio::spawn(async move {
-            let online = st.fanout.online(&audience).await;
-            let away: Vec<String> = audience
-                .into_iter()
-                .filter(|a| !online.contains(a))
-                .collect();
-            if away.is_empty() {
+            if audience.is_empty() {
                 return;
             }
-            let Ok(targets) = db::push_targets(&st.pool, &away).await else {
+            let online = st.fanout.hub.online_devices(&audience);
+            let Ok(targets) = db::push_targets(&st.pool, &audience).await else {
                 return;
             };
+            let targets = targets
+                .into_iter()
+                .filter(|t| !online.contains(&(t.identity.clone(), t.device.clone())));
             for t in targets {
                 match st.push.wake(&t).await {
                     crate::push::Outcome::Gone => {

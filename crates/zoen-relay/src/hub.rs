@@ -67,6 +67,19 @@ impl Hub {
             })
     }
 
+    /// Devices with a live session on this node, as (identity, device).
+    pub fn online_devices(&self, ids: &[String]) -> std::collections::HashSet<(String, String)> {
+        let map = self.sessions.read().expect("hub");
+        ids.iter()
+            .filter_map(|i| map.get(i).map(|s| (i, s)))
+            .flat_map(|(i, s)| {
+                s.values()
+                    .filter(|m| !m.revoked.load(Ordering::Acquire))
+                    .map(move |m| (i.clone(), m.device.clone()))
+            })
+            .collect()
+    }
+
     pub fn online_sessions(&self) -> usize {
         self.sessions
             .read()

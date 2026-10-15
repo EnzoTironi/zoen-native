@@ -730,8 +730,8 @@ pub async fn push_targets(
     pool: &PgPool,
     ids: &[String],
 ) -> Result<Vec<crate::push::Target>, sqlx::Error> {
-    let rows: Vec<(String, String)> = sqlx::query_as(
-        "SELECT p.platform, p.token FROM push_tokens p
+    let rows: Vec<(String, String, String, String)> = sqlx::query_as(
+        "SELECT p.identity, p.device, p.platform, p.token FROM push_tokens p
          JOIN devices d ON d.identity = p.identity AND d.device = p.device AND d.revoked_at IS NULL
          WHERE p.identity = ANY($1)",
     )
@@ -740,7 +740,12 @@ pub async fn push_targets(
     .await?;
     Ok(rows
         .into_iter()
-        .map(|(platform, token)| crate::push::Target { platform, token })
+        .map(|(identity, device, platform, token)| crate::push::Target {
+            identity,
+            device,
+            platform,
+            token,
+        })
         .collect())
 }
 
