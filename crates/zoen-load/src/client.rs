@@ -8,7 +8,8 @@ use futures_util::{SinkExt, StreamExt};
 use hdrhistogram::Histogram;
 use roda_log::{Author, Signer};
 use roda_proto::{
-    auth_message, ClientFrame, Envelope, Op, Sequenced, ServerFrame, PROTOCOL_VERSION,
+    auth_message, ClientFrame, Envelope, EphemeralKind, Op, Sequenced, ServerFrame,
+    PROTOCOL_VERSION,
 };
 use roda_types::{EventBody, Identity, IdentityKind, Privacy, Role, Seen, SpaceKind};
 use tokio::{net::TcpStream, sync::mpsc, time::Instant};
@@ -268,6 +269,8 @@ pub struct Plan {
     pub measure_from_us: u64,
     /// How long to keep reading after the last command, for late acks and deliveries.
     pub drain: Duration,
+    /// Answer every delivered message with a Delivered receipt, as the app does.
+    pub receipts: bool,
 }
 
 /// Runs one person: publishes on command and records acks and deliveries, until `rx` closes
@@ -280,6 +283,7 @@ pub async fn run(conn: Conn, plan: Plan, mut rx: mpsc::Receiver<Publish>) -> any
         start,
         measure_from_us,
         drain,
+        receipts,
     } = plan;
     let (mut sink, mut stream) = ws.split();
     let mut pending: HashMap<String, u64> = HashMap::new();
@@ -329,6 +333,13 @@ pub async fn run(conn: Conn, plan: Plan, mut rx: mpsc::Receiver<Publish>) -> any
                 }
                 if ev.env.author() == author.identity {
                     continue;
+                }
+                if receipts {
+                    let r = ClientFrame::Ephemeral {
+                        space: space.clone(),
+                        kind: EphemeralKind::Delivered { seq: ev.seq },
+                    };
+                    sink.send(Message::Binary(r.encode().into())).await?;
                 }
                 if let Some(EventBody::MessagePosted { text, .. }) = ev.env.body() {
                     if let Ok(due_us) = text.parse::<u64>() {

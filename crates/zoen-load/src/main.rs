@@ -9,7 +9,10 @@
 //!
 //!   zoen-load --relay http://127.0.0.1:8787 [--relay …] --users 2000 --group 8 \
 //!             --rate 1000 --seconds 30 [--warmup 5] [--connect-concurrency 256] \
-//!             [--pid relay=1234 --pid fdb=5678] [--label name] [--json out.json]
+//!             [--pid relay=1234 --pid fdb=5678] [--label name] [--json out.json] [--receipts]
+//!
+//! `--receipts`: every recipient answers each message with a Delivered receipt, as the app
+//! does, so the receipt path (watermark write + fan-out to the group) is under load too.
 //!
 //! The relay must allow many handshakes from one address (`ZOEN_LIMITS=connect_ip=…`),
 //! since every simulated person shares the load generator's.
@@ -37,6 +40,7 @@ struct Args {
     pids: Vec<(String, u32)>,
     label: String,
     json: Option<String>,
+    receipts: bool,
 }
 
 fn args() -> anyhow::Result<Args> {
@@ -77,6 +81,7 @@ fn args() -> anyhow::Result<Args> {
         pids,
         label: one("--label").unwrap_or_else(|| "run".into()),
         json: one("--json"),
+        receipts: raw.iter().any(|a| a == "--receipts"),
     };
     if a.group < 2 || a.users < a.group {
         bail!("--group must be at least 2 and no more than --users");
@@ -219,6 +224,7 @@ async fn main() -> anyhow::Result<()> {
                 start,
                 measure_from_us,
                 drain: Duration::from_secs(5),
+                receipts: a.receipts,
             },
             rx,
         )));
@@ -286,7 +292,7 @@ async fn main() -> anyhow::Result<()> {
     let report = json!({
         "label": a.label,
         "config": {
-            "relays": a.relays.len(), "users": a.users, "group": a.group, "rate": a.rate,
+            "relays": a.relays.len(), "users": a.users, "group": a.group, "rate": a.rate, "receipts": a.receipts,
             "seconds": a.seconds, "warmup": a.warmup,
         },
         "connect": {

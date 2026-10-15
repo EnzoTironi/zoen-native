@@ -11,6 +11,8 @@ import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.*
+import androidx.compose.material.icons.automirrored.rounded.ArrowBack
+import androidx.compose.foundation.clickable
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -62,10 +64,12 @@ fun ConversationsScreen(model: ZoenViewModel, state: AppState, navigate: (NavKey
     var selectedChat by rememberSaveable { mutableStateOf<String?>(null) }
     var searching by rememberSaveable { mutableStateOf(false) }
     var query by rememberSaveable { mutableStateOf("") }
-    var pinned by remember { mutableStateOf(model.repository.preferences.getStringSet("pins", setOf("zoen"))!!.toSet()) }
     var filter by rememberSaveable { mutableStateOf(ChatInboxFilter.All) }
-    var archived by remember { mutableStateOf(model.repository.preferences.getStringSet("archived", emptySet())!!.toSet()) }
-    var muted by remember { mutableStateOf(model.repository.preferences.getStringSet(MUTED_CHATS, emptySet())!!.toSet()) }
+    // Pin, archive and mute are mine on every device: they come from the core.
+    val archived = state.spaces.filter { it.archived }.map { it.id }.toSet()
+    val muted = state.spaces.filter { it.muted }.map { it.id }.toSet()
+    fun prefs(chat: SpaceSummary, pinned: Boolean = chat.pinned, archived: Boolean = chat.archived, mutedUntil: Long? = chat.mutedUntilMs) =
+        model.launch { model.repository.change { it.setChatPrefs(chat.id, pinned, archived, mutedUntil) } }
     var showArchived by rememberSaveable { mutableStateOf(false) }
     androidx.activity.compose.BackHandler(showArchived) { showArchived = false }
     val haptics = rememberZoenHaptics()
@@ -73,7 +77,7 @@ fun ConversationsScreen(model: ZoenViewModel, state: AppState, navigate: (NavKey
     val archivedChats = state.spaces.filter { it.id in archived }
     val chats = state.spaces.filter { (it.id in archived) == showArchived && (showArchived || filter.includes(it)) && matchesSpace(it, query) }
         .sortedByDescending { it.lastAtMs }
-        .sortedByDescending { it.id in pinned || it.counterpart?.handle in pinned }
+        .sortedByDescending { it.pinned }
     val list: @Composable () -> Unit = {
         Scaffold(topBar = { HomeBar(stringResource(R.string.app_name), state, navigate, onStore = { store = true }, onSearch = { searching = !searching }) }, containerColor = MaterialTheme.colorScheme.background, contentWindowInsets = WindowInsets(0, 0, 0, 0)) { padding ->
             // Bottom: clear the floating tab bar so the last chat is never under it.
@@ -108,24 +112,14 @@ fun ConversationsScreen(model: ZoenViewModel, state: AppState, navigate: (NavKey
                     }
                 }
                 items(chats, key = { it.id }) { chat ->
-                    val isPinned = chat.id in pinned || chat.counterpart?.handle in pinned
-                    ConversationRow(chat, isPinned && !showArchived, working = working[chat.id], selected = split && selectedChat == chat.id,
-                        muted = chat.id in muted, archived = chat.id in archived,
-                        onMute = {
-                            muted = if (chat.id in muted) muted - chat.id else muted + chat.id
-                            model.repository.preferences.edit().putStringSet(MUTED_CHATS, muted).apply()
-                        },
-                        onArchive = {
-                            archived = if (chat.id in archived) archived - chat.id else archived + chat.id
-                            model.repository.preferences.edit().putStringSet("archived", archived).apply()
-                        },
+                    ConversationRow(chat, chat.pinned && !showArchived, working = working[chat.id], selected = split && selectedChat == chat.id,
+                        muted = chat.muted, archived = chat.archived,
+                        onMute = { prefs(chat, mutedUntil = if (chat.muted) null else Long.MAX_VALUE) },
                         onClick = { if (split) selectedChat = chat.id else navigate(Chat(chat.id)) },
-                        onPin = {
-                            val key = if (chat.counterpart?.handle == "zoen") "zoen" else chat.id
-                            pinned = if (isPinned) pinned - key else pinned + key
-                            model.repository.preferences.edit().putStringSet("pins", pinned).apply()
-                        },
+                        onPin = { prefs(chat, pinned = !chat.pinned) },
                         onRead = { model.launch { model.repository.change { it.markRead(chat.id) } } },
+                        onArchive = { prefs(chat, archived = !chat.archived) },
+                        modifier = Modifier.animateItem(),
                     )
                 }
                 if (chats.isEmpty()) item {
@@ -153,10 +147,10 @@ fun ConversationsScreen(model: ZoenViewModel, state: AppState, navigate: (NavKey
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun ConversationRow(chat: SpaceSummary, pinned: Boolean, working: String?, selected: Boolean, onClick: () -> Unit, onPin: () -> Unit, onRead: () -> Unit,
-    muted: Boolean = false, archived: Boolean = false, onMute: () -> Unit = {}, onArchive: () -> Unit = {}) {
+    muted: Boolean = false, archived: Boolean = false, onMute: () -> Unit = {}, onArchive: () -> Unit = {}, modifier: Modifier = Modifier) {
     var menu by remember { mutableStateOf(false) }
     val haptics = rememberZoenHaptics()
-    Box {
+    Box(modifier) {
         Row(Modifier.fillMaxWidth().testTag("chat:${chat.counterpart?.handle ?: chat.id}").background(if (selected) MaterialTheme.colorScheme.primaryContainer else Color.Transparent)
             .combinedClickable(hapticFeedbackEnabled = false, onClick = { haptics.perform(ZoenFeedback.Tap); onClick() }, onLongClick = { haptics.perform(ZoenFeedback.Open); menu = true }).padding(horizontal = 20.dp, vertical = 10.dp),
             verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp)) {
@@ -321,4 +315,3 @@ fun requestStatusLabel(status: RequestStatus): Int = when (status) {
 }
 
 /** Chats muted on this device; ActivityNotifications skips them, wakes included. */
-const val MUTED_CHATS = "muted.chats"

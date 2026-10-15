@@ -25,6 +25,8 @@ pub mod metrics;
 pub mod ownership;
 pub mod pseudonym;
 pub mod push;
+pub mod receipts;
+pub mod recent;
 pub mod session;
 pub mod telemetry;
 pub mod transfer;
@@ -100,6 +102,8 @@ pub struct AppState {
     pub analytics: analytics::Analytics,
     /// Content-free wakes for devices that are away (ADR 0047).
     pub push: Arc<push::Pusher>,
+    /// Receipt watermarks, folded in memory and flushed in batches.
+    pub receipts: receipts::Receipts,
 }
 
 pub type Shared = Arc<AppState>;
@@ -253,8 +257,10 @@ pub async fn build(cfg: &Config) -> anyhow::Result<(Router, Shared)> {
         backup_settings: backup::Settings::from_env()?,
         analytics,
         push: Arc::new(push::Pusher::from_env()),
+        receipts: receipts::Receipts::default(),
     });
     analytics::spawn(state.clone());
+    receipts::spawn(&state);
     key_package_claims::spawn(&state);
     let app = match cfg.metrics_bind {
         Some(_) => router(state.clone()),
@@ -301,6 +307,7 @@ pub async fn serve(cfg: Config) -> anyhow::Result<()> {
             let _ = tcp.set_nodelay(true);
         });
     tracing::info!(bind = %cfg.bind, relay = %cfg.relay_name, "zoen-relay listening");
+    let last = state.clone();
     axum::serve(
         listener,
         app.into_make_service_with_connect_info::<std::net::SocketAddr>(),
@@ -313,6 +320,10 @@ pub async fn serve(cfg: Config) -> anyhow::Result<()> {
         }
     })
     .await?;
+    // Sessions have drained: write the receipts they raised, so a deploy loses none.
+    if let Err(e) = last.receipts.flush(&last.pool, &last.metrics).await {
+        tracing::warn!(error = %e, "receipt flush at shutdown failed");
+    }
     Ok(())
 }
 
