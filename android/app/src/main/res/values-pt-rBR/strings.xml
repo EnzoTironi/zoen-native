@@ -266,4 +266,10 @@
   <string name="owner_note_booking_cancel_request_title">Pedido de cancelamento</string>
   <string name="owner_note_booking_cancel_request_body">%1$s pediu para cancelar %2$s, %3$s.</string>
   <string name="owner_note_someone_cap">Alguém</string>
+  <string name="mute">Silenciar</string>
+  <string name="unmute">Reativar som</string>
+  <string name="archive">Arquivar</string>
+  <string name="unarchive">Desarquivar</string>
+  <string name="archived">Arquivadas</string>
+  <string name="muted">Silenciada</string>
 </resources>

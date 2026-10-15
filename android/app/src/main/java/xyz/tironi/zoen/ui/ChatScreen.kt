@@ -62,6 +62,12 @@ import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.spring
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.semantics.text
+import androidx.compose.ui.text.withStyle
+import androidx.compose.ui.unit.sp
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.offset
 import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.Role
@@ -305,7 +311,9 @@ fun ChatScreen(model: ZoenViewModel, state: AppState, spaceId: String, navigate:
                         OutlinedTextField(value = draft, onValueChange = {
                             draft = it
                             model.repository.preferences.edit().putString(draftKey, it).apply()
-                        }, modifier = Modifier.weight(1f).testTag("composer"), shape = RoundedCornerShape(26.dp),
+                        }, modifier = Modifier.weight(1f).heightIn(min = 48.dp).testTag("composer"), shape = RoundedCornerShape(24.dp),
+                            // Hark: 15/19 text.
+                            textStyle = MaterialTheme.typography.bodyLarge.copy(fontSize = 15.sp, lineHeight = 19.sp),
                             placeholder = { Text(stringResource(if (space.counterpart?.handle == "zoen") R.string.message_zoen else R.string.message), maxLines = 1) },
                             maxLines = 5, keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Sentences, imeAction = ImeAction.Send),
                             keyboardActions = KeyboardActions(onSend = { send() }),
@@ -461,7 +469,7 @@ fun TimelineRow(model: ZoenViewModel, entry: TimelineEntry, navigate: (NavKey) -
                 Box {
                     Column(horizontalAlignment = if (mine) Alignment.End else Alignment.Start, verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     if (kind.text.isNotBlank() || entry.replyTo != null) {
-                    Surface(shape = RoundedCornerShape(22.dp, 22.dp, if (mine) 6.dp else 22.dp, if (mine) 22.dp else 6.dp),
+                    Surface(shape = RoundedCornerShape(24.dp, 24.dp, if (mine) 6.dp else 24.dp, if (mine) 24.dp else 6.dp),
                         color = if (mine) MaterialTheme.colorScheme.ownMessage else MaterialTheme.colorScheme.otherMessage,
                         contentColor = if (mine) MaterialTheme.colorScheme.onOwnMessage else MaterialTheme.colorScheme.onSurface,
                         modifier = Modifier.padding(top = 6.dp).messageFace().widthIn(max = 360.dp).combinedClickable(onClick = { kind.card?.let { navigate(Item(it.itemId)) } }, onLongClick = { menu = true })) {
@@ -475,8 +483,15 @@ fun TimelineRow(model: ZoenViewModel, entry: TimelineEntry, navigate: (NavKey) -
                             if (voice != null) VoiceBubble(model, voice)
                             else if (kind.text.isNotBlank()) {
                                 val mentionColor = if (mine) LocalContentColor.current else MaterialTheme.colorScheme.primary
-                                SelectionContainer { Text(buildAnnotatedString { append(kind.text); Regex("(?<![\\w.])@[\\p{L}\\p{N}_.]+").findAll(kind.text).forEach { match -> addStyle(SpanStyle(color = mentionColor, fontWeight = FontWeight.SemiBold), match.range.first, match.range.last + 1) } }, style = MaterialTheme.typography.bodyLarge) }
+                                Box { SelectionContainer { Text(buildAnnotatedString { append(kind.text); Regex("(?<![\\w.])@[\\p{L}\\p{N}_.]+").findAll(kind.text).forEach { match -> addStyle(SpanStyle(color = mentionColor, fontWeight = FontWeight.SemiBold), match.range.first, match.range.last + 1) }
+                                    // A clear run as wide as the meta, so it never sits on the last line's words.
+                                    withStyle(SpanStyle(color = androidx.compose.ui.graphics.Color.Transparent, fontSize = MaterialTheme.typography.labelSmall.fontSize)) { append(bubbleMetaReserve(entry.atMs, mine)) } }, style = MaterialTheme.typography.bodyLarge,
+                                        // Readers and tests see the message, not the meta reserve.
+                                        modifier = Modifier.clearAndSetSemantics { text = androidx.compose.ui.text.AnnotatedString(kind.text) }) }
+                                    // WhatsApp: time and tick inside the bubble, bottom right.
+                                    BubbleMeta(entry.atMs, if (mine) entry.delivery else null, Modifier.align(Alignment.BottomEnd).offset(y = 3.dp)) }
                             }
+                            if (voice != null) BubbleMeta(entry.atMs, if (mine) entry.delivery else null, Modifier.align(Alignment.End))
                         }
                     }
                     }
@@ -501,10 +516,8 @@ fun TimelineRow(model: ZoenViewModel, entry: TimelineEntry, navigate: (NavKey) -
                         DropdownMenuItem(text = { Text(stringResource(R.string.copy)) }, onClick = { menu = false; context.getSystemService(ClipboardManager::class.java).setPrimaryClip(ClipData.newPlainText(copied, kind.text)) }, leadingIcon = { Icon(Icons.Rounded.ContentCopy, null) })
                     }
                 }
-                Row(Modifier.padding(top = 5.dp, start = 8.dp, end = 8.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(5.dp)) {
-                    Text(DateFormat.getTimeInstance(DateFormat.SHORT).format(Date(entry.atMs)), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    if (mine) Icon(when (entry.delivery) { Delivery.FAILED -> Icons.Rounded.ErrorOutline; Delivery.SENDING -> Icons.Rounded.Schedule; Delivery.SENT -> Icons.Rounded.DoneAll; Delivery.LOCAL -> Icons.Rounded.Done }, null, Modifier.size(14.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
-                }
+                // Cards without a text bubble keep the meta underneath.
+                if (kind.text.isBlank() && entry.replyTo == null) BubbleMeta(entry.atMs, if (mine) entry.delivery else null, Modifier.padding(top = 5.dp, start = 8.dp, end = 8.dp))
                 if (entry.threadReplies > 0u && onThread != null) TextButton(onClick = onThread) { Text("${entry.threadReplies} " + stringResource(R.string.replies)) }
                 }
             }
@@ -567,4 +580,20 @@ fun ThreadScreen(model: ZoenViewModel, state: AppState, space: String, root: Str
             if (index >= 0) scrollScope.launch { if (motion) list.animateScrollToItem(index) else list.scrollToItem(index) } else navigate(Chat(space, id))
         }) }
     } }
+}
+
+
+/** A clear run as wide as the meta ("12:11 PM ✓"), in figure spaces. */
+internal fun bubbleMetaReserve(atMs: Long, mine: Boolean): String =
+    "\u2002" + "\u2007".repeat(DateFormat.getTimeInstance(DateFormat.SHORT).format(Date(atMs)).length + if (mine) 3 else 1)
+
+/** Time and delivery tick (sending: clock, sent: one tick, refused: error). The receipts
+ *  work adds the double tick and read colour here. */
+@Composable
+internal fun BubbleMeta(atMs: Long, delivery: Delivery?, modifier: Modifier = Modifier) {
+    Row(modifier.clearAndSetSemantics { }, verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(3.dp)) {
+        Text(DateFormat.getTimeInstance(DateFormat.SHORT).format(Date(atMs)), style = MaterialTheme.typography.labelSmall, color = LocalContentColor.current.copy(alpha = 0.62f))
+        if (delivery != null) Icon(when (delivery) { Delivery.FAILED -> Icons.Rounded.ErrorOutline; Delivery.SENDING -> Icons.Rounded.Schedule; else -> Icons.Rounded.Done }, null, Modifier.size(14.dp),
+            tint = if (delivery == Delivery.FAILED) MaterialTheme.colorScheme.error else LocalContentColor.current.copy(alpha = 0.62f))
+    }
 }
