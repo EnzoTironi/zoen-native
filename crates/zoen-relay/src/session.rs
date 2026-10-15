@@ -1565,10 +1565,16 @@ impl Session {
         };
         for (from, delivered, read) in rows {
             for kind in [
-                roda_proto::EphemeralKind::Delivered { seq: delivered as u64 },
+                roda_proto::EphemeralKind::Delivered {
+                    seq: delivered as u64,
+                },
                 roda_proto::EphemeralKind::Read { seq: read as u64 },
             ] {
-                let frame = ServerFrame::Ephemeral { space: space.to_string(), from: from.clone(), kind };
+                let frame = ServerFrame::Ephemeral {
+                    space: space.to_string(),
+                    from: from.clone(),
+                    kind,
+                };
                 if !self.send_sync(frame).await {
                     return false;
                 }

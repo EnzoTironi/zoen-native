@@ -1339,7 +1339,12 @@ impl Engine {
             return Delivery::Sent;
         }
         let marks = self.net.receipts.get(&e.space);
-        let mut others = space.members.iter().map(|(m, _)| m).filter(|m| *m != me).peekable();
+        let mut others = space
+            .members
+            .iter()
+            .map(|(m, _)| m)
+            .filter(|m| *m != me)
+            .peekable();
         if others.peek().is_none() {
             return Delivery::Sent;
         }
@@ -1380,8 +1385,17 @@ impl Engine {
     pub fn delivered_to_announce(&mut self, space: &str) -> Option<u64> {
         let me = self.me.clone().unwrap_or_default();
         let s = self.state.spaces.get(space)?;
-        let head = s.entries.iter().filter(|e| e.author != me).map(|e| e.seq).max()?;
-        let last = self.net.delivered_sent.entry(space.to_string()).or_insert(0);
+        let head = s
+            .entries
+            .iter()
+            .filter(|e| e.author != me)
+            .map(|e| e.seq)
+            .max()?;
+        let last = self
+            .net
+            .delivered_sent
+            .entry(space.to_string())
+            .or_insert(0);
         (head > *last).then(|| {
             *last = head;
             head
