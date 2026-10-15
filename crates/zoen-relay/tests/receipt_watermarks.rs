@@ -83,5 +83,16 @@ async fn watermarks_fold_flush_in_one_batch_and_never_drop() {
         sorted(r.of_space(&pool, "sp1").await.unwrap()),
         vec![("ana".into(), 600, 600), ("bia".into(), 500, 250)]
     );
+    // Many Spaces in one query, pending merged, unknown Spaces absent.
+    let many = r
+        .of_spaces(&pool, &["sp1".into(), "sp2".into(), "nope".into()])
+        .await
+        .unwrap();
+    assert_eq!(
+        sorted(many["sp1"].clone()),
+        vec![("ana".into(), 600, 600), ("bia".into(), 500, 250)]
+    );
+    assert_eq!(many["sp2"], vec![("caio".into(), 9, 9)]);
+    assert!(!many.contains_key("nope"));
     drop_db(pool, &admin, &name).await;
 }
