@@ -30,6 +30,8 @@ struct SpaceView: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     /// Top of the composer bar, in global coordinates (the message fade ends there).
     @State private var composerTop: CGFloat = .infinity
+    /// Where the header (and any pinned card) ends: messages never read through it.
+    @State private var chromeBottom: CGFloat = 0
     @Environment(\.dismiss) private var dismiss
     @FocusState private var composerFocused: Bool
     @State private var backgroundPicker = false
@@ -156,8 +158,14 @@ struct SpaceView: View {
                 GeometryReader { g in
                     let fade: CGFloat = 28
                     let cut = composerTop.isFinite ? max(0, composerTop - g.frame(in: .global).minY) : g.size.height
+                    // Top: hidden under the header and pinned card, then a short fade in.
+                    let top = min(cut, max(0, chromeBottom - g.frame(in: .global).minY - 6))
+                    let topFade = min(18, max(0, cut - top))
                     VStack(spacing: 0) {
-                        Color.black.frame(height: max(0, cut - fade))
+                        Color.clear.frame(height: top)
+                        LinearGradient(colors: [.black.opacity(0), .black], startPoint: .top, endPoint: .bottom)
+                            .frame(height: topFade)
+                        Color.black.frame(height: max(0, cut - fade - top - topFade))
                         LinearGradient(colors: [.black, .black.opacity(0)], startPoint: .top, endPoint: .bottom)
                             .frame(height: min(fade, cut))
                         Color.clear
@@ -441,6 +449,7 @@ struct SpaceView: View {
             .padding(.top, headerTopPadding)
             .padding(.bottom, 6)
             .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { if !headerMenu { chromeHeight = $0 } }
+            .onGeometryChange(for: CGFloat.self) { $0.frame(in: .global).maxY } action: { if !headerMenu { chromeBottom = $0 } }
         }
     }
 
@@ -534,7 +543,9 @@ struct SpaceView: View {
         switch pick {
         case .members, .agents, .settings: model.go(.participants(spaceId))
         case .files, .pages: model.go(.folder(spaceId))
-        case .mute: model.show(.init(kind: .info, text: String(localized: "Muted on this device.")))
+        case .mute:
+            let muted = model.toggleMute(spaceId)
+            model.show(.init(kind: .info, text: muted ? String(localized: "Muted on this device.") : String(localized: "Notifications on.")))
         }
     }
 
@@ -683,10 +694,9 @@ struct EntryView: View {
                         .foregroundStyle(Palette.textTertiary)
                         .padding(.leading, entry.author.isMe ? 0 : 44)
                 }
-                MessageRow(author: entry.author, text: text, card: card, atMs: entry.atMs,
+                MessageRow(author: entry.author, text: text, card: card, atMs: entry.atMs, delivery: entry.delivery,
                            grouped: grouped && entry.replyTo == nil, endsRun: endsRun, isDirect: isDirect, onOpenItem: onOpenItem,
-                           quote: entry.replyTo, onQuote: { onJump?($0) }, onIntent: onSwipe,
-                           delivery: entry.author.isMe ? entry.delivery : nil)
+                           quote: entry.replyTo, onQuote: { onJump?($0) }, onIntent: onSwipe)
                     .modifier(MessageSwipe(enabled: onSwipe != nil) { onSwipe?($0) })
                     .onLongPressGesture(minimumDuration: 0.35) { onLongPress?() }
                 if !entry.reactions.isEmpty {
@@ -703,10 +713,10 @@ struct EntryView: View {
                         .padding(.leading, entry.author.isMe ? 0 : 44)
                         .transition(reduceMotion ? .opacity : .scale(scale: 0.6, anchor: .topLeading).combined(with: .opacity))
                 }
-                if entry.author.isMe { DeliveryMark(delivery: entry.delivery) }
+                if entry.author.isMe, entry.delivery == .failed { DeliveryMark(delivery: entry.delivery) }
             }
             .frame(maxWidth: .infinity, alignment: entry.author.isMe ? .trailing : .leading)
-            .padding(.top, grouped && entry.replyTo == nil ? 0 : 10)
+            .padding(.top, grouped && entry.replyTo == nil ? 0 : 12)
         case .itemEdited(let itemId, _, _, _, _) where model.miniAppItemIds.contains(itemId):
             // Mini-apps: cada toque atualiza o widget ao vivo (ponto vermelho e coração no
             // cartão); o histórico fica na folha, não enche a conversa.
@@ -729,6 +739,40 @@ struct EntryView: View {
             SystemRow(glyph: text.hasPrefix(String(localized: "Approved")) ? .check : .close, text: text, trailing: nil)
                 .padding(.vertical, 6)
         }
+    }
+}
+
+/// Time and delivery tick inside a bubble's bottom-right corner (WhatsApp). Sending is a
+/// clock, sent one tick; the receipts work adds the double tick and read colour here.
+struct BubbleMeta: View {
+    /// Hark: bubbles radius 24.
+    static let radius: CGFloat = 24
+    let atMs: Int64
+    let delivery: Delivery?
+    let mine: Bool
+
+    /// Figure spaces as wide as the time ("12:11 PM") plus a tick, so text wraps before the meta.
+    static func reserve(atMs: Int64, mine: Bool) -> String {
+        "\u{2002}" + String(repeating: "\u{2007}", count: RodaTime.clock(atMs).count + (mine ? 3 : 1))
+    }
+
+    var body: some View {
+        HStack(spacing: 3) {
+            Text(RodaTime.clock(atMs))
+            if let delivery {
+                switch delivery {
+                case .sending: Image(systemName: "clock").imageScale(.small)
+                case .failed: Image(systemName: "exclamationmark.circle.fill").foregroundStyle(Palette.danger)
+                // ✓ sent, ✓✓ delivered, blue ✓✓ read (aggregated "read up to").
+                default: ReceiptTicks(delivery: delivery, base: Palette.myBubbleText.opacity(0.62))
+                }
+            }
+        }
+        .font(.caption2.monospacedDigit())
+        .foregroundStyle(mine ? Palette.myBubbleText.opacity(0.62) : Palette.textTertiary)
+        .contentTransition(.symbolEffect(.replace))
+        .animation(.timingCurve(0.25, 1, 0.5, 1, duration: 0.22), value: delivery)
+        .accessibilityHidden(true)
     }
 }
 
@@ -758,23 +802,7 @@ struct DeliveryMark: View {
     }
 }
 
-/// Time plus ✓ / ✓✓ / read ✓✓ inside my bubble. The second tick draws in and the pair
-/// turns blue with the Wabi curve when a receipt lands; nothing moves with Reduce Motion.
-struct BubbleStamp: View {
-    let atMs: Int64
-    let delivery: Delivery?
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
-
-    var body: some View {
-        HStack(spacing: 3) {
-            Text(RodaTime.short(atMs)).font(.caption2.monospacedDigit())
-            if let delivery { ReceiptTicks(delivery: delivery) }
-        }
-        .foregroundStyle(Palette.myBubbleText.opacity(0.62))
-        .animation(reduceMotion ? nil : Motion.wabi, value: delivery)
-    }
-}
-
+/// ✓ / ✓✓ / read ✓✓: the second tick draws in and the pair turns blue with the Wabi curve.
 struct ReceiptTicks: View {
     let delivery: Delivery
     /// Unread ticks: muted on my bubble by default; the chat list passes its own grey.
@@ -826,6 +854,7 @@ struct MessageRow: View {
     let text: String
     let card: ItemCard?
     let atMs: Int64
+    var delivery: Delivery = .sent
     let grouped: Bool
     /// Avatar aligns to the last bubble of a run (WhatsApp-style).
     var endsRun: Bool = true
@@ -835,14 +864,10 @@ struct MessageRow: View {
     var quote: ReplyQuote? = nil
     var onQuote: ((String) -> Void)? = nil
     var onIntent: ((MessageSwipeIntent) -> Void)? = nil
-    /// My messages: time and ticks sit inside the bubble, bottom trailing (WhatsApp).
-    var delivery: Delivery? = nil
     @Environment(\.chatBackdrop) private var backdrop
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     private static let face: CGFloat = 36
-    /// Hark bubble radius; the tail corner stays tight.
-    private static let radius: CGFloat = 24
 
     var body: some View {
         let mine = author.isMe
@@ -874,9 +899,6 @@ struct MessageRow: View {
                             .font(.caption.weight(.semibold))
                             .foregroundStyle(Color(hex: author.tintHex))
                             .profileLink(author)
-                        Text(RodaTime.short(atMs))
-                            .font(.caption2)
-                            .foregroundStyle(backdrop ? Palette.textSecondary : Palette.textTertiary)
                     }
                     .padding(.horizontal, backdrop ? 7 : 0)
                     .padding(.vertical, backdrop ? 2 : 0)
@@ -903,24 +925,25 @@ struct MessageRow: View {
                                     ReplyQuoteView(quote: quote, mine: mine)
                                 }
                             }
-                            Text(attributed(text))
+                            // WhatsApp: time and ticks sit inside the bubble, bottom right. A clear
+                            // run of the same width at the end of the text keeps them off the last line.
+                            Text("\(Text(attributed(text)))\(Text(verbatim: BubbleMeta.reserve(atMs: atMs, mine: mine)).font(.caption2).foregroundStyle(.clear))")
                                 .font(.body)
                                 .foregroundStyle(mine ? Palette.myBubbleText : Palette.textPrimary)
-                            if mine {
-                                BubbleStamp(atMs: atMs, delivery: delivery)
-                                    .frame(maxWidth: .infinity, alignment: .trailing)
-                                    .padding(.top, -2)
-                            }
+                                .overlay(alignment: .bottomTrailing) {
+                                    BubbleMeta(atMs: atMs, delivery: mine ? delivery : nil, mine: mine)
+                                        .offset(y: 3)
+                                }
                         }
                             .padding(.horizontal, quote == nil ? 14 : 10)
                             .padding(.top, quote == nil ? 9 : 8)
                             .padding(.bottom, 9)
                             .background {
                                 if mine {
-                                    UnevenRoundedRectangle(topLeadingRadius: Self.radius, bottomLeadingRadius: Self.radius, bottomTrailingRadius: grouped ? Self.radius : 4, topTrailingRadius: Self.radius, style: .continuous)
+                                    UnevenRoundedRectangle(topLeadingRadius: BubbleMeta.radius, bottomLeadingRadius: BubbleMeta.radius, bottomTrailingRadius: grouped ? BubbleMeta.radius : 6, topTrailingRadius: BubbleMeta.radius, style: .continuous)
                                         .fill(Palette.myBubble)
                                 } else {
-                                    UnevenRoundedRectangle(topLeadingRadius: Self.radius, bottomLeadingRadius: grouped ? Self.radius : 4, bottomTrailingRadius: Self.radius, topTrailingRadius: Self.radius, style: .continuous)
+                                    UnevenRoundedRectangle(topLeadingRadius: BubbleMeta.radius, bottomLeadingRadius: grouped ? BubbleMeta.radius : 6, bottomTrailingRadius: BubbleMeta.radius, topTrailingRadius: BubbleMeta.radius, style: .continuous)
                                         .fill(backdrop ? Palette.otherBubbleOnBackdrop : Palette.otherBubble)
                                 }
                             }
@@ -1105,6 +1128,7 @@ struct TypingDots: View {
 // MARK: - Composer (cápsula de vidro)
 
 struct Composer: View {
+    static let height: CGFloat = 48
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Binding var text: String
     var placeholder: String
@@ -1197,7 +1221,7 @@ struct Composer: View {
             HStack(alignment: .bottom, spacing: 10) {
                 if recorder.phase != .idle {
                     RecordingRow(recorder: recorder, dragX: drag.width, onDelete: cancelRecording, onStop: stopForReview)
-                        .glassEffect(.regular, in: .rect(cornerRadius: 22, style: .continuous))
+                        .glassEffect(.regular, in: .rect(cornerRadius: 24, style: .continuous))
                         .transition(reduceMotion ? .opacity : .opacity.combined(with: .scale(scale: 0.96, anchor: .trailing)))
                 } else {
                     leading
@@ -1205,10 +1229,13 @@ struct Composer: View {
                         .lineLimit(1...5)
                         .focused(focused)
                         .textFieldStyle(.plain)
-                        .padding(.horizontal, 16)
-                        .padding(.vertical, 12)
-                        .frame(minHeight: 44)
-                        .glassEffect(.regular.interactive(), in: .rect(cornerRadius: 22, style: .continuous))
+                        // Hark: 15/19 text in a field at least 48 tall, radius 24.
+                        .font(.system(size: 15))
+                        .lineSpacing(4)
+                        .padding(.horizontal, 18)
+                        .padding(.vertical, 14)
+                        .frame(minHeight: Composer.height)
+                        .glassEffect(.regular.interactive(), in: .rect(cornerRadius: 24, style: .continuous))
                         .onSubmit(send)
                         .submitLabel(.send)
                         .accessibilityIdentifier("composer")
@@ -1230,7 +1257,7 @@ struct Composer: View {
     @ViewBuilder private var trailing: some View {
         if recorder.phase == .locked {
             Button(action: finishRecording) {
-                ZoenIcon(.send, size: 21).frame(width: 44, height: 44)
+                ZoenIcon(.send, size: 21).frame(width: Composer.height, height: Composer.height)
             }
             .buttonStyle(IconPressStyle())
             .foregroundStyle(ActionGlassForeground())
@@ -1242,7 +1269,7 @@ struct Composer: View {
         } else {
             Button(action: send) {
                 ZoenIcon(busy ? .more : .send, size: 21)
-                    .frame(width: 44, height: 44)
+                    .frame(width: Composer.height, height: Composer.height)
             }
             .buttonStyle(IconPressStyle())
             .foregroundStyle(ActionGlassForeground())
@@ -1261,7 +1288,7 @@ struct Composer: View {
         let recording = recorder.phase == .recording
         return ZoenIcon(.mic, selected: recording, size: 21)
             .foregroundStyle(recording ? AnyShapeStyle(Color.white) : AnyShapeStyle(ActionGlassForeground()))
-            .frame(width: 44, height: 44)
+            .frame(width: Composer.height, height: Composer.height)
             // While recording it's a solid red disc outside the glass (so it doesn't melt
             // into the recording row next to it).
             .background { if recording { Circle().fill(Palette.danger).shadow(color: Palette.danger.opacity(0.35), radius: 8, y: 2) } }

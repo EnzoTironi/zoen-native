@@ -786,6 +786,15 @@ impl RodaEngine {
         }
     }
 
+    /// Registers this device's push token with the relay ("apns", "apns-sandbox" or "fcm").
+    /// An empty token clears it. The relay only ever sends a content-free wake.
+    pub async fn register_push(&self, platform: String, token: String) -> Result<(), CoreError> {
+        match self.request(Op::RegisterPush { platform, token }).await? {
+            Reply::Done => Ok(()),
+            _ => Err(unexpected()),
+        }
+    }
+
     /// Opens what `zoen://agent/<x>` or `https://tryzoen.com/a/<x>` points at: an invite
     /// code is redeemed, anything else (or a code that doesn't work) is tried as the
     /// agent's handle. Returns the direct chat with the agent.

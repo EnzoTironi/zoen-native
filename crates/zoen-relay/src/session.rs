@@ -1166,7 +1166,57 @@ impl Session {
                 self.st.log.revoke_agent_invite(&agent).await?;
                 Ok(Reply::Done)
             }
+            Op::RegisterPush { platform, token } => {
+                if !crate::push::valid_platform(&platform) || token.len() > 4096 {
+                    return Err("unknown push platform".into());
+                }
+                db::set_push_token(
+                    &self.st.pool,
+                    &self.identity,
+                    &self.device,
+                    &platform,
+                    &token,
+                )
+                .await
+                .map_err(|e| e.to_string())?;
+                Ok(Reply::Done)
+            }
         }
+    }
+
+    /// Wakes the devices of every member with no live session. The push carries nothing;
+    /// the app syncs, decrypts and decides itself whether to notify.
+    fn wake_away(&self, audience: &[String]) {
+        if !self.st.push.enabled() {
+            return;
+        }
+        let st = self.st.clone();
+        let me = self.identity.clone();
+        let audience: Vec<String> = audience.iter().filter(|a| **a != me).cloned().collect();
+        tokio::spawn(async move {
+            let online = st.fanout.online(&audience).await;
+            let away: Vec<String> = audience
+                .into_iter()
+                .filter(|a| !online.contains(a))
+                .collect();
+            if away.is_empty() {
+                return;
+            }
+            let Ok(targets) = db::push_targets(&st.pool, &away).await else {
+                return;
+            };
+            for t in targets {
+                match st.push.wake(&t).await {
+                    crate::push::Outcome::Gone => {
+                        let _ = db::drop_push_token(&st.pool, &t.token).await;
+                    }
+                    crate::push::Outcome::Failed(error) => {
+                        tracing::warn!(platform = %t.platform, %error, "wake push failed")
+                    }
+                    _ => {}
+                }
+            }
+        });
     }
 
     fn spend_invite_guess(&self) -> Result<(), String> {
@@ -1404,6 +1454,7 @@ impl Session {
                         .fanout
                         .send(&audience, &ServerFrame::Event { ev }, None)
                 };
+                self.wake_away(&audience);
                 span.record("audience", audience.len() as i64);
                 span.record("delivered_here", n as i64);
                 if let Some(j) = joined {

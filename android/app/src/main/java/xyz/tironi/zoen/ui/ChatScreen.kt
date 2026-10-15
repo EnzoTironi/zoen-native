@@ -62,6 +62,11 @@ import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.spring
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.text.withStyle
+import androidx.compose.ui.unit.sp
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.offset
 import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.Role
@@ -313,7 +318,9 @@ fun ChatScreen(model: ZoenViewModel, state: AppState, spaceId: String, navigate:
                         OutlinedTextField(value = draft, onValueChange = {
                             draft = it
                             model.repository.preferences.edit().putString(draftKey, it).apply()
-                        }, modifier = Modifier.weight(1f).testTag("composer"), shape = RoundedCornerShape(26.dp),
+                        }, modifier = Modifier.weight(1f).heightIn(min = 48.dp).testTag("composer"), shape = RoundedCornerShape(24.dp),
+                            // Hark: 15/19 text.
+                            textStyle = MaterialTheme.typography.bodyLarge.copy(fontSize = 15.sp, lineHeight = 19.sp),
                             placeholder = { Text(stringResource(if (space.counterpart?.handle == "zoen") R.string.message_zoen else R.string.message), maxLines = 1) },
                             maxLines = 5, keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Sentences, imeAction = ImeAction.Send),
                             keyboardActions = KeyboardActions(onSend = { send() }),
@@ -492,8 +499,13 @@ fun TimelineRow(model: ZoenViewModel, spaceId: String, entry: TimelineEntry, nav
                             if (voice != null) VoiceBubble(model, voice)
                             else if (kind.text.isNotBlank()) {
                                 val mentionColor = if (mine) LocalContentColor.current else MaterialTheme.colorScheme.primary
-                                SelectionContainer { Text(buildAnnotatedString { append(kind.text); Regex("(?<![\\w.])@[\\p{L}\\p{N}_.]+").findAll(kind.text).forEach { match -> addStyle(SpanStyle(color = mentionColor, fontWeight = FontWeight.SemiBold), match.range.first, match.range.last + 1) } }, style = MaterialTheme.typography.bodyLarge) }
+                                Box { SelectionContainer { Text(buildAnnotatedString { append(kind.text); Regex("(?<![\\w.])@[\\p{L}\\p{N}_.]+").findAll(kind.text).forEach { match -> addStyle(SpanStyle(color = mentionColor, fontWeight = FontWeight.SemiBold), match.range.first, match.range.last + 1) }
+                                    // A clear run as wide as the meta, so it never sits on the last line's words.
+                                    withStyle(SpanStyle(color = androidx.compose.ui.graphics.Color.Transparent, fontSize = MaterialTheme.typography.labelSmall.fontSize)) { append(bubbleMetaReserve(entry.atMs, mine)) } }, style = MaterialTheme.typography.bodyLarge) }
+                                    // WhatsApp: time and tick inside the bubble, bottom right.
+                                    BubbleMeta(entry.atMs, if (mine) entry.delivery else null, Modifier.align(Alignment.BottomEnd).offset(y = 3.dp)) }
                             }
+                            if (voice != null) BubbleMeta(entry.atMs, if (mine) entry.delivery else null, Modifier.align(Alignment.End))
                         }
                     }
                     }
@@ -534,11 +546,9 @@ fun TimelineRow(model: ZoenViewModel, spaceId: String, entry: TimelineEntry, nav
                     MessageActionDialogs(model, spaceId, entry, editing, editText, { editText = it }, forwarding, confirmDelete) { editing = false; forwarding = false; confirmDelete = false }
                 }
                 if (entry.reactions.isNotEmpty()) ReactionChips(model, spaceId, entry)
-                Row(Modifier.padding(top = 5.dp, start = 8.dp, end = 8.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(5.dp)) {
-                    if (entry.edited) Text(stringResource(R.string.edited), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    Text(DateFormat.getTimeInstance(DateFormat.SHORT).format(Date(entry.atMs)), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    if (mine) ReceiptTicks(entry.delivery)
-                }
+                if (entry.edited) Text(stringResource(R.string.edited), Modifier.padding(top = 2.dp, start = 8.dp, end = 8.dp), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                // Cards without a text bubble keep the meta underneath.
+                if (kind.text.isBlank() && entry.replyTo == null) BubbleMeta(entry.atMs, if (mine) entry.delivery else null, Modifier.padding(top = 5.dp, start = 8.dp, end = 8.dp))
                 if (entry.threadReplies > 0u && onThread != null) TextButton(onClick = onThread) { Text("${entry.threadReplies} " + stringResource(R.string.replies)) }
                 }
             }
@@ -623,6 +633,20 @@ fun ReceiptTicks(delivery: Delivery, base: androidx.compose.ui.graphics.Color = 
     )
     val label = stringResource(when (delivery) { Delivery.READ -> R.string.receipt_read; Delivery.DELIVERED -> R.string.receipt_delivered; Delivery.FAILED -> R.string.receipt_failed; Delivery.SENT -> R.string.receipt_sent; else -> R.string.receipt_sending })
     Icon(icon, label, Modifier.size(15.dp), tint = tint)
+
+/** A clear run as wide as the meta ("12:11 PM ✓"), in figure spaces. */
+internal fun bubbleMetaReserve(atMs: Long, mine: Boolean): String =
+    "\u2002" + "\u2007".repeat(DateFormat.getTimeInstance(DateFormat.SHORT).format(Date(atMs)).length + if (mine) 3 else 1)
+
+/** Time and delivery tick (sending: clock, sent: one tick, refused: error). The receipts
+ *  work adds the double tick and read colour here. */
+@Composable
+internal fun BubbleMeta(atMs: Long, delivery: Delivery?, modifier: Modifier = Modifier) {
+    Row(modifier.clearAndSetSemantics { }, verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(3.dp)) {
+        Text(DateFormat.getTimeInstance(DateFormat.SHORT).format(Date(atMs)), style = MaterialTheme.typography.labelSmall, color = LocalContentColor.current.copy(alpha = 0.62f))
+        // ✓ sent, ✓✓ delivered, blue ✓✓ read (aggregated "read up to").
+        if (delivery != null) ReceiptTicks(delivery, LocalContentColor.current.copy(alpha = 0.62f))
+    }
 }
 
 private val QUICK_REACTIONS = listOf("👍", "❤️", "😂", "😮", "😢", "🙏")

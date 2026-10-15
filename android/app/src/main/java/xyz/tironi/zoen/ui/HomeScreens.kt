@@ -3,6 +3,8 @@ package xyz.tironi.zoen.ui
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.clickable
+import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
@@ -62,45 +64,61 @@ fun ConversationsScreen(model: ZoenViewModel, state: AppState, navigate: (NavKey
     var selectedChat by rememberSaveable { mutableStateOf<String?>(null) }
     var searching by rememberSaveable { mutableStateOf(false) }
     var query by rememberSaveable { mutableStateOf("") }
-    var showArchived by rememberSaveable { mutableStateOf(false) }
     var filter by rememberSaveable { mutableStateOf(ChatInboxFilter.All) }
-    val haptics = rememberZoenHaptics()
-    val working by model.working.collectAsStateWithLifecycle()
     // Pin, archive and mute are mine on every device: they come from the core.
-    val archived = state.spaces.filter { it.archived }
-    val chats = state.spaces.filter { (it.archived == (showArchived && query.isBlank())) && filter.includes(it) && matchesSpace(it, query) }
-        .sortedByDescending { it.lastAtMs }
-        .sortedByDescending { it.pinned }
+    val archived = state.spaces.filter { it.archived }.map { it.id }.toSet()
+    val muted = state.spaces.filter { it.muted }.map { it.id }.toSet()
     fun prefs(chat: SpaceSummary, pinned: Boolean = chat.pinned, archived: Boolean = chat.archived, mutedUntil: Long? = chat.mutedUntilMs) =
         model.launch { model.repository.change { it.setChatPrefs(chat.id, pinned, archived, mutedUntil) } }
+    var showArchived by rememberSaveable { mutableStateOf(false) }
+    androidx.activity.compose.BackHandler(showArchived) { showArchived = false }
+    val haptics = rememberZoenHaptics()
+    val working by model.working.collectAsStateWithLifecycle()
+    val archivedChats = state.spaces.filter { it.id in archived }
+    val chats = state.spaces.filter { (it.id in archived) == showArchived && (showArchived || filter.includes(it)) && matchesSpace(it, query) }
+        .sortedByDescending { it.lastAtMs }
+        .sortedByDescending { it.pinned }
     val list: @Composable () -> Unit = {
         Scaffold(topBar = { HomeBar(stringResource(R.string.app_name), state, navigate, onStore = { store = true }, onSearch = { searching = !searching }) }, containerColor = MaterialTheme.colorScheme.background, contentWindowInsets = WindowInsets(0, 0, 0, 0)) { padding ->
-            LazyColumn(Modifier.fillMaxSize().padding(padding).testTag("conversation-list"), contentPadding = PaddingValues(bottom = 16.dp)) {
+            // Bottom: clear the floating tab bar so the last chat is never under it.
+            LazyColumn(Modifier.fillMaxSize().padding(padding).testTag("conversation-list"), contentPadding = PaddingValues(bottom = 112.dp)) {
+                if (showArchived) item {
+                    Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                        IconButton(onClick = { showArchived = false }) { Icon(Icons.AutoMirrored.Rounded.ArrowBack, stringResource(R.string.back)) }
+                        Text(stringResource(R.string.archived), style = MaterialTheme.typography.titleLarge)
+                    }
+                }
                 if (searching || query.isNotBlank()) item {
                     OutlinedTextField(query, { query = it }, Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 8.dp), singleLine = true, placeholder = { Text(stringResource(R.string.search)) }, leadingIcon = { Icon(Icons.Rounded.Search, null) }, shape = androidx.compose.foundation.shape.RoundedCornerShape(24.dp))
                 }
                 val apps = state.items.filter { item ->
                     item.app?.let { !JSONObject(it.viewJson).optBoolean("released") } == true && WidgetSnapshot.from(item) != null
                 }.asReversed()
-                if (apps.isNotEmpty()) {
+                if (apps.isNotEmpty() && !showArchived) {
                     item {
                         MiniAppTileStrip(model, state, apps, onOpenItem = { navigate(Item(it)) })
                     }
                 }
-                item { ChatFilterMenu(filter) { filter = it; haptics.perform(ZoenFeedback.Selection) } }
-                if (query.isBlank() && archived.isNotEmpty()) item(key = "archived") {
-                    ListItem(headlineContent = { Text(stringResource(if (showArchived) R.string.chats else R.string.archived)) },
-                        leadingContent = { Icon(if (showArchived) Icons.AutoMirrored.Rounded.ArrowBack else Icons.Rounded.Archive, null, Modifier.padding(horizontal = 16.dp)) },
-                        trailingContent = { if (!showArchived) Text(archived.size.toString(), style = MaterialTheme.typography.labelMedium) },
-                        modifier = Modifier.animateItem().testTag("archived-row").clickable { haptics.perform(ZoenFeedback.Selection); showArchived = !showArchived })
+                if (!showArchived) item { ChatFilterMenu(filter) { filter = it; haptics.perform(ZoenFeedback.Selection) } }
+                // WhatsApp: "Archived" above the chats while there are any.
+                if (!showArchived && archivedChats.isNotEmpty() && query.isBlank()) item(key = "archived") {
+                    Row(Modifier.fillMaxWidth().testTag("archived-chats").clickable { haptics.perform(ZoenFeedback.Tap); showArchived = true }.padding(horizontal = 20.dp, vertical = 10.dp),
+                        verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+                        Box(Modifier.width(56.dp), contentAlignment = Alignment.Center) { Icon(Icons.Rounded.Archive, null, tint = MaterialTheme.colorScheme.onSurfaceVariant) }
+                        Text(stringResource(R.string.archived), Modifier.weight(1f), style = MaterialTheme.typography.titleMedium)
+                        val unreadArchived = archivedChats.count { it.unread > 0u }
+                        Text(if (unreadArchived > 0) "$unreadArchived" else "${archivedChats.size}", style = MaterialTheme.typography.labelMedium,
+                            color = if (unreadArchived > 0) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
                 }
                 items(chats, key = { it.id }) { chat ->
-                    ConversationRow(chat, chat.pinned, working = working[chat.id], selected = split && selectedChat == chat.id,
+                    ConversationRow(chat, chat.pinned && !showArchived, working = working[chat.id], selected = split && selectedChat == chat.id,
+                        muted = chat.muted, archived = chat.archived,
+                        onMute = { prefs(chat, mutedUntil = if (chat.muted) null else Long.MAX_VALUE) },
                         onClick = { if (split) selectedChat = chat.id else navigate(Chat(chat.id)) },
                         onPin = { prefs(chat, pinned = !chat.pinned) },
                         onRead = { model.launch { model.repository.change { it.markRead(chat.id) } } },
                         onArchive = { prefs(chat, archived = !chat.archived) },
-                        onMute = { until -> prefs(chat, mutedUntil = until) },
                         modifier = Modifier.animateItem(),
                     )
                 }
@@ -128,7 +146,8 @@ fun ConversationsScreen(model: ZoenViewModel, state: AppState, navigate: (NavKey
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
-private fun ConversationRow(chat: SpaceSummary, pinned: Boolean, working: String?, selected: Boolean, onClick: () -> Unit, onPin: () -> Unit, onRead: () -> Unit, onArchive: () -> Unit = {}, onMute: (Long?) -> Unit = {}, modifier: Modifier = Modifier) {
+private fun ConversationRow(chat: SpaceSummary, pinned: Boolean, working: String?, selected: Boolean, onClick: () -> Unit, onPin: () -> Unit, onRead: () -> Unit,
+    muted: Boolean = false, archived: Boolean = false, onMute: () -> Unit = {}, onArchive: () -> Unit = {}, modifier: Modifier = Modifier) {
     var menu by remember { mutableStateOf(false) }
     val haptics = rememberZoenHaptics()
     Box(modifier) {
@@ -145,21 +164,21 @@ private fun ConversationRow(chat: SpaceSummary, pinned: Boolean, working: String
                 }
             }
             Column(horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text(DateFormat.getTimeInstance(DateFormat.SHORT).format(Date(chat.lastAtMs)), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                if (chat.unread > 0u) Badge(containerColor = MaterialTheme.colorScheme.primary, contentColor = MaterialTheme.colorScheme.onPrimary) { Text(chat.unread.toString()) }
-                else if (pinned) Icon(Icons.Rounded.PushPin, stringResource(R.string.pinned), Modifier.size(16.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
-                if (chat.muted) Icon(Icons.Rounded.NotificationsOff, stringResource(R.string.muted), Modifier.size(14.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text(DateFormat.getTimeInstance(DateFormat.SHORT).format(Date(chat.lastAtMs)), style = MaterialTheme.typography.labelSmall,
+                    color = if (chat.unread > 0u && !muted) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant)
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    if (muted) Icon(Icons.Rounded.NotificationsOff, stringResource(R.string.muted), Modifier.size(16.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                    if (pinned) Icon(Icons.Rounded.PushPin, stringResource(R.string.pinned), Modifier.size(16.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                    // Muted unread goes grey (WhatsApp); unmuted is the accent.
+                    if (chat.unread > 0u) Badge(containerColor = if (muted) MaterialTheme.colorScheme.outline else MaterialTheme.colorScheme.primary, contentColor = MaterialTheme.colorScheme.onPrimary) { Text(chat.unread.toString()) }
+                }
             }
         }
         DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
             DropdownMenuItem(text = { Text(stringResource(if (pinned) R.string.unpin else R.string.pin)) }, leadingIcon = { Icon(Icons.Rounded.PushPin, null) }, onClick = { menu = false; onPin() })
             DropdownMenuItem(text = { Text(stringResource(R.string.chat_mark_read)) }, leadingIcon = { Icon(Icons.Rounded.DoneAll, null) }, onClick = { menu = false; onRead() })
-            if (chat.muted) DropdownMenuItem(text = { Text(stringResource(R.string.unmute)) }, leadingIcon = { Icon(Icons.Rounded.Notifications, null) }, onClick = { menu = false; onMute(null) })
-            else {
-                DropdownMenuItem(text = { Text(stringResource(R.string.mute_8h)) }, leadingIcon = { Icon(Icons.Rounded.NotificationsOff, null) }, onClick = { menu = false; onMute(System.currentTimeMillis() + 8 * 3_600_000L) })
-                DropdownMenuItem(text = { Text(stringResource(R.string.mute_always)) }, leadingIcon = { Icon(Icons.Rounded.NotificationsOff, null) }, onClick = { menu = false; onMute(Long.MAX_VALUE) })
-            }
-            DropdownMenuItem(text = { Text(stringResource(if (chat.archived) R.string.unarchive else R.string.archive)) }, leadingIcon = { Icon(if (chat.archived) Icons.Rounded.Unarchive else Icons.Rounded.Archive, null) }, onClick = { menu = false; onArchive() })
+            DropdownMenuItem(text = { Text(stringResource(if (muted) R.string.unmute else R.string.mute)) }, leadingIcon = { Icon(if (muted) Icons.Rounded.Notifications else Icons.Rounded.NotificationsOff, null) }, onClick = { menu = false; onMute() })
+            DropdownMenuItem(text = { Text(stringResource(if (archived) R.string.unarchive else R.string.archive)) }, leadingIcon = { Icon(if (archived) Icons.Rounded.Unarchive else Icons.Rounded.Archive, null) }, onClick = { menu = false; onArchive() })
         }
     }
 }
@@ -167,7 +186,9 @@ private fun ConversationRow(chat: SpaceSummary, pinned: Boolean, working: String
 @Composable
 private fun conversationPreview(space: SpaceSummary): String {
     val preview = if (xyz.tironi.zoen.media.VoiceNoteRef.parse(space.lastPreview) != null) stringResource(R.string.media_voice_message) else space.lastPreview
-    val author = space.lastAuthor?.let { if (it.isMe) stringResource(R.string.files_you) else if (space.counterpart == null) it.name else "" }.orEmpty()
+    // Mine: a tick (WhatsApp) instead of "You:".
+    if (space.lastAuthor?.isMe == true) return "✓ $preview"
+    val author = space.lastAuthor?.let { if (space.counterpart == null) it.name else "" }.orEmpty()
     return if (author.isBlank()) preview else "$author: $preview"
 }
 
@@ -292,3 +313,5 @@ fun requestStatusLabel(status: RequestStatus): Int = when (status) {
     RequestStatus.DENIED -> R.string.status_denied
     RequestStatus.STALE -> R.string.status_stale
 }
+
+/** Chats muted on this device; ActivityNotifications skips them, wakes included. */

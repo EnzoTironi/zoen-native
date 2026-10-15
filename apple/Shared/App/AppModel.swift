@@ -1250,6 +1250,20 @@ final class AppModel {
         let live = spaces.filter { !$0.archived }
         return live.filter(\.pinned) + live.filter { !$0.pinned }
     }
+
+    /// Archived (WhatsApp) and muted chats are mine on every device: they come from the core
+    /// (my Personal Space). The muted set is mirrored for the push wake path.
+    var archived: Set<String> { Set(spaces.filter(\.archived).map(\.id)) }
+    var muted: Set<String> { Set(spaces.filter(\.muted).map(\.id)) }
+
+    func isMuted(_ space: SpaceSummary) -> Bool { space.muted }
+
+    @discardableResult
+    func toggleMute(_ spaceId: String) -> Bool {
+        guard let space = spaces.first(where: { $0.id == spaceId }) else { return false }
+        mute(space, until: space.muted ? nil : Int64.max)
+        return !space.muted
+    }
     var archivedSpaces: [SpaceSummary] { spaces.filter(\.archived) }
 
     /// Troca de destino (barra ou menu radial). Tocar no destino atual volta à raiz.
