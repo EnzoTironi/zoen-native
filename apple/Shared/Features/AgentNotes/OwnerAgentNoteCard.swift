@@ -73,7 +73,7 @@ struct OwnerAgentNoteCard: View {
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 11)
                     .background(Palette.action, in: .rect(cornerRadius: 12, style: .continuous))
-                    .foregroundStyle(.white)
+                    .foregroundStyle(Palette.onAction)
             }
             .buttonStyle(NotePressStyle())
             .disabled(note.space.isEmpty)
