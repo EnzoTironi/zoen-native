@@ -1571,6 +1571,19 @@ impl Session {
         let span = tracing::Span::current();
         span.record("spaces", plan.len() as i64);
         let mut sent = 0usize;
+        // Receipt watermarks for every Space this sync reads to the head, in one query
+        // instead of one per Space (a 500-chat reconnect was 500 queries).
+        let heads: Vec<String> = plan
+            .iter()
+            .filter(|(_, _, through)| through.is_none())
+            .map(|(s, ..)| s.clone())
+            .collect();
+        let mut marks = self
+            .st
+            .receipts
+            .of_spaces(&self.st.pool, &heads)
+            .await
+            .unwrap_or_default();
         for (space, mut next, through) in plan {
             #[cfg(debug_assertions)]
             if crate::log::sequencer::fork_histories::armed(&space) {
@@ -1633,7 +1646,11 @@ impl Session {
                     break;
                 }
             }
-            if through.is_none() && !self.replay_receipts(&space).await {
+            if through.is_none()
+                && !self
+                    .replay_receipts(&space, marks.remove(&space).unwrap_or_default())
+                    .await
+            {
                 return;
             }
         }
@@ -1654,10 +1671,7 @@ impl Session {
 impl Session {
     /// The newest receipt watermarks of a Space, so a device that was away still learns
     /// what was delivered and read while it was gone.
-    async fn replay_receipts(&self, space: &str) -> bool {
-        let Ok(rows) = self.st.receipts.of_space(&self.st.pool, space).await else {
-            return true;
-        };
+    async fn replay_receipts(&self, space: &str, rows: Vec<(String, i64, i64)>) -> bool {
         for (from, delivered, read) in rows {
             for kind in [
                 roda_proto::EphemeralKind::Delivered {
