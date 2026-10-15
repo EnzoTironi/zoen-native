@@ -184,7 +184,10 @@ impl RodaEngine {
     pub fn mark_read(&self, space_id: String) -> Result<(), CoreError> {
         let (seq, synced) = {
             let engine = self.lock();
-            (engine.mark_read(&space_id)?, engine.net.synced.contains(&space_id))
+            (
+                engine.mark_read(&space_id)?,
+                engine.net.synced.contains(&space_id),
+            )
         };
         if let (Some(seq), true) = (seq, synced) {
             self.with_net(|n| n.ephemeral(space_id, roda_proto::EphemeralKind::Read { seq }));
