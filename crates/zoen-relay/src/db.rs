@@ -726,6 +726,8 @@ pub async fn receipts(pool: &PgPool, space: &str) -> Result<Vec<(String, i64, i6
         .bind(space)
         .fetch_all(pool)
         .await
+}
+
 /// Sets (or, with an empty token, clears) this device's push token. A token moves with
 /// its device: any other row holding it is dropped.
 pub async fn set_push_token(
