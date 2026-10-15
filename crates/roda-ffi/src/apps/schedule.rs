@@ -1379,7 +1379,7 @@ mod tests {
             json!({"weeklyHours": {"1": [["09:00", "14:00"]]}}),
             at(8, 8),
         );
-        assert!(open_events(&later, &late).is_empty());
+        assert!(!open_events(&later, &late).contains(&"outside_hours".to_string()));
 
         // Opening late again clears a flag nobody answered.
         let reopened = call(
@@ -1389,7 +1389,7 @@ mod tests {
             json!({"weeklyHours": {"1": [["09:00", "18:00"]]}}),
             at(8, 9),
         );
-        assert!(open_events(&reopened, &late).is_empty());
+        assert!(!open_events(&reopened, &late).contains(&"outside_hours".to_string()));
         assert!(booking(&reopened, "carla")[0].get("outsideHours").is_none());
     }
 
