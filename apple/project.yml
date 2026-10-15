@@ -72,6 +72,9 @@ targets:
           - CFBundleURLName: xyz.tironi.zoen.links
             CFBundleURLSchemes: [zoen]
         ZoenRelayURL: $(ZOEN_RELAY_URL)
+        # Content-free wakes (ADR 0047). The aps-environment entitlement needs a paid
+        # Apple Developer team; see docs/dev/push.md.
+        UIBackgroundModes: [remote-notification]
     settings:
       configs:
         Release:

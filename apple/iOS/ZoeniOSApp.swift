@@ -3,6 +3,7 @@ import RodaCore
 
 @main
 struct ZoeniOSApp: App {
+    @UIApplicationDelegateAdaptor(ZoenAppDelegate.self) private var delegate
     @State private var model = AppModel()
     @AppStorage(AppAppearance.key) private var appearance = AppAppearance.auto.rawValue
     @Environment(\.scenePhase) private var phase
@@ -13,7 +14,7 @@ struct ZoeniOSApp: App {
                 .environment(model)
                 .tint(Palette.action)
                 .preferredColorScheme(AppAppearance(rawValue: appearance)?.scheme)
-                .task { await model.applyLaunchOptions() }
+                .task { await model.applyLaunchOptions(); PushBridge.shared.start(model) }
                 // Friend, Space and campaign links: where this install came from (ADR 0044).
                 .onOpenURL { model.captureAcquisition($0) }
                 .onContinueUserActivity(NSUserActivityTypeBrowsingWeb) { a in
