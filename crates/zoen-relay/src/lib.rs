@@ -10,6 +10,7 @@
 //! Membership is the only thing the relay must understand, because it decides who may
 //! write and who receives. Everything else is the clients' business.
 
+mod agent_page;
 pub mod analytics;
 pub mod backup;
 pub mod blobs;
@@ -51,6 +52,10 @@ pub struct Config {
     pub metrics_bind: Option<SocketAddr>,
     /// `TEAMID.bundle` app IDs allowed to use passkeys and universal links on this host.
     pub apple_app_ids: Vec<String>,
+    /// Android packages for Digital Asset Links (`assetlinks.json`).
+    pub android_packages: Vec<AndroidPackage>,
+    /// Store listing `/install` sends Android to; `None` shows the "em breve" page.
+    pub android_store_url: Option<String>,
     /// FoundationDB cluster file (`None` = `FDB_CLUSTER_FILE` or the system default).
     pub fdb_cluster_file: Option<String>,
     /// Key prefix for this cell's data; tests use a fresh one each.
@@ -62,6 +67,12 @@ pub struct Config {
     /// A header the edge in front of the relay sets to the client's address and that clients
     /// can't forge there (`fly-client-ip` on Fly). `None`: the TCP peer address.
     pub client_ip_header: Option<String>,
+}
+
+#[derive(Clone, Debug)]
+pub struct AndroidPackage {
+    pub package_name: String,
+    pub fingerprints: Vec<String>,
 }
 
 pub struct AppState {
@@ -78,6 +89,8 @@ pub struct AppState {
     pub metrics: metrics::Metrics,
     pub blobs: Arc<dyn object_store::ObjectStore>,
     pub apple_app_ids: Vec<String>,
+    pub android_packages: Vec<AndroidPackage>,
+    pub android_store_url: Option<String>,
     /// Guards password backups (ADR 0046); `None` = only recovery-key backups.
     pub backup_vault: Option<Arc<dyn backup::Vault>>,
     pub backup_settings: backup::Settings,
@@ -133,6 +146,9 @@ pub fn router(state: Shared) -> Router {
             "/.well-known/apple-app-site-association",
             get(apple_app_site_association),
         )
+        .route("/.well-known/assetlinks.json", get(agent_page::assetlinks))
+        .route("/a/{target}", get(agent_page::page))
+        .route("/install", get(agent_page::install))
         .route("/admin", get(analytics::admin::page))
         .route("/admin/metrics", get(analytics::admin::metrics))
         .route("/admin/config", put(analytics::config::put))
@@ -227,6 +243,8 @@ pub async fn build(cfg: &Config) -> anyhow::Result<(Router, Shared)> {
         metrics: metrics::Metrics::default(),
         blobs,
         apple_app_ids: cfg.apple_app_ids.clone(),
+        android_packages: cfg.android_packages.clone(),
+        android_store_url: cfg.android_store_url.clone(),
         backup_vault: backup_vault(),
         backup_settings: backup::Settings::from_env()?,
         analytics,
@@ -366,7 +384,9 @@ async fn apple_app_site_association(State(st): State<Shared>) -> axum::response:
         return StatusCode::NOT_FOUND.into_response();
     }
     let body = serde_json::json!({
-        "applinks": { "details": [{ "appIDs": st.apple_app_ids, "components": [{ "/": "/i/*" }, { "/": "/u/*" }] }] },
+        "applinks": { "details": [{ "appIDs": st.apple_app_ids, "components": [
+            { "/": "/a/*" }, { "/": "/j/*" }, { "/": "/i/*" }, { "/": "/u/*" }
+        ] }] },
         "webcredentials": { "apps": st.apple_app_ids },
     });
     ([("content-type", "application/json")], body.to_string()).into_response()

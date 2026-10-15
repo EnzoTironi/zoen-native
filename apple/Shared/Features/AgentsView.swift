@@ -24,9 +24,9 @@ struct AgentsLibraryScreen: View {
                     NavigationLink(value: Route.agent(a.id)) { AgentLibraryCard(profile: a) }
                         .buttonStyle(.plain)
                 }
-                if segment == 0 {
-                    PhaseNote(symbol: "plus.app", title: String(localized: "Creating agents arrives in phase 2"),
-                              text: String(localized: "Knowledge, tools, versions and publishing (posters #028–#035). Today the agents come from the demo."))
+                if segment == 0 && list.isEmpty {
+                    PhaseNote(symbol: "sparkles", title: String(localized: "No agents yet"),
+                              text: String(localized: "When you create one, its link shows up here to share."))
                 }
             }
             .padding(.horizontal, 16)
@@ -41,7 +41,11 @@ struct AgentsLibraryScreen: View {
 }
 
 struct AgentLibraryCard: View {
+    @Environment(AppModel.self) private var model
     let profile: AgentProfile
+    /// A real invite code from the relay (same as the share flow); nil until it arrives.
+    @State private var invite: InviteDto?
+    private var shareLink: String? { invite?.link }
     var body: some View {
         HStack(alignment: .center, spacing: 14) {
             AgentAvatar(persona: profile.persona, size: 52, state: profile.pendingRequests > 0 ? .waiting : .idle)
@@ -56,14 +60,32 @@ struct AgentLibraryCard: View {
                         .foregroundStyle(Palette.action)
                 }
                 .font(.caption.weight(.medium))
+                if profile.persona.isMine, let shareLink {
+                    Text(shareLink)
+                        .font(.caption2.monospaced())
+                        .foregroundStyle(Palette.textTertiary)
+                        .lineLimit(1)
+                }
             }
             Spacer(minLength: 6)
+            if profile.persona.isMine, let shareLink, let url = URL(string: shareLink) {
+                ShareLink(item: url) {
+                    Image(systemName: "square.and.arrow.up")
+                        .font(.body.weight(.semibold))
+                        .foregroundStyle(Palette.action)
+                }
+                .buttonStyle(.plain)
+            }
             if let s = profile.budgetSpentCents, let l = profile.budgetLimitCents {
                 BudgetRing(spent: s, limit: l, size: 30, lineWidth: 4)
             }
             Image(systemName: "chevron.right").font(.caption.weight(.bold)).foregroundStyle(Palette.textTertiary)
         }
         .solidCard(radius: 20, padding: 14)
+        .task(id: profile.id) {
+            guard profile.persona.isMine, invite == nil else { return }
+            invite = try? await model.core.createAgentInvite(agentId: profile.id)
+        }
     }
 }
 

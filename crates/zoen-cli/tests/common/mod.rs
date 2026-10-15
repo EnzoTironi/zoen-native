@@ -572,6 +572,11 @@ impl World {
             .collect()
     }
 
+    /// Ends an agent link now, straight in the relay's store (no 60 s wait in tests).
+    pub fn expire_agent_invite(&self, code: &str) {
+        self.relay_log(&["expire-agent-invite", code]);
+    }
+
     /// The relay's log of one Space, read back from FoundationDB.
     pub async fn events_in(&self, space: &str) -> Vec<Sequenced> {
         self.relay_log(&["read", space])

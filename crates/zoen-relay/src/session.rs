@@ -921,15 +921,23 @@ impl Session {
             }
             Op::CreateInvite {
                 space,
+                agent,
                 role,
                 max_uses,
                 ttl_secs,
             } => {
-                let invite = self
-                    .st
-                    .log
-                    .create_invite(&self.identity, &space, role, max_uses, ttl_secs)
-                    .await?;
+                let invite = if let Some(agent) = agent {
+                    self.own_agent(&agent).await?;
+                    self.st
+                        .log
+                        .create_agent_invite(&self.identity, &agent, max_uses, ttl_secs)
+                        .await?
+                } else {
+                    self.st
+                        .log
+                        .create_invite(&self.identity, &space, role, max_uses, ttl_secs)
+                        .await?
+                };
                 self.st.analytics.count("invites_created", 1);
                 Ok(Reply::Invite(invite))
             }
@@ -1061,26 +1069,78 @@ impl Session {
                 ))
             }
             Op::PreviewInvite { code } => {
-                self.st
-                    .limits
-                    .invite_account
-                    .check(&self.identity)
-                    .map_err(limits::slow_down)?;
+                self.spend_invite_guess()?;
                 let i = self.st.log.preview_invite(&code).await?;
-                let inviter = db::profiles(pool, &[i.inviter])
-                    .await
-                    .map_err(|e| e.to_string())?
-                    .into_iter()
-                    .next();
-                Ok(Reply::Preview(roda_proto::InvitePreview {
-                    space: i.space,
-                    role: i.role,
-                    title: i.title,
-                    members: i.members,
-                    inviter,
-                }))
+                self.preview(i).await
+            }
+            Op::RedeemAgentInvite { code } => {
+                self.spend_invite_guess()?;
+                let i = self
+                    .st
+                    .log
+                    .redeem_agent_invite(&code, &self.identity)
+                    .await?;
+                self.st.analytics.count("agent_invites_redeemed", 1);
+                self.preview(i).await
+            }
+            Op::RevokeAgentInvite { agent } => {
+                self.own_agent(&agent).await?;
+                self.st.log.revoke_agent_invite(&agent).await?;
+                Ok(Reply::Done)
             }
         }
+    }
+
+    fn spend_invite_guess(&self) -> Result<(), String> {
+        self.st
+            .limits
+            .invite_account
+            .check(&self.identity)
+            .map_err(limits::slow_down)
+    }
+
+    /// Only an agent's owner shares or revokes its link.
+    async fn own_agent(&self, agent: &str) -> Result<(), String> {
+        let profiles = db::profiles(&self.st.pool, &[agent.to_string()])
+            .await
+            .map_err(|e| e.to_string())?;
+        let profile = profiles.first().ok_or("unknown agent")?;
+        if profile.kind != IdentityKind::Agent
+            || profile.owner.as_deref() != Some(self.identity.as_str())
+        {
+            return Err("only the owner shares an agent".into());
+        }
+        Ok(())
+    }
+
+    async fn preview(&self, i: crate::log::InviteInfo) -> Result<Reply, String> {
+        let mut ids = vec![i.inviter.clone()];
+        ids.extend(i.agent.clone());
+        let found = db::profiles(&self.st.pool, &ids)
+            .await
+            .map_err(|e| e.to_string())?;
+        let inviter = found.iter().find(|p| p.id == i.inviter).cloned();
+        let agent = i
+            .agent
+            .as_ref()
+            .and_then(|id| found.iter().find(|p| p.id == *id).cloned())
+            .map(Box::new);
+        if i.agent.is_some() && agent.is_none() {
+            return Err("unknown agent".into());
+        }
+        let (kind, title) = match &agent {
+            Some(a) => ("agent", a.name.clone()),
+            None => ("space", i.title),
+        };
+        Ok(Reply::Preview(roda_proto::InvitePreview {
+            space: i.space,
+            role: i.role,
+            title,
+            members: i.members,
+            inviter,
+            kind: kind.into(),
+            agent,
+        }))
     }
 
     /// What the metrics learn from a sequenced envelope: its kind and who it went to,

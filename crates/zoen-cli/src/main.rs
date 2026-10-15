@@ -221,6 +221,7 @@ fn usage() -> ! {
          devices | unlink DEVICE          your devices; unlink one (prefix ok)\n\
          invite CHAT\n\
          join CODE\n\
+         agent CODE|HANDLE|LINK   open the chat behind an agent link\n\
          sync [--timeout MS]\n\
          open LINK                        (before init: where this install came from)\n\
          onboarding [--relay URL]         (the onboarding plan for that source and arm)\n\
@@ -897,6 +898,15 @@ async fn main() {
             );
             let inv = e.create_invite(space).await.unwrap_or_else(|err| die(err));
             println!("{}\t{}", inv.code, inv.link);
+        }
+        "agent" => {
+            let target = cli.args.first().cloned().unwrap_or_else(|| usage());
+            let chat = e
+                .open_agent_link(target)
+                .await
+                .unwrap_or_else(|err| die(err));
+            e.wait_until_idle(timeout).await;
+            println!("{chat}");
         }
         "join" => {
             let code = cli.args.first().cloned().unwrap_or_else(|| usage());
