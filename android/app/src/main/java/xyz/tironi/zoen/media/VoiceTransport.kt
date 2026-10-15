@@ -30,8 +30,11 @@ object VoiceTransport {
     suspend fun localFile(context: Context, repository: ZoenRepository, reference: VoiceNoteRef): File? = withContext(Dispatchers.IO) {
         val bytes = repository.query { core ->
             runCatching { core.fileBytes(reference.id, null) }.getOrNull()
-                ?: runCatching { core.media(reference.id) }.getOrNull()
-                ?: core.items().firstOrNull { it.file?.path == "VoiceNotes/${reference.id}.m4a" || it.file?.name == "${reference.id}.m4a" }?.let { core.fileBytes(it.id, 1u) }
+                ?: if (reference.sha256 != null) null else {
+                    // Only marker-era notes may use the legacy, unversioned lookup.
+                    runCatching { core.media(reference.id) }.getOrNull()
+                        ?: core.items().firstOrNull { it.file?.path == "VoiceNotes/${reference.id}.m4a" || it.file?.name == "${reference.id}.m4a" }?.let { core.fileBytes(it.id, 1u) }
+                }
         }
         if (bytes == null) return@withContext null
         val file = File(VoiceRecorder.directory(context), "play-${UUID.randomUUID()}.audio")

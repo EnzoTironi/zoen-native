@@ -249,6 +249,74 @@ pub(crate) struct State {
 }
 
 impl State {
+    fn create_item(
+        &mut self,
+        e: &Event,
+        item: &str,
+        kind: ItemKind,
+        content: &ItemContent,
+        origin: &str,
+    ) {
+        self.items.insert(
+            item.to_string(),
+            ItemState {
+                id: item.to_string(),
+                space: e.space.clone(),
+                kind,
+                origin: origin.to_string(),
+                versions: vec![Version {
+                    number: 1,
+                    content: content.clone(),
+                    author: e.author.clone(),
+                    at_ms: e.at_ms,
+                    note: t("Criado", "Created"),
+                    is_undo: false,
+                }],
+            },
+        );
+        // A voice note is a message in the chat: a player, not a file in a list.
+        if let ItemContent::File(doc) = content {
+            if doc.is_voice() {
+                if let Some(s) = self.spaces.get_mut(&e.space) {
+                    s.entries.push(Entry {
+                        hash: e.hash.clone(),
+                        client_id: e.client_id.clone(),
+                        space: e.space.clone(),
+                        seq: e.seq,
+                        author: e.author.clone(),
+                        at_ms: e.at_ms,
+                        body: EntryBody::Message {
+                            text: String::new(),
+                            attaches: Some(item.to_string()),
+                            reply: doc.voice.as_ref().and_then(|meta| meta.reply.clone()),
+                            marks: MessageMarks::default(),
+                        },
+                    });
+                    s.last_at_ms = s.last_at_ms.max(e.at_ms);
+                }
+            }
+        }
+    }
+
+    /// Local recovery only: a refused send stays readable even if its author lost
+    /// membership while offline. It never enters the confirmed log or outbox transport.
+    pub(crate) fn retain_failed_voice(&mut self, e: &Event) {
+        if let EventBody::ItemCreated {
+            item,
+            kind: ItemKind::File,
+            content: content @ ItemContent::File(doc),
+            origin,
+        } = &e.body
+        {
+            if doc.is_voice()
+                && !self.items.contains_key(item)
+                && self.spaces.contains_key(&e.space)
+            {
+                self.create_item(e, item, ItemKind::File, content, origin);
+            }
+        }
+    }
+
     pub(crate) fn apply_checked(
         &mut self,
         e: &Event,
@@ -409,37 +477,7 @@ impl State {
                 content,
                 origin,
             } => {
-                self.items.insert(
-                    item.clone(),
-                    ItemState {
-                        id: item.clone(),
-                        space: e.space.clone(),
-                        kind: *kind,
-                        origin: origin.clone(),
-                        versions: vec![Version {
-                            number: 1,
-                            content: content.clone(),
-                            author: e.author.clone(),
-                            at_ms: e.at_ms,
-                            note: t("Criado", "Created"),
-                            is_undo: false,
-                        }],
-                    },
-                );
-                // A voice note is a message in the chat: a player, not a file in a list.
-                if let ItemContent::File(doc) = content {
-                    if doc.is_voice() {
-                        if let Some(s) = self.spaces.get_mut(&e.space) {
-                            s.entries.push(entry(EntryBody::Message {
-                                text: String::new(),
-                                attaches: Some(item.clone()),
-                                reply: doc.voice.as_ref().and_then(|meta| meta.reply.clone()),
-                                marks: MessageMarks::default(),
-                            }));
-                            s.last_at_ms = s.last_at_ms.max(e.at_ms);
-                        }
-                    }
-                }
+                self.create_item(e, item, *kind, content, origin);
             }
             EventBody::ItemVersioned {
                 item,
@@ -1238,11 +1276,56 @@ impl Engine {
         let meta = doc.voice.clone().unwrap_or_default();
         Some(VoiceNoteDto {
             item_id: item.to_string(),
+            sha256: doc.sha256.clone(),
             mime: doc.mime.clone(),
             ms: meta.ms,
             levels: meta.bars(),
             transcript: meta.transcript,
         })
+    }
+
+    fn entry_voice(&self, e: &Entry) -> Option<VoiceNoteDto> {
+        let EntryBody::Message {
+            text,
+            attaches,
+            marks,
+            ..
+        } = &e.body
+        else {
+            return None;
+        };
+        if marks.deleted {
+            return None;
+        }
+        if let Some(item) = attaches {
+            return self.voice_of(&e.space, item);
+        }
+        // File-backed markers need the current signed hash too. Markers without a
+        // core file keep using the clients' local-only compatibility path.
+        let (header, transcript) = text.strip_prefix("⟦voice:")?.split_once('⟧')?;
+        let mut fields = header.split(':');
+        let item = fields.next()?;
+        let ms = fields.next()?.parse().ok()?;
+        let levels = fields.next()?;
+        if fields.next().is_some() {
+            return None;
+        }
+        let mut voice = self.voice_of(&e.space, item)?;
+        let ItemContent::File(original) = &self.state.items.get(item)?.versions.first()?.content
+        else {
+            return None;
+        };
+        // Marker timings and words describe only the original audio.
+        if original.sha256 == voice.sha256 {
+            voice.ms = ms;
+            voice.levels = VoiceMeta {
+                levels: levels.to_string(),
+                ..Default::default()
+            }
+            .bars();
+            voice.transcript = transcript.trim().to_string();
+        }
+        Some(voice)
     }
 
     pub(crate) fn entry_dto(&self, e: &Entry) -> TimelineEntry {
@@ -1341,14 +1424,7 @@ impl Engine {
             at_ms: e.at_ms,
             kind,
             delivery: self.delivery(e),
-            voice: match &e.body {
-                EntryBody::Message {
-                    attaches: Some(item),
-                    marks,
-                    ..
-                } if !marks.deleted => self.voice_of(&e.space, item),
-                _ => None,
-            },
+            voice: self.entry_voice(e),
             reply_to,
             in_thread,
             thread_replies: 0,

@@ -40,6 +40,7 @@ struct VoiceNoteRef: Equatable {
     let levels: [CGFloat]
     let transcript: String
     let mime: String?
+    let sha256: String?
 
     static let open = "⟦voice:", close = "⟧"
 
@@ -50,12 +51,13 @@ struct VoiceNoteRef: Equatable {
 
     /// A note sent as an audio file: `id` is the file's Item, played through the core.
     init(_ voice: VoiceNoteDto) {
-        self.init(id: voice.itemId, ms: Int(clamping: voice.ms), levels: voice.levels.map { CGFloat($0) }, transcript: voice.transcript, mime: voice.mime)
+        self.init(id: voice.itemId, ms: Int(clamping: voice.ms), levels: voice.levels.map { CGFloat($0) }, transcript: voice.transcript, mime: voice.mime, sha256: voice.sha256)
     }
 
-    init(id: String, ms: Int, levels: [CGFloat], transcript: String, mime: String? = nil) {
+    init(id: String, ms: Int, levels: [CGFloat], transcript: String, mime: String? = nil, sha256: String? = nil) {
         self.id = id; self.ms = ms; self.levels = levels; self.transcript = transcript
         self.mime = mime
+        self.sha256 = sha256
     }
 
     /// Backward compatibility: notes from builds that sent only a marker.
@@ -288,6 +290,7 @@ final class VoicePlayer {
     var rate: Float = 1
     var error: String?
     private var player: AVAudioPlayer?
+    private var sha256: String?
     private var tick: Task<Void, Never>?
     /// The audio of a note sent as a file (its Item id), from the core; `nil` until the
     /// encrypted pieces have arrived.
@@ -312,26 +315,30 @@ final class VoicePlayer {
         }
     }
 
+    func isCurrent(_ ref: VoiceNoteRef) -> Bool {
+        currentId == ref.id && sha256 == ref.sha256
+    }
+
     func toggle(_ ref: VoiceNoteRef) {
-        if currentId == ref.id, let p = player {
+        if isCurrent(ref), let p = player {
             if p.isPlaying { p.pause(); isPlaying = false } else { isPlaying = p.play(); loop() }
             return
         }
         stop()
+        currentId = ref.id
+        sha256 = ref.sha256
         #if os(iOS)
         try? AVAudioSession.sharedInstance().setCategory(.playback)
         try? AVAudioSession.sharedInstance().setActive(true)
         #endif
-        guard let p = audio(ref) else { currentId = ref.id; return }
+        guard let p = audio(ref) else { return }
         p.enableRate = true
         p.rate = rate
         guard p.prepareToPlay(), p.play() else {
-            currentId = ref.id
             error = String(localized: "This recording could not be played on this device.")
             return
         }
         player = p
-        currentId = ref.id
         isPlaying = true
         progress = 0
         duration = p.duration
@@ -339,7 +346,7 @@ final class VoicePlayer {
     }
 
     func seek(_ ref: VoiceNoteRef, to f: Double) {
-        if currentId != ref.id { toggle(ref); player?.pause(); isPlaying = false }
+        if !isCurrent(ref) { toggle(ref); player?.pause(); isPlaying = false }
         guard let p = player else { return }
         p.currentTime = max(0, min(1, f)) * p.duration
         progress = f
@@ -358,6 +365,7 @@ final class VoicePlayer {
         progress = 0
         duration = 0
         currentId = nil
+        sha256 = nil
         error = nil
     }
 
@@ -421,7 +429,7 @@ struct VoiceBubble: View {
     private var player: VoicePlayer { VoicePlayer.shared }
 
     var body: some View {
-        let current = player.currentId == ref.id
+        let current = player.isCurrent(ref)
         let fg = mine ? Palette.myBubbleText : Palette.textPrimary
         VStack(alignment: .leading, spacing: 6) {
             HStack(spacing: 10) {

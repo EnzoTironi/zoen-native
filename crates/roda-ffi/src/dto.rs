@@ -169,7 +169,7 @@ pub struct TimelineEntry {
     /// Grouped by emoji, in the order they first appeared.
     #[uniffi(default = [])]
     pub reactions: Vec<ReactionDto>,
-    /// A voice note: play `item_id`'s bytes (`file_bytes`); the text is empty.
+    /// A voice note: play `item_id`'s current bytes (`file_bytes`).
     #[uniffi(default = None)]
     pub voice: Option<VoiceNoteDto>,
 }
@@ -179,6 +179,8 @@ pub struct TimelineEntry {
 #[derive(Debug, Clone, PartialEq, uniffi::Record)]
 pub struct VoiceNoteDto {
     pub item_id: String,
+    /// The current signed audio hash, used to invalidate loaded players after edits.
+    pub sha256: String,
     pub mime: String,
     /// 0 when the sender didn't say (players read the length from the audio).
     pub ms: u64,

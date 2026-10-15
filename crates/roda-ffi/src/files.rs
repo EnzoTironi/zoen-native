@@ -424,6 +424,11 @@ impl Engine {
         let me = self.me_id()?;
         let (it, cur) = self.file_item(item)?;
         let space = it.space.clone();
+        if !self.state.writer(&space, &me) || !it.voice_edit_allowed(&me, None) {
+            return Err(CoreError::Forbidden {
+                reason: t("edição de arquivo não autorizada", "unauthorized file edit"),
+            });
+        }
         // Every chunk any version already has is re-used as is (its key travels in the
         // event), so this works on a device that didn't add the file too.
         let mut prior = HashMap::new();

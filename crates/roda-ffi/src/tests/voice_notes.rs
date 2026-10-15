@@ -1,6 +1,28 @@
 //! Voice notes travel as encrypted audio files (the chunked media path), not text markers.
 use super::*;
-use roda_types::{EventBody, Role};
+use roda_types::{EventBody, ItemContent, Role};
+
+// An untrusted relay may sequence a correctly signed but unauthorized event.
+fn ingest_as(engine: &mut crate::engine::Engine, space: &str, author: &str, body: EventBody) {
+    let event = engine.author_for(author).unwrap().sign_event(
+        space,
+        &roda_types::new_id("voice-event"),
+        crate::engine::now_ms(),
+        engine.logs[space].head(),
+        body,
+    );
+    let mut relay = engine.logs[space].clone();
+    let event = relay.sequence(event);
+    assert_eq!(
+        engine.ingest(roda_proto::Sequenced {
+            seq: event.seq,
+            prev: event.prev.clone(),
+            hash: event.hash.clone(),
+            env: roda_proto::Envelope::plain(event),
+        }),
+        crate::sync::Ingest::Applied
+    );
+}
 
 fn note(e: &RodaEngine, space: &str, reply: Option<String>) -> Result<TimelineEntry, CoreError> {
     e.send_voice_note(
@@ -351,8 +373,228 @@ fn renaming_voice_audio_keeps_metadata_but_replacing_bytes_invalidates_it() {
         .voice
         .unwrap();
     assert_eq!(current.item_id, voice.item_id);
+    assert_ne!(current.sha256, voice.sha256);
     assert_eq!(current.ms, 0);
     assert!(current.levels.is_empty() && current.transcript.is_empty());
+}
+
+#[test]
+fn voice_versions_and_reverts_are_author_only_locally_and_on_replay() {
+    for legacy in [false, true] {
+        for hidden in [false, true] {
+            let e = seeded();
+            let space = find_space(&e, "Paraty com a Marina");
+            let me = e.me().unwrap().id;
+            let other = space.members.iter().find(|p| !p.is_me).unwrap().id.clone();
+            let item = if legacy {
+                e.file_add(
+                    space.id.clone(),
+                    String::new(),
+                    "Mensagem de voz.webm".into(),
+                    "audio/webm".into(),
+                    vec![7; 900],
+                    None,
+                )
+                .unwrap()
+                .id
+            } else {
+                note(&e, &space.id, None).unwrap().voice.unwrap().item_id
+            };
+            // Even an owner version that no longer looks like voice keeps ownership.
+            e.file_new_version_typed(
+                item.clone(),
+                vec![8; 500],
+                None,
+                "Edit".into(),
+                "renamed.m4a".into(),
+                if hidden {
+                    "application/octet-stream"
+                } else {
+                    "audio/mp4"
+                }
+                .into(),
+            )
+            .unwrap();
+            let mut engine = e.lock();
+            let current = engine.state.items[&item].current().content.clone();
+            let original = engine.state.items[&item].versions[0].content.clone();
+            assert!(engine.state.writer(&space.id, &other));
+            engine.me = Some(other.clone());
+            let events = engine.store.event_count().unwrap();
+            assert!(engine
+                .file_new_version(&item, &[9; 500], None, "Replace")
+                .is_err());
+            assert!(engine
+                .file_new_version_typed(
+                    &item,
+                    &[9; 500],
+                    None,
+                    "Replace",
+                    "other.mp3",
+                    "audio/mpeg"
+                )
+                .is_err());
+            assert!(engine.restore_version(&item, 1, "Revert").is_err());
+            assert_eq!(engine.store.event_count().unwrap(), events);
+            for body in [
+                EventBody::ItemVersioned {
+                    item: item.clone(),
+                    content: original,
+                    note: "Replace".into(),
+                },
+                EventBody::ItemVersioned {
+                    item: item.clone(),
+                    content: current.clone(),
+                    note: "Replace without voice metadata".into(),
+                },
+                EventBody::ItemReverted {
+                    item: item.clone(),
+                    to_version: 1,
+                    note: "Revert".into(),
+                },
+            ] {
+                assert!(engine.append(&space.id, &other, body.clone()).is_err());
+                ingest_as(&mut engine, &space.id, &other, body);
+                assert_eq!(engine.state.items[&item].versions.len(), 2);
+                assert_eq!(engine.state.items[&item].current().content, current);
+            }
+            engine.reload().unwrap();
+            assert_eq!(engine.state.items[&item].versions.len(), 2);
+            assert_eq!(engine.file_bytes(&item, None).unwrap(), Some(vec![8; 500]));
+            engine.me = Some(me);
+            engine.restore_version(&item, 1, "Owner revert").unwrap();
+            assert_eq!(engine.file_bytes(&item, None).unwrap(), Some(vec![7; 900]));
+        }
+    }
+}
+
+#[test]
+fn ordinary_files_stay_collaborative_but_only_the_author_can_make_them_voice() {
+    let e = seeded();
+    let space = find_space(&e, "Paraty com a Marina");
+    let item = e
+        .file_add(
+            space.id.clone(),
+            String::new(),
+            "music.mp3".into(),
+            "audio/mpeg".into(),
+            vec![1; 64],
+            None,
+        )
+        .unwrap()
+        .id;
+    let other = space.members.iter().find(|p| !p.is_me).unwrap().id.clone();
+    let mut engine = e.lock();
+    engine.me = Some(other.clone());
+    engine
+        .file_new_version(&item, &[2; 64], None, "Collaborative edit")
+        .unwrap();
+    engine
+        .restore_version(&item, 1, "Collaborative revert")
+        .unwrap();
+    let ItemContent::File(mut doc) = engine.state.items[&item].current().content.clone() else {
+        panic!("file")
+    };
+    doc.voice = Some(roda_types::VoiceMeta::default());
+    let body = EventBody::ItemVersioned {
+        item: item.clone(),
+        content: ItemContent::File(doc),
+        note: "Impersonate voice".into(),
+    };
+    assert!(engine.append(&space.id, &other, body.clone()).is_err());
+    ingest_as(&mut engine, &space.id, &other, body);
+    engine.reload().unwrap();
+    assert_eq!(engine.state.items[&item].versions.len(), 3);
+    assert_eq!(engine.file_bytes(&item, None).unwrap(), Some(vec![1; 64]));
+}
+
+#[test]
+fn rejected_voice_sends_keep_their_audio_reply_and_delivery_error_after_reopen() {
+    let dir = std::env::temp_dir().join(roda_types::new_id("voice-refusal"));
+    std::fs::create_dir_all(&dir).unwrap();
+    let path = dir.join("core.sqlite").to_string_lossy().to_string();
+    let (space, root, sent) = {
+        let e = RodaEngine::open(path.clone(), "en".into()).unwrap();
+        e.seed_demo_if_empty().unwrap();
+        let space = find_space(&e, "Zoen").id;
+        let root = e.send_message(space.clone(), "Root".into()).unwrap();
+        let me = e.me().unwrap().id;
+        {
+            let mut engine = e.lock();
+            engine.store.set_synced(&space).unwrap();
+            engine.net.synced.insert(space.clone());
+        }
+        let sent = note(&e, &space, Some(root.id.clone())).unwrap();
+        let mut engine = e.lock();
+        // Permission loss is one reason a queued send can be refused permanently.
+        ingest_as(
+            &mut engine,
+            &space,
+            &me,
+            EventBody::MemberRemoved {
+                identity: me.clone(),
+            },
+        );
+        let client_id = engine.store.outbox().unwrap()[0].event.client_id.clone();
+        assert!(engine.reject(&client_id, "permission denied", true, None));
+        assert_eq!(
+            engine.net.failed.get(&client_id).map(String::as_str),
+            Some("permission denied")
+        );
+        assert!(engine.outbox_envelopes().is_empty());
+        (space, root, sent)
+    };
+    let e = RodaEngine::open(path, "en".into()).unwrap();
+    let thread = e.thread(space.clone(), root.id).unwrap();
+    let failed = thread.iter().find(|x| x.id == sent.id).unwrap();
+    assert_eq!(failed.delivery, Delivery::Failed);
+    assert_eq!(failed.voice, sent.voice);
+    assert_eq!(failed.in_thread, sent.in_thread);
+    assert_eq!(
+        e.file_bytes(failed.voice.as_ref().unwrap().item_id.clone(), None)
+            .unwrap(),
+        Some(vec![7; 900])
+    );
+    let engine = e.lock();
+    let pending = engine.store.outbox().unwrap();
+    assert_eq!(
+        engine
+            .net
+            .failed
+            .get(&pending[0].event.client_id)
+            .map(String::as_str),
+        Some("permission denied")
+    );
+    assert!(engine.outbox_envelopes().is_empty());
+    drop(engine);
+    drop(e);
+    std::fs::remove_dir_all(dir).unwrap();
+}
+
+#[test]
+fn typed_voice_transcripts_are_searchable_by_message_id_and_follow_edits() {
+    let e = seeded();
+    let space = find_space(&e, "Zoen").id;
+    let sent = note(&e, &space, None).unwrap();
+    let hits = || {
+        e.universal_search("recording".into(), vec!["message".into()], 20)
+            .unwrap()
+            .hits
+    };
+    assert_eq!(
+        hits().iter().map(|h| h.ref_id.as_str()).collect::<Vec<_>>(),
+        vec![sent.id.as_str()]
+    );
+    e.lock().reload().unwrap();
+    assert_eq!(hits()[0].ref_id, sent.id);
+    let item = sent.voice.as_ref().unwrap().item_id.clone();
+    e.file_new_version(item.clone(), vec![8; 500], None, "Cut".into())
+        .unwrap();
+    assert!(hits().is_empty(), "removed transcript must leave the index");
+    e.restore_version(item, 1).unwrap();
+    assert_eq!(hits()[0].ref_id, sent.id);
+    e.delete_message(space, sent.id).unwrap();
+    assert!(hits().is_empty());
 }
 
 #[test]
@@ -373,13 +615,46 @@ fn old_android_file_and_marker_replay_as_one_voice_message() {
     let marker = format!("⟦voice:{}:1000:08f⟧\nOld transcript", file.id);
     let sent = e.send_message(space.clone(), marker.clone()).unwrap();
     e.lock().reload().unwrap();
-    let timeline = e.timeline(space).unwrap();
+    let timeline = e.timeline(space.clone()).unwrap();
     assert_eq!(timeline.len(), before + 1);
     assert_eq!(timeline.last().unwrap().id, sent.id);
     assert!(
         matches!(&timeline.last().unwrap().kind, EntryKind::Message { text, .. } if text == &marker)
     );
-    assert_eq!(e.file_bytes(file.id, None).unwrap(), Some(vec![1; 64]));
+    let voice = timeline.last().unwrap().voice.as_ref().unwrap();
+    assert_eq!(voice.item_id, file.id);
+    assert_eq!(voice.ms, 1000);
+    assert_eq!(voice.transcript, "Old transcript");
+    assert_eq!(
+        e.file_bytes(file.id.clone(), None).unwrap(),
+        Some(vec![1; 64])
+    );
+    e.file_new_version(file.id.clone(), vec![2; 64], None, "Edit".into())
+        .unwrap();
+    e.lock().reload().unwrap();
+    let edited = e
+        .timeline(space.clone())
+        .unwrap()
+        .into_iter()
+        .find(|x| x.id == sent.id)
+        .unwrap()
+        .voice
+        .unwrap();
+    assert_eq!(edited.item_id, voice.item_id);
+    assert_ne!(edited.sha256, voice.sha256);
+    assert_eq!(edited.ms, 0);
+    assert!(edited.levels.is_empty() && edited.transcript.is_empty());
+    e.restore_version(file.id, 1).unwrap();
+    assert_eq!(
+        e.timeline(space)
+            .unwrap()
+            .into_iter()
+            .find(|x| x.id == sent.id)
+            .unwrap()
+            .voice
+            .as_ref(),
+        Some(voice)
+    );
     assert!(e.verify_all().iter().all(|r| r.valid));
 }
 
