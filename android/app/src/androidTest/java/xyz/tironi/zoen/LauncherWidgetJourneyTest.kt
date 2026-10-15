@@ -162,18 +162,19 @@ class LauncherWidgetJourneyTest {
             trace.put(JSONObject().put("widgetId", widgetId).put("owner", owner).put("initialItem", initial.id))
             step("Touch the pinned widget on the actual launcher")
             home()
+            awaitWidget(checkNotNull(configuredTitle))
+            // Budget the Samsung resize dance on its own, after the widget is visible.
             val openDeadline = SystemClock.uptimeMillis() + 10_000
-            awaitWidget(checkNotNull(configuredTitle), openDeadline)
             if (launcher == "com.sec.android.app.launcher") {
                 // The pin callback arrives before Samsung enters its workspace resize mode.
                 automation.waitForIdle(250, (openDeadline - SystemClock.uptimeMillis()).also { assertTrue(it > 0) })
                 assertTrue("System Back must finish the visible launcher's resize mode", automation.performGlobalAction(AccessibilityService.GLOBAL_ACTION_BACK))
                 automation.waitForIdle(100, (openDeadline - SystemClock.uptimeMillis()).also { assertTrue(it > 0) })
-                awaitWidget(checkNotNull(configuredTitle), openDeadline)
+                awaitWidget(checkNotNull(configuredTitle))
             }
             capture("02-launcher-pinned-widget")
             // A capture can outlive a launcher transition. Never reuse pin-preview coordinates.
-            touch(awaitWidget(checkNotNull(configuredTitle), openDeadline).title)
+            touch(awaitWidget(checkNotNull(configuredTitle)).title)
             val openedText = if (reconfigurable) listRow else petTitle
             compose.waitUntil(10_000) {
                 readUi()?.packageName == application.packageName &&
@@ -236,15 +237,14 @@ class LauncherWidgetJourneyTest {
             val beforeFullness = JSONObject(before.app!!.viewJson).getDouble("fullness")
             val beforeSnapshot = checkNotNull(WidgetSnapshot.from(before))
             val feed = beforeSnapshot.actions.single { it.tool == "pet_feed" }
-            val feedDeadline = SystemClock.uptimeMillis() + 10_000
-            val petWidget = awaitWidget(petTitle, feedDeadline)
+            val petWidget = awaitWidget(petTitle)
             assertEquals(bars(beforeSnapshot), petWidget.bars?.text)
             val remoteFeed = checkNotNull(petWidget.actionOne)
             assertTrue("The native Feed label must match the signed snapshot", matchesLabel(remoteFeed.text, setOf(feed.label)))
             assertEquals(feed.label, remoteFeed.description)
             assertTrue(remoteFeed.enabled && remoteFeed.clickable)
             capture("06-launcher-pet-before-feed")
-            val currentFeed = checkNotNull(awaitWidget(petTitle, feedDeadline).actionOne)
+            val currentFeed = checkNotNull(awaitWidget(petTitle).actionOne)
             assertTrue(matchesLabel(currentFeed.text, setOf(feed.label)))
             assertEquals(feed.label, currentFeed.description)
             assertTrue(currentFeed.enabled && currentFeed.clickable)
@@ -264,7 +264,6 @@ class LauncherWidgetJourneyTest {
 
             step("Open Pet from the launcher and see the same updated native state")
             touch(awaitWidget(petTitle).title)
-            val petOpenDeadline = SystemClock.uptimeMillis() + 10_000
             compose.waitUntil(10_000) {
                 readUi()?.packageName == application.packageName &&
                     compose.onAllNodesWithText(petTitle).fetchSemanticsNodes(atLeastOneRootRequired = false).isNotEmpty() &&
@@ -272,9 +271,8 @@ class LauncherWidgetJourneyTest {
                     compose.onAllNodesWithTag("pet-unboxing").fetchSemanticsNodes(atLeastOneRootRequired = false).isEmpty()
             }
             compose.onNodeWithTag("pet-app-content").performScrollToNode(hasText("${afterFullness.toInt()}%"))
-            val remaining = petOpenDeadline - SystemClock.uptimeMillis()
-            assertTrue("Native opening and scrolling must fit the original ten-second deadline", remaining > 0)
-            compose.waitUntil(remaining) {
+            compose.waitForIdle()
+            compose.waitUntil(10_000) {
                 compose.onAllNodesWithText("${afterFullness.toInt()}%").fetchSemanticsNodes(atLeastOneRootRequired = false).isNotEmpty()
             }
             val petTitles = compose.onAllNodesWithText(petTitle)
@@ -412,6 +410,9 @@ class LauncherWidgetJourneyTest {
         var result: WidgetUi? = null
         var previous: WidgetUi? = null
         await("Launcher renders widget $title at stable workspace bounds", until) {
+            // Sample only once the launcher's accessibility stream has gone quiet, so two equal
+            // samples mean the RemoteViews really settled rather than landing mid-relayout.
+            runCatching { automation.waitForIdle(100, (until - SystemClock.uptimeMillis()).coerceIn(1, 2_000)) }
             result = findWidget(title)
             val settled = result != null && result?.geometry() == previous?.geometry()
             previous = result

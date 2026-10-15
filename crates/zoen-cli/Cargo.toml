@@ -12,9 +12,15 @@ path = "src/main.rs"
 
 [dependencies]
 roda-ffi = { path = "../roda-ffi" }
-tokio = { version = "1", features = ["rt-multi-thread", "macros", "time", "signal"] }
+zoen-agentd = { path = "../zoen-agentd" }
+roda-gate.workspace = true
+serde_json = "1"
+reqwest = { version = "0.13", default-features = false, features = ["rustls-no-provider"] }
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "time", "signal", "sync"] }
 
 [dev-dependencies]
+# Journeys run the scripted brain and fault points; production builds never have them.
+zoen-agentd = { path = "../zoen-agentd", features = ["scripted"] }
 roda-store.workspace = true
 hkdf.workspace = true
 async-nats = "0.50"

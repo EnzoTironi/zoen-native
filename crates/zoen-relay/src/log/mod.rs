@@ -64,6 +64,8 @@ pub struct InviteInfo {
     pub inviter: String,
     pub title: String,
     pub members: u32,
+    /// Agent identity id when this invite opens a chat with an agent.
+    pub agent: Option<String>,
 }
 
 #[derive(Debug)]
@@ -109,5 +111,19 @@ pub trait LogStore: Send + Sync {
         max_uses: u32,
         ttl_secs: u64,
     ) -> Result<InviteCreated, String>;
+    /// The agent's one share link: returns its live code, or mints one when there is none
+    /// (or it expired, ran out of uses, or was revoked).
+    async fn create_agent_invite(
+        &self,
+        who: &str,
+        agent: &str,
+        max_uses: u32,
+        ttl_secs: u64,
+    ) -> Result<InviteCreated, String>;
     async fn preview_invite(&self, code: &str) -> Result<InviteInfo, String>;
+    /// Spends one use of an agent link in one transaction; refused past `max_uses`.
+    /// Each person counts once: `who` is stored with the invite in the same transaction.
+    async fn redeem_agent_invite(&self, code: &str, who: &str) -> Result<InviteInfo, String>;
+    /// Takes the agent's live link down. Ownership is checked by the caller.
+    async fn revoke_agent_invite(&self, agent: &str) -> Result<(), String>;
 }

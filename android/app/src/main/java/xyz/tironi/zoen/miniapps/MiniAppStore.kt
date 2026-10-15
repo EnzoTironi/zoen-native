@@ -37,7 +37,7 @@ fun MiniAppStoreScreen(model: ZoenViewModel, state: AppState, onOpenItem: (Strin
     val filtered = specs.filter { spec ->
         (query.isBlank() || (spec.name + " " + spec.description).contains(query, true)) && when (category) {
             "games" -> spec.id in setOf("pet", "maptap")
-            "plans" -> spec.id in setOf("recipe", "hike", "countdown", "poll")
+            "plans" -> spec.id in setOf("recipe", "hike", "countdown", "poll", "schedule")
             "daily" -> spec.id in setOf("pet", "list", "recipe")
             "agents" -> false
             else -> true

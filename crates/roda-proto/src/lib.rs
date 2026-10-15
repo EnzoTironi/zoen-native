@@ -437,12 +437,23 @@ pub enum Op {
     },
     CreateInvite {
         space: SpaceId,
+        /// When set, this invite opens a chat with the agent instead of joining a Space.
+        agent: Option<IdentityId>,
         role: Role,
         max_uses: u32,
         ttl_secs: u64,
     },
     PreviewInvite {
         code: String,
+    },
+    /// Spends one use of an agent link, atomically against its `max_uses`, and returns
+    /// its preview. Space codes are redeemed by joining instead.
+    RedeemAgentInvite {
+        code: String,
+    },
+    /// The owner takes an agent's share link down; the next `CreateInvite` mints a new one.
+    RevokeAgentInvite {
+        agent: IdentityId,
     },
     /// Publishes this identity's X25519 key for receiving profile keys (ADR 0016).
     PublishAgreementKey {
@@ -497,6 +508,70 @@ pub enum Op {
         to: String,
         sealed: Vec<u8>,
     },
+    /// Agent citizens (migration 0028): the runtime's own state and cursors, or an
+    /// owner's control over an agent it answers for.
+    Agent(AgentRequest),
+}
+
+/// What an agent runtime or its owner asks the relay about an agent citizen.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum AgentRequest {
+    /// The signed-in agent: its status, current definition and per-Space cursors.
+    State,
+    /// The signed-in agent handled its Space through `seq` (inclusive).
+    Advance { space: SpaceId, seq: u64 },
+    /// A new definition version. The owner may always; the agent only for its first.
+    Define {
+        agent: IdentityId,
+        version: u32,
+        kind: String,
+        definition: Vec<u8>,
+    },
+    /// Owner only.
+    Control {
+        agent: IdentityId,
+        action: AgentAction,
+    },
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum AgentAction {
+    Pause,
+    Resume,
+    /// Final: the agent's runtime device is revoked too.
+    Revoke,
+}
+
+impl AgentAction {
+    pub fn id(self) -> &'static str {
+        match self {
+            AgentAction::Pause => "pause",
+            AgentAction::Resume => "resume",
+            AgentAction::Revoke => "revoke",
+        }
+    }
+
+    pub fn parse(s: &str) -> Option<Self> {
+        match s {
+            "pause" => Some(AgentAction::Pause),
+            "resume" => Some(AgentAction::Resume),
+            "revoke" => Some(AgentAction::Revoke),
+            _ => None,
+        }
+    }
+}
+
+/// The relay's single source of truth for an agent runtime.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct AgentStateRecord {
+    /// "active", "paused" or "revoked".
+    pub status: String,
+    /// "Creator" or "User"; empty until the first definition.
+    pub kind: String,
+    pub definition_version: u32,
+    pub definition: Vec<u8>,
+    /// Last handled seq per Space.
+    pub cursors: Vec<(SpaceId, u64)>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -514,6 +589,8 @@ impl Op {
             Op::Profiles { .. } => "profiles",
             Op::CreateInvite { .. } => "create_invite",
             Op::PreviewInvite { .. } => "preview_invite",
+            Op::RedeemAgentInvite { .. } => "redeem_agent_invite",
+            Op::RevokeAgentInvite { .. } => "revoke_agent_invite",
             Op::PublishAgreementKey { .. } => "publish_agreement_key",
             Op::AgreementKeys { .. } => "agreement_keys",
             Op::PutProfile { .. } => "put_profile",
@@ -525,6 +602,10 @@ impl Op {
             Op::Devices => "devices",
             Op::Unlink { .. } => "unlink",
             Op::SendDevice { .. } => "send_device",
+            Op::Agent(AgentRequest::State) => "agent_state",
+            Op::Agent(AgentRequest::Advance { .. }) => "agent_advance",
+            Op::Agent(AgentRequest::Define { .. }) => "agent_define",
+            Op::Agent(AgentRequest::Control { .. }) => "agent_control",
         }
     }
 }
@@ -564,6 +645,7 @@ pub enum Reply {
     /// FetchLink: the sealed box, `None` while nobody left one.
     Link(Option<Vec<u8>>),
     Devices(Vec<DeviceRecord>),
+    AgentState(AgentStateRecord),
 }
 
 /// One of an identity's devices, as the directory has it.
@@ -589,6 +671,10 @@ pub struct InvitePreview {
     pub title: String,
     pub members: u32,
     pub inviter: Option<Identity>,
+    /// `space` or `agent`.
+    pub kind: String,
+    /// Present when `kind` is `agent`.
+    pub agent: Option<Box<Identity>>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]

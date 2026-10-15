@@ -32,7 +32,7 @@ import xyz.tironi.zoen.miniapps.NativeHike
 import xyz.tironi.zoen.miniapps.MiniAppPins
 import xyz.tironi.zoen.miniapps.NativeGlobe
 
-val nativeMiniApps = setOf("pet", "poll", "list", "hike", "maptap", "recipe", "countdown")
+val nativeMiniApps = setOf("pet", "poll", "list", "hike", "maptap", "recipe", "countdown", "schedule")
 
 private fun JSONObject.rows(key: String): List<JSONObject> = optJSONArray(key)?.let { rows -> (0 until rows.length()).mapNotNull { rows.optJSONObject(it) } } ?: emptyList()
 private typealias AppAction = (String, JSONObject) -> Unit
@@ -41,7 +41,7 @@ private data class Confirmation(val tool: String, val args: JSONObject, val outc
 @Composable
 fun MiniAppScreen(model: ZoenViewModel, state: AppState, item: ItemDetail, modifier: Modifier = Modifier, onClose: () -> Unit = {}) {
     val app = checkNotNull(item.app)
-    var hasHtml by remember(app.appId) { mutableStateOf(app.appId in setOf("pet", "poll", "list", "hike")) }
+    var hasHtml by remember(app.appId) { mutableStateOf(app.appId in setOf("pet", "poll", "list", "hike", "schedule")) }
     val preferences = model.repository.preferences
     var html by remember(app.appId, state.revision) { mutableStateOf(preferences.getBoolean("miniapps.html:${app.appId}", app.appId !in nativeMiniApps) || app.appId !in nativeMiniApps) }
     LaunchedEffect(app.appId) { hasHtml = model.repository.query { core -> core.appSpecs().any { it.id == app.appId && it.hasView } } }

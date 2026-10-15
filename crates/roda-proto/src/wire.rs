@@ -7,9 +7,10 @@ use prost::Message;
 use roda_types::{Identity, IdentityKind, Role};
 
 use crate::{
-    AgreementKeyRecord, ClientFrame, Cursor, DeviceCertificate, DeviceRecord, DeviceSigned,
-    Envelope, EphemeralKind, ErrorCode, InviteCreated, InvitePreview, KeyPackageRecord, Op, Reply,
-    SealedProfile, Sequenced, ServerFrame,
+    AgentAction, AgentRequest, AgentStateRecord, AgreementKeyRecord, ClientFrame, Cursor,
+    DeviceCertificate, DeviceRecord, DeviceSigned, Envelope, EphemeralKind, ErrorCode,
+    InviteCreated, InvitePreview, KeyPackageRecord, Op, Reply, SealedProfile, Sequenced,
+    ServerFrame,
 };
 
 /// Why a frame didn't decode.
@@ -77,7 +78,7 @@ pub struct PbReq {
     pub id: u64,
     #[prost(
         oneof = "pb_req::Op",
-        tags = "2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17"
+        tags = "2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20"
     )]
     pub op: Option<pb_req::Op>,
 }
@@ -119,7 +120,54 @@ pub mod pb_req {
         Unlink(String),
         #[prost(message, tag = "17")]
         SendDevice(PbDeviceMessage),
+        #[prost(string, tag = "18")]
+        RedeemAgentInvite(String),
+        #[prost(string, tag = "19")]
+        RevokeAgentInvite(String),
+        #[prost(message, tag = "20")]
+        Agent(PbAgentReq),
     }
+}
+
+/// `op`: "state", "advance", "define", "pause", "resume" or "revoke".
+#[derive(Clone, PartialEq, Message)]
+pub struct PbAgentReq {
+    #[prost(string, tag = "1")]
+    pub op: String,
+    #[prost(string, tag = "2")]
+    pub agent: String,
+    #[prost(string, tag = "3")]
+    pub space: String,
+    #[prost(uint64, tag = "4")]
+    pub seq: u64,
+    #[prost(uint32, tag = "5")]
+    pub version: u32,
+    #[prost(string, tag = "6")]
+    pub kind: String,
+    #[prost(bytes = "vec", tag = "7")]
+    pub definition: Vec<u8>,
+}
+
+#[derive(Clone, PartialEq, Message)]
+pub struct PbAgentCursor {
+    #[prost(string, tag = "1")]
+    pub space: String,
+    #[prost(uint64, tag = "2")]
+    pub seq: u64,
+}
+
+#[derive(Clone, PartialEq, Message)]
+pub struct PbAgentState {
+    #[prost(string, tag = "1")]
+    pub status: String,
+    #[prost(string, tag = "2")]
+    pub kind: String,
+    #[prost(uint32, tag = "3")]
+    pub definition_version: u32,
+    #[prost(bytes = "vec", tag = "4")]
+    pub definition: Vec<u8>,
+    #[prost(message, repeated, tag = "5")]
+    pub cursors: Vec<PbAgentCursor>,
 }
 
 #[derive(Clone, PartialEq, Message)]
@@ -328,6 +376,9 @@ pub struct PbCreateInvite {
     pub max_uses: u32,
     #[prost(uint64, tag = "4")]
     pub ttl_secs: u64,
+    /// Agent identity id; empty means a Space invite.
+    #[prost(string, optional, tag = "5")]
+    pub agent: Option<String>,
 }
 
 #[derive(Clone, PartialEq, Message)]
@@ -466,7 +517,7 @@ pub struct PbReady {
 pub struct PbRes {
     #[prost(uint64, tag = "1")]
     pub id: u64,
-    #[prost(oneof = "pb_res::R", tags = "2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12")]
+    #[prost(oneof = "pb_res::R", tags = "2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13")]
     pub r: Option<pb_res::R>,
 }
 
@@ -497,6 +548,8 @@ pub mod pb_res {
         Link(PbLinkBox),
         #[prost(message, tag = "12")]
         Devices(PbDevices),
+        #[prost(message, tag = "13")]
+        AgentState(PbAgentState),
     }
 }
 
@@ -526,6 +579,11 @@ pub struct PbInvitePreview {
     pub members: u32,
     #[prost(message, optional, tag = "5")]
     pub inviter: Option<PbProfile>,
+    /// `space` or `agent`; empty on the wire means space (legacy).
+    #[prost(string, tag = "6")]
+    pub kind: String,
+    #[prost(message, optional, boxed, tag = "7")]
+    pub agent: Option<Box<PbProfile>>,
 }
 
 #[derive(Clone, PartialEq, Message)]
@@ -795,6 +853,7 @@ impl ClientFrame {
                     Op::Profiles { ids } => pb_req::Op::Profiles(PbIds { ids: ids.clone() }),
                     Op::CreateInvite {
                         space,
+                        agent,
                         role,
                         max_uses,
                         ttl_secs,
@@ -803,8 +862,11 @@ impl ClientFrame {
                         role: role_to(*role),
                         max_uses: *max_uses,
                         ttl_secs: *ttl_secs,
+                        agent: agent.clone(),
                     }),
                     Op::PreviewInvite { code } => pb_req::Op::PreviewInvite(code.clone()),
+                    Op::RedeemAgentInvite { code } => pb_req::Op::RedeemAgentInvite(code.clone()),
+                    Op::RevokeAgentInvite { agent } => pb_req::Op::RevokeAgentInvite(agent.clone()),
                     Op::PublishAgreementKey { public, signed } => {
                         pb_req::Op::PublishAgreementKey(PbAgreementKey {
                             identity: String::new(),
@@ -848,6 +910,7 @@ impl ClientFrame {
                         to: to.clone(),
                         sealed: sealed.clone(),
                     }),
+                    Op::Agent(a) => pb_req::Op::Agent(agent_req_to(a)),
                 }),
             }),
             ClientFrame::Publish { env } => F::Publish(envelope_to(env)),
@@ -892,11 +955,14 @@ impl ClientFrame {
                     pb_req::Op::Profiles(p) => Op::Profiles { ids: p.ids },
                     pb_req::Op::CreateInvite(c) => Op::CreateInvite {
                         space: c.space,
+                        agent: c.agent.filter(|a| !a.is_empty()),
                         role: role_from(c.role)?,
                         max_uses: c.max_uses,
                         ttl_secs: c.ttl_secs,
                     },
                     pb_req::Op::PreviewInvite(code) => Op::PreviewInvite { code },
+                    pb_req::Op::RedeemAgentInvite(code) => Op::RedeemAgentInvite { code },
+                    pb_req::Op::RevokeAgentInvite(agent) => Op::RevokeAgentInvite { agent },
                     pb_req::Op::PublishAgreementKey(k) => Op::PublishAgreementKey {
                         public: k.public,
                         signed: signed_from(k.signed)?,
@@ -929,6 +995,7 @@ impl ClientFrame {
                         to: m.to,
                         sealed: m.sealed,
                     },
+                    pb_req::Op::Agent(a) => Op::Agent(agent_req_from(a)?),
                 },
             },
             // Only the relay prunes: a device can't hand it a stub.
@@ -1001,6 +1068,8 @@ impl ServerFrame {
                         title: p.title.clone(),
                         members: p.members,
                         inviter: p.inviter.as_ref().map(profile_to),
+                        kind: p.kind.clone(),
+                        agent: p.agent.as_deref().map(profile_to).map(Box::new),
                     }),
                     Ok(Reply::Done) => pb_res::R::Done(PbEmpty {}),
                     Ok(Reply::AgreementKeys(ks)) => pb_res::R::AgreementKeys(PbAgreementKeys {
@@ -1023,6 +1092,20 @@ impl ServerFrame {
                         id: String::new(),
                         sealed: sealed.clone().unwrap_or_default(),
                         device: None,
+                    }),
+                    Ok(Reply::AgentState(a)) => pb_res::R::AgentState(PbAgentState {
+                        status: a.status.clone(),
+                        kind: a.kind.clone(),
+                        definition_version: a.definition_version,
+                        definition: a.definition.clone(),
+                        cursors: a
+                            .cursors
+                            .iter()
+                            .map(|(space, seq)| PbAgentCursor {
+                                space: space.clone(),
+                                seq: *seq,
+                            })
+                            .collect(),
                     }),
                     Ok(Reply::Devices(ds)) => pb_res::R::Devices(PbDevices {
                         devices: ds
@@ -1140,6 +1223,12 @@ impl ServerFrame {
                         title: p.title,
                         members: p.members,
                         inviter: p.inviter.map(profile_from).transpose()?,
+                        kind: if p.kind.is_empty() {
+                            "space".into()
+                        } else {
+                            p.kind
+                        },
+                        agent: p.agent.map(|a| profile_from(*a)).transpose()?.map(Box::new),
                     })),
                     pb_res::R::Done(_) => Ok(Reply::Done),
                     pb_res::R::AgreementKeys(ks) => Ok(Reply::AgreementKeys(
@@ -1167,6 +1256,13 @@ impl ServerFrame {
                     pb_res::R::Link(b) => {
                         Ok(Reply::Link((!b.sealed.is_empty()).then_some(b.sealed)))
                     }
+                    pb_res::R::AgentState(a) => Ok(Reply::AgentState(AgentStateRecord {
+                        status: a.status,
+                        kind: a.kind,
+                        definition_version: a.definition_version,
+                        definition: a.definition,
+                        cursors: a.cursors.into_iter().map(|c| (c.space, c.seq)).collect(),
+                    })),
                     pb_res::R::Devices(ds) => Ok(Reply::Devices(
                         ds.devices
                             .into_iter()
@@ -1236,6 +1332,55 @@ impl ServerFrame {
             },
         })
     }
+}
+
+fn agent_req_to(a: &AgentRequest) -> PbAgentReq {
+    let mut pb = PbAgentReq::default();
+    match a {
+        AgentRequest::State => pb.op = "state".into(),
+        AgentRequest::Advance { space, seq } => {
+            pb.op = "advance".into();
+            pb.space = space.clone();
+            pb.seq = *seq;
+        }
+        AgentRequest::Define {
+            agent,
+            version,
+            kind,
+            definition,
+        } => {
+            pb.op = "define".into();
+            pb.agent = agent.clone();
+            pb.version = *version;
+            pb.kind = kind.clone();
+            pb.definition = definition.clone();
+        }
+        AgentRequest::Control { agent, action } => {
+            pb.op = action.id().into();
+            pb.agent = agent.clone();
+        }
+    }
+    pb
+}
+
+fn agent_req_from(pb: PbAgentReq) -> Result<AgentRequest, DecodeError> {
+    Ok(match pb.op.as_str() {
+        "state" => AgentRequest::State,
+        "advance" => AgentRequest::Advance {
+            space: pb.space,
+            seq: pb.seq,
+        },
+        "define" => AgentRequest::Define {
+            agent: pb.agent,
+            version: pb.version,
+            kind: pb.kind,
+            definition: pb.definition,
+        },
+        other => AgentRequest::Control {
+            agent: pb.agent,
+            action: AgentAction::parse(other).ok_or_else(|| bad("agent op"))?,
+        },
+    })
 }
 
 #[cfg(test)]
@@ -1345,6 +1490,8 @@ mod tests {
                     title: "t".into(),
                     members: 3,
                     inviter: Some(profile),
+                    kind: "space".into(),
+                    agent: None,
                 })),
             },
             ServerFrame::Res {
@@ -1453,6 +1600,7 @@ mod tests {
                 id: 2,
                 op: Op::CreateInvite {
                     space: "sp".into(),
+                    agent: None,
                     role: Role::Admin,
                     max_uses: 5,
                     ttl_secs: 60,
@@ -1461,6 +1609,14 @@ mod tests {
             ClientFrame::Req {
                 id: 3,
                 op: Op::PreviewInvite { code: "X".into() },
+            },
+            ClientFrame::Req {
+                id: 30,
+                op: Op::RedeemAgentInvite { code: "X".into() },
+            },
+            ClientFrame::Req {
+                id: 31,
+                op: Op::RevokeAgentInvite { agent: "a".into() },
             },
             ClientFrame::Req {
                 id: 4,
@@ -1676,5 +1832,41 @@ mod tests {
             let _ = ServerFrame::decode(bytes);
         }
         assert!(ClientFrame::decode(&[]).is_err());
+    }
+
+    #[test]
+    fn agent_requests_round_trip() {
+        use crate::{AgentAction, AgentRequest, AgentStateRecord};
+        for op in [
+            Op::Agent(AgentRequest::State),
+            Op::Agent(AgentRequest::Advance {
+                space: "sp".into(),
+                seq: 7,
+            }),
+            Op::Agent(AgentRequest::Define {
+                agent: "a".into(),
+                version: 2,
+                kind: "User".into(),
+                definition: b"{}".to_vec(),
+            }),
+            Op::Agent(AgentRequest::Control {
+                agent: "a".into(),
+                action: AgentAction::Revoke,
+            }),
+        ] {
+            let f = ClientFrame::Req { id: 1, op };
+            assert_eq!(ClientFrame::decode(&f.encode()).unwrap(), f);
+        }
+        let r = ServerFrame::Res {
+            id: 1,
+            result: Ok(Reply::AgentState(AgentStateRecord {
+                status: "paused".into(),
+                kind: "Creator".into(),
+                definition_version: 3,
+                definition: b"{}".to_vec(),
+                cursors: vec![("sp".into(), 9)],
+            })),
+        };
+        assert_eq!(ServerFrame::decode(&r.encode()).unwrap(), r);
     }
 }

@@ -26,36 +26,41 @@ pub struct SystemOneHttp {
     pub label: String,
 }
 
+/// The System One request: `state` plus named typed questions.
+fn system_one_body(req: &DecisionRequest, model: Option<&str>) -> Value {
+    let mut qs = Map::new();
+    for q in &req.questions {
+        let v = match q {
+            Question::Predicate { instructions, .. } => {
+                json!({ "type": "noul", "instructions": instructions })
+            }
+            Question::Choice {
+                instructions,
+                choices,
+                ..
+            } => {
+                let crit: Map<String, Value> =
+                    choices.iter().map(|(k, d)| (k.clone(), json!(d))).collect();
+                json!({ "type": "choice", "instructions": instructions, "criteria": crit })
+            }
+            Question::Score {
+                instructions,
+                levels,
+                ..
+            } => json!({ "type": "score", "instructions": instructions, "criteria": levels }),
+        };
+        qs.insert(q.name().to_string(), v);
+    }
+    let mut b = json!({ "state": req.input, "questions": qs });
+    if let Some(m) = model {
+        b["model"] = json!(m);
+    }
+    b
+}
+
 impl SystemOneHttp {
     pub fn body(&self, req: &DecisionRequest) -> Value {
-        let mut qs = Map::new();
-        for q in &req.questions {
-            let v = match q {
-                Question::Predicate { instructions, .. } => {
-                    json!({ "type": "noul", "instructions": instructions })
-                }
-                Question::Choice {
-                    instructions,
-                    choices,
-                    ..
-                } => {
-                    let crit: Map<String, Value> =
-                        choices.iter().map(|(k, d)| (k.clone(), json!(d))).collect();
-                    json!({ "type": "choice", "instructions": instructions, "criteria": crit })
-                }
-                Question::Score {
-                    instructions,
-                    levels,
-                    ..
-                } => json!({ "type": "score", "instructions": instructions, "criteria": levels }),
-            };
-            qs.insert(q.name().to_string(), v);
-        }
-        let mut b = json!({ "state": req.input, "questions": qs });
-        if let Some(m) = &self.model {
-            b["model"] = json!(m);
-        }
-        b
+        system_one_body(req, self.model.as_deref())
     }
 
     pub fn parse(req: &DecisionRequest, body: &str) -> Result<DecisionResponse, GateError> {
@@ -130,6 +135,74 @@ impl DecisionProvider for SystemOneHttp {
             .post_json(&url, self.bearer.as_deref(), &self.body(req).to_string())
             .map_err(GateError::Transport)?;
         Self::parse(req, &body)
+    }
+}
+
+// ── Cloudflare Clef ──
+
+/// Cloudflare's Clef decision models on Workers AI (`@cf/cloudflare/clef`, `clef-flash`).
+/// System One's request and answers, inside Cloudflare's `{ success, result, errors }`
+/// envelope at `/accounts/{account}/ai/run/@cf/cloudflare/{model}`.
+pub struct Clef {
+    pub transport: Arc<dyn HttpTransport>,
+    pub account: String,
+    pub token: String,
+    pub model: ClefModel,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ClefModel {
+    Clef,
+    Flash,
+}
+
+impl ClefModel {
+    pub fn id(self) -> &'static str {
+        match self {
+            ClefModel::Clef => "clef",
+            ClefModel::Flash => "clef-flash",
+        }
+    }
+}
+
+impl Clef {
+    pub const API: &'static str = "https://api.cloudflare.com/client/v4";
+
+    pub fn url(&self) -> String {
+        format!(
+            "{}/accounts/{}/ai/run/@cf/cloudflare/{}",
+            Self::API,
+            self.account,
+            self.model.id()
+        )
+    }
+
+    pub fn parse(req: &DecisionRequest, body: &str) -> Result<DecisionResponse, GateError> {
+        let v: Value =
+            serde_json::from_str(body).map_err(|e| GateError::BadResponse(e.to_string()))?;
+        match v.get("result").filter(|r| !r.is_null()) {
+            Some(result) => SystemOneHttp::parse(req, &result.to_string()),
+            None => Err(GateError::Unavailable(
+                v.get("errors").map(|e| e.to_string()).unwrap_or_default(),
+            )),
+        }
+    }
+}
+
+impl DecisionProvider for Clef {
+    fn name(&self) -> String {
+        format!("cloudflare:{}", self.model.id())
+    }
+    fn on_device(&self) -> bool {
+        false
+    }
+    fn decide(&self, req: &DecisionRequest) -> Result<DecisionResponse, GateError> {
+        let body = system_one_body(req, Some(self.model.id())).to_string();
+        let out = self
+            .transport
+            .post_json(&self.url(), Some(&self.token), &body)
+            .map_err(GateError::Transport)?;
+        Self::parse(req, &out)
     }
 }
 
@@ -240,24 +313,10 @@ impl DecisionProvider for OnDevice {
     }
     fn decide(&self, req: &DecisionRequest) -> Result<DecisionResponse, GateError> {
         // Same wire shape as System One, so the Swift side has one format to answer.
-        let shape = SystemOneHttp {
-            transport: Arc::new(NoTransport),
-            base_url: String::new(),
-            bearer: None,
-            model: None,
-            label: String::new(),
-        };
         let out = self
             .judge
-            .decide_json(shape.body(req).to_string())
+            .decide_json(system_one_body(req, None).to_string())
             .ok_or_else(|| GateError::Unavailable("on-device model unavailable".into()))?;
         SystemOneHttp::parse(req, &out)
-    }
-}
-
-struct NoTransport;
-impl HttpTransport for NoTransport {
-    fn post_json(&self, _: &str, _: Option<&str>, _: &str) -> Result<String, String> {
-        Err("no transport".into())
     }
 }

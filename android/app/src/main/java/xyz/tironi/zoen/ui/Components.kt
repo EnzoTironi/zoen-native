@@ -140,6 +140,7 @@ fun appIcon(kind: String): ImageVector = when (kind) {
     "recipe" -> Icons.Rounded.Restaurant
     "maptap" -> Icons.Rounded.Public
     "hike" -> Icons.Rounded.Terrain
+    "schedule" -> Icons.Rounded.CalendarMonth
     "countdown" -> Icons.Rounded.HourglassBottom
     "page" -> Icons.Rounded.Article
     "file" -> Icons.Rounded.AttachFile

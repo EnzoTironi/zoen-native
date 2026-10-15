@@ -91,12 +91,16 @@ fun ZoenApp(model: ZoenViewModel, deepLink: String?, consumed: () -> Unit) {
         LaunchedEffect(deepLink, state.me) {
             val uri = deepLink?.let(Uri::parse) ?: return@LaunchedEffect
             model.repository.query { it.growthCaptureLink(uri.toString()) }
+            fun openAgent(target: String) = model.launch {
+                navigate(Chat(model.repository.network { it.openAgentLink(target) }))
+            }
             if (uri.scheme == "zoen") when (uri.host) {
                 "app", "item" -> uri.lastPathSegment?.let { navigate(Item(it)) }
                 "chat" -> uri.lastPathSegment?.let { navigate(Chat(it)) }
                 "join" -> navigate(Join(uri.lastPathSegment.orEmpty()))
                 "request" -> uri.lastPathSegment?.let { navigate(Request(it)) }
                 "widgets" -> navigate(Widgets)
+                "agent" -> uri.lastPathSegment?.let { openAgent(it) }
                 "friend" -> uri.lastPathSegment?.let { handle ->
                     model.launch {
                         val friend = model.repository.network { core -> core.findPeople(handle).firstOrNull { it.handle.equals(handle, true) } }
@@ -106,6 +110,7 @@ fun ZoenApp(model: ZoenViewModel, deepLink: String?, consumed: () -> Unit) {
             }
             if (uri.scheme == "https" && (uri.host == "tryzoen.com" || uri.host == "zoen.app" || uri.host?.endsWith(".tryzoen.com") == true)) {
                 if (uri.pathSegments.firstOrNull() == "j") navigate(Join(uri.lastPathSegment.orEmpty()))
+                else if (uri.pathSegments.firstOrNull() == "a") uri.lastPathSegment?.let { openAgent(it) }
                 else uri.pathSegments.firstOrNull()?.takeIf { it.startsWith("@") }?.removePrefix("@")?.let { handle ->
                     model.launch {
                         val friend = model.repository.network { core -> core.findPeople(handle).firstOrNull { it.handle.equals(handle, true) } }
@@ -180,7 +185,7 @@ fun ZoenApp(model: ZoenViewModel, deepLink: String?, consumed: () -> Unit) {
                             entry<Thread> { ThreadScreen(model, state, it.space, it.root, navigate, back) }
                             entry<Files> { FilesScreen(model, state, navigate, back) }
                             entry<Folder> { FilesScreen(model, state, navigate, back, it.space) }
-                            entry<Agents> { AgentsScreen(state, navigate, back) }
+                            entry<Agents> { AgentsScreen(model, state, navigate, back) }
                             entry<Context> { ContextScreen(model, state, navigate, back) }
                             entry<Search> { SearchScreen(model, state, navigate, back) }
                             entry<History> { HistoryScreen(model, state, back) }

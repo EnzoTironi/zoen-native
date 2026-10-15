@@ -3220,6 +3220,16 @@
         }
       }
     },
+    "No agents yet": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Nenhum agente ainda"
+          }
+        }
+      }
+    },
     "No camera in the Simulator. On an iPhone, it opens right here.": {
       "localizations": {
         "pt-BR": {
@@ -5260,6 +5270,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "Quando eu estiver planejando"
+          }
+        }
+      }
+    },
+    "When you create one, its link shows up here to share.": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Quando você criar um, o link dele aparece aqui para compartilhar."
           }
         }
       }
