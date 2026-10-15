@@ -13,8 +13,8 @@
 //! Tudo que acontece num Espaço vira um [`Event`] assinado no log daquele Espaço
 //! (ver `roda-log`). Nenhuma tela mostra o log; ele é a fonte da verdade.
 
-pub mod owner_budget;
 pub mod annotation;
+pub mod owner_budget;
 pub use annotation::Annotation;
 pub mod reply;
 pub use reply::ReplyRef;
