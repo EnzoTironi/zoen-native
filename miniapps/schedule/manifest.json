@@ -1,0 +1,15 @@
+{
+  "id": "schedule",
+  "name": "Agenda",
+  "description": "Horários livres, serviços e preços. O cliente marca; o agente confirma o que for especial.",
+  "entry": "src/main.tsx",
+  "capabilities": [
+    {
+      "id": "calendar.add",
+      "purpose": "Colocar o horário marcado na sua agenda. Você vê o evento antes de salvar."
+    }
+  ],
+  "allowedDomains": [],
+  "linkDomains": [],
+  "maxKB": 400
+}

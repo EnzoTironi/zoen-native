@@ -3061,7 +3061,8 @@ impl Engine {
             name: apps::spec(&doc.app)
                 .map(|s| s.name.to_string())
                 .unwrap_or_default(),
-            view_json: apps::view(&doc.app, &state, now).to_string(),
+            view_json: apps::view_for(&doc.app, &state, now, self.me.as_deref().unwrap_or(""))
+                .to_string(),
             headline,
             metrics: metrics
                 .into_iter()
@@ -3176,7 +3177,13 @@ impl Engine {
             reason: err.to_string(),
         })?;
         let agent_name = self.persona(agent).name;
-        let (title, state) = apps::create(spec.id, &args, &agent_name, now_ms())
+        let agent_owner = self.identities.get(agent).and_then(|a| a.owner.clone());
+        let creator = apps::Actor {
+            id: agent,
+            name: &agent_name,
+            owner: agent_owner.as_deref(),
+        };
+        let (title, state) = apps::create_as(spec.id, &args, &creator, now_ms())
             .map_err(|reason| CoreError::Invalid { reason })?;
         let doc = AppDoc {
             app: spec.id.into(),
@@ -3242,7 +3249,13 @@ impl Engine {
                 reason: t("argumentos inválidos", "invalid arguments"),
             });
         }
-        let (title, state) = apps::create(spec.id, &args, &self.persona(&me).name, now_ms())
+        let my_name = self.persona(&me).name;
+        let creator = apps::Actor {
+            id: &me,
+            name: &my_name,
+            owner: None,
+        };
+        let (title, state) = apps::create_as(spec.id, &args, &creator, now_ms())
             .map_err(|reason| CoreError::Invalid { reason })?;
         let item = new_id("it");
         self.append(
@@ -3377,7 +3390,7 @@ impl Engine {
         let now = now_ms();
         let state: Value = serde_json::from_str(&doc.state_json).unwrap_or(Value::Null);
         if tool.read_only {
-            let view = apps::view(&doc.app, &state, now);
+            let view = apps::view_for(&doc.app, &state, now, &me);
             return Ok(AppCallOutcome {
                 status: AppCallStatus::Done,
                 result_json: apps::call_tool_result(
@@ -3433,10 +3446,16 @@ impl Engine {
             _ => {}
         }
         let args: Value = serde_json::from_str(args_json).unwrap_or(json!({}));
-        let applied = match apps::apply(&doc.app, tool_name, &args, &state, &actor, now) {
+        let actor_owner = self.identities.get(&me).and_then(|a| a.owner.clone());
+        let caller = apps::Actor {
+            id: &me,
+            name: &actor,
+            owner: actor_owner.as_deref(),
+        };
+        let applied = match apps::apply_as(&doc.app, tool_name, &args, &state, &caller, now) {
             Ok(a) => a,
             Err(msg) => {
-                let view = apps::view(&doc.app, &state, now);
+                let view = apps::view_for(&doc.app, &state, now, &me);
                 return Ok(AppCallOutcome {
                     status: AppCallStatus::Done,
                     result_json: apps::call_tool_result(&msg, &view, true).to_string(),
@@ -3489,7 +3508,7 @@ impl Engine {
                 self.add_plan_line_unbound(&plan, 0, &text, cost_cents)?;
             }
         }
-        let view = apps::view(&doc.app, &applied.state, now);
+        let view = apps::view_for(&doc.app, &applied.state, now, &me);
         Ok(AppCallOutcome {
             status: AppCallStatus::Done,
             result_json: apps::call_tool_result(&applied.text, &view, false).to_string(),

@@ -3,7 +3,7 @@ import RodaCore
 
 /// Mini-apps desenhados nativamente (o resto roda como View MCP no WKWebView).
 enum NativeApps {
-    static let ids: Set<String> = ["pet", "maptap", "recipe", "countdown", "hike"]
+    static let ids: Set<String> = ["pet", "maptap", "recipe", "countdown", "hike", "schedule"]
     static func isNative(_ app: String) -> Bool { ids.contains(app) }
 }
 
@@ -257,6 +257,7 @@ struct AppSheetHost: View {
                 case "recipe": RecipeSheet(item: item, app: app)
                 case "countdown": CountdownSheet(item: item, app: app)
                 case "hike": HikeSheet(item: item)
+                case "schedule": ScheduleSheet(item: item)
                 default: McpAppSheet(item: item, app: app)
                 }
             } else {

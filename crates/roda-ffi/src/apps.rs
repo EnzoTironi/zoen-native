@@ -25,6 +25,9 @@ use crate::i18n::{is_en, t, thousands, ts};
 use crate::tr;
 use serde_json::{json, Value};
 
+mod schedule;
+pub use schedule::Actor;
+
 pub const MIME: &str = "text/html;profile=mcp-app";
 
 pub struct ToolSpec {
@@ -210,6 +213,182 @@ pub fn specs() -> Vec<AppSpec> {
                 tool("hike_get_state", ts("Ver estado", "Get state"), ts("Lê votos, escolha e roteiro (sem mudar nada).", "Reads votes, choice and plan (changes nothing)."), empty(), &["app"], Reversible, true),
             ],
         },
+        AppSpec {
+            id: "schedule",
+            name: ts("Agenda", "Schedule"),
+            description: ts(
+                "Horários livres, serviços e preços. O cliente marca; o agente confirma o que for especial.",
+                "Free slots, services and prices. The client books; the agent confirms anything special.",
+            ),
+            resource_uri: "ui://roda/schedule",
+            html: Some(include_str!("../apps/schedule.html")),
+            manifest: Some(include_str!("../apps/schedule.manifest.json")),
+            tools: vec![
+                tool(
+                    "start_schedule",
+                    ts("Abrir agenda", "Open schedule"),
+                    ts(
+                        "Abre uma agenda para qualquer negócio. Preencha nome, serviços, preços e horários a partir do que o dono contou.",
+                        "Opens a schedule for any business. Fill in the name, services, prices and hours from what the owner said.",
+                    ),
+                    json!({
+                        "type": "object",
+                        "properties": {
+                            "business": {"type": "string", "maxLength": 48, "description": "Business name in the owner's words"},
+                            "title": {"type": "string", "maxLength": 40},
+                            "accentHex": {"type": "string", "pattern": "^#[0-9A-Fa-f]{6}$"},
+                            "timezone": {"type": "string", "maxLength": 40, "description": "IANA zone, e.g. America/Sao_Paulo"},
+                            "currency": {"type": "string", "pattern": "^[A-Za-z]{3}$"},
+                            "slotMinutes": {"type": "integer", "minimum": 5, "maximum": 240},
+                            "horizonDays": {"type": "integer", "minimum": 1, "maximum": 365},
+                            "services": {
+                                "type": "array",
+                                "minItems": 1,
+                                "maxItems": 12,
+                                "items": {
+                                    "type": "object",
+                                    "properties": {
+                                        "id": {"type": "string", "maxLength": 24},
+                                        "name": {"type": "string", "maxLength": 40},
+                                        "priceCents": {"type": "integer", "minimum": 0},
+                                        "minutes": {"type": "integer", "minimum": 5, "maximum": 480}
+                                    },
+                                    "required": ["name", "minutes"]
+                                }
+                            },
+                            "weeklyHours": {
+                                "type": "object",
+                                "description": "Keys \"0\" (Sunday) to \"6\"; each a list of [\"HH:MM\", \"HH:MM\"] windows",
+                                "additionalProperties": false,
+                                "patternProperties": {"^[0-6]$": {"type": "array", "maxItems": 4, "items": {"type": "array", "minItems": 2, "maxItems": 2, "items": {"type": "string", "pattern": "^([01][0-9]|2[0-3]):[0-5][0-9]$|^24:00$"}}}}
+                            }
+                        },
+                        "required": ["business", "services", "weeklyHours"]
+                    }),
+                    &["model"],
+                    Reversible,
+                    false,
+                ),
+                tool(
+                    "schedule_configure",
+                    ts("Ajustar agenda", "Configure schedule"),
+                    ts(
+                        "Dono ou agente: atualiza nome, serviços, horários, fuso ou quem resolve pedidos. Entrada inválida é recusada.",
+                        "Owner or agent: updates the name, services, hours, timezone or who resolves requests. Invalid input is refused.",
+                    ),
+                    json!({
+                        "type": "object",
+                        "properties": {
+                            "business": {"type": "string", "maxLength": 48, "description": "Business name in the owner's words"},
+                            "title": {"type": "string", "maxLength": 40},
+                            "accentHex": {"type": "string", "pattern": "^#[0-9A-Fa-f]{6}$"},
+                            "timezone": {"type": "string", "maxLength": 40, "description": "IANA zone, e.g. America/Sao_Paulo"},
+                            "currency": {"type": "string", "pattern": "^[A-Za-z]{3}$"},
+                            "slotMinutes": {"type": "integer", "minimum": 5, "maximum": 240},
+                            "horizonDays": {"type": "integer", "minimum": 1, "maximum": 365},
+                            "services": {
+                                "type": "array",
+                                "minItems": 1,
+                                "maxItems": 12,
+                                "items": {
+                                    "type": "object",
+                                    "properties": {
+                                        "id": {"type": "string", "maxLength": 24},
+                                        "name": {"type": "string", "maxLength": 40},
+                                        "priceCents": {"type": "integer", "minimum": 0},
+                                        "minutes": {"type": "integer", "minimum": 5, "maximum": 480}
+                                    },
+                                    "required": ["name", "minutes"]
+                                }
+                            },
+                            "weeklyHours": {
+                                "type": "object",
+                                "description": "Keys \"0\" (Sunday) to \"6\"; each a list of [\"HH:MM\", \"HH:MM\"] windows",
+                                "additionalProperties": false,
+                                "patternProperties": {"^[0-6]$": {"type": "array", "maxItems": 4, "items": {"type": "array", "minItems": 2, "maxItems": 2, "items": {"type": "string", "pattern": "^([01][0-9]|2[0-3]):[0-5][0-9]$|^24:00$"}}}}
+                            },
+                            "resolvers": {"type": "array", "maxItems": 8, "items": {"type": "string"}, "description": "Member ids who may resolve requests (owner only)"}
+                        }
+                    }),
+                    &["model", "app"],
+                    Reversible,
+                    false,
+                ),
+                tool(
+                    "schedule_book",
+                    ts("Pedir horário", "Request a slot"),
+                    ts(
+                        "Pede um horário livre. Vira um evento para o agente confirmar ou ajustar.",
+                        "Requests a free slot. Becomes an event for the agent to confirm or adjust.",
+                    ),
+                    json!({
+                        "type": "object",
+                        "properties": {
+                            "serviceId": {"type": "string"},
+                            "startMs": {"type": "integer"},
+                            "endMs": {"type": "integer", "description": "Optional; must equal startMs + the service length"},
+                            "note": {"type": "string", "maxLength": 120}
+                        },
+                        "required": ["serviceId", "startMs"]
+                    }),
+                    &["app"],
+                    Reversible,
+                    false,
+                ),
+                tool(
+                    "schedule_resolve",
+                    ts("Resolver pedido", "Resolve request"),
+                    ts(
+                        "Dono, agente ou quem resolve: confirma, remarca ou cancela um pedido; num pedido de cancelamento, cancela ou mantém (keep).",
+                        "Owner, agent or resolver: confirms, moves or cancels a request; on a cancel request, cancels or keeps it.",
+                    ),
+                    json!({
+                        "type": "object",
+                        "properties": {
+                            "bookingId": {"type": "string"},
+                            "action": {"type": "string", "enum": ["confirm", "adjust", "cancel", "keep"]},
+                            "startMs": {"type": "integer"},
+                            "endMs": {"type": "integer"},
+                            "note": {"type": "string", "maxLength": 120}
+                        },
+                        "required": ["bookingId", "action"]
+                    }),
+                    &["model", "app"],
+                    Reversible,
+                    false,
+                ),
+                tool(
+                    "schedule_cancel",
+                    ts("Cancelar horário", "Cancel booking"),
+                    ts(
+                        "Pede o cancelamento do seu horário. O agente recebe o evento.",
+                        "Requests cancelling your booking. The agent gets the event.",
+                    ),
+                    json!({
+                        "type": "object",
+                        "properties": {
+                            "bookingId": {"type": "string"}
+                        },
+                        "required": ["bookingId"]
+                    }),
+                    &["app"],
+                    Reversible,
+                    false,
+                ),
+                tool(
+                    "schedule_get_state",
+                    ts("Ver estado", "Get state"),
+                    ts(
+                        "Lê serviços, horários e marcações (sem mudar nada).",
+                        "Reads services, hours and bookings (changes nothing).",
+                    ),
+                    empty(),
+                    &["app"],
+                    Reversible,
+                    true,
+                ),
+            ],
+        },
     ]
 }
 
@@ -350,6 +529,16 @@ pub fn create(app: &str, args: &Value, actor: &str, now: i64) -> Result<(String,
             push_log(&mut st, actor, &t("abriu a trilha", "opened the hike"), now);
             Ok((title, st))
         }
+
+        "schedule" => schedule::create(
+            args,
+            &Actor {
+                id: actor,
+                name: actor,
+                owner: None,
+            },
+            now,
+        ),
         "countdown" => {
             let title = s(args, "title").ok_or_else(|| {
                 t(
@@ -376,6 +565,44 @@ pub fn create(app: &str, args: &Value, actor: &str, now: i64) -> Result<(String,
             "mini-app desconhecido: {app}",
             "unknown mini-app: {app}"
         )),
+    }
+}
+
+/// Creation with who is creating it: apps with roles (the schedule) record the owner and
+/// the agent; the rest only need the name.
+pub fn create_as(
+    app: &str,
+    args: &Value,
+    actor: &Actor,
+    now: i64,
+) -> Result<(String, Value), String> {
+    match app {
+        "schedule" => schedule::create(args, actor, now),
+        _ => create(app, args, actor.name, now),
+    }
+}
+
+/// A tool call with who is calling it (member id, not display name).
+pub fn apply_as(
+    app: &str,
+    tool_name: &str,
+    args: &Value,
+    state: &Value,
+    actor: &Actor,
+    now: i64,
+) -> Result<Applied, String> {
+    match app {
+        "schedule" => schedule::apply(tool_name, args, view(app, state, now), actor, now),
+        _ => apply(app, tool_name, args, state, actor.name, now),
+    }
+}
+
+/// The view a given member receives. Apps with private parts (the schedule's client
+/// names and notes) filter here; the rest are the same for everyone.
+pub fn view_for(app: &str, state: &Value, now: i64, viewer: &str) -> Value {
+    match app {
+        "schedule" => schedule::view_for(&view(app, state, now), viewer, now),
+        _ => view(app, state, now),
     }
 }
 
@@ -567,6 +794,27 @@ pub fn headline(app: &str, state: &Value, now: i64) -> (String, Vec<(String, f64
             };
             (line, metrics)
         }
+
+        "schedule" => {
+            let open = schedule::pending(&v);
+            let line = if open > 0 {
+                tr!(
+                    "{open} pedido{} aguardando",
+                    "{open} request{} waiting",
+                    if open == 1 { "" } else { "s" }
+                )
+            } else {
+                tr!(
+                    "{} · marque um horário",
+                    "{} · book a slot",
+                    v["business"]
+                        .as_str()
+                        .unwrap_or(v["title"].as_str().unwrap_or(""))
+                )
+            };
+            (line, vec![])
+        }
+
         "countdown" => {
             let left = (v["target"].as_i64().unwrap_or(now) - now).max(0);
             let days = left / 86_400_000;
@@ -682,6 +930,25 @@ pub fn snapshot(app: &str, state: &Value, item_id: &str, now: i64) -> Option<Val
             };
             json!({ "template": "stat", "title": title, "value": value, "accentHex": "#1B2A4A", "symbol": "globe.americas.fill", "art": "globe" })
         }
+
+        "schedule" => {
+            let open = schedule::pending(&v);
+            let accent = schedule::accent(&v);
+            json!({
+                "template": "stat",
+                "title": v["business"].as_str().unwrap_or(v["title"].as_str().unwrap_or("")),
+                "value": format!("{open}"),
+                "detail": if open == 0 {
+                    t("Horários livres", "Free slots")
+                } else {
+                    t("Pedidos abertos", "Open requests")
+                },
+                "accentHex": accent,
+                "symbol": "calendar",
+                "art": "notepad"
+            })
+        }
+
         _ => return None,
     };
     let mut snap = snap;
@@ -1365,6 +1632,7 @@ pub fn apply(
                 tr!("{n} foto(s) no álbum.", "{n} photo(s) in the album."),
             ))
         }
+
         ("countdown", "countdown_get_state") => Ok(Applied::new(st, String::new(), String::new())),
         (a, tool) => Err(tr!(
             "{a} não tem a ferramenta {tool}",

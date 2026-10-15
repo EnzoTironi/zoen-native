@@ -73,6 +73,10 @@ enum StoreSeed {
                      blurb: p("Seu agente: planeja, cria mini-apps e cuida dos detalhes.", "Your agent: plans, builds mini-apps and handles the details."),
                      about: p("O Zoen vive nos seus chats como um contato. Pede permissão antes de agir fora do chat.", "Zoen lives in your chats like a contact. It asks before acting outside the chat."),
                      creator: "zoen", doodle: .roda, accentHex: "#3D7A28", category: .productivity, uses: "—", rating: "—", community: p("Comunidade Zoen", "Zoen community"), handle: "zoen"),
+        StoreListing(id: "schedule", kind: .miniApp, name: p("Agenda", "Schedule"),
+                     blurb: p("Horários livres e preços. O cliente marca; o agente confirma.", "Free slots and prices. The client books; the agent confirms."),
+                     about: p("Agenda para qualquer negócio. Conte ao agente o que você faz; ele monta serviços, preços e horários, e cada pedido vira um evento para ele resolver.", "A schedule for any business. Tell the agent what you do; it sets up services, prices and hours, and every request becomes an event it resolves."),
+                     creator: "zoen", doodle: .notepad, accentHex: "#C45C26", category: .productivity, uses: "—", rating: "—", community: p("Negócios locais", "Local businesses")),
         StoreListing(id: "hike", kind: .miniApp, name: p("Trilha de sábado", "Saturday hike"),
                      blurb: p("Compare trilhas, votem e montem o dia com caronas.", "Compare trails, vote and plan the day with rides."),
                      about: p("Três trilhas com mapa e fotos, votação ao vivo e um roteiro com horários e caronas.", "Three trails with maps and photos, a live vote, and a plan with times and rides."),
@@ -115,7 +119,7 @@ enum StoreSeed {
                         doodle: .moss, wash: InkPalette.mint, items: ["moss", "trail", "zoen", "vinyl"]),
         StoreCollection(id: "organized", title: p("Pra se organizar", "Get organized"),
                         subtitle: p("Listas, divisões e lembretes sem planilha.", "Lists, splits and reminders, no spreadsheet."),
-                        doodle: .notepad, wash: InkPalette.sky, items: ["list", "reset", "dinner", "zoen"]),
+                        doodle: .notepad, wash: InkPalette.sky, items: ["schedule", "list", "reset", "zoen"]),
     ] }
 
     static let featured = ["vinyl", "moss", "reset", "trail", "steps", "dinner"]

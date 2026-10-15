@@ -40,6 +40,8 @@ hkdf.workspace = true
 curve25519-dalek.workspace = true
 argon2.workspace = true
 base64 = "0.22"
+chrono = { version = "0.4", default-features = false, features = ["std"] }
+chrono-tz = { version = "0.10", default-features = false, features = ["std"] }
 fastcdc = "5"
 hpke-rs = { version = "0.7", default-features = false, features = ["rustcrypto"] }
 
