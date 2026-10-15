@@ -32,13 +32,16 @@ enum OwnerAgentNote: Equatable {
 }
 
 extension AppModel {
-    /// The card for this message, if it is a note from your own agent. Cached per message:
-    /// the answer never changes for a given author and text.
+    /// The card for this message, if it is a note from your own agent. Only agent messages
+    /// that are one fenced JSON block ask the core. A card is cached per message; a "no"
+    /// is not, because the agent's verified profile may sync after its message.
     func ownerAgentNote(_ entry: TimelineEntry, text: String) -> OwnerAgentNote? {
-        guard entry.author.kind == .agent, !entry.author.isMe else { return nil }
+        guard entry.author.kind == .agent, !entry.author.isMe,
+              text.trimmingCharacters(in: .whitespacesAndNewlines).hasPrefix("```json")
+        else { return nil }
         if let hit = ownerNoteCache[entry.id] { return hit }
         let note = core.ownerAgentNote(authorId: entry.author.id, text: text).flatMap(OwnerAgentNote.init(json:))
-        ownerNoteCache[entry.id] = .some(note)
+        if let note { ownerNoteCache[entry.id] = note }
         return note
     }
 

@@ -393,9 +393,13 @@ fun TimelineRow(model: ZoenViewModel, entry: TimelineEntry, navigate: (NavKey) -
             // so the raw JSON never flashes in the chat.
             val candidate = entry.author.kind == PersonaKind.AGENT && !entry.author.isMe && kind.text.trimStart().startsWith("```json")
             var noteChecked by remember(entry.id) { mutableStateOf(!candidate) }
-            val ownerNote by produceState<OwnerAgentNote?>(null, entry.id) {
-                if (candidate) {
-                    value = runCatching { model.repository.query { it.ownerAgentNote(entry.author.id, kind.text) } }.getOrNull()?.let(OwnerAgentNote::parse)
+            var ownerNote by remember(entry.id) { mutableStateOf<OwnerAgentNote?>(null) }
+            // Asked again when the state moves (the agent's verified profile may sync after
+            // its message); the last answer stays on screen meanwhile, so nothing flickers.
+            val noteRevision = if (candidate) model.state.collectAsStateWithLifecycle().value.revision else 0L
+            LaunchedEffect(entry.id, noteRevision) {
+                if (candidate && ownerNote == null) {
+                    ownerNote = runCatching { model.repository.query { it.ownerAgentNote(entry.author.id, kind.text) } }.getOrNull()?.let(OwnerAgentNote::parse)
                     noteChecked = true
                 }
             }

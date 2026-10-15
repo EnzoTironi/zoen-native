@@ -89,8 +89,8 @@ final class AppModel {
     /// Revoked on screen, still undoable (see `revokeStanding`).
     private(set) var pendingRevokes: Set<String> = []
     @ObservationIgnored private var revokeTasks: [String: Task<Void, Never>] = [:]
-    /// Owner-agent note per message id (`nil` inside = an ordinary message).
-    @ObservationIgnored var ownerNoteCache: [String: OwnerAgentNote?] = [:]
+    /// Owner-agent note cards already resolved, per message id.
+    @ObservationIgnored var ownerNoteCache: [String: OwnerAgentNote] = [:]
     private(set) var agents: [AgentProfile] = []
     private(set) var mentions: [Mention] = []
     private(set) var stats: CoreStats?
