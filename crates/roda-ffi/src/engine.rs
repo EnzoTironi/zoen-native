@@ -622,6 +622,16 @@ pub(crate) fn not_found(what: &str) -> CoreError {
     }
 }
 
+/// A mini-app tool an agent may call, from the manifest of an Item in its Space.
+#[derive(Clone, Debug)]
+pub struct AgentTool {
+    pub item_id: String,
+    pub item_title: String,
+    pub name: String,
+    pub description: String,
+    pub schema: Value,
+}
+
 impl Engine {
     pub(crate) fn merge_space_projections(
         projections: &HashMap<SpaceId, State>,
@@ -3572,10 +3582,13 @@ impl Engine {
             });
         }
         let my_name = self.persona(&me).name;
+        // An agent installs for its owner (the schedule's owner is the barber, the agent
+        // runs it), the same as when it creates one from a conversation.
+        let my_owner = self.identities.get(&me).and_then(|a| a.owner.clone());
         let creator = apps::Actor {
             id: &me,
             name: &my_name,
-            owner: None,
+            owner: my_owner.as_deref(),
         };
         let (title, state) = apps::create_as(spec.id, &args, &creator, now_ms())
             .map_err(|reason| CoreError::Invalid { reason })?;
@@ -3648,6 +3661,37 @@ impl Engine {
     ) -> R<AppCallOutcome> {
         let me = self.me_id()?;
         self.app_call_as(item, &me, tool_name, args_json, false, Some(serving))
+    }
+
+    /// The tools an agent may call in `space`: every mini-app tool there that a call
+    /// through [`Self::agent_call_tool`] can reach, as each manifest declares it.
+    pub fn agent_tools(&self, space: &str) -> Vec<AgentTool> {
+        let mut items: Vec<&ItemState> = self
+            .state
+            .items
+            .values()
+            .filter(|i| i.space == space)
+            .collect();
+        items.sort_by(|a, b| a.id.cmp(&b.id));
+        let mut out = Vec::new();
+        for it in items {
+            let ItemContent::App(doc) = &it.current().content else {
+                continue;
+            };
+            let Some(spec) = apps::spec(&doc.app) else {
+                continue;
+            };
+            for tool in spec.tools.iter().filter(|t| t.visibility.contains(&"app")) {
+                out.push(AgentTool {
+                    item_id: it.id.clone(),
+                    item_title: doc.title.clone(),
+                    name: tool.name.to_string(),
+                    description: tool.description.to_string(),
+                    schema: tool.schema.clone(),
+                });
+            }
+        }
+        out
     }
 
     /// Demonstração: a ação de outro membro chegando como se viesse do aparelho dele
@@ -3793,14 +3837,57 @@ impl Engine {
         // An agent acts for whoever it is serving, never for a client a message names.
         // Its name comes from the served member's profile, not from whatever the call says.
         let pinned = match (&actor_owner, serving) {
-            (Some(_), Some(s)) => apps::pin_client(&mut args, Some(s)).map(|_| {
-                if let Some(a) = args.as_object_mut().filter(|a| a.contains_key("forId")) {
-                    a.insert("forName".into(), self.persona(s).name.into());
+            (Some(_), Some(s)) => {
+                // A tool that books for someone books for the member being served unless
+                // the call names them: the model never has to know their id.
+                if let Some(a) = args
+                    .as_object_mut()
+                    .filter(|_| tool.schema["properties"].get("forId").is_some())
+                {
+                    if a.get("forId").is_none_or(Value::is_null) {
+                        a.insert("forId".into(), s.into());
+                    }
                 }
-            }),
+                apps::pin_client(&mut args, Some(s)).map(|_| {
+                    if let Some(a) = args.as_object_mut().filter(|a| a.contains_key("forId")) {
+                        a.insert("forName".into(), self.persona(s).name.into());
+                    }
+                })
+            }
             (Some(_), None) => apps::pin_client(&mut args, None),
             (None, _) => Ok(()),
         };
+        // The same agent call for the same source message already landed (a restart
+        // between the call and the host's journal): report it instead of failing on it.
+        if let (Ok(()), Some(_), Some(text)) = (
+            &pinned,
+            &actor_owner,
+            apps::replayed(&doc.app, tool_name, &args, &state),
+        ) {
+            let view = apps::view_for(&doc.app, &state, now, &me);
+            return Ok(AppCallOutcome {
+                status: AppCallStatus::Done,
+                result_json: apps::call_tool_result(&text, &view, false).to_string(),
+                message: text,
+                confirm_title: None,
+                confirm_detail: None,
+                item: Some(self.item(item)?),
+            });
+        }
+        // Serving someone, the agent may only do what they could do themselves (a client
+        // can't resolve requests or change the hours by asking it to).
+        let pinned = pinned.and_then(|_| match (&actor_owner, serving) {
+            (Some(_), Some(s)) => {
+                let name = self.persona(s).name;
+                let them = apps::Actor {
+                    id: s,
+                    name: &name,
+                    owner: None,
+                };
+                apps::apply_as(&doc.app, tool_name, &args, &state, &them, now).map(|_| ())
+            }
+            _ => Ok(()),
+        });
         let applied = match pinned
             .and_then(|_| apps::apply_as(&doc.app, tool_name, &args, &state, &caller, now))
         {

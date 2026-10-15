@@ -4,7 +4,7 @@
 //! are present. Each turn is one admitted attempt under [`CheapTierAuthority`], a bounded
 //! per-owner daily cap. That is a staging guard, not the durable financial authority (U10).
 
-use super::host::{parse_reply, Brain, BrainOut, Turn, TurnContext};
+use super::host::{parse_reply, Brain, BrainOut, ToolCall, ToolDef, ToolStep, Turn, TurnContext};
 use super::profile::Definition;
 use async_trait::async_trait;
 use std::collections::{BTreeMap, BTreeSet};
@@ -13,6 +13,7 @@ use std::time::Duration;
 use zoen_models::{
     Admission, AdmissionError, AttemptContext, DispatchAuthority, DispatchRequest, EndpointPolicy,
     GatewayConfig, InputMessage, ModelGateway, ModelLimits, ModelRequest, Operation, OutputBlock,
+    ToolDefinition,
 };
 
 pub const CHEAP_CHAT_PROFILE: &str = zoen_models::CHAT_PROFILE;
@@ -112,6 +113,17 @@ impl Brain for ModelBrain {
         history: &[Turn],
         inbound: &Turn,
     ) -> Result<BrainOut, String> {
+        self.think_with_tools(cx, history, inbound, &[], &[]).await
+    }
+
+    async fn think_with_tools(
+        &self,
+        cx: TurnContext<'_>,
+        history: &[Turn],
+        inbound: &Turn,
+        tools: &[ToolDef],
+        steps: &[ToolStep],
+    ) -> Result<BrainOut, String> {
         let (owner, agent, device, def) = (cx.owner, cx.agent, cx.device, cx.definition);
         let mut messages = vec![InputMessage::System {
             text: system_prompt(def),
@@ -132,6 +144,20 @@ impl Brain for ModelBrain {
         messages.push(InputMessage::User {
             text: inbound.text.clone(),
         });
+        for st in steps {
+            messages.push(InputMessage::Assistant {
+                blocks: vec![OutputBlock::ToolCall {
+                    call_id: st.call.id.clone(),
+                    name: st.call.name.clone(),
+                    arguments: st.call.arguments.clone(),
+                }],
+            });
+            messages.push(InputMessage::ToolResult {
+                call_id: st.call.id.clone(),
+                name: st.call.name.clone(),
+                text: st.result.clone(),
+            });
+        }
         let attempt = roda_types::new_id("att");
         let request = ModelRequest {
             context: AttemptContext {
@@ -147,7 +173,14 @@ impl Brain for ModelBrain {
             },
             operation: Operation::ChatCompletion,
             messages,
-            tools: Vec::new(),
+            tools: tools
+                .iter()
+                .map(|t| ToolDefinition {
+                    name: t.name.clone(),
+                    description: t.description.clone(),
+                    parameters: t.parameters.clone(),
+                })
+                .collect(),
             max_output_tokens: 800,
         };
         let result = self
@@ -158,15 +191,26 @@ impl Brain for ModelBrain {
         let blocks = result
             .output
             .map_err(|f| format!("model output failed: {f:?}"))?;
-        let text: String = blocks
-            .into_iter()
-            .filter_map(|b| match b {
-                OutputBlock::Text { text } => Some(text),
-                _ => None,
-            })
-            .collect::<Vec<_>>()
-            .join("\n");
-        Ok(parse_reply(&text))
+        let mut calls = Vec::new();
+        let mut text = Vec::new();
+        for b in blocks {
+            match b {
+                OutputBlock::Text { text: t } => text.push(t),
+                OutputBlock::ToolCall {
+                    call_id,
+                    name,
+                    arguments,
+                } => calls.push(ToolCall {
+                    id: call_id,
+                    name,
+                    arguments,
+                }),
+            }
+        }
+        if !calls.is_empty() {
+            return Ok(BrainOut::CallTools(calls));
+        }
+        Ok(parse_reply(&text.join("\n")))
     }
 }
 

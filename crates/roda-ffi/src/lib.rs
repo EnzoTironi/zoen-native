@@ -102,6 +102,12 @@ impl RodaEngine {
         self.lock()
             .agent_call_tool(item_id, tool, args_json, serving)
     }
+
+    /// The mini-app tools the agent host may call in `space` (through
+    /// [`Self::agent_call_tool`]). Not exported.
+    pub fn agent_tools(&self, space: &str) -> Vec<engine::AgentTool> {
+        self.lock().agent_tools(space)
+    }
 }
 
 #[uniffi::export]

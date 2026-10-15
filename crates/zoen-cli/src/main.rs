@@ -219,6 +219,8 @@ fn usage() -> ! {
          read CHAT [--older]              --older: ask your other device for an older page\n\
          agent-keys | agent-init --name N --handle H --owner ID --proof JSON --definition FILE\n\
          agent-host [--for SECS]          run this agent citizen (relay-backed cursors)\n\
+         app CHAT install APP JSON        install a catalog mini-app in CHAT\n\
+         app CHAT view                    each mini-app in CHAT as you see it (JSON)\n\
          authorize-agent AGENT_ID         owner: sign an agent's root\n\
          agent-pause|agent-resume|agent-revoke @AGENT   owner controls\n\
          agent-define @AGENT --definition FILE [--version N]\n\
@@ -948,6 +950,32 @@ async fn main() {
                     "{}\t{}\t{:?}\t{}\t{}\tunread={}\t{}",
                     s.id, s.title, s.kind, where_, privacy, s.unread, s.last_preview
                 );
+            }
+        }
+        "app" => {
+            let space = chat(
+                &e,
+                cli.args
+                    .first()
+                    .map(String::as_str)
+                    .unwrap_or_else(|| usage()),
+            );
+            match cli.args.get(1).map(String::as_str) {
+                Some("install") if cli.args.len() >= 4 => {
+                    let it = e
+                        .install_app(space, cli.args[2].clone(), cli.args[3..].join(" "))
+                        .unwrap_or_else(|err| die(err));
+                    e.wait_until_idle(timeout).await;
+                    println!("{}", it.id);
+                }
+                Some("view") => {
+                    for it in e.items().into_iter().filter(|i| i.space_id == space) {
+                        if let Some(app) = it.app {
+                            println!("{}\t{}\t{}", it.id, app.app_id, app.view_json);
+                        }
+                    }
+                }
+                _ => usage(),
             }
         }
         "invite" => {
