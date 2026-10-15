@@ -204,3 +204,15 @@ Each phase ships with journeys; nothing is called done on mocks.
    - comments and suggestion mode for people;
    - forks ("Cenários") and Compare;
    - page export bundles.
+
+## Addendum (2026-10): voice notes are files
+
+A voice note is an `ItemCreated { kind: File }` whose `FileDoc` carries
+`voice: VoiceMeta { ms, levels, transcript }` (levels: one hex digit per bar), recorded under
+`VoiceNotes/`. Its audio goes through the same chunked, sealed relay path as any file, so
+every device and the web can play it. The chat shows it as a message (`TimelineEntry.voice`).
+A voice reply adds a `MessagePosted { text: "", attaches: item, reply }`, and the note is then
+shown once, at the reply. Older builds sent only a text marker
+(`⟦voice:id:ms:levels⟧` + transcript) with the audio left on the sender's device. Clients still
+read those markers but never send them. Audio files named "Mensagem de voz.*" (from early web
+builds, no tag) are also read as voice notes.

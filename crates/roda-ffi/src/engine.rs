@@ -323,7 +323,22 @@ impl State {
                 forwarded,
                 ..
             } => {
+                let voice_attached = attaches.as_ref().is_some_and(|i| {
+                    self.items.get(i).is_some_and(
+                        |it| matches!(&it.current().content, ItemContent::File(d) if d.is_voice()),
+                    )
+                });
                 if let Some(s) = self.spaces.get_mut(&e.space) {
+                    // A voice reply posts the note, then this message pointing at it: show it
+                    // once, where the reply is.
+                    if let Some(item) = attaches.as_ref().filter(|_| voice_attached) {
+                        if let Some(at) = s.entries.iter().rposition(|x| {
+                            x.author == e.author
+                                && matches!(&x.body, EntryBody::Message { text, attaches: Some(a), reply: None, .. } if a == item && text.is_empty())
+                        }) {
+                            s.entries.remove(at);
+                        }
+                    }
                     s.entries.push(entry(EntryBody::Message {
                         text: text.clone(),
                         attaches: attaches.clone(),
@@ -400,6 +415,20 @@ impl State {
                         }],
                     },
                 );
+                // A voice note is a message in the chat: a player, not a file in a list.
+                if let ItemContent::File(doc) = content {
+                    if doc.is_voice() {
+                        if let Some(s) = self.spaces.get_mut(&e.space) {
+                            s.entries.push(entry(EntryBody::Message {
+                                text: String::new(),
+                                attaches: Some(item.clone()),
+                                reply: None,
+                                marks: MessageMarks::default(),
+                            }));
+                            s.last_at_ms = s.last_at_ms.max(e.at_ms);
+                        }
+                    }
+                }
             }
             EventBody::ItemVersioned {
                 item,
@@ -1186,12 +1215,32 @@ impl Engine {
         })
     }
 
+    /// The voice note an entry carries, if its attached Item is one (in this Space).
+    pub(crate) fn voice_of(&self, space: &str, item: &str) -> Option<VoiceNoteDto> {
+        let it = self.state.items.get(item).filter(|it| it.space == space)?;
+        let ItemContent::File(doc) = &it.current().content else {
+            return None;
+        };
+        if !doc.is_voice() {
+            return None;
+        }
+        let meta = doc.voice.clone().unwrap_or_default();
+        Some(VoiceNoteDto {
+            item_id: item.to_string(),
+            mime: doc.mime.clone(),
+            ms: meta.ms,
+            levels: meta.bars(),
+            transcript: meta.transcript,
+        })
+    }
+
     pub(crate) fn entry_dto(&self, e: &Entry) -> TimelineEntry {
         let kind = match &e.body {
             EntryBody::Message { text, attaches, .. } => EntryKind::Message {
                 text: text.clone(),
                 card: attaches
                     .as_deref()
+                    .filter(|item| self.voice_of(&e.space, item).is_none())
                     .and_then(|item| self.card_in_space(&e.space, item)),
             },
             EntryBody::ItemEdited {
@@ -1281,6 +1330,14 @@ impl Engine {
             at_ms: e.at_ms,
             kind,
             delivery: self.delivery(e),
+            voice: match &e.body {
+                EntryBody::Message {
+                    attaches: Some(item),
+                    marks,
+                    ..
+                } if !marks.deleted => self.voice_of(&e.space, item),
+                _ => None,
+            },
             reply_to,
             in_thread,
             thread_replies: 0,
@@ -1292,6 +1349,12 @@ impl Engine {
             let text = match &e.body {
                 EntryBody::Message { marks, .. } if marks.deleted => {
                     t("Mensagem apagada", "Message deleted")
+                }
+                EntryBody::Message {
+                    attaches: Some(item),
+                    ..
+                } if self.voice_of(&e.space, item).is_some() => {
+                    t("Mensagem de voz", "Voice message")
                 }
                 EntryBody::Message { text, attaches, .. } => {
                     match attaches.as_deref().and_then(|i| self.card(i)) {

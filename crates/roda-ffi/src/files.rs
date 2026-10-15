@@ -16,6 +16,7 @@ use hkdf::Hkdf;
 use roda_types::*;
 use sha2::{Digest, Sha256};
 
+use crate::dto::TimelineEntry;
 use crate::engine::{now_ms, Engine, R};
 use crate::i18n::t;
 use crate::media::Wanted;
@@ -252,6 +253,7 @@ impl Engine {
             sha256: hex::encode(Sha256::digest(bytes)),
             chunks,
             thumb,
+            voice: None,
         })
     }
 
@@ -301,6 +303,78 @@ impl Engine {
         )?;
         self.index_dirty = true;
         Ok(item)
+    }
+
+    /// Sends a voice note: the audio as an end-to-end encrypted file Item (the same chunked
+    /// path as any file, so every client, the web included, can fetch and play it), tagged
+    /// with its length, waveform and transcript. With `reply_to` it answers that message
+    /// (inline, or in its thread).
+    #[allow(clippy::too_many_arguments)]
+    pub fn send_voice_note(
+        &mut self,
+        space: &str,
+        bytes: &[u8],
+        mime: &str,
+        ms: u64,
+        levels: &[f32],
+        transcript: &str,
+        reply_to: Option<&str>,
+        thread: bool,
+    ) -> R<TimelineEntry> {
+        if !mime.starts_with("audio/") {
+            return Err(invalid("não é um áudio", "not audio"));
+        }
+        let me = self.me_id()?;
+        if !self.is_member(space, &me) {
+            return Err(CoreError::Forbidden {
+                reason: t(
+                    "só membros mandam mensagens de voz",
+                    "only members can send voice messages",
+                ),
+            });
+        }
+        let item = new_id("it");
+        let ext = match mime.split(';').next().unwrap_or_default() {
+            "audio/webm" => "webm",
+            "audio/ogg" => "ogg",
+            "audio/mpeg" => "mp3",
+            "audio/wav" | "audio/x-wav" => "wav",
+            _ => "m4a",
+        };
+        let key = self.file_key(None)?;
+        let mut doc = self.file_doc(
+            space,
+            &key,
+            &format!("voice-{item}.{ext}"),
+            &format!("VoiceNotes/{item}.{ext}"),
+            mime,
+            bytes,
+            None,
+            &HashMap::new(),
+        )?;
+        doc.voice = Some(roda_types::VoiceMeta {
+            ms,
+            levels: roda_types::VoiceMeta::encode(levels),
+            transcript: transcript.trim().to_string(),
+        });
+        self.store
+            .set_meta(&format!("file_key:{item}"), &hex::encode(key))?;
+        self.append(
+            space,
+            &me,
+            EventBody::ItemCreated {
+                item: item.clone(),
+                kind: ItemKind::File,
+                content: ItemContent::File(doc),
+                origin: t("Mensagem de voz", "Voice message"),
+            },
+        )?;
+        self.index_dirty = true;
+        if let Some(to) = reply_to {
+            return self.reply_with(space, &me, "", Some(item), to, thread);
+        }
+        let s = self.space_state(space)?;
+        Ok(self.entry_dto(s.entries.last().expect("just appended")))
     }
 
     /// A new version of a file (an edit, a markup, a trim). Unchanged chunks are re-used.

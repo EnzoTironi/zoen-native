@@ -333,7 +333,7 @@ struct ThreadSheet: View {
         let grouped = previous?.author.id == e.author.id && e.atMs - (previous?.atMs ?? 0) < 5 * 60_000
         return Group {
             if case .message(let text, let card) = e.kind {
-                MessageRow(author: e.author, text: text, card: card, atMs: e.atMs, grouped: grouped,
+                MessageRow(author: e.author, text: text, card: card, voice: e.voice.map(VoiceNoteRef.init), atMs: e.atMs, grouped: grouped,
                            isDirect: false, onOpenItem: { model.openApp($0) })
                     .padding(.top, grouped ? 0 : 8)
             }

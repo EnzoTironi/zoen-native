@@ -7,9 +7,11 @@ import RodaCore
 //
 // Hold the mic to record (AAC, mono), slide left to cancel, slide up to lock, release to
 // send. Transcribed on device (Speech, `requiresOnDeviceRecognition`), with word timings
-// kept for the editor. A sent note travels in the chat as a compact marker
-// (`⟦voice:<id>:<ms>:<levels>⟧` + the transcript); the audio file stays in the app's
-// container under VoiceNotes/.
+// kept for the editor. A sent note travels as an end-to-end encrypted audio file Item
+// (`send_voice_note`: chunked, sealed, on the relay like any file) carrying its length,
+// waveform and transcript, so every device and the web can play it. Notes from older
+// builds arrive as a text marker (`⟦voice:<id>:<ms>:<levels>⟧` + the transcript) whose
+// audio only exists on the sender's device; those are still read.
 
 /// One recorded clip, ready to send.
 struct VoiceClip: Equatable {
@@ -44,6 +46,16 @@ struct VoiceNoteRef: Equatable {
         return "\(Self.open)\(id):\(ms):\(hex)\(Self.close)" + (transcript.isEmpty ? "" : "\n\(transcript)")
     }
 
+    /// A note sent as an audio file: `id` is the file's Item, played through the core.
+    init(_ voice: VoiceNoteDto) {
+        self.init(id: voice.itemId, ms: Int(voice.ms), levels: voice.levels.map { CGFloat($0) }, transcript: voice.transcript)
+    }
+
+    init(id: String, ms: Int, levels: [CGFloat], transcript: String) {
+        self.id = id; self.ms = ms; self.levels = levels; self.transcript = transcript
+    }
+
+    /// Backward compatibility: notes from builds that sent only a marker.
     static func parse(_ text: String) -> VoiceNoteRef? {
         guard text.hasPrefix(open), let end = text.range(of: close) else { return nil }
         let body = text[text.index(text.startIndex, offsetBy: open.count)..<end.lowerBound].split(separator: ":")
@@ -272,6 +284,16 @@ final class VoicePlayer {
     var rate: Float = 1
     private var player: AVAudioPlayer?
     private var tick: Task<Void, Never>?
+    /// The audio of a note sent as a file (its Item id), from the core; `nil` until the
+    /// encrypted pieces have arrived.
+    @ObservationIgnored var fetch: ((String) -> Data?)?
+
+    private func audio(_ id: String) -> AVAudioPlayer? {
+        let local = VoiceStore.url(id)
+        if FileManager.default.fileExists(atPath: local.path), let p = try? AVAudioPlayer(contentsOf: local) { return p }
+        guard let data = fetch?(id) else { return nil }
+        return try? AVAudioPlayer(data: data)
+    }
 
     func toggle(_ ref: VoiceNoteRef) {
         if currentId == ref.id, let p = player {
@@ -283,7 +305,7 @@ final class VoicePlayer {
         try? AVAudioSession.sharedInstance().setCategory(.playback)
         try? AVAudioSession.sharedInstance().setActive(true)
         #endif
-        guard let p = try? AVAudioPlayer(contentsOf: VoiceStore.url(ref.id)) else { currentId = ref.id; return }
+        guard let p = audio(ref.id) else { currentId = ref.id; return }
         p.enableRate = true
         p.rate = rate
         p.prepareToPlay()

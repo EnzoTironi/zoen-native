@@ -302,6 +302,57 @@ pub struct FileDoc {
     pub chunks: Vec<ChunkRef>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub thumb: Option<ChunkRef>,
+    /// Set when the file is a voice note: the chat shows a player instead of a file card.
+    /// Absent on every other file, so their bytes are exactly what older peers expect.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub voice: Option<VoiceMeta>,
+}
+
+/// What a voice note's player needs before the audio arrives.
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq, Default)]
+pub struct VoiceMeta {
+    /// Length in milliseconds.
+    pub ms: u64,
+    /// Waveform bars, one hex digit (0–f) per bar.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub levels: String,
+    /// Transcribed on the sender's device (may be empty).
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub transcript: String,
+}
+
+impl VoiceMeta {
+    /// Bars as 0…1.
+    pub fn bars(&self) -> Vec<f32> {
+        self.levels
+            .chars()
+            .filter_map(|c| c.to_digit(16))
+            .map(|d| d as f32 / 15.0)
+            .collect()
+    }
+
+    /// 0…1 bars as hex digits (at most 160).
+    pub fn encode(levels: &[f32]) -> String {
+        levels
+            .iter()
+            .take(160)
+            .map(|l| {
+                let d = (l.clamp(0.0, 1.0) * 15.0).round() as u32;
+                char::from_digit(d, 16).unwrap_or('0')
+            })
+            .collect()
+    }
+}
+
+impl FileDoc {
+    /// A voice note: tagged as one, or an audio file recorded under `VoiceNotes/` (older
+    /// web builds sent recordings named "Mensagem de voz.*" without the tag).
+    pub fn is_voice(&self) -> bool {
+        self.voice.is_some()
+            || (self.mime.starts_with("audio/")
+                && (self.path.starts_with("VoiceNotes/")
+                    || self.name.starts_with("Mensagem de voz")))
+    }
 }
 
 impl ItemContent {

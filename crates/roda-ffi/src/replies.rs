@@ -81,6 +81,19 @@ impl Engine {
         to: &str,
         thread: bool,
     ) -> R<TimelineEntry> {
+        self.reply_with(space, author, text, None, to, thread)
+    }
+
+    /// A reply that may carry an Item (a voice note) instead of text.
+    pub(crate) fn reply_with(
+        &mut self,
+        space: &str,
+        author: &str,
+        text: &str,
+        attaches: Option<String>,
+        to: &str,
+        thread: bool,
+    ) -> R<TimelineEntry> {
         if !self.is_member(space, author) {
             return Err(CoreError::Forbidden {
                 reason: t(
@@ -90,7 +103,7 @@ impl Engine {
             });
         }
         let text = text.trim();
-        if text.is_empty() {
+        if text.is_empty() && attaches.is_none() {
             return Err(CoreError::Invalid {
                 reason: t("mensagem vazia", "empty message"),
             });
@@ -129,7 +142,7 @@ impl Engine {
             EventBody::MessagePosted {
                 message: roda_types::new_id("msg"),
                 text: text.to_string(),
-                attaches: None,
+                attaches,
                 reply: Some(reply),
                 forwarded: false,
             },

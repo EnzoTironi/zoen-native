@@ -169,6 +169,22 @@ pub struct TimelineEntry {
     /// Grouped by emoji, in the order they first appeared.
     #[uniffi(default = [])]
     pub reactions: Vec<ReactionDto>,
+    /// A voice note: play `item_id`'s bytes (`file_bytes`); the text is empty.
+    #[uniffi(default = None)]
+    pub voice: Option<VoiceNoteDto>,
+}
+
+/// A voice note in the chat. The audio is an end-to-end encrypted file Item; until its
+/// pieces arrive `file_bytes` returns `None` and the player waits.
+#[derive(Debug, Clone, PartialEq, uniffi::Record)]
+pub struct VoiceNoteDto {
+    pub item_id: String,
+    pub mime: String,
+    /// 0 when the sender didn't say (players read the length from the audio).
+    pub ms: u64,
+    /// Waveform bars, 0…1 (empty when the sender didn't say).
+    pub levels: Vec<f32>,
+    pub transcript: String,
 }
 
 #[derive(Debug, Clone, PartialEq, uniffi::Record)]
