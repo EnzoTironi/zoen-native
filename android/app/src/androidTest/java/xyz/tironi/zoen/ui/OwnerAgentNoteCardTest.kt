@@ -52,7 +52,7 @@ class OwnerAgentNoteCardTest {
         )
         compose.setContent {
             val base = LocalContext.current
-            val conf = Configuration(base.resources.configuration).apply { setLocale(Locale.forLanguageTag("pt-BR")) }
+            val conf = Configuration(LocalConfiguration.current).apply { setLocale(Locale.forLanguageTag("pt-BR")) }
             val ctx = base.createConfigurationContext(conf)
             CompositionLocalProvider(LocalContext provides ctx, LocalConfiguration provides conf) {
                 ZoenTheme {
