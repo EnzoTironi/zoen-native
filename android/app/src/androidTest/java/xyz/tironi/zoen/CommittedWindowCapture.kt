@@ -22,6 +22,7 @@ internal object CommittedWindowCapture {
         val finished = CountDownLatch(1)
         val started = AtomicBoolean()
         val cancelled = AtomicBoolean()
+        val watchdogCopy = AtomicBoolean()
         val status = AtomicInteger(-1)
         val attempts = mutableListOf<Int>()
         val failure = AtomicReference<Throwable?>()
@@ -62,6 +63,17 @@ internal object CommittedWindowCapture {
                         else if (!started.get() && !cancelled.get()) decor.postInvalidateOnAnimation()
                     }
                     activity.window.addOnFrameMetricsAvailableListener(checkNotNull(legacy), Handler(activity.mainLooper))
+                    // Frame metrics are only reported for frames the renderer actually draws; an idle
+                    // window on an old emulator can skip the invalidation and never report one. The
+                    // window still has a committed buffer, so copy it after a bounded wait.
+                    val watchdog = Handler(activity.mainLooper)
+                    fun nudge(left: Int) {
+                        watchdog.postDelayed({
+                            if (started.get() || cancelled.get()) return@postDelayed
+                            if (left > 0) { decor.postInvalidateOnAnimation(); nudge(left - 1) } else { watchdogCopy.set(true); checkNotNull(commit).run() }
+                        }, 750)
+                    }
+                    nudge(2)
                 }
                 decor.postInvalidateOnAnimation()
             }
@@ -69,7 +81,7 @@ internal object CommittedWindowCapture {
                 "The foreground app frame did not commit and copy within the evidence deadline"
             }
             failure.get()?.let { throw it }
-            Evidence.outputFile(directory, "$name-frame-copy.txt").writeText("PixelCopy statuses: $attempts; deadline: 10000 ms\n")
+            Evidence.outputFile(directory, "$name-frame-copy.txt").writeText("PixelCopy statuses: $attempts; source: ${if (watchdogCopy.get()) "watchdog copy of last committed buffer (no new frame reported)" else "frame committed after request"}; deadline: 10000 ms\n")
             check(status.get() == PixelCopy.SUCCESS) { "Window PixelCopy failed: $attempts" }
             Evidence.outputFile(directory, "$name.png").outputStream().use {
                 check(checkNotNull(bitmap).compress(Bitmap.CompressFormat.PNG, 100, it))
