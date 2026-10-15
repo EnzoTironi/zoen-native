@@ -56,7 +56,10 @@ internal object CommittedWindowCapture {
                 else {
                     val requestedAt = System.nanoTime()
                     legacy = Window.OnFrameMetricsAvailableListener { _, metrics, _ ->
+                        // A frame already in flight when we asked does not count; ask for the next
+                        // one instead of waiting for an unrelated redraw that may never come.
                         if (metrics.getMetric(FrameMetrics.INTENDED_VSYNC_TIMESTAMP) >= requestedAt) checkNotNull(commit).run()
+                        else if (!started.get() && !cancelled.get()) decor.postInvalidateOnAnimation()
                     }
                     activity.window.addOnFrameMetricsAvailableListener(checkNotNull(legacy), Handler(activity.mainLooper))
                 }
