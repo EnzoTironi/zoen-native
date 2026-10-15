@@ -544,9 +544,10 @@ async fn a_client_asks_in_chat_and_the_agent_books_with_the_schedule_tool() {
         std::thread::sleep(Duration::from_millis(500));
     };
     assert_eq!(mine.len(), 1, "{mine:?}");
-    // Made out to her id, under the name on her profile.
+    // Made out to her id. People don't share profile keys with agents, so the agent's
+    // device knows her by her @handle until that policy changes.
     assert_eq!(mine[0]["forId"], full_id(&w, "carla"), "{mine:?}");
-    let her = |n: &serde_json::Value| n == "Carla";
+    let her = |n: &serde_json::Value| n == "Carla" || n == "@carla";
     assert!(her(&mine[0]["forName"]), "{mine:?}");
     assert_eq!(mine[0]["serviceName"], "Corte", "{mine:?}");
 
