@@ -425,6 +425,9 @@ async fn turn(
         definition: def,
     };
     let tools = SpaceTools::new(e, cx, space, &t.author.id, &t.id);
+    if !tools.names.is_empty() {
+        profile_of(e, &t.author.id).await;
+    }
     let done = tools.done();
     let out = match cx
         .runtime
@@ -530,6 +533,20 @@ fn owner_note(e: &Arc<RodaEngine>, cx: &Ctx, source: &str) -> Option<serde_json:
     })
 }
 
+/// Waits a little for `who`'s profile to open on this device, so what the agent books in
+/// their name carries their name, not their @handle.
+async fn profile_of(e: &Arc<RodaEngine>, who: &str) {
+    let deadline = Instant::now() + Duration::from_secs(10);
+    while e
+        .get_profile(who.to_string())
+        .is_ok_and(|p| p.name.is_none())
+        && Instant::now() < deadline
+    {
+        e.wait_until_idle(1000).await;
+        tokio::time::sleep(Duration::from_millis(250)).await;
+    }
+}
+
 /// The mini-app tools of one chat, for one turn: calls run as the agent serving `serving`.
 struct SpaceTools<'a> {
     e: &'a Arc<RodaEngine>,
@@ -629,11 +646,14 @@ impl ToolHost for SpaceTools<'_> {
         let Some((_, item, tool)) = self.names.iter().find(|(d, _, _)| d.name == call.name) else {
             return Err(format!("unknown tool: {}", call.name));
         };
-        let args = if call.arguments.is_object() {
-            call.arguments.to_string()
-        } else {
-            "{}".into()
-        };
+        // Stamped with the message it answers, so a call that landed just before a crash is
+        // recognised on the rerun instead of being refused as a clash.
+        let mut args = call.arguments.clone();
+        if !args.is_object() {
+            args = json!({});
+        }
+        args["ref"] = self.source.into();
+        let args = args.to_string();
         let res = match self.e.agent_call_tool(item, tool, &args, self.serving) {
             Ok(o) => match o.status {
                 AppCallStatus::Done => {
@@ -655,6 +675,7 @@ impl ToolHost for SpaceTools<'_> {
         // Only calls that changed something need to survive a restart; a failed or
         // read-only call is cheap and safe to run again.
         if res.is_ok() {
+            fault("before-journal");
             self.record(ToolStep {
                 call: call.clone(),
                 result: res.clone().unwrap_or_default(),

@@ -544,9 +544,9 @@ async fn a_client_asks_in_chat_and_the_agent_books_with_the_schedule_tool() {
         std::thread::sleep(Duration::from_millis(500));
     };
     assert_eq!(mine.len(), 1, "{mine:?}");
-    // Made out to her id; the name is whatever her profile shows the agent's device.
+    // Made out to her id, under the name on her profile.
     assert_eq!(mine[0]["forId"], full_id(&w, "carla"), "{mine:?}");
-    let her = |n: &serde_json::Value| n == "Carla" || n == "@carla";
+    let her = |n: &serde_json::Value| n == "Carla";
     assert!(her(&mine[0]["forName"]), "{mine:?}");
     assert_eq!(mine[0]["serviceName"], "Corte", "{mine:?}");
 
@@ -561,8 +561,8 @@ async fn a_client_asks_in_chat_and_the_agent_books_with_the_schedule_tool() {
     let chat = read_until(&w, "carla", "Barbearia", "Não deu", &mut bot);
     assert!(!chat.contains("Sexta já está cheia"), "{chat}");
 
-    // A restart right after the booking but before the reply: the turn finishes without
-    // booking twice.
+    // A crash right after the booking, before the host journals it: the rerun recognises
+    // the booking made for this message and confirms it, without booking twice.
     bot.kill().unwrap();
     let _ = bot.wait();
     let marker = w.dir.join("fault-tool");
@@ -571,7 +571,7 @@ async fn a_client_asks_in_chat_and_the_agent_books_with_the_schedule_tool() {
         "bot",
         &script,
         &[
-            ("ZOEN_AGENT_FAULT", "after-tool"),
+            ("ZOEN_AGENT_FAULT", "before-journal"),
             ("ZOEN_AGENT_FAULT_MARKER", marker.to_str().unwrap()),
         ],
     );
