@@ -813,7 +813,15 @@ impl Session {
                     .map_err(|e| e.to_string());
             }
             AgentRequest::Control { agent, action } => {
-                agents::control(pool, me, &agent, action).await
+                agents::control(pool, me, &agent, action)
+                    .await
+                    .map_err(|e| e.to_string())?;
+                // Turning an agent off also takes its share link down, here on the relay
+                // so no client can leave it up.
+                if action == roda_proto::AgentAction::Revoke {
+                    self.st.log.revoke_agent_invite(&agent).await?;
+                }
+                return Ok(Reply::Done);
             }
         };
         r.map(|()| Reply::Done).map_err(|e| e.to_string())
@@ -977,6 +985,13 @@ impl Session {
             } => {
                 let invite = if let Some(agent) = agent {
                     self.own_agent(&agent).await?;
+                    // A turned-off agent never gets a new link.
+                    if matches!(
+                        crate::agents::owner_status(pool, &self.identity, &agent).await,
+                        Ok(s) if s.status == "revoked"
+                    ) {
+                        return Err(crate::agents::AgentCitizenError::Revoked.to_string());
+                    }
                     self.st
                         .log
                         .create_agent_invite(&self.identity, &agent, max_uses, ttl_secs)

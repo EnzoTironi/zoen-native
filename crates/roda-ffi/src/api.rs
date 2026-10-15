@@ -769,14 +769,10 @@ impl RodaEngine {
             AgentControl::Revoke => roda_proto::AgentAction::Revoke,
         };
         self.agent_done(roda_proto::AgentRequest::Control {
-            agent: agent_id.clone(),
+            agent: agent_id,
             action,
         })
-        .await?;
-        if action == roda_proto::AgentAction::Revoke {
-            let _ = self.revoke_agent_invite(agent_id).await;
-        }
-        Ok(())
+        .await
     }
 
     /// Takes the agent's share link down; the next `create_agent_invite` mints a new one.
