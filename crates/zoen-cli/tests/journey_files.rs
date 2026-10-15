@@ -124,7 +124,9 @@ async fn pages_and_files_travel_byte_for_byte() {
         "the sample has a page too big for one event"
     );
     let started = std::time::Instant::now();
+    let mut batch_ms: Vec<u128> = vec![];
     for batch in expected.chunks(100) {
+        let batch_started = std::time::Instant::now();
         let mut args = vec![
             "--timeout".to_string(),
             "120000".into(),
@@ -142,6 +144,10 @@ async fn pages_and_files_travel_byte_for_byte() {
         let a: Vec<&str> = args.iter().map(String::as_str).collect();
         let out = w.zoen("ana", &a);
         assert_eq!(out.lines().count(), batch.len(), "{out}");
+        // Only full batches compare fairly: a short tail spreads command startup over few pages.
+        if batch.len() == 100 {
+            batch_ms.push(batch_started.elapsed().as_millis() / 100);
+        }
     }
     let import_ms = started.elapsed().as_millis();
     w.zoen(
@@ -185,23 +191,30 @@ async fn pages_and_files_travel_byte_for_byte() {
         largest
     );
     assert!(differ.is_empty(), "these came back different: {differ:?}");
-    // Importing is the time from picking the files to every page sealed and accepted by the
-    // relay. Each page once cost 290-700 ms here (debug build): after every write the
-    // connection re-read and re-sealed the whole queue while holding the core, so a long
-    // import got slower page by page. Now the queue is read by its headers, sent entries are
-    // skipped before any sealing work, and a batch goes in under one lock (~170 ms per page
-    // in debug on a shared box, most of it per-message encryption). The budget leaves room
-    // for a busy machine; `ZOEN_IMPORT_BUDGET_MS` overrides it.
+    // The regression this guards: each page once cost more than the one before (290-700 ms in
+    // debug), because every write re-read and re-sealed the whole queue under the core lock.
+    // That shows up as growth across batches, which a slow or shared machine does not fake,
+    // so the default check is the shape: no later batch may cost much more per page than the
+    // first. A wall-clock budget per page is opt-in via `ZOEN_IMPORT_BUDGET_MS`, for a known
+    // machine.
     let per_page = import_ms / expected.len() as u128;
-    let budget: u128 = std::env::var("ZOEN_IMPORT_BUDGET_MS")
+    println!("IMPORT: {per_page} ms per page; per batch {batch_ms:?}");
+    let first = batch_ms.first().copied().unwrap_or(0).max(1);
+    for (n, ms) in batch_ms.iter().enumerate().skip(1) {
+        assert!(
+            *ms <= first * 3,
+            "batch {n} took {ms} ms per page against {first} ms for the first: the import slows as the queue grows ({batch_ms:?})"
+        );
+    }
+    if let Some(budget) = std::env::var("ZOEN_IMPORT_BUDGET_MS")
         .ok()
-        .and_then(|v| v.parse().ok())
-        .unwrap_or(250);
-    println!("IMPORT: {per_page} ms per page (budget {budget} ms)");
-    assert!(
-        per_page <= budget,
-        "importing took {per_page} ms per page, over the {budget} ms budget"
-    );
+        .and_then(|v| v.parse::<u128>().ok())
+    {
+        assert!(
+            per_page <= budget,
+            "importing took {per_page} ms per page, over the {budget} ms budget"
+        );
+    }
     assert_eq!(
         std::fs::read_to_string(out_dir.join("plan.md")).unwrap(),
         PLAN
