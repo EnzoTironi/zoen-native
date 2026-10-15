@@ -2286,3 +2286,38 @@ fn the_agent_books_only_for_the_member_it_is_serving() {
     // The agent's booking carries Ana's profile name, not the "Ana" the call passed.
     assert_eq!(v["bookings"][0]["forName"], ana.name.as_str());
 }
+
+#[test]
+fn ticks_follow_the_lowest_read_up_to_watermark() {
+    let dir = std::env::temp_dir().join(format!("roda-test-{}", roda_types::new_id("t")));
+    std::fs::create_dir_all(&dir).unwrap();
+    let e = RodaEngine::open(dir.join("r.sqlite").to_string_lossy().into(), "pt-BR".into()).unwrap();
+    e.seed_demo_if_empty().unwrap();
+    let s = e
+        .spaces()
+        .into_iter()
+        .find(|s| s.members.len() >= 3)
+        .expect("a group");
+    e.send_message(s.id.clone(), "oi".into()).unwrap();
+    let me = e.lock().me.clone().unwrap();
+    let others: Vec<String> = s.members.iter().map(|m| m.id.clone()).filter(|m| *m != me).collect();
+    e.lock().net.synced.insert(s.id.clone());
+    let last = |e: &RodaEngine| e.timeline(s.id.clone()).unwrap().last().unwrap().clone();
+    let seq = last(&e).seq;
+    assert_eq!(last(&e).delivery, Delivery::Sent);
+    for o in &others {
+        assert!(e.lock().receipt(&s.id, o, seq, 0));
+    }
+    assert_eq!(last(&e).delivery, Delivery::Delivered);
+    assert_eq!(e.lock().space_summary(&s.id).unwrap().last_delivery, Some(Delivery::Delivered));
+    e.lock().receipt(&s.id, &others[0], 0, seq);
+    assert_eq!(last(&e).delivery, Delivery::Delivered, "a group is read only when everyone read");
+    for o in &others[1..] {
+        e.lock().receipt(&s.id, o, 0, seq);
+    }
+    assert_eq!(last(&e).delivery, Delivery::Read);
+    // A read on another of my devices clears the unread count here.
+    let other_space = e.spaces().into_iter().find(|x| x.unread > 0).expect("unread chat");
+    e.lock().receipt(&other_space.id, &me, 0, u64::MAX / 2);
+    assert_eq!(e.lock().space_summary(&other_space.id).unwrap().unread, 0);
+}

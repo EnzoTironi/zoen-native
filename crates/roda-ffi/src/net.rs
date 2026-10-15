@@ -685,12 +685,21 @@ async fn session(
                         if let Some(l) = &ctx.listener { if permanent && !recoverable { l.on_error(reason); } }
                     }
                     ServerFrame::Ephemeral { space, from, kind } => {
+                        let mark = match kind {
+                            EphemeralKind::Delivered { seq } => Some((seq, 0)),
+                            EphemeralKind::Read { seq } => Some((0, seq)),
+                            _ => None,
+                        };
+                        if let Some((d, r)) = mark {
+                            if engine!(|engine| engine.receipt(&space, &from, d, r)) { dirty.insert(space.clone()); }
+                        }
                         if let Some(l) = &ctx.listener {
                             let (k, detail) = match kind {
                                 EphemeralKind::Typing => ("typing".to_string(), String::new()),
                                 EphemeralKind::StoppedTyping => ("stopped".to_string(), String::new()),
                                 EphemeralKind::Status { status } => ("status".to_string(), status),
                                 EphemeralKind::Read { seq } => ("read".to_string(), seq.to_string()),
+                                EphemeralKind::Delivered { seq } => ("delivered".to_string(), seq.to_string()),
                             };
                             l.on_ephemeral(space, from, k, detail);
                         }
@@ -932,6 +941,12 @@ async fn session(
                 let naming = hold(&profiles_inflight) || hold(&opening);
                 if !dirty.is_empty() && !naming {
                     let spaces: Vec<String> = dirty.drain().filter(|s| !s.is_empty()).collect();
+                    // ✓✓ for the senders: one aggregated watermark per Space whose head moved.
+                    let marks: Vec<(String, u64)> = engine!(|engine| spaces.iter().filter_map(|s| engine.delivered_to_announce(s).map(|q| (s.clone(), q))).collect());
+                    for (space, seq) in marks {
+                        if let Err(e) = send(&mut sink, &ClientFrame::Ephemeral { space, kind: EphemeralKind::Delivered { seq } }).await { failed = Some(e); break }
+                    }
+                    if let Some(e) = failed { break Exit::Retry(e) }
                     if let Some(l) = &ctx.listener { l.on_change(spaces); }
                     ctx.notify_connection();
                 }

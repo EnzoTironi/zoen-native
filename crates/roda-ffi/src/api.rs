@@ -189,7 +189,7 @@ impl RodaEngine {
         })
     }
 
-    fn with_net<T>(&self, f: impl FnOnce(&Net) -> T) -> Option<T> {
+    pub(crate) fn with_net<T>(&self, f: impl FnOnce(&Net) -> T) -> Option<T> {
         self.net
             .lock()
             .unwrap_or_else(|p| p.into_inner())

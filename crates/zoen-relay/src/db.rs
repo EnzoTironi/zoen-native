@@ -694,3 +694,36 @@ pub async fn revoke_device(
         .await?;
     Ok(r.rows_affected() == 1)
 }
+
+/// Raises a person's receipt watermarks in a Space (never lowers them). `read` implies
+/// `delivered`.
+pub async fn raise_receipt(
+    pool: &PgPool,
+    space: &str,
+    identity: &str,
+    delivered: u64,
+    read: u64,
+) -> Result<(), sqlx::Error> {
+    let delivered = delivered.max(read);
+    sqlx::query(
+        "INSERT INTO space_receipts (space, identity, delivered, read) VALUES ($1, $2, $3, $4)
+         ON CONFLICT (space, identity) DO UPDATE SET
+           delivered = GREATEST(space_receipts.delivered, EXCLUDED.delivered),
+           read = GREATEST(space_receipts.read, EXCLUDED.read)",
+    )
+    .bind(space)
+    .bind(identity)
+    .bind(delivered as i64)
+    .bind(read as i64)
+    .execute(pool)
+    .await
+    .map(|_| ())
+}
+
+/// Every member's receipt watermarks in a Space: (identity, delivered, read).
+pub async fn receipts(pool: &PgPool, space: &str) -> Result<Vec<(String, i64, i64)>, sqlx::Error> {
+    sqlx::query_as("SELECT identity, delivered, read FROM space_receipts WHERE space = $1")
+        .bind(space)
+        .fetch_all(pool)
+        .await
+}
