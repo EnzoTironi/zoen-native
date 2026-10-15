@@ -157,8 +157,26 @@ async fn offline_writes_flush_after_the_relay_comes_back() {
     w.zoen("bruno", &["send", "Ideias", "anotar isso", "--offline"]);
 
     w.start_relay();
-    let s = w.zoen("bruno", &["sync"]);
-    assert!(s.contains("pending=0"), "{s}");
+    // `sync` returns as soon as the outbox drains; the bound only has to cover a cold relay
+    // on a busy runner (the 8 s default did not).
+    let started = std::time::Instant::now();
+    let s = w.zoen("bruno", &["sync", "--timeout", "30000"]);
+    if !s.contains("pending=0") {
+        // Name what stayed queued, so a stuck flush is diagnosable rather than "flaky".
+        let stuck: String = rusqlite::Connection::open(w.dir.join("bruno/zoen.sqlite"))
+            .unwrap()
+            .query_row(
+                "SELECT json_group_array(json_object('space', space, 'attempts', attempts, 'failed', failed, 'error', last_error, 'kind', json_extract(json, '$.body.type'))) FROM outbox",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap_or_default();
+        panic!(
+            "{s}after {:?}\nstill queued: {stuck}\nfixture: {}",
+            started.elapsed(),
+            w.dir.display()
+        );
+    }
     let errors: String = rusqlite::Connection::open(w.dir.join("bruno/zoen.sqlite"))
         .unwrap()
         .query_row(
