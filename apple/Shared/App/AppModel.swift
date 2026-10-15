@@ -141,7 +141,6 @@ final class AppModel {
         revision &+= 1
     }
     /// Pinned chats (Zoen is pinned until you unpin it).
-    private(set) var chatPins: [String] = UserDefaults.standard.stringArray(forKey: "RodaChatPins") ?? ["zoen"]
     /// Mac: Espaço selecionado na barra lateral e Item no inspetor.
     var macSelection: MacSidebarItem? = nil
     var inspectorItem: String? = nil
@@ -1230,45 +1229,42 @@ final class AppModel {
         revision &+= 1
     }
 
-    /// Pin key for a chat: "zoen" for your agent's DM (stable across reseeds), else the id.
-    func pinKey(_ space: SpaceSummary) -> String { space.counterpart?.handle == "zoen" ? "zoen" : space.id }
-    func isPinned(_ space: SpaceSummary) -> Bool { chatPins.contains(pinKey(space)) }
-    func togglePin(_ space: SpaceSummary) {
-        let k = pinKey(space)
-        if let i = chatPins.firstIndex(of: k) { chatPins.remove(at: i) } else { chatPins.append(k) }
-        UserDefaults.standard.set(chatPins, forKey: "RodaChatPins")
-        revision &+= 1
+    /// Pin, archive and mute are mine and follow me to every device: they live in the core
+    /// (my Personal Space), not in this device's defaults.
+    func isPinned(_ space: SpaceSummary) -> Bool { space.pinned }
+    func togglePin(_ space: SpaceSummary) { setPrefs(space, pinned: !space.pinned) }
+    func toggleArchive(_ space: SpaceSummary) { setPrefs(space, archived: !space.archived) }
+    /// `nil` unmutes; `Int64.max` mutes always.
+    func mute(_ space: SpaceSummary, until: Int64?) { setPrefs(space, mutedUntil: .some(until)) }
+
+    private func setPrefs(_ space: SpaceSummary, pinned: Bool? = nil, archived: Bool? = nil, mutedUntil: Int64?? = nil) {
+        perform {
+            try core.setChatPrefs(spaceId: space.id, pinned: pinned ?? space.pinned,
+                                  archived: archived ?? space.archived,
+                                  mutedUntilMs: mutedUntil ?? space.mutedUntilMs)
+        }
     }
 
-    /// Chats in Home order: pinned first (in pin order), then by recency.
+    /// Chats in Home order: pinned first, then by recency; archived ones wait in "Archived".
     var orderedSpaces: [SpaceSummary] {
-        let live = spaces.filter { !archived.contains($0.id) }
-        let pinned = chatPins.compactMap { k in live.first { pinKey($0) == k } }
-        return pinned + live.filter { !chatPins.contains(pinKey($0)) }
+        let live = spaces.filter { !$0.archived }
+        return live.filter(\.pinned) + live.filter { !$0.pinned }
     }
 
-    /// Archived chats (WhatsApp): out of the list until you open "Archived". On this device.
-    private(set) var archived: Set<String> = Set(UserDefaults.standard.stringArray(forKey: "RodaArchivedChats") ?? [])
-    /// Chats whose notifications are off on this device (push and in-app).
-    private(set) var muted: Set<String> = MutedChats.all
+    /// Archived (WhatsApp) and muted chats are mine on every device: they come from the core
+    /// (my Personal Space). The muted set is mirrored for the push wake path.
+    var archived: Set<String> { Set(spaces.filter(\.archived).map(\.id)) }
+    var muted: Set<String> { Set(spaces.filter(\.muted).map(\.id)) }
 
-    var archivedSpaces: [SpaceSummary] { spaces.filter { archived.contains($0.id) } }
-
-    func toggleArchive(_ space: SpaceSummary) {
-        if archived.remove(space.id) == nil { archived.insert(space.id) }
-        UserDefaults.standard.set(Array(archived).sorted(), forKey: "RodaArchivedChats")
-        revision &+= 1
-    }
-
-    func isMuted(_ space: SpaceSummary) -> Bool { muted.contains(space.id) }
+    func isMuted(_ space: SpaceSummary) -> Bool { space.muted }
 
     @discardableResult
     func toggleMute(_ spaceId: String) -> Bool {
-        let now = MutedChats.toggle(spaceId)
-        muted = MutedChats.all
-        revision &+= 1
-        return now
+        guard let space = spaces.first(where: { $0.id == spaceId }) else { return false }
+        mute(space, until: space.muted ? nil : Int64.max)
+        return !space.muted
     }
+    var archivedSpaces: [SpaceSummary] { spaces.filter(\.archived) }
 
     /// Troca de destino (barra ou menu radial). Tocar no destino atual volta à raiz.
     func select(_ t: AppTab) {

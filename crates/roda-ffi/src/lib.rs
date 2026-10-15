@@ -201,6 +201,26 @@ impl RodaEngine {
         Ok(())
     }
 
+    /// My prefs for a chat (pin, archive, mute), synced to my other devices. Archiving keeps
+    /// the chat out of the main list until I unarchive it; `muted_until_ms` silences
+    /// notifications (`i64::MAX` = always, `None` = unmute).
+    pub fn set_chat_prefs(
+        &self,
+        space_id: String,
+        pinned: bool,
+        archived: bool,
+        muted_until_ms: Option<i64>,
+    ) -> Result<(), CoreError> {
+        self.lock().set_chat_prefs(
+            &space_id,
+            roda_types::ChatPrefs {
+                pinned,
+                archived,
+                muted_until_ms,
+            },
+        )
+    }
+
     /// Edits my message (only the author can).
     pub fn edit_message(
         &self,

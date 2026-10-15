@@ -109,6 +109,13 @@
   <string name="edited">edited</string>
   <string name="edit_message">Edit message</string>
   <string name="forward_to">Forward to…</string>
+  <string name="archived">Archived</string>
+  <string name="unmute">Unmute</string>
+  <string name="mute_8h">Mute for 8 hours</string>
+  <string name="mute_always">Mute always</string>
+  <string name="archive">Archive</string>
+  <string name="unarchive">Unarchive</string>
+  <string name="muted">Muted</string>
   <string name="receipt_sending">Sending</string>
   <string name="receipt_sent">Sent</string>
   <string name="receipt_delivered">Delivered</string>
@@ -280,9 +287,4 @@
   <string name="owner_note_booking_cancel_request_body">%1$s asked to cancel %2$s, %3$s.</string>
   <string name="owner_note_someone_cap">Someone</string>
   <string name="mute">Mute</string>
-  <string name="unmute">Unmute</string>
-  <string name="archive">Archive</string>
-  <string name="unarchive">Unarchive</string>
-  <string name="archived">Archived</string>
-  <string name="muted">Muted</string>
 </resources>
