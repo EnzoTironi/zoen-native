@@ -2432,3 +2432,31 @@ fn edits_deletes_and_reactions_fold_over_the_original() {
         .unwrap();
     assert!(f.forwarded);
 }
+
+#[test]
+fn chat_prefs_live_in_my_personal_space_and_last_one_wins() {
+    let dir = std::env::temp_dir().join(format!("roda-test-{}", roda_types::new_id("t")));
+    std::fs::create_dir_all(&dir).unwrap();
+    let path = dir.join("p.sqlite").to_string_lossy().to_string();
+    let id = {
+        let e = RodaEngine::open(path.clone(), "pt-BR".into()).unwrap();
+        e.seed_demo_if_empty().unwrap();
+        let s = e.spaces().into_iter().next().expect("a chat");
+        assert!(!s.pinned && !s.archived && !s.muted);
+        e.set_chat_prefs(s.id.clone(), true, false, Some(i64::MAX))
+            .unwrap();
+        e.set_chat_prefs(s.id.clone(), true, true, Some(i64::MAX))
+            .unwrap();
+        s.id
+    };
+    // Replayed from the log, like a freshly linked device would.
+    let e = RodaEngine::open(path, "pt-BR".into()).unwrap();
+    let s = e.lock().space_summary(&id).unwrap();
+    assert!(s.pinned && s.archived && s.muted);
+    e.set_chat_prefs(id.clone(), false, false, Some(1)).unwrap();
+    let s = e.lock().space_summary(&id).unwrap();
+    assert!(
+        !s.pinned && !s.archived && !s.muted,
+        "a mute in the past is no mute"
+    );
+}

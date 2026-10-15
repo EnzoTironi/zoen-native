@@ -84,7 +84,7 @@ final class PushBridge {
             try? await Task.sleep(for: .milliseconds(500))
         }
         model.refresh()
-        let notes = WakeNotifications.notes(before: before, after: model.spaces, muted: MutedChats.all)
+        let notes = WakeNotifications.notes(before: before, after: model.spaces, muted: model.muted)
         for n in notes {
             let c = UNMutableNotificationContent()
             c.title = n.title

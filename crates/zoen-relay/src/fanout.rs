@@ -59,6 +59,8 @@ pub struct BusStats {
 
 pub struct Fanout {
     pub hub: Arc<Hub>,
+    /// Authors of the last messages per Space delivered through this node (receipt routing).
+    pub recent: Arc<crate::recent::RecentAuthors>,
     pub node: String,
     bus: Box<dyn Bus>,
 }
@@ -67,6 +69,7 @@ impl Fanout {
     pub fn local(node: String) -> Self {
         Self {
             hub: Arc::new(Hub::default()),
+            recent: Arc::default(),
             node,
             bus: Box::new(LocalBus),
         }
@@ -74,9 +77,11 @@ impl Fanout {
 
     pub async fn nats(node: String, url: &str, cell: &str) -> anyhow::Result<Self> {
         let hub = Arc::new(Hub::default());
-        let bus = NatsBus::connect(url, cell, &node, hub.clone()).await?;
+        let recent: Arc<crate::recent::RecentAuthors> = Arc::default();
+        let bus = NatsBus::connect(url, cell, &node, hub.clone(), recent.clone()).await?;
         Ok(Self {
             hub,
+            recent,
             node,
             bus: Box::new(bus),
         })
@@ -102,6 +107,7 @@ impl Fanout {
     /// Delivers to every session of `to` on every node, except local session `skip`.
     /// Returns how many local sessions took it.
     pub fn send(&self, to: &[String], frame: &ServerFrame, skip: Option<u64>) -> usize {
+        remember(&self.recent, frame);
         let n = self.hub.send(to, frame, skip);
         self.bus.publish(to, frame);
         n
@@ -166,6 +172,12 @@ impl Fanout {
     }
 }
 
+fn remember(recent: &crate::recent::RecentAuthors, frame: &ServerFrame) {
+    if let ServerFrame::Event { ev } = frame {
+        recent.record(ev.env.space(), ev.seq, ev.env.author());
+    }
+}
+
 /// One node: the hub is the whole world.
 pub struct LocalBus;
 
@@ -193,6 +205,7 @@ pub struct NatsBus {
     node: String,
     prefix: String,
     hub: Arc<Hub>,
+    recent: Arc<crate::recent::RecentAuthors>,
     subs: Mutex<HashMap<String, (usize, JoinHandle<()>)>>,
     out: mpsc::Sender<Outbound>,
     stats: Arc<Counters>,
@@ -213,7 +226,13 @@ struct Counters {
 }
 
 impl NatsBus {
-    pub async fn connect(url: &str, cell: &str, node: &str, hub: Arc<Hub>) -> anyhow::Result<Self> {
+    pub async fn connect(
+        url: &str,
+        cell: &str,
+        node: &str,
+        hub: Arc<Hub>,
+        recent: Arc<crate::recent::RecentAuthors>,
+    ) -> anyhow::Result<Self> {
         let client = async_nats::ConnectOptions::new()
             .name(format!("zoen-relay {node}"))
             .request_timeout(Some(PRESENCE_TIMEOUT))
@@ -235,6 +254,7 @@ impl NatsBus {
             node: node.to_string(),
             prefix,
             hub,
+            recent,
             subs: Mutex::new(HashMap::new()),
             out,
             stats,
@@ -247,6 +267,7 @@ impl NatsBus {
         let identity = identity.to_string();
         let node = self.node.clone();
         let hub = self.hub.clone();
+        let recent = self.recent.clone();
         let stats = self.stats.clone();
         tokio::spawn(async move {
             let mut sub = match client.subscribe(subject).await {
@@ -291,6 +312,7 @@ impl NatsBus {
                         if let Some(h) = &m.headers {
                             crate::telemetry::adopt_remote_parent(&span, &NatsHeaders(h));
                         }
+                        remember(&recent, &frame);
                         let n = hub.send(std::slice::from_ref(&identity), &frame, None);
                         span.record("delivered_here", n as i64);
                     }

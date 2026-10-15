@@ -78,6 +78,15 @@ pub struct SpaceSummary {
     /// Ticks for the last message when I wrote it (the chat list shows them).
     #[uniffi(default = None)]
     pub last_delivery: Option<Delivery>,
+    /// My prefs for this chat, synced across my devices.
+    #[uniffi(default = false)]
+    pub pinned: bool,
+    #[uniffi(default = false)]
+    pub archived: bool,
+    #[uniffi(default = false)]
+    pub muted: bool,
+    #[uniffi(default = None)]
+    pub muted_until_ms: Option<i64>,
     pub pending_requests: u32,
     pub event_count: u64,
 }
