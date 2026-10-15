@@ -19,7 +19,7 @@
 //! `app` = a interface chama). O estado compartilhado mora num Item versionado; quem
 //! decide se uma chamada pode rodar é o `roda-grants` (no `engine`), não este módulo.
 
-use roda_types::ActionClass;
+use roda_types::{ActionClass, AppDoc, ItemContent};
 
 use crate::i18n::{is_en, t, thousands, ts};
 use crate::tr;
@@ -595,6 +595,30 @@ pub fn apply_as(
         "schedule" => schedule::apply(tool_name, args, view(app, state, now), actor, now),
         _ => apply(app, tool_name, args, state, actor.name, now),
     }
+}
+
+/// Folding a new version of a shared mini-app on top of the current one: apps whose
+/// state two devices may change at the same moment (the schedule) merge here, the same
+/// way on every device. `None` keeps the incoming version as it is.
+pub fn reconcile_concurrent(
+    current: &ItemContent,
+    incoming: &ItemContent,
+    at: i64,
+) -> Option<ItemContent> {
+    let (ItemContent::App(cur), ItemContent::App(inc)) = (current, incoming) else {
+        return None;
+    };
+    if cur.app != "schedule" || inc.app != "schedule" {
+        return None;
+    }
+    let c: Value = serde_json::from_str(&cur.state_json).ok()?;
+    let i: Value = serde_json::from_str(&inc.state_json).ok()?;
+    let merged = schedule::reconcile(&c, &i, at)?;
+    Some(ItemContent::App(AppDoc {
+        state_json: merged.to_string(),
+        title: cur.title.clone(),
+        ..inc.clone()
+    }))
 }
 
 /// The view a given member receives. Apps with private parts (the schedule's client

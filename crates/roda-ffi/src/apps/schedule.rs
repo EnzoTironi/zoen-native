@@ -395,6 +395,7 @@ pub fn create(args: &Value, actor: &Actor, now: i64) -> Result<(String, Value), 
         "bookings": [],
         "events": [],
         "next": 1,
+        "rev": 0,
         "log": []
     });
     configure_fields(&mut st, args)?;
@@ -521,6 +522,24 @@ fn check_slot(
             "you can only book up to {horizon} days ahead"
         ));
     }
+    within_hours(st, start, end)?;
+    let clash = st["bookings"].as_array().into_iter().flatten().any(|b| {
+        b["id"].as_str() != ignore
+            && occupies(b, now)
+            && b["startMs"].as_i64().unwrap_or(0) < end
+            && b["endMs"].as_i64().unwrap_or(0) > start
+    });
+    if clash {
+        return Err(t(
+            "esse horário já está ocupado",
+            "that time is already taken",
+        ));
+    }
+    Ok(end)
+}
+
+/// `[start, end)` sits on a slot boundary inside one opening window of its local day.
+fn within_hours(st: &Value, start: i64, end: i64) -> Result<(), String> {
     let tz = parse_tz(st["timezone"].as_str().unwrap_or(DEFAULT_TZ))?;
     let (ls, le) = (local(tz, start), local(tz, end));
     let (Some(ls), Some(le)) = (ls, le) else {
@@ -548,19 +567,43 @@ fn check_slot(
     if !inside {
         return Err(t("fora do horário de atendimento", "outside opening hours"));
     }
-    let clash = st["bookings"].as_array().into_iter().flatten().any(|b| {
-        b["id"].as_str() != ignore
-            && occupies(b, now)
-            && b["startMs"].as_i64().unwrap_or(0) < end
-            && b["endMs"].as_i64().unwrap_or(0) > start
-    });
-    if clash {
-        return Err(t(
-            "esse horário já está ocupado",
-            "that time is already taken",
-        ));
+    Ok(())
+}
+
+/// After the hours change, flags the upcoming bookings that now fall outside them (one
+/// open `outside_hours` event each, for the agent to move, cancel or keep) and clears the
+/// flag on those that fit again. Returns the labels of the newly flagged ones.
+fn flag_outside_hours(st: &mut Value, by: &str, now: i64) -> Vec<String> {
+    let mut flagged = Vec::new();
+    let bookings: Vec<Value> = st["bookings"].as_array().cloned().unwrap_or_default();
+    for (i, b) in bookings.iter().enumerate() {
+        if !occupies(b, now) || b["hoursKept"].as_bool().unwrap_or(false) {
+            continue;
+        }
+        let id = b["id"].as_str().unwrap_or_default().to_string();
+        let (start, end) = (
+            b["startMs"].as_i64().unwrap_or(0),
+            b["endMs"].as_i64().unwrap_or(0),
+        );
+        let outside = within_hours(st, start, end).is_err();
+        let open = has_open(st, &id, "outside_hours");
+        if outside && !open {
+            st["bookings"][i]["outsideHours"] = json!(true);
+            if push_event(st, "outside_hours", &id, by, now).is_ok() {
+                flagged.push(format!(
+                    "{}, {}",
+                    b["serviceName"].as_str().unwrap_or_default(),
+                    when_label(st, start)
+                ));
+            }
+        } else if !outside && open {
+            if let Some(m) = st["bookings"][i].as_object_mut() {
+                m.remove("outsideHours");
+            }
+            resolve_events(st, &id, Some("outside_hours"), "fits", by, now);
+        }
     }
-    Ok(end)
+    flagged
 }
 
 fn booking_index(st: &Value, args: &Value) -> Result<usize, String> {
@@ -677,7 +720,94 @@ fn note(args: &Value) -> Option<String> {
     args["note"].as_str().map(|n| clean(n, 120))
 }
 
+/// A tool call. Every change bumps `rev`, so a write that two devices made from the same
+/// state can be told apart from one made on top of the other (see [`reconcile`]).
 pub fn apply(
+    tool: &str,
+    args: &Value,
+    st: Value,
+    actor: &Actor,
+    now: i64,
+) -> Result<Applied, String> {
+    let rev = st["rev"].as_i64().unwrap_or(0);
+    let mut a = apply_tool(tool, args, st, actor, now)?;
+    if tool != "schedule_get_state" {
+        a.state["rev"] = json!(rev + 1);
+    }
+    Ok(a)
+}
+
+/// Two devices booked from the same state at the same moment: both writes carry the same
+/// `rev`, and the log orders them. The fold keeps `current` (the earlier write) and takes
+/// from the later one only the bookings it added: each gets a fresh id, and one that now
+/// overlaps a booking already there is kept as cancelled with `conflict`, so its client
+/// sees the slot was taken. Any other change in the later write is dropped. Every device
+/// folds the same log in the same order, so all of them land on the same state.
+///
+/// `None` when `incoming` was written on top of `current` (the normal case), or when
+/// either side predates `rev`.
+pub fn reconcile(current: &Value, incoming: &Value, at: i64) -> Option<Value> {
+    let (cr, ir) = (current["rev"].as_i64()?, incoming["rev"].as_i64()?);
+    if ir > cr {
+        return None;
+    }
+    let mut st = current.clone();
+    // A booking keeps its id, author and creation time for life (a reschedule moves the
+    // time, a resolution the status), so these three name it across both writes.
+    let same =
+        |a: &Value, b: &Value| a["id"] == b["id"] && a["byId"] == b["byId"] && a["at"] == b["at"];
+    let theirs: Vec<Value> = incoming["bookings"].as_array().cloned().unwrap_or_default();
+    let ours: Vec<Value> = current["bookings"].as_array().cloned().unwrap_or_default();
+    let mut added = 0;
+    for b in theirs.iter().filter(|b| !ours.iter().any(|o| same(o, b))) {
+        // Only bookings this write created: they are still pending.
+        if b["status"] != "pending" {
+            continue;
+        }
+        let id = next_id(&mut st, "b");
+        let (start, end) = (
+            b["startMs"].as_i64().unwrap_or(0),
+            b["endMs"].as_i64().unwrap_or(0),
+        );
+        let clash = st["bookings"].as_array().into_iter().flatten().any(|o| {
+            occupies(o, at)
+                && o["startMs"].as_i64().unwrap_or(0) < end
+                && o["endMs"].as_i64().unwrap_or(0) > start
+        });
+        let mut nb = b.clone();
+        nb["id"] = json!(id);
+        let by = b["byId"].as_str().unwrap_or_default().to_string();
+        if clash {
+            nb["status"] = json!("cancelled");
+            nb["conflict"] = json!(true);
+        }
+        st["bookings"].as_array_mut()?.push(nb);
+        if clash {
+            let svc = b["serviceName"].as_str().unwrap_or_default().to_string();
+            push_log(
+                &mut st,
+                b["byName"].as_str().unwrap_or_default(),
+                &tr!(
+                    "pediu {svc}, mas o horário tinha acabado de ser marcado",
+                    "requested {svc}, but the slot had just been taken"
+                ),
+                at,
+            );
+        } else {
+            push_event(&mut st, "book_request", &id, &by, at).ok()?;
+        }
+        added += 1;
+    }
+    if added == 0 {
+        // Nothing new to carry over: the earlier write stands as it is.
+        return Some(current.clone());
+    }
+    trim(&mut st, at);
+    st["rev"] = json!(cr + 1);
+    Some(st)
+}
+
+fn apply_tool(
     tool: &str,
     args: &Value,
     mut st: Value,
@@ -701,18 +831,31 @@ pub fn apply(
                 ));
             }
             configure_fields(&mut st, args)?;
+            let flagged = flag_outside_hours(&mut st, actor.id, now);
             push_log(
                 &mut st,
                 actor.name,
                 &t("ajustou a agenda", "updated the schedule"),
                 now,
             );
+            trim(&mut st, now);
             let mut a = Applied::new(
                 st,
                 tr!("{} ajustou a agenda", "{} updated the schedule", actor.name),
                 t("Agenda atualizada.", "Schedule updated."),
             );
             a.title = a.state["title"].as_str().map(String::from);
+            if !flagged.is_empty() {
+                let list = flagged.join("; ");
+                a.text = tr!(
+                    "Agenda atualizada. Ficaram fora do novo horário: {list}.",
+                    "Schedule updated. Now outside the new hours: {list}."
+                );
+                a.comment = Some(tr!(
+                    "Com o novo horário, estes ficaram de fora: {list}. Remarco, cancelo ou mantenho?",
+                    "With the new hours, these fall outside: {list}. Reschedule, cancel or keep?"
+                ));
+            }
             Ok(a)
         }
         "schedule_book" => {
@@ -888,14 +1031,12 @@ pub fn apply(
                     st["bookings"][idx]["startMs"] = json!(new_start);
                     st["bookings"][idx]["endMs"] = json!(end);
                     st["bookings"][idx]["status"] = json!("confirmed");
-                    resolve_events(
-                        &mut st,
-                        &id,
-                        Some("book_request"),
-                        "adjusted",
-                        actor.id,
-                        now,
-                    );
+                    if let Some(m) = st["bookings"][idx].as_object_mut() {
+                        m.remove("outsideHours");
+                    }
+                    // A new time answers everything open on it: the request, a cancel
+                    // request (the client gets the new time instead), an hours flag.
+                    resolve_events(&mut st, &id, None, "adjusted", actor.id, now);
                     tr!(
                         "remarcou {svc_name} para {}",
                         "moved {svc_name} to {}",
@@ -918,13 +1059,23 @@ pub fn apply(
                     )
                 }
                 "keep" => {
-                    if !has_open(&st, &id, "cancel_request") {
+                    let cancel = has_open(&st, &id, "cancel_request");
+                    let hours = has_open(&st, &id, "outside_hours");
+                    if !cancel && !hours {
                         return Err(t(
-                            "não há pedido de cancelamento aberto",
-                            "there's no open cancel request",
+                            "não há nada aberto nesse horário",
+                            "there's nothing open on that booking",
                         ));
                     }
                     resolve_events(&mut st, &id, Some("cancel_request"), "kept", actor.id, now);
+                    if hours {
+                        resolve_events(&mut st, &id, Some("outside_hours"), "kept", actor.id, now);
+                        if let Some(m) = st["bookings"][idx].as_object_mut() {
+                            m.remove("outsideHours");
+                            // Kept on purpose: later hour changes don't flag it again.
+                            m.insert("hoursKept".into(), json!(true));
+                        }
+                    }
                     tr!(
                         "manteve {svc_name}, {}",
                         "kept {svc_name}, {}",
@@ -1021,5 +1172,273 @@ pub fn apply(
             "schedule não tem a ferramenta {other}",
             "schedule has no tool {other}"
         )),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use chrono::TimeZone;
+
+    const AGENT: Actor = Actor {
+        id: "bot",
+        name: "Agenda",
+        owner: Some("bruno"),
+    };
+    const CARLA: Actor = Actor {
+        id: "carla",
+        name: "Carla",
+        owner: None,
+    };
+    const DANI: Actor = Actor {
+        id: "dani",
+        name: "Dani",
+        owner: None,
+    };
+
+    /// Monday 7 Jan 2030 at `h:m` in São Paulo.
+    fn at(h: u32, m: u32) -> i64 {
+        chrono_tz::America::Sao_Paulo
+            .with_ymd_and_hms(2030, 1, 7, h, m, 0)
+            .unwrap()
+            .timestamp_millis()
+    }
+
+    fn open_schedule() -> Value {
+        let args = json!({
+            "business": "Barbearia",
+            "services": [{"name": "Corte", "minutes": 30}],
+            "weeklyHours": {"1": [["09:00", "18:00"]]}
+        });
+        create(&args, &AGENT, at(7, 0)).unwrap().1
+    }
+
+    fn call(st: &Value, who: &Actor, tool: &str, args: Value, now: i64) -> Value {
+        apply(tool, &args, st.clone(), who, now).unwrap().state
+    }
+
+    fn book(st: &Value, who: &Actor, start: i64, now: i64) -> Value {
+        call(
+            st,
+            who,
+            "schedule_book",
+            json!({"serviceId": "corte", "startMs": start}),
+            now,
+        )
+    }
+
+    fn booking<'a>(st: &'a Value, by: &str) -> Vec<&'a Value> {
+        st["bookings"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter(|b| b["byId"] == by)
+            .collect()
+    }
+
+    fn open_events(st: &Value, id: &str) -> Vec<String> {
+        st["events"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter(|e| e["bookingId"] == id && e["status"] == "open")
+            .map(|e| e["kind"].as_str().unwrap().to_string())
+            .collect()
+    }
+
+    #[test]
+    fn two_devices_booking_the_same_slot_resolve_the_same_way_everywhere() {
+        let base = open_schedule();
+        let ten = at(10, 0);
+        // Both clients book 10:00 from the same state, at the same moment.
+        let carla = book(&base, &CARLA, ten, at(8, 0));
+        let dani = book(&base, &DANI, ten, at(8, 0));
+        assert_eq!(carla["rev"], dani["rev"], "same base, same rev");
+
+        // The log put Carla's write first: hers stands, Dani's is kept as a conflict.
+        let folded = reconcile(&carla, &dani, at(8, 0)).expect("concurrent writes merge");
+        assert_eq!(booking(&folded, "carla")[0]["status"], "pending");
+        let lost = booking(&folded, "dani");
+        assert_eq!(lost.len(), 1);
+        assert_eq!(lost[0]["status"], "cancelled");
+        assert_eq!(lost[0]["conflict"], true);
+        assert_ne!(
+            lost[0]["id"],
+            booking(&folded, "carla")[0]["id"],
+            "fresh id"
+        );
+        assert!(open_events(&folded, lost[0]["id"].as_str().unwrap()).is_empty());
+        assert_eq!(busy(&folded, at(8, 0)).len(), 1, "the slot is held once");
+        // Every device folds the same pair the same way.
+        assert_eq!(reconcile(&carla, &dani, at(8, 0)), Some(folded.clone()));
+
+        // The other order hands the slot to Dani instead: whoever the log puts first wins.
+        let other = reconcile(&dani, &carla, at(8, 0)).unwrap();
+        assert_eq!(booking(&other, "dani")[0]["status"], "pending");
+        assert_eq!(booking(&other, "carla")[0]["conflict"], true);
+
+        // A write made on top of the merged state folds normally.
+        let next = book(&folded, &DANI, at(11, 0), at(8, 1));
+        assert_eq!(reconcile(&folded, &next, at(8, 1)), None);
+    }
+
+    #[test]
+    fn concurrent_bookings_of_different_slots_both_stand() {
+        let base = open_schedule();
+        let carla = book(&base, &CARLA, at(10, 0), at(8, 0));
+        let dani = book(&base, &DANI, at(11, 0), at(8, 0));
+        let folded = reconcile(&carla, &dani, at(8, 0)).unwrap();
+        assert_eq!(booking(&folded, "carla")[0]["status"], "pending");
+        let d = booking(&folded, "dani")[0];
+        assert_eq!(d["status"], "pending");
+        assert_eq!(
+            open_events(&folded, d["id"].as_str().unwrap()),
+            ["book_request"]
+        );
+        assert_eq!(pending(&folded), 2);
+    }
+
+    #[test]
+    fn a_stale_write_without_new_bookings_leaves_the_earlier_one_standing() {
+        let base = open_schedule();
+        let carla = book(&base, &CARLA, at(10, 0), at(8, 0));
+        let renamed = call(
+            &base,
+            &AGENT,
+            "schedule_configure",
+            json!({"business": "Outro nome"}),
+            at(8, 0),
+        );
+        assert_eq!(reconcile(&carla, &renamed, at(8, 0)), Some(carla));
+    }
+
+    #[test]
+    fn changing_hours_flags_bookings_left_outside_and_the_agent_can_resolve_them() {
+        let st = open_schedule();
+        let st = book(&st, &CARLA, at(17, 0), at(8, 0));
+        let st = book(&st, &DANI, at(10, 0), at(8, 0));
+        let late = booking(&st, "carla")[0]["id"].as_str().unwrap().to_string();
+        let early = booking(&st, "dani")[0]["id"].as_str().unwrap().to_string();
+
+        // The shop now closes at 15:00: Carla's 17:00 is flagged, Dani's 10:00 is not.
+        let hours = json!({"weeklyHours": {"1": [["09:00", "15:00"]]}});
+        let applied = apply("schedule_configure", &hours, st.clone(), &AGENT, at(8, 5)).unwrap();
+        assert!(
+            applied.comment.as_deref().unwrap_or("").contains("17:00"),
+            "{:?}",
+            applied.comment
+        );
+        let st = applied.state;
+        assert_eq!(booking(&st, "carla")[0]["outsideHours"], true);
+        assert!(booking(&st, "dani")[0].get("outsideHours").is_none());
+        assert!(open_events(&st, &late).contains(&"outside_hours".to_string()));
+        assert!(!open_events(&st, &early).contains(&"outside_hours".to_string()));
+
+        // Changing other settings doesn't flag it twice.
+        let again = call(
+            &st,
+            &AGENT,
+            "schedule_configure",
+            json!({"business": "Barbearia 2"}),
+            at(8, 6),
+        );
+        let n = again["events"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter(|e| e["kind"] == "outside_hours")
+            .count();
+        assert_eq!(n, 1);
+
+        // Moving it inside the hours closes the flag.
+        let moved = call(
+            &st,
+            &AGENT,
+            "schedule_resolve",
+            json!({"bookingId": late, "action": "adjust", "startMs": at(14, 0)}),
+            at(8, 7),
+        );
+        assert!(open_events(&moved, &late).is_empty());
+        assert!(booking(&moved, "carla")[0].get("outsideHours").is_none());
+
+        // Or the owner keeps it on purpose; later hour changes leave it alone.
+        let kept = call(
+            &st,
+            &AGENT,
+            "schedule_resolve",
+            json!({"bookingId": late, "action": "keep"}),
+            at(8, 7),
+        );
+        // Keeping answers the hours flag only; the booking request itself is still the
+        // agent's to confirm.
+        assert_eq!(open_events(&kept, &late), vec!["book_request".to_string()]);
+        let later = call(
+            &kept,
+            &AGENT,
+            "schedule_configure",
+            json!({"weeklyHours": {"1": [["09:00", "14:00"]]}}),
+            at(8, 8),
+        );
+        assert!(!open_events(&later, &late).contains(&"outside_hours".to_string()));
+
+        // Opening late again clears a flag nobody answered.
+        let reopened = call(
+            &st,
+            &AGENT,
+            "schedule_configure",
+            json!({"weeklyHours": {"1": [["09:00", "18:00"]]}}),
+            at(8, 9),
+        );
+        assert!(!open_events(&reopened, &late).contains(&"outside_hours".to_string()));
+        assert!(booking(&reopened, "carla")[0].get("outsideHours").is_none());
+    }
+
+    #[test]
+    fn rescheduling_closes_the_open_cancel_request() {
+        let st = open_schedule();
+        let st = book(&st, &CARLA, at(10, 0), at(8, 0));
+        let id = booking(&st, "carla")[0]["id"].as_str().unwrap().to_string();
+        let st = call(
+            &st,
+            &AGENT,
+            "schedule_resolve",
+            json!({"bookingId": id, "action": "confirm"}),
+            at(8, 1),
+        );
+        let st = call(
+            &st,
+            &CARLA,
+            "schedule_cancel",
+            json!({"bookingId": id}),
+            at(8, 2),
+        );
+        assert_eq!(open_events(&st, &id), ["cancel_request"]);
+
+        // The agent offers a new time instead: the cancel request is answered by it.
+        let st = call(
+            &st,
+            &AGENT,
+            "schedule_resolve",
+            json!({"bookingId": id, "action": "adjust", "startMs": at(11, 0)}),
+            at(8, 3),
+        );
+        assert!(open_events(&st, &id).is_empty());
+        let ev = st["events"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|e| e["kind"] == "cancel_request")
+            .unwrap();
+        assert_eq!(ev["resolution"], "adjusted");
+        assert_eq!(booking(&st, "carla")[0]["status"], "confirmed");
+        // And Carla can ask to cancel the new time again.
+        let st = call(
+            &st,
+            &CARLA,
+            "schedule_cancel",
+            json!({"bookingId": id}),
+            at(8, 4),
+        );
+        assert_eq!(open_events(&st, &id), ["cancel_request"]);
     }
 }
