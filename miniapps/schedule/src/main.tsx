@@ -271,7 +271,7 @@ function App() {
                 </div>
               ))}
               {mine.length === 0 ? (
-                <div className="empty">{L('Nothing booked yet')}</div>
+                taken.length === 0 && <div className="empty">{L('Nothing booked yet')}</div>
               ) : (
                 <div className="mine">
                   {mine.map((b) => {

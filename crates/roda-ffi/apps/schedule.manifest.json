@@ -11,8 +11,8 @@
   "allowedDomains": [],
   "networkPurpose": "",
   "linkDomains": [],
-  "sha256": "2f2e3522984c22dc18cc4ca721817a194942034d260ead6c4918ce7402d81292",
-  "bytes": 216700,
+  "sha256": "6f31593bd9caf49a75646429c33521972de9782beff0710fa39de56de47adee7",
+  "bytes": 216714,
   "deps": {
     "scheduler": "0.26.0",
     "react": "19.1.1",
