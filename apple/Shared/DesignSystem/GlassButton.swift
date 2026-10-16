@@ -46,12 +46,21 @@ private struct NativeGlassButton: View {
         }
     }
 
-    private var button: some View {
-        SwiftUI.Button(configuration)
-            .font(font)
-            .buttonSizing(.flexible)
-            .frame(maxWidth: fullWidth ? .infinity : nil,
-                   minHeight: controlSize == .small || controlSize == .mini ? min(height, 34) : (controlSize == .large || controlSize == .extraLarge ? max(height, 52) : height))
+    @ViewBuilder private var button: some View {
+        if fullWidth {
+            sizedButton.buttonSizing(.flexible)
+        } else {
+            sizedButton
+        }
+    }
+
+    private var sizedButton: some View {
+        SwiftUI.Button(action: configuration.trigger) {
+            configuration.label
+                .font(font)
+                .frame(maxWidth: fullWidth ? .infinity : nil,
+                       minHeight: controlSize == .small || controlSize == .mini ? min(height, 34) : (controlSize == .large || controlSize == .extraLarge ? max(height, 52) : height))
+        }
     }
 }
 
