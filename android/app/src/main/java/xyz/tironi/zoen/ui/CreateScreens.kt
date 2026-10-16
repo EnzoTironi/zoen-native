@@ -31,8 +31,12 @@ fun NewChatScreen(model: ZoenViewModel, state: AppState, navigate: (NavKey) -> U
     var people by remember { mutableStateOf(listOf<Persona>()) }
     var loading by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
+    var creating by remember { mutableStateOf(false) }
+    fun close() { if (group) group = false else back() }
+    androidx.activity.compose.BackHandler(group) { group = false }
     LaunchedEffect(query, state.demo) {
         error = null
+        loading = false
         if (state.demo) people = model.repository.query { it.personas().filter { p -> !p.isMe && p.kind == PersonaKind.PERSON && (p.name.contains(query, true) || p.handle.contains(query, true)) } }
         else if (query.isBlank()) people = emptyList()
         else {
@@ -42,11 +46,11 @@ fun NewChatScreen(model: ZoenViewModel, state: AppState, navigate: (NavKey) -> U
             finally { loading = false }
         }
     }
-    Scaffold(topBar = { ScreenBar(stringResource(if (group) R.string.new_group else R.string.new_chat), back, actions = {
+    Scaffold(topBar = { ScreenBar(stringResource(if (group) R.string.new_group else R.string.new_chat), ::close, actions = {
         IconButton(onClick = { group = !group }) { Icon(Icons.Rounded.GroupAdd, stringResource(R.string.new_group)) }
     }) }) { padding ->
         Column(Modifier.padding(padding).imePadding().padding(horizontal = 24.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            if (group) OutlinedTextField(title, { title = it }, Modifier.fillMaxWidth(), label = { Text(stringResource(R.string.group_name)) })
+            if (group) OutlinedTextField(title, { title = it }, Modifier.fillMaxWidth(), label = { Text(stringResource(R.string.group_name)) }, singleLine = true)
             OutlinedTextField(query, { query = it }, Modifier.fillMaxWidth(), label = { Text(stringResource(R.string.find_people)) }, singleLine = true)
             if (loading) LinearProgressIndicator(Modifier.fillMaxWidth())
             error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
@@ -55,16 +59,21 @@ fun NewChatScreen(model: ZoenViewModel, state: AppState, navigate: (NavKey) -> U
                     ListItem(headlineContent = { Text(person.name) }, supportingContent = { Text("@${person.handle}") }, leadingContent = { Avatar(person, size = 40) }, trailingContent = { if (group) Checkbox(person.id in selected, onCheckedChange = { selected = if (person.id in selected) selected - person.id else selected + person.id }) },
                         modifier = Modifier.clickable {
                             if (group) selected = if (person.id in selected) selected - person.id else selected + person.id
-                            else model.launch {
-                                val existing = state.spaces.firstOrNull { it.counterpart?.id == person.id }
-                                val id = existing?.id ?: model.repository.change { it.startDirect(person.id) }
-                                back(); navigate(Chat(id))
+                            else if (!creating) {
+                                creating = true
+                                model.launch {
+                                    try {
+                                        val existing = state.spaces.firstOrNull { it.counterpart?.id == person.id }
+                                        val id = existing?.id ?: model.repository.change { it.startDirect(person.id) }
+                                        back(); navigate(Chat(id))
+                                    } finally { creating = false }
+                                }
                             }
                         },
                     )
                 }
             }
-            if (group) GlassButton(onClick = { model.launch { val id = model.repository.change { it.createGroup(title, selected) }; back(); navigate(Chat(id)) } }, enabled = title.isNotBlank() && selected.isNotEmpty(), modifier = Modifier.fillMaxWidth().navigationBarsPadding().padding(bottom = 16.dp)) { Text(stringResource(R.string.create)) }
+            if (group) Button(onClick = { creating = true; model.launch { try { val id = model.repository.change { it.createGroup(title.trim(), selected) }; back(); navigate(Chat(id)) } finally { creating = false } } }, enabled = title.isNotBlank() && selected.isNotEmpty() && !creating, modifier = Modifier.fillMaxWidth().navigationBarsPadding().padding(bottom = 16.dp)) { Text(stringResource(if (creating) R.string.creating else R.string.create)) }
         }
     }
 }
@@ -78,8 +87,8 @@ fun NewSpaceScreen(model: ZoenViewModel, navigate: (NavKey) -> Unit, back: () ->
             ZoenMascot(Modifier.size(160.dp), pose = MascotPose.Map)
             Text(stringResource(R.string.spaces_empty_title), style = MaterialTheme.typography.headlineMedium)
             Text(stringResource(R.string.spaces_empty_detail), color = MaterialTheme.colorScheme.onSurfaceVariant)
-            OutlinedTextField(title, { title = it }, Modifier.fillMaxWidth(), label = { Text(stringResource(R.string.space_name)) })
-            GlassButton(onClick = { busy = true; model.launch { try { val id = model.repository.change { it.createCommunity(title) }; back(); navigate(Chat(id)) } finally { busy = false } } }, enabled = title.isNotBlank() && !busy, modifier = Modifier.fillMaxWidth()) { Text(stringResource(R.string.create)) }
+            OutlinedTextField(title, { title = it }, Modifier.fillMaxWidth(), label = { Text(stringResource(R.string.space_name)) }, singleLine = true)
+            Button(onClick = { busy = true; model.launch { try { val id = model.repository.change { it.createCommunity(title.trim()) }; back(); navigate(Chat(id)) } finally { busy = false } } }, enabled = title.isNotBlank() && !busy, modifier = Modifier.fillMaxWidth()) { Text(stringResource(if (busy) R.string.creating else R.string.create)) }
         }
     }
 }
@@ -93,7 +102,7 @@ fun JoinScreen(model: ZoenViewModel, initial: String, navigate: (NavKey) -> Unit
         Column(Modifier.padding(padding).imePadding().verticalScroll(rememberScrollState()).padding(24.dp), verticalArrangement = Arrangement.spacedBy(20.dp)) {
             OutlinedTextField(code, { code = it; preview = null }, Modifier.fillMaxWidth(), label = { Text(stringResource(R.string.invite_code)) })
             preview?.let { info -> Card { Column(Modifier.fillMaxWidth().padding(20.dp)) { Text(info.title, style = MaterialTheme.typography.titleLarge); info.inviter?.let { Text(it.name) } } } }
-            GlassButton(onClick = {
+            Button(onClick = {
                 loading = true
                 model.launch {
                     try {

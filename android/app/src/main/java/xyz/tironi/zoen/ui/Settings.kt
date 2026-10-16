@@ -88,7 +88,7 @@ enum class SettingsPage(val title: Int, val icon: ImageVector, val keywords: Str
 /** Tokens: neutral cards, 48dp back/close circles, control outlines ≥ 3:1 on the card. */
 private object SettingsTone {
     @Composable fun darkMode() = when (AppAppearance.mode) { "dark" -> true; "light" -> false; else -> isSystemInDarkTheme() }
-    @Composable fun card() = if (darkMode()) Color(0xFF151A24) else Color(0xFFF3F4F7)
+    @Composable fun card() = MaterialTheme.colorScheme.surfaceContainerLow
     @Composable fun edge() = MaterialTheme.colorScheme.outlineVariant
     /** Measured: light #646D80 on the card #F3F4F7 = 4.9:1 (5.4:1 on white); dark #6B7790 on #151A24 = 3.9:1. */
     @Composable fun outline() = if (darkMode()) Color(0xFF6B7790) else Color(0xFF646D80)
@@ -153,10 +153,10 @@ private fun CircleButton(icon: ImageVector, description: String, tag: String, on
     val interactions = remember { MutableInteractionSource() }
     val pressed by interactions.collectIsPressedAsState()
     val scale by animateFloatAsState(if (pressed) 0.96f else 1f, tween(150), label = "press")
-    Box(
-        Modifier.size(48.dp).scale(scale).clip(CircleShape).background(SettingsTone.card()).border(0.5.dp, SettingsTone.edge(), CircleShape)
-            .clickable(interactions, settingsRipple(), role = Role.Button, onClickLabel = description, onClick = onClick).testTag(tag),
-        contentAlignment = Alignment.Center,
+    FilledTonalIconButton(
+        onClick = onClick,
+        modifier = Modifier.size(48.dp).scale(scale).testTag(tag),
+        interactionSource = interactions,
     ) { Icon(icon, description, Modifier.size(20.dp)) }
 }
 
@@ -219,11 +219,7 @@ private fun RadioRow(title: String, selected: Boolean, subtitle: String? = null,
             Text(title, style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Medium, color = MaterialTheme.colorScheme.onSurface.copy(alpha = alpha))
             subtitle?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
         }
-        val dot by animateFloatAsState(if (selected) 1f else 0f, spring(Spring.DampingRatioNoBouncy, Spring.StiffnessMedium), label = "dot")
-        val ring = if (selected) MaterialTheme.colorScheme.onSurface else SettingsTone.outline()
-        Box(Modifier.size(20.dp).border(1.5.dp, ring, CircleShape), contentAlignment = Alignment.Center) {
-            Box(Modifier.size(10.dp).scale(0.25f + 0.75f * dot).clip(CircleShape).background(MaterialTheme.colorScheme.onSurface.copy(alpha = dot * alpha)))
-        }
+        RadioButton(selected = selected, onClick = null, enabled = enabled)
     }
 }
 
@@ -232,7 +228,7 @@ private fun PrimaryButton(text: String, enabled: Boolean = true, busy: Boolean =
     val interactions = remember { MutableInteractionSource() }
     val pressed by interactions.collectIsPressedAsState()
     val scale by animateFloatAsState(if (pressed && enabled) 0.96f else 1f, tween(150), label = "press")
-    GlassButton(
+    Button(
         onClick, Modifier.fillMaxWidth().height(50.dp).scale(scale).then(tag?.let { Modifier.testTag(it) } ?: Modifier), enabled = enabled && !busy,
         interactionSource = interactions,
         colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.onSurface, contentColor = MaterialTheme.colorScheme.surface),

@@ -4,7 +4,6 @@ import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.clickable
-import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
@@ -12,7 +11,6 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.*
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
-import androidx.compose.foundation.clickable
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -28,9 +26,6 @@ import androidx.navigation3.runtime.NavKey
 import java.text.DateFormat
 import java.util.Date
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import xyz.tironi.zoen.ui.ink.ZoenGlyph
-import androidx.compose.ui.semantics.semantics
-import androidx.compose.ui.semantics.stateDescription
 import xyz.tironi.zoen.R
 import xyz.tironi.zoen.ZoenViewModel
 import xyz.tironi.zoen.core.*
@@ -52,8 +47,12 @@ private fun HomeBar(title: String, state: AppState, navigate: (NavKey) -> Unit, 
             Text("zoen", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.ExtraBold)
         } else Text(title, maxLines = 1, overflow = TextOverflow.Ellipsis)
     }, actions = {
-        if (onStore != null) InkIconButton(ZoenGlyph.Store, stringResource(R.string.miniapp_store), { haptics.perform(ZoenFeedback.Open); onStore() })
-        InkIconButton(ZoenGlyph.Search, stringResource(R.string.search), { haptics.perform(ZoenFeedback.Tap); if (onSearch != null) onSearch() else navigate(Search) })
+        if (onStore != null) IconButton(onClick = { haptics.perform(ZoenFeedback.Open); onStore() }) {
+            Icon(Icons.Rounded.Storefront, stringResource(R.string.miniapp_store))
+        }
+        IconButton(onClick = { haptics.perform(ZoenFeedback.Tap); if (onSearch != null) onSearch() else navigate(Search) }) {
+            Icon(Icons.Rounded.Search, stringResource(R.string.search))
+        }
         IconButton(onClick = { navigate(Context) }, modifier = Modifier.testTag("open-context")) { Avatar(state.me, size = 34) }
     }, colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.background))
 }
@@ -71,7 +70,9 @@ fun ConversationsScreen(model: ZoenViewModel, state: AppState, navigate: (NavKey
     fun prefs(chat: SpaceSummary, pinned: Boolean = chat.pinned, archived: Boolean = chat.archived, mutedUntil: Long? = chat.mutedUntilMs) =
         model.launch { model.repository.change { it.setChatPrefs(chat.id, pinned, archived, mutedUntil) } }
     var showArchived by rememberSaveable { mutableStateOf(false) }
-    androidx.activity.compose.BackHandler(showArchived) { showArchived = false }
+    androidx.activity.compose.BackHandler(showArchived || searching) {
+        if (searching) { searching = false; query = "" } else showArchived = false
+    }
     val haptics = rememberZoenHaptics()
     val working by model.working.collectAsStateWithLifecycle()
     val archivedChats = state.spaces.filter { it.id in archived }
@@ -79,7 +80,7 @@ fun ConversationsScreen(model: ZoenViewModel, state: AppState, navigate: (NavKey
         .sortedByDescending { it.lastAtMs }
         .sortedByDescending { it.pinned }
     val list: @Composable () -> Unit = {
-        Scaffold(topBar = { HomeBar(stringResource(R.string.app_name), state, navigate, onStore = { store = true }, onSearch = { searching = !searching }) }, containerColor = MaterialTheme.colorScheme.background, contentWindowInsets = WindowInsets(0, 0, 0, 0)) { padding ->
+        Scaffold(topBar = { HomeBar(stringResource(R.string.app_name), state, navigate, onStore = { store = true }, onSearch = { searching = !searching; if (!searching) query = "" }) }, containerColor = MaterialTheme.colorScheme.background, contentWindowInsets = WindowInsets(0, 0, 0, 0)) { padding ->
             // Bottom: clear the floating tab bar so the last chat is never under it.
             LazyColumn(Modifier.fillMaxSize().padding(padding).testTag("conversation-list"), contentPadding = PaddingValues(bottom = 112.dp)) {
                 if (showArchived) item {
@@ -123,8 +124,13 @@ fun ConversationsScreen(model: ZoenViewModel, state: AppState, navigate: (NavKey
                     )
                 }
                 if (chats.isEmpty()) item {
-                    EmptyState(stringResource(if (filter != ChatInboxFilter.All) R.string.chat_filter_empty else R.string.chat_empty_title), if (filter != ChatInboxFilter.All) "" else stringResource(R.string.chat_empty_detail)) {
-                        GlassButton(onClick = { navigate(NewChat) }) { Text(stringResource(R.string.new_chat)) }
+                    when {
+                        query.isNotBlank() -> EmptyState("Nenhuma conversa encontrada", "Tente outro nome ou mensagem.")
+                        showArchived -> EmptyState("Nenhuma conversa arquivada", "")
+                        filter != ChatInboxFilter.All -> EmptyState(stringResource(R.string.chat_filter_empty), "")
+                        else -> EmptyState(stringResource(R.string.chat_empty_title), stringResource(R.string.chat_empty_detail)) {
+                            Button(onClick = { navigate(NewChat) }) { Text(stringResource(R.string.new_chat)) }
+                        }
                     }
                 }
             }
@@ -231,7 +237,7 @@ private fun ActivityList(model: ZoenViewModel, state: AppState, navigate: (NavKe
                 1 -> {
                     if (mentions.isEmpty()) item { EmptyState(stringResource(R.string.activity_no_mentions), "") }
                     items(mentions, key = { it.entry.id }) { mention ->
-                        GlassCard(onClick = { navigate(Chat(mention.spaceId, mention.entry.id)) }) {
+                        Card(onClick = { navigate(Chat(mention.spaceId, mention.entry.id)) }) {
                             ListItem(leadingContent = { Avatar(mention.entry.author, size = 40) }, headlineContent = { Text(stringResource(R.string.activity_mentioned, mention.entry.author.name)) }, supportingContent = {
                                 Column { Text((mention.entry.kind as? EntryKind.Message)?.text.orEmpty(), maxLines = 3, overflow = TextOverflow.Ellipsis); Text(mention.spaceTitle, style = MaterialTheme.typography.labelMedium) }
                             })
@@ -240,11 +246,11 @@ private fun ActivityList(model: ZoenViewModel, state: AppState, navigate: (NavKe
                 }
                 2 -> {
                     if (tasks.isEmpty()) item { EmptyState(stringResource(R.string.activity_no_tasks), "") }
-                    items(tasks, key = { it.id }) { task -> GlassCard(onClick = { navigate(Item(task.id)) }) { ListItem(headlineContent = { Text(task.title) }, supportingContent = { Text(task.spaceTitle) }, leadingContent = { Icon(Icons.Rounded.Checklist, null) }) } }
+                    items(tasks, key = { it.id }) { task -> Card(onClick = { navigate(Item(task.id)) }) { ListItem(headlineContent = { Text(task.title) }, supportingContent = { Text(task.spaceTitle) }, leadingContent = { Icon(Icons.Rounded.Checklist, null) }) } }
                 }
                 else -> {
             items(state.agents.filter { it.nearLimit }, key = { "budget:${it.persona.id}" }) { agent ->
-                GlassCard(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.tertiaryContainer)) {
+                Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.tertiaryContainer)) {
                     Column(Modifier.fillMaxWidth().padding(16.dp)) {
                         Text(stringResource(R.string.activity_near_cap, agent.persona.name), style = MaterialTheme.typography.titleMedium)
                         Text(formatMoney(agent.budgetSpentCents ?: 0, model.repository.locale) + " / " + formatMoney(agent.budgetLimitCents ?: 0, model.repository.locale))
@@ -255,7 +261,7 @@ private fun ActivityList(model: ZoenViewModel, state: AppState, navigate: (NavKe
             item { Text(stringResource(R.string.pending), style = MaterialTheme.typography.headlineMedium) }
             val approvable = pending.filter { it.status == RequestStatus.PENDING }
             if (approvable.size > 1) item {
-                GlassOutlinedButton(onClick = { review = approvable.toList() }, enabled = !busy) { Text(stringResource(R.string.approve_all)) }
+                OutlinedButton(onClick = { review = approvable.toList() }, enabled = !busy) { Text(stringResource(R.string.approve_all)) }
             }
             if (pending.isEmpty()) item { EmptyState(stringResource(R.string.all_clear), stringResource(R.string.all_clear_detail)) }
             items(pending, key = { it.id }) { request -> RequestCard(request, { navigate(Request(request.id)) }) }
@@ -294,7 +300,7 @@ private fun ActivityList(model: ZoenViewModel, state: AppState, navigate: (NavKe
 
 @Composable
 fun RequestCard(request: AgentRequestDto, onClick: () -> Unit) {
-    GlassCard(onClick = onClick, colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow)) {
+    Card(onClick = onClick, colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow)) {
         Column(Modifier.fillMaxWidth().padding(20.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 Avatar(request.agent, size = 38)
