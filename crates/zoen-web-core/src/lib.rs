@@ -1,7 +1,11 @@
 //! Browser boundary. Device signing keys belong to nonexportable WebCrypto, never Rust.
 
 mod client;
+mod files;
 mod link;
+mod living_mutations;
+mod living_space;
+mod pages;
 mod wire;
 
 pub use client::{Client, Update};
@@ -52,6 +56,7 @@ mod browser {
     #[wasm_bindgen]
     pub struct BrowserCore {
         client: super::Client<BrowserSigner>,
+        living_space_enabled: bool,
     }
 
     #[wasm_bindgen]
@@ -64,7 +69,131 @@ mod browser {
             };
             Ok(Self {
                 client: super::Client::new(account, signer, snapshot).map_err(error)?,
+                living_space_enabled: false,
             })
+        }
+        pub fn set_living_space_enabled(&mut self, enabled: bool) {
+            self.living_space_enabled = enabled;
+        }
+        pub fn living_space_command(
+            &self,
+            space: &str,
+            command_json: &str,
+        ) -> Result<String, JsValue> {
+            if !self.living_space_enabled {
+                return Err(error("Living Space experiment is disabled"));
+            }
+            let command: serde_json::Value = serde_json::from_str(command_json).map_err(error)?;
+            if command["action"] != "home" {
+                return Err(error("Living Space browser mutations are not implemented"));
+            }
+            serde_json::to_string(&self.client.living_space_home(space).map_err(error)?)
+                .map_err(error)
+        }
+        pub fn living_space_mutate(
+            &mut self,
+            space: &str,
+            command_json: &str,
+            now_ms: f64,
+            edit_id: &str,
+        ) -> Result<String, JsValue> {
+            if !self.living_space_enabled {
+                return Err(error("Living Space experiment is disabled"));
+            }
+            serde_json::to_string(
+                &self
+                    .client
+                    .living_space_mutate(space, command_json, time(now_ms)?, edit_id)
+                    .map_err(error)?,
+            )
+            .map_err(error)
+        }
+        pub fn file_manifest(&self, item: &str) -> Result<String, JsValue> {
+            serde_json::to_string(&self.client.file_manifest(item).map_err(error)?).map_err(error)
+        }
+        pub fn file_open(&self, item: &str, packed: &[u8]) -> Result<Vec<u8>, JsValue> {
+            self.client.file_open(item, packed).map_err(error)
+        }
+        pub fn file_upload_headers(&self, blob: &str, now_ms: f64) -> Result<String, JsValue> {
+            serde_json::to_string(
+                &self
+                    .client
+                    .file_upload_headers(blob, time(now_ms)?)
+                    .map_err(error)?,
+            )
+            .map_err(error)
+        }
+        pub fn file_prepare(
+            &self,
+            space: &str,
+            name: &str,
+            mime: &str,
+            bytes: &[u8],
+            now_ms: f64,
+        ) -> Result<String, JsValue> {
+            serde_json::to_string(
+                &self
+                    .client
+                    .file_prepare(space, name, mime, bytes, time(now_ms)?)
+                    .map_err(error)?,
+            )
+            .map_err(error)
+        }
+        pub fn file_commit(
+            &mut self,
+            space: &str,
+            plan_json: &str,
+            now_ms: f64,
+            edit_id: &str,
+        ) -> Result<String, JsValue> {
+            serde_json::to_string(
+                &self
+                    .client
+                    .file_commit(space, plan_json, time(now_ms)?, edit_id)
+                    .map_err(error)?,
+            )
+            .map_err(error)
+        }
+        pub fn page_create(
+            &mut self,
+            space: &str,
+            title: &str,
+            now_ms: f64,
+            edit_id: &str,
+        ) -> Result<String, JsValue> {
+            serde_json::to_string(
+                &self
+                    .client
+                    .page_create(space, title, time(now_ms)?, edit_id)
+                    .map_err(error)?,
+            )
+            .map_err(error)
+        }
+        pub fn page_download_manifest(&self, item: &str) -> Result<String, JsValue> {
+            serde_json::to_string(&self.client.page_download_manifest(item).map_err(error)?)
+                .map_err(error)
+        }
+        pub fn page_blob_supply(
+            &mut self,
+            item: &str,
+            blob: &str,
+            sealed: &[u8],
+        ) -> Result<(), JsValue> {
+            self.client
+                .page_blob_supply(item, blob, sealed)
+                .map_err(error)
+        }
+        pub fn page(&self, item: &str) -> Result<String, JsValue> {
+            serde_json::to_string(&self.client.page(item).map_err(error)?).map_err(error)
+        }
+        pub fn page_apply(&mut self, request_json: &str, now_ms: f64) -> Result<String, JsValue> {
+            serde_json::to_string(
+                &self
+                    .client
+                    .page_apply(request_json, time(now_ms)?)
+                    .map_err(error)?,
+            )
+            .map_err(error)
         }
         pub fn bootstrap(&mut self) -> Result<String, JsValue> {
             serde_json::to_string(&self.client.bootstrap().map_err(error)?).map_err(error)

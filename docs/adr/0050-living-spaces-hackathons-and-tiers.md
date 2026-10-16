@@ -29,7 +29,12 @@ metadata log. Partition creation is not proof of production capacity.
 Only the community owner and administrators may publish announcements. The core
 checks the authenticated author on local writes and event replay; disabling a
 button is insufficient. Pinned content and home configuration synchronize as
-signed encrypted data. Membership requests arrive in Notifications, where an
+signed data under the parent's existing privacy policy. ADR 0027 explicitly keeps
+`Community` parents `Closed` and relay-readable; this experiment does not silently
+upgrade them or claim that the entire home is end-to-end encrypted. Root pages,
+announcements and event/entitlement metadata retain that boundary. Conversation,
+team and restricted-tier partitions are real end-to-end MLS groups. Membership
+requests arrive in Notifications, where an
 administrator approves or declines. Approval changes actual group membership and
 must not report success before the underlying operation succeeds.
 
@@ -164,6 +169,11 @@ not scans of the whole community on each message. No billion-user readiness clai
 is established by this experiment or its local screenshots.
 
 ## Consequences
+
+Community-wide end-to-end announcements and shared pages across all cohorts,
+without a large parent MLS group, require a separate encrypted fanout/key-delivery
+design. The current bounded conversations are independent cohorts, not a global
+cross-partition transcript. Neither capability is established by this experiment.
 
 The product gains a coherent shared home and event workflow while retaining
 end-to-end encryption and a billing-independent access model. The cost is real

@@ -16,6 +16,19 @@ use crate::LinkedAccount;
 
 const PACKAGES_REQUEST: u64 = 0x8000_0001;
 const PROFILES_REQUEST: u64 = 0x8000_0002;
+const LIVING_MEMBERSHIP_REQUEST: u64 = 0x8000_0003;
+#[derive(Serialize, Deserialize, Clone)]
+struct LivingAdmission {
+    request_id: u64,
+    space: String,
+    identity: String,
+    operation_id: String,
+    now_ms: i64,
+    role: Role,
+    failure: Option<String>,
+    parent: Option<(String, bool)>,
+    followup: Option<(String, EventBody)>,
+}
 
 #[derive(Serialize, Deserialize, Clone)]
 struct PendingEnvelope {
@@ -47,9 +60,23 @@ struct Packages {
     last_resort: Option<Vec<u8>>,
 }
 
-#[derive(Serialize, Deserialize, Default)]
+#[derive(Serialize, Deserialize, Default, Clone)]
 struct SavedClient {
     version: u32,
+    #[serde(default)]
+    living_admission: Option<LivingAdmission>,
+    #[serde(default)]
+    living_request_counter: u64,
+    #[serde(default)]
+    living_admission_queue: Vec<LivingAdmission>,
+    #[serde(default)]
+    living_deferred: Vec<(String, String, EventBody, i64)>,
+    #[serde(default)]
+    living_ensure_roots: BTreeMap<String, i64>,
+    #[serde(default)]
+    living_failure: Option<String>,
+    #[serde(default)]
+    page_edits: BTreeMap<String, String>,
     storage: Vec<(Vec<u8>, Vec<u8>)>,
     logs: BTreeMap<String, Vec<Event>>,
     outbox: BTreeMap<String, PendingEnvelope>,
@@ -144,6 +171,7 @@ pub struct Update {
 /// The same OpenMLS crypto, log verification and binary protocol used by native clients.
 /// Its host encrypts and durably writes each Update before sending any of its frames.
 pub struct Client<S> {
+    page_blobs: BTreeMap<String, Vec<u8>>,
     account: LinkedAccount,
     signer: S,
     provider: OpenMlsRustCrypto,
@@ -197,6 +225,7 @@ impl<S: Signer> Client<S> {
             .write()
             .map_err(|_| "MLS storage lock failed")? = saved.storage.iter().cloned().collect();
         let client = Self {
+            page_blobs: BTreeMap::new(),
             account,
             signer,
             provider,
@@ -223,12 +252,7 @@ impl<S: Signer> Client<S> {
 
     fn roster(&self, space: &str) -> BTreeMap<String, Role> {
         let mut roster = BTreeMap::new();
-        for event in self
-            .logs
-            .get(space)
-            .into_iter()
-            .flat_map(|log| log.events())
-        {
+        for event in self.living_events(space).unwrap_or_default() {
             match &event.body {
                 EventBody::SpaceCreated { .. } => {
                     roster.insert(event.author.clone(), Role::Owner);
@@ -251,7 +275,7 @@ impl<S: Signer> Client<S> {
 
     fn metadata(&self, space: &str) -> Option<(String, SpaceKind, Privacy)> {
         let mut metadata = None;
-        for event in self.logs.get(space)?.events() {
+        for event in self.living_events(space).ok()? {
             match &event.body {
                 EventBody::SpaceCreated {
                     title,
@@ -733,6 +757,41 @@ impl<S: Signer> Client<S> {
             {
                 self.prepare_packages(!self.saved.packages_published)?
             }
+            ServerFrame::Res { id, result }
+                if self
+                    .saved
+                    .living_admission
+                    .as_ref()
+                    .is_some_and(|a| a.request_id == id) =>
+            {
+                let admission = self
+                    .saved
+                    .living_admission
+                    .clone()
+                    .ok_or("Unexpected membership reply")?;
+                let outcome = match result {
+                    Ok(Reply::KeyPackages(records)) => self.living_transaction(|client| {
+                        client.living_finish_admission(&admission, records)
+                    }),
+                    Ok(_) => Err("Invalid membership key package reply".into()),
+                    Err(e) => Err(format!("Membership key package claim failed: {e}")),
+                };
+                match outcome {
+                    Ok(()) => {
+                        self.saved.living_admission =
+                            if self.saved.living_admission_queue.is_empty() {
+                                None
+                            } else {
+                                Some(self.saved.living_admission_queue.remove(0))
+                            }
+                    }
+                    Err(error) => {
+                        if let Some(a) = self.saved.living_admission.as_mut() {
+                            a.failure = Some(error);
+                        }
+                    }
+                }
+            }
             ServerFrame::Res {
                 id: PACKAGES_REQUEST,
                 result: Ok(Reply::Done),
@@ -948,6 +1007,46 @@ impl<S: Signer> Client<S> {
     }
 
     pub fn update(&mut self, mut frames: Vec<Vec<u8>>) -> Result<Update, String> {
+        let deferred = self.saved.living_deferred.clone();
+        for (wait, space, body, now_ms) in deferred {
+            if self.ready_epoch(&wait).is_ok() {
+                if let Err(error) = self.living_queue_application(&space, body.clone(), now_ms) {
+                    self.saved.living_failure = Some(error);
+                }
+                if let Some(index) = self
+                    .saved
+                    .living_deferred
+                    .iter()
+                    .position(|t| t == &(wait.clone(), space.clone(), body.clone(), now_ms))
+                {
+                    self.saved.living_deferred.remove(index);
+                }
+            }
+        }
+        if self.synced && !self.living_has_pending() {
+            for (root, now_ms) in self.saved.living_ensure_roots.clone() {
+                self.living_conversation_ensure(&root, now_ms)?;
+            }
+        }
+        if self.synced {
+            if let Some(a) = &self.saved.living_admission {
+                if a.failure.is_none()
+                    && self.ready_epoch(&a.space).is_ok()
+                    && self.sent.insert(format!("claim:{}", a.operation_id))
+                {
+                    frames.push(
+                        ClientFrame::Req {
+                            id: a.request_id,
+                            op: Op::ClaimKeyPackages {
+                                ids: vec![a.identity.clone()],
+                                operation_id: Some(a.operation_id.clone()),
+                            },
+                        }
+                        .encode(),
+                    );
+                }
+            }
+        }
         let reseal = self
             .saved
             .outbox
@@ -1027,11 +1126,608 @@ impl<S: Signer> Client<S> {
         })
     }
 
+    pub(crate) fn page_blob_get(&self, blob: &str) -> Option<&[u8]> {
+        self.page_blobs.get(blob).map(Vec::as_slice)
+    }
+    pub(crate) fn page_blob_put(&mut self, blob: String, bytes: Vec<u8>) {
+        self.page_blobs.insert(blob, bytes);
+    }
+    pub(crate) fn page_pending(&self, item: &str) -> bool {
+        self.saved.outbox.values().any(|pending| pending.failure.is_none() && pending.inner.as_ref().is_some_and(|e| matches!(&e.body,
+            EventBody::ItemCreated { item: id, .. } | EventBody::ItemVersioned { item: id, .. } if id == item)))
+    }
+
+    pub(crate) fn page_events(&self) -> Vec<&Event> {
+        self.logs
+            .values()
+            .flat_map(|log| log.events())
+            .chain(self.saved.outbox.values().filter_map(|p| p.inner.as_ref()))
+            .collect()
+    }
+    pub(crate) fn page_role(&self, space: &str) -> Option<Role> {
+        self.roster(space).get(&self.account.identity).copied()
+    }
+    pub(crate) fn living_roots(&self) -> Vec<String> {
+        self.logs
+            .keys()
+            .filter(|root| {
+                self.metadata(root)
+                    .is_some_and(|(_, kind, _)| kind == SpaceKind::Community)
+            })
+            .cloned()
+            .collect()
+    }
+    pub(crate) fn queue_page_body(
+        &mut self,
+        space: &str,
+        body: EventBody,
+        now_ms: i64,
+        edit_id: &str,
+        digest: &str,
+    ) -> Result<Update, String> {
+        if let Some(prior) = self.saved.page_edits.get(edit_id) {
+            if prior != digest {
+                return Err("Edit ID reused with different contents".into());
+            }
+            return self.update(vec![]);
+        }
+        if !self.synced
+            || !self.living_tier_allows(space)
+            || !matches!(
+                self.page_role(space),
+                Some(Role::Owner | Role::Admin | Role::Member)
+            )
+        {
+            return Err("Page write permission required".into());
+        }
+        let mut pending = self.clear_event(space, body, now_ms)?;
+        let event = pending
+            .envelope()?
+            .plain_event()
+            .ok_or("Invalid page event")?;
+        if self
+            .metadata(space)
+            .is_some_and(|(_, _, p)| p == Privacy::EndToEnd)
+        {
+            let epoch = self.ready_epoch(space)?;
+            pending = self.seal_inner(&event, epoch)?;
+        } else {
+            pending.inner = Some(event.clone());
+        }
+        self.saved.outbox.insert(event.client_id.clone(), pending);
+        self.saved.page_edits.insert(edit_id.into(), digest.into());
+        self.update(vec![])
+    }
+
+    pub(crate) fn living_transaction<T>(
+        &mut self,
+        apply: impl FnOnce(&mut Self) -> Result<T, String>,
+    ) -> Result<T, String> {
+        let saved = self.saved.clone();
+        let sent = self.sent.clone();
+        let storage = self
+            .provider
+            .storage()
+            .values
+            .read()
+            .map_err(|_| "MLS storage lock failed")?
+            .clone();
+        let result = apply(self);
+        if result.is_err() {
+            self.saved = saved;
+            self.sent = sent;
+            *self
+                .provider
+                .storage()
+                .values
+                .write()
+                .map_err(|_| "MLS storage lock failed")? = storage;
+        }
+        result
+    }
+    pub(crate) fn living_queue_application(
+        &mut self,
+        space: &str,
+        body: EventBody,
+        now_ms: i64,
+    ) -> Result<(), String> {
+        if matches!(&body,EventBody::MessagePosted{text,..} if text.starts_with("zoen-living-space-meta-v1:")||text.starts_with("\u{001e}zoen.space.tiers:"))
+            && !matches!(self.page_role(space), Some(Role::Owner | Role::Admin))
+        {
+            return Err("Living Space administrators only".into());
+        }
+        if !self.living_tier_allows(space)
+            || !matches!(
+                self.page_role(space),
+                Some(Role::Owner | Role::Admin | Role::Member)
+            )
+        {
+            return Err("Write permission required".into());
+        }
+        let mut pending = self.clear_event(space, body, now_ms)?;
+        let event = pending
+            .envelope()?
+            .plain_event()
+            .ok_or("Invalid application event")?;
+        if self
+            .metadata(space)
+            .is_some_and(|(_, _, p)| p == Privacy::EndToEnd)
+        {
+            pending = self.seal_inner(&event, self.ready_epoch(space)?)?;
+        } else {
+            pending.inner = Some(event.clone());
+        }
+        self.saved.outbox.insert(event.client_id, pending);
+        Ok(())
+    }
+    pub(crate) fn living_track_conversations(&mut self, space: &str, now_ms: i64) {
+        self.saved.living_ensure_roots.insert(space.into(), now_ms);
+    }
+    pub(crate) fn living_has_pending(&self) -> bool {
+        self.saved.living_admission.is_some() || !self.saved.living_deferred.is_empty()
+    }
+    pub(crate) fn living_mutation_status(&self) -> serde_json::Value {
+        self.saved.living_admission.as_ref().map(|a|serde_json::json!({"pending":a.failure.is_none(),"failure":a.failure,"space":a.space,"identity_id":a.identity})).unwrap_or_else(||if let Some(failure)=&self.saved.living_failure{serde_json::json!({"pending":false,"failure":failure})}else if self.saved.living_deferred.is_empty(){serde_json::Value::Null}else{serde_json::json!({"pending":true,"operation":"mls_confirmation"})})
+    }
+    pub(crate) fn living_admit_batch(
+        &mut self,
+        members: Vec<(String, String, Role)>,
+        now_ms: i64,
+        parent: &str,
+        followup: Option<(String, EventBody)>,
+    ) -> Result<(), String> {
+        if self.saved.living_admission.is_some() || !self.saved.living_deferred.is_empty() {
+            return Err("Another MLS admission is pending".into());
+        }
+        let mut tasks = vec![];
+        for (space, identity, role) in members {
+            if !matches!(self.page_role(&space), Some(Role::Owner | Role::Admin)) {
+                return Err("Group administrators only".into());
+            }
+            if self.roster(&space).contains_key(&identity) {
+                continue;
+            }
+            let request_id =
+                LIVING_MEMBERSHIP_REQUEST.saturating_add(self.saved.living_request_counter);
+            self.saved.living_request_counter = self.saved.living_request_counter.saturating_add(1);
+            tasks.push(LivingAdmission {
+                request_id,
+                space,
+                identity,
+                role,
+                operation_id: roda_types::new_id("claim"),
+                now_ms,
+                failure: None,
+                parent: Some((parent.into(), true)),
+                followup: None,
+            });
+        }
+        if let Some(last) = tasks.last_mut() {
+            last.followup = followup;
+        } else if let Some((space, body)) = followup {
+            self.living_queue_application(&space, body, now_ms)?;
+        }
+        if !tasks.is_empty() {
+            self.saved.living_admission = Some(tasks.remove(0));
+            self.saved.living_admission_queue = tasks;
+        }
+        Ok(())
+    }
+    pub(crate) fn living_admit(
+        &mut self,
+        space: &str,
+        identity: &str,
+        now_ms: i64,
+        followup: Option<(String, EventBody)>,
+    ) -> Result<(), String> {
+        self.ready_epoch(space)?;
+        if !matches!(self.page_role(space), Some(Role::Owner | Role::Admin)) {
+            return Err("Group administrators only".into());
+        }
+        if self.roster(space).contains_key(identity) {
+            return Ok(());
+        }
+        if self.saved.living_admission.is_some() {
+            return Err("Another MLS admission is pending".into());
+        }
+        let parent=followup.as_ref().filter(|(_,body)|matches!(body,EventBody::MessagePosted{text,..} if text.starts_with("zoen-living-space-hackathon-v1:"))).map(|(root,_)|(root.clone(),false));
+        let request_id =
+            LIVING_MEMBERSHIP_REQUEST.saturating_add(self.saved.living_request_counter);
+        self.saved.living_request_counter = self.saved.living_request_counter.saturating_add(1);
+        self.saved.living_admission = Some(LivingAdmission {
+            request_id,
+            space: space.into(),
+            identity: identity.into(),
+            operation_id: roda_types::new_id("claim"),
+            now_ms,
+            role: Role::Member,
+            failure: None,
+            parent,
+            followup,
+        });
+        Ok(())
+    }
+    fn living_finish_admission(
+        &mut self,
+        a: &LivingAdmission,
+        records: Vec<roda_proto::KeyPackageRecord>,
+    ) -> Result<(), String> {
+        if let Some((root, admin)) = &a.parent {
+            let members = self.roster(root);
+            if !members.contains_key(&a.identity)
+                || !members.get(self.living_identity()).is_some_and(|r| {
+                    if *admin {
+                        matches!(r, Role::Owner | Role::Admin)
+                    } else {
+                        true
+                    }
+                })
+            {
+                return Err("Parent membership or administration was revoked".into());
+            }
+        }
+        if !self.living_tier_allows(&a.space) {
+            return Err("Parent access denied".into());
+        }
+        self.ready_epoch(&a.space)?;
+        if !matches!(self.page_role(&a.space), Some(Role::Owner | Role::Admin)) {
+            return Err("Group administrators only".into());
+        }
+        if records.is_empty() {
+            return Err("Member has no published MLS device keys".into());
+        }
+        let mut packages = vec![];
+        let mut devices = BTreeSet::new();
+        for record in records {
+            let leaf = roda_mls::key_package_leaf(&record.data).map_err(|e| e.to_string())?;
+            if leaf.identity != a.identity
+                || record.identity != a.identity
+                || leaf.device != record.device
+                || !devices.insert(leaf.device)
+            {
+                return Err("Invalid membership key package identity".into());
+            }
+            packages.push(record.data);
+        }
+        let commit = self
+            .device()?
+            .commit(&a.space, &packages, &BTreeSet::new())
+            .map_err(|e| e.to_string())?;
+        self.living_queue_clear(
+            &a.space,
+            EventBody::MemberAdded {
+                identity: a.identity.clone(),
+                role: a.role,
+            },
+            a.now_ms,
+        )?;
+        self.living_queue_handshake(&a.space, SealedKind::Commit, commit.commit, a.now_ms)?;
+        if let Some(welcome) = commit.welcome {
+            self.living_queue_handshake(&a.space, SealedKind::Welcome, welcome, a.now_ms)?;
+        }
+        if let Some((root, body)) = &a.followup {
+            self.saved.living_deferred.push((
+                a.space.clone(),
+                root.clone(),
+                body.clone(),
+                a.now_ms,
+            ));
+        }
+        Ok(())
+    }
+    fn living_queue_clear(
+        &mut self,
+        space: &str,
+        body: EventBody,
+        now_ms: i64,
+    ) -> Result<(), String> {
+        let mut pending = self.clear_event(space, body, now_ms)?;
+        let event = pending
+            .envelope()?
+            .plain_event()
+            .ok_or("Invalid membership event")?;
+        pending.inner = None;
+        self.saved.outbox.insert(event.client_id, pending);
+        Ok(())
+    }
+    fn living_queue_handshake(
+        &mut self,
+        space: &str,
+        kind: SealedKind,
+        data: Vec<u8>,
+        now_ms: i64,
+    ) -> Result<(), String> {
+        let id = roda_types::new_ulid(now_ms);
+        let content = SignedContent {
+            v: roda_log::content::SEALED_CONTENT_VERSION,
+            space: space.into(),
+            client_id: id.clone(),
+            author: self.account.identity.clone(),
+            device: Some(self.account.device.clone()),
+            at_ms: now_ms,
+            seen: self.head(space).as_ref().map(Into::into),
+            payload: Some(Payload::Sealed(Sealed::new(kind, SUITE_ID, data))),
+        }
+        .encode();
+        let pending = self.sign_content(content, true)?;
+        self.saved.outbox.insert(id, pending);
+        Ok(())
+    }
+    pub(crate) fn living_remove(
+        &mut self,
+        space: &str,
+        identity: &str,
+        now_ms: i64,
+    ) -> Result<(), String> {
+        self.ready_epoch(space)?;
+        if !matches!(self.page_role(space), Some(Role::Owner | Role::Admin)) {
+            return Err("Group administrators only".into());
+        }
+        if !self.roster(space).contains_key(identity) {
+            return Ok(());
+        }
+        if self.roster(space).get(identity) == Some(&Role::Owner) {
+            return Err("Cannot remove group owner".into());
+        }
+        let commit = self
+            .device()?
+            .commit(space, &[], &BTreeSet::from([identity.into()]))
+            .map_err(|e| e.to_string())?;
+        self.living_queue_clear(
+            space,
+            EventBody::MemberRemoved {
+                identity: identity.into(),
+            },
+            now_ms,
+        )?;
+        self.living_queue_handshake(space, SealedKind::Commit, commit.commit, now_ms)
+    }
+
+    pub(crate) fn living_mark_edit(&mut self, id: &str, digest: &str) {
+        self.saved.page_edits.insert(id.into(), digest.into());
+    }
+    pub(crate) fn living_edit_seen(&self, id: &str, digest: &str) -> Result<bool, String> {
+        if !self.synced {
+            return Err("Catching up with the conversation".into());
+        }
+        match self.saved.page_edits.get(id) {
+            Some(prior) if prior != digest => Err("Edit ID reused with different contents".into()),
+            Some(_) => match self
+                .saved
+                .living_admission
+                .as_ref()
+                .and_then(|a| a.failure.as_ref())
+            {
+                Some(error) => Err(error.clone()),
+                None => Ok(true),
+            },
+            None => Ok(false),
+        }
+    }
+
+    /// Create a real local MLS group and queue its signed genesis. The host must
+    /// persist the returned update before publishing its frames.
+    pub(crate) fn living_spaces(&self) -> Vec<String> {
+        let mut spaces: BTreeSet<_> = self.logs.keys().cloned().collect();
+        for pending in self.saved.outbox.values().filter(|p| p.failure.is_none()) {
+            if let Ok(env) = pending.envelope() {
+                spaces.insert(env.space().into());
+            }
+        }
+        spaces.into_iter().collect()
+    }
+    pub(crate) fn living_metadata(&self, space: &str) -> Option<(String, SpaceKind, Privacy)> {
+        self.metadata(space)
+    }
+    pub(crate) fn living_direct_with(&self, who: &str) -> Option<String> {
+        self.living_spaces().into_iter().find(|id| {
+            self.metadata(id).is_some_and(|(_, kind, privacy)| {
+                kind == SpaceKind::Direct && privacy == Privacy::EndToEnd
+            }) && self.roster(id).len() == 2
+                && self.roster(id).contains_key(who)
+                && self.roster(id).contains_key(self.living_identity())
+        })
+    }
+    pub(crate) fn living_direct_send(
+        &mut self,
+        who: &str,
+        text: &str,
+        now_ms: i64,
+    ) -> Result<bool, String> {
+        if who == self.living_identity() {
+            return Err("Cannot send request to yourself".into());
+        }
+        let existing = self.living_direct_with(who);
+        let body = EventBody::MessagePosted {
+            message: roda_types::new_id("msg"),
+            text: text.into(),
+            attaches: None,
+            reply: None,
+            forwarded: false,
+        };
+        if let Some(dm) = existing {
+            self.living_queue_application(&dm, body, now_ms)?;
+            return Ok(false);
+        }
+        let dm = self.living_create_kind("Direct", SpaceKind::Direct, now_ms)?;
+        self.living_admit(&dm, who, now_ms, Some((dm.clone(), body)))?;
+        Ok(true)
+    }
+    pub(crate) fn living_add_parent_member(
+        &mut self,
+        space: &str,
+        who: &str,
+        now_ms: i64,
+    ) -> Result<(), String> {
+        if !matches!(self.page_role(space), Some(Role::Owner | Role::Admin)) {
+            return Err("Community administrators only".into());
+        }
+        if self
+            .metadata(space)
+            .is_some_and(|(_, _, p)| p == Privacy::EndToEnd)
+        {
+            return Err("Parent MLS admission required".into());
+        }
+        self.living_queue_clear(
+            space,
+            EventBody::MemberAdded {
+                identity: who.into(),
+                role: Role::Member,
+            },
+            now_ms,
+        )
+    }
+    pub(crate) fn living_create_group(
+        &mut self,
+        title: &str,
+        now_ms: i64,
+    ) -> Result<String, String> {
+        self.living_create_kind(title, SpaceKind::Group, now_ms)
+    }
+    fn living_create_kind(
+        &mut self,
+        title: &str,
+        kind: SpaceKind,
+        now_ms: i64,
+    ) -> Result<String, String> {
+        if !self.synced || title.trim().is_empty() {
+            return Err("A synced session and group title are required".into());
+        }
+        let space = roda_types::new_id("sp");
+        self.device()?
+            .create_group(&space)
+            .map_err(|e| e.to_string())?;
+        let mut pending = self.clear_event(
+            &space,
+            EventBody::SpaceCreated {
+                title: title.trim().into(),
+                kind,
+                privacy: Privacy::EndToEnd,
+            },
+            now_ms,
+        )?;
+        let event = pending.envelope()?.plain_event().ok_or("Invalid genesis")?;
+        pending.inner = None;
+        self.saved.outbox.insert(event.client_id, pending);
+        Ok(space)
+    }
+
+    pub(crate) fn living_events(&self, space: &str) -> Result<Vec<Event>, String> {
+        let mut events = self
+            .logs
+            .get(space)
+            .map(|log| log.events().to_vec())
+            .unwrap_or_default();
+        let confirmed: BTreeSet<_> = events.iter().map(|e| e.client_id.clone()).collect();
+        events.extend(
+            self.saved
+                .outbox
+                .values()
+                .filter(|p| p.failure.is_none())
+                .filter_map(|p| p.inner.clone().or_else(|| p.envelope().ok()?.plain_event()))
+                .filter(|e| e.space == space && !confirmed.contains(&e.client_id)),
+        );
+        if events.is_empty() {
+            return Err("Space log unavailable".into());
+        }
+        Ok(events)
+    }
+
+    pub(crate) fn file_relay(&self) -> &str {
+        &self.account.relay
+    }
+    pub(crate) fn file_blob_headers(
+        &self,
+        blob: &str,
+        now: i64,
+    ) -> Result<serde_json::Value, String> {
+        let sig = self
+            .signer
+            .sign(&roda_proto::blob_put_message(
+                blob,
+                now,
+                &self.account.relay,
+            ))
+            .map_err(|e| format!("{e:?}"))?;
+        Ok(
+            serde_json::json!({"x-zoen-device":self.account.device,"x-zoen-ts":now.to_string(),"x-zoen-sig":hex::encode(sig)}),
+        )
+    }
+    pub(crate) fn living_member_names(&self, ids: &[String]) -> Vec<serde_json::Value> {
+        ids.iter()
+            .map(|id| {
+                let name = if id == &self.account.identity {
+                    self.account.name.clone()
+                } else {
+                    self.saved
+                        .profiles
+                        .get(id)
+                        .map(|p| {
+                            if !p.name.is_empty() {
+                                p.name.clone()
+                            } else if !p.handle.is_empty() {
+                                format!("@{}", p.handle)
+                            } else {
+                                id.chars().take(12).collect()
+                            }
+                        })
+                        .unwrap_or_else(|| id.chars().take(12).collect())
+                };
+                serde_json::json!({"identity_id":id,"name":name})
+            })
+            .collect()
+    }
+    pub(crate) fn living_members(&self, space: &str) -> BTreeMap<String, Role> {
+        self.roster(space)
+    }
+
+    pub(crate) fn living_identity(&self) -> &str {
+        &self.account.identity
+    }
+    pub(crate) fn living_child_views(
+        &self,
+        model: &roda_types::living_space::LivingSpace,
+    ) -> Vec<serde_json::Value> {
+        self.living_spaces()
+            .into_iter()
+            .filter(|id| model.is_child(id) && self.page_role(id).is_some())
+            .filter_map(|id| {
+                self.metadata(&id)
+                    .map(|(title, _, _)| serde_json::json!({"id":id,"title":title}))
+            })
+            .collect()
+    }
+    fn living_internal_group(&self, child: &str) -> bool {
+        self.logs
+            .keys()
+            .filter(|root| {
+                self.metadata(root)
+                    .is_some_and(|(_, k, _)| k == SpaceKind::Community)
+            })
+            .filter_map(|root| self.living_space_home(root).ok())
+            .any(|h| {
+                h["conversations"]
+                    .as_array()
+                    .is_some_and(|a| a.iter().any(|c| c["id"] == child))
+                    || h["hackathon"]["teams"]
+                        .as_array()
+                        .is_some_and(|a| a.iter().any(|t| t["space"] == child))
+                    || h["tiers"].as_array().is_some_and(|a| {
+                        a.iter().any(|t| {
+                            t["space"] == child
+                                || t["groups"]
+                                    .as_array()
+                                    .is_some_and(|g| g.iter().any(|g| g == child))
+                        })
+                    })
+            })
+    }
+
     pub fn conversations(&self) -> Vec<ConversationView> {
         self.logs.keys().filter_map(|space| {
             let (title, kind, _) = self.metadata(space)?;
             let roster = self.roster(space);
-            if kind == SpaceKind::Personal || !roster.contains_key(&self.account.identity) { return None; }
+            if kind == SpaceKind::Personal || !self.living_tier_allows(space) || self.living_internal_group(space) || !roster.contains_key(&self.account.identity) { return None; }
             let events = self.logs.get(space)?.events();
             let me = &self.account.identity;
             // A direct chat is named after the other person, like every messenger.
@@ -1142,6 +1838,13 @@ impl<S: Signer> Client<S> {
         else {
             return None;
         };
+        if text.starts_with("zoen-living-space-meta-v1:")
+            || text.starts_with("zoen-living-space-hackathon-v1:")
+            || text.starts_with("\u{001e}zoen.space.tiers:")
+            || text.starts_with("\u{001e}zoen.space.tier-claim:")
+        {
+            return None;
+        }
         let name = if event.author == self.account.identity {
             self.account.name.clone()
         } else {

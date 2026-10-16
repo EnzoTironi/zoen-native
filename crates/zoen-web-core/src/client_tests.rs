@@ -305,6 +305,360 @@ fn invitation_queues_a_certified_self_add_with_the_original_code_and_no_plain_me
         .is_err());
 }
 
+#[test]
+fn browser_live_page_edits_survive_snapshot_and_merge_stale_editor() {
+    use base64::{engine::general_purpose::STANDARD, Engine as _};
+    use serde_json::{json, Value};
+    let identity = NativeSigner::from_secret(&[71; 32]);
+    let host = HostSigner(NativeSigner::from_secret(&[72; 32]));
+    let author = Author::device(&identity, host.0.clone());
+    let account = account(&identity, &host.0);
+    let mut client = Client::new(account.clone(), host.clone(), "").unwrap();
+    let mut log = SpaceLog::new("sp_browser_page");
+    clear(
+        &mut log,
+        &author,
+        EventBody::SpaceCreated {
+            title: "Pages".into(),
+            kind: SpaceKind::Community,
+            privacy: Privacy::Closed,
+        },
+        1,
+    );
+    let page = roda_docs::Page::from_markdown("# Home\n\nFirst\n\nSecond\n").unwrap();
+    clear(
+        &mut log,
+        &author,
+        EventBody::ItemCreated {
+            item: "page_test".into(),
+            kind: roda_types::ItemKind::Page,
+            content: roda_types::ItemContent::Page(roda_types::PageContent {
+                title: "Home".into(),
+                path: String::new(),
+                loro: STANDARD.encode(page.snapshot()),
+                blob: None,
+                manifest: None,
+            }),
+            origin: "Test".into(),
+        },
+        2,
+    );
+    client.logs.insert(log.space().into(), log.clone());
+    client.synced = true;
+    let read = client.page("page_test").unwrap();
+    let original = read["blocks"].as_array().unwrap().clone();
+    let request = |id: &str, index: usize, text: &str| {
+        let mut blocks = original.clone();
+        blocks[index]["text"] = json!(text);
+        json!({"item_id":"page_test","edit_id":id,"edit_context":read["edit_context"],"base_blocks":original,"blocks":blocks,"order":blocks.iter().map(|b|b["id"].clone()).collect::<Vec<_>>(),"changed":[blocks[index].clone()]}).to_string()
+    };
+    let first = request("browser-edit-one", 1, "First edited");
+    let one = client.page_apply(&first, 3).unwrap();
+    assert!(one
+        .frames
+        .iter()
+        .any(|bytes| matches!(ClientFrame::decode(bytes), Ok(ClientFrame::Publish { .. }))));
+    let two = client
+        .page_apply(&request("browser-edit-two", 2, "Second edited"), 4)
+        .unwrap();
+    let merged = client.page("page_test").unwrap();
+    assert_eq!(merged["blocks"][1]["text"], "First edited");
+    assert_eq!(merged["blocks"][2]["text"], "Second edited");
+    let mut restored = Client::new(account, host, &two.snapshot).unwrap();
+    restored.synced = true;
+    assert_eq!(
+        restored.page("page_test").unwrap()["blocks"],
+        merged["blocks"]
+    );
+    let pending_before = restored.saved.outbox.len();
+    restored.page_apply(&first, 5).unwrap();
+    assert_eq!(
+        restored.saved.outbox.len(),
+        pending_before,
+        "same edit ID is idempotent"
+    );
+    let mut wrong: Value = serde_json::from_str(&first).unwrap();
+    wrong["changed"][0]["text"] = json!("collision");
+    assert!(restored.page_apply(&wrong.to_string(), 6).is_err());
+}
+
+#[test]
+fn browser_live_page_two_devices_converge_from_signed_relay_frames() {
+    use base64::{engine::general_purpose::STANDARD, Engine as _};
+    use serde_json::json;
+    let identity = NativeSigner::from_secret(&[74; 32]);
+    let host_a = HostSigner(NativeSigner::from_secret(&[75; 32]));
+    let host_b = HostSigner(NativeSigner::from_secret(&[76; 32]));
+    let author = Author::device(&identity, host_a.0.clone());
+    let mut a = Client::new(account(&identity, &host_a.0), host_a, "").unwrap();
+    let mut b = Client::new(account(&identity, &host_b.0), host_b, "").unwrap();
+    let mut relay = SpaceLog::new("sp_page_converge");
+    clear(
+        &mut relay,
+        &author,
+        EventBody::SpaceCreated {
+            title: "Pages".into(),
+            kind: SpaceKind::Community,
+            privacy: Privacy::Closed,
+        },
+        1,
+    );
+    let page = roda_docs::Page::from_markdown("# Home\n\nFirst\n\nSecond\n").unwrap();
+    clear(
+        &mut relay,
+        &author,
+        EventBody::ItemCreated {
+            item: "page_converge".into(),
+            kind: roda_types::ItemKind::Page,
+            content: roda_types::ItemContent::Page(roda_types::PageContent {
+                title: "Home".into(),
+                path: String::new(),
+                loro: STANDARD.encode(page.snapshot()),
+                blob: None,
+                manifest: None,
+            }),
+            origin: "Test".into(),
+        },
+        2,
+    );
+    a.logs.insert(relay.space().into(), relay.clone());
+    b.logs.insert(relay.space().into(), relay.clone());
+    a.synced = true;
+    b.synced = true;
+    let read = a.page("page_converge").unwrap();
+    let original = read["blocks"].as_array().unwrap().clone();
+    let request = |id: &str, index: usize, text: &str| {
+        let mut blocks = original.clone();
+        blocks[index]["text"] = json!(text);
+        json!({"item_id":"page_converge","edit_id":id,"edit_context":read["edit_context"],"base_blocks":original,"blocks":blocks,"order":blocks.iter().map(|b|b["id"].clone()).collect::<Vec<_>>(),"changed":[blocks[index].clone()]}).to_string()
+    };
+    let from_a = a.page_apply(&request("device-a", 1, "From A"), 3).unwrap();
+    let from_b = b.page_apply(&request("device-b", 2, "From B"), 4).unwrap();
+    for bytes in from_a.frames.into_iter().chain(from_b.frames) {
+        if let Ok(ClientFrame::Publish { env }) = ClientFrame::decode(&bytes) {
+            let ordered = sequence(&mut relay, env);
+            a.receive(&ordered, 5).unwrap();
+            b.receive(&ordered, 5).unwrap();
+        }
+    }
+    let final_a = a.page("page_converge").unwrap();
+    let final_b = b.page("page_converge").unwrap();
+    assert_eq!(final_a["blocks"], final_b["blocks"]);
+    assert_eq!(final_a["blocks"][1]["text"], "From A");
+    assert_eq!(final_a["blocks"][2]["text"], "From B");
+    assert_eq!(final_a["content_hash"], final_b["content_hash"]);
+}
+
+#[test]
+fn browser_file_upload_plan_signs_blobs_and_commits_into_actual_mls_child() {
+    use base64::{engine::general_purpose::STANDARD, Engine as _};
+    use serde_json::json;
+    let identity = NativeSigner::from_secret(&[91; 32]);
+    let host = HostSigner(NativeSigner::from_secret(&[92; 32]));
+    let author = Author::device(&identity, host.0.clone());
+    let mut client = Client::new(account(&identity, &host.0), host.clone(), "").unwrap();
+    let mut root = SpaceLog::new("sp_browser_files");
+    clear(
+        &mut root,
+        &author,
+        EventBody::SpaceCreated {
+            title: "Files".into(),
+            kind: SpaceKind::Community,
+            privacy: Privacy::Closed,
+        },
+        1,
+    );
+    client.logs.insert(root.space().into(), root.clone());
+    client.synced = true;
+    let mutation = client
+        .living_space_mutate(
+            root.space(),
+            &json!({"action":"create_child","title":"Files"}).to_string(),
+            2,
+            "file-child",
+        )
+        .unwrap();
+    let child = mutation.result["space"].as_str().unwrap().to_string();
+    let plain = b"Shared encrypted file bytes";
+    let plan = client
+        .file_prepare(&child, "notes.txt", "text/plain", plain, 3)
+        .unwrap();
+    let mut packed = vec![];
+    for upload in plan["uploads"].as_array().unwrap() {
+        let blob = upload["blob"].as_str().unwrap();
+        let headers = &upload["headers"];
+        assert!(roda_log::verify_sig(
+            &host.0.id(),
+            &roda_proto::blob_put_message(blob, 3, &client.account.relay),
+            headers["x-zoen-sig"].as_str().unwrap()
+        ));
+        packed.extend(
+            STANDARD
+                .decode(upload["body_base64"].as_str().unwrap())
+                .unwrap(),
+        );
+    }
+    let update = client
+        .file_commit(&child, &plan.to_string(), 4, "file-commit")
+        .unwrap();
+    assert!(!update.frames.is_empty());
+    let item = plan["item"].as_str().unwrap();
+    assert_eq!(client.file_manifest(item).unwrap()["bytes"], plain.len());
+    assert_eq!(client.file_open(item, &packed).unwrap(), plain);
+    let mut corrupted = packed.clone();
+    corrupted[24] ^= 1;
+    assert!(client.file_open(item, &corrupted).is_err());
+    let before = client.saved.outbox.len();
+    client
+        .file_commit(&child, &plan.to_string(), 5, "file-commit")
+        .unwrap();
+    assert_eq!(before, client.saved.outbox.len());
+}
+
+#[test]
+fn browser_page_create_is_encrypted_idempotent_and_survives_snapshot_reload() {
+    use serde_json::json;
+    let identity = NativeSigner::from_secret(&[101; 32]);
+    let host = HostSigner(NativeSigner::from_secret(&[102; 32]));
+    let author = Author::device(&identity, host.0.clone());
+    let mut client = Client::new(account(&identity, &host.0), host.clone(), "").unwrap();
+    let mut root = SpaceLog::new("sp_browser_page_creation");
+    clear(
+        &mut root,
+        &author,
+        EventBody::SpaceCreated {
+            title: "Community".into(),
+            kind: SpaceKind::Community,
+            privacy: Privacy::Closed,
+        },
+        1,
+    );
+    client.logs.insert(root.space().into(), root.clone());
+    client.synced = true;
+    let child = client
+        .living_space_mutate(
+            root.space(),
+            &json!({"action":"create_child","title":"Private work"}).to_string(),
+            2,
+            "page-child",
+        )
+        .unwrap()
+        .result["space"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+    let created = client
+        .page_create(&child, "Private plan", 3, "new-page")
+        .unwrap();
+    let item = created.result["item_id"].as_str().unwrap();
+    assert_eq!(created.result["title"], "Private plan");
+    assert_eq!(created.result["can_edit"], true);
+    assert_eq!(created.result["pending_sync"], true);
+    assert!(!created.update.frames.is_empty());
+    let count = client.saved.outbox.len();
+    let retry = client
+        .page_create(&child, "Private plan", 4, "new-page")
+        .unwrap();
+    assert_eq!(retry.result["item_id"], item);
+    assert_eq!(client.saved.outbox.len(), count);
+    assert!(client
+        .page_create(&child, "Different content", 4, "new-page")
+        .is_err());
+    assert!(client.page_create(&child, "Private plan", 4, "").is_err());
+    let restored =
+        Client::new(account(&identity, &host.0), host, &created.update.snapshot).unwrap();
+    assert_eq!(restored.page(item).unwrap()["title"], "Private plan");
+    assert_eq!(
+        restored.page(item).unwrap()["content_hash"],
+        created.result["content_hash"]
+    );
+}
+
+#[test]
+fn browser_live_page_downloads_authenticated_blob_before_editing() {
+    use base64::{engine::general_purpose::STANDARD, Engine as _};
+    use chacha20poly1305::{
+        aead::{Aead, KeyInit},
+        XChaCha20Poly1305, XNonce,
+    };
+    use sha2::{Digest, Sha256};
+    let identity = NativeSigner::from_secret(&[93; 32]);
+    let host = HostSigner(NativeSigner::from_secret(&[94; 32]));
+    let author = Author::device(&identity, host.0.clone());
+    let mut client = Client::new(account(&identity, &host.0), host, "").unwrap();
+    let mut root = SpaceLog::new("sp_blob_page");
+    clear(
+        &mut root,
+        &author,
+        EventBody::SpaceCreated {
+            title: "Pages".into(),
+            kind: SpaceKind::Community,
+            privacy: Privacy::Closed,
+        },
+        1,
+    );
+    let page = roda_docs::Page::from_markdown("# Blob-backed home\n\nActual shared Loro blocks\n")
+        .unwrap();
+    let plain = page.snapshot();
+    let key = [7u8; 32];
+    let nonce = [8u8; 24];
+    let cipher = XChaCha20Poly1305::new_from_slice(&key).unwrap();
+    let mut sealed = nonce.to_vec();
+    sealed.extend(
+        cipher
+            .encrypt(&XNonce::from(nonce), plain.as_slice())
+            .unwrap(),
+    );
+    let blob = hex::encode(Sha256::digest(&sealed));
+    let reference = roda_types::ChunkRef {
+        sha256: hex::encode(Sha256::digest(&plain)),
+        bytes: plain.len() as u64,
+        blob: blob.clone(),
+        key: hex::encode(key),
+    };
+    clear(
+        &mut root,
+        &author,
+        EventBody::ItemCreated {
+            item: "page_blob_test".into(),
+            kind: roda_types::ItemKind::Page,
+            content: roda_types::ItemContent::Page(roda_types::PageContent {
+                title: "Blob-backed home".into(),
+                path: String::new(),
+                loro: String::new(),
+                blob: Some(reference),
+                manifest: None,
+            }),
+            origin: "Test".into(),
+        },
+        2,
+    );
+    client.logs.insert(root.space().into(), root);
+    client.synced = true;
+    assert!(client.page("page_blob_test").is_err());
+    assert_eq!(
+        client.page_download_manifest("page_blob_test").unwrap()["ready"],
+        false
+    );
+    let mut corrupted = sealed.clone();
+    corrupted[25] ^= 1;
+    assert!(client
+        .page_blob_supply("page_blob_test", &blob, &corrupted)
+        .is_err());
+    client
+        .page_blob_supply("page_blob_test", &blob, &sealed)
+        .unwrap();
+    assert_eq!(
+        client.page_download_manifest("page_blob_test").unwrap()["ready"],
+        true
+    );
+    assert_eq!(
+        client.page("page_blob_test").unwrap()["blocks"][1]["text"],
+        "Actual shared Loro blocks"
+    );
+    assert!(STANDARD.encode(&sealed).len() > plain.len());
+}
+
 fn web_fixture() -> (Client<HostSigner>, Author, Author, SpaceLog, String) {
     let identity = NativeSigner::from_secret(&[41; 32]);
     let host = HostSigner(NativeSigner::from_secret(&[42; 32]));
