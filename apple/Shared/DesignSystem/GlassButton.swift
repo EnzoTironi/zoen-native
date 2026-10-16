@@ -47,10 +47,10 @@ private struct GlassButtonBody: View {
             .zoenGlass(prominent: prominent, tint: tint, pressed: pressed)
             .contentShape(.capsule)
             // Wabi: scale(.975) and rotate3d(1,0,0,25deg) while held; better-ui press is 0.96.
-            .scaleEffect(pressed && !reduceMotion ? 0.96 : 1)
+            .scaleEffect(x: pressed && !reduceMotion ? 1.02 : 1, y: pressed && !reduceMotion ? 0.94 : 1)   // squash, Wabi's wobble
             .rotation3DEffect(.degrees(pressed && !reduceMotion ? 10 : 0), axis: (1, 0, 0), perspective: 0.5)
             .opacity(isEnabled ? 1 : (pressed ? 0.8 : 0.45))
-            .animation(reduceMotion ? .easeOut(duration: 0.15) : .spring(duration: 0.35, bounce: 0.4), value: pressed)
+            .animation(reduceMotion ? .easeOut(duration: 0.15) : .spring(duration: 0.5, bounce: 0.55), value: pressed)       // 3-4 wobbles, settles in ~.5s
             .animation(.easeOut(duration: 0.15), value: isEnabled)
             .sensoryFeedback(.impact(weight: .light, intensity: 0.6), trigger: pressed) { _, now in now }
     }

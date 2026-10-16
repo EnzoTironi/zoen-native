@@ -66,7 +66,7 @@ fun GlassButton(
 
     val held = pressed && enabled
     val press by animateFloatAsState(if (held) 1f else 0f,
-        if (reduce) tween(150) else spring(dampingRatio = 0.6f, stiffness = Spring.StiffnessMediumLow), label = "glass-press")
+        if (reduce) tween(150) else spring(dampingRatio = 0.3f, stiffness = Spring.StiffnessMedium), label = "glass-press")
     val tint = colors?.containerColor?.takeIf { prominent || it != Color.Transparent } ?: MaterialTheme.colorScheme.primary
     val ink = when {
         colors != null && prominent -> colors.contentColor
@@ -78,8 +78,9 @@ fun GlassButton(
     Box(
         modifier
             .graphicsLayer {
-                val s = if (reduce) 1f else 1f - 0.04f * press             // better-ui: 0.96
-                scaleX = s; scaleY = s
+                // Wabi's wobble: squash on press, a bouncy spring back
+                scaleX = if (reduce) 1f else 1f + 0.02f * press
+                scaleY = if (reduce) 1f else 1f - 0.06f * press
                 rotationX = if (reduce) 0f else 10f * press                 // Wabi: rotate3d(1,0,0,25deg)
                 cameraDistance = 8 * density
                 alpha = if (enabled) 1f else 0.45f

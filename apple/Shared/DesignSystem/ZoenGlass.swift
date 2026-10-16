@@ -5,8 +5,8 @@ import SwiftUI
 ///
 /// Two layers: the lens underneath bends whatever is behind it, strongest at the curved
 /// edge (Liquid Glass for controls; a material for cards, which stay cheap in scrolling
-/// lists), and ZoenGlass.metal on top paints the volume: the shoulder's absorption, the
-/// top lip's inner shadow, the specular arc, the caustic pool and the Fresnel rim.
+/// lists), and ZoenGlass.metal on top paints the volume: the shoulder's hemisphere
+/// shading, specular, rim and inner shadow measured from Wabi's lens (VIDEO-ANALYSIS.md).
 struct ZoenGlass: ViewModifier {
     var radius: CGFloat
     var prominent = false
@@ -16,6 +16,8 @@ struct ZoenGlass: ViewModifier {
     var lens = true
     /// How much volume to paint: 1 for controls, less for big content surfaces.
     var strength: CGFloat = 1
+    /// Wabi's two lens states: 0 clear (sharp specular, thin film) … 1 frosted. Press clears it.
+    var frost: CGFloat = 0.35
     @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
     @Environment(\.colorScheme) private var scheme
 
@@ -34,7 +36,7 @@ struct ZoenGlass: ViewModifier {
                             .opacity(prominent ? 0.88 : 1)
                     }
                     GlassVolume(radius: radius, rimAngle: pressed ? -125 : -75, shine: pressed ? 0.25 : 0,
-                                press: pressed ? 1 : 0, prominent: prominent, strength: strength)
+                                press: pressed ? 1 : 0, prominent: prominent, strength: strength, frost: frost)
                 }
                 // the marble's contact shadow and its long soft drop, tinted by the glass
                 .shadow(color: .black.opacity(pressed ? 0.16 : 0.10), radius: pressed ? 1 : 2, y: pressed ? 1 : 3)
@@ -50,13 +52,13 @@ struct ZoenGlass: ViewModifier {
 extension View {
     /// The marble material in any rounded shape (Capsule = radius ≥ half the height).
     func zoenGlass(radius: CGFloat = 999, prominent: Bool = false, tint: Color? = nil, pressed: Bool = false,
-                   lens: Bool = true, strength: CGFloat = 1) -> some View {
-        modifier(ZoenGlass(radius: radius, prominent: prominent, tint: tint, pressed: pressed, lens: lens, strength: strength))
+                   lens: Bool = true, strength: CGFloat = 1, frost: CGFloat = 0.35) -> some View {
+        modifier(ZoenGlass(radius: radius, prominent: prominent, tint: tint, pressed: pressed, lens: lens, strength: strength, frost: frost))
     }
 
     /// Cards (items, widgets, sheets' cards): padded content on the marble.
     func glassCard(radius: CGFloat = 22, padding: CGFloat = 16) -> some View {
-        self.padding(padding).zoenGlass(radius: radius, lens: false, strength: 0.7)
+        self.padding(padding).zoenGlass(radius: radius, lens: false, strength: 0.7, frost: 0.8)
     }
 }
 
@@ -68,6 +70,7 @@ private struct GlassVolume: View, Animatable {
     var press: Double
     var prominent: Bool
     var strength: CGFloat
+    var frost: CGFloat
 
     var animatableData: AnimatablePair<AnimatablePair<Double, Double>, Double> {
         get { .init(.init(rimAngle, shine), press) }
@@ -80,7 +83,8 @@ private struct GlassVolume: View, Animatable {
                 .fill(.white)
                 .colorEffect(ShaderLibrary.zoenGlass(.float2(geo.size), .float(min(radius, geo.size.height / 2)),
                                                      .float(rimAngle), .float(shine), .float(press),
-                                                     .float(prominent ? 1 : 0), .float(strength)))
+                                                     .float(prominent ? 1 : 0), .float(strength),
+                                                     .float(frost * (1 - press))))
         }
         .allowsHitTesting(false)
         .accessibilityHidden(true)
