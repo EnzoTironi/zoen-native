@@ -114,3 +114,26 @@ jobs:
             android/app/build/outputs/androidTest-results/
             android/app/build/outputs/device-evidence/**/pages/rich-formatting-*
             android/app/build/outputs/device-evidence/rich-page-stress/
+      - name: Summarize failed native tests
+        if: failure()
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import xml.etree.ElementTree as ET
+          failures = []
+          for path in sorted(Path('android/app/build/outputs/androidTest-results').rglob('*.xml')):
+              try:
+                  root = ET.parse(path).getroot()
+              except (ET.ParseError, OSError):
+                  continue
+              for case in root.iter('testcase'):
+                  for error in list(case.findall('failure')) + list(case.findall('error')):
+                      detail = error.get('message') or (error.text or '').strip().split('\n')[0]
+                      detail = ' '.join(detail.split())[:400]
+                      failures.append(f"{case.get('classname', '')}.{case.get('name', '')}: {detail}")
+          print(f'Native test failures found in XML: {len(failures)}')
+          for failure in failures[:20]:
+              print('TEST_FAILURE: ' + failure)
+          if not failures:
+              print('No failed-test XML available; inspect the failed journey step or test-results artifact.')
+          PY
