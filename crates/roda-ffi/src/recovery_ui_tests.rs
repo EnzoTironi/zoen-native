@@ -156,5 +156,12 @@ async fn recovery_ui_refuses_password_mode_before_spending_a_guess() {
         matches!(result, Err(crate::CoreError::Invalid { reason }) if reason.contains("Esta cópia usa senha"))
     );
     assert!(engine.account().is_none());
-    assert!(server.await.unwrap().len() == 1);
+    let requests = server.await.unwrap();
+    assert_eq!(requests.len(), 1);
+    let start: serde_json::Value = serde_json::from_slice(&requests[0]).unwrap();
+    assert!(
+        start["blinded"].is_null(),
+        "key-only restore must not send a password OPRF point"
+    );
+    assert_eq!(start["recovery_only"], true);
 }

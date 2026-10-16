@@ -784,6 +784,8 @@ fn default_kdf() -> serde_json::Value {
 pub struct StartReq {
     handle: String,
     blinded: Option<String>,
+    #[serde(default)]
+    recovery_only: bool,
 }
 
 #[derive(Serialize)]
@@ -856,6 +858,10 @@ pub async fn restore_start(
     let Some(row) = row else {
         return decoy(&st);
     };
+    // Reject key-only requests before password vault access or guess accounting.
+    if req.recovery_only && row.mode != "recovery_key" {
+        return err(StatusCode::BAD_REQUEST, "backup requires a password");
+    }
     if row.mode != "recovery_key" {
         if let Err(r) = vault(&st) {
             return r;

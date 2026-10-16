@@ -455,8 +455,14 @@ impl RodaEngine {
             .post(format!("{base}/v1/backup/restore/start"))
             .header("content-type", "application/json")
             .body(
-                serde_json::json!({"handle": handle, "blinded": hex::encode(b.blinded)})
-                    .to_string(),
+                serde_json::json!({
+                    "handle": handle,
+                    // No password OPRF point: even older relays reject this without
+                    // spending a password guess when the vault is password-backed.
+                    "blinded": if recovery_only { None } else { Some(hex::encode(b.blinded)) },
+                    "recovery_only": recovery_only,
+                })
+                .to_string(),
             )
             .send()
             .await

@@ -323,6 +323,28 @@ async fn replayed_uploads_use_distinct_objects_and_survive_delayed_cleanup() {
 }
 
 #[tokio::test]
+async fn key_only_restore_never_spends_password_guesses() {
+    let w = world("backup_key_only_no_password_guesses").await;
+    w.init("ana", "Ana");
+    w.zoen("ana", &["backup", "on", "--password", PASSWORD]);
+    let before = w.scalar("SELECT guesses::text FROM backup_vaults").await;
+    // Explicit key-only mode must reject even a valid OPRF point before accounting.
+    let point = "e2f2ae0a6abc4e71a884a961c500515f58e30b6aa582dd8db6a65945e08d2d76";
+    for request in [
+        serde_json::json!({"handle": "ana", "recovery_only": true, "blinded": point}),
+        // The native client omits the point, protecting older relays as well.
+        serde_json::json!({"handle": "ana", "recovery_only": true, "blinded": null}),
+    ] {
+        let (status, _) = restore_post(&w, "/v1/backup/restore/start", request).await;
+        assert_eq!(status, 400);
+        assert_eq!(
+            w.scalar("SELECT guesses::text FROM backup_vaults").await,
+            before
+        );
+    }
+}
+
+#[tokio::test]
 async fn password_restore_metadata_does_not_identify_decoys() {
     use sha2::{Digest, Sha256};
     // Standard compressed Ristretto255 basepoint: also a valid blinded input.
