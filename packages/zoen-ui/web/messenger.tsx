@@ -164,9 +164,11 @@ function Composer({ placeholder, disabled, reply, cancelReply, submit, autoFocus
     {error ? <p className="zm-error" role="alert">{error}</p> : null}
     {sending ? <p className="zm-sending" role="status">{sending}</p> : null}
     {recorder.recording ? <div className="zm-composer zm-recording" role="group" aria-label="Gravando mensagem de voz">
+      <div className="zm-recording-surface">
       <button type="button" className="zm-round" aria-label="Descartar gravação" onClick={recorder.cancel}><Icon name="close" /></button>
       <span className="zm-rec-dot" aria-hidden="true" /><span className="zm-voice-time">{recorder.clock(recorder.seconds)}</span>
       <span className="zm-wave zm-live" aria-hidden="true">{Array.from({ length: 28 }, (_, i) => recorder.recording!.levels[i - 28 + recorder.recording!.levels.length] ?? 0.08).map((p, i) => <i key={i} style={{ height: `${Math.round(p * 100)}%` }} />)}</span>
+      </div>
       <button type="button" className="zm-send glass zm-has" aria-label="Enviar mensagem de voz" onClick={recorder.send}><span className="zm-swap"><Icon name="send" /></span></button>
     </div> : <form className="zm-composer" onSubmit={(e) => { e.preventDefault(); go(); }}>
       {attach ? <><button type="button" className="zm-attach" aria-label="Anexar foto, vídeo ou arquivo" disabled={disabled} onClick={() => picker.current?.click()}><Icon name="plus" /></button>
