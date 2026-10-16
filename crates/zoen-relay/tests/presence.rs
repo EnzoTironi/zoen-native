@@ -357,7 +357,7 @@ async fn privacy_is_enforced_on_disconnect_reconnect_and_sibling_devices() {
         presence(&mut second, &a.identity, true).await,
         (None, Some(true))
     );
-    assert_eq!(presence(&mut peer, &a.identity, true).await, (None, None));
+    assert_eq!(presence(&mut peer, &a.identity, false).await, (None, None));
     first.close(None).await.unwrap();
     // A remaining device keeps the whole account online. Ping is a frame barrier;
     // additionally wait for the closed socket's mailbox to be detached.
@@ -372,11 +372,9 @@ async fn privacy_is_enforced_on_disconnect_reconnect_and_sibling_devices() {
     send(&mut peer, ClientFrame::Ping).await;
     loop {
         match recv(&mut peer).await.unwrap() {
-            ServerFrame::Presence {
-                identity,
-                online: false,
-                ..
-            } if identity == a.identity => panic!("one device disconnected an online account"),
+            ServerFrame::Presence { identity, .. } if identity == a.identity => {
+                panic!("one device republished presence for an online account")
+            }
             ServerFrame::Pong { .. } => break,
             _ => {}
         }
@@ -398,6 +396,8 @@ async fn privacy_is_enforced_on_disconnect_reconnect_and_sibling_devices() {
         presence(&mut first, &a.identity, true).await,
         (None, Some(true))
     );
+    // Reconnecting a hidden account still publishes a redacted offline view.
+    assert_eq!(presence(&mut peer, &a.identity, false).await, (None, None));
     send(
         &mut first,
         ClientFrame::SetPresencePrivacy {
@@ -409,6 +409,7 @@ async fn privacy_is_enforced_on_disconnect_reconnect_and_sibling_devices() {
         presence(&mut first, &a.identity, true).await,
         (None, Some(false))
     );
+    assert_eq!(presence(&mut peer, &a.identity, true).await, (None, None));
     first.close(None).await.unwrap();
     let (timestamp, policy) = presence(&mut peer, &a.identity, false).await;
     assert!(timestamp.is_some());
@@ -439,6 +440,39 @@ async fn privacy_is_enforced_on_disconnect_reconnect_and_sibling_devices() {
         }
     }
     stranger.close(None).await.unwrap();
+    test.close().await;
+}
+
+#[tokio::test]
+async fn large_membership_snapshot_does_not_flood_unknown_presence() {
+    let test = TestRelay::new().await;
+    let a = Author::device(&Signer::generate(), Signer::generate());
+    let mut socket = connect(&test.ws_url, &a).await;
+    request(
+        &mut socket,
+        1,
+        Op::Register {
+            profile: profile(&a, "ana"),
+        },
+    )
+    .await
+    .unwrap();
+    // Imported/seeded membership can contain thousands of identities which have
+    // never connected. They have no presence to restore and must not fill the
+    // bounded mailbox ahead of actual events/Joined frames.
+    let peers: Vec<_> = (1..4_000).map(|i| format!("{i:064x}")).collect();
+    zoen_relay::presence::snapshot(&test.state, &a.identity, &peers)
+        .await
+        .unwrap();
+    send(&mut socket, ClientFrame::Ping).await;
+    loop {
+        match recv(&mut socket).await.expect("snapshot kept socket open") {
+            ServerFrame::Pong { .. } => break,
+            ServerFrame::Presence { identity, .. } => assert_eq!(identity, a.identity),
+            _ => {}
+        }
+    }
+    socket.close(None).await.unwrap();
     test.close().await;
 }
 
@@ -680,7 +714,7 @@ async fn delayed_remote_frames_cannot_leak_timestamps_or_revert_self_policy() {
         presence(&mut first, &a.identity, true).await,
         (None, Some(true))
     );
-    assert_eq!(presence(&mut peer, &a.identity, true).await, (None, None));
+    assert_eq!(presence(&mut peer, &a.identity, false).await, (None, None));
     let current = zoen_relay::presence::get(&test.state.pool, &a.identity)
         .await
         .unwrap();

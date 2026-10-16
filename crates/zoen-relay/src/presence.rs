@@ -200,9 +200,12 @@ pub async fn snapshot(
 ) -> Result<(), sqlx::Error> {
     let mut publication = Publication::acquire(&state.pool, peers).await?;
     let rows = sqlx::query_as::<_, (String, bool, Option<i64>, i64)>(
-        "SELECT wanted.id, COALESCE(p.hide_last_seen, false), p.last_seen_ms, COALESCE(p.revision, 0)
+        // No row means this identity has never established authoritative presence.
+        // Do not fill bounded socket mailboxes with synthetic offline frames for
+        // imported membership (which can contain thousands of unknown identities).
+        "SELECT wanted.id, p.hide_last_seen, p.last_seen_ms, p.revision
          FROM unnest($1::text[]) AS wanted(id)
-         LEFT JOIN presence_preferences p ON p.identity = wanted.id",
+         JOIN presence_preferences p ON p.identity = wanted.id",
     )
     .bind(peers)
     .fetch_all(&mut *publication.connection)

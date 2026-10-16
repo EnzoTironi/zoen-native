@@ -33,8 +33,11 @@ there is no claim that the stored timestamp precisely records an unobserved cras
 After Ready, every registered device receives its own authoritative setting.
 Changes are echoed to all sibling devices, without exposing the setting to peers.
 Clients never replay a stale stored preference on login. Native clients retain
-only an explicit unacknowledged user change for retry. Hiding last seen does not
-hide online status or disable typing/read signals.
+only an explicit unacknowledged user change for retry. Hiding last seen also hides
+online status from other accounts; sibling devices retain the real online state.
+Typing/read signals are unaffected. Snapshots omit identities which have never
+established authoritative presence, rather than enqueueing synthetic offline
+frames for every imported membership.
 
 Typing and status signals are not stored or replayed. Clients keep separate
 per-Space, per-person deadlines; a stop or expiry removes only that sender.
