@@ -557,9 +557,9 @@ impl Session {
                 tokio::time::timeout(Duration::from_secs(2), st.log.co_members(&identity)).await
             {
                 // Always announce this attach. A redundant online announcement is
-                // harmless, and connecting-device journeys rely on the NATS ping to
-                // observe the race against key-package claims. Probing remote
-                // presence here would put NATS back on the login critical path.
+                // harmless. Probing remote presence here would put NATS back on
+                // the login critical path; connecting-device refill races sync on
+                // hub attachment instead of a pre-attach self-ping.
                 st.fanout.send(
                     &co,
                     &ServerFrame::Presence {
