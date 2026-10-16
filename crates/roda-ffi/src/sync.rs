@@ -1007,9 +1007,8 @@ impl Engine {
     /// Your on-device Zoen (local agent, local DM) until the agent runtime takes over.
     fn seed_personal_agent(&mut self, me: &str) -> R<()> {
         let at = crate::engine::now_ms();
-        // Personal state follows the account's certified devices through the relay.
-        // It is signed clear state, not an MLS group (whose roster is identities).
-        self.create_synced_space("Personal", SpaceKind::Personal, Privacy::Closed, &[])?;
+        // Personal preferences use the encrypted Space enrollment contract.
+        self.create_synced_space("Personal", SpaceKind::Personal, Privacy::EndToEnd, &[])?;
         let zoen = self.create_identity(
             Identity {
                 owner_proof: None,
@@ -1069,7 +1068,7 @@ impl Engine {
             })?;
         let result = (|| {
             let space =
-                self.create_synced_space("Personal", SpaceKind::Personal, Privacy::Closed, &[])?;
+                self.create_synced_space("Personal", SpaceKind::Personal, Privacy::EndToEnd, &[])?;
             for event in events {
                 if event.author == me
                     && matches!(
@@ -1077,7 +1076,7 @@ impl Engine {
                         EventBody::ChatPrefsSet { .. } | EventBody::ThreadStateSet { .. }
                     )
                 {
-                    self.append_at(&space, &me, crate::engine::now_ms(), event.body)?;
+                    self.append_at(&space, &me, event.at_ms, event.body)?;
                 }
             }
             self.store

@@ -418,7 +418,7 @@ impl Engine {
                 .state
                 .spaces
                 .get(space)
-                .is_some_and(|s| s.privacy == Privacy::EndToEnd && s.kind != SpaceKind::Personal)
+                .is_some_and(|s| s.privacy == Privacy::EndToEnd)
     }
 
     /// This device as an MLS client over `conn` (the store, or a transaction on it).
@@ -2516,6 +2516,7 @@ mod tests {
         engine
             .create_account("Ana", "ana", "http://relay.test")
             .unwrap();
+        confirm_signup_genesis(&mut engine);
         let author = engine.net.author.clone().unwrap();
         let space = "sp_current_stale_epoch";
         let mut log = SpaceLog::new(space);
@@ -3106,11 +3107,32 @@ mod tests {
     }
     const FORK: &str = "Members see different groups in this chat (the server may have forked it).";
 
+    fn confirm_signup_genesis(engine: &mut Engine) {
+        // Confirm signup before exercising unrelated conversation outbox/recovery work.
+        for queued in engine.store.outbox().unwrap() {
+            let env = Envelope::plain(&queued.event);
+            let seq = engine.next_seq(env.space());
+            let prev = engine
+                .logs
+                .get(env.space())
+                .and_then(|log| log.events().last())
+                .map(|event| event.hash.clone())
+                .unwrap_or_else(|| roda_types::GENESIS_PREV.into());
+            let frame = roda_proto::Sequenced {
+                seq,
+                hash: roda_log::chain_hash(env.space(), seq, &prev, &env.wire_hash()),
+                prev,
+                env,
+            };
+            assert_eq!(engine.ingest(frame), crate::sync::Ingest::Confirmed);
+        }
+    }
     fn member(path: &str) -> (Engine, Author, [u8; 32]) {
         let mut engine = Engine::open(path).unwrap();
         let (_, device_secret, _) = engine
             .create_account("Ana", "ana_u18", "http://relay.test")
             .unwrap();
+        confirm_signup_genesis(&mut engine);
         let author = engine.net.author.clone().unwrap();
         (engine, author, device_secret)
     }

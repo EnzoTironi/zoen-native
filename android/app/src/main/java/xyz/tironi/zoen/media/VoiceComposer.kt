@@ -47,6 +47,7 @@ fun VoiceComposer(
     reply: String? = null,
     thread: Boolean = false,
     threadRoot: String? = reply,
+    alsoInChat: Boolean = false,
     startSignal: Int = 0,
     releaseSignal: Int = 0,
     lockSignal: Int = 0,
@@ -69,6 +70,7 @@ fun VoiceComposer(
     fun stored() { haptics.perform(ZoenFeedback.Send); sent() }
     val active by rememberUpdatedState(onActiveChanged)
     val currentReply by rememberUpdatedState(reply)
+    val currentAlsoInChat by rememberUpdatedState(alsoInChat)
     val density = LocalDensity.current
     val cancelDistance = with(density) { 110.dp.toPx() }
     val lockDistance = with(density) { 80.dp.toPx() }
@@ -90,7 +92,7 @@ fun VoiceComposer(
     val currentBegin by rememberUpdatedState(begin)
     LaunchedEffect(startSignal) { if (startSignal > 0 && recording.phase == RecordingPhase.IDLE && review.clip == null) begin(false) }
     LaunchedEffect(releaseSignal) {
-        if (releaseSignal > 0 && session.recorder.state.value.phase == RecordingPhase.HOLDING) session.release(model.repository, spaceId, currentReply, thread) { stored() }
+        if (releaseSignal > 0 && session.recorder.state.value.phase == RecordingPhase.HOLDING) session.release(model.repository, spaceId, currentReply, thread, currentAlsoInChat) { stored() }
     }
     LaunchedEffect(lockSignal) { if (lockSignal > 0 && session.recorder.state.value.phase == RecordingPhase.HOLDING) { session.recorder.lock(); haptics.perform(ZoenFeedback.RecordLock) } }
     LaunchedEffect(cancelSignal) { if (cancelSignal > 0 && session.recorder.state.value.phase == RecordingPhase.HOLDING) { session.cancel(); haptics.perform(ZoenFeedback.Reject) } }
@@ -111,7 +113,7 @@ fun VoiceComposer(
                 detectVoiceHoldGestures(cancelDistance, lockDistance,
                     onStart = { currentBegin(false) },
                     onRelease = {
-                        if (session.recorder.state.value.phase == RecordingPhase.HOLDING) session.release(model.repository, spaceId, currentReply, thread) { stored() }
+                        if (session.recorder.state.value.phase == RecordingPhase.HOLDING) session.release(model.repository, spaceId, currentReply, thread, currentAlsoInChat) { stored() }
                     }, onLock = {
                         if (session.recorder.state.value.phase == RecordingPhase.HOLDING) { session.recorder.lock(); haptics.perform(ZoenFeedback.RecordLock) }
                     }, onCancel = {
@@ -142,7 +144,7 @@ fun VoiceComposer(
             }
         }
     }
-    if (review.clip != null) VoiceReview(session, model, spaceId, reply, thread) { stored() }
+    if (review.clip != null) VoiceReview(session, model, spaceId, reply, thread, alsoInChat) { stored() }
 }
 
 @Composable

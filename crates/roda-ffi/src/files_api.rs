@@ -130,6 +130,7 @@ impl RodaEngine {
         transcript: String,
         reply_to: Option<String>,
         thread: bool,
+        also_in_chat: bool,
     ) -> Result<TimelineEntry, CoreError> {
         self.lock().send_voice_note(
             &space_id,
@@ -140,6 +141,7 @@ impl RodaEngine {
             &transcript,
             reply_to.as_deref(),
             thread,
+            also_in_chat,
         )
     }
 

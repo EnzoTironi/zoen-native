@@ -1,5 +1,26 @@
 use super::*;
 
+fn confirm_personal_genesis(engine: &mut crate::engine::Engine, personal: &str) {
+    let genesis = engine
+        .outbox_envelopes()
+        .into_iter()
+        .find(|e| e.space() == personal)
+        .unwrap();
+    let seq = 0;
+    let prev = roda_types::GENESIS_PREV.to_string();
+    let hash = roda_log::chain_hash(personal, seq, &prev, &genesis.wire_hash());
+    assert_eq!(
+        engine.ingest(roda_proto::Sequenced {
+            seq,
+            prev,
+            hash,
+            env: genesis
+        }),
+        crate::sync::Ingest::Confirmed
+    );
+    engine.mls_seal_outbox().unwrap();
+}
+
 #[test]
 fn personal_state_is_queued_and_replayed_on_a_linked_identity() {
     let a = RodaEngine::open(":memory:".into(), "en".into()).unwrap();
@@ -9,7 +30,7 @@ fn personal_state_is_queued_and_replayed_on_a_linked_identity() {
         .unwrap();
     let personal = a.personal_space().unwrap();
     assert!(a.net.synced.contains(&personal));
-    assert!(!a.is_e2e(&personal));
+    assert!(a.is_e2e(&personal));
     let me = a.me.clone().unwrap();
     a.append(
         &personal,
@@ -33,17 +54,23 @@ fn personal_state_is_queued_and_replayed_on_a_linked_identity() {
         .filter(|p| p.event.space == personal)
         .collect();
     assert_eq!(pending.len(), 2);
-    let mut log = roda_log::SpaceLog::new(&personal);
+    confirm_personal_genesis(&mut a, &personal);
+    let envelopes = a.outbox_envelopes();
+    let state_envelope = envelopes
+        .iter()
+        .find(|e| e.client_id() == pending[1].event.client_id)
+        .unwrap();
+    assert!(state_envelope.is_sealed());
+    assert!(state_envelope.body().is_none());
+    assert!(!String::from_utf8_lossy(state_envelope.content()).contains("ThreadStateSet"));
+    // Projection replay here uses decrypted logs; wire encryption is asserted above.
+    b.store.set_synced(&personal).unwrap();
+    let mut decrypted_log = roda_log::SpaceLog::new(&personal);
     for p in pending {
-        let event = log.sequence(p.event);
-        let ordered = roda_proto::Sequenced {
-            seq: event.seq,
-            prev: event.prev.clone(),
-            hash: event.hash.clone(),
-            env: roda_proto::Envelope::plain(event),
-        };
-        assert_eq!(b.ingest(ordered), crate::sync::Ingest::Applied);
+        let event = decrypted_log.sequence(p.event);
+        b.store.append_event(event).unwrap();
     }
+    b.reload().unwrap();
     assert_eq!(b.personal_space(), Some(personal.clone()));
     assert!(b.net.synced.contains(&personal));
     assert_eq!(b.store.events(&personal).unwrap().len(), 2);
@@ -102,24 +129,103 @@ fn unlock_migrates_legacy_personal_state_once_without_rewriting_history() {
     let migrated = a.personal_space().unwrap();
     assert_ne!(migrated, "legacy_personal");
     assert!(a.net.synced.contains(&migrated));
+    assert!(a.is_e2e(&migrated));
     let pending = a.store.outbox().unwrap();
     assert_eq!(pending.len(), 2);
-    assert!(matches!(
-        pending[0].event.body,
-        roda_types::EventBody::SpaceCreated { .. }
-    ));
-    assert!(matches!(
-        pending[1].event.body,
-        roda_types::EventBody::ThreadStateSet {
-            read_up_to: 42,
-            follow: Some(false),
-            ..
-        }
-    ));
+    assert!(pending
+        .iter()
+        .any(|p| matches!(p.event.body, roda_types::EventBody::SpaceCreated { .. })));
+    let copied = pending
+        .iter()
+        .find(|p| {
+            matches!(
+                p.event.body,
+                roda_types::EventBody::ThreadStateSet {
+                    read_up_to: 42,
+                    follow: Some(false),
+                    ..
+                }
+            )
+        })
+        .unwrap();
+    assert_eq!(copied.event.at_ms, 2, "migration preserves follow recency");
+    confirm_personal_genesis(&mut a, &migrated);
+    let wire = a.outbox_envelopes();
+    let migrated_state = wire
+        .iter()
+        .find(|env| env.client_id() == copied.event.client_id)
+        .unwrap();
+    assert!(migrated_state.is_sealed());
+    assert!(migrated_state.body().is_none());
     assert_eq!(
         serde_json::to_string(&original).unwrap(),
         serde_json::to_string(&a.store.events("legacy_personal").unwrap()).unwrap()
     );
     a.unlock(Some(secret.to_vec())).unwrap();
-    assert_eq!(a.store.outbox().unwrap().len(), 2);
+    assert_eq!(a.store.outbox().unwrap().len(), 1);
+}
+
+#[test]
+fn personal_thread_merge_is_monotonic_and_uses_newest_follow_in_either_order() {
+    let engine = RodaEngine::open(":memory:".into(), "en".into()).unwrap();
+    let mut e = engine.lock();
+    e.create_account("Alice", "alice", "https://relay.example")
+        .unwrap();
+    let me = e.me.clone().unwrap();
+    for (space, at, follow, read) in [("old", 10, true, 99), ("new", 20, false, 3)] {
+        e.append_at(
+            space,
+            &me,
+            1,
+            roda_types::EventBody::SpaceCreated {
+                title: "Personal".into(),
+                kind: roda_types::SpaceKind::Personal,
+                privacy: roda_types::Privacy::EndToEnd,
+            },
+        )
+        .unwrap();
+        e.append_at(
+            space,
+            &me,
+            at,
+            roda_types::EventBody::ThreadStateSet {
+                space: "chat".into(),
+                root: "root".into(),
+                follow: Some(follow),
+                read_up_to: read,
+            },
+        )
+        .unwrap();
+    }
+    for order in [["old", "new"], ["new", "old"]] {
+        let state = crate::engine::Engine::merge_space_projections(
+            &e.space_projections,
+            &order.map(String::from),
+        );
+        assert_eq!(
+            state.thread_state[&("chat".into(), "root".into())],
+            (Some(false), 99)
+        );
+    }
+    e.append_at(
+        "new",
+        &me,
+        20,
+        roda_types::EventBody::ThreadStateSet {
+            space: "chat".into(),
+            root: "root".into(),
+            follow: Some(true),
+            read_up_to: 0,
+        },
+    )
+    .unwrap();
+    let merged = crate::engine::Engine::merge_space_projections(
+        &e.space_projections,
+        &["new".into(), "old".into()],
+    );
+    assert_eq!(
+        merged.thread_state[&("chat".into(), "root".into())],
+        (Some(true), 99),
+        "later events in one log win even in the same millisecond"
+    );
 }

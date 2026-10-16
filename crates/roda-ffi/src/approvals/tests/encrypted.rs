@@ -40,6 +40,27 @@ fn sealed(e: &Engine, space: &str, event: &Event) -> Envelope {
     )
 }
 
+fn confirm_signup_genesis(engine: &mut Engine) {
+    // Confirm signup before exercising unrelated conversation outbox/recovery work.
+    for queued in engine.store.outbox().unwrap() {
+        let env = Envelope::plain(&queued.event);
+        let seq = engine.next_seq(env.space());
+        let prev = engine
+            .logs
+            .get(env.space())
+            .and_then(|log| log.events().last())
+            .map(|event| event.hash.clone())
+            .unwrap_or_else(|| roda_types::GENESIS_PREV.into());
+        let frame = roda_proto::Sequenced {
+            seq,
+            hash: roda_log::chain_hash(env.space(), seq, &prev, &env.wire_hash()),
+            prev,
+            env,
+        };
+        assert_eq!(engine.ingest(frame), crate::sync::Ingest::Confirmed);
+    }
+}
+
 #[test]
 fn encrypted_conflicts_and_membership_changes_reconcile_before_the_own_approval_echo() {
     for removal in [false, true] {
@@ -50,6 +71,7 @@ fn encrypted_conflicts_and_membership_changes_reconcile_before_the_own_approval_
         let (root, a_secret, _) = a
             .create_account("Owner", "owner", "http://relay.test")
             .unwrap();
+        confirm_signup_genesis(&mut a);
         let root = Signer::from_secret(&root);
         let owner = root.id();
         let agent = a

@@ -248,6 +248,8 @@ pub(crate) struct State {
     pub(crate) chat_prefs: HashMap<SpaceId, roda_types::ChatPrefs>,
     /// My state per thread, (space, root) → (follow override, read up to).
     pub(crate) thread_state: HashMap<(SpaceId, String), (Option<bool>, u64)>,
+    /// Cross-Personal-log last-writer ordering; relay sequences are only per Space.
+    thread_versions: HashMap<(SpaceId, String), (i64, u64, String)>,
 }
 
 impl State {
@@ -442,11 +444,18 @@ impl State {
                     s.kind == SpaceKind::Personal && s.members.iter().any(|(m, _)| *m == e.author)
                 });
                 if mine {
-                    let slot = self
-                        .thread_state
-                        .entry((space.clone(), root.clone()))
-                        .or_insert((None, 0));
-                    *slot = (*follow, slot.1.max(*read_up_to));
+                    let key = (space.clone(), root.clone());
+                    let version = (e.at_ms, e.seq, e.client_id.clone());
+                    let slot = self.thread_state.entry(key.clone()).or_insert((None, 0));
+                    slot.1 = slot.1.max(*read_up_to);
+                    if self
+                        .thread_versions
+                        .get(&key)
+                        .is_none_or(|old| version > *old)
+                    {
+                        slot.0 = *follow;
+                        self.thread_versions.insert(key, version);
+                    }
                 }
             }
             EventBody::ChatPrefsSet { space, prefs } => {
@@ -744,9 +753,20 @@ impl Engine {
                     .iter()
                     .map(|(k, v)| (k.clone(), v.clone())),
             );
-            state
-                .thread_state
-                .extend(scoped.thread_state.iter().map(|(k, v)| (k.clone(), *v)));
+            for (key, (follow, read)) in &scoped.thread_state {
+                let slot = state.thread_state.entry(key.clone()).or_insert((None, 0));
+                slot.1 = slot.1.max(*read);
+                if let Some(version) = scoped.thread_versions.get(key) {
+                    if state
+                        .thread_versions
+                        .get(key)
+                        .is_none_or(|old| version > old)
+                    {
+                        slot.0 = *follow;
+                        state.thread_versions.insert(key.clone(), version.clone());
+                    }
+                }
+            }
             for (item, projected) in &scoped.items {
                 if item_spaces.get(item.as_str()) == Some(&1) {
                     state.items.insert(item.clone(), projected.clone());

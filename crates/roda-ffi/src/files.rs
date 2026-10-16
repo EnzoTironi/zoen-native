@@ -320,6 +320,7 @@ impl Engine {
         transcript: &str,
         reply_to: Option<&str>,
         thread: bool,
+        also_in_chat: bool,
     ) -> R<TimelineEntry> {
         if !mime.starts_with("audio/") {
             return Err(invalid("não é um áudio", "not audio"));
@@ -334,7 +335,11 @@ impl Engine {
             });
         }
         let reply = reply_to
-            .map(|to| self.reply_ref(space, to, thread))
+            .map(|to| -> R<_> {
+                let mut reply = self.reply_ref(space, to, thread)?;
+                reply.also_in_chat = thread && also_in_chat;
+                Ok(reply)
+            })
             .transpose()?;
         let item = new_id("it");
         let ext = match mime.split(';').next().unwrap_or_default() {

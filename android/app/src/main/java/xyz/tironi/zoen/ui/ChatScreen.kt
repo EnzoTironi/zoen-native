@@ -632,7 +632,7 @@ fun ThreadScreen(model: ZoenViewModel, state: AppState, space: String, root: Str
         Row(Modifier.padding(start = 16.dp, end = 16.dp, bottom = 16.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             OutlinedTextField(text, { text = it }, Modifier.weight(1f), placeholder = { Text(stringResource(R.string.thread_reply_hint)) }, maxLines = 4,
                 label = entries.firstOrNull { it.id == replyTo }?.let { { Text(it.author.name) } })
-            if (text.isBlank()) VoiceComposer(model, space, reply = replyTo, thread = true, threadRoot = root, onSent = { replyTo = root })
+            if (text.isBlank()) VoiceComposer(model, space, reply = replyTo, thread = true, threadRoot = root, alsoInChat = alsoInChat, onSent = { replyTo = root; alsoInChat = false })
             else FilledIconButton(onClick = {
                 val draft = text; val target = replyTo; sending = true
                 val broadcast = alsoInChat

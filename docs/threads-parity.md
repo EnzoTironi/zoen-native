@@ -19,6 +19,27 @@ responding to a reply. Interface copy uses “Respostas” and “Acompanhar res
 reachable with no unread replies or with only direct chats; web roots show unseen reply
 and unread mention badges, with a navigable newest-first followed-replies list.
 
+## Privacy and notification regressions
+
+Personal Space creation and device-preference migration use EndToEnd privacy and
+MLS sealing, never a relay-readable Closed log. Migration retains event timestamps
+so copying old preferences does not make them newer than another device's state.
+Thread projection merges the maximum read watermark independently of follow-state
+recency, including multiple Personal logs and same-millisecond events.
+
+Apple wake decisions compare followed-thread unread and mentions as well as chat
+unread. Android voice sends carry the reply broadcast checkbox through the composer,
+review, session and transport into the signed voice reply metadata.
+
+Focused host checks:
+
+- `python3 android/tests/test_voice_broadcast_wiring.py`
+- `swiftc apple/Shared/Sync/WakeNotifications.swift apple/Tests/WakeNotificationsJourney.swift -o /tmp/wake-tests && /tmp/wake-tests`
+- `cargo test --locked -j2 -p roda-ffi personal_replication -- --nocapture`
+- `cargo test --locked -j2 -p roda-ffi tests::voice_notes -- --nocapture`
+
+These host/source checks do not prove APNs delivery or Android device behavior.
+
 ## Verification after merging main
 
 Merged `origin/main` at `14167d6` into the existing `l1/threads` history (no rebase).

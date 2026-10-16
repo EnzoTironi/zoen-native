@@ -488,7 +488,7 @@ final class AppModel {
         let levels = clip.wave.map { Float($0) }
         guard let entry = perform({
             try core.sendVoiceNote(spaceId: spaceId, bytes: audio, mime: "audio/mp4", ms: UInt64(max(0, clip.ms)),
-                                   levels: levels, transcript: text, replyTo: replyTo, thread: thread)
+                                   levels: levels, transcript: text, replyTo: replyTo, thread: thread, alsoInChat: false)
         }) else { return }
         if pendingVoiceFlight == clip.id { pendingVoiceFlight = entry.voice?.itemId }
         // The core keeps the local bytes and selects the latest signed file version.

@@ -34,6 +34,7 @@ fn note(e: &RodaEngine, space: &str, reply: Option<String>) -> Result<TimelineEn
         "A recording".into(),
         reply,
         true,
+        false,
     )
 }
 
@@ -55,6 +56,7 @@ fn a_voice_note_is_an_encrypted_audio_file_with_its_waveform() {
             vec![0.0, 0.5, 1.0],
             "levo o fogareiro".into(),
             None,
+            false,
             false,
         )
         .unwrap();
@@ -112,6 +114,7 @@ fn a_voice_reply_shows_once_with_its_quote_and_threads() {
             String::new(),
             Some(root.id.clone()),
             false,
+            false,
         )
         .unwrap();
     let tl = e.timeline(space.clone()).unwrap();
@@ -135,13 +138,56 @@ fn a_voice_reply_shows_once_with_its_quote_and_threads() {
             String::new(),
             Some(root.id.clone()),
             true,
+            false,
         )
         .unwrap();
+    assert!(
+        !threaded.also_in_chat,
+        "unchecked voice reply stays thread-only"
+    );
+    e.lock().reload().unwrap();
+    assert!(!last(&e, &space).also_in_chat);
     assert_eq!(threaded.in_thread.as_deref(), Some(root.id.as_str()));
     let thread = e.thread(space.clone(), root.id.clone()).unwrap();
     assert!(thread
         .iter()
         .any(|t| t.id == threaded.id && t.voice.is_some()));
+}
+
+#[test]
+fn broadcast_voice_reply_stays_visible_in_chat_and_thread_after_replay() {
+    let e = seeded();
+    let space = find_space(&e, "Zoen").id;
+    let root = e.send_message(space.clone(), "Root".into()).unwrap();
+    let sent = e
+        .send_voice_note(
+            space.clone(),
+            vec![7; 900],
+            "audio/mp4".into(),
+            1500,
+            vec![0.2],
+            "Broadcast recording".into(),
+            Some(root.id.clone()),
+            true,
+            true,
+        )
+        .unwrap();
+    assert!(sent.also_in_chat, "checked voice reply must be broadcast");
+    e.lock().reload().unwrap();
+    let timeline = e.timeline(space.clone()).unwrap();
+    let restored = timeline.iter().find(|entry| entry.id == sent.id).unwrap();
+    assert!(restored.also_in_chat);
+    assert_eq!(restored.in_thread.as_deref(), Some(root.id.as_str()));
+    assert!(restored.voice.is_some());
+    assert_eq!(timeline.iter().filter(|entry| entry.id == sent.id && (entry.in_thread.is_none() || entry.also_in_chat)).count(), 1);
+    assert_eq!(
+        e.thread(space, root.id)
+            .unwrap()
+            .iter()
+            .filter(|entry| entry.id == sent.id)
+            .count(),
+        1
+    );
 }
 
 #[test]
@@ -190,6 +236,7 @@ fn only_audio_is_a_voice_note() {
             vec![],
             String::new(),
             None,
+            false,
             false
         )
         .is_err());
