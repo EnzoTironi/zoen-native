@@ -132,6 +132,11 @@ impl Fanout {
         }
     }
 
+    /// A synchronous local check for admission paths that must not wait on NATS.
+    pub fn is_online_here(&self, identity: &str) -> bool {
+        self.hub.is_online(identity)
+    }
+
     pub async fn is_online(&self, identity: &str) -> bool {
         !self
             .online(std::slice::from_ref(&identity.to_string()))

@@ -6,7 +6,7 @@ Scope: `crates/zoen-relay` and membership lookup. Revoked-device logic belongs t
 
 | Hot path | Before | After |
 | --- | --- | --- |
-| NATS presence lookup | `join_all` starts a request/inbox for every remote recipient | Ordered buffered stream, at most 32 requests per lookup |
+| NATS presence lookup | `join_all` starts a request/inbox for every remote recipient | At most 32 unordered probes, two-second overall deadline retaining partial successes, restored input order |
 | Away-device push | One detached task per accepted message; slow providers accumulate tasks and cloned audiences | Per-Pusher admission cap of 32, acquired before cloning/spawning; no waiting-task queue; best-effort wake dropped on overload |
 | Full local/NATS queue | Clone/encode before discovering queue full | Reserve first; no payload clone/encoding for rejected delivery |
 | Co-member lookup | Serial per-space FDB reads and quadratic `Vec::contains` deduplication | At most 16 concurrent per-space reads and HashSet dedup, preserving first-seen order |
@@ -31,6 +31,25 @@ Use `CARGO_BUILD_JOBS=2 CARGO_PROFILE_DEV_DEBUG=0 CARGO_INCREMENTAL=0` on a shar
 ## Validation
 
 Passed: `cargo fmt --all --check`, `git diff --check`, and `cargo clippy -p zoen-relay --all-targets -- -D warnings`. The relay library suite passed: 55 tests, zero failed, one explicit benchmark ignored (then run separately and passed). Includes slow-mailbox kick/delivery, bounded presence and push admission regressions. `link_box_cleanup` and `receipt_watermarks` PostgreSQL integrations passed. The final complete FDB contract run passed all 11 scenarios, including co-member lookup across the 16-space boundary. Two earlier runs failed the existing two-storage-client concurrent append assertion; diagnostic reproduction returned retryable `log store unavailable`. A comparison using main's unmodified FDB source/test passed, followed by the final patched run passing. The contention-sensitive failure's exact underlying FDB error is not established; no assertion or retry policy was weakened. See the PR for final CI results.
+
+## Presence/login review regression
+
+The original ordered 32-probe stream could take seven 750 ms probe windows for
+193 recipients, exceeding login's five-second budget. An overall lookup deadline
+alone still left the co-member read and snapshot delivery on the login critical
+path. Presence is now a single session-owned future polled alongside frames:
+co-member reads, remote probes and snapshot mailbox waits cannot delay login or
+request handling. Session teardown drops the future; no detached task or new queue
+is introduced. The first device on each node announces online without a remote
+self-probe (cross-node duplicate online announcements are idempotent).
+
+`cargo test -p zoen-relay --test session_revocation login_handles_ping_while_presence_is_stalled -- --nocapture`
+uses a real WebSocket, PostgreSQL authentication and a stalled co-member read.
+Before the fix it **failed** the 500 ms Ping deadline; after the fix it **passed**
+(the entire test took 0.27 s). This proves decoupling, not merely a shorter lookup
+timeout. The relay library suite (57 passed, one ignored), all nine session
+integration tests, formatting, diff checks and relay all-target clippy passed.
+These are local results; CI for this follow-up must be checked after publication.
 
 ## Remaining findings
 
