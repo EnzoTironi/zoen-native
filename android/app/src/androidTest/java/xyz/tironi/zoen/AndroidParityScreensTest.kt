@@ -1,12 +1,16 @@
 package xyz.tironi.zoen
 
 import androidx.activity.ComponentActivity
+import androidx.activity.enableEdgeToEdge
 import androidx.compose.runtime.getValue
 import androidx.compose.material3.Surface
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.test.core.app.ApplicationProvider
+import androidx.test.platform.app.InstrumentationRegistry
+import android.graphics.Bitmap
+import java.io.File
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import kotlinx.coroutines.runBlocking
 import org.junit.Rule
@@ -28,20 +32,25 @@ class AndroidParityScreensTest {
         app.repository.preferences.edit().putBoolean("demo", true).putBoolean("onboarded", true).commit()
         runBlocking { app.repository.boot(true); app.repository.resetDemo() }
         val state = app.repository.state.value
-        val group = state.spaces.first { it.kind == SpaceKindDto.GROUP }.id
-        val direct = state.spaces.first { it.counterpart != null }.id
+        val group = state.spaces.first { it.title == "Saturday Crew" }.id
+        val direct = state.spaces.first { it.counterpart?.handle == "marina" }.id
+        val community = state.spaces.first { it.kind == SpaceKindDto.COMMUNITY }.id
         val root = runBlocking { app.repository.query { it.timeline(group).first().id } }
         val person = requireNotNull(state.me).id
         val model = ViewModelProvider(compose.activity)[ZoenViewModel::class.java]
         try {
-            compose.runOnUiThread { AppAppearance.set(app, if (dark) "dark" else "light") }
+            compose.runOnUiThread {
+                compose.activity.enableEdgeToEdge()
+                AppAppearance.set(app, if (dark) "dark" else "light")
+            }
             compose.setContent {
                 val current by model.state.collectAsStateWithLifecycle()
                 ZoenTheme {
                     Surface {
                         when (screen) {
                             "onboarding" -> Onboarding(model)
-                            "chats", "spaces" -> ConversationsScreen(model, current, {}, false)
+                            "chats" -> ZoenApp(model, null, {})
+                            "spaces" -> ChatScreen(model, current, community, {}, {})
                             "chat" -> ChatScreen(model, current, direct, {}, {})
                             "group" -> ChatScreen(model, current, group, {}, {})
                             "thread" -> ThreadScreen(model, current, group, root, {}, {})
@@ -55,8 +64,26 @@ class AndroidParityScreensTest {
                 }
             }
             compose.waitForIdle()
+            compose.waitForIdle()
             android.os.SystemClock.sleep(1_500)
-            CommittedWindowCapture.save(compose.activity, "android-parity", "$screen-${if (dark) "dark" else "light"}")
+            val name = "$screen-${if (dark) "dark" else "light"}"
+            CommittedWindowCapture.save(compose.activity, "android-parity", "$name-window")
+            val automation = InstrumentationRegistry.getInstrumentation().uiAutomation
+            compose.waitUntil(10_000) {
+                automation.rootInActiveWindow?.packageName?.toString() == app.packageName
+            }
+            check(automation.rootInActiveWindow?.packageName?.toString() == app.packageName) {
+                "Capture blocked by a non-app foreground window: ${automation.rootInActiveWindow}"
+            }
+            val screenshot = checkNotNull(automation.takeScreenshot())
+            try {
+                val destination = File(app.cacheDir, "device-evidence/android-parity/$name.png")
+                destination.outputStream().use { output ->
+                    check(screenshot.compress(Bitmap.CompressFormat.PNG, 100, output))
+                }
+            } finally {
+                screenshot.recycle()
+            }
         } finally {
             compose.runOnUiThread { AppAppearance.set(app, previous) }
         }
