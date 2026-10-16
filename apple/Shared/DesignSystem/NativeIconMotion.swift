@@ -37,10 +37,22 @@ struct NativeIconMotion: View {
 
     @ViewBuilder private var replacement: some View {
         if #available(iOS 26.0, macOS 26.0, *) {
-            Image(systemName: systemName)
-                .contentTransition(reduced ? .opacity : .symbolEffect(.replace.magic(fallback: .replace)))
-                .symbolEffect(.drawOn, value: drawOn && appeared && !reduced)
-                .onAppear { appeared = true }
+            Group {
+                if reduced {
+                    Image(systemName: systemName)
+                } else if !drawOn || appeared {
+                    Image(systemName: systemName)
+                        .contentTransition(reduced ? .opacity : .symbolEffect(.replace.magic(fallback: .replace)))
+                        .transition(.symbolEffect(.drawOn))
+                }
+            }
+            .onAppear {
+                if drawOn && !reduced {
+                    withAnimation { appeared = true }
+                } else {
+                    appeared = true
+                }
+            }
         } else {
             Image(systemName: systemName)
                 .contentTransition(reduced ? .opacity : .symbolEffect(.replace))
