@@ -1,5 +1,6 @@
 package xyz.tironi.zoen.widgets
 
+import xyz.tironi.zoen.ui.GlassCard
 import android.appwidget.AppWidgetManager
 import android.content.ComponentName
 import android.content.Intent
@@ -43,7 +44,7 @@ class WidgetConfigurationActivity : ComponentActivity() {
                 if (!state.ready) Box(Modifier.fillMaxSize().padding(padding)) { CircularProgressIndicator() }
                 else if (snapshots.isEmpty()) EmptyState(stringResource(R.string.widget_empty), stringResource(R.string.widget_empty_detail), Modifier.padding(padding))
                 else LazyColumn(Modifier.padding(padding), contentPadding = PaddingValues(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                    items(snapshots, key = { it.id }) { snapshot -> Card(onClick = {
+                    items(snapshots, key = { it.id }) { snapshot -> GlassCard(onClick = {
                         repository.preferences.edit().putString("widget:$id", snapshot.id).putString("widget-owner:$id", state.me?.id).commit()
                         ZoenWidgetProvider.updateAll(this@WidgetConfigurationActivity)
                         setResult(RESULT_OK, Intent().putExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, id)); finish()

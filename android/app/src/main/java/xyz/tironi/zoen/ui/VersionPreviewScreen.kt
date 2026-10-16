@@ -83,7 +83,7 @@ fun VersionPreviewScreen(model: ZoenViewModel, id: String, number: UInt, back: (
     }) }, bottomBar = {
         Surface(tonalElevation = 2.dp) { Row(Modifier.fillMaxWidth().navigationBarsPadding().padding(16.dp), horizontalArrangement = Arrangement.End) {
             if (content?.page != null && !model.pageSaves.canRestore(id)) Text(stringResource(R.string.page_recovery_before_restore), Modifier.weight(1f), style = MaterialTheme.typography.bodySmall)
-            Button(enabled = content?.canRestore == true && !busy && (content.page == null || model.pageSaves.canRestore(id)) &&
+            GlassButton(enabled = content?.canRestore == true && !busy && (content.page == null || model.pageSaves.canRestore(id)) &&
                     (content.item.kindId != "plan" || observedPlanHash != null),
                 modifier = Modifier.testTag("preview-restore"), onClick = { confirm = true }) { Text(stringResource(R.string.page_restore_version)) }
         } }

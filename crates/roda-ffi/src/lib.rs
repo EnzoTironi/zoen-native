@@ -144,6 +144,9 @@ impl RodaEngine {
                 .flatten()
                 .unwrap_or_else(|| "pt-BR".into());
             if seeded_in == self.lang.tag() {
+                if let Some(saved) = e.store.meta("seed_receipts")? {
+                    e.net.receipts = serde_json::from_str(&saved).unwrap_or_default();
+                }
                 return Ok(false);
             }
             e.wipe()?;
@@ -495,6 +498,19 @@ impl RodaEngine {
 
     pub fn log_events(&self, space_id: String) -> Result<Vec<LogEventDto>, CoreError> {
         self.lock().log_events(&space_id)
+    }
+
+    /// A bounded page of message matches within one conversation. A stale cursor
+    /// returns an error; callers restart instead of displaying an incomplete page.
+    pub fn search_messages(
+        &self,
+        space_id: String,
+        query: String,
+        cursor: Option<String>,
+        limit: u32,
+    ) -> Result<MessageSearchPage, CoreError> {
+        self.lock()
+            .search_messages(&space_id, &query, cursor.as_deref(), limit)
     }
 
     pub fn search(&self, query: String) -> Vec<SearchHit> {

@@ -116,7 +116,7 @@ fun AgentScreen(model: ZoenViewModel, state: AppState, id: String, back: () -> U
             if (profile.persona.handle == "zoen") item { OnDeviceAiSettings(model) }
             if (profile.persona.handle != "zoen") item { AgentDrawingChooser(profile.persona) }
             if (profile.budgetLimitCents != null) item {
-                Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer)) {
+                GlassCard(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer)) {
                     Column(Modifier.fillMaxWidth().padding(20.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                         Text(stringResource(R.string.monthly_budget), style = MaterialTheme.typography.labelMedium)
                         Text(formatMoney(profile.budgetSpentCents ?: 0, model.repository.locale) + " / " + formatMoney(profile.budgetLimitCents!!, model.repository.locale), style = MaterialTheme.typography.titleLarge)
@@ -132,7 +132,7 @@ fun AgentScreen(model: ZoenViewModel, state: AppState, id: String, back: () -> U
             }
             if (previews.isNotEmpty()) item { SectionLabel(stringResource(R.string.agent_decision_preview)) }
             items(previews, key = { it.action }) { decision ->
-                Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow)) {
+                GlassCard(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow)) {
                     Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                         Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
                             Text(decision.action, Modifier.weight(1f), style = MaterialTheme.typography.titleSmall)
@@ -167,7 +167,7 @@ fun ContextScreen(model: ZoenViewModel, state: AppState, navigate: (NavKey) -> U
                 Avatar(state.me, size = 72, onClick = { state.me?.let { navigate(Person(it.id)) } })
                 Column { Text(state.me?.name.orEmpty(), style = MaterialTheme.typography.headlineMedium); Text("@${state.me?.handle.orEmpty()}", color = MaterialTheme.colorScheme.onSurfaceVariant) }
             } }
-            if (state.demo) item { Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.tertiaryContainer)) { Column(Modifier.padding(20.dp)) { Text(stringResource(R.string.demo), style = MaterialTheme.typography.titleMedium); Text(stringResource(R.string.demo_detail)) } } }
+            if (state.demo) item { GlassCard(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.tertiaryContainer)) { Column(Modifier.padding(20.dp)) { Text(stringResource(R.string.demo), style = MaterialTheme.typography.titleMedium); Text(stringResource(R.string.demo_detail)) } } }
             if (state.keyMissing) item { Text(stringResource(R.string.key_missing), color = MaterialTheme.colorScheme.error) }
             if (state.account != null) {
                 if (state.connection.error == "handle_taken") item { SettingsRow(Icons.Rounded.WarningAmber, stringResource(R.string.agent_handle_taken, state.account.handle), onClick = { navigate(Person(state.account.identityId)) }) }
@@ -206,7 +206,7 @@ fun ContextScreen(model: ZoenViewModel, state: AppState, navigate: (NavKey) -> U
             item { SectionLabel(stringResource(R.string.about)); Text("Zoen Android ${xyz.tironi.zoen.BuildConfig.VERSION_NAME} · Rust ${coreVersion()}", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
             if (state.demo) {
                 item { SettingsRow(Icons.Rounded.RestartAlt, stringResource(R.string.reset_demo), onClick = { reset = true }) }
-                item { OutlinedButton(onClick = { model.launch { model.repository.leaveDemo() } }, Modifier.fillMaxWidth()) { Text(stringResource(R.string.leave_demo)) } }
+                item { GlassOutlinedButton(onClick = { model.launch { model.repository.leaveDemo() } }, Modifier.fillMaxWidth()) { Text(stringResource(R.string.leave_demo)) } }
             } else item { TextButton(onClick = { signOut = true }) { Text(stringResource(R.string.sign_out), color = MaterialTheme.colorScheme.error) } }
         }
     }
@@ -224,7 +224,7 @@ fun HistoryScreen(model: ZoenViewModel, state: AppState, back: () -> Unit) = Aud
 private fun AgentDrawingChooser(persona: Persona) {
     val context = LocalContext.current
     var choosing by remember { mutableStateOf(false) }
-    OutlinedButton(onClick = { choosing = true }) { Text(stringResource(R.string.agent_choose_drawing)) }
+    GlassOutlinedButton(onClick = { choosing = true }) { Text(stringResource(R.string.agent_choose_drawing)) }
     if (choosing) AvatarArtPicker("agent", persona.id, AvatarArt.agent(context, persona), close = { choosing = false })
 }
 
@@ -271,7 +271,7 @@ fun ProfileScreen(model: ZoenViewModel, state: AppState, id: String, navigate: (
             if (editing) {
                 item {
                     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                        OutlinedButton(onClick = { photoActions = true }, enabled = !saving) { Text(stringResource(R.string.agent_photo_choose)) }
+                        GlassOutlinedButton(onClick = { photoActions = true }, enabled = !saving) { Text(stringResource(R.string.agent_photo_choose)) }
                         OutlinedTextField(name, { name = it.take(64) }, Modifier.fillMaxWidth(), label = { Text(stringResource(R.string.name)) }, enabled = !saving)
                         OutlinedTextField(bio, { bio = it.take(280) }, Modifier.fillMaxWidth(), label = { Text(stringResource(R.string.bio)) }, enabled = !saving)
                         if (!state.demo) OutlinedTextField(handle, { handle = it.lowercase(java.util.Locale.ROOT).filter { char -> char in 'a'..'z' || char in '0'..'9' || char in "._" }.take(24) }, Modifier.fillMaxWidth(),
@@ -280,7 +280,7 @@ fun ProfileScreen(model: ZoenViewModel, state: AppState, id: String, navigate: (
                         failure?.let { Text(it, color = MaterialTheme.colorScheme.error) }
                         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                             TextButton(onClick = { editing = false; photoChange = PhotoChange.Keep; photoPreview = null }, enabled = !saving) { Text(stringResource(R.string.cancel)) }
-                            Button(onClick = {
+                            GlassButton(onClick = {
                                 saving = true; failure = null
                                 model.launch {
                                     try {
@@ -298,8 +298,8 @@ fun ProfileScreen(model: ZoenViewModel, state: AppState, id: String, navigate: (
             } else {
                 item {
                     Text(profile?.bio ?: persona?.bio.orEmpty())
-                    if (persona?.isMe == true) OutlinedButton(onClick = { name = profile?.name ?: persona?.name.orEmpty(); bio = profile?.bio ?: persona?.bio.orEmpty(); handle = state.account?.handle ?: persona?.handle.orEmpty(); failure = null; editing = true }) { Text(stringResource(R.string.edit)) }
-                    else if (persona != null) Button(onClick = { model.launch {
+                    if (persona?.isMe == true) GlassOutlinedButton(onClick = { name = profile?.name ?: persona?.name.orEmpty(); bio = profile?.bio ?: persona?.bio.orEmpty(); handle = state.account?.handle ?: persona?.handle.orEmpty(); failure = null; editing = true }) { Text(stringResource(R.string.edit)) }
+                    else if (persona != null) GlassButton(onClick = { model.launch {
                         val existing = state.spaces.firstOrNull { it.counterpart?.id == id }
                         val chat = existing?.id ?: model.repository.change { it.startDirect(id) }
                         navigate(Chat(chat))
@@ -367,7 +367,7 @@ fun ParticipantsScreen(model: ZoenViewModel, state: AppState, id: String, naviga
     }) }) { padding ->
         LazyColumn(Modifier.padding(padding), contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             item { SpaceAvatar(space, size = 96); Text(space.title, style = MaterialTheme.typography.headlineMedium) }
-            if (space.counterpart == null) item { OutlinedButton(onClick = { drawingPicker = true }) { Text(stringResource(R.string.agent_choose_drawing)) } }
+            if (space.counterpart == null) item { GlassOutlinedButton(onClick = { drawingPicker = true }) { Text(stringResource(R.string.agent_choose_drawing)) } }
             item { SectionLabel(stringResource(R.string.agent_group_people)) }
             items(space.members.filter { it.kind == PersonaKind.PERSON }, key = { it.id }) { person ->
                 ListItem(headlineContent = { Text(person.name) }, supportingContent = { Text(when (roles[person.id]) {
@@ -394,7 +394,7 @@ fun ParticipantsScreen(model: ZoenViewModel, state: AppState, id: String, naviga
             item { SettingsRow(Icons.Rounded.Security, stringResource(R.string.permissions), onClick = { navigate(Permissions) }) }
             if (integrity?.valid == false) item { TextButton(onClick = { navigate(History) }) { Text(stringResource(R.string.agent_integrity_damaged), color = MaterialTheme.colorScheme.error) } }
             if (synced && space.privacy == PrivacyDto.CLOSED && (canManage || space.kind == SpaceKindDto.DIRECT)) item {
-                OutlinedButton(onClick = { confirming = ParticipantAction("encrypt") }) { Text(stringResource(R.string.agent_group_encrypt)) }
+                GlassOutlinedButton(onClick = { confirming = ParticipantAction("encrypt") }) { Text(stringResource(R.string.agent_group_encrypt)) }
             }
             invite?.let { link -> item {
                 Card { Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {

@@ -465,6 +465,34 @@ impl<S: Signer> Client<S> {
         if note.author_only() && author != self.account.identity {
             return Err("Only the person who sent this message can change it.".into());
         }
+        // Deletion is terminal in the reader fold. Do not report a successful
+        // author mutation that cannot take effect, including behind a queued delete.
+        if note.author_only() {
+            let deletes_target = |event: &Event| {
+                event.author == author
+                    && matches!(&event.body, EventBody::MessageAnnotated {
+                        target: deleted, note: roda_types::Annotation::Delete,
+                    } if deleted == target)
+            };
+            let deleted = self
+                .logs
+                .get(space)
+                .is_some_and(|log| log.events().iter().any(deletes_target))
+                || self
+                    .saved
+                    .outbox
+                    .values()
+                    .filter(|pending| pending.failure.is_none())
+                    .any(|pending| {
+                        pending
+                            .inner
+                            .as_ref()
+                            .is_some_and(|event| event.space == space && deletes_target(event))
+                    });
+            if deleted {
+                return Err("Essa mensagem foi apagada.".into());
+            }
+        }
         if let roda_types::Annotation::Edit { text } = &note {
             if text.trim().is_empty() || text.len() > 32_768 {
                 return Err("Write a message of up to 32 KB.".into());

@@ -19,34 +19,46 @@ responding to a reply. Interface copy uses “Respostas” and “Acompanhar res
 reachable with no unread replies or with only direct chats; web roots show unseen reply
 and unread mention badges, with a navigable newest-first followed-replies list.
 
-## Verification
+## Verification after merging main
 
-- `cargo test --locked -j2 -p roda-ffi thread -- --nocapture`: passed, 5 tests.
+Merged `origin/main` at `14167d6` into the existing `l1/threads` history (no rebase).
+Conflict resolution preserves account-keyed web preferences, search into thread-only
+messages, edit/delete error handling, Apple message actions and the followed-replies
+inbox. Thread follow/read state remains encrypted and synced, not browser-local.
+A new mounted production-UI regression checks inbox navigation, unread mentions,
+follow/read calls, also-in-chat sending, search-result focus and account-switch reset
+together. A new main mutation-test fixture required `ReplyRef.also_in_chat: false`;
+the web-core test build failed before this compatibility fix and passed afterward.
+
+- `cargo test --locked -j2 -p roda-ffi thread -- --nocapture`: passed, 6 tests.
   Includes mandatory incoming-send assertions, nested broadcast replies, whole-handle
   mention matching (including dot suffixes), and log-only replication to another
   device without copying local read metadata (also exercised with a direct chat).
   The replication test covers read,
   follow/unfollow, new replies after reading, monotonic stale-device reads and a
   failed append followed by retry.
-- `cargo test --locked -j2 -p zoen-web-core --lib`: passed, 9 tests. Includes real
+- `cargo test --locked -j2 -p zoen-web-core --lib`: passed, 16 tests. Includes real
   native SQLite MLS / portable web-core encrypted Personal Space thread-state
   exchange, saved reload, durable-write failures, idempotence, watermark projection,
   explicit opt-out, broadcast replies, enrollment requests and mention boundaries.
 - In `packages/zoen-ui`, `npm run typecheck:web`: passed;
-  `npm run test:web`: passed, 14 tests. Controller tests exercise the follow/read/
-  broadcast API and existing durable-save-before-send behavior.
+  `npm run test:web`: passed, 28 tests. Controller tests exercise the follow/read/
+  broadcast API and existing durable-save-before-send behavior. Mounted UI tests also
+  cover the merged replies/search/account behaviors and mutation draft preservation.
 - Mention regression: the added `@enzo.silva` versus `enzo` assertion failed before
   the suffix-boundary fix and passed afterward.
-- `cargo test --locked -j2 -p roda-ffi`: passed, 318 tests at the merge checkpoint;
-  the focused 5-test suite was rerun after the final activity-label/direct-chat and
-  validated-reply helper changes. Final-source reruns at `dcbb2ec` remain incomplete:
-  the original log had 315 passing tests without a summary; a foreground retry hit
-  the 300-second tool limit. The subsequent detached run is no longer running and
-  recorded 208 passing tests out of 318, with no failure, final summary or promised
-  `EXIT_STATUS`. Its interruption cause is unknown; this is not a final-head full-suite
-  pass or an observed test failure. No further restart was attempted.
+- `cargo test --locked -j2 -p roda-ffi --lib`: passed, all 324 tests, zero
+  failures/ignored/filtered, in 186.93 seconds, with explicit `EXIT_STATUS=0`.
+  This supersedes the incomplete full-suite observations at the earlier `dcbb2ec`.
 - `xcrun swiftc -frontend -parse` on `MessageReplies.swift` and
-  `ConversationsView.swift`: passed (syntax only, not an Apple build).
+  `ConversationsView.swift` and `SpaceView.swift`: passed (syntax only, not an Apple build).
+- `bash scripts/test-apple-message-mutations.sh`: passed (host Swift draft/error checks).
+- `python3 scripts/test-android-uniffi-callbacks.py`: passed, 5 tests.
+- `cargo build --locked -j2 -p roda-ffi -p uniffi-bindgen`, then
+  `target/debug/uniffi-bindgen generate` for Swift and Kotlin from the merged host
+  dylib: passed. Kotlin used `android/uniffi.toml`; the repository callback-fix script
+  verified the generated output. Bindings were regenerated into temporary directories,
+  never hand-edited; generated bindings are not tracked by this repository.
 - Android XML parsing, Portuguese-copy and nested broadcast/inbox reachability source
   checks: passed (not an Android compile/runtime check).
 - `cargo fmt --all --check` and `git diff --check`: passed.
@@ -64,6 +76,9 @@ browser/native journey. The WASM target and wasm-bindgen executable are not inst
 in this checkout. No WASM build, live paired browser session, Android build, Apple
 build or visible UI capture was run. Local simulators/emulators are excluded by the
 task constraints; native platform CI and live-device acceptance remain necessary.
-The existing PR #97 publication association failed before any new commits could be
-published, so its previous CI results do not verify these changes. No replacement PR
-was created.
+The existing PR #97 previously failed publication association. In this continuation,
+the supported PR read/skill operations fail before dispatch, so the current provider
+head/checks cannot be inspected and the merge has not been published. Local passing
+checks are not CI results; Android/Apple build and platform runtime acceptance remain
+unverified. No replacement PR, force-push, CLI/API publication bypass or PR merge was
+attempted.

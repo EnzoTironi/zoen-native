@@ -268,17 +268,24 @@ struct OnboardingFlow: View {
             if route.flow == "default" {
                 // Got here from a friend's or a Space link before installing? Pasting it is
                 // the private way to keep it: the person chooses, nothing is fingerprinted.
-                PasteButton(payloadType: URL.self) { urls in
-                    guard let url = urls.first else { return }
-                    Task { @MainActor in
-                        model.captureAcquisition(url)
-                        withAnimation(.snappy) { route = OnboardingRoute(model.core.growthOnboardingPlan()) }
+                // A quiet line instead of a floating chip, so it reads as an option, not a step.
+                HStack(spacing: 6) {
+                    Text("Got an invite?")
+                        .font(.footnote)
+                        .foregroundStyle(InkPalette.ink.opacity(0.55))
+                    PasteButton(payloadType: URL.self) { urls in
+                        guard let url = urls.first else { return }
+                        Task { @MainActor in
+                            model.captureAcquisition(url)
+                            withAnimation(.snappy) { route = OnboardingRoute(model.core.growthOnboardingPlan()) }
+                        }
                     }
+                    .labelStyle(.titleOnly)
+                    .buttonStyle(.borderless)
+                    .controlSize(.small)
+                    .tint(InkPalette.ink.opacity(0.75))
+                    .accessibilityHint(String(localized: "Paste the invite link you got"))
                 }
-                .labelStyle(.titleAndIcon)
-                .buttonBorderShape(.capsule)
-                .tint(InkPalette.ink.opacity(0.6))
-                .accessibilityHint(String(localized: "Paste the invite link you got"))
             }
         case .profile:
             if !compact {
@@ -375,16 +382,10 @@ struct OnboardingFlow: View {
 
     private var continueButton: some View {
         Button { advance() } label: {
-            Text(continueTitle)
-                .font(.headline)
-                .foregroundStyle(continueEnabled ? Color.white : Mascot.line.opacity(0.55))
-                .frame(maxWidth: 520)
-                .frame(height: 56)
-                .background(continueEnabled ? Mascot.body : Mascot.belly.opacity(0.35), in: .capsule)
-                .overlay(Capsule().strokeBorder(Mascot.line.opacity(continueEnabled ? 0.9 : 0.25), lineWidth: 1.5))
-                .shadow(color: Mascot.body.opacity(continueEnabled ? 0.35 : 0), radius: 12, y: 6)
+            Text(continueTitle).frame(maxWidth: 520)
         }
-        .buttonStyle(.plain)
+        .buttonStyle(.wabiGlass(prominent: continueEnabled, tint: Mascot.body, fullWidth: true, height: 56))
+        .frame(maxWidth: 520)
         .disabled(!continueEnabled)
         .padding(.horizontal, 20)
         .padding(.top, 6)

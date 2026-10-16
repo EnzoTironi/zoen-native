@@ -698,6 +698,14 @@ pub struct UniversalHit {
     pub persona: Option<Persona>,
 }
 
+/// A bounded conversation-scoped message page. Restart after a mutation makes a
+/// cursor stale; `ref_id` on each hit is the exact original message ID.
+#[derive(Debug, Clone, PartialEq, uniffi::Record)]
+pub struct MessageSearchPage {
+    pub hits: Vec<UniversalHit>,
+    pub next_cursor: Option<String>,
+}
+
 #[derive(Debug, Clone, PartialEq, uniffi::Record)]
 pub struct UniversalResults {
     pub hits: Vec<UniversalHit>,

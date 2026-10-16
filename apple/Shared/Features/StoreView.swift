@@ -751,7 +751,7 @@ struct StoreDetailView: View {
                         }
                     }
                     .font(.headline)
-                    .buttonStyle(.glassProminent)
+                    .buttonStyle(.wabiGlassProminent)
                     .controlSize(.large)
                     .tint(Palette.action)
 
@@ -778,7 +778,7 @@ struct StoreDetailView: View {
                             }
                             Spacer()
                             Button(AppLocale.pick("Seguir", "Follow")) { model.show(.init(kind: .info, text: AppLocale.pick("Dados de exemplo: seguir chega com a Loja de verdade.", "Seed data: following comes with the real Store."))) }
-                                .buttonStyle(.glass)
+                                .buttonStyle(.wabiGlass)
                         }
                     }
                     section(AppLocale.pick("Comunidade", "Community")) {

@@ -219,13 +219,13 @@ struct AgentDetailView: View {
                     }
                     Spacer()
                     Button("+" + Money.format(2_000)) { model.perform { try model.core.raiseBudget(agentId: p.id, extraCents: 2_000) } }
-                        .buttonStyle(.glass)
+                        .buttonStyle(.wabiGlass)
                 }
-                .solidCard()
+                .glassCard()
             } else {
                 Label("The budget belongs to \(p.persona.ownerName ?? String(localized: "someone else")). Whoever owns the agent pays for it.", systemImage: "info.circle")
                     .font(.subheadline).foregroundStyle(Palette.textSecondary)
-                    .solidCard()
+                    .glassCard()
             }
         }
     }
@@ -288,7 +288,7 @@ struct AgentDetailView: View {
                     }
                 }
             }
-            .solidCard()
+            .glassCard()
         }
     }
 
