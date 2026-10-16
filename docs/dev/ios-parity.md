@@ -6,11 +6,28 @@ icons, glass, motion and haptics, rather than reinterpret the design. Inspect Sw
 first. Web glass must reproduce tint, edge highlights and backdrop filtering as well
 as geometry. Static screenshots do not prove animation, interactions or haptic parity.
 
-Source audit: the current `apple/iOS/ZoeniOSApp.swift` root uses a navigation stack per
-tab, with no adaptive iPad sidebar/detail shell. The wide capture profile records that
-actual implementation. It must not be described as proof of the requested sidebar,
-detail split view, composer and toolbar parity until a canonical native iPad design
-exists. Do not substitute the macOS shell or invent an iPad reference.
+## Canonical native adaptive source
+
+Regular-width iPad and macOS both render the shared SwiftUI
+`apple/Shared/Navigation/ZoenAdaptiveShell.swift`: a balanced `NavigationSplitView`
+with the same rail, chat list, navigation destinations, search, inspector and native
+`SpaceView` composer/toolbars. Compact iPhone retains its original stacks and bottom
+bar. This is a new canonical native iPad shell, extracted from the existing Mac
+navigation rather than a separately invented web layout. Runtime captures are still
+required to verify the resulting layout, OS insets and interactions.
+
+`ZoenAdaptiveGeometry` declares point dimensions: rail 80, chat list 280, trailing
+column gap 12 (sidebar 372 total), detail trailing/bottom inset 16. Chat-list and
+detail cards have radii 20 and 24; their hairlines are 0.5 points at 60% palette
+hairline opacity. Native split-view dividers and platform safe areas are retained,
+not normalized away. The chat header uses 14-point semibold text and 16 horizontal,
+12 top, 8 bottom padding. Rows use 34-point avatars, 10-point horizontal gaps,
+13-point medium titles and 3-point title/preview gaps. Web wide must follow the
+actual iPad captures of this shared source, including platform font rasterization.
+The DEBUG-only `parity-window-geometry` accessibility witness reads the actual UIKit
+window bounds, screen scale and safe-area insets (points and pixels). Capture tests
+attach that diagnostic separately from fixture identity; verify it before accepting
+provisional OS-bar crops. It neither changes safe areas nor hides app controls.
 
 ## Fresh current-source rendering
 

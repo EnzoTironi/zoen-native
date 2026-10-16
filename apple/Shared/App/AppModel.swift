@@ -143,6 +143,12 @@ final class AppModel {
     /// Pinned chats (Zoen is pinned until you unpin it).
     /// Mac: Espaço selecionado na barra lateral e Item no inspetor.
     var macSelection: MacSidebarItem? = nil
+    /// Native sidebar/detail routing is shared by regular-width iPad and Mac.
+    #if os(macOS)
+    var usesAdaptiveShell = true
+    #else
+    var usesAdaptiveShell = false
+    #endif
     var inspectorItem: String? = nil
 
     /// Espaço → agente trabalhando agora (estado efêmero, não vai para o log).
@@ -1149,6 +1155,21 @@ final class AppModel {
         }
     }
 
+    /// Preserve the selected chat when an iPad window crosses the compact-width boundary.
+    func setAdaptiveNavigation(_ enabled: Bool) {
+        guard usesAdaptiveShell != enabled else { return }
+        usesAdaptiveShell = enabled
+        if case .space(let id)? = macSelection {
+            var detailPath = paths[.conversations] ?? []
+            if enabled {
+                if detailPath.first == .space(id) { detailPath.removeFirst() }
+            } else if detailPath.first != .space(id) {
+                detailPath.insert(.space(id), at: 0)
+            }
+            paths[.conversations] = detailPath
+        }
+    }
+
     func path(_ t: AppTab) -> [Route] { paths[t] ?? [] }
 
     func setPath(_ t: AppTab, _ p: [Route]) { paths[t] = p }
@@ -1158,7 +1179,7 @@ final class AppModel {
     @discardableResult
     func pop() -> Bool {
         #if os(iOS)
-        let key: AppTab = notificationsOpen ? .activity : tab
+        let key: AppTab = usesAdaptiveShell ? .conversations : (notificationsOpen ? .activity : tab)
         #else
         let key: AppTab = .conversations
         #endif
@@ -1171,19 +1192,19 @@ final class AppModel {
 
     /// Empilha uma rota no destino atual.
     func push(_ route: Route) {
-        #if os(macOS)
-        // No Mac há uma pilha só, a da coluna de detalhe.
-        paths[.conversations, default: []].append(route)
-        #else
-        // While the notifications sheet is up, routes stack inside it.
-        paths[notificationsOpen ? .activity : tab, default: []].append(route)
-        #endif
+        if usesAdaptiveShell {
+            paths[.conversations, default: []].append(route)
+        } else {
+            // While the notifications sheet is up, routes stack inside it.
+            paths[notificationsOpen ? .activity : tab, default: []].append(route)
+        }
     }
 
     /// The bell opens approval cards over the current iPhone screen or in the Mac Activity pane.
     func openNotifications() {
         #if os(iOS)
-        approvalsOpen = true
+        if usesAdaptiveShell { select(.activity) }
+        else { approvalsOpen = true }
         #else
         select(.activity)
         #endif
@@ -1285,12 +1306,10 @@ final class AppModel {
     func select(_ t: AppTab) {
         #if os(iOS)
         // On iPhone, search is a full screen over whatever tab you're on, not a tab.
-        if t == .search { searchOpen = true; return }
+        if t == .search && !usesAdaptiveShell { searchOpen = true; return }
         #endif
         if tab == t { paths[t] = [] } else { tab = t }
-        #if os(macOS)
-        paths[.conversations] = []
-        #endif
+        if usesAdaptiveShell { paths[.conversations] = [] }
         macSelection = MacSidebarItem(tab: t) ?? macSelection
     }
 
@@ -1305,24 +1324,13 @@ final class AppModel {
         switch route {
         case .space(let id):
             tab = .conversations
-            #if os(macOS)
-            paths[.conversations] = []
-            #else
-            paths[.conversations] = [.space(id)]
-            #endif
+            paths[.conversations] = usesAdaptiveShell ? [] : [.space(id)]
             macSelection = .space(id)
         case .item(let id):
-            #if os(macOS)
-            inspectorItem = id
-            #else
-            push(.item(id))
-            #endif
+            if usesAdaptiveShell { inspectorItem = id }
+            else { push(.item(id)) }
         default:
-            #if os(macOS)
-            paths[.conversations, default: []].append(route)
-            #else
             push(route)
-            #endif
         }
     }
 }

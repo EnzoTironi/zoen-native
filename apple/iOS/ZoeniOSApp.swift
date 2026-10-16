@@ -10,7 +10,7 @@ struct ZoeniOSApp: App {
 
     var body: some Scene {
         WindowGroup {
-            RootView()
+            AdaptiveIOSRoot()
                 .environment(model)
                 #if DEBUG
                 .overlay(alignment: .topLeading) {
@@ -19,6 +19,9 @@ struct ZoeniOSApp: App {
                             .accessibilityElement(children: .ignore)
                             .accessibilityIdentifier("parity-applied-fixture")
                             .accessibilityLabel(manifest)
+                            .allowsHitTesting(false)
+                        NativeParityGeometryWitness()
+                            .frame(width: 1, height: 1)
                             .allowsHitTesting(false)
                     }
                 }
@@ -36,6 +39,20 @@ struct ZoeniOSApp: App {
         .onChange(of: phase) { _, p in
             if p != .active { model.commitPendingRevokes() }
             if p == .active { Task { await model.growthSync() } }
+        }
+    }
+}
+
+/// Regular-width iPad and Mac use the same native sidebar/detail shell.
+/// Compact width keeps the existing iPhone stacks and floating bar unchanged.
+private struct AdaptiveIOSRoot: View {
+    @Environment(\.horizontalSizeClass) private var sizeClass
+
+    var body: some View {
+        if sizeClass == .regular {
+            ZoenAdaptiveShell()
+        } else {
+            RootView()
         }
     }
 }
