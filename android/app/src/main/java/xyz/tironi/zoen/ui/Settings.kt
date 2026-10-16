@@ -430,56 +430,25 @@ private fun BackupPage(model: ZoenViewModel, state: AppState, back: () -> Unit, 
     var ask by remember { mutableStateOf(false) }
     var busy by remember { mutableStateOf(false) }
     val haptics = rememberZoenHaptics()
-    LaunchedEffect(state.revision) { status = runCatching { model.repository.query { it.backupStatus() } }.getOrNull() }
-    SettingsScaffold(stringResource(R.string.st_backup), back, close) {
+    LaunchedEffect(state.revision, ask) { status = model.repository.query { it.backupStatus() } }
+    SettingsScaffold("Cópia e recuperação", back, close) {
         val s = status
         Group {
             if (s?.enabled == true) {
-                val last = if (s.lastBackupMs > 0) stringResource(R.string.st_backup_last, android.text.format.DateUtils.getRelativeTimeSpanString(s.lastBackupMs).toString()) else stringResource(R.string.st_backup_none)
-                SRow(Icons.Rounded.CloudDone, stringResource(R.string.st_backup_on), last); RowDivider()
-                SRow(Icons.Rounded.CloudSync, stringResource(R.string.st_backup_now), enabled = !busy, tag = "settings:backupNow") {
+                SRow(Icons.Rounded.CloudDone, "Cópia ativada", if (s.lastBackupMs > 0) "Sua última cópia foi enviada." else "O envio ainda não foi concluído."); RowDivider()
+                SRow(Icons.Rounded.CloudSync, "Fazer cópia agora", enabled = !busy, tag = "settings:backupNow") {
                     busy = true
                     model.launch { try { status = model.repository.network { it.backupNow(model.repository.vault) }; haptics.perform(ZoenFeedback.Confirm) } finally { busy = false } }
                 }
             } else {
-                SRow(Icons.Rounded.CloudOff, stringResource(R.string.st_backup_off), stringResource(R.string.st_backup_local))
-                if (state.account != null) { RowDivider(); SRow(Icons.Rounded.Lock, stringResource(R.string.st_backup_turn_on), tag = "settings:backupTurnOn") { ask = true } }
+                SRow(Icons.Rounded.CloudOff, "Cópia desativada", "Suas conversas estão apenas nos seus aparelhos.")
+                if (state.account != null && s != null) { RowDivider(); SRow(Icons.Rounded.Key, "Ativar com chave de recuperação", tag = "settings:backupTurnOn") { ask = true } }
             }
         }
-        Group { SRow(Icons.Rounded.Restore, stringResource(R.string.st_restore), stringResource(R.string.st_restore_unavailable), chevron = false, enabled = false, tag = "settings:restore") }
-        Caption(R.string.st_restore_caption)
+        Text("Para recuperar em um aparelho novo, escolha Recuperar minha conta na tela inicial e use sua chave de 64 números. Guarde a chave fora deste aparelho.", style = MaterialTheme.typography.bodySmall)
+        if (s?.enabled == true && s.mode == "password") Text("Esta cópia usa senha. Ela foi mantida e você pode continuar fazendo cópias. A recuperação por senha não está disponível nesta tela; mantenha um aparelho conectado.", style = MaterialTheme.typography.bodySmall)
     }
-    if (ask) BackupPasswordDialog(model, { ask = false }) { status = it; haptics.perform(ZoenFeedback.Confirm) }
-}
-
-@Composable
-private fun BackupPasswordDialog(model: ZoenViewModel, dismiss: () -> Unit, done: (BackupStatusDto) -> Unit) {
-    var password by remember { mutableStateOf("") }
-    var busy by remember { mutableStateOf(false) }
-    var error by remember { mutableStateOf<String?>(null) }
-    AlertDialog(
-        onDismissRequest = dismiss,
-        title = { Text(stringResource(R.string.st_backup_password)) },
-        text = {
-            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                Text(stringResource(R.string.st_backup_password_caption), style = MaterialTheme.typography.bodyMedium)
-                OutlinedTextField(password, { password = it }, Modifier.fillMaxWidth().testTag("settings:backupPassword"), label = { Text(stringResource(R.string.st_password)) },
-                    singleLine = true, visualTransformation = PasswordVisualTransformation(), keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
-                    colors = OutlinedTextFieldDefaults.colors(unfocusedBorderColor = SettingsTone.outline()))
-                error?.let { Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall) }
-            }
-        },
-        confirmButton = {
-            TextButton(enabled = password.length >= 8 && !busy, onClick = {
-                busy = true
-                model.launch {
-                    try { done(model.repository.network { it.backupTurnOnPassword(password, model.repository.vault) }); dismiss() }
-                    catch (e: CoreException) { error = e.message } finally { busy = false }
-                }
-            }) { Text(stringResource(R.string.st_backup_turn_on_btn)) }
-        },
-        dismissButton = { TextButton(dismiss) { Text(stringResource(R.string.st_cancel)) } },
-    )
+    if (ask) RecoveryKeySetup(model, { ask = false }) { status = it; haptics.perform(ZoenFeedback.Confirm) }
 }
 
 // endregion

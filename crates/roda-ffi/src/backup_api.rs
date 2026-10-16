@@ -296,9 +296,20 @@ impl RodaEngine {
         &self,
         vault: Arc<dyn SecretVault>,
     ) -> Result<String, CoreError> {
+        let rk = self.backup_create_recovery_key();
+        self.backup_enable_recovery_key(rk.clone(), vault).await?;
+        Ok(rk)
+    }
+
+    /// Activates a key the person has already saved and confirmed. Retrying with the
+    /// same key is safe after an interrupted upload; the UI must retain it on failure.
+    pub async fn backup_enable_recovery_key(
+        &self,
+        recovery_key: String,
+        vault: Arc<dyn SecretVault>,
+    ) -> Result<BackupStatusDto, CoreError> {
+        let keys = backup::recovery_keys(&recovery_key)?;
         let c = self.backup_creds()?;
-        let rk = backup::new_recovery_key();
-        let keys = backup::recovery_keys(&rk)?;
         self.put_vault(
             &c,
             "recovery_key",
@@ -313,8 +324,7 @@ impl RodaEngine {
             mode: "recovery_key".into(),
             ..Default::default()
         })?;
-        self.backup_now(vault).await?;
-        Ok(rk)
+        self.backup_now(vault).await
     }
 
     /// Seals this device's history and keys and sends them to the server.
@@ -403,6 +413,33 @@ impl RodaEngine {
         secret: String,
         vault: Arc<dyn SecretVault>,
     ) -> Result<AccountDto, CoreError> {
+        self.restore_backup_inner(relay_url, handle, secret, vault, false)
+            .await
+    }
+
+    /// Recovery UI never submits a password or consumes password guesses.
+    pub async fn restore_backup_with_recovery_key(
+        &self,
+        relay_url: String,
+        handle: String,
+        recovery_key: String,
+        vault: Arc<dyn SecretVault>,
+    ) -> Result<AccountDto, CoreError> {
+        backup::recovery_keys(&recovery_key)?;
+        self.restore_backup_inner(relay_url, handle, recovery_key, vault, true)
+            .await
+    }
+}
+
+impl RodaEngine {
+    async fn restore_backup_inner(
+        &self,
+        relay_url: String,
+        handle: String,
+        secret: String,
+        vault: Arc<dyn SecretVault>,
+        recovery_only: bool,
+    ) -> Result<AccountDto, CoreError> {
         if self.lock().account().is_some() {
             return Err(invalid(t(
                 "Este aparelho já tem uma conta.",
@@ -428,6 +465,12 @@ impl RodaEngine {
             return Err(refused(r).await);
         }
         let s: Started = json(r).await?;
+        if recovery_only && s.mode != "recovery_key" {
+            return Err(invalid(t(
+                "Esta cópia usa senha. Use um aparelho que já esteja conectado.",
+                "This backup uses a password. Use a device already signed in.",
+            )));
+        }
         let keys = match s.mode.as_str() {
             "recovery_key" => backup::recovery_keys(&secret)?,
             _ => {
@@ -583,6 +626,11 @@ impl RodaEngine {
 
 #[uniffi::export]
 impl RodaEngine {
+    /// Generates locally, before activation or network access. Never persisted or logged.
+    pub fn backup_create_recovery_key(&self) -> String {
+        backup::new_recovery_key()
+    }
+
     /// Whether the backup is on, how, and when it last ran.
     pub fn backup_status(&self) -> BackupStatusDto {
         self.lock()

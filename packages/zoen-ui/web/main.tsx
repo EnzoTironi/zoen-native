@@ -11,6 +11,7 @@ import { CoreWorker } from './worker-client.ts';
 import './web.css';
 import './messenger.css';
 import { Messenger } from './messenger.tsx';
+import { RecoveryHelp } from './recovery.tsx';
 
 type Runtime = { vault: BrowserVault; core: CoreWorker };
 type Boot = { kind: 'loading' } | { kind: 'unavailable'; message: string } |
@@ -56,6 +57,7 @@ function PairingGate({ runtime, session, linked }: { runtime: Runtime; session: 
   return <Gate>
     <h1>{invitation ? 'Abra seu convite' : 'Zoen no navegador'}</h1>
     <p>{invitation ? 'Conecte este navegador pelo Zoen no seu celular para entrar direto na conversa.' : 'Conecte este navegador pelo Zoen no seu celular. Ele aprova este navegador como mais um aparelho seu.'}</p>
+    {state.kind === 'idle' || state.kind === 'failed' ? <RecoveryHelp /> : null}
     {state.kind === 'idle' || state.kind === 'failed' ? <form onSubmit={(event) => { event.preventDefault(); start(); }}>
       <label>Endereço do servidor<input type="url" placeholder="https://relay.tryzoen.com" value={relay} required autoComplete="url" autoFocus
         onChange={(event) => setRelay(event.target.value)} onBlur={() => { try { setRelay(relayUrl(relay)); } catch { /* Submit reports invalid origins. */ } }} /></label>

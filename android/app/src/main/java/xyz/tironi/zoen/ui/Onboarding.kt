@@ -59,6 +59,7 @@ fun Onboarding(model: ZoenViewModel, modifier: Modifier = Modifier, acquisitionL
     var relay by rememberSaveable { mutableStateOf(BuildConfig.RELAY_URL) }
     var connectionSettings by rememberSaveable { mutableStateOf(false) }
     var busy by remember { mutableStateOf(false) }
+    var recoverAccount by remember { mutableStateOf(false) }
     var planning by remember { mutableStateOf(false) }
     var savedDraft by rememberSaveable { mutableStateOf<String?>(null) }
     var plan by remember { mutableStateOf(savedDraft?.let(OnboardingDraft::decode)) }
@@ -110,7 +111,11 @@ fun Onboarding(model: ZoenViewModel, modifier: Modifier = Modifier, acquisitionL
             finally { planning = false }
         }
     }
-    BackHandler(enabled = position > 0 && !busy) { position-- }
+    if (recoverAccount) RecoveryKeyRestore(model, { recoverAccount = false }) {
+        model.repository.preferences.edit().putBoolean("onboarded", true).apply()
+        finished(null)
+    }
+    BackHandler(enabled = position > 0 && !busy && !recoverAccount) { position-- }
     val pose = when (step) {
         OnboardingStep.Hello -> MascotPose.Wave
         OnboardingStep.Profile, OnboardingStep.Notifications -> MascotPose.Phone
@@ -138,7 +143,9 @@ fun Onboarding(model: ZoenViewModel, modifier: Modifier = Modifier, acquisitionL
                 val detail = route.text("onboarding.${step.id}.body", language) ?: if (step == OnboardingStep.Profile) null else stringResource(step.detail)
                 detail?.let { Text(it, Modifier.fillMaxWidth(), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, textAlign = TextAlign.Center) }
                 when (step) {
-                    OnboardingStep.Hello -> if (route.flow == "default") {
+                    OnboardingStep.Hello -> {
+                        if (model.state.value.account == null) TextButton(onClick = { recoverAccount = true }, modifier = Modifier.testTag("onboarding-recover")) { Text("Recuperar minha conta") }
+                        if (route.flow == "default") {
                         OutlinedButton(onClick = {
                             val clipboard = context.getSystemService(android.content.ClipboardManager::class.java)
                             val invite = clipboard.primaryClip?.takeIf { it.itemCount > 0 }?.getItemAt(0)?.coerceToText(context)?.toString()?.trim()
@@ -154,6 +161,7 @@ fun Onboarding(model: ZoenViewModel, modifier: Modifier = Modifier, acquisitionL
                             Spacer(Modifier.width(8.dp))
                             Text(stringResource(R.string.onboarding_paste_invite))
                         }
+                    }
                     }
                     OnboardingStep.Profile -> {
                         val preview = remember(photo) { photo?.let { BitmapFactory.decodeByteArray(it, 0, it.size) } }

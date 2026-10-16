@@ -60,6 +60,7 @@ struct OnboardingFlow: View {
     @State private var profileError: String?
     @State private var creating = false
     @State private var pendingPhoto: PlatformImage?
+    @State private var recoverAccount = false
     @Namespace private var avatarSlot
 
     var body: some View {
@@ -119,6 +120,12 @@ struct OnboardingFlow: View {
         }
         .background(InkPalette.paper.ignoresSafeArea())
         .environment(\.colorScheme, .light)
+        .sheet(isPresented: $recoverAccount) {
+            RecoveryKeyRestore {
+                UserDefaults.standard.set(true, forKey: "RodaOnboarded")
+                onFinish()
+            }
+        }
         .task {
             // The flow for where this install came from (friend, Space link, campaign) and its
             // experiment arm; the cached config answers at once, a fresh one comes next time.
@@ -265,6 +272,10 @@ struct OnboardingFlow: View {
     private func controls(compact: Bool) -> some View {
         switch step {
         case .hello:
+            if model.sync.needsAccount {
+                Button("Recuperar minha conta") { recoverAccount = true }
+                    .accessibilityIdentifier("onboardingRecover")
+            }
             if route.flow == "default" {
                 // Got here from a friend's or a Space link before installing? Pasting it is
                 // the private way to keep it: the person chooses, nothing is fingerprinted.
