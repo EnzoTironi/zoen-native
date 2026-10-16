@@ -164,15 +164,10 @@ pub async fn report(State(st): State<Shared>, headers: HeaderMap, body: Bytes) -
     if st.limits.request_device.check(&device).is_err() {
         return StatusCode::TOO_MANY_REQUESTS.into_response();
     }
-    let identity: Option<String> =
-        match sqlx::query_scalar("SELECT identity FROM devices WHERE device = $1")
-            .bind(&device)
-            .fetch_optional(&st.pool)
-            .await
-        {
-            Ok(i) => i,
-            Err(_) => return StatusCode::SERVICE_UNAVAILABLE.into_response(),
-        };
+    let identity = match crate::db::active_device(&st.pool, &device).await {
+        Ok(identity) => identity,
+        Err(_) => return StatusCode::SERVICE_UNAVAILABLE.into_response(),
+    };
     let Some(identity) = identity else {
         return StatusCode::FORBIDDEN.into_response();
     };
