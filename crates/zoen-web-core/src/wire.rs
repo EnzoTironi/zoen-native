@@ -40,6 +40,11 @@ pub fn request(id: u64, kind: &str, value: &str) -> Result<Vec<u8>, String> {
             id: value.to_string(),
         },
         "devices" => Op::Devices,
+        "unlink" => Op::Unlink {
+            device: roda_log::parse_device_key(value)
+                .map(|_| value.to_string())
+                .ok_or("invalid device public key")?,
+        },
         "preview_invite" => Op::PreviewInvite {
             code: value.to_string(),
         },
@@ -225,7 +230,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn presence_and_typing_are_not_lost_at_the_browser_boundary() {
+fn presence_and_typing_are_not_lost_at_the_browser_boundary() {
         let frame = ServerFrame::Presence {
             identity: "person".into(),
             online: false,
@@ -280,5 +285,15 @@ mod tests {
             }
         );
         assert!(request(0, "presence_privacy", "not a bool").is_err());
+    }
+
+    #[test]
+    fn browser_unlink_uses_the_existing_authenticated_device_operation() {
+        let device = roda_log::Signer::generate().id();
+        let frame = ClientFrame::decode(&request(42, "unlink", &device).unwrap()).unwrap();
+        assert!(
+            matches!(frame, ClientFrame::Req { id: 42, op: Op::Unlink { device: target } } if target == device)
+        );
+        assert!(request(43, "unlink", "not-a-device").is_err());
     }
 }

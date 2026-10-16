@@ -1338,14 +1338,56 @@ pub async fn fetch_link_box(
     id: &str,
     deadline: tokio::time::Instant,
 ) -> Result<Vec<u8>, String> {
+    let expired = || "O prazo para conectar este aparelho acabou. Gere outro código.".to_string();
+    if tokio::time::Instant::now() >= deadline {
+        return Err(expired());
+    }
+    let pickup = async {
+        loop {
+            match fetch_link_attempt(relay_url, key, id).await {
+                Ok(bytes) => return Ok(bytes),
+                Err(PickupError::Fatal(message)) => return Err(message),
+                Err(PickupError::Transport) => {
+                    tokio::time::sleep(Duration::from_millis(700)).await;
+                }
+            }
+        }
+    };
+    // One deadline owns connect, authentication, every receive/send and backoff.
+    // Dropping this future also drops the socket and cancels all pickup work.
+    let result = tokio::time::timeout_at(deadline, pickup)
+        .await
+        .map_err(|_| expired())?;
+    if tokio::time::Instant::now() >= deadline {
+        return Err(expired());
+    }
+    result
+}
+
+enum PickupError {
+    Transport,
+    Fatal(String),
+}
+
+impl From<String> for PickupError {
+    fn from(_: String) -> Self {
+        Self::Transport
+    }
+}
+
+async fn fetch_link_attempt(
+    relay_url: &str,
+    key: &roda_log::Signer,
+    id: &str,
+) -> Result<Vec<u8>, PickupError> {
     let url = ws_url(relay_url);
     let (ws, _) = tokio::time::timeout(
         Duration::from_secs(10),
         tokio_tungstenite::connect_async_with_config(url.as_str(), None, true),
     )
     .await
-    .map_err(|_| "can't reach the relay: timed out".to_string())?
-    .map_err(|e| format!("can't reach the relay: {e}"))?;
+    .map_err(|_| PickupError::Transport)?
+    .map_err(|_| PickupError::Transport)?;
     let (mut sink, mut stream) = ws.split();
     let me = key.id();
     send(
@@ -1367,12 +1409,16 @@ pub async fn fetch_link_box(
             ..
         } if protocol >= MIN_PROTOCOL_VERSION => (nonce, relay),
         ServerFrame::Challenge { protocol, .. } => {
-            return Err(format!(
-                "relay protocol {protocol} needs an upgrade before linking"
+            return Err(PickupError::Fatal(format!(
+                "O servidor precisa ser atualizado antes de conectar (versão {protocol})."
+            )))
+        }
+        ServerFrame::Error { message, .. } => return Err(PickupError::Fatal(message)),
+        _ => {
+            return Err(PickupError::Fatal(
+                "Resposta inesperada ao conectar.".into(),
             ))
         }
-        ServerFrame::Error { message, .. } => return Err(message),
-        other => return Err(format!("unexpected {other:?}")),
     };
     send(
         &mut sink,
@@ -1384,7 +1430,7 @@ pub async fn fetch_link_box(
     loop {
         match recv(&mut stream).await? {
             ServerFrame::Ready { .. } => break,
-            ServerFrame::Error { message, .. } => return Err(message),
+            ServerFrame::Error { message, .. } => return Err(PickupError::Fatal(message)),
             _ => continue,
         }
     }
@@ -1396,18 +1442,19 @@ pub async fn fetch_link_box(
         let result = loop {
             match recv(&mut stream).await? {
                 ServerFrame::Res { id, result } if id == n => break result,
-                ServerFrame::Error { message, .. } => return Err(message),
+                ServerFrame::Error { message, .. } => return Err(PickupError::Fatal(message)),
                 _ => continue,
             }
         };
         match result {
             Ok(Reply::Link(Some(b))) => return Ok(b),
             Ok(Reply::Link(None)) => {}
-            Ok(_) => return Err("the relay answered something else".into()),
-            Err(e) => return Err(e),
-        }
-        if tokio::time::Instant::now() >= deadline {
-            return Err("nobody linked this device in time".into());
+            Ok(_) => {
+                return Err(PickupError::Fatal(
+                    "Resposta inesperada ao conectar.".into(),
+                ))
+            }
+            Err(e) => return Err(PickupError::Fatal(e)),
         }
         tokio::time::sleep(Duration::from_millis(700)).await;
     }
@@ -1415,6 +1462,69 @@ pub async fn fetch_link_box(
 
 #[cfg(test)]
 mod tests {
+    #[tokio::test]
+    async fn pickup_expired_deadline_opens_no_connection() {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let result = fetch_link_box(
+            &format!("http://{}", listener.local_addr().unwrap()),
+            &Signer::generate(),
+            "fixture",
+            tokio::time::Instant::now(),
+        )
+        .await;
+        assert!(result.unwrap_err().contains("prazo"));
+        assert!(
+            tokio::time::timeout(Duration::from_millis(80), listener.accept())
+                .await
+                .is_err()
+        );
+    }
+
+    #[tokio::test]
+    async fn pickup_deadline_bounds_a_stalled_connection() {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let address = listener.local_addr().unwrap();
+        let deadline = tokio::time::Instant::now() + Duration::from_millis(80);
+        let result = fetch_link_box(
+            &format!("http://{address}"),
+            &Signer::generate(),
+            "fixture",
+            deadline,
+        )
+        .await;
+        assert!(result.unwrap_err().contains("prazo"));
+        assert!(tokio::time::Instant::now() < deadline + Duration::from_millis(500));
+    }
+
+    #[tokio::test]
+    async fn pickup_reconnects_after_transport_failure_and_is_cancelable() {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let address = listener.local_addr().unwrap();
+        let task = tokio::spawn(async move {
+            fetch_link_box(
+                &format!("http://{address}"),
+                &Signer::generate(),
+                "fixture",
+                tokio::time::Instant::now() + Duration::from_secs(5),
+            )
+            .await
+        });
+        let (first, _) = listener.accept().await.unwrap();
+        drop(first);
+        let (second, _) = tokio::time::timeout(Duration::from_secs(2), listener.accept())
+            .await
+            .unwrap()
+            .unwrap();
+        task.abort();
+        assert!(task.await.unwrap_err().is_cancelled());
+        drop(second);
+        assert!(
+            tokio::time::timeout(Duration::from_millis(900), listener.accept())
+                .await
+                .is_err()
+        );
+    }
+
     #[test]
     fn an_unrefreshed_receipt_clock_expires_without_advancing_its_timestamp() {
         let clock = roda_proto::KeyPackageClaimClock::from_server_ms(1_800_000_000_000).unwrap();
