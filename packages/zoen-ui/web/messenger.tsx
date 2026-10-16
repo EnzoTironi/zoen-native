@@ -256,6 +256,7 @@ function AccountMessenger({ conversations, identity, name, connected, status, me
   const [follow, setFollow] = useState(loadFollow);
   const [search, setSearch] = useState('');
   const [showArchived, setShowArchived] = useState(false);
+  const [inboxFilter, setInboxFilter] = useState('all');
   const [reply, setReply] = useState<Message | null>(null);
   const [editing, setEditing] = useState<Message | null>(null);
   const [threadRoot, setThreadRoot] = useState<string | null>(null);
@@ -269,7 +270,7 @@ function AccountMessenger({ conversations, identity, name, connected, status, me
   };
   const toggleFollow = (root: string, on: boolean) => { const next = { ...follow, [root]: on }; setFollow(next); localStorage.setItem(FOLLOW, JSON.stringify(next)); };
   const lastAt = (c: Conversation) => c.messages.at(-1)?.at_ms ?? 0;
-  const matches = conversations.filter((c) => c.title.toLocaleLowerCase('pt-BR').includes(search.toLocaleLowerCase('pt-BR')));
+  const matches = conversations.filter((c) => (wide || inboxFilter === 'all' || c.kind === inboxFilter) && c.title.toLocaleLowerCase('pt-BR').includes(search.toLocaleLowerCase('pt-BR')));
   const ordered = [...matches].sort((a, b) => Number(!!prefs[b.id]?.pinned) - Number(!!prefs[a.id]?.pinned) || lastAt(b) - lastAt(a));
   const archived = ordered.filter((c) => prefs[c.id]?.archived);
   const list = showArchived ? archived : ordered.filter((c) => !prefs[c.id]?.archived);
@@ -316,13 +317,26 @@ function AccountMessenger({ conversations, identity, name, connected, status, me
 
   const content = <div className={`zm-app zm-native-production${selected || children || destination !== 'chats' ? ' zm-detail-open' : ''}${root ? ' zm-with-thread' : ''}`}>
     <aside className="zm-sidebar" aria-label="Conversas">
-      <header className="zm-side-head">
-        {showArchived ? <button className="zm-round glass" aria-label="Voltar" onClick={() => setShowArchived(false)}><Icon name="back" /></button> : null}
-        <h1>{showArchived ? 'Arquivadas' : 'Chats'}</h1>
-        {onSettings ? <button className="zm-round" aria-label="You" onClick={onSettings}><Avatar name={name} size={28} /></button> : null}
-      </header>
-      <label className="zm-search"><Icon name="search" /><span className="zw-sr-only">Buscar conversas e mensagens</span>
-        <input type="search" placeholder={english() ? 'Search' : 'Buscar'} value={search} onChange={(e) => setSearch(e.target.value)} /></label>
+      {!searchOpen && !search ? <>
+        <header className="zm-home-head">
+          <h1 aria-label="Zoen"><img src="./assets/native/head_smirk.png" alt="" width="30" height="30" /><span>zoen</span></h1>
+          <span className={connected ? 'zm-connection-dot zm-online' : 'zm-connection-dot zm-offline'} role="status" aria-label={status} />
+          <button className="zm-home-action glass" aria-label="New chat" onClick={() => navigate('new-chat')}><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><path d="M14 4H5v15h15v-9M10 14l2-5 7-7 3 3-7 7-5 2Z" /></svg></button>
+          <button className="zm-home-action glass" aria-label="Notifications" onClick={() => navigate('notifications')}><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><path d="M5 17h14l-2-3V9a5 5 0 0 0-10 0v5l-2 3Zm5 3h4" /></svg></button>
+          <button className="zm-home-me" aria-label="Your context" onClick={() => navigate('you')}><Avatar name={name} id={identity} size={40} /></button>
+        </header>
+        <div className="zm-home-strip"><div className="zm-pin-here"><img src="./assets/native/wave.png" alt="" width="95.2" height="95.2" /><span>{english() ? 'Pin a mini-app here' : 'Fixe um mini-app aqui'}</span></div></div>
+      </> : null}
+      <div className="zm-inbox-filter">
+        {showArchived ? <button className="zm-round" aria-label="Voltar" onClick={() => setShowArchived(false)}><Icon name="back" /></button> : null}
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true"><path d="M3 6h18M6 12h12M9 18h6" /></svg>
+        <select aria-label="Filter chats" value={inboxFilter} onChange={(e) => setInboxFilter(e.target.value)}>
+          <option value="all">{english() ? 'All chats' : 'Todas as conversas'}</option>
+          <option value="direct">{english() ? 'Direct chats' : 'Conversas diretas'}</option>
+          <option value="group">{english() ? 'Groups' : 'Grupos'}</option>
+          <option value="community">{english() ? 'Communities' : 'Comunidades'}</option>
+        </select>
+      </div>
       {!showArchived && threadsUnread ? <p className="zm-threads-row"><Icon name="thread" />Threads que você segue<span className="zm-badge">{threadsUnread}</span></p> : null}
       {!showArchived && archived.length ? <button className="zm-archived-row" onClick={() => setShowArchived(true)}><Icon name="archive" />Arquivadas<span>{archived.length}</span></button> : null}
       {search.trim() ? <MessageSearchResults key={search.trim()} conversations={conversations} query={search} open={(hit) => {

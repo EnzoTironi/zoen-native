@@ -35,11 +35,28 @@ async function mount(annotate = async () => {}) {
 test('sidebar finds message bodies, not only conversation titles', async () => {
   const ui = await mount();
   try {
+    await click(button('Search'));
     await input(document.querySelector('input[type=search]')!, 'pousada');
     assert.ok(document.querySelector('[aria-label="Resultados de mensagens"]'), 'message results must be visible');
     assert.match(document.querySelector('[aria-label="Resultados de mensagens"]')!.textContent!, /pousada antiga/);
     await click(document.querySelector('[aria-label="Resultados de mensagens"] li button'));
     assert.equal(document.activeElement?.id, 'message-first');
+  } finally { await ui.close(); }
+});
+
+test('inbox filter selects actual conversation kinds and search opens from the bottom bar', async () => {
+  const ui = await mount();
+  try {
+    assert.equal(document.querySelector('input[type=search]'), null);
+    assert.ok(document.querySelector('.zm-pin-here'));
+    const filter = document.querySelector('[aria-label="Filter chats"]') as HTMLSelectElement;
+    await act(async () => { filter.value = 'direct'; filter.dispatchEvent(new dom.window.Event('change', { bubbles: true })); });
+    assert.equal(document.querySelectorAll('.zm-chats > li').length, 0);
+    await act(async () => { filter.value = 'group'; filter.dispatchEvent(new dom.window.Event('change', { bubbles: true })); });
+    assert.equal(document.querySelectorAll('.zm-chats > li').length, 1);
+    await click(button('Search'));
+    assert.ok(document.querySelector('input[type=search]'));
+    assert.equal(document.querySelector('.zm-home-head'), null);
   } finally { await ui.close(); }
 });
 
