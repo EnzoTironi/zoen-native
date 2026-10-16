@@ -1,5 +1,6 @@
 //! Browser boundary. Device signing keys belong to nonexportable WebCrypto, never Rust.
 
+mod cards;
 mod client;
 mod link;
 pub mod media;

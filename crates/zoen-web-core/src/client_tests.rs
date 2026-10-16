@@ -497,6 +497,35 @@ fn native_voice_replies_versions_and_reverts_stay_on_the_original_post() {
     assert!(conversations[0].messages[1].file.is_none());
 }
 
+#[test]
+fn real_item_cards_follow_versions_reverts_and_authorized_deletion() {
+    use roda_types::{ItemContent, ItemKind, PlanDoc, PlanSection, PlanLine};
+    let (mut client, author, other, mut log, _) = web_fixture();
+    let content = ItemContent::Plan(PlanDoc { title: "Trip".into(), summary: "Coast".into(), budget_cents: Some(5000), sections: vec![PlanSection { title: "Day".into(), lines: vec![PlanLine { id: "one".into(), text: "Lunch".into(), cost_cents: 1200, done: true }] }] });
+    clear(&mut log, &author, EventBody::ItemCreated { item: "plan_real".into(), kind: ItemKind::Plan, content: content.clone(), origin: "human".into() }, 3);
+    let target = log.events().last().unwrap().hash.clone();
+    clear(&mut log, &author, EventBody::ItemVersioned { item: "plan_real".into(), content: ItemContent::Text { text: "Changed".into() }, note: "edit".into() }, 4);
+    client.logs.insert(log.space().into(), log.clone());
+    let edited = client.conversations();
+    let edited = edited[0].messages[1].card.as_ref().unwrap();
+    assert_eq!((edited.version, edited.summary.as_str()), (2, "Changed"));
+    clear(&mut log, &author, EventBody::ItemReverted { item: "plan_real".into(), to_version: 1, note: "undo".into() }, 5);
+    client.logs.insert(log.space().into(), log.clone());
+    let views = client.conversations();
+    assert!(views[0].messages[0].card.is_none());
+    let card = views[0].messages[1].card.as_ref().unwrap();
+    assert_eq!((card.title.as_str(), card.version, card.total_cents, card.line_count, card.done_count), ("Trip", 3, Some(1200), 1, 1));
+    let json = serde_json::to_value(card).unwrap();
+    assert_eq!(json["itemId"], "plan_real"); assert_eq!(json["budgetCents"], 5000);
+    annotate(&mut log, &other, &target, roda_types::Annotation::Delete);
+    client.logs.insert(log.space().into(), log.clone());
+    assert!(client.conversations()[0].messages[1].card.is_some());
+    annotate(&mut log, &author, &target, roda_types::Annotation::Delete);
+    client.logs.insert(log.space().into(), log);
+    let views = client.conversations();
+    assert!(views[0].messages[1].deleted); assert!(views[0].messages[1].card.is_none());
+}
+
 fn web_fixture() -> (Client<HostSigner>, Author, Author, SpaceLog, String) {
     let identity = NativeSigner::from_secret(&[41; 32]);
     let host = HostSigner(NativeSigner::from_secret(&[42; 32]));

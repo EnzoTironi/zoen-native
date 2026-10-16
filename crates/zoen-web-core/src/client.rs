@@ -115,6 +115,7 @@ pub struct MessageView {
     last_reply_ms: Option<i64>,
     /// A shared file, photo, video or voice note (the chunks to fetch and open).
     file: Option<roda_types::FileDoc>,
+    card: Option<crate::cards::ItemCard>,
 }
 
 #[derive(Default)]
@@ -1222,11 +1223,13 @@ impl<S: Signer> Client<S> {
             };
             let (all_delivered, all_read) = (watermark(|r| r.0.max(r.1)), watermark(|r| r.1));
             let my_read = receipts.and_then(|r| r.get(me)).map(|r| r.1).unwrap_or(0);
+            let cards = crate::cards::project(events);
             let mut messages = events.iter().filter_map(|event| {
                 let mut view = self.message_view(event, "confirmed", None)?;
                 view.entry = Some(event.hash.clone());
                 view.seq = Some(event.seq);
                 if let EventBody::ItemCreated { item, .. } = &event.body {
+                    view.card = cards.get(item).cloned();
                     if let Some((_, versions)) = files.get(item.as_str()) {
                         view.file = versions.last().map(|doc| (*doc).clone());
                         view.edited = versions.len() > 1;
@@ -1237,7 +1240,7 @@ impl<S: Signer> Client<S> {
                 }
                 if let Some(f) = folded.get(&event.hash) {
                     view.deleted = f.deleted;
-                    if f.deleted { view.text.clear(); view.file = None; }
+                    if f.deleted { view.text.clear(); view.file = None; view.card = None; }
                     if let Some(text) = &f.text { view.text = text.clone(); view.edited = true; }
                     let mut groups: BTreeMap<&str, Vec<ReactionParticipant>> = BTreeMap::new();
                     for (who, emoji) in &f.reactions {
@@ -1322,6 +1325,7 @@ impl<S: Signer> Client<S> {
                 false,
                 Some(doc.clone()),
             ),
+            EventBody::ItemCreated { .. } => (String::new(), None, false, None),
             _ => return None,
         };
         let name = if event.author == self.account.identity {
@@ -1364,6 +1368,7 @@ impl<S: Signer> Client<S> {
             repliers: Vec::new(),
             last_reply_ms: None,
             file,
+            card: None,
         })
     }
 }
@@ -1372,10 +1377,7 @@ fn is_post(body: &EventBody) -> bool {
     matches!(
         body,
         EventBody::MessagePosted { .. }
-            | EventBody::ItemCreated {
-                content: roda_types::ItemContent::File(_),
-                ..
-            }
+            | EventBody::ItemCreated { .. }
     )
 }
 
