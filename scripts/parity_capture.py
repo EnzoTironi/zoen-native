@@ -82,21 +82,62 @@ def capture_ios(args, output):
     export_ios(exported, output)
 
 
+def android_emulator_serial(requested=None):
+    """Never deploy or clear application data on a connected physical phone."""
+    if requested and not requested.startswith('emulator-'):
+        raise ValueError('Android parity capture only supports emulator serials')
+    listing = subprocess.check_output(['adb', 'devices'], cwd=ROOT, text=True)
+    online = [parts[0] for line in listing.splitlines()
+              if len(parts := line.split()) == 2 and parts[1] == 'device'
+              and parts[0].startswith('emulator-')]
+    if requested:
+        if requested not in online:
+            raise ValueError(f'Requested Android emulator is not online: {requested}')
+        return requested
+    if len(online) != 1:
+        raise ValueError('Supply --device with one online Android emulator serial')
+    return online[0]
+
+
+def validate_instrumentation_output(output):
+    # `am instrument` can exit zero even when its runner or a test failed.
+    failures = ('failures!!!', 'instrumentation_failed', 'process crashed', 'shortmsg=')
+    if 'OK (' not in output or any(marker in output.lower() for marker in failures):
+        raise ValueError('Android instrumentation did not report a successful test run')
+
+
 def capture_android(args, output):
-    run('adb', 'shell', 'wm', 'size', '1206x2478')
-    run('adb', 'shell', 'wm', 'density', '480')
-    run('adb', 'shell', 'settings', 'put', 'system', 'font_scale', '1.0')
-    run('adb', 'shell', 'settings', 'put', 'global', 'window_animation_scale', '0')
-    run('adb', 'shell', 'settings', 'put', 'global', 'transition_animation_scale', '0')
-    run('adb', 'shell', 'settings', 'put', 'global', 'animator_duration_scale', '0')
-    run('adb', 'shell', 'setprop', 'persist.sys.timezone', 'UTC')
-    run('adb', 'shell', 'pm', 'clear', 'xyz.tironi.zoen') if args.clear_installed else None
-    run('bash', 'scripts/test-android-device.sh', '--max-workers=4', '-Pandroid.testInstrumentationRunnerArguments.class=xyz.tironi.zoen.AndroidParityScreensTest,xyz.tironi.zoen.AndroidParityComposerCaptureTest', '-Pandroid.testInstrumentationRunnerArguments.parityFixture=native-parity-v1', f'-Pandroid.testInstrumentationRunnerArguments.parityRevision={args.revision}')
+    serial = android_emulator_serial(args.device)
+    adb = ('adb', '-s', serial)
+    abi = subprocess.check_output([*adb, 'shell', 'getprop', 'ro.product.cpu.abi'], cwd=ROOT, text=True).strip()
+    if abi not in ('arm64-v8a', 'x86_64'):
+        raise ValueError(f'Unsupported emulator ABI: {abi}')
+    run(*adb, 'shell', 'wm', 'size', '1206x2478')
+    run(*adb, 'shell', 'wm', 'density', '480')
+    run(*adb, 'shell', 'settings', 'put', 'system', 'font_scale', '1.0')
+    run(*adb, 'shell', 'settings', 'put', 'global', 'window_animation_scale', '0')
+    run(*adb, 'shell', 'settings', 'put', 'global', 'transition_animation_scale', '0')
+    run(*adb, 'shell', 'settings', 'put', 'global', 'animator_duration_scale', '0')
+    run(*adb, 'shell', 'setprop', 'persist.sys.timezone', 'UTC')
+    run('bash', 'android/gradlew', '-p', 'android', ':app:assembleDebug', ':app:assembleDebugAndroidTest', '--max-workers=2', f'-PandroidAbis={abi}')
+    run(*adb, 'install', '-r', 'android/app/build/outputs/apk/debug/app-debug.apk')
+    run(*adb, 'install', '-r', 'android/app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk')
+    if args.clear_installed:
+        run(*adb, 'shell', 'pm', 'clear', 'xyz.tironi.zoen')
+    run(*adb, 'shell', 'run-as', 'xyz.tironi.zoen', 'rm', '-rf', 'cache/device-evidence/android-parity')
+    result = subprocess.run([*adb, 'shell', 'am', 'instrument', '-w', '-r',
+        '-e', 'class', 'xyz.tironi.zoen.AndroidParityScreensTest,xyz.tironi.zoen.AndroidParityComposerCaptureTest',
+        '-e', 'parityFixture', 'native-parity-v1', '-e', 'parityRevision', args.revision,
+        'xyz.tironi.zoen.test/androidx.test.runner.AndroidJUnitRunner'], cwd=ROOT,
+        text=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, check=True)
+    (output/'instrumentation.log').write_text(result.stdout)
+    print(result.stdout)
+    validate_instrumentation_output(result.stdout)
     # Test app owns these files; run-as only reads its debug sandbox after testing.
     for key in (*KEYS, 'manifest'):
         filename = 'manifest.json' if key == 'manifest' else key+'.png'
         with (output/filename).open('wb') as file:
-            run('adb', 'exec-out', 'run-as', 'xyz.tironi.zoen', 'cat', 'cache/device-evidence/android-parity/'+filename, stdout=file)
+            run(*adb, 'exec-out', 'run-as', 'xyz.tironi.zoen', 'cat', 'cache/device-evidence/android-parity/'+filename, stdout=file)
 
 
 def main():
