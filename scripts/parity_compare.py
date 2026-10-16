@@ -24,7 +24,7 @@ def normalize(image, crop, size):
     return image
 
 
-def compare(ios, candidate, output, config, threshold=2.5, platform='android'):
+def compare(ios, candidate, output, config, threshold=2.5, platform='android', keys=KEYS):
     if not 0 <= threshold <= 100:
         raise ValueError('Threshold must be between 0 and 100')
     output.mkdir(parents=True, exist_ok=True)
@@ -38,7 +38,7 @@ def compare(ios, candidate, output, config, threshold=2.5, platform='android'):
     if not manifests[0]['source_revision']:
         raise ValueError('Missing native fixture source revision')
     results = []
-    for key in KEYS:
+    for key in keys:
         try:
             frames = []
             for source, folder in (('ios', ios), (platform, candidate)):

@@ -172,6 +172,7 @@ jobs:
       - run: python3 -m pip install Pillow==11.3.0
       - run: python3 scripts/test_parity_compare.py
       - run: python3 scripts/test_parity_capture.py
+      - run: python3 scripts/test_parity_icon_compare.py
       - uses: actions/download-artifact@v4
         continue-on-error: true # Missing artifacts fail their comparison without hiding other profiles.
         with:
