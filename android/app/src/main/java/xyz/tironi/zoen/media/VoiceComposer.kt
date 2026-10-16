@@ -3,6 +3,7 @@ package xyz.tironi.zoen.media
 import xyz.tironi.zoen.ui.rememberZoenHaptics
 import xyz.tironi.zoen.ui.ZoenFeedback
 import xyz.tironi.zoen.ui.zoenGlass
+import xyz.tironi.zoen.ui.MotionVectorIcon
 
 import android.Manifest
 import android.content.pm.PackageManager
@@ -120,21 +121,21 @@ fun VoiceComposer(
                     }, onCancel = {
                         if (session.recorder.state.value.phase == RecordingPhase.HOLDING) { session.cancel(); haptics.perform(ZoenFeedback.Reject) }
                     })
-            }) { Icon(Icons.Rounded.Mic, stringResource(R.string.media_hold_record), tint = MaterialTheme.colorScheme.onPrimary, modifier = Modifier.size(21.dp)) }
+            }) { MotionVectorIcon(Icons.Rounded.Mic, stringResource(R.string.media_hold_record), tint = MaterialTheme.colorScheme.onPrimary, modifier = Modifier.size(21.dp)) }
         if (recording.phase != RecordingPhase.IDLE) {
             val width = (LocalConfiguration.current.screenWidthDp - 32).coerceIn(240, 380).dp
             Box(Modifier.width(width).testTag("voice-recording").zoenGlass(RoundedCornerShape(28.dp))) {
                     Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                            IconButton(onClick = { session.cancel(); haptics.perform(ZoenFeedback.Reject) }, enabled = recording.phase != RecordingPhase.FINISHING) { Icon(Icons.Rounded.DeleteOutline, stringResource(R.string.media_delete_recording), tint = MaterialTheme.colorScheme.error) }
+                            IconButton(onClick = { session.cancel(); haptics.perform(ZoenFeedback.Reject) }, enabled = recording.phase != RecordingPhase.FINISHING) { MotionVectorIcon(Icons.Rounded.DeleteOutline, stringResource(R.string.media_delete_recording), tint = MaterialTheme.colorScheme.error) }
                             Column(Modifier.weight(1f)) {
                                 Text(stringResource(if (recording.phase == RecordingPhase.LOCKED) R.string.media_recording_locked else R.string.media_recording, voiceTime(recording.seconds)), style = MaterialTheme.typography.labelLarge)
                                 VoiceWaveform(recording.levels, modifier = Modifier.fillMaxWidth().height(32.dp))
                             }
-                            if (recording.phase == RecordingPhase.HOLDING) IconButton(onClick = { session.recorder.lock(); haptics.perform(ZoenFeedback.RecordLock) }) { Icon(Icons.Rounded.Lock, stringResource(R.string.media_lock)) }
+                            if (recording.phase == RecordingPhase.HOLDING) IconButton(onClick = { session.recorder.lock(); haptics.perform(ZoenFeedback.RecordLock) }) { MotionVectorIcon(Icons.Rounded.Lock, stringResource(R.string.media_lock)) }
                             IconButton(onClick = { session.review() }, enabled = recording.phase != RecordingPhase.FINISHING) {
                                 if (recording.phase == RecordingPhase.FINISHING) CircularProgressIndicator(Modifier.size(22.dp), strokeWidth = 2.dp)
-                                else Icon(Icons.Rounded.StopCircle, stringResource(R.string.media_stop_review), tint = MaterialTheme.colorScheme.error)
+                                else MotionVectorIcon(Icons.Rounded.StopCircle, stringResource(R.string.media_stop_review), tint = MaterialTheme.colorScheme.error)
                             }
                         }
                         if (recording.phase == RecordingPhase.HOLDING) Text(stringResource(R.string.media_slide_cancel), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -177,7 +178,7 @@ fun VoiceBubble(model: ZoenViewModel, reference: VoiceNoteRef, modifier: Modifie
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             FilledIconButton(onClick = ::play) {
                 if (loading) CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp, color = MaterialTheme.colorScheme.onPrimary)
-                else Icon(if (current && playback.playing) Icons.Rounded.Pause else Icons.Rounded.PlayArrow, stringResource(if (current && playback.playing) R.string.media_pause else R.string.media_play_voice))
+                else MotionVectorIcon(if (current && playback.playing) Icons.Rounded.Pause else Icons.Rounded.PlayArrow, stringResource(if (current && playback.playing) R.string.media_pause else R.string.media_play_voice))
             }
             Column(Modifier.weight(1f)) {
                 VoiceWaveform(reference.levels, if (current) playback.position / maxOf(.001, playback.duration) else 0.0, modifier = Modifier.fillMaxWidth().height(28.dp), tint = LocalContentColor.current)

@@ -1,6 +1,7 @@
 package xyz.tironi.zoen.ui
 
 import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.rememberScrollState
@@ -46,8 +47,9 @@ internal fun ReactionPickerDialog(model: ZoenViewModel, spaceId: String, entry: 
             Text("Escolher reação", style = MaterialTheme.typography.titleLarge)
             listOf(listOf("😀", "🥰", "😍", "🥳"), listOf("🤔", "😭", "👏", "🎉"), listOf("🔥", "💯", "✅", "👀")).forEach { row ->
                 Row { row.forEach { value ->
-                    TextButton(onClick = { react(if (value == mine) null else value) }, enabled = !busy,
-                        modifier = Modifier.semantics { contentDescription = if (value == mine) "Remover $value" else "Reagir com $value" }) { Text(value) }
+                    val interactions = remember(value) { MutableInteractionSource() }
+                    TextButton(interactionSource = interactions, onClick = { react(if (value == mine) null else value) }, enabled = !busy,
+                        modifier = Modifier.semantics { contentDescription = if (value == mine) "Remover $value" else "Reagir com $value" }) { Text(value, Modifier.iconReveal(value).iconPress(interactions)) }
                 } }
             }
             OutlinedTextField(emoji, { emoji = it }, enabled = !busy, label = { Text("Emoji do teclado") }, singleLine = true, modifier = Modifier.fillMaxWidth().testTag("reaction-emoji"))
@@ -102,7 +104,7 @@ internal fun ReactionPeopleDialog(model: ZoenViewModel, spaceId: String, entry: 
                         FilterChip(selected = item.emoji == reaction?.emoji, enabled = !busy, onClick = {
                             haptics.perform(ZoenFeedback.Selection)
                             selectedEmoji = item.emoji
-                        }, label = { Text("${item.emoji} ${item.people.size}") }, modifier = Modifier.semantics { contentDescription = "${item.emoji}, ${item.people.size} participantes" })
+                        }, label = { NativeIconMotion(selection = item.emoji == reaction?.emoji) { Text("${item.emoji} ${item.people.size}", Modifier.iconReveal(item.emoji)) } }, modifier = Modifier.semantics { contentDescription = "${item.emoji}, ${item.people.size} participantes" })
                     }
                 }
             }

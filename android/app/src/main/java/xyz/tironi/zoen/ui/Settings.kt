@@ -151,13 +151,12 @@ private fun Modifier.verticalScrollCompat(): Modifier = this.then(Modifier.verti
 @Composable
 private fun CircleButton(icon: ImageVector, description: String, tag: String, onClick: () -> Unit) {
     val interactions = remember { MutableInteractionSource() }
-    val pressed by interactions.collectIsPressedAsState()
-    val scale by animateFloatAsState(if (pressed) 0.96f else 1f, tween(150), label = "press")
+    // Artwork-only feedback observes real press and lifecycle/reduced motion.
     FilledTonalIconButton(
         onClick = onClick,
-        modifier = Modifier.size(48.dp).scale(scale).testTag(tag),
+        modifier = Modifier.size(48.dp).testTag(tag),
         interactionSource = interactions,
-    ) { Icon(icon, description, Modifier.size(20.dp)) }
+    ) { MotionVectorIcon(icon, description, Modifier.size(20.dp).iconPress(interactions)) }
 }
 
 @Composable private fun settingsRipple() = androidx.compose.material3.ripple()
@@ -181,15 +180,16 @@ private fun Caption(text: Int, vararg args: Any) {
 private fun SRow(icon: ImageVector?, title: String, subtitle: String? = null, value: String? = null, tint: Color = Color.Unspecified, chevron: Boolean = true, enabled: Boolean = true, tag: String? = null, onClick: (() -> Unit)? = null) {
     val haptics = rememberZoenHaptics()
     val clickable = onClick != null && enabled
+    val interactions = remember { MutableInteractionSource() }
     Row(
         Modifier.fillMaxWidth().heightIn(min = 52.dp)
-            .then(if (clickable) Modifier.clickable(role = Role.Button) { haptics.perform(ZoenFeedback.Tap); onClick!!() } else Modifier)
+            .then(if (clickable) Modifier.clickable(interactionSource = interactions, indication = settingsRipple(), role = Role.Button) { haptics.perform(ZoenFeedback.Tap); onClick!!() } else Modifier)
             .then(tag?.let { Modifier.testTag(it) } ?: Modifier)
             .padding(horizontal = 16.dp, vertical = if (subtitle != null) 8.dp else 0.dp),
         verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp),
     ) {
         val alpha = if (enabled) 1f else 0.45f
-        icon?.let { Icon(it, null, Modifier.size(20.dp), tint = (if (tint == Color.Unspecified) MaterialTheme.colorScheme.onSurfaceVariant else tint).copy(alpha = alpha)) }
+        icon?.let { MotionVectorIcon(it, null, Modifier.size(20.dp).iconPress(interactions), tint = (if (tint == Color.Unspecified) MaterialTheme.colorScheme.onSurfaceVariant else tint).copy(alpha = alpha)) }
         Column(Modifier.weight(1f)) {
             Text(title, style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Medium, color = (if (tint == Color.Unspecified) MaterialTheme.colorScheme.onSurface else tint).copy(alpha = alpha))
             subtitle?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = alpha)) }

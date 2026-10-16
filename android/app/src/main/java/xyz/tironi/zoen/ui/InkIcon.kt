@@ -36,7 +36,7 @@ internal fun InkIconButton(glyph: ZoenGlyph, description: String, onClick: () ->
 internal fun ZoenIcon(glyph: ZoenGlyph, description: String? = null, modifier: Modifier = Modifier, selected: Boolean = false,
                       interactions: MutableInteractionSource? = null, tint: Color = LocalContentColor.current) {
     val art = ZoenIconArt.all.getValue(glyph)
-    val motion = rememberMotionEnabled()
+    val motion = rememberIconMotionRunning()
     val pressed = interactions?.collectIsPressedAsState()?.value ?: false
     val time = remember(glyph) { Animatable(660f) }
     val draw = remember(glyph) { Animatable(1f) }
@@ -63,7 +63,7 @@ internal fun ZoenIcon(glyph: ZoenGlyph, description: String? = null, modifier: M
     }
     val paint = remember { Paint(Paint.ANTI_ALIAS_FLAG) }
     val mirror = LocalLayoutDirection.current == LayoutDirection.Rtl && glyph in listOf(ZoenGlyph.Back, ZoenGlyph.Send)
-    Canvas(modifier.size(24.dp).then(if (description != null) Modifier.semantics { contentDescription = description } else Modifier)) {
+    Canvas(modifier.iconReveal(glyph).size(24.dp).then(if (description != null) Modifier.semantics { contentDescription = description } else Modifier)) {
         val beat = InkIconGeometry.motion(art, time.value.toDouble())
         drawIntoCanvas { drawing ->
             val canvas = drawing.nativeCanvas

@@ -284,9 +284,9 @@ fun ChatScreen(model: ZoenViewModel, state: AppState, spaceId: String, navigate:
             Column(Modifier.background(MaterialTheme.colorScheme.surface)) {
                 TopAppBar(title = { if (!enlargedText) identity() }, navigationIcon = { InkIconButton(ZoenGlyph.Back, stringResource(R.string.back), { navigationHaptics.perform(ZoenFeedback.Dismiss); back() }) }, actions = {
                     val callsComing = stringResource(R.string.calls_coming)
-                    IconButton(onClick = { model.notify(callsComing) }) { Icon(Icons.Rounded.Call, stringResource(R.string.voice_call)) }
-                    IconButton(onClick = { model.notify(callsComing) }) { Icon(Icons.Rounded.VideoCall, stringResource(R.string.video_call)) }
-                    IconButton(onClick = { overflow = true }) { Icon(Icons.Rounded.MoreVert, stringResource(R.string.more)) }
+                    MotionIconButton(Icons.Rounded.Call, stringResource(R.string.voice_call), { model.notify(callsComing) })
+                    MotionIconButton(Icons.Rounded.VideoCall, stringResource(R.string.video_call), { model.notify(callsComing) })
+                    MotionIconButton(Icons.Rounded.MoreVert, stringResource(R.string.more), { overflow = true })
                     DropdownMenu(overflow, onDismissRequest = { overflow = false }) {
                         DropdownMenuItem(text = { Text(stringResource(R.string.participants)) }, onClick = { overflow = false; navigate(Participants(space.id)) }, leadingIcon = { Icon(Icons.Rounded.Groups, null) })
                         DropdownMenuItem(text = { Text(stringResource(R.string.files)) }, onClick = { overflow = false; navigate(Folder(space.id)) }, leadingIcon = { Icon(Icons.Rounded.Folder, null) })
@@ -321,7 +321,7 @@ fun ChatScreen(model: ZoenViewModel, state: AppState, spaceId: String, navigate:
                     }
                     Row(verticalAlignment = Alignment.Bottom, horizontalArrangement = Arrangement.spacedBy(if (inlineVoiceActive) 0.dp else 10.dp)) {
                         Box(if (inlineVoiceActive) Modifier.width(0.dp) else Modifier) {
-                            IconButton({ navigationHaptics.perform(ZoenFeedback.Open); attachments = true }, Modifier.size(44.dp).zoenGlass(androidx.compose.foundation.shape.CircleShape).testTag("composer-attach")) { ZoenIcon(ZoenGlyph.Plus, stringResource(R.string.attach)) }
+                            IconButton({ navigationHaptics.perform(ZoenFeedback.Open); attachments = true }, Modifier.size(44.dp).zoenGlass(androidx.compose.foundation.shape.CircleShape).testTag("composer-attach")) { NativeIconMotion(selection = attachments) { ZoenIcon(ZoenGlyph.Plus, stringResource(R.string.attach)) } }
                             DropdownMenu(attachments, { attachments = false }) {
                                 DropdownMenuItem(text = { Text(stringResource(R.string.chat_attachment_camera)) }, onClick = { attachments = false; val uri = FileAccess.cameraUri(context); cameraUri = uri.toString(); camera.launch(uri) }, leadingIcon = { Icon(Icons.Rounded.CameraAlt, null) })
                                 DropdownMenuItem(text = { Text(stringResource(R.string.chat_attachment_library)) }, onClick = { attachments = false; photoPicker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) }, leadingIcon = { Icon(Icons.Rounded.PhotoLibrary, null) })
