@@ -101,6 +101,7 @@ private fun BackgroundPreview(model: ZoenViewModel, background: BackgroundDto, m
     }
     Box(modifier.background(MaterialTheme.colorScheme.background)) {
         when (token[0]) {
+            "none" -> xyz.tironi.zoen.theme.LivingSky(Modifier.matchParentSize())
             "color" -> Box(Modifier.matchParentSize().background(Color(colors[name] ?: 0xFFF1E2CC)))
             "gradient" -> Box(Modifier.matchParentSize().background(Brush.verticalGradient((gradients[name] ?: gradients.getValue("paper")).map(::Color))))
             "doodles" -> {

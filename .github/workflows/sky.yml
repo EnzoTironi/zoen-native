@@ -1,0 +1,20 @@
+name: Living sky
+on:
+  pull_request:
+    paths:
+      - 'apple/Shared/DesignSystem/LivingSky.swift'
+      - 'packages/zoen-ui/web/living-sky*'
+      - 'scripts/test-living-sky.sh'
+      - '.github/workflows/sky.yml'
+  workflow_dispatch:
+jobs:
+  sky:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - run: bash scripts/test-living-sky.sh
+      - run: npm ci --ignore-scripts && npm run typecheck:web && npm run test:web
+        working-directory: packages/zoen-ui

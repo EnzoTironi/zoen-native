@@ -11,6 +11,8 @@ import { CoreWorker } from './worker-client.ts';
 import './web.css';
 import './messenger.css';
 import { Messenger } from './messenger.tsx';
+import { startLivingSky } from './living-sky.ts';
+import './living-sky.css';
 
 type Runtime = { vault: BrowserVault; core: CoreWorker };
 type Boot = { kind: 'loading' } | { kind: 'unavailable'; message: string } |
@@ -143,6 +145,7 @@ function Linked({ runtime, session, forget }: { runtime: Runtime; session: Extra
 }
 
 function App() {
+  useEffect(startLivingSky, []);
   const [boot, setBoot] = useState<Boot>({ kind: 'loading' });
   useEffect(() => {
     let closed = false;
