@@ -56,6 +56,7 @@
   var paused = false;
   try { paused = localStorage.getItem('zoen-sky-paused') === '1'; } catch (e) {}
   var timer;
+  var painted = false;
 
   function currentHour() {
     // Loopback-only preview override, the same contract as the web app (?skyHour=17).
@@ -101,7 +102,10 @@
     root.setAttribute('data-sky-phase', phase(hour));
     if (!document.querySelector('.zoen-sky')) return;
     if (noSky.matches) { PHASES.forEach(function (n) { if (layers[n]) { var v = layers[n].querySelector('video'); if (v) v.remove(); } }); return; }
+    // Paused by the reader: keep the picture exactly as it is (no minute-by-minute crossfade) until Play.
+    if (paused && painted) return;
     var w = weights(hour);
+    painted = true;
     PHASES.forEach(function (name) {
       if (!w[name] && !layers[name]) return;
       var el = layer(name);
@@ -151,6 +155,7 @@
       b.addEventListener('click', function () {
         paused = !paused;
         try { localStorage.setItem('zoen-sky-paused', paused ? '1' : '0'); } catch (e) {}
+        painted = false; // apply the change once (swap video ↔ photo), then hold still if paused
         update(); toggle();
       });
       document.body.append(b);

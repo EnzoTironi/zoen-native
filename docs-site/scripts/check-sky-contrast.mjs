@@ -63,7 +63,7 @@ async function open(path, theme, hour, media = [], vp = { w: 1440, h: 900 }) {
     localStorage.setItem('starlight-theme', theme);
     // Fake the visitor's clock: today at the given local hour.
     const RealDate = Date;
-    const fixed = new RealDate(); fixed.setHours(hour, 0, 0, 0);
+    const fixed = new RealDate(); fixed.setHours(Math.floor(hour), Math.round((hour % 1) * 60), 0, 0);
     const t = fixed.getTime();
     globalThis.Date = class extends RealDate {
       constructor(...a) { super(...(a.length ? a : [t])); }
@@ -271,13 +271,18 @@ for (const theme of (args.themes ?? 'light,dark').split(',')) for (const [name, 
   if (qv) failures.push(`prefers-contrast: more → ${qv} sky video(s) still loaded`);
   await q.close();
   // Pause control (WCAG 2.2.2): pausing removes the video, keeps the photo, and persists.
-  const z = await open('/', 'light', 12);
+  const z = await open('/', 'light', 7.75); // mid crossfade, so a minute later would normally differ
   const pz = await z.evaluate(async () => {
     const b = document.querySelector('.zoen-sky-toggle'); const before = document.querySelectorAll('.zoen-sky video').length;
     b.click(); const after = document.querySelectorAll('.zoen-sky video').length;
-    return { label: b.textContent, pressed: b.getAttribute('aria-pressed'), before, after, stored: localStorage.getItem('zoen-sky-paused') };
+    // While paused, a later minute must not change the picture.
+    const snap = () => [...document.querySelectorAll('.zoen-sky-layer')].map((l) => l.style.opacity).join();
+    const o1 = snap();
+    const t2 = Date.now() + 5 * 60000, D = Date; globalThis.Date = class extends D { constructor(...a) { super(...(a.length ? a : [t2])); } static now() { return t2; } };
+    document.dispatchEvent(new Event('visibilitychange')); const frozen = snap() === o1;
+    return { label: b.textContent, pressed: b.getAttribute('aria-pressed'), before, after, stored: localStorage.getItem('zoen-sky-paused'), frozen };
   });
-  if (!(pz.before > 0 && pz.after === 0 && pz.pressed === 'true' && pz.stored === '1')) failures.push(`pause control: ${JSON.stringify(pz)}`);
+  if (!(pz.before > 0 && pz.after === 0 && pz.pressed === 'true' && pz.stored === '1' && pz.frozen)) failures.push(`pause control: ${JSON.stringify(pz)}`);
   console.log(`pause control: ${pz.before} → ${pz.after} videos, "${pz.label}", aria-pressed ${pz.pressed}`);
   await z.close();
   const q2 = await open('/', 'light', 12, [{ name: 'prefers-contrast', value: 'more' }]);
