@@ -328,8 +328,8 @@ struct SettingsEmpty: View {
 
     var body: some View {
         VStack(spacing: 10) {
-            Image(systemName: symbol)
-                .font(.system(size: 22, weight: .medium))
+            NativeIconMotion(systemName: symbol, size: 22, drawOn: true)
+                .fontWeight(.medium)
                 .foregroundStyle(Palette.textSecondary)
                 .frame(width: 48, height: 48)
                 .background(SettingsStyle.card, in: .circle)

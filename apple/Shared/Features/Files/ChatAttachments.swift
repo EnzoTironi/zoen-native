@@ -40,7 +40,7 @@ struct ChatAttachmentButton: View {
         } label: {
             Group {
                 if preparing { ProgressView().controlSize(.small) }
-                else { ZoenIcon(.plus, size: 19) }
+                else { NativeIconMotion(systemName: "plus", size: 19) }
             }
             .frame(width: 44, height: 44)
             .foregroundStyle(Palette.textPrimary)
