@@ -1,5 +1,8 @@
 package xyz.tironi.zoen.ui
 
+import androidx.compose.foundation.interaction.collectIsPressedAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -34,7 +37,7 @@ internal object AppleChromeMetrics {
 /** Four real destinations and a separate New message action, matching the native TabView.
  * OS navigation insets remain intact: no screenshot crop participates in layout. */
 @Composable
-internal fun AppleBottomBar(tab: Tab, unread: Int, pending: Int, me: Persona?, select: (Tab) -> Unit, newMessage: () -> Unit) {
+internal fun AppleBottomBar(tab: Tab, unread: Int, pending: Int, me: Persona?, select: (Tab) -> Unit, newMessage: () -> Unit, pendingIds: Set<String> = emptySet(), transportActive: Boolean = false) {
     // Native f30d5149: 402×812 app content after the status-only crop. The
     // detached action is (319,729,62,62), leaving 21pt of app content below it.
     // Android's real OS navigation inset is additional, not a crop of this gap.
@@ -43,13 +46,23 @@ internal fun AppleBottomBar(tab: Tab, unread: Int, pending: Int, me: Persona?, s
         Row(Modifier.weight(1f).height(61.dp).zoenGlass(RoundedCornerShape(31.dp)).padding(4.dp)) {
             Tab.main.forEach { target ->
                 val on = tab == target
+                val interactions = androidx.compose.runtime.remember { androidx.compose.foundation.interaction.MutableInteractionSource() }
+                val pressed by interactions.collectIsPressedAsState()
+                val pressScale by androidx.compose.animation.core.animateFloatAsState(
+                    if (target == Tab.Profile && pressed && rememberMotionEnabled()) .96f else 1f,
+                    androidx.compose.animation.core.tween(150), label = "avatar press")
                 Box(Modifier.weight(1f).fillMaxHeight()
+                    .graphicsLayer { scaleX = pressScale; scaleY = pressScale }
                     .background(if (on) MaterialTheme.colorScheme.primary.copy(alpha = .14f) else Color.Transparent, CircleShape)
-                    .clickable(onClickLabel = tabName(target)) { select(target) }
+                    .clickable(interactionSource = interactions, indication = null, onClickLabel = tabName(target)) { select(target) }
                     .testTag("tab:${target.name}").semantics { selected = on }, contentAlignment = Alignment.Center) {
                     val color = if (on) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
                     CompositionLocalProvider(LocalContentColor provides color) {
-                        TabIcon(target, if (target == Tab.Chats) unread else if (target == Tab.Notifications) pending else 0, on, me)
+                        NativeIconMotion(selection = on,
+                            pendingIds = if (target == Tab.Notifications) pendingIds else emptySet(),
+                            active = target == Tab.Chats && transportActive) {
+                            TabIcon(target, if (target == Tab.Chats) unread else if (target == Tab.Notifications) pending else 0, on, me)
+                        }
                     }
                 }
             }

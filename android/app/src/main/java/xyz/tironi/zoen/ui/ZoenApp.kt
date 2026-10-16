@@ -158,7 +158,9 @@ fun ZoenApp(model: ZoenViewModel, deepLink: String?, consumed: () -> Unit) {
                         if (!rail && stack.size == 1) AppleBottomBar(tab, unread, state.pending, state.me, { target ->
                             if (tab != target) haptics.perform(ZoenFeedback.Selection)
                             tab = target
-                        }, { navigate(NewChat) })
+                        }, { navigate(NewChat) }, pendingIds = state.requests.filter {
+                            it.status == xyz.tironi.zoen.core.RequestStatus.PENDING && it.agent.isMine
+                        }.map { it.id }.toSet(), transportActive = state.typing.isNotEmpty() || state.connection.state in setOf("connecting", "reconnecting"))
                     },
                     contentWindowInsets = WindowInsets(0, 0, 0, 0),
                 ) { padding ->
@@ -225,9 +227,9 @@ internal fun tabName(tab: Tab): String = when (tab) {
 internal fun TabIcon(tab: Tab, count: Int, selected: Boolean, me: xyz.tironi.zoen.core.Persona?) {
     BadgedBox(badge = { if (count > 0 && (tab == Tab.Chats || tab == Tab.Notifications)) Badge { Text(if (count > 99) "99+" else count.toString()) } }) {
         when (tab) {
-            Tab.Chats -> Icon(Icons.AutoMirrored.Rounded.Chat, tabName(tab), Modifier.size(26.dp))
-            Tab.Spaces -> Icon(Icons.Rounded.GridView, tabName(tab), Modifier.size(26.dp))
-            Tab.Notifications -> Icon(if (selected) Icons.Rounded.Notifications else Icons.Rounded.NotificationsNone, tabName(tab), Modifier.size(26.dp))
+            Tab.Chats -> Icon(NativeTabGlyphs.Chats, tabName(tab), Modifier.size(26.dp))
+            Tab.Spaces -> Icon(NativeTabGlyphs.Spaces, tabName(tab), Modifier.size(26.dp))
+            Tab.Notifications -> Icon(NativeTabGlyphs.Bell, tabName(tab), Modifier.size(26.dp))
             Tab.Profile -> Avatar(me, size = 26)
         }
     }
