@@ -50,7 +50,7 @@ await ana.page.screenshot({ path: `${SHOTS}/03-ticks-lidos.png` });
 const msg = bruno.page.locator('[data-testid=message]', { hasText: 'Que horas' });
 await msg.hover(); await msg.getByRole('button', { name: 'Reagir' }).click();
 await bruno.page.screenshot({ path: `${SHOTS}/04-reagir.png` });
-await bruno.page.getByRole('menuitem', { name: '❤️' }).click();
+await bruno.page.getByRole('dialog', { name: 'Escolher reação' }).getByRole('button', { name: '❤️', exact: true }).click();
 await ana.page.locator('.zm-reactions button', { hasText: '❤️' }).waitFor({ timeout: 30000 });
 // Inline reply.
 const cake = ana.page.locator('[data-testid=message]', { hasText: 'Levo o bolo' });
@@ -62,8 +62,9 @@ const mine = ana.page.locator('[data-testid=message]', { hasText: 'Você é dema
 await mine.hover(); await mine.getByRole('button', { name: 'Mais ações' }).click();
 await ana.page.screenshot({ path: `${SHOTS}/05-menu-acoes.png` });
 await ana.page.getByRole('menuitem', { name: 'Editar' }).click();
-await ana.page.locator('.zm-composer textarea').first().fill('Você é demais, Bruno!');
-await ana.page.keyboard.press('Enter');
+const editor = ana.page.getByRole('dialog', { name: 'Editar mensagem' });
+await editor.getByRole('textbox').fill('Você é demais, Bruno!');
+await editor.getByRole('button', { name: 'Salvar', exact: true }).click();
 await bruno.page.locator('.zm-main .zm-text', { hasText: 'Você é demais, Bruno!' }).waitFor({ timeout: 30000 });
 await bruno.page.locator('.zm-meta', { hasText: 'editada' }).waitFor();
 // Thread.

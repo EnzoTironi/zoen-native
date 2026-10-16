@@ -531,3 +531,46 @@ test('upload failure keeps the queued voice note as failed instead of losing it'
   assert.equal(msg.delivery, 'failed');
   assert.deepEqual(msg.file?.voice, voice);
 });
+
+test('disconnect after upload retains voice bytes locally without publishing', async (t) => {
+  install(t);
+  const file = await attachment();
+  const head = new TextEncoder().encode(JSON.stringify({ doc: { ...file, voice: { ms: 1200, levels: '04', transcript: '', reply: null } }, uploads: [{ blob: file.chunks[0]!.blob, len: 1 }] }));
+  const framed = new Uint8Array(head.length + 5);
+  new DataView(framed.buffer).setUint32(0, head.length, true); framed.set(head, 4);
+  const voice = { ms: 1200, levels: '04', transcript: '', reply: null };
+  const codec = messagingCore();
+  const failed: string[] = [];
+  const core = { ...codec,
+    bytes: async (op: CoreOperation) => op.kind === 'seal_file' ? framed : codec.bytes(op),
+    text: async (op: CoreOperation) => {
+      if (op.kind === 'queue_file' || op.kind === 'fail_outbox') assert.fail('incomplete media must never be queued for publication');
+      if (op.kind === 'queue_failed_file') {
+        assert.deepEqual(JSON.parse(op.chunks), { [file.chunks[0]!.blob]: [0] });
+        failed.push('pending-voice');
+        return JSON.stringify({ snapshot: 'failed', frames: [], conversations: [{ ...conversation, messages: [{
+          id: 'pending-voice', entry: null, author: login.identity, name: 'Me', text: '', at_ms: 1,
+          delivery: 'failed', failure: op.reason, ticks: null, edited: false, deleted: false, forwarded: false,
+          reactions: [], quote: null, thread: null, replies: 0, repliers: [], last_reply_ms: null,
+          file: { ...file, voice },
+        }] }] });
+      }
+      return codec.text(op);
+    },
+  };
+  const states: MessagesState[] = [];
+  const messages = new Messages({ core, session: linked, vault: { ...vault, save: async () => {} }, changed: (state) => states.push(state) });
+  t.after(() => messages.stop());
+  t.mock.method(globalThis, 'fetch', async () => { socket().close(); return new Response(null, { status: 200 }); });
+  await messages.start(); await authenticate();
+  const rejected = assert.rejects(messages.sendFile('sp_fixture', { name: file.name, mime: file.mime, bytes: new Uint8Array([1]), voice }));
+  await settle();
+  for (const delay of [800, 1600, 3200]) { t.mock.timers.tick(delay); await settle(); }
+  await rejected;
+  assert.deepEqual(failed, ['pending-voice']);
+  const state = states.at(-1);
+  if (state?.kind !== 'active') assert.fail('expected active');
+  const msg = state.conversations[0]!.messages[0]!;
+  assert.equal(msg.delivery, 'failed');
+  assert.deepEqual(msg.file?.voice, voice);
+});

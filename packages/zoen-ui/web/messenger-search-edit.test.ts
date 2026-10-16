@@ -28,7 +28,7 @@ function button(label: string) { return [...document.querySelectorAll('button')]
 async function mount(annotate = async () => {}) {
   const calls: unknown[] = [];
   const root = createRoot(document.getElementById('root')!);
-  await act(async () => root.render(h(Messenger, { conversations, identity: own, name: 'Ana', connected: true, status: 'Conectado', messages: { current: { annotate, post: async (v: unknown) => { calls.push(v); } } }, footer: null, selected: 'chat', select: () => {} })));
+  await act(async () => root.render(h(Messenger, { conversations, identity: own, name: 'Ana', connected: true, status: 'Conectado', messages: { current: { annotate, post: async (v: unknown) => { calls.push(v); }, sendFile: async (...args: unknown[]) => { calls.push(args); } } }, footer: null, selected: 'chat', select: () => {} })));
   return { calls, close: async () => { await act(async () => root.unmount()); } };
 }
 
@@ -93,4 +93,54 @@ test('edit is a separate dialog; refusal retains edit text and cancelling preser
     assert.equal(send.value, 'rascunho independente');
     assert.deepEqual(ui.calls, []);
   } finally { await ui.close(); }
+});
+
+
+test('reaction journey uses the dialog button, not the retired menuitem', async () => {
+  const annotations: unknown[] = [];
+  const ui = await mount(async (...args: unknown[]) => { annotations.push(args); });
+  try {
+    await click(document.querySelector('[aria-label="Reagir"]'));
+    const dialog = document.querySelector('[role="dialog"][aria-label="Escolher reação"]')!;
+    assert.ok(dialog);
+    assert.equal(dialog.querySelector('[role="menuitem"]'), null);
+    await click([...dialog.querySelectorAll('button')].find((b) => b.textContent === '❤️'));
+    assert.deepEqual(annotations, [['chat', 'first', { React: { emoji: '❤️' } }]]);
+  } finally { await ui.close(); }
+});
+
+test('voice recording carries the selected inline reply', async (t) => {
+  let now = 1000;
+  t.mock.method(Date, 'now', () => now);
+  const globals = ['MediaRecorder', 'AudioContext', 'requestAnimationFrame', 'cancelAnimationFrame'];
+  const descriptors = globals.map((key) => Object.getOwnPropertyDescriptor(globalThis, key));
+  class Recorder {
+    static isTypeSupported() { return true; }
+    mimeType = 'audio/mp4'; state = 'inactive';
+    ondataavailable?: (event: { data: Blob }) => void; onstop?: () => void;
+    start() { this.state = 'recording'; }
+    stop() { this.state = 'inactive'; this.ondataavailable?.({ data: new Blob(['voice']) }); this.onstop?.(); }
+  }
+  class Context {
+    resume() { return Promise.resolve(); } close() { return Promise.resolve(); }
+    createAnalyser() { return { fftSize: 0, frequencyBinCount: 128, getByteTimeDomainData: (b: Uint8Array) => b.fill(128) }; }
+    createMediaStreamSource() { return { connect() {} }; }
+  }
+  Object.assign(globalThis, { MediaRecorder: Recorder, AudioContext: Context, requestAnimationFrame: () => 1, cancelAnimationFrame: () => {} });
+  Object.defineProperty(navigator, 'mediaDevices', { configurable: true, value: { getUserMedia: async () => ({ getTracks: () => [{ stop() {} }] }) } });
+  const ui = await mount();
+  try {
+    await click(document.querySelector('[aria-label="Responder"]'));
+    await click(button('Gravar mensagem de voz'));
+    now += 1500;
+    await click(button('Enviar mensagem de voz'));
+    assert.equal(ui.calls.length, 1);
+    const [space, file] = ui.calls[0] as [string, { voice: { reply: unknown } }];
+    assert.equal(space, 'chat');
+    assert.deepEqual(file.voice.reply, { to: 'first', thread: false });
+  } finally {
+    await ui.close();
+    globals.forEach((key, i) => { const d = descriptors[i]; if (d) Object.defineProperty(globalThis, key, d); else Reflect.deleteProperty(globalThis, key); });
+    Reflect.deleteProperty(navigator, 'mediaDevices');
+  }
 });

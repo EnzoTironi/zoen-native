@@ -411,6 +411,10 @@ impl<S: Signer> Client<S> {
                     Some(root) if thread && root.thread => root.to,
                     _ => to,
                 };
+                let to = self
+                    .resolve_post(space, &to)
+                    .map(|event| event.hash.clone())
+                    .unwrap_or(to);
                 Some(roda_types::ReplyRef { to, thread })
             }
             None => None,
@@ -460,12 +464,30 @@ impl<S: Signer> Client<S> {
             let sealed = chunks.get(&chunk.blob).ok_or("missing local chunk")?;
             crate::media::open_chunk(chunk, sealed)?;
         }
-        self.ready_epoch(space)?;
         if doc.chunks.is_empty() {
             return Err("file empty or too large".into());
         }
+        // Failed media is local-only: retain it even while disconnected or before
+        // MLS catches up. It must never need encryption or become publishable.
+        let mut pending = self.clear_event(
+            space,
+            EventBody::ItemCreated {
+                item: roda_types::new_secret_id("it"),
+                kind: roda_types::ItemKind::File,
+                content: roda_types::ItemContent::File(doc),
+                origin: "Adicionado".into(),
+            },
+            now_ms,
+        )?;
+        let event = pending
+            .envelope()?
+            .plain_event()
+            .ok_or("invalid inner message")?;
+        pending.inner = Some(event.clone());
+        pending.failure = Some(reason);
         self.saved.local_chunks.extend(chunks);
-        self.queue_file_inner(space, doc, now_ms, Some(reason))
+        self.saved.outbox.insert(event.client_id.clone(), pending);
+        self.update(Vec::new())
     }
 
     pub fn local_chunk(&self, blob: &str) -> Vec<u8> {
@@ -528,6 +550,10 @@ impl<S: Signer> Client<S> {
         note: roda_types::Annotation,
         now_ms: i64,
     ) -> Result<Update, String> {
+        let target = self
+            .resolve_post(space, target)
+            .map(|event| event.hash.clone())
+            .ok_or("That message is no longer available.")?;
         let author = self
             .logs
             .get(space)
@@ -537,7 +563,7 @@ impl<S: Signer> Client<S> {
             .ok_or("That message is no longer available.")?;
         if self.logs.get(space).is_some_and(|log| log.events().iter().any(|event| matches!(
             &event.body, EventBody::MessageAnnotated { target: to, note: roda_types::Annotation::Delete }
-                if to == target && event.author == author
+                if self.resolve_post(space, to).is_some_and(|post| post.hash == target) && event.author == author
         ))) {
             return Err("That message is no longer available.".into());
         }
@@ -556,7 +582,7 @@ impl<S: Signer> Client<S> {
                 event.author == author
                     && matches!(&event.body, EventBody::MessageAnnotated {
                         target: deleted, note: roda_types::Annotation::Delete,
-                    } if deleted == target)
+                    } if self.resolve_post(space, deleted).is_some_and(|post| post.hash == target))
             };
             let deleted = self
                 .logs
@@ -666,6 +692,16 @@ impl<S: Signer> Client<S> {
         frames
     }
 
+    // Hashes are authoritative. An untrusted client id must never shadow one.
+    fn resolve_post(&self, space: &str, reference: &str) -> Option<&Event> {
+        let events = self.logs.get(space)?.events();
+        events
+            .iter()
+            .find(|e| e.hash == reference)
+            .or_else(|| events.iter().find(|e| e.client_id == reference))
+            .filter(|e| is_post(&e.body))
+    }
+
     /// The reply link of the message with this entry id in `space`, if it is a message.
     fn posted(&self, space: &str, entry: &str) -> Option<Option<roda_types::ReplyRef>> {
         self.logs
@@ -673,6 +709,7 @@ impl<S: Signer> Client<S> {
             .events()
             .iter()
             .find(|e| e.hash == entry)
+            .or_else(|| self.resolve_post(space, entry))
             .and_then(|e| match &e.body {
                 EventBody::MessagePosted { reply, .. } => Some(reply.clone()),
                 EventBody::ItemCreated {
@@ -1159,8 +1196,11 @@ impl<S: Signer> Client<S> {
                 _ => title,
             };
             // Fold annotations over their targets. Readers enforce authorship.
-            let authors: BTreeMap<&str, (&str, &str)> = events.iter().filter(|e| is_post(&e.body))
-                .flat_map(|e| [(e.hash.as_str(), (e.author.as_str(), e.hash.as_str())), (e.client_id.as_str(), (e.author.as_str(), e.hash.as_str()))]).collect();
+            let mut authors: BTreeMap<&str, (&str, &str)> = events.iter().filter(|e| is_post(&e.body))
+                .map(|e| (e.hash.as_str(), (e.author.as_str(), e.hash.as_str()))).collect();
+            for event in events.iter().filter(|e| is_post(&e.body)) {
+                authors.entry(event.client_id.as_str()).or_insert((event.author.as_str(), event.hash.as_str()));
+            }
             let mut folded: BTreeMap<String, Folded> = BTreeMap::new();
             for event in events {
                 let EventBody::MessageAnnotated { target, note } = &event.body else { continue };
@@ -1220,6 +1260,16 @@ impl<S: Signer> Client<S> {
                 if inner.space != *space { return None; }
                 self.message_view(inner, if pending.failure.is_some() { "failed" } else { "sending" }, pending.failure.clone())
             }));
+            // Native references may use client ids. Normalize before folding replies,
+            // preserving real hash targets if an alias collides.
+            for message in &mut messages {
+                if let Some(quote) = &mut message.quote {
+                    if let Some((_, hash)) = authors.get(quote.id.as_str()) { quote.id = (*hash).into(); }
+                }
+                if let Some(thread) = &mut message.thread {
+                    if let Some((_, hash)) = authors.get(thread.as_str()) { *thread = (*hash).into(); }
+                }
+            }
             // Quotes and thread summaries resolve against the folded views.
             let by_entry: BTreeMap<String, (String, String, i64, String)> = messages.iter().filter_map(|m| m.entry.clone().map(|e| (e, (m.name.clone(), if m.deleted { String::new() } else { m.text.clone() }, m.at_ms, m.author.clone())))).collect();
             let mut threads: BTreeMap<String, (usize, Vec<String>, i64)> = BTreeMap::new();

@@ -227,6 +227,8 @@ export class Messages {
         offset += upload.len;
         progress?.(i + 1, uploads.length);
       }
+      // A disconnect after the last PUT still must retain the recording locally.
+      await this.act(space, { kind: 'queue_file', space, doc: JSON.stringify(doc), now: Date.now() });
     } catch (error) {
       // Keep the sealed voice/file in the timeline as failed, like native — do not lose the clip.
       // Best effort: the upload error is what the user must see, even if queueing also fails.
@@ -243,11 +245,10 @@ export class Messages {
           const update = await this.core.text({ kind: 'queue_failed_file', space, doc: JSON.stringify(doc), now: Date.now(),
             reason: error instanceof Error ? error.message : 'Sem conexão para enviar o arquivo. Tente de novo.', chunks: JSON.stringify(chunks) });
           await this.apply(update, generation);
-        }, () => this.closed || generation !== this.generation ? 'A sessão mudou.' : null, false);
+        }, () => this.closed ? 'A sessão mudou.' : null, false);
       } catch { /* keep the original upload error */ }
       throw error;
     }
-    await this.act(space, { kind: 'queue_file', space, doc: JSON.stringify(doc), now: Date.now() });
   }
 
   /** The same encrypted chunks, named again in another chat: nothing to upload. */

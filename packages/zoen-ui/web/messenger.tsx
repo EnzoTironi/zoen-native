@@ -143,7 +143,7 @@ function Composer({ placeholder, disabled, reply, cancelReply, submit, autoFocus
     }
   };
   const recorder = useRecorder((clip) => { if (clip.seconds < 0.6) return; void share({ name: `Mensagem de voz.${clip.mime.includes('mp4') ? 'm4a' : 'webm'}`, mime: clip.mime, bytes: clip.bytes,
-    voice: { ms: Math.round(clip.seconds * 1000), levels: clip.levels, transcript: '', reply: null } }, 'Enviando mensagem de voz…'); },
+    voice: { ms: Math.round(clip.seconds * 1000), levels: clip.levels, transcript: '', reply: reply?.entry ? { to: reply.entry, thread: false } : null } }, 'Enviando mensagem de voz…'); },
     (why) => setError(why));
   const [draft, setDraft] = useState('');
   const [busy, setBusy] = useState(false);
@@ -307,7 +307,7 @@ function AccountMessenger({ conversations, identity, name, connected, status, me
         </section>
         <Composer key={conversation.id} placeholder={connected ? 'Mensagem' : 'Reconectando…'} disabled={!connected || !conversation.can_send} reply={reply} autoFocus
           cancelReply={() => { setReply(null); setEditing(null); }}
-          attach={async (file) => { const m = messages.current; if (!m) throw new Error('Recarregue o Zoen.'); await m.sendFile(space, file); }}
+          attach={async (file) => { const m = messages.current; if (!m) throw new Error('Recarregue o Zoen.'); await m.sendFile(space, file); if (file.voice?.reply) setReply(null); }}
           submit={async (text) => {
             const m = messages.current; if (!m) throw new Error('Recarregue o Zoen.');
             await m.post({ space, text, ...(reply?.entry ? { replyTo: reply.entry } : {}) }); setReply(null);

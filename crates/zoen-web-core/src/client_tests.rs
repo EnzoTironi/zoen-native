@@ -206,6 +206,8 @@ fn native_sqlite_welcome_messages_saved_reload_and_removal_use_shared_mls() {
         .iter()
         .map(|u| (u.blob.clone(), u.sealed.clone()))
         .collect();
+    // A recording that failed offline must survive without a synced MLS epoch.
+    client.synced = false;
     let failed = client
         .queue_failed_file(space, sealed.doc.clone(), 11, "offline".into(), chunks)
         .unwrap();
@@ -227,6 +229,7 @@ fn native_sqlite_welcome_messages_saved_reload_and_removal_use_shared_mls() {
             .delivery,
         "failed"
     );
+    client.synced = true;
     client.saved.outbox.retain(|_, p| p.failure.is_none());
     let sending = client.queue_message(space, "Web to native", 11).unwrap();
     let env = sending
@@ -367,6 +370,7 @@ fn native_voice_replies_versions_and_reverts_stay_on_the_original_post() {
         },
     );
     let root = log.events().last().unwrap().hash.clone();
+    let root_alias = log.events().last().unwrap().client_id.clone();
     let mut original = crate::media::seal_file("voice.webm", "audio/webm", b"original", None)
         .unwrap()
         .doc;
@@ -386,7 +390,7 @@ fn native_voice_replies_versions_and_reverts_stay_on_the_original_post() {
     append(&mut log, &author, post("it_voice", original.clone()));
     let entry = log.events().last().unwrap().hash.clone();
     let mut threaded = original.clone();
-    threaded.voice.as_mut().unwrap().reply = Some(ReplyRef::thread(&root));
+    threaded.voice.as_mut().unwrap().reply = Some(ReplyRef::thread(&root_alias));
     append(&mut log, &author, post("it_thread", threaded));
     let thread_entry = log.events().last().unwrap().hash.clone();
     client.logs.insert(space.into(), log.clone());
@@ -411,7 +415,7 @@ fn native_voice_replies_versions_and_reverts_stay_on_the_original_post() {
     );
     assert_eq!(
         client.posted(space, &thread_entry),
-        Some(Some(ReplyRef::thread(&root)))
+        Some(Some(ReplyRef::thread(&root_alias)))
     );
 
     let mut edited = crate::media::seal_file("voice.webm", "audio/webm", b"edited", None)
