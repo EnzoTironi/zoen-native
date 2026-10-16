@@ -312,6 +312,12 @@ struct ThreadSheet: View {
             if case .message(let text, let card) = e.kind {
                 MessageRow(author: e.author, text: text, card: card, voice: e.voice.map(VoiceNoteRef.init), atMs: e.atMs, delivery: e.delivery, grouped: grouped,
                            isDirect: false, onOpenItem: { model.openApp($0) })
+                    // Thread replies live only here, so long-press must still offer Copy.
+                    .contextMenu {
+                        if !text.isEmpty {
+                            Button { copyToPasteboard(text) } label: { Label("Copy", systemImage: "doc.on.doc") }
+                        }
+                    }
                     .padding(.top, grouped ? 0 : 8)
             }
         }
@@ -325,3 +331,13 @@ struct ThreadSheet: View {
 }
 
 struct ThreadRef: Identifiable, Equatable { let id: String }
+
+@MainActor
+private func copyToPasteboard(_ text: String) {
+    #if os(iOS)
+    UIPasteboard.general.string = text
+    #elseif os(macOS)
+    NSPasteboard.general.clearContents()
+    NSPasteboard.general.setString(text, forType: .string)
+    #endif
+}

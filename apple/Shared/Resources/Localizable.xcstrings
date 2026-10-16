@@ -8415,6 +8415,16 @@
         }
       }
     },
+    "Got an invite?": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Recebeu um convite?"
+          }
+        }
+      }
+    },
     "Delete for everyone": {
       "localizations": {
         "pt-BR": {

@@ -265,7 +265,28 @@ struct OnboardingFlow: View {
     private func controls(compact: Bool) -> some View {
         switch step {
         case .hello:
-            EmptyView()
+            if route.flow == "default" {
+                // Got here from a friend's or a Space link before installing? Pasting it is
+                // the private way to keep it: the person chooses, nothing is fingerprinted.
+                // A quiet line instead of a floating chip, so it reads as an option, not a step.
+                HStack(spacing: 6) {
+                    Text("Got an invite?")
+                        .font(.footnote)
+                        .foregroundStyle(InkPalette.ink.opacity(0.55))
+                    PasteButton(payloadType: URL.self) { urls in
+                        guard let url = urls.first else { return }
+                        Task { @MainActor in
+                            model.captureAcquisition(url)
+                            withAnimation(.snappy) { route = OnboardingRoute(model.core.growthOnboardingPlan()) }
+                        }
+                    }
+                    .labelStyle(.titleOnly)
+                    .buttonStyle(.borderless)
+                    .controlSize(.small)
+                    .tint(InkPalette.ink.opacity(0.75))
+                    .accessibilityHint(String(localized: "Paste the invite link you got"))
+                }
+            }
         case .profile:
             if !compact {
                 AvatarPhotoPicker(personaId: nil, pending: $pendingPhoto, size: 104,
