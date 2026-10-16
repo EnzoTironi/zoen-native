@@ -534,7 +534,6 @@ impl Session {
             return;
         }
         self.st.analytics.session(&self.identity);
-        let _was_here = self.st.fanout.is_online_here(&self.identity);
         self.hub_id = Some(self.st.fanout.add(
             &self.identity,
             Mailbox {
