@@ -729,6 +729,15 @@ final class AppModel {
     func applyLaunchOptions() async {
         let d = UserDefaults.standard
         applyPendingRevokesFromLastRun()
+        #if DEBUG
+        if d.bool(forKey: "RodaExportNativeWebArt") {
+            guard let fixture = NativeParityClock.appliedManifest(core: core) else {
+                preconditionFailure("Native web art export requires an applied native parity fixture")
+            }
+            do { try NativeWebArtExporter.exportOnce(appliedFixture: fixture) }
+            catch { preconditionFailure("Native web art export failed: \(error)") }
+        }
+        #endif
         if let tab = d.string(forKey: "RodaTab") {
             self.tab = switch tab {
             case "atividade", "activity": .activity
