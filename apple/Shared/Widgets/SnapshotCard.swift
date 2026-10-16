@@ -16,6 +16,12 @@ struct SnapshotCard: View {
     /// Taller or shorter than square (chat tiles are a touch wider than tall).
     var height: CGFloat? = nil
 
+    /// Override display dates only; timeline and symbol animation clocks remain live.
+    private func displayDate(_ timelineDate: Date) -> Date {
+        ProcessInfo.processInfo.environment["ZOEN_PARITY_FIXTURE"] == "native-parity-v1"
+            ? NativeParityClock.now : timelineDate
+    }
+
     private var accent: Color { Color(hex: snap.accentHex) }
     private var onDark: Bool { snap.template == .photo || ["globe", "trip", "pet.asleep"].contains(snap.art ?? "") }
     private var ink: Color { onDark ? .white : InkPalette.ink }
@@ -160,7 +166,7 @@ struct SnapshotCard: View {
 
     private var photoTile: some View {
         TimelineView(.periodic(from: .now, by: 60)) { ctx in
-            let r = snap.remaining(at: ctx.date)
+            let r = snap.remaining(at: displayDate(ctx.date))
             if snap.targetMs != nil {
                 VStack(spacing: 7) {
                     Text(snap.title)
@@ -271,7 +277,7 @@ struct SnapshotCard: View {
 
     private var countdown: some View {
         TimelineView(.periodic(from: .now, by: 60)) { ctx in
-            let r = snap.remaining(at: ctx.date)
+            let r = snap.remaining(at: displayDate(ctx.date))
             ZStack(alignment: .topLeading) {
                 art(side * 0.82)
                     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomTrailing)
