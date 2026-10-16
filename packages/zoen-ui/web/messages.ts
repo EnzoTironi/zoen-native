@@ -55,8 +55,9 @@ function parseUpdate(json: string) {
 /** Core refusals arrive in English; people see plain Portuguese. */
 function plain(reason: string): string {
   if (/no longer available/i.test(reason)) return 'Essa mensagem não está mais disponível.';
+  if (/foi apagada/i.test(reason)) return 'Essa mensagem foi apagada.';
   if (/Only the person/i.test(reason)) return 'Só quem enviou pode mudar esta mensagem.';
-  if (/32 KB/i.test(reason)) return 'A mensagem está longa demais.';
+  if (/32 KB/i.test(reason)) return 'A mensagem não pode ficar vazia nem ser longa demais.';
   return 'Não deu para fazer isso agora. Tente de novo.';
 }
 
