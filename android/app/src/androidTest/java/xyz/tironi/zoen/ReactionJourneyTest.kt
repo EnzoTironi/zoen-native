@@ -66,7 +66,10 @@ class ReactionJourneyTest {
         compose.onNodeWithTag("reaction-details:$id").performClick()
         compose.onNodeWithText("Reações", substring = false).assertIsDisplayed()
         compose.onNodeWithText(application.repository.state.value.me!!.name).assertIsDisplayed()
-        scenario.onActivity { CommittedWindowCapture.save(it, "reactions", "participants-and-replace") }
+        lateinit var activity: MainActivity
+        scenario.onActivity { activity = it }
+        // Capture synchronizes with the main thread; invoke it from the instrumentation thread.
+        CommittedWindowCapture.save(activity, "reactions", "participants-and-replace")
         compose.onNodeWithText("Remover minha reação").performClick()
         compose.waitUntil(10_000) { mine() == null }
         scenario.recreate()
