@@ -18,6 +18,8 @@ struct ZoenAdaptiveShell: View {
     @AppStorage("ZoenMacSidebarExpanded") private var sidebarExpanded = true
     @AppStorage("RodaAppearance") private var appearance = "system"
     @State private var search = ""
+    @State private var sidebarTap = 0
+    @State private var newMessageTap = 0
     @FocusState private var searchFocused: Bool
     @State private var searchCommandScope = UUID()
     @State private var lastChat: String?
@@ -163,8 +165,8 @@ struct ZoenAdaptiveShell: View {
             }
             Spacer(minLength: 8)
             appearanceControl
-            Button { model.newChatOpen = true } label: {
-                Image(systemName: "square.and.pencil")
+            Button { newMessageTap += 1; model.newChatOpen = true } label: {
+                NativeIconMotion(systemName: "square.and.pencil", bounce: newMessageTap, drawOn: true)
                     .frame(width: 44, height: 44)
                     .glassEffect(.regular.interactive(), in: .circle)
             }
@@ -182,7 +184,7 @@ struct ZoenAdaptiveShell: View {
         return Button { select(tab) } label: {
             Group {
                 if tab == .you, let me = model.me { PersonAvatar(persona: me, size: 26) }
-                else { NativeNavigationSymbol(name: tab == .files ? "square.grid.2x2" : tab.symbol, selected: selected, notificationCount: tab == .activity ? model.pendingCount : 0) }
+                else { NativeNavigationSymbol(name: tab == .files ? "square.grid.2x2" : tab.symbol, selected: selected, notificationIDs: tab == .activity ? Set(model.requests.filter { $0.status == .pending }.map(\.id)) : []) }
             }
                 .font(.system(size: 17, weight: .medium))
                 .foregroundStyle(selected ? Palette.action : Palette.textSecondary)
@@ -208,8 +210,8 @@ struct ZoenAdaptiveShell: View {
     }
 
     private var sidebarToggle: some View {
-        Button { setSidebar(!sidebarExpanded) } label: {
-            Image(systemName: "sidebar.left")
+        Button { sidebarTap += 1; setSidebar(!sidebarExpanded) } label: {
+            NativeIconMotion(systemName: "sidebar.left", bounce: sidebarTap, drawOn: true)
                 .font(.system(size: 16))
                 .frame(width: 40, height: 32)
         }

@@ -112,10 +112,11 @@ struct SettingsCircleButton: View {
     let label: LocalizedStringKey
     let id: String
     let action: () -> Void
+    @State private var activation = 0
 
     var body: some View {
-        Button(action: action) {
-            Image(systemName: symbol)
+        Button { activation += 1; action() } label: {
+            NativeIconMotion(systemName: symbol, bounce: activation, drawOn: true)
                 .font(.system(size: 17, weight: .semibold))
                 .foregroundStyle(Palette.textPrimary)
                 .frame(width: SettingsStyle.button, height: SettingsStyle.button)
@@ -132,11 +133,13 @@ struct SettingsCircleButton: View {
 /// Press scales to 0.96 over 150ms ease-out; never when disabled or under Reduce Motion.
 struct PressScale: ButtonStyle {
     @Environment(\.isEnabled) private var enabled
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.accessibilityReduceMotion) private var systemReduceMotion
+    @Environment(\.nativeIconReduceMotion) private var appReduceMotion
+    private var reduceMotion: Bool { systemReduceMotion || appReduceMotion }
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
             .scaleEffect(configuration.isPressed && enabled && !reduceMotion ? 0.96 : 1)
-            .opacity(configuration.isPressed && reduceMotion ? 0.7 : 1)
+            .opacity(configuration.isPressed && enabled && reduceMotion ? 0.7 : 1)
             .animation(.easeOut(duration: 0.15), value: configuration.isPressed)
     }
 }
