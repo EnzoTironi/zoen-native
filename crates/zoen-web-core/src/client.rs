@@ -467,7 +467,11 @@ impl<S: Signer> Client<S> {
 
     /// Edit, delete for everyone, react or unreact. Same encrypted path as messages.
     /// Keep a queued file/voice in the timeline as failed so the clip is not lost.
-    pub fn fail_outbox(&mut self, client_id: &str, reason: impl Into<String>) -> Result<Update, String> {
+    pub fn fail_outbox(
+        &mut self,
+        client_id: &str,
+        reason: impl Into<String>,
+    ) -> Result<Update, String> {
         if let Some(pending) = self.saved.outbox.get_mut(client_id) {
             pending.failure = Some(reason.into());
             self.sent.remove(client_id);
