@@ -4,6 +4,20 @@ The [README](../README.md) introduces the product. [Roadmap status](roadmap-stat
 
 The current verified product baseline is `ff5b519`: native/web consolidation PR 67, private confirmed Plan history PR 68, keyboard controls PR 69 and motion PR 71 are merged. The roadmap records complete CI, source composition and pending shared-main integration units. The [HIG matrix](product/hig-compliance.md) records actual native build, editor, keyboard, settings and chat/thread journeys. PR 70's hosted file-import failure remains open despite its passing FFI suite. Runtime capabilities retain their separate acceptance boundaries.
 
+## Start here
+
+The structured documentation follows the [Diátaxis](https://diataxis.fr/) model. The same files build the docs website in [`docs-site/`](../docs-site/README.md).
+
+| You want to… | Read |
+| --- | --- |
+| Understand the product | [Why Zoen](product/why-zoen.md) · [Features](product/features.md) · [Roadmap](product/roadmap.md) · [Glossary](product/glossary.md) |
+| Learn by doing | [Run Zoen on your machine](guides/run-locally.md) · [Build your first mini-app](guides/first-mini-app.md) |
+| Get a task done | [Apple apps](guides/apple.md) · [Android](guides/android.md) · [Web](guides/web.md) · [Testing & CI](technical/testing-and-ci.md) · [Contributing](technical/contributing.md) |
+| Understand how it works | [Architecture](technical/architecture.md) · [Rust core](technical/rust-core.md) · [Encryption & devices](technical/encryption-and-devices.md) · [Relay](technical/relay.md) · [Sync](technical/sync.md) · [Clients](technical/clients.md) · [Agents](technical/agents.md) · [Mini-apps](technical/mini-apps.md) |
+| Look something up | [Repository map](reference/repo-map.md) · [Scripts](reference/scripts.md) · [Mini-app manifest](reference/miniapp-manifest.md) · [Decision records](reference/decision-records.md) |
+
+## All documents
+
 | Document category | How to read it |
 | --- | --- |
 | Current status and contracts | Implementation and requirements, with explicit verification boundaries. |

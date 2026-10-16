@@ -1,0 +1,99 @@
+/* Zoen brand on top of Starlight: moss-green action colour, calm sky surfaces, generous type. */
+:root {
+  --sl-font: "Inter", ui-sans-serif, system-ui, -apple-system, "SF Pro Text", "Segoe UI", Roboto, sans-serif;
+  --sl-font-mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace;
+  --sl-content-width: 48rem;
+  --zoen-moss: #3b7a2a;
+  --zoen-sky-1: #dcebff;
+  --zoen-sky-2: #f6d3f0;
+}
+:root[data-theme='light'] {
+  --sl-color-accent-low: #e3f1dc;
+  --sl-color-accent: #3b7a2a;
+  --sl-color-accent-high: #1f4416;
+  --sl-color-white: #121a14;
+  --sl-color-gray-1: #24302a;
+  --sl-color-gray-2: #39453e;
+  --sl-color-gray-5: #c9d3cc;
+  --sl-color-gray-6: #eef2ef;
+  --sl-color-gray-7: #f6f8f7;
+}
+:root[data-theme='dark'] {
+  --sl-color-accent-low: #18300f;
+  --sl-color-accent: #7cc463;
+  --sl-color-accent-high: #c9efbb;
+  --sl-color-black: #0c1210;
+}
+
+/* Headings: tighter tracking, like Linear/Stripe docs. */
+.sl-markdown-content :is(h1, h2, h3) { letter-spacing: -0.015em; }
+.sl-markdown-content h2 { margin-top: 2.4rem; }
+h1#_top { letter-spacing: -0.025em; font-weight: 700; }
+
+/* Tables: quiet header, comfortable rows. */
+.sl-markdown-content table { display: table; width: 100%; font-size: 0.92em; }
+.sl-markdown-content th { background: var(--sl-color-gray-6); font-weight: 600; }
+.sl-markdown-content :is(th, td) { padding: 0.55rem 0.8rem; vertical-align: top; }
+
+/* Images: rounded, framed screenshots. */
+.sl-markdown-content img { border-radius: 14px; border: 1px solid var(--sl-color-hairline); box-shadow: 0 8px 30px -12px rgb(0 0 0 / 0.25); }
+
+/* Mermaid diagrams sit on a soft card. */
+.sl-markdown-content pre.mermaid, .sl-markdown-content .mermaid {
+  background: var(--sl-color-gray-7, transparent);
+  border: 1px solid var(--sl-color-hairline);
+  border-radius: 14px; padding: 1.2rem; display: flex; justify-content: center;
+}
+:root[data-theme='dark'] .sl-markdown-content .mermaid { background: #111815; }
+
+/* Splash hero: a sky gradient that nods to the app's backgrounds. */
+[data-has-hero] .page {
+  background:
+    radial-gradient(1200px 500px at 85% -10%, color-mix(in srgb, var(--zoen-sky-1) 70%, transparent), transparent 70%),
+    radial-gradient(900px 420px at -10% 10%, color-mix(in srgb, var(--zoen-sky-2) 45%, transparent), transparent 70%);
+}
+:root[data-theme='dark'] [data-has-hero] .page {
+  background:
+    radial-gradient(1200px 500px at 85% -10%, rgb(47 98 255 / 0.18), transparent 70%),
+    radial-gradient(900px 420px at -10% 10%, rgb(124 196 99 / 0.12), transparent 70%);
+}
+.hero h1 { font-size: clamp(2.4rem, 5vw, 3.6rem); letter-spacing: -0.035em; line-height: 1.05; }
+.hero .tagline { font-size: 1.2rem; max-width: 34rem; }
+.hero img.zoen-hero-shot { border-radius: 18px; box-shadow: 0 30px 80px -30px rgb(0 0 0 / 0.45); border: 1px solid var(--sl-color-hairline); }
+
+/* Landing gallery of phone screenshots. */
+.zoen-gallery { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 1.2rem; margin-top: 1.5rem; }
+.zoen-gallery figure { margin: 0; }
+.zoen-gallery img { width: 100%; height: auto; }
+.zoen-gallery figcaption { font-size: 0.85rem; color: var(--sl-color-gray-3); margin-top: 0.5rem; text-align: center; }
+.zoen-pill { display: inline-block; font-size: 0.75rem; font-weight: 600; padding: 0.15rem 0.6rem; border-radius: 999px; background: var(--sl-color-accent-low); color: var(--sl-color-accent-high); margin-bottom: 0.4rem; }
+
+/* Mermaid: calm, on-brand palette in light mode (the library's default theme uses yellow clusters). */
+:root[data-theme='light'] .sl-markdown-content .mermaid .cluster rect {
+  fill: #f4f8f2 !important;
+  stroke: #cddbc7 !important;
+}
+:root[data-theme='light'] .sl-markdown-content .mermaid .node rect,
+:root[data-theme='light'] .sl-markdown-content .mermaid .node polygon,
+:root[data-theme='light'] .sl-markdown-content .mermaid .node path,
+:root[data-theme='light'] .sl-markdown-content .mermaid .actor {
+  fill: #ffffff !important;
+  stroke: #3b7a2a !important;
+}
+:root[data-theme='light'] .sl-markdown-content .mermaid .note {
+  fill: #eef5ea !important;
+  stroke: #9fbf94 !important;
+}
+
+/* Heading anchor links: present, but quiet until hovered (Stripe/Tailwind style). */
+.sl-markdown-content .sl-anchor-link { opacity: 0; transition: opacity 120ms ease; }
+.sl-markdown-content .sl-heading-wrapper:hover .sl-anchor-link,
+.sl-markdown-content .sl-anchor-link:focus-visible { opacity: 1; }
+
+/* Give the hero screenshot real room (Starlight caps hero art at 25rem) and keep it in its column. */
+.hero > .hero-html { width: 100%; }
+.hero .zoen-hero-shot { display: block; width: 100%; height: auto; }
+@media (min-width: 50rem) {
+  .hero { grid-template-columns: 5fr 6fr; gap: 4%; }
+  .hero > .hero-html { width: 100%; }
+}

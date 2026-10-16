@@ -1,0 +1,80 @@
+---
+title: Zoen
+description: The messenger where friendships, relationships and communities form — and where people build the apps and agents they share.
+template: splash
+hero:
+  title: Conversations that turn into something.
+  tagline: Zoen is a private messenger where friendships, relationships and communities form — and where people create apps and agents and share them with each other. <br/><em>O mensageiro onde a vida acontece.</em>
+  image:
+    html: '<img class="zoen-hero-shot" src="/media/screens/mac.jpg" alt="Zoen on the Mac: a chat with a pinned plan opened as a live page" width="1024" height="638" />'
+  actions:
+    - text: Why Zoen
+      link: /product/why-zoen/
+      icon: right-arrow
+    - text: Run it locally
+      link: /guides/run-locally/
+      variant: minimal
+      icon: rocket
+    - text: GitHub
+      link: https://github.com/EnzoTironi/zoen-native
+      variant: minimal
+      icon: github
+---
+
+import { Card, CardGrid, LinkCard, Aside } from '@astrojs/starlight/components';
+
+<Aside type="note" title="Where things stand">
+Zoen **v1 is live on WhatsApp** with real users. This repository is **Zoen v2** — the native messenger — and it is **pre-launch**. Every page marks what is built, in progress or planned; the [roadmap](/product/roadmap/) has the details.
+</Aside>
+
+## What Zoen does
+
+<CardGrid>
+  <Card title="A private messenger" icon="comment">
+    Direct chats, groups and communities in one **Chats** list. End-to-end encrypted by default with MLS; offline-first; linked devices with history.
+  </Card>
+  <Card title="Live Pages and Plans" icon="document">
+    Documents the chat edits together — plans with budgets in exact cents, versions you can restore, all signed and synced.
+  </Card>
+  <Card title="Agents as members" icon="star">
+    Agents have their own identity, profile and invite link. They read only where they're members and **ask before acting**.
+  </Card>
+  <Card title="Mini-apps" icon="puzzle">
+    Small apps inside the chat on the open **MCP Apps** standard — booking, polls, lists, games — with state everyone sees live.
+  </Card>
+</CardGrid>
+
+## The barber's booking bot
+
+Bruno, a barber, describes the agent he wants. Zoen's Creator agent builds it, Bruno approves it, sets his services and hours in his own words, and shares a link. Clients book free slots; Bruno is told about every booking and approves replies before they go out.
+
+<div class="zoen-gallery">
+  <figure><img src="/media/screenshots/agenda-followups/agenda-client.png" alt="Agenda, client view" width="399" height="1024" /><figcaption>Client picks a slot</figcaption></figure>
+  <figure><img src="/media/screenshots/agenda-followups/agenda-staff.png" alt="Agenda, owner view" width="399" height="1024" /><figcaption>Owner confirms requests</figcaption></figure>
+  <figure><img src="/media/screenshots/owner-notes/ios-owner-notes-light.png" alt="Your agent needs you" width="471" height="1024" /><figcaption>“Your agent needs you” — iOS</figcaption></figure>
+  <figure><img src="/media/screenshots/owner-notes/android-35-owner-notes-pt.png" alt="Approval cards on Android" width="320" height="640" /><figcaption>The same cards on Android</figcaption></figure>
+</div>
+
+[Follow the whole journey →](/product/roadmap/#journey-the-barber-builds-his-booking-bot)
+
+## How it's built
+
+```mermaid
+flowchart LR
+    Apps["iPhone · Mac · Android · Web"] -- "UniFFI / WASM" --> Core["One Rust core<br/>signed log · MLS · pages · grants"]
+    Core <-- "Zoen Sync (protocol 4)" --> Relay["zoen-relay<br/>FoundationDB · Postgres · NATS"]
+    Agents["zoen-agentd<br/>agents with their own devices"] <-- "MLS member" --> Relay
+```
+
+One Rust core powers every client, so behaviour is identical everywhere. The relay orders and delivers events it usually can't read. Agents join chats as real, accountable members. [Read the architecture →](/technical/architecture/)
+
+## Find your way
+
+<CardGrid>
+  <LinkCard title="Tutorials" description="Run the whole stack and talk end-to-end from two terminals. Build a mini-app." href="/guides/run-locally/" />
+  <LinkCard title="How-to guides" description="Run the Apple, Android and web clients. Test and contribute." href="/guides/apple/" />
+  <LinkCard title="Explanation" description="Architecture, the Rust core, encryption, relay, sync, agents, mini-apps." href="/technical/architecture/" />
+  <LinkCard title="Reference" description="Repository map, scripts, the mini-app manifest, decision records, glossary." href="/reference/repo-map/" />
+</CardGrid>
+
+<p style="margin-top:2.5rem;font-size:0.85rem;opacity:0.75">© 2026 Enzo Tironi. All rights reserved. The source is public for viewing only — see the <a href="https://github.com/EnzoTironi/zoen-native/blob/main/LICENSE">license</a>.</p>
