@@ -66,8 +66,8 @@ class SettingsJourneyTest {
 
     @Test fun pickDarkThemeBackPopsOneScreenAndCloseLeavesAjustes() {
         val context = compose.activity
-        AppAppearance.set(context, "auto")
         val stack = open()
+        compose.runOnIdle { AppAppearance.set(context, "auto") }
         compose.onNodeWithTag("settings:Preferences").performClick()
         compose.onNodeWithTag("settings:Theme").performClick()
         compose.onNodeWithTag("theme:dark").assertIsNotSelected().performClick()
