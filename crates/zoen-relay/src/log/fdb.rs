@@ -50,6 +50,23 @@ use roda_log::chain_hash;
 use roda_proto::{Envelope, InviteCreated, Sequenced};
 use roda_types::{EventBody, Privacy, Role, SpaceKind, GENESIS_PREV};
 use sha2::{Digest, Sha256};
+
+fn extend_co_members(
+    out: &mut Vec<String>,
+    seen: &mut HashSet<String>,
+    who: &str,
+    members: impl IntoIterator<Item = String>,
+) {
+    for member in members {
+        if member != who && seen.insert(member.clone()) {
+            out.push(member);
+        }
+    }
+}
+
+#[cfg(test)]
+#[path = "co_member_dedup_tests.rs"]
+mod co_member_dedup_tests;
 use std::{
     collections::{BTreeMap, HashMap, HashSet},
     sync::{
@@ -1181,11 +1198,12 @@ impl LogStore for FdbLog {
         let spaces = self.spaces_of(who).await?;
         for batch in spaces.chunks(16) {
             for members in try_join_all(batch.iter().map(|space| self.members(space))).await? {
-                for (member, _) in members {
-                    if member != who && seen.insert(member.clone()) {
-                        out.push(member);
-                    }
-                }
+                extend_co_members(
+                    &mut out,
+                    &mut seen,
+                    who,
+                    members.into_iter().map(|(member, _)| member),
+                );
             }
         }
         Ok(out)
