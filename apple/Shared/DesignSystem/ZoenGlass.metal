@@ -45,7 +45,7 @@ static float roundedDistance(float2 p, float2 size, float r) {
     // Specular, roughness .116 (marble) / .14 (slab), highlights 1.41 / clearcoat .4; press slides it
     float rough = mix(0.116, 0.14, slab);
     float3 Hp = normalize(H + float3(0.0, 0.10, 0.0) * press);
-    float spec = pow(max(dot(n, Hp), 0.0), 2.0 / (rough * rough)) * mix(1.41, 0.4, slab);
+    float spec = pow(max(dot(n, Hp), 0.0), 0.5 / (rough * rough)) * mix(1.41, 0.4, slab) * 0.7;
     // Frost lifts the body toward white (the only whitening: no separate tint film)
     float frostWhite = frost * mix(0.16, 0.10, prominent);
     // Dispersion fringe: red out, blue in, only on the rail (strength = dispersion x edge^2)
