@@ -21,6 +21,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material.icons.rounded.*
 import androidx.compose.material3.*
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
@@ -50,6 +51,7 @@ import xyz.tironi.zoen.data.FileAccess
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun Onboarding(model: ZoenViewModel, modifier: Modifier = Modifier, acquisitionLink: String? = null, finished: (String?) -> Unit = {}) {
+    val state by model.state.collectAsStateWithLifecycle()
     var route by remember { mutableStateOf(OnboardingRoute()) }
     var position by rememberSaveable { mutableIntStateOf(0) }
     var selected by rememberSaveable { mutableStateOf(listOf<Int>()) }
@@ -144,7 +146,7 @@ fun Onboarding(model: ZoenViewModel, modifier: Modifier = Modifier, acquisitionL
                 detail?.let { Text(it, Modifier.fillMaxWidth(), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, textAlign = TextAlign.Center) }
                 when (step) {
                     OnboardingStep.Hello -> {
-                        if (model.state.value.account == null) TextButton(onClick = { recoverAccount = true }, modifier = Modifier.testTag("onboarding-recover")) { Text("Recuperar minha conta") }
+                        if (state.account == null) TextButton(onClick = { recoverAccount = true }, modifier = Modifier.testTag("onboarding-recover")) { Text("Recuperar minha conta") }
                         if (route.flow == "default") {
                             GlassOutlinedButton(onClick = {
                                 val clipboard = context.getSystemService(android.content.ClipboardManager::class.java)
