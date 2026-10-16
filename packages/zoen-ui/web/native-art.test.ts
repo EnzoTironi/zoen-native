@@ -1,0 +1,20 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { buildSync } from 'esbuild';
+import { resolve } from 'node:path';
+import { pathToFileURL } from 'node:url';
+import { existsSync } from 'node:fs';
+const output = resolve(import.meta.dirname, '../node_modules/.cache/native-art-test.mjs');
+buildSync({ entryPoints: [resolve(import.meta.dirname, 'native-art.tsx')], outfile: output, bundle: true, platform: 'node', format: 'esm', packages: 'external', jsx: 'automatic' });
+const { nativeAvatarSource, nativeAvatarAsset } = await import(pathToFileURL(output).href);
+const identity = { kind: 'group', name: 'Beach trip', avatarRef: 'group-beach-trip' };
+test('native avatar size, motion and fixed-frame rules select the actual native artwork', () => {
+  assert.equal(nativeAvatarAsset(identity).name, 'GroupBeachTrip');
+  assert.equal(nativeAvatarSource(identity, 55), './assets/avatars/Stills/GroupBeachTrip.png');
+  assert.equal(nativeAvatarSource(identity, 56), './assets/avatars/Loops/GroupBeachTrip.webp');
+  assert.equal(nativeAvatarSource(identity, 56, { fixed: true }), './assets/avatars/Frame0/GroupBeachTrip.png');
+  assert.equal(nativeAvatarSource(identity, 56, { fixed: true, reduceMotion: true }), './assets/avatars/Stills/GroupBeachTrip.png');
+  assert.equal(nativeAvatarSource(identity, 64, { animate: false }), './assets/avatars/Stills/GroupBeachTrip.png');
+  assert.equal(nativeAvatarSource({ kind: 'person', name: 'Ana', photoUrl: '/photo.png' }, 64), '/photo.png');
+  assert.ok(existsSync(resolve(import.meta.dirname, 'assets/native-avatar-frame0/GroupBeachTrip.png')));
+});

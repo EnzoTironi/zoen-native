@@ -1,4 +1,6 @@
-import React from 'react';
+import React, { useEffect, useId, useState } from 'react';
+import { isDisplayClockFixed } from './display-clock';
+import './native-art.css';
 
 // Project-owned AvatarV1Manifest.json, in native catalog order. Picking mirrors
 // HandDrawnAvatarAsset.swift; no title rules beyond those in the native source.
@@ -44,21 +46,45 @@ export function nativeAvatarAsset(identity: NativeAvatarIdentity) {
 }
 
 /** Host passes persisted avatarRef; native UserDefaults cannot be inferred on web.
- * People retain photo/monogram fallback. Heroes are exact bundled artwork, static.
+ * People retain photo/monogram fallback. Small avatars use native catalog stills;
+ * large avatars use native loops (decoded frame zero while the display clock is fixed).
  * Zoen's procedural animated head remains a separate native-renderer parity gap.
  */
-export function NativeAvatar({ identity, size = 48, className = '' }: {
-  identity: NativeAvatarIdentity; size?: number; className?: string;
-}) {
+export function nativeAvatarSource(identity: NativeAvatarIdentity, size: number, { animate = true, reduceMotion = false, fixed = isDisplayClockFixed() } = {}): string | undefined {
+  if (identity.kind === 'person') return identity.photoUrl;
   const asset = nativeAvatarAsset(identity);
-  const src = identity.kind === 'person' ? identity.photoUrl : asset ? './assets/avatars/' + asset.hero : undefined;
+  if (!asset) return undefined;
+  const loop = animate && !reduceMotion && size >= 56;
+  return './assets/avatars/' + (loop ? fixed ? `Frame0/${asset.name}.png` : `Loops/${asset.name}.webp` : `Stills/${asset.still}.png`);
+}
+
+function useReduceMotion() {
+  const [reduced, setReduced] = useState(() => typeof matchMedia !== 'undefined' && matchMedia('(prefers-reduced-motion: reduce)').matches);
+  useEffect(() => {
+    if (typeof matchMedia === 'undefined') return;
+    const query = matchMedia('(prefers-reduced-motion: reduce)');
+    const update = () => setReduced(query.matches);
+    query.addEventListener('change', update);
+    return () => query.removeEventListener('change', update);
+  }, []);
+  return reduced;
+}
+
+export function NativeAvatar({ identity, size = 48, className = '', animate = true }: {
+  identity: NativeAvatarIdentity; size?: number; className?: string; animate?: boolean;
+}) {
+  const reduced = useReduceMotion();
+  const filterId = 'native-avatar-' + useId().replace(/:/g, '');
+  const asset = nativeAvatarAsset(identity);
+  const src = nativeAvatarSource(identity, size, { animate, reduceMotion: reduced });
   return <span className={'native-avatar ' + className} role="img" aria-label={identity.name} style={{ width: size, height: size, borderRadius: '50%', display: 'inline-grid', placeItems: 'center', overflow: 'hidden', flexShrink: 0, backgroundColor: asset?.backdrop ?? identity.tintHex ?? '#888888', color: 'white', fontSize: size * .38 }}>
-    {src ? <img src={src} alt="" width={size} height={size} style={{ width: '100%', height: '100%', objectFit: 'cover' }}/> : identity.initials ?? identity.name.slice(0, 1)}
+    {asset && <svg width="0" height="0" aria-hidden="true" style={{ position: 'absolute' }}><defs><filter id={filterId} colorInterpolationFilters="sRGB"><feColorMatrix type="matrix" values=".86 0 0 0 0  0 .84 0 0 0  0 0 .80 0 0  0 0 0 1 0"/></filter></defs></svg>}
+    {src ? <img className={asset ? 'native-avatar-art' : undefined} src={src} alt="" width={size} height={size} style={{ width: '100%', height: '100%', objectFit: 'cover', ...(asset ? { '--native-avatar-dark-filter': `url(#${filterId})` } as React.CSSProperties : {}) }}/> : identity.initials ?? identity.name.slice(0, 1)}
   </span>;
 }
 
 /** Exact native Ink export, frozen at t=2.4; not a re-drawn SVG or animation. */
-export function NativeWelcomeMascot({ src }: { src?: string }) {
+export function NativeWelcomeMascot({ src }: { src?: string | undefined }) {
   if (!src) return null; // Never substitute approximate art or emit a known broken URL.
   return <img className="no-mascot" src={src} alt="Zoen waving" width="230" height="230"/>;
 }

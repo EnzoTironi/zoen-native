@@ -1,0 +1,5 @@
+@media (prefers-color-scheme: dark) {
+  .native-avatar-art { filter: var(--native-avatar-dark-filter); }
+}
+[data-theme="dark"] .native-avatar-art { filter: var(--native-avatar-dark-filter); }
+[data-theme="light"] .native-avatar-art { filter: none; }
