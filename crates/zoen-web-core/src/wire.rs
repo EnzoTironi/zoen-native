@@ -230,7 +230,7 @@ mod tests {
     use super::*;
 
     #[test]
-fn presence_and_typing_are_not_lost_at_the_browser_boundary() {
+    fn presence_and_typing_are_not_lost_at_the_browser_boundary() {
         let frame = ServerFrame::Presence {
             identity: "person".into(),
             online: false,
