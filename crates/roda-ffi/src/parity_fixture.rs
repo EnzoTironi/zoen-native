@@ -94,6 +94,7 @@ mod tests {
     fn persona(p: &crate::dto::Persona) -> Value {
         json!({"id":p.id,"name":p.name,"handle":p.handle,"initials":p.initials,
             "tintHex":p.tint_hex,"glyph":p.glyph,"bio":p.bio,"isMe":p.is_me,
+            "isMine":p.is_mine,"ownerId":p.owner_id,"ownerName":p.owner_name,"ownerTintHex":p.owner_tint_hex,
             "kind":format!("{:?}",p.kind).to_lowercase()})
     }
     /// Regenerate the web's read-only native fixture directly from the native seed.
@@ -210,6 +211,70 @@ mod tests {
                 json!({"spaceId":m.space_id,"spaceTitle":m.space_title,"entry":entry})
             })
             .collect();
+        // Full public item UI projection, independent of timeline card summaries.
+        // Never export storage paths, signing material or file payloads.
+        let native_items = core.items();
+        let items: Vec<Value> = native_items.iter().map(|i| json!({
+            "id":i.id,"spaceId":i.space_id,"spaceTitle":i.space_title,
+            "kindLabel":i.kind_label,"kindId":i.kind_id,"title":i.title,"origin":i.origin,
+            "createdBy":persona(&i.created_by),"text":i.text,"version":i.version,"path":i.path,
+            "plan":i.plan.as_ref().map(|p| json!({"title":p.title,"summary":p.summary,
+                "budgetCents":p.budget_cents,"totalCents":p.total_cents,
+                "sections":p.sections.iter().map(|s| json!({"title":s.title,
+                    "lines":s.lines.iter().map(|l| json!({"id":l.id,"text":l.text,
+                        "costCents":l.cost_cents,"done":l.done})).collect::<Vec<_>>()
+                })).collect::<Vec<_>>() })),
+            "versions":i.versions.iter().map(|v| json!({"number":v.number,"author":persona(&v.author),
+                "atMs":v.at_ms,"note":v.note,"isUndo":v.is_undo,"totalCents":v.total_cents})).collect::<Vec<_>>(),
+            "linkedRequests":i.linked_requests.iter().map(|r| requests.iter().find(|v| v["id"] == r.id)
+                .expect("linked request is in public requests").clone()).collect::<Vec<_>>(),
+            "app":i.app.as_ref().map(|a| json!({"appId":a.app_id,"resourceUri":a.resource_uri,
+                "name":a.name,"viewJson":a.view_json,"headline":a.headline,
+                "metrics":a.metrics.iter().map(|m| json!({"label":m.label,"value":m.value})).collect::<Vec<_>>(),
+                "lastAction":a.last_action,"trust":format!("{:?}",a.trust).to_lowercase(),"snapshotJson":a.snapshot_json})),
+            "file":i.file.as_ref().map(|f| json!({"name":f.name,"path":f.path,"mime":f.mime,
+                "bytes":f.bytes,"sha256":f.sha256,"ready":f.ready,"chunks":f.chunks,
+                "chunksHere":f.chunks_here,"hasThumbnail":f.has_thumbnail}))
+        })).collect();
+        let actual_tasks: Vec<_> = native_items
+            .iter()
+            .filter(|i| {
+                i.kind_id == "task"
+                    || i.plan
+                        .as_ref()
+                        .is_some_and(|p| p.sections.iter().any(|s| s.lines.iter().any(|l| !l.done)))
+            })
+            .map(|i| i.id.as_str())
+            .collect();
+        let exported_tasks: Vec<_> = items
+            .iter()
+            .filter(|i| {
+                i["kindId"] == "task"
+                    || i["plan"]["sections"].as_array().is_some_and(|ss| {
+                        ss.iter().any(|s| {
+                            s["lines"]
+                                .as_array()
+                                .unwrap()
+                                .iter()
+                                .any(|l| l["done"] == false)
+                        })
+                    })
+            })
+            .map(|i| i["id"].as_str().unwrap())
+            .collect();
+        assert_eq!(actual_tasks, exported_tasks);
+        let actual_owned: Vec<_> = core
+            .agents()
+            .into_iter()
+            .filter(|a| a.persona.is_mine)
+            .map(|a| a.persona.id)
+            .collect();
+        let exported_owned: Vec<_> = agents
+            .iter()
+            .filter(|a| a["persona"]["isMine"] == true)
+            .map(|a| a["persona"]["id"].as_str().unwrap().to_owned())
+            .collect();
+        assert_eq!(actual_owned, exported_owned);
         let stats = core.stats();
         let grants: Vec<Value> = core.app_device_grants().iter().map(|g| json!({
             "grantId":g.grant_id,"itemId":g.item_id,"itemTitle":g.item_title,"appName":g.app_name,
@@ -224,7 +289,7 @@ mod tests {
         let fixture = json!({"fixture_id":"native-parity-v1","fixed_time":"2026-01-15T12:00:00Z",
             "locale":"en_US","timezone":"UTC","seed":128,"me":persona(&core.me().unwrap()),
             "personas":core.personas().iter().map(persona).collect::<Vec<_>>(),"spaces":spaces,
-            "homeApps":home_apps,"requests":requests,"agents":agents,"mentions":mentions,
+            "homeApps":home_apps,"requests":requests,"agents":agents,"mentions":mentions,"items":items,
             "stats":{"spaces":stats.spaces,"events":stats.events,"items":stats.items,
                 "identities":stats.identities,"allLogsValid":stats.all_logs_valid},
             "appDeviceGrants":grants,"account":account,

@@ -15,8 +15,12 @@
         "id": "c37776804d11bbddabee36706849641d5ad5e095510563c48bc218147c254250",
         "initials": "Z",
         "isMe": false,
+        "isMine": true,
         "kind": "agent",
         "name": "Zoen",
+        "ownerId": "ebb0c4c11b6711870fc165c5966f73739d6729ed463d18f948b54d546db453ec",
+        "ownerName": "Enzo",
+        "ownerTintHex": "#4F7CFF",
         "tintHex": "#7C5CFF"
       },
       "runsOn": "On this device · Apple Intelligence when available",
@@ -57,8 +61,12 @@
         "id": "071c033d0d56148657233af6608ec4a119a00ab40a87bf93f43f0587dcccd35a",
         "initials": "F",
         "isMe": false,
+        "isMine": true,
         "kind": "agent",
         "name": "Finance",
+        "ownerId": "ebb0c4c11b6711870fc165c5966f73739d6729ed463d18f948b54d546db453ec",
+        "ownerName": "Enzo",
+        "ownerTintHex": "#4F7CFF",
         "tintHex": "#22C55E"
       },
       "runsOn": "On this device · Apple Intelligence when available",
@@ -84,8 +92,12 @@
         "id": "61d0bcce5a93176002ca9cbcdc349392ebcd7519615d36a3b01dcffc4f38720e",
         "initials": "O",
         "isMe": false,
+        "isMine": false,
         "kind": "agent",
         "name": "Organizer",
+        "ownerId": "133cfc4240dea1fab2e8a1a50af5ab9fe5dba49214f0f31b5a2f285ee952a4bd",
+        "ownerName": "Marina",
+        "ownerTintHex": "#FF5C8A",
         "tintHex": "#FF9F0A"
       },
       "runsOn": "On this device · Apple Intelligence when available",
@@ -111,8 +123,12 @@
         "id": "29f305be0f2d0b00f06f75363f49a632107912b33e0ad57a02237714c5a78882",
         "initials": "G",
         "isMe": false,
+        "isMine": false,
         "kind": "agent",
         "name": "Guide",
+        "ownerId": "d618cd9bee4ce8d3878a2a150d843d6cd4e00ca16e3ab81a3fae1d9d588ef6a5",
+        "ownerName": "Ana",
+        "ownerTintHex": "#F59E0B",
         "tintHex": "#0EA5E9"
       },
       "runsOn": "On this device · Apple Intelligence when available",
@@ -218,6 +234,697 @@
       "value": "4,148"
     }
   ],
+  "items": [
+    {
+      "app": {
+        "appId": "maptap",
+        "headline": "Lucas leads with 4,148 pts",
+        "lastAction": "Lucas guessed",
+        "metrics": [],
+        "name": "MapTap",
+        "resourceUri": "ui://roda/maptap",
+        "snapshotJson": "{\"accentHex\":\"#1B2A4A\",\"appId\":\"maptap\",\"art\":\"globe\",\"deepLink\":\"zoen://app/it_01kf0rdqg0000000000000006p\",\"id\":\"it_01kf0rdqg0000000000000006p\",\"symbol\":\"globe.americas.fill\",\"template\":\"stat\",\"title\":\"Lucas leads\",\"value\":\"4,148\"}",
+        "trust": "act",
+        "viewJson": "{\"guesses\":{\"Lucas\":{\"0\":{\"km\":180.0,\"lat\":49.2864,\"lon\":104.8057,\"points\":4148}}},\"log\":[{\"at\":1768476180000,\"what\":\"guessed\",\"who\":\"Lucas\"}],\"order\":[\"Lucas\"],\"places\":[{\"country\":\"Mongolia\",\"hint\":\"The coldest capital in the world.\",\"lat\":47.8864,\"lon\":106.9057,\"name\":\"Ulaanbaatar\"},{\"country\":\"Argentina\",\"hint\":\"The southernmost city in the world.\",\"lat\":-54.8019,\"lon\":-68.303,\"name\":\"Ushuaia\"},{\"country\":\"Chile\",\"hint\":\"Colorful hills facing the Pacific.\",\"lat\":-33.0472,\"lon\":-71.6127,\"name\":\"Valparaíso\"},{\"country\":\"Brazil\",\"hint\":\"White dunes with rainwater lagoons.\",\"lat\":-2.487,\"lon\":-43.128,\"name\":\"Lençóis Maranhenses\"},{\"country\":\"Brazil\",\"hint\":\"An island in the middle of the Atlantic, 350 km off the coast.\",\"lat\":-3.8547,\"lon\":-32.4247,\"name\":\"Fernando de Noronha\"}]}"
+      },
+      "createdBy": {
+        "bio": "Your agent. Turns conversation into things.",
+        "glyph": "sparkles",
+        "handle": "zoen",
+        "id": "c37776804d11bbddabee36706849641d5ad5e095510563c48bc218147c254250",
+        "initials": "Z",
+        "isMe": false,
+        "isMine": true,
+        "kind": "agent",
+        "name": "Zoen",
+        "ownerId": "ebb0c4c11b6711870fc165c5966f73739d6729ed463d18f948b54d546db453ec",
+        "ownerName": "Enzo",
+        "ownerTintHex": "#4F7CFF",
+        "tintHex": "#7C5CFF"
+      },
+      "file": null,
+      "id": "it_01kf0rdqg0000000000000006p",
+      "kindId": "app",
+      "kindLabel": "Mini-app",
+      "linkedRequests": [],
+      "origin": "Zoen · MapTap",
+      "path": "",
+      "plan": null,
+      "spaceId": "sp_01kf0rdqg0000000000000005e",
+      "spaceTitle": "Saturday Crew",
+      "text": null,
+      "title": "MapTap",
+      "version": 1,
+      "versions": [
+        {
+          "atMs": 1768476120000,
+          "author": {
+            "bio": "Your agent. Turns conversation into things.",
+            "glyph": "sparkles",
+            "handle": "zoen",
+            "id": "c37776804d11bbddabee36706849641d5ad5e095510563c48bc218147c254250",
+            "initials": "Z",
+            "isMe": false,
+            "isMine": true,
+            "kind": "agent",
+            "name": "Zoen",
+            "ownerId": "ebb0c4c11b6711870fc165c5966f73739d6729ed463d18f948b54d546db453ec",
+            "ownerName": "Enzo",
+            "ownerTintHex": "#4F7CFF",
+            "tintHex": "#7C5CFF"
+          },
+          "isUndo": false,
+          "note": "Created",
+          "number": 1,
+          "totalCents": null
+        }
+      ]
+    },
+    {
+      "app": {
+        "appId": "hike",
+        "headline": "Going: Tomales Point",
+        "lastAction": "Zoen opened the hike",
+        "metrics": [
+          {
+            "label": "Tomales Point",
+            "value": 0.75
+          },
+          {
+            "label": "Steep Ravine",
+            "value": 0.25
+          },
+          {
+            "label": "Lands End",
+            "value": 0.0
+          }
+        ],
+        "name": "Saturday hike",
+        "resourceUri": "ui://roda/hike",
+        "snapshotJson": "{\"accentHex\":\"#3D7A28\",\"appId\":\"hike\",\"deepLink\":\"zoen://app/it_01kf0rdqg00000000000000062\",\"detail\":\"8:00 Lucas · car ready\",\"eyebrow\":\"Saturday\",\"id\":\"it_01kf0rdqg00000000000000062\",\"photo\":\"hike-tomales\",\"symbol\":\"figure.hiking\",\"template\":\"photo\",\"title\":\"Tomales Point\"}",
+        "trust": "act",
+        "viewJson": "{\"album\":[],\"area\":\"Bay Area\",\"day\":\"Saturday\",\"decided\":\"tomales\",\"itinerary\":[{\"text\":\"Lucas · car ready\",\"time\":\"8:00\"},{\"text\":\"Enzo · Noe Valley\",\"time\":\"8:15\"},{\"text\":\"Ana + Marina · Mission\",\"time\":\"8:30\"},{\"text\":\"Tomales Point trailhead\",\"time\":\"10:00\"},{\"text\":\"Drive back\",\"time\":\"15:00\"}],\"log\":[{\"at\":1768475700000,\"what\":\"opened the hike\",\"who\":\"Zoen\"},{\"at\":1768475760000,\"what\":\"voted for Tomales Point\",\"who\":\"Marina\"},{\"at\":1768475880000,\"what\":\"locked in Tomales Point\",\"who\":\"Lucas\"},{\"at\":1768475940000,\"what\":\"planned the day\",\"who\":\"Zoen\"}],\"title\":\"Saturday hike\",\"trails\":[{\"id\":\"tomales\",\"name\":\"Tomales Point\",\"votes\":[\"Marina\",\"Lucas\",\"Enzo\"]},{\"id\":\"steep\",\"name\":\"Steep Ravine\",\"votes\":[\"Ana\"]},{\"id\":\"lands\",\"name\":\"Lands End\",\"votes\":[]}]}"
+      },
+      "createdBy": {
+        "bio": "Your agent. Turns conversation into things.",
+        "glyph": "sparkles",
+        "handle": "zoen",
+        "id": "c37776804d11bbddabee36706849641d5ad5e095510563c48bc218147c254250",
+        "initials": "Z",
+        "isMe": false,
+        "isMine": true,
+        "kind": "agent",
+        "name": "Zoen",
+        "ownerId": "ebb0c4c11b6711870fc165c5966f73739d6729ed463d18f948b54d546db453ec",
+        "ownerName": "Enzo",
+        "ownerTintHex": "#4F7CFF",
+        "tintHex": "#7C5CFF"
+      },
+      "file": null,
+      "id": "it_01kf0rdqg00000000000000062",
+      "kindId": "app",
+      "kindLabel": "Mini-app",
+      "linkedRequests": [],
+      "origin": "Zoen · from “plan us a hike”",
+      "path": "",
+      "plan": null,
+      "spaceId": "sp_01kf0rdqg0000000000000005e",
+      "spaceTitle": "Saturday Crew",
+      "text": null,
+      "title": "Saturday hike",
+      "version": 1,
+      "versions": [
+        {
+          "atMs": 1768475700000,
+          "author": {
+            "bio": "Your agent. Turns conversation into things.",
+            "glyph": "sparkles",
+            "handle": "zoen",
+            "id": "c37776804d11bbddabee36706849641d5ad5e095510563c48bc218147c254250",
+            "initials": "Z",
+            "isMe": false,
+            "isMine": true,
+            "kind": "agent",
+            "name": "Zoen",
+            "ownerId": "ebb0c4c11b6711870fc165c5966f73739d6729ed463d18f948b54d546db453ec",
+            "ownerName": "Enzo",
+            "ownerTintHex": "#4F7CFF",
+            "tintHex": "#7C5CFF"
+          },
+          "isUndo": false,
+          "note": "Created",
+          "number": 1,
+          "totalCents": null
+        }
+      ]
+    },
+    {
+      "app": {
+        "appId": "pet",
+        "headline": "Peanut · Happy here",
+        "lastAction": "Zoen adopted",
+        "metrics": [
+          {
+            "label": "Food",
+            "value": 0.64
+          },
+          {
+            "label": "Mood",
+            "value": 0.79
+          },
+          {
+            "label": "Rest",
+            "value": 0.51
+          }
+        ],
+        "name": "Group donkey",
+        "resourceUri": "ui://roda/pet",
+        "snapshotJson": "{\"accentHex\":\"#E8833A\",\"actions\":[{\"label\":\"Feed\",\"tool\":\"pet_feed\"},{\"label\":\"Nap\",\"tool\":\"pet_nap\"}],\"appId\":\"pet\",\"art\":\"pet\",\"bars\":[{\"label\":\"Food\",\"value\":0.64},{\"label\":\"Mood\",\"value\":0.79},{\"label\":\"Rest\",\"value\":0.51}],\"deepLink\":\"zoen://app/it_01kf0rdqg0000000000000006g\",\"detail\":\"Happy here\",\"id\":\"it_01kf0rdqg0000000000000006g\",\"symbol\":\"pawprint.fill\",\"template\":\"progress\",\"title\":\"Peanut\"}",
+        "trust": "act",
+        "viewJson": "{\"asleep\":false,\"born\":1768475580000,\"dash\":{\"best\":{\"Ana\":{\"at\":1768476060000,\"carrots\":4,\"meters\":96},\"Lucas\":{\"at\":1768476060000,\"carrots\":7,\"meters\":142}},\"runs\":2},\"energy\":51.0,\"fullness\":64.0,\"joy\":79.0,\"log\":[{\"at\":1768475580000,\"what\":\"adopted\",\"who\":\"Zoen\"},{\"at\":1768475640000,\"what\":\"fed\",\"who\":\"Marina\"},{\"at\":1768476000000,\"what\":\"renamed Donkey to Peanut\",\"who\":\"Enzo\"}],\"mood\":\"Happy here\",\"name\":\"Peanut\",\"released\":false,\"species\":\"jumento\",\"updated\":1768476000000}"
+      },
+      "createdBy": {
+        "bio": "Your agent. Turns conversation into things.",
+        "glyph": "sparkles",
+        "handle": "zoen",
+        "id": "c37776804d11bbddabee36706849641d5ad5e095510563c48bc218147c254250",
+        "initials": "Z",
+        "isMe": false,
+        "isMine": true,
+        "kind": "agent",
+        "name": "Zoen",
+        "ownerId": "ebb0c4c11b6711870fc165c5966f73739d6729ed463d18f948b54d546db453ec",
+        "ownerName": "Enzo",
+        "ownerTintHex": "#4F7CFF",
+        "tintHex": "#7C5CFF"
+      },
+      "file": null,
+      "id": "it_01kf0rdqg0000000000000006g",
+      "kindId": "app",
+      "kindLabel": "Mini-app",
+      "linkedRequests": [],
+      "origin": "Zoen · group mascot",
+      "path": "",
+      "plan": null,
+      "spaceId": "sp_01kf0rdqg0000000000000005e",
+      "spaceTitle": "Saturday Crew",
+      "text": null,
+      "title": "Peanut",
+      "version": 1,
+      "versions": [
+        {
+          "atMs": 1768475580000,
+          "author": {
+            "bio": "Your agent. Turns conversation into things.",
+            "glyph": "sparkles",
+            "handle": "zoen",
+            "id": "c37776804d11bbddabee36706849641d5ad5e095510563c48bc218147c254250",
+            "initials": "Z",
+            "isMe": false,
+            "isMine": true,
+            "kind": "agent",
+            "name": "Zoen",
+            "ownerId": "ebb0c4c11b6711870fc165c5966f73739d6729ed463d18f948b54d546db453ec",
+            "ownerName": "Enzo",
+            "ownerTintHex": "#4F7CFF",
+            "tintHex": "#7C5CFF"
+          },
+          "isUndo": false,
+          "note": "Created",
+          "number": 1,
+          "totalCents": null
+        }
+      ]
+    },
+    {
+      "app": null,
+      "createdBy": {
+        "bio": "Your agent. Turns conversation into things.",
+        "glyph": "sparkles",
+        "handle": "zoen",
+        "id": "c37776804d11bbddabee36706849641d5ad5e095510563c48bc218147c254250",
+        "initials": "Z",
+        "isMe": false,
+        "isMine": true,
+        "kind": "agent",
+        "name": "Zoen",
+        "ownerId": "ebb0c4c11b6711870fc165c5966f73739d6729ed463d18f948b54d546db453ec",
+        "ownerName": "Enzo",
+        "ownerTintHex": "#4F7CFF",
+        "tintHex": "#7C5CFF"
+      },
+      "file": null,
+      "id": "it_01kf0rdqg0000000000000008h",
+      "kindId": "plan",
+      "kindLabel": "Plan",
+      "linkedRequests": [
+        {
+          "actionKey": "money",
+          "actionLabel": "Payment",
+          "agent": {
+            "bio": "Handles money: budget, splits and bookings.",
+            "glyph": "chart.pie.fill",
+            "handle": "financeiro",
+            "id": "071c033d0d56148657233af6608ec4a119a00ab40a87bf93f43f0587dcccd35a",
+            "initials": "F",
+            "isMe": false,
+            "isMine": true,
+            "kind": "agent",
+            "name": "Finance",
+            "ownerId": "ebb0c4c11b6711870fc165c5966f73739d6729ed463d18f948b54d546db453ec",
+            "ownerName": "Enzo",
+            "ownerTintHex": "#4F7CFF",
+            "tintHex": "#22C55E"
+          },
+          "audience": "Casa Azul Inn",
+          "byStanding": false,
+          "canAlwaysApprove": false,
+          "costCents": 64000,
+          "detail": "2 nights, Friday and Saturday, breakfast included. Free cancellation until Wednesday.",
+          "id": "rq_01kf0rdqg00000000000000040",
+          "itemId": "it_01kf0rdqg0000000000000008h",
+          "lineId": "ln_01kf0rdqg0000000000000008a",
+          "openedMs": 1768468860000,
+          "reason": "Red line: money above $100 always asks",
+          "resolvedMs": null,
+          "spaceId": "sp_01kf0rdqg0000000000000007t",
+          "spaceTitle": "Paraty with Marina",
+          "status": "pending",
+          "title": "Book the Casa Azul Inn"
+        },
+        {
+          "actionKey": "money",
+          "actionLabel": "Payment",
+          "agent": {
+            "bio": "Handles money: budget, splits and bookings.",
+            "glyph": "chart.pie.fill",
+            "handle": "financeiro",
+            "id": "071c033d0d56148657233af6608ec4a119a00ab40a87bf93f43f0587dcccd35a",
+            "initials": "F",
+            "isMe": false,
+            "isMine": true,
+            "kind": "agent",
+            "name": "Finance",
+            "ownerId": "ebb0c4c11b6711870fc165c5966f73739d6729ed463d18f948b54d546db453ec",
+            "ownerName": "Enzo",
+            "ownerTintHex": "#4F7CFF",
+            "tintHex": "#22C55E"
+          },
+          "audience": "Viação Costa Verde",
+          "byStanding": false,
+          "canAlwaysApprove": false,
+          "costCents": 24800,
+          "detail": "Rio → Paraty Friday 6 pm, back Sunday 5 pm · 2 people.",
+          "id": "rq_01kf0rdqg00000000000000041",
+          "itemId": "it_01kf0rdqg0000000000000008h",
+          "lineId": "ln_01kf0rdqg0000000000000008b",
+          "openedMs": 1768468920000,
+          "reason": "Red line: money above $100 always asks",
+          "resolvedMs": null,
+          "spaceId": "sp_01kf0rdqg0000000000000007t",
+          "spaceTitle": "Paraty with Marina",
+          "status": "pending",
+          "title": "Buy the bus tickets"
+        }
+      ],
+      "origin": "Zoen · from “plan our weekend in Paraty, up to $1,500”",
+      "path": "",
+      "plan": {
+        "budgetCents": 150000,
+        "sections": [
+          {
+            "lines": [
+              {
+                "costCents": 24800,
+                "done": false,
+                "id": "ln_01kf0rdqg0000000000000008b",
+                "text": "Bus Rio → Paraty, round trip (2 people)"
+              },
+              {
+                "costCents": 6000,
+                "done": false,
+                "id": "ln_01kf0rdqg0000000000000008d",
+                "text": "Taxi bus station ↔ inn"
+              }
+            ],
+            "title": "Transport"
+          },
+          {
+            "lines": [
+              {
+                "costCents": 64000,
+                "done": false,
+                "id": "ln_01kf0rdqg0000000000000008a",
+                "text": "Casa Azul Inn · 2 nights, breakfast included"
+              }
+            ],
+            "title": "Stay"
+          },
+          {
+            "lines": [
+              {
+                "costCents": 18000,
+                "done": false,
+                "id": "ln_01kf0rdqg0000000000000008e",
+                "text": "Schooner around the islands (2 people)"
+              },
+              {
+                "costCents": 0,
+                "done": false,
+                "id": "ln_01kf0rdqg0000000000000008f",
+                "text": "Praia do Sono trail"
+              }
+            ],
+            "title": "Tours"
+          },
+          {
+            "lines": [
+              {
+                "costCents": 26000,
+                "done": false,
+                "id": "ln_01kf0rdqg0000000000000008c",
+                "text": "Dinner at Banana da Terra (moqueca)"
+              },
+              {
+                "costCents": 0,
+                "done": false,
+                "id": "ln_01kf0rdqg0000000000000008g",
+                "text": "Coffee and snacks"
+              }
+            ],
+            "title": "Food"
+          }
+        ],
+        "summary": "Friday to Sunday · Enzo and Marina · historic center, schooner and Praia do Sono",
+        "title": "Weekend in Paraty",
+        "totalCents": 138800
+      },
+      "spaceId": "sp_01kf0rdqg0000000000000007t",
+      "spaceTitle": "Paraty with Marina",
+      "text": "Weekend in Paraty\nFriday to Sunday · Enzo and Marina · historic center, schooner and Praia do Sono\nTransport\nBus Rio → Paraty, round trip (2 people)\nTaxi bus station ↔ inn\nStay\nCasa Azul Inn · 2 nights, breakfast included\nTours\nSchooner around the islands (2 people)\nPraia do Sono trail\nFood\nDinner at Banana da Terra (moqueca)\nCoffee and snacks",
+      "title": "Weekend in Paraty",
+      "version": 2,
+      "versions": [
+        {
+          "atMs": 1768467960000,
+          "author": {
+            "bio": "Your agent. Turns conversation into things.",
+            "glyph": "sparkles",
+            "handle": "zoen",
+            "id": "c37776804d11bbddabee36706849641d5ad5e095510563c48bc218147c254250",
+            "initials": "Z",
+            "isMe": false,
+            "isMine": true,
+            "kind": "agent",
+            "name": "Zoen",
+            "ownerId": "ebb0c4c11b6711870fc165c5966f73739d6729ed463d18f948b54d546db453ec",
+            "ownerName": "Enzo",
+            "ownerTintHex": "#4F7CFF",
+            "tintHex": "#7C5CFF"
+          },
+          "isUndo": false,
+          "note": "Swapped dinner for Banana da Terra",
+          "number": 2,
+          "totalCents": 138800
+        },
+        {
+          "atMs": 1768467180000,
+          "author": {
+            "bio": "Your agent. Turns conversation into things.",
+            "glyph": "sparkles",
+            "handle": "zoen",
+            "id": "c37776804d11bbddabee36706849641d5ad5e095510563c48bc218147c254250",
+            "initials": "Z",
+            "isMe": false,
+            "isMine": true,
+            "kind": "agent",
+            "name": "Zoen",
+            "ownerId": "ebb0c4c11b6711870fc165c5966f73739d6729ed463d18f948b54d546db453ec",
+            "ownerName": "Enzo",
+            "ownerTintHex": "#4F7CFF",
+            "tintHex": "#7C5CFF"
+          },
+          "isUndo": false,
+          "note": "Created",
+          "number": 1,
+          "totalCents": 134800
+        }
+      ]
+    },
+    {
+      "app": {
+        "appId": "countdown",
+        "headline": "Paraty long weekend · 9 days to go",
+        "lastAction": "Zoen started the countdown",
+        "metrics": [],
+        "name": "Countdown",
+        "resourceUri": "ui://roda/countdown",
+        "snapshotJson": "{\"accentHex\":\"#3D7A28\",\"appId\":\"countdown\",\"art\":\"trip\",\"deepLink\":\"zoen://app/it_01kf0rdqg0000000000000008p\",\"eyebrow\":\"Paraty long weekend\",\"id\":\"it_01kf0rdqg0000000000000008p\",\"symbol\":\"airplane\",\"targetMs\":1769281200000,\"template\":\"countdown\",\"title\":\"Paraty\"}",
+        "trust": "act",
+        "viewJson": "{\"log\":[{\"at\":1768467240000,\"what\":\"started the countdown\",\"who\":\"Zoen\"}],\"place\":\"Paraty\",\"target\":1769281200000,\"title\":\"Paraty long weekend\"}"
+      },
+      "createdBy": {
+        "bio": "Your agent. Turns conversation into things.",
+        "glyph": "sparkles",
+        "handle": "zoen",
+        "id": "c37776804d11bbddabee36706849641d5ad5e095510563c48bc218147c254250",
+        "initials": "Z",
+        "isMe": false,
+        "isMine": true,
+        "kind": "agent",
+        "name": "Zoen",
+        "ownerId": "ebb0c4c11b6711870fc165c5966f73739d6729ed463d18f948b54d546db453ec",
+        "ownerName": "Enzo",
+        "ownerTintHex": "#4F7CFF",
+        "tintHex": "#7C5CFF"
+      },
+      "file": null,
+      "id": "it_01kf0rdqg0000000000000008p",
+      "kindId": "app",
+      "kindLabel": "Mini-app",
+      "linkedRequests": [],
+      "origin": "Zoen · trip countdown",
+      "path": "",
+      "plan": null,
+      "spaceId": "sp_01kf0rdqg0000000000000007t",
+      "spaceTitle": "Paraty with Marina",
+      "text": null,
+      "title": "Paraty long weekend",
+      "version": 1,
+      "versions": [
+        {
+          "atMs": 1768467240000,
+          "author": {
+            "bio": "Your agent. Turns conversation into things.",
+            "glyph": "sparkles",
+            "handle": "zoen",
+            "id": "c37776804d11bbddabee36706849641d5ad5e095510563c48bc218147c254250",
+            "initials": "Z",
+            "isMe": false,
+            "isMine": true,
+            "kind": "agent",
+            "name": "Zoen",
+            "ownerId": "ebb0c4c11b6711870fc165c5966f73739d6729ed463d18f948b54d546db453ec",
+            "ownerName": "Enzo",
+            "ownerTintHex": "#4F7CFF",
+            "tintHex": "#7C5CFF"
+          },
+          "isUndo": false,
+          "note": "Created",
+          "number": 1,
+          "totalCents": null
+        }
+      ]
+    },
+    {
+      "app": null,
+      "createdBy": {
+        "bio": "Your agent. Turns conversation into things.",
+        "glyph": "sparkles",
+        "handle": "zoen",
+        "id": "c37776804d11bbddabee36706849641d5ad5e095510563c48bc218147c254250",
+        "initials": "Z",
+        "isMe": false,
+        "isMine": true,
+        "kind": "agent",
+        "name": "Zoen",
+        "ownerId": "ebb0c4c11b6711870fc165c5966f73739d6729ed463d18f948b54d546db453ec",
+        "ownerName": "Enzo",
+        "ownerTintHex": "#4F7CFF",
+        "tintHex": "#7C5CFF"
+      },
+      "file": null,
+      "id": "it_01kf0rdqg00000000000000059",
+      "kindId": "note",
+      "kindLabel": "Note",
+      "linkedRequests": [],
+      "origin": "Zoen · conversation summary",
+      "path": "",
+      "plan": null,
+      "spaceId": "sp_01kf0rdqg00000000000000050",
+      "spaceTitle": "Zoen · Product",
+      "text": "Daily summary\n• New build on TestFlight (Lucas)\n• Request card approved in dark mode (Ana)\n• Pending: the Mac app icon",
+      "title": "Daily summary",
+      "version": 1,
+      "versions": [
+        {
+          "atMs": 1768460400000,
+          "author": {
+            "bio": "Your agent. Turns conversation into things.",
+            "glyph": "sparkles",
+            "handle": "zoen",
+            "id": "c37776804d11bbddabee36706849641d5ad5e095510563c48bc218147c254250",
+            "initials": "Z",
+            "isMe": false,
+            "isMine": true,
+            "kind": "agent",
+            "name": "Zoen",
+            "ownerId": "ebb0c4c11b6711870fc165c5966f73739d6729ed463d18f948b54d546db453ec",
+            "ownerName": "Enzo",
+            "ownerTintHex": "#4F7CFF",
+            "tintHex": "#7C5CFF"
+          },
+          "isUndo": false,
+          "note": "Created",
+          "number": 1,
+          "totalCents": null
+        }
+      ]
+    },
+    {
+      "app": {
+        "appId": "hike",
+        "headline": "Going: Tomales Point",
+        "lastAction": "Guia opened the hike",
+        "metrics": [
+          {
+            "label": "Praia do Sono",
+            "value": 1.0
+          },
+          {
+            "label": "Pedra Branca falls",
+            "value": 0.0
+          },
+          {
+            "label": "Ponta Negra",
+            "value": 0.0
+          }
+        ],
+        "name": "Saturday hike",
+        "resourceUri": "ui://roda/hike",
+        "snapshotJson": "{\"accentHex\":\"#3D7A28\",\"appId\":\"hike\",\"deepLink\":\"zoen://app/it_01kf0rdqg0000000000000004r\",\"detail\":\"8:00 Meet at the pier\",\"eyebrow\":\"Saturday\",\"id\":\"it_01kf0rdqg0000000000000004r\",\"photo\":\"hike-tomales\",\"symbol\":\"figure.hiking\",\"template\":\"photo\",\"title\":\"Praia do Sono\"}",
+        "trust": "act",
+        "viewJson": "{\"album\":[],\"area\":\"Paraty\",\"day\":\"Saturday\",\"decided\":\"tomales\",\"itinerary\":[{\"text\":\"Meet at the pier\",\"time\":\"8:00\"},{\"text\":\"Low tide · trail start\",\"time\":\"9:40\"},{\"text\":\"Praia do Sono · lunch\",\"time\":\"12:30\"},{\"text\":\"Return\",\"time\":\"16:00\"}],\"log\":[{\"at\":1768449600000,\"what\":\"opened the hike\",\"who\":\"Guia\"},{\"at\":1768453200000,\"what\":\"locked in Praia do Sono\",\"who\":\"Ana\"}],\"title\":\"Praia do Sono trail\",\"trails\":[{\"id\":\"tomales\",\"name\":\"Praia do Sono\",\"votes\":[\"Ana\",\"Enzo\"]},{\"id\":\"steep\",\"name\":\"Pedra Branca falls\",\"votes\":[]},{\"id\":\"lands\",\"name\":\"Ponta Negra\",\"votes\":[]}]}"
+      },
+      "createdBy": {
+        "bio": "Tides, trails and community tips.",
+        "glyph": "map.fill",
+        "handle": "guia",
+        "id": "29f305be0f2d0b00f06f75363f49a632107912b33e0ad57a02237714c5a78882",
+        "initials": "G",
+        "isMe": false,
+        "isMine": false,
+        "kind": "agent",
+        "name": "Guide",
+        "ownerId": "d618cd9bee4ce8d3878a2a150d843d6cd4e00ca16e3ab81a3fae1d9d588ef6a5",
+        "ownerName": "Ana",
+        "ownerTintHex": "#F59E0B",
+        "tintHex": "#0EA5E9"
+      },
+      "file": null,
+      "id": "it_01kf0rdqg0000000000000004r",
+      "kindId": "app",
+      "kindLabel": "Mini-app",
+      "linkedRequests": [],
+      "origin": "Guide · community trail",
+      "path": "",
+      "plan": null,
+      "spaceId": "sp_01kf0rdqg0000000000000004e",
+      "spaceTitle": "Coastal Travelers",
+      "text": null,
+      "title": "Praia do Sono trail",
+      "version": 1,
+      "versions": [
+        {
+          "atMs": 1768449600000,
+          "author": {
+            "bio": "Tides, trails and community tips.",
+            "glyph": "map.fill",
+            "handle": "guia",
+            "id": "29f305be0f2d0b00f06f75363f49a632107912b33e0ad57a02237714c5a78882",
+            "initials": "G",
+            "isMe": false,
+            "isMine": false,
+            "kind": "agent",
+            "name": "Guide",
+            "ownerId": "d618cd9bee4ce8d3878a2a150d843d6cd4e00ca16e3ab81a3fae1d9d588ef6a5",
+            "ownerName": "Ana",
+            "ownerTintHex": "#F59E0B",
+            "tintHex": "#0EA5E9"
+          },
+          "isUndo": false,
+          "note": "Created",
+          "number": 1,
+          "totalCents": null
+        }
+      ]
+    },
+    {
+      "app": null,
+      "createdBy": {
+        "bio": "Your agent. Turns conversation into things.",
+        "glyph": "sparkles",
+        "handle": "zoen",
+        "id": "c37776804d11bbddabee36706849641d5ad5e095510563c48bc218147c254250",
+        "initials": "Z",
+        "isMe": false,
+        "isMine": true,
+        "kind": "agent",
+        "name": "Zoen",
+        "ownerId": "ebb0c4c11b6711870fc165c5966f73739d6729ed463d18f948b54d546db453ec",
+        "ownerName": "Enzo",
+        "ownerTintHex": "#4F7CFF",
+        "tintHex": "#7C5CFF"
+      },
+      "file": null,
+      "id": "it_01kf0rdqg00000000000000078",
+      "kindId": "task",
+      "kindLabel": "Task",
+      "linkedRequests": [],
+      "origin": "Zoen · from “Remind me to renew my passport”",
+      "path": "",
+      "plan": null,
+      "spaceId": "sp_01kf0rdqg00000000000000071",
+      "spaceTitle": "Zoen",
+      "text": "Renew passport\nBook an appointment by Nov 15 · bring ID and the old passport",
+      "title": "Renew passport",
+      "version": 1,
+      "versions": [
+        {
+          "atMs": 1768388400000,
+          "author": {
+            "bio": "Your agent. Turns conversation into things.",
+            "glyph": "sparkles",
+            "handle": "zoen",
+            "id": "c37776804d11bbddabee36706849641d5ad5e095510563c48bc218147c254250",
+            "initials": "Z",
+            "isMe": false,
+            "isMine": true,
+            "kind": "agent",
+            "name": "Zoen",
+            "ownerId": "ebb0c4c11b6711870fc165c5966f73739d6729ed463d18f948b54d546db453ec",
+            "ownerName": "Enzo",
+            "ownerTintHex": "#4F7CFF",
+            "tintHex": "#7C5CFF"
+          },
+          "isUndo": false,
+          "note": "Created",
+          "number": 1,
+          "totalCents": null
+        }
+      ]
+    }
+  ],
   "locale": "en_US",
   "me": {
     "bio": "Building Zoen.",
@@ -226,8 +933,12 @@
     "id": "ebb0c4c11b6711870fc165c5966f73739d6729ed463d18f948b54d546db453ec",
     "initials": "E",
     "isMe": true,
+    "isMine": false,
     "kind": "person",
     "name": "Enzo",
+    "ownerId": null,
+    "ownerName": null,
+    "ownerTintHex": null,
     "tintHex": "#4F7CFF"
   },
   "mentions": [
@@ -241,8 +952,12 @@
           "id": "133cfc4240dea1fab2e8a1a50af5ab9fe5dba49214f0f31b5a2f285ee952a4bd",
           "initials": "M",
           "isMe": false,
+          "isMine": false,
           "kind": "person",
           "name": "Marina",
+          "ownerId": null,
+          "ownerName": null,
+          "ownerTintHex": null,
           "tintHex": "#FF5C8A"
         },
         "card": null,
@@ -267,8 +982,12 @@
       "id": "ebb0c4c11b6711870fc165c5966f73739d6729ed463d18f948b54d546db453ec",
       "initials": "E",
       "isMe": true,
+      "isMine": false,
       "kind": "person",
       "name": "Enzo",
+      "ownerId": null,
+      "ownerName": null,
+      "ownerTintHex": null,
       "tintHex": "#4F7CFF"
     },
     {
@@ -278,8 +997,12 @@
       "id": "133cfc4240dea1fab2e8a1a50af5ab9fe5dba49214f0f31b5a2f285ee952a4bd",
       "initials": "M",
       "isMe": false,
+      "isMine": false,
       "kind": "person",
       "name": "Marina",
+      "ownerId": null,
+      "ownerName": null,
+      "ownerTintHex": null,
       "tintHex": "#FF5C8A"
     },
     {
@@ -289,8 +1012,12 @@
       "id": "6ee95da0ee5cbbf5359f596607075babd6672710cf9e89b37d5e6b7b4bd6bd61",
       "initials": "L",
       "isMe": false,
+      "isMine": false,
       "kind": "person",
       "name": "Lucas",
+      "ownerId": null,
+      "ownerName": null,
+      "ownerTintHex": null,
       "tintHex": "#19B5A5"
     },
     {
@@ -300,8 +1027,12 @@
       "id": "d618cd9bee4ce8d3878a2a150d843d6cd4e00ca16e3ab81a3fae1d9d588ef6a5",
       "initials": "A",
       "isMe": false,
+      "isMine": false,
       "kind": "person",
       "name": "Ana",
+      "ownerId": null,
+      "ownerName": null,
+      "ownerTintHex": null,
       "tintHex": "#F59E0B"
     },
     {
@@ -311,8 +1042,12 @@
       "id": "c37776804d11bbddabee36706849641d5ad5e095510563c48bc218147c254250",
       "initials": "Z",
       "isMe": false,
+      "isMine": true,
       "kind": "agent",
       "name": "Zoen",
+      "ownerId": "ebb0c4c11b6711870fc165c5966f73739d6729ed463d18f948b54d546db453ec",
+      "ownerName": "Enzo",
+      "ownerTintHex": "#4F7CFF",
       "tintHex": "#7C5CFF"
     },
     {
@@ -322,8 +1057,12 @@
       "id": "071c033d0d56148657233af6608ec4a119a00ab40a87bf93f43f0587dcccd35a",
       "initials": "F",
       "isMe": false,
+      "isMine": true,
       "kind": "agent",
       "name": "Finance",
+      "ownerId": "ebb0c4c11b6711870fc165c5966f73739d6729ed463d18f948b54d546db453ec",
+      "ownerName": "Enzo",
+      "ownerTintHex": "#4F7CFF",
       "tintHex": "#22C55E"
     },
     {
@@ -333,8 +1072,12 @@
       "id": "61d0bcce5a93176002ca9cbcdc349392ebcd7519615d36a3b01dcffc4f38720e",
       "initials": "O",
       "isMe": false,
+      "isMine": false,
       "kind": "agent",
       "name": "Organizer",
+      "ownerId": "133cfc4240dea1fab2e8a1a50af5ab9fe5dba49214f0f31b5a2f285ee952a4bd",
+      "ownerName": "Marina",
+      "ownerTintHex": "#FF5C8A",
       "tintHex": "#FF9F0A"
     },
     {
@@ -344,8 +1087,12 @@
       "id": "29f305be0f2d0b00f06f75363f49a632107912b33e0ad57a02237714c5a78882",
       "initials": "G",
       "isMe": false,
+      "isMine": false,
       "kind": "agent",
       "name": "Guide",
+      "ownerId": "d618cd9bee4ce8d3878a2a150d843d6cd4e00ca16e3ab81a3fae1d9d588ef6a5",
+      "ownerName": "Ana",
+      "ownerTintHex": "#F59E0B",
       "tintHex": "#0EA5E9"
     }
   ],
@@ -360,8 +1107,12 @@
         "id": "071c033d0d56148657233af6608ec4a119a00ab40a87bf93f43f0587dcccd35a",
         "initials": "F",
         "isMe": false,
+        "isMine": true,
         "kind": "agent",
         "name": "Finance",
+        "ownerId": "ebb0c4c11b6711870fc165c5966f73739d6729ed463d18f948b54d546db453ec",
+        "ownerName": "Enzo",
+        "ownerTintHex": "#4F7CFF",
         "tintHex": "#22C55E"
       },
       "audience": "Marina, outside Zoen",
@@ -390,8 +1141,12 @@
         "id": "071c033d0d56148657233af6608ec4a119a00ab40a87bf93f43f0587dcccd35a",
         "initials": "F",
         "isMe": false,
+        "isMine": true,
         "kind": "agent",
         "name": "Finance",
+        "ownerId": "ebb0c4c11b6711870fc165c5966f73739d6729ed463d18f948b54d546db453ec",
+        "ownerName": "Enzo",
+        "ownerTintHex": "#4F7CFF",
         "tintHex": "#22C55E"
       },
       "audience": "Viação Costa Verde",
@@ -420,8 +1175,12 @@
         "id": "071c033d0d56148657233af6608ec4a119a00ab40a87bf93f43f0587dcccd35a",
         "initials": "F",
         "isMe": false,
+        "isMine": true,
         "kind": "agent",
         "name": "Finance",
+        "ownerId": "ebb0c4c11b6711870fc165c5966f73739d6729ed463d18f948b54d546db453ec",
+        "ownerName": "Enzo",
+        "ownerTintHex": "#4F7CFF",
         "tintHex": "#22C55E"
       },
       "audience": "Casa Azul Inn",
@@ -455,8 +1214,12 @@
             "id": "133cfc4240dea1fab2e8a1a50af5ab9fe5dba49214f0f31b5a2f285ee952a4bd",
             "initials": "M",
             "isMe": false,
+            "isMine": false,
             "kind": "person",
             "name": "Marina",
+            "ownerId": null,
+            "ownerName": null,
+            "ownerTintHex": null,
             "tintHex": "#FF5C8A"
           },
           "card": null,
@@ -478,8 +1241,12 @@
             "id": "ebb0c4c11b6711870fc165c5966f73739d6729ed463d18f948b54d546db453ec",
             "initials": "E",
             "isMe": true,
+            "isMine": false,
             "kind": "person",
             "name": "Enzo",
+            "ownerId": null,
+            "ownerName": null,
+            "ownerTintHex": null,
             "tintHex": "#4F7CFF"
           },
           "card": null,
@@ -501,8 +1268,12 @@
             "id": "c37776804d11bbddabee36706849641d5ad5e095510563c48bc218147c254250",
             "initials": "Z",
             "isMe": false,
+            "isMine": true,
             "kind": "agent",
             "name": "Zoen",
+            "ownerId": "ebb0c4c11b6711870fc165c5966f73739d6729ed463d18f948b54d546db453ec",
+            "ownerName": "Enzo",
+            "ownerTintHex": "#4F7CFF",
             "tintHex": "#7C5CFF"
           },
           "card": {
@@ -536,8 +1307,12 @@
             "id": "c37776804d11bbddabee36706849641d5ad5e095510563c48bc218147c254250",
             "initials": "Z",
             "isMe": false,
+            "isMine": true,
             "kind": "agent",
             "name": "Zoen",
+            "ownerId": "ebb0c4c11b6711870fc165c5966f73739d6729ed463d18f948b54d546db453ec",
+            "ownerName": "Enzo",
+            "ownerTintHex": "#4F7CFF",
             "tintHex": "#7C5CFF"
           },
           "card": {
@@ -582,8 +1357,12 @@
             "id": "133cfc4240dea1fab2e8a1a50af5ab9fe5dba49214f0f31b5a2f285ee952a4bd",
             "initials": "M",
             "isMe": false,
+            "isMine": false,
             "kind": "person",
             "name": "Marina",
+            "ownerId": null,
+            "ownerName": null,
+            "ownerTintHex": null,
             "tintHex": "#FF5C8A"
           },
           "card": null,
@@ -605,8 +1384,12 @@
             "id": "c37776804d11bbddabee36706849641d5ad5e095510563c48bc218147c254250",
             "initials": "Z",
             "isMe": false,
+            "isMine": true,
             "kind": "agent",
             "name": "Zoen",
+            "ownerId": "ebb0c4c11b6711870fc165c5966f73739d6729ed463d18f948b54d546db453ec",
+            "ownerName": "Enzo",
+            "ownerTintHex": "#4F7CFF",
             "tintHex": "#7C5CFF"
           },
           "card": null,
@@ -628,8 +1411,12 @@
             "id": "c37776804d11bbddabee36706849641d5ad5e095510563c48bc218147c254250",
             "initials": "Z",
             "isMe": false,
+            "isMine": true,
             "kind": "agent",
             "name": "Zoen",
+            "ownerId": "ebb0c4c11b6711870fc165c5966f73739d6729ed463d18f948b54d546db453ec",
+            "ownerName": "Enzo",
+            "ownerTintHex": "#4F7CFF",
             "tintHex": "#7C5CFF"
           },
           "card": null,
@@ -651,8 +1438,12 @@
             "id": "071c033d0d56148657233af6608ec4a119a00ab40a87bf93f43f0587dcccd35a",
             "initials": "F",
             "isMe": false,
+            "isMine": true,
             "kind": "agent",
             "name": "Finance",
+            "ownerId": "ebb0c4c11b6711870fc165c5966f73739d6729ed463d18f948b54d546db453ec",
+            "ownerName": "Enzo",
+            "ownerTintHex": "#4F7CFF",
             "tintHex": "#22C55E"
           },
           "card": null,
@@ -674,8 +1465,12 @@
             "id": "071c033d0d56148657233af6608ec4a119a00ab40a87bf93f43f0587dcccd35a",
             "initials": "F",
             "isMe": false,
+            "isMine": true,
             "kind": "agent",
             "name": "Finance",
+            "ownerId": "ebb0c4c11b6711870fc165c5966f73739d6729ed463d18f948b54d546db453ec",
+            "ownerName": "Enzo",
+            "ownerTintHex": "#4F7CFF",
             "tintHex": "#22C55E"
           },
           "card": null,
@@ -697,8 +1492,12 @@
             "id": "071c033d0d56148657233af6608ec4a119a00ab40a87bf93f43f0587dcccd35a",
             "initials": "F",
             "isMe": false,
+            "isMine": true,
             "kind": "agent",
             "name": "Finance",
+            "ownerId": "ebb0c4c11b6711870fc165c5966f73739d6729ed463d18f948b54d546db453ec",
+            "ownerName": "Enzo",
+            "ownerTintHex": "#4F7CFF",
             "tintHex": "#22C55E"
           },
           "card": null,
@@ -720,8 +1519,12 @@
             "id": "071c033d0d56148657233af6608ec4a119a00ab40a87bf93f43f0587dcccd35a",
             "initials": "F",
             "isMe": false,
+            "isMine": true,
             "kind": "agent",
             "name": "Finance",
+            "ownerId": "ebb0c4c11b6711870fc165c5966f73739d6729ed463d18f948b54d546db453ec",
+            "ownerName": "Enzo",
+            "ownerTintHex": "#4F7CFF",
             "tintHex": "#22C55E"
           },
           "card": null,
@@ -743,8 +1546,12 @@
             "id": "61d0bcce5a93176002ca9cbcdc349392ebcd7519615d36a3b01dcffc4f38720e",
             "initials": "O",
             "isMe": false,
+            "isMine": false,
             "kind": "agent",
             "name": "Organizer",
+            "ownerId": "133cfc4240dea1fab2e8a1a50af5ab9fe5dba49214f0f31b5a2f285ee952a4bd",
+            "ownerName": "Marina",
+            "ownerTintHex": "#FF5C8A",
             "tintHex": "#FF9F0A"
           },
           "card": null,
@@ -766,8 +1573,12 @@
             "id": "133cfc4240dea1fab2e8a1a50af5ab9fe5dba49214f0f31b5a2f285ee952a4bd",
             "initials": "M",
             "isMe": false,
+            "isMine": false,
             "kind": "person",
             "name": "Marina",
+            "ownerId": null,
+            "ownerName": null,
+            "ownerTintHex": null,
             "tintHex": "#FF5C8A"
           },
           "card": null,
@@ -791,8 +1602,12 @@
         "id": "133cfc4240dea1fab2e8a1a50af5ab9fe5dba49214f0f31b5a2f285ee952a4bd",
         "initials": "M",
         "isMe": false,
+        "isMine": false,
         "kind": "person",
         "name": "Marina",
+        "ownerId": null,
+        "ownerName": null,
+        "ownerTintHex": null,
         "tintHex": "#FF5C8A"
       },
       "lastPreview": "@Enzo did you approve the inn yet? They only hold the booking until today 😅",
@@ -804,8 +1619,12 @@
           "id": "ebb0c4c11b6711870fc165c5966f73739d6729ed463d18f948b54d546db453ec",
           "initials": "E",
           "isMe": true,
+          "isMine": false,
           "kind": "person",
           "name": "Enzo",
+          "ownerId": null,
+          "ownerName": null,
+          "ownerTintHex": null,
           "tintHex": "#4F7CFF"
         },
         {
@@ -815,8 +1634,12 @@
           "id": "133cfc4240dea1fab2e8a1a50af5ab9fe5dba49214f0f31b5a2f285ee952a4bd",
           "initials": "M",
           "isMe": false,
+          "isMine": false,
           "kind": "person",
           "name": "Marina",
+          "ownerId": null,
+          "ownerName": null,
+          "ownerTintHex": null,
           "tintHex": "#FF5C8A"
         },
         {
@@ -826,8 +1649,12 @@
           "id": "c37776804d11bbddabee36706849641d5ad5e095510563c48bc218147c254250",
           "initials": "Z",
           "isMe": false,
+          "isMine": true,
           "kind": "agent",
           "name": "Zoen",
+          "ownerId": "ebb0c4c11b6711870fc165c5966f73739d6729ed463d18f948b54d546db453ec",
+          "ownerName": "Enzo",
+          "ownerTintHex": "#4F7CFF",
           "tintHex": "#7C5CFF"
         },
         {
@@ -837,8 +1664,12 @@
           "id": "071c033d0d56148657233af6608ec4a119a00ab40a87bf93f43f0587dcccd35a",
           "initials": "F",
           "isMe": false,
+          "isMine": true,
           "kind": "agent",
           "name": "Finance",
+          "ownerId": "ebb0c4c11b6711870fc165c5966f73739d6729ed463d18f948b54d546db453ec",
+          "ownerName": "Enzo",
+          "ownerTintHex": "#4F7CFF",
           "tintHex": "#22C55E"
         },
         {
@@ -848,8 +1679,12 @@
           "id": "61d0bcce5a93176002ca9cbcdc349392ebcd7519615d36a3b01dcffc4f38720e",
           "initials": "O",
           "isMe": false,
+          "isMine": false,
           "kind": "agent",
           "name": "Organizer",
+          "ownerId": "133cfc4240dea1fab2e8a1a50af5ab9fe5dba49214f0f31b5a2f285ee952a4bd",
+          "ownerName": "Marina",
+          "ownerTintHex": "#FF5C8A",
           "tintHex": "#FF9F0A"
         }
       ],
@@ -870,8 +1705,12 @@
             "id": "6ee95da0ee5cbbf5359f596607075babd6672710cf9e89b37d5e6b7b4bd6bd61",
             "initials": "L",
             "isMe": false,
+            "isMine": false,
             "kind": "person",
             "name": "Lucas",
+            "ownerId": null,
+            "ownerName": null,
+            "ownerTintHex": null,
             "tintHex": "#19B5A5"
           },
           "card": null,
@@ -893,8 +1732,12 @@
             "id": "ebb0c4c11b6711870fc165c5966f73739d6729ed463d18f948b54d546db453ec",
             "initials": "E",
             "isMe": true,
+            "isMine": false,
             "kind": "person",
             "name": "Enzo",
+            "ownerId": null,
+            "ownerName": null,
+            "ownerTintHex": null,
             "tintHex": "#4F7CFF"
           },
           "card": null,
@@ -916,8 +1759,12 @@
             "id": "133cfc4240dea1fab2e8a1a50af5ab9fe5dba49214f0f31b5a2f285ee952a4bd",
             "initials": "M",
             "isMe": false,
+            "isMine": false,
             "kind": "person",
             "name": "Marina",
+            "ownerId": null,
+            "ownerName": null,
+            "ownerTintHex": null,
             "tintHex": "#FF5C8A"
           },
           "card": null,
@@ -939,8 +1786,12 @@
             "id": "d618cd9bee4ce8d3878a2a150d843d6cd4e00ca16e3ab81a3fae1d9d588ef6a5",
             "initials": "A",
             "isMe": false,
+            "isMine": false,
             "kind": "person",
             "name": "Ana",
+            "ownerId": null,
+            "ownerName": null,
+            "ownerTintHex": null,
             "tintHex": "#F59E0B"
           },
           "card": null,
@@ -962,8 +1813,12 @@
             "id": "133cfc4240dea1fab2e8a1a50af5ab9fe5dba49214f0f31b5a2f285ee952a4bd",
             "initials": "M",
             "isMe": false,
+            "isMine": false,
             "kind": "person",
             "name": "Marina",
+            "ownerId": null,
+            "ownerName": null,
+            "ownerTintHex": null,
             "tintHex": "#FF5C8A"
           },
           "card": null,
@@ -985,8 +1840,12 @@
             "id": "ebb0c4c11b6711870fc165c5966f73739d6729ed463d18f948b54d546db453ec",
             "initials": "E",
             "isMe": true,
+            "isMine": false,
             "kind": "person",
             "name": "Enzo",
+            "ownerId": null,
+            "ownerName": null,
+            "ownerTintHex": null,
             "tintHex": "#4F7CFF"
           },
           "card": null,
@@ -1008,8 +1867,12 @@
             "id": "c37776804d11bbddabee36706849641d5ad5e095510563c48bc218147c254250",
             "initials": "Z",
             "isMe": false,
+            "isMine": true,
             "kind": "agent",
             "name": "Zoen",
+            "ownerId": "ebb0c4c11b6711870fc165c5966f73739d6729ed463d18f948b54d546db453ec",
+            "ownerName": "Enzo",
+            "ownerTintHex": "#4F7CFF",
             "tintHex": "#7C5CFF"
           },
           "card": {
@@ -1054,8 +1917,12 @@
             "id": "133cfc4240dea1fab2e8a1a50af5ab9fe5dba49214f0f31b5a2f285ee952a4bd",
             "initials": "M",
             "isMe": false,
+            "isMine": false,
             "kind": "person",
             "name": "Marina",
+            "ownerId": null,
+            "ownerName": null,
+            "ownerTintHex": null,
             "tintHex": "#FF5C8A"
           },
           "card": null,
@@ -1077,8 +1944,12 @@
             "id": "6ee95da0ee5cbbf5359f596607075babd6672710cf9e89b37d5e6b7b4bd6bd61",
             "initials": "L",
             "isMe": false,
+            "isMine": false,
             "kind": "person",
             "name": "Lucas",
+            "ownerId": null,
+            "ownerName": null,
+            "ownerTintHex": null,
             "tintHex": "#19B5A5"
           },
           "card": null,
@@ -1100,8 +1971,12 @@
             "id": "d618cd9bee4ce8d3878a2a150d843d6cd4e00ca16e3ab81a3fae1d9d588ef6a5",
             "initials": "A",
             "isMe": false,
+            "isMine": false,
             "kind": "person",
             "name": "Ana",
+            "ownerId": null,
+            "ownerName": null,
+            "ownerTintHex": null,
             "tintHex": "#F59E0B"
           },
           "card": null,
@@ -1123,8 +1998,12 @@
             "id": "c37776804d11bbddabee36706849641d5ad5e095510563c48bc218147c254250",
             "initials": "Z",
             "isMe": false,
+            "isMine": true,
             "kind": "agent",
             "name": "Zoen",
+            "ownerId": "ebb0c4c11b6711870fc165c5966f73739d6729ed463d18f948b54d546db453ec",
+            "ownerName": "Enzo",
+            "ownerTintHex": "#4F7CFF",
             "tintHex": "#7C5CFF"
           },
           "card": null,
@@ -1146,8 +2025,12 @@
             "id": "c37776804d11bbddabee36706849641d5ad5e095510563c48bc218147c254250",
             "initials": "Z",
             "isMe": false,
+            "isMine": true,
             "kind": "agent",
             "name": "Zoen",
+            "ownerId": "ebb0c4c11b6711870fc165c5966f73739d6729ed463d18f948b54d546db453ec",
+            "ownerName": "Enzo",
+            "ownerTintHex": "#4F7CFF",
             "tintHex": "#7C5CFF"
           },
           "card": {
@@ -1215,8 +2098,12 @@
             "id": "c37776804d11bbddabee36706849641d5ad5e095510563c48bc218147c254250",
             "initials": "Z",
             "isMe": false,
+            "isMine": true,
             "kind": "agent",
             "name": "Zoen",
+            "ownerId": "ebb0c4c11b6711870fc165c5966f73739d6729ed463d18f948b54d546db453ec",
+            "ownerName": "Enzo",
+            "ownerTintHex": "#4F7CFF",
             "tintHex": "#7C5CFF"
           },
           "card": {
@@ -1260,8 +2147,12 @@
             "id": "ebb0c4c11b6711870fc165c5966f73739d6729ed463d18f948b54d546db453ec",
             "initials": "E",
             "isMe": true,
+            "isMine": false,
             "kind": "person",
             "name": "Enzo",
+            "ownerId": null,
+            "ownerName": null,
+            "ownerTintHex": null,
             "tintHex": "#4F7CFF"
           },
           "card": null,
@@ -1285,8 +2176,12 @@
         "id": "ebb0c4c11b6711870fc165c5966f73739d6729ed463d18f948b54d546db453ec",
         "initials": "E",
         "isMe": true,
+        "isMine": false,
         "kind": "person",
         "name": "Enzo",
+        "ownerId": null,
+        "ownerName": null,
+        "ownerTintHex": null,
         "tintHex": "#4F7CFF"
       },
       "lastPreview": "Saturday at eight in the square?",
@@ -1298,8 +2193,12 @@
           "id": "ebb0c4c11b6711870fc165c5966f73739d6729ed463d18f948b54d546db453ec",
           "initials": "E",
           "isMe": true,
+          "isMine": false,
           "kind": "person",
           "name": "Enzo",
+          "ownerId": null,
+          "ownerName": null,
+          "ownerTintHex": null,
           "tintHex": "#4F7CFF"
         },
         {
@@ -1309,8 +2208,12 @@
           "id": "133cfc4240dea1fab2e8a1a50af5ab9fe5dba49214f0f31b5a2f285ee952a4bd",
           "initials": "M",
           "isMe": false,
+          "isMine": false,
           "kind": "person",
           "name": "Marina",
+          "ownerId": null,
+          "ownerName": null,
+          "ownerTintHex": null,
           "tintHex": "#FF5C8A"
         },
         {
@@ -1320,8 +2223,12 @@
           "id": "6ee95da0ee5cbbf5359f596607075babd6672710cf9e89b37d5e6b7b4bd6bd61",
           "initials": "L",
           "isMe": false,
+          "isMine": false,
           "kind": "person",
           "name": "Lucas",
+          "ownerId": null,
+          "ownerName": null,
+          "ownerTintHex": null,
           "tintHex": "#19B5A5"
         },
         {
@@ -1331,8 +2238,12 @@
           "id": "d618cd9bee4ce8d3878a2a150d843d6cd4e00ca16e3ab81a3fae1d9d588ef6a5",
           "initials": "A",
           "isMe": false,
+          "isMine": false,
           "kind": "person",
           "name": "Ana",
+          "ownerId": null,
+          "ownerName": null,
+          "ownerTintHex": null,
           "tintHex": "#F59E0B"
         },
         {
@@ -1342,8 +2253,12 @@
           "id": "c37776804d11bbddabee36706849641d5ad5e095510563c48bc218147c254250",
           "initials": "Z",
           "isMe": false,
+          "isMine": true,
           "kind": "agent",
           "name": "Zoen",
+          "ownerId": "ebb0c4c11b6711870fc165c5966f73739d6729ed463d18f948b54d546db453ec",
+          "ownerName": "Enzo",
+          "ownerTintHex": "#4F7CFF",
           "tintHex": "#7C5CFF"
         }
       ],
@@ -1360,8 +2275,12 @@
         "id": "133cfc4240dea1fab2e8a1a50af5ab9fe5dba49214f0f31b5a2f285ee952a4bd",
         "initials": "M",
         "isMe": false,
+        "isMine": false,
         "kind": "person",
         "name": "Marina",
+        "ownerId": null,
+        "ownerName": null,
+        "ownerTintHex": null,
         "tintHex": "#FF5C8A"
       },
       "entries": [
@@ -1374,8 +2293,12 @@
             "id": "ebb0c4c11b6711870fc165c5966f73739d6729ed463d18f948b54d546db453ec",
             "initials": "E",
             "isMe": true,
+            "isMine": false,
             "kind": "person",
             "name": "Enzo",
+            "ownerId": null,
+            "ownerName": null,
+            "ownerTintHex": null,
             "tintHex": "#4F7CFF"
           },
           "card": null,
@@ -1397,8 +2320,12 @@
             "id": "133cfc4240dea1fab2e8a1a50af5ab9fe5dba49214f0f31b5a2f285ee952a4bd",
             "initials": "M",
             "isMe": false,
+            "isMine": false,
             "kind": "person",
             "name": "Marina",
+            "ownerId": null,
+            "ownerName": null,
+            "ownerTintHex": null,
             "tintHex": "#FF5C8A"
           },
           "card": null,
@@ -1420,8 +2347,12 @@
             "id": "ebb0c4c11b6711870fc165c5966f73739d6729ed463d18f948b54d546db453ec",
             "initials": "E",
             "isMe": true,
+            "isMine": false,
             "kind": "person",
             "name": "Enzo",
+            "ownerId": null,
+            "ownerName": null,
+            "ownerTintHex": null,
             "tintHex": "#4F7CFF"
           },
           "card": null,
@@ -1443,8 +2374,12 @@
             "id": "ebb0c4c11b6711870fc165c5966f73739d6729ed463d18f948b54d546db453ec",
             "initials": "E",
             "isMe": true,
+            "isMine": false,
             "kind": "person",
             "name": "Enzo",
+            "ownerId": null,
+            "ownerName": null,
+            "ownerTintHex": null,
             "tintHex": "#4F7CFF"
           },
           "card": null,
@@ -1468,8 +2403,12 @@
         "id": "ebb0c4c11b6711870fc165c5966f73739d6729ed463d18f948b54d546db453ec",
         "initials": "E",
         "isMe": true,
+        "isMine": false,
         "kind": "person",
         "name": "Enzo",
+        "ownerId": null,
+        "ownerName": null,
+        "ownerTintHex": null,
         "tintHex": "#4F7CFF"
       },
       "lastPreview": "Leaving at eight. I'll text when I get there 🙂",
@@ -1481,8 +2420,12 @@
           "id": "ebb0c4c11b6711870fc165c5966f73739d6729ed463d18f948b54d546db453ec",
           "initials": "E",
           "isMe": true,
+          "isMine": false,
           "kind": "person",
           "name": "Enzo",
+          "ownerId": null,
+          "ownerName": null,
+          "ownerTintHex": null,
           "tintHex": "#4F7CFF"
         },
         {
@@ -1492,8 +2435,12 @@
           "id": "133cfc4240dea1fab2e8a1a50af5ab9fe5dba49214f0f31b5a2f285ee952a4bd",
           "initials": "M",
           "isMe": false,
+          "isMine": false,
           "kind": "person",
           "name": "Marina",
+          "ownerId": null,
+          "ownerName": null,
+          "ownerTintHex": null,
           "tintHex": "#FF5C8A"
         }
       ],
@@ -1514,8 +2461,12 @@
             "id": "6ee95da0ee5cbbf5359f596607075babd6672710cf9e89b37d5e6b7b4bd6bd61",
             "initials": "L",
             "isMe": false,
+            "isMine": false,
             "kind": "person",
             "name": "Lucas",
+            "ownerId": null,
+            "ownerName": null,
+            "ownerTintHex": null,
             "tintHex": "#19B5A5"
           },
           "card": null,
@@ -1537,8 +2488,12 @@
             "id": "d618cd9bee4ce8d3878a2a150d843d6cd4e00ca16e3ab81a3fae1d9d588ef6a5",
             "initials": "A",
             "isMe": false,
+            "isMine": false,
             "kind": "person",
             "name": "Ana",
+            "ownerId": null,
+            "ownerName": null,
+            "ownerTintHex": null,
             "tintHex": "#F59E0B"
           },
           "card": null,
@@ -1560,8 +2515,12 @@
             "id": "c37776804d11bbddabee36706849641d5ad5e095510563c48bc218147c254250",
             "initials": "Z",
             "isMe": false,
+            "isMine": true,
             "kind": "agent",
             "name": "Zoen",
+            "ownerId": "ebb0c4c11b6711870fc165c5966f73739d6729ed463d18f948b54d546db453ec",
+            "ownerName": "Enzo",
+            "ownerTintHex": "#4F7CFF",
             "tintHex": "#7C5CFF"
           },
           "card": {
@@ -1597,8 +2556,12 @@
         "id": "c37776804d11bbddabee36706849641d5ad5e095510563c48bc218147c254250",
         "initials": "Z",
         "isMe": false,
+        "isMine": true,
         "kind": "agent",
         "name": "Zoen",
+        "ownerId": "ebb0c4c11b6711870fc165c5966f73739d6729ed463d18f948b54d546db453ec",
+        "ownerName": "Enzo",
+        "ownerTintHex": "#4F7CFF",
         "tintHex": "#7C5CFF"
       },
       "lastPreview": "Daily summary: 2 shipped, 1 pending (Mac icon).",
@@ -1610,8 +2573,12 @@
           "id": "ebb0c4c11b6711870fc165c5966f73739d6729ed463d18f948b54d546db453ec",
           "initials": "E",
           "isMe": true,
+          "isMine": false,
           "kind": "person",
           "name": "Enzo",
+          "ownerId": null,
+          "ownerName": null,
+          "ownerTintHex": null,
           "tintHex": "#4F7CFF"
         },
         {
@@ -1621,8 +2588,12 @@
           "id": "6ee95da0ee5cbbf5359f596607075babd6672710cf9e89b37d5e6b7b4bd6bd61",
           "initials": "L",
           "isMe": false,
+          "isMine": false,
           "kind": "person",
           "name": "Lucas",
+          "ownerId": null,
+          "ownerName": null,
+          "ownerTintHex": null,
           "tintHex": "#19B5A5"
         },
         {
@@ -1632,8 +2603,12 @@
           "id": "d618cd9bee4ce8d3878a2a150d843d6cd4e00ca16e3ab81a3fae1d9d588ef6a5",
           "initials": "A",
           "isMe": false,
+          "isMine": false,
           "kind": "person",
           "name": "Ana",
+          "ownerId": null,
+          "ownerName": null,
+          "ownerTintHex": null,
           "tintHex": "#F59E0B"
         },
         {
@@ -1643,8 +2618,12 @@
           "id": "c37776804d11bbddabee36706849641d5ad5e095510563c48bc218147c254250",
           "initials": "Z",
           "isMe": false,
+          "isMine": true,
           "kind": "agent",
           "name": "Zoen",
+          "ownerId": "ebb0c4c11b6711870fc165c5966f73739d6729ed463d18f948b54d546db453ec",
+          "ownerName": "Enzo",
+          "ownerTintHex": "#4F7CFF",
           "tintHex": "#7C5CFF"
         }
       ],
@@ -1665,8 +2644,12 @@
             "id": "d618cd9bee4ce8d3878a2a150d843d6cd4e00ca16e3ab81a3fae1d9d588ef6a5",
             "initials": "A",
             "isMe": false,
+            "isMine": false,
             "kind": "person",
             "name": "Ana",
+            "ownerId": null,
+            "ownerName": null,
+            "ownerTintHex": null,
             "tintHex": "#F59E0B"
           },
           "card": null,
@@ -1688,8 +2671,12 @@
             "id": "29f305be0f2d0b00f06f75363f49a632107912b33e0ad57a02237714c5a78882",
             "initials": "G",
             "isMe": false,
+            "isMine": false,
             "kind": "agent",
             "name": "Guide",
+            "ownerId": "d618cd9bee4ce8d3878a2a150d843d6cd4e00ca16e3ab81a3fae1d9d588ef6a5",
+            "ownerName": "Ana",
+            "ownerTintHex": "#F59E0B",
             "tintHex": "#0EA5E9"
           },
           "card": null,
@@ -1711,8 +2698,12 @@
             "id": "29f305be0f2d0b00f06f75363f49a632107912b33e0ad57a02237714c5a78882",
             "initials": "G",
             "isMe": false,
+            "isMine": false,
             "kind": "agent",
             "name": "Guide",
+            "ownerId": "d618cd9bee4ce8d3878a2a150d843d6cd4e00ca16e3ab81a3fae1d9d588ef6a5",
+            "ownerName": "Ana",
+            "ownerTintHex": "#F59E0B",
             "tintHex": "#0EA5E9"
           },
           "card": {
@@ -1759,8 +2750,12 @@
         "id": "29f305be0f2d0b00f06f75363f49a632107912b33e0ad57a02237714c5a78882",
         "initials": "G",
         "isMe": false,
+        "isMine": false,
         "kind": "agent",
         "name": "Guide",
+        "ownerId": "d618cd9bee4ce8d3878a2a150d843d6cd4e00ca16e3ab81a3fae1d9d588ef6a5",
+        "ownerName": "Ana",
+        "ownerTintHex": "#F59E0B",
         "tintHex": "#0EA5E9"
       },
       "lastPreview": "Locked in the Praia do Sono trail for Saturday (good tide). The scoreboard stays pinned at the top.",
@@ -1772,8 +2767,12 @@
           "id": "d618cd9bee4ce8d3878a2a150d843d6cd4e00ca16e3ab81a3fae1d9d588ef6a5",
           "initials": "A",
           "isMe": false,
+          "isMine": false,
           "kind": "person",
           "name": "Ana",
+          "ownerId": null,
+          "ownerName": null,
+          "ownerTintHex": null,
           "tintHex": "#F59E0B"
         },
         {
@@ -1783,8 +2782,12 @@
           "id": "29f305be0f2d0b00f06f75363f49a632107912b33e0ad57a02237714c5a78882",
           "initials": "G",
           "isMe": false,
+          "isMine": false,
           "kind": "agent",
           "name": "Guide",
+          "ownerId": "d618cd9bee4ce8d3878a2a150d843d6cd4e00ca16e3ab81a3fae1d9d588ef6a5",
+          "ownerName": "Ana",
+          "ownerTintHex": "#F59E0B",
           "tintHex": "#0EA5E9"
         },
         {
@@ -1794,8 +2797,12 @@
           "id": "ebb0c4c11b6711870fc165c5966f73739d6729ed463d18f948b54d546db453ec",
           "initials": "E",
           "isMe": true,
+          "isMine": false,
           "kind": "person",
           "name": "Enzo",
+          "ownerId": null,
+          "ownerName": null,
+          "ownerTintHex": null,
           "tintHex": "#4F7CFF"
         }
       ],
@@ -1812,8 +2819,12 @@
         "id": "c37776804d11bbddabee36706849641d5ad5e095510563c48bc218147c254250",
         "initials": "Z",
         "isMe": false,
+        "isMine": true,
         "kind": "agent",
         "name": "Zoen",
+        "ownerId": "ebb0c4c11b6711870fc165c5966f73739d6729ed463d18f948b54d546db453ec",
+        "ownerName": "Enzo",
+        "ownerTintHex": "#4F7CFF",
         "tintHex": "#7C5CFF"
       },
       "entries": [
@@ -1826,8 +2837,12 @@
             "id": "c37776804d11bbddabee36706849641d5ad5e095510563c48bc218147c254250",
             "initials": "Z",
             "isMe": false,
+            "isMine": true,
             "kind": "agent",
             "name": "Zoen",
+            "ownerId": "ebb0c4c11b6711870fc165c5966f73739d6729ed463d18f948b54d546db453ec",
+            "ownerName": "Enzo",
+            "ownerTintHex": "#4F7CFF",
             "tintHex": "#7C5CFF"
           },
           "card": null,
@@ -1849,8 +2864,12 @@
             "id": "ebb0c4c11b6711870fc165c5966f73739d6729ed463d18f948b54d546db453ec",
             "initials": "E",
             "isMe": true,
+            "isMine": false,
             "kind": "person",
             "name": "Enzo",
+            "ownerId": null,
+            "ownerName": null,
+            "ownerTintHex": null,
             "tintHex": "#4F7CFF"
           },
           "card": null,
@@ -1872,8 +2891,12 @@
             "id": "c37776804d11bbddabee36706849641d5ad5e095510563c48bc218147c254250",
             "initials": "Z",
             "isMe": false,
+            "isMine": true,
             "kind": "agent",
             "name": "Zoen",
+            "ownerId": "ebb0c4c11b6711870fc165c5966f73739d6729ed463d18f948b54d546db453ec",
+            "ownerName": "Enzo",
+            "ownerTintHex": "#4F7CFF",
             "tintHex": "#7C5CFF"
           },
           "card": {
@@ -1909,8 +2932,12 @@
         "id": "c37776804d11bbddabee36706849641d5ad5e095510563c48bc218147c254250",
         "initials": "Z",
         "isMe": false,
+        "isMine": true,
         "kind": "agent",
         "name": "Zoen",
+        "ownerId": "ebb0c4c11b6711870fc165c5966f73739d6729ed463d18f948b54d546db453ec",
+        "ownerName": "Enzo",
+        "ownerTintHex": "#4F7CFF",
         "tintHex": "#7C5CFF"
       },
       "lastPreview": "Got it. I created the task and I'll remind you on Monday.",
@@ -1922,8 +2949,12 @@
           "id": "ebb0c4c11b6711870fc165c5966f73739d6729ed463d18f948b54d546db453ec",
           "initials": "E",
           "isMe": true,
+          "isMine": false,
           "kind": "person",
           "name": "Enzo",
+          "ownerId": null,
+          "ownerName": null,
+          "ownerTintHex": null,
           "tintHex": "#4F7CFF"
         },
         {
@@ -1933,8 +2964,12 @@
           "id": "c37776804d11bbddabee36706849641d5ad5e095510563c48bc218147c254250",
           "initials": "Z",
           "isMe": false,
+          "isMine": true,
           "kind": "agent",
           "name": "Zoen",
+          "ownerId": "ebb0c4c11b6711870fc165c5966f73739d6729ed463d18f948b54d546db453ec",
+          "ownerName": "Enzo",
+          "ownerTintHex": "#4F7CFF",
           "tintHex": "#7C5CFF"
         }
       ],
