@@ -18,3 +18,11 @@ test('native fixture adapter preserves actual core content, IDs, cards and times
     }
   }
 });
+
+test('fixture conversation mentions come from the actual Engine mention projection', () => {
+  const conversations = nativeFixtureConversations();
+  for (const conversation of conversations) {
+    assert.equal(conversation.mentions, nativeFixture.mentions.filter(mention => mention.spaceId === conversation.id).length);
+  }
+  assert.equal(conversations.reduce((count, conversation) => count + conversation.mentions, 0), nativeFixture.mentions.length);
+});

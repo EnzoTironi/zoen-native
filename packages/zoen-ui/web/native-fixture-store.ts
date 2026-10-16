@@ -4,7 +4,7 @@ import { parseItemCard, type Conversation, type Message } from './messages.ts';
 export function nativeFixtureConversations(): Conversation[] {
   return fixture.spaces.map(space => ({
     id: space.id, title: space.title, kind: space.kind, can_send: true, waiting: null, unreadable: 0,
-    unread: space.unread, mentions: 0, members: space.members.length,
+    unread: space.unread, mentions: fixture.mentions.filter(mention => mention.spaceId === space.id).length, members: space.members.length,
     ...(space.counterpart ? { counterpart: { ...space.counterpart, kind: space.counterpart.kind === 'agent' ? 'agent' as const : 'person' as const } } : {}),
     messages: space.entries.map(entry => ({
       id: entry.id, entry: entry.id, author: entry.author.id, name: entry.author.name,
