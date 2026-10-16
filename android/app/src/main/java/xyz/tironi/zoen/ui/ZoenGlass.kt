@@ -68,9 +68,10 @@ fun Modifier.zoenGlass(
         val r = cornerRadius?.toPx()?.coerceAtMost(size.minDimension / 2) ?: (size.minDimension / 2)
         val corner = CornerRadius(r, r)
         val frost = if (slab) 0.2f else 0.6f
-        val body = if (prominent) tint.copy(alpha = 1f) else   // opaque: no backdrop to refract, and white labels keep 4.5:1
-            film?.takeIf { it.alpha > 0f }?.let { it.copy(alpha = maxOf(it.alpha, 0.85f)) }   // caller's protective surface keeps its ink legible
-                ?: Color.White.copy(alpha = if (dark) 0.07f else 0.6f)
+        // An explicit caller colour (a card's container) is used exactly as asked; otherwise a
+        // prominent body is opaque (no backdrop to refract, white labels keep 4.5:1) and a clear one is a light film.
+        val body = film?.takeIf { it.alpha > 0f }
+            ?: if (prominent) tint.copy(alpha = 1f) else Color.White.copy(alpha = if (dark) 0.07f else 0.6f)
         val crown = Brush.radialGradient(listOf(Color.White.copy((if (dark) .08f else .3f) * strength), Color.Transparent),
             center = Offset(size.width * 0.35f, size.height * 0.2f), radius = size.minDimension * 0.8f)
         val volume = Brush.verticalGradient(0f to Color.Transparent, .6f to Color.Transparent, 1f to Color.Black.copy(.18f * strength))
@@ -159,7 +160,7 @@ private fun GlassCardBody(
             .clip(shape)
             .zoenGlass(tint = if (prominent) tint else scheme.surface, prominent = prominent, dark = dark,
                 cornerRadius = 22.dp, press = { if (pressed) 1f else 0f }, strength = 0.8f,
-                film = if (prominent) null else colors?.containerColor?.takeOrElse { Color.Transparent })
+                film = colors?.containerColor?.takeOrElse { Color.Transparent })
             .then(if (focused) Modifier.border(2.dp, scheme.primary, shape) else Modifier)
             .then(if (onClick != null) Modifier.clickable(interactions, indication = null, enabled = enabled, role = Role.Button, onClick = onClick) else Modifier),
     ) {

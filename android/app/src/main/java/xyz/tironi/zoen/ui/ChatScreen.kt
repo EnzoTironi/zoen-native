@@ -562,7 +562,7 @@ fun TimelineRow(model: ZoenViewModel, spaceId: String, entry: TimelineEntry, nav
             val state by model.state.collectAsStateWithLifecycle()
             val request = state.requests.firstOrNull { it.id == kind.requestId }
             var approving by remember { mutableStateOf(false) }
-            GlassCard(onClick = { navigate(Request(kind.requestId)) }) {
+            GlassCard(onClick = { navigate(Request(kind.requestId)) }, colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
                 Row(Modifier.fillMaxWidth().padding(12.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                     Avatar(request?.agent ?: entry.author, size = 30)
                     Column(Modifier.weight(1f)) {
