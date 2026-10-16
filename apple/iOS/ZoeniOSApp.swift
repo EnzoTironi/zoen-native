@@ -12,6 +12,17 @@ struct ZoeniOSApp: App {
         WindowGroup {
             RootView()
                 .environment(model)
+                #if DEBUG
+                .overlay(alignment: .topLeading) {
+                    if let manifest = NativeParityClock.appliedManifest(core: model.core) {
+                        Color.clear.frame(width: 1, height: 1)
+                            .accessibilityElement(children: .ignore)
+                            .accessibilityIdentifier("parity-applied-fixture")
+                            .accessibilityLabel(manifest)
+                            .allowsHitTesting(false)
+                    }
+                }
+                #endif
                 .tint(Palette.action)
                 .preferredColorScheme(AppAppearance(rawValue: appearance)?.scheme)
                 .task { await model.applyLaunchOptions(); PushBridge.shared.start(model) }
