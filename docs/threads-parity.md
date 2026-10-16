@@ -39,7 +39,12 @@ and unread mention badges, with a navigable newest-first followed-replies list.
   the suffix-boundary fix and passed afterward.
 - `cargo test --locked -j2 -p roda-ffi`: passed, 318 tests at the merge checkpoint;
   the focused 5-test suite was rerun after the final activity-label/direct-chat and
-  validated-reply helper changes.
+  validated-reply helper changes. Final-source reruns at `dcbb2ec` remain incomplete:
+  the original log had 315 passing tests without a summary; a foreground retry hit
+  the 300-second tool limit. The subsequent detached run is no longer running and
+  recorded 208 passing tests out of 318, with no failure, final summary or promised
+  `EXIT_STATUS`. Its interruption cause is unknown; this is not a final-head full-suite
+  pass or an observed test failure. No further restart was attempted.
 - `xcrun swiftc -frontend -parse` on `MessageReplies.swift` and
   `ConversationsView.swift`: passed (syntax only, not an Apple build).
 - Android XML parsing, Portuguese-copy and nested broadcast/inbox reachability source
