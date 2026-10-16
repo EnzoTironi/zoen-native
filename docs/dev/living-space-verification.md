@@ -131,11 +131,16 @@ Fresh checks on the recovered `feat/living-space` source:
 - Full `cargo test -p roda-ffi --lib` reruns were interrupted under severe host memory pressure; they are **partial**, not fresh full-suite passes. The historical 339-test pass above is separate evidence.
 
 Web fixtures produced 36 fresh screenshots in `~/run-shots/`. The comparison
-sheet is `web-ipad-comparison.png`: Home and Notifications, light/dark. The
-sidebar is 320 points; Home card x397/y106/width720/radius40, cover height160,
-title x421/y302 at 34 points. Remaining measured differences include the Live
-page link and Events approximately eight points higher, Notifications card
-about four points lower/taller and section label about 22 points farther left.
+sheet is `web-ipad-comparison.png`: Home and Notifications, light/dark. Against
+the earlier 1194×834-point native baseline, the sidebar is 320 points; Home card
+x397/y106/width720/radius40, cover height160, title x421/y302 at 34 points.
+Measured differences on that earlier baseline include the Live page link and
+Events approximately eight points higher, Notifications card about four points
+lower/taller and section label about 22 points farther left. The fresh native
+capture is 2420×1668 pixels upright (not the earlier 2388×1668), so these exact
+measurements are not fresh equal-viewport parity proof. The regenerated sheet
+uses complete proportional frames without cropping; raw xcresult-matching
+files are preserved separately from rotation-only display copies.
 Native SF Symbols, glass/shadow/text rendering, sidebar-toggle control and OS
 chrome are not identical. Synthetic notification names differ. These component
 fixtures establish rendering, not account/relay behavior.
