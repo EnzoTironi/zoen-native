@@ -229,12 +229,15 @@ export class Messages {
       }
     } catch (error) {
       // Keep the sealed voice/file in the timeline as failed, like native — do not lose the clip.
-      await this.act(space, { kind: 'queue_file', space, doc: JSON.stringify(doc), now: Date.now() });
-      const pending = this.conversations.find((c) => c.id === space)?.messages
-        .filter((m) => m.delivery === 'sending' && m.file?.sha256 === doc.sha256).at(-1);
-      if (pending) {
-        await this.act(space, { kind: 'fail_outbox', client_id: pending.id, reason: error instanceof Error ? error.message : 'Sem conexão para enviar o arquivo. Tente de novo.' });
-      }
+      // Best effort: the upload error is what the user must see, even if queueing also fails.
+      try {
+        await this.act(space, { kind: 'queue_file', space, doc: JSON.stringify(doc), now: Date.now() });
+        const pending = this.conversations.find((c) => c.id === space)?.messages
+          .filter((m) => m.delivery === 'sending' && m.file?.sha256 === doc.sha256).at(-1);
+        if (pending) {
+          await this.act(space, { kind: 'fail_outbox', client_id: pending.id, reason: error instanceof Error ? error.message : 'Sem conexão para enviar o arquivo. Tente de novo.' });
+        }
+      } catch { /* keep the original upload error */ }
       throw error;
     }
     await this.act(space, { kind: 'queue_file', space, doc: JSON.stringify(doc), now: Date.now() });

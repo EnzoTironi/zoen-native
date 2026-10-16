@@ -513,7 +513,10 @@ test('upload failure keeps the queued voice note as failed instead of losing it'
   t.after(() => messages.stop());
   t.mock.method(globalThis, 'fetch', async () => new Response(null, { status: 503 }));
   await messages.start(); await authenticate();
-  await assert.rejects(() => messages.sendFile('sp_fixture', { name: file.name, mime: file.mime, bytes: new Uint8Array([1]), voice }));
+  const rejected = assert.rejects(messages.sendFile('sp_fixture', { name: file.name, mime: file.mime, bytes: new Uint8Array([1]), voice }));
+  await settle();
+  for (const delay of [800, 1600, 3200]) { t.mock.timers.tick(delay); await settle(); }
+  await rejected;
   assert.deepEqual(failed, ['pending-voice']);
   const state = states.at(-1);
   if (state?.kind !== 'active') assert.fail('expected active');
