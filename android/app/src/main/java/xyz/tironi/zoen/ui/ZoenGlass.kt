@@ -202,9 +202,9 @@ half4 main(float2 position) {
     float rough = mix(0.116, 0.14, slab);
     float3 Hp = normalize(H + float3(0.0, 0.10, 0.0) * press);
     float spec = pow(max(dot(n, Hp), 0.0), 0.5 / (rough * rough)) * mix(1.41, 0.4, slab) * 0.7
-               * smoothstep(0.08, 0.45, edge) * mix(1.0, 0.75, prominent);   // only the curved rail glints: the crown stays clear behind the label
+               * smoothstep(mix(0.08, 0.62, prominent), mix(0.45, 0.9, prominent), edge);   // only the curved rail glints: the crown stays clear behind the label
     // Frost lifts the body toward white (the only whitening: no separate tint film)
-    float frostWhite = frost * mix(0.16, 0.10, prominent);
+    float frostWhite = frost * mix(0.16, 0.03, prominent);       // a coloured body stays deep enough for white text
     // Dispersion fringe: red out, blue in, only on the rail (strength = dispersion x edge^2)
     float disp = mix(0.81, 0.0, slab) * edge * edge;
     float3 fringe = float3(1.0, 0.0, -1.0) * disp * 0.10;
