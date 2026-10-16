@@ -20,6 +20,15 @@ Expected Android output: `android/app/build/outputs/device-evidence/android-pari
 - Settings / profile / devices: native controls and profile sheet, edit-level Back, device loading/cards and duplicate-check protection.
 - Sky background files are unchanged.
 
+## Verified locally
+
+- `python3 scripts/test-android-core-contract.py`: 6 tests passed.
+- `cd android && ./gradlew :app:assembleDebug :app:testDebugUnitTest :app:lintDebug :app:assembleDebugAndroidTest --max-workers=2` with JDK 17: passed (120 unit tests, no failures/errors/skips; both APKs compiled).
+- `git diff --check`: passed.
+- Initial lint analysis crashed when this new test was written during analysis; the stable-source rerun above passed without suppressing checks.
+
+PR publication was attempted but refused because this direct-folder Session has no pinned provider checkout. No repository attachment or remote alteration was performed. Consequently this branch has not triggered CI, and no API 28/35 runtime results are claimed.
+
 ## Outstanding verification
 
 - Full API 28 and 35 instrumentation suite and fresh capture matrix.
