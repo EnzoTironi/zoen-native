@@ -27,13 +27,31 @@ import xyz.tironi.zoen.ui.ink.*
 @Composable
 internal fun InkIconButton(glyph: ZoenGlyph, description: String, onClick: () -> Unit, modifier: Modifier = Modifier, enabled: Boolean = true) {
     val interactions = remember { MutableInteractionSource() }
-    IconButton(onClick, modifier, enabled, interactionSource = interactions) {
+    NativeIconButton(onClick, modifier, enabled, interactionSource = interactions) {
         ZoenIcon(glyph, description, interactions = interactions)
     }
 }
 
 @Composable
 internal fun ZoenIcon(glyph: ZoenGlyph, description: String? = null, modifier: Modifier = Modifier, selected: Boolean = false,
+                      interactions: MutableInteractionSource? = null, tint: Color = LocalContentColor.current) {
+    val pressed = interactions?.collectIsPressedAsState()?.value ?: false
+    var taps by remember { mutableIntStateOf(0) }
+    var wasPressed by remember { mutableStateOf(pressed) }
+    var wasSelected by remember { mutableStateOf(selected) }
+    LaunchedEffect(pressed, selected) {
+        if ((wasPressed && !pressed) || (selected && !wasSelected)) taps++
+        wasPressed = pressed
+        wasSelected = selected
+    }
+    CompositionLocalProvider(LocalContentColor provides tint) {
+        NativeAnimatedSymbol(glyph.name.lowercase(), description, modifier, press = taps)
+    }
+}
+
+/** Retained only for the opt-in legacy art experiments; production uses native vectors. */
+@Composable
+internal fun LegacyInkIcon(glyph: ZoenGlyph, description: String? = null, modifier: Modifier = Modifier, selected: Boolean = false,
                       interactions: MutableInteractionSource? = null, tint: Color = LocalContentColor.current) {
     val art = ZoenIconArt.all.getValue(glyph)
     val motion = rememberIconMotionRunning()

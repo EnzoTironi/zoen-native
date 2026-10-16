@@ -74,12 +74,12 @@ fun VersionPreviewScreen(model: ZoenViewModel, id: String, number: UInt, back: (
     val draftSaved = stringResource(R.string.page_draft_saved)
     val changed = stringResource(R.string.plan_changed)
     Scaffold(snackbarHost = { snackbar?.let { SnackbarHost(it, Modifier.testTag("app-snackbar")) } }, topBar = { ScreenBar(stringResource(R.string.page_preview_version, number.toInt()), back, actions = {
-        if (content != null) IconButton(enabled = content.file == null || content.file.bytes != null, onClick = { model.launch {
+        if (content != null) NativeIconButton(enabled = content.file == null || content.file.bytes != null, onClick = { model.launch {
             val historical = checkNotNull(content)
             val file = historical.file
             if (file != null) FileAccess.shareFile(context, file.info.name, file.info.mime, checkNotNull(file.bytes))
             else FileAccess.shareText(context, historical.page?.blocks?.joinToString("\n") { it.text } ?: itemText(historical.item, model.repository.locale))
-        } }, modifier = Modifier.testTag("preview-share")) { Icon(Icons.Rounded.Share, stringResource(R.string.share)) }
+        } }, modifier = Modifier.testTag("preview-share")) { MotionVectorIcon(Icons.Rounded.Share, stringResource(R.string.share)) }
     }) }, bottomBar = {
         Surface(tonalElevation = 2.dp) { Row(Modifier.fillMaxWidth().navigationBarsPadding().padding(16.dp), horizontalArrangement = Arrangement.End) {
             if (content?.page != null && !model.pageSaves.canRestore(id)) Text(stringResource(R.string.page_recovery_before_restore), Modifier.weight(1f), style = MaterialTheme.typography.bodySmall)
@@ -103,7 +103,7 @@ fun VersionPreviewScreen(model: ZoenViewModel, id: String, number: UInt, back: (
                             "quote" -> Text("│ ")
                         }
                         if (block.kind == "divider") HorizontalDivider()
-                        else if (block.kind == "image") Row(verticalAlignment = Alignment.CenterVertically) { Icon(Icons.Rounded.Image, null); Text(block.alt, Modifier.padding(start = 8.dp)) }
+                        else if (block.kind == "image") Row(verticalAlignment = Alignment.CenterVertically) { MotionVectorIcon(Icons.Rounded.Image, null); Text(block.alt, Modifier.padding(start = 8.dp)) }
                         else SelectionContainer { Text(styledPageText(block, MaterialTheme.colorScheme.primary, MaterialTheme.colorScheme.surfaceContainerHighest), style = pageTextStyle(block), modifier = Modifier.padding(start = (block.indent.coerceAtMost(8u).toInt() * 12).dp)) }
                     }
                 }

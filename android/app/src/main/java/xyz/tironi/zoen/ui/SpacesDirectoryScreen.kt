@@ -23,8 +23,8 @@ internal fun SpacesDirectoryScreen(state: AppState, navigate: (NavKey) -> Unit) 
             items(state.spaces, key = { it.id }) { space ->
                 ListItem(modifier = Modifier.clickable { navigate(Chat(space.id)) }.testTag("space:${space.id}"),
                     headlineContent = { Text(space.title) },
-                    leadingContent = { Icon(Icons.Rounded.Group, null, Modifier.size(36.dp), tint = MaterialTheme.colorScheme.primary) },
-                    trailingContent = { Icon(Icons.AutoMirrored.Rounded.KeyboardArrowRight, null) })
+                    leadingContent = { MotionVectorIcon(Icons.Rounded.Group, null, Modifier.size(36.dp), tint = MaterialTheme.colorScheme.primary) },
+                    trailingContent = { MotionVectorIcon(Icons.AutoMirrored.Rounded.KeyboardArrowRight, null) })
             }
         }
     }

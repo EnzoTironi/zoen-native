@@ -225,23 +225,27 @@ struct ZoenAdaptiveShell: View {
 
     private var searchField: some View {
         HStack(spacing: 8) {
-            Image(systemName: "magnifyingglass").font(.system(size: 13))
-            TextField("Search", text: $search)
+            NativeIconMotion(systemName: "magnifyingglass", size: 15)
+            TextField("Search chats", text: $search)
                 .textFieldStyle(.plain)
                 .focused($searchFocused)
                 .onDisappear { searchFocused = false }
                 .accessibilityIdentifier("mac-search-field")
             if !search.isEmpty {
-                Button { search = "" } label: { Image(systemName: "xmark.circle.fill") }
+                Button { search = ""; searchFocused = true } label: { NativeIconMotion(systemName: "xmark.circle.fill", size: 15) }
                     .buttonStyle(.plain)
                     .accessibilityLabel(Text("Clear search"))
             }
+            Rectangle().fill(Palette.hairline).frame(width: 0.5, height: 22)
+                .accessibilityHidden(true)
+            ChatInboxFilterMenu(showsLabel: !searchFocused && search.isEmpty, touchSize: 44)
+                .fixedSize(horizontal: true, vertical: false)
         }
-        .font(.system(size: 13))
+        .font(.system(size: 14))
         .foregroundStyle(Palette.textSecondary)
-        .padding(.horizontal, 10)
-        .frame(height: 32)
-        .background(Palette.surfaceMuted, in: .rect(cornerRadius: 10))
+        .padding(.leading, 12).padding(.trailing, 8)
+        .frame(minHeight: 52)
+        .glassEffect(.regular.interactive(), in: .capsule)
         .padding(.horizontal, 12)
         .padding(.bottom, 8)
     }
@@ -255,7 +259,6 @@ struct ZoenAdaptiveShell: View {
             HStack {
                 Text("Chats").font(.system(size: 14, weight: .semibold))
                 Spacer()
-                ChatInboxFilterMenu(showsLabel: false)
                 if case .space(let id)? = model.macSelection {
                     Button { model.go(.participants(id)) } label: {
                         ZoenIcon(.info, size: 16).frame(width: 28, height: 28)

@@ -156,7 +156,7 @@ private fun CircleButton(icon: ImageVector, description: String, tag: String, on
         onClick = onClick,
         modifier = Modifier.size(48.dp).testTag(tag),
         interactionSource = interactions,
-    ) { MotionVectorIcon(icon, description, Modifier.size(20.dp).iconPress(interactions)) }
+    ) { MotionVectorIcon(icon, description, Modifier.size(20.dp), interactions = interactions) }
 }
 
 @Composable private fun settingsRipple() = androidx.compose.material3.ripple()
@@ -189,13 +189,13 @@ private fun SRow(icon: ImageVector?, title: String, subtitle: String? = null, va
         verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp),
     ) {
         val alpha = if (enabled) 1f else 0.45f
-        icon?.let { MotionVectorIcon(it, null, Modifier.size(20.dp).iconPress(interactions), tint = (if (tint == Color.Unspecified) MaterialTheme.colorScheme.onSurfaceVariant else tint).copy(alpha = alpha)) }
+        icon?.let { MotionVectorIcon(it, null, Modifier.size(20.dp), tint = (if (tint == Color.Unspecified) MaterialTheme.colorScheme.onSurfaceVariant else tint).copy(alpha = alpha), interactions = interactions) }
         Column(Modifier.weight(1f)) {
             Text(title, style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Medium, color = (if (tint == Color.Unspecified) MaterialTheme.colorScheme.onSurface else tint).copy(alpha = alpha))
             subtitle?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = alpha)) }
         }
         value?.let { Text(it, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = alpha), textAlign = TextAlign.End) }
-        if (chevron && clickable) Icon(Icons.Rounded.ChevronRight, null, Modifier.size(18.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
+        if (chevron && clickable) MotionVectorIcon(Icons.Rounded.ChevronRight, null, Modifier.size(18.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
     }
 }
 
@@ -278,13 +278,13 @@ private fun SettingsHome(state: AppState, navigate: (NavKey) -> Unit, close: () 
             Modifier.fillMaxWidth().height(48.dp).clip(CircleShape).background(SettingsTone.card()).border(1.dp, SettingsTone.outline(), CircleShape).padding(start = 16.dp),
             verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp),
         ) {
-            Icon(Icons.Rounded.Search, null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
+            MotionVectorIcon(Icons.Rounded.Search, null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
             Box(Modifier.weight(1f)) {
                 if (query.isEmpty()) Text(stringResource(R.string.st_search), color = MaterialTheme.colorScheme.onSurfaceVariant)
                 BasicTextField(query, { query = it }, Modifier.fillMaxWidth().testTag("settings:search"), singleLine = true,
                     textStyle = MaterialTheme.typography.bodyLarge.copy(color = MaterialTheme.colorScheme.onSurface), cursorBrush = SolidColor(MaterialTheme.colorScheme.onSurface))
             }
-            if (query.isNotEmpty()) IconButton({ query = "" }, Modifier.size(48.dp)) { Icon(Icons.Rounded.Cancel, stringResource(R.string.st_clear), tint = MaterialTheme.colorScheme.onSurfaceVariant) }
+            if (query.isNotEmpty()) NativeIconButton({ query = "" }, Modifier.size(48.dp)) { MotionVectorIcon(Icons.Rounded.Cancel, stringResource(R.string.st_clear), tint = MaterialTheme.colorScheme.onSurfaceVariant) }
         }
         when {
             q.isEmpty() -> {
@@ -294,7 +294,7 @@ private fun SettingsHome(state: AppState, navigate: (NavKey) -> Unit, close: () 
                         verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp)) {
                         Avatar(me, size = 52)
                         Column(Modifier.weight(1f)) { Text(me.name, style = MaterialTheme.typography.titleMedium); Text("@${me.handle}", color = MaterialTheme.colorScheme.onSurfaceVariant) }
-                        Icon(Icons.Rounded.ChevronRight, null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                        MotionVectorIcon(Icons.Rounded.ChevronRight, null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                 }
                 sections.forEach { (header, pages) -> Group(header) { pages.forEachIndexed { i, p -> if (i > 0) RowDivider(); NavRow(p, navigate) } } }
@@ -552,7 +552,7 @@ private fun InvitesPage(model: ZoenViewModel, state: AppState, back: () -> Unit,
         }
     }) {
         Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(SettingsTone.radius)).background(SettingsTone.card()).padding(20.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Icon(Icons.Rounded.CardGiftcard, null)
+            MotionVectorIcon(Icons.Rounded.CardGiftcard, null)
             Text(stringResource(R.string.st_invites_title), style = MaterialTheme.typography.titleLarge)
             Text(stringResource(R.string.st_invites_rule), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }

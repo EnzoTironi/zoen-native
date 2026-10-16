@@ -27,11 +27,11 @@ internal fun AppleActionFan(actions: List<FanAction>, onDismiss: () -> Unit) {
             val radius = fanRadius(actions.size)
             actions.forEachIndexed { index, action ->
                 val angle = Math.PI / 2 + index * Math.PI / 2 / (actions.size - 1).coerceAtLeast(1)
-                IconButton(onClick = { onDismiss(); action.choose() }, modifier = Modifier.offset(x = (cos(angle) * radius).dp, y = (-sin(angle) * radius).dp).size(56.dp)) {
+                NativeIconButton(onClick = { onDismiss(); action.choose() }, modifier = Modifier.offset(x = (cos(angle) * radius).dp, y = (-sin(angle) * radius).dp).size(56.dp)) {
                     Box(Modifier.size(48.dp).zoenGlass(CircleShape), contentAlignment = Alignment.Center) { Icon(action.icon, action.title, Modifier.size(22.dp)) }
                 }
             }
-            IconButton(onDismiss, Modifier.size(56.dp).zoenGlass(CircleShape, MaterialTheme.colorScheme.primary)) { Icon(Icons.Rounded.Close, "Close menu") }
+            NativeIconButton(onDismiss, Modifier.size(56.dp).zoenGlass(CircleShape, MaterialTheme.colorScheme.primary)) { MotionVectorIcon(Icons.Rounded.Close, "Close menu") }
         }
     }
 }

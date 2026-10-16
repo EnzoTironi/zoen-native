@@ -8,6 +8,49 @@ import UIKit
 final class NativeIconMotionCaptureTests: XCTestCase {
     @MainActor func testLightActionSequence() throws { try sequence(appearance: "light") }
     @MainActor func testDarkActionSequence() throws { try sequence(appearance: "dark") }
+    @MainActor func testLightSearchFilterJourney() throws { try searchJourney(appearance: "light") }
+    @MainActor func testDarkSearchFilterJourney() throws { try searchJourney(appearance: "dark") }
+
+    @MainActor private func searchJourney(appearance: String) throws {
+        let env = ProcessInfo.processInfo.environment
+        guard env["ZOEN_PARITY_FIXTURE"] == "native-parity-v1" else { throw XCTSkip("Requires native parity fixture") }
+        let app = XCUIApplication()
+        app.launchEnvironment["ZOEN_PARITY_FIXTURE"] = "native-parity-v1"
+        app.launchEnvironment["ZOEN_PARITY_REVISION"] = try XCTUnwrap(env["ZOEN_PARITY_REVISION"])
+        app.launchEnvironment["TZ"] = "UTC"
+        app.launchArguments = ["-RodaFreshStart", "YES", "-RodaResetDemo", "YES", "-RodaDemo", "YES",
+            "-AppleLanguages", "(en)", "-AppleLocale", "en_US", "-RodaAppearance", appearance]
+        app.launch()
+        let search = app.textFields["chat-search-field"]
+        XCTAssertTrue(search.waitForExistence(timeout: 40))
+        XCTAssertEqual(app.navigationBars.count, 0)
+        let filter = app.buttons["chat-filter"]
+        XCTAssertTrue(filter.exists)
+        XCTAssertEqual(filter.value as? String, "All chats")
+        XCTAssertLessThan(abs(search.frame.midY - filter.frame.midY), 4, "Search and scope share one surface")
+        let tile = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@", "home-tile-")).firstMatch
+        if tile.exists { XCTAssertLessThan(search.frame.maxY, tile.frame.minY) }
+        attach(app.screenshot(), name: "search-glass-top-\(appearance)")
+        search.tap()
+        search.typeText("Marina")
+        filter.tap()
+        let direct = app.buttons["Direct chats"].firstMatch
+        XCTAssertTrue(direct.waitForExistence(timeout: 5))
+        direct.tap()
+        XCTAssertEqual(filter.value as? String, "Direct chats")
+        let marina = app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "Marina")).firstMatch
+        XCTAssertTrue(marina.waitForExistence(timeout: 5))
+        XCTAssertFalse(app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "Paraty with Marina")).firstMatch.exists)
+        attach(app.screenshot(), name: "search-glass-filtered-\(appearance)")
+        app.buttons["Clear search"].tap()
+        XCTAssertEqual(search.value as? String, "Search chats")
+        filter.tap()
+        app.buttons["All chats"].firstMatch.tap()
+        app.keyboards.buttons["Search"].firstMatch.tap()
+        XCTAssertTrue(app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "Paraty with Marina")).firstMatch.waitForExistence(timeout: 5))
+        XCTAssertEqual(filter.value as? String, "All chats")
+        attach(app.screenshot(), name: "search-glass-reset-\(appearance)")
+    }
 
     @MainActor private func sequence(appearance: String) throws {
         let env = ProcessInfo.processInfo.environment

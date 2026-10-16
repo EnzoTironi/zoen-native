@@ -141,14 +141,26 @@ fun ZoenApp(model: ZoenViewModel, deepLink: String?, consumed: () -> Unit) {
             val density = LocalDensity.current
             Row {
                 if (rail) NavigationRail(modifier = Modifier.fillMaxHeight(), header = {
-                    IconButton(onClick = { navigate(NewChat) }) { Icon(Icons.Rounded.Edit, "New message") }
+                    NativeIconButton(onClick = { navigate(NewChat) }) { MotionVectorIcon(Icons.Rounded.Edit, "New message") }
                 }) {
                     Spacer(Modifier.height(24.dp))
                     Tab.main.forEach { target ->
-                        NavigationRailItem(selected = tab == target, onClick = { if (tab != target) haptics.perform(ZoenFeedback.Selection); tab = target }, icon = { TabIcon(target, if (target == Tab.Chats) unread else if (target == Tab.Notifications) state.pending else 0, tab == target, state.me) }, label = { Text(tabName(target)) })
+                        var taps by remember { mutableIntStateOf(0) }
+                        NavigationRailItem(selected = tab == target, onClick = {
+                            taps++
+                            if (tab != target) haptics.perform(ZoenFeedback.Selection)
+                            tab = target
+                        }, icon = {
+                            TabIcon(target, if (target == Tab.Chats) unread else if (target == Tab.Notifications) state.pending else 0,
+                                tab == target, state.me, press = taps,
+                                pendingIds = if (target == Tab.Notifications) state.requests.filter {
+                                    it.status == xyz.tironi.zoen.core.RequestStatus.PENDING && it.agent.isMine
+                                }.map { it.id }.toSet() else emptySet(),
+                                active = target == Tab.Chats && (state.typing.isNotEmpty() || state.connection.state in setOf("connecting", "reconnecting")))
+                        }, label = { Text(tabName(target)) })
                     }
                     Spacer(Modifier.weight(1f))
-                    IconButton(onClick = { navigate(Search) }) { Icon(Icons.Rounded.Search, stringResource(R.string.search)) }
+                    NativeIconButton(onClick = { navigate(Search) }) { MotionVectorIcon(Icons.Rounded.Search, stringResource(R.string.search)) }
                 }
                 Scaffold(
                     modifier = Modifier.weight(1f),
@@ -160,7 +172,8 @@ fun ZoenApp(model: ZoenViewModel, deepLink: String?, consumed: () -> Unit) {
                             tab = target
                         }, { navigate(NewChat) }, pendingIds = state.requests.filter {
                             it.status == xyz.tironi.zoen.core.RequestStatus.PENDING && it.agent.isMine
-                        }.map { it.id }.toSet(), transportActive = state.typing.isNotEmpty() || state.connection.state in setOf("connecting", "reconnecting"))
+                        }.map { it.id }.toSet(), transportActive = state.typing.isNotEmpty() || state.connection.state in setOf("connecting", "reconnecting"),
+                            offline = state.account != null && state.connection.state == "offline")
                     },
                     contentWindowInsets = WindowInsets(0, 0, 0, 0),
                 ) { padding ->
@@ -168,11 +181,13 @@ fun ZoenApp(model: ZoenViewModel, deepLink: String?, consumed: () -> Unit) {
                         modifier = Modifier.fillMaxSize().padding(top = padding.calculateTopPadding()).zoenGlassSource(), backStack = stack, onBack = back,
                         entryProvider = entryProvider {
                             entry<Home> {
-                                when (tab) {
-                                    Tab.Chats -> ConversationsScreen(model, state, navigate, split)
-                                    Tab.Spaces -> SpacesDirectoryScreen(state, navigate)
-                                    Tab.Notifications -> ActivityScreen(model, state, navigate, back, root = true)
-                                    Tab.Profile -> YouScreen(model, state, navigate, { tab = Tab.Chats })
+                                Box(Modifier.fillMaxSize().statusBarsPadding()) {
+                                    when (tab) {
+                                        Tab.Chats -> ConversationsScreen(model, state, navigate, split)
+                                        Tab.Spaces -> SpacesDirectoryScreen(state, navigate)
+                                        Tab.Notifications -> ActivityScreen(model, state, navigate, back, root = true)
+                                        Tab.Profile -> YouScreen(model, state, navigate, { tab = Tab.Chats })
+                                    }
                                 }
                             }
                             entry<Chat> { ChatScreen(model, state, it.id, navigate, back, it.message) }
@@ -224,12 +239,12 @@ internal fun tabName(tab: Tab): String = when (tab) {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-internal fun TabIcon(tab: Tab, count: Int, selected: Boolean, me: xyz.tironi.zoen.core.Persona?) {
+internal fun TabIcon(tab: Tab, count: Int, selected: Boolean, me: xyz.tironi.zoen.core.Persona?, press: Int = 0, pendingIds: Set<String> = emptySet(), active: Boolean = false) {
     BadgedBox(badge = { if (count > 0 && (tab == Tab.Chats || tab == Tab.Notifications)) Badge { Text(if (count > 99) "99+" else count.toString()) } }) {
         when (tab) {
-            Tab.Chats -> Icon(NativeTabGlyphs.Chats, tabName(tab), Modifier.size(26.dp))
-            Tab.Spaces -> Icon(NativeTabGlyphs.Spaces, tabName(tab), Modifier.size(26.dp))
-            Tab.Notifications -> Icon(NativeTabGlyphs.Bell, tabName(tab), Modifier.size(26.dp))
+            Tab.Chats -> NativeAnimatedSymbol("chats_tab", tabName(tab), press = press, active = active)
+            Tab.Spaces -> NativeAnimatedSymbol("spaces_tab", tabName(tab), press = press)
+            Tab.Notifications -> NativeAnimatedSymbol("bell_tab", tabName(tab), press = press, pendingIds = pendingIds)
             Tab.Profile -> Avatar(me, size = 26)
         }
     }

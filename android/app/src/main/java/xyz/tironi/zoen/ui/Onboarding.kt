@@ -125,7 +125,7 @@ fun Onboarding(model: ZoenViewModel, modifier: Modifier = Modifier, acquisitionL
     val canvas = MaterialTheme.colorScheme.background.let { if (it.luminance() > .5f) Color(0xFFFFFCF5) else it }
     Column(modifier.fillMaxSize().background(canvas).safeDrawingPadding().imePadding().testTag("onboarding:${step.id}")) {
         Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp), verticalAlignment = Alignment.CenterVertically) {
-            IconButton(onClick = ::goBack, enabled = (position > 0 || connectionSettings) && !busy) { Icon(Icons.AutoMirrored.Rounded.ArrowBack, stringResource(R.string.back)) }
+            NativeIconButton(onClick = ::goBack, enabled = (position > 0 || connectionSettings) && !busy) { MotionVectorIcon(Icons.AutoMirrored.Rounded.ArrowBack, stringResource(R.string.back)) }
             Row(Modifier.weight(1f).padding(end = 28.dp), horizontalArrangement = Arrangement.spacedBy(5.dp)) {
                 repeat(route.steps.size) { index -> LinearProgressIndicator(progress = { if (index <= position) 1f else 0f }, modifier = Modifier.weight(1f).height(4.dp), drawStopIndicator = {}) }
             }
@@ -153,7 +153,7 @@ fun Onboarding(model: ZoenViewModel, modifier: Modifier = Modifier, acquisitionL
                                 }
                             }
                         }, modifier = Modifier.align(Alignment.CenterHorizontally).testTag("onboarding-paste-invite")) {
-                            Icon(Icons.Rounded.ContentPaste, null, Modifier.size(18.dp))
+                            MotionVectorIcon(Icons.Rounded.ContentPaste, null, Modifier.size(18.dp))
                             Spacer(Modifier.width(8.dp))
                             Text(stringResource(R.string.onboarding_paste_invite))
                         }
@@ -181,7 +181,7 @@ fun Onboarding(model: ZoenViewModel, modifier: Modifier = Modifier, acquisitionL
                             Text(plan!!.plan.title, style = MaterialTheme.typography.titleLarge)
                             plan!!.plan.sections.forEach { section ->
                                 Text(section.title, style = MaterialTheme.typography.titleSmall)
-                                section.lines.forEach { line -> Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) { Icon(Icons.Rounded.CheckCircleOutline, null, Modifier.size(18.dp)); Text(line.text) } }
+                                section.lines.forEach { line -> Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) { MotionVectorIcon(Icons.Rounded.CheckCircleOutline, null, Modifier.size(18.dp)); Text(line.text) } }
                             }
                             Text(plan!!.engineLabel, style = MaterialTheme.typography.labelSmall)
                         }

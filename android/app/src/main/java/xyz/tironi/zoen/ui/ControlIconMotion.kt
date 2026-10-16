@@ -65,17 +65,76 @@ internal fun Modifier.iconPress(interactions: MutableInteractionSource): Modifie
 
 @Composable
 internal fun MotionVectorIcon(icon: ImageVector, description: String?, modifier: Modifier = Modifier,
-                              state: Any? = icon, tint: Color = LocalContentColor.current) {
-    NativeIconMotion(selection = state) {
-        Icon(icon, description, modifier.iconReveal(state), tint = tint)
+                              state: Any? = icon, tint: Color = LocalContentColor.current,
+                              interactions: MutableInteractionSource? = null) {
+    val native = nativeSymbolForMaterial(icon.name)
+    val pressed = interactions?.collectIsPressedAsState()?.value ?: false
+    var taps by remember { mutableIntStateOf(0) }
+    var wasPressed by remember { mutableStateOf(pressed) }
+    LaunchedEffect(pressed) {
+        if (wasPressed && !pressed) taps++
+        wasPressed = pressed
     }
+    if (native != null) {
+        CompositionLocalProvider(LocalContentColor provides tint) {
+            NativeIconMotion(selection = state) { NativeAnimatedSymbol(native, description, modifier, press = taps) }
+        }
+    } else {
+        Icon(icon, description, modifier, tint = tint)
+    }
+}
+
+internal fun nativeSymbolForMaterial(name: String): String? = when (name.substringAfterLast('.')) {
+    "Call" -> "phone"
+    "VideoCall" -> "video"
+    "MoreVert" -> "more"
+    "Close", "Cancel" -> "close"
+    "Add" -> "plus"
+    "ArrowBack" -> "back"
+    "ChevronRight", "KeyboardArrowRight" -> "chevron"
+    "Search" -> "search"
+    "Lock", "Security", "VerifiedUser" -> "lock"
+    "Info", "ErrorOutline" -> "info"
+    "Person", "PersonOutline", "AccountCircle" -> "you"
+    "Description", "Article" -> "note"
+    "Folder", "FolderOpen" -> "folder"
+    "Delete", "DeleteOutline" -> "trash"
+    "Check", "Done", "TaskAlt", "CheckCircle", "CheckCircleOutline" -> "check"
+    "Notifications", "NotificationsNone", "NotificationsActive" -> "bell"
+    "IosShare", "Share" -> "share"
+    "Favorite" -> "heart"
+    "AutoAwesome" -> "sparkle"
+    "Forum", "Chat", "ChatBubbleOutline", "Sms" -> "chats"
+    "Layers" -> "spaces"
+    "CameraAlt", "PhotoCamera" -> "camera"
+    "Edit", "Draw" -> "compose"
+    "SportsEsports" -> "game"
+    "PushPin" -> "pin"
+    "PlayArrow" -> "play"
+    "Pause" -> "pause"
+    "Storefront" -> "store"
+    "Settings" -> "settings"
+    "Translate", "Language" -> "language"
+    "Contrast" -> "contrast"
+    "Devices" -> "devices"
+    "Storage" -> "storage"
+    "CloudQueue", "CloudDone", "CloudSync", "CloudOff" -> "cloud"
+    "AccessibilityNew", "Animation", "DirectionsWalk" -> "accessibility"
+    "EventRepeat", "Timer", "Schedule", "Restore", "History" -> "clock"
+    "Explore", "Public" -> "compass"
+    "Flag" -> "flag"
+    "CardGiftcard" -> "gift"
+    "CreditCard" -> "wallet"
+    "Key" -> "key"
+    "AlternateEmail" -> "at"
+    else -> null
 }
 
 @Composable
 internal fun MotionIconButton(icon: ImageVector, description: String?, onClick: () -> Unit,
                               modifier: Modifier = Modifier, enabled: Boolean = true) {
     val interactions = remember { MutableInteractionSource() }
-    IconButton(onClick, modifier, enabled, interactionSource = interactions) {
-        MotionVectorIcon(icon, description, Modifier.iconPress(interactions))
+    NativeIconButton(onClick, modifier, enabled, interactionSource = interactions) {
+        MotionVectorIcon(icon, description, interactions = interactions)
     }
 }

@@ -131,7 +131,7 @@ private fun PollApp(data: JSONObject, action: AppAction, modifier: Modifier) {
     val total = options.sumOf { it.optJSONArray("votes")?.length() ?: 0 }.coerceAtLeast(1)
     val closed = data.optBoolean("closed")
     LazyColumn(modifier, contentPadding = PaddingValues(24.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-        item { Icon(Icons.Rounded.Poll, null, Modifier.size(48.dp), tint = MaterialTheme.colorScheme.primary); Text(data.optString("question"), style = MaterialTheme.typography.displaySmall) }
+        item { MotionVectorIcon(Icons.Rounded.Poll, null, Modifier.size(48.dp), tint = MaterialTheme.colorScheme.primary); Text(data.optString("question"), style = MaterialTheme.typography.displaySmall) }
         items(options, key = { it.optString("id") }) { option ->
             GlassCard(onClick = { action("poll_vote", JSONObject().put("option", option.optString("id"))) }, enabled = !closed) {
                 Column(Modifier.fillMaxWidth().padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -151,7 +151,7 @@ private fun PollApp(data: JSONObject, action: AppAction, modifier: Modifier) {
 private fun ListApp(data: JSONObject, action: AppAction, modifier: Modifier) {
     var text by rememberSaveable { mutableStateOf("") }
     LazyColumn(modifier.imePadding(), contentPadding = PaddingValues(24.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        item { Icon(Icons.Rounded.Checklist, null, Modifier.size(48.dp), tint = MaterialTheme.colorScheme.primary); Text(data.optString("title"), style = MaterialTheme.typography.displaySmall) }
+        item { MotionVectorIcon(Icons.Rounded.Checklist, null, Modifier.size(48.dp), tint = MaterialTheme.colorScheme.primary); Text(data.optString("title"), style = MaterialTheme.typography.displaySmall) }
         items(data.rows("items"), key = { it.optString("id") }) { row ->
             Card { Row(Modifier.fillMaxWidth().padding(8.dp), verticalAlignment = Alignment.CenterVertically) {
                 Checkbox(row.optBoolean("done"), onCheckedChange = { action("list_toggle", JSONObject().put("id", row.optString("id"))) })
@@ -160,9 +160,9 @@ private fun ListApp(data: JSONObject, action: AppAction, modifier: Modifier) {
         }
         item { Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             OutlinedTextField(text, { text = it }, Modifier.weight(1f), placeholder = { Text(stringResource(R.string.add_item)) })
-            FilledIconButton(onClick = { action("list_add", JSONObject().put("text", text)); text = "" }, enabled = text.isNotBlank()) { Icon(Icons.Rounded.Add, stringResource(R.string.add_item)) }
+            FilledIconButton(onClick = { action("list_add", JSONObject().put("text", text)); text = "" }, enabled = text.isNotBlank()) { MotionVectorIcon(Icons.Rounded.Add, stringResource(R.string.add_item)) }
         } }
-        item { GlassOutlinedButton(onClick = { action("list_send_whatsapp", JSONObject()) }, Modifier.fillMaxWidth()) { Icon(Icons.Rounded.Share, null); Spacer(Modifier.width(8.dp)); Text(stringResource(R.string.miniapp_send_whatsapp)) } }
+        item { GlassOutlinedButton(onClick = { action("list_send_whatsapp", JSONObject()) }, Modifier.fillMaxWidth()) { MotionVectorIcon(Icons.Rounded.Share, null); Spacer(Modifier.width(8.dp)); Text(stringResource(R.string.miniapp_send_whatsapp)) } }
         item { AppLog(data) }
     }
 }
@@ -178,12 +178,12 @@ private fun RecipeApp(data: JSONObject, action: AppAction, modifier: Modifier) {
     var remaining by remember { mutableLongStateOf(0L) }
     LaunchedEffect(timerEnd) { while (timerEnd > 0) { remaining = ((timerEnd - System.currentTimeMillis()) / 1000).coerceAtLeast(0); if (remaining == 0L) break; delay(1000) } }
     LazyColumn(modifier, contentPadding = PaddingValues(24.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-        item { Icon(Icons.Rounded.Restaurant, null, Modifier.size(48.dp), tint = MaterialTheme.colorScheme.tertiary); Text(data.optString("title"), style = MaterialTheme.typography.displaySmall); Text(data.optString("subtitle"), color = MaterialTheme.colorScheme.onSurfaceVariant) }
+        item { MotionVectorIcon(Icons.Rounded.Restaurant, null, Modifier.size(48.dp), tint = MaterialTheme.colorScheme.tertiary); Text(data.optString("title"), style = MaterialTheme.typography.displaySmall); Text(data.optString("subtitle"), color = MaterialTheme.colorScheme.onSurfaceVariant) }
         item { Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             Text(stringResource(R.string.servings), Modifier.weight(1f))
-            OutlinedIconButton(onClick = { action("recipe_servings", JSONObject().put("servings", servings - 1)) }, enabled = servings > 1) { Icon(Icons.Rounded.Remove, stringResource(R.string.miniapp_servings_less)) }
+            OutlinedIconButton(onClick = { action("recipe_servings", JSONObject().put("servings", servings - 1)) }, enabled = servings > 1) { MotionVectorIcon(Icons.Rounded.Remove, stringResource(R.string.miniapp_servings_less)) }
             Text(servings.toString(), style = MaterialTheme.typography.titleLarge)
-            OutlinedIconButton(onClick = { action("recipe_servings", JSONObject().put("servings", servings + 1)) }, enabled = servings < 12) { Icon(Icons.Rounded.Add, stringResource(R.string.miniapp_servings_more)) }
+            OutlinedIconButton(onClick = { action("recipe_servings", JSONObject().put("servings", servings + 1)) }, enabled = servings < 12) { MotionVectorIcon(Icons.Rounded.Add, stringResource(R.string.miniapp_servings_more)) }
         } }
         item { SectionLabel(stringResource(R.string.ingredients)) }
         items(ingredients, key = { it.optString("id") }) { ingredient ->
@@ -201,7 +201,7 @@ private fun RecipeApp(data: JSONObject, action: AppAction, modifier: Modifier) {
                 Text(step?.optString("text").orEmpty(), style = MaterialTheme.typography.bodyLarge)
                 if (step != null) {
                     val seconds = step.optLong("minutes", 0) * 60
-                    if (seconds > 0) GlassOutlinedButton(onClick = { timerEnd = System.currentTimeMillis() + seconds * 1000 }) { Icon(Icons.Rounded.Timer, null); Spacer(Modifier.width(8.dp)); Text(if (remaining > 0) "${remaining / 60}:${(remaining % 60).toString().padStart(2, '0')}" else "${seconds / 60} min") }
+                    if (seconds > 0) GlassOutlinedButton(onClick = { timerEnd = System.currentTimeMillis() + seconds * 1000 }) { MotionVectorIcon(Icons.Rounded.Timer, null); Spacer(Modifier.width(8.dp)); Text(if (remaining > 0) "${remaining / 60}:${(remaining % 60).toString().padStart(2, '0')}" else "${seconds / 60} min") }
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         GlassOutlinedButton(onClick = { action("recipe_cook", JSONObject().put("step", currentStep - 1)) }, enabled = currentStep > 0) { Text(stringResource(R.string.miniapp_back_step)) }
                         GlassButton(onClick = { action("recipe_cook", JSONObject().put("step", currentStep + 1)); timerEnd = 0 }) { Text(stringResource(if (currentStep + 1 >= steps.size) R.string.miniapp_finish_cooking else R.string.next_step)) }
@@ -215,7 +215,7 @@ private fun RecipeApp(data: JSONObject, action: AppAction, modifier: Modifier) {
                 Text("${remaining / 60}:${(remaining % 60).toString().padStart(2, '0')}", style = MaterialTheme.typography.titleLarge)
                 Text(stringResource(if (remaining == 0L) R.string.miniapp_timer_done else R.string.miniapp_kitchen_timer), style = MaterialTheme.typography.bodySmall)
             }
-            IconButton(onClick = { timerEnd = 0 }) { Icon(Icons.Rounded.Close, stringResource(R.string.miniapp_timer_stop)) }
+            NativeIconButton(onClick = { timerEnd = 0 }) { MotionVectorIcon(Icons.Rounded.Close, stringResource(R.string.miniapp_timer_stop)) }
         } } }
         if (cooking == null) items(steps) { step -> Text(step.optString("text"), color = MaterialTheme.colorScheme.onSurfaceVariant) }
         item { AppLog(data) }
@@ -308,7 +308,7 @@ private fun CountdownApp(model: ZoenViewModel, item: ItemDetail, data: JSONObjec
                 } }
             } }
         }
-        item { GlassOutlinedButton(onClick = { pinned = !pinned; if (pinned) pins.show(item.id) else pins.hide(item.id); model.launch { model.repository.refresh() } }, Modifier.fillMaxWidth()) { Icon(Icons.Rounded.PushPin, null); Spacer(Modifier.width(8.dp)); Text(stringResource(if (pinned) R.string.miniapp_unpin_home else R.string.miniapp_pin_home)) } }
+        item { GlassOutlinedButton(onClick = { pinned = !pinned; if (pinned) pins.show(item.id) else pins.hide(item.id); model.launch { model.repository.refresh() } }, Modifier.fillMaxWidth()) { MotionVectorIcon(Icons.Rounded.PushPin, null); Spacer(Modifier.width(8.dp)); Text(stringResource(if (pinned) R.string.miniapp_unpin_home else R.string.miniapp_pin_home)) } }
         item { AppLog(data) }
     }
 }

@@ -27,6 +27,7 @@ enum ChatInboxFilter: String, CaseIterable, Identifiable {
 struct ChatInboxFilterMenu: View {
     @Environment(AppModel.self) private var model
     var showsLabel = true
+    var touchSize: CGFloat = 28
 
     var body: some View {
         @Bindable var model = model
@@ -44,7 +45,7 @@ struct ChatInboxFilterMenu: View {
             }
             .font(.subheadline.weight(.medium))
             .foregroundStyle(model.chatFilter == .all ? Palette.textSecondary : Palette.action)
-            .frame(minWidth: 28, minHeight: showsLabel ? 44 : 28)
+            .frame(minWidth: touchSize, minHeight: showsLabel ? 44 : touchSize)
         }
         #if os(macOS)
         .menuStyle(.borderlessButton)
@@ -52,6 +53,52 @@ struct ChatInboxFilterMenu: View {
         .accessibilityLabel("Filter chats")
         .accessibilityValue(model.chatFilter.title)
         .accessibilityIdentifier("chat-filter")
+    }
+}
+
+/// Search and scope share one native glass surface; navigation stays in the tab bar.
+struct ChatInboxSearchBar: View {
+    @Environment(AppModel.self) private var model
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @FocusState private var focused: Bool
+
+    var body: some View {
+        @Bindable var model = model
+        HStack(spacing: 10) {
+            NativeIconMotion(systemName: "magnifyingglass", size: 17)
+                .foregroundStyle(Palette.textSecondary)
+            TextField("Search chats", text: $model.chatQuery)
+                .font(.body)
+                .textFieldStyle(.plain)
+                .focused($focused)
+                .submitLabel(.search)
+                .onSubmit { focused = false }
+                .autocorrectionDisabled()
+                .accessibilityIdentifier("chat-search-field")
+            if !model.chatQuery.isEmpty {
+                Button { model.chatQuery = ""; focused = true } label: {
+                    NativeIconMotion(systemName: "xmark.circle.fill", size: 17)
+                        .foregroundStyle(Palette.textTertiary)
+                        .frame(width: 44, height: 44)
+                        .contentShape(.rect)
+                }
+                .buttonStyle(IconPressStyle())
+                .accessibilityLabel("Clear search")
+            }
+            Rectangle().fill(Palette.hairline).frame(width: 0.5, height: 22)
+                .accessibilityHidden(true)
+            ChatInboxFilterMenu(showsLabel: !focused && model.chatQuery.isEmpty, touchSize: 44)
+                .fixedSize(horizontal: true, vertical: false)
+        }
+        .padding(.leading, 16)
+        .padding(.trailing, 12)
+        .frame(minHeight: 52)
+        .glassEffect(.regular.interactive(), in: .capsule)
+        .accessibilityIdentifier("chat-search-bar")
+        .animation(reduceMotion ? nil : .smooth(duration: 0.2), value: focused)
+        .onChange(of: focused) { _, value in model.chatSearch = value }
+        .onChange(of: model.chatSearch) { _, value in focused = value }
+        .onDisappear { model.chatSearch = false }
     }
 }
 
@@ -331,22 +378,25 @@ struct GlossySphere: View {
 /// Home (iPhone): the zoen wordmark, the live mini-app strip, then your chats.
 struct ConversationsScreen: View {
     @Environment(AppModel.self) private var model
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
         let searching = model.chatSearch || !model.chatQuery.isEmpty
         VStack(spacing: 0) {
+            ChatInboxSearchBar()
+                .padding(.horizontal, 20)
+                .padding(.top, 8)
+                .padding(.bottom, 12)
             ScrollView {
                 VStack(alignment: .leading, spacing: 14) {
                     if !searching {
                         HomeStrip()
                             .transition(.opacity.combined(with: .move(edge: .top)))
                     }
-                    ChatInboxFilterMenu()
-                        .padding(.horizontal, 20)
                     ConversationsList(query: model.chatQuery) { id in model.push(.space(id)) }
                 }
                 .padding(.top, searching ? 12 : 0)
-                .animation(.spring(duration: 0.4, bounce: 0.15), value: searching)
+                .animation(reduceMotion ? nil : .spring(duration: 0.4, bounce: 0.15), value: searching)
             }
             .contentMargins(.bottom, 12, for: .scrollContent)
             .accessibilityIdentifier("chats-list-scroll")

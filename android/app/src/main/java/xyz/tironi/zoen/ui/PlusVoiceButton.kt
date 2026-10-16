@@ -48,7 +48,7 @@ internal fun PlusVoiceButton(actions: () -> Unit, start: () -> Unit, release: ()
         if (expansion > .001f && touching) {
             currentItems.forEachIndexed { index, item ->
                 val angle = PI / 2 + index * PI / 2 / (currentItems.size - 1).coerceAtLeast(1)
-                IconButton(onClick = { open = false; item.choose() }, modifier = Modifier.offset((cos(angle) * fanRadius(currentItems.size) * expansion).dp, (-sin(angle) * fanRadius(currentItems.size) * expansion).dp).size(56.dp).graphicsLayer { alpha = expansion; scaleX = if (hovered == index) 1.15f else 1f; scaleY = scaleX }) {
+                NativeIconButton(onClick = { open = false; item.choose() }, modifier = Modifier.offset((cos(angle) * fanRadius(currentItems.size) * expansion).dp, (-sin(angle) * fanRadius(currentItems.size) * expansion).dp).size(56.dp).graphicsLayer { alpha = expansion; scaleX = if (hovered == index) 1.15f else 1f; scaleY = scaleX }) {
                     Box(Modifier.size(48.dp).zoenGlass(CircleShape), contentAlignment = Alignment.Center) { Icon(item.icon, item.title, Modifier.size(22.dp)) }
                 }
             }

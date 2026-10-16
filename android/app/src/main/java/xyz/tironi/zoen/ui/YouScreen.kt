@@ -43,7 +43,7 @@ internal fun YouScreen(model: ZoenViewModel, state: AppState, navigate: (NavKey)
                     }
                     Text("Organize what’s yours and decide who can use it.", style = MaterialTheme.typography.bodyMedium)
                     Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                        Icon(Icons.Rounded.Lock, null, tint = MaterialTheme.colorScheme.primary)
+                        MotionVectorIcon(Icons.Rounded.Lock, null, tint = MaterialTheme.colorScheme.primary)
                         Column {
                             Text("Only you and authorized agents", fontWeight = FontWeight.SemiBold)
                             Text(if (state.demo) "Everything stays on this device, signed with your key." else "Your space stays on this device. Chats sync, signed with your key.", style = MaterialTheme.typography.bodySmall)

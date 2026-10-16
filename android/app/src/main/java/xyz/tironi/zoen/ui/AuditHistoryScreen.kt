@@ -61,8 +61,8 @@ fun AuditHistoryScreen(model: ZoenViewModel, state: AppState, back: () -> Unit) 
     BackHandler(enabled = selectedId != null, onBack = goBack)
     Scaffold(topBar = {
         ScreenBar(report?.spaceTitle ?: stringResource(R.string.signed_log), goBack) {
-            IconButton(onClick = { retry++ }, enabled = !snapshot.loading) {
-                Icon(Icons.Rounded.Refresh, stringResource(R.string.ap_audit_refresh))
+            NativeIconButton(onClick = { retry++ }, enabled = !snapshot.loading) {
+                MotionVectorIcon(Icons.Rounded.Refresh, stringResource(R.string.ap_audit_refresh))
             }
         }
     }) { padding ->

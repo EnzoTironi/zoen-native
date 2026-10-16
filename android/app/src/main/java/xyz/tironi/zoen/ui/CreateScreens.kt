@@ -47,7 +47,7 @@ fun NewChatScreen(model: ZoenViewModel, state: AppState, navigate: (NavKey) -> U
         }
     }
     Scaffold(topBar = { ScreenBar(stringResource(if (group) R.string.new_group else R.string.new_chat), ::close, actions = {
-        IconButton(onClick = { group = !group }) { Icon(Icons.Rounded.GroupAdd, stringResource(R.string.new_group)) }
+        NativeIconButton(onClick = { group = !group }) { MotionVectorIcon(Icons.Rounded.GroupAdd, stringResource(R.string.new_group)) }
     }) }) { padding ->
         Column(Modifier.padding(padding).imePadding().padding(horizontal = 24.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             if (group) OutlinedTextField(title, { title = it }, Modifier.fillMaxWidth(), label = { Text(stringResource(R.string.group_name)) }, singleLine = true)

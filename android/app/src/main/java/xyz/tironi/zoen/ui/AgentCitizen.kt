@@ -94,7 +94,7 @@ fun AgentCitizenRow(profile: AgentProfile, status: AgentStatus?, onClick: () -> 
                     if (pending > 0) AgentPendingBadge(pending)
                 }
             }
-            Icon(Icons.Rounded.ChevronRight, null, tint = MaterialTheme.colorScheme.outline)
+            MotionVectorIcon(Icons.Rounded.ChevronRight, null, tint = MaterialTheme.colorScheme.outline)
         }
     }
 }
@@ -136,7 +136,7 @@ fun AgentCitizenActions(
             // Final, so it asks right where you tapped, in plain words (like iOS).
             AnimatedContent(confirm, transitionSpec = { fadeIn(tween(150)) togetherWith fadeOut(tween(150)) }, label = "revoke") { asking ->
                 if (!asking) TextButton(onClick = { haptics.perform(ZoenFeedback.Open); confirm = true }, enabled = !busy, modifier = Modifier.testTag("agent-revoke")) {
-                    Icon(Icons.Rounded.PowerSettingsNew, null, tint = MaterialTheme.colorScheme.error)
+                    MotionVectorIcon(Icons.Rounded.PowerSettingsNew, null, tint = MaterialTheme.colorScheme.error)
                     Spacer(Modifier.width(8.dp))
                     Text(stringResource(R.string.agent_turn_off), color = MaterialTheme.colorScheme.error)
                 } else Surface(color = MaterialTheme.colorScheme.errorContainer, shape = RoundedCornerShape(16.dp), modifier = Modifier.fillMaxWidth().testTag("agent-revoke-ask")) {

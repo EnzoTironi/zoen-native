@@ -212,12 +212,12 @@ fun SearchScreen(model: ZoenViewModel, state: AppState, navigate: (NavKey) -> Un
             OutlinedTextField(query, { query = it }, Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp)
                 .focusRequester(focus).testTag("search"),
                 placeholder = { Text(stringResource(R.string.search_hint)) },
-                leadingIcon = { Icon(Icons.Rounded.Search, null) }, singleLine = true,
+                leadingIcon = { MotionVectorIcon(Icons.Rounded.Search, null) }, singleLine = true,
                 keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.None, autoCorrectEnabled = false, imeAction = ImeAction.Search),
                 keyboardActions = KeyboardActions(onSearch = { saveQuery(); keyboard?.hide() }),
                 trailingIcon = {
-                    if (query.isNotEmpty()) IconButton(onClick = { query = ""; focus.requestFocus() }) {
-                        Icon(Icons.Rounded.Close, stringResource(R.string.search_clear_query))
+                    if (query.isNotEmpty()) NativeIconButton(onClick = { query = ""; focus.requestFocus() }) {
+                        MotionVectorIcon(Icons.Rounded.Close, stringResource(R.string.search_clear_query))
                     }
                 },
             )
@@ -247,8 +247,8 @@ fun SearchScreen(model: ZoenViewModel, state: AppState, navigate: (NavKey) -> Un
                             recents = emptyList(); preferences.edit().remove("search.recents").apply()
                         } }
                         items(recentQueries, key = { "recent:" + it }) { recent ->
-                            ListItem(headlineContent = { Text(recent) }, leadingContent = { Icon(Icons.Rounded.History, null) },
-                                trailingContent = { Icon(Icons.Rounded.NorthWest, null) },
+                            ListItem(headlineContent = { Text(recent) }, leadingContent = { MotionVectorIcon(Icons.Rounded.History, null) },
+                                trailingContent = { MotionVectorIcon(Icons.Rounded.NorthWest, null) },
                                 modifier = Modifier.testTag("search-recent:" + recent).clickable { query = recent })
                         }
                     }
@@ -304,12 +304,12 @@ fun SearchScreen(model: ZoenViewModel, state: AppState, navigate: (NavKey) -> Un
                                 colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer)) {
                                 Row(Modifier.padding(20.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(16.dp)) {
                                     if (asking) CircularProgressIndicator(Modifier.size(32.dp))
-                                    else Icon(Icons.Rounded.AutoAwesome, null, Modifier.size(32.dp))
+                                    else MotionVectorIcon(Icons.Rounded.AutoAwesome, null, Modifier.size(32.dp))
                                     Column(Modifier.weight(1f)) {
                                         Text(stringResource(R.string.ask_zoen), style = MaterialTheme.typography.titleMedium)
                                         Text(query, maxLines = 2, overflow = TextOverflow.Ellipsis)
                                     }
-                                    Icon(Icons.Rounded.ChevronRight, null)
+                                    MotionVectorIcon(Icons.Rounded.ChevronRight, null)
                                 }
                             }
                         }
@@ -385,7 +385,7 @@ private fun SearchHitRow(hit: UniversalHit, state: AppState, onClick: () -> Unit
                     style = MaterialTheme.typography.bodyMedium)
                 hit.spaceTitle?.takeIf { hit.kind != "space" }?.let { context ->
                     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                        Icon(Icons.Rounded.Groups, null, Modifier.size(14.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                        MotionVectorIcon(Icons.Rounded.Groups, null, Modifier.size(14.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
                         Text(context, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                 }
@@ -406,7 +406,7 @@ private fun SearchCatalogRow(spec: AppSpecDto, state: AppState, onClick: () -> U
                 Text(spec.description, maxLines = 3, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant)
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                    Icon(Icons.Rounded.Storefront, null, Modifier.size(14.dp), tint = MaterialTheme.colorScheme.primary)
+                    MotionVectorIcon(Icons.Rounded.Storefront, null, Modifier.size(14.dp), tint = MaterialTheme.colorScheme.primary)
                     Text(stringResource(if (installed) R.string.search_catalog_installed else R.string.search_catalog_available),
                         style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
                 }

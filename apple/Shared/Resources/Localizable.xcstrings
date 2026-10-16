@@ -4436,6 +4436,16 @@
         }
       }
     },
+    "Search chats": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Buscar conversas"
+          }
+        }
+      }
+    },
     "Search communities": {
       "localizations": {
         "pt-BR": {

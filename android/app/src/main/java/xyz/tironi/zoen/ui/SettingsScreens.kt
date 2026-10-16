@@ -127,7 +127,7 @@ fun AgentScreen(model: ZoenViewModel, state: AppState, id: String, back: () -> U
             } else item { Text(stringResource(R.string.agent_owned, profile.persona.ownerName.orEmpty())) }
             item { SectionLabel(stringResource(R.string.trust)) }
             items(profile.spaces, key = { it.spaceId }) { space ->
-                SettingsRow(Icons.Rounded.Tune, space.spaceTitle, stringResource(trustLabel(space.level)), onClick = { previewSpace = space.spaceId; if (profile.persona.isMine) trustSpace = space }, trailing = { if (profile.persona.isMine) Icon(Icons.Rounded.Edit, stringResource(R.string.edit)) else Icon(Icons.Rounded.Lock, stringResource(R.string.read_only)) })
+                SettingsRow(Icons.Rounded.Tune, space.spaceTitle, stringResource(trustLabel(space.level)), onClick = { previewSpace = space.spaceId; if (profile.persona.isMine) trustSpace = space }, trailing = { if (profile.persona.isMine) MotionVectorIcon(Icons.Rounded.Edit, stringResource(R.string.edit)) else MotionVectorIcon(Icons.Rounded.Lock, stringResource(R.string.read_only)) })
                 if (navigate != null) TextButton(onClick = { navigate(AgentPermissions(id, space.spaceId)) }) { Text(stringResource(R.string.permissions) + " · " + space.spaceTitle) }
             }
             if (previews.isNotEmpty()) item { SectionLabel(stringResource(R.string.agent_decision_preview)) }
@@ -377,10 +377,10 @@ fun ParticipantsScreen(model: ZoenViewModel, state: AppState, id: String, naviga
     var inviting by remember { mutableStateOf(false) }
     var invite by remember { mutableStateOf<InviteDto?>(null) }
     Scaffold(topBar = { ScreenBar(stringResource(R.string.participants), back, actions = {
-        if (synced && space.kind == SpaceKindDto.GROUP) IconButton(onClick = {
+        if (synced && space.kind == SpaceKindDto.GROUP) NativeIconButton(onClick = {
             inviting = true
             model.launch { try { invite = model.repository.network { it.createInvite(id) } } finally { inviting = false } }
-        }, enabled = !inviting) { Icon(Icons.Rounded.PersonAdd, stringResource(R.string.invite)) }
+        }, enabled = !inviting) { MotionVectorIcon(Icons.Rounded.PersonAdd, stringResource(R.string.invite)) }
     }) }) { padding ->
         LazyColumn(Modifier.padding(padding), contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             item { SpaceAvatar(space, size = 96); Text(space.title, style = MaterialTheme.typography.headlineMedium) }
@@ -393,7 +393,7 @@ fun ParticipantsScreen(model: ZoenViewModel, state: AppState, id: String, naviga
                     else -> "@${person.handle}"
                 }) }, leadingContent = { Avatar(person, size = 44, onClick = { navigate(Person(person.id)) }) }, trailingContent = {
                     if (canManage && !person.isMe && roles[person.id] != "owner") Box {
-                        IconButton(onClick = { menu = person.id }) { Icon(Icons.Rounded.MoreVert, stringResource(R.string.more)) }
+                        NativeIconButton(onClick = { menu = person.id }) { MotionVectorIcon(Icons.Rounded.MoreVert, stringResource(R.string.more)) }
                         DropdownMenu(menu == person.id, onDismissRequest = { menu = null }) {
                             if (roles[person.id] != "admin") DropdownMenuItem(text = { Text(stringResource(R.string.agent_group_admin)) }, onClick = { menu = null; confirming = ParticipantAction("admin", person) })
                             DropdownMenuItem(text = { Text(stringResource(R.string.agent_group_remove)) }, onClick = { menu = null; confirming = ParticipantAction("remove", person) })

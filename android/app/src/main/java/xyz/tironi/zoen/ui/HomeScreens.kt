@@ -50,7 +50,7 @@ internal fun HomeBar(title: String, state: AppState, navigate: (NavKey) -> Unit,
     TopAppBar(title = {
         Text(title, maxLines = 1, overflow = TextOverflow.Ellipsis)
     }, navigationIcon = {
-        if (onBack != null) NativeIconButton(onClick = onBack) { MotionVectorIcon(Icons.AutoMirrored.Rounded.ArrowBack, stringResource(R.string.back)) }
+        NativeIconButton(onClick = onBack) { MotionVectorIcon(Icons.AutoMirrored.Rounded.ArrowBack, stringResource(R.string.back)) }
     }, actions = {
         if (state.account != null && state.connection.state == "offline") {
             NativeIconButton(onClick = { navigate(SettingsRoute("Devices")) }, modifier = Modifier.testTag("connection-status")) {

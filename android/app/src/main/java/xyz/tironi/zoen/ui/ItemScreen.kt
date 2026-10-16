@@ -77,13 +77,13 @@ fun ItemScreen(model: ZoenViewModel, state: AppState, id: String, navigate: (Nav
     Scaffold(topBar = {
         ScreenBar(item.title, back, actions = {
             if (item.app != null) MiniAppDetailsButton(model, state, item)
-            IconButton(enabled = historyAvailable, onClick = { focus.clearFocus(force = true); model.launch {
+            NativeIconButton(enabled = historyAvailable, onClick = { focus.clearFocus(force = true); model.launch {
                 try { model.pageSaves.flush(id) } catch (error: Exception) {
                     model.notify(if (error is CoreException.Stale) draftRecovery else error.message.orEmpty())
                 }
                 versions = true
-            } }, modifier = Modifier.testTag("item-history")) { Icon(Icons.Rounded.History, stringResource(R.string.versions)) }
-            IconButton(onClick = {
+            } }, modifier = Modifier.testTag("item-history")) { MotionVectorIcon(Icons.Rounded.History, stringResource(R.string.versions)) }
+            NativeIconButton(onClick = {
                 model.launch {
                     model.pageSaves.flush(id)
                     when {
@@ -96,7 +96,7 @@ fun ItemScreen(model: ZoenViewModel, state: AppState, id: String, navigate: (Nav
                         else -> FileAccess.shareText(context, itemText(item, model.repository.locale))
                     }
                 }
-            }, modifier = Modifier.testTag("item-share")) { Icon(Icons.Rounded.Share, stringResource(R.string.share)) }
+            }, modifier = Modifier.testTag("item-share")) { MotionVectorIcon(Icons.Rounded.Share, stringResource(R.string.share)) }
         })
     }) { padding ->
         when {
@@ -110,7 +110,7 @@ fun ItemScreen(model: ZoenViewModel, state: AppState, id: String, navigate: (Nav
                         Icon(appIcon(item.kindId), null, Modifier.size(32.dp), tint = MaterialTheme.colorScheme.primary)
                         Text(item.title, style = MaterialTheme.typography.displaySmall)
                         Text(item.text.orEmpty(), color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        AssistChip(onClick = { navigate(Chat(item.spaceId)) }, label = { Text(item.spaceTitle) }, leadingIcon = { Icon(Icons.Rounded.Forum, null, Modifier.size(16.dp)) })
+                        AssistChip(onClick = { navigate(Chat(item.spaceId)) }, label = { Text(item.spaceTitle) }, leadingIcon = { MotionVectorIcon(Icons.Rounded.Forum, null, Modifier.size(16.dp)) })
                     }
                 }
                 item {
@@ -143,7 +143,7 @@ fun ItemScreen(model: ZoenViewModel, state: AppState, id: String, navigate: (Nav
                 }, leadingContent = { Icon(if (version.isUndo) Icons.Rounded.Undo else Icons.Rounded.History, null) }, trailingContent = {
                     if (version.number != item.version) TextButton(onClick = { restore = version.number }, enabled = restoreAllowed,
                         modifier = Modifier.testTag("restore-version:${version.number}")) { Text(stringResource(R.string.restore)) }
-                    else Icon(Icons.Rounded.Check, stringResource(R.string.saved))
+                    else MotionVectorIcon(Icons.Rounded.Check, stringResource(R.string.saved))
                 })
             }
         }
