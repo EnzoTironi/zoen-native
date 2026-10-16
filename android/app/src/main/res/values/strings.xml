@@ -198,6 +198,7 @@
   <string name="bio">A little about you</string>
   <string name="online">Online</string>
   <string name="offline">Offline. Changes stay in your outbox.</string>
+  <string name="offline_short">Offline</string>
   <string name="connecting">Connecting…</string>
   <string name="key_missing">This device\'s key is unavailable. Your account needs its original keys to sign.</string>
   <string name="notification_settings">Notification settings</string>

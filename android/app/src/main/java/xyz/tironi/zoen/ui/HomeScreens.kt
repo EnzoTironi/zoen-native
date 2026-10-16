@@ -44,7 +44,7 @@ private fun HomeBar(title: String, state: AppState, navigate: (NavKey) -> Unit, 
     TopAppBar(title = {
         if (onActivity != null) Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
             ZoenMascot(Modifier.size(32.dp), headOnly = true, mood = MascotMood.Smirk)
-            Text("zoen", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.ExtraBold)
+            Text("zoen", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.ExtraBold, maxLines = 1, softWrap = false)
         } else Text(title, maxLines = 1, overflow = TextOverflow.Ellipsis)
     }, navigationIcon = {
         if (onBack != null) IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Rounded.ArrowBack, stringResource(R.string.back)) }
@@ -52,7 +52,7 @@ private fun HomeBar(title: String, state: AppState, navigate: (NavKey) -> Unit, 
         val configuration = androidx.compose.ui.platform.LocalConfiguration.current
         if (onActivity != null && !state.connection.synced && configuration.fontScale <= 1.3f && configuration.screenWidthDp >= 380) {
             AssistChip(onClick = { navigate(SettingsRoute("Devices")) }, label = {
-                Text(stringResource(if (state.connection.state == "connecting") R.string.connecting else R.string.offline), style = MaterialTheme.typography.labelSmall)
+                Text(stringResource(if (state.connection.state == "connecting") R.string.connecting else R.string.offline_short), style = MaterialTheme.typography.labelSmall, maxLines = 1)
             }, modifier = Modifier.height(32.dp).testTag("connection-status"))
         }
         if (onActivity != null) IconButton(onClick = { navigate(NewChat) }, modifier = Modifier.testTag("newChat")) {
