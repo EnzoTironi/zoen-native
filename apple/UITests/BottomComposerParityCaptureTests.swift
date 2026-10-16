@@ -18,7 +18,7 @@ final class BottomComposerParityCaptureTests: XCTestCase {
         XCUIDevice.shared.orientation = .portrait
         let appearance = dark ? "dark" : "light"
         var appliedFixture: String?
-        for frame in ["chats", "composer-empty", "attachment-menu", "composer-text"] {
+        for frame in ["chats", "new-message", "composer-empty", "attachment-menu", "composer-text"] {
             let app = XCUIApplication()
             app.launchEnvironment["ZOEN_PARITY_FIXTURE"] = fixture
             app.launchEnvironment["ZOEN_PARITY_REVISION"] = revision
@@ -35,8 +35,24 @@ final class BottomComposerParityCaptureTests: XCTestCase {
             XCTAssertEqual(metadata["fixture_id"] as? String, fixture)
             XCTAssertEqual(metadata["source_revision"] as? String, revision)
             XCTAssertEqual(metadata["fixed_time"] as? String, "2026-01-15T12:00:00Z")
-            XCTAssertTrue(app.buttons["newChat"].waitForExistence(timeout: 30))
-            if frame != "chats" {
+            let newMessage = app.buttons["New message"].firstMatch
+            XCTAssertTrue(newMessage.waitForExistence(timeout: 30))
+            let geometry = app.descendants(matching: .any)["parity-window-geometry"].firstMatch
+            XCTAssertTrue(geometry.waitForExistence(timeout: 10))
+            var measured: [String: Any] = ["window": try JSONSerialization.jsonObject(with: Data(geometry.label.utf8))]
+            measured["buttons"] = app.buttons.allElementsBoundByIndex.filter { $0.exists }.map { button in
+                ["label": button.label, "identifier": button.identifier,
+                 "frame": ["x": button.frame.minX, "y": button.frame.minY,
+                           "width": button.frame.width, "height": button.frame.height]] as [String: Any]
+            }
+            let geometryAttachment = XCTAttachment(data: try JSONSerialization.data(withJSONObject: measured, options: [.sortedKeys]), uniformTypeIdentifier: "public.json")
+            geometryAttachment.name = "bottom-geometry-\(frame)-\(appearance).json"
+            geometryAttachment.lifetime = .keepAlways
+            add(geometryAttachment)
+            if frame == "new-message" {
+                newMessage.tap()
+                XCTAssertTrue(app.navigationBars["New chat"].waitForExistence(timeout: 10), "The native prominent action must present the real recipient picker")
+            } else if frame != "chats" {
                 let marina = app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "Marina")).firstMatch
                 XCTAssertTrue(marina.waitForExistence(timeout: 20))
                 marina.tap()
