@@ -17,6 +17,11 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.unit.sp
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
@@ -40,14 +45,16 @@ import androidx.compose.ui.window.DialogProperties
 @Composable
 @OptIn(ExperimentalMaterial3Api::class)
 internal fun HomeBar(title: String, state: AppState, navigate: (NavKey) -> Unit, onBack: (() -> Unit)? = null) {
+    // Root destinations are entirely bottom navigated, just like the iPhone shell.
+    if (onBack == null) return
     TopAppBar(title = {
         Text(title, maxLines = 1, overflow = TextOverflow.Ellipsis)
     }, navigationIcon = {
-        if (onBack != null) IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Rounded.ArrowBack, stringResource(R.string.back)) }
+        if (onBack != null) NativeIconButton(onClick = onBack) { MotionVectorIcon(Icons.AutoMirrored.Rounded.ArrowBack, stringResource(R.string.back)) }
     }, actions = {
         if (state.account != null && state.connection.state == "offline") {
-            IconButton(onClick = { navigate(SettingsRoute("Devices")) }, modifier = Modifier.testTag("connection-status")) {
-                Icon(Icons.Rounded.Circle, stringResource(if (state.connection.state == "connecting") R.string.connecting else R.string.offline_short), Modifier.size(8.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
+            NativeIconButton(onClick = { navigate(SettingsRoute("Devices")) }, modifier = Modifier.testTag("connection-status")) {
+                MotionVectorIcon(Icons.Rounded.Circle, stringResource(if (state.connection.state == "connecting") R.string.connecting else R.string.offline_short), Modifier.size(8.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         }
     }, colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.background))
@@ -65,8 +72,9 @@ fun ConversationsScreen(model: ZoenViewModel, state: AppState, navigate: (NavKey
     fun prefs(chat: SpaceSummary, pinned: Boolean = chat.pinned, archived: Boolean = chat.archived, mutedUntil: Long? = chat.mutedUntilMs) =
         model.launch { model.repository.change { it.setChatPrefs(chat.id, pinned, archived, mutedUntil) } }
     var showArchived by rememberSaveable { mutableStateOf(false) }
-    androidx.activity.compose.BackHandler(showArchived || searching) {
-        if (searching) { searching = false; query = "" } else showArchived = false
+    val focusManager = LocalFocusManager.current
+    androidx.activity.compose.BackHandler(showArchived || searching || query.isNotEmpty()) {
+        if (searching || query.isNotEmpty()) { focusManager.clearFocus(); searching = false; query = "" } else showArchived = false
     }
     val haptics = rememberZoenHaptics()
     val working by model.working.collectAsStateWithLifecycle()
@@ -77,30 +85,30 @@ fun ConversationsScreen(model: ZoenViewModel, state: AppState, navigate: (NavKey
     val list: @Composable () -> Unit = {
         Scaffold(topBar = { HomeBar(stringResource(R.string.chats), state, navigate) }, containerColor = MaterialTheme.colorScheme.background, contentWindowInsets = WindowInsets(0, 0, 0, 0)) { padding ->
             // Bottom: clear the floating tab bar so the last chat is never under it.
-            LazyColumn(Modifier.fillMaxSize().padding(padding).testTag("conversation-list"), contentPadding = PaddingValues(bottom = 112.dp)) {
+            Column(Modifier.fillMaxSize().padding(padding)) {
+                ChatInboxSearchBar(query, { query = it }, searching, { searching = it }, filter) {
+                    filter = it; haptics.perform(ZoenFeedback.Selection)
+                }
+            LazyColumn(Modifier.weight(1f).testTag("conversation-list"), contentPadding = PaddingValues(bottom = 112.dp)) {
                 if (showArchived) item {
                     Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-                        IconButton(onClick = { showArchived = false }) { Icon(Icons.AutoMirrored.Rounded.ArrowBack, stringResource(R.string.back)) }
+                        NativeIconButton(onClick = { showArchived = false }) { MotionVectorIcon(Icons.AutoMirrored.Rounded.ArrowBack, stringResource(R.string.back)) }
                         Text(stringResource(R.string.archived), style = MaterialTheme.typography.titleLarge)
                     }
-                }
-                if (searching || query.isNotBlank()) item {
-                    OutlinedTextField(query, { query = it }, Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 8.dp), singleLine = true, placeholder = { Text(stringResource(R.string.search)) }, leadingIcon = { Icon(Icons.Rounded.Search, null) }, shape = androidx.compose.foundation.shape.RoundedCornerShape(24.dp))
                 }
                 val apps = state.items.filter { item ->
                     item.app?.let { !JSONObject(it.viewJson).optBoolean("released") } == true && WidgetSnapshot.from(item) != null
                 }.asReversed()
-                if (apps.isNotEmpty() && !showArchived) {
+                if (apps.isNotEmpty() && !showArchived && !searching && query.isEmpty()) {
                     item {
                         MiniAppTileStrip(model, state, apps, onOpenItem = { navigate(Item(it)) })
                     }
                 }
-                if (!showArchived) item { ChatFilterMenu(filter) { filter = it; haptics.perform(ZoenFeedback.Selection) } }
                 // WhatsApp: "Archived" above the chats while there are any.
                 if (!showArchived && archivedChats.isNotEmpty() && query.isBlank()) item(key = "archived") {
                     Row(Modifier.fillMaxWidth().testTag("archived-chats").clickable { haptics.perform(ZoenFeedback.Tap); showArchived = true }.padding(horizontal = 20.dp, vertical = 10.dp),
                         verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp)) {
-                        Box(Modifier.width(56.dp), contentAlignment = Alignment.Center) { Icon(Icons.Rounded.Archive, null, tint = MaterialTheme.colorScheme.onSurfaceVariant) }
+                        Box(Modifier.width(56.dp), contentAlignment = Alignment.Center) { MotionVectorIcon(Icons.Rounded.Archive, null, tint = MaterialTheme.colorScheme.onSurfaceVariant) }
                         Text(stringResource(R.string.archived), Modifier.weight(1f), style = MaterialTheme.typography.titleMedium)
                         val unreadArchived = archivedChats.count { it.unread > 0u }
                         Text(if (unreadArchived > 0) "$unreadArchived" else "${archivedChats.size}", style = MaterialTheme.typography.labelMedium,
@@ -131,6 +139,7 @@ fun ConversationsScreen(model: ZoenViewModel, state: AppState, navigate: (NavKey
             }
         }
     }
+    }
     if (split) Row {
         Box(Modifier.width(340.dp).fillMaxHeight()) { list() }
         VerticalDivider()
@@ -140,6 +149,31 @@ fun ConversationsScreen(model: ZoenViewModel, state: AppState, navigate: (NavKey
             else Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { EmptyState(stringResource(R.string.chat_select_title), stringResource(R.string.chat_select_detail)) }
         }
     } else list()
+}
+
+@Composable
+internal fun ChatInboxSearchBar(
+    query: String, onQuery: (String) -> Unit, focused: Boolean, onFocus: (Boolean) -> Unit,
+    filter: ChatInboxFilter, selectFilter: (ChatInboxFilter) -> Unit,
+) {
+    Surface(Modifier.fillMaxWidth().padding(start = 20.dp, end = 20.dp, top = 8.dp, bottom = 12.dp),
+        shape = CircleShape, color = MaterialTheme.colorScheme.surfaceContainer) {
+        Row(Modifier.heightIn(min = 52.dp).padding(start = 16.dp, end = 12.dp),
+            verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            MotionVectorIcon(Icons.Rounded.Search, null, Modifier.size(17.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
+            BasicTextField(query, onQuery, Modifier.weight(1f).heightIn(min = 48.dp).onFocusChanged { onFocus(it.isFocused) }.testTag("chat-search"),
+                singleLine = true, textStyle = MaterialTheme.typography.bodyLarge.copy(fontSize = 16.sp, color = MaterialTheme.colorScheme.onSurface),
+                cursorBrush = androidx.compose.ui.graphics.SolidColor(MaterialTheme.colorScheme.primary),
+                decorationBox = { input ->
+                    Box(contentAlignment = Alignment.CenterStart) { if (query.isEmpty()) Text(stringResource(R.string.chat_search_hint), fontSize = 16.sp, color = MaterialTheme.colorScheme.onSurfaceVariant); input() }
+                })
+            if (query.isNotEmpty()) NativeIconButton(onClick = { onQuery("") }, modifier = Modifier.size(32.dp).testTag("chat-search-clear")) {
+                MotionVectorIcon(Icons.Rounded.Cancel, stringResource(R.string.chat_search_clear), Modifier.size(17.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+            VerticalDivider(Modifier.height(22.dp), thickness = 0.5.dp)
+            ChatFilterMenu(filter, compact = focused || query.isNotEmpty(), select = selectFilter)
+        }
+    }
 }
 
 @OptIn(ExperimentalFoundationApi::class)
@@ -165,16 +199,16 @@ private fun ConversationRow(chat: SpaceSummary, pinned: Boolean, working: String
                 Text(DateFormat.getTimeInstance(DateFormat.SHORT).format(Date(chat.lastAtMs)), style = MaterialTheme.typography.labelSmall,
                     color = if (chat.unread > 0u && !muted) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant)
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    if (muted) Icon(Icons.Rounded.NotificationsOff, stringResource(R.string.muted), Modifier.size(16.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
-                    if (pinned) Icon(Icons.Rounded.PushPin, stringResource(R.string.pinned), Modifier.size(16.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                    if (muted) MotionVectorIcon(Icons.Rounded.NotificationsOff, stringResource(R.string.muted), Modifier.size(16.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                    if (pinned) MotionVectorIcon(Icons.Rounded.PushPin, stringResource(R.string.pinned), Modifier.size(16.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
                     // Muted unread goes grey (WhatsApp); unmuted is the accent.
                     if (chat.unread > 0u) Badge(containerColor = if (muted) MaterialTheme.colorScheme.outline else MaterialTheme.colorScheme.primary, contentColor = MaterialTheme.colorScheme.onPrimary) { Text(chat.unread.toString()) }
                 }
             }
         }
         DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
-            DropdownMenuItem(text = { Text(stringResource(if (pinned) R.string.unpin else R.string.pin)) }, leadingIcon = { Icon(Icons.Rounded.PushPin, null) }, onClick = { menu = false; onPin() })
-            DropdownMenuItem(text = { Text(stringResource(R.string.chat_mark_read)) }, leadingIcon = { Icon(Icons.Rounded.DoneAll, null) }, onClick = { menu = false; onRead() })
+            DropdownMenuItem(text = { Text(stringResource(if (pinned) R.string.unpin else R.string.pin)) }, leadingIcon = { MotionVectorIcon(Icons.Rounded.PushPin, null) }, onClick = { menu = false; onPin() })
+            DropdownMenuItem(text = { Text(stringResource(R.string.chat_mark_read)) }, leadingIcon = { MotionVectorIcon(Icons.Rounded.DoneAll, null) }, onClick = { menu = false; onRead() })
             DropdownMenuItem(text = { Text(stringResource(if (muted) R.string.unmute else R.string.mute)) }, leadingIcon = { Icon(if (muted) Icons.Rounded.Notifications else Icons.Rounded.NotificationsOff, null) }, onClick = { menu = false; onMute() })
             DropdownMenuItem(text = { Text(stringResource(if (archived) R.string.unarchive else R.string.archive)) }, leadingIcon = { Icon(if (archived) Icons.Rounded.Unarchive else Icons.Rounded.Archive, null) }, onClick = { menu = false; onArchive() })
         }
@@ -238,7 +272,7 @@ private fun ActivityList(model: ZoenViewModel, state: AppState, navigate: (NavKe
                 }
                 2 -> {
                     if (tasks.isEmpty()) item { EmptyState(stringResource(R.string.activity_no_tasks), "") }
-                    items(tasks, key = { it.id }) { task -> Card(onClick = { navigate(Item(task.id)) }) { ListItem(headlineContent = { Text(task.title) }, supportingContent = { Text(task.spaceTitle) }, leadingContent = { Icon(Icons.Rounded.Checklist, null) }) } }
+                    items(tasks, key = { it.id }) { task -> Card(onClick = { navigate(Item(task.id)) }) { ListItem(headlineContent = { Text(task.title) }, supportingContent = { Text(task.spaceTitle) }, leadingContent = { MotionVectorIcon(Icons.Rounded.Checklist, null) }) } }
                 }
                 else -> {
             items(state.agents.filter { it.nearLimit }, key = { "budget:${it.persona.id}" }) { agent ->

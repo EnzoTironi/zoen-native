@@ -24,17 +24,18 @@ internal enum class ChatInboxFilter(val title: Int) {
 }
 
 @Composable
-internal fun ChatFilterMenu(filter: ChatInboxFilter, select: (ChatInboxFilter) -> Unit) {
+internal fun ChatFilterMenu(filter: ChatInboxFilter, compact: Boolean = false, select: (ChatInboxFilter) -> Unit) {
     var open by remember { mutableStateOf(false) }
     val title = stringResource(filter.title)
-    Box(Modifier.padding(horizontal = 12.dp)) {
-        TextButton({ open = true }, Modifier.heightIn(min = 48.dp).testTag("chat-filter").semantics { stateDescription = title }) {
-            Icon(Icons.Rounded.FilterList, stringResource(R.string.chat_filter)); Spacer(Modifier.width(6.dp)); Text(title)
+    Box {
+        TextButton({ open = true }, Modifier.heightIn(min = 48.dp).testTag("chat-filter").semantics { stateDescription = title }, contentPadding = PaddingValues(horizontal = 8.dp)) {
+            MotionVectorIcon(Icons.Rounded.FilterList, stringResource(R.string.chat_filter), Modifier.size(17.dp))
+            if (!compact) { Spacer(Modifier.width(6.dp)); Text(title, maxLines = 1) }
         }
         DropdownMenu(open, { open = false }) {
             ChatInboxFilter.entries.forEach { candidate ->
                 DropdownMenuItem(text = { Text(stringResource(candidate.title)) }, onClick = { open = false; if (candidate != filter) select(candidate) },
-                    leadingIcon = { if (candidate == filter) Icon(Icons.Rounded.Check, null) }, modifier = Modifier.testTag("chat-filter-${candidate.name.lowercase()}").semantics { stateDescription = if (candidate == filter) title else "" })
+                    leadingIcon = { if (candidate == filter) MotionVectorIcon(Icons.Rounded.Check, null) }, modifier = Modifier.testTag("chat-filter-${candidate.name.lowercase()}").semantics { stateDescription = if (candidate == filter) title else "" })
             }
         }
     }
