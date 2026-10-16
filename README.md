@@ -19,7 +19,7 @@
 
 <br/>
 
-<img src="docs/screens/mac.jpg" width="880" alt="Zoen on the Mac: a chat with a pinned plan opened as a live page" />
+<img src="docs/screens/iphone/chats-light.webp" width="200" alt="Chats on iPhone: every conversation in one list, with plans pinned on top" /> <img src="docs/screens/iphone/chat-light.webp" width="200" alt="A group chat with a hike countdown pinned on top" /> <img src="docs/screens/iphone/space-dark.webp" width="200" alt="A community, in dark mode" /> <img src="docs/screens/iphone/composer-dark.webp" width="200" alt="Writing a message, in dark mode" />
 
 </div>
 
@@ -43,10 +43,8 @@ The first release is built around one end-to-end journey. Bruno, a barber, descr
 
 <table>
   <tr>
-    <td align="center"><img src="docs/screenshots/agenda-followups/agenda-client.png" width="190" alt="Client picks a slot in the Agenda mini-app" /><br/><sub>Client picks a slot</sub></td>
-    <td align="center"><img src="docs/screenshots/agenda-followups/agenda-staff.png" width="190" alt="Owner confirms requests in the Agenda mini-app" /><br/><sub>Owner confirms requests</sub></td>
-    <td align="center"><img src="docs/screenshots/owner-notes/ios-owner-notes-light.png" width="190" alt="Owner notes on iPhone: the agent asks for approval" /><br/><sub>“Your agent needs you” — iOS</sub></td>
-    <td align="center"><img src="docs/screenshots/owner-notes/android-35-owner-notes-pt.png" width="190" alt="The same owner notes on Android" /><br/><sub>The same cards on Android</sub></td>
+    <td align="center"><img src="docs/screenshots/owner-notes/ios-owner-notes-light.png" width="240" alt="Owner notes on iPhone: the agent asks for approval" /><br/><sub>“Your agent needs you”</sub></td>
+    <td align="center"><img src="docs/screenshots/owner-notes/ios-owner-notes-dark.png" width="240" alt="The same owner notes in dark mode" /><br/><sub>The same cards in dark mode</sub></td>
   </tr>
 </table>
 

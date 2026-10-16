@@ -54,12 +54,11 @@ sequenceDiagram
 | 10. Payments | Charging clients, Pix, credit ledger. | **Planned** |
 
 <p>
-  <img src="../screenshots/agenda-followups/agenda-client.png" alt="Client view of Agenda" width="240" />
-  <img src="../screenshots/agenda-followups/agenda-staff.png" alt="Owner view of Agenda with pending requests" width="240" />
   <img src="../screenshots/owner-notes/ios-owner-notes-light.png" alt="Your agent needs you approval card" width="240" />
+  <img src="../screenshots/owner-notes/ios-owner-notes-dark.png" alt="The same approval cards in dark mode" width="240" />
 </p>
 
-*Client view, owner view with pending requests, and the approval cards on iOS — screenshots from the repository's journey evidence.*
+*The approval cards on iPhone, light and dark — screenshots from the repository's journey evidence.*
 
 ### Everything else in the first release
 

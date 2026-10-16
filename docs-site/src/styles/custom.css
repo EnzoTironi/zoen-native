@@ -158,10 +158,13 @@ body { background: transparent; }
 
 /* Mascot: logo in the header and hero art on the home page. */
 .site-title img { height: 2.4rem; width: auto; filter: drop-shadow(0 1px 1px rgb(0 0 0 / 0.25)); }
-.zoen-hero-art { position: relative; }
+.zoen-hero-art { position: relative; display: flex; justify-content: center; }
+.zoen-hero-art .zoen-hero-phone { width: min(300px, 70vw); height: auto; filter: drop-shadow(0 30px 40px rgb(0 0 0 / 0.35)); }
+.zoen-phones { grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); }
+.zoen-phones img { border: 0 !important; box-shadow: none !important; background: none !important; }
 .zoen-hero-art .zoen-hero-mascot {
   position: absolute; z-index: 1; width: clamp(96px, 13vw, 168px); height: auto;
-  left: -6%; top: -18%; filter: drop-shadow(0 12px 18px rgb(0 0 0 / 0.3));
+  left: calc(50% - min(150px, 35vw) - 70px); top: -6%; filter: drop-shadow(0 12px 18px rgb(0 0 0 / 0.3));
 }
 
 @media (prefers-reduced-motion: reduce) {

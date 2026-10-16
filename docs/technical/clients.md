@@ -40,7 +40,7 @@ scripts/build-core.sh     # rebuild the XCFramework and Swift bindings after any
 
 More: [watch mode](../../scripts/watch.sh) rebuilds and relaunches on every change; [installing on an iPhone](../dev/instalar-no-iphone.md) (`scripts/device.sh`); [the iPhone app on a Mac](../dev/iphone-no-mac.md) (`scripts/mac-iphone.sh`).
 
-![Zoen on the Mac: a chat with a pinned Plan opened as a Live Page](../screens/mac.jpg)
+<img src="../screens/iphone/chat-light.webp" width="260" alt="Zoen on iPhone: a group chat with a hike countdown pinned on top" /> <img src="../screens/iphone/chat-dark.webp" width="260" alt="The same chat in dark mode" />
 
 ## Android
 
@@ -64,8 +64,6 @@ scripts/run-android.sh -PandroidAbis=arm64-v8a   # build, install, launch on a c
 ```
 
 Or from `android/`: `./gradlew :app:assembleDebug`, `./gradlew :app:testDebugUnitTest :app:lintDebug`, `./gradlew :app:connectedDebugAndroidTest`. Debug builds have an explicit **Explore the demo** entry with clearly labelled simulated peers. Full details: [android/README.md](../../android/README.md), [parity record](../dev/android-parity.md).
-
-![Android chat, before and after the layer-1 UI pass](../screenshots/layer1-ui/compare-android-chat.png)
 
 ## Web
 
