@@ -385,10 +385,9 @@ impl Bus for NatsBus {
     }
 
     async fn online_elsewhere(&self, ids: &[String]) -> Vec<String> {
-        let asks = ids.iter().map(|id| {
+        let asks = ids.iter().cloned().map(|id: String| {
             let client = self.client.clone();
-            let subject = subject_for(&self.prefix, id);
-            let id = id.clone();
+            let subject = subject_for(&self.prefix, &id);
             async move {
                 let mut h = HeaderMap::new();
                 h.insert(KIND, PING);
