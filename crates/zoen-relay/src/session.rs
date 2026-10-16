@@ -1064,6 +1064,10 @@ impl Session {
                 Ok(Reply::Invite(invite))
             }
             Op::PublishAgreementKey { public, signed } => {
+                // The request admission check authorizes only this session's device.
+                if signed.device != self.device {
+                    return Err("agreement key is for another device".into());
+                }
                 if !roda_log::profile::verify_agreement(&self.identity, &public, &signed) {
                     return Err("agreement key isn't signed by this identity".into());
                 }
@@ -1083,6 +1087,9 @@ impl Session {
             Op::PutProfile { profile } => {
                 if profile.identity != self.identity {
                     return Err("profile is for another identity".into());
+                }
+                if profile.signed.device != self.device {
+                    return Err("profile is for another device".into());
                 }
                 if profile.ciphertext.len() > roda_log::profile::MAX_CIPHERTEXT {
                     return Err("profile too large".into());

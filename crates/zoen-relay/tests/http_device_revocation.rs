@@ -307,7 +307,7 @@ async fn revoked_device_cannot_upload_or_delete_or_report_with_valid_signatures(
             ("blob PUT", blob, StatusCode::CREATED),
             ("transfer PUT", chunk, StatusCode::CREATED),
             ("report POST", report, StatusCode::OK),
-            ("transfer DELETE", delete, StatusCode::OK),
+            ("transfer DELETE", delete, StatusCode::NO_CONTENT),
         ] {
             assert_eq!(
                 response.status(),
