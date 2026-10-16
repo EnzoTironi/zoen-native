@@ -35,8 +35,11 @@ internal object AppleChromeMetrics {
  * OS navigation insets remain intact: no screenshot crop participates in layout. */
 @Composable
 internal fun AppleBottomBar(tab: Tab, unread: Int, pending: Int, me: Persona?, select: (Tab) -> Unit, newMessage: () -> Unit) {
-    Row(Modifier.fillMaxWidth().navigationBarsPadding().padding(start = 20.dp, end = 20.dp, bottom = 2.dp).testTag("bottom-bar"),
-        horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+    // Native f30d5149: 402×812 app content after the status-only crop. The
+    // detached action is (319,729,62,62), leaving 21pt of app content below it.
+    // Android's real OS navigation inset is additional, not a crop of this gap.
+    Row(Modifier.fillMaxWidth().navigationBarsPadding().padding(start = 20.dp, end = 21.dp, bottom = 21.dp).testTag("bottom-bar"),
+        horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.Top) {
         Row(Modifier.weight(1f).height(61.dp).zoenGlass(RoundedCornerShape(31.dp)).padding(4.dp)) {
             Tab.main.forEach { target ->
                 val on = tab == target
@@ -51,7 +54,7 @@ internal fun AppleBottomBar(tab: Tab, unread: Int, pending: Int, me: Persona?, s
                 }
             }
         }
-        IconButton(newMessage, Modifier.size(63.dp).zoenGlass(CircleShape).testTag("newChat")) {
+        IconButton(newMessage, Modifier.size(62.dp).zoenGlass(CircleShape).testTag("newChat")) {
             Icon(Icons.Rounded.Edit, "New message", Modifier.size(26.dp))
         }
     }
