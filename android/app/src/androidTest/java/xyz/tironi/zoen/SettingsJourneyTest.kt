@@ -76,6 +76,7 @@ class SettingsJourneyTest {
         val stack = open()
         compose.onNodeWithTag("settings:Preferences").performClick()
         compose.onNodeWithTag("settings:Theme").performClick()
+        compose.onNodeWithTag("theme:auto").performClick().assertIsSelected()
         compose.onNodeWithTag("theme:dark").assertIsNotSelected().performClick()
         compose.onNodeWithTag("theme:dark").assertIsSelected()
         assertEquals("dark", AppAppearance.mode)
