@@ -64,6 +64,9 @@ class BottomComposerParityCaptureTest {
                 }
                 save("chats")
                 val chat = app.repository.state.value.spaces.first { it.counterpart?.handle == "marina" }.id
+                val draftKey = app.repository.localKey("draft", chat, app.repository.state.value.me?.id.orEmpty())
+                check(app.repository.preferences.edit().remove(draftKey).commit())
+                check(app.repository.preferences.getString(draftKey, "").isNullOrEmpty())
                 scenario.onActivity { activity -> activity.startActivity(Intent(activity, MainActivity::class.java)
                     .setAction(Intent.ACTION_VIEW).setData(Uri.parse("zoen://chat/$chat"))
                     .addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP)) }
@@ -84,7 +87,9 @@ class BottomComposerParityCaptureTest {
                     val manager = activity.getSystemService(android.content.Context.INPUT_METHOD_SERVICE) as android.view.inputmethod.InputMethodManager
                     manager.showSoftInput(activity.currentFocus, android.view.inputmethod.InputMethodManager.SHOW_IMPLICIT)
                 }
-                await { imeVisible() && editable(instrumentation.uiAutomation.rootInActiveWindow)?.text.isNullOrBlank() }
+                await { imeVisible() }
+                // Compose exposes the placeholder as accessibility text for an empty field;
+                // it is not the editable value and must not be mistaken for a draft.
                 save("composer-empty")
                 instrumentation.uiAutomation.performGlobalAction(android.accessibilityservice.AccessibilityService.GLOBAL_ACTION_BACK)
                 await { !imeVisible() }
@@ -94,12 +99,17 @@ class BottomComposerParityCaptureTest {
                     for (i in 0 until node.childCount) findLabel(node.getChild(i), label)?.let { return it }
                     return null
                 }
+                await { instrumentation.uiAutomation.rootInActiveWindow?.packageName?.toString() == app.packageName &&
+                    findLabel(instrumentation.uiAutomation.rootInActiveWindow, app.getString(R.string.attach)) != null }
                 val attachment = checkNotNull(findLabel(instrumentation.uiAutomation.rootInActiveWindow, app.getString(R.string.attach)))
-                check(attachment.performAction(AccessibilityNodeInfo.ACTION_CLICK))
+                var attachmentButton: AccessibilityNodeInfo? = attachment
+                while (attachmentButton != null && !attachmentButton.isClickable) attachmentButton = attachmentButton.parent
+                check(checkNotNull(attachmentButton).performAction(AccessibilityNodeInfo.ACTION_CLICK))
                 await { findLabel(instrumentation.uiAutomation.rootInActiveWindow, app.getString(R.string.chat_attachment_files)) != null }
                 save("attachment-menu")
                 instrumentation.uiAutomation.performGlobalAction(android.accessibilityservice.AccessibilityService.GLOBAL_ACTION_BACK)
-                SystemClock.sleep(500)
+                await { instrumentation.uiAutomation.rootInActiveWindow?.packageName?.toString() == app.packageName &&
+                    editable(instrumentation.uiAutomation.rootInActiveWindow) != null }
                 val input = checkNotNull(editable(instrumentation.uiAutomation.rootInActiveWindow))
                 check(input.performAction(AccessibilityNodeInfo.ACTION_FOCUS))
                 check(input.performAction(AccessibilityNodeInfo.ACTION_CLICK))
