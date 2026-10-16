@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import './native-secondary.css';
 
 export type NativeSettingsPerson = { name: string; handle: string; initials: string; tintHex: string };
@@ -9,14 +9,25 @@ const sections = [
   ['Help', ['Feedback', 'Terms and privacy', 'About']],
 ] as const;
 
-// Read-only visual fixtures: no account, navigation, clipboard or permission side effects.
-export function NativeSettings({ me }: { me: NativeSettingsPerson }) {
-  return <section className="native-settings" aria-label="Settings visual fixture">
-    <header className="ns-top"><h1>Settings</h1><span className="ns-close" aria-hidden="true">×</span></header>
+export type NativeSettingsProps = {
+  me: NativeSettingsPerson;
+  onClose?: () => void;
+  onOpen?: (label: string) => void;
+};
+
+/** Navigation belongs to the host; the same component is used in parity captures. */
+export function NativeSettings({ me, onClose, onOpen }: NativeSettingsProps) {
+  const [query, setQuery] = useState('');
+  const matches = (label: string) => label.toLocaleLowerCase().includes(query.trim().toLocaleLowerCase());
+  const visibleSections = sections.map(([heading, rows]) => ({ heading, rows: rows.filter(label => matches(heading) || matches(label)) })).filter(({ rows }) => rows.length > 0);
+  const showProfile = matches(`Profile ${me.name} ${me.handle}`);
+  return <section className="native-settings" aria-label="Settings">
+    <header className="ns-top"><h1>Settings</h1><button type="button" className="ns-close" aria-label="Close settings" disabled={!onClose} onClick={onClose}>×</button></header>
     <div className="ns-scroll"><div className="ns-content">
-      <div className="ns-search"><span aria-hidden="true">⌕</span><span>Search settings</span></div>
-      <div className="ns-profile"><span className="ns-avatar" style={{ backgroundColor: me.tintHex }}>{me.initials}</span><div><strong>{me.name}</strong><small>@{me.handle}</small></div><span className="ns-chevron" aria-hidden="true">›</span></div>
-      {sections.map(([heading, rows]) => <section className="ns-group" key={heading}><h2>{heading}</h2><div className="ns-card">{rows.map(label => <div className="ns-row" key={label}><SettingsGlyph label={label}/><span>{label}</span><span className="ns-chevron" aria-hidden="true">›</span></div>)}</div></section>)}
+      <label className="ns-search"><span aria-hidden="true">⌕</span><input type="search" aria-label="Search settings" placeholder="Search settings" value={query} onChange={event => setQuery(event.target.value)}/></label>
+      {showProfile && <button type="button" className="ns-profile" disabled={!onOpen} onClick={() => onOpen?.('Profile')}><span className="ns-avatar" style={{ backgroundColor: me.tintHex }}>{me.initials}</span><span><strong>{me.name}</strong><small>@{me.handle}</small></span><span className="ns-chevron" aria-hidden="true">›</span></button>}
+      {visibleSections.map(({ heading, rows }) => <section className="ns-group" key={heading}><h2>{heading}</h2><div className="ns-card">{rows.map(label => <button type="button" className="ns-row" key={label} disabled={!onOpen} onClick={() => onOpen?.(label)}><SettingsGlyph label={label}/><span>{label}</span><span className="ns-chevron" aria-hidden="true">›</span></button>)}</div></section>)}
+      {!showProfile && visibleSections.length === 0 && <p role="status">No settings found.</p>}
     </div></div>
   </section>;
 }
@@ -70,10 +81,17 @@ function WelcomeMascot() {
   </svg>;
 }
 
-export function NativeOnboarding() {
-  return <section className="native-onboarding" aria-label="Welcome visual fixture">
+export type NativeOnboardingProps = {
+  onContinue?: () => void;
+  onPasteInvite?: (value: string) => void;
+};
+
+export function NativeOnboarding({ onContinue, onPasteInvite }: NativeOnboardingProps = {}) {
+  const [invite, setInvite] = useState('');
+  const [showInvite, setShowInvite] = useState(false);
+  return <section className="native-onboarding" aria-label="Welcome">
     <header className="no-header"><div className="no-progress" aria-label="Step 1 of 8">{Array.from({ length: 8 }, (_, i) => <span key={i} className={i === 0 ? 'active' : ''}/>)}</div></header>
-    <div className="no-content"><WelcomeMascot/><div className="no-copy"><h1>Hi, I’m Zoen.</h1><p>I’m the app and the agent inside it. I turn chats into plans you control.</p></div><p className="no-invite">Got an invite? <span>Paste</span></p></div>
-    <footer className="no-footer"><div className="no-continue">Hi, Zoen!</div></footer>
+    <div className="no-content"><WelcomeMascot/><div className="no-copy"><h1>Hi, I’m Zoen.</h1><p>I’m the app and the agent inside it. I turn chats into plans you control.</p></div><div className="no-invite">Got an invite? <button type="button" disabled={!onPasteInvite} onClick={() => setShowInvite(value => !value)} aria-expanded={showInvite}>Paste</button></div>{showInvite && <form className="no-invite-form" onSubmit={event => { event.preventDefault(); if (invite.trim()) onPasteInvite?.(invite.trim()); }}><label htmlFor="native-invite">Invite link</label><input id="native-invite" type="url" placeholder="Paste your invite link" value={invite} onChange={event => setInvite(event.target.value)} required/><button type="submit" disabled={!onPasteInvite || !invite.trim()}>Use invite</button></form>}</div>
+    <footer className="no-footer"><button type="button" className="no-continue" disabled={!onContinue} onClick={onContinue}>Hi, Zoen!</button></footer>
   </section>;
 }
