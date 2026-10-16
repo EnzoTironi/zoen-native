@@ -204,9 +204,9 @@ export function Messenger({ conversations, identity, name, connected, status, me
   const space = conversation?.id ?? '';
   // Conversation switches, focus loss and unmount stop this browser's activity.
   useEffect(() => {
-    const stop = () => { if (document.visibilityState !== 'visible' || !document.hasFocus()) messages.current?.typing(space, false); };
+    const stop = () => { if (document.visibilityState !== 'visible' || !document.hasFocus()) messages.current?.typing?.(space, false); };
     document.addEventListener('visibilitychange', stop); window.addEventListener('blur', stop);
-    return () => { messages.current?.typing(space, false); document.removeEventListener('visibilitychange', stop); window.removeEventListener('blur', stop); };
+    return () => { messages.current?.typing?.(space, false); document.removeEventListener('visibilitychange', stop); window.removeEventListener('blur', stop); };
   }, [space, connected]);
   const typers = (presence?.typing[space] ?? []).filter((id) => conversation?.member_ids.includes(id) && id !== identity);
   const peer = conversation?.kind === 'direct' ? conversation.member_ids.find((id) => id !== identity) : undefined;
@@ -252,7 +252,7 @@ export function Messenger({ conversations, identity, name, connected, status, me
           {bubbles(timeline, false)}
           <div ref={end} />
         </section>
-        <Composer key={conversation.id} activity={(active) => messages.current?.typing(space, active)} placeholder={connected ? 'Mensagem' : 'Reconectando…'} disabled={!connected || !conversation.can_send} reply={reply} editing={editing} autoFocus
+        <Composer key={conversation.id} activity={(active) => messages.current?.typing?.(space, active)} placeholder={connected ? 'Mensagem' : 'Reconectando…'} disabled={!connected || !conversation.can_send} reply={reply} editing={editing} autoFocus
           cancelReply={() => { setReply(null); setEditing(null); }}
           submit={async (text) => {
             const m = messages.current; if (!m) throw new Error('Recarregue o Zoen.');
@@ -270,7 +270,7 @@ export function Messenger({ conversations, identity, name, connected, status, me
         <p className="zm-divider">{replies.length === 1 ? '1 resposta' : `${replies.length} respostas`}</p>
         {bubbles(replies, true)}
       </section>
-      <Composer key={root.entry} activity={(active) => messages.current?.typing(space, active)} placeholder="Responder na thread" disabled={!connected || !conversation?.can_send}
+      <Composer key={root.entry} activity={(active) => messages.current?.typing?.(space, active)} placeholder="Responder na thread" disabled={!connected || !conversation?.can_send}
         submit={async (text) => { await messages.current?.post({ space, text, replyTo: root.entry!, thread: true }); if (follow[root.entry!] === undefined) toggleFollow(root.entry!, true); }} />
     </aside> : null}
     {editing ? <MessageEditor key={`${space}:${editing.id}`} entry={editing} close={() => setEditing(null)} save={async (text) => {
