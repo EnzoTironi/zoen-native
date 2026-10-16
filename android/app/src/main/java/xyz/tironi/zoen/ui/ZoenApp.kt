@@ -62,8 +62,9 @@ fun ZoenApp(model: ZoenViewModel, deepLink: String?, consumed: () -> Unit) {
     }
     // Preferences are not Compose state. Recovery can finish after `me` was already
     // refreshed, so explicitly observe completion even when the landing chat is null.
-    val onboardingCompletion = remember(model, state.demo, state.me?.id) {
-        OnboardingCompletion(model.repository.preferences.getBoolean("onboarded", false))
+    // Recovery's in-flight callback must finish this same object after `me.id` changes.
+    val onboardingCompletion = rememberOnboardingCompletion(model, state.demo) {
+        model.repository.preferences.getBoolean("onboarded", false)
     }
     if (state.me == null || !onboardingCompletion.completed) {
         Scaffold(snackbarHost = { SnackbarHost(snackbar) }) { padding ->

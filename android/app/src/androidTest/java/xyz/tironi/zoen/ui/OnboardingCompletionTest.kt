@@ -16,12 +16,42 @@ import org.junit.runner.RunWith
 class OnboardingCompletionTest {
     @get:Rule val compose = createAndroidComposeRule<ComponentActivity>()
 
+    @Test fun recoveryCompletionSurvivesAccountIdentityChangeBeforeCallback() {
+        val owner = Any()
+        var accountId by mutableStateOf("temporary-account")
+        var persistedCompletion = false
+        var finishRecovery: (() -> Unit)? = null
+        var originalCompletion: OnboardingCompletion? = null
+        compose.setContent {
+            val completion = rememberOnboardingCompletion(owner, false) { persistedCompletion }
+            Text("Account: $accountId")
+            if (!completion.completed) Text("Recovering") else Text("Account home")
+            SideEffect {
+                if (finishRecovery == null) {
+                    originalCompletion = completion
+                    // Simulate the callback captured by an already-running recovery.
+                    finishRecovery = { completion.finish(null) {} }
+                }
+                assertSame(originalCompletion, completion)
+            }
+        }
+        compose.runOnIdle { accountId = "restored-account" }
+        compose.onNodeWithText("Account: restored-account").assertIsDisplayed()
+        compose.onNodeWithText("Recovering").assertIsDisplayed()
+        compose.runOnIdle {
+            persistedCompletion = true
+            finishRecovery!!()
+        }
+        compose.onNodeWithText("Account home").assertIsDisplayed()
+        compose.onNodeWithText("Recovering").assertDoesNotExist()
+    }
+
     @Test fun recoveryCompletionDismissesOnboardingWithNullLanding() {
         val preferences = compose.activity.getSharedPreferences("onboarding-completion-test", 0)
         preferences.edit().clear().commit()
         var landing by mutableStateOf<String?>(null)
         compose.setContent {
-            val completion = remember { OnboardingCompletion(preferences.getBoolean("onboarded", false)) }
+            val completion = rememberOnboardingCompletion(preferences, false) { preferences.getBoolean("onboarded", false) }
             if (!completion.completed) {
                 Button(onClick = {
                     // Recovery already refreshed the account; only this preference and
