@@ -4,6 +4,7 @@ use super::*;
 
 mod client_api;
 mod file_bounds;
+mod voice_notes;
 
 fn seeded() -> Arc<RodaEngine> {
     let e = RodaEngine::open(":memory:".into(), "pt-BR".into()).unwrap();

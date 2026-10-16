@@ -368,11 +368,15 @@ struct SpaceView: View {
             guard UserDefaults.standard.bool(forKey: "RodaVoiceSeed") else { return }
             let wait = UserDefaults.standard.double(forKey: "RodaVoiceSeedDelay")
             try? await Task.sleep(for: .seconds(wait > 0 ? wait : 1.5))
-            let has = entries.contains { if case .message(let t, _) = $0.kind { return VoiceNoteRef.parse(t) != nil }; return false }
+            let has = entries.contains { e in
+                if e.voice != nil { return true }
+                if case .message(let t, _) = e.kind { return VoiceNoteRef.parse(t) != nil }
+                return false
+            }
             guard !has, let clip = VoiceStore.makeDemoClip() else { return }
             let ref = VoiceNoteRef(id: clip.id, ms: clip.ms, levels: clip.levels,
                                    transcript: String(localized: "Leaving at eight! I'll bring snacks and the good thermos, can someone grab the map?"))
-            model.perform { try model.core.sendMessage(spaceId: spaceId, text: ref.marker) }
+            await model.sendVoice(clip, in: spaceId, transcript: ref.transcript)
         }
         .onAppear {
             // Capture the opening unread boundary before markRead refreshes its count to zero.
@@ -676,7 +680,7 @@ struct EntryView: View {
                         .foregroundStyle(Palette.textTertiary)
                         .padding(.leading, entry.author.isMe ? 0 : 44)
                 }
-                MessageRow(author: entry.author, text: text, card: card, atMs: entry.atMs, delivery: entry.delivery,
+                MessageRow(author: entry.author, text: text, card: card, voice: entry.voice.map(VoiceNoteRef.init), atMs: entry.atMs, delivery: entry.delivery,
                            grouped: grouped && entry.replyTo == nil, endsRun: endsRun, isDirect: isDirect, onOpenItem: onOpenItem,
                            quote: entry.replyTo, onQuote: { onJump?($0) })
                     .modifier(MessageSwipe(enabled: onSwipe != nil, onActions: onLongPress) { onSwipe?($0) })
@@ -830,6 +834,8 @@ struct MessageRow: View {
     let author: Persona
     let text: String
     let card: ItemCard?
+    /// A voice note sent as an audio file (older ones arrive as a text marker in `text`).
+    var voice: VoiceNoteRef? = nil
     let atMs: Int64
     var delivery: Delivery = .sent
     let grouped: Bool
@@ -881,7 +887,7 @@ struct MessageRow: View {
                     .background { if backdrop { Capsule().fill(.regularMaterial) } }
                     .padding(.leading, 2)
                 }
-                if let voice = VoiceNoteRef.parse(text) {
+                if let voice = voice ?? VoiceNoteRef.parse(text) {
                     VoiceBubble(ref: voice, mine: mine, grouped: grouped)
                         .alignmentGuide(.messageFace) { $0[.bottom] }
                 } else if !text.isEmpty {
