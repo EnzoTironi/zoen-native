@@ -23,6 +23,8 @@ declare module '*/core/zoen_web_core.js' {
     mark_read(space: string): string;
     fail_outbox(client_id: string, reason: string): string;
     queue_file(space: string, doc: string, now: number): string;
+    queue_failed_file(space: string, doc: string, now: number, reason: string, chunks: string): string;
+    local_chunk(blob: string): Uint8Array;
     queue_join(space: string, role: string, code: string, now: number): string;
   }
 }

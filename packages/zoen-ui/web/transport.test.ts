@@ -424,6 +424,19 @@ test('encrypted chunk reads reject truncation and cancel streamed overruns befor
   assert.equal(cancelled, true);
 });
 
+test('failed upload audio opens from retained encrypted chunks when relay has no blob', async (t) => {
+  const plain = new Uint8Array([1, 2, 3]);
+  const file = await attachment(plain);
+  const sealed = new Uint8Array(file.bytes + 40);
+  const messages = mediaMessages(t, async (op) => {
+    if (op.kind === 'local_chunk') { assert.equal(op.blob, file.chunks[0]!.blob); return sealed; }
+    if (op.kind === 'open_chunk') { assert.deepEqual(op.sealed, sealed); return plain; }
+    throw new Error('Unexpected operation');
+  });
+  t.mock.method(globalThis, 'fetch', async () => new Response(null, { status: 404 }));
+  assert.deepEqual(new Uint8Array(await (await messages.openFile(file)).arrayBuffer()), plain);
+});
+
 test('valid chunks assemble in manifest order and snapshot metadata before fetching', async (t) => {
   const first = await attachment(new Uint8Array([1, 2]));
   const last = await attachment(new Uint8Array([3]));
@@ -488,18 +501,12 @@ test('upload failure keeps the queued voice note as failed instead of losing it'
   const core = { ...codec,
     bytes: async (op: CoreOperation) => op.kind === 'seal_file' ? framed : codec.bytes(op),
     text: async (op: CoreOperation) => {
-      if (op.kind === 'queue_file') {
-        const doc = JSON.parse(op.doc);
-        return JSON.stringify({ snapshot: 'queued', frames: [], conversations: [{ ...conversation, messages: [{
-          id: 'pending-voice', entry: null, author: login.identity, name: 'Me', text: '', at_ms: 1,
-          delivery: 'sending', failure: null, ticks: null, edited: false, deleted: false, forwarded: false,
-          reactions: [], quote: null, thread: null, replies: 0, repliers: [], last_reply_ms: null, file: doc,
-        }] }] });
-      }
-      if (op.kind === 'fail_outbox') {
-        failed.push(op.client_id);
+      if (op.kind === 'queue_file' || op.kind === 'fail_outbox') assert.fail('incomplete media must never be queued for publication');
+      if (op.kind === 'queue_failed_file') {
+        assert.deepEqual(JSON.parse(op.chunks), { [file.chunks[0]!.blob]: [0] });
+        failed.push('pending-voice');
         return JSON.stringify({ snapshot: 'failed', frames: [], conversations: [{ ...conversation, messages: [{
-          id: op.client_id, entry: null, author: login.identity, name: 'Me', text: '', at_ms: 1,
+          id: 'pending-voice', entry: null, author: login.identity, name: 'Me', text: '', at_ms: 1,
           delivery: 'failed', failure: op.reason, ticks: null, edited: false, deleted: false, forwarded: false,
           reactions: [], quote: null, thread: null, replies: 0, repliers: [], last_reply_ms: null,
           file: { ...file, voice },

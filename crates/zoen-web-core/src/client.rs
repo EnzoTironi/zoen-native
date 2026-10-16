@@ -54,6 +54,8 @@ struct SavedClient {
     logs: BTreeMap<String, Vec<Event>>,
     outbox: BTreeMap<String, PendingEnvelope>,
     profiles: BTreeMap<String, Identity>,
+    #[serde(default)]
+    local_chunks: BTreeMap<String, Vec<u8>>,
     packages: Option<Packages>,
     packages_published: bool,
     joining: BTreeSet<String>,
@@ -442,6 +444,45 @@ impl<S: Signer> Client<S> {
         doc: roda_types::FileDoc,
         now_ms: i64,
     ) -> Result<Update, String> {
+        self.queue_file_inner(space, doc, now_ms, None)
+    }
+
+    /// Persist failed media atomically without ever publishing its incomplete manifest.
+    pub fn queue_failed_file(
+        &mut self,
+        space: &str,
+        doc: roda_types::FileDoc,
+        now_ms: i64,
+        reason: String,
+        chunks: BTreeMap<String, Vec<u8>>,
+    ) -> Result<Update, String> {
+        for chunk in &doc.chunks {
+            let sealed = chunks.get(&chunk.blob).ok_or("missing local chunk")?;
+            crate::media::open_chunk(chunk, sealed)?;
+        }
+        self.ready_epoch(space)?;
+        if doc.chunks.is_empty() {
+            return Err("file empty or too large".into());
+        }
+        self.saved.local_chunks.extend(chunks);
+        self.queue_file_inner(space, doc, now_ms, Some(reason))
+    }
+
+    pub fn local_chunk(&self, blob: &str) -> Vec<u8> {
+        self.saved
+            .local_chunks
+            .get(blob)
+            .cloned()
+            .unwrap_or_default()
+    }
+
+    fn queue_file_inner(
+        &mut self,
+        space: &str,
+        doc: roda_types::FileDoc,
+        now_ms: i64,
+        failure: Option<String>,
+    ) -> Result<Update, String> {
         if doc.chunks.is_empty() {
             return Err("file empty or too large".into());
         }
@@ -460,7 +501,8 @@ impl<S: Signer> Client<S> {
             .envelope()?
             .plain_event()
             .ok_or("invalid inner message")?;
-        let pending = self.seal_inner(&event, epoch)?;
+        let mut pending = self.seal_inner(&event, epoch)?;
+        pending.failure = failure;
         self.saved.outbox.insert(event.client_id.clone(), pending);
         self.update(Vec::new())
     }
@@ -1117,14 +1159,14 @@ impl<S: Signer> Client<S> {
                 _ => title,
             };
             // Fold annotations over their targets. Readers enforce authorship.
-            let authors: BTreeMap<&str, &str> = events.iter().filter(|e| is_post(&e.body))
-                .map(|e| (e.hash.as_str(), e.author.as_str())).collect();
+            let authors: BTreeMap<&str, (&str, &str)> = events.iter().filter(|e| is_post(&e.body))
+                .flat_map(|e| [(e.hash.as_str(), (e.author.as_str(), e.hash.as_str())), (e.client_id.as_str(), (e.author.as_str(), e.hash.as_str()))]).collect();
             let mut folded: BTreeMap<String, Folded> = BTreeMap::new();
             for event in events {
                 let EventBody::MessageAnnotated { target, note } = &event.body else { continue };
-                let Some(author) = authors.get(target.as_str()) else { continue };
+                let Some((author, hash)) = authors.get(target.as_str()) else { continue };
                 if note.author_only() && *author != event.author { continue; }
-                let f = folded.entry(target.clone()).or_default();
+                let f = folded.entry((*hash).to_owned()).or_default();
                 match note {
                     roda_types::Annotation::Edit { text } if !f.deleted => f.text = Some(text.clone()),
                     roda_types::Annotation::Delete => { f.deleted = true; f.text = None; f.reactions.clear(); }

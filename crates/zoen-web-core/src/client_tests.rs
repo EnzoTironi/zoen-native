@@ -199,6 +199,35 @@ fn native_sqlite_welcome_messages_saved_reload_and_removal_use_shared_mls() {
         .unwrap();
     assert_eq!(client.conversations()[0].messages[0].text, "Native to web");
 
+    let sealed =
+        crate::media::seal_file("voice.webm", "audio/webm", b"retained audio", None).unwrap();
+    let chunks = sealed
+        .uploads
+        .iter()
+        .map(|u| (u.blob.clone(), u.sealed.clone()))
+        .collect();
+    let failed = client
+        .queue_failed_file(space, sealed.doc.clone(), 11, "offline".into(), chunks)
+        .unwrap();
+    assert!(failed
+        .frames
+        .iter()
+        .all(|f| !matches!(ClientFrame::decode(f).unwrap(), ClientFrame::Publish { .. })));
+    let restored_failed = Client::new(account.clone(), host.clone(), &failed.snapshot).unwrap();
+    let bytes = restored_failed.local_chunk(&sealed.doc.chunks[0].blob);
+    assert_eq!(
+        crate::media::open_chunk(&sealed.doc.chunks[0], &bytes).unwrap(),
+        b"retained audio"
+    );
+    assert_eq!(
+        restored_failed.conversations()[0]
+            .messages
+            .last()
+            .unwrap()
+            .delivery,
+        "failed"
+    );
+    client.saved.outbox.retain(|_, p| p.failure.is_none());
     let sending = client.queue_message(space, "Web to native", 11).unwrap();
     let env = sending
         .frames
@@ -432,6 +461,36 @@ fn native_voice_replies_versions_and_reverts_stay_on_the_original_post() {
     assert_eq!(conversation.messages.len(), 3);
     assert_eq!(conversation.messages[1].file.as_ref(), Some(&original));
     assert!(conversation.messages[1].edited);
+    let native_target = client.logs[space]
+        .events()
+        .iter()
+        .find(|e| e.hash == entry)
+        .unwrap()
+        .client_id
+        .clone();
+    let mut log = client.logs[space].clone();
+    append(
+        &mut log,
+        &other,
+        EventBody::MessageAnnotated {
+            target: native_target.clone(),
+            note: roda_types::Annotation::Delete,
+        },
+    );
+    client.logs.insert(space.into(), log.clone());
+    assert!(!client.conversations()[0].messages[1].deleted);
+    append(
+        &mut log,
+        &author,
+        EventBody::MessageAnnotated {
+            target: native_target,
+            note: roda_types::Annotation::Delete,
+        },
+    );
+    client.logs.insert(space.into(), log);
+    let conversations = client.conversations();
+    assert!(conversations[0].messages[1].deleted);
+    assert!(conversations[0].messages[1].file.is_none());
 }
 
 fn web_fixture() -> (Client<HostSigner>, Author, Author, SpaceLog, String) {

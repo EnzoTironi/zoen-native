@@ -138,6 +138,28 @@ mod browser {
             )
             .map_err(error)
         }
+        pub fn queue_failed_file(
+            &mut self,
+            space: &str,
+            doc: &str,
+            now_ms: f64,
+            reason: &str,
+            chunks: &str,
+        ) -> Result<String, JsValue> {
+            let doc = serde_json::from_str(doc).map_err(error)?;
+            let chunks = serde_json::from_str(chunks).map_err(error)?;
+            serde_json::to_string(
+                &self
+                    .client
+                    .queue_failed_file(space, doc, time(now_ms)?, reason.into(), chunks)
+                    .map_err(error)?,
+            )
+            .map_err(error)
+        }
+        pub fn local_chunk(&self, blob: &str) -> Vec<u8> {
+            self.client.local_chunk(blob)
+        }
+
         pub fn fail_outbox(&mut self, client_id: &str, reason: &str) -> Result<String, JsValue> {
             serde_json::to_string(
                 &self

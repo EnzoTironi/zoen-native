@@ -27,6 +27,8 @@ function parseOperation(input: unknown): CoreOperation {
     case 'queue_annotation': return { kind: 'queue_annotation', space: string(value.space), target: string(value.target), note: string(value.note), now: integer(value.now) };
     case 'mark_read': return { kind: 'mark_read', space: string(value.space) };
     case 'queue_file': return { kind: 'queue_file', space: string(value.space), doc: string(value.doc), now: integer(value.now) };
+    case 'queue_failed_file': return { kind: 'queue_failed_file', space: string(value.space), doc: string(value.doc), now: integer(value.now), reason: string(value.reason), chunks: string(value.chunks) };
+    case 'local_chunk': return { kind: 'local_chunk', blob: string(value.blob) };
     case 'fail_outbox': return { kind: 'fail_outbox', client_id: string(value.client_id), reason: string(value.reason) };
     case 'seal_file': return { kind: 'seal_file', name: string(value.name), mime: string(value.mime), bytes: bytes(value.bytes), thumb: bytes(value.thumb) };
     case 'open_chunk': return { kind: 'open_chunk', chunk: string(value.chunk), sealed: bytes(value.sealed) };
@@ -64,6 +66,8 @@ function run(operation: CoreOperation): string | Uint8Array {
     case 'queue_post': return restored().queue_post(operation.space, operation.text, operation.replyTo || undefined, operation.thread, operation.forwarded, operation.now);
     case 'queue_annotation': return restored().queue_annotation(operation.space, operation.target, operation.note, operation.now);
     case 'mark_read': return restored().mark_read(operation.space);
+    case 'queue_failed_file': return restored().queue_failed_file(operation.space, operation.doc, operation.now, operation.reason, operation.chunks);
+    case 'local_chunk': return restored().local_chunk(operation.blob);
     case 'fail_outbox': return restored().fail_outbox(operation.client_id, operation.reason);
     case 'queue_file': return restored().queue_file(operation.space, operation.doc, operation.now);
     case 'seal_file': return core.seal_file(operation.name, operation.mime, operation.bytes, operation.thumb);

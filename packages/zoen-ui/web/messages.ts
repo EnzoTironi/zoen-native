@@ -231,12 +231,19 @@ export class Messages {
       // Keep the sealed voice/file in the timeline as failed, like native — do not lose the clip.
       // Best effort: the upload error is what the user must see, even if queueing also fails.
       try {
-        await this.act(space, { kind: 'queue_file', space, doc: JSON.stringify(doc), now: Date.now() });
-        const pending = this.conversations.find((c) => c.id === space)?.messages
-          .filter((m) => m.delivery === 'sending' && m.file?.sha256 === doc.sha256).at(-1);
-        if (pending) {
-          await this.act(space, { kind: 'fail_outbox', client_id: pending.id, reason: error instanceof Error ? error.message : 'Sem conexão para enviar o arquivo. Tente de novo.' });
+        if (this.closed || !this.conversations.some((c) => c.id === space)) throw error;
+        let start = 4 + length;
+        const chunks: Record<string, number[]> = {};
+        for (const upload of uploads) {
+          chunks[upload.blob] = Array.from(framed.subarray(start, start + upload.len));
+          start += upload.len;
         }
+        const generation = this.generation;
+        await this.enqueue(async () => {
+          const update = await this.core.text({ kind: 'queue_failed_file', space, doc: JSON.stringify(doc), now: Date.now(),
+            reason: error instanceof Error ? error.message : 'Sem conexão para enviar o arquivo. Tente de novo.', chunks: JSON.stringify(chunks) });
+          await this.apply(update, generation);
+        }, () => this.closed || generation !== this.generation ? 'A sessão mudou.' : null, false);
       } catch { /* keep the original upload error */ }
       throw error;
     }
@@ -293,7 +300,10 @@ export class Messages {
           }
           if (received !== sealed.length) throw new Error('Invalid chunk length.');
         } finally { await reader.cancel().catch(() => {}); }
-      } catch { throw new Error('O arquivo ainda está chegando. Tente de novo em instantes.'); }
+      } catch {
+        sealed = await this.core.bytes({ kind: 'local_chunk', blob: chunk.blob });
+        if (!sealed.length) throw new Error('O arquivo ainda está chegando. Tente de novo em instantes.');
+      }
       try {
         const opened = await this.core.bytes({ kind: 'open_chunk', chunk: JSON.stringify(chunk), sealed });
         if (opened.length !== chunk.bytes) throw new Error('Invalid chunk length.');
