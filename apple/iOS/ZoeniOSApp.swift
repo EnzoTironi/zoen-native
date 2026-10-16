@@ -4,15 +4,15 @@ import RodaCore
 /// Observes the owned native bar without replacing its delegates or changing layout.
 /// Ambiguous accessibility/image identity deliberately produces no effect.
 private struct NativeTabImageEffects: UIViewControllerRepresentable {
-    var pendingCount: Int
+    var pendingIDs: Set<String>
     func makeUIViewController(context: Context) -> Observer { Observer() }
     func updateUIViewController(_ controller: Observer, context: Context) {
-        controller.observe(pendingCount: pendingCount)
+        controller.observe(pendingIDs: pendingIDs)
     }
 
     final class Observer: UIViewController, UIGestureRecognizerDelegate {
         private weak var observedBar: UITabBar?
-        private var previousPending: Int?
+        private var previousPending: Set<String>?
         private lazy var taps: UITapGestureRecognizer = {
             let recognizer = UITapGestureRecognizer(target: self, action: #selector(tapped(_:)))
             recognizer.cancelsTouchesInView = false
@@ -54,7 +54,10 @@ private struct NativeTabImageEffects: UIViewControllerRepresentable {
             }
             return matches.count == 1 ? matches[0] : nil
         }
-        func observe(pendingCount: Int) {
+        func observe(pendingIDs: Set<String>) {
+            // Establish baseline before resolving UIKit: initial fixture requests never wiggle.
+            let added = previousPending.map { pendingIDs.subtracting($0) } ?? []
+            previousPending = pendingIDs
             // Resolve after SwiftUI has attached the representable to its parent.
             DispatchQueue.main.async { [weak self] in
                 guard let self, let bar = self.resolveBar() else { return }
@@ -63,8 +66,7 @@ private struct NativeTabImageEffects: UIViewControllerRepresentable {
                     bar.addGestureRecognizer(self.taps)
                     self.observedBar = bar
                 }
-                defer { self.previousPending = pendingCount }
-                guard let old = self.previousPending, pendingCount > old,
+                guard !added.isEmpty,
                       !UIAccessibility.isReduceMotionEnabled,
                       let title = bar.items?.first(where: { $0.image?.isSymbolImage == true && $0.title == String(localized: "Notifications") })?.title,
                       let control = self.control(title: title, bar: bar),
@@ -96,6 +98,47 @@ private struct NativeTabImageEffects: UIViewControllerRepresentable {
     }
 }
 
+#if DEBUG
+/// Explicit opt-in real-core event producer; never changes account metadata or animation counters.
+private struct NativeParityMotionDriver: View {
+    @Environment(AppModel.self) private var model
+    @State private var failure = ""
+    private var enabled: Bool {
+        ProcessInfo.processInfo.environment["ZOEN_PARITY_MOTION_DRIVER"] == "1"
+            && NativeParityClock.appliedManifest(core: model.core) != nil
+    }
+    private var witness: String {
+        let pending = model.requests.filter { $0.status == .pending }.map {
+            ["agentId": $0.agent.id, "spaceId": $0.spaceId, "title": $0.title, "status": "pending"]
+        }.sorted { ($0["spaceId"]!, $0["agentId"]!, $0["title"]!) < ($1["spaceId"]!, $1["agentId"]!, $1["title"]!) }
+        let value: [String: Any] = ["notifications": ["pendingCount": pending.count, "pending": pending],
+                                  "driver_error": failure]
+        guard let data = try? JSONSerialization.data(withJSONObject: value, options: [.sortedKeys]) else { return "{}" }
+        return String(decoding: data, as: UTF8.self)
+    }
+    var body: some View {
+        if enabled {
+            VStack {
+                Button("Open genuine request") {
+                    guard let existing = model.requests.first(where: { $0.agent.isMine }),
+                          let agent = model.agents.first(where: { $0.persona.id == existing.agent.id }) else {
+                        failure = "No owned agent/space request available"; return
+                    }
+                    do {
+                        _ = try model.core.demoOpenRequest(spaceId: existing.spaceId, agentHandle: agent.persona.handle,
+                            title: "Native motion external request", detail: "Explicit parity motion event",
+                            audience: "Parity recipient", action: "external", cents: 0)
+                        model.refresh()
+                    } catch { failure = String(describing: error) }
+                }
+                .accessibilityIdentifier("parity-open-genuine-request")
+                Text(witness).accessibilityIdentifier("parity-motion-state")
+            }
+        }
+    }
+}
+#endif
+
 @main
 struct ZoeniOSApp: App {
     @UIApplicationDelegateAdaptor(ZoenAppDelegate.self) private var delegate
@@ -115,6 +158,7 @@ struct ZoeniOSApp: App {
                             .accessibilityIdentifier("parity-applied-fixture")
                             .accessibilityLabel(manifest)
                             .allowsHitTesting(false)
+                        NativeParityMotionDriver().environment(model)
                         NativeParityGeometryWitness()
                             .frame(width: 1, height: 1)
                             .allowsHitTesting(false)
@@ -192,7 +236,7 @@ struct RootView: View {
                 }
             }
             .tabViewStyle(.tabBarOnly)
-            .background(NativeTabImageEffects(pendingCount: model.pendingCount))
+            .background(NativeTabImageEffects(pendingIDs: Set(model.requests.filter { $0.status == .pending }.map(\.id))))
             .onAppear {
                 selectedTab = model.tab
                 previousTab = model.tab

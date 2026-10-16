@@ -22,6 +22,7 @@ final class NativeIconMotionCaptureTests: XCTestCase {
         app.launchEnvironment["ZOEN_PARITY_FIXTURE"] = "native-parity-v1"
         app.launchEnvironment["ZOEN_PARITY_REVISION"] = revision
         app.launchEnvironment["TZ"] = "UTC"
+        app.launchEnvironment["ZOEN_PARITY_MOTION_DRIVER"] = "1"
         app.launchArguments = ["-RodaFreshStart", "YES", "-RodaResetDemo", "YES",
             "-RodaDemo", "YES", "-AppleLanguages", "(en)", "-AppleLocale", "en_US",
             "-RodaAppearance", appearance]
@@ -32,6 +33,27 @@ final class NativeIconMotionCaptureTests: XCTestCase {
         XCTAssertEqual(applied["source_revision"] as? String, revision)
         XCTAssertTrue(app.buttons["New message"].firstMatch.waitForExistence(timeout: 20))
         var actions: [[String: Any]] = []
+        let state = app.staticTexts["parity-motion-state"].firstMatch
+        XCTAssertTrue(state.waitForExistence(timeout: 10))
+        func pendingWitness() throws -> [String: Any] {
+            let json = try XCTUnwrap(try JSONSerialization.jsonObject(with: Data(state.label.utf8)) as? [String: Any])
+            XCTAssertEqual(json["driver_error"] as? String, "")
+            return try XCTUnwrap(json["notifications"] as? [String: Any])
+        }
+        let baseline = try pendingWitness()
+        let initialCount = try XCTUnwrap(baseline["pendingCount"] as? Int)
+        XCTAssertEqual(initialCount, 3)
+        app.buttons["parity-open-genuine-request"].tap()
+        let increased = NSPredicate { _, _ in
+            guard let json = try? JSONSerialization.jsonObject(with: Data(state.label.utf8)) as? [String: Any],
+                  let notifications = json["notifications"] as? [String: Any],
+                  let count = notifications["pendingCount"] as? Int else { return false }
+            return count == initialCount + 1
+        }
+        expectation(for: increased, evaluatedWith: state)
+        waitForExpectations(timeout: 10)
+        actions.append(["event": "bell-new", "before": baseline, "after": try pendingWitness()])
+        attach(app.screenshot(), name: "bell-new-\(appearance)")
 
         // Chats starts selected: first visit another tab so both selection-changing
         // and repeat-selected Chats taps are real UI events.
