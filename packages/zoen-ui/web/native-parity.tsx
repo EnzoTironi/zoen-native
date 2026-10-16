@@ -35,6 +35,7 @@ export function installNativeParity(element: HTMLElement) {
   let root: Root | undefined;
   const hook = { manifest: null as Record<string, unknown> | null, async render(value: unknown) {
     const config = parityConfig(value);
+    if ((config.viewport === 'wide') !== matchMedia('(min-width: 768px)').matches) throw new Error('Parity viewport does not match the production adaptive layout.');
     if (config.source_revision !== ZOEN_SOURCE_REVISION) throw new Error('Parity source revision differs from this web build; rebuild before capture.');
     for (const [key, expected] of Object.entries(PARITY_FIXTURE)) if (nativeFixture[key as keyof typeof nativeFixture] !== expected) throw new Error(`Native fixture ${key} is stale.`);
     document.documentElement.lang = 'en-US';
@@ -46,7 +47,7 @@ export function installNativeParity(element: HTMLElement) {
     await Promise.all(Array.from(document.images).map(image => image.decode()));
     await new Promise<void>(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve())));
     await Promise.allSettled(document.getAnimations().filter(animation => animation.effect?.getTiming().iterations !== Infinity).map(animation => animation.finished));
-    hook.manifest = { ...config, data_source: 'native-core-export', read_only: true, screens: 'production-components' };
+    hook.manifest = { ...config, data_source: 'native-core-export', read_only: true, screens: 'production-components', geometry: { width: innerWidth, height: innerHeight, dpr: devicePixelRatio } };
   } };
   window.__ZOEN_PARITY__ = hook;
 }

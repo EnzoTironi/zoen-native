@@ -76,11 +76,12 @@ export function NativeAvatar({ identity, size = 48, className = '', animate = tr
 }) {
   const reduced = useReduceMotion();
   const filterId = 'native-avatar-' + useId().replace(/:/g, '');
-  const asset = nativeAvatarAsset(identity);
+  const proceduralHead = identity.kind === 'agent' && identity.handle?.toLowerCase() === 'zoen';
+  const asset = proceduralHead ? undefined : nativeAvatarAsset(identity);
   const src = nativeAvatarSource(identity, size, { animate, reduceMotion: reduced });
-  return <span className={'native-avatar ' + className} role="img" aria-label={identity.name} style={{ width: size, height: size, borderRadius: '50%', display: 'inline-grid', placeItems: 'center', overflow: 'hidden', flexShrink: 0, backgroundColor: asset?.backdrop ?? identity.tintHex ?? '#888888', color: 'white', fontSize: size * .38 }}>
+  return <span className={'native-avatar ' + className} role="img" aria-label={identity.name} style={{ width: size, height: size, borderRadius: '50%', display: 'inline-grid', placeItems: 'center', overflow: 'hidden', flexShrink: 0, backgroundColor: proceduralHead ? '#E2E8CF' : asset?.backdrop ?? identity.tintHex ?? '#888888', color: 'white', fontSize: size * .38 }}>
     {asset && <svg width="0" height="0" aria-hidden="true" style={{ position: 'absolute' }}><defs><filter id={filterId} colorInterpolationFilters="sRGB"><feColorMatrix type="matrix" values=".86 0 0 0 0  0 .84 0 0 0  0 0 .80 0 0  0 0 0 1 0"/></filter></defs></svg>}
-    {src ? <img className={asset ? 'native-avatar-art' : undefined} src={src} alt="" width={size} height={size} style={{ width: '100%', height: '100%', objectFit: 'cover', ...(asset ? { '--native-avatar-dark-filter': `url(#${filterId})` } as React.CSSProperties : {}) }}/> : identity.initials ?? identity.name.slice(0, 1)}
+    {src ? <img className={asset ? 'native-avatar-art' : undefined} src={src} alt="" width={size} height={size} style={{ width: proceduralHead ? '108%' : '100%', height: proceduralHead ? '108%' : '100%', objectFit: 'cover', ...(proceduralHead ? { transform: `translateY(${size * .05}px)` } : {}), ...(asset ? { '--native-avatar-dark-filter': `url(#${filterId})` } as React.CSSProperties : {}) }}/> : identity.initials ?? identity.name.slice(0, 1)}
   </span>;
 }
 

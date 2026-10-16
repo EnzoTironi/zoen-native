@@ -2,13 +2,15 @@
 // Does not claim relay, recording, file transport, or native pixel parity coverage.
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
-import { mkdir } from 'node:fs/promises';
+import { mkdir, readFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 const args = Object.fromEntries(process.argv.slice(2).map((value, i, all) => value.startsWith('--') ? [value.slice(2), all[i + 1]] : null).filter(Boolean));
 if (!args.playwright || !args.url || !args.output) throw new Error('Use --playwright /path/to/playwright/index.mjs --url http://localhost:4174/?parity=1 --output /path');
 const { webkit } = await import(pathToFileURL(resolve(args.playwright)).href);
 const revision = execFileSync('git', ['rev-parse', 'HEAD'], { encoding: 'utf8' }).trim();
+const fixture = JSON.parse(await readFile(new URL('../fixtures/native-parity-v1.json', import.meta.url), 'utf8'));
+assert.ok(fixture.homeApps?.length > 0, 'actual native home snapshot export must be present');
 await mkdir(args.output, { recursive: true });
 const deadline = setTimeout(() => { console.error('FAIL WebKit UI check exceeded its 120-second deadline.'); process.exit(1); }, 120_000);
 let browser;
@@ -44,6 +46,8 @@ try {
       assert.equal(await page.locator('.na-chat-sidebar').evaluate(element => element.getBoundingClientRect().width), 280);
     }
     if (screen === 'chats' && viewport === 'narrow') {
+      assert.deepEqual(await page.locator('.nw-card').evaluateAll(elements => elements.map(element => element.getAttribute('data-snapshot-id'))), fixture.homeApps.map(snapshot => snapshot.id), 'the canonical native home snapshots and order are preserved exactly');
+      assert.equal(await page.locator('.nw-empty').count(), 0, 'a populated native fixture must not be replaced with an empty state');
       assert.equal(await page.locator('.zn-circle').first().evaluate(element => element.getBoundingClientRect().width), 56);
       assert.equal(await page.locator('.zn-tabs').evaluate(element => element.getBoundingClientRect().height), 62);
       assert.equal(await page.locator('.zm-chat').count(), 6);

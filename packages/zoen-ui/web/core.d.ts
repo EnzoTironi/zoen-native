@@ -15,6 +15,7 @@ declare module '*/core/zoen_web_core.js' {
     constructor(account: string, snapshot: string);
     free(): void;
     view(): string;
+    viewAt(now_ms: number, english: boolean): string;
     bootstrap(): string;
     receive(bytes: Uint8Array, now: number): string;
     queue_message(space: string, text: string, now: number): string;

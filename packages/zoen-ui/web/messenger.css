@@ -30,7 +30,7 @@ body { background: var(--zm-canvas); color: var(--zm-ink); }
   .zm-native-production { --zm-canvas: #090D15; --zm-card: #121826; --zm-ink: #EEF2FA; --zm-other: #121826; --zm-own: #F2F2F0; --zm-own-text: #111113; }
   [data-theme="light"] .zm-native-production, .na-light .zm-native-production { --zm-canvas: #F4F6FB; --zm-card: #fff; --zm-ink: #0E1320; --zm-other: #fff; --zm-own: #111113; --zm-own-text: #F2F2F0; }
 }
-@media (max-width: 860px) {
+@media (max-width: 767px) {
   .zm-native-production, .zm-native-production.zm-with-thread { grid-template-columns: 1fr; }
   .zm-native-production > .zm-sidebar { display: flex; position: relative; }
   .zm-native-production > .zm-main { display: none; }

@@ -8,6 +8,7 @@ import { displayNow, displayTime } from './display-clock.ts';
 import { NativeAvatar } from './native-art.tsx';
 import { NativeNavigation } from './native-navigation.tsx';
 import { NativeHomeStrip, type WidgetSnapshot } from './native-widget.tsx';
+import { useRootVoice } from './root-voice.tsx';
 
 export function homeSnapshots(conversations: readonly Conversation[]): WidgetSnapshot[] {
   const snapshots = new Map<string, WidgetSnapshot>();
@@ -303,13 +304,13 @@ export function Messenger(props: MessengerProps) {
 }
 
 function AccountMessenger({ conversations, identity, name, connected, status, messages, footer, selected, select, children, initialDraft, onSettings }: MessengerProps) {
-  const [wide, setWide] = useState(() => window.matchMedia?.('(min-width: 861px)').matches ?? false);
+  const [wide, setWide] = useState(() => window.matchMedia?.('(min-width: 768px)').matches ?? false);
   const [destination, setDestination] = useState('chats');
   const [searchOpen, setSearchOpen] = useState(false);
   const [homeNotice, setHomeNotice] = useState<WidgetSnapshot | null>(null);
   useEffect(() => {
     if (!window.matchMedia) return;
-    const query = window.matchMedia('(min-width: 861px)');
+    const query = window.matchMedia('(min-width: 768px)');
     const update = () => setWide(query.matches);
     query.addEventListener('change', update);
     return () => query.removeEventListener('change', update);
@@ -329,6 +330,7 @@ function AccountMessenger({ conversations, identity, name, connected, status, me
   const [threadRoot, setThreadRoot] = useState<string | null>(null);
   const [forward, setForward] = useState<Message | null>(null);
   const [toast, setToast] = useState('');
+  const rootVoice = useRootVoice({ conversations, messages, select: navigate, onNotice: setToast });
   const end = useRef<HTMLDivElement>(null);
   const [searchTarget, setSearchTarget] = useState<MessageHit | null>(null);
   const savePrefs = (id: string, p: Prefs) => {
@@ -413,7 +415,7 @@ function AccountMessenger({ conversations, identity, name, connected, status, me
       <ul className="zm-chats">{list.map((c) => <ChatRow key={c.id} c={c} active={c.id === conversation?.id} prefs={prefs[c.id] ?? {}} open={() => { setDestination('chats'); select(c.id); }} set={(p) => savePrefs(c.id, p)} />)}</ul>
       {!list.length ? <p className="zm-empty">{search ? 'Nenhuma conversa encontrada.' : 'As conversas do seu celular aparecem aqui.'}</p> : null}
       {footer ? <footer className="zm-side-foot"><Avatar name={name} size={32} /><span><b>{name}</b><span className={connected ? 'zm-online' : 'zm-offline'} role="status">{status}</span></span>{footer}</footer> : null}
-      <NativeNavigation selected={destination === 'store' ? 'store' : 'chats'} search={{ open: searchOpen, value: search, onChange: setSearch, onOpenChange: setSearchOpen }} onSelect={navigate} onCreate={navigate} unreadCount={conversations.reduce((n, c) => n + c.unread, 0)} />
+      <NativeNavigation voice={rootVoice} selected={destination === 'store' ? 'store' : 'chats'} search={{ open: searchOpen, value: search, onChange: setSearch, onOpenChange: setSearchOpen }} onSelect={navigate} onCreate={navigate} unreadCount={conversations.reduce((n, c) => n + c.unread, 0)} />
     </aside>
     <main className="zm-main">
       {destination !== 'chats' ? <section className="zm-blank"><button className="zm-pill" onClick={() => navigate('chats')}>Back to Chats</button><h2>{destination}</h2><p>This feature is available in the native Zoen app, not on web yet.</p></section> : children ?? (conversation ? <>

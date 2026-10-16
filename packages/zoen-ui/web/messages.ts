@@ -13,7 +13,7 @@ function timestamp(value: unknown): number {
 }
 export function parseItemCard(input: unknown) {
   const value = object(input);
-  return { itemId: string(value.itemId), title: string(value.title), summary: string(value.summary), kindLabel: string(value.kindLabel), kindId: string(value.kindId), version: integer(value.version), totalCents: value.totalCents === null ? null : integer(value.totalCents), budgetCents: value.budgetCents === null ? null : integer(value.budgetCents), lineCount: integer(value.lineCount), doneCount: integer(value.doneCount), ...(value.snapshot ? { snapshot: parseWidgetSnapshot(value.snapshot) } : {}) };
+  return { itemId: string(value.itemId), title: string(value.title), summary: string(value.summary), kindLabel: string(value.kindLabel), kindId: string(value.kindId), version: integer(value.version), totalCents: value.totalCents === null ? null : integer(value.totalCents), budgetCents: value.budgetCents === null ? null : integer(value.budgetCents), lineCount: integer(value.lineCount), doneCount: integer(value.doneCount), ...(Object.hasOwn(value, 'snapshot') ? { snapshot: parseWidgetSnapshot(value.snapshot) } : {}) };
 }
 function parseMessage(input: unknown) {
   const value = object(input);

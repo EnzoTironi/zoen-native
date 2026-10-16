@@ -74,7 +74,8 @@ test('read failures reject in Portuguese without closing the core, and can be re
 
 
 test('message snapshots preserve typed native item card data and counterpart identity', async (t) => {
-  const card = { itemId: 'item-native', title: 'Trail', summary: 'Saturday', kindLabel: 'Plan', kindId: 'plan', version: 2, totalCents: null, budgetCents: 10000, lineCount: 2, doneCount: 1 };
+  const snapshot = { id: 'item-native', appId: 'hike', template: 'caption', title: 'Trail', accentHex: '#3D7A28', symbol: 'map', deepLink: 'zoen://app/item-native' };
+  const card = { itemId: 'item-native', title: 'Trail', summary: 'Saturday', kindLabel: 'Plan', kindId: 'plan', version: 2, totalCents: null, budgetCents: 10000, lineCount: 2, doneCount: 1, snapshot };
   const counterpart = { id: other, kind: 'person', name: 'Ana', handle: 'ana', glyph: null, initials: 'A', tintHex: '#FF5C8A' };
   const source = { ...conversation, counterpart, messages: [{ ...conversation.messages[0], card }] };
   const { messages, states } = setup(t, undefined, source);

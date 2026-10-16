@@ -1,6 +1,7 @@
 import { useEffect, useState, type CSSProperties } from 'react';
 import { snapshotRemaining, type WidgetSnapshot } from './widget-snapshot.ts';
 import './native-widget.css';
+import { displayNow, isDisplayClockFixed } from './display-clock.ts';
 export type { WidgetSnapshot } from './widget-snapshot.ts';
 export interface NativeHomeStripProps { snapshots: readonly WidgetSnapshot[]; onOpen?: (snapshot: WidgetSnapshot) => void }
 /** Read-only native small-family cards. Opening is delegated to the production host. */
@@ -9,14 +10,14 @@ export function NativeHomeStrip({snapshots,onOpen}: NativeHomeStripProps) {
 }
 /** SnapshotCard.small geometry: 170 square, continuous 28 corner, 14 content inset. */
 export function NativeSnapshotCard({snapshot:s}: {snapshot: WidgetSnapshot}) {
-  const [now,setNow]=useState(()=>Date.now());
-  useEffect(()=> { if(s.template!=='countdown' && !(s.template==='photo' && s.targetMs!=null)) return; const timer=setInterval(()=>setNow(Date.now()),60000); return ()=>clearInterval(timer); },[s.template,s.targetMs]);
+  const [now,setNow]=useState(displayNow);
+  useEffect(()=> { if(isDisplayClockFixed() || s.template!=='countdown' && !(s.template==='photo' && s.targetMs!=null)) return; const timer=setInterval(()=>setNow(displayNow()),60000); return ()=>clearInterval(timer); },[s.template,s.targetMs]);
   const r=snapshotRemaining(s.targetMs,now);
   const dark=s.template==='photo'||['globe','trip','pet.asleep'].includes(s.art??'');
   const title=<strong className="nw-title">{s.title}</strong>;
   const countdown=r.days>0?<><b className="nw-days">{r.days}</b><span className="nw-to-go">{r.days===1?'day to go':'days to go'}</span></>:<b className="nw-hours">{r.hours}h {r.minutes}m</b>;
   const label=[s.title,s.eyebrow,s.value,s.detail,...(s.bars??[]).map(b=>`${b.label} ${Math.trunc(b.value*100)}%`),...(s.rows??[]).map(row=>`${row.text}${row.done?', done':''}`),...(s.template==='countdown'||s.template==='photo'&&s.targetMs!=null?[`${r.days} days, ${r.hours} hours and ${r.minutes} minutes to go`]:[]),...(s.template==='ticket'?[`from ${s.places?.[0]??''} at ${s.times?.[0]??''} to ${s.places?.[1]??''} at ${s.times?.[1]??''}`]:[])].filter(Boolean).join(', ');
-  return <article className={`nw-card nw-${s.template}${dark?' nw-dark':''}`} data-art={s.art} data-art-unavailable={s.art ? 'true' : undefined} style={{'--nw-accent':s.accentHex} as CSSProperties} aria-label={label}>
+  return <article className={`nw-card nw-${s.template}${dark?' nw-dark':''}`} data-snapshot-id={s.id} data-art={s.art} data-art-unavailable={s.art ? 'true' : undefined} style={{'--nw-accent':s.accentHex} as CSSProperties} aria-label={label}>
     {s.template==='photo' && s.photo && <><img className={`nw-photo-image${s.targetMs!=null?' nw-photo-zoom':''}`} src={`assets/native/${s.photo}.jpg`} alt=""/><span className={`nw-photo-shade${s.targetMs!=null?' nw-photo-countdown':''}`}/></>}
     <div className="nw-content" aria-hidden="true">
       {s.template==='stat' && <>{title}<div className="nw-spacer"/>{s.value!=null&&<b className="nw-value">{s.value}</b>}{s.detail!=null&&<small className="nw-detail">{s.detail}</small>}</>}

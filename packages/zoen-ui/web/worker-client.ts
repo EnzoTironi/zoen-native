@@ -103,7 +103,7 @@ export class CoreWorker {
           }
         } catch (error) { this.close(new Error(message(error))); }
       };
-      this.worker.postMessage({ kind: 'init', bridge: this.bridge,
+      this.worker.postMessage({ kind: 'init', bridge: this.bridge, locale: document.documentElement.lang || navigator.language,
         wasmUrl: new URL('/core/zoen_web_core_bg.wasm', window.location.origin).toString() });
     });
   }
