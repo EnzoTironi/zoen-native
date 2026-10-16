@@ -28,6 +28,7 @@ struct NativeIconMotion: View {
     var body: some View {
         replacement
             .modifier(NativeIconFont(size: size))
+            .animation(reduced ? nil : .smooth(duration: 0.2), value: systemName)
             .symbolEffect(.bounce, options: .speed(1.5), value: reduced ? 0 : bounce)
             .symbolEffect(.wiggle, value: reduced ? 0 : wiggle)
             .symbolEffect(.variableColor.iterative, isActive: active && !reduced && !paused)

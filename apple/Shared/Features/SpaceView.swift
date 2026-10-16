@@ -1208,10 +1208,28 @@ struct Composer: View {
         }
     }
 
-    @ViewBuilder private var trailing: some View {
+    private var trailing: some View {
+        actionSurface
+            .overlay {
+                // One SF Image identity survives mic/send changes. The surfaces below
+                // retain their distinct button and hold/drag interaction semantics.
+                NativeIconMotion(systemName: actionSymbol, size: 21, active: busy)
+                    .foregroundStyle(recorder.phase == .recording ? AnyShapeStyle(Color.white) : AnyShapeStyle(ActionGlassForeground()))
+                    .opacity(!micMode && recorder.phase == .idle && empty ? 0.55 : 1)
+                    .allowsHitTesting(false)
+            }
+    }
+
+    private var actionSymbol: String {
+        if recorder.phase == .locked { return "arrow.up" }
+        if micMode || recorder.phase == .recording { return recorder.phase == .recording ? "mic.fill" : "mic" }
+        return busy ? "ellipsis" : "arrow.up"
+    }
+
+    @ViewBuilder private var actionSurface: some View {
         if recorder.phase == .locked {
             Button(action: finishRecording) {
-                ZoenIcon(.send, size: 21).frame(width: Composer.height, height: Composer.height)
+                Color.clear.frame(width: Composer.height, height: Composer.height)
             }
             .buttonStyle(IconPressStyle())
             .foregroundStyle(ActionGlassForeground())
@@ -1222,8 +1240,7 @@ struct Composer: View {
             mic
         } else {
             Button(action: send) {
-                NativeIconMotion(systemName: busy ? "ellipsis" : "arrow.up", size: 21, active: busy)
-                    .frame(width: Composer.height, height: Composer.height)
+                Color.clear.frame(width: Composer.height, height: Composer.height)
             }
             .buttonStyle(IconPressStyle())
             .foregroundStyle(ActionGlassForeground())
@@ -1240,7 +1257,7 @@ struct Composer: View {
     /// Hold to record · slide left to cancel · slide up to lock · release to send.
     private var mic: some View {
         let recording = recorder.phase == .recording
-        return NativeIconMotion(systemName: recording ? "mic.fill" : "mic", size: 21, active: recording)
+        return Color.clear
             .foregroundStyle(recording ? AnyShapeStyle(Color.white) : AnyShapeStyle(ActionGlassForeground()))
             .frame(width: Composer.height, height: Composer.height)
             // While recording it's a solid red disc outside the glass (so it doesn't melt
