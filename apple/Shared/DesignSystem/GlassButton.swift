@@ -40,7 +40,7 @@ private struct GlassButtonBody: View {
         let pressed = configuration.isPressed && isEnabled
         configuration.label
             .font(font)
-            .foregroundStyle(prominent ? Color.white : Palette.textPrimary)
+            .foregroundStyle(prominent ? (tint == nil ? Palette.onAction : Color.white) : Palette.textPrimary)
             .shadow(color: .black.opacity(0.05), radius: 0.5, y: 0.8)      // text-shadow 0 .05em .05em
             .padding(.horizontal, controlSize == .small || controlSize == .mini ? 14 : 24)
             .frame(maxWidth: fullWidth ? .infinity : nil, minHeight: controlSize == .small || controlSize == .mini ? min(height, 34) : (controlSize == .large || controlSize == .extraLarge ? max(height, 52) : height))

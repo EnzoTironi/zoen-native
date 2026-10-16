@@ -11,7 +11,7 @@ import SwiftUI
 extension Color { init(hex: String) { self = .green } }
 enum Mascot { static let body = Color.green }
 enum InkPalette { static let ink = Color.black; static let paper = Color.white }
-enum Palette { static let surface = Color.white; static let textPrimary = Color.black; static let action = Color.green }
+enum Palette { static let surface = Color.white; static let textPrimary = Color.black; static let action = Color.green; static let onAction = Color.white }
 SWIFT
 for sdk in iphonesimulator macosx; do
   xcrun -sdk "$sdk" metal -c "$src/ZoenGlass.metal" -o "$work/glass-$sdk.air"

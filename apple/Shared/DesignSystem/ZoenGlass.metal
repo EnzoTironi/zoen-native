@@ -19,17 +19,18 @@ static float roundedDistance(float2 p, float2 size, float r) {
 [[ stitchable ]] half4 zoenGlass(float2 position, half4 color, float2 size, float radius,
                                  float press, float prominent, float strength, float frost, float slab) {
     if (color.a <= 0.0h) return half4(0.0h);
+    const float unit = 1.0;                                      // SwiftUI positions are already points
     float2 c = size * 0.5;
     float r = min(radius, min(c.x, c.y));
     float depth = -roundedDistance(position, size, r);           // px in from the edge
     float coverage = clamp(depth + 0.5, 0.0, 1.0);
-    float2 e = float2(0.75, 0.0);
+    float2 e = float2(0.75 * unit, 0.0);
     float2 outward = float2(roundedDistance(position + e.xy, size, r) - roundedDistance(position - e.xy, size, r),
                             roundedDistance(position + e.yx, size, r) - roundedDistance(position - e.yx, size, r));
     outward = outward / max(length(outward), 0.0001);
     // The lens profile: a hemisphere across the rail. A marble's rail is the whole radius;
     // the slab preset's is a thin bevel, so small buttons read as a slab with a rounded lip.
-    float rail = max(mix(min(r, 28.0), min(r, 28.0) * 0.35, slab), 3.0);
+    float rail = max(mix(min(r, 28.0 * unit), min(r, 28.0 * unit) * 0.35, slab), 3.0 * unit);
     float edge = 1.0 - clamp(depth / rail, 0.0, 1.0);             // 0 on the crown, 1 at the rim
     float3 n = normalize(float3(outward * edge, sqrt(max(1.0 - edge * edge, 0.0))));
     float3 V = float3(0.0, 0.0, 1.0);

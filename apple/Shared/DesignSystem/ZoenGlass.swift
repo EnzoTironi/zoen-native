@@ -30,7 +30,13 @@ struct ZoenGlass: ViewModifier {
                     if reduceTransparency {
                         shape.fill(prominent ? fill : AnyShapeStyle(Palette.surface))
                     } else if lens {
-                        Color.clear.glassEffect(prominent ? .regular.tint(tintColor.opacity(0.88)).interactive() : .regular.interactive(), in: shape)
+                        if prominent, tint == nil {
+                            // no explicit tint: the environment's .tint(...) fills the body, the lens bends it
+                            shape.fill(.tint).opacity(0.88)
+                            Color.clear.glassEffect(.regular.interactive(), in: shape)
+                        } else {
+                            Color.clear.glassEffect(prominent ? .regular.tint(tintColor.opacity(0.88)).interactive() : .regular.interactive(), in: shape)
+                        }
                     } else {
                         shape.fill(.ultraThinMaterial)
                         shape.fill(prominent ? fill : AnyShapeStyle(Color.white.opacity(scheme == .dark ? 0.05 : 0.45)))
@@ -46,7 +52,7 @@ struct ZoenGlass: ViewModifier {
             }
     }
 
-    private var tintColor: Color { tint ?? Palette.action }
+    private var tintColor: Color { tint ?? Palette.action }   // shadow colour when the tint comes from the environment
     private var fill: AnyShapeStyle { tint.map { AnyShapeStyle($0) } ?? AnyShapeStyle(.tint) }
 }
 

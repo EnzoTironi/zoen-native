@@ -30,7 +30,6 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.luminance
-import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -58,8 +57,7 @@ fun GlassButton(
 ) {
     val interactions = interactionSource ?: remember { MutableInteractionSource() }
     val pressed by interactions.collectIsPressedAsState()
-    val view = LocalView.current
-    val reduce = remember(view) { reduceMotion(view) }
+    val reduce = !rememberMotionEnabled()
     val haptics = rememberZoenHaptics()
     LaunchedEffect(pressed) { if (pressed && enabled) haptics.perform(ZoenFeedback.Tap) }
 
@@ -69,7 +67,7 @@ fun GlassButton(
     val tint = colors?.containerColor?.takeIf { prominent || it != Color.Transparent } ?: MaterialTheme.colorScheme.primary
     val ink = when {
         colors != null && prominent -> colors.contentColor
-        prominent -> Color.White
+        prominent -> MaterialTheme.colorScheme.onPrimary
         else -> MaterialTheme.colorScheme.onSurface
     }
     val dark = MaterialTheme.colorScheme.surface.luminance() < 0.5f

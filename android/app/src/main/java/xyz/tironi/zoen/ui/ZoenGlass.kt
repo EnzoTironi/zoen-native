@@ -21,6 +21,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawWithCache
 import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
@@ -48,6 +49,7 @@ import androidx.compose.ui.unit.dp
  * API 33+ uses AGSL (one RuntimeShader per surface, built once in the draw cache, so
  * scrolling lists only update the press uniform); older devices get gradients.
  */
+@Composable
 fun Modifier.zoenGlass(
     tint: Color,
     prominent: Boolean,
@@ -56,41 +58,44 @@ fun Modifier.zoenGlass(
     press: () -> Float = { 0f },
     strength: Float = 1f,
     slab: Boolean = false,
-): Modifier = drawWithCache {
-    val r = cornerRadius?.toPx()?.coerceAtMost(size.minDimension / 2) ?: (size.minDimension / 2)
-    val corner = CornerRadius(r, r)
-    val frost = if (slab) 0.2f else 0.6f
-    val body = if (prominent) tint.copy(alpha = 0.92f) else Color.White.copy(alpha = if (dark) 0.07f else 0.6f)
-    val glass = if (Build.VERSION.SDK_INT >= 33) runCatching { MarbleShader(size.width, size.height, r, prominent, strength, frost, slab) }.getOrNull() else null
-    val crown = Brush.radialGradient(listOf(Color.White.copy(.5f * strength), Color.Transparent),
-        center = Offset(size.width * 0.35f, size.height * 0.2f), radius = size.minDimension * 0.8f)
-    val volume = Brush.verticalGradient(0f to Color.Transparent, .6f to Color.Transparent, 1f to Color.Black.copy(.18f * strength))
-    val rim = Brush.sweepGradient(listOf(Color.White.copy(.7f), Color.White.copy(.15f), Color.White.copy(.7f)))
-    onDrawBehind {
-        drawRoundRect(body, cornerRadius = corner)
-        if (glass != null) {
-            glass.setPress(press())
-            drawRect(glass.brush)
-        } else {
-            drawRoundRect(volume, cornerRadius = corner)
-            drawRoundRect(crown, cornerRadius = corner)
-            drawRoundRect(rim, cornerRadius = corner, style = Stroke(1.dp.toPx()))
+): Modifier {
+    // One shader per surface for its whole life: recomposition and resizes only touch uniforms.
+    val glass = remember { if (Build.VERSION.SDK_INT >= 33) runCatching { MarbleShader() }.getOrNull() else null }
+    return drawWithCache {
+        val r = cornerRadius?.toPx()?.coerceAtMost(size.minDimension / 2) ?: (size.minDimension / 2)
+        val corner = CornerRadius(r, r)
+        val frost = if (slab) 0.2f else 0.6f
+        val body = if (prominent) tint.copy(alpha = 0.92f) else Color.White.copy(alpha = if (dark) 0.07f else 0.6f)
+        val crown = Brush.radialGradient(listOf(Color.White.copy(.5f * strength), Color.Transparent),
+            center = Offset(size.width * 0.35f, size.height * 0.2f), radius = size.minDimension * 0.8f)
+        val volume = Brush.verticalGradient(0f to Color.Transparent, .6f to Color.Transparent, 1f to Color.Black.copy(.18f * strength))
+        val rim = Brush.sweepGradient(listOf(Color.White.copy(.7f), Color.White.copy(.15f), Color.White.copy(.7f)))
+        onDrawBehind {
+            drawRoundRect(body, cornerRadius = corner)
+            if (glass != null && Build.VERSION.SDK_INT >= 33) {
+                glass.set(size.width, size.height, r, density, prominent, strength, slab, frost, press())
+                drawRect(glass.brush)
+            } else {
+                drawRoundRect(volume, cornerRadius = corner)
+                drawRoundRect(crown, cornerRadius = corner)
+                drawRoundRect(rim, cornerRadius = corner, style = Stroke(1.dp.toPx()))
+            }
         }
     }
 }
 
 @RequiresApi(33)
-private class MarbleShader(w: Float, h: Float, r: Float, prominent: Boolean, strength: Float, private val frost: Float, slab: Boolean) {
-    val shader = RuntimeShader(ZOEN_GLASS).apply {
-        setFloatUniform("size", w, h)
-        setFloatUniform("radius", r)
-        setFloatUniform("prominent", if (prominent) 1f else 0f)
-        setFloatUniform("strength", strength)
-        setFloatUniform("slab", if (slab) 1f else 0f)
-    }
+private class MarbleShader {
+    val shader = RuntimeShader(ZOEN_GLASS)
     val brush = ShaderBrush(shader)
-    fun setPress(raw: Float) {
+    fun set(w: Float, h: Float, r: Float, unit: Float, prominent: Boolean, strength: Float, slab: Boolean, frost: Float, raw: Float) {
         val p = raw.coerceIn(0f, 1f)
+        shader.setFloatUniform("size", w, h)
+        shader.setFloatUniform("radius", r)
+        shader.setFloatUniform("unit", unit)
+        shader.setFloatUniform("prominent", if (prominent) 1f else 0f)
+        shader.setFloatUniform("strength", strength)
+        shader.setFloatUniform("slab", if (slab) 1f else 0f)
         shader.setFloatUniform("press", p)
         shader.setFloatUniform("frost", frost * (1f - 0.5f * p))   // a press clears the lens
     }
@@ -142,6 +147,7 @@ private fun GlassCardBody(
     val ink = colors?.contentColor?.takeOrElse { scheme.onSurface } ?: scheme.onSurface
     Column(
         modifier
+            .graphicsLayer { alpha = if (onClick != null && !enabled) 0.45f else 1f }
             .shadow(if (pressed) 2.dp else 8.dp, shape, clip = false,
                 ambientColor = Color.Black.copy(alpha = 0.12f), spotColor = Color.Black.copy(alpha = 0.16f))
             .clip(shape)
@@ -161,6 +167,7 @@ uniform float prominent;
 uniform float strength;
 uniform float frost;
 uniform float slab;
+uniform float unit;                    // px per dp, so the rail is the same size on every screen
 
 float roundedDistance(float2 p, float2 size, float r) {
     float2 h = size * 0.5;
@@ -172,13 +179,13 @@ half4 main(float2 position) {
     float r = min(radius, min(c.x, c.y));
     float depth = -roundedDistance(position, size, r);           // px in from the edge
     float coverage = clamp(depth + 0.5, 0.0, 1.0);
-    float2 e = float2(0.75, 0.0);
+    float2 e = float2(0.75 * unit, 0.0);
     float2 outward = float2(roundedDistance(position + e.xy, size, r) - roundedDistance(position - e.xy, size, r),
                             roundedDistance(position + e.yx, size, r) - roundedDistance(position - e.yx, size, r));
     outward = outward / max(length(outward), 0.0001);
     // The lens profile: a hemisphere across the rail. A marble's rail is the whole radius;
     // the flat preset's is a thin bevel, so small buttons read as a slab with a rounded lip.
-    float rail = max(mix(min(r, 28.0), min(r, 28.0) * 0.35, slab), 3.0);
+    float rail = max(mix(min(r, 28.0 * unit), min(r, 28.0 * unit) * 0.35, slab), 3.0 * unit);
     float edge = 1.0 - clamp(depth / rail, 0.0, 1.0);             // 0 on the crown, 1 at the rim
     float3 n = normalize(float3(outward * edge, sqrt(max(1.0 - edge * edge, 0.0))));
     float3 V = float3(0.0, 0.0, 1.0);
