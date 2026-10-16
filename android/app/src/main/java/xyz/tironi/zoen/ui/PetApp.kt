@@ -73,7 +73,7 @@ internal fun PetApp(preferences: android.content.SharedPreferences, itemId: Stri
                             }
                             Text(data.optString("name"), style = MaterialTheme.typography.displaySmall, color = petText)
                             Text(data.optString("mood"), color = petText.copy(alpha = .8f))
-                            OutlinedButton(onClick = { showEmotes = !showEmotes }, Modifier.testTag("pet-emotes-toggle"), colors = outlineColors) {
+                            GlassOutlinedButton(onClick = { showEmotes = !showEmotes }, Modifier.testTag("pet-emotes-toggle"), colors = outlineColors) {
                                 Icon(Icons.Rounded.EmojiEmotions, null); Spacer(Modifier.width(8.dp)); Text(emoteLabel)
                             }
                             AnimatedVisibility(showEmotes, enter = if (motion) scaleIn() + fadeIn() else EnterTransition.None,
@@ -86,7 +86,7 @@ internal fun PetApp(preferences: android.content.SharedPreferences, itemId: Stri
                             }
                         }
                     }
-                    item { Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.tertiaryContainer)) {
+                    item { GlassCard(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.tertiaryContainer)) {
                         Column(Modifier.fillMaxWidth().padding(20.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
                             listOf("fullness" to R.string.food, "joy" to R.string.mood, "energy" to R.string.rest).forEach { (key, label) ->
                                 val progress by animateFloatAsState((data.optDouble(key, 0.0) / 100).toFloat().coerceIn(0f, 1f),
@@ -102,7 +102,7 @@ internal fun PetApp(preferences: android.content.SharedPreferences, itemId: Stri
                             FilledTonalButton(onClick = { action(if (asleep) "pet_wake" else "pet_nap", JSONObject()) }) { Text(stringResource(if (asleep) R.string.wake else R.string.nap)) }
                             FilledTonalButton(onClick = { action("pet_play", JSONObject()) }, enabled = !asleep) { Text(stringResource(R.string.play)) }
                         } }
-                        item { OutlinedButton(onClick = { tab = 1 }, Modifier.fillMaxWidth(), enabled = !asleep, colors = outlineColors) { Icon(Icons.Rounded.SportsEsports, null); Spacer(Modifier.width(8.dp)); Text(stringResource(R.string.dash)) } }
+                        item { GlassOutlinedButton(onClick = { tab = 1 }, Modifier.fillMaxWidth(), enabled = !asleep, colors = outlineColors) { Icon(Icons.Rounded.SportsEsports, null); Spacer(Modifier.width(8.dp)); Text(stringResource(R.string.dash)) } }
                         item { Surface(shape = MaterialTheme.shapes.medium) {
                             Row { TextButton(onClick = { name = data.optString("name"); rename = true }) { Text(stringResource(R.string.rename)) }; Spacer(Modifier.weight(1f)); TextButton(onClick = { action("pet_release", JSONObject()) }) { Text(stringResource(R.string.release_pet), color = MaterialTheme.colorScheme.error) } }
                         } }
@@ -146,7 +146,7 @@ private fun PetLeaderboard(data: JSONObject, textColor: Color) {
         items(people, key = { it }) { person ->
             val rank = people.indexOf(person)
             val score = best.getJSONObject(person)
-            Card(colors = CardDefaults.cardColors(containerColor = Color.White.copy(alpha = .75f), contentColor = Color(0xFF1C1C1E))) {
+            GlassCard(colors = CardDefaults.cardColors(containerColor = Color.White.copy(alpha = .75f), contentColor = Color(0xFF1C1C1E))) {
                 Row(Modifier.fillMaxWidth().padding(12.dp), horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
                     Text(listOf("🥇", "🥈", "🥉").getOrElse(rank) { "${rank + 1}" }, style = MaterialTheme.typography.titleLarge)
                     Text(person, Modifier.weight(1f), style = MaterialTheme.typography.titleMedium)
