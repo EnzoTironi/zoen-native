@@ -46,9 +46,9 @@ final class NativeIconMotionCaptureTests: XCTestCase {
                 XCTAssertTrue(button.isSelected, "Selection witness must follow the actual tab handler")
                 let shot = app.screenshot()
                 let elapsed = (ProcessInfo.processInfo.systemUptime - start) * 1000
-                let name = "tab-(semantic)-tap-(repetition)-(appearance)"
+                let name = "tab-\(semantic)-tap-\(repetition)-\(appearance)"
                 attach(shot, name: name)
-                actions.append(["event": "tab-(semantic)-tap", "repetition": repetition,
+                actions.append(["event": "tab-\(semantic)-tap", "repetition": repetition,
                     "dispatch_uptime_seconds": start, "capture_completed_after_ms": elapsed,
                     "observed_state": ["tab": semantic], "selected": button.isSelected])
             }
@@ -68,7 +68,7 @@ final class NativeIconMotionCaptureTests: XCTestCase {
         XCTAssertTrue(send.waitForExistence(timeout: 10))
         XCTAssertTrue(send.isEnabled)
         XCTAssertEqual(composer.value as? String, "See you tomorrow")
-        attach(app.screenshot(), name: "composer-send-(appearance)")
+        attach(app.screenshot(), name: "composer-send-\(appearance)")
         actions.append(["event": "composer-send", "dispatch_uptime_seconds": start,
             "capture_completed_after_ms": (ProcessInfo.processInfo.systemUptime - start) * 1000,
             "observed_state": ["tab": "chats", "draft": ["text": "See you tomorrow", "focused": true]]])
@@ -77,7 +77,7 @@ final class NativeIconMotionCaptureTests: XCTestCase {
         composer.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: "See you tomorrow".count))
         XCTAssertTrue(app.buttons["Record voice message"].firstMatch.waitForExistence(timeout: 10))
         XCTAssertFalse(send.exists)
-        attach(app.screenshot(), name: "composer-mic-(appearance)")
+        attach(app.screenshot(), name: "composer-mic-\(appearance)")
         actions.append(["event": "composer-mic", "dispatch_uptime_seconds": clearStart,
             "capture_completed_after_ms": (ProcessInfo.processInfo.systemUptime - clearStart) * 1000,
             "observed_state": ["tab": "chats", "draft": ["text": "", "focused": true]]])
@@ -88,7 +88,7 @@ final class NativeIconMotionCaptureTests: XCTestCase {
             "pending": ["app motion/state witness", "bell-new", "typing-active", "connecting-active",
                         "icons-draw-on", "aligned video keyframes", "full/reduced mode verification"]]
         let attachment = XCTAttachment(data: try JSONSerialization.data(withJSONObject: report, options: [.sortedKeys]), uniformTypeIdentifier: "public.json")
-        attachment.name = "native-icon-action-sequence-(appearance).json"
+        attachment.name = "native-icon-action-sequence-\(appearance).json"
         attachment.lifetime = .keepAlways
         add(attachment)
     }
