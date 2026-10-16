@@ -370,23 +370,8 @@ private fun SecurityPage(model: ZoenViewModel, state: AppState, navigate: (NavKe
 
 @Composable
 private fun DevicesPage(model: ZoenViewModel, state: AppState, back: () -> Unit, close: () -> Unit) = SettingsScaffold(stringResource(R.string.st_devices), back, close) {
-    val result by produceState<Result<List<DeviceDto>>?>(null) { value = if (state.account == null) null else runCatching { model.repository.network { it.devices() } } }
-    when {
-        state.account == null -> SettingsEmpty(Icons.Rounded.Devices, R.string.st_no_account, R.string.st_devices_empty)
-        result == null -> Box(Modifier.fillMaxWidth().padding(40.dp), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
-        result!!.isFailure -> SettingsEmpty(Icons.Rounded.WifiOff, R.string.st_devices_failed, R.string.st_devices_empty)
-        else -> {
-            Caption(R.string.st_devices_caption)
-            Group {
-                result!!.getOrThrow().filter { !it.revoked }.forEachIndexed { i, d ->
-                    if (i > 0) RowDivider()
-                    SRow(if (d.thisDevice) Icons.Rounded.PhoneAndroid else Icons.Rounded.Computer, stringResource(if (d.thisDevice) R.string.st_this_device else R.string.st_another_device),
-                        subtitle = stringResource(R.string.st_code, d.deviceId.take(8)), value = if (d.thisDevice) stringResource(R.string.st_now) else null)
-                }
-            }
-            Caption(R.string.st_devices_add)
-        }
-    }
+    if (state.account == null) SettingsEmpty(Icons.Rounded.Devices, R.string.st_no_account, R.string.st_devices_empty)
+    else key(state.account.deviceId) { DeviceConnections(model, state.account.deviceId) }
 }
 
 @Composable

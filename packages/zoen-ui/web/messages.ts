@@ -180,6 +180,17 @@ export class Messages {
     }, () => generation !== this.generation || this.connection.kind !== 'ready' ? 'A conexão mudou. Tente de novo.' : null, false);
   }
 
+  async devices(): Promise<unknown> {
+    if (this.closed) throw new Error('Esta sessão está fechada.');
+    return this.transport.request('devices');
+  }
+
+  async unlinkDevice(device: string): Promise<void> {
+    if (this.closed) throw new Error('Esta sessão está fechada.');
+    if (device === this.session.account.device) throw new Error('Use Sair para fechar este navegador.');
+    await this.transport.request('unlink', device);
+  }
+
   async preview(code: string): Promise<Invite> {
     if (this.closed) throw new Error('The browser session is closed.');
     return parseInvite(await this.transport.request('preview_invite', code));

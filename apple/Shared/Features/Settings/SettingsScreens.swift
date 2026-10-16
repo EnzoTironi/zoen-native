@@ -382,6 +382,9 @@ struct DevicesSettings: View {
     @Environment(AppModel.self) private var model
     @State private var devices: [DeviceDto]? = nil
     @State private var failed: String? = nil
+    @State private var reload = 0
+    @State private var removing: DeviceDto?
+    @State private var busy = false
 
     var body: some View {
         SettingsPage(title: "Devices") {
@@ -397,21 +400,40 @@ struct DevicesSettings: View {
                                     title: d.thisDevice ? "This device" : "Another device",
                                     subtitle: String(localized: "Code \(String(d.deviceId.prefix(8)))"),
                                     value: d.thisDevice ? String(localized: "Now") : nil)
+                        if !d.thisDevice {
+                            Button("Desconectar aparelho", role: .destructive) { removing = d }.disabled(busy)
+                        }
                     }
                 }
-                SettingsCaption("To add one, open Zoen on the new device and choose to sign in with this one.")
             } else if let failed {
                 SettingsEmpty(symbol: "wifi.slash", title: "Couldn't load your devices", detail: LocalizedStringKey(failed))
             } else {
                 ProgressView().frame(maxWidth: .infinity).padding(.vertical, 40)
             }
-        }
-        .task {
-            guard model.sync.account != nil else { return }
-            do { devices = try await model.core.devices() } catch {
-                failed = (error as? CoreError)?.message ?? error.localizedDescription
+            if model.sync.account != nil {
+                Button("Atualizar aparelhos") { reload += 1 }.disabled(busy)
+                if failed != nil && devices != nil { Text("Não foi possível atualizar os aparelhos. Tente de novo.").foregroundStyle(.red) }
+                DeviceConnectionSection { reload += 1 }
             }
         }
+        .task(id: reload) {
+            guard model.sync.account != nil else { return }
+            do { devices = try await model.core.devices(); failed = nil }
+            catch { failed = "Não foi possível carregar os aparelhos. Tente de novo." }
+        }
+        .alert("Desconectar aparelho?", isPresented: Binding(get: { removing != nil }, set: { if !$0 { removing = nil } })) {
+            Button("Cancelar", role: .cancel) { removing = nil }
+            Button("Desconectar", role: .destructive) {
+                guard let device = removing else { return }
+                removing = nil
+                busy = true
+                Task { @MainActor in
+                    defer { busy = false }
+                    do { try await model.core.unlinkDevice(deviceId: device.deviceId); reload += 1 }
+                    catch { failed = "Não foi possível desconectar. Tente de novo." }
+                }
+            }
+        } message: { Text("Esse aparelho deixará de receber suas mensagens.") }
     }
 
     private var thisDeviceSymbol: String {

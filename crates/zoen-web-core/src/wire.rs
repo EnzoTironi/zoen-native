@@ -18,6 +18,11 @@ pub fn request(id: u64, kind: &str, value: &str) -> Result<Vec<u8>, String> {
             id: value.to_string(),
         },
         "devices" => Op::Devices,
+        "unlink" => Op::Unlink {
+            device: roda_log::parse_device_key(value)
+                .map(|_| value.to_string())
+                .ok_or("invalid device public key")?,
+        },
         "preview_invite" => Op::PreviewInvite {
             code: value.to_string(),
         },

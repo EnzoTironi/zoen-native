@@ -24,7 +24,7 @@ test('the vault keeps protected signing keys and encrypted state across an Index
   const first = await BrowserVault.open();
   const device = await first.device();
   const session: StoredSession = { kind: 'pending', pending: { device, relay: 'https://relay.example', hpke_secret: '11'.repeat(32), secret: '22'.repeat(32),
-    code: 'zoen-link:1:fixture', check: '123456', box_id: '33'.repeat(32) } };
+    code: 'zoen-link:1:fixture', check: '123456', box_id: '33'.repeat(32), expires_at_ms: 0 } };
   await first.save(session); first.close();
   const second = await BrowserVault.open();
   t.after(() => second.close());
