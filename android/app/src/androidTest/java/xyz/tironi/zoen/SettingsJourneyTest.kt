@@ -71,6 +71,7 @@ class SettingsJourneyTest {
         compose.runOnIdle { AppAppearance.load(context) }
     }
 
+    @OptIn(ExperimentalTestApi::class)
     private fun clickVisible(tag: String) {
         compose.waitUntilAtLeastOneExists(hasTestTag(tag), 10_000)
         try {
