@@ -106,3 +106,42 @@ above. No simulator/emulator or native runtime journey was run. No new visual
 capture was made: this reconciliation preserves the existing controls rather than
 introducing a new presentation. Prior visual evidence retains its stated limits.
 Disk remained above 5 GiB free (over 250 GiB at the integration check).
+
+## Key-only password-attempt accounting fix
+
+The previous mode check happened after `/restore/start` had already spent a
+password guess. Key-only clients now omit the password OPRF point and send
+`recovery_only: true`. Older relays reject the missing point before accounting;
+updated relays reject key-only requests against password vaults before password
+vault access or accounting, even if a caller supplies a point. Existing password
+clients retain their request behavior.
+
+Verification on this fix:
+
+- Temporarily restoring the original client request made
+  `cargo test --locked -p roda-ffi --lib recovery_ui_tests::recovery_ui_refuses_password_mode_before_spending_a_guess -- --exact --test-threads=1`
+  fail at the new no-OPRF-point assertion. Restoring the fix and running
+  `cargo test --locked -p roda-ffi --lib recovery_ui -- --test-threads=1`
+  passed all 3 tests.
+- The freshly built native unit-test executable with `--test-threads=2` passed
+  all 324 tests, zero ignored or failed.
+- With isolated PostgreSQL databases and FoundationDB cells,
+  `cargo test --locked -p zoen-cli --test journey_backup key_only_restore_never_spends_password_guesses -- --exact --nocapture`
+  passed: explicit key-only requests, with and without an OPRF point, leave the
+  password guess counter unchanged. Initial local attempts failed to locate the
+  fixture binary/library; correcting the absolute build output and FDB library
+  linkage made the same test pass.
+- `cargo test --locked -p zoen-cli --test journey_backup a_restored_recovery_key_device_rejoins_encrypted_chats -- --exact --nocapture`
+  passed the existing real-relay recovered-device encrypted-chat journey.
+- After requester-authorized Java 17 installation, Android
+  `./gradlew :app:testDebugUnitTest --tests xyz.tironi.zoen.ui.RecoveryKeyInputTest -PcoreProfile=dev -PandroidAbis=arm64-v8a --no-daemon`
+  passed both tests, with no skipped tests. This built the Android core and
+  regenerated Kotlin bindings through `scripts/build-android-core.sh`; no
+  generated bindings were hand-edited.
+- The Swift recovery-input journey, 5 Python recovery wiring guards,
+  `cargo fmt --all --check` and `git diff --check` passed.
+
+No simulator/emulator, full Apple app build or native UI journey was run in this
+fix. The encrypted-chat journey uses the CLI/core against a local relay; it is not
+physical-device loss or native lifecycle evidence. No UI presentation changed,
+so no new screenshot was captured. Hosted CI is separate from these local checks.
