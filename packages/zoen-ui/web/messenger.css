@@ -66,9 +66,6 @@ body { background: var(--zm-canvas); color: var(--zm-ink); }
 .zm-home-action svg { width: 21px; height: 21px; }
 .zm-home-me { border: 0; background: none; padding: 0; width: 40px; height: 40px; flex-shrink: 0; }
 .zm-connection-dot { width: 6px; height: 6px; flex-shrink: 0; border-radius: 50%; background: currentColor; }
-.zm-home-strip { height: 170px; flex-shrink: 0; overflow-x: auto; padding: 0 20px; margin-bottom: 14px; }
-.zm-pin-here { box-sizing: border-box; width: 170px; height: 170px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px; padding: 12px; border-radius: 28px; border: 1.4px dashed color-mix(in srgb, var(--zm-grey) 50%, transparent); background: color-mix(in srgb, var(--zm-line-soft) 50%, transparent); color: var(--zm-grey); font-size: 13px; font-weight: 600; text-align: center; }
-.zm-pin-here img { object-fit: contain; }
 .zm-inbox-filter { display: flex; align-items: center; gap: 6px; min-height: 44px; margin: 0 20px 14px; flex-shrink: 0; color: var(--zm-grey); }
 .zm-inbox-filter > svg { width: 17px; height: 17px; }
 .zm-inbox-filter select { border: 0; background: transparent; color: inherit; font: inherit; font-size: 15px; font-weight: 500; min-height: 44px; max-width: 100%; }

@@ -15,7 +15,7 @@ Object.defineProperty(globalThis, 'localStorage', { configurable: true, value: d
 dom.window.HTMLElement.prototype.scrollIntoView = () => {};
 const { createElement: h, act } = await import('react');
 const { createRoot } = await import('react-dom/client');
-const { Messenger } = await import(pathToFileURL(output).href);
+const { Messenger, homeSnapshots } = await import(pathToFileURL(output).href);
 const own = '11'.repeat(32);
 function msg(id: string, text: string) { return { id, entry: id, author: own, name: 'Ana', text, at_ms: 1000, delivery: 'confirmed', failure: null, ticks: 'sent', edited: false, deleted: false, forwarded: false, reactions: [], quote: null, thread: null, replies: 0, repliers: [], last_reply_ms: null }; }
 const conversations = [{ id: 'chat', title: 'Amigos', kind: 'group', can_send: true, waiting: null, unreadable: 0, unread: 0, mentions: 0, members: 2, messages: [msg('first', 'pousada antiga'), msg('second', 'Texto para editar')] }];
@@ -25,10 +25,10 @@ async function input(el: HTMLInputElement | HTMLTextAreaElement, value: string) 
 }
 async function click(el: Element | undefined | null) { assert.ok(el); await act(async () => (el as HTMLElement).click()); }
 function button(label: string) { return [...document.querySelectorAll('button')].find((b) => b.textContent === label || b.getAttribute('aria-label') === label); }
-async function mount(annotate = async () => {}) {
+async function mount(annotate = async () => {}, data = conversations) {
   const calls: unknown[] = [];
   const root = createRoot(document.getElementById('root')!);
-  await act(async () => root.render(h(Messenger, { conversations, identity: own, name: 'Ana', connected: true, status: 'Conectado', messages: { current: { annotate, post: async (v: unknown) => { calls.push(v); }, sendFile: async (...args: unknown[]) => { calls.push(args); } } }, footer: null, selected: 'chat', select: () => {} })));
+  await act(async () => root.render(h(Messenger, { conversations: data, identity: own, name: 'Ana', connected: true, status: 'Conectado', messages: { current: { annotate, post: async (v: unknown) => { calls.push(v); }, sendFile: async (...args: unknown[]) => { calls.push(args); } } }, footer: null, selected: 'chat', select: () => {} })));
   return { calls, close: async () => { await act(async () => root.unmount()); } };
 }
 
@@ -48,7 +48,7 @@ test('inbox filter selects actual conversation kinds and search opens from the b
   const ui = await mount();
   try {
     assert.equal(document.querySelector('input[type=search]'), null);
-    assert.ok(document.querySelector('.zm-pin-here'));
+    assert.ok(document.querySelector('.nw-empty'));
     const filter = document.querySelector('[aria-label="Filter chats"]') as HTMLSelectElement;
     await act(async () => { filter.value = 'direct'; filter.dispatchEvent(new dom.window.Event('change', { bubbles: true })); });
     assert.equal(document.querySelectorAll('.zm-chats > li').length, 0);
@@ -160,4 +160,22 @@ test('voice recording carries the selected inline reply', async (t) => {
     globals.forEach((key, i) => { const d = descriptors[i]; if (d) Object.defineProperty(globalThis, key, d); else Reflect.deleteProperty(globalThis, key); });
     Reflect.deleteProperty(navigator, 'mediaDevices');
   }
+});
+
+
+test('production Home uses latest snapshots in first appearance order and opens honest details notice', async () => {
+  const snapshot = (id: string, title: string) => ({ id, appId: id, title, template: 'stat', accentHex: '#448844', symbol: 'star', deepLink: `zoen://app/${id}`, value: '3' });
+  const entry = (id: string, at: number, title: string) => ({ ...msg(`${id}-${at}`, ''), at_ms: at, card: { snapshot: snapshot(id, title) } });
+  const data = [{ ...conversations[0], messages: [entry('a', 30, 'Latest A'), entry('b', 20, 'Second B'), entry('a', 10, 'Old A'), { ...entry('c', 5, 'Deleted'), deleted: true }] }];
+  assert.deepEqual(homeSnapshots(data).map((s: {title: string}) => s.title), ['Latest A', 'Second B']);
+  assert.deepEqual(homeSnapshots(conversations), []);
+  const ui = await mount(undefined, data);
+  try {
+    assert.equal(document.querySelectorAll('.nw-strip .nw-card').length, 2);
+    assert.equal(document.querySelector('.nw-empty'), null);
+    await click(document.querySelector('.nw-open'));
+    assert.match(document.querySelector('[role=dialog]')!.textContent!, /Item details are not available on web yet/);
+    await click(button('Close'));
+    assert.equal(document.querySelector('[role=dialog]'), null);
+  } finally { await ui.close(); }
 });

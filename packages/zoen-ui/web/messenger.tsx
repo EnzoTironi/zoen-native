@@ -6,6 +6,17 @@ import { NativeAdaptiveShell } from './native-adaptive.tsx';
 import { displayNow, displayTime } from './display-clock.ts';
 import { NativeAvatar } from './native-art.tsx';
 import { NativeNavigation } from './native-navigation.tsx';
+import { NativeHomeStrip, type WidgetSnapshot } from './native-widget.tsx';
+
+export function homeSnapshots(conversations: readonly Conversation[]): WidgetSnapshot[] {
+  const snapshots = new Map<string, WidgetSnapshot>();
+  const entries = conversations.flatMap(c => c.messages).filter(m => !m.deleted && m.card?.snapshot).sort((a, b) => a.at_ms - b.at_ms);
+  for (const entry of entries) {
+    const snapshot = entry.card!.snapshot!;
+    snapshots.set(snapshot.id, snapshot);
+  }
+  return [...snapshots.values()];
+}
 import { MessageEditor } from './message-editor.tsx';
 import { MessageSearchResults } from './message-search-view.tsx';
 import type { MessageHit } from './message-search.ts';
@@ -240,6 +251,7 @@ function AccountMessenger({ conversations, identity, name, connected, status, me
   const [wide, setWide] = useState(() => window.matchMedia?.('(min-width: 861px)').matches ?? false);
   const [destination, setDestination] = useState('chats');
   const [searchOpen, setSearchOpen] = useState(false);
+  const [homeNotice, setHomeNotice] = useState<WidgetSnapshot | null>(null);
   useEffect(() => {
     if (!window.matchMedia) return;
     const query = window.matchMedia('(min-width: 861px)');
@@ -325,7 +337,8 @@ function AccountMessenger({ conversations, identity, name, connected, status, me
           <button className="zm-home-action glass" aria-label="Notifications" onClick={() => navigate('notifications')}><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><path d="M5 17h14l-2-3V9a5 5 0 0 0-10 0v5l-2 3Zm5 3h4" /></svg></button>
           <button className="zm-home-me" aria-label="Your context" onClick={() => navigate('you')}><Avatar name={name} id={identity} size={40} /></button>
         </header>
-        <div className="zm-home-strip"><div className="zm-pin-here"><img src="./assets/native/wave.png" alt="" width="95.2" height="95.2" /><span>{english() ? 'Pin a mini-app here' : 'Fixe um mini-app aqui'}</span></div></div>
+        <NativeHomeStrip snapshots={homeSnapshots(conversations)} onOpen={setHomeNotice} />
+        {homeNotice ? <div className="zm-scrim" onClick={() => setHomeNotice(null)}><section className="zm-sheet" role="dialog" aria-modal="true" aria-label={homeNotice.title} onClick={e => e.stopPropagation()}><h2>{homeNotice.title}</h2><p>Open this item in the native Zoen app. Item details are not available on web yet.</p><button className="zm-pill" autoFocus onClick={() => setHomeNotice(null)}>Close</button></section></div> : null}
       </> : null}
       <div className="zm-inbox-filter">
         {showArchived ? <button className="zm-round" aria-label="Voltar" onClick={() => setShowArchived(false)}><Icon name="back" /></button> : null}
