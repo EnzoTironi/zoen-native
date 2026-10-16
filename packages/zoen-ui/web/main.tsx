@@ -187,4 +187,6 @@ function App() {
 
 const root = document.getElementById('root');
 if (!root) throw new Error('The Zoen root is missing.');
-createRoot(root).render(<App />);
+if (new URLSearchParams(location.search).get('parity') === '1') {
+  void import('./native-parity.tsx').then(({ installNativeParity }) => installNativeParity(root));
+} else createRoot(root).render(<App />);

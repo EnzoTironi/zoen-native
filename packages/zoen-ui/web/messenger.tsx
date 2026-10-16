@@ -58,8 +58,8 @@ function Ticks({ state }: { state: Message['ticks'] | 'sending' | 'failed' }) {
   </svg>;
 }
 
-export function Bubble({ entry, own, first, onReact, onReply, onThread, onEdit, onDelete, onForward, inThread, messages }: {
-  entry: Message; messages: Messages | null; own: boolean; first: boolean; inThread?: boolean;
+export function Bubble({ entry, own, first, onReact, onReply, onThread, onEdit, onDelete, onForward, inThread, messages, formatTime = time }: {
+  entry: Message; messages: Messages | null; own: boolean; first: boolean; inThread?: boolean; formatTime?: (ms: number) => string;
   onReact: (emoji: string | null) => void; onReply: () => void; onThread: () => void; onEdit: () => void; onDelete: () => void; onForward: () => void;
 }) {
   const [picker, setPicker] = useState(false);
@@ -76,7 +76,7 @@ export function Bubble({ entry, own, first, onReact, onReply, onThread, onEdit, 
         {entry.forwarded && !entry.deleted ? <span className="zm-forwarded">Encaminhada</span> : null}
         {entry.quote && !entry.deleted ? <span className="zm-quote"><b>{entry.quote.name || 'Mensagem'}</b>{entry.quote.text || 'Mensagem apagada'}</span> : null}
         {entry.file && !entry.deleted ? <FileView file={entry.file} messages={messages} /> : <span className="zm-text">{entry.deleted ? 'Mensagem apagada' : entry.text}</span>}
-        <span className="zm-meta">{entry.edited && !entry.deleted ? 'editada · ' : ''}<time dateTime={new Date(entry.at_ms).toISOString()}>{time(entry.at_ms)}</time>{own ? <Ticks state={state} /> : null}</span>
+        <span className="zm-meta">{entry.edited && !entry.deleted ? 'editada · ' : ''}<time dateTime={new Date(entry.at_ms).toISOString()}>{formatTime(entry.at_ms)}</time>{own ? <Ticks state={state} /> : null}</span>
       </div>
       {ordered && !entry.deleted ? <div className="zm-actions" role="toolbar" aria-label="Ações da mensagem">
         <button aria-label="Reagir" aria-expanded={picker} onClick={() => { setEmojiDraft(''); setPicker((v) => !v); }}><Icon name="smile" /></button>
