@@ -178,7 +178,7 @@ impl TestRelay {
             .unwrap();
         let url = format!("{}/{database}", admin_url.rsplit_once('/').unwrap().0);
         let pool = PgPoolOptions::new()
-            .max_connections(1)
+            .max_connections(4)
             .acquire_timeout(Duration::from_secs(2))
             .connect(&url)
             .await
@@ -283,6 +283,7 @@ async fn presence(
             online: state,
             last_seen_ms,
             hide_last_seen,
+            ..
         } = recv(socket).await.expect("presence stream closed")
         {
             if id == identity && state == online {
@@ -335,6 +336,11 @@ async fn privacy_is_enforced_on_disconnect_reconnect_and_sibling_devices() {
     .is_ok());
     *test.log.members.lock().unwrap() = vec![a.identity.clone(), b.identity.clone()];
     let mut second = connect(&test.ws_url, &sibling).await;
+    // Existing sockets learn a newly shared relationship without reconnecting.
+    let audience = vec![a.identity.clone(), b.identity.clone()];
+    zoen_relay::presence::joined(&test.state, &b.identity, &audience).await;
+    assert_eq!(presence(&mut peer, &a.identity, true).await, (None, None));
+    assert_eq!(presence(&mut first, &b.identity, true).await, (None, None));
     // Changing policy on either device synchronizes siblings and strips peer data.
     send(
         &mut second,
@@ -407,6 +413,345 @@ async fn privacy_is_enforced_on_disconnect_reconnect_and_sibling_devices() {
     let (timestamp, policy) = presence(&mut peer, &a.identity, false).await;
     assert!(timestamp.is_some());
     assert_eq!(policy, None);
+    peer.close(None).await.unwrap();
+    // Knowing an identity is not sufficient to query presence: no shared Space,
+    // no presence snapshot (the only frame before the barrier is the self policy).
+    let outsider = Author::device(&Signer::generate(), Signer::generate());
+    let mut stranger = connect(&test.ws_url, &outsider).await;
+    assert!(request(
+        &mut stranger,
+        1,
+        Op::Register {
+            profile: profile(&outsider, "caio")
+        }
+    )
+    .await
+    .is_ok());
+    stranger.close(None).await.unwrap();
+    let (mut stranger, ready) = authenticate(&test.ws_url, &outsider).await;
+    assert!(matches!(ready, ServerFrame::Ready { .. }));
+    send(&mut stranger, ClientFrame::Ping).await;
+    loop {
+        match recv(&mut stranger).await.unwrap() {
+            ServerFrame::Presence { identity, .. } => assert_eq!(identity, outsider.identity),
+            ServerFrame::Pong { .. } => break,
+            _ => {}
+        }
+    }
+    stranger.close(None).await.unwrap();
+    test.close().await;
+}
+
+async fn publication_waits(
+    pool: &sqlx::PgPool,
+    task: &mut tokio::task::JoinHandle<Result<(), sqlx::Error>>,
+) {
+    let waiting = async {
+        loop {
+            let blocked: bool = sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM pg_locks WHERE locktype = 'advisory' AND NOT granted AND database = (SELECT oid FROM pg_database WHERE datname = current_database()))")
+                .fetch_one(pool).await.unwrap();
+            if blocked {
+                break;
+            }
+            tokio::task::yield_now().await;
+        }
+    };
+    tokio::select! {
+        result = task => panic!("publication bypassed the policy lock: {result:?}"),
+        result = tokio::time::timeout(Duration::from_secs(3), waiting) => result.unwrap(),
+    }
+}
+
+#[tokio::test]
+async fn delayed_snapshot_and_disconnect_use_the_latest_locked_policy() {
+    let test = TestRelay::new().await;
+    let a = Author::device(&Signer::generate(), Signer::generate());
+    let b = Author::device(&Signer::generate(), Signer::generate());
+    let mut first = connect(&test.ws_url, &a).await;
+    assert!(request(
+        &mut first,
+        1,
+        Op::Register {
+            profile: profile(&a, "ana")
+        }
+    )
+    .await
+    .is_ok());
+    first.close(None).await.unwrap();
+    // Wait for the old connection to leave before seeding the observed timestamp.
+    tokio::time::timeout(Duration::from_secs(3), async {
+        while test.state.fanout.is_online(&a.identity).await {
+            tokio::task::yield_now().await;
+        }
+    })
+    .await
+    .unwrap();
+    let mut peer = connect(&test.ws_url, &b).await;
+    assert!(request(
+        &mut peer,
+        1,
+        Op::Register {
+            profile: profile(&b, "bia")
+        }
+    )
+    .await
+    .is_ok());
+    sqlx::query("INSERT INTO presence_preferences(identity, last_seen_ms) VALUES ($1, 42) ON CONFLICT (identity) DO UPDATE SET last_seen_ms=42, hide_last_seen=false")
+        .bind(&a.identity).execute(&test.state.pool).await.unwrap();
+    // A publication stalled behind another policy operation must not cache a
+    // public timestamp, then disclose it after a completed privacy change.
+    let mut gate = test.state.pool.acquire().await.unwrap();
+    sqlx::query("SELECT pg_advisory_lock(hashtextextended($1, 782651))")
+        .bind(&a.identity)
+        .execute(&mut *gate)
+        .await
+        .unwrap();
+    let (state, identity, recipient) = (test.state.clone(), a.identity.clone(), b.identity.clone());
+    let mut snapshot = tokio::spawn(async move {
+        zoen_relay::presence::snapshot(&state, &recipient, &[identity]).await
+    });
+    publication_waits(&test.state.pool, &mut snapshot).await;
+    sqlx::query("UPDATE presence_preferences SET hide_last_seen = true WHERE identity = $1")
+        .bind(&a.identity)
+        .execute(&mut *gate)
+        .await
+        .unwrap();
+    sqlx::query("SELECT pg_advisory_unlock(hashtextextended($1, 782651))")
+        .bind(&a.identity)
+        .execute(&mut *gate)
+        .await
+        .unwrap();
+    snapshot.await.unwrap().unwrap();
+    assert_eq!(presence(&mut peer, &a.identity, false).await, (None, None));
+
+    sqlx::query("SELECT pg_advisory_lock(hashtextextended($1, 782651))")
+        .bind(&a.identity)
+        .execute(&mut *gate)
+        .await
+        .unwrap();
+    let (state, identity, recipient) = (test.state.clone(), a.identity.clone(), b.identity.clone());
+    let mut offline = tokio::spawn(async move {
+        zoen_relay::presence::offline(&state, &identity, &[recipient]).await
+    });
+    publication_waits(&test.state.pool, &mut offline).await;
+    sqlx::query("SELECT pg_advisory_unlock(hashtextextended($1, 782651))")
+        .bind(&a.identity)
+        .execute(&mut *gate)
+        .await
+        .unwrap();
+    offline.await.unwrap().unwrap();
+    assert_eq!(presence(&mut peer, &a.identity, false).await, (None, None));
+    // Cancellation after acquiring only part of a sorted snapshot audience must
+    // release every session lock, never return a locked connection to the pool.
+    let ids: Vec<String> = sqlx::query_scalar(
+        "SELECT id FROM unnest($1::text[]) ids(id) ORDER BY hashtextextended(id, 782651)",
+    )
+    .bind(vec![a.identity.clone(), b.identity.clone()])
+    .fetch_all(&mut *gate)
+    .await
+    .unwrap();
+    sqlx::query("SELECT pg_advisory_lock(hashtextextended($1, 782651))")
+        .bind(&ids[1])
+        .execute(&mut *gate)
+        .await
+        .unwrap();
+    let (state, recipient, audience) = (test.state.clone(), b.identity.clone(), ids.clone());
+    let mut cancelled =
+        tokio::spawn(
+            async move { zoen_relay::presence::snapshot(&state, &recipient, &audience).await },
+        );
+    publication_waits(&test.state.pool, &mut cancelled).await;
+    let acquired: bool =
+        sqlx::query_scalar("SELECT pg_try_advisory_lock(hashtextextended($1, 782651))")
+            .bind(&ids[0])
+            .fetch_one(&mut *gate)
+            .await
+            .unwrap();
+    assert!(!acquired, "snapshot did not acquire its sorted first lock");
+    cancelled.abort();
+    let _ = cancelled.await;
+    // Let the server finish its blocked statement, then prove the cancelled
+    // connection is closed instead of being returned with partial session locks.
+    sqlx::query("SELECT pg_advisory_unlock(hashtextextended($1, 782651))")
+        .bind(&ids[1])
+        .execute(&mut *gate)
+        .await
+        .unwrap();
+    tokio::time::timeout(
+        Duration::from_secs(3),
+        sqlx::query("SELECT pg_advisory_lock(hashtextextended($1, 782651))")
+            .bind(&ids[0])
+            .execute(&mut *gate),
+    )
+    .await
+    .unwrap()
+    .unwrap();
+    sqlx::query("SELECT pg_advisory_unlock_all()")
+        .execute(&mut *gate)
+        .await
+        .unwrap();
+    drop(gate);
+    peer.close(None).await.unwrap();
+    test.close().await;
+}
+
+#[tokio::test]
+async fn database_failure_still_announces_offline_without_a_timestamp() {
+    let test = TestRelay::new().await;
+    let a = Author::device(&Signer::generate(), Signer::generate());
+    let b = Author::device(&Signer::generate(), Signer::generate());
+    let mut first = connect(&test.ws_url, &a).await;
+    assert!(request(
+        &mut first,
+        1,
+        Op::Register {
+            profile: profile(&a, "ana")
+        }
+    )
+    .await
+    .is_ok());
+    let mut peer = connect(&test.ws_url, &b).await;
+    assert!(request(
+        &mut peer,
+        1,
+        Op::Register {
+            profile: profile(&b, "bia")
+        }
+    )
+    .await
+    .is_ok());
+    *test.log.members.lock().unwrap() = vec![a.identity.clone(), b.identity.clone()];
+    sqlx::query("ALTER TABLE presence_preferences RENAME TO presence_unavailable")
+        .execute(&test.state.pool)
+        .await
+        .unwrap();
+    first.close(None).await.unwrap();
+    assert_eq!(presence(&mut peer, &a.identity, false).await, (None, None));
+    sqlx::query("ALTER TABLE presence_unavailable RENAME TO presence_preferences")
+        .execute(&test.state.pool)
+        .await
+        .unwrap();
+    peer.close(None).await.unwrap();
+    test.close().await;
+}
+
+#[tokio::test]
+async fn delayed_remote_frames_cannot_leak_timestamps_or_revert_self_policy() {
+    let test = TestRelay::new().await;
+    let a = Author::device(&Signer::generate(), Signer::generate());
+    let b = Author::device(&Signer::generate(), Signer::generate());
+    let mut first = connect(&test.ws_url, &a).await;
+    assert!(request(
+        &mut first,
+        1,
+        Op::Register {
+            profile: profile(&a, "ana")
+        }
+    )
+    .await
+    .is_ok());
+    let mut peer = connect(&test.ws_url, &b).await;
+    assert!(request(
+        &mut peer,
+        1,
+        Op::Register {
+            profile: profile(&b, "bia")
+        }
+    )
+    .await
+    .is_ok());
+    *test.log.members.lock().unwrap() = vec![a.identity.clone(), b.identity.clone()];
+    sqlx::query("UPDATE presence_preferences SET last_seen_ms = 42 WHERE identity = $1")
+        .bind(&a.identity)
+        .execute(&test.state.pool)
+        .await
+        .unwrap();
+    let stale = zoen_relay::presence::get(&test.state.pool, &a.identity)
+        .await
+        .unwrap();
+    send(
+        &mut first,
+        ClientFrame::SetPresencePrivacy {
+            hide_last_seen: true,
+        },
+    )
+    .await;
+    assert_eq!(
+        presence(&mut first, &a.identity, true).await,
+        (None, Some(true))
+    );
+    assert_eq!(presence(&mut peer, &a.identity, true).await, (None, None));
+    let current = zoen_relay::presence::get(&test.state.pool, &a.identity)
+        .await
+        .unwrap();
+    assert!(current.revision > stale.revision);
+    // Equivalent to an old NATS publication arriving after the new one; exercise
+    // the real websocket writer rather than assuming the bus preserves ordering.
+    test.state.fanout.send(
+        &[b.identity.clone()],
+        &stale.frame(a.identity.clone(), false, false),
+        None,
+    );
+    test.state.fanout.send(
+        &[a.identity.clone()],
+        &stale.frame(a.identity.clone(), true, true),
+        None,
+    );
+    for socket in [&mut first, &mut peer] {
+        send(socket, ClientFrame::Ping).await;
+        loop {
+            match recv(socket).await.unwrap() {
+                ServerFrame::Presence {
+                    identity,
+                    last_seen_ms,
+                    hide_last_seen,
+                    ..
+                } if identity == a.identity => {
+                    assert!(last_seen_ms.is_none(), "delayed public timestamp disclosed");
+                    assert_ne!(
+                        hide_last_seen,
+                        Some(false),
+                        "delayed self policy reverted UI"
+                    );
+                    panic!("stale revision reached the client");
+                }
+                ServerFrame::Pong { .. } => break,
+                _ => {}
+            }
+        }
+    }
+    // Final delivery holds a shared row fence until bytes are written: a policy
+    // update cannot acknowledge while an old frame is still at that boundary.
+    let mut pending = current.frame(a.identity.clone(), false, false);
+    let fence = match zoen_relay::presence::delivery(&test.state, &b.identity, &mut pending).await {
+        zoen_relay::presence::Delivery::Send(Some(tx)) => tx,
+        _ => panic!("missing final delivery fence"),
+    };
+    let (state, identity, recipient) = (test.state.clone(), a.identity.clone(), b.identity.clone());
+    let mut change = tokio::spawn(async move {
+        zoen_relay::presence::set_privacy(&state, &identity, false, &[recipient]).await
+    });
+    let blocked = async {
+        loop {
+            let waiting: bool = sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM pg_locks WHERE locktype = 'transactionid' AND NOT granted AND pid IN (SELECT pid FROM pg_stat_activity WHERE datname = current_database()))")
+                .fetch_one(&test.state.pool).await.unwrap();
+            if waiting {
+                break;
+            }
+            tokio::task::yield_now().await;
+        }
+    };
+    tokio::select! {
+        result = &mut change => panic!("policy bypassed final delivery fence: {result:?}"),
+        result = tokio::time::timeout(Duration::from_secs(3), blocked) => result.unwrap(),
+    }
+    drop(fence);
+    change.await.unwrap().unwrap();
+    assert_eq!(
+        presence(&mut first, &a.identity, true).await,
+        (None, Some(false))
+    );
+    first.close(None).await.unwrap();
     peer.close(None).await.unwrap();
     test.close().await;
 }

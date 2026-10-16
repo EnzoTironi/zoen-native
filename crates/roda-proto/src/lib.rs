@@ -774,6 +774,8 @@ pub enum ServerFrame {
         last_seen_ms: Option<u64>,
         /// Sent only to this identity's own devices, to synchronize the setting.
         hide_last_seen: Option<bool>,
+        /// Relay revision fences delayed cross-node frames at final delivery.
+        revision: Option<u64>,
     },
     /// Someone you share a Space with stored a new profile version.
     ProfileChanged {

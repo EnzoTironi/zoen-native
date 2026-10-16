@@ -650,6 +650,8 @@ pub struct PbPresence {
     pub last_seen_ms: Option<u64>,
     #[prost(bool, optional, tag = "4")]
     pub hide_last_seen: Option<bool>,
+    #[prost(uint64, optional, tag = "5")]
+    pub revision: Option<u64>,
 }
 
 #[derive(Clone, PartialEq, Message)]
@@ -1194,11 +1196,13 @@ impl ServerFrame {
                 online,
                 last_seen_ms,
                 hide_last_seen,
+                revision,
             } => F::Presence(PbPresence {
                 identity: identity.clone(),
                 online: *online,
                 last_seen_ms: *last_seen_ms,
                 hide_last_seen: *hide_last_seen,
+                revision: *revision,
             }),
             ServerFrame::ProfileChanged { identity, version } => {
                 F::ProfileChanged(PbProfileChanged {
@@ -1352,6 +1356,7 @@ impl ServerFrame {
                 online: p.online,
                 last_seen_ms: p.last_seen_ms,
                 hide_last_seen: p.hide_last_seen,
+                revision: p.revision,
             },
             F::ProfileChanged(p) => ServerFrame::ProfileChanged {
                 identity: p.identity,
@@ -1510,6 +1515,7 @@ mod tests {
                 online: true,
                 last_seen_ms: None,
                 hide_last_seen: None,
+                revision: None,
             }
         );
     }
@@ -1601,6 +1607,7 @@ mod tests {
                 online: false,
                 last_seen_ms: Some(42),
                 hide_last_seen: None,
+                revision: Some(7),
             },
             ServerFrame::Res {
                 id: 12,

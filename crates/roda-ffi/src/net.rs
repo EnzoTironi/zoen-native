@@ -11,7 +11,7 @@
 use std::{
     collections::{HashMap, HashSet},
     sync::{Arc, Mutex},
-    time::Duration,
+    time::{Duration, Instant},
 };
 
 use futures_util::{SinkExt, StreamExt};
@@ -47,6 +47,7 @@ pub struct NetStatus {
 
 #[derive(Clone, Debug)]
 struct AuthenticatedRelay {
+    connected_at: Instant,
     base: String,
     name: String,
     identity: String,
@@ -62,6 +63,7 @@ pub enum Cmd {
     Ephemeral {
         space: String,
         kind: EphemeralKind,
+        transient: Option<(Instant, Instant)>,
     },
     Stop,
 }
@@ -204,7 +206,23 @@ impl Net {
     }
 
     pub fn ephemeral(&self, space: String, kind: EphemeralKind) {
-        let _ = self.cmd.send(Cmd::Ephemeral { space, kind });
+        let transient = if matches!(
+            kind,
+            EphemeralKind::Typing | EphemeralKind::StoppedTyping | EphemeralKind::Status { .. }
+        ) {
+            let status = self.status.borrow();
+            let Some(relay) = status.authenticated_relay.as_ref() else {
+                return;
+            };
+            Some((relay.connected_at, Instant::now()))
+        } else {
+            None
+        }; // Receipt behavior remains distinct from transient activity.
+        let _ = self.cmd.send(Cmd::Ephemeral {
+            space,
+            kind,
+            transient,
+        });
     }
 
     /// A cloneable handle for one request (so callers don't hold locks across awaits).
@@ -304,6 +322,16 @@ impl Ctx {
         crate::i18n::set(self.lang);
         self.engine.with(work)
     }
+}
+
+fn transient_fresh(
+    scope: Option<(Instant, Instant)>,
+    active: Option<Instant>,
+    now: Instant,
+) -> bool {
+    scope.is_none_or(|(connection, queued)| {
+        Some(connection) == active && now.saturating_duration_since(queued) < Duration::from_secs(6)
+    })
 }
 
 enum Exit {
@@ -610,6 +638,7 @@ async fn session(
         s.error = None;
         s.registered = true;
         s.authenticated_relay = (!relay.is_empty()).then(|| AuthenticatedRelay {
+            connected_at: Instant::now(),
             base: http_base(&relay_url),
             name: relay.clone(),
             identity: identity.clone(),
@@ -731,7 +760,7 @@ async fn session(
                             l.on_ephemeral(space, from, k, detail);
                         }
                     }
-                    ServerFrame::Presence { identity, online, last_seen_ms, hide_last_seen } => {
+                    ServerFrame::Presence { identity, online, last_seen_ms, hide_last_seen, .. } => {
                         ctx.presence(identity, online, last_seen_ms, hide_last_seen);
                         if let Err(e) = flush(ctx, &mut sink, &mut sent).await { break Exit::Retry(e) }
                     }
@@ -849,8 +878,11 @@ async fn session(
                     if let Err(e) = send(&mut sink, &ClientFrame::Req { id, op }).await { let _ = reply.send(Err(e.clone())); break Exit::Retry(e) }
                     waiting.insert(id, Waiting::External(reply));
                 }
-                Some(Cmd::Ephemeral { space, kind }) => {
-                    if let Err(e) = send(&mut sink, &ClientFrame::Ephemeral { space, kind }).await { break Exit::Retry(e) }
+                Some(Cmd::Ephemeral { space, kind, transient }) => {
+                    let active = ctx.status.borrow().authenticated_relay.as_ref().map(|r| r.connected_at);
+                    if transient_fresh(transient, active, Instant::now()) {
+                        if let Err(e) = send(&mut sink, &ClientFrame::Ephemeral { space, kind }).await { break Exit::Retry(e) }
+                    }
                 }
             },
             _ = &mut tick => {
@@ -1385,6 +1417,22 @@ mod tests {
     }
 
     use super::*;
+
+    #[test]
+    fn typing_is_not_replayed_after_reconnect_or_its_expiry() {
+        let first = Instant::now();
+        let next = first + Duration::from_secs(1);
+        assert!(transient_fresh(Some((first, first)), Some(first), next));
+        assert!(!transient_fresh(Some((first, first)), Some(next), next));
+        assert!(!transient_fresh(Some((first, first)), None, next));
+        assert!(!transient_fresh(
+            Some((first, first)),
+            Some(first),
+            first + Duration::from_secs(6)
+        ));
+        // Receipts are not transient typing and retain their separate behavior.
+        assert!(transient_fresh(None, None, next));
+    }
     use roda_log::{
         chain_hash, content::InnerEvent, content::Sealed, content::SealedKind, Author, Signer,
     };

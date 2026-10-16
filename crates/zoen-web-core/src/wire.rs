@@ -165,6 +165,7 @@ pub fn decode_server(bytes: &[u8]) -> Result<ServerMessage, String> {
             online,
             last_seen_ms,
             hide_last_seen,
+            ..
         } => ServerMessage::Presence {
             identity,
             online,
@@ -230,6 +231,7 @@ mod tests {
             online: false,
             last_seen_ms: Some(123),
             hide_last_seen: Some(true),
+            revision: Some(3),
         };
         let json = serde_json::to_value(decode_server(&frame.encode()).unwrap()).unwrap();
         assert_eq!(

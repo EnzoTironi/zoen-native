@@ -1,14 +1,14 @@
-//! Account-wide last-seen policy. Never accept timestamps from a client and never
-//! put the private setting in a peer's presence frame.
+//! Relay-owned visibility and ordered presence publication across nodes. Timestamps
+//! never come from clients; the private policy is sent only to sibling devices.
 use roda_proto::ServerFrame;
-use sqlx::PgPool;
+use sqlx::{pool::PoolConnection, Connection, PgPool, Postgres};
 
 #[derive(Clone, Copy, Debug, Default)]
 pub struct Preference {
     pub hide_last_seen: bool,
     pub last_seen_ms: Option<u64>,
+    pub revision: Option<u64>,
 }
-
 impl Preference {
     pub fn frame(self, identity: String, online: bool, own: bool) -> ServerFrame {
         ServerFrame::Presence {
@@ -20,79 +20,290 @@ impl Preference {
                 self.last_seen_ms
             },
             hide_last_seen: own.then_some(self.hide_last_seen),
+            revision: self.revision,
         }
     }
 }
-
+fn preference((hide_last_seen, seen, revision): (bool, Option<i64>, i64)) -> Preference {
+    Preference {
+        hide_last_seen,
+        last_seen_ms: seen.and_then(|n| u64::try_from(n).ok()),
+        revision: u64::try_from(revision).ok(),
+    }
+}
 pub async fn get(pool: &PgPool, identity: &str) -> Result<Preference, sqlx::Error> {
-    let row = sqlx::query_as::<_, (bool, Option<i64>)>(
-        "SELECT hide_last_seen, last_seen_ms FROM presence_preferences WHERE identity = $1",
+    Ok(sqlx::query_as::<_, (bool, Option<i64>, i64)>(
+        "SELECT hide_last_seen, last_seen_ms, revision FROM presence_preferences WHERE identity = $1",
     )
     .bind(identity)
     .fetch_optional(pool)
-    .await?;
-    Ok(row
-        .map(|(hide_last_seen, last_seen_ms)| Preference {
-            hide_last_seen,
-            last_seen_ms: last_seen_ms.and_then(|n| u64::try_from(n).ok()),
-        })
-        .unwrap_or_default())
+    .await?
+    .map(preference)
+    .unwrap_or_default())
 }
 
-pub async fn set_privacy(pool: &PgPool, identity: &str, hide: bool) -> Result<(), sqlx::Error> {
+/// Session advisory locks serialize *publication*, including the interval after a
+/// durable SQL commit. Row/transaction locks alone release before that interval.
+/// Sorted acquisition prevents snapshot deadlocks; hash collisions only serialize
+/// unrelated accounts, never grant access. Cancellation closes this connection so
+/// partially acquired session locks can never escape back into the pool.
+struct Publication {
+    connection: PoolConnection<Postgres>,
+    ids: Vec<String>,
+    locked: bool,
+}
+impl Drop for Publication {
+    fn drop(&mut self) {
+        if self.locked {
+            self.connection.close_on_drop();
+        }
+    }
+}
+impl Publication {
+    async fn acquire(pool: &PgPool, ids: &[String]) -> Result<Self, sqlx::Error> {
+        let mut ids = ids.to_vec();
+        ids.sort();
+        ids.dedup();
+        let mut this = Self {
+            connection: pool.acquire().await?,
+            ids,
+            locked: true,
+        };
+        {
+            let mut tx = this.connection.begin().await?;
+            // Bound server-side waits too: cancelling a Rust future alone does not
+            // interrupt PostgreSQL while it waits for an advisory lock.
+            sqlx::query("SET LOCAL lock_timeout = '2s'")
+                .execute(&mut *tx)
+                .await?;
+            sqlx::query("SET LOCAL statement_timeout = '2s'")
+                .execute(&mut *tx)
+                .await?;
+            sqlx::query("SELECT pg_advisory_lock(key) FROM
+                (SELECT DISTINCT hashtextextended(id, 782651) AS key FROM unnest($1::text[]) AS ids(id)) keys
+                ORDER BY key")
+                .bind(&this.ids).execute(&mut *tx).await?;
+            tx.commit().await?;
+        }
+        Ok(this)
+    }
+    async fn release(mut self) -> Result<(), sqlx::Error> {
+        sqlx::query(
+            "SELECT pg_advisory_unlock(key) FROM
+             (SELECT DISTINCT hashtextextended(id, 782651) AS key FROM unnest($1::text[]) AS ids(id)) keys",
+        )
+        .bind(&self.ids)
+        .execute(&mut *self.connection)
+        .await?;
+        self.locked = false;
+        Ok(())
+    }
+    async fn policy(&mut self, identity: &str) -> Result<Preference, sqlx::Error> {
+        Ok(sqlx::query_as::<_, (bool, Option<i64>, i64)>(
+            "SELECT hide_last_seen, last_seen_ms, revision FROM presence_preferences WHERE identity = $1",
+        )
+        .bind(identity)
+        .fetch_optional(&mut *self.connection)
+        .await?
+        .map(preference)
+        .unwrap_or_default())
+    }
+}
+
+pub async fn connected(
+    state: &crate::AppState,
+    identity: &str,
+    peers: &[String],
+    _announce: bool,
+) -> Result<(), sqlx::Error> {
+    let mut publication = Publication::acquire(&state.pool, &[identity.to_string()]).await?;
+    let row = sqlx::query_as::<_, (bool, Option<i64>, i64)>("INSERT INTO presence_preferences(identity, revision) VALUES ($1, nextval('presence_revision'))
+        ON CONFLICT (identity) DO UPDATE SET revision = nextval('presence_revision')
+        RETURNING hide_last_seen, last_seen_ms, revision")
+        .bind(identity).fetch_one(&mut *publication.connection).await?;
+    let policy = preference(row);
+    state.fanout.send(
+        peers,
+        &policy.frame(identity.to_string(), true, false),
+        None,
+    );
+    // After Ready, synchronize the authoritative setting to all own devices.
+    state.fanout.send(
+        &[identity.to_string()],
+        &policy.frame(identity.to_string(), true, true),
+        None,
+    );
+    publication.release().await
+}
+
+pub async fn set_privacy(
+    state: &crate::AppState,
+    identity: &str,
+    hide: bool,
+    peers: &[String],
+) -> Result<(), sqlx::Error> {
+    let mut publication = Publication::acquire(&state.pool, &[identity.to_string()]).await?;
+    // Autocommit completes before acknowledging; the advisory lock stays held.
     sqlx::query(
-        "INSERT INTO presence_preferences (identity, hide_last_seen) VALUES ($1, $2)
-        ON CONFLICT (identity) DO UPDATE SET hide_last_seen = EXCLUDED.hide_last_seen",
+        "INSERT INTO presence_preferences (identity, hide_last_seen, revision) VALUES ($1, $2, nextval('presence_revision'))
+        ON CONFLICT (identity) DO UPDATE SET hide_last_seen = EXCLUDED.hide_last_seen, revision = nextval('presence_revision')",
     )
     .bind(identity)
     .bind(hide)
-    .execute(pool)
+    .execute(&mut *publication.connection)
     .await?;
-    Ok(())
+    let policy = publication.policy(identity).await?;
+    state.fanout.send(
+        &[identity.to_string()],
+        &policy.frame(identity.to_string(), true, true),
+        None,
+    );
+    state.fanout.send(
+        peers,
+        &policy.frame(identity.to_string(), true, false),
+        None,
+    );
+    publication.release().await
 }
 
-pub async fn went_offline(pool: &PgPool, identity: &str) -> Result<Preference, sqlx::Error> {
-    let (hide_last_seen, last_seen_ms) = sqlx::query_as::<_, (bool, i64)>(
-        "INSERT INTO presence_preferences (identity, last_seen_ms)
-         VALUES ($1, (EXTRACT(EPOCH FROM clock_timestamp()) * 1000)::bigint)
-         ON CONFLICT (identity) DO UPDATE SET last_seen_ms = EXCLUDED.last_seen_ms
-         RETURNING hide_last_seen, last_seen_ms",
-    )
-    .bind(identity)
-    .fetch_one(pool)
-    .await?;
-    Ok(Preference {
-        hide_last_seen,
-        last_seen_ms: u64::try_from(last_seen_ms).ok(),
-    })
+pub async fn offline(
+    state: &crate::AppState,
+    identity: &str,
+    peers: &[String],
+) -> Result<(), sqlx::Error> {
+    let mut publication = Publication::acquire(&state.pool, &[identity.to_string()]).await?;
+    if !state.fanout.is_online(identity).await {
+        let row = sqlx::query_as::<_, (bool, Option<i64>, i64)>(
+            "INSERT INTO presence_preferences (identity, last_seen_ms, revision)
+             VALUES ($1, (EXTRACT(EPOCH FROM clock_timestamp()) * 1000)::bigint, nextval('presence_revision'))
+             ON CONFLICT (identity) DO UPDATE SET last_seen_ms = EXCLUDED.last_seen_ms, revision = nextval('presence_revision')
+             RETURNING hide_last_seen, last_seen_ms, revision",
+        )
+        .bind(identity)
+        .fetch_one(&mut *publication.connection)
+        .await?;
+        state.fanout.send(
+            peers,
+            &preference(row).frame(identity.to_string(), false, false),
+            None,
+        );
+    }
+    publication.release().await
 }
 
-/// Batched directory read: no per-peer SQL work on a reconnect. Unknown timestamps
-/// still produce an offline frame, clearing stale state retained by older clients.
+/// Batched SQL and existing fanout lookup, under the same publication locks used
+/// by live transitions. A delayed snapshot cannot overtake a newer notification.
 pub async fn snapshot(
-    pool: &PgPool,
-    ids: &[String],
-) -> Result<Vec<(String, Preference)>, sqlx::Error> {
-    let rows = sqlx::query_as::<_, (String, bool, Option<i64>)>(
-        "SELECT wanted.id, COALESCE(p.hide_last_seen, false), p.last_seen_ms
+    state: &crate::AppState,
+    identity: &str,
+    peers: &[String],
+) -> Result<(), sqlx::Error> {
+    let mut publication = Publication::acquire(&state.pool, peers).await?;
+    let rows = sqlx::query_as::<_, (String, bool, Option<i64>, i64)>(
+        "SELECT wanted.id, COALESCE(p.hide_last_seen, false), p.last_seen_ms, COALESCE(p.revision, 0)
          FROM unnest($1::text[]) AS wanted(id)
          LEFT JOIN presence_preferences p ON p.identity = wanted.id",
     )
-    .bind(ids)
-    .fetch_all(pool)
+    .bind(peers)
+    .fetch_all(&mut *publication.connection)
     .await?;
-    Ok(rows
-        .into_iter()
-        .map(|(id, hide_last_seen, last_seen_ms)| {
-            (
-                id,
-                Preference {
-                    hide_last_seen,
-                    last_seen_ms: last_seen_ms.and_then(|n| u64::try_from(n).ok()),
-                },
-            )
-        })
-        .collect())
+    let online: std::collections::HashSet<_> =
+        state.fanout.online(peers).await.into_iter().collect();
+    for (who, hide, seen, revision) in rows {
+        if who != identity {
+            let active = online.contains(&who);
+            state.fanout.send(
+                &[identity.to_string()],
+                &preference((hide, seen, revision)).frame(who, active, false),
+                None,
+            );
+        }
+    }
+    publication.release().await
+}
+
+pub async fn joined(state: &crate::AppState, identity: &str, audience: &[String]) {
+    if !audience.iter().any(|id| id == identity) {
+        return;
+    }
+    if snapshot(state, identity, audience).await.is_err() {
+        return;
+    }
+    let Ok(mut publication) = Publication::acquire(&state.pool, &[identity.to_string()]).await
+    else {
+        return;
+    };
+    let Ok(policy) = publication.policy(identity).await else {
+        return;
+    };
+    let online = state.fanout.is_online(identity).await;
+    let peers: Vec<_> = audience
+        .iter()
+        .filter(|id| id.as_str() != identity)
+        .cloned()
+        .collect();
+    state.fanout.send(
+        &peers,
+        &policy.frame(identity.to_string(), online, false),
+        None,
+    );
+    let _ = publication.release().await;
+}
+
+/// Final websocket boundary: remote bus queues can reorder frames even when
+/// publication is serialized. Re-read revision/policy and retain the shared row
+/// fence through the actual write. A completed privacy update therefore cannot be
+/// followed by a delayed public timestamp or stale sibling preference.
+pub enum Delivery {
+    Skip,
+    Send(Option<sqlx::Transaction<'static, Postgres>>),
+}
+pub async fn delivery(
+    state: &crate::AppState,
+    recipient: &str,
+    frame: &mut ServerFrame,
+) -> Delivery {
+    let ServerFrame::Presence {
+        identity,
+        online,
+        last_seen_ms,
+        hide_last_seen,
+        revision,
+    } = frame
+    else {
+        return Delivery::Send(None);
+    };
+    if let Some(expected) = *revision {
+        if let Ok(mut tx) = state.pool.begin().await {
+            let row = sqlx::query_as::<_, (bool, Option<i64>, i64)>(
+                "SELECT hide_last_seen, last_seen_ms, revision FROM presence_preferences WHERE identity = $1 FOR SHARE",
+            ).bind(&*identity).fetch_optional(&mut *tx).await;
+            if let Ok(row) = row {
+                let policy = row.map(preference).unwrap_or_default();
+                if policy.revision.unwrap_or(0) != expected {
+                    return Delivery::Skip;
+                }
+                *last_seen_ms = if *online || policy.hide_last_seen {
+                    None
+                } else {
+                    policy.last_seen_ms
+                };
+                *hide_last_seen = if identity == recipient && hide_last_seen.is_some() {
+                    Some(policy.hide_last_seen)
+                } else {
+                    None
+                };
+                return Delivery::Send(Some(tx));
+            }
+        }
+    }
+    // Legacy or outage signal: no private fields, and recompute online now rather
+    // than letting an unversioned queued transition overwrite a newer state.
+    *last_seen_ms = None;
+    *hide_last_seen = None;
+    *revision = None;
+    *online = state.fanout.is_online(identity).await;
+    Delivery::Send(None)
 }
 
 #[cfg(test)]
@@ -106,13 +317,15 @@ mod tests {
                 assert_eq!(
                     Preference {
                         hide_last_seen: true,
-                        last_seen_ms: Some(42)
+                        last_seen_ms: Some(42),
+                        revision: None
                     }
                     .frame("ana".into(), online, own),
                     ServerFrame::Presence {
                         identity: "ana".into(),
                         online,
                         last_seen_ms: None,
+                        revision: None,
                         hide_last_seen: own.then_some(true)
                     }
                 );
@@ -121,26 +334,30 @@ mod tests {
         assert_eq!(
             Preference {
                 hide_last_seen: false,
-                last_seen_ms: Some(42)
+                last_seen_ms: Some(42),
+                revision: None
             }
             .frame("ana".into(), false, false),
             ServerFrame::Presence {
                 identity: "ana".into(),
                 online: false,
                 last_seen_ms: Some(42),
+                revision: None,
                 hide_last_seen: None
             }
         );
         assert_eq!(
             Preference {
                 hide_last_seen: false,
-                last_seen_ms: Some(42)
+                last_seen_ms: Some(42),
+                revision: None
             }
             .frame("ana".into(), true, false),
             ServerFrame::Presence {
                 identity: "ana".into(),
                 online: true,
                 last_seen_ms: None,
+                revision: None,
                 hide_last_seen: None
             }
         );
