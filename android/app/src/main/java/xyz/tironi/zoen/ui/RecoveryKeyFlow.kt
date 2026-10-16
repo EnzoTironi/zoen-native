@@ -2,6 +2,7 @@ package xyz.tironi.zoen.ui
 
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -9,6 +10,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
@@ -48,11 +50,12 @@ internal fun RecoveryKeySetup(model: ZoenViewModel, dismiss: () -> Unit, done: (
         Text("Guarde esta chave fora deste aparelho. Ela abre suas conversas se você perder todos os aparelhos. O Zoen não pode recuperá-la por você.")
         if (!confirming) {
             Text(key, fontFamily = FontFamily.Monospace, modifier = Modifier.testTag("recovery-key"))
-            Button(onClick = { confirming = true }, enabled = key.isNotEmpty()) { Text("Já guardei a chave") }
+            Button(onClick = { confirming = true }, enabled = key.isNotEmpty(), modifier = Modifier.testTag("recovery-saved")) { Text("Já guardei a chave") }
         } else {
             Text("Digite a chave que você guardou para conferir antes de ativar a cópia.")
             OutlinedTextField(confirmation, { confirmation = it }, label = { Text("Chave de 64 números") },
-                visualTransformation = PasswordVisualTransformation(), enabled = !busy, modifier = Modifier.fillMaxWidth().testTag("recovery-confirmation"))
+                visualTransformation = PasswordVisualTransformation(), keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password, autoCorrectEnabled = false),
+                enabled = !busy, modifier = Modifier.fillMaxWidth().testTag("recovery-confirmation"))
             TextButton(onClick = { confirming = false; confirmation = "" }, enabled = !busy) { Text("Ver a chave novamente") }
             Button(enabled = !busy && RecoveryKeyInput.matches(key, confirmation), modifier = Modifier.testTag("recovery-activate"), onClick = {
                 busy = true; error = null
@@ -84,7 +87,8 @@ internal fun RecoveryKeyRestore(model: ZoenViewModel, dismiss: () -> Unit, done:
         Text("Use a chave de 64 números que você guardou ao ativar a cópia. Não é a senha do aparelho.")
         OutlinedTextField(relay, { relay = it }, label = { Text("Endereço do servidor") }, enabled = !busy, modifier = Modifier.fillMaxWidth())
         OutlinedTextField(handle, { handle = it }, label = { Text("Seu @") }, enabled = !busy, modifier = Modifier.fillMaxWidth())
-        OutlinedTextField(key, { key = it }, label = { Text("Chave de 64 números") }, visualTransformation = PasswordVisualTransformation(), enabled = !busy,
+        OutlinedTextField(key, { key = it }, label = { Text("Chave de 64 números") }, visualTransformation = PasswordVisualTransformation(),
+            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password, autoCorrectEnabled = false), enabled = !busy,
             modifier = Modifier.fillMaxWidth().testTag("recovery-restore-key"))
         error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
         Button(enabled = !busy && RecoveryKeyInput.valid(key) && handle.isNotBlank() && RecoveryKeyInput.validRelay(relay), modifier = Modifier.testTag("recovery-restore"), onClick = {
