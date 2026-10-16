@@ -67,6 +67,7 @@ class AndroidParityScreensTest {
             compose.waitForIdle()
             compose.waitForIdle()
             android.os.SystemClock.sleep(1_500)
+            NativeParityFixtureSetup.attest(app, model.state.value)
             val name = "$screen-${if (dark) "dark" else "light"}"
             CommittedWindowCapture.save(compose.activity, "android-parity", "$name-window")
             val automation = InstrumentationRegistry.getInstrumentation().uiAutomation

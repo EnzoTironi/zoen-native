@@ -6,6 +6,7 @@ import android.net.Uri
 import android.os.Bundle
 import android.os.SystemClock
 import android.view.accessibility.AccessibilityNodeInfo
+import androidx.lifecycle.ViewModelProvider
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.test.core.app.ActivityScenario
@@ -77,7 +78,11 @@ class AndroidParityComposerCaptureTest {
                 SystemClock.sleep(1_500)
                 val name = "composer-${if (dark) "dark" else "light"}"
                 lateinit var activity: MainActivity
-                scenario.onActivity { activity = it }
+                scenario.onActivity {
+                    activity = it
+                    val model = ViewModelProvider(it)[ZoenViewModel::class.java]
+                    NativeParityFixtureSetup.attest(app, model.state.value)
+                }
                 CommittedWindowCapture.save(activity, "android-parity", "$name-window")
                 val screenshot = checkNotNull(instrumentation.uiAutomation.takeScreenshot())
                 try {
