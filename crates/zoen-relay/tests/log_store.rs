@@ -687,6 +687,32 @@ async fn run<F: Future<Output = ()>>(name: &str, f: F) {
     println!("ok  {name}");
 }
 
+async fn co_members_deduplicates_across_read_batches() {
+    let log = store();
+    let ana = Author::root(Signer::generate());
+    let bruno = Author::root(Signer::generate());
+    // Cross the 16-read batch boundary and exercise repeated members in every space.
+    for _ in 0..17 {
+        let (space, genesis) = create(&log, &ana).await;
+        let add = EventBody::MemberAdded {
+            identity: bruno.identity.clone(),
+            role: Role::Member,
+        };
+        log.append(&sign(&ana, &space, Some(genesis), add), true)
+            .await
+            .unwrap();
+    }
+    assert_eq!(
+        log.co_members(&ana.identity).await.unwrap(),
+        vec![bruno.identity.clone()]
+    );
+    assert_eq!(
+        log.co_members(&bruno.identity).await.unwrap(),
+        vec![ana.identity]
+    );
+    assert!(log.co_members("unknown").await.unwrap().is_empty());
+}
+
 fn main() {
     let network = unsafe { foundationdb::boot() };
     tokio::runtime::Runtime::new().unwrap().block_on(async {
@@ -708,6 +734,11 @@ fn main() {
         run(
             "membership changes commit with the event that makes them",
             membership_changes_commit_with_the_event_that_makes_them(),
+        )
+        .await;
+        run(
+            "co-members deduplicate across read batches",
+            co_members_deduplicates_across_read_batches(),
         )
         .await;
         run("invites are bounded by uses", invites_are_bounded_by_uses()).await;

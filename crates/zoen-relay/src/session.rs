@@ -1229,16 +1229,22 @@ impl Session {
     }
 
     /// Wakes the devices of every member with no live session. The push carries nothing;
-    /// the app syncs, decrypts and decides itself whether to notify.
+    /// the app syncs, decrypts and decides itself whether to notify. Under overload,
+    /// best-effort wakes are dropped before allocation/spawn, not queued.
     fn wake_away(&self, audience: &[String]) {
         if !self.st.push.enabled() {
             return;
         }
+        let Some(permit) = self.st.push.try_wake_task() else {
+            return;
+        };
         let st = self.st.clone();
         let me = self.identity.clone();
         let audience: Vec<String> = audience.iter().filter(|a| **a != me).cloned().collect();
         tokio::spawn(async move {
-            let online = st.fanout.online(&audience).await;
+            let _permit = permit;
+            let online: std::collections::HashSet<String> =
+                st.fanout.online(&audience).await.into_iter().collect();
             let away: Vec<String> = audience
                 .into_iter()
                 .filter(|a| !online.contains(a))

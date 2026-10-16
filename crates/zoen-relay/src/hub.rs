@@ -94,8 +94,12 @@ impl Hub {
                     if tx.revoked.load(Ordering::Acquire) {
                         continue;
                     }
-                    match tx.tx.try_send(frame.clone()) {
-                        Ok(()) => n += 1,
+                    // Slow consumers must not force a deep frame clone just to discard it.
+                    match tx.tx.try_reserve() {
+                        Ok(permit) => {
+                            permit.send(frame.clone());
+                            n += 1;
+                        }
                         Err(mpsc::error::TrySendError::Full(_)) => tx.kick.notify_one(),
                         Err(mpsc::error::TrySendError::Closed(_)) => {}
                     }
@@ -113,5 +117,39 @@ impl Hub {
                 mailbox.kick.notify_one();
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn full_mailbox_kicks_without_blocking_other_sessions() {
+        let hub = Hub::default();
+        let (slow, _slow_rx) = mpsc::channel(1);
+        let (fast, mut fast_rx) = mpsc::channel(1);
+        let kick = Arc::new(Notify::new());
+        let frame = ServerFrame::Presence {
+            identity: "alice".into(),
+            online: true,
+        };
+        slow.try_send(frame.clone()).unwrap();
+        for (tx, notify) in [(slow, kick.clone()), (fast, Arc::new(Notify::new()))] {
+            hub.add(
+                "alice",
+                Mailbox {
+                    tx,
+                    kick: notify,
+                    device: "device".into(),
+                    revoked: Arc::new(AtomicBool::new(false)),
+                },
+            );
+        }
+        assert_eq!(hub.send(&["alice".into()], &frame, None), 1);
+        assert!(fast_rx.try_recv().is_ok());
+        tokio::time::timeout(std::time::Duration::from_millis(100), kick.notified())
+            .await
+            .unwrap();
     }
 }

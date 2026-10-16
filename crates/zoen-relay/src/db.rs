@@ -618,9 +618,25 @@ pub async fn put_link_box(
     id: &str,
     sealed: &[u8],
 ) -> Result<bool, sqlx::Error> {
-    sqlx::query("DELETE FROM link_boxes WHERE created_at < now() - interval '15 minutes'")
-        .execute(&mut **tx)
-        .await?;
+    // Bound maintenance work per publication, and skip cleanup rows held by other
+    // publishers. Include this id separately so an expired box can always be reused
+    // even when it lies beyond the oldest cleanup batch.
+    sqlx::query(
+        "WITH expired AS (
+             SELECT id FROM link_boxes
+             WHERE created_at < now() - interval '15 minutes'
+             ORDER BY created_at LIMIT 128 FOR UPDATE SKIP LOCKED
+         ), candidates AS (
+             SELECT id FROM expired
+             UNION
+             SELECT id FROM link_boxes
+             WHERE id = $1 AND created_at < now() - interval '15 minutes'
+         )
+         DELETE FROM link_boxes b USING candidates c WHERE b.id = c.id",
+    )
+    .bind(id)
+    .execute(&mut **tx)
+    .await?;
     let r =
         sqlx::query("INSERT INTO link_boxes (id, sealed) VALUES ($1, $2) ON CONFLICT DO NOTHING")
             .bind(id)
