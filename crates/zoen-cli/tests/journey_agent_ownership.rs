@@ -496,7 +496,7 @@ async fn owner_revocation_committing_before_registration_is_observed_under_the_d
     loop {
         let blocked: bool = sqlx::query_scalar(
             "SELECT EXISTS(SELECT 1 FROM pg_stat_activity WHERE datname = current_database()
-             AND wait_event_type = 'Lock' AND query LIKE '%FROM devices WHERE device = $2 FOR SHARE%')",
+             AND wait_event_type = 'Lock' AND query = 'SELECT identity, cert FROM devices WHERE device = $1 AND revoked_at IS NULL FOR SHARE')",
         ).fetch_one(&mut observer).await.unwrap();
         if blocked {
             break;
