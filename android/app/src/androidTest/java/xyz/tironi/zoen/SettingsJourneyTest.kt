@@ -64,10 +64,16 @@ class SettingsJourneyTest {
         ApplicationProvider.getApplicationContext<ZoenApplication>().repository.useDemo()
     }
 
-    @Test fun pickDarkThemeBackPopsOneScreenAndCloseLeavesAjustes() {
+    private fun resetAppearance() {
         val context = compose.activity
+        assertTrue(context.getSharedPreferences("zoen", android.content.Context.MODE_PRIVATE)
+            .edit().putString("appearance", "auto").commit())
+        compose.runOnIdle { AppAppearance.load(context) }
+    }
+
+    @Test fun pickDarkThemeBackPopsOneScreenAndCloseLeavesAjustes() {
+        resetAppearance()
         val stack = open()
-        compose.runOnIdle { AppAppearance.set(context, "auto") }
         compose.onNodeWithTag("settings:Preferences").performClick()
         compose.onNodeWithTag("settings:Theme").performClick()
         compose.onNodeWithTag("theme:dark").assertIsNotSelected().performClick()
@@ -86,7 +92,7 @@ class SettingsJourneyTest {
 
         compose.onNodeWithTag("settings:close").performClick()
         compose.runOnIdle { assertTrue(stack.none { it is SettingsRoute }) }
-        AppAppearance.set(context, "auto")
+        resetAppearance()
     }
 
     @Test fun restoreIsDisabledWithoutABackupOnThisDevice() {
