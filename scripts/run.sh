@@ -15,9 +15,13 @@ DD="$(pwd)/build/DerivedData"
 (cd apple && xcodegen generate --quiet)
 
 if [[ "$WHAT" == "all" || "$WHAT" == "ios" ]]; then
-  # O simulador pedido, ou o primeiro iPhone instalado se esse nome não existir neste Xcode.
-  LINE=$(xcrun simctl list devices available | grep -F "$SIM (" | head -1 || true)
-  [[ -n "$LINE" ]] || LINE=$(xcrun simctl list devices available | grep -m1 "iPhone")
+  # O simulador pedido, ou o primeiro iPhone com iOS ≥ 26 (o mínimo do projeto) instalado.
+  LINE=$(xcrun simctl list devices available | awk -v want="$SIM (" '
+    /^-- iOS / { split($3, v, "."); ok = v[1] >= 26; next }
+    /^-- /     { ok = 0; next }
+    ok && /iPhone/ { if (index($0, want) && !hit) hit = $0; if (!any) any = $0 }
+    END { print (hit ? hit : any) }')
+  [[ -n "$LINE" ]] || { echo "✗ nenhum simulador de iPhone com iOS 26+ instalado" >&2; exit 1; }
   UDID=$(sed -E 's/.*\(([0-9A-F-]{36})\).*/\1/' <<<"$LINE")
   echo "▸ xcodebuild ZoeniOS (simulador: $(sed -E 's/^ *(.*) \([0-9A-F-]{36}\).*/\1/' <<<"$LINE"))"
   xcodebuild -project apple/Zoen.xcodeproj -scheme ZoeniOS -configuration Debug \
