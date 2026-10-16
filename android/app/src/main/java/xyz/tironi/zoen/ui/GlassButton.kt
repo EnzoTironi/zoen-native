@@ -6,6 +6,8 @@ import androidx.compose.animation.core.tween
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
+import androidx.compose.foundation.border
+import androidx.compose.foundation.interaction.collectIsFocusedAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.PaddingValues
@@ -57,6 +59,7 @@ fun GlassButton(
 ) {
     val interactions = interactionSource ?: remember { MutableInteractionSource() }
     val pressed by interactions.collectIsPressedAsState()
+    val focused by interactions.collectIsFocusedAsState()
     val reduce = !rememberMotionEnabled()
     val haptics = rememberZoenHaptics()
     LaunchedEffect(pressed) { if (pressed && enabled) haptics.perform(ZoenFeedback.Tap) }
@@ -66,7 +69,7 @@ fun GlassButton(
         if (reduce) tween(150) else if (held) wabiSpring(0.34f, 0.92f) else wabiSpring(1.2f, 0.8f), label = "glass-press")
     val tint = colors?.containerColor?.takeIf { prominent || it != Color.Transparent } ?: MaterialTheme.colorScheme.primary
     val ink = when {
-        colors != null && prominent -> colors.contentColor
+        colors != null && (prominent || colors.containerColor.alpha > 0f) -> colors.contentColor
         prominent -> MaterialTheme.colorScheme.onPrimary
         else -> MaterialTheme.colorScheme.onSurface
     }
@@ -84,7 +87,9 @@ fun GlassButton(
             .shadow(if (held) 2.dp else 6.dp, CircleShape, clip = false,
                 ambientColor = (if (prominent) tint else Color.Black).copy(alpha = 0.18f),
                 spotColor = (if (prominent) tint else Color.Black).copy(alpha = 0.22f))
-            .zoenGlass(tint, prominent, dark, press = { press }, slab = !prominent)
+            .zoenGlass(tint, prominent, dark, press = { press }, slab = !prominent,
+                film = if (prominent) null else colors?.containerColor)
+            .then(if (focused) Modifier.border(2.dp, MaterialTheme.colorScheme.primary, CircleShape) else Modifier)
             .clickable(interactions, indication = null, enabled = enabled, role = Role.Button, onClick = onClick)
             .defaultMinSize(minWidth = 64.dp, minHeight = 46.dp)
             .padding(contentPadding),

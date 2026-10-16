@@ -32,6 +32,8 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.graphics.takeOrElse
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.border
+import androidx.compose.foundation.interaction.collectIsFocusedAsState
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
@@ -58,6 +60,7 @@ fun Modifier.zoenGlass(
     press: () -> Float = { 0f },
     strength: Float = 1f,
     slab: Boolean = false,
+    film: Color? = null,
 ): Modifier {
     // One shader per surface for its whole life: recomposition and resizes only touch uniforms.
     val glass = remember { if (Build.VERSION.SDK_INT >= 33) runCatching { MarbleShader() }.getOrNull() else null }
@@ -66,7 +69,8 @@ fun Modifier.zoenGlass(
         val corner = CornerRadius(r, r)
         val frost = if (slab) 0.2f else 0.6f
         val body = if (prominent) tint.copy(alpha = 1f) else   // opaque: no backdrop to refract, and white labels keep 4.5:1
-            Color.White.copy(alpha = if (dark) 0.07f else 0.6f)
+            film?.takeIf { it.alpha > 0f }?.let { it.copy(alpha = maxOf(it.alpha * 0.9f, 0.85f)) }   // caller's protective surface keeps its ink legible
+                ?: Color.White.copy(alpha = if (dark) 0.07f else 0.6f)
         val crown = Brush.radialGradient(listOf(Color.White.copy(.5f * strength), Color.Transparent),
             center = Offset(size.width * 0.35f, size.height * 0.2f), radius = size.minDimension * 0.8f)
         val volume = Brush.verticalGradient(0f to Color.Transparent, .6f to Color.Transparent, 1f to Color.Black.copy(.18f * strength))
@@ -140,6 +144,7 @@ private fun GlassCardBody(
 ) {
     val interactions = interactionSource ?: remember { MutableInteractionSource() }
     val pressed by interactions.collectIsPressedAsState()
+    val focused by interactions.collectIsFocusedAsState()
     val scheme = MaterialTheme.colorScheme
     val dark = scheme.surface.luminance() < 0.5f
     // A coloured card keeps its colour as the glass tint; plain cards are clear glass.
@@ -154,6 +159,7 @@ private fun GlassCardBody(
             .clip(shape)
             .zoenGlass(tint = if (prominent) tint else scheme.surface, prominent = prominent, dark = dark,
                 cornerRadius = 22.dp, press = { if (pressed) 1f else 0f }, strength = 0.8f)
+            .then(if (focused) Modifier.border(2.dp, scheme.primary, shape) else Modifier)
             .then(if (onClick != null) Modifier.clickable(interactions, indication = null, enabled = enabled, role = Role.Button, onClick = onClick) else Modifier),
     ) {
         CompositionLocalProvider(LocalContentColor provides ink) { content() }
