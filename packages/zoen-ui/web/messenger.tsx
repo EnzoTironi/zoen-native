@@ -127,8 +127,8 @@ export function Bubble({ entry, own, first, onReact, onReply, onThread, onEdit, 
 }
 
 type Outgoing = { name: string; mime: string; bytes: Uint8Array; thumb?: Uint8Array | null; voice?: VoiceMeta };
-function Composer({ placeholder, disabled, reply, cancelReply, submit, autoFocus, attach }: {
-  placeholder: string; disabled: boolean; reply?: Message | null; cancelReply?: () => void; autoFocus?: boolean;
+export function Composer({ placeholder, disabled, reply, cancelReply, submit, autoFocus, attach, initialText }: {
+  placeholder: string; disabled: boolean; reply?: Message | null; cancelReply?: () => void; autoFocus?: boolean; initialText?: string;
   submit: (text: string) => Promise<void>; attach?: (file: Outgoing) => Promise<void>;
 }) {
   const [sending, setSending] = useState('');
@@ -145,7 +145,7 @@ function Composer({ placeholder, disabled, reply, cancelReply, submit, autoFocus
   const recorder = useRecorder((clip) => { if (clip.seconds < 0.6) return; void share({ name: `Mensagem de voz.${clip.mime.includes('mp4') ? 'm4a' : 'webm'}`, mime: clip.mime, bytes: clip.bytes,
     voice: { ms: Math.round(clip.seconds * 1000), levels: clip.levels, transcript: '', reply: reply?.entry ? { to: reply.entry, thread: false } : null } }, 'Enviando mensagem de voz…'); },
     (why) => setError(why));
-  const [draft, setDraft] = useState('');
+  const [draft, setDraft] = useState(initialText ?? '');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const field = useRef<HTMLTextAreaElement>(null);
