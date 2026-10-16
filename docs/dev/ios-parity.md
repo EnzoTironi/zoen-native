@@ -11,8 +11,14 @@ as geometry. Static screenshots do not prove animation, interactions or haptic p
 Regular-width iPad and macOS both render the shared SwiftUI
 `apple/Shared/Navigation/ZoenAdaptiveShell.swift`: a balanced `NavigationSplitView`
 with the same rail, chat list, navigation destinations, search, inspector and native
-`SpaceView` composer/toolbars. Compact iPhone retains its original stacks and bottom
-bar. This is a new canonical native iPad shell, extracted from the existing Mac
+`SpaceView` composer/toolbars. Compact iPhone uses the system Liquid Glass `TabView`
+with Chats, Spaces, Notifications and Profile, plus a separate native search-role
+New message slot opening the real NewChat sheet. Its stacks and detail composers
+remain native; pushed details hide the global tab bar. The profile icon renders the
+actual local persona/photo, not a generic person glyph. Main headers have no logo,
+wordmark, compose control, bell or mini profile; only an actually offline account
+can show a subtle status dot. The shared sidebar exposes the same four routes and
+New message. Spaces is the real authorized-space directory, not a selected chat. This is a new canonical native iPad shell, extracted from the existing Mac
 navigation rather than a separately invented web layout. Runtime captures are still
 required to verify the resulting layout, OS insets and interactions.
 
@@ -28,6 +34,12 @@ The DEBUG-only `parity-window-geometry` accessibility witness reads the actual U
 window bounds, screen scale and safe-area insets (points and pixels). Capture tests
 attach that diagnostic separately from fixture identity; verify it before accepting
 provisional OS-bar crops. It neither changes safe areas nor hides app controls.
+
+The guard requires eight screens in light/dark: chats, chat, composer, spaces,
+notifications, profile, settings and onboarding. Every Android/iPhone, web
+narrow/iPhone and web wide/iPad pair must report its own percentage (48 total).
+Native SF symbol navigation feedback is state-driven and disabled under Reduce
+Motion. Static reports do not establish the requested interactive animation parity.
 
 ## Fresh current-source rendering
 
@@ -162,7 +174,7 @@ or configuration. Missing captures are never treated as zero-difference frames.
 ## Verification limits
 
 Unit tests prove comparator/extraction mechanics, not app fixture correctness or
-visual parity. Only fresh native/web captures for all 36 comparison pairs and a
+visual parity. Only fresh native/web captures for all 48 comparison pairs (eight screens × two appearances × Android, web narrow and web wide) and a
 passing report prove this static check. Review raw frames and test motion/haptics
 on devices separately. An absent canonical iPad split view remains a source/design
 gap even when the current wide baseline is rendered successfully.

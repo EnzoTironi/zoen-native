@@ -29,7 +29,7 @@ class ParityTests(unittest.TestCase):
 
     def test_identical_passes_and_emits_all_diffs(self):
         self.assertTrue(self.compare())
-        self.assertEqual(len(list((self.root/'out').glob('*-diff.png'))), 12)
+        self.assertEqual(len(list((self.root/'out').glob('*-diff.png'))), len(KEYS))
 
     def test_real_difference_fails_without_stopping_remaining_screens(self):
         image = Image.new('RGB', (10, 10), 'white')
@@ -38,7 +38,7 @@ class ParityTests(unittest.TestCase):
         image.save(self.android/'chats-light.png')
         self.assertFalse(self.compare())
         report = json.loads((self.root/'out/report.json').read_text())
-        self.assertEqual(len(report['screens']), 12)
+        self.assertEqual(len(report['screens']), len(KEYS))
         self.assertEqual(report['screens'][0]['different_pixels_percent'], 3.0)
         self.assertTrue(self.compare(3.0))
 
@@ -65,7 +65,7 @@ class ParityTests(unittest.TestCase):
         (self.android/'chat-dark.png').unlink()
         self.assertFalse(self.compare())
         report = json.loads((self.root/'out/report.json').read_text())
-        self.assertEqual(sum(row['different_pixels_percent'] is not None for row in report['screens']), 11)
+        self.assertEqual(sum(row['different_pixels_percent'] is not None for row in report['screens']), len(KEYS) - 1)
 
     def test_missing_or_mismatched_fixture_rejected(self):
         (self.android/'manifest.json').write_text('{}')
@@ -94,7 +94,7 @@ class ParityTests(unittest.TestCase):
         output = self.root/'extracted'
         output.mkdir()
         export_ios(exported, output)
-        self.assertEqual(len(list(output.glob('*.png'))), 12)
+        self.assertEqual(len(list(output.glob('*.png'))), len(KEYS))
         index.pop(0)
         (exported/'manifest.json').write_text(json.dumps(index))
         with self.assertRaisesRegex(ValueError, 'Missing fresh'):

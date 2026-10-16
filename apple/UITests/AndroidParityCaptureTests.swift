@@ -6,7 +6,7 @@ final class AndroidParityCaptureTests: XCTestCase {
     @MainActor func testDarkScreens() throws { try capture(dark: true) }
     @MainActor func testOnboardingLightFrame() throws { try capture(dark: false, screens: ["onboarding"]) }
 
-    @MainActor private func capture(dark: Bool, screens: [String] = ["onboarding", "chats", "chat", "composer", "spaces", "settings"]) throws {
+    @MainActor private func capture(dark: Bool, screens: [String] = ["onboarding", "chats", "chat", "composer", "spaces", "notifications", "profile", "settings"]) throws {
         continueAfterFailure = false
         let environment = ProcessInfo.processInfo.environment
         guard environment["ZOEN_PARITY_FIXTURE"] != nil else {
@@ -32,8 +32,9 @@ final class AndroidParityCaptureTests: XCTestCase {
                 app.launchArguments += ["-RodaOnboarding", "YES"]
             } else {
                 app.launchArguments += ["-RodaDemo", "YES"]
-                if screen == "spaces" { app.launchArguments += ["-RodaOpen", "coastal"] }
-                if screen == "settings" { app.launchArguments += ["-RodaTab", "you"] }
+                if screen == "spaces" { app.launchArguments += ["-RodaTab", "files"] }
+                if screen == "notifications" { app.launchArguments += ["-RodaTab", "activity"] }
+                if screen == "settings" || screen == "profile" { app.launchArguments += ["-RodaTab", "you"] }
             }
             app.launch()
             let attestation = app.descendants(matching: .any)["parity-applied-fixture"].firstMatch
@@ -72,10 +73,13 @@ final class AndroidParityCaptureTests: XCTestCase {
                     XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 10))
                 }
             } else if screen == "spaces" {
-                XCTAssertTrue(app.buttons["chat-title"].waitForExistence(timeout: 30))
+                XCTAssertTrue(app.descendants(matching: .any)["spaces-directory"].firstMatch.waitForExistence(timeout: 30))
+            } else if screen == "profile" {
+                XCTAssertTrue(app.buttons["openSettings"].waitForExistence(timeout: 30))
+            } else if screen == "notifications" {
+                XCTAssertTrue(app.staticTexts["Notifications"].firstMatch.waitForExistence(timeout: 30))
             } else {
-                let newChat = environment["ZOEN_PARITY_VIEWPORT"] == "wide" ? app.buttons["New Chat"] : app.buttons["newChat"]
-                XCTAssertTrue(newChat.waitForExistence(timeout: 30))
+                XCTAssertTrue(app.buttons["New message"].firstMatch.waitForExistence(timeout: 30))
             }
             // Await app idleness and one settled animation before recording the actual app frame.
             Thread.sleep(forTimeInterval: screen == "onboarding" ? 8 : 2)

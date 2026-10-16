@@ -5,7 +5,7 @@ import json
 from pathlib import Path
 from PIL import Image, ImageChops
 
-SCREENS = ('chats', 'chat', 'composer', 'spaces', 'settings', 'onboarding')
+SCREENS = ('chats', 'chat', 'composer', 'spaces', 'notifications', 'profile', 'settings', 'onboarding')
 KEYS = tuple(f'{screen}-{mode}' for screen in SCREENS for mode in ('light', 'dark'))
 FIXTURE_FIELDS = ('fixture_id', 'fixed_time', 'locale', 'timezone', 'seed', 'source_revision')
 

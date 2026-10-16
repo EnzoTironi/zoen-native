@@ -24,7 +24,7 @@ const wide = args.viewport === 'wide';
 const viewport = wide ? { width: 1376, height: 988 } : { width: 402, height: 778 };
 const browser = await webkit.launch();
 try {
-  for (const screen of ['chats', 'chat', 'composer', 'spaces', 'settings', 'onboarding']) {
+  for (const screen of ['chats', 'chat', 'composer', 'spaces', 'notifications', 'profile', 'settings', 'onboarding']) {
     for (const appearance of ['light', 'dark']) {
       const context = await browser.newContext({ viewport,
         deviceScaleFactor: wide ? 2 : 3, isMobile: true, hasTouch: true, locale: 'en-US',
