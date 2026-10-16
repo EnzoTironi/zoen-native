@@ -22,9 +22,8 @@ impl Drop for SeedGuard {
 }
 fn next() -> Option<u64> {
     COUNTER.with(|c| {
-        c.get().map(|n| {
+        c.get().inspect(|n| {
             c.set(Some(n + 1));
-            n
         })
     })
 }
