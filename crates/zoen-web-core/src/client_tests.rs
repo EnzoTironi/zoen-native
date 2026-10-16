@@ -273,6 +273,9 @@ fn native_sqlite_welcome_messages_saved_reload_and_removal_use_shared_mls() {
     );
 }
 
+#[path = "mutation_tests.rs"]
+mod mutation_tests;
+
 #[test]
 fn invitation_queues_a_certified_self_add_with_the_original_code_and_no_plain_message_fallback() {
     let identity = NativeSigner::from_secret(&[21; 32]);
