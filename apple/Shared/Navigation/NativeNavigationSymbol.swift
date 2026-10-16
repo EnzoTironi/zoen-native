@@ -1,28 +1,23 @@
 import SwiftUI
 
-/// Native symbol feedback is driven by navigation selection and genuinely new work.
-/// Initial badge state is not a new notification; reduced motion keeps static symbols.
+/// Selection feedback is additive: the system's static selected cue stays instant.
+/// Initial badge state is not new work; only an increase triggers the bell.
 struct NativeNavigationSymbol: View {
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     let name: String
     var selected = false
     var notificationCount = 0
     @State private var newNotification = 0
+    @State private var selectionTap = 0
 
     var body: some View {
-        Group {
-            if reduceMotion {
-                Image(systemName: name)
-            } else {
-                Image(systemName: name)
-                    .symbolEffect(.bounce, value: selected)
-                    .symbolEffect(.wiggle, value: newNotification)
-                    .contentTransition(.symbolEffect(.replace.magic(fallback: .replace)))
-                    .transition(.symbolEffect(.drawOn))
+        NativeIconMotion(systemName: name, bounce: selectionTap,
+                         wiggle: newNotification, drawOn: true)
+            .onChange(of: selected) { _, new in
+                // Never bounce the tab the user is leaving, or initial selection.
+                if new { selectionTap += 1 }
             }
-        }
-        .onChange(of: notificationCount) { old, new in
-            if new > old { newNotification += 1 }
-        }
+            .onChange(of: notificationCount) { old, new in
+                if new > old { newNotification += 1 }
+            }
     }
 }

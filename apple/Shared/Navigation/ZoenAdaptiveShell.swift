@@ -199,7 +199,7 @@ struct ZoenAdaptiveShell: View {
                     }
                 }
         }
-        .buttonStyle(.plain)
+        .buttonStyle(NativeIconPressStyle())
         .help(tab.title)
         .accessibilityLabel(tab.title)
         .accessibilityValue(badge > 0 ? "\(badge)" : "")
