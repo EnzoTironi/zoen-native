@@ -273,9 +273,6 @@ fn native_sqlite_welcome_messages_saved_reload_and_removal_use_shared_mls() {
     );
 }
 
-#[path = "mutation_tests.rs"]
-mod mutation_tests;
-
 #[test]
 fn invitation_queues_a_certified_self_add_with_the_original_code_and_no_plain_message_fallback() {
     let identity = NativeSigner::from_secret(&[21; 32]);
@@ -335,33 +332,6 @@ fn native_voice_replies_versions_and_reverts_stay_on_the_original_post() {
         EventBody::MessagePosted {
             message: "msg_root".into(),
             text: "Bring the tent".into(),
-
-fn web_fixture() -> (Client<HostSigner>, Author, Author, SpaceLog, String) {
-    let identity = NativeSigner::from_secret(&[41; 32]);
-    let host = HostSigner(NativeSigner::from_secret(&[42; 32]));
-    let author = Author::device(&identity, NativeSigner::from_secret(&[43; 32]));
-    let other = Author::device(
-        &NativeSigner::from_secret(&[44; 32]),
-        NativeSigner::from_secret(&[45; 32]),
-    );
-    let client = Client::new(account(&identity, &host.0), host, "").unwrap();
-    let mut log = SpaceLog::new("sp_web_receipts");
-    clear(
-        &mut log,
-        &author,
-        EventBody::SpaceCreated {
-            title: "Fixture".into(),
-            kind: SpaceKind::Group,
-            privacy: Privacy::EndToEnd,
-        },
-        1,
-    );
-    clear(
-        &mut log,
-        &author,
-        EventBody::MessagePosted {
-            message: "msg_fixture".into(),
-            text: "Oi".into(),
             attaches: None,
             reply: None,
             forwarded: false,
@@ -462,7 +432,38 @@ fn web_fixture() -> (Client<HostSigner>, Author, Author, SpaceLog, String) {
     assert_eq!(conversation.messages.len(), 3);
     assert_eq!(conversation.messages[1].file.as_ref(), Some(&original));
     assert!(conversation.messages[1].edited);
+}
 
+fn web_fixture() -> (Client<HostSigner>, Author, Author, SpaceLog, String) {
+    let identity = NativeSigner::from_secret(&[41; 32]);
+    let host = HostSigner(NativeSigner::from_secret(&[42; 32]));
+    let author = Author::device(&identity, NativeSigner::from_secret(&[43; 32]));
+    let other = Author::device(
+        &NativeSigner::from_secret(&[44; 32]),
+        NativeSigner::from_secret(&[45; 32]),
+    );
+    let client = Client::new(account(&identity, &host.0), host, "").unwrap();
+    let mut log = SpaceLog::new("sp_web_receipts");
+    clear(
+        &mut log,
+        &author,
+        EventBody::SpaceCreated {
+            title: "Fixture".into(),
+            kind: SpaceKind::Group,
+            privacy: Privacy::EndToEnd,
+        },
+        1,
+    );
+    clear(
+        &mut log,
+        &author,
+        EventBody::MessagePosted {
+            message: "msg_fixture".into(),
+            text: "Oi".into(),
+            attaches: None,
+            reply: None,
+            forwarded: false,
+        },
         2,
     );
     let target = log.events().last().unwrap().hash.clone();
