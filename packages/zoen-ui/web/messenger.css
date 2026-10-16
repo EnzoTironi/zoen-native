@@ -261,7 +261,7 @@ body { background: var(--zm-canvas); color: var(--zm-ink); }
 .zm-native-production .zm-row.zm-own { padding-left: 48px; padding-right: 0; }
 .zm-native-production .zm-sender-face { position: absolute; left: 0; bottom: 0; }
 .zm-native-production .zm-bubble-wrap { display: block; max-width: 100%; }
-.zm-native-production .zm-bubble { font-size: 17px; padding: 9px 14px; border-radius: 24px 24px 24px 6px; }
+.zm-native-production .zm-bubble { display: flow-root; font-size: 17px; padding: 9px 14px; border-radius: 24px 24px 24px 6px; }
 .zm-native-production .zm-own .zm-bubble { border-radius: 24px 24px 6px 24px; }
 .zm-native-production .zm-actions { position: absolute; left: 100%; top: 0; }
 .zm-native-production .zm-own .zm-actions { left: auto; right: 100%; }

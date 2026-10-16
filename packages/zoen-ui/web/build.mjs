@@ -1,7 +1,7 @@
 import { build } from 'esbuild';
 import { spawn, execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { copyFile, mkdir, readFile, readdir, writeFile } from 'node:fs/promises';
+import { copyFile, cp, mkdir, readFile, readdir, writeFile } from 'node:fs/promises';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -20,6 +20,19 @@ function run(command, args) {
 
 await mkdir(out, { recursive: true });
 await mkdir(join(out, 'core'), { recursive: true });
+// Project-owned native artwork: copied byte-for-byte, never redrawn by the capture fixture.
+await cp(join(root, 'apple/AvatarV1/Heroes'), join(out, 'assets/avatars/Heroes'), { recursive: true });
+await cp(join(root, 'apple/AvatarV1/Loops'), join(out, 'assets/avatars/Loops'), { recursive: true });
+await mkdir(join(out, 'assets/avatars/Stills'), { recursive: true });
+const avatarManifest = JSON.parse(await readFile(join(root, 'apple/AvatarV1/AvatarV1Manifest.json'), 'utf8'));
+for (const asset of avatarManifest.assets) {
+  if (!/^[A-Za-z0-9]+$/.test(asset.name)) throw new Error('Invalid native avatar asset name.');
+  const imageset = join(root, 'apple/AvatarV1/AvatarV1.xcassets', `${asset.name}.imageset`);
+  const contents = JSON.parse(await readFile(join(imageset, 'Contents.json'), 'utf8'));
+  const image = contents.images.filter(image => image.filename).sort((a, b) => parseInt(b.scale) - parseInt(a.scale))[0];
+  if (!image || image.filename.includes('/') || image.filename.includes('..')) throw new Error('Invalid native avatar still.');
+  await copyFile(join(imageset, image.filename), join(out, 'assets/avatars/Stills', `${asset.name}.png`));
+}
 if (!process.argv.includes('--skip-wasm')) {
   await run('cargo', ['build', '-p', 'zoen-web-core', '--target', 'wasm32-unknown-unknown', '--release', '-j', '1']);
   const target = process.env.CARGO_TARGET_DIR ?? join(root, 'target');

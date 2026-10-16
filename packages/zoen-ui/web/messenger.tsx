@@ -4,6 +4,7 @@ import type { Conversation, FileDoc, Message, Messages, VoiceMeta } from './mess
 import { FileView, kindOf, thumbnail, useRecorder } from './media.tsx';
 import { NativeAdaptiveShell } from './native-adaptive.tsx';
 import { displayNow, displayTime } from './display-clock.ts';
+import { NativeAvatar } from './native-art.tsx';
 import { NativeNavigation } from './native-navigation.tsx';
 import { MessageEditor } from './message-editor.tsx';
 import { MessageSearchResults } from './message-search-view.tsx';
@@ -26,12 +27,9 @@ function day(ms: number) {
   if (d.toDateString() === y.toDateString()) return 'Ontem';
   return d.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' });
 }
-const initials = (name: string) => name.replace(/^@/, '').trim().split(/\s+/).slice(0, 2).map((w) => w[0]?.toUpperCase() ?? '').join('') || '?';
-function hue(seed: string) { let h = 0; for (const c of seed) h = (h * 31 + c.charCodeAt(0)) % 360; return h; }
-
 const english = () => document.documentElement.lang.toLowerCase().startsWith('en');
-function Avatar({ name, size = 44, counterpart }: { name: string; size?: number; counterpart?: Conversation['counterpart'] }) {
-  return <span className="zm-avatar" aria-hidden="true" style={{ width: size, height: size, fontSize: size * 0.38, background: counterpart?.tintHex ?? `oklch(0.93 0.04 ${hue(name)})`, color: counterpart ? '#fff' : `oklch(0.38 0.08 ${hue(name)})` }}>{counterpart?.initials ?? initials(name)}</span>;
+function Avatar({ name, size = 44, counterpart, kind = 'person', id }: { name: string; size?: number; counterpart?: Conversation['counterpart']; kind?: 'person' | 'group' | 'agent'; id?: string }) {
+  return <NativeAvatar identity={{ kind, name, ...(id ? { id } : {}), ...(counterpart ?? {}) }} size={size} />;
 }
 
 function Icon({ name }: { name: 'plus' | 'send' | 'mic' | 'reply' | 'thread' | 'smile' | 'more' | 'close' | 'pin' | 'mute' | 'archive' | 'back' | 'search' }) {
@@ -212,7 +210,7 @@ function ChatRow({ c, active, prefs, open, set }: { c: Conversation; active: boo
   const preview = last ? (last.deleted ? 'Mensagem apagada' : `${c.kind !== 'direct' && last.name ? `${last.name}: ` : ''}${last.file ? fileLabel(last.file) : last.text}`) : c.waiting ? 'Preparando a conversa…' : 'Nenhuma mensagem ainda';
   return <li className={`zm-chat${active ? ' zm-active' : ''}${c.unread ? ' zm-unread' : ''}`} onContextMenu={(e) => { e.preventDefault(); setMenu(true); }} onMouseLeave={() => setMenu(false)}>
     <button className="zm-chat-open" onClick={open} aria-current={active ? 'true' : undefined}>
-      <Avatar name={c.title} counterpart={c.counterpart} />
+      <Avatar name={c.title} id={c.id} counterpart={c.counterpart} kind={c.kind === 'direct' ? 'person' : 'group'} />
       <span className="zm-chat-body"><span className="zm-chat-top"><b>{c.title}</b>{last ? <time>{day(last.at_ms)}</time> : null}</span>
         <span className="zm-chat-bottom"><span className="zm-preview">{preview}</span>
           {prefs.muted ? <span className="zm-flag" aria-label="Silenciada"><Icon name="mute" /></span> : null}
@@ -337,9 +335,9 @@ function AccountMessenger({ conversations, identity, name, connected, status, me
     </aside>
     <main className="zm-main">
       {destination !== 'chats' ? <section className="zm-blank"><button className="zm-pill" onClick={() => navigate('chats')}>Back to Chats</button><h2>{destination}</h2><p>This feature is available in the native Zoen app, not on web yet.</p></section> : children ?? (conversation ? <>
-        <header className="zm-chat-head"><button className="zm-round glass zm-mobile-back" aria-label="Back to Chats" onClick={() => select('')}><Icon name="back" /></button><span className="zm-title-pill glass-pill"><Avatar name={conversation.title} counterpart={conversation.counterpart} size={28} /><b>{conversation.title}</b>{conversation.kind !== 'direct' ? <span>{conversation.members} {english() ? 'people' : 'pessoas'}</span> : null}</span></header>
+        <header className="zm-chat-head"><button className="zm-round glass zm-mobile-back" aria-label="Back to Chats" onClick={() => select('')}><Icon name="back" /></button><span className="zm-title-pill glass-pill"><Avatar name={conversation.title} id={conversation.id} counterpart={conversation.counterpart} kind={conversation.kind === 'direct' ? 'person' : 'group'} size={28} /><b>{conversation.title}</b>{conversation.kind !== 'direct' ? <span>{conversation.members} {english() ? 'people' : 'pessoas'}</span> : null}</span></header>
         <section className="zm-timeline" role="log" aria-label="Mensagens" aria-live="polite">
-          <div className="zm-space-hero"><Avatar name={conversation.title} counterpart={conversation.counterpart} size={conversation.kind === 'direct' ? 64 : 72} /></div>
+          <div className="zm-space-hero"><Avatar name={conversation.title} id={conversation.id} counterpart={conversation.counterpart} kind={conversation.kind === 'direct' ? 'person' : 'group'} size={conversation.kind === 'direct' ? 64 : 72} /></div>
           {conversation.waiting ? <p className="zm-note">Seu celular está preparando esta conversa para o navegador. Deixe ele conectado.</p> : null}
           {conversation.unreadable ? <p className="zm-note">{conversation.unreadable === 1 ? 'Uma mensagem anterior está' : `${conversation.unreadable} mensagens anteriores estão`} só no seu celular.</p> : null}
           {bubbles(timeline, false)}
@@ -376,7 +374,7 @@ function AccountMessenger({ conversations, identity, name, connected, status, me
       <ul>{conversations.filter((c) => c.can_send).map((c) => <li key={c.id}><button onClick={() => {
         const { text, file } = forward; setForward(null);
         void ((file ? messages.current?.forwardFile(c.id, file) : messages.current?.post({ space: c.id, text, forwarded: true }) ) ?? Promise.resolve()).then(() => select(c.id)).catch(fail);
-      }}><Avatar name={c.title} size={32} />{c.title}</button></li>)}</ul>
+      }}><Avatar name={c.title} id={c.id} kind={c.kind === 'direct' ? 'person' : 'group'} size={32} />{c.title}</button></li>)}</ul>
       <button className="zm-pill" onClick={() => setForward(null)}>Cancelar</button>
     </div></div> : null}
     {toast ? <p className="zm-toast" role="alert">{toast}</p> : null}

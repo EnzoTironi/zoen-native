@@ -43,6 +43,7 @@ export function installNativeParity(element: HTMLElement) {
     root ??= createRoot(element);
     flushSync(() => root!.render(<NativeParity key={`${config.screen}-${config.appearance}-${config.viewport}`} config={config} />));
     await document.fonts.ready;
+    await Promise.all(Array.from(document.images).map(image => image.decode()));
     await new Promise<void>(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve())));
     await Promise.allSettled(document.getAnimations().filter(animation => animation.effect?.getTiming().iterations !== Infinity).map(animation => animation.finished));
     hook.manifest = { ...config, data_source: 'native-core-export', read_only: true, screens: 'production-components' };

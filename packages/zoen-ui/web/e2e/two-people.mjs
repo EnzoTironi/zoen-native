@@ -20,6 +20,9 @@ async function linkWeb(p) {
   page.on('pageerror', (e) => errors.push(`${p.name}: ${e.message}`));
   page.on('console', (m) => { if (m.type() === 'error') errors.push(`${p.name}: ${m.text()}`); });
   await page.goto(`${WEB}/?relay=${encodeURIComponent(RELAY)}`);
+  const welcome = page.getByRole('button', { name: 'Hi, Zoen!', exact: true });
+  await Promise.race([welcome.waitFor(), page.getByRole('button', { name: 'Conectar este navegador' }).waitFor()]);
+  if (await welcome.isVisible()) await welcome.click();
   await page.getByRole('button', { name: 'Conectar este navegador' }).waitFor();
   if (p === ana) await page.screenshot({ path: `${SHOTS}/01-conectar.png` });
   await page.getByRole('button', { name: 'Conectar este navegador' }).click();
@@ -36,7 +39,7 @@ const watch = (p) => { p.watcher = spawn(ZOEN, ['--home', p.home, 'watch', '--fo
 const offline = async (p, fn) => { p.watcher?.kill(); await new Promise((r) => setTimeout(r, 1500)); try { fn(); } finally { watch(p); } };
 run(ana.home, 'dm', `@${bruno.handle}`, 'Oi Bruno! Tudo certo pra sexta?');
 people.forEach(watch);
-const ready = async (page) => { await page.locator('.zm-chat-open').first().click({ timeout: 90000 }); await page.waitForSelector('.zm-composer textarea:not([disabled])', { timeout: 90000 }); };
+const ready = async (page) => { await page.locator('.na-chat-row:visible, .zm-chat-open:visible').first().click({ timeout: 90000 }); await page.waitForSelector('.zm-composer textarea:not([disabled])', { timeout: 90000 }); };
 await Promise.all([ready(ana.page), ready(bruno.page)]);
 const send = async (page, text) => { await page.locator('.zm-composer textarea').first().fill(text); await page.keyboard.press('Enter'); };
 await bruno.page.locator('.zm-main .zm-text', { hasText: 'Oi Bruno! Tudo certo pra sexta?' }).waitFor();
