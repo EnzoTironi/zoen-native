@@ -322,6 +322,15 @@ fn link_op(author: &Author, id: &str) -> Op {
     }
 }
 
+async fn assert_device_absent(test: &TestRelay, author: &Author) {
+    let exists: bool = sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM devices WHERE device = $1)")
+        .bind(author.device.as_deref().unwrap())
+        .fetch_one(&test.state.pool)
+        .await
+        .unwrap();
+    assert!(!exists, "device row survived refused enrollment");
+}
+
 async fn stalled_operation_revocation(publish: bool) {
     let test = TestRelay::new().await;
     let (state, log, ws_url) = (&test.state, &test.log, &test.ws_url);
@@ -549,11 +558,7 @@ async fn an_unlinked_root_holder_cannot_return_with_a_fresh_certificate() {
         "{result:?}"
     );
     assert!(recv(&mut attempted).await.is_none());
-    assert!(
-        !zoen_relay::db::device_known(&test.state.pool, fresh.device.as_ref().unwrap())
-            .await
-            .unwrap()
-    );
+    assert_device_absent(&test, &fresh).await;
     while let Some(frame) = recv(&mut target).await {
         assert!(matches!(
             frame,
@@ -679,11 +684,7 @@ async fn a_preopened_unregistered_socket_cannot_enroll_after_registration() {
         .await
         .unwrap();
     assert_eq!(handle, "ana");
-    assert!(
-        !zoen_relay::db::device_known(&test.state.pool, late.device.as_ref().unwrap())
-            .await
-            .unwrap()
-    );
+    assert_device_absent(&test, &late).await;
     let _ = controller.close(None).await;
     test.close().await;
 }
@@ -758,11 +759,7 @@ async fn enrollment_and_link_box_delivery_commit_or_rollback_together() {
     assert!(request(&mut controller, 4, link_op(&third, &occupied_id))
         .await
         .is_err());
-    assert!(
-        !zoen_relay::db::device_known(&test.state.pool, third.device.as_ref().unwrap())
-            .await
-            .unwrap()
-    );
+    assert_device_absent(&test, &third).await;
     assert_eq!(
         zoen_relay::db::take_link_box(&test.state.pool, &occupied_id)
             .await
@@ -778,11 +775,7 @@ async fn enrollment_and_link_box_delivery_commit_or_rollback_together() {
         .await
         .unwrap()
         .is_none());
-    assert!(
-        !zoen_relay::db::device_known(&test.state.pool, bad_cert.device.as_ref().unwrap())
-            .await
-            .unwrap()
-    );
+    assert_device_absent(&test, &bad_cert).await;
     // History manifests still work without a certificate and do not enroll any key.
     let history_id = Signer::generate().id();
     request(
