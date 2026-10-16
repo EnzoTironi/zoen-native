@@ -341,7 +341,7 @@ impl Engine {
             Delivery::Failed
         } else if self.net.pending.contains_key(source) {
             Delivery::Sending
-        } else if self.net.synced.contains(&e.space) {
+        } else if self.net.synced.contains(&e.space) || self.net.receipts.contains_key(&e.space) {
             self.receipt_for(e)
         } else {
             Delivery::Local

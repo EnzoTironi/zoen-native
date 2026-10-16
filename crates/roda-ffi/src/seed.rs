@@ -382,7 +382,7 @@ pub(crate) fn seed(e: &mut Engine) -> Result<(), CoreError> {
             Capability::Trust(TrustLevel::Act),
         ),
     )?;
-    e.append_at(
+    let joke = e.append_at(
         &turma,
         &lucas,
         at(52),
@@ -390,6 +390,27 @@ pub(crate) fn seed(e: &mut Engine) -> Result<(), CoreError> {
             "Vocês ainda acham que Liubliana fica na Eslováquia? 😂",
             "Do you guys still think Ljubljana is in Slovakia? 😂",
         )),
+    )?;
+    let group_read = e.append_at(
+        &turma,
+        &enzo,
+        at(51),
+        msg(&t(
+            "Eu levo água e uns lanches 🥾",
+            "I'll bring water and snacks 🥾",
+        )),
+    )?;
+    e.append_at(
+        &turma,
+        &marina,
+        at(50),
+        EventBody::MessagePosted {
+            message: new_id("msg"),
+            text: t("Levo as frutas. Fechado! 🍊", "I'll bring fruit. Deal! 🍊"),
+            attaches: None,
+            reply: Some(ReplyRef::thread(group_read.client_id.clone())),
+            forwarded: false,
+        },
     )?;
     e.append_at(
         &turma,
@@ -406,10 +427,45 @@ pub(crate) fn seed(e: &mut Engine) -> Result<(), CoreError> {
             "This group needs a mascot",
         )),
     )?;
+    let group_delivered = e.append_at(
+        &turma,
+        &enzo,
+        at(47),
+        msg(&t(
+            "A Paçoca já faz parte da turma 😂",
+            "Paçoca is already part of the crew 😂",
+        )),
+    )?;
 
     // Live mini-apps pinned in the chat (and on Home): hike, pet, MapTap.
     // These are real Items in the Space — ChatPinStrip / HomeStrip read them from the core.
     seed_turma_apps(e, &turma, &enzo, &marina, &lucas, &ana, &zoen, t0)?;
+    e.append_at(
+        &turma,
+        &enzo,
+        at(37),
+        msg(&t(
+            "Sábado às oito na praça?",
+            "Saturday at eight in the square?",
+        )),
+    )?;
+    for (target, who, emoji) in [
+        (&joke.client_id, &enzo, "😂"),
+        (&joke.client_id, &ana, "😂"),
+        (&group_read.client_id, &marina, "👍"),
+    ] {
+        e.append_at(
+            &turma,
+            who,
+            at(36),
+            EventBody::MessageAnnotated {
+                target: target.clone(),
+                note: Annotation::React {
+                    emoji: emoji.into(),
+                },
+            },
+        )?;
+    }
 
     // ── Zoen (DM com o meu agente: onde o momento mágico acontece) ──
     let dm_zoen = new_id("sp");
@@ -507,13 +563,13 @@ pub(crate) fn seed(e: &mut Engine) -> Result<(), CoreError> {
             role: Role::Member,
         },
     )?;
-    e.append_at(
+    let sunscreen = e.append_at(
         &dm_marina,
         &enzo,
         at(52),
         msg(&t("Comprei o protetor solar ☀️", "Bought the sunscreen ☀️")),
     )?;
-    e.append_at(
+    let charger = e.append_at(
         &dm_marina,
         &marina,
         at(44),
@@ -522,6 +578,40 @@ pub(crate) fn seed(e: &mut Engine) -> Result<(), CoreError> {
             "Perfect! Can you bring the power bank too?",
         )),
     )?;
+    let marina_delivered = e.append_at(
+        &dm_marina,
+        &enzo,
+        at(43),
+        msg(&t(
+            "Já deixei o carregador na mochila 🔋",
+            "The power bank is in my bag 🔋",
+        )),
+    )?;
+    e.append_at(
+        &dm_marina,
+        &enzo,
+        at(42),
+        msg(&t(
+            "Saio às oito. Te aviso quando chegar 🙂",
+            "Leaving at eight. I'll text when I get there 🙂",
+        )),
+    )?;
+    for (target, who, emoji) in [
+        (&sunscreen.client_id, &marina, "❤️"),
+        (&charger.client_id, &enzo, "👍"),
+    ] {
+        e.append_at(
+            &dm_marina,
+            who,
+            at(41),
+            EventBody::MessageAnnotated {
+                target: target.clone(),
+                note: Annotation::React {
+                    emoji: emoji.into(),
+                },
+            },
+        )?;
+    }
 
     // ── Paraty com a Marina (o cenário da demo) ──
     let paraty = new_id("sp");
@@ -884,6 +974,18 @@ pub(crate) fn seed(e: &mut Engine) -> Result<(), CoreError> {
             "@Enzo já aprovou a pousada? Eles seguram a reserva só até hoje 😅",
             "@Enzo did you approve the inn yet? They only hold the booking until today 😅",
         )),
+    )?;
+
+    // Simulated peer watermarks exercise the real sent / delivered / read projection.
+    // Keep these chats local: marking them synced would queue demo edits for a relay.
+    e.net.receipts.clear();
+    for member in [&marina, &lucas, &ana, &zoen] {
+        e.receipt(&turma, member, group_delivered.seq, group_read.seq);
+    }
+    e.receipt(&dm_marina, &marina, marina_delivered.seq, sunscreen.seq);
+    e.store.set_meta(
+        "seed_receipts",
+        &serde_json::json!(&e.net.receipts).to_string(),
     )?;
 
     // Tudo lido, menos o que chegou nos últimos minutos.

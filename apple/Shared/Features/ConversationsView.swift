@@ -78,6 +78,7 @@ struct ConversationsList: View {
     }
 
     var body: some View {
+        let spaces = filtered
         LazyVStack(alignment: .leading, spacing: 2) {
             // WhatsApp: "Archived" sits above the chats while you have any.
             if !archive, query.isEmpty, !model.archivedSpaces.isEmpty {
@@ -86,7 +87,7 @@ struct ConversationsList: View {
                 }
                 .transition(.opacity.combined(with: .move(edge: .top)))
             }
-            ForEach(filtered) { space in
+            ForEach(spaces) { space in
                 Button {
                     onOpen(space.id)
                 } label: {
@@ -94,6 +95,7 @@ struct ConversationsList: View {
                                     working: model.working[space.id] != nil, selected: selected == space.id)
                 }
                 .buttonStyle(.plain)
+                .accessibilityIdentifier(space.id == spaces.last?.id ? "chat-row-last" : "chat-row-\(space.id)")
                 .contextMenu {
                     Button {
                         withAnimation(.spring(duration: 0.4)) { model.togglePin(space) }
@@ -110,11 +112,11 @@ struct ConversationsList: View {
                     }
                 }
             }
-            if archive && filtered.isEmpty {
+            if archive && spaces.isEmpty {
                 InkEmptyState(pose: .map, title: String(localized: "No archived chats"))
-            } else if filtered.isEmpty && !query.isEmpty {
+            } else if spaces.isEmpty && !query.isEmpty {
                 InkEmptyState(pose: .map, title: String(localized: "Nothing for “\(query)”"))
-            } else if filtered.isEmpty && model.chatFilter != .all {
+            } else if spaces.isEmpty && model.chatFilter != .all {
                 InkEmptyState(pose: .map, title: String(localized: "No chats in this filter"))
             }
         }
@@ -351,9 +353,16 @@ struct ConversationsScreen: View {
                     ConversationsList(query: model.chatQuery) { id in model.push(.space(id)) }
                 }
                 .padding(.top, searching ? 12 : 0)
-                .padding(.bottom, 110)
                 .animation(.spring(duration: 0.4, bounce: 0.15), value: searching)
             }
+            #if os(iOS)
+            // Reserve the floating bar on the scroll view that needs the clearance.
+            .safeAreaInset(edge: .bottom, spacing: 0) {
+                Color.clear.frame(height: ZoenBottomBar.height + ZoenBottomBar.bottom)
+            }
+            #endif
+            .contentMargins(.bottom, 12, for: .scrollContent)
+            .accessibilityIdentifier("chats-list-scroll")
             .scrollDismissesKeyboard(.interactively)
             .scrollEdgeEffectStyle(.soft, for: .top)
             .defaultScrollAnchor(UserDefaults.standard.bool(forKey: "RodaScrollChats") ? .bottom : .top)
@@ -511,4 +520,3 @@ struct ConnectionDot: View {
         }
     }
 }
-
