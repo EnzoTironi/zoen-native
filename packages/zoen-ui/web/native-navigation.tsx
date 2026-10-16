@@ -14,6 +14,7 @@ export interface NativeNavigationProps {
   onSelect: (tab: NativeNavigationTab) => void;
   onNewMessage?: () => void;
   notificationCount?: number;
+  offline?: boolean;
   identity?: NativeAvatarIdentity;
   /** @deprecated Accepted only during migration; no search/fan/voice UI is rendered. */
   search?: { open: boolean; value: string; onChange: (value: string) => void; onOpenChange: (open: boolean) => void };
@@ -31,13 +32,14 @@ function TabSymbol({ name }: { name: Exclude<NativeNavigationTab, 'profile'> }) 
 }
 const tabs = [{ id: 'chats', label: 'Chats' }, { id: 'spaces', label: 'Spaces' }, { id: 'notifications', label: 'Notifications' }, { id: 'profile', label: 'Profile' }] as const;
 
-export function NativeNavigation({ selected, onSelect, onNewMessage, onCreate, notificationCount = 0, identity }: NativeNavigationProps) {
+export function NativeNavigation({ selected, onSelect, onNewMessage, onCreate, notificationCount = 0, identity, offline = false }: NativeNavigationProps) {
   const count = Number.isFinite(notificationCount) ? Math.max(0, Math.floor(notificationCount)) : 0;
   return <nav className="zn-navigation" aria-label="Main navigation">
     <div className="zn-tabs">{tabs.map(({ id, label }) => <button type="button" key={id} className="zn-tab" aria-current={(selected === id || selected === 'store' && id === 'spaces') ? 'page' : undefined} aria-label={id === 'notifications' && count ? `${label}, ${count} pending` : label} onClick={() => onSelect(id)}>
       <span className="zn-tab-icon">{id === 'profile' ? identity ? <NativeAvatar identity={identity} size={26} animate={false}/> : <svg className="zn-symbol" viewBox="0 0 28 28" aria-hidden="true" fill="currentColor"><circle cx="14" cy="9" r="5"/><path d="M4 26v-3a10 10 0 0 1 20 0v3Z"/></svg> : <TabSymbol name={id}/>}{id === 'notifications' && count > 0 && <span className="zn-badge">{count}</span>}</span>
       <span className="zn-label">{label}</span>
     </button>)}</div>
+    {offline ? <span className="zn-offline-dot" role="status" aria-label="Offline" /> : null}
     <button type="button" className="zn-new-message" aria-label="New message" onClick={() => { if (onNewMessage) onNewMessage(); else onCreate?.('new-chat'); }}><svg viewBox="0 0 28 28" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M15 5H7a4 4 0 0 0-4 4v12a4 4 0 0 0 4 4h12a4 4 0 0 0 4-4v-8M12 17l1-4L24 2l3 3-11 11-4 1Z"/></svg></button>
   </nav>;
 }

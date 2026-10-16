@@ -27,6 +27,8 @@ async function click(label: string) { const button = [...document.querySelectorA
 test('real space callback uses ID; absent handler is disabled', async () => {
   let id: string | undefined;
   await render(NativeSpacesDirectory, { spaces: [{ id: 'actual-id', title: 'Actual space' }], onOpen: (value: string) => id = value });
+  assert.equal(document.querySelector('.native-root-screen > h1'), null, 'native root chrome is bottom-only');
+  assert.equal(document.querySelector('.native-root-screen')?.getAttribute('aria-label'), 'Spaces');
   await click('Actual space›'); assert.equal(id, 'actual-id');
   await render(NativeSpacesDirectory, { spaces: [{ id: 'actual-id', title: 'Actual space' }] });
   assert.equal(document.querySelector('button')!.disabled, true);

@@ -16,6 +16,7 @@
 .zn-badge{position:absolute;top:-4px;left:calc(100% - 1px);background:#ff343c;border:1.5px solid #f4f6fb;color:white;border-radius:20px;min-width:20px;height:20px;padding:0 4px;box-sizing:border-box;display:grid;place-items:center;font-size:12px;font-weight:400;line-height:17px}
 .zn-navigation .zn-new-message{width:62px;height:62px;flex:0 0 62px;border-radius:50%;display:grid;place-items:center;padding:18px;box-sizing:border-box}
 .zn-new-message svg{width:27px;height:27px;display:block}
+.zn-offline-dot{position:absolute;right:67px;top:28px;width:6px;height:6px;border-radius:50%;background:#8c95a8;pointer-events:none}
 .zn-navigation button:focus-visible{outline:2px solid #3d7a28;outline-offset:3px}
 @media(prefers-color-scheme:dark){.zn-navigation{color:#eef2fa}.zn-tabs,.zn-new-message{background:rgba(24,32,50,.66);border-color:rgba(210,220,240,.26);box-shadow:inset 0 1px 1px rgba(255,255,255,.18),0 1px 2px rgba(0,0,0,.2)}.zn-tab[aria-current=page]{color:#86c25a!important;background:rgba(215,225,235,.13)!important}.zn-badge{border-color:#182032}}
 @media(min-width:768px){.zn-navigation{display:none}}

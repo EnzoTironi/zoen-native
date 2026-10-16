@@ -105,7 +105,7 @@ test('inbox filter preserves actual conversation kinds and New message opens the
     const dialog = document.querySelector('[role="dialog"][aria-labelledby="nnm-title"]');
     assert.ok(dialog);
     assert.equal(dialog.querySelector('#nnm-title')?.textContent, 'New chat');
-    assert.equal(document.querySelector('.zm-home-head h1')?.textContent, 'Chats');
+    assert.equal(document.querySelector('.zm-home-head'), null, 'native root has no top header');
     assert.deepEqual(ui.calls, [], 'opening the recipient picker never fabricates a sent message');
   } finally { await ui.close(); }
 });

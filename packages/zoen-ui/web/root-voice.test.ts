@@ -75,10 +75,14 @@ test('navigation shows the supplied pending count and actual profile avatar whil
   const ui = await mount();
   try {
     assert.ok(document.querySelector('[aria-label="Notifications, 3 pending"]'));
+    assert.equal(document.querySelector('[aria-label="Offline"]'), null);
+    await act(async () => ui.root.render(h(NativeNavigation, { ...ui.props, offline: true })));
+    assert.ok(document.querySelector('nav[aria-label="Main navigation"] [role="status"][aria-label="Offline"]'));
     assert.match(document.querySelector('[aria-label="Profile"]')!.textContent!, /E/);
     await act(async () => ui.root.render(h(NativeNavigation, { ...ui.props, selected: 'profile', notificationCount: 4 })));
     assert.equal(document.querySelector('[aria-current="page"]')?.getAttribute('aria-label'), 'Profile');
     assert.ok(document.querySelector('[aria-label="Notifications, 4 pending"]'));
+    assert.equal(document.querySelector('[aria-label="Offline"]'), null, 'reconnection releases the bottom-only indicator');
     assert.deepEqual(ui.calls, []);
   } finally { await ui.close(); }
 });

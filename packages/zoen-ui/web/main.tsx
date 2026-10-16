@@ -16,6 +16,7 @@ import { NativeOnboarding } from './native-secondary.tsx';
 import { BrowserSettings } from './browser-settings.tsx';
 import { completeWelcome, openWelcomeInvite } from './welcome.ts';
 import { applyAppearance } from './appearance.ts';
+import { browserRootData } from './native-root-data.ts';
 import './appearance.css';
 
 type Runtime = { vault: BrowserVault; core: CoreWorker };
@@ -141,9 +142,12 @@ function Linked({ runtime, session, forget }: { runtime: Runtime; session: Extra
   }, [runtime, session]);
   const conversations = state.kind === 'loading' ? [] : state.conversations;
   const connected = state.kind === 'active' && state.connection.kind === 'ready';
+  const rootData = browserRootData({ identity: session.account.identity, device: session.account.device, name: session.account.name, handle: session.account.handle },
+    state.kind === 'active' ? state.connection : state.kind === 'failed' ? { kind: 'failed', message: state.message } : { kind: 'connecting' });
+  rootData.contacts = [...new Map(conversations.flatMap(conversation => conversation.counterpart ? [[conversation.counterpart.id, conversation.counterpart] as const] : [])).values()];
   const status = state.kind === 'loading' ? 'Abrindo suas conversas…' : state.kind === 'failed' ? 'Algo deu errado. Recarregue a página.' :
     state.connection.kind === 'ready' ? 'Conectado' : state.connection.kind === 'reconnecting' ? 'Reconectando…' : 'Conectando…';
-  return <Messenger conversations={conversations} identity={session.account.identity} name={session.account.name} connected={connected} status={status}
+  return <Messenger conversations={conversations} identity={session.account.identity} name={session.account.name} connected={connected} status={status} typing={state.kind === 'active' ? state.typing ?? {} : {}} rootData={rootData}
     messages={running} selected={selected} select={(id) => { setSelected(id); setShowInvite(false); }} onSettings={() => setShowSettings(true)}
     footer={null}>
     {showSettings ? <BrowserSettings me={{ name: session.account.name, handle: session.account.handle, initials: session.account.name.slice(0, 1).toUpperCase(), tintHex: '#4F7CFF' }} close={() => setShowSettings(false)} openDevices={() => { setShowSettings(false); setShowDevices(true); }} forget={forget} failed={state.kind === 'failed'} /> : showDevices ? <Devices messages={running.current} current={session.account.device} close={() => setShowDevices(false)} /> : showInvite && invitation ? <Invitation code={invitation} messages={running} connected={connected} conversations={conversations}

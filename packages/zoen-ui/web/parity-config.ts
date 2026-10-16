@@ -1,5 +1,5 @@
 export const PARITY_FIXTURE = Object.freeze({ fixture_id: 'native-parity-v1', fixed_time: '2026-01-15T12:00:00Z', locale: 'en_US', timezone: 'UTC', seed: 128 });
-export const PARITY_SCREENS = ['chats', 'chat', 'composer', 'spaces', 'settings', 'onboarding'] as const;
+export const PARITY_SCREENS = ['chats', 'spaces', 'notifications', 'profile', 'chat', 'composer', 'settings', 'onboarding'] as const;
 export type ParityConfig = typeof PARITY_FIXTURE & { source_revision: string; screen: typeof PARITY_SCREENS[number]; appearance: 'light' | 'dark'; viewport: 'narrow' | 'wide' };
 /** Fail closed: a manifest may only attest inputs the renderer actually applies. */
 export function parityConfig(value: unknown): ParityConfig {

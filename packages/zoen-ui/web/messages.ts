@@ -5,6 +5,7 @@ import type { StoredSession } from './session.ts';
 import { AuthenticatedTransport, type ConnectionState, type RelayFrame } from './transport.ts';
 import type { BrowserVault } from './vault.ts';
 import type { CoreWorker } from './worker-client.ts';
+import { expireTyping, parseCoreUiEvents, reduceTyping, type TypingState } from './typing-state.ts';
 
 function nullableText(value: unknown): string | null { return value === null ? null : string(value); }
 function timestamp(value: unknown): number {
@@ -107,7 +108,7 @@ export type Invite = ReturnType<typeof parseInvite>;
 function parseUpdate(json: string) {
   const value = object(JSON.parse(json));
   return { snapshot: string(value.snapshot), frames: array(value.frames).map(bytes),
-    conversations: array(value.conversations).map(parseConversation) };
+    conversations: array(value.conversations).map(parseConversation), uiEvents: parseCoreUiEvents(value.ui_events) };
 }
 
 /** Core refusals arrive in English; people see plain Portuguese. */
@@ -121,7 +122,7 @@ function plain(reason: string): string {
 
 export type MessagesState =
   | { kind: 'loading' }
-  | { kind: 'active'; connection: ConnectionState; conversations: Conversation[]; notice: string | null }
+  | { kind: 'active'; connection: ConnectionState; conversations: Conversation[]; notice: string | null; typing?: TypingState }
   | { kind: 'failed'; message: string; conversations: Conversation[] };
 type LinkedSession = Extract<StoredSession, { kind: 'linked' }>;
 type MessageCore = Pick<CoreWorker, 'text' | 'bytes' | 'close'>;
@@ -139,6 +140,8 @@ export class Messages {
   private generation = 0;
   private conversations: Conversation[] = [];
   private notice: string | null = null;
+  private typing: TypingState = {};
+  private typingTimer: ReturnType<typeof setTimeout> | undefined;
 
   constructor({ core, vault, session, changed }: {
     core: MessageCore; vault: MessageVault; session: LinkedSession; changed: (state: MessagesState) => void;
@@ -147,7 +150,7 @@ export class Messages {
     this.transport = new AuthenticatedTransport(core, vault, session.account, (connection) => {
       if (this.closed) return;
       this.connection = connection;
-      if (connection.kind !== 'ready') ++this.generation;
+      if (connection.kind !== 'ready') { ++this.generation; this.clearTyping(); }
       if (connection.kind === 'failed') { this.fail(connection.message); return; }
       this.publish();
     }, (frame, raw) => this.received(frame, raw));
@@ -164,7 +167,27 @@ export class Messages {
   }
 
   private publish(): void {
-    if (!this.closed) this.changed({ kind: 'active', connection: this.connection, conversations: this.conversations, notice: this.notice });
+    if (!this.closed) this.changed({ kind: 'active', connection: this.connection, conversations: this.conversations, notice: this.notice, typing: this.typing });
+  }
+
+  private clearTyping(): void {
+    clearTimeout(this.typingTimer);
+    this.typingTimer = undefined;
+    this.typing = {};
+  }
+
+  private scheduleTyping(): void {
+    clearTimeout(this.typingTimer);
+    this.typingTimer = undefined;
+    const expiry = Object.values(this.typing).flat().map(peer => peer.expiresAt);
+    if (!expiry.length || this.closed) return;
+    this.typingTimer = setTimeout(() => {
+      this.typingTimer = undefined;
+      if (this.closed) return;
+      const next = expireTyping(this.typing, Date.now(), new Set(this.conversations.map(space => space.id)));
+      if (next !== this.typing) { this.typing = next; this.publish(); }
+      this.scheduleTyping();
+    }, Math.max(0, Math.min(...expiry) - Date.now()));
   }
 
   private received(frame: RelayFrame, raw: Uint8Array): Promise<void> {
@@ -188,6 +211,13 @@ export class Messages {
       } });
     if (this.closed) return;
     this.conversations = update.conversations;
+    // Persistence may outlive the socket generation. Never revive transient peer state
+    // after a disconnect, and never persist it in the encrypted conversation snapshot.
+    if (generation === this.generation && this.connection.kind === 'ready') {
+      this.typing = reduceTyping(this.typing, update.uiEvents, Date.now(), this.session.account.identity,
+        new Set(this.conversations.map(space => space.id)));
+      this.scheduleTyping();
+    }
     this.publish();
   }
 
@@ -400,6 +430,7 @@ export class Messages {
   }
 
   stop(): void {
+    this.clearTyping();
     this.closed = true;
     ++this.generation;
     this.transport.stop();

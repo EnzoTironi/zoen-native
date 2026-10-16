@@ -8,12 +8,24 @@ if (!args.playwright || !args.url || !args.chrome) throw new Error('Use --playwr
 const { chromium } = await import(pathToFileURL(resolve(args.playwright)).href);
 const browser = await chromium.launch({ executablePath: args.chrome, timeout: 20_000, args: ['--use-fake-ui-for-media-stream', '--use-fake-device-for-media-stream'] });
 try {
-  const context = await browser.newContext({ viewport: { width: 402, height: 778 }, permissions: ['microphone'], locale: 'en-US', timezoneId: 'UTC' });
+  const context = await browser.newContext({ viewport: { width: 402, height: 812 }, permissions: ['microphone'], locale: 'en-US', timezoneId: 'UTC' });
   const page = await context.newPage(); page.setDefaultTimeout(10_000);
   const errors = []; page.on('pageerror', error => errors.push(error.message));
   await page.goto(args.url);
   await page.waitForFunction(() => !!window.__ZOEN_PARITY__);
-  await page.evaluate(config => window.__ZOEN_PARITY__.render(config), { fixture_id:'native-parity-v1',fixed_time:'2026-01-15T12:00:00Z',locale:'en_US',timezone:'UTC',seed:128,source_revision:execFileSync('git',['rev-parse','HEAD'],{encoding:'utf8'}).trim(),screen:'chat',appearance:'light',viewport:'narrow' });
+  const config = { fixture_id:'native-parity-v1',fixed_time:'2026-01-15T12:00:00Z',locale:'en_US',timezone:'UTC',seed:128,source_revision:args.revision || execFileSync('git',['rev-parse','HEAD'],{encoding:'utf8'}).trim(),screen:'chats',appearance:'light',viewport:'narrow' };
+  await page.evaluate(config => window.__ZOEN_PARITY__.render(config), config);
+  // Native root action is a tap-to-compose sheet, not a voice-hold control.
+  await page.getByRole('button', { name: 'New message', exact: true }).click();
+  const sheet = page.getByRole('dialog', { name: 'New chat', exact: true });
+  await sheet.waitFor();
+  assert.equal(await sheet.getByRole('tab', { name: 'Chat', exact: true }).getAttribute('aria-selected'), 'true');
+  await sheet.getByRole('textbox', { name: 'Search by @handle' }).fill('marina');
+  assert.equal(await sheet.locator('.native-avatar').count(), 1, 'genuine contact search filters the shared production sheet');
+  await page.keyboard.press('Escape');
+  await sheet.waitFor({ state: 'hidden' });
+  console.log('PASS new-message tap opens genuine production contact sheet');
+  await page.evaluate(config => window.__ZOEN_PARITY__.render(config), { ...config, screen: 'chat' });
   const recording = page.getByRole('group', { name: 'Gravando mensagem de voz' });
   async function hold() {
     const rect = await page.getByRole('button', { name: 'Gravar mensagem de voz', exact: true }).boundingBox(); assert.ok(rect);
