@@ -66,7 +66,7 @@ function Bubble({ entry, own, first, onReact, onReply, onThread, onEdit, onDelet
   const ordered = entry.entry !== null;
   const mine = entry.reactions.find((r) => r.mine)?.emoji ?? null;
   const state = entry.delivery === 'confirmed' ? entry.ticks : entry.delivery as 'sending' | 'failed';
-  return <article className={`zm-row${own ? ' zm-own' : ''}${first ? ' zm-first' : ''}`} data-testid="message" onMouseLeave={() => { setPicker(false); setMenu(false); }}>
+  return <article className={`zm-row${own ? ' zm-own' : ''}${first ? ' zm-first' : ''}`} data-testid="message" id={`message-${entry.id}`} tabIndex={-1} onMouseLeave={() => { setPicker(false); setMenu(false); }}>
     {!own && first ? <span className="zm-author">{entry.name}</span> : null}
     <div className="zm-bubble-wrap">
       <div className={`zm-bubble${entry.deleted ? ' zm-deleted' : ''}`}>
@@ -97,15 +97,14 @@ function Bubble({ entry, own, first, onReact, onReply, onThread, onEdit, onDelet
   </article>;
 }
 
-function Composer({ placeholder, disabled, reply, cancelReply, editing, submit, autoFocus, activity }: {
-  placeholder: string; disabled: boolean; reply?: Message | null; cancelReply?: () => void; editing?: Message | null; autoFocus?: boolean;
+function Composer({ placeholder, disabled, reply, cancelReply, submit, autoFocus, activity }: {
+  placeholder: string; disabled: boolean; reply?: Message | null; cancelReply?: () => void; autoFocus?: boolean;
   submit: (text: string) => Promise<void>; activity?: (active: boolean) => void;
 }) {
   const [draft, setDraft] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const field = useRef<HTMLTextAreaElement>(null);
-  useEffect(() => { if (editing) { setDraft(editing.text); field.current?.focus(); } }, [editing?.id]);
   useEffect(() => { if (reply) field.current?.focus(); }, [reply?.id]);
   useEffect(() => { const el = field.current; if (el) { el.style.height = 'auto'; el.style.height = `${Math.min(el.scrollHeight, 168)}px`; } }, [draft]);
   const has = draft.trim().length > 0;
@@ -115,8 +114,8 @@ function Composer({ placeholder, disabled, reply, cancelReply, editing, submit, 
     void submit(draft).then(() => setDraft('')).catch((e: unknown) => setError(reason(e))).finally(() => { setBusy(false); field.current?.focus(); });
   }
   return <div className="zm-composer-zone">
-    {reply || editing ? <div className="zm-replying"><span><b>{editing ? 'Editando mensagem' : `Respondendo a ${reply?.name}`}</b>{(editing ?? reply)?.text}</span>
-      <button aria-label="Cancelar" onClick={() => { setDraft(''); cancelReply?.(); }}><Icon name="close" /></button></div> : null}
+    {reply ? <div className="zm-replying"><span><b>{`Respondendo a ${reply.name}`}</b>{reply.text}</span>
+      <button aria-label="Cancelar" onClick={() => cancelReply?.()}><Icon name="close" /></button></div> : null}
     {error ? <p className="zm-error" role="alert">{error}</p> : null}
     <form className="zm-composer" onSubmit={(e) => { e.preventDefault(); go(); }}>
       <label className="zm-field"><span className="zw-sr-only">Mensagem</span>
@@ -208,8 +207,8 @@ export function Messenger({ conversations, identity, name, connected, status, me
     document.addEventListener('visibilitychange', stop); window.addEventListener('blur', stop);
     return () => { messages.current?.typing?.(space, false); document.removeEventListener('visibilitychange', stop); window.removeEventListener('blur', stop); };
   }, [space, connected]);
-  const typers = (presence?.typing[space] ?? []).filter((id) => conversation?.member_ids.includes(id) && id !== identity);
-  const peer = conversation?.kind === 'direct' ? conversation.member_ids.find((id) => id !== identity) : undefined;
+  const typers = (presence?.typing[space] ?? []).filter((id) => (conversation?.member_ids ?? []).includes(id) && id !== identity);
+  const peer = conversation?.kind === 'direct' ? (conversation.member_ids ?? []).find((id) => id !== identity) : undefined;
   const personName = (id: string) => [...(conversation?.messages ?? [])].reverse().find((m) => m.author === id)?.name || (conversation?.kind === 'direct' ? conversation.title : 'Alguém');
   const typingLabel = typers.length === 1 ? personName(typers[0]!) + ' está digitando…' : typers.length > 1 ? typers.length + ' pessoas estão digitando…' : '';
   const presenceLabel = connected ? typingLabel || (peer ? lastSeenLabel(presence?.people[peer]) : '') : '';
@@ -252,8 +251,8 @@ export function Messenger({ conversations, identity, name, connected, status, me
           {bubbles(timeline, false)}
           <div ref={end} />
         </section>
-        <Composer key={conversation.id} activity={(active) => messages.current?.typing?.(space, active)} placeholder={connected ? 'Mensagem' : 'Reconectando…'} disabled={!connected || !conversation.can_send} reply={reply} editing={editing} autoFocus
-          cancelReply={() => { setReply(null); setEditing(null); }}
+        <Composer key={conversation.id} activity={(active) => messages.current?.typing?.(space, active)} placeholder={connected ? 'Mensagem' : 'Reconectando…'} disabled={!connected || !conversation.can_send} reply={reply} autoFocus
+          cancelReply={() => { setReply(null); }}
           submit={async (text) => {
             const m = messages.current; if (!m) throw new Error('Recarregue o Zoen.');
             if (editing?.entry) { await m.annotate(space, editing.entry, { Edit: { text } }); setEditing(null); return; }
