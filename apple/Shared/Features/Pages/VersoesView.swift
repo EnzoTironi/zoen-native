@@ -160,7 +160,7 @@ struct VersionPreview: View {
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 6)
                 }
-                .buttonStyle(.glassProminent)
+                .buttonStyle(.wabiGlassProminent)
                 .tint(Palette.action)
                 .padding(.horizontal, 18)
                 .padding(.bottom, 8)

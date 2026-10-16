@@ -1,5 +1,7 @@
 package xyz.tironi.zoen.pages
 
+import xyz.tironi.zoen.ui.GlassButton
+
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -289,7 +291,7 @@ fun RichPageEditor(model: ZoenViewModel, state: AppState, item: ItemDetail, modi
                 val status = saveError ?: current.saveError ?: if (!editable) stringResource(R.string.read_only) else if (current.pendingSync) stringResource(R.string.page_pending_sync) else if (draft != null) stringResource(R.string.page_draft_saved) else saved
                 Text(status, Modifier.weight(1f), style = MaterialTheme.typography.labelSmall,
                     color = if (saveError != null || current.saveError != null) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant)
-                Button(enabled = editable && composingBlocks.isEmpty() && (draft != null || current.unsaved) && !busy, modifier = Modifier.testTag("page-save"), onClick = {
+                GlassButton(enabled = editable && composingBlocks.isEmpty() && (draft != null || current.unsaved) && !busy, modifier = Modifier.testTag("page-save"), onClick = {
                     busy = true
                     model.launch {
                         try {

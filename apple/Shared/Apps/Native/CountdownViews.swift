@@ -58,7 +58,7 @@ struct CountdownSheet: View {
                             .font(.headline)
                             .frame(maxWidth: .infinity, minHeight: 50)
                     }
-                    .buttonStyle(.glass)
+                    .buttonStyle(.wabiGlass)
                 }
                 .padding(20)
             }
