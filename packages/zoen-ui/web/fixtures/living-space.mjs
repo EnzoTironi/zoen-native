@@ -1,0 +1,10 @@
+import { build } from 'esbuild';
+import { mkdir, writeFile, readFile } from 'node:fs/promises';
+import { resolve } from 'node:path';
+const root = resolve(import.meta.dirname, '../../node_modules/.cache/living-space-fixture');
+await mkdir(root, { recursive: true });
+const cover = 'data:image/png;base64,' + (await readFile(resolve(import.meta.dirname, '../../../../docs/dev/fixtures/living-space-cover.png'))).toString('base64');
+await build({ entryPoints: [resolve(import.meta.dirname, 'living-space.tsx')], outdir: root, bundle: true, format: 'esm', jsx: 'automatic', define: { ZOEN_LIVING_COVER: JSON.stringify(cover) } });
+await writeFile(resolve(root, 'index.html'), '<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Living Space — synthetic fixture</title><link rel="stylesheet" href="living-space.css"><style>body{margin:0;color:var(--z-ink);background:var(--z-bg)}#root{height:100dvh;display:flex;flex-direction:column}.fixture-label{color:var(--z-ink);padding:8px 20px;font-size:12px;background:var(--z-muted)}.fixture-shell{display:flex;min-height:0;flex:1}.fixture-sidebar{width:280px;padding:24px;background:var(--z-surface)}.fixture-shell>main{flex:1;min-width:0;min-height:0}@media(max-width:700px){.fixture-sidebar{display:none}}</style><div id="root"></div><script type="module" src="living-space.js"></script></html>');
+console.log('Built synthetic fixture of production LivingSpace components. Not end-to-end.');
+if (process.argv.includes('--serve')) throw new Error('Fixture is offline only; use capture-living-space.mjs with locally fulfilled secure origin.');

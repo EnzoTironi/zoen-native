@@ -40,6 +40,8 @@ test('root list, back navigation and page detail retain the selected Space', asy
       detail: detail ? h('h1', null, 'Page detail') : undefined, detailTitle: 'Planting guide', closeDetail: () => { setDetail(false); return true; } });
   }
   await act(async () => root.render(h(Harness)));
+  assert.equal(document.querySelector('.zl-sidebar-title')?.textContent, 'Zoen');
+  assert.ok(document.querySelector('.zl-space-list button[aria-current="page"] svg'));
   const back = async (name: string) => { const button = document.querySelector<HTMLButtonElement>(`button[aria-label="${name}"]`); assert.ok(button); await act(async () => button.click()); };
   try {
     await back('Back to Spaces');
