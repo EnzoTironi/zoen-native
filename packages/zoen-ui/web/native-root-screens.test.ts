@@ -38,6 +38,20 @@ test('approvals call only supplied actions and task counts use actual native tas
   const base = { id: 'i', title: 'Item', origin: 'Actual', spaceTitle: 'Space', kindId: 'note' };
   assert.equal(nativeOpenTasks([base, { ...base, id: 'task', kindId: 'task' }, { ...base, id: 'plan', plan: { sections: [{ lines: [{ done: false }] }] } }]).length, 2);
 });
+test('approvals chip excludes stale requests while the review list retains them', async () => {
+  const request = { agent: { ...person, kind: 'agent' }, detail: '', reason: '', audience: '', actionLabel: '', spaceTitle: '' };
+  await render(NativeNotifications, { agents: [], mentions: [], items: [], requests: [
+    { ...request, id: 'pending', title: 'Pending request', status: 'pending' },
+    { ...request, id: 'stale', title: 'Stale request', status: 'stale' },
+  ] });
+  assert.equal(document.querySelector('[role="tab"][aria-selected="true"]')!.textContent, 'Approvals1');
+  assert.match(text(), /Pending request/); assert.match(text(), /Stale request/);
+});
+test('profile trust labels mirror native labels and literal English Space(s) copy', async () => {
+  const agent = { id: 'mine', persona: { ...person, kind: 'agent', isMine: true }, nearLimit: false, spaces: ['suggest', 'listen', 'autonomous', 'act', 'listen'].map((level, i) => ({ spaceId: String(i), spaceTitle: 'Chat', level })) };
+  await render(NativeProfile, { me: null, spaces: [], agents: [agent], stats: null, grants: [], account: null, connection: { state: 'offline', synced: false, pending: 0 } });
+  assert.match(text(), /Act, Autonomous, Listen, Suggest · 5 Space\(s\)/);
+});
 test('profile keeps explicit demo/live mode, real stats, owned agents and null capabilities', async () => {
   const props = { me: person, spaces: [{ id: 'space', title: 'Space' }], agents: null, stats: { items: 8, allLogsValid: true }, grants: null, account: null, connection: { state: 'offline', synced: false, pending: 0 } };
   await render(NativeProfile, props);
