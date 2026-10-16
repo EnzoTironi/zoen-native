@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import './native-secondary.css';
+import { NativeAvatar, NativeWelcomeMascot } from './native-art';
 
 export type NativeSettingsPerson = { name: string; handle: string; initials: string; tintHex: string };
 const sections = [
@@ -25,7 +26,7 @@ export function NativeSettings({ me, onClose, onOpen }: NativeSettingsProps) {
     <header className="ns-top"><h1>Settings</h1><button type="button" className="ns-close" aria-label="Close settings" disabled={!onClose} onClick={onClose}>×</button></header>
     <div className="ns-scroll"><div className="ns-content">
       <label className="ns-search"><span aria-hidden="true">⌕</span><input type="search" aria-label="Search settings" placeholder="Search settings" value={query} onChange={event => setQuery(event.target.value)}/></label>
-      {showProfile && <button type="button" className="ns-profile" disabled={!onOpen} onClick={() => onOpen?.('Profile')}><span className="ns-avatar" style={{ backgroundColor: me.tintHex }}>{me.initials}</span><span><strong>{me.name}</strong><small>@{me.handle}</small></span><span className="ns-chevron" aria-hidden="true">›</span></button>}
+      {showProfile && <button type="button" className="ns-profile" disabled={!onOpen} onClick={() => onOpen?.('Profile')}><NativeAvatar identity={{ ...me, kind: 'person' }} size={52} className="ns-avatar"/><span><strong>{me.name}</strong><small>@{me.handle}</small></span><span className="ns-chevron" aria-hidden="true">›</span></button>}
       {visibleSections.map(({ heading, rows }) => <section className="ns-group" key={heading}><h2>{heading}</h2><div className="ns-card">{rows.map(label => <button type="button" className="ns-row" key={label} disabled={!onOpen} onClick={() => onOpen?.(label)}><SettingsGlyph label={label}/><span>{label}</span><span className="ns-chevron" aria-hidden="true">›</span></button>)}</div></section>)}
       {!showProfile && visibleSections.length === 0 && <p role="status">No settings found.</p>}
     </div></div>
@@ -57,41 +58,19 @@ function SettingsGlyph({ label }: { label: string }) {
   return <svg className="ns-glyph" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d={paths[label]}/></svg>;
 }
 
-/** Static silhouette study of Mascot.swift's green felt rig and wave pose. Not Ink-renderer parity. */
-function WelcomeMascot() {
-  const hairs = Array.from({ length: 96 }, (_, i) => {
-    const a = i * Math.PI * 2 / 96; const x = 112 + Math.cos(a) * 61; const y = 119 + Math.sin(a) * 70;
-    return <path key={i} d={`M${x} ${y}q${Math.cos(a) * 6 - 2} ${Math.sin(a) * 6} ${Math.cos(a) * 8} ${Math.sin(a) * 9}`} />;
-  });
-  return <svg className="no-mascot" viewBox="0 0 230 230" role="img" aria-label="Zoen, a green furry mascot giving a reluctant wave">
-    <ellipse cx="115" cy="207" rx="39" ry="5" fill="#2B4019" opacity=".14"/>
-    <g fill="#6A9A36" stroke="#2B4019" strokeWidth="1.5" strokeLinecap="round">
-      <ellipse cx="91" cy="201" rx="12" ry="8"/><ellipse cx="131" cy="201" rx="12" ry="8"/>
-      <path d="M168 119q22-17 16-43q-2-11-9-4q-6-8-10-1q-6-4-9 4l7 26-13 7"/>
-      <ellipse cx="112" cy="119" rx="62" ry="71"/><ellipse cx="53" cy="141" rx="10" ry="9"/>
-      <path d="M105 50l-6-12m13 10 1-16m7 17 8-12" fill="none" strokeWidth="3"/>
-      <g fill="none" strokeWidth="1" opacity=".65">{hairs}</g>
-    </g>
-    <ellipse cx="100" cy="81" rx="31" ry="19" fill="#A9CC6E" opacity=".28"/>
-    <path d="M54 80q58-19 116 0" fill="none" stroke="#E0533E" strokeWidth="14"/>
-    <path d="M54 80q58-19 116 0" fill="none" stroke="white" strokeWidth="4"/>
-    <g stroke="#2B4019" strokeWidth="2"><ellipse cx="90" cy="111" rx="13" ry="15" fill="#F4F6EC"/><ellipse cx="127" cy="111" rx="13" ry="15" fill="#F4F6EC"/><ellipse cx="94" cy="115" rx="6" ry="8" fill="#56634A"/><ellipse cx="131" cy="115" rx="6" ry="8" fill="#56634A"/><path d="m76 96 26 8m13 0 26-8M100 148q11-5 22 0" fill="none" strokeWidth="3"/></g>
-    <g fill="#1B2213"><circle cx="95" cy="116" r="3"/><circle cx="132" cy="116" r="3"/></g>
-    <g fill="white"><circle cx="94" cy="113" r="2"/><circle cx="131" cy="113" r="2"/></g>
-  </svg>;
-}
-
 export type NativeOnboardingProps = {
+  /** Exact native wave poster URL supplied after the export is available. */
+  mascotSrc?: string;
   onContinue?: () => void;
   onPasteInvite?: (value: string) => void;
 };
 
-export function NativeOnboarding({ onContinue, onPasteInvite }: NativeOnboardingProps = {}) {
+export function NativeOnboarding({ onContinue, onPasteInvite, mascotSrc }: NativeOnboardingProps = {}) {
   const [invite, setInvite] = useState('');
   const [showInvite, setShowInvite] = useState(false);
   return <section className="native-onboarding" aria-label="Welcome">
     <header className="no-header"><div className="no-progress" aria-label="Step 1 of 8">{Array.from({ length: 8 }, (_, i) => <span key={i} className={i === 0 ? 'active' : ''}/>)}</div></header>
-    <div className="no-content"><WelcomeMascot/><div className="no-copy"><h1>Hi, I’m Zoen.</h1><p>I’m the app and the agent inside it. I turn chats into plans you control.</p></div><div className="no-invite">Got an invite? <button type="button" disabled={!onPasteInvite} onClick={() => setShowInvite(value => !value)} aria-expanded={showInvite}>Paste</button></div>{showInvite && <form className="no-invite-form" onSubmit={event => { event.preventDefault(); if (invite.trim()) onPasteInvite?.(invite.trim()); }}><label htmlFor="native-invite">Invite link</label><input id="native-invite" type="url" placeholder="Paste your invite link" value={invite} onChange={event => setInvite(event.target.value)} required/><button type="submit" disabled={!onPasteInvite || !invite.trim()}>Use invite</button></form>}</div>
+    <div className="no-content"><NativeWelcomeMascot src={mascotSrc}/><div className="no-copy"><h1>Hi, I’m Zoen.</h1><p>I’m the app and the agent inside it. I turn chats into plans you control.</p></div><div className="no-invite">Got an invite? <button type="button" disabled={!onPasteInvite} onClick={() => setShowInvite(value => !value)} aria-expanded={showInvite}>Paste</button></div>{showInvite && <form className="no-invite-form" onSubmit={event => { event.preventDefault(); if (invite.trim()) onPasteInvite?.(invite.trim()); }}><label htmlFor="native-invite">Invite link</label><input id="native-invite" type="url" placeholder="Paste your invite link" value={invite} onChange={event => setInvite(event.target.value)} required/><button type="submit" disabled={!onPasteInvite || !invite.trim()}>Use invite</button></form>}</div>
     <footer className="no-footer"><button type="button" className="no-continue" disabled={!onContinue} onClick={onContinue}>Hi, Zoen!</button></footer>
   </section>;
 }
