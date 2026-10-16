@@ -125,11 +125,49 @@ struct Folded {
     reactions: BTreeMap<String, String>,
 }
 
+/// Only fields received in an authorized public profile. Avatar media references
+/// are not part of Identity's sync protocol and must not be fabricated here.
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CounterpartView {
+    id: String,
+    kind: &'static str,
+    name: String,
+    handle: String,
+    tint_hex: String,
+    glyph: Option<String>,
+    initials: String,
+}
+
+fn project_counterpart(
+    kind: SpaceKind,
+    me: &str,
+    roster: &BTreeMap<String, Role>,
+    profiles: &BTreeMap<String, Identity>,
+) -> Option<CounterpartView> {
+    if kind != SpaceKind::Direct { return None; }
+    let other = roster.keys().find(|id| id.as_str() != me)?;
+    let profile = profiles.get(other)?;
+    if profile.id != *other { return None; }
+    Some(CounterpartView {
+        id: profile.id.clone(),
+        kind: match profile.kind {
+            roda_types::IdentityKind::Person => "person",
+            roda_types::IdentityKind::Agent => "agent",
+        },
+        name: profile.name.clone(), handle: profile.handle.clone(),
+        tint_hex: profile.tint_hex.clone(), glyph: profile.glyph.clone(),
+        initials: profile.name.split_whitespace().filter_map(|word| word.chars().next())
+            .take(2).collect::<String>().to_uppercase(),
+    })
+}
+
 #[derive(Serialize)]
 pub struct ConversationView {
     id: String,
     title: String,
     kind: &'static str,
+    counterpart: Option<CounterpartView>,
     can_send: bool,
     waiting: Option<String>,
     unreadable: usize,
@@ -613,7 +651,7 @@ impl<S: Signer> Client<S> {
         let inner = self.clear_event(
             space,
             EventBody::MessageAnnotated {
-                target: target.into(),
+                target,
                 note,
             },
             now_ms,
@@ -1299,6 +1337,7 @@ impl<S: Signer> Client<S> {
             let waiting = self.ready_epoch(space).err();
             let unreadable = events.iter().filter(|event| matches!(&event.body, EventBody::Sealed { kind } if kind == "Application")).count();
             Some(ConversationView { id: space.clone(), title, kind: match kind { SpaceKind::Direct=>"direct",SpaceKind::Group=>"group",SpaceKind::Community=>"community",SpaceKind::Personal=>"personal" },
+                counterpart: project_counterpart(kind, me, &roster, &self.saved.profiles),
                 can_send: waiting.is_none(), waiting, unreadable, unread, mentions, members: roster.len(), messages })
         }).collect()
     }

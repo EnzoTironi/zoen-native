@@ -683,3 +683,41 @@ fn web_receipts_replay_after_saved_unsent_frames_and_each_reconnect() {
         assert!(restored.delivered().is_empty());
     }
 }
+
+#[test]
+fn counterpart_projects_only_synced_public_profile() {
+    let roster = BTreeMap::from([("me".into(), Role::Owner), ("other".into(), Role::Member)]);
+    let profile = Identity {
+        id: "other".into(), kind: roda_types::IdentityKind::Agent,
+        name: "Ágata Helper Three".into(), handle: "agata".into(),
+        tint_hex: "#123456".into(), glyph: Some("sparkles".into()),
+        owner: Some("me".into()), bio: "Not exported".into(), owner_proof: None,
+    };
+    let profiles = BTreeMap::from([("other".into(), profile)]);
+    let view = project_counterpart(SpaceKind::Direct, "me", &roster, &profiles).unwrap();
+    assert_eq!(serde_json::to_value(view).unwrap(), serde_json::json!({
+        "id":"other", "kind":"agent", "name":"Ágata Helper Three", "handle":"agata",
+        "tintHex":"#123456", "glyph":"sparkles", "initials":"ÁH"
+    }));
+    assert!(project_counterpart(SpaceKind::Group, "me", &roster, &profiles).is_none());
+    assert!(project_counterpart(SpaceKind::Direct, "me", &roster, &BTreeMap::new()).is_none());
+    let mut mismatched = profiles.clone();
+    mismatched.get_mut("other").unwrap().id = "unrelated".into();
+    assert!(project_counterpart(SpaceKind::Direct, "me", &roster, &mismatched).is_none());
+}
+
+#[test]
+fn counterpart_preserves_missing_metadata_without_defaults() {
+    let roster = BTreeMap::from([("me".into(), Role::Owner), ("other".into(), Role::Member)]);
+    let profiles = BTreeMap::from([("other".into(), Identity {
+        id: "other".into(), kind: roda_types::IdentityKind::Person,
+        name: String::new(), handle: "actual_handle".into(), tint_hex: String::new(),
+        glyph: None, owner: None, bio: String::new(), owner_proof: None,
+    })]);
+    let value = serde_json::to_value(project_counterpart(SpaceKind::Direct, "me", &roster, &profiles).unwrap()).unwrap();
+    assert_eq!(value["kind"], "person");
+    assert_eq!(value["tintHex"], "");
+    assert_eq!(value["initials"], "");
+    assert!(value["glyph"].is_null());
+    assert!(value.get("avatarRef").is_none());
+}
