@@ -65,7 +65,7 @@ import xyz.tironi.zoen.theme.AppAppearance
 /** Every Ajustes screen. Back pops one; the X closes Ajustes from anywhere. */
 enum class SettingsPage(val title: Int, val icon: ImageVector, val keywords: String) {
     Profile(R.string.st_profile, Icons.Rounded.PersonOutline, "nome name foto photo arroba handle perfil"),
-    Preferences(R.string.st_preferences, Icons.Rounded.Tune, "preferências idioma language"),
+    Language(R.string.st_language, Icons.Rounded.Translate, "idioma language português english"),
     Theme(R.string.st_theme, Icons.Rounded.Contrast, "tema escuro claro dark light aparência appearance"),
     Security(R.string.st_security, Icons.Rounded.Lock, "segurança senha password código code"),
     Devices(R.string.st_devices, Icons.Rounded.Devices, "aparelhos celular computador desconectar"),
@@ -100,7 +100,7 @@ fun SettingsScreen(model: ZoenViewModel, state: AppState, page: String?, navigat
     when (val p = page?.let { runCatching { SettingsPage.valueOf(it) }.getOrNull() }) {
         null -> SettingsHome(state, navigate, close)
         SettingsPage.Profile -> ProfilePage(state, navigate, back, close)
-        SettingsPage.Preferences -> PreferencesPage(state, navigate, back, close)
+        SettingsPage.Language -> LanguagePage(back, close)
         SettingsPage.Theme -> ThemePage(back, close)
         SettingsPage.Security -> SecurityPage(model, state, navigate, back, close)
         SettingsPage.Devices -> DevicesPage(model, state, back, close)
@@ -261,7 +261,7 @@ private fun settingsFold(s: String) = Normalizer.normalize(s, Normalizer.Form.NF
 
 private val sections = listOf(
     R.string.st_account to listOf(SettingsPage.Profile, SettingsPage.Security, SettingsPage.Devices, SettingsPage.Backup, SettingsPage.Data),
-    R.string.st_preferences to listOf(SettingsPage.Preferences, SettingsPage.Theme, SettingsPage.Accessibility, SettingsPage.Disappearing),
+    R.string.st_preferences to listOf(SettingsPage.Language, SettingsPage.Theme, SettingsPage.Accessibility, SettingsPage.Disappearing),
     R.string.st_zoen to listOf(SettingsPage.Plans, SettingsPage.Invites, SettingsPage.Wallet, SettingsPage.Discover, SettingsPage.Moderation, SettingsPage.Tasks),
     R.string.st_help to listOf(SettingsPage.Feedback, SettingsPage.Legal, SettingsPage.About),
 )
@@ -326,16 +326,13 @@ private fun ProfilePage(state: AppState, navigate: (NavKey) -> Unit, back: () ->
 }
 
 @Composable
-private fun PreferencesPage(state: AppState, navigate: (NavKey) -> Unit, back: () -> Unit, close: () -> Unit) = SettingsScaffold(stringResource(R.string.st_preferences), back, close) {
+private fun LanguagePage(back: () -> Unit, close: () -> Unit) = SettingsScaffold(stringResource(R.string.st_language), back, close) {
     val context = LocalContext.current
     Group {
-        NavRow(SettingsPage.Theme, navigate, stringResource(AppAppearance.label()))
-        RowDivider()
         SRow(Icons.Rounded.Translate, stringResource(R.string.st_language), value = Locale.getDefault().getDisplayLanguage(Locale.getDefault()).replaceFirstChar { it.titlecase() }, tag = "settings:language") {
             runCatching { context.startActivity(Intent(AndroidSettings.ACTION_APP_LOCALE_SETTINGS, android.net.Uri.fromParts("package", context.packageName, null))) }
                 .onFailure { context.startActivity(Intent(AndroidSettings.ACTION_LOCALE_SETTINGS)) }
         }
-        RowDivider(); NavRow(SettingsPage.Data, navigate); RowDivider(); NavRow(SettingsPage.Accessibility, navigate)
     }
     Caption(R.string.st_language_caption)
 }

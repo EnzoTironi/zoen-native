@@ -682,7 +682,7 @@ internal fun BubbleMeta(atMs: Long, delivery: Delivery?, modifier: Modifier = Mo
 
 private val QUICK_REACTIONS = listOf("👍", "❤️", "😂", "😮", "😢", "🙏")
 
-/** One chip per emoji; tap to react, long press or open details to see participants. */
+/** One chip per emoji; tap or long press to see participants and manage your reaction. */
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun ReactionChips(model: ZoenViewModel, spaceId: String, entry: TimelineEntry) {
@@ -690,13 +690,13 @@ private fun ReactionChips(model: ZoenViewModel, spaceId: String, entry: Timeline
     val haptics = rememberZoenHaptics()
     val motion = rememberMotionEnabled()
     if (showingPeople) ReactionPeopleDialog(model, spaceId, entry) { showingPeople = false }
-    Column(Modifier.padding(top = 2.dp)) {
-    Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-        entry.reactions.forEach { r ->
+    Row(Modifier.padding(top = 2.dp).horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+        entry.reactions.forEachIndexed { index, r ->
             Surface(shape = CircleShape, color = if (r.mine) MaterialTheme.colorScheme.primary.copy(alpha = .16f) else MaterialTheme.colorScheme.otherMessage,
                 border = androidx.compose.foundation.BorderStroke(0.5.dp, MaterialTheme.colorScheme.outlineVariant),
                 modifier = Modifier.animateContentSize(androidx.compose.animation.core.tween(if (motion) 280 else 0, easing = androidx.compose.animation.core.CubicBezierEasing(0.25f, 1f, 0.5f, 1f)))
                     .combinedClickable(onClick = { haptics.perform(ZoenFeedback.Selection); showingPeople = true }, onLongClick = { haptics.perform(ZoenFeedback.Selection); showingPeople = true })
+                    .then(if (index == 0) Modifier.testTag("reaction-details:${entry.id}") else Modifier)
                     .semantics { contentDescription = "${r.emoji} " + r.people.joinToString { it.name } }) {
                 Row(Modifier.padding(horizontal = 8.dp, vertical = 3.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(3.dp)) {
                     Text(r.emoji, fontSize = 14.sp)
@@ -704,8 +704,6 @@ private fun ReactionChips(model: ZoenViewModel, spaceId: String, entry: Timeline
                 }
             }
         }
-    }
-        TextButton(onClick = { showingPeople = true }, modifier = Modifier.testTag("reaction-details:${entry.id}")) { Text("Ver reações") }
     }
 }
 

@@ -49,6 +49,15 @@ private fun HomeBar(title: String, state: AppState, navigate: (NavKey) -> Unit, 
     }, navigationIcon = {
         if (onBack != null) IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Rounded.ArrowBack, stringResource(R.string.back)) }
     }, actions = {
+        val configuration = androidx.compose.ui.platform.LocalConfiguration.current
+        if (onActivity != null && !state.connection.synced && configuration.fontScale <= 1.3f && configuration.screenWidthDp >= 380) {
+            AssistChip(onClick = { navigate(SettingsRoute("Devices")) }, label = {
+                Text(stringResource(if (state.connection.state == "connecting") R.string.connecting else R.string.offline), style = MaterialTheme.typography.labelSmall)
+            }, modifier = Modifier.height(32.dp).testTag("connection-status"))
+        }
+        if (onActivity != null) IconButton(onClick = { navigate(NewChat) }, modifier = Modifier.testTag("newChat")) {
+            Icon(Icons.Rounded.Edit, stringResource(R.string.new_chat))
+        }
         if (onActivity != null) IconButton(onClick = { haptics.perform(ZoenFeedback.Open); onActivity() }, modifier = Modifier.testTag("open-activity")) {
             BadgedBox(badge = { if (state.pending > 0) Badge { Text(state.pending.toString()) } }) {
                 Icon(Icons.Rounded.NotificationsNone, stringResource(R.string.activity))
