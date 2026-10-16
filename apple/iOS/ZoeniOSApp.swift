@@ -74,22 +74,29 @@ struct RootView: View {
         ZStack(alignment: .bottom) {
             TabView(selection: $selectedTab) {
                 Tab(value: AppTab.conversations) { stack(for: .conversations) } label: {
-                    Label { Text("Chats") } icon: { NativeNavigationSymbol(name: "bubble.left.and.bubble.right", selected: selectedTab == .conversations) }
+                    Label("Chats", systemImage: "bubble.left.and.bubble.right")
                 }
                 Tab(value: AppTab.files) { stack(for: .files) } label: {
-                    Label { Text("Spaces") } icon: { NativeNavigationSymbol(name: "square.grid.2x2", selected: selectedTab == .files) }
+                    Label("Spaces", systemImage: "square.grid.2x2")
                 }
                 Tab(value: AppTab.activity) { stack(for: .activity) } label: {
-                    Label { Text("Notifications") } icon: { NativeNavigationSymbol(name: "bell", selected: selectedTab == .activity, notificationCount: model.pendingCount) }
+                    Label("Notifications", systemImage: "bell")
                 }
                     .badge(model.pendingCount)
                 Tab(value: AppTab.you) { stack(for: .you) } label: {
                     Label { Text("Profile") } icon: { profileTabImage }
                 }
-                Tab("New message", systemImage: "square.and.pencil", value: AppTab.search, role: .search) {
-                    Color.clear
+                if #available(iOS 27.0, *) {
+                    Tab("New message", systemImage: "square.and.pencil", value: AppTab.search, role: .prominent) {
+                        Color.clear
+                    }
+                } else {
+                    Tab("New message", systemImage: "square.and.pencil", value: AppTab.search, role: .search) {
+                        Color.clear
+                    }
                 }
             }
+            .tabViewStyle(.tabBarOnly)
             .onAppear {
                 selectedTab = model.tab
                 previousTab = model.tab
@@ -189,20 +196,21 @@ struct RootView: View {
         }
     }
 
-    private var profileTabImage: some View {
-        Group {
+    private var profileTabImage: Image {
+        // TabView extracts an Image, not an arbitrary SwiftUI subtree. Flatten the
+        // actual avatar before handing it to the system tab bar.
+        let renderer = ImageRenderer(content: Group {
             if let me = model.me {
                 if let photo = AvatarPhotoStore.load(me.id) {
                     Image(uiImage: photo).resizable().scaledToFill()
                         .frame(width: 26, height: 26).clipShape(.circle)
                 } else {
-                    let renderer = ImageRenderer(content: PersonAvatar(persona: me, size: 26))
-                    if let image = renderer.uiImage {
-                        Image(uiImage: image).renderingMode(.original)
-                    }
+                    PersonAvatar(persona: me, size: 26)
                 }
             }
-        }
+        }.frame(width: 26, height: 26))
+        renderer.scale = UIScreen.main.scale
+        return Image(uiImage: (renderer.uiImage ?? UIImage()).withRenderingMode(.alwaysOriginal)).renderingMode(.original)
     }
 
     private func destination(_ route: Route) -> some View { RouteDestination(route: route) }
