@@ -15,7 +15,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 
-data class VoicePlaybackState(val id: String? = null, val playing: Boolean = false, val position: Double = 0.0, val duration: Double = 0.0, val rate: Float = 1f, val error: String? = null)
+data class VoicePlaybackState(val id: String? = null, val playing: Boolean = false, val position: Double = 0.0, val duration: Double = 0.0, val rate: Float = 1f, val error: String? = null, val sha256: String? = null)
 
 /** There is one voice player so starting another message pauses the current one. */
 object VoicePlayback {
@@ -29,8 +29,8 @@ object VoicePlayback {
     private var file: File? = null
     private var prepared = false
 
-    fun toggle(context: Context, id: String, file: File, deleteOnClose: Boolean = true) {
-        if (mutableState.value.id == id && prepared) {
+    fun toggle(context: Context, id: String, file: File, deleteOnClose: Boolean = true, sha256: String? = null) {
+        if (mutableState.value.id == id && mutableState.value.sha256 == sha256 && prepared) {
             if (mutableState.value.playing) pause() else start()
             return
         }
@@ -40,7 +40,7 @@ object VoicePlayback {
         val attributes = AudioAttributes.Builder().setContentType(AudioAttributes.CONTENT_TYPE_SPEECH).setUsage(AudioAttributes.USAGE_MEDIA).build()
         focus = AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN_TRANSIENT).setAudioAttributes(attributes)
             .setOnAudioFocusChangeListener { change -> if (change <= AudioManager.AUDIOFOCUS_LOSS_TRANSIENT) pause() }.build()
-        mutableState.value = VoicePlaybackState(id = id)
+        mutableState.value = VoicePlaybackState(id = id, sha256 = sha256)
         val media = MediaPlayer()
         player = media
         media.setAudioAttributes(attributes)
@@ -55,10 +55,10 @@ object VoicePlayback {
             it.seekTo(0); tick?.cancel(); audioManager?.abandonAudioFocusRequest(checkNotNull(focus))
         }
         media.setOnErrorListener { _, _, _ ->
-            stop(); mutableState.value = VoicePlaybackState(id = id, error = "This recording could not be played."); true
+            stop(); mutableState.value = VoicePlaybackState(id = id, error = "This recording could not be played.", sha256 = sha256); true
         }
         try { media.setDataSource(file.absolutePath); media.prepareAsync() }
-        catch (error: Exception) { stop(); mutableState.value = VoicePlaybackState(id = id, error = error.message) }
+        catch (error: Exception) { stop(); mutableState.value = VoicePlaybackState(id = id, error = error.message, sha256 = sha256) }
     }
     private fun start() {
         val media = player ?: return

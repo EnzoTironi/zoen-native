@@ -484,7 +484,7 @@ fun TimelineRow(model: ZoenViewModel, spaceId: String, entry: TimelineEntry, nav
                         modifier = Modifier.padding(top = 6.dp).messageFace().combinedClickable(onClick = {}, onLongClick = { menu = true })) {
                         Text(stringResource(R.string.message_deleted), Modifier.padding(horizontal = 14.dp, vertical = 10.dp), style = MaterialTheme.typography.bodyMedium.copy(fontStyle = androidx.compose.ui.text.font.FontStyle.Italic), color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
-                    else if (kind.text.isNotBlank() || entry.replyTo != null) {
+                    else if (entry.voice != null || kind.text.isNotBlank() || entry.replyTo != null) {
                     Surface(shape = RoundedCornerShape(24.dp, 24.dp, if (mine) 6.dp else 24.dp, if (mine) 24.dp else 6.dp),
                         color = if (mine) MaterialTheme.colorScheme.ownMessage else MaterialTheme.colorScheme.otherMessage,
                         contentColor = if (mine) MaterialTheme.colorScheme.onOwnMessage else MaterialTheme.colorScheme.onSurface,
@@ -496,7 +496,7 @@ fun TimelineRow(model: ZoenViewModel, spaceId: String, entry: TimelineEntry, nav
                                 }
                             }
                             if (entry.forwarded) Text(stringResource(R.string.forwarded), style = MaterialTheme.typography.labelSmall.copy(fontStyle = androidx.compose.ui.text.font.FontStyle.Italic), color = LocalContentColor.current.copy(alpha = .65f))
-                            val voice = VoiceNoteRef.parse(kind.text)
+                            val voice = entry.voice?.let(VoiceNoteRef::from) ?: VoiceNoteRef.parse(kind.text)
                             if (voice != null) VoiceBubble(model, voice)
                             else if (kind.text.isNotBlank()) {
                                 val mentionColor = if (mine) LocalContentColor.current else MaterialTheme.colorScheme.primary
@@ -542,7 +542,7 @@ fun TimelineRow(model: ZoenViewModel, spaceId: String, entry: TimelineEntry, nav
                         if (!entry.deleted) {
                             DropdownMenuItem(text = { Text(stringResource(R.string.forward)) }, onClick = { menu = false; forwarding = true }, leadingIcon = { Icon(Icons.AutoMirrored.Rounded.Forward, null) })
                             if (kind.text.isNotBlank()) DropdownMenuItem(text = { Text(stringResource(R.string.copy)) }, onClick = { menu = false; context.getSystemService(ClipboardManager::class.java).setPrimaryClip(ClipData.newPlainText(copied, kind.text)) }, leadingIcon = { Icon(Icons.Rounded.ContentCopy, null) })
-                            if (mine && kind.text.isNotBlank() && VoiceNoteRef.parse(kind.text) == null) DropdownMenuItem(text = { Text(stringResource(R.string.edit)) }, onClick = { menu = false; editText = kind.text; editing = true }, leadingIcon = { Icon(Icons.Rounded.Edit, null) })
+                            if (mine && entry.voice == null && kind.text.isNotBlank() && VoiceNoteRef.parse(kind.text) == null) DropdownMenuItem(text = { Text(stringResource(R.string.edit)) }, onClick = { menu = false; editText = kind.text; editing = true }, leadingIcon = { Icon(Icons.Rounded.Edit, null) })
                             if (mine) DropdownMenuItem(text = { Text(stringResource(R.string.delete_for_everyone), color = MaterialTheme.colorScheme.error) }, onClick = { menu = false; confirmDelete = true }, leadingIcon = { Icon(Icons.Rounded.Delete, null, tint = MaterialTheme.colorScheme.error) })
                         }
                     }
@@ -551,7 +551,7 @@ fun TimelineRow(model: ZoenViewModel, spaceId: String, entry: TimelineEntry, nav
                 if (entry.reactions.isNotEmpty()) ReactionChips(model, spaceId, entry)
                 if (entry.edited) Text(stringResource(R.string.edited), Modifier.padding(top = 2.dp, start = 8.dp, end = 8.dp), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 // Cards without a text bubble keep the meta underneath.
-                if (kind.text.isBlank() && entry.replyTo == null) BubbleMeta(entry.atMs, if (mine) entry.delivery else null, Modifier.padding(top = 5.dp, start = 8.dp, end = 8.dp))
+                if (entry.voice == null && kind.text.isBlank() && entry.replyTo == null) BubbleMeta(entry.atMs, if (mine) entry.delivery else null, Modifier.padding(top = 5.dp, start = 8.dp, end = 8.dp))
                 if (entry.threadReplies > 0u && onThread != null) TextButton(onClick = onThread) { Text("${entry.threadReplies} " + stringResource(R.string.replies)) }
                 }
             }

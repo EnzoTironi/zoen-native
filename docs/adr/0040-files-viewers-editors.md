@@ -204,3 +204,28 @@ Each phase ships with journeys; nothing is called done on mocks.
    - comments and suggestion mode for people;
    - forks ("Cenários") and Compare;
    - page export bundles.
+
+## Addendum (2026-10): voice notes are files
+
+A voice note is an `ItemCreated { kind: File }` whose `FileDoc` carries
+`voice: VoiceMeta { ms, levels, transcript }` (levels: one hex digit per bar), recorded under
+`VoiceNotes/`. Its audio goes through the same chunked, sealed relay path as any file, so
+every device and the web can play it. The chat shows it as a message (`TimelineEntry.voice`).
+A voice reply carries its `ReplyRef` in the same `VoiceMeta`, so receiving a partial sync
+cannot show a thread recording in the main chat or replace its message id later. Earlier
+two-event replies (`ItemCreated` then `MessagePosted { text: "", attaches: item, reply }`)
+are still de-duplicated during replay. Older builds sent only a text marker
+(`⟦voice:id:ms:levels⟧` + transcript) with the audio left on the sender's device. Clients still
+read those markers but never send them. Audio files named "Mensagem de voz.*" (from early web
+builds, no tag) are also read as voice notes.
+
+Native playback reads the current signed file bytes, including on the sending device;
+an unversioned local recording must not shadow an edited file. Renaming the same audio
+keeps its voice metadata; changing the bytes clears the old timings and transcript.
+Cross-Space voice forwarding is currently refused before posting: it needs a new file
+encrypted for the destination's audience, not a reference into the original Space.
+Apple playback uses AVAudioPlayer with the received MIME as a type hint and reports
+decoding failures. WebM/Ogg playback still requires validation with real recordings on
+Apple devices; the core transports these formats without transcoding them.
+Older peers ignore the optional metadata and see ordinary audio files in Files; they
+do not gain chat voice bubbles. Signed content bytes remain unchanged in transit.
