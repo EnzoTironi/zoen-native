@@ -183,8 +183,8 @@ half4 main(float2 position) {
     float3 n = normalize(float3(outward * edge, sqrt(max(1.0 - edge * edge, 0.0))));
     float3 V = float3(0.0, 0.0, 1.0);
     // Key light 27deg around from straight up-left, 65deg high
-    float az = radians(-90.0 - 27.0);
-    float el = radians(65.0);
+    float az = -2.0420352;                                       // -90deg - 27deg
+    float el = 1.1344640;                                        // 65deg
     float3 L = normalize(float3(cos(az) * cos(el), sin(az) * cos(el), sin(el)));
     float3 H = normalize(L + V);
 
