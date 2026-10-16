@@ -33,7 +33,7 @@ final class NativeIconMotionCaptureTests: XCTestCase {
         XCTAssertEqual(applied["source_revision"] as? String, revision)
         XCTAssertTrue(app.buttons["New message"].firstMatch.waitForExistence(timeout: 20))
         var actions: [[String: Any]] = []
-        let state = app.staticTexts["parity-motion-state"].firstMatch
+        let state = app.descendants(matching: .any)["parity-motion-state"].firstMatch
         XCTAssertTrue(state.waitForExistence(timeout: 10))
         func pendingWitness() throws -> [String: Any] {
             let json = try XCTUnwrap(try JSONSerialization.jsonObject(with: Data(state.label.utf8)) as? [String: Any])
@@ -52,7 +52,9 @@ final class NativeIconMotionCaptureTests: XCTestCase {
         }
         expectation(for: increased, evaluatedWith: state)
         waitForExpectations(timeout: 10)
-        actions.append(["event": "bell-new", "before": baseline, "after": try pendingWitness()])
+        actions.append(["event": "bell-new", "before": baseline, "after": try pendingWitness(),
+                        "native_driver_witness": state.label])
+        try attachJSON(try XCTUnwrap(actions.last), name: "bell-new-witness-\(appearance)")
         attach(app.screenshot(), name: "bell-new-\(appearance)")
 
         // Chats starts selected: first visit another tab so both selection-changing
@@ -72,7 +74,9 @@ final class NativeIconMotionCaptureTests: XCTestCase {
                 attach(shot, name: name)
                 actions.append(["event": "tab-\(semantic)-tap", "repetition": repetition,
                     "dispatch_uptime_seconds": start, "capture_completed_after_ms": elapsed,
-                    "observed_state": ["tab": semantic], "selected": button.isSelected])
+                    "observed_state": ["tab": semantic], "selected": button.isSelected,
+                    "native_driver_witness": state.label])
+                try attachJSON(try XCTUnwrap(actions.last), name: "\(name)-witness")
             }
         }
         app.tabBars.buttons["Chats"].firstMatch.tap()
@@ -98,7 +102,10 @@ final class NativeIconMotionCaptureTests: XCTestCase {
         let clearStart = ProcessInfo.processInfo.systemUptime
         composer.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: "See you tomorrow".count))
         XCTAssertTrue(app.buttons["Record voice message"].firstMatch.waitForExistence(timeout: 10))
-        XCTAssertFalse(send.exists)
+        XCTAssertEqual(composer.value as? String, "")
+        // Re-query by semantic label: XCTest may retain the stable action element
+        // across SwiftUI's send-to-mic replacement.
+        XCTAssertFalse(app.buttons.matching(NSPredicate(format: "identifier == %@ AND label == %@", "send", "Send")).firstMatch.exists)
         attach(app.screenshot(), name: "composer-mic-\(appearance)")
         actions.append(["event": "composer-mic", "dispatch_uptime_seconds": clearStart,
             "capture_completed_after_ms": (ProcessInfo.processInfo.systemUptime - clearStart) * 1000,
@@ -111,6 +118,13 @@ final class NativeIconMotionCaptureTests: XCTestCase {
                         "icons-draw-on", "aligned video keyframes", "full/reduced mode verification"]]
         let attachment = XCTAttachment(data: try JSONSerialization.data(withJSONObject: report, options: [.sortedKeys]), uniformTypeIdentifier: "public.json")
         attachment.name = "native-icon-action-sequence-\(appearance).json"
+        attachment.lifetime = .keepAlways
+        add(attachment)
+    }
+
+    @MainActor private func attachJSON(_ value: [String: Any], name: String) throws {
+        let attachment = XCTAttachment(data: try JSONSerialization.data(withJSONObject: value, options: [.sortedKeys]), uniformTypeIdentifier: "public.json")
+        attachment.name = name
         attachment.lifetime = .keepAlways
         add(attachment)
     }

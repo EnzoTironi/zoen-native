@@ -48,11 +48,24 @@ private struct NativeTabImageEffects: UIViewControllerRepresentable {
             }
             return images.count == 1 ? images[0] : nil
         }
+        private func title(of control: UIControl, bar: UITabBar) -> String? {
+            let titles = bar.items?.compactMap(\.title) ?? []
+            let visibleLabels = descendants(control, UILabel.self).filter {
+                !$0.isHidden && $0.alpha > 0 && $0.bounds.width > 0
+            }.compactMap(\.text)
+            let matches = titles.filter { $0 == control.accessibilityLabel || visibleLabels.contains($0) }
+            return matches.count == 1 ? matches[0] : nil
+        }
         private func control(title: String, bar: UITabBar) -> UIControl? {
             let matches = descendants(bar, UIControl.self).filter {
-                !$0.isHidden && $0.alpha > 0 && $0.accessibilityLabel == title
+                !$0.isHidden && $0.alpha > 0 && self.title(of: $0, bar: bar) == title
             }
             return matches.count == 1 ? matches[0] : nil
+        }
+        private func report(_ value: String) {
+            #if DEBUG
+            NotificationCenter.default.post(name: Notification.Name("NativeParityEffectDiagnostic"), object: value)
+            #endif
         }
         func observe(pendingIDs: Set<String>) {
             // Establish baseline before resolving UIKit: initial fixture requests never wiggle.
@@ -60,18 +73,21 @@ private struct NativeTabImageEffects: UIViewControllerRepresentable {
             previousPending = pendingIDs
             // Resolve after SwiftUI has attached the representable to its parent.
             DispatchQueue.main.async { [weak self] in
-                guard let self, let bar = self.resolveBar() else { return }
+                guard let self else { return }
+                guard let bar = self.resolveBar() else { self.report("bar-identity-unresolved"); return }
                 if self.observedBar !== bar {
                     self.observedBar?.removeGestureRecognizer(self.taps)
                     bar.addGestureRecognizer(self.taps)
                     self.observedBar = bar
                 }
-                guard !added.isEmpty,
-                      !UIAccessibility.isReduceMotionEnabled,
-                      let title = bar.items?.first(where: { $0.image?.isSymbolImage == true && $0.title == String(localized: "Notifications") })?.title,
+                guard !added.isEmpty, !UIAccessibility.isReduceMotionEnabled else { return }
+                guard let title = bar.items?.first(where: { $0.title == String(localized: "Notifications") })?.title,
                       let control = self.control(title: title, bar: bar),
-                      let image = self.image(in: control), image.image?.isSymbolImage == true else { return }
+                      let image = self.image(in: control), image.image?.isSymbolImage == true else {
+                    self.report("bell-symbol-image-identity-unresolved"); return
+                }
                 image.addSymbolEffect(.wiggle)
+                self.report("bell-wiggle-submitted-to-symbol-image")
             }
         }
         @objc private func tapped(_ recognizer: UITapGestureRecognizer) {
@@ -81,18 +97,25 @@ private struct NativeTabImageEffects: UIViewControllerRepresentable {
             let controls = descendants(bar, UIControl.self).filter {
                 !$0.isHidden && $0.alpha > 0 && $0.convert($0.bounds, to: bar).contains(point)
             }
-            guard controls.count == 1, let control = controls.first,
-                  let title = control.accessibilityLabel,
-                  bar.items?.filter({ $0.title == title }).count == 1,
-                  let image = image(in: control) else { return }
+            guard controls.count == 1, let control = controls.first else {
+                report("tap-control-identity-ambiguous:\(controls.count)"); return
+            }
+            guard let title = title(of: control, bar: bar),
+                  let image = image(in: control) else {
+                report("tap-title-or-image-identity-unresolved"); return
+            }
             if image.image?.isSymbolImage == true {
                 image.addSymbolEffect(.bounce, options: .speed(1.5))
+                report("\(title)-bounce-submitted-to-symbol-image")
             } else if title == String(localized: "Profile") {
+                report("Profile-bitmap-feedback-submitted")
                 UIView.animate(withDuration: 0.15, animations: {
                     image.transform = CGAffineTransform(scaleX: 0.96, y: 0.96)
                 }, completion: { _ in
                     UIView.animate(withDuration: 0.15) { image.transform = .identity }
                 })
+            } else {
+                report("\(title)-image-is-not-symbol")
             }
         }
     }
@@ -103,6 +126,7 @@ private struct NativeTabImageEffects: UIViewControllerRepresentable {
 private struct NativeParityMotionDriver: View {
     @Environment(AppModel.self) private var model
     @State private var failure = ""
+    @State private var effectDiagnostic = "not-observed"
     private var enabled: Bool {
         ProcessInfo.processInfo.environment["ZOEN_PARITY_MOTION_DRIVER"] == "1"
             && NativeParityClock.appliedManifest(core: model.core) != nil
@@ -112,7 +136,7 @@ private struct NativeParityMotionDriver: View {
             ["agentId": $0.agent.id, "spaceId": $0.spaceId, "title": $0.title, "status": "pending"]
         }.sorted { ($0["spaceId"]!, $0["agentId"]!, $0["title"]!) < ($1["spaceId"]!, $1["agentId"]!, $1["title"]!) }
         let value: [String: Any] = ["notifications": ["pendingCount": pending.count, "pending": pending],
-                                  "driver_error": failure]
+                                  "driver_error": failure, "native_effect_diagnostic": effectDiagnostic]
         guard let data = try? JSONSerialization.data(withJSONObject: value, options: [.sortedKeys]) else { return "{}" }
         return String(decoding: data, as: UTF8.self)
     }
@@ -131,8 +155,17 @@ private struct NativeParityMotionDriver: View {
                         model.refresh()
                     } catch { failure = String(describing: error) }
                 }
+                .font(.system(size: 1))
+                .foregroundStyle(.clear)
+                .frame(width: 12, height: 12)
                 .accessibilityIdentifier("parity-open-genuine-request")
-                Text(witness).accessibilityIdentifier("parity-motion-state")
+                Color.clear.frame(width: 1, height: 1)
+                    .accessibilityElement(children: .ignore)
+                    .accessibilityLabel(witness)
+                    .accessibilityIdentifier("parity-motion-state")
+            }
+            .onReceive(NotificationCenter.default.publisher(for: Notification.Name("NativeParityEffectDiagnostic"))) {
+                effectDiagnostic = $0.object as? String ?? "invalid-diagnostic"
             }
         }
     }
