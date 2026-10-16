@@ -3,6 +3,7 @@ import { message as reason } from './boundary.ts';
 import type { Conversation, FileDoc, Message, Messages, VoiceMeta } from './messages.ts';
 import { FileView, kindOf, thumbnail, useRecorder } from './media.tsx';
 import { NativeAdaptiveShell } from './native-adaptive.tsx';
+import { displayNow, displayTime } from './display-clock.ts';
 import { NativeNavigation } from './native-navigation.tsx';
 import { MessageEditor } from './message-editor.tsx';
 import { MessageSearchResults } from './message-search-view.tsx';
@@ -17,9 +18,9 @@ const FOLLOW = 'zoen.thread-follow';
 function loadFollow(): Record<string, boolean> { try { return JSON.parse(localStorage.getItem(FOLLOW) ?? '{}') as Record<string, boolean>; } catch { return {}; } }
 
 const QUICK = ['👍', '❤️', '😂', '😮', '😢', '🙏'];
-const time = (ms: number) => new Date(ms).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+const time = displayTime;
 function day(ms: number) {
-  const d = new Date(ms); const today = new Date();
+  const d = new Date(ms); const today = new Date(displayNow());
   if (d.toDateString() === today.toDateString()) return time(ms);
   const y = new Date(today); y.setDate(today.getDate() - 1);
   if (d.toDateString() === y.toDateString()) return 'Ontem';
@@ -61,8 +62,8 @@ function Ticks({ state }: { state: Message['ticks'] | 'sending' | 'failed' }) {
   </svg>;
 }
 
-export function Bubble({ entry, own, first, onReact, onReply, onThread, onEdit, onDelete, onForward, inThread, messages, formatTime = time }: {
-  entry: Message; messages: Messages | null; own: boolean; first: boolean; inThread?: boolean; formatTime?: (ms: number) => string;
+export function Bubble({ entry, own, first, onReact, onReply, onThread, onEdit, onDelete, onForward, inThread, messages, formatTime = time, direct = false, counterpart }: {
+  entry: Message; messages: Messages | null; own: boolean; first: boolean; inThread?: boolean; formatTime?: (ms: number) => string; direct?: boolean; counterpart?: Conversation['counterpart'];
   onReact: (emoji: string | null) => void; onReply: () => void; onThread: () => void; onEdit: () => void; onDelete: () => void; onForward: () => void;
 }) {
   const [picker, setPicker] = useState(false);
@@ -73,7 +74,8 @@ export function Bubble({ entry, own, first, onReact, onReply, onThread, onEdit, 
   const mine = entry.reactions.find((r) => r.mine)?.emoji ?? null;
   const state = entry.delivery === 'confirmed' ? entry.ticks : entry.delivery as 'sending' | 'failed';
   return <article className={`zm-row${own ? ' zm-own' : ''}${first ? ' zm-first' : ''}`} data-testid="message" id={`message-${entry.id}`} tabIndex={-1} onMouseLeave={() => { setPicker(false); setMenu(false); }}>
-    {!own && first ? <span className="zm-author">{entry.name}</span> : null}
+    {!own && first && !direct ? <span className="zm-author">{entry.name}</span> : null}
+    {!own ? <span className="zm-sender-face"><Avatar name={entry.name} counterpart={counterpart} size={36} /></span> : null}
     <div className="zm-bubble-wrap">
       <div className={`zm-bubble${entry.deleted ? ' zm-deleted' : ''}${entry.file && !entry.deleted ? ` zm-media zm-media-${kindOf(entry.file.mime)}` : ''}`}>
         {entry.forwarded && !entry.deleted ? <span className="zm-forwarded">Encaminhada</span> : null}
@@ -307,9 +309,9 @@ function AccountMessenger({ conversations, identity, name, connected, status, me
       void controller.annotate(space, m.entry, 'Delete').catch(fail);
     },
   };
-  const bubbles = (items: Message[], inThread: boolean) => items.map((m, i) => <Bubble key={m.id} entry={m} own={m.author === identity} inThread={inThread} messages={messages.current}
-    formatTime={english() ? ms => new Intl.DateTimeFormat('en-US', { hour: 'numeric', minute: '2-digit', timeZone: 'UTC' }).format(ms) : time}
-    first={i === 0 || items[i - 1]!.author !== m.author}
+  const bubbles = (items: Message[], inThread: boolean) => items.map((m, i) => <Bubble key={m.id} entry={m} own={m.author === identity} inThread={inThread} direct={conversation?.kind === 'direct'} counterpart={conversation?.counterpart} messages={messages.current}
+    formatTime={displayTime}
+    first={i === 0 || items[i - 1]!.author !== m.author || m.at_ms - items[i - 1]!.at_ms >= 300_000}
     onReact={act.react(m)} onDelete={act.del(m)} onForward={() => setForward(m)}
     onReply={() => { setEditing(null); setReply(m); }} onEdit={() => { setReply(null); setEditing(m); }}
     onThread={() => { if (m.entry) { setThreadRoot(m.entry); if (follow[m.entry] === undefined) toggleFollow(m.entry, true); } }} />);
@@ -330,13 +332,14 @@ function AccountMessenger({ conversations, identity, name, connected, status, me
       }} /> : null}
       <ul className="zm-chats">{list.map((c) => <ChatRow key={c.id} c={c} active={c.id === conversation?.id} prefs={prefs[c.id] ?? {}} open={() => { setDestination('chats'); select(c.id); }} set={(p) => savePrefs(c.id, p)} />)}</ul>
       {!list.length ? <p className="zm-empty">{search ? 'Nenhuma conversa encontrada.' : 'As conversas do seu celular aparecem aqui.'}</p> : null}
-      <footer className="zm-side-foot"><Avatar name={name} size={32} /><span><b>{name}</b><span className={connected ? 'zm-online' : 'zm-offline'} role="status">{status}</span></span>{footer}</footer>
+      {footer ? <footer className="zm-side-foot"><Avatar name={name} size={32} /><span><b>{name}</b><span className={connected ? 'zm-online' : 'zm-offline'} role="status">{status}</span></span>{footer}</footer> : null}
       <NativeNavigation selected={destination === 'store' ? 'store' : 'chats'} search={{ open: searchOpen, value: search, onChange: setSearch, onOpenChange: setSearchOpen }} onSelect={navigate} onCreate={navigate} unreadCount={conversations.reduce((n, c) => n + c.unread, 0)} />
     </aside>
     <main className="zm-main">
       {destination !== 'chats' ? <section className="zm-blank"><button className="zm-pill" onClick={() => navigate('chats')}>Back to Chats</button><h2>{destination}</h2><p>This feature is available in the native Zoen app, not on web yet.</p></section> : children ?? (conversation ? <>
-        <header className="zm-chat-head"><button className="zm-round zm-mobile-back" aria-label="Back to Chats" onClick={() => select('')}><Icon name="back" /></button><span className="zm-title-pill glass-pill"><Avatar name={conversation.title} counterpart={conversation.counterpart} size={28} /><b>{conversation.title}</b>{conversation.kind !== 'direct' ? <span>{conversation.members} {english() ? 'people' : 'pessoas'}</span> : null}</span></header>
+        <header className="zm-chat-head"><button className="zm-round glass zm-mobile-back" aria-label="Back to Chats" onClick={() => select('')}><Icon name="back" /></button><span className="zm-title-pill glass-pill"><Avatar name={conversation.title} counterpart={conversation.counterpart} size={28} /><b>{conversation.title}</b>{conversation.kind !== 'direct' ? <span>{conversation.members} {english() ? 'people' : 'pessoas'}</span> : null}</span></header>
         <section className="zm-timeline" role="log" aria-label="Mensagens" aria-live="polite">
+          <div className="zm-space-hero"><Avatar name={conversation.title} counterpart={conversation.counterpart} size={conversation.kind === 'direct' ? 64 : 72} /></div>
           {conversation.waiting ? <p className="zm-note">Seu celular está preparando esta conversa para o navegador. Deixe ele conectado.</p> : null}
           {conversation.unreadable ? <p className="zm-note">{conversation.unreadable === 1 ? 'Uma mensagem anterior está' : `${conversation.unreadable} mensagens anteriores estão`} só no seu celular.</p> : null}
           {bubbles(timeline, false)}

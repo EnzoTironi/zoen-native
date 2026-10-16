@@ -10,6 +10,10 @@ function timestamp(value: unknown): number {
   if (typeof value !== 'number' || !Number.isSafeInteger(value)) throw new Error('Invalid message timestamp.');
   return value;
 }
+function parseCard(input: unknown) {
+  const value = object(input);
+  return { itemId: string(value.itemId), title: string(value.title), summary: string(value.summary), kindLabel: string(value.kindLabel), kindId: string(value.kindId), version: integer(value.version), totalCents: value.totalCents === null ? null : integer(value.totalCents), budgetCents: value.budgetCents === null ? null : integer(value.budgetCents), lineCount: integer(value.lineCount), doneCount: integer(value.doneCount) };
+}
 function parseMessage(input: unknown) {
   const value = object(input);
   const delivery = string(value.delivery);
@@ -34,7 +38,7 @@ function parseMessage(input: unknown) {
     quote: quote ? { id: string(quote.id), name: string(quote.name), text: string(quote.text) } : null,
     thread: value.thread ? string(value.thread) : null, replies: integer(value.replies ?? 0),
     repliers: array(value.repliers ?? []).map(string), last_reply_ms: typeof value.last_reply_ms === 'number' ? value.last_reply_ms : null,
-    file };
+    file, ...(value.card ? { card: parseCard(value.card) } : {}) };
 }
 
 const HASH = /^[0-9a-f]{64}$/;
@@ -84,7 +88,8 @@ function parseConversation(input: unknown) {
   if (kind !== 'direct' && kind !== 'group' && kind !== 'community' && kind !== 'personal') throw new Error('Invalid conversation kind.');
   return { id: string(value.id), title: string(value.title), kind, can_send: boolean(value.can_send),
     waiting: nullableText(value.waiting), unreadable: integer(value.unreadable),
-    unread: integer(value.unread ?? 0), mentions: integer(value.mentions ?? 0), members: integer(value.members ?? 0), messages: array(value.messages).map(parseMessage) };
+    unread: integer(value.unread ?? 0), mentions: integer(value.mentions ?? 0), members: integer(value.members ?? 0), messages: array(value.messages).map(parseMessage),
+    ...(value.counterpart ? { counterpart: (() => { const person = object(value.counterpart); return { id: publicKey(person.id), name: string(person.name), initials: string(person.initials), tintHex: string(person.tintHex) }; })() } : {}) };
 }
 export type Conversation = ReturnType<typeof parseConversation>;
 export type Message = ReturnType<typeof parseMessage>;

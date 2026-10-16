@@ -256,5 +256,17 @@ body { background: var(--zm-canvas); color: var(--zm-ink); }
   .zm-recording-surface { display: flex; align-items: center; flex: 1; min-width: 0; min-height: 48px; gap: 10px; padding: 0 12px; border-radius: 24px; }
   .zm-recording-surface .zm-wave { min-width: 0; }
   .zm-recording-surface .zm-round { flex: none; }
+/* SpaceView.MessageRow reserves a 36pt face + 8pt gap, and 48/32pt opposite gutters. */
+.zm-native-production .zm-row { position: relative; padding-left: 44px; padding-right: 32px; }
+.zm-native-production .zm-row.zm-own { padding-left: 48px; padding-right: 0; }
+.zm-native-production .zm-sender-face { position: absolute; left: 0; bottom: 0; }
+.zm-native-production .zm-bubble-wrap { display: block; max-width: 100%; }
+.zm-native-production .zm-bubble { font-size: 17px; padding: 9px 14px; border-radius: 24px 24px 24px 6px; }
+.zm-native-production .zm-own .zm-bubble { border-radius: 24px 24px 6px 24px; }
+.zm-native-production .zm-actions { position: absolute; left: 100%; top: 0; }
+.zm-native-production .zm-own .zm-actions { left: auto; right: 100%; }
+.zm-native-production .zm-timeline { padding: 84px 14px 12px; }
+.zm-native-production .zm-space-hero { align-self: center; padding: 8px 0 12px; }
+.zm-native-production .zm-mobile-back { position: absolute; left: 16px; top: 14px; width: 44px; height: 44px; pointer-events: auto; }
 @keyframes zm-pulse { 50% { opacity: .35; } }
 @media (prefers-reduced-motion: reduce) { .zm-rec-dot { animation: none; } .zm-lightbox img, .zm-lightbox video { animation: none; } }

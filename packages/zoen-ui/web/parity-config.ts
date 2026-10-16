@@ -8,7 +8,7 @@ export function parityConfig(value: unknown): ParityConfig {
   for (const [key, expected] of Object.entries(PARITY_FIXTURE)) if (config[key] !== expected) throw new Error(`Unsupported parity ${key}.`);
   if (!PARITY_SCREENS.includes(config.screen as ParityConfig['screen'])) throw new Error('Unsupported parity screen.');
   if (config.appearance !== 'light' && config.appearance !== 'dark') throw new Error('Unsupported parity appearance.');
-  if (config.viewport !== 'narrow') throw new Error('Wide parity requires the missing native iPad layout source.');
+  if (config.viewport !== 'narrow' && config.viewport !== 'wide') throw new Error('Unsupported parity viewport.');
   if (typeof config.source_revision !== 'string' || !/^[a-f0-9]{40}$/.test(config.source_revision)) throw new Error('Parity requires the full source revision.');
-  return { ...PARITY_FIXTURE, source_revision: config.source_revision, screen: config.screen as ParityConfig['screen'], appearance: config.appearance, viewport: 'narrow' };
+  return { ...PARITY_FIXTURE, source_revision: config.source_revision, screen: config.screen as ParityConfig['screen'], appearance: config.appearance, viewport: config.viewport };
 }
