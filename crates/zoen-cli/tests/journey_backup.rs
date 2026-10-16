@@ -328,6 +328,7 @@ async fn key_only_restore_never_spends_password_guesses() {
     w.init("ana", "Ana");
     w.zoen("ana", &["backup", "on", "--password", PASSWORD]);
     let before = w.scalar("SELECT guesses::text FROM backup_vaults").await;
+    w.init("bruno", "Bruno");
     // Explicit key-only mode must reject even a valid OPRF point before accounting.
     let point = "e2f2ae0a6abc4e71a884a961c500515f58e30b6aa582dd8db6a65945e08d2d76";
     for request in [
@@ -335,8 +336,18 @@ async fn key_only_restore_never_spends_password_guesses() {
         // The native client omits the point, protecting older relays as well.
         serde_json::json!({"handle": "ana", "recovery_only": true, "blinded": null}),
     ] {
-        let (status, _) = restore_post(&w, "/v1/backup/restore/start", request).await;
+        let (status, body) = restore_post(&w, "/v1/backup/restore/start", request.clone()).await;
         assert_eq!(status, 400);
+        for handle in ["bruno", "nonexistent"] {
+            let mut decoy_request = request.clone();
+            decoy_request["handle"] = serde_json::json!(handle);
+            let response = restore_post(&w, "/v1/backup/restore/start", decoy_request).await;
+            assert_eq!(
+                response,
+                (status, body.clone()),
+                "key-only existence leak for {handle}"
+            );
+        }
         assert_eq!(
             w.scalar("SELECT guesses::text FROM backup_vaults").await,
             before

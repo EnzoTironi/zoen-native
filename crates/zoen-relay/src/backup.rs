@@ -821,6 +821,12 @@ pub async fn restore_start(
         Ok(r) => r,
         Err(r) => return r,
     };
+    // Key-only clients must not probe password backups through the decoy OPRF
+    // path: neither vault access nor guess accounting is needed. Use the same
+    // response for a password backup, an account without one, and an unknown @.
+    if req.recovery_only && row.as_ref().is_none_or(|row| row.mode != "recovery_key") {
+        return err(StatusCode::BAD_REQUEST, "recovery key backup unavailable");
+    }
     let decoy_identity: Option<String> = if row.is_none() {
         match sqlx::query_scalar("SELECT id FROM identities WHERE handle = $1")
             .bind(&handle)
@@ -858,10 +864,6 @@ pub async fn restore_start(
     let Some(row) = row else {
         return decoy(&st);
     };
-    // Reject key-only requests before password vault access or guess accounting.
-    if req.recovery_only && row.mode != "recovery_key" {
-        return err(StatusCode::BAD_REQUEST, "backup requires a password");
-    }
     if row.mode != "recovery_key" {
         if let Err(r) = vault(&st) {
             return r;
