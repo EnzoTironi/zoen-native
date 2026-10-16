@@ -69,9 +69,9 @@ fun Modifier.zoenGlass(
         val corner = CornerRadius(r, r)
         val frost = if (slab) 0.2f else 0.6f
         val body = if (prominent) tint.copy(alpha = 1f) else   // opaque: no backdrop to refract, and white labels keep 4.5:1
-            film?.takeIf { it.alpha > 0f }?.let { it.copy(alpha = maxOf(it.alpha * 0.9f, 0.85f)) }   // caller's protective surface keeps its ink legible
+            film?.takeIf { it.alpha > 0f }?.let { it.copy(alpha = maxOf(it.alpha, 0.85f)) }   // caller's protective surface keeps its ink legible
                 ?: Color.White.copy(alpha = if (dark) 0.07f else 0.6f)
-        val crown = Brush.radialGradient(listOf(Color.White.copy(.5f * strength), Color.Transparent),
+        val crown = Brush.radialGradient(listOf(Color.White.copy((if (dark) .08f else .3f) * strength), Color.Transparent),
             center = Offset(size.width * 0.35f, size.height * 0.2f), radius = size.minDimension * 0.8f)
         val volume = Brush.verticalGradient(0f to Color.Transparent, .6f to Color.Transparent, 1f to Color.Black.copy(.18f * strength))
         val rim = Brush.sweepGradient(listOf(Color.White.copy(.7f), Color.White.copy(.15f), Color.White.copy(.7f)))
@@ -82,7 +82,7 @@ fun Modifier.zoenGlass(
                 drawRect(glass.brush)
             } else {
                 drawRoundRect(volume, cornerRadius = corner)
-                if (!prominent) drawRoundRect(crown, cornerRadius = corner)
+                if (!prominent && film == null) drawRoundRect(crown, cornerRadius = corner)
                 drawRoundRect(rim, cornerRadius = corner, style = Stroke(1.dp.toPx()))
             }
         }

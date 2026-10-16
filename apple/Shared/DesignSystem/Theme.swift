@@ -75,10 +75,8 @@ enum Palette {
 
 struct ActionGlassForeground: ShapeStyle {
     func resolve(in environment: EnvironmentValues) -> Color {
-        #if os(macOS)
-        if environment.controlActiveState != .key { return Palette.textPrimary }
-        #endif
-        return Palette.onAction
+        // The prominent fill stays the action colour in inactive windows too, so its ink must as well.
+        Palette.onAction
     }
 }
 
