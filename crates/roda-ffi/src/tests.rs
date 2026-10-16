@@ -56,6 +56,83 @@ fn seed_builds_the_story_and_every_log_verifies() {
 }
 
 #[test]
+fn request_previews_use_the_action_title_and_preserve_message_bodies() {
+    let e = seeded();
+    let crew = find_space(&e, "Turma do Sábado");
+    let title = "Ler a agenda da Lúcia pra achar um horário";
+    assert!(e
+        .demo_open_request(
+            crew.id.clone(),
+            "zoen".into(),
+            title.into(),
+            "Só livre/ocupado".into(),
+            "Agenda da Lúcia".into(),
+            "third_party_data".into(),
+            0,
+        )
+        .unwrap()
+        .is_some());
+    let preview = find_space(&e, "Turma do Sábado");
+    assert_eq!(preview.last_preview, title);
+    assert!(
+        preview.last_author.is_none(),
+        "a request summary needs no author prefix"
+    );
+    assert!(
+        preview.last_delivery.is_none(),
+        "requests carry no outgoing ticks"
+    );
+
+    let body = "Pedido: trazer água 😂";
+    e.send_message(crew.id, body.into()).unwrap();
+    let preview = find_space(&e, "Turma do Sábado");
+    assert_eq!(
+        preview.last_preview, body,
+        "ordinary text is never stripped"
+    );
+    assert!(preview.last_author.unwrap().is_me);
+}
+
+#[test]
+fn demo_receipts_reactions_and_threads_survive_reopen() {
+    let dir = std::env::temp_dir().join(format!("roda-demo-{}", roda_types::new_id("t")));
+    std::fs::create_dir_all(&dir).unwrap();
+    let path = dir.join("demo.sqlite").to_string_lossy().to_string();
+    for first in [true, false] {
+        let e = RodaEngine::open(path.clone(), "pt-BR".into()).unwrap();
+        assert_eq!(e.seed_demo_if_empty().unwrap(), first);
+        for title in ["Turma do Sábado", "Marina"] {
+            let space = find_space(&e, title);
+            let entries = e.timeline(space.id.clone()).unwrap();
+            for delivery in [Delivery::Sent, Delivery::Delivered, Delivery::Read] {
+                assert!(
+                    entries
+                        .iter()
+                        .any(|entry| entry.author.is_me && entry.delivery == delivery),
+                    "{title} has an outgoing {delivery:?} message"
+                );
+            }
+            assert!(entries.iter().any(|entry| !entry.reactions.is_empty()));
+            if title == "Turma do Sábado" {
+                let root = entries
+                    .iter()
+                    .find(|entry| entry.thread_replies > 0)
+                    .unwrap();
+                let thread = e.thread(space.id.clone(), root.id.clone()).unwrap();
+                assert_eq!(thread.len(), 2);
+                assert_eq!(thread[1].in_thread.as_deref(), Some(root.id.as_str()));
+            }
+            assert!(
+                !e.lock().net.synced.contains(&space.id),
+                "demo edits stay local"
+            );
+        }
+        assert!(e.verify_all().iter().all(|r| r.valid));
+    }
+    std::fs::remove_dir_all(dir).unwrap();
+}
+
+#[test]
 fn edit_then_undo_restores_content_and_keeps_history() {
     let e = seeded();
     let plan = paraty_plan(&e);

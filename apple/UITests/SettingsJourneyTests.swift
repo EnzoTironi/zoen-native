@@ -22,18 +22,17 @@ final class SettingsJourneyTests: XCTestCase {
         open.tap()
 
         app.buttons["settings.preferences"].firstMatch.tap()
+        XCTAssertTrue(app.buttons["prefsLanguage"].waitForExistence(timeout: 5), "Language opens directly")
+        app.buttons["settingsBack"].tap()
         let theme = app.buttons["settings.theme"].firstMatch
-        XCTAssertTrue(theme.waitForExistence(timeout: 5), "Preferências opens")
+        XCTAssertTrue(theme.waitForExistence(timeout: 5), "Theme is reachable from Settings")
         theme.tap()
         let dark = app.buttons["theme.dark"]
         XCTAssertTrue(dark.waitForExistence(timeout: 5), "Tema lists its choices")
         dark.tap()
         XCTAssertTrue(dark.isSelected, "the picked theme is marked")
 
-        // Back pops exactly one: Tema → Preferências (not all the way home).
-        app.buttons["settingsBack"].tap()
-        XCTAssertTrue(app.buttons["settings.theme"].firstMatch.waitForExistence(timeout: 3), "back on Preferências")
-        XCTAssertTrue(app.staticTexts["Escuro"].exists, "Preferências shows the new theme")
+        // Back pops exactly one: Tema → Ajustes, keeping the settings sheet open.
         app.buttons["settingsBack"].tap()
         XCTAssertTrue(app.textFields["settingsSearch"].waitForExistence(timeout: 3), "back on Ajustes")
 
