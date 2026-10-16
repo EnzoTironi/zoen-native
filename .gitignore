@@ -42,3 +42,4 @@ tools/dev-relay/blobs/
 .env.*
 /.tools/
 .zoen/
+__pycache__/
