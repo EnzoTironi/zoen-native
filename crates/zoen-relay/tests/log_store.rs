@@ -711,6 +711,7 @@ async fn co_members_deduplicates_across_read_batches() {
         vec![ana.identity]
     );
     assert!(log.co_members("unknown").await.unwrap().is_empty());
+    log.drop_cell().await.unwrap();
 }
 
 fn main() {
