@@ -73,8 +73,8 @@ function Ticks({ state }: { state: Message['ticks'] | 'sending' | 'failed' }) {
   </svg>;
 }
 
-export function Bubble({ entry, own, first, onReact, onReply, onThread, onEdit, onDelete, onForward, inThread, messages, formatTime = time, direct = false, counterpart }: {
-  entry: Message; messages: Messages | null; own: boolean; first: boolean; inThread?: boolean; formatTime?: (ms: number) => string; direct?: boolean; counterpart?: Conversation['counterpart'];
+export function Bubble({ entry, own, first, onReact, onReply, onThread, onEdit, onDelete, onForward, inThread, messages, formatTime = time, direct = false, counterpart, showFace = true }: {
+  entry: Message; messages: Messages | null; own: boolean; first: boolean; inThread?: boolean; formatTime?: (ms: number) => string; direct?: boolean; counterpart?: Conversation['counterpart']; showFace?: boolean;
   onReact: (emoji: string | null) => void; onReply: () => void; onThread: () => void; onEdit: () => void; onDelete: () => void; onForward: () => void;
 }) {
   const [picker, setPicker] = useState(false);
@@ -86,7 +86,7 @@ export function Bubble({ entry, own, first, onReact, onReply, onThread, onEdit, 
   const state = entry.delivery === 'confirmed' ? entry.ticks : entry.delivery as 'sending' | 'failed';
   return <article className={`zm-row${own ? ' zm-own' : ''}${first ? ' zm-first' : ''}`} data-testid="message" id={`message-${entry.id}`} tabIndex={-1} onMouseLeave={() => { setPicker(false); setMenu(false); }}>
     {!own && first && !direct ? <span className="zm-author">{entry.name}</span> : null}
-    {!own ? <span className="zm-sender-face"><Avatar name={entry.name} counterpart={counterpart} size={36} /></span> : null}
+    {!own && showFace ? <span className="zm-sender-face"><Avatar name={entry.name} counterpart={counterpart} size={36} /></span> : null}
     <div className="zm-bubble-wrap">
       <div className={`zm-bubble${entry.deleted ? ' zm-deleted' : ''}${entry.file && !entry.deleted ? ` zm-media zm-media-${kindOf(entry.file.mime)}` : ''}`}>
         {entry.forwarded && !entry.deleted ? <span className="zm-forwarded">Encaminhada</span> : null}
@@ -405,7 +405,8 @@ function AccountMessenger({ conversations, identity, name, connected, status, me
     {!inThread && m.id === firstUnread ? <div ref={unreadDivider} className="zm-unread-divider" data-testid="unread-divider"><span>{english() ? 'Unread messages' : 'Mensagens não lidas'}</span></div> : null}
     <Bubble entry={m} own={m.author === identity} inThread={inThread} direct={conversation?.kind === 'direct'} counterpart={conversation?.counterpart} messages={messages.current}
     formatTime={displayTime}
-    first={i === 0 || items[i - 1]!.author !== m.author || m.at_ms - items[i - 1]!.at_ms >= 300_000}
+    first={i === 0 || !!items[i - 1]!.card || items[i - 1]!.author !== m.author || m.at_ms - items[i - 1]!.at_ms >= 300_000}
+    showFace={conversation?.counterpart?.kind === 'agent' && conversation.counterpart.id === m.author || i === items.length - 1 || !!items[i + 1]!.card || items[i + 1]!.author !== m.author || items[i + 1]!.at_ms - m.at_ms >= 300_000}
     onReact={act.react(m)} onDelete={act.del(m)} onForward={() => setForward(m)}
     onReply={() => { setEditing(null); setReply(m); }} onEdit={() => { setReply(null); setEditing(m); }}
     onThread={() => { if (m.entry) { setThreadRoot(m.entry); if (follow[m.entry] === undefined) toggleFollow(m.entry, true); } }} /></Fragment>);
