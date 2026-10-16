@@ -351,9 +351,11 @@ struct ConversationsScreen: View {
                     ConversationsList(query: model.chatQuery) { id in model.push(.space(id)) }
                 }
                 .padding(.top, searching ? 12 : 0)
-                .padding(.bottom, 110)
                 .animation(.spring(duration: 0.4, bounce: 0.15), value: searching)
             }
+            // The root reserves the floating bar's height; keep the last row clear of its edge.
+            .contentMargins(.bottom, 12, for: .scrollContent)
+            .accessibilityIdentifier("chats-list-scroll")
             .scrollDismissesKeyboard(.interactively)
             .scrollEdgeEffectStyle(.soft, for: .top)
             .defaultScrollAnchor(UserDefaults.standard.bool(forKey: "RodaScrollChats") ? .bottom : .top)
@@ -511,4 +513,3 @@ struct ConnectionDot: View {
         }
     }
 }
-
