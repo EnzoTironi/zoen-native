@@ -103,9 +103,11 @@ class MediaJourneysTest {
             compose.onNodeWithTag("voice-send").assertIsEnabled().performClick()
             val remainingSendTime = sendDeadline - SystemClock.elapsedRealtime()
             assertTrue("Readiness and sending must share the original 20-second deadline", remainingSendTime > 0)
-            compose.waitUntil(remainingSendTime) { application.repository.state.value.timelines[space].orEmpty().any { it.id !in previous && (it.kind as? EntryKind.Message)?.text?.let(VoiceNoteRef::parse) != null } }
-            val entry = application.repository.state.value.timelines[space].orEmpty().last { it.id !in previous && (it.kind as? EntryKind.Message)?.text?.let(VoiceNoteRef::parse) != null }
-            val voice = checkNotNull(VoiceNoteRef.parse((entry.kind as EntryKind.Message).text))
+            compose.waitUntil(remainingSendTime) { application.repository.state.value.timelines[space].orEmpty().any { it.id !in previous && it.voice != null } }
+            val entry = application.repository.state.value.timelines[space].orEmpty().last { it.id !in previous && it.voice != null }
+            // Sent as an encrypted audio file, not a text marker.
+            assertEquals("", (entry.kind as EntryKind.Message).text)
+            val voice = VoiceNoteRef.from(checkNotNull(entry.voice))
             sentEntry = entry.id
             sentVoice = voice.id
             stage = "checking-signed-audio"
@@ -210,11 +212,11 @@ class MediaJourneysTest {
             compose.onAllNodesWithTag("voice-send").assertCountEquals(1)
             compose.onNodeWithTag("voice-send").performClick()
             compose.waitUntil(20_000) { runBlocking { application.repository.query { core ->
-                core.thread(space, roots[0]).any { (it.kind as? EntryKind.Message)?.text?.let(VoiceNoteRef::parse) != null }
+                core.thread(space, roots[0]).any { it.voice != null }
             } } }
             runBlocking { application.repository.query { core ->
-                val first = core.thread(space, roots[0]).filter { (it.kind as? EntryKind.Message)?.text?.let(VoiceNoteRef::parse) != null }
-                val second = core.thread(space, roots[1]).filter { (it.kind as? EntryKind.Message)?.text?.let(VoiceNoteRef::parse) != null }
+                val first = core.thread(space, roots[0]).filter { it.voice != null }
+                val second = core.thread(space, roots[1]).filter { it.voice != null }
                 assertEquals(1, first.size)
                 assertTrue(second.isEmpty())
                 assertTrue(core.verifyAll().all { it.valid })

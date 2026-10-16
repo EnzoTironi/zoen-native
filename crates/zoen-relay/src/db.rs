@@ -731,6 +731,19 @@ pub async fn raise_receipts(pool: &PgPool, batch: &[ReceiptRow]) -> Result<(), s
     .map(|_| ())
 }
 
+/// Receipt watermarks of many Spaces at once: (space, identity, delivered, read).
+pub async fn receipts_of_spaces(
+    pool: &PgPool,
+    spaces: &[String],
+) -> Result<Vec<(String, String, i64, i64)>, sqlx::Error> {
+    sqlx::query_as(
+        "SELECT space, identity, delivered, read FROM space_receipts WHERE space = ANY($1)",
+    )
+    .bind(spaces)
+    .fetch_all(pool)
+    .await
+}
+
 /// Every member's receipt watermarks in a Space: (identity, delivered, read).
 pub async fn receipts(pool: &PgPool, space: &str) -> Result<Vec<(String, i64, i64)>, sqlx::Error> {
     sqlx::query_as("SELECT identity, delivered, read FROM space_receipts WHERE space = $1")
