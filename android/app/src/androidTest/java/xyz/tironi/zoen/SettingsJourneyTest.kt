@@ -2,6 +2,7 @@ package xyz.tironi.zoen
 
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.assertIsEnabled
+import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.activity.ComponentActivity
 import androidx.compose.runtime.*
@@ -76,8 +77,8 @@ class SettingsJourneyTest {
         val stack = open()
         compose.onNodeWithTag("settings:Preferences").performClick()
         compose.onNodeWithTag("settings:Theme").performClick()
-        compose.onNodeWithTag("theme:auto").performClick().assertIsSelected()
-        compose.onNodeWithTag("theme:dark").assertIsNotSelected().performClick()
+        compose.onNodeWithTag("theme:auto").performSemanticsAction(SemanticsActions.OnClick).assertIsSelected()
+        compose.onNodeWithTag("theme:dark").assertIsNotSelected().performSemanticsAction(SemanticsActions.OnClick)
         compose.onNodeWithTag("theme:dark").assertIsSelected()
         assertEquals("dark", AppAppearance.mode)
 
