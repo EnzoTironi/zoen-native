@@ -28,7 +28,7 @@ internal fun ChatFilterMenu(filter: ChatInboxFilter, compact: Boolean = false, s
     var open by remember { mutableStateOf(false) }
     val title = stringResource(filter.title)
     Box {
-        TextButton({ open = true }, Modifier.heightIn(min = 48.dp).testTag("chat-filter").semantics { stateDescription = title }, contentPadding = PaddingValues(horizontal = 8.dp)) {
+        TextButton({ open = true }, Modifier.sizeIn(minWidth = 44.dp, minHeight = 44.dp).testTag("chat-filter").semantics { stateDescription = title }, contentPadding = PaddingValues(horizontal = 8.dp)) {
             MotionVectorIcon(Icons.Rounded.FilterList, stringResource(R.string.chat_filter), Modifier.size(17.dp))
             if (!compact) { Spacer(Modifier.width(6.dp)); Text(title, maxLines = 1) }
         }
