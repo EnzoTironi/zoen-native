@@ -1,0 +1,10 @@
+/* Shared canvas only: custom chat photo/background layers remain above it. */
+body, .zm-main {
+  background: linear-gradient(180deg, var(--zoen-sky, #eef0f7), var(--zoen-sky-base, #f5f7fb));
+}
+.zm-main::before {
+  content: ''; position: absolute; inset: 0; pointer-events: none;
+  opacity: var(--zoen-stars, 0);
+  background-image: radial-gradient(circle at 19% 9%, #8292bc 0 1px, transparent 2px), radial-gradient(circle at 73% 25%, #8292bc 0 1px, transparent 2px);
+  background-size: 137px 173px;
+}

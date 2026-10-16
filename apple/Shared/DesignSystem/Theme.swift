@@ -83,25 +83,7 @@ struct ActionGlassForeground: ShapeStyle {
 // MARK: - Fundo com profundidade (o vidro precisa de algo por baixo)
 
 struct NightBackdrop: View {
-    @Environment(\.colorScheme) private var scheme
-    var body: some View {
-        ZStack {
-            Palette.background
-            MeshGradient(
-                width: 3, height: 3,
-                points: [[0, 0], [0.5, 0], [1, 0], [0, 0.5], [0.55, 0.45], [1, 0.5], [0, 1], [0.5, 1], [1, 1]],
-                colors: scheme == .dark
-                    ? [Color(hex: "#132048"), Color(hex: "#0B1122"), Color(hex: "#24154A"),
-                       Color(hex: "#090D15"), Color(hex: "#0C1426"), Color(hex: "#0A0F1C"),
-                       Color(hex: "#090D15"), Color(hex: "#090D15"), Color(hex: "#090D15")]
-                    : [Color(hex: "#DCE6FF"), Color(hex: "#F1F4FC"), Color(hex: "#ECE3FF"),
-                       Color(hex: "#F4F6FB"), Color(hex: "#F4F6FB"), Color(hex: "#F4F6FB"),
-                       Color(hex: "#F4F6FB"), Color(hex: "#F4F6FB"), Color(hex: "#F4F6FB")]
-            )
-            .opacity(0.9)
-        }
-        .ignoresSafeArea()
-    }
+    var body: some View { LivingSky() }
 }
 
 // MARK: - Tipografia

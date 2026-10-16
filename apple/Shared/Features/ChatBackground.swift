@@ -408,7 +408,7 @@ struct ChatBackdropView: View {
         let dark = scheme == .dark
         switch background {
         case .none:
-            Palette.background
+            LivingSky()
         case .color(let k):
             let c = ChatBackground.colors[k] ?? ("#FFFFFF", "#000000")
             Color(hex: dark ? c.1 : c.0)
