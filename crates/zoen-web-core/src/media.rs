@@ -111,6 +111,7 @@ pub fn seal_file(
             sha256: hex::encode(Sha256::digest(bytes)),
             chunks,
             thumb,
+            voice: None,
         },
         uploads,
     })

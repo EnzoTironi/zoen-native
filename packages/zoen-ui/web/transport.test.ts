@@ -180,9 +180,70 @@ test('production send persists the ratchet before emitting and reconnect replays
 const digest = async (data: Uint8Array) => Buffer.from(await crypto.subtle.digest('SHA-256', Uint8Array.from(data))).toString('hex');
 async function attachment(data = new Uint8Array([1, 2, 3])): Promise<FileDoc> {
   const sha256 = await digest(data);
-  return { name: 'clip.webm', mime: 'audio/webm', bytes: data.length, sha256,
-    chunks: [{ sha256, bytes: data.length, blob: '44'.repeat(32), key: '55'.repeat(32) }], thumb: null };
+  return { name: 'clip.webm', path: '', mime: 'audio/webm', bytes: data.length, sha256,
+    chunks: [{ sha256, bytes: data.length, blob: '44'.repeat(32), key: '55'.repeat(32) }], thumb: null, voice: null };
 }
+
+test('native voice metadata and legacy paths survive parsing; forwarding clears only the reply', async (t) => {
+  install(t);
+  const file = { ...await attachment(), path: 'VoiceNotes/native.webm',
+    voice: { ms: 3400, levels: '08ff80', transcript: 'Bring the tent', reply: { to: 'source-entry', thread: true } } };
+  const { voice: _, ...legacy } = file;
+  const entry = { id: 'voice', entry: 'ordered', author: login.identity, name: 'Member', text: '',
+    at_ms: 1, delivery: 'confirmed', failure: null };
+  const received = [{ ...conversation, messages: [
+    { ...entry, file }, { ...entry, id: 'legacy', file: legacy },
+    { ...entry, id: 'sparse', file: { ...file, voice: { ms: 1000, reply: { to: 'quote' } } } },
+  ] }];
+  const states: MessagesState[] = [];
+  const queued: FileDoc[] = [];
+  const codec = messagingCore();
+  const core = { ...codec, text: async (op: CoreOperation) => {
+    if (op.kind === 'restore') return JSON.stringify(received);
+    if (op.kind === 'bootstrap' || op.kind === 'queue_file') {
+      if (op.kind === 'queue_file') queued.push(JSON.parse(op.doc));
+      return JSON.stringify({ snapshot: 'native voice', frames: [], conversations: received });
+    }
+    return codec.text(op);
+  } };
+  const messages = new Messages({ core, session: linked, vault: { ...vault, save: async () => {} }, changed: (state) => states.push(state) });
+  t.after(() => messages.stop());
+  await messages.start(); await authenticate();
+  const state = states.at(-1);
+  if (state?.kind !== 'active') assert.fail('message controller failed');
+  const files = state.conversations[0]!.messages.map((m) => m.file);
+  assert.deepEqual(files[0], file);
+  assert.deepEqual(files[1], { ...legacy, voice: null });
+  assert.deepEqual(files[2]?.voice, { ms: 1000, levels: '', transcript: '', reply: { to: 'quote', thread: false } });
+  await messages.forwardFile('sp_fixture', files[0]!);
+  await messages.forwardFile('sp_fixture', files[1]!);
+  assert.deepEqual(queued[0], { ...file, voice: { ...file.voice, reply: null } });
+  assert.deepEqual(queued[1], files[1]);
+  assert.deepEqual(files[0]?.voice?.reply, { to: 'source-entry', thread: true });
+});
+
+test('web recordings post a FileDoc with native voice metadata after uploading', async (t) => {
+  install(t);
+  const file = await attachment();
+  const head = new TextEncoder().encode(JSON.stringify({ doc: file, uploads: [{ blob: file.chunks[0]!.blob, len: 1 }] }));
+  const framed = new Uint8Array(head.length + 5);
+  new DataView(framed.buffer).setUint32(0, head.length, true); framed.set(head, 4);
+  const voice = { ms: 2300, levels: '04ff80', transcript: '', reply: null };
+  const codec = messagingCore();
+  let queued: FileDoc | undefined;
+  const core = { ...codec, bytes: async (op: CoreOperation) => op.kind === 'seal_file' ? framed : codec.bytes(op),
+    text: async (op: CoreOperation) => {
+      if (op.kind !== 'queue_file') return codec.text(op);
+      queued = JSON.parse(op.doc);
+      return JSON.stringify({ snapshot: 'sent voice', frames: [], conversations: [conversation] });
+    } };
+  const messages = new Messages({ core, session: linked, vault: { ...vault, save: async () => {} }, changed: () => {} });
+  t.after(() => messages.stop());
+  t.mock.method(globalThis, 'fetch', async () => new Response(null, { status: 200 }));
+  await messages.start(); await authenticate();
+  await messages.sendFile('sp_fixture', { name: file.name, mime: file.mime, bytes: new Uint8Array([1, 2, 3]), voice });
+  assert.deepEqual(queued, { ...file, voice });
+});
 
 test('malformed attachments stay local while received updates persist, synchronize and reload', async (t) => {
   install(t);
@@ -361,4 +422,50 @@ test('upload retries stop after four attempts for HTTP failures and network erro
   const sending = assert.rejects(messages.sendFile('sp_fixture', { name: file.name, mime: file.mime, bytes: new Uint8Array([1]) }, () => { done++; }), /Sem conexão agora/);
   await settle(); t.mock.timers.tick(800); await settle(); await sending;
   assert.equal(fetching.mock.callCount(), 2); assert.equal(done, 1);
+});
+
+test('upload failure keeps the queued voice note as failed instead of losing it', async (t) => {
+  install(t);
+  const file = await attachment();
+  const head = new TextEncoder().encode(JSON.stringify({ doc: { ...file, voice: { ms: 1200, levels: '04', transcript: '', reply: null } }, uploads: [{ blob: file.chunks[0]!.blob, len: 1 }] }));
+  const framed = new Uint8Array(head.length + 5);
+  new DataView(framed.buffer).setUint32(0, head.length, true); framed.set(head, 4);
+  const voice = { ms: 1200, levels: '04', transcript: '', reply: null };
+  const codec = messagingCore();
+  const failed: string[] = [];
+  const core = { ...codec,
+    bytes: async (op: CoreOperation) => op.kind === 'seal_file' ? framed : codec.bytes(op),
+    text: async (op: CoreOperation) => {
+      if (op.kind === 'queue_file') {
+        const doc = JSON.parse(op.doc);
+        return JSON.stringify({ snapshot: 'queued', frames: [], conversations: [{ ...conversation, messages: [{
+          id: 'pending-voice', entry: null, author: login.identity, name: 'Me', text: '', at_ms: 1,
+          delivery: 'sending', failure: null, ticks: null, edited: false, deleted: false, forwarded: false,
+          reactions: [], quote: null, thread: null, replies: 0, repliers: [], last_reply_ms: null, file: doc,
+        }] }] });
+      }
+      if (op.kind === 'fail_outbox') {
+        failed.push(op.client_id);
+        return JSON.stringify({ snapshot: 'failed', frames: [], conversations: [{ ...conversation, messages: [{
+          id: op.client_id, entry: null, author: login.identity, name: 'Me', text: '', at_ms: 1,
+          delivery: 'failed', failure: op.reason, ticks: null, edited: false, deleted: false, forwarded: false,
+          reactions: [], quote: null, thread: null, replies: 0, repliers: [], last_reply_ms: null,
+          file: { ...file, voice },
+        }] }] });
+      }
+      return codec.text(op);
+    },
+  };
+  const states: MessagesState[] = [];
+  const messages = new Messages({ core, session: linked, vault: { ...vault, save: async () => {} }, changed: (state) => states.push(state) });
+  t.after(() => messages.stop());
+  t.mock.method(globalThis, 'fetch', async () => new Response(null, { status: 503 }));
+  await messages.start(); await authenticate();
+  await assert.rejects(() => messages.sendFile('sp_fixture', { name: file.name, mime: file.mime, bytes: new Uint8Array([1]), voice }));
+  assert.deepEqual(failed, ['pending-voice']);
+  const state = states.at(-1);
+  if (state?.kind !== 'active') assert.fail('expected active');
+  const msg = state.conversations[0]!.messages[0]!;
+  assert.equal(msg.delivery, 'failed');
+  assert.deepEqual(msg.file?.voice, voice);
 });

@@ -18,6 +18,7 @@ export type CoreOperation =
   | { kind: 'queue_annotation'; space: string; target: string; note: string; now: number }
   | { kind: 'mark_read'; space: string }
   | { kind: 'queue_file'; space: string; doc: string; now: number }
+  | { kind: 'fail_outbox'; client_id: string; reason: string }
   | { kind: 'seal_file'; name: string; mime: string; bytes: Uint8Array; thumb: Uint8Array }
   | { kind: 'open_chunk'; chunk: string; sealed: Uint8Array }
   | { kind: 'blob_put_message'; sha: string; ts: number; relay: string }

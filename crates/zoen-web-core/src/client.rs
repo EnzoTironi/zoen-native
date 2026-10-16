@@ -456,6 +456,15 @@ impl<S: Signer> Client<S> {
     }
 
     /// Edit, delete for everyone, react or unreact. Same encrypted path as messages.
+    /// Keep a queued file/voice in the timeline as failed so the clip is not lost.
+    pub fn fail_outbox(&mut self, client_id: &str, reason: impl Into<String>) -> Result<Update, String> {
+        if let Some(pending) = self.saved.outbox.get_mut(client_id) {
+            pending.failure = Some(reason.into());
+            self.sent.remove(client_id);
+        }
+        self.update(Vec::new())
+    }
+
     pub fn queue_annotation(
         &mut self,
         space: &str,
@@ -563,7 +572,10 @@ impl<S: Signer> Client<S> {
             .find(|e| e.hash == entry)
             .and_then(|e| match &e.body {
                 EventBody::MessagePosted { reply, .. } => Some(reply.clone()),
-                body if is_post(body) => Some(None),
+                EventBody::ItemCreated {
+                    content: roda_types::ItemContent::File(doc),
+                    ..
+                } => Some(doc.voice.as_ref().and_then(|v| v.reply.clone())),
                 _ => None,
             })
     }
@@ -1009,6 +1021,32 @@ impl<S: Signer> Client<S> {
             if kind == SpaceKind::Personal || !roster.contains_key(&self.account.identity) { return None; }
             let events = self.logs.get(space)?.events();
             let me = &self.account.identity;
+            // Versions (including reverts) replace the manifest on the original post.
+            let mut files: BTreeMap<&str, (&str, Vec<&roda_types::FileDoc>)> = BTreeMap::new();
+            for event in events {
+                match &event.body {
+                    EventBody::ItemCreated { item, content: roda_types::ItemContent::File(doc), .. } => {
+                        files.entry(item).or_insert((event.author.as_str(), vec![doc]));
+                    }
+                    EventBody::ItemVersioned { item, content: roda_types::ItemContent::File(doc), .. } => {
+                        if let Some((author, versions)) = files.get_mut(item.as_str()) {
+                            // Like native, any voice version keeps the original author's ownership.
+                            if *author == event.author || !versions.iter().copied().chain([doc]).any(roda_types::FileDoc::is_voice) {
+                                versions.push(doc);
+                            }
+                        }
+                    }
+                    EventBody::ItemReverted { item, to_version, .. } => {
+                        if let Some((author, versions)) = files.get_mut(item.as_str()) {
+                            if *author != event.author && versions.iter().any(|doc| doc.is_voice()) { continue; }
+                            if let Some(doc) = to_version.checked_sub(1).and_then(|v| versions.get(v as usize)).copied() {
+                                versions.push(doc);
+                            }
+                        }
+                    }
+                    _ => {}
+                }
+            }
             // A direct chat is named after the other person, like every messenger.
             let title = match roster.keys().find(|m| *m != me) {
                 Some(other) if kind == SpaceKind::Direct => self.saved.profiles.get(other)
@@ -1044,12 +1082,18 @@ impl<S: Signer> Client<S> {
                 let mut view = self.message_view(event, "confirmed", None)?;
                 view.entry = Some(event.hash.clone());
                 view.seq = Some(event.seq);
+                if let EventBody::ItemCreated { item, .. } = &event.body {
+                    if let Some((_, versions)) = files.get(item.as_str()) {
+                        view.file = versions.last().map(|doc| (*doc).clone());
+                        view.edited = versions.len() > 1;
+                    }
+                }
                 if event.author == *me {
                     view.ticks = Some(if others.is_empty() || event.seq > all_delivered { "sent" } else if event.seq > all_read { "delivered" } else { "read" });
                 }
                 if let Some(f) = folded.get(&event.hash) {
                     view.deleted = f.deleted;
-                    if f.deleted { view.text.clear(); }
+                    if f.deleted { view.text.clear(); view.file = None; }
                     if let Some(text) = &f.text { view.text = text.clone(); view.edited = true; }
                     let mut counts: BTreeMap<&str, (usize, bool)> = BTreeMap::new();
                     for (who, emoji) in &f.reactions {
@@ -1111,7 +1155,12 @@ impl<S: Signer> Client<S> {
             EventBody::ItemCreated {
                 content: roda_types::ItemContent::File(doc),
                 ..
-            } => (String::new(), None, false, Some(doc.clone())),
+            } => (
+                String::new(),
+                doc.voice.as_ref().and_then(|v| v.reply.clone()),
+                false,
+                Some(doc.clone()),
+            ),
             _ => return None,
         };
         let name = if event.author == self.account.identity {

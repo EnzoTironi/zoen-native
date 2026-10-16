@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { message as reason } from './boundary.ts';
-import type { Conversation, FileDoc, Message, Messages } from './messages.ts';
+import type { Conversation, FileDoc, Message, Messages, VoiceMeta } from './messages.ts';
 import { FileView, kindOf, thumbnail, useRecorder } from './media.tsx';
 
 /** How I keep a chat. Local to this browser until the synced chat preferences reach the web core. */
@@ -95,7 +95,7 @@ function Bubble({ entry, own, first, onReact, onReply, onThread, onEdit, onDelet
   </article>;
 }
 
-type Outgoing = { name: string; mime: string; bytes: Uint8Array; thumb?: Uint8Array | null };
+type Outgoing = { name: string; mime: string; bytes: Uint8Array; thumb?: Uint8Array | null; voice?: VoiceMeta };
 function Composer({ placeholder, disabled, reply, cancelReply, editing, submit, autoFocus, attach }: {
   placeholder: string; disabled: boolean; reply?: Message | null; cancelReply?: () => void; editing?: Message | null; autoFocus?: boolean;
   submit: (text: string) => Promise<void>; attach?: (file: Outgoing) => Promise<void>;
@@ -111,7 +111,8 @@ function Composer({ placeholder, disabled, reply, cancelReply, editing, submit, 
         kindOf(f.type) === 'image' ? 'Enviando foto…' : kindOf(f.type) === 'video' ? 'Enviando vídeo…' : 'Enviando arquivo…');
     }
   };
-  const recorder = useRecorder((clip) => { if (clip.seconds < 0.6) return; void share({ name: `Mensagem de voz.${clip.mime.includes('mp4') ? 'm4a' : 'webm'}`, mime: clip.mime, bytes: clip.bytes }, 'Enviando mensagem de voz…'); },
+  const recorder = useRecorder((clip) => { if (clip.seconds < 0.6) return; void share({ name: `Mensagem de voz.${clip.mime.includes('mp4') ? 'm4a' : 'webm'}`, mime: clip.mime, bytes: clip.bytes,
+    voice: { ms: Math.round(clip.seconds * 1000), levels: clip.levels, transcript: '', reply: null } }, 'Enviando mensagem de voz…'); },
     (why) => setError(why));
   const [draft, setDraft] = useState('');
   const [busy, setBusy] = useState(false);

@@ -134,9 +134,9 @@ export async function thumbnail(file: File): Promise<Uint8Array | null> {
 }
 
 /** Hold-free voice recording (tap mic, tap send), with live levels. */
-export function useRecorder(done: (clip: { bytes: Uint8Array; mime: string; seconds: number }) => void, fail: (why: string) => void) {
+export function useRecorder(done: (clip: { bytes: Uint8Array; mime: string; seconds: number; levels: string }) => void, fail: (why: string) => void) {
   const [recording, setRecording] = useState<{ started: number; levels: number[] } | null>(null);
-  type Parts = { recorder: MediaRecorder | null; stream: MediaStream | null; chunks: Blob[]; keep: boolean; raf: number; context: AudioContext | null };
+  type Parts = { recorder: MediaRecorder | null; stream: MediaStream | null; chunks: Blob[]; keep: boolean; raf: number; context: AudioContext | null; levels: number[]; stopped: number };
   const parts = useRef<Parts | null>(null);
   const mounted = useRef(true);
   const [now, setNow] = useState(0);
@@ -160,7 +160,7 @@ export function useRecorder(done: (clip: { bytes: Uint8Array; mime: string; seco
   useEffect(() => { if (!live) return; const t = setInterval(() => setNow(Date.now()), 250); return () => clearInterval(t); }, [live]);
   async function start() {
     if (!mounted.current || parts.current) return;
-    const state: Parts = { recorder: null, stream: null, chunks: [], keep: false, raf: 0, context: null };
+    const state: Parts = { recorder: null, stream: null, chunks: [], keep: false, raf: 0, context: null, levels: [], stopped: 0 };
     parts.current = state;
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
@@ -176,17 +176,25 @@ export function useRecorder(done: (clip: { bytes: Uint8Array; mime: string; seco
       const buffer = new Uint8Array(analyser.frequencyBinCount);
       const started = Date.now();
       const tick = () => { analyser.getByteTimeDomainData(buffer); let m = 0; for (const v of buffer) m = Math.max(m, Math.abs(v - 128) / 128);
-        setRecording((r) => r && { ...r, levels: [...r.levels.slice(-27), Math.max(0.08, Math.min(1, m * 2.4))] }); state.raf = requestAnimationFrame(tick); };
+        const peak = Math.min(1, m * 2.4); state.levels.push(peak);
+        setRecording((r) => r && { ...r, levels: [...r.levels.slice(-27), Math.max(0.08, peak)] }); state.raf = requestAnimationFrame(tick); };
       recorder.ondataavailable = (e) => { if (e.data.size) state.chunks.push(e.data); };
       recorder.onstop = () => {
         release(state); setRecording(null);
         if (!state.keep) { discard(); return; }
         const blob = new Blob(state.chunks, { type: recorder.mimeType || 'audio/webm' });
         state.chunks.length = 0;
+        // Keep the whole recording in at most 160 hex bars, like VoiceMeta::encode.
+        const count = Math.min(160, state.levels.length);
+        const levels = Array.from({ length: count }, (_, i) => {
+          let peak = 0;
+          for (let j = Math.floor(i * state.levels.length / count); j < Math.floor((i + 1) * state.levels.length / count); j++) peak = Math.max(peak, state.levels[j]!);
+          return Math.round(peak * 15).toString(16);
+        }).join('');
         void blob.arrayBuffer().then((b) => {
           if (parts.current !== state) return;
           discard();
-          done({ bytes: new Uint8Array(b), mime: (recorder.mimeType || 'audio/webm').split(';')[0]!, seconds: (Date.now() - started) / 1000 });
+          done({ bytes: new Uint8Array(b), mime: (recorder.mimeType || 'audio/webm').split(';')[0]!, seconds: (state.stopped - started) / 1000, levels });
         }).catch(() => failed());
       };
       function failed() {
@@ -204,7 +212,7 @@ export function useRecorder(done: (clip: { bytes: Uint8Array; mime: string; seco
     const p = parts.current; if (!p) return;
     if (keep && p.keep) return;
     if (!keep || !p.recorder || p.recorder.state === 'inactive') { discard(); setRecording(null); return; }
-    p.keep = true; p.recorder.stop(); release(p); setRecording(null);
+    p.keep = true; p.stopped = Date.now(); p.recorder.stop(); release(p); setRecording(null);
   }
   return { recording, seconds: recording ? (now - recording.started) / 1000 : 0, start, send: () => stop(true), cancel: () => stop(false), clock };
 }

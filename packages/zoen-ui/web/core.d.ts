@@ -21,6 +21,7 @@ declare module '*/core/zoen_web_core.js' {
     queue_post(space: string, text: string, replyTo: string | undefined, thread: boolean, forwarded: boolean, now: number): string;
     queue_annotation(space: string, target: string, note: string, now: number): string;
     mark_read(space: string): string;
+    fail_outbox(client_id: string, reason: string): string;
     queue_file(space: string, doc: string, now: number): string;
     queue_join(space: string, role: string, code: string, now: number): string;
   }

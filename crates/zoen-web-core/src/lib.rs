@@ -138,6 +138,15 @@ mod browser {
             )
             .map_err(error)
         }
+        pub fn fail_outbox(&mut self, client_id: &str, reason: &str) -> Result<String, JsValue> {
+            serde_json::to_string(
+                &self
+                    .client
+                    .fail_outbox(client_id, reason.to_string())
+                    .map_err(error)?,
+            )
+            .map_err(error)
+        }
         pub fn mark_read(&mut self, space: &str) -> Result<String, JsValue> {
             serde_json::to_string(&self.client.mark_read(space).map_err(error)?).map_err(error)
         }
