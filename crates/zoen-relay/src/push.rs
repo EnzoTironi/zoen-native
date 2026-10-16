@@ -22,6 +22,10 @@ use ring::{
     signature::{EcdsaKeyPair, RsaKeyPair, ECDSA_P256_SHA256_FIXED_SIGNING, RSA_PKCS1_SHA256},
 };
 use serde_json::{json, Value};
+use tokio::sync::{OwnedSemaphorePermit, Semaphore};
+
+/// Bound whole wake jobs, including their audience clones and database/provider work.
+const MAX_WAKE_TASKS: usize = 32;
 
 pub const APNS: &str = "apns";
 pub const APNS_SANDBOX: &str = "apns-sandbox";
@@ -135,6 +139,7 @@ struct Fcm {
 }
 
 pub struct Pusher {
+    wake_slots: Arc<Semaphore>,
     http: Arc<dyn Http>,
     apns: Option<Apns>,
     fcm: Option<Fcm>,
@@ -201,7 +206,12 @@ impl Pusher {
             }),
             None => None,
         };
-        Ok(Self { http, apns, fcm })
+        Ok(Self {
+            wake_slots: Arc::new(Semaphore::new(MAX_WAKE_TASKS)),
+            http,
+            apns,
+            fcm,
+        })
     }
 
     /// From env; a platform whose env is incomplete or broken is off (and says so once).
@@ -254,6 +264,7 @@ impl Pusher {
 
     fn disabled_with(http: Arc<dyn Http>) -> Self {
         Self {
+            wake_slots: Arc::new(Semaphore::new(MAX_WAKE_TASKS)),
             http,
             apns: None,
             fcm: None,
@@ -266,6 +277,13 @@ impl Pusher {
 
     pub fn enabled(&self) -> bool {
         self.apns.is_some() || self.fcm.is_some()
+    }
+
+    /// Admit before cloning an audience or spawning. Wakes are best-effort: overload
+    /// drops this wake rather than queuing tasks; durable events still sync normally.
+    /// Keep the permit in the task until all database/provider work has finished.
+    pub(crate) fn try_wake_task(&self) -> Option<OwnedSemaphorePermit> {
+        self.wake_slots.clone().try_acquire_owned().ok()
     }
 
     pub async fn wake(&self, t: &Target) -> Outcome {
@@ -471,6 +489,71 @@ mod tests {
             platform: p.into(),
             token: "abc".into(),
         }
+    }
+
+    /// Deterministic resource benchmark: hold every admitted job until the entire
+    /// burst is offered, so scheduler speed cannot hide an unbounded task backlog.
+    #[tokio::test]
+    async fn wake_admission_resource_benchmark() {
+        const BURST: usize = 4096;
+        const AUDIENCE_BYTES: usize = 1024;
+        let mut baseline = Vec::new();
+        let mut baseline_release = Vec::new();
+        for _ in 0..BURST {
+            let audience = vec![0u8; AUDIENCE_BYTES];
+            let (tx, rx) = tokio::sync::oneshot::channel::<()>();
+            baseline_release.push(tx);
+            baseline.push(tokio::spawn(async move {
+                let _audience = audience;
+                let _ = rx.await;
+            }));
+        }
+        assert_eq!(baseline.len(), BURST);
+        drop(baseline_release);
+        for job in baseline {
+            job.await.unwrap();
+        }
+        let p = Pusher::new(Arc::new(Mock::default()), None, None).unwrap();
+        let other = Pusher::new(Arc::new(Mock::default()), None, None).unwrap();
+        let mut jobs = Vec::new();
+        let mut release = Vec::new();
+        let mut cloned_bytes = 0;
+        for _ in 0..BURST {
+            let Some(permit) = p.try_wake_task() else {
+                continue;
+            };
+            let audience = vec![0u8; AUDIENCE_BYTES];
+            cloned_bytes += audience.len();
+            let (tx, rx) = tokio::sync::oneshot::channel::<()>();
+            release.push(tx);
+            jobs.push(tokio::spawn(async move {
+                let _permit = permit;
+                let _audience = audience;
+                let _ = rx.await;
+            }));
+        }
+        assert_eq!(jobs.len(), MAX_WAKE_TASKS);
+        assert_eq!(cloned_bytes, MAX_WAKE_TASKS * AUDIENCE_BYTES);
+        assert!(p.try_wake_task().is_none());
+        assert!(other.try_wake_task().is_some(), "limits are per Pusher");
+        eprintln!(
+            "wake burst={BURST}: before tasks={BURST} audience_bytes={}; after tasks={} audience_bytes={cloned_bytes}",
+            BURST * AUDIENCE_BYTES,
+            jobs.len()
+        );
+        drop(release);
+        for job in jobs {
+            job.await.unwrap();
+        }
+        assert_eq!(p.wake_slots.available_permits(), MAX_WAKE_TASKS);
+        let permit = p.try_wake_task().unwrap();
+        let job = tokio::spawn(async move {
+            let _permit = permit;
+            std::future::pending::<()>().await;
+        });
+        job.abort();
+        assert!(job.await.unwrap_err().is_cancelled());
+        assert_eq!(p.wake_slots.available_permits(), MAX_WAKE_TASKS);
     }
 
     #[tokio::test]

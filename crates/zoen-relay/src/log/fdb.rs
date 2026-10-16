@@ -50,8 +50,25 @@ use roda_log::chain_hash;
 use roda_proto::{Envelope, InviteCreated, Sequenced};
 use roda_types::{EventBody, Privacy, Role, SpaceKind, GENESIS_PREV};
 use sha2::{Digest, Sha256};
+
+fn extend_co_members(
+    out: &mut Vec<String>,
+    seen: &mut HashSet<String>,
+    who: &str,
+    members: impl IntoIterator<Item = String>,
+) {
+    for member in members {
+        if member != who && seen.insert(member.clone()) {
+            out.push(member);
+        }
+    }
+}
+
+#[cfg(test)]
+#[path = "co_member_dedup_tests.rs"]
+mod co_member_dedup_tests;
 use std::{
-    collections::{BTreeMap, HashMap},
+    collections::{BTreeMap, HashMap, HashSet},
     sync::{
         atomic::{AtomicU32, AtomicU64, Ordering},
         Arc, Mutex,
@@ -1174,12 +1191,19 @@ impl LogStore for FdbLog {
     }
 
     async fn co_members(&self, who: &str) -> Result<Vec<String>, StoreError> {
-        let mut out: Vec<String> = Vec::new();
-        for space in self.spaces_of(who).await? {
-            for (m, _) in self.members(&space).await? {
-                if m != who && !out.contains(&m) {
-                    out.push(m);
-                }
+        let mut out = Vec::new();
+        let mut seen = HashSet::new();
+        // Bound read fanout while overlapping independent membership transactions.
+        // try_join_all preserves space order, so first-seen output order is unchanged.
+        let spaces = self.spaces_of(who).await?;
+        for batch in spaces.chunks(16) {
+            for members in try_join_all(batch.iter().map(|space| self.members(space))).await? {
+                extend_co_members(
+                    &mut out,
+                    &mut seen,
+                    who,
+                    members.into_iter().map(|(member, _)| member),
+                );
             }
         }
         Ok(out)
