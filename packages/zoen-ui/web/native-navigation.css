@@ -1,17 +1,20 @@
-/* Measured iPhone prominent TabView capture: 402pt wide, x20 pill 291x61,
-   x319 action 63x63, y791 at 874pt height. No inferred motion timings. */
-.zn-navigation{position:absolute;z-index:30;left:20px;right:20px;bottom:20px;display:flex;align-items:center;gap:8px;height:63px;color:#090a0b;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;isolation:isolate}
+/* Verified native AX at 402pt: pill x20/y791/291x61; action x319/y791/62x62.
+   Top-only 62pt crop gives y729 in 402x812 content. Tab hit frames overlap
+   by 20pt. No inferred motion timings. */
+.zn-navigation{position:absolute;z-index:30;left:20px;right:21px;bottom:21px;display:flex;align-items:flex-start;gap:8px;height:62px;color:#090a0b;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;isolation:isolate}
 .zn-tabs,.zn-new-message{background:rgba(244,246,251,.64);backdrop-filter:blur(24px) saturate(1.55);-webkit-backdrop-filter:blur(24px) saturate(1.55);border:.5px solid rgba(40,48,64,.28);box-shadow:inset 0 1px 1px rgba(255,255,255,.95),0 1px 2px rgba(15,20,30,.06)}
-.zn-tabs{height:61px;min-width:0;flex:1;display:flex;align-items:stretch;border-radius:34px;padding:3px 4px;box-sizing:border-box}
+.zn-tabs{height:61px;min-width:0;flex:1;display:flex;align-items:stretch;border-radius:34px;padding:3.5px 4.5px;box-sizing:border-box}
 .zn-navigation button{font:inherit;color:inherit;cursor:pointer;-webkit-tap-highlight-color:transparent;touch-action:manipulation}
-.zn-navigation .zn-tab{position:relative;flex:1;min-width:0;border:0;background:none;border-radius:29px;padding:4px 1px 3px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px}
+.zn-navigation .zn-tab{position:relative;flex:0 0 79.61236px;width:79.61236px;height:54px;min-width:0;border:0;background:none;border-radius:29px;padding:4px 1px 3px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px}
+.zn-navigation .zn-tab+.zn-tab{margin-left:-20px}
+.zn-navigation .zn-tab:nth-child(3){flex-basis:103.16292px;width:103.16292px}
 .zn-tab[aria-current=page]{color:#2c6a1e!important;background:rgba(95,109,112,.13)!important}
 .zn-tab-icon{position:relative;height:28px;display:flex;align-items:center;justify-content:center}
 .zn-symbol{display:block;width:28px;height:28px}
 .zn-label{font-size:10px;line-height:12px;font-weight:500;letter-spacing:.05px;white-space:nowrap}
 .zn-tab[aria-current=page] .zn-label{font-weight:600}
 .zn-badge{position:absolute;top:-4px;left:calc(100% - 1px);background:#ff343c;border:1.5px solid #f4f6fb;color:white;border-radius:20px;min-width:20px;height:20px;padding:0 4px;box-sizing:border-box;display:grid;place-items:center;font-size:12px;font-weight:400;line-height:17px}
-.zn-navigation .zn-new-message{width:63px;height:63px;flex:0 0 63px;border-radius:50%;display:grid;place-items:center;padding:18px;box-sizing:border-box}
+.zn-navigation .zn-new-message{width:62px;height:62px;flex:0 0 62px;border-radius:50%;display:grid;place-items:center;padding:18px;box-sizing:border-box}
 .zn-new-message svg{width:27px;height:27px;display:block}
 .zn-navigation button:focus-visible{outline:2px solid #3d7a28;outline-offset:3px}
 @media(prefers-color-scheme:dark){.zn-navigation{color:#eef2fa}.zn-tabs,.zn-new-message{background:rgba(24,32,50,.66);border-color:rgba(210,220,240,.26);box-shadow:inset 0 1px 1px rgba(255,255,255,.18),0 1px 2px rgba(0,0,0,.2)}.zn-tab[aria-current=page]{color:#86c25a!important;background:rgba(215,225,235,.13)!important}.zn-badge{border-color:#182032}}
