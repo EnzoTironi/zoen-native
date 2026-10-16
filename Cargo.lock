@@ -4943,152 +4943,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "zoen-docs"
-version = "0.1.0"
-dependencies = [
- "comrak",
- "getrandom 0.2.17",
- "hex",
- "loro",
- "zoen-types",
- "serde",
- "serde_json",
- "sha2 0.10.9",
-]
-
-[[package]]
-name = "zoen-ffi"
-version = "0.1.0"
-dependencies = [
- "argon2",
- "base64 0.22.1",
- "chacha20poly1305 0.11.0",
- "chrono",
- "chrono-tz",
- "curve25519-dalek 4.1.3",
- "fastcdc",
- "futures-util",
- "getrandom 0.2.17",
- "hex",
- "hkdf 0.12.4",
- "hpke-rs",
- "prost",
- "rcgen",
- "reqwest",
- "zoen-docs",
- "zoen-grants",
- "zoen-log",
- "zoen-mls",
- "zoen-proto",
- "zoen-store",
- "zoen-types",
- "rusqlite",
- "rustls",
- "serde",
- "serde_json",
- "sha2 0.10.9",
- "thiserror 2.0.21",
- "tokio",
- "tokio-tungstenite 0.30.0",
- "uniffi",
- "webpki-roots 1.0.9",
- "zeroize",
- "zoen-liveview",
-]
-
-[[package]]
-name = "zoen-gate"
-version = "0.1.0"
-dependencies = [
- "zoen-grants",
- "zoen-types",
- "serde",
- "serde_json",
- "sha2 0.10.9",
-]
-
-[[package]]
-name = "zoen-grants"
-version = "0.1.0"
-dependencies = [
- "zoen-types",
- "serde",
-]
-
-[[package]]
-name = "zoen-log"
-version = "0.1.0"
-dependencies = [
- "chacha20poly1305 0.11.0",
- "ed25519-dalek",
- "getrandom 0.2.17",
- "hex",
- "hkdf 0.12.4",
- "prost",
- "zoen-types",
- "serde",
- "serde_json",
- "sha2 0.10.9",
- "thiserror 2.0.21",
- "x25519-dalek 2.0.1",
-]
-
-[[package]]
-name = "zoen-mls"
-version = "0.1.0"
-dependencies = [
- "chacha20poly1305 0.11.0",
- "hex",
- "hkdf 0.12.4",
- "hmac 0.12.1",
- "openmls",
- "openmls_basic_credential",
- "openmls_rust_crypto",
- "openmls_sqlite_storage",
- "openmls_traits",
- "zoen-log",
- "rusqlite",
- "serde",
- "serde_json",
- "sha2 0.10.9",
- "thiserror 2.0.21",
-]
-
-[[package]]
-name = "zoen-proto"
-version = "0.1.0"
-dependencies = [
- "hex",
- "prost",
- "zoen-log",
- "zoen-types",
- "serde",
- "serde_json",
- "sha2 0.10.9",
-]
-
-[[package]]
-name = "zoen-store"
-version = "0.1.0"
-dependencies = [
- "zoen-types",
- "rusqlite",
- "serde_json",
- "thiserror 2.0.21",
-]
-
-[[package]]
-name = "zoen-types"
-version = "0.1.0"
-dependencies = [
- "getrandom 0.2.17",
- "hex",
- "serde",
- "serde_json",
- "sha2 0.10.9",
-]
-
-[[package]]
 name = "rusqlite"
 version = "0.37.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -7765,9 +7619,6 @@ dependencies = [
  "getrandom 0.2.17",
  "hex",
  "reqwest",
- "zoen-gate",
- "zoen-log",
- "zoen-types",
  "rustls",
  "serde",
  "serde_json",
@@ -7780,7 +7631,10 @@ dependencies = [
  "zeroize",
  "zoen-agentd",
  "zoen-egress",
+ "zoen-gate",
+ "zoen-log",
  "zoen-models",
+ "zoen-types",
 ]
 
 [[package]]
@@ -7795,12 +7649,6 @@ dependencies = [
  "opentelemetry-proto",
  "prost",
  "reqwest",
- "zoen-ffi",
- "zoen-gate",
- "zoen-log",
- "zoen-proto",
- "zoen-store",
- "zoen-types",
  "rusqlite",
  "serde_json",
  "sha2 0.10.9",
@@ -7808,6 +7656,26 @@ dependencies = [
  "tokio",
  "tokio-tungstenite 0.30.0",
  "zoen-agentd",
+ "zoen-ffi",
+ "zoen-gate",
+ "zoen-log",
+ "zoen-proto",
+ "zoen-store",
+ "zoen-types",
+]
+
+[[package]]
+name = "zoen-docs"
+version = "0.1.0"
+dependencies = [
+ "comrak",
+ "getrandom 0.2.17",
+ "hex",
+ "loro",
+ "serde",
+ "serde_json",
+ "sha2 0.10.9",
+ "zoen-types",
 ]
 
 [[package]]
@@ -7820,7 +7688,6 @@ dependencies = [
  "hex",
  "httparse",
  "rcgen",
- "zoen-types",
  "rustls",
  "serde",
  "serde_json",
@@ -7830,6 +7697,66 @@ dependencies = [
  "tokio",
  "tokio-rustls",
  "webpki-roots 1.0.9",
+ "zoen-types",
+]
+
+[[package]]
+name = "zoen-ffi"
+version = "0.1.0"
+dependencies = [
+ "argon2",
+ "base64 0.22.1",
+ "chacha20poly1305 0.11.0",
+ "chrono",
+ "chrono-tz",
+ "curve25519-dalek 4.1.3",
+ "fastcdc",
+ "futures-util",
+ "getrandom 0.2.17",
+ "hex",
+ "hkdf 0.12.4",
+ "hpke-rs",
+ "prost",
+ "rcgen",
+ "reqwest",
+ "rusqlite",
+ "rustls",
+ "serde",
+ "serde_json",
+ "sha2 0.10.9",
+ "thiserror 2.0.21",
+ "tokio",
+ "tokio-tungstenite 0.30.0",
+ "uniffi",
+ "webpki-roots 1.0.9",
+ "zeroize",
+ "zoen-docs",
+ "zoen-grants",
+ "zoen-liveview",
+ "zoen-log",
+ "zoen-mls",
+ "zoen-proto",
+ "zoen-store",
+ "zoen-types",
+]
+
+[[package]]
+name = "zoen-gate"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
+ "sha2 0.10.9",
+ "zoen-grants",
+ "zoen-types",
+]
+
+[[package]]
+name = "zoen-grants"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "zoen-types",
 ]
 
 [[package]]
@@ -7864,12 +7791,51 @@ dependencies = [
  "fastrand",
  "futures-util",
  "hdrhistogram",
- "zoen-log",
- "zoen-proto",
- "zoen-types",
  "serde_json",
  "tokio",
  "tokio-tungstenite 0.30.0",
+ "zoen-log",
+ "zoen-proto",
+ "zoen-types",
+]
+
+[[package]]
+name = "zoen-log"
+version = "0.1.0"
+dependencies = [
+ "chacha20poly1305 0.11.0",
+ "ed25519-dalek",
+ "getrandom 0.2.17",
+ "hex",
+ "hkdf 0.12.4",
+ "prost",
+ "serde",
+ "serde_json",
+ "sha2 0.10.9",
+ "thiserror 2.0.21",
+ "x25519-dalek 2.0.1",
+ "zoen-types",
+]
+
+[[package]]
+name = "zoen-mls"
+version = "0.1.0"
+dependencies = [
+ "chacha20poly1305 0.11.0",
+ "hex",
+ "hkdf 0.12.4",
+ "hmac 0.12.1",
+ "openmls",
+ "openmls_basic_credential",
+ "openmls_rust_crypto",
+ "openmls_sqlite_storage",
+ "openmls_traits",
+ "rusqlite",
+ "serde",
+ "serde_json",
+ "sha2 0.10.9",
+ "thiserror 2.0.21",
+ "zoen-log",
 ]
 
 [[package]]
@@ -7892,6 +7858,19 @@ dependencies = [
  "tracing",
  "tracing-subscriber",
  "url",
+]
+
+[[package]]
+name = "zoen-proto"
+version = "0.1.0"
+dependencies = [
+ "hex",
+ "prost",
+ "serde",
+ "serde_json",
+ "sha2 0.10.9",
+ "zoen-log",
+ "zoen-types",
 ]
 
 [[package]]
@@ -7919,10 +7898,6 @@ dependencies = [
  "postgresql_embedded",
  "reqwest",
  "ring",
- "zoen-log",
- "zoen-mls",
- "zoen-proto",
- "zoen-types",
  "rusqlite",
  "rustls",
  "serde",
@@ -7936,6 +7911,10 @@ dependencies = [
  "tracing",
  "tracing-opentelemetry",
  "tracing-subscriber",
+ "zoen-log",
+ "zoen-mls",
+ "zoen-proto",
+ "zoen-types",
 ]
 
 [[package]]
@@ -7948,12 +7927,6 @@ dependencies = [
  "foundationdb",
  "getrandom 0.2.17",
  "hex",
- "zoen-ffi",
- "zoen-log",
- "zoen-mls",
- "zoen-proto",
- "zoen-store",
- "zoen-types",
  "serde",
  "serde_json",
  "sha2 0.10.9",
@@ -7961,8 +7934,14 @@ dependencies = [
  "thiserror 2.0.21",
  "tokio",
  "zeroize",
+ "zoen-ffi",
+ "zoen-log",
+ "zoen-mls",
  "zoen-models",
+ "zoen-proto",
  "zoen-relay",
+ "zoen-store",
+ "zoen-types",
 ]
 
 [[package]]
@@ -7976,7 +7955,6 @@ dependencies = [
  "hex",
  "libc",
  "rcgen",
- "zoen-types",
  "rustls",
  "serde",
  "serde_json",
@@ -7988,6 +7966,28 @@ dependencies = [
  "zoen-egress",
  "zoen-guestd",
  "zoen-liveview",
+ "zoen-types",
+]
+
+[[package]]
+name = "zoen-store"
+version = "0.1.0"
+dependencies = [
+ "rusqlite",
+ "serde_json",
+ "thiserror 2.0.21",
+ "zoen-types",
+]
+
+[[package]]
+name = "zoen-types"
+version = "0.1.0"
+dependencies = [
+ "getrandom 0.2.17",
+ "hex",
+ "serde",
+ "serde_json",
+ "sha2 0.10.9",
 ]
 
 [[package]]
@@ -8002,16 +8002,16 @@ dependencies = [
  "openmls",
  "openmls_rust_crypto",
  "openmls_traits",
- "zoen-log",
- "zoen-mls",
- "zoen-proto",
- "zoen-types",
  "rusqlite",
  "serde",
  "serde_json",
  "sha2 0.10.9",
  "wasm-bindgen",
  "zeroize",
+ "zoen-log",
+ "zoen-mls",
+ "zoen-proto",
+ "zoen-types",
 ]
 
 [[package]]
