@@ -18,9 +18,19 @@ Native Apple glass is not approximated by a material fallback. Motion is feedbac
 for an actual action, not decoration on reading surfaces; Reduce Motion must be
 respected. Public labels must not expose encryption implementation terminology.
 
+## Opt-in flag
+
+The presentation key is `LivingSpacesEnabled` on every client; absence means off.
+Apple reads a Boolean UserDefaults value (debug launch argument
+`-LivingSpacesEnabled YES`); Android reads a Boolean in the repository's app
+preferences; web reads the exact string `true` in localStorage. Test journeys set
+only their test-owned preferences. The native presentation synchronizes the value
+through `set_living_space_enabled`; no migration enables it automatically.
+The fixture harness is separately labelled and does not sign into a real account.
+
 ## Local evidence
 
-Screenshots stay in `~/living-space-shots/`; do not publish the supplied WhatsApp
+Screenshots stay in `~/run-shots/`; do not publish the supplied WhatsApp
 research screenshots or reuse third-party names or phone numbers in fixtures.
 Use synthetic fixture identities. Capture each of `home`, `announcements`, `page`,
 `notifications`, `hackathon` (registration/schedule), `teams`, `submission`,

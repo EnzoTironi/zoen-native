@@ -1,4 +1,5 @@
 import AppKit
+import ImageIO
 
 // Local review aid only. A contact sheet is not a substitute for individual
 // application captures or behavioral/parity checks. No media is published.
@@ -22,7 +23,11 @@ for (index, screen) in screens.enumerated() {
     let x = CGFloat(index % 3) * cell.width
     let y = size.height - CGFloat(index / 3 + 1) * cell.height
     let name = "\(platform)-\(theme)-\(screen).png"
-    let image = NSImage(contentsOf: directory.appendingPathComponent(name))
+    // Review raw PNG pixels without AppKit applying a second orientation from
+    // retained simulator metadata. The original screenshots are never changed.
+    let image: NSImage? = CGImageSourceCreateWithURL(directory.appendingPathComponent(name) as CFURL, nil)
+        .flatMap { CGImageSourceCreateImageAtIndex($0, 0, nil) }
+        .map { NSImage(cgImage: $0, size: NSSize(width: $0.width, height: $0.height)) }
     let label = image == nil ? "MISSING: \(screen)" : screen
     (label as NSString).draw(at: NSPoint(x: x + 8, y: y + cell.height - 22), withAttributes: [
         .font: NSFont.systemFont(ofSize: 14), .foregroundColor: NSColor.black

@@ -18,18 +18,27 @@ class EvidenceInventoryTests(unittest.TestCase):
             self.assertEqual(len(captures), 90)
             self.assertTrue(all(c["status"] == "missing" for c in captures))
 
+    def test_rotated_or_wrong_viewport_is_not_counted_as_canonical(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / "ipad-dark-home.png").write_bytes(
+                b"\x89PNG\r\n\x1a\n" + struct.pack(">I", 13) + b"IHDR"
+                + struct.pack(">II", 1668, 2388))
+            captures = {c["file"]: c for c in evidence.inventory(root)}
+            self.assertEqual(captures["ipad-dark-home.png"]["status"], "wrong_dimensions")
+
     def test_png_header_inventory_does_not_claim_behavior(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             # Minimal header fixture; this checks metadata parsing, not image validity.
             (root / "iphone-light-home.png").write_bytes(
                 b"\x89PNG\r\n\x1a\n" + struct.pack(">I", 13) + b"IHDR"
-                + struct.pack(">II", 440, 956))
+                + struct.pack(">II", 1320, 2868))
             (root / "iphone-light-page.png").write_text("not a PNG")
             captures = {c["file"]: c for c in evidence.inventory(root)}
             home = captures["iphone-light-home.png"]
             self.assertEqual((home["status"], home["width"], home["height"]),
-                             ("present", 440, 956))
+                             ("present", 1320, 2868))
             self.assertEqual(captures["iphone-light-page.png"]["status"], "invalid")
             self.assertEqual(captures["ipad-light-home.png"]["status"], "missing")
 

@@ -58,7 +58,11 @@ final class LivingSpaceCaptureTests: XCTestCase {
         XCTAssertTrue((editor.value as? String)?.contains(marker) == true, "actual page edit must persist after leaving and reopening")
         editor.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.75)).tap()
         editor.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: marker.count))
-        XCTAssertTrue(saved.waitForExistence(timeout: 10))
+        // Saving is debounced by four seconds, then crosses Core and updates the
+        // toolbar. On a loaded simulator the acknowledgement can arrive after ten
+        // seconds (the failure hierarchy already showed page.saved). Keep the
+        // acknowledgement and reopen assertions, but allow that async work to finish.
+        XCTAssertTrue(saved.waitForExistence(timeout: 30))
         app.navigationBars.buttons["Home"].firstMatch.tap()
         scrollTo(page, in: app)
         page.tap()

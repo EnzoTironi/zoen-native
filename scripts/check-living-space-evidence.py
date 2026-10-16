@@ -14,6 +14,10 @@ import sys
 PLATFORMS = ("iphone", "ipad", "android", "web-narrow", "web-wide")
 SCREENS = ("home", "announcements", "page", "notifications", "hackathon", "teams", "submission", "results", "tiers")
 THEMES = ("light", "dark")
+# Canonical capture viewports, including native screenshot scale. Android's
+# runtime density/size is recorded by its journey, not inferred from PNG bytes.
+EXPECTED_SIZE = {"iphone": (1320, 2868), "ipad": (2388, 1668),
+                 "web-narrow": (440, 956), "web-wide": (1194, 834)}
 
 
 def inventory(directory):
@@ -29,8 +33,13 @@ def inventory(directory):
                     if (len(header) == 24 and header[:8] == b"\x89PNG\r\n\x1a\n"
                             and header[12:16] == b"IHDR"):
                         width, height = struct.unpack(">II", header[16:24])
-                        entry.update(status="present" if width and height else "invalid",
-                                     width=width, height=height)
+                        expected = EXPECTED_SIZE.get(platform)
+                        status = "present" if width and height else "invalid"
+                        if status == "present" and expected and (width, height) != expected:
+                            status = "wrong_dimensions"
+                        entry.update(status=status, width=width, height=height)
+                        if expected:
+                            entry.update(expected_width=expected[0], expected_height=expected[1])
                     else:
                         entry["status"] = "invalid"
                 entries.append(entry)
@@ -40,7 +49,7 @@ def inventory(directory):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("directory", nargs="?", type=Path,
-                        default=Path.home() / "living-space-shots")
+                        default=Path.home() / "run-shots")
     args = parser.parse_args()
     entries = inventory(args.directory)
     print(json.dumps({"scope": "file inventory only; not behavioral or visual verification",
