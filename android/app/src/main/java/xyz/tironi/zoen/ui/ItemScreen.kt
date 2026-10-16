@@ -35,6 +35,7 @@ private data class PlanReadState(val page: PlanPageDto? = null, val revision: Lo
 @Composable
 fun ItemScreen(model: ZoenViewModel, state: AppState, id: String, navigate: (NavKey) -> Unit, back: () -> Unit) {
     val item = state.items.firstOrNull { it.id == id }
+    val living = model.repository.preferences.getBoolean("LivingSpacesEnabled", false)
     var versions by rememberSaveable(id) { mutableStateOf(false) }
     var restore by remember(id) { mutableStateOf<UInt?>(null) }
     // The binding the version sheet saw when it opened. Restore never re-reads it at tap time.
@@ -57,7 +58,7 @@ fun ItemScreen(model: ZoenViewModel, state: AppState, id: String, navigate: (Nav
         } else planRead = PlanReadState()
     }
     val planFresh = planRead.revision == state.revision
-    val historyAvailable = item?.kindId != "plan" || planFresh && planRead.page?.legacyEditAdmitted == true
+    val historyAvailable = (!living || item?.app == null) && (item?.kindId != "plan" || planFresh && planRead.page?.legacyEditAdmitted == true)
     val restoreAllowed = historyAvailable && (item?.kindId != "page" || model.pageSaves.canRestore(id)) &&
         (item?.kindId != "plan" || sheetHash != null)
     val context = LocalContext.current
@@ -76,7 +77,7 @@ fun ItemScreen(model: ZoenViewModel, state: AppState, id: String, navigate: (Nav
     }
     Scaffold(topBar = {
         ScreenBar(item.title, back, actions = {
-            if (item.app != null) MiniAppDetailsButton(model, state, item)
+            if (!living && item.app != null) MiniAppDetailsButton(model, state, item)
             IconButton(enabled = historyAvailable, onClick = { focus.clearFocus(force = true); model.launch {
                 try { model.pageSaves.flush(id) } catch (error: Exception) {
                     model.notify(if (error is CoreException.Stale) draftRecovery else error.message.orEmpty())
@@ -100,6 +101,12 @@ fun ItemScreen(model: ZoenViewModel, state: AppState, id: String, navigate: (Nav
         })
     }) { padding ->
         when {
+            living && item.app != null -> Column(Modifier.padding(padding).padding(24.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                Text(item.title, style = MaterialTheme.typography.headlineLarge)
+                Text(item.app!!.headline, style = MaterialTheme.typography.bodyLarge)
+                if (!item.text.isNullOrBlank()) Text(item.text.orEmpty())
+                Text("Mini-apps are paused in this Space.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
             item.app != null -> MiniAppScreen(model, state, item, Modifier.padding(padding), onClose = back)
             item.kindId == "page" -> xyz.tironi.zoen.pages.RichPageEditor(model, state, item, Modifier.padding(padding))
             item.kindId == "plan" -> PlanPageView(model, item, planRead.page, planRead.failure, planFresh, Modifier.padding(padding), navigate)

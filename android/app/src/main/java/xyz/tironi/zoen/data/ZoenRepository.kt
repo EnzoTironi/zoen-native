@@ -226,7 +226,9 @@ class ZoenRepository(private val context: Context) {
         val account = core.account()
         val old = mutableState.value
         val spaces = core.spaces()
-        observed.keys.retainAll(spaces.map { it.id }.toSet())
+        // Hidden conversation partitions are deliberately absent from root navigation,
+        // but an authorized routed child still needs observation and live timeline updates.
+        observed.keys.removeAll { id -> runCatching { core.space(id) }.isFailure }
         mutableState.value = old.copy(
             ready = true, failure = null, account = account,
             me = if (old.demo || account != null) core.me() else null,
@@ -250,7 +252,7 @@ class ZoenRepository(private val context: Context) {
 
     suspend fun observe(space: String, owner: Any) = withContext(Dispatchers.IO) {
         gate.withLock {
-            if (mutableState.value.spaces.any { it.id == space }) {
+            if (runCatching { engine?.space(space) ?: error("Zoen is still opening.") }.isSuccess) {
                 observed.getOrPut(space) {
                     java.util.Collections.newSetFromMap(java.util.IdentityHashMap<Any, Boolean>())
                 }.add(owner)

@@ -113,10 +113,19 @@ private fun Modifier.messageFace() = layout { measurable, constraints ->
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ChatScreen(model: ZoenViewModel, state: AppState, spaceId: String, navigate: (NavKey) -> Unit, back: () -> Unit, focusMessage: String? = null) {
-    val space = state.spaces.firstOrNull { it.id == spaceId }
+    val listedSpace = state.spaces.firstOrNull { it.id == spaceId }
+    val routedSpace by produceState<SpaceSummary?>(listedSpace, spaceId, state.revision) {
+        value = listedSpace ?: try { model.repository.query { it.space(spaceId) } } catch (_: Exception) { null }
+    }
+    val space = listedSpace ?: routedSpace
+    val living = space != null && space.counterpart == null && model.repository.preferences.getBoolean("LivingSpacesEnabled", false)
+    if (living && space?.kind == SpaceKindDto.COMMUNITY) {
+        LivingSpaceScreen(model, state, space, navigate, back)
+        return
+    }
     val allEntries = state.timelines[spaceId].orEmpty()
     val appIds = state.items.filter { it.app != null }.map { it.id }.toSet()
-    val timeline = allEntries.filter { it.inThread == null && (it.kind as? EntryKind.ItemEdited)?.itemId !in appIds }
+    val timeline = allEntries.filter { it.inThread == null && (it.kind as? EntryKind.ItemEdited)?.itemId !in appIds && (!living || it.author.kind == PersonaKind.PERSON) }
     val list = rememberLazyListState()
     val scrollScope = rememberCoroutineScope()
     var firstLoad by rememberSaveable(spaceId) { mutableStateOf(true) }
@@ -239,7 +248,10 @@ fun ChatScreen(model: ZoenViewModel, state: AppState, spaceId: String, navigate:
             sending = true
             model.launch {
                 try {
-                    model.send(spaceId, text, reply, onStored = { sendHaptics.perform(ZoenFeedback.Send) })
+                    if (living) {
+                        model.repository.change { core -> if (reply == null) core.sendMessage(spaceId, text) else core.sendReply(spaceId, text, reply, false) }
+                        sendHaptics.perform(ZoenFeedback.Send)
+                    } else model.send(spaceId, text, reply, onStored = { sendHaptics.perform(ZoenFeedback.Send) })
                     if (draft == text) { draft = ""; model.repository.preferences.edit().remove(draftKey).apply() }
                     replyId = null
                 } finally { sending = false }
@@ -289,7 +301,7 @@ fun ChatScreen(model: ZoenViewModel, state: AppState, spaceId: String, navigate:
                         DropdownMenuItem(text = { Text(stringResource(R.string.files)) }, onClick = { overflow = false; navigate(Folder(space.id)) }, leadingIcon = { Icon(Icons.Rounded.Folder, null) })
                         DropdownMenuItem(text = { Text(stringResource(R.string.chat_appearance)) }, onClick = { overflow = false; navigate(Appearance(space.id)) }, leadingIcon = { Icon(Icons.Rounded.Palette, null) })
                         DropdownMenuItem(text = { Text(stringResource(R.string.signed_log)) }, onClick = { overflow = false; navigate(History) }, leadingIcon = { Icon(Icons.Rounded.VerifiedUser, null) })
-                        if (BuildConfig.DEBUG && state.demo) DropdownMenuItem(text = { Text(stringResource(R.string.agent_browser_start)) }, onClick = {
+                        if (!living && BuildConfig.DEBUG && state.demo) DropdownMenuItem(text = { Text(stringResource(R.string.agent_browser_start)) }, onClick = {
                             overflow = false
                             space.members.firstOrNull { it.kind == PersonaKind.AGENT && it.isMine }?.let { model.browser.startDemo(space.id, it, model.repository.locale); navigate(Browser) }
                         }, leadingIcon = { Icon(Icons.Rounded.Language, null) })
@@ -301,7 +313,7 @@ fun ChatScreen(model: ZoenViewModel, state: AppState, spaceId: String, navigate:
         bottomBar = {
             Surface(color = MaterialTheme.colorScheme.surface) {
                 Column(Modifier.navigationBarsPadding().imePadding().padding(horizontal = 12.dp, vertical = 8.dp)) {
-                    working[spaceId]?.let { text -> Row(Modifier.padding(start = 16.dp, bottom = 8.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    working[spaceId]?.takeUnless { living }?.let { text -> Row(Modifier.padding(start = 16.dp, bottom = 8.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         CircularProgressIndicator(Modifier.size(16.dp), strokeWidth = 2.dp); Text(text, style = MaterialTheme.typography.labelMedium)
                     } }
                     state.typing[spaceId]?.let { identity ->
@@ -317,7 +329,7 @@ fun ChatScreen(model: ZoenViewModel, state: AppState, spaceId: String, navigate:
                         }
                     }
                     Row(verticalAlignment = Alignment.Bottom, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        InkIconButton(ZoenGlyph.Plus, stringResource(R.string.attach), { navigationHaptics.perform(ZoenFeedback.Open); attachments = true }, Modifier.padding(bottom = 4.dp))
+                        if (!living) InkIconButton(ZoenGlyph.Plus, stringResource(R.string.attach), { navigationHaptics.perform(ZoenFeedback.Open); attachments = true }, Modifier.padding(bottom = 4.dp))
                         OutlinedTextField(value = draft, onValueChange = {
                             draft = it
                             model.repository.preferences.edit().putString(draftKey, it).apply()
@@ -343,9 +355,9 @@ fun ChatScreen(model: ZoenViewModel, state: AppState, spaceId: String, navigate:
                 Text(stringResource(if (state.connection.state == "connecting") R.string.connecting else R.string.offline), Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.secondaryContainer).padding(12.dp), style = MaterialTheme.typography.bodySmall)
             }
             val apps = state.items.filter { it.spaceId == spaceId && (it.app != null || it.plan != null) }
-            if (apps.isNotEmpty()) MiniAppTileStrip(model, state, apps, scope = MiniAppPins.chat(spaceId),
+            if (!living && apps.isNotEmpty()) MiniAppTileStrip(model, state, apps, scope = MiniAppPins.chat(spaceId),
                 compact = WindowInsets.ime.getBottom(LocalDensity.current) > 0, onOpenItem = { navigate(Item(it)) })
-            AgentBrowserCard(model.browser, spaceId) { navigate(Browser) }
+            if (!living) AgentBrowserCard(model.browser, spaceId) { navigate(Browser) }
             Box(Modifier.weight(1f)) {
                 ChatBackdrop(model, space.id, state.revision, Modifier.fillMaxSize())
                 if (spaceId in state.timelines) {
