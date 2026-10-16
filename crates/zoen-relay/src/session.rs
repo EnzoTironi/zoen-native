@@ -534,7 +534,7 @@ impl Session {
             return;
         }
         self.st.analytics.session(&self.identity);
-        let was_here = self.st.fanout.is_online_here(&self.identity);
+        let _was_here = self.st.fanout.is_online_here(&self.identity);
         self.hub_id = Some(self.st.fanout.add(
             &self.identity,
             Mailbox {
@@ -557,19 +557,18 @@ impl Session {
             if let Ok(Ok(co)) =
                 tokio::time::timeout(Duration::from_secs(2), st.log.co_members(&identity)).await
             {
-                // The first device on each node announces online. A redundant online
-                // announcement from another node is harmless; probing the account's
-                // remote presence here would put NATS back on the login critical path.
-                if !was_here {
-                    st.fanout.send(
-                        &co,
-                        &ServerFrame::Presence {
-                            identity,
-                            online: true,
-                        },
-                        None,
-                    );
-                }
+                // Always announce this attach. A redundant online announcement is
+                // harmless, and connecting-device journeys rely on the NATS ping to
+                // observe the race against key-package claims. Probing remote
+                // presence here would put NATS back on the login critical path.
+                st.fanout.send(
+                    &co,
+                    &ServerFrame::Presence {
+                        identity: identity.clone(),
+                        online: true,
+                    },
+                    None,
+                );
                 // Every device receives a snapshot. Mailbox backpressure pauses only
                 // this future, not login, Ping, Sync or authorization refreshes.
                 for who in st.fanout.online(&co).await {
