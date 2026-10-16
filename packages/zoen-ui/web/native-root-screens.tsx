@@ -29,7 +29,8 @@ export function NativeNotifications(props: NativeNotificationsProps) {
   const pending = requests?.filter(r => r.status === 'pending' || r.status === 'stale');
   const resolved = requests?.filter(r => r.status === 'approved' || r.status === 'denied');
   const tasks = items === null ? null : nativeOpenTasks(items);
-  const groups = new Map<string, NativeRootRequest[]>();
+  // Every group is constructed with its first request; retain that invariant for strict indexing.
+  const groups = new Map<string, [NativeRootRequest, ...NativeRootRequest[]]>();
   pending?.forEach(request => groups.set(request.agent.id, [...(groups.get(request.agent.id) ?? []), request]));
   const counts = { Mentions: mentions?.length, Tasks: tasks?.length, Approvals: requests?.filter(r => r.status === 'pending').length };
   return <Root title="Notifications" activity><div className="nr-cards-control"><button className="nr-glass" disabled={!props.onShowCards} onClick={props.onShowCards}>▱ Cards</button></div><div className="nr-pills" role="tablist" aria-label="Notifications">{(['Mentions', 'Tasks', 'Approvals'] as const).map(label => <button key={label} className="nr-glass" role="tab" aria-selected={section === label} onClick={() => setSection(label)}>{label}{counts[label] !== undefined && counts[label]! > 0 && <b>{counts[label]}</b>}</button>)}</div>
@@ -46,7 +47,7 @@ export type NativeProfileProps = {
   onSettings?: () => void; onItems?: () => void; onChats?: () => void; onIntegrity?: () => void; onAgent?: (id: string) => void; onRevokeGrant?: (id: string) => void; onEditAccount?: () => void; onEraseDevice?: () => void;
 };
 function ListSection({ title, footer, children }: { title?: string; footer?: string; children: React.ReactNode }) { return <section className="nr-list-section">{title && <h2>{title}</h2>}<div className="nr-list">{children}</div>{footer && <p className="nr-footer">{footer}</p>}</section>; }
-function NavRow({ label, icon, value, onClick }: { label: string; icon?: React.ComponentProps<typeof Icon>['kind']; value?: React.ReactNode; onClick?: () => void }) { return <button className="nr-row" disabled={!onClick} onClick={onClick}>{icon && <Icon kind={icon}/>}<span className="nr-grow">{label}</span>{value !== undefined && <span className="nr-value">{value}</span>}<Chevron/></button>; }
+function NavRow({ label, icon, value, onClick }: { label: string; icon?: React.ComponentProps<typeof Icon>['kind']; value?: React.ReactNode; onClick?: (() => void) | undefined }) { return <button className="nr-row" disabled={!onClick} onClick={onClick}>{icon && <Icon kind={icon}/>}<span className="nr-grow">{label}</span>{value !== undefined && <span className="nr-value">{value}</span>}<Chevron/></button>; }
 // AppLocale.swift TrustLevelDto.label; unknown future values remain explicit.
 export function nativeTrustLabel(level: string): string { return ({ listen: 'Listen', suggest: 'Suggest', act: 'Act', autonomous: 'Autonomous' } as Record<string, string>)[level] ?? level; }
 export function nativeConnectionLabel(connection: NativeRootConnection) { return connection.state === 'online' ? connection.synced === null ? 'Connected · sync status unavailable' : connection.synced ? 'Connected' : 'Syncing…' : connection.state === 'connecting' ? 'Connecting…' : connection.pending !== null && connection.pending > 0 ? `Offline · ${connection.pending} queued` : 'Offline'; }
