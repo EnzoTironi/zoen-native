@@ -141,7 +141,7 @@ impl<S: Signer> Client<S> {
     }
 
     pub(super) fn fill_threads(&self, space: &str, messages: &mut [MessageView]) {
-        let states: BTreeMap<String, (bool, usize)> = messages
+        let states: BTreeMap<String, (bool, usize, usize)> = messages
             .iter()
             .filter_map(|root| {
                 let entry = root.entry.as_ref()?;
@@ -163,19 +163,27 @@ impl<S: Signer> Client<S> {
                                 || (!m.deleted && mentions(&m.text, &self.account.handle))
                         })
                 });
-                let unread = replies
+                let fresh: Vec<_> = replies
                     .iter()
                     .filter(|m| {
                         m.author != self.account.identity && m.seq.is_some_and(|s| s > read)
                     })
+                    .collect();
+                let unread = fresh.len();
+                let mention_count = fresh
+                    .iter()
+                    .filter(|m| !m.deleted && mentions(&m.text, &self.account.handle))
                     .count();
-                Some((entry.clone(), (following, unread)))
+                Some((entry.clone(), (following, unread, mention_count)))
             })
             .collect();
         for m in messages {
-            if let Some((following, unread)) = m.entry.as_ref().and_then(|id| states.get(id)) {
+            if let Some((following, unread, mention_count)) =
+                m.entry.as_ref().and_then(|id| states.get(id))
+            {
                 m.thread_following = *following;
                 m.thread_unread = *unread;
+                m.thread_mentions = *mention_count;
             }
         }
     }

@@ -101,7 +101,14 @@ mod browser {
             serde_json::to_string(
                 &self
                     .client
-                    .queue_post_with_chat(space, text, reply, forwarded, also_in_chat, time(now_ms)?)
+                    .queue_post_with_chat(
+                        space,
+                        text,
+                        reply,
+                        forwarded,
+                        also_in_chat,
+                        time(now_ms)?,
+                    )
                     .map_err(error)?,
             )
             .map_err(error)
@@ -134,8 +141,12 @@ mod browser {
             now_ms: f64,
         ) -> Result<String, JsValue> {
             serde_json::to_string(
-                &self.client.set_thread_follow(space, root, follow, time(now_ms)?).map_err(error)?,
-            ).map_err(error)
+                &self
+                    .client
+                    .set_thread_follow(space, root, follow, time(now_ms)?)
+                    .map_err(error)?,
+            )
+            .map_err(error)
         }
         pub fn mark_thread_read(
             &mut self,
@@ -144,8 +155,12 @@ mod browser {
             now_ms: f64,
         ) -> Result<String, JsValue> {
             serde_json::to_string(
-                &self.client.mark_thread_read(space, root, time(now_ms)?).map_err(error)?,
-            ).map_err(error)
+                &self
+                    .client
+                    .mark_thread_read(space, root, time(now_ms)?)
+                    .map_err(error)?,
+            )
+            .map_err(error)
         }
         pub fn queue_join(
             &mut self,

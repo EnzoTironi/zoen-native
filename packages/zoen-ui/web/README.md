@@ -101,13 +101,18 @@ Root reran the exact final TypeScript sources: typecheck and all 13 behavior tes
 The linked client is a full messenger over the same encrypted log as native: chat list
 with unread, @mention, pinned, muted and archived; bubbles with time and ✓ / ✓✓ / blue ✓✓
 inside; inline replies; reactions; edit and delete for everyone (author-only, enforced by
-readers); forward; Ando-style threads in a side panel with follow. The web core folds
+readers); forward; replies in a side panel with synced follow/read state and optional
+“Também enviar na conversa”. The web core folds
 `MessageAnnotated` and `ReplyRef` exactly like native, sends `Delivered` on sync and
 `Read` when the open chat is visible, and keeps every member's watermarks from the relay.
 
+Thread follow/read state uses encrypted Personal Space `ThreadStateSet` events with
+stable message client IDs and monotonic read watermarks, shared with native. See
+[thread parity and verification limits](../../../docs/threads-parity.md).
+
 Not yet on the web: media and voice (the mic shows, sending needs the item/blob path in
-`zoen-web-core`), and synced chat preferences — pin/mute/archive and thread follow are
-kept in this browser until `ChatPrefsSet` (#96) reaches the web core.
+`zoen-web-core`), and synced chat preferences — pin/mute/archive remain browser-local
+until `ChatPrefsSet` (#96) reaches the web core.
 
 UI tokens follow `ui-refs/SUMMARY.md`: Hark bubbles and composer (radius 24, 12 px group
 gap, 48 px composer, mic when empty), Wabi list rows, colors and `cubic-bezier(.25,1,.5,1)`,

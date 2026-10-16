@@ -375,6 +375,80 @@ fn missing_personal_group_requests_device_join_like_a_chat() {
 }
 
 #[test]
+fn thread_mentions_only_count_unseen_incoming_whole_handles() {
+    let (mut client, me, other, root, _) = fixture();
+    let old = append(
+        client.logs.get_mut("chat").unwrap(),
+        &other,
+        EventBody::MessagePosted {
+            message: "old-mention".into(),
+            text: "@fixture old".into(),
+            attaches: None,
+            reply: Some(roda_types::ReplyRef {
+                to: root.clone(),
+                thread: true,
+                also_in_chat: false,
+            }),
+            forwarded: false,
+        },
+    )
+    .seq;
+    append(
+        client.logs.get_mut("personal").unwrap(),
+        &me,
+        EventBody::ThreadStateSet {
+            space: "chat".into(),
+            root: root.clone(),
+            follow: Some(true),
+            read_up_to: old,
+        },
+    );
+    for (author, text) in [
+        (&other, "@Fixture new"),
+        (&other, "@fixture2 not a mention"),
+        (&me, "@fixture own"),
+    ] {
+        append(
+            client.logs.get_mut("chat").unwrap(),
+            author,
+            EventBody::MessagePosted {
+                message: roda_types::new_secret_id("msg"),
+                text: text.into(),
+                attaches: None,
+                reply: Some(roda_types::ReplyRef {
+                    to: root.clone(),
+                    thread: true,
+                    also_in_chat: false,
+                }),
+                forwarded: false,
+            },
+        );
+    }
+    let view = client.conversations().remove(0);
+    assert_eq!(view.messages[0].thread_unread, 2);
+    assert_eq!(view.messages[0].thread_mentions, 1);
+    assert_eq!(
+        serde_json::to_value(&view.messages[0]).unwrap()["thread_mentions"],
+        1
+    );
+    let last = client.logs["chat"].events().last().unwrap().seq;
+    append(
+        client.logs.get_mut("personal").unwrap(),
+        &me,
+        EventBody::ThreadStateSet {
+            space: "chat".into(),
+            root,
+            follow: Some(true),
+            read_up_to: last,
+        },
+    );
+    let view = client.conversations().remove(0);
+    assert!(view.messages[0].thread_following); // still discoverable after reading
+    assert_eq!(view.messages[0].thread_unread, 0);
+    assert_eq!(view.messages[0].thread_mentions, 0);
+}
+
+#[test]
 fn mentions_require_a_whole_handle() {
     assert!(mentions("Hi @Fixture!", "fixture"));
     assert!(!mentions("@fixture2", "fixture"));

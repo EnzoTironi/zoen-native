@@ -69,10 +69,9 @@ fn thread_follow_and_read_watermarks_replay_on_another_device() {
     a.lock().store.conn().execute_batch(
         "CREATE TEMP TRIGGER refuse_thread_read BEFORE INSERT ON events BEGIN SELECT RAISE(FAIL, 'test append failure'); END;"
     ).unwrap();
-    assert!(
-        a.mark_thread_read(space.id.clone(), root.id.clone())
-            .is_err()
-    );
+    assert!(a
+        .mark_thread_read(space.id.clone(), root.id.clone())
+        .is_err());
     assert_eq!(
         unread(&a),
         1,
@@ -91,13 +90,12 @@ fn thread_follow_and_read_watermarks_replay_on_another_device() {
         0,
         "the Personal Space read watermark clears the second device"
     );
-    assert!(
-        b.lock()
-            .store
-            .meta(&format!("tread:{}:{}", space.id, root.id))
-            .unwrap()
-            .is_none()
-    );
+    assert!(b
+        .lock()
+        .store
+        .meta(&format!("tread:{}:{}", space.id, root.id))
+        .unwrap()
+        .is_none());
     a.lock()
         .reply_with(&space.id, &other.id, "Nova resposta", None, &root.id, true)
         .unwrap();
@@ -114,11 +112,10 @@ fn thread_follow_and_read_watermarks_replay_on_another_device() {
     a.set_thread_follow(space.id.clone(), root.id.clone(), Some(true))
         .unwrap();
     replay_to_device(&a, &b);
-    assert!(
-        b.threads()
-            .iter()
-            .any(|t| t.root.id == root.id && t.root.thread_unread == 1)
-    );
+    assert!(b
+        .threads()
+        .iter()
+        .any(|t| t.root.id == root.id && t.root.thread_unread == 1));
     // An older read event from a stale device must not resurrect already read replies.
     let read = a.lock().state.thread_state[&(space.id.clone(), root.id.clone())].1;
     a.mark_thread_read(space.id.clone(), root.id.clone())

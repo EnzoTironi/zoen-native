@@ -262,7 +262,7 @@ impl Engine {
         also_in_chat: bool,
     ) -> R<TimelineEntry> {
         let me = self.me_id()?;
-        self.reply_with_chat(space, &me, text, None, root, true, also_in_chat)
+        self.reply_with_chat(space, &me, text, root, also_in_chat)
     }
 }
 

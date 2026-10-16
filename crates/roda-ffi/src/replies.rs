@@ -94,7 +94,8 @@ impl Engine {
         to: &str,
         thread: bool,
     ) -> R<TimelineEntry> {
-        self.reply_with_chat(space, author, text, attaches, to, thread, false)
+        let reply = self.reply_ref(space, to, thread)?;
+        self.post_reply(space, author, text, attaches, reply)
     }
 
     pub(crate) fn reply_with_chat(
@@ -102,10 +103,21 @@ impl Engine {
         space: &str,
         author: &str,
         text: &str,
-        attaches: Option<String>,
         to: &str,
-        thread: bool,
         also_in_chat: bool,
+    ) -> R<TimelineEntry> {
+        let mut reply = self.reply_ref(space, to, true)?;
+        reply.also_in_chat = also_in_chat;
+        self.post_reply(space, author, text, None, reply)
+    }
+
+    fn post_reply(
+        &mut self,
+        space: &str,
+        author: &str,
+        text: &str,
+        attaches: Option<String>,
+        reply: ReplyRef,
     ) -> R<TimelineEntry> {
         if !self.is_member(space, author) {
             return Err(CoreError::Forbidden {
@@ -121,8 +133,6 @@ impl Engine {
                 reason: t("mensagem vazia", "empty message"),
             });
         }
-        let mut reply = self.reply_ref(space, to, thread)?;
-        reply.also_in_chat = thread && also_in_chat;
         self.append(
             space,
             author,

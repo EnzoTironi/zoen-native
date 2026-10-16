@@ -15,7 +15,9 @@ A failed durable write must not consume unread state or emit a thread-state fram
 Reading a quiet thread does not append another event. Native thread queries include
 the root's follow/unread metadata; Apple refreshes the shared model after marking an
 unread thread read. Android text replies preserve the broadcast checkbox even when
-responding to a reply. Interface copy uses “Respostas” and “Acompanhar respostas”.
+responding to a reply. Interface copy uses “Respostas” and “Acompanhar respostas”. The replies inbox remains
+reachable with no unread replies or with only direct chats; web roots show unseen reply
+and unread mention badges, with a navigable newest-first followed-replies list.
 
 ## Verification
 
@@ -26,7 +28,7 @@ responding to a reply. Interface copy uses “Respostas” and “Acompanhar res
   The replication test covers read,
   follow/unfollow, new replies after reading, monotonic stale-device reads and a
   failed append followed by retry.
-- `cargo test --locked -j2 -p zoen-web-core --lib`: passed, 8 tests. Includes real
+- `cargo test --locked -j2 -p zoen-web-core --lib`: passed, 9 tests. Includes real
   native SQLite MLS / portable web-core encrypted Personal Space thread-state
   exchange, saved reload, durable-write failures, idempotence, watermark projection,
   explicit opt-out, broadcast replies, enrollment requests and mention boundaries.
@@ -36,12 +38,19 @@ responding to a reply. Interface copy uses “Respostas” and “Acompanhar res
 - Mention regression: the added `@enzo.silva` versus `enzo` assertion failed before
   the suffix-boundary fix and passed afterward.
 - `cargo test --locked -j2 -p roda-ffi`: passed, 318 tests at the merge checkpoint;
-  the focused 5-test suite was rerun after the final activity-label/direct-chat changes.
+  the focused 5-test suite was rerun after the final activity-label/direct-chat and
+  validated-reply helper changes.
 - `xcrun swiftc -frontend -parse` on `MessageReplies.swift` and
   `ConversationsView.swift`: passed (syntax only, not an Apple build).
 - Android XML parsing, Portuguese-copy and nested broadcast/inbox reachability source
   checks: passed (not an Android compile/runtime check).
-- `git diff --check`: passed.
+- `cargo fmt --all --check` and `git diff --check`: passed.
+- `cargo clippy --locked -j2 -p roda-ffi --lib -- -D warnings`: passed.
+- `cargo clippy --locked -j2 -p roda-ffi -p zoen-web-core --lib -- -D warnings`:
+  passed with both clients' feature union. The narrower web-only strict command fails
+  on the unchanged MLS `leaf_keys` helper being unused under portable-only features;
+  tracked separately in [issue #116](https://github.com/EnzoTironi/zoen-native/issues/116).
+  No lint was suppressed to obtain the combined result.
 
 ## Remaining acceptance checks
 

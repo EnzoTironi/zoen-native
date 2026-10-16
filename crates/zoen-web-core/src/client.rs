@@ -107,6 +107,7 @@ pub struct MessageView {
     also_in_chat: bool,
     thread_following: bool,
     thread_unread: usize,
+    thread_mentions: usize,
     replies: usize,
     repliers: Vec<String>,
     last_reply_ms: Option<i64>,
@@ -743,9 +744,10 @@ impl<S: Signer> Client<S> {
     fn ask_rejoin(&mut self, now_ms: i64) -> Result<(), String> {
         let mut missing = Vec::new();
         for space in self.logs.keys() {
-            if self.metadata(space).is_some_and(|(_, _, privacy)| {
-                privacy == Privacy::EndToEnd
-            }) && self.roster(space).contains_key(&self.account.identity)
+            if self
+                .metadata(space)
+                .is_some_and(|(_, _, privacy)| privacy == Privacy::EndToEnd)
+                && self.roster(space).contains_key(&self.account.identity)
                 && !self.saved.joining.contains(space)
                 && self
                     .device()?
@@ -1133,14 +1135,34 @@ impl<S: Signer> Client<S> {
             forwarded: *forwarded,
             reactions: Vec::new(),
             quote: reply.as_ref().filter(|r| !r.thread).map(|r| Quote {
-                id: self.logs.get(&event.space).and_then(|l| l.events().iter().find(|e| e.client_id == r.to || e.hash == r.to)).map(|e| e.hash.clone()).unwrap_or_else(|| r.to.clone()),
+                id: self
+                    .logs
+                    .get(&event.space)
+                    .and_then(|l| {
+                        l.events()
+                            .iter()
+                            .find(|e| e.client_id == r.to || e.hash == r.to)
+                    })
+                    .map(|e| e.hash.clone())
+                    .unwrap_or_else(|| r.to.clone()),
                 name: String::new(),
                 text: String::new(),
             }),
-            thread: reply.as_ref().filter(|r| r.thread).map(|r| self.logs.get(&event.space).and_then(|l| l.events().iter().find(|e| e.client_id == r.to || e.hash == r.to)).map(|e| e.hash.clone()).unwrap_or_else(|| r.to.clone())),
+            thread: reply.as_ref().filter(|r| r.thread).map(|r| {
+                self.logs
+                    .get(&event.space)
+                    .and_then(|l| {
+                        l.events()
+                            .iter()
+                            .find(|e| e.client_id == r.to || e.hash == r.to)
+                    })
+                    .map(|e| e.hash.clone())
+                    .unwrap_or_else(|| r.to.clone())
+            }),
             also_in_chat: reply.as_ref().is_some_and(|r| r.thread && r.also_in_chat),
             thread_following: false,
             thread_unread: 0,
+            thread_mentions: 0,
             replies: 0,
             repliers: Vec::new(),
             last_reply_ms: None,

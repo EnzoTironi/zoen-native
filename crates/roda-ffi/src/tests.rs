@@ -2519,7 +2519,7 @@ fn threads_follow_count_and_stay_out_of_the_chat_unread() {
     assert_eq!(nested.in_thread.as_deref(), Some(root.id.as_str()));
     assert!(nested.also_in_chat);
     e.lock()
-        .reply_with_chat(&s.id, &other, "para a conversa", None, &nested.id, true, true)
+        .reply_with_chat(&s.id, &other, "para a conversa", &nested.id, true)
         .unwrap();
     assert_eq!(
         e.lock().space_summary(&s.id).unwrap().unread,

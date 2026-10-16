@@ -23,7 +23,7 @@ function parseMessage(input: unknown) {
     reactions: array(value.reactions ?? []).map((r) => { const x = object(r); return { emoji: string(x.emoji), count: integer(x.count), mine: x.mine === true }; }),
     quote: quote ? { id: string(quote.id), name: string(quote.name), text: string(quote.text) } : null,
     thread: value.thread ? string(value.thread) : null, also_in_chat: value.also_in_chat === true,
-    thread_following: value.thread_following === true, thread_unread: integer(value.thread_unread ?? 0), replies: integer(value.replies ?? 0),
+    thread_following: value.thread_following === true, thread_unread: integer(value.thread_unread ?? 0), thread_mentions: integer(value.thread_mentions ?? 0), replies: integer(value.replies ?? 0),
     repliers: array(value.repliers ?? []).map(string), last_reply_ms: typeof value.last_reply_ms === 'number' ? value.last_reply_ms : null };
 }
 
