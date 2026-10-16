@@ -51,6 +51,15 @@ try {
       assert.equal(await page.locator('.na-rail').evaluate(element => element.getBoundingClientRect().width), 80);
       assert.equal(await page.locator('.na-chat-sidebar').evaluate(element => element.getBoundingClientRect().width), 280);
     }
+    if (screen === 'chats') {
+      assert.equal(await page.locator('.zm-chat-open').evaluateAll(rows => rows.every(row => {
+        const bounds = row.getBoundingClientRect();
+        return [...row.querySelectorAll('.zm-preview, time, .zm-badge')].every(element => {
+          const rect = element.getBoundingClientRect();
+          return rect.left >= bounds.left && rect.right <= Math.min(bounds.right, innerWidth) + 1;
+        });
+      })), true, 'chat previews truncate inside the row without pushing timestamps or unread badges offscreen');
+    }
     if (screen === 'chats' && viewport === 'narrow') {
       assert.deepEqual(await page.locator('.nw-card').evaluateAll(elements => elements.map(element => element.getAttribute('data-snapshot-id'))), fixture.homeApps.map(snapshot => snapshot.id), 'the canonical native home snapshots and order are preserved exactly');
       assert.equal(await page.locator('.nw-empty').count(), 0, 'a populated native fixture must not be replaced with an empty state');
@@ -76,7 +85,7 @@ try {
       const pending = fixture.requests.filter(r => r.status === 'pending');
       const listed = fixture.requests.filter(r => r.status === 'pending' || r.status === 'stale');
       assert.equal(await page.locator('.nr-request').count(), listed.length);
-      assert.equal(await page.getByRole('tab', { name: `Approvals${pending.length}`, exact: true }).count(), 1);
+      assert.equal(await page.getByRole('tab', { name: `Approvals ${pending.length}`, exact: true }).count(), 1);
       for (const request of listed) assert.equal(await page.getByRole('button', { name: `Review request: ${request.title}. ${request.audience}, ${request.actionLabel}, ${request.spaceTitle}`, exact: true }).count(), 1);
       await page.getByRole('tab', { name: /^Mentions/ }).click();
       assert.equal(await page.locator('.nr-mention').count(), fixture.mentions.length);
@@ -85,7 +94,7 @@ try {
       await page.getByRole('tab', { name: /^Tasks/ }).click();
       assert.equal(await page.locator('.nr-task').count(), tasks.length);
       for (const task of tasks) assert.ok((await page.locator('.nr-content').innerText()).includes(task.title));
-      assert.equal(await page.getByRole('tab', { name: `Tasks${tasks.length}`, exact: true }).count(), 1);
+      assert.equal(await page.getByRole('tab', { name: `Tasks ${tasks.length}`, exact: true }).count(), 1);
       await page.getByRole('tab', { name: /^Approvals/ }).click();
     }
     if (screen === 'profile') {
