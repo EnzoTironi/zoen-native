@@ -383,9 +383,6 @@ pub async fn put_agreement_key(
     public: &str,
     s: &DeviceSigned,
 ) -> Result<(), sqlx::Error> {
-    let mut tx = authorize_device(pool, identity, &s.device, true)
-        .await?
-        .ok_or_else(|| sqlx::Error::Protocol("agreement signer is not an active device".into()))?;
     sqlx::query(
         "INSERT INTO agreement_keys (identity, public, device, sig, cert) VALUES ($1, $2, $3, $4, $5)
          ON CONFLICT (identity) DO UPDATE SET public = excluded.public, device = excluded.device,
@@ -396,9 +393,9 @@ pub async fn put_agreement_key(
     .bind(&s.device)
     .bind(&s.sig)
     .bind(&s.cert)
-    .execute(&mut *tx)
+    .execute(pool)
     .await?;
-    tx.commit().await
+    Ok(())
 }
 
 pub async fn agreement_keys(
@@ -424,9 +421,6 @@ pub async fn agreement_keys(
 /// Stores `p` if its version is newer than the stored one. `false` = stale.
 /// Stores a newer version; resending the exact stored bytes is a no-op success.
 pub async fn put_profile(pool: &PgPool, p: &SealedProfile) -> Result<bool, sqlx::Error> {
-    let mut tx = authorize_device(pool, &p.identity, &p.signed.device, true)
-        .await?
-        .ok_or_else(|| sqlx::Error::Protocol("profile signer is not an active device".into()))?;
     let r = sqlx::query(
         "INSERT INTO profiles (identity, version, ciphertext, device, sig, cert) VALUES ($1, $2, $3, $4, $5, $6)
          ON CONFLICT (identity) DO UPDATE SET version = excluded.version, ciphertext = excluded.ciphertext,
@@ -440,9 +434,8 @@ pub async fn put_profile(pool: &PgPool, p: &SealedProfile) -> Result<bool, sqlx:
     .bind(&p.signed.device)
     .bind(&p.signed.sig)
     .bind(&p.signed.cert)
-    .execute(&mut *tx)
+    .execute(pool)
     .await?;
-    tx.commit().await?;
     Ok(r.rows_affected() == 1)
 }
 

@@ -2,11 +2,18 @@
 
 use async_trait::async_trait;
 use futures_util::{SinkExt, StreamExt};
-use roda_log::{Author, Signer};
+use roda_log::{
+    profile::{
+        seal_profile, sign_agreement, sign_upload, verify_agreement, verify_upload, AgreementKey,
+        ProfileFields, ProfileKey,
+    },
+    Author, Signer,
+};
 use roda_proto::{
     auth_message, backup_message, blob_put_message, experiments::report_message, transfer_message,
-    AgentAction, AgentRequest, ClientFrame, DeviceCertificate, Envelope, EphemeralKind, ErrorCode,
-    InviteCreated, Op, Reply, SealedProfile, Sequenced, ServerFrame, PROTOCOL_VERSION,
+    AgentAction, AgentRequest, AgreementKeyRecord, ClientFrame, DeviceCertificate, Envelope,
+    EphemeralKind, ErrorCode, InviteCreated, Op, Reply, SealedProfile, Sequenced, ServerFrame,
+    PROTOCOL_VERSION,
 };
 use roda_types::{Identity, IdentityKind, Role};
 use sha2::{Digest, Sha256};
@@ -648,6 +655,148 @@ async fn an_unlinked_root_holder_cannot_return_with_a_fresh_certificate() {
         .await
         .unwrap();
     assert_eq!(handle, "ana_changed");
+    let _ = controller.close(None).await;
+    test.close().await;
+}
+
+#[tokio::test]
+async fn embedded_payloads_must_be_signed_by_the_authorized_session_device() {
+    let test = TestRelay::new().await;
+    let root = Signer::generate();
+    let primary = Author::device(&root, Signer::generate());
+    let lost = Author::device(&root, Signer::generate());
+    let mut controller = connect(&test.ws_url, &primary).await;
+    request(
+        &mut controller,
+        1,
+        Op::Register {
+            profile: profile(&primary, "ana"),
+        },
+    )
+    .await
+    .unwrap();
+    request(&mut controller, 2, link_op(&lost, &Signer::generate().id()))
+        .await
+        .unwrap();
+
+    let profile_key = ProfileKey::generate();
+    let fields = ProfileFields {
+        name: "Ana".into(),
+        bio: String::new(),
+        photo: None,
+    };
+    for revoked in [false, true] {
+        let id = if revoked { 10 } else { 3 };
+        if revoked {
+            request(
+                &mut controller,
+                id,
+                Op::Unlink {
+                    device: lost.device.clone().unwrap(),
+                },
+            )
+            .await
+            .unwrap();
+        }
+        assert_eq!(
+            device_revoked(&test.state.pool, lost.device.as_deref().unwrap())
+                .await
+                .unwrap(),
+            revoked
+        );
+
+        // The active session can still publish its own signatures after revocation.
+        let public = AgreementKey::generate().public_hex();
+        let agreement = AgreementKeyRecord {
+            identity: primary.identity.clone(),
+            signed: sign_agreement(&primary, &public).unwrap(),
+            public,
+        };
+        assert_eq!(
+            request(
+                &mut controller,
+                id + 1,
+                Op::PublishAgreementKey {
+                    public: agreement.public.clone(),
+                    signed: agreement.signed.clone(),
+                },
+            )
+            .await,
+            Ok(Reply::Done)
+        );
+        let version = if revoked { 3 } else { 1 };
+        let ciphertext = seal_profile(&profile_key, &primary.identity, version, &fields);
+        let upload = SealedProfile {
+            identity: primary.identity.clone(),
+            version,
+            signed: sign_upload(&primary, version, &ciphertext).unwrap(),
+            ciphertext,
+        };
+        assert_eq!(
+            request(
+                &mut controller,
+                id + 2,
+                Op::PutProfile {
+                    profile: upload.clone(),
+                },
+            )
+            .await,
+            Ok(Reply::Done)
+        );
+
+        // Another device's valid certificate and signatures cannot borrow this session's
+        // authority, whether that device is still active or has already been revoked.
+        let public = AgreementKey::generate().public_hex();
+        let signed = sign_agreement(&lost, &public).unwrap();
+        assert!(verify_agreement(&primary.identity, &public, &signed));
+        assert_eq!(
+            request(
+                &mut controller,
+                id + 3,
+                Op::PublishAgreementKey { public, signed },
+            )
+            .await,
+            Err("agreement key is for another device".into())
+        );
+        let version = version + 1;
+        let ciphertext = seal_profile(&profile_key, &primary.identity, version, &fields);
+        let signed = sign_upload(&lost, version, &ciphertext).unwrap();
+        assert!(verify_upload(
+            &primary.identity,
+            version,
+            &ciphertext,
+            &signed
+        ));
+        assert_eq!(
+            request(
+                &mut controller,
+                id + 4,
+                Op::PutProfile {
+                    profile: SealedProfile {
+                        identity: primary.identity.clone(),
+                        version,
+                        ciphertext,
+                        signed,
+                    },
+                },
+            )
+            .await,
+            Err("profile is for another device".into())
+        );
+        let ids = [primary.identity.clone()];
+        assert_eq!(
+            zoen_relay::db::agreement_keys(&test.state.pool, &ids)
+                .await
+                .unwrap(),
+            vec![agreement]
+        );
+        assert_eq!(
+            zoen_relay::db::sealed_profiles(&test.state.pool, &ids)
+                .await
+                .unwrap(),
+            vec![upload]
+        );
+    }
     let _ = controller.close(None).await;
     test.close().await;
 }
@@ -1371,9 +1520,10 @@ async fn an_active_caller_cannot_forward_fresh_payloads_signed_by_a_revoked_sibl
         ciphertext: vec![1],
         signed: roda_log::profile::sign_upload(&lost, 1, &[1]).unwrap(),
     };
-    // Forwarding an enrolled sibling's valid inner signatures is supported.
+    // Historical statements are published by their authorized session device.
+    let mut signer = connect(&test.ws_url, &lost).await;
     request(
-        &mut controller,
+        &mut signer,
         10,
         Op::PublishAgreementKey {
             public: public.clone(),
@@ -1383,7 +1533,7 @@ async fn an_active_caller_cannot_forward_fresh_payloads_signed_by_a_revoked_sibl
     .await
     .unwrap();
     request(
-        &mut controller,
+        &mut signer,
         11,
         Op::PutProfile {
             profile: historical.clone(),
@@ -1391,6 +1541,7 @@ async fn an_active_caller_cannot_forward_fresh_payloads_signed_by_a_revoked_sibl
     )
     .await
     .unwrap();
+    let _ = signer.close(None).await;
     unlink(&mut controller, &lost).await;
     let fresh_public = "34".repeat(32);
     let fresh_signed = roda_log::profile::sign_agreement(&lost, &fresh_public).unwrap();

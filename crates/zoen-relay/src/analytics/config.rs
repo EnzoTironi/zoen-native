@@ -169,7 +169,7 @@ pub async fn report(State(st): State<Shared>, headers: HeaderMap, body: Bytes) -
         Err(_) => return StatusCode::SERVICE_UNAVAILABLE.into_response(),
     };
     let Some(identity) = identity else {
-        return StatusCode::FORBIDDEN.into_response();
+        return (StatusCode::FORBIDDEN, "unlinked device").into_response();
     };
     let Ok(r) = serde_json::from_slice::<ClientReport>(&body) else {
         return StatusCode::BAD_REQUEST.into_response();

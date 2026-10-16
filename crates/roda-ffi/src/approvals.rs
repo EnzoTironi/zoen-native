@@ -25,6 +25,20 @@ fn content_matches(kind: ItemKind, content: &ItemContent) -> bool {
     )
 }
 
+impl ItemState {
+    pub(crate) fn voice_edit_allowed(&self, author: &str, content: Option<&ItemContent>) -> bool {
+        // Keep ownership after a rename or MIME change hides the voice tag, and when
+        // an ordinary file is being turned into a voice note.
+        !self
+            .versions
+            .iter()
+            .map(|v| &v.content)
+            .chain(content)
+            .any(|c| matches!(c, ItemContent::File(f) if f.is_voice()))
+            || self.versions.first().is_some_and(|v| v.author == author)
+    }
+}
+
 impl State {
     pub(crate) fn writer(&self, space: &str, identity: &str) -> bool {
         self.spaces.get(space).is_some_and(|s| {
@@ -164,6 +178,7 @@ impl State {
                 self.writer(&e.space, &e.author)
                     && self.items.get(item).is_some_and(|it| {
                         it.space == e.space
+                            && it.voice_edit_allowed(&e.author, Some(content))
                             && (content_matches(it.kind, content)
                                 || matches!(
                                     (it.kind, content),
@@ -182,7 +197,9 @@ impl State {
             } => {
                 self.writer(&e.space, &e.author)
                     && self.items.get(item).is_some_and(|it| {
-                        it.space == e.space && it.versions.iter().any(|v| v.number == *to_version)
+                        it.space == e.space
+                            && it.voice_edit_allowed(&e.author, None)
+                            && it.versions.iter().any(|v| v.number == *to_version)
                     })
             }
             EventBody::GrantIssued { grant } => {

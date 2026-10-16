@@ -154,25 +154,7 @@ struct SpaceView: View {
             .environment(\.chatBackdrop, !background.isNone)
             // Messages fade out just above the composer instead of ghosting through its
             // glass; the chat background (drawn below this mask) stays whole.
-            .mask {
-                GeometryReader { g in
-                    let fade: CGFloat = 28
-                    let cut = composerTop.isFinite ? max(0, composerTop - g.frame(in: .global).minY) : g.size.height
-                    // Top: hidden under the header and pinned card, then a short fade in.
-                    let top = min(cut, max(0, chromeBottom - g.frame(in: .global).minY - 6))
-                    let topFade = min(18, max(0, cut - top))
-                    VStack(spacing: 0) {
-                        Color.clear.frame(height: top)
-                        LinearGradient(colors: [.black.opacity(0), .black], startPoint: .top, endPoint: .bottom)
-                            .frame(height: topFade)
-                        Color.black.frame(height: max(0, cut - fade - top - topFade))
-                        LinearGradient(colors: [.black, .black.opacity(0)], startPoint: .top, endPoint: .bottom)
-                            .frame(height: min(fade, cut))
-                        Color.clear
-                    }
-                }
-                .ignoresSafeArea()
-            }
+            .mask { ChatFadeMask(composerTop: composerTop, chromeBottom: chromeBottom) }
             .background(ChatBackdropView(background: background, spaceId: spaceId, layout: backgroundState.layout).ignoresSafeArea())
             // A bar, not an inset: iOS 26 fades and blurs what scrolls under the composer,
             // so message text doesn't ghost through its glass.
@@ -386,11 +368,15 @@ struct SpaceView: View {
             guard UserDefaults.standard.bool(forKey: "RodaVoiceSeed") else { return }
             let wait = UserDefaults.standard.double(forKey: "RodaVoiceSeedDelay")
             try? await Task.sleep(for: .seconds(wait > 0 ? wait : 1.5))
-            let has = entries.contains { if case .message(let t, _) = $0.kind { return VoiceNoteRef.parse(t) != nil }; return false }
+            let has = entries.contains { e in
+                if e.voice != nil { return true }
+                if case .message(let t, _) = e.kind { return VoiceNoteRef.parse(t) != nil }
+                return false
+            }
             guard !has, let clip = VoiceStore.makeDemoClip() else { return }
             let ref = VoiceNoteRef(id: clip.id, ms: clip.ms, levels: clip.levels,
                                    transcript: String(localized: "Leaving at eight! I'll bring snacks and the good thermos, can someone grab the map?"))
-            model.perform { try model.core.sendMessage(spaceId: spaceId, text: ref.marker) }
+            await model.sendVoice(clip, in: spaceId, transcript: ref.transcript)
         }
         .onAppear {
             // Capture the opening unread boundary before markRead refreshes its count to zero.
@@ -694,7 +680,7 @@ struct EntryView: View {
                         .foregroundStyle(Palette.textTertiary)
                         .padding(.leading, entry.author.isMe ? 0 : 44)
                 }
-                MessageRow(author: entry.author, text: text, card: card, atMs: entry.atMs, delivery: entry.delivery,
+                MessageRow(author: entry.author, text: text, card: card, voice: entry.voice.map(VoiceNoteRef.init), atMs: entry.atMs, delivery: entry.delivery,
                            grouped: grouped && entry.replyTo == nil, endsRun: endsRun, isDirect: isDirect, onOpenItem: onOpenItem,
                            quote: entry.replyTo, onQuote: { onJump?($0) }, onIntent: onSwipe)
                     .modifier(MessageSwipe(enabled: onSwipe != nil) { onSwipe?($0) })
@@ -853,6 +839,8 @@ struct MessageRow: View {
     let author: Persona
     let text: String
     let card: ItemCard?
+    /// A voice note sent as an audio file (older ones arrive as a text marker in `text`).
+    var voice: VoiceNoteRef? = nil
     let atMs: Int64
     var delivery: Delivery = .sent
     let grouped: Bool
@@ -905,7 +893,7 @@ struct MessageRow: View {
                     .background { if backdrop { Capsule().fill(.regularMaterial) } }
                     .padding(.leading, 2)
                 }
-                if let voice = VoiceNoteRef.parse(text) {
+                if let voice = voice ?? VoiceNoteRef.parse(text) {
                     VoiceBubble(ref: voice, mine: mine, grouped: grouped)
                         .alignmentGuide(.messageFace) { $0[.bottom] }
                 } else if !text.isEmpty {
@@ -1438,5 +1426,31 @@ struct NewMessagesPill: View {
         .buttonStyle(.plain)
         .accessibilityIdentifier("new-messages-pill")
         .accessibilityHint(Text("Jumps to the latest message"))
+    }
+}
+
+/// Hides messages under the header/pinned card and fades them out above the composer.
+private struct ChatFadeMask: View {
+    let composerTop: CGFloat
+    let chromeBottom: CGFloat
+
+    var body: some View {
+        GeometryReader { g in
+            let fade: CGFloat = 28
+            let cut = composerTop.isFinite ? max(0, composerTop - g.frame(in: .global).minY) : g.size.height
+            // Top: hidden under the header and pinned card, then a short fade in.
+            let top = min(cut, max(0, chromeBottom - g.frame(in: .global).minY - 6))
+            let topFade = min(18, max(0, cut - top))
+            VStack(spacing: 0) {
+                Color.clear.frame(height: top)
+                LinearGradient(colors: [.black.opacity(0), .black], startPoint: .top, endPoint: .bottom)
+                    .frame(height: topFade)
+                Color.black.frame(height: max(0, cut - fade - top - topFade))
+                LinearGradient(colors: [.black, .black.opacity(0)], startPoint: .top, endPoint: .bottom)
+                    .frame(height: min(fade, cut))
+                Color.clear
+            }
+        }
+        .ignoresSafeArea()
     }
 }

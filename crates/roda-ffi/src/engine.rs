@@ -249,6 +249,74 @@ pub(crate) struct State {
 }
 
 impl State {
+    fn create_item(
+        &mut self,
+        e: &Event,
+        item: &str,
+        kind: ItemKind,
+        content: &ItemContent,
+        origin: &str,
+    ) {
+        self.items.insert(
+            item.to_string(),
+            ItemState {
+                id: item.to_string(),
+                space: e.space.clone(),
+                kind,
+                origin: origin.to_string(),
+                versions: vec![Version {
+                    number: 1,
+                    content: content.clone(),
+                    author: e.author.clone(),
+                    at_ms: e.at_ms,
+                    note: t("Criado", "Created"),
+                    is_undo: false,
+                }],
+            },
+        );
+        // A voice note is a message in the chat: a player, not a file in a list.
+        if let ItemContent::File(doc) = content {
+            if doc.is_voice() {
+                if let Some(s) = self.spaces.get_mut(&e.space) {
+                    s.entries.push(Entry {
+                        hash: e.hash.clone(),
+                        client_id: e.client_id.clone(),
+                        space: e.space.clone(),
+                        seq: e.seq,
+                        author: e.author.clone(),
+                        at_ms: e.at_ms,
+                        body: EntryBody::Message {
+                            text: String::new(),
+                            attaches: Some(item.to_string()),
+                            reply: doc.voice.as_ref().and_then(|meta| meta.reply.clone()),
+                            marks: MessageMarks::default(),
+                        },
+                    });
+                    s.last_at_ms = s.last_at_ms.max(e.at_ms);
+                }
+            }
+        }
+    }
+
+    /// Local recovery only: a refused send stays readable even if its author lost
+    /// membership while offline. It never enters the confirmed log or outbox transport.
+    pub(crate) fn retain_failed_voice(&mut self, e: &Event) {
+        if let EventBody::ItemCreated {
+            item,
+            kind: ItemKind::File,
+            content: content @ ItemContent::File(doc),
+            origin,
+        } = &e.body
+        {
+            if doc.is_voice()
+                && !self.items.contains_key(item)
+                && self.spaces.contains_key(&e.space)
+            {
+                self.create_item(e, item, ItemKind::File, content, origin);
+            }
+        }
+    }
+
     pub(crate) fn apply_checked(
         &mut self,
         e: &Event,
@@ -323,7 +391,33 @@ impl State {
                 forwarded,
                 ..
             } => {
+                // Older Android builds posted the file, then a marker naming its Item.
+                let legacy_voice = text
+                    .strip_prefix("⟦voice:")
+                    .and_then(|body| body.split_once(':'))
+                    .map(|(item, _)| item);
+                let voice_item = attaches.as_deref().or(legacy_voice);
+                let voice_attached = !forwarded
+                    && ((text.is_empty() && reply.is_some()) || legacy_voice.is_some())
+                    && self.writer(&e.space, &e.author)
+                    && voice_item.is_some_and(|i| {
+                        self.items.get(i).is_some_and(|it| {
+                            it.space == e.space
+                                && it.versions.first().is_some_and(|v| v.author == e.author)
+                                && matches!(&it.current().content, ItemContent::File(d) if d.is_voice())
+                        })
+                    });
                 if let Some(s) = self.spaces.get_mut(&e.space) {
+                    // Only the author's reply/legacy marker replaces the implicit file
+                    // message. Forwarding must leave the original entry in place.
+                    if let Some(item) = voice_item.filter(|_| voice_attached) {
+                        if let Some(at) = s.entries.iter().rposition(|x| {
+                            x.author == e.author
+                                && matches!(&x.body, EntryBody::Message { text, attaches: Some(a), reply: None, marks } if a == item && text.is_empty() && !marks.forwarded)
+                        }) {
+                            s.entries.remove(at);
+                        }
+                    }
                     s.entries.push(entry(EntryBody::Message {
                         text: text.clone(),
                         attaches: attaches.clone(),
@@ -383,23 +477,7 @@ impl State {
                 content,
                 origin,
             } => {
-                self.items.insert(
-                    item.clone(),
-                    ItemState {
-                        id: item.clone(),
-                        space: e.space.clone(),
-                        kind: *kind,
-                        origin: origin.clone(),
-                        versions: vec![Version {
-                            number: 1,
-                            content: content.clone(),
-                            author: e.author.clone(),
-                            at_ms: e.at_ms,
-                            note: t("Criado", "Created"),
-                            is_undo: false,
-                        }],
-                    },
-                );
+                self.create_item(e, item, *kind, content, origin);
             }
             EventBody::ItemVersioned {
                 item,
@@ -1186,12 +1264,77 @@ impl Engine {
         })
     }
 
+    /// The voice note an entry carries, if its attached Item is one (in this Space).
+    pub(crate) fn voice_of(&self, space: &str, item: &str) -> Option<VoiceNoteDto> {
+        let it = self.state.items.get(item).filter(|it| it.space == space)?;
+        let ItemContent::File(doc) = &it.current().content else {
+            return None;
+        };
+        if !doc.is_voice() {
+            return None;
+        }
+        let meta = doc.voice.clone().unwrap_or_default();
+        Some(VoiceNoteDto {
+            item_id: item.to_string(),
+            sha256: doc.sha256.clone(),
+            mime: doc.mime.clone(),
+            ms: meta.ms,
+            levels: meta.bars(),
+            transcript: meta.transcript,
+        })
+    }
+
+    fn entry_voice(&self, e: &Entry) -> Option<VoiceNoteDto> {
+        let EntryBody::Message {
+            text,
+            attaches,
+            marks,
+            ..
+        } = &e.body
+        else {
+            return None;
+        };
+        if marks.deleted {
+            return None;
+        }
+        if let Some(item) = attaches {
+            return self.voice_of(&e.space, item);
+        }
+        // File-backed markers need the current signed hash too. Markers without a
+        // core file keep using the clients' local-only compatibility path.
+        let (header, transcript) = text.strip_prefix("⟦voice:")?.split_once('⟧')?;
+        let mut fields = header.split(':');
+        let item = fields.next()?;
+        let ms = fields.next()?.parse().ok()?;
+        let levels = fields.next()?;
+        if fields.next().is_some() {
+            return None;
+        }
+        let mut voice = self.voice_of(&e.space, item)?;
+        let ItemContent::File(original) = &self.state.items.get(item)?.versions.first()?.content
+        else {
+            return None;
+        };
+        // Marker timings and words describe only the original audio.
+        if original.sha256 == voice.sha256 {
+            voice.ms = ms;
+            voice.levels = VoiceMeta {
+                levels: levels.to_string(),
+                ..Default::default()
+            }
+            .bars();
+            voice.transcript = transcript.trim().to_string();
+        }
+        Some(voice)
+    }
+
     pub(crate) fn entry_dto(&self, e: &Entry) -> TimelineEntry {
         let kind = match &e.body {
             EntryBody::Message { text, attaches, .. } => EntryKind::Message {
                 text: text.clone(),
                 card: attaches
                     .as_deref()
+                    .filter(|item| self.voice_of(&e.space, item).is_none())
                     .and_then(|item| self.card_in_space(&e.space, item)),
             },
             EntryBody::ItemEdited {
@@ -1281,6 +1424,7 @@ impl Engine {
             at_ms: e.at_ms,
             kind,
             delivery: self.delivery(e),
+            voice: self.entry_voice(e),
             reply_to,
             in_thread,
             thread_replies: 0,
@@ -1292,6 +1436,12 @@ impl Engine {
             let text = match &e.body {
                 EntryBody::Message { marks, .. } if marks.deleted => {
                     t("Mensagem apagada", "Message deleted")
+                }
+                EntryBody::Message {
+                    attaches: Some(item),
+                    ..
+                } if self.voice_of(&e.space, item).is_some() => {
+                    t("Mensagem de voz", "Voice message")
                 }
                 EntryBody::Message { text, attaches, .. } => {
                     match attaches.as_deref().and_then(|i| self.card(i)) {
@@ -1633,6 +1783,20 @@ impl Engine {
                 reason: t(
                     "só membros escrevem neste Espaço",
                     "only members can write in this Space",
+                ),
+            });
+        }
+        // An attachment id only resolves in its own Space. Forwarding voice across
+        // Spaces needs a fresh file and chunk keys for the destination's audience.
+        if from_space != to_space
+            && attaches
+                .as_deref()
+                .is_some_and(|item| self.voice_of(from_space, item).is_some())
+        {
+            return Err(CoreError::Invalid {
+                reason: t(
+                    "esta mensagem de voz ainda não pode ser encaminhada a outra conversa",
+                    "this voice message cannot be forwarded to another chat yet",
                 ),
             });
         }
@@ -3111,7 +3275,14 @@ impl Engine {
         {
             for e in &s.entries {
                 if let EntryBody::Message { text, .. } = &e.body {
-                    if fold(text).contains(&q) {
+                    let snippet = if fold(text).contains(&q) {
+                        Some(text.clone())
+                    } else {
+                        self.entry_voice(e)
+                            .filter(|voice| fold(&voice.transcript).contains(&q))
+                            .map(|voice| voice.transcript)
+                    };
+                    if let Some(snippet) = snippet {
                         hits.push(SearchHit {
                             space_id: s.id.clone(),
                             space_title: self
@@ -3120,7 +3291,7 @@ impl Engine {
                                 .unwrap_or_default(),
                             item_id: None,
                             title: self.persona(&e.author).name,
-                            snippet: text.clone(),
+                            snippet,
                             author: self.persona(&e.author),
                             at_ms: e.at_ms,
                         });
