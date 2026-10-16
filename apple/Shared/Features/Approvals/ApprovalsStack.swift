@@ -213,7 +213,7 @@ struct ApprovalsStackView: View {
                     ZoenIcon(.back, size: 18)
                         .foregroundStyle(Palette.textPrimary)
                         .frame(width: 44, height: 44)
-                        .glassEffect(.regular.interactive(), in: .circle)
+                        .zoenGlass(radius: 999, slab: true)
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel(expanded ? Text("Back to the cards") : Text("Close"))
@@ -251,7 +251,7 @@ struct ApprovalsStackView: View {
                     .foregroundStyle(Palette.textPrimary)
                     .padding(.horizontal, 14)
                     .frame(height: 44)
-                    .glassEffect(.regular.interactive(), in: .capsule)
+                    .zoenGlass(radius: 999, slab: true)
             }
             .buttonStyle(.plain)
             .disabled(flying != nil || stamping != nil)
@@ -631,7 +631,7 @@ struct ApprovalsStackView: View {
                                 .font(.system(size: s.isStanding ? 18 : 22, weight: .bold))
                                 .foregroundStyle(.white)
                                 .frame(width: s.isStanding ? 54 : 64, height: s.isStanding ? 54 : 64)
-                                .glassEffect(.regular.tint((off ? Palette.textTertiary : s.tint).opacity(0.92)).interactive(), in: .circle)
+                                .zoenGlass(prominent: true, tint: (off ? Palette.textTertiary : s.tint).opacity(0.92))
                             Text(s.label)
                                 .font(.caption2.weight(.semibold))
                                 .foregroundStyle(off ? Palette.textTertiary : Palette.textSecondary)
@@ -674,7 +674,7 @@ struct ApprovalsStackView: View {
                     .accessibilityIdentifier("approval-undo")
             }
             .padding(.horizontal, 14).padding(.vertical, 10)
-            .glassEffect(.regular, in: .capsule)
+            .zoenGlass(radius: 999, slab: true)
             .padding(.horizontal, 8)
             .transition(reduceMotion ? .opacity : .move(edge: .bottom).combined(with: .opacity))
             .accessibilityElement(children: .contain)
@@ -682,7 +682,7 @@ struct ApprovalsStackView: View {
             Label(String(localized: "Red line: this always asks. You can approve just this once."), systemImage: "lock.fill")
                 .font(.footnote.weight(.medium))
                 .padding(.horizontal, 14).padding(.vertical, 10)
-                .glassEffect(.regular, in: .capsule)
+                .zoenGlass(radius: 999, slab: true)
                 .transition(.opacity)
         }
     }

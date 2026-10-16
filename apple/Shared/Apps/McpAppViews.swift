@@ -60,7 +60,7 @@ struct AppCardView: View {
                         .frame(width: 36, height: 36)
                 }
                 .buttonStyle(.plain)
-                .glassEffect(.regular.interactive(), in: .circle)
+                .zoenGlass(radius: 999, slab: true)
                 .accessibilityLabel("Open \(card.title) full screen")
             }
             .padding(.horizontal, 12)
@@ -82,7 +82,7 @@ struct AppCardView: View {
             .padding(.bottom, 10)
         }
         .background(Palette.surface.opacity(0.55), in: .rect(cornerRadius: 26, style: .continuous))
-        .glassEffect(.regular.tint(tint.opacity(0.06)), in: .rect(cornerRadius: 26, style: .continuous))
+        .zoenGlass(radius: 26, prominent: true, tint: tint.opacity(0.06))
         .appZoomSource(card.itemId, zoom)
         .frame(maxWidth: 420)
     }

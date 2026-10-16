@@ -28,8 +28,11 @@ final class UIPolishJourneyTests: XCTestCase {
         let onboarding = launch(["-RodaOnboarding", "YES", "-RodaOnboardingStep", "0"])
         let hello = onboarding.staticTexts.matching(NSPredicate(format: "label BEGINSWITH %@", "Oi, eu sou")).firstMatch
         XCTAssertTrue(hello.waitForExistence(timeout: 20))
-        // The invite paste stays, as a quiet line next to "Recebeu um convite?", not a floating chip.
+        // The secondary glass action remains available without reading the clipboard at launch.
         XCTAssertTrue(onboarding.staticTexts["Recebeu um convite?"].exists)
+        let paste = onboarding.buttons["onboarding-paste-invite"]
+        XCTAssertTrue(paste.exists && paste.isHittable)
+        XCTAssertEqual(paste.label, "Colar")
         keep(onboarding, "onboarding")
         onboarding.terminate()
 

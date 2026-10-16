@@ -46,7 +46,7 @@ struct ChatAttachmentButton: View {
             .foregroundStyle(Palette.textPrimary)
         }
         .menuStyle(.borderlessButton)
-        .glassEffect(.regular.interactive(), in: .circle)
+        .zoenGlass(radius: 999, slab: true)
         .disabled(preparing)
         .accessibilityLabel("Attach photo or file")
         .accessibilityIdentifier("chat.attach")

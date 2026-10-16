@@ -2,10 +2,10 @@ name: apple-design
 
 on:
   pull_request:
-    paths: ["apple/Shared/DesignSystem/**", "scripts/check-apple-glass.sh", ".github/workflows/apple-design.yml"]
+    paths: ["apple/Shared/DesignSystem/**", "android/app/src/main/java/xyz/tironi/zoen/ui/ZoenGlass.kt", "scripts/*glass*", ".github/workflows/apple-design.yml"]
   push:
     branches: [main]
-    paths: ["apple/Shared/DesignSystem/**", "scripts/check-apple-glass.sh", ".github/workflows/apple-design.yml"]
+    paths: ["apple/Shared/DesignSystem/**", "android/app/src/main/java/xyz/tironi/zoen/ui/ZoenGlass.kt", "scripts/*glass*", ".github/workflows/apple-design.yml"]
 
 permissions:
   contents: read
@@ -17,4 +17,5 @@ jobs:
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - run: python3 scripts/test-glass-optics.py
       - run: scripts/check-apple-glass.sh

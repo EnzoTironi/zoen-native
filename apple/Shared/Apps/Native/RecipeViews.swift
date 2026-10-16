@@ -159,11 +159,11 @@ struct CookingMode: View {
                         }
                         Spacer()
                         Button { timerEnd = nil } label: { Image(systemName: "xmark").frame(width: 34, height: 34) }
-                            .buttonStyle(.plain).glassEffect(.regular.interactive(), in: .circle)
+                            .buttonStyle(.plain).zoenGlass(radius: 999, slab: true)
                             .accessibilityLabel("Stop timer")
                     }
                     .padding(14)
-                    .glassEffect(.regular, in: .rect(cornerRadius: 22, style: .continuous))
+                    .zoenGlass(radius: 22)
                     .padding(.horizontal, 14)
                     .padding(.bottom, 6)
                 }

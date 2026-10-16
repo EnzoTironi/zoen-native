@@ -191,7 +191,7 @@ struct InlineCameraPanel: View {
             }
             .buttonStyle(.plain)
             .foregroundStyle(camera.state == .running || camera.state == .starting ? .white : InkPalette.ink)
-            .glassEffect(.regular.interactive(), in: .circle)
+            .zoenGlass(radius: 999, slab: true)
             .padding(10)
             .accessibilityLabel("Close camera")
         }

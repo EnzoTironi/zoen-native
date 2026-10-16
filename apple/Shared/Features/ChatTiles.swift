@@ -95,7 +95,7 @@ struct ChatPinStrip: View {
             Text(s.title).font(.footnote.weight(.semibold)).foregroundStyle(Palette.textPrimary).lineLimit(1)
         }
         .padding(.leading, 5).padding(.trailing, 12).frame(height: 36)
-        .glassEffect(.regular.interactive(), in: .capsule)
+        .zoenGlass(radius: 999, slab: true)
         .accessibilityElement(children: .combine)
     }
 

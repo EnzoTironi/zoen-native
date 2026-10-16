@@ -403,7 +403,7 @@ struct HomeHeader: View {
                         .font(.system(size: 19, weight: .semibold))
                         .foregroundStyle(Palette.textPrimary)
                         .frame(width: 40, height: 40)
-                        .glassEffect(.regular.interactive(), in: .circle)
+                        .zoenGlass(radius: 999, slab: true)
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel("New chat")
@@ -513,7 +513,7 @@ struct ConnectionDot: View {
                     .foregroundStyle(Palette.textSecondary)
             }
             .padding(.horizontal, 10).padding(.vertical, 6)
-            .glassEffect(.regular, in: .capsule)
+            .zoenGlass(radius: 999, slab: true)
             .help(c.error ?? "")
             .accessibilityElement(children: .combine)
             .transition(.opacity.combined(with: .scale(scale: 0.9)))

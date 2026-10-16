@@ -154,7 +154,7 @@ struct AgentCitizenActions: View {
         .foregroundStyle(Palette.action)
         .frame(maxWidth: .infinity)
         .padding(.vertical, 12)
-        .glassEffect(.regular.interactive(), in: .rect(cornerRadius: 16, style: .continuous))
+        .zoenGlass(radius: 16)
         .accessibilityElement(children: .combine)
     }
 }

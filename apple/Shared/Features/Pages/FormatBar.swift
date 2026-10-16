@@ -52,7 +52,7 @@ struct FormatBar: View {
             }
             .padding(.horizontal, 6)
         }
-        .glassEffect(.regular, in: .capsule)
+        .zoenGlass(radius: 999, slab: true)
     }
 
     private var blockMenu: some View {
@@ -76,7 +76,7 @@ struct FormatBar: View {
             .padding(.horizontal, 6)
             .animation(.spring(duration: 0.3), value: controller.slashQuery)
         }
-        .glassEffect(.regular, in: .capsule)
+        .zoenGlass(radius: 999, slab: true)
     }
 
     private var currentSymbol: String {

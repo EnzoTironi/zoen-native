@@ -196,7 +196,7 @@ struct PetSheet: View {
                 }
                 .buttonStyle(.plain)
                 .foregroundStyle(asleep ? .white : Color(hex: "#1C1C1E"))
-                .glassEffect(.regular.interactive(), in: .capsule)
+                .zoenGlass(radius: 999, slab: true)
                 .padding(.top, 18).padding(.trailing, 16)
             }
         }
@@ -204,7 +204,7 @@ struct PetSheet: View {
             Button { (miniAppClose ?? { dismiss() })() } label: { Image(systemName: "chevron.down").font(.body.weight(.semibold)).frame(width: 36, height: 36) }.accessibilityIdentifier("miniapp-close")
                 .buttonStyle(.plain)
                 .foregroundStyle(asleep || model.petTab == .play ? .white : Color(hex: "#1C1C1E"))
-                .glassEffect(.regular.interactive(), in: .circle)
+                .zoenGlass(radius: 999, slab: true)
                 .padding(.top, 16).padding(.leading, 16)
                 .accessibilityLabel("Close")
         }
@@ -275,7 +275,7 @@ struct PetSheet: View {
                         }
                     }
                     .padding(.horizontal, 16).padding(.vertical, 8)
-                    .glassEffect(.regular, in: .capsule)
+                    .zoenGlass(radius: 999, slab: true)
                     .transition(.scale.combined(with: .opacity))
                 }
 
@@ -398,7 +398,7 @@ struct PetTabBar: View {
         }
         .foregroundStyle(dark ? .white : Color(hex: "#1C1C1E"))
         .padding(5)
-        .glassEffect(.regular, in: .capsule)
+        .zoenGlass(radius: 999, slab: true)
         .padding(.horizontal, 22)
     }
 }
@@ -568,7 +568,7 @@ struct DashGameView: View {
                     }
                     .font(.footnote.weight(.semibold))
                     .padding(.horizontal, 14).padding(.vertical, 8)
-                    .glassEffect(.regular.interactive(), in: .capsule)
+                    .zoenGlass(radius: 999, slab: true)
                     .padding(.top, 18).padding(.trailing, 16)
                 }
             }
@@ -592,7 +592,7 @@ struct DashGameView: View {
                     }
                     .buttonStyle(.plain)
                     .foregroundStyle(Color(hex: "#1C1C1E"))
-                    .glassEffect(.regular.interactive(), in: .capsule)
+                    .zoenGlass(radius: 999, slab: true)
                     .accessibilityLabel(game.phase == .running ? String(localized: "Jump") : String(localized: "Start run"))
                 }
                 .padding(.bottom, 26)

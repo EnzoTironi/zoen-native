@@ -27,7 +27,6 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.graphicsLayer
@@ -37,10 +36,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 
 /**
- * Zoen's one button: Wabi's press on the marble glass (Modifier.zoenGlass in ZoenGlass.kt), ported from wabi.ai's production
- * `.glass-btn` (design-reference-rea-20261014/wabi-static/wabi-page-css.css), the same
- * five layers as apple/Shared/DesignSystem/WabiGlass.metal. API 33+ draws it with an AGSL
- * RuntimeShader; older devices get the same layers from gradients.
+ * Zoen's shared marble button. API 33+ uses the original rounded-lens optics in
+ * ZoenGlass.kt, matching the Apple material's lighting; older devices use gradients.
  *
  * Drop-in for Material's Button / OutlinedButton: same onClick, modifier, enabled,
  * colors (container colour tints the lens) and interactionSource.
@@ -84,9 +81,7 @@ fun GlassButton(
                 cameraDistance = 8 * density
                 alpha = if (enabled) 1f else 0.45f
             }
-            .shadow(if (held) 2.dp else 6.dp, CircleShape, clip = false,
-                ambientColor = (if (prominent) tint else Color.Black).copy(alpha = 0.18f),
-                spotColor = (if (prominent) tint else Color.Black).copy(alpha = 0.22f))
+            .marbleShadow(CircleShape, held, slab = !prominent)
             .zoenGlass(tint, prominent, dark, press = { press }, slab = !prominent,
                 film = if (prominent) null else colors?.containerColor)
             .then(if (focused) Modifier.border(2.dp, MaterialTheme.colorScheme.primary, CircleShape) else Modifier)

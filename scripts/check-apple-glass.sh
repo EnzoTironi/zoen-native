@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Compiles the Wabi glass shader and type-checks its SwiftUI style on the iOS and macOS
+# Compiles the shared marble glass shader and type-checks its SwiftUI style on the iOS and macOS
 # SDKs. The full app needs the Rust XCFramework; this checks the design-system unit alone,
 # with the few colour tokens it reads stubbed.
 set -euo pipefail

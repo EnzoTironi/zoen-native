@@ -334,7 +334,7 @@ struct StoreScreen: View {
 private extension View {
     /// Unselected chips are Liquid Glass; the selected one is a solid ink pill.
     @ViewBuilder func glassChip(on: Bool) -> some View {
-        if on { self } else { self.glassEffect(.regular.interactive(), in: .capsule) }
+        if on { self } else { self.zoenGlass(radius: 999, slab: true) }
     }
 }
 
@@ -384,7 +384,7 @@ struct NotificationsBell: View {
             ZoenIcon(.bell, size: 21)
                 .foregroundStyle(Palette.textPrimary)
                 .frame(width: 40, height: 40)
-                .glassEffect(.regular.interactive(), in: .circle)
+                .zoenGlass(radius: 999, slab: true)
                 .overlay(alignment: .topTrailing) {
                     if model.pendingCount > 0 {
                         Text("\(min(model.pendingCount, 99))")
@@ -621,7 +621,7 @@ struct GetPill: View {
                 .foregroundStyle(Palette.action)
                 .padding(.horizontal, 16)
                 .frame(height: 32)
-                .glassEffect(.regular.tint(Palette.action.opacity(0.14)).interactive(), in: .capsule)
+                .zoenGlass(radius: 999, prominent: true, tint: Palette.action.opacity(0.14))
                 .glassEffectID("get-\(listing.id)", in: pillNS)
         }
         .buttonStyle(.plain)
@@ -659,7 +659,7 @@ struct InviteCard: View {
             .frame(width: 86, height: 86)
         }
         .padding(18)
-        .glassEffect(.regular, in: .rect(cornerRadius: 28, style: .continuous))
+        .zoenGlass(radius: 28)
         .accessibilityElement(children: .combine)
     }
 }
@@ -763,7 +763,7 @@ struct StoreDetailView: View {
                         stat(l.isAgent ? AppLocale.pick("Agente", "Agent") : "Mini-app", AppLocale.pick("tipo", "kind"))
                     }
                     .padding(.vertical, 10)
-                    .glassEffect(.regular, in: .rect(cornerRadius: 18, style: .continuous))
+                    .zoenGlass(radius: 18)
 
                     section(AppLocale.pick("Sobre", "About")) {
                         Text(l.about).font(.body).foregroundStyle(Palette.textPrimary).fixedSize(horizontal: false, vertical: true)
@@ -820,7 +820,7 @@ struct StoreDetailView: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(16)
-        .glassEffect(.regular, in: .rect(cornerRadius: 20, style: .continuous))
+        .zoenGlass(radius: 20)
     }
 
     private func review(_ who: String, _ text: String) -> some View {

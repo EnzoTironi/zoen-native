@@ -191,7 +191,7 @@ struct ReplyComposerBar: View {
             .accessibilityIdentifier("reply-cancel")
         }
         .padding(.horizontal, 14).padding(.vertical, 8)
-        .glassEffect(.regular, in: .rect(cornerRadius: 18, style: .continuous))
+        .zoenGlass(radius: 18)
         .padding(.horizontal, 12)
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("reply-bar")

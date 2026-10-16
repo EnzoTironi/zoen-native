@@ -215,7 +215,7 @@ struct UniversalSearchView: View {
                         .font(.system(size: 16, weight: .semibold))
                         .foregroundStyle(Palette.textPrimary)
                         .frame(width: 44, height: 44)
-                        .glassEffect(.regular.interactive(), in: .circle)
+                        .zoenGlass(radius: 999, slab: true)
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel(Text("Close search"))
@@ -259,7 +259,7 @@ struct UniversalSearchView: View {
         }
         .padding(.horizontal, 16)
         .frame(minHeight: 50)
-        .glassEffect(.regular.interactive(), in: .capsule)
+        .zoenGlass(radius: 999, slab: true)
         .animation(.snappy, value: query.isEmpty)
     }
 
@@ -278,7 +278,7 @@ struct UniversalSearchView: View {
                             .padding(.horizontal, 16)
                             .frame(minHeight: 36)
                             .background { if on { Capsule().fill(Palette.action) } }
-                            .glassEffect(on ? .identity : .regular.interactive(), in: .capsule)
+                            .zoenGlass(slab: true, enabled: !on)
                     }
                     .buttonStyle(.plain)
                     .accessibilityAddTraits(on ? .isSelected : [])

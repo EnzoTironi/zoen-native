@@ -1131,7 +1131,7 @@ struct Composer: View {
                     .font(.footnote.weight(.semibold))
                     .foregroundStyle(Palette.textPrimary)
                     .padding(.horizontal, 12).padding(.vertical, 8)
-                    .glassEffect(.regular, in: .capsule)
+                    .zoenGlass(slab: true)
                     .offset(x: -12, y: -38)
                     .transition(reduceMotion ? .opacity : .scale(scale: 0.8, anchor: .bottomTrailing).combined(with: .opacity))
             }
@@ -1193,7 +1193,7 @@ struct Composer: View {
             HStack(alignment: .bottom, spacing: 10) {
                 if recorder.phase != .idle {
                     RecordingRow(recorder: recorder, dragX: drag.width, onDelete: cancelRecording, onStop: stopForReview)
-                        .glassEffect(.regular, in: .rect(cornerRadius: 24, style: .continuous))
+                        .zoenGlass(radius: 24)
                         .transition(reduceMotion ? .opacity : .opacity.combined(with: .scale(scale: 0.96, anchor: .trailing)))
                 } else {
                     leading
@@ -1207,7 +1207,7 @@ struct Composer: View {
                         .padding(.horizontal, 18)
                         .padding(.vertical, 14)
                         .frame(minHeight: Composer.height)
-                        .glassEffect(.regular.interactive(), in: .rect(cornerRadius: 24, style: .continuous))
+                        .zoenGlass(radius: 24)
                         .onSubmit(send)
                         .submitLabel(.send)
                         .accessibilityIdentifier("composer")
@@ -1233,7 +1233,7 @@ struct Composer: View {
             }
             .buttonStyle(IconPressStyle())
             .foregroundStyle(ActionGlassForeground())
-            .glassEffect(.regular.tint(Palette.action).interactive(), in: .circle)
+            .zoenGlass(prominent: true, tint: Palette.action)
             .accessibilityLabel("Send voice message")
             .transition(reduceMotion ? .opacity : .scale.combined(with: .opacity))
         } else if micMode || recorder.phase == .recording {
@@ -1245,7 +1245,7 @@ struct Composer: View {
             }
             .buttonStyle(IconPressStyle())
             .foregroundStyle(ActionGlassForeground())
-            .glassEffect(.regular.tint(Palette.action).interactive(), in: .circle)
+            .zoenGlass(prominent: true, tint: Palette.action)
             .disabled(empty || busy)
             .opacity(empty ? 0.55 : 1)
             .accessibilityLabel("Send")
@@ -1264,7 +1264,7 @@ struct Composer: View {
             // While recording it's a solid red disc outside the glass (so it doesn't melt
             // into the recording row next to it).
             .background { if recording { Circle().fill(Palette.danger).shadow(color: Palette.danger.opacity(0.35), radius: 8, y: 2) } }
-            .glassEffect(recording ? .identity : .regular.tint(Palette.action).interactive(), in: .circle)
+            .zoenGlass(prominent: true, tint: Palette.action, enabled: !recording)
             .scaleEffect(reduceMotion ? 1 : (recording ? 1.3 : (pressing ? 0.92 : 1)), anchor: .trailing)
             .offset(x: recording && !reduceMotion ? min(0, drag.width) * 0.35 : 0, y: recording && !reduceMotion ? min(0, drag.height) * 0.35 : 0)
             .animation(reduceMotion ? nil : .spring(duration: 0.3, bounce: 0.3), value: recording)
@@ -1405,7 +1405,7 @@ struct NewMessagesPill: View {
             .foregroundStyle(Palette.textPrimary)
             .padding(.horizontal, 14)
             .padding(.vertical, 8)
-            .glassEffect(.regular.interactive(), in: .capsule)
+            .zoenGlass(slab: true)
         }
         .buttonStyle(.plain)
         .accessibilityIdentifier("new-messages-pill")

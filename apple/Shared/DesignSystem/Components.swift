@@ -304,7 +304,7 @@ struct ToastView: View {
         .padding(.trailing, 8)
         .padding(.vertical, 8)
         .frame(minHeight: 52)
-        .glassEffect(.regular, in: .capsule)
+        .zoenGlass(radius: 999, slab: true)
         .padding(.horizontal, 16)
         .onTapGesture(perform: onClose)
     }
@@ -341,7 +341,7 @@ struct FilterPills<T: Hashable & Identifiable>: View {
                                         .matchedGeometryEffect(id: "selected", in: pill)
                                         .shadow(color: Palette.action.opacity(0.3), radius: 6, y: 3)
                                 } else {
-                                    Capsule().fill(.clear).glassEffect(.regular.interactive(), in: .capsule)
+                                    Capsule().fill(.clear).zoenGlass(radius: 999, slab: true)
                                 }
                             }
                             .contentShape(.capsule)

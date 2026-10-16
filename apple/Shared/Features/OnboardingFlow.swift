@@ -268,20 +268,29 @@ struct OnboardingFlow: View {
             if route.flow == "default" {
                 // Got here from a friend's or a Space link before installing? Pasting it is
                 // the private way to keep it: the person chooses, nothing is fingerprinted.
-                // A quiet line instead of a floating chip, so it reads as an option, not a step.
+                // Clipboard access happens only on an explicit tap, never during onboarding launch.
                 HStack(spacing: 6) {
                     Text("Got an invite?")
                         .font(.footnote)
                         .foregroundStyle(InkPalette.ink.opacity(0.55))
-                    PasteButton(payloadType: URL.self) { urls in
-                        guard let url = urls.first else { return }
+                    Button {
+                        #if os(iOS)
+                        let raw = UIPasteboard.general.url?.absoluteString ?? UIPasteboard.general.string
+                        #else
+                        let raw = NSPasteboard.general.string(forType: .string)
+                        #endif
+                        guard let raw, let url = URL(string: raw.trimmingCharacters(in: .whitespacesAndNewlines)),
+                              ["https", "http", "zoen"].contains(url.scheme?.lowercased() ?? "") else { return }
                         Task { @MainActor in
                             model.captureAcquisition(url)
                             withAnimation(.snappy) { route = OnboardingRoute(model.core.growthOnboardingPlan()) }
                         }
+                    } label: {
+                        Text("Paste")
+                            .font(.footnote)
                     }
-                    .labelStyle(.titleOnly)
-                    .buttonStyle(.borderless)
+                    .accessibilityIdentifier("onboarding-paste-invite")
+                    .buttonStyle(.wabiGlass)
                     .controlSize(.small)
                     .tint(InkPalette.ink.opacity(0.75))
                     .accessibilityHint(String(localized: "Paste the invite link you got"))

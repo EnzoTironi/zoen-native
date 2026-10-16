@@ -593,7 +593,7 @@ struct LockHint: View {
         }
         .foregroundStyle(Palette.textSecondary)
         .frame(width: 40, height: 76)
-        .glassEffect(.regular, in: .capsule)
+        .zoenGlass(radius: 999, slab: true)
         .offset(y: max(-30, min(0, dragY)) * 0.5)
         .accessibilityHidden(true)
     }

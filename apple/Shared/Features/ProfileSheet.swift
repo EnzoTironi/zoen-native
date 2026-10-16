@@ -41,7 +41,7 @@ struct ProfileSheet: View {
         .onChange(of: detent) { old, new in if old != new { Haptics.selectionTick() } }
         .presentationBackground {
             // iOS 26 Liquid Glass sheet surface
-            Rectangle().fill(.clear).glassEffect(.regular, in: .rect(cornerRadius: 28, style: .continuous))
+            Rectangle().fill(.clear).zoenGlass(radius: 28)
         }
         .modifier(ProfileZoomDestination(id: "profile-\(personaId)", ns: zoom))
     }
@@ -154,7 +154,7 @@ struct ProfileSheet: View {
             .foregroundStyle(Palette.action)
             .frame(maxWidth: .infinity)
             .padding(.vertical, 12)
-            .glassEffect(.regular.interactive(), in: .rect(cornerRadius: 16, style: .continuous))
+            .zoenGlass(radius: 16)
         }
         .buttonStyle(.plain)
         .accessibilityLabel(title)
@@ -258,7 +258,7 @@ struct ProfileSheet: View {
             VStack(spacing: 0) { content() }
                 .padding(14)
                 .frame(maxWidth: .infinity, alignment: .leading)
-                .glassEffect(.regular, in: .rect(cornerRadius: 18, style: .continuous))
+                .zoenGlass(radius: 18)
         }
     }
 }

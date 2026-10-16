@@ -129,7 +129,7 @@ struct FanMenu: View {
                 .foregroundStyle(ActionGlassForeground())
                 .rotationEffect(.degrees(isOpen ? 45 : 0))
                 .frame(width: triggerSize, height: triggerSize)
-                .glassEffect(.regular.tint(scheme == .dark ? Palette.action : Color(hex: "#1D2418").opacity(0.92)).interactive(), in: .circle)
+                .zoenGlass(prominent: true, tint: scheme == .dark ? Palette.action : Color(hex: "#1D2418").opacity(0.92))
                 .overlay { if scheme == .dark { Circle().strokeBorder(.white.opacity(0.3), lineWidth: 0.75).allowsHitTesting(false) } }
                 .shadow(color: .black.opacity(scheme == .dark ? 0.55 : 0.25), radius: isOpen ? 14 : 10, y: 4)
                 .scaleEffect(touching && !reduceMotion ? 0.9 : 1)
@@ -320,7 +320,7 @@ struct FanMenu: View {
                 .foregroundStyle(on ? AnyShapeStyle(ActionGlassForeground()) : AnyShapeStyle(Palette.textPrimary))
                 .frame(width: itemSize, height: itemSize)
                 // Same Liquid Glass as the bottom bar; the item under the finger fills with moss green.
-                .glassEffect(on ? .regular.tint(Palette.action).interactive() : .regular.interactive(), in: .circle)
+                .zoenGlass(prominent: on, tint: on ? Palette.action : nil, slab: !on)
                 .shadow(color: (on ? Palette.action : Color.black).opacity(on ? 0.35 : 0.12), radius: on ? 14 : 8, y: on ? 6 : 3)
                 .overlay(alignment: .topTrailing) {
                     if item.badge > 0 {
@@ -363,7 +363,7 @@ struct FanMenu: View {
             .fixedSize()
             .dynamicTypeSize(...DynamicTypeSize.xxLarge)
             .padding(.horizontal, 10).padding(.vertical, 5)
-            .glassEffect(.regular, in: .capsule)
+            .zoenGlass(radius: 999, slab: true)
             .shadow(color: .black.opacity(0.10), radius: 6, y: 2)
             .onGeometryChange(for: CGSize.self) { $0.size } action: { labelSize = $0 }
             .offset(p)

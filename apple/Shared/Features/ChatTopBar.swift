@@ -185,7 +185,7 @@ struct TopGlass<S: InsettableShape>: ViewModifier {
     @Environment(\.colorScheme) private var scheme
     func body(content: Content) -> some View {
         content
-            .glassEffect(interactive ? .regular.interactive() : .regular, in: shape)
+            .zoenGlass(slab: true)
             #if os(iOS)
             .barEdge(shape, diffuse: false)
             #endif

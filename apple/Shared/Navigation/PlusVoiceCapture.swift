@@ -31,7 +31,7 @@ struct PlusVoiceCapture: View {
                         .frame(width: 300)
                         // Opaque under the glass: the row sits over the tab bar's own content.
                         .background(Palette.surface, in: .rect(cornerRadius: 22, style: .continuous))
-                        .glassEffect(.regular, in: .rect(cornerRadius: 22, style: .continuous))
+                        .zoenGlass(radius: 22)
                         .transition(.opacity.combined(with: .scale(scale: 0.96, anchor: .trailing)))
                 }
                 micButton
@@ -78,12 +78,8 @@ struct PlusVoiceCapture: View {
                 .foregroundStyle(scheme == .dark ? Color(hex: "#10200A") : .white)
         }
         .frame(width: triggerSize, height: triggerSize)
-        .glassEffect(
-            recording
-                ? .regular.tint(Palette.danger).interactive()
-                : .regular.tint(scheme == .dark ? Palette.action : Color(hex: "#1D2418").opacity(0.92)).interactive(),
-            in: .circle
-        )
+        .zoenGlass(prominent: true, tint: recording ? Palette.danger
+            : (scheme == .dark ? Palette.action : Color(hex: "#1D2418").opacity(0.92)))
         .glassEffectID("plus-mic", in: glassNS)
         .scaleEffect(recording ? 1.18 : 1)
         .offset(x: recording ? min(0, drag.width) * 0.35 : 0,

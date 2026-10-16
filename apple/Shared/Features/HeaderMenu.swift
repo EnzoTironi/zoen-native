@@ -79,7 +79,7 @@ struct HeaderMenuPanel: View {
             Spacer().frame(height: 8)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .glassEffect(.regular, in: .rect(cornerRadius: 26, style: .continuous))
+        .zoenGlass(radius: 26)
         .padding(.horizontal, 12)
         .onAppear { shown = true }
         .accessibilityElement(children: .contain)

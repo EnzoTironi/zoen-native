@@ -223,7 +223,7 @@ struct MapTapSheet: View {
         .overlay(alignment: .topLeading) {
             Button { (miniAppClose ?? { dismiss() })() } label: { Image(systemName: "chevron.down").font(.body.weight(.semibold)).frame(width: 36, height: 36) }.accessibilityIdentifier("miniapp-close")
                 .buttonStyle(.plain).foregroundStyle(.white)
-                .glassEffect(.regular.interactive(), in: .circle)
+                .zoenGlass(radius: 999, slab: true)
                 .padding(.top, 16).padding(.leading, 16)
                 .opacity(phase == .title || phase == .finished ? 1 : 0)
                 .accessibilityLabel("Close")
@@ -316,7 +316,7 @@ struct MapTapSheet: View {
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(16)
-                .glassEffect(.regular, in: .rect(cornerRadius: 22, style: .continuous))
+                .zoenGlass(radius: 22)
                 .padding(.horizontal, 16)
                 .transition(.move(edge: .top).combined(with: .opacity))
             }

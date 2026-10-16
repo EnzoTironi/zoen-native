@@ -518,7 +518,7 @@ struct VoiceReviewSheet: View {
             } label: {
                 ZoenIcon(.trash, size: 20).foregroundStyle(Palette.danger).frame(width: 48, height: 48)
             }
-            .glassEffect(.regular.interactive(), in: .circle)
+            .zoenGlass(radius: 999, slab: true)
             .accessibilityLabel(Text("Delete recording"))
 
             Button { model.togglePreview() } label: {
@@ -531,14 +531,14 @@ struct VoiceReviewSheet: View {
                 .frame(height: 48)
                 .padding(.horizontal, 16)
             }
-            .glassEffect(.regular.interactive(), in: .capsule)
+            .zoenGlass(radius: 999, slab: true)
             .accessibilityLabel(model.isPlaying ? Text("Pause preview") : Text("Play preview"))
 
             if !editing {
                 Button { withAnimation(.snappy) { model.editing = true } } label: {
                     Text("Edit").font(.body.weight(.semibold)).foregroundStyle(Palette.textPrimary).frame(height: 48).padding(.horizontal, 16)
                 }
-                .glassEffect(.regular.interactive(), in: .capsule)
+                .zoenGlass(radius: 999, slab: true)
             }
             Spacer(minLength: 0)
             Button {
@@ -564,7 +564,7 @@ struct VoiceReviewSheet: View {
                 .foregroundStyle(ActionGlassForeground())
                 .frame(width: 48, height: 48)
             }
-            .glassEffect(.regular.tint(Palette.action).interactive(), in: .circle)
+            .zoenGlass(radius: 999, prominent: true, tint: Palette.action)
             .disabled(model.rendering || model.keptDuration < 0.3)
             .accessibilityLabel(Text("Send voice message"))
             .accessibilityIdentifier("voice-send")

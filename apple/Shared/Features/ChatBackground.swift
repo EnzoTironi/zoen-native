@@ -846,19 +846,19 @@ struct PhotoBackgroundEditor: View {
                 HStack {
                     Button("Cancel") { onCancel() }
                         .padding(.horizontal, 14).padding(.vertical, 8)
-                        .glassEffect(.regular.interactive(), in: .capsule)
+                        .zoenGlass(radius: 999, slab: true)
                     Spacer()
                     // The chat's glass top bar, refracting the photo.
                     Text(title.isEmpty ? String(localized: "Move and Scale") : title)
                         .font(.subheadline.weight(.semibold))
                         .lineLimit(1)
                         .padding(.horizontal, 14).padding(.vertical, 8)
-                        .glassEffect(.regular, in: .capsule)
+                        .zoenGlass(radius: 999, slab: true)
                     Spacer()
                     Button("Set") { commit() }
                         .fontWeight(.semibold)
                         .padding(.horizontal, 14).padding(.vertical, 8)
-                        .glassEffect(.regular.tint(Palette.action).interactive(), in: .capsule)
+                        .zoenGlass(radius: 999, prominent: true, tint: Palette.action)
                         .foregroundStyle(ActionGlassForeground())
                         .accessibilityIdentifier("bg-editor-set")
                 }
@@ -893,7 +893,7 @@ struct PhotoBackgroundEditor: View {
                     Image(systemName: "mic.fill").foregroundStyle(Palette.textSecondary)
                 }
                 .padding(.horizontal, 16).padding(.vertical, 11)
-                .glassEffect(.regular, in: .capsule)
+                .zoenGlass(radius: 999, slab: true)
                 .padding(.horizontal, 14)
                 .allowsHitTesting(false)
                 controls
@@ -933,7 +933,7 @@ struct PhotoBackgroundEditor: View {
             .onChange(of: appearance) { _, _ in sync() }
         }
         .padding(16)
-        .glassEffect(.regular, in: .rect(cornerRadius: 22, style: .continuous))
+        .zoenGlass(radius: 22)
         .padding(.horizontal, 14)
         .padding(.bottom, 12)
     }

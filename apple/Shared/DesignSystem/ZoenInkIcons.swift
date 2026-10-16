@@ -699,7 +699,7 @@ struct IconExploreSheet: View {
 
     private func miniBar(_ d: IconDirection) -> some View {
         HStack(spacing: 8) {
-            InkIcon(glyph: .search, direction: d, size: 22).frame(width: 44, height: 44).glassEffect(.regular, in: .circle)
+            InkIcon(glyph: .search, direction: d, size: 22).frame(width: 44, height: 44).zoenGlass(radius: 999, slab: true)
             HStack(spacing: 2) {
                 HStack(spacing: 6) {
                     InkIcon(glyph: .chats, direction: d, selected: true, size: 22)
@@ -709,7 +709,7 @@ struct IconExploreSheet: View {
                 InkIcon(glyph: .spaces, direction: d, size: 22).frame(maxWidth: .infinity).foregroundStyle(Palette.textSecondary)
                 InkIcon(glyph: .store, direction: d, size: 22).frame(maxWidth: .infinity).foregroundStyle(Palette.textSecondary)
             }
-            .padding(2).frame(height: 44).glassEffect(.regular, in: .capsule)
+            .padding(2).frame(height: 44).zoenGlass(radius: 999, slab: true)
             InkIcon(glyph: .plus, direction: d, size: 22).foregroundStyle(.white).frame(width: 44, height: 44).background(Palette.action, in: .circle)
         }
         .padding(.top, 6)

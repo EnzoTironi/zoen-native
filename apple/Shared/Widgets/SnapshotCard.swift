@@ -406,7 +406,7 @@ struct DashLine: Shape {
     }
 }
 
-/// Liquid Glass in the app; a plain dark wash in WidgetKit (which draws no glass).
+/// Shared marble material in the app; a plain dark wash in WidgetKit.
 struct GlassPanel: ViewModifier {
     var live: Bool
     var corner: CGFloat
@@ -414,7 +414,7 @@ struct GlassPanel: ViewModifier {
         if live {
             // Clear glass with a light dark tint: the photo shows through instead of a milky
             // white block.
-            content.glassEffect(.clear.tint(.black.opacity(0.14)), in: .rect(cornerRadius: corner, style: .continuous))
+            content.zoenGlass(radius: corner, prominent: true, tint: .black.opacity(0.14), lens: false, strength: 0.8)
         } else {
             content.background(.black.opacity(0.28), in: .rect(cornerRadius: corner, style: .continuous))
         }
