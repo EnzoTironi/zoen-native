@@ -70,8 +70,15 @@ fun ZoenApp(model: ZoenViewModel, deepLink: String?, consumed: () -> Unit) {
     key(state.demo, state.me?.id, LocalConfiguration.current.locales[0].language) {
         var tab by rememberSaveable { mutableStateOf(Tab.Chats) }
         val chats = rememberNavBackStack(Home)
-        val store = rememberNavBackStack(Home)
-        val stack = when (tab) { Tab.Chats -> chats; Tab.Store -> store }
+        val spaces = rememberNavBackStack(Home)
+        val notifications = rememberNavBackStack(Home)
+        val profile = rememberNavBackStack(Home)
+        val stack = when (tab) {
+            Tab.Chats -> chats
+            Tab.Spaces -> spaces
+            Tab.Notifications -> notifications
+            Tab.Profile -> profile
+        }
         val navigate: (NavKey) -> Unit = { key ->
             if (key == Home) { while (stack.size > 1) stack.removeLastOrNull() }
             else if (stack.lastOrNull() != key) stack.add(key)
@@ -134,29 +141,24 @@ fun ZoenApp(model: ZoenViewModel, deepLink: String?, consumed: () -> Unit) {
             val density = LocalDensity.current
             Row {
                 if (rail) NavigationRail(modifier = Modifier.fillMaxHeight(), header = {
-                    ZoenMascot(Modifier.padding(top = 12.dp).size(64.dp))
-                    Spacer(Modifier.height(16.dp))
-                    PlusVoiceButton({ quickActions = true }, { voiceStart++ }, { voiceRelease++ }, { voiceLock++ }, { voiceCancel++ }, compact = true, fanActions = productionFanActions)
+                    IconButton(onClick = { navigate(NewChat) }) { Icon(Icons.Rounded.Edit, "New message") }
                 }) {
                     Spacer(Modifier.height(24.dp))
                     Tab.main.forEach { target ->
-                        NavigationRailItem(selected = tab == target, onClick = { if (tab != target) haptics.perform(ZoenFeedback.Selection); tab = target }, icon = { TabIcon(target, if (target == Tab.Chats) unread else state.pending, tab == target) }, label = { Text(tabName(target)) })
+                        NavigationRailItem(selected = tab == target, onClick = { if (tab != target) haptics.perform(ZoenFeedback.Selection); tab = target }, icon = { TabIcon(target, if (target == Tab.Chats) unread else if (target == Tab.Notifications) state.pending else 0, tab == target, state.me) }, label = { Text(tabName(target)) })
                     }
                     Spacer(Modifier.weight(1f))
                     IconButton(onClick = { navigate(Search) }) { Icon(Icons.Rounded.Search, stringResource(R.string.search)) }
-                    IconButton(onClick = { navigate(Context) }) { Icon(Icons.Rounded.Person, stringResource(R.string.context)) }
                 }
                 Scaffold(
                     modifier = Modifier.weight(1f),
                     snackbarHost = { if (stack.lastOrNull() !is VersionPreview) SnackbarHost(snackbar,
                         Modifier.padding(bottom = with(density) { snackbarClearance.bottomPx.toDp() }).testTag("app-snackbar")) },
                     bottomBar = {
-                        if (!rail && stack.size == 1) AppleBottomBar(tab, unread, { target ->
+                        if (!rail && stack.size == 1) AppleBottomBar(tab, unread, state.pending, state.me, { target ->
                             if (tab != target) haptics.perform(ZoenFeedback.Selection)
                             tab = target
-                        }, { navigate(Search) }) {
-                            PlusVoiceButton({ quickActions = true }, { voiceStart++ }, { voiceRelease++ }, { voiceLock++ }, { voiceCancel++ }, compact = true, fanActions = productionFanActions)
-                        }
+                        }, { navigate(NewChat) })
                     },
                     contentWindowInsets = WindowInsets(0, 0, 0, 0),
                 ) { padding ->
@@ -166,7 +168,9 @@ fun ZoenApp(model: ZoenViewModel, deepLink: String?, consumed: () -> Unit) {
                             entry<Home> {
                                 when (tab) {
                                     Tab.Chats -> ConversationsScreen(model, state, navigate, split)
-                                    Tab.Store -> MiniAppStoreScreen(model, state, { navigate(Item(it)) }, { tab = Tab.Chats }, { navigate(Agent(it)) })
+                                    Tab.Spaces -> SpacesDirectoryScreen(state, navigate)
+                                    Tab.Notifications -> ActivityScreen(model, state, navigate, back, root = true)
+                                    Tab.Profile -> YouScreen(model, state, navigate, { tab = Tab.Chats })
                                 }
                             }
                             entry<Chat> { ChatScreen(model, state, it.id, navigate, back, it.message) }
@@ -209,11 +213,22 @@ fun ZoenApp(model: ZoenViewModel, deepLink: String?, consumed: () -> Unit) {
 }
 
 @Composable
-private fun tabName(tab: Tab) = stringResource(when (tab) { Tab.Chats -> R.string.chats; Tab.Store -> R.string.miniapp_store })
+internal fun tabName(tab: Tab): String = when (tab) {
+    Tab.Chats -> stringResource(R.string.chats)
+    Tab.Spaces -> "Spaces"
+    Tab.Notifications -> "Notifications"
+    Tab.Profile -> "Profile"
+}
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun TabIcon(tab: Tab, count: Int, selected: Boolean) {
-    val icon = when (tab) { Tab.Chats -> ZoenGlyph.Chats; Tab.Store -> ZoenGlyph.Store }
-    BadgedBox(badge = { if (tab == Tab.Chats && count > 0) Badge { Text(if (count > 99) "99+" else count.toString()) } }) { ZoenIcon(icon, tabName(tab), selected = selected) }
+internal fun TabIcon(tab: Tab, count: Int, selected: Boolean, me: xyz.tironi.zoen.core.Persona?) {
+    BadgedBox(badge = { if (count > 0 && (tab == Tab.Chats || tab == Tab.Notifications)) Badge { Text(if (count > 99) "99+" else count.toString()) } }) {
+        when (tab) {
+            Tab.Chats -> Icon(Icons.AutoMirrored.Rounded.Chat, tabName(tab), Modifier.size(26.dp))
+            Tab.Spaces -> Icon(Icons.Rounded.GridView, tabName(tab), Modifier.size(26.dp))
+            Tab.Notifications -> Icon(if (selected) Icons.Rounded.Notifications else Icons.Rounded.NotificationsNone, tabName(tab), Modifier.size(26.dp))
+            Tab.Profile -> Avatar(me, size = 26)
+        }
+    }
 }

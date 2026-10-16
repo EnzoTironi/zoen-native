@@ -9,8 +9,8 @@ class PrimaryNavigationTest {
         assertEquals(false, SettingsPage.entries.any { it.name == "Preferences" })
     }
 
-    @Test fun communitiesShareChatsAndSecondaryToolsAreNotTabs() {
-        assertEquals(listOf(Tab.Chats, Tab.Store), Tab.main)
+    @Test fun nativeFourDestinationsHaveStableOrderAndNoStoreTab() {
+        assertEquals(listOf(Tab.Chats, Tab.Spaces, Tab.Notifications, Tab.Profile), Tab.main)
         assertEquals(Tab.entries.toList(), Tab.main)
     }
 }

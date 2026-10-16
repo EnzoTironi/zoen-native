@@ -39,33 +39,17 @@ import androidx.compose.ui.window.DialogProperties
 
 @Composable
 @OptIn(ExperimentalMaterial3Api::class)
-private fun HomeBar(title: String, state: AppState, navigate: (NavKey) -> Unit, onActivity: (() -> Unit)? = null, onSearch: (() -> Unit)? = null, onBack: (() -> Unit)? = null) {
-    val haptics = rememberZoenHaptics()
+internal fun HomeBar(title: String, state: AppState, navigate: (NavKey) -> Unit, onBack: (() -> Unit)? = null) {
     TopAppBar(title = {
-        if (onActivity != null) Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-            ZoenMascot(Modifier.size(32.dp), headOnly = true, mood = MascotMood.Smirk)
-            Text("zoen", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.ExtraBold, maxLines = 1, softWrap = false)
-        } else Text(title, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        Text(title, maxLines = 1, overflow = TextOverflow.Ellipsis)
     }, navigationIcon = {
         if (onBack != null) IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Rounded.ArrowBack, stringResource(R.string.back)) }
     }, actions = {
-        val configuration = androidx.compose.ui.platform.LocalConfiguration.current
-        if (onActivity != null && !state.connection.synced && configuration.fontScale <= 1.3f && configuration.screenWidthDp >= 380) {
-            AssistChip(onClick = { navigate(SettingsRoute("Devices")) }, label = {
-                Text(stringResource(if (state.connection.state == "connecting") R.string.connecting else R.string.offline_short), style = MaterialTheme.typography.labelSmall, maxLines = 1)
-            }, modifier = Modifier.height(32.dp).testTag("connection-status"))
-        }
-        if (onActivity != null) IconButton(onClick = { navigate(NewChat) }, modifier = Modifier.testTag("newChat")) {
-            Icon(Icons.Rounded.Edit, stringResource(R.string.new_chat))
-        }
-        if (onActivity != null) IconButton(onClick = { haptics.perform(ZoenFeedback.Open); onActivity() }, modifier = Modifier.testTag("open-activity")) {
-            BadgedBox(badge = { if (state.pending > 0) Badge { Text(state.pending.toString()) } }) {
-                Icon(Icons.Rounded.NotificationsNone, stringResource(R.string.activity))
+        if (state.account != null && state.connection.state == "offline") {
+            IconButton(onClick = { navigate(SettingsRoute("Devices")) }, modifier = Modifier.testTag("connection-status")) {
+                Icon(Icons.Rounded.Circle, stringResource(if (state.connection.state == "connecting") R.string.connecting else R.string.offline_short), Modifier.size(8.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
             }
-        } else IconButton(onClick = { haptics.perform(ZoenFeedback.Tap); if (onSearch != null) onSearch() else navigate(Search) }) {
-            Icon(Icons.Rounded.Search, stringResource(R.string.search))
         }
-        IconButton(onClick = { navigate(Context) }, modifier = Modifier.testTag("open-context")) { Avatar(state.me, size = 34) }
     }, colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.background))
 }
 
@@ -91,7 +75,7 @@ fun ConversationsScreen(model: ZoenViewModel, state: AppState, navigate: (NavKey
         .sortedByDescending { it.lastAtMs }
         .sortedByDescending { it.pinned }
     val list: @Composable () -> Unit = {
-        Scaffold(topBar = { HomeBar(stringResource(R.string.app_name), state, navigate, onActivity = { navigate(Activity) }, onSearch = { searching = !searching; if (!searching) query = "" }) }, containerColor = MaterialTheme.colorScheme.background, contentWindowInsets = WindowInsets(0, 0, 0, 0)) { padding ->
+        Scaffold(topBar = { HomeBar(stringResource(R.string.chats), state, navigate) }, containerColor = MaterialTheme.colorScheme.background, contentWindowInsets = WindowInsets(0, 0, 0, 0)) { padding ->
             // Bottom: clear the floating tab bar so the last chat is never under it.
             LazyColumn(Modifier.fillMaxSize().padding(padding).testTag("conversation-list"), contentPadding = PaddingValues(bottom = 112.dp)) {
                 if (showArchived) item {
@@ -212,10 +196,10 @@ private fun matchesSpace(space: SpaceSummary, query: String): Boolean {
 }
 
 @Composable
-fun ActivityScreen(model: ZoenViewModel, state: AppState, navigate: (NavKey) -> Unit, back: () -> Unit) {
-    var showingList by rememberSaveable(state.me?.id) { mutableStateOf(false) }
+fun ActivityScreen(model: ZoenViewModel, state: AppState, navigate: (NavKey) -> Unit, back: () -> Unit, root: Boolean = false) {
+    var showingList by rememberSaveable(state.me?.id) { mutableStateOf(root) }
     if (showingList) ActivityList(model, state, navigate) { showingList = false }
-    else Scaffold(topBar = { HomeBar(stringResource(R.string.activity), state, navigate, onBack = back) }, contentWindowInsets = WindowInsets(0, 0, 0, 0)) { padding ->
+    else Scaffold(topBar = { HomeBar("Notifications", state, navigate, onBack = back) }, contentWindowInsets = WindowInsets(0, 0, 0, 0)) { padding ->
         ApprovalsDeck(model, state, navigate, { model.approvals.flush(); showingList = true }, Modifier.padding(padding))
     }
 }
@@ -230,7 +214,7 @@ private fun ActivityList(model: ZoenViewModel, state: AppState, navigate: (NavKe
     val resolved = state.requests.filter { it.status == RequestStatus.APPROVED || it.status == RequestStatus.DENIED }
     var review by remember { mutableStateOf<List<AgentRequestDto>?>(null) }
     var busy by remember { mutableStateOf(false) }
-    Scaffold(topBar = { HomeBar(stringResource(R.string.activity), state, navigate) }, contentWindowInsets = WindowInsets(0, 0, 0, 0)) { padding ->
+    Scaffold(topBar = { HomeBar("Notifications", state, navigate) }, contentWindowInsets = WindowInsets(0, 0, 0, 0)) { padding ->
         LazyColumn(Modifier.padding(padding).testTag("activity-list"), contentPadding = PaddingValues(24.dp, 8.dp, 24.dp, 100.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             item { Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
                 TextButton(onClick = onShowCards, modifier = Modifier.testTag("activity-show-cards")) { Text(stringResource(R.string.approval_cards)) }
