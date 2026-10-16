@@ -23,6 +23,7 @@ import org.junit.Assert.assertEquals
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
+import xyz.tironi.zoen.CommittedWindowCapture
 
 @RunWith(AndroidJUnit4::class)
 class NativeMaterialComponentsTest {
@@ -65,6 +66,8 @@ class NativeMaterialComponentsTest {
                 }
             }
         }
+        compose.waitForIdle()
+        CommittedWindowCapture.save(compose.activity, "native-material", "buttons-and-cards")
         listOf("filled", "outlined", "clickable-card").forEach {
             compose.onNodeWithTag(it).assertIsDisplayed().assertHasClickAction().performClick()
         }
