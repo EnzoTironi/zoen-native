@@ -75,7 +75,13 @@ class SettingsJourneyTest {
     private fun clickVisible(tag: String) {
         compose.waitUntilAtLeastOneExists(hasTestTag(tag), 10_000)
         try {
-            compose.onNodeWithTag(tag).assertIsDisplayed().assertHasClickAction().performClick()
+            val node = compose.onNodeWithTag(tag)
+            try {
+                node.assertIsDisplayed()
+            } catch (_: AssertionError) {
+                node.performScrollTo()
+            }
+            node.assertIsDisplayed().assertHasClickAction().performClick()
             compose.waitForIdle()
         } catch (failure: AssertionError) {
             throw AssertionError("Falha ao tocar em $tag: ${failure.message}", failure)
