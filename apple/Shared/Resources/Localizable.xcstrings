@@ -183,6 +183,16 @@
         }
       }
     },
+    "%@ are typing…": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ estão digitando…"
+          }
+        }
+      }
+    },
     "%@ is typing": {
       "localizations": {
         "pt-BR": {

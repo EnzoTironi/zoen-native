@@ -32,7 +32,10 @@ pub trait CoreListener: Send + Sync {
     fn on_change(&self, space_ids: Vec<String>);
     /// `kind`: "typing", "stopped", "status" (detail = processing/building/…), "read" (detail = seq).
     fn on_ephemeral(&self, space_id: String, from_id: String, kind: String, detail: String);
-    fn on_presence(&self, identity_id: String, online: bool);
+    /// `None` means last seen is hidden or unavailable; replace any previously shown value.
+    fn on_presence(&self, identity_id: String, online: bool, last_seen_ms: Option<u64>);
+    /// The relay-authoritative account preference, synchronized across devices.
+    fn on_presence_privacy(&self, hide_last_seen: bool);
     fn on_connection(&self, status: ConnectionDto);
     /// The relay refused something you sent (shown as a toast).
     fn on_error(&self, message: String);
@@ -608,6 +611,12 @@ impl RodaEngine {
             return;
         }
         self.with_net(|n| n.ephemeral(space_id, EphemeralKind::Status { status }));
+    }
+
+    /// Queue an explicit account privacy change. Only unacknowledged changes are retried;
+    /// relay snapshots, not a local cache, remain authoritative across devices.
+    pub fn set_presence_privacy(&self, hide_last_seen: bool) {
+        self.lock().set_presence_privacy(hide_last_seen);
     }
 
     pub fn is_online(&self, identity_id: String) -> bool {

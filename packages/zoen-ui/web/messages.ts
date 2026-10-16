@@ -1,5 +1,6 @@
 import { array, boolean, bytes, integer, message, object, publicKey, string } from './boundary.ts';
 import { persistBeforeOutgoing } from './persistence.ts';
+import { LivePresence, TYPING_REFRESH_MS, type PresenceSnapshot } from './presence.ts';
 import type { StoredSession } from './session.ts';
 import { AuthenticatedTransport, type ConnectionState, type RelayFrame } from './transport.ts';
 import type { BrowserVault } from './vault.ts';
@@ -32,7 +33,7 @@ function parseConversation(input: unknown) {
   if (kind !== 'direct' && kind !== 'group' && kind !== 'community' && kind !== 'personal') throw new Error('Invalid conversation kind.');
   return { id: string(value.id), title: string(value.title), kind, can_send: boolean(value.can_send),
     waiting: nullableText(value.waiting), unreadable: integer(value.unreadable),
-    unread: integer(value.unread ?? 0), mentions: integer(value.mentions ?? 0), members: integer(value.members ?? 0), messages: array(value.messages).map(parseMessage) };
+    unread: integer(value.unread ?? 0), mentions: integer(value.mentions ?? 0), members: integer(value.members ?? 0), member_ids: array(value.member_ids ?? []).map(publicKey), messages: array(value.messages).map(parseMessage) };
 }
 export type Conversation = ReturnType<typeof parseConversation>;
 export type Message = ReturnType<typeof parseMessage>;
@@ -62,7 +63,7 @@ function plain(reason: string): string {
 
 export type MessagesState =
   | { kind: 'loading' }
-  | { kind: 'active'; connection: ConnectionState; conversations: Conversation[]; notice: string | null }
+  | { kind: 'active'; connection: ConnectionState; conversations: Conversation[]; notice: string | null; presence: PresenceSnapshot }
   | { kind: 'failed'; message: string; conversations: Conversation[] };
 type LinkedSession = Extract<StoredSession, { kind: 'linked' }>;
 type MessageCore = Pick<CoreWorker, 'text' | 'bytes' | 'close'>;
@@ -80,6 +81,8 @@ export class Messages {
   private generation = 0;
   private conversations: Conversation[] = [];
   private notice: string | null = null;
+  private readonly presence = new LivePresence(() => this.publish());
+  private readonly outgoingTyping = new Map<string, { sent: number; timer: ReturnType<typeof setTimeout> }>();
 
   constructor({ core, vault, session, changed }: {
     core: MessageCore; vault: MessageVault; session: LinkedSession; changed: (state: MessagesState) => void;
@@ -88,7 +91,7 @@ export class Messages {
     this.transport = new AuthenticatedTransport(core, vault, session.account, (connection) => {
       if (this.closed) return;
       this.connection = connection;
-      if (connection.kind !== 'ready') ++this.generation;
+      if (connection.kind !== 'ready') { ++this.generation; this.clearPresence(); }
       if (connection.kind === 'failed') { this.fail(connection.message); return; }
       this.publish();
     }, (frame, raw) => this.received(frame, raw));
@@ -105,13 +108,23 @@ export class Messages {
   }
 
   private publish(): void {
-    if (!this.closed) this.changed({ kind: 'active', connection: this.connection, conversations: this.conversations, notice: this.notice });
+    if (!this.closed) this.changed({ kind: 'active', connection: this.connection, conversations: this.conversations, notice: this.notice, presence: this.presence.snapshot() });
   }
 
   private received(frame: RelayFrame, raw: Uint8Array): Promise<void> {
     const generation = this.generation;
     return this.enqueue(async () => {
       if (generation !== this.generation || this.connection.kind !== 'ready') return;
+      if (frame.kind === 'presence') {
+        this.presence.presence(frame.identity, frame.online, frame.last_seen_ms);
+        if (frame.identity === this.session.account.identity && frame.hide_last_seen !== null) this.presence.privacyChanged(frame.hide_last_seen);
+        return;
+      }
+      if (frame.kind === 'ephemeral' && (frame.activity === 'typing' || frame.activity === 'stopped_typing')) {
+        const conversation = this.conversations.find((c) => c.id === frame.space);
+        if (frame.from !== this.session.account.identity && conversation?.member_ids.includes(frame.from)) this.presence.activity(frame.space, frame.from, frame.activity === 'typing');
+        return;
+      }
       const update = frame.kind === 'ready' ? await this.core.text({ kind: 'bootstrap' }) :
         await this.core.text({ kind: 'receive', bytes: raw, now: Date.now() });
       if (frame.kind === 'rejected' && frame.permanent) this.notice = frame.reason;
@@ -162,6 +175,39 @@ export class Messages {
     if (!conversation?.unread) return Promise.resolve();
     const generation = this.generation;
     return this.enqueue(async () => { await this.apply(await this.core.text({ kind: 'mark_read', space }), generation); }, () => null, false).catch(() => {});
+  }
+
+  /** Best-effort activity, scoped to this connection; never added to the outbox. */
+  typing(space: string, active: boolean): void {
+    const previous = this.outgoingTyping.get(space);
+    clearTimeout(previous?.timer);
+    if (!active) {
+      this.outgoingTyping.delete(space);
+      if (previous) void this.sendTransient('stopped_typing', space).catch(() => {});
+      return;
+    }
+    if (this.closed || this.connection.kind !== 'ready' || !this.conversations.find((c) => c.id === space)?.can_send) return;
+    const now = Date.now();
+    const send = !previous || now - previous.sent >= TYPING_REFRESH_MS;
+    this.outgoingTyping.set(space, { sent: send ? now : previous.sent, timer: setTimeout(() => this.typing(space, false), 4_000) });
+    if (send) void this.sendTransient('typing', space).catch(() => {});
+  }
+
+  setPresencePrivacy(hidden: boolean): Promise<void> {
+    return this.sendTransient('presence_privacy', JSON.stringify(hidden));
+  }
+
+  private async sendTransient(op: string, value: string): Promise<void> {
+    if (this.closed || this.connection.kind !== 'ready') throw new Error('Sem conexão agora. Tente de novo em instantes.');
+    const generation = this.generation;
+    const bytes = await this.core.bytes({ kind: 'request', requestId: 0, op, value });
+    if (this.closed || generation !== this.generation || this.connection.kind !== 'ready') throw new Error('A conexão mudou. Tente de novo.');
+    this.transport.send(bytes);
+  }
+
+  private clearPresence(): void {
+    for (const entry of this.outgoingTyping.values()) clearTimeout(entry.timer);
+    this.outgoingTyping.clear(); this.presence.clear();
   }
 
   private act(space: string, operation: Parameters<MessageCore['text']>[0]): Promise<void> {
@@ -217,6 +263,7 @@ export class Messages {
 
   stop(): void {
     this.closed = true;
+    this.clearPresence();
     ++this.generation;
     this.transport.stop();
   }

@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { message as reason } from './boundary.ts';
 import type { Conversation, Message, Messages } from './messages.ts';
+import { lastSeenLabel, type PresenceSnapshot } from './presence.ts';
 
 /** How I keep a chat. Local to this browser until the synced chat preferences reach the web core. */
 type Prefs = { pinned?: boolean; muted?: boolean; archived?: boolean };
@@ -92,9 +93,9 @@ function Bubble({ entry, own, first, onReact, onReply, onThread, onEdit, onDelet
   </article>;
 }
 
-function Composer({ placeholder, disabled, reply, cancelReply, editing, submit, autoFocus }: {
+function Composer({ placeholder, disabled, reply, cancelReply, editing, submit, autoFocus, activity }: {
   placeholder: string; disabled: boolean; reply?: Message | null; cancelReply?: () => void; editing?: Message | null; autoFocus?: boolean;
-  submit: (text: string) => Promise<void>;
+  submit: (text: string) => Promise<void>; activity?: (active: boolean) => void;
 }) {
   const [draft, setDraft] = useState('');
   const [busy, setBusy] = useState(false);
@@ -106,7 +107,7 @@ function Composer({ placeholder, disabled, reply, cancelReply, editing, submit, 
   const has = draft.trim().length > 0;
   function go() {
     if (!has || busy || disabled) return;
-    setBusy(true); setError('');
+    activity?.(false); setBusy(true); setError('');
     void submit(draft).then(() => setDraft('')).catch((e: unknown) => setError(reason(e))).finally(() => { setBusy(false); field.current?.focus(); });
   }
   return <div className="zm-composer-zone">
@@ -116,7 +117,7 @@ function Composer({ placeholder, disabled, reply, cancelReply, editing, submit, 
     <form className="zm-composer" onSubmit={(e) => { e.preventDefault(); go(); }}>
       <label className="zm-field"><span className="zw-sr-only">Mensagem</span>
         <textarea ref={field} rows={1} value={draft} disabled={disabled} placeholder={placeholder} maxLength={32_768} autoFocus={autoFocus}
-          onChange={(e) => setDraft(e.target.value)}
+          onChange={(e) => { setDraft(e.target.value); activity?.(e.target.value.trim().length > 0); }} onBlur={() => activity?.(false)}
           onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) { e.preventDefault(); go(); } if (e.key === 'Escape') cancelReply?.(); }} /></label>
       <button type={has ? 'submit' : 'button'} className={`zm-send glass${has ? ' zm-has' : ''}`} disabled={disabled || busy || !has} aria-label={has ? 'Enviar' : 'Mensagem de voz (em breve na web)'} title={has ? 'Enviar' : 'Mensagem de voz chega em breve na web'}>
         <span className="zm-swap"><Icon name={has ? 'send' : 'mic'} /></span></button>
@@ -146,8 +147,8 @@ function ChatRow({ c, active, prefs, open, set }: { c: Conversation; active: boo
   </li>;
 }
 
-export function Messenger({ conversations, identity, name, connected, status, messages, footer, selected, select, children }: {
-  conversations: Conversation[]; identity: string; name: string; connected: boolean; status: string;
+export function Messenger({ conversations, identity, name, connected, status, messages, footer, selected, select, children, presence }: {
+  conversations: Conversation[]; identity: string; name: string; connected: boolean; status: string; presence?: PresenceSnapshot | undefined;
   messages: React.RefObject<Messages | null>; footer: React.ReactNode; selected: string; select: (id: string) => void; children?: React.ReactNode;
 }) {
   const [prefs, setPrefs] = useState(loadPrefs);
@@ -185,6 +186,18 @@ export function Messenger({ conversations, identity, name, connected, status, me
   }, [conversation?.id, conversation?.unread, connected]);
 
   const space = conversation?.id ?? '';
+  // Conversation switches, focus loss and unmount stop this browser's activity.
+  useEffect(() => {
+    const stop = () => { if (document.visibilityState !== 'visible' || !document.hasFocus()) messages.current?.typing(space, false); };
+    document.addEventListener('visibilitychange', stop); window.addEventListener('blur', stop);
+    return () => { messages.current?.typing(space, false); document.removeEventListener('visibilitychange', stop); window.removeEventListener('blur', stop); };
+  }, [space, connected]);
+  const typers = (presence?.typing[space] ?? []).filter((id) => conversation?.member_ids.includes(id) && id !== identity);
+  const peer = conversation?.kind === 'direct' ? conversation.member_ids.find((id) => id !== identity) : undefined;
+  const personName = (id: string) => [...(conversation?.messages ?? [])].reverse().find((m) => m.author === id)?.name || (conversation?.kind === 'direct' ? conversation.title : 'Alguém');
+  const typingLabel = typers.length === 1 ? personName(typers[0]!) + ' está digitando…' : typers.length > 1 ? typers.length + ' pessoas estão digitando…' : '';
+  const presenceLabel = connected ? typingLabel || (peer ? lastSeenLabel(presence?.people[peer]) : '') : '';
+
   const act = {
     react: (m: Message) => (emoji: string | null) => { if (m.entry) void messages.current?.annotate(space, m.entry, emoji ? { React: { emoji } } : 'Unreact').catch(fail); },
     del: (m: Message) => () => { if (m.entry && window.confirm('Apagar esta mensagem para todos?')) void messages.current?.annotate(space, m.entry, 'Delete').catch(fail); },
@@ -200,6 +213,8 @@ export function Messenger({ conversations, identity, name, connected, status, me
       <header className="zm-side-head">
         {showArchived ? <button className="zm-round glass" aria-label="Voltar" onClick={() => setShowArchived(false)}><Icon name="back" /></button> : null}
         <h1>{showArchived ? 'Arquivadas' : 'Conversas'}</h1>
+        <details className="zm-privacy"><summary>Privacidade</summary><label><input type="checkbox" checked={presence?.hideLastSeen === true} disabled={!connected || presence?.hideLastSeen == null}
+          onChange={(event) => { void messages.current?.setPresencePrivacy(event.target.checked).catch(fail); }} />Ocultar visto por último</label><p>Seu horário não aparece para outras pessoas. O status online continua visível.</p></details>
       </header>
       <label className="zm-search"><Icon name="search" /><span className="zw-sr-only">Buscar conversas</span>
         <input type="search" placeholder="Buscar" value={search} onChange={(e) => setSearch(e.target.value)} /></label>
@@ -211,14 +226,14 @@ export function Messenger({ conversations, identity, name, connected, status, me
     </aside>
     <main className="zm-main">
       {children ?? (conversation ? <>
-        <header className="zm-chat-head"><span className="zm-title-pill glass-pill"><Avatar name={conversation.title} size={28} /><b>{conversation.title}</b>{conversation.kind !== 'direct' ? <span>{conversation.members} pessoas</span> : null}</span></header>
+        <header className="zm-chat-head"><span className="zm-title-pill glass-pill"><Avatar name={conversation.title} size={28} /><b>{conversation.title}</b>{conversation.kind !== 'direct' ? <span>{conversation.members} pessoas</span> : null}</span>{presenceLabel ? <span className="zm-presence" role="status">{presenceLabel}</span> : null}</header>
         <section className="zm-timeline" role="log" aria-label="Mensagens" aria-live="polite">
           {conversation.waiting ? <p className="zm-note">Seu celular está preparando esta conversa para o navegador. Deixe ele conectado.</p> : null}
           {conversation.unreadable ? <p className="zm-note">{conversation.unreadable === 1 ? 'Uma mensagem anterior está' : `${conversation.unreadable} mensagens anteriores estão`} só no seu celular.</p> : null}
           {bubbles(timeline, false)}
           <div ref={end} />
         </section>
-        <Composer key={conversation.id} placeholder={connected ? 'Mensagem' : 'Reconectando…'} disabled={!connected || !conversation.can_send} reply={reply} editing={editing} autoFocus
+        <Composer key={conversation.id} activity={(active) => messages.current?.typing(space, active)} placeholder={connected ? 'Mensagem' : 'Reconectando…'} disabled={!connected || !conversation.can_send} reply={reply} editing={editing} autoFocus
           cancelReply={() => { setReply(null); setEditing(null); }}
           submit={async (text) => {
             const m = messages.current; if (!m) throw new Error('Recarregue o Zoen.');
@@ -236,7 +251,7 @@ export function Messenger({ conversations, identity, name, connected, status, me
         <p className="zm-divider">{replies.length === 1 ? '1 resposta' : `${replies.length} respostas`}</p>
         {bubbles(replies, true)}
       </section>
-      <Composer key={root.entry} placeholder="Responder na thread" disabled={!connected || !conversation?.can_send}
+      <Composer key={root.entry} activity={(active) => messages.current?.typing(space, active)} placeholder="Responder na thread" disabled={!connected || !conversation?.can_send}
         submit={async (text) => { await messages.current?.post({ space, text, replyTo: root.entry!, thread: true }); if (follow[root.entry!] === undefined) toggleFollow(root.entry!, true); }} />
     </aside> : null}
     {forward ? <div className="zm-scrim" onClick={() => setForward(null)}><div className="zm-sheet" role="dialog" aria-label="Encaminhar para" onClick={(e) => e.stopPropagation()}>

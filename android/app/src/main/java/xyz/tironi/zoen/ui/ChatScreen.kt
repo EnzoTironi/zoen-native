@@ -263,12 +263,15 @@ fun ChatScreen(model: ZoenViewModel, state: AppState, spaceId: String, navigate:
                     Column(Modifier.weight(1f).clickable(role = Role.Button, onClickLabel = participants) { navigate(Participants(space.id)) }) {
                         Text(space.title, style = MaterialTheme.typography.titleMedium, maxLines = if (enlargedText) Int.MAX_VALUE else 1, overflow = TextOverflow.Ellipsis)
                         val remote = state.remoteActivity[spaceId]
-                        val name = working[spaceId] ?: state.typing[spaceId]?.let { id -> space.members.firstOrNull { it.id == id }?.name } ?: remote?.let { activity -> space.members.firstOrNull { it.id == activity.identity }?.name }
+                        val typists = space.members.filter { it.id in state.typing[spaceId].orEmpty() }.map { it.name }
+                        val name = working[spaceId] ?: typists.takeIf { it.isNotEmpty() }?.joinToString(", ") ?: remote?.let { activity -> space.members.firstOrNull { it.id == activity.identity }?.name }
+                        val lastSeen = space.counterpart?.id?.let { state.lastSeen[it] }
                         val status = when {
                             working[spaceId] != null -> stringResource(R.string.chat_processing, name.orEmpty())
-                            state.typing[spaceId] != null -> stringResource(R.string.person_typing, name.orEmpty())
+                            typists.isNotEmpty() -> stringResource(if (typists.size == 1) R.string.person_typing else R.string.people_typing, name.orEmpty())
                             remote != null -> stringResource(when (remote.kind) { "building" -> R.string.chat_building; "call" -> R.string.chat_call; else -> R.string.chat_processing }, name.orEmpty())
                             space.counterpart?.id in state.online -> stringResource(R.string.chat_online)
+                            lastSeen != null -> stringResource(R.string.chat_last_seen, java.text.DateFormat.getDateTimeInstance(java.text.DateFormat.SHORT, java.text.DateFormat.SHORT).format(java.util.Date(lastSeen.toLong())))
                             space.counterpart == null -> space.members.count { it.kind == PersonaKind.PERSON }.let { pluralStringResource(R.plurals.chat_people_count, it, it) }
                             else -> ""
                         }
@@ -302,9 +305,9 @@ fun ChatScreen(model: ZoenViewModel, state: AppState, spaceId: String, navigate:
                     working[spaceId]?.let { text -> Row(Modifier.padding(start = 16.dp, bottom = 8.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         CircularProgressIndicator(Modifier.size(16.dp), strokeWidth = 2.dp); Text(text, style = MaterialTheme.typography.labelMedium)
                     } }
-                    state.typing[spaceId]?.let { identity ->
-                        val name = space.members.firstOrNull { it.id == identity }?.name.orEmpty()
-                        Text(stringResource(R.string.person_typing, name), Modifier.padding(start = 16.dp, bottom = 8.dp), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
+                    val typists = space.members.filter { it.id in state.typing[spaceId].orEmpty() }.map { it.name }
+                    if (typists.isNotEmpty()) {
+                        Text(stringResource(if (typists.size == 1) R.string.person_typing else R.string.people_typing, typists.joinToString(", ")), Modifier.padding(start = 16.dp, bottom = 8.dp), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
                     }
                     replyId?.let { id ->
                         val original = timeline.firstOrNull { it.id == id }

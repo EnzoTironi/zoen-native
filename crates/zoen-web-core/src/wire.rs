@@ -1,4 +1,6 @@
-use roda_proto::{ClientFrame, ErrorCode, Op, Reply, ServerFrame, CAPABILITIES, PROTOCOL_VERSION};
+use roda_proto::{
+    ClientFrame, EphemeralKind, ErrorCode, Op, Reply, ServerFrame, CAPABILITIES, PROTOCOL_VERSION,
+};
 use serde::Serialize;
 
 pub fn hello(identity: &str, device: &str, cert: &str) -> Vec<u8> {
@@ -13,6 +15,26 @@ pub fn hello(identity: &str, device: &str, cert: &str) -> Vec<u8> {
 }
 
 pub fn request(id: u64, kind: &str, value: &str) -> Result<Vec<u8>, String> {
+    match kind {
+        "typing" | "stopped_typing" => {
+            return Ok(ClientFrame::Ephemeral {
+                space: value.to_string(),
+                kind: if kind == "typing" {
+                    EphemeralKind::Typing
+                } else {
+                    EphemeralKind::StoppedTyping
+                },
+            }
+            .encode())
+        }
+        "presence_privacy" => {
+            return Ok(ClientFrame::SetPresencePrivacy {
+                hide_last_seen: serde_json::from_str(value).map_err(|e| e.to_string())?,
+            }
+            .encode())
+        }
+        _ => {}
+    }
     let op = match kind {
         "fetch_link" => Op::FetchLink {
             id: value.to_string(),
@@ -50,6 +72,17 @@ pub enum ServerMessage {
         message: String,
     },
     Event,
+    Presence {
+        identity: String,
+        online: bool,
+        last_seen_ms: Option<u64>,
+        hide_last_seen: Option<bool>,
+    },
+    Ephemeral {
+        space: String,
+        from: String,
+        activity: &'static str,
+    },
     SyncDone,
     Joined {
         space: String,
@@ -127,6 +160,26 @@ pub fn decode_server(bytes: &[u8]) -> Result<ServerMessage, String> {
             },
         },
         ServerFrame::Event { .. } => ServerMessage::Event,
+        ServerFrame::Presence {
+            identity,
+            online,
+            last_seen_ms,
+            hide_last_seen,
+        } => ServerMessage::Presence {
+            identity,
+            online,
+            last_seen_ms,
+            hide_last_seen,
+        },
+        ServerFrame::Ephemeral { space, from, kind } => ServerMessage::Ephemeral {
+            space,
+            from,
+            activity: match kind {
+                EphemeralKind::Typing => "typing",
+                EphemeralKind::StoppedTyping => "stopped_typing",
+                _ => "other",
+            },
+        },
         ServerFrame::SyncDone => ServerMessage::SyncDone,
         ServerFrame::Joined { space } => ServerMessage::Joined { space },
         ServerFrame::Accepted {
@@ -164,4 +217,66 @@ pub fn decode_server(bytes: &[u8]) -> Result<ServerMessage, String> {
         },
         _ => ServerMessage::Other,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn presence_and_typing_are_not_lost_at_the_browser_boundary() {
+        let frame = ServerFrame::Presence {
+            identity: "person".into(),
+            online: false,
+            last_seen_ms: Some(123),
+            hide_last_seen: Some(true),
+        };
+        let json = serde_json::to_value(decode_server(&frame.encode()).unwrap()).unwrap();
+        assert_eq!(
+            json,
+            serde_json::json!({"kind":"presence", "identity":"person", "online":false, "last_seen_ms":123, "hide_last_seen":true})
+        );
+        let frame = ServerFrame::Ephemeral {
+            space: "group".into(),
+            from: "person".into(),
+            kind: EphemeralKind::Typing,
+        };
+        let json = serde_json::to_value(decode_server(&frame.encode()).unwrap()).unwrap();
+        assert_eq!(
+            json,
+            serde_json::json!({"kind":"ephemeral", "space":"group", "from":"person", "activity":"typing"})
+        );
+        let frame = ServerFrame::Ephemeral {
+            space: "group".into(),
+            from: "person".into(),
+            kind: EphemeralKind::Read { seq: 2 },
+        };
+        let json = serde_json::to_value(decode_server(&frame.encode()).unwrap()).unwrap();
+        assert_eq!(json["activity"], "other");
+    }
+
+    #[test]
+    fn transient_browser_commands_encode_native_frames() {
+        assert_eq!(
+            ClientFrame::decode(&request(0, "typing", "group").unwrap()).unwrap(),
+            ClientFrame::Ephemeral {
+                space: "group".into(),
+                kind: EphemeralKind::Typing
+            }
+        );
+        assert_eq!(
+            ClientFrame::decode(&request(0, "stopped_typing", "group").unwrap()).unwrap(),
+            ClientFrame::Ephemeral {
+                space: "group".into(),
+                kind: EphemeralKind::StoppedTyping
+            }
+        );
+        assert_eq!(
+            ClientFrame::decode(&request(0, "presence_privacy", "true").unwrap()).unwrap(),
+            ClientFrame::SetPresencePrivacy {
+                hide_last_seen: true
+            }
+        );
+        assert!(request(0, "presence_privacy", "not a bool").is_err());
+    }
 }

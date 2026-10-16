@@ -111,7 +111,8 @@ impl CoreListener for Waker {
         self.notify.notify_one();
     }
     fn on_ephemeral(&self, _: String, _: String, _: String, _: String) {}
-    fn on_presence(&self, _: String, _: bool) {}
+    fn on_presence_privacy(&self, _: bool) {}
+    fn on_presence(&self, _: String, _: bool, _: Option<u64>) {}
     fn on_connection(&self, status: ConnectionDto) {
         *self.online.lock().unwrap_or_else(|p| p.into_inner()) = Some(status.state == "online");
         self.notify.notify_one();

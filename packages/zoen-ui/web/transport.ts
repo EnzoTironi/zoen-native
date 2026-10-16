@@ -26,6 +26,8 @@ export function parseFrame(json: string) {
     case 'response': return { kind, id: integer(value.id), value: value.value };
     case 'request_error': return { kind, id: integer(value.id), message: string(value.message) };
     case 'error': return { kind, code: string(value.code), message: string(value.message) };
+    case 'presence': return { kind, identity: string(value.identity), online: boolean(value.online), last_seen_ms: value.last_seen_ms == null ? null : integer(value.last_seen_ms), hide_last_seen: value.hide_last_seen == null ? null : boolean(value.hide_last_seen) };
+    case 'ephemeral': return { kind, space: string(value.space), from: string(value.from), activity: string(value.activity) };
     case 'joined': return { kind, space: string(value.space) };
     case 'accepted': return { kind, space: string(value.space), client_id: string(value.client_id), seq: integer(value.seq) };
     case 'rejected': return { kind, space: string(value.space), client_id: string(value.client_id), reason: string(value.reason), permanent: boolean(value.permanent) };
@@ -129,7 +131,7 @@ export class AuthenticatedTransport {
           return;
         }
         // Native relays may announce presence while Ready is being delivered.
-        if (phase === 'auth' && frame.kind === 'other') return;
+        if (phase === 'auth' && (frame.kind === 'other' || frame.kind === 'presence')) return;
         if (phase !== 'ready') throw new Error('The relay sent data before authentication completed.');
         if (frame.kind === 'response' || frame.kind === 'request_error') {
           const request = this.pending.get(frame.id);

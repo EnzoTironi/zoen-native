@@ -398,6 +398,7 @@ struct ChatStatus: Equatable {
     enum Kind: String { case typing, processing, building, call }
     let kind: Kind
     var who: String? = nil
+    var peopleCount = 1
     var id: String { kind.rawValue + (who ?? "") }
     var glyph: ZoenGlyph {
         switch kind {
@@ -410,7 +411,9 @@ struct ChatStatus: Equatable {
     var text: String {
         if let who {
             switch kind {
-            case .typing: return String(localized: "\(who) is typing…")
+            case .typing: return peopleCount > 1
+                ? String(localized: "\(who) are typing…")
+                : String(localized: "\(who) is typing…")
             case .processing: return String(localized: "\(who) is processing")
             case .building: return String(localized: "\(who) is building an app…")
             case .call: return String(localized: "\(who) is in a call")

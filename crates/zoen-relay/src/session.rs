@@ -271,17 +271,21 @@ pub async fn run(socket: WebSocket, st: Shared, ip: String) {
     drop(s);
     finish(writer, tx).await;
     if last && !st.fanout.is_online(&identity).await {
-        if let Ok(Ok(co)) =
-            tokio::time::timeout(Duration::from_secs(2), st.log.co_members(&identity)).await
-        {
-            st.fanout.send(
-                &co,
-                &ServerFrame::Presence {
-                    identity: identity.clone(),
-                    online: false,
-                },
-                None,
-            );
+        // SQL owns the visibility policy; on a failed read, disclose nothing.
+        let preference = tokio::time::timeout(
+            Duration::from_secs(2),
+            crate::presence::went_offline(&st.pool, &identity),
+        )
+        .await;
+        if let (Ok(Ok(preference)), Ok(Ok(co))) = (
+            preference,
+            tokio::time::timeout(Duration::from_secs(2), st.log.co_members(&identity)).await,
+        ) {
+            // A new device may have attached during the directory read.
+            if !st.fanout.is_online(&identity).await {
+                st.fanout
+                    .send(&co, &preference.frame(identity.clone(), false, false), None);
+            }
         }
     }
 }
@@ -547,21 +551,28 @@ impl Session {
             if !was_online {
                 self.st.fanout.send(
                     &co,
-                    &ServerFrame::Presence {
-                        identity: self.identity.clone(),
-                        online: true,
-                    },
+                    &crate::presence::Preference::default().frame(
+                        self.identity.clone(),
+                        true,
+                        false,
+                    ),
                     None,
                 );
             }
             // And tell this device who is already here (every device, not just the first).
-            for who in self.st.fanout.online(&co).await {
-                self.send(ServerFrame::Presence {
-                    identity: who,
-                    online: true,
-                })
-                .await;
+            let online: std::collections::HashSet<_> =
+                self.st.fanout.online(&co).await.into_iter().collect();
+            if let Ok(snapshot) = crate::presence::snapshot(&self.st.pool, &co).await {
+                for (who, preference) in snapshot {
+                    let is_online = online.contains(&who);
+                    self.send(preference.frame(who, is_online, false)).await;
+                }
             }
+        }
+        // Self-only authoritative setting, after Ready and on every reconnect.
+        if let Ok(preference) = crate::presence::get(&self.st.pool, &self.identity).await {
+            self.send(preference.frame(self.identity.clone(), true, true))
+                .await;
         }
     }
 
@@ -734,6 +745,42 @@ impl Session {
             ClientFrame::Publish { env } => self.publish(env).await,
             ClientFrame::Sync { cursors, all } => self.sync(cursors, all).await,
             ClientFrame::Ephemeral { space, kind } => self.ephemeral(space, kind).await,
+            ClientFrame::SetPresencePrivacy { hide_last_seen } => {
+                if self.st.limits.request_device.check(&self.device).is_err() {
+                    self.send(ServerFrame::error(ErrorCode::Other, "try again later"))
+                        .await;
+                } else if crate::presence::set_privacy(
+                    &self.st.pool,
+                    &self.identity,
+                    hide_last_seen,
+                )
+                .await
+                .is_err()
+                {
+                    self.send(ServerFrame::error(
+                        ErrorCode::Other,
+                        "could not save privacy",
+                    ))
+                    .await;
+                } else if let Ok(preference) =
+                    crate::presence::get(&self.st.pool, &self.identity).await
+                {
+                    self.st.fanout.send(
+                        std::slice::from_ref(&self.identity),
+                        &preference.frame(self.identity.clone(), true, true),
+                        None,
+                    );
+                    // Clear cached last-seen immediately on every peer device. The
+                    // account is online to make this request, regardless of its policy.
+                    if let Ok(co) = self.st.log.co_members(&self.identity).await {
+                        self.st.fanout.send(
+                            &co,
+                            &preference.frame(self.identity.clone(), true, false),
+                            None,
+                        );
+                    }
+                }
+            }
             ClientFrame::Hello { .. } | ClientFrame::Auth { .. } => {
                 self.send(ServerFrame::error(ErrorCode::Other, "already logged in"))
                     .await

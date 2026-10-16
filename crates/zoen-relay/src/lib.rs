@@ -23,6 +23,7 @@ pub mod limits;
 pub mod log;
 pub mod metrics;
 pub mod ownership;
+pub mod presence;
 pub mod pseudonym;
 pub mod push;
 pub mod receipts;

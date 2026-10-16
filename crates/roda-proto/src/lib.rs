@@ -424,6 +424,10 @@ pub enum ClientFrame {
         space: SpaceId,
         kind: EphemeralKind,
     },
+    /// Account-wide policy, enforced by the relay before last-seen delivery.
+    SetPresencePrivacy {
+        hide_last_seen: bool,
+    },
     Ping,
 }
 
@@ -766,6 +770,10 @@ pub enum ServerFrame {
     Presence {
         identity: IdentityId,
         online: bool,
+        /// Absent while online, hidden by policy, or never observed.
+        last_seen_ms: Option<u64>,
+        /// Sent only to this identity's own devices, to synchronize the setting.
+        hide_last_seen: Option<bool>,
     },
     /// Someone you share a Space with stored a new profile version.
     ProfileChanged {
