@@ -529,16 +529,22 @@ impl<S: Signer> Client<S> {
             mine.0 = mine.0.max(last);
             let announced = self.announced_receipts.get(space).copied();
             if announced.is_none_or(|mark| mark.0 < mine.0) {
-                frames.push(ClientFrame::Ephemeral {
-                    space: space.clone(),
-                    kind: roda_proto::EphemeralKind::Delivered { seq: mine.0 },
-                }.encode());
+                frames.push(
+                    ClientFrame::Ephemeral {
+                        space: space.clone(),
+                        kind: roda_proto::EphemeralKind::Delivered { seq: mine.0 },
+                    }
+                    .encode(),
+                );
             }
             if mine.1 > 0 && announced.is_none_or(|mark| mark.1 < mine.1) {
-                frames.push(ClientFrame::Ephemeral {
-                    space: space.clone(),
-                    kind: roda_proto::EphemeralKind::Read { seq: mine.1 },
-                }.encode());
+                frames.push(
+                    ClientFrame::Ephemeral {
+                        space: space.clone(),
+                        kind: roda_proto::EphemeralKind::Read { seq: mine.1 },
+                    }
+                    .encode(),
+                );
             }
             self.announced_receipts.insert(space.clone(), *mine);
         }
