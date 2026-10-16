@@ -262,7 +262,7 @@ fun SearchScreen(model: ZoenViewModel, state: AppState, navigate: (NavKey) -> Un
                     }
                     state.zoenChat?.let { chat ->
                         item("ask-zoen") {
-                            Card(onClick = {
+                            GlassCard(onClick = {
                                 if (!asking) {
                                     val question = query.trim()
                                     saveQuery(); keyboard?.hide(); asking = true
@@ -328,7 +328,7 @@ private fun SearchHitRow(hit: UniversalHit, state: AppState, onClick: () -> Unit
     val snippet = if (hit.kind in listOf("person", "agent") && hit.snippet.isEmpty())
         hit.persona?.bio?.takeIf { it.isNotBlank() } ?: hit.persona?.let { "@" + it.handle }.orEmpty()
     else hit.snippet
-    Card(onClick = onClick, modifier = Modifier.fillMaxWidth().testTag("search-result:" + hit.refId),
+    GlassCard(onClick = onClick, modifier = Modifier.fillMaxWidth().testTag("search-result:" + hit.refId),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow)) {
         Row(Modifier.padding(16.dp), horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.Top) {
             val space = if (hit.kind == "space") state.spaces.firstOrNull { it.id == hit.refId } else null
@@ -363,7 +363,7 @@ private fun SearchHitRow(hit: UniversalHit, state: AppState, onClick: () -> Unit
 @Composable
 private fun SearchCatalogRow(spec: AppSpecDto, state: AppState, onClick: () -> Unit) {
     val installed = state.items.any { it.app?.appId == spec.id }
-    Card(onClick = onClick, modifier = Modifier.fillMaxWidth().testTag("search-catalog:" + spec.id),
+    GlassCard(onClick = onClick, modifier = Modifier.fillMaxWidth().testTag("search-catalog:" + spec.id),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow)) {
         Row(Modifier.padding(16.dp), horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.Top) {
             Icon(appIcon(spec.id), null, Modifier.size(40.dp), tint = MaterialTheme.colorScheme.primary)

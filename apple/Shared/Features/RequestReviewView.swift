@@ -26,7 +26,7 @@ struct RequestReviewView: View {
                         }
                     }
                     .frame(maxWidth: .infinity, alignment: .leading)
-                    .solidCard(radius: 18, padding: 14)
+                    .glassCard(radius: 18, padding: 14)
 
                     Text("\(r.agent.name) suggests the action below and asks for your approval to continue.")
                         .font(.subheadline).foregroundStyle(Palette.textSecondary)
@@ -48,7 +48,7 @@ struct RequestReviewView: View {
                         if let c = r.costCents { detailRow("brazilianrealsign.circle", String(localized: "Amount: \(Money.format(c))")) }
                         detailRow("exclamationmark.shield", r.reason, tint: Palette.danger)
                     }
-                    .solidCard(radius: 18, padding: 14)
+                    .glassCard(radius: 18, padding: 14)
 
                     status(r)
 

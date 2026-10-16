@@ -26,7 +26,7 @@ fun RequestScreen(model: ZoenViewModel, state: AppState, id: String, navigate: (
             item { Avatar(request.agent, size = 68, onClick = { navigate(Agent(request.agent.id)) }) }
             item { Text(request.title, style = MaterialTheme.typography.headlineMedium); Text(request.agent.name + " · " + request.spaceTitle, color = MaterialTheme.colorScheme.onSurfaceVariant) }
             item { Text(request.detail, style = MaterialTheme.typography.bodyLarge) }
-            item { Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer)) {
+            item { GlassCard(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer)) {
                 Column(Modifier.fillMaxWidth().padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                     Icon(Icons.Rounded.VerifiedUser, null)
                     Text(request.reason)

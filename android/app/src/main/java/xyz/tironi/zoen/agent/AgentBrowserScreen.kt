@@ -1,5 +1,6 @@
 package xyz.tironi.zoen.agent
 
+import xyz.tironi.zoen.ui.GlassCard
 import xyz.tironi.zoen.ui.GlassButton
 import xyz.tironi.zoen.ui.GlassOutlinedButton
 
@@ -42,7 +43,7 @@ private fun Context.activity(): Activity? = when (this) { is Activity -> this; i
 fun AgentBrowserCard(browser: AgentBrowser, spaceId: String, open: () -> Unit) {
     val state by browser.state.collectAsStateWithLifecycle()
     val session = state.session?.takeIf { it.spaceId == spaceId } ?: return
-    Card(onClick = open, modifier = Modifier.fillMaxWidth().testTag("browser-card"), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow)) {
+    GlassCard(onClick = open, modifier = Modifier.fillMaxWidth().testTag("browser-card"), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow)) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 Avatar(session.agent, size = 28)

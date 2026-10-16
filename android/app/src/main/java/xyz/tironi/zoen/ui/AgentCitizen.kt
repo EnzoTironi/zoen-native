@@ -77,7 +77,7 @@ fun AgentCitizenRow(profile: AgentProfile, status: AgentStatus?, onClick: () -> 
     val chats = pluralStringResource(R.plurals.agent_in_chats, profile.spaces.size, profile.spaces.size)
     val subtitle = if (profile.persona.isMine) chats else stringResource(R.string.agent_someones, profile.persona.ownerName ?: stringResource(R.string.agent_someone), chats)
     val press = remember { MutableInteractionSource() }
-    Card(
+    GlassCard(
         onClick = onClick,
         interactionSource = press,
         modifier = Modifier.fillMaxWidth().pressScale(press).testTag("agent-row-${profile.persona.handle}"),

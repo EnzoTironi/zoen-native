@@ -513,7 +513,7 @@ fun TimelineRow(model: ZoenViewModel, spaceId: String, entry: TimelineEntry, nav
                     }
                     }
                     kind.card?.let { card ->
-                                Card(onClick = { navigate(Item(card.itemId)) }, modifier = Modifier.testTag("item:${card.itemId}").then(if (kind.text.isBlank() && entry.replyTo == null) Modifier.messageFace() else Modifier), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
+                                GlassCard(onClick = { navigate(Item(card.itemId)) }, modifier = Modifier.testTag("item:${card.itemId}").then(if (kind.text.isBlank() && entry.replyTo == null) Modifier.messageFace() else Modifier), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
                                     Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                                         Row(verticalAlignment = Alignment.CenterVertically) {
                                             Text(card.title, Modifier.weight(1f), style = MaterialTheme.typography.titleLarge,
@@ -562,7 +562,7 @@ fun TimelineRow(model: ZoenViewModel, spaceId: String, entry: TimelineEntry, nav
             val state by model.state.collectAsStateWithLifecycle()
             val request = state.requests.firstOrNull { it.id == kind.requestId }
             var approving by remember { mutableStateOf(false) }
-            OutlinedCard(onClick = { navigate(Request(kind.requestId)) }) {
+            GlassCard(onClick = { navigate(Request(kind.requestId)) }) {
                 Row(Modifier.fillMaxWidth().padding(12.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                     Avatar(request?.agent ?: entry.author, size = 30)
                     Column(Modifier.weight(1f)) {

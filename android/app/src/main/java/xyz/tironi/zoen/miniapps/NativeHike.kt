@@ -1,5 +1,6 @@
 package xyz.tironi.zoen.miniapps
 
+import xyz.tironi.zoen.ui.GlassCard
 import xyz.tironi.zoen.ui.GlassButton
 import xyz.tironi.zoen.ui.GlassOutlinedButton
 
@@ -87,7 +88,7 @@ fun NativeHike(model: ZoenViewModel, state: AppState, item: ItemDetail, data: JS
         }
         items(shown, key = { it.optString("id") }) { trail ->
             val id = trail.optString("id")
-            Card(onClick = { detail = id }) {
+            GlassCard(onClick = { detail = id }) {
                 Image(painterResource(trailPhoto(id)), trail.optString("name"), Modifier.fillMaxWidth().height(172.dp), contentScale = ContentScale.Crop)
                 Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                     Text(trail.optString("name"), style = MaterialTheme.typography.titleLarge)

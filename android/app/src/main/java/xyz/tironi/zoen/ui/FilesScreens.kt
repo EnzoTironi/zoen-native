@@ -80,7 +80,7 @@ fun FilesScreen(model: ZoenViewModel, state: AppState, navigate: (NavKey) -> Uni
                 if (folders.isNotEmpty()) item { SectionLabel(stringResource(R.string.files_folders)) }
                 items(folders.keys.toList(), key = { "folder:$it" }) { id ->
                     val space = state.spaces.firstOrNull { it.id == id }
-                    if (space != null) Card(onClick = { navigate(Folder(id)) }, modifier = Modifier.testTag("folder:$id")) {
+                    if (space != null) GlassCard(onClick = { navigate(Folder(id)) }, modifier = Modifier.testTag("folder:$id")) {
                         ListItem(headlineContent = { Text(space.title, fontWeight = FontWeight.SemiBold) }, supportingContent = {
                             val count = folders[id]?.size ?: 0
                             Text(pluralStringResource(R.plurals.files_items, count, count))
@@ -131,7 +131,7 @@ private fun FileItemRow(model: ZoenViewModel, item: ItemDetail, open: () -> Unit
     val preview = thumbnail
     val latest = item.versions.maxByOrNull { it.number }
     val who = latest?.author?.let { if (it.isMe) stringResource(R.string.files_you) else it.name } ?: item.createdBy.name
-    Card(onClick = open, colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow)) {
+    GlassCard(onClick = open, colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow)) {
         ListItem(headlineContent = { Text(item.title, fontWeight = FontWeight.SemiBold) }, supportingContent = {
             Text(if (item.file?.ready == false) stringResource(R.string.file_not_ready) else listOfNotNull(item.spaceTitle, item.file?.let { android.text.format.Formatter.formatShortFileSize(context, it.bytes.toLong()) }, who, latest?.let { java.text.DateFormat.getDateTimeInstance(java.text.DateFormat.SHORT, java.text.DateFormat.SHORT).format(java.util.Date(it.atMs)) }).joinToString(" · "))
         }, leadingContent = {

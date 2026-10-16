@@ -116,7 +116,7 @@ fun AgentScreen(model: ZoenViewModel, state: AppState, id: String, back: () -> U
             if (profile.persona.handle == "zoen") item { OnDeviceAiSettings(model) }
             if (profile.persona.handle != "zoen") item { AgentDrawingChooser(profile.persona) }
             if (profile.budgetLimitCents != null) item {
-                Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer)) {
+                GlassCard(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer)) {
                     Column(Modifier.fillMaxWidth().padding(20.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                         Text(stringResource(R.string.monthly_budget), style = MaterialTheme.typography.labelMedium)
                         Text(formatMoney(profile.budgetSpentCents ?: 0, model.repository.locale) + " / " + formatMoney(profile.budgetLimitCents!!, model.repository.locale), style = MaterialTheme.typography.titleLarge)
@@ -132,7 +132,7 @@ fun AgentScreen(model: ZoenViewModel, state: AppState, id: String, back: () -> U
             }
             if (previews.isNotEmpty()) item { SectionLabel(stringResource(R.string.agent_decision_preview)) }
             items(previews, key = { it.action }) { decision ->
-                Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow)) {
+                GlassCard(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow)) {
                     Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                         Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
                             Text(decision.action, Modifier.weight(1f), style = MaterialTheme.typography.titleSmall)
@@ -167,7 +167,7 @@ fun ContextScreen(model: ZoenViewModel, state: AppState, navigate: (NavKey) -> U
                 Avatar(state.me, size = 72, onClick = { state.me?.let { navigate(Person(it.id)) } })
                 Column { Text(state.me?.name.orEmpty(), style = MaterialTheme.typography.headlineMedium); Text("@${state.me?.handle.orEmpty()}", color = MaterialTheme.colorScheme.onSurfaceVariant) }
             } }
-            if (state.demo) item { Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.tertiaryContainer)) { Column(Modifier.padding(20.dp)) { Text(stringResource(R.string.demo), style = MaterialTheme.typography.titleMedium); Text(stringResource(R.string.demo_detail)) } } }
+            if (state.demo) item { GlassCard(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.tertiaryContainer)) { Column(Modifier.padding(20.dp)) { Text(stringResource(R.string.demo), style = MaterialTheme.typography.titleMedium); Text(stringResource(R.string.demo_detail)) } } }
             if (state.keyMissing) item { Text(stringResource(R.string.key_missing), color = MaterialTheme.colorScheme.error) }
             if (state.account != null) {
                 if (state.connection.error == "handle_taken") item { SettingsRow(Icons.Rounded.WarningAmber, stringResource(R.string.agent_handle_taken, state.account.handle), onClick = { navigate(Person(state.account.identityId)) }) }

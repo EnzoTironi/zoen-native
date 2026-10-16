@@ -1,5 +1,6 @@
 package xyz.tironi.zoen.agent
 
+import xyz.tironi.zoen.ui.GlassCard
 import xyz.tironi.zoen.ui.GlassButton
 
 import androidx.compose.foundation.layout.*
@@ -16,7 +17,7 @@ import xyz.tironi.zoen.ZoenViewModel
 fun OnDeviceAiSettings(model: ZoenViewModel) {
     val availability by model.planner.availability.collectAsStateWithLifecycle()
     LaunchedEffect(model.planner) { model.planner.refreshAvailability() }
-    Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow)) {
+    GlassCard(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow)) {
         Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Text(stringResource(R.string.agent_ai_title), style = MaterialTheme.typography.titleMedium)
             Text(stringResource(when (availability.status) {

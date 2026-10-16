@@ -1,5 +1,6 @@
 package xyz.tironi.zoen.miniapps
 
+import xyz.tironi.zoen.ui.GlassCard
 import xyz.tironi.zoen.ui.GlassButton
 import xyz.tironi.zoen.ui.GlassOutlinedButton
 
@@ -60,7 +61,7 @@ fun MiniAppStoreScreen(model: ZoenViewModel, state: AppState, onOpenItem: (Strin
                 item { SectionLabel(stringResource(R.string.miniapp_collections)) }
                 item { LazyRow(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                     items(listOf("daily" to R.string.miniapp_collection_daily, "plans" to R.string.miniapp_collection_plans, "games" to R.string.miniapp_collection_games)) { (filter, title) ->
-                        Card(onClick = { category = filter }, Modifier.width(220.dp), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer)) {
+                        GlassCard(onClick = { category = filter }, Modifier.width(220.dp), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer)) {
                             Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                                 Icon(if (filter == "games") Icons.Rounded.SportsEsports else if (filter == "plans") Icons.Rounded.Terrain else Icons.Rounded.FavoriteBorder, null, Modifier.size(36.dp))
                                 Text(stringResource(title), style = MaterialTheme.typography.titleLarge)
@@ -72,7 +73,7 @@ fun MiniAppStoreScreen(model: ZoenViewModel, state: AppState, onOpenItem: (Strin
             }
             if (category != "agents") items(filtered, key = { it.id }) { spec ->
                 val installed = state.items.count { it.app?.appId == spec.id }
-                Card(onClick = { selected = spec.id }, modifier = Modifier.fillMaxWidth().testTag("store-app:${spec.id}"), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow)) {
+                GlassCard(onClick = { selected = spec.id }, modifier = Modifier.fillMaxWidth().testTag("store-app:${spec.id}"), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow)) {
                     Row(Modifier.padding(18.dp), horizontalArrangement = Arrangement.spacedBy(16.dp), verticalAlignment = Alignment.CenterVertically) {
                         Icon(appIcon(spec.id), null, Modifier.size(40.dp), tint = MaterialTheme.colorScheme.primary)
                         Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
@@ -87,7 +88,7 @@ fun MiniAppStoreScreen(model: ZoenViewModel, state: AppState, onOpenItem: (Strin
             if (category == "all" || category == "agents") {
                 item { SectionLabel(stringResource(R.string.agents)) }
                 items(state.agents.filter { query.isBlank() || (it.persona.name + " " + it.runsOn).contains(query, true) }, key = { it.persona.id }) { agent ->
-                    Card(onClick = { onOpenAgent(agent.persona.id) }, Modifier.fillMaxWidth()) {
+                    GlassCard(onClick = { onOpenAgent(agent.persona.id) }, Modifier.fillMaxWidth()) {
                         Row(Modifier.padding(18.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                             Avatar(agent.persona, size = 44)
                             Column(Modifier.weight(1f)) { Text(agent.persona.name, style = MaterialTheme.typography.titleMedium); Text(agent.runsOn, style = MaterialTheme.typography.bodySmall, maxLines = 2, overflow = TextOverflow.Ellipsis) }

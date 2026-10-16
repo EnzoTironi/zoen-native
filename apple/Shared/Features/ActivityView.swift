@@ -237,7 +237,7 @@ struct ActivityScreen: View {
                 .buttonStyle(.wabiGlass)
                 .font(.subheadline.weight(.semibold))
             }
-            .solidCard(radius: 20, padding: 14)
+            .glassCard(radius: 20, padding: 14)
         }
     }
 
@@ -270,7 +270,7 @@ struct MentionRow: View {
                 Chip(text: mention.spaceTitle, symbol: "bubble.left.and.bubble.right")
             }
         }
-        .solidCard(radius: 20, padding: 14)
+        .glassCard(radius: 20, padding: 14)
     }
 }
 
@@ -313,6 +313,6 @@ struct TaskRow: View {
             Spacer()
             Image(systemName: "chevron.right").font(.caption.weight(.bold)).foregroundStyle(Palette.textTertiary)
         }
-        .solidCard(radius: 20, padding: 14)
+        .glassCard(radius: 20, padding: 14)
     }
 }

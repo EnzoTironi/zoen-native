@@ -149,7 +149,7 @@ fun appIcon(kind: String): ImageVector = when (kind) {
 
 @Composable
 fun ItemTile(item: ItemDetail, onClick: () -> Unit, modifier: Modifier = Modifier) {
-    Card(onClick = onClick, modifier = modifier.width(180.dp), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow)) {
+    GlassCard(onClick = onClick, modifier = modifier.width(180.dp), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow)) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             Icon(appIcon(item.app?.appId ?: item.kindId), null, tint = MaterialTheme.colorScheme.primary)
             Text(item.title, style = MaterialTheme.typography.titleSmall, maxLines = 2, overflow = TextOverflow.Ellipsis)

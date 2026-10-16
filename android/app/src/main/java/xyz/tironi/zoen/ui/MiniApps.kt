@@ -133,7 +133,7 @@ private fun PollApp(data: JSONObject, action: AppAction, modifier: Modifier) {
     LazyColumn(modifier, contentPadding = PaddingValues(24.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
         item { Icon(Icons.Rounded.Poll, null, Modifier.size(48.dp), tint = MaterialTheme.colorScheme.primary); Text(data.optString("question"), style = MaterialTheme.typography.displaySmall) }
         items(options, key = { it.optString("id") }) { option ->
-            Card(onClick = { action("poll_vote", JSONObject().put("option", option.optString("id"))) }, enabled = !closed) {
+            GlassCard(onClick = { action("poll_vote", JSONObject().put("option", option.optString("id"))) }, enabled = !closed) {
                 Column(Modifier.fillMaxWidth().padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) { Text(option.optString("text"), Modifier.weight(1f), style = MaterialTheme.typography.titleMedium); Text((option.optJSONArray("votes")?.length() ?: 0).toString()) }
                     LinearProgressIndicator(progress = { (option.optJSONArray("votes")?.length() ?: 0).toFloat() / total }, modifier = Modifier.fillMaxWidth())
@@ -194,7 +194,7 @@ private fun RecipeApp(data: JSONObject, action: AppAction, modifier: Modifier) {
             }
         }
         if (cooking == null) item { GlassButton(onClick = { action("recipe_cook", JSONObject().put("step", 0)) }, Modifier.fillMaxWidth()) { Text(stringResource(R.string.cook)) } }
-        else item { Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.tertiaryContainer)) {
+        else item { GlassCard(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.tertiaryContainer)) {
             Column(Modifier.fillMaxWidth().padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 val step = steps.getOrNull(currentStep)
                 Text(if (step == null) stringResource(R.string.done) else "${currentStep + 1}/${steps.size}", style = MaterialTheme.typography.titleMedium)
@@ -272,7 +272,7 @@ private fun MapTapApp(data: JSONObject, state: AppState, action: AppAction, modi
                 item { Text(stringResource(R.string.map_hint), style = MaterialTheme.typography.bodySmall); Text("${"%.1f".format(lat)}°, ${"%.1f".format(lon)}°") }
                 item { Slider(lat, { lat = it; selected = true }, valueRange = -90f..90f, modifier = Modifier.semantics { contentDescription = latitude }); Slider(lon, { lon = it; selected = true }, valueRange = -180f..180f, modifier = Modifier.semantics { contentDescription = longitude }) }
                 item { GlassButton(onClick = { action("maptap_guess", JSONObject().put("round", round).put("lat", lat).put("lon", lon)) }, enabled = selected, modifier = Modifier.fillMaxWidth()) { Text(stringResource(R.string.guess)) } }
-            } else item { Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer)) { Column(Modifier.fillMaxWidth().padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            } else item { GlassCard(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer)) { Column(Modifier.fillMaxWidth().padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 Text(stringResource(R.string.miniapp_score_points, guess.optInt("points")), style = MaterialTheme.typography.headlineMedium)
                 Text("${guess.optInt("km")} km · ${place?.optString("country").orEmpty()}")
                 GlassButton(onClick = { if (round < places.lastIndex) { round++; selected = false; lat = 0f; lon = 0f } else board = true }) { Text(stringResource(if (round < places.lastIndex) R.string.next_step else R.string.miniapp_leaderboard)) }
@@ -291,7 +291,7 @@ private fun CountdownApp(model: ZoenViewModel, item: ItemDetail, data: JSONObjec
     val pins = remember(model.repository.preferences) { MiniAppPins(model.repository.preferences) }
     var pinned by remember(item.id) { mutableStateOf(item.id !in pins.hidden()) }
     LazyColumn(modifier, contentPadding = PaddingValues(24.dp), verticalArrangement = Arrangement.spacedBy(24.dp)) {
-        item { Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.tertiaryContainer)) {
+        item { GlassCard(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.tertiaryContainer)) {
             Column(Modifier.fillMaxWidth().padding(20.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 ZoenMascot(Modifier.fillMaxWidth().height(180.dp), animated = true, pose = MascotPose.Cheer)
                 Text(data.optString("title"), style = MaterialTheme.typography.headlineLarge)
@@ -304,7 +304,7 @@ private fun CountdownApp(model: ZoenViewModel, item: ItemDetail, data: JSONObjec
             val columns = if (androidx.compose.ui.platform.LocalDensity.current.fontScale > 1.3f) 2 else 4
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) { values.chunked(columns).forEach { row ->
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) { row.forEach { (value, label) ->
-                    Card(Modifier.weight(1f)) { Column(Modifier.fillMaxWidth().padding(vertical = 16.dp), horizontalAlignment = Alignment.CenterHorizontally) { Text(value.toString(), style = MaterialTheme.typography.headlineMedium); Text(stringResource(label), style = MaterialTheme.typography.labelSmall) } }
+                    GlassCard(Modifier.weight(1f)) { Column(Modifier.fillMaxWidth().padding(vertical = 16.dp), horizontalAlignment = Alignment.CenterHorizontally) { Text(value.toString(), style = MaterialTheme.typography.headlineMedium); Text(stringResource(label), style = MaterialTheme.typography.labelSmall) } }
                 } }
             } }
         }

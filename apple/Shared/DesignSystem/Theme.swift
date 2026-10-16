@@ -146,25 +146,6 @@ enum RodaTime {
 
 // MARK: - Superfícies
 
-/// Conteúdo é sólido (nunca vidro): cartões, mensagens, Itens.
-struct SolidCard: ViewModifier {
-    var radius: CGFloat = 22
-    var padding: CGFloat = 16
-    func body(content: Content) -> some View {
-        content
-            .padding(padding)
-            .background(Palette.surface, in: .rect(cornerRadius: radius, style: .continuous))
-            .overlay(RoundedRectangle(cornerRadius: radius, style: .continuous).strokeBorder(Palette.hairline.opacity(0.7), lineWidth: 0.5))
-            .shadow(color: .black.opacity(0.06), radius: 12, y: 4)
-    }
-}
-
-extension View {
-    func solidCard(radius: CGFloat = 22, padding: CGFloat = 16) -> some View {
-        modifier(SolidCard(radius: radius, padding: padding))
-    }
-}
-
 struct SectionHeader: View {
     let title: String
     var trailing: String? = nil

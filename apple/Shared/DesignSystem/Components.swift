@@ -20,7 +20,7 @@ struct PhaseNote: View {
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .solidCard(radius: 18, padding: 14)
+        .glassCard(radius: 18, padding: 14)
     }
 }
 
@@ -138,7 +138,7 @@ struct ItemCardView: View {
             }
         }
         .frame(maxWidth: 360, alignment: .leading)
-        .solidCard(radius: 20, padding: 14)
+        .glassCard(radius: 20, padding: 14)
         .contentShape(.rect)
     }
 }
@@ -211,7 +211,7 @@ struct RequestCard: View {
                 Label("Declined", systemImage: "xmark.circle.fill").font(.footnote.weight(.semibold)).foregroundStyle(Palette.textSecondary)
             }
         }
-        .solidCard(radius: 22, padding: 16)
+        .glassCard(radius: 22, padding: 16)
     }
 
     private var icon: String {

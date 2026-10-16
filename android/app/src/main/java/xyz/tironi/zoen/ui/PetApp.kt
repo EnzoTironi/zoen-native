@@ -86,7 +86,7 @@ internal fun PetApp(preferences: android.content.SharedPreferences, itemId: Stri
                             }
                         }
                     }
-                    item { Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.tertiaryContainer)) {
+                    item { GlassCard(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.tertiaryContainer)) {
                         Column(Modifier.fillMaxWidth().padding(20.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
                             listOf("fullness" to R.string.food, "joy" to R.string.mood, "energy" to R.string.rest).forEach { (key, label) ->
                                 val progress by animateFloatAsState((data.optDouble(key, 0.0) / 100).toFloat().coerceIn(0f, 1f),
@@ -146,7 +146,7 @@ private fun PetLeaderboard(data: JSONObject, textColor: Color) {
         items(people, key = { it }) { person ->
             val rank = people.indexOf(person)
             val score = best.getJSONObject(person)
-            Card(colors = CardDefaults.cardColors(containerColor = Color.White.copy(alpha = .75f), contentColor = Color(0xFF1C1C1E))) {
+            GlassCard(colors = CardDefaults.cardColors(containerColor = Color.White.copy(alpha = .75f), contentColor = Color(0xFF1C1C1E))) {
                 Row(Modifier.fillMaxWidth().padding(12.dp), horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
                     Text(listOf("🥇", "🥈", "🥉").getOrElse(rank) { "${rank + 1}" }, style = MaterialTheme.typography.titleLarge)
                     Text(person, Modifier.weight(1f), style = MaterialTheme.typography.titleMedium)

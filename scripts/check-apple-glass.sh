@@ -11,15 +11,15 @@ import SwiftUI
 extension Color { init(hex: String) { self = .green } }
 enum Mascot { static let body = Color.green }
 enum InkPalette { static let ink = Color.black; static let paper = Color.white }
-enum Palette { static let surface = Color.white; static let textPrimary = Color.black }
+enum Palette { static let surface = Color.white; static let textPrimary = Color.black; static let action = Color.green }
 SWIFT
 for sdk in iphonesimulator macosx; do
-  xcrun -sdk "$sdk" metal -c "$src/WabiGlass.metal" -o "$work/glass-$sdk.air"
+  xcrun -sdk "$sdk" metal -c "$src/ZoenGlass.metal" -o "$work/glass-$sdk.air"
   echo "metal ok: $sdk"
 done
 xcrun -sdk iphonesimulator swiftc -typecheck -target arm64-apple-ios26.0-simulator \
-  "$src/GlassButton.swift" "$work/Tokens.swift"
+  "$src/GlassButton.swift" "$src/ZoenGlass.swift" "$work/Tokens.swift"
 echo "swift ok: iOS"
 xcrun -sdk macosx swiftc -typecheck -target arm64-apple-macos26.0 \
-  "$src/GlassButton.swift" "$work/Tokens.swift"
+  "$src/GlassButton.swift" "$src/ZoenGlass.swift" "$work/Tokens.swift"
 echo "swift ok: macOS"
