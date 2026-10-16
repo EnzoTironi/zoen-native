@@ -14,6 +14,9 @@ export type CoreOperation =
   | { kind: 'bootstrap' }
   | { kind: 'receive'; bytes: Uint8Array; now: number }
   | { kind: 'queue_message'; space: string; text: string; now: number }
+  | { kind: 'queue_post'; space: string; text: string; replyTo: string; thread: boolean; forwarded: boolean; now: number }
+  | { kind: 'queue_annotation'; space: string; target: string; note: string; now: number }
+  | { kind: 'mark_read'; space: string }
   | { kind: 'queue_join'; space: string; role: string; code: string; now: number };
 
 declare const ZOEN_WORKER_INTEGRITY: string;

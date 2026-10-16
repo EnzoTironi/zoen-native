@@ -66,6 +66,42 @@ impl Receipts {
         Ok(rows.into_iter().map(|(who, (d, r))| (who, d, r)).collect())
     }
 
+    /// [`Self::of_space`] for many Spaces in one query: Space → (identity, delivered, read).
+    pub async fn of_spaces(
+        &self,
+        pool: &PgPool,
+        spaces: &[String],
+    ) -> Result<HashMap<String, Vec<(String, i64, i64)>>, sqlx::Error> {
+        let mut by: HashMap<String, HashMap<String, (i64, i64)>> = HashMap::new();
+        if spaces.is_empty() {
+            return Ok(HashMap::new());
+        }
+        for (space, who, d, r) in crate::db::receipts_of_spaces(pool, spaces).await? {
+            by.entry(space).or_default().insert(who, (d, r));
+        }
+        {
+            let wanted: std::collections::HashSet<&str> =
+                spaces.iter().map(String::as_str).collect();
+            let p = self.pending.lock().unwrap_or_else(|e| e.into_inner());
+            let f = self.inflight.lock().unwrap_or_else(|e| e.into_inner());
+            for ((s, who), (d, r)) in p.iter().chain(f.iter()) {
+                if wanted.contains(s.as_str()) {
+                    let w = by
+                        .entry(s.clone())
+                        .or_default()
+                        .entry(who.clone())
+                        .or_default();
+                    w.0 = w.0.max(*d as i64);
+                    w.1 = w.1.max(*r as i64);
+                }
+            }
+        }
+        Ok(by
+            .into_iter()
+            .map(|(s, m)| (s, m.into_iter().map(|(w, (d, r))| (w, d, r)).collect()))
+            .collect())
+    }
+
     /// Writes everything pending; on failure the batch is folded back in for the next try.
     pub async fn flush(&self, pool: &PgPool, metrics: &Metrics) -> Result<usize, sqlx::Error> {
         let _one = self.flushing.lock().await;

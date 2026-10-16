@@ -95,3 +95,28 @@ where a transient close must not cancel the browser's reconnect timer.
 ## Final shared-main checkpoint
 
 Root reran the exact final TypeScript sources: typecheck and all 13 behavior tests passed. `cargo test --locked -j2 -p roda-mls --features portable` passed 17 tests, including native SQLite/external-signer exchange. `cargo test --locked -j2 -p zoen-web-core` passed three native Rust tests for enrollment-box cryptography, SQLite Welcome/messages/reload/removal and certified invite publication. These do not prove the browser worker/WASM bridge or real native/browser enrollment. Independent checkpoint-history, snapshot-owner, retry/invite and pre-ack replay findings remain open in the [complete handoff](../../../docs/dev/handoff-2026-10-12.md). The user requested pausing after this source checkpoint.
+
+## Messenger (layer 1)
+
+The linked client is a full messenger over the same encrypted log as native: chat list
+with unread, @mention, pinned, muted and archived; bubbles with time and ✓ / ✓✓ / blue ✓✓
+inside; inline replies; reactions; edit and delete for everyone (author-only, enforced by
+readers); forward; Ando-style threads in a side panel with follow. The web core folds
+`MessageAnnotated` and `ReplyRef` exactly like native, sends `Delivered` on sync and
+`Read` when the open chat is visible, and keeps every member's watermarks from the relay.
+
+Not yet on the web: media and voice (the mic shows, sending needs the item/blob path in
+`zoen-web-core`), and synced chat preferences — pin/mute/archive and thread follow are
+kept in this browser until `ChatPrefsSet` (#96) reaches the web core.
+
+UI tokens follow `ui-refs/SUMMARY.md`: Hark bubbles and composer (radius 24, 12 px group
+gap, 48 px composer, mic when empty), Wabi list rows, colors and `cubic-bezier(.25,1,.5,1)`,
+Wabi glass buttons, Ando thread panel and read/unread/mention states.
+
+End to end (two people, each with a CLI "phone" linking a headless Chromium):
+
+```sh
+scripts/dev-stack.sh                      # or any relay; then build and serve the web
+npm run build:web && npm run web
+cd web/e2e && npm i playwright-core && RELAY=http://127.0.0.1:8787 ZOEN_CLI=$PWD/../../../../target/debug/zoen node two-people.mjs
+```

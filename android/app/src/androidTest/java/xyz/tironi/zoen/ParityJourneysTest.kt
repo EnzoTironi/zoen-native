@@ -275,7 +275,7 @@ class ParityJourneysTest {
         compose.waitUntil(20_000) { application.repository.state.value.items.size > before && application.repository.state.value.items.any { it.file?.path?.startsWith("VoiceNotes/") == true } }
         compose.waitUntil(10_000) { compose.onAllNodesWithTag("composer").fetchSemanticsNodes().isNotEmpty() }
         val entries = runBlocking { application.repository.query { it.timeline(chat.id) } }
-        assertTrue(entries.any { entry -> (entry.kind as? xyz.tironi.zoen.core.EntryKind.Message)?.text?.startsWith("⟦voice:") == true })
+        assertTrue(entries.any { entry -> entry.voice != null })
         assertTrue(runBlocking { application.repository.query { it.verifyAll().all { log -> log.valid } } })
         compose.onNodeWithText(application.getString(R.string.new_chat), substring = false).assertDoesNotExist()
     }
@@ -292,10 +292,11 @@ class ParityJourneysTest {
         compose.waitUntil(20_000) { compose.onAllNodes(hasText(timerPrefix, substring = true) and !hasText("0:00", substring = true)).fetchSemanticsNodes().isNotEmpty() }
         compose.onNodeWithTag("voice-record").performTouchInput { up() }
         compose.waitUntil(20_000) {
-            application.repository.state.value.timelines[chat.id].orEmpty().any { row -> row.id !in before && (row.kind as? xyz.tironi.zoen.core.EntryKind.Message)?.text?.let(xyz.tironi.zoen.media.VoiceNoteRef::parse) != null }
+            application.repository.state.value.timelines[chat.id].orEmpty().any { row -> row.id !in before && row.voice != null }
         }
-        val entry = runBlocking { application.repository.query { it.timeline(chat.id) } }.last { row -> row.id !in before && (row.kind as? xyz.tironi.zoen.core.EntryKind.Message)?.text?.let(xyz.tironi.zoen.media.VoiceNoteRef::parse) != null }
-        val voice = checkNotNull(xyz.tironi.zoen.media.VoiceNoteRef.parse((entry.kind as xyz.tironi.zoen.core.EntryKind.Message).text))
+        val entry = runBlocking { application.repository.query { it.timeline(chat.id) } }.last { row -> row.id !in before && row.voice != null }
+        assertEquals("", (entry.kind as xyz.tironi.zoen.core.EntryKind.Message).text)
+        val voice = xyz.tironi.zoen.media.VoiceNoteRef.from(checkNotNull(entry.voice))
         assertTrue(voice.ms >= 1000)
         val file = checkNotNull(runBlocking { xyz.tironi.zoen.media.VoiceTransport.localFile(application, application.repository, voice) })
         try { assertEquals(voice.ms / 1000.0, runBlocking { xyz.tironi.zoen.media.MediaExport.duration(file) }, .15) }

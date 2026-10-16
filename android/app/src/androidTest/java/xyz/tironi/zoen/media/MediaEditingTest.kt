@@ -60,7 +60,7 @@ class MediaEditingTest {
         } finally { dir.deleteRecursively() }
     }
 
-    @Test fun voiceAttachmentMarkerAndTypedFileVersionsSurviveReopening() = runBlocking {
+    @Test fun voiceAttachmentAndTypedFileVersionsSurviveReopening() = runBlocking {
         val dir = folder()
         val localized = context.createConfigurationContext(android.content.res.Configuration(context.resources.configuration).apply { setLocale(java.util.Locale.ENGLISH) })
         val wrapped = object : ContextWrapper(localized) {
@@ -75,7 +75,8 @@ class MediaEditingTest {
             val id = UUID.randomUUID().toString()
             val clip = VoiceClip(id, AudioFiles.encode(audio, File(dir, "$id.m4a")), audio)
             val entry = VoiceTransport.send(repository, clip, "A real encoded voice note.", space)
-            val reference = checkNotNull(VoiceNoteRef.parse((entry.kind as xyz.tironi.zoen.core.EntryKind.Message).text))
+            assertEquals("", (entry.kind as xyz.tironi.zoen.core.EntryKind.Message).text)
+            val reference = VoiceNoteRef.from(checkNotNull(entry.voice))
             assertFalse(clip.file.exists())
             val attachment = repository.query { it.item(reference.id) }
             assertEquals("audio/mp4", attachment.file!!.mime)
@@ -86,6 +87,7 @@ class MediaEditingTest {
             repository.close()
             val reopened = RodaEngine.open(database.absolutePath, "en")
             try {
+                assertEquals(entry.voice, reopened.timeline(space).single { it.id == entry.id }.voice)
                 val old = reopened.fileBytes(reference.id, 1u)!!
                 val new = AudioFiles.encode(audio.edit(listOf(TimeRange(.2, .9))), File(dir, "trim.m4a")).readBytes()
                 val version = reopened.fileNewVersionTyped(reference.id, new, null, "Trimmed", "short.m4a", "audio/mp4")
@@ -93,6 +95,10 @@ class MediaEditingTest {
                 assertArrayEquals(old, reopened.fileBytes(reference.id, 1u)); assertArrayEquals(new, reopened.fileBytes(reference.id, null))
                 assertTrue(reopened.verifyAll().all { it.valid })
             } finally { reopened.destroy() }
+            repository.boot(true)
+            val current = checkNotNull(VoiceTransport.localFile(wrapped, repository, reference))
+            try { assertArrayEquals(File(dir, "trim.m4a").readBytes(), current.readBytes()) }
+            finally { current.delete() }
         } finally { repository.close(); dir.deleteRecursively(); context.deleteSharedPreferences("${dir.name}-zoen") }
     }
 

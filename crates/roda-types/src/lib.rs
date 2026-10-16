@@ -302,6 +302,61 @@ pub struct FileDoc {
     pub chunks: Vec<ChunkRef>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub thumb: Option<ChunkRef>,
+    /// Set when the file is a voice note: the chat shows a player instead of a file card.
+    /// Absent on every other file, so their bytes are exactly what older peers expect.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub voice: Option<VoiceMeta>,
+}
+
+/// What a voice note's player needs before the audio arrives.
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq, Default)]
+pub struct VoiceMeta {
+    /// Length in milliseconds.
+    pub ms: u64,
+    /// Waveform bars, one hex digit (0–f) per bar.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub levels: String,
+    /// Transcribed on the sender's device (may be empty).
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub transcript: String,
+    /// Keep the note and its reply/thread destination in the same signed event.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reply: Option<ReplyRef>,
+}
+
+impl VoiceMeta {
+    /// Bars as 0…1.
+    pub fn bars(&self) -> Vec<f32> {
+        self.levels
+            .chars()
+            .take(160)
+            .filter_map(|c| c.to_digit(16))
+            .map(|d| d as f32 / 15.0)
+            .collect()
+    }
+
+    /// 0…1 bars as hex digits (at most 160).
+    pub fn encode(levels: &[f32]) -> String {
+        levels
+            .iter()
+            .take(160)
+            .map(|l| {
+                let d = (l.clamp(0.0, 1.0) * 15.0).round() as u32;
+                char::from_digit(d, 16).unwrap_or('0')
+            })
+            .collect()
+    }
+}
+
+impl FileDoc {
+    /// A voice note: tagged as one, or an audio file recorded under `VoiceNotes/` (older
+    /// web builds sent recordings named "Mensagem de voz.*" without the tag).
+    pub fn is_voice(&self) -> bool {
+        self.mime.starts_with("audio/")
+            && (self.voice.is_some()
+                || self.path.starts_with("VoiceNotes/")
+                || self.name.starts_with("Mensagem de voz"))
+    }
 }
 
 impl ItemContent {
@@ -872,5 +927,37 @@ mod tests {
                 "new optional fields must not alter historical signed body bytes"
             );
         }
+    }
+
+    #[test]
+    fn historical_file_bytes_are_preserved_without_voice_metadata() {
+        let bytes =
+            r#"{"name":"song.mp3","mime":"audio/mpeg","bytes":3,"sha256":"abc","chunks":[]}"#;
+        let mut file: FileDoc = serde_json::from_str(bytes).unwrap();
+        assert!(file.voice.is_none());
+        assert!(!file.is_voice());
+        assert_eq!(serde_json::to_string(&file).unwrap(), bytes);
+        file.voice = Some(VoiceMeta::default());
+        assert!(file.is_voice());
+        file.mime = "image/png".into();
+        assert!(
+            !file.is_voice(),
+            "a tag cannot turn a non-audio file into audio"
+        );
+        let old_meta = r#"{"ms":1200,"levels":"08f","transcript":"Original"}"#;
+        let meta: VoiceMeta = serde_json::from_str(old_meta).unwrap();
+        assert!(meta.reply.is_none());
+        assert_eq!(serde_json::to_string(&meta).unwrap(), old_meta);
+    }
+
+    #[test]
+    fn voice_waveforms_are_bounded_on_send_and_receive() {
+        let meta = VoiceMeta {
+            levels: "f".repeat(1000),
+            ..VoiceMeta::default()
+        };
+        assert_eq!(meta.bars(), vec![1.0; 160]);
+        assert_eq!(VoiceMeta::encode(&vec![0.5; 1000]).len(), 160);
+        assert_eq!(VoiceMeta::encode(&[f32::NAN, -1.0, 2.0]), "00f");
     }
 }

@@ -174,6 +174,9 @@ final class AppModel {
             toast = ToastModel(kind: .error, text: String(localized: "Another Zoen window is already using the database. This one opened a temporary copy that won’t be saved."))
         }
         sync.app = self
+        // Voice notes from others (and from the web) play from the encrypted file once its
+        // pieces are here; until then the player waits.
+        VoicePlayer.shared.fetch = { [core] id in (try? core.fileBytes(itemId: id, version: nil)) ?? nil }
         #if DEBUG
         // Tests and demos of the real thing: `-RodaFreshStart YES` forgets this device's
         // account and chats; `-RodaAccount "Ana:ana"` signs up without onboarding.
@@ -470,15 +473,27 @@ final class AppModel {
         ChatBackgroundStore.shared.cacheMedia(sha, bytes: bytes)
     }
 
-    /// A voice note: transcribed on this device first (never in the cloud), then sent as a
-    /// marker plus the transcript. Agents don't answer voice notes yet.
-    func sendVoice(_ clip: VoiceClip, in spaceId: String, transcript known: String? = nil) async {
+    /// A voice note: transcribed on this device first (never in the cloud), then sent as an
+    /// end-to-end encrypted audio file (the same chunked path as photos and files, so the
+    /// other person's phone, Mac and web can play it), with its waveform and transcript.
+    /// Agents don't answer voice notes yet.
+    func sendVoice(_ clip: VoiceClip, in spaceId: String, transcript known: String? = nil,
+                   replyTo: String? = nil, thread: Bool = false) async {
         var text = known ?? ""
         if known == nil { text = await VoiceTranscriber.transcribe(clip.url)?.text ?? "" }
-        let ref = VoiceNoteRef(id: clip.id, ms: clip.ms, levels: clip.levels, transcript: text)
-        if perform({ try core.sendMessage(spaceId: spaceId, text: ref.marker) }) == nil {
-            VoiceStore.delete(clip.url)
+        guard let audio = try? Data(contentsOf: clip.url) else {
+            toast = ToastModel(kind: .error, text: String(localized: "Couldn't read the recording. Try again."))
+            return
         }
+        let levels = clip.wave.map { Float($0) }
+        guard let entry = perform({
+            try core.sendVoiceNote(spaceId: spaceId, bytes: audio, mime: "audio/mp4", ms: UInt64(max(0, clip.ms)),
+                                   levels: levels, transcript: text, replyTo: replyTo, thread: thread)
+        }) else { return }
+        if pendingVoiceFlight == clip.id { pendingVoiceFlight = entry.voice?.itemId }
+        // The core keeps the local bytes and selects the latest signed file version.
+        VoiceStore.delete(clip.url)
+        Haptics.send()
     }
 
     /// Mensagem do usuário → (talvez) o agente age. O plano vem do Foundation Models

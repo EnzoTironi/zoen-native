@@ -117,6 +117,13 @@ pub(crate) fn tint_for(id: &str) -> String {
     TINTS[n % TINTS.len()].to_string()
 }
 
+fn is_message_send(body: &EventBody) -> bool {
+    matches!(body, EventBody::MessagePosted { .. })
+        || matches!(body, EventBody::ItemCreated {
+            kind: ItemKind::File, content: ItemContent::File(doc), ..
+        } if doc.is_voice())
+}
+
 impl Engine {
     /// Logs from an older event format can't be re-verified under the current one: start over (pre-launch only; ADR 0010).
     pub(crate) fn migrate_event_format(&mut self) -> R<()> {
@@ -165,9 +172,7 @@ impl Engine {
             }
             if p.failed {
                 // Only refused messages stay visible (with a retry/delete affordance).
-                if matches!(e.body, EventBody::MessagePosted { .. })
-                    && self.space_order.contains(&e.space)
-                {
+                if is_message_send(&e.body) && self.space_order.contains(&e.space) {
                     self.net
                         .failed
                         .insert(e.client_id.clone(), p.last_error.unwrap_or_default());
@@ -280,14 +285,18 @@ impl Engine {
                 continue;
             }
             if p.failed {
-                if matches!(e.body, EventBody::MessagePosted { .. })
+                if is_message_send(&e.body)
                     && projections
                         .get(&e.space)
                         .is_some_and(|scoped| scoped.spaces.contains_key(&e.space))
                 {
                     let scoped = projections.get_mut(&e.space).expect("checked above");
-                    let context = plans.pending(scoped, &self.identities, &e)?;
-                    scoped.apply_checked(&e, &self.identities, &context);
+                    if matches!(e.body, EventBody::MessagePosted { .. }) {
+                        let context = plans.pending(scoped, &self.identities, &e)?;
+                        scoped.apply_checked(&e, &self.identities, &context);
+                    } else {
+                        scoped.retain_failed_voice(&e);
+                    }
                 }
                 continue;
             }

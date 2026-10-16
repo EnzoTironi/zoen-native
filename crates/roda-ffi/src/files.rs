@@ -16,6 +16,7 @@ use hkdf::Hkdf;
 use roda_types::*;
 use sha2::{Digest, Sha256};
 
+use crate::dto::TimelineEntry;
 use crate::engine::{now_ms, Engine, R};
 use crate::i18n::t;
 use crate::media::Wanted;
@@ -252,6 +253,7 @@ impl Engine {
             sha256: hex::encode(Sha256::digest(bytes)),
             chunks,
             thumb,
+            voice: None,
         })
     }
 
@@ -303,6 +305,79 @@ impl Engine {
         Ok(item)
     }
 
+    /// Sends a voice note: the audio as an end-to-end encrypted file Item (the same chunked
+    /// path as any file, so every client, the web included, can fetch and play it), tagged
+    /// with its length, waveform and transcript. With `reply_to` it answers that message
+    /// (inline, or in its thread).
+    #[allow(clippy::too_many_arguments)]
+    pub fn send_voice_note(
+        &mut self,
+        space: &str,
+        bytes: &[u8],
+        mime: &str,
+        ms: u64,
+        levels: &[f32],
+        transcript: &str,
+        reply_to: Option<&str>,
+        thread: bool,
+    ) -> R<TimelineEntry> {
+        if !mime.starts_with("audio/") {
+            return Err(invalid("não é um áudio", "not audio"));
+        }
+        let me = self.me_id()?;
+        if !self.state.writer(space, &me) {
+            return Err(CoreError::Forbidden {
+                reason: t(
+                    "só membros mandam mensagens de voz",
+                    "only members can send voice messages",
+                ),
+            });
+        }
+        let reply = reply_to
+            .map(|to| self.reply_ref(space, to, thread))
+            .transpose()?;
+        let item = new_id("it");
+        let ext = match mime.split(';').next().unwrap_or_default() {
+            "audio/webm" => "webm",
+            "audio/ogg" => "ogg",
+            "audio/mpeg" => "mp3",
+            "audio/wav" | "audio/x-wav" => "wav",
+            _ => "m4a",
+        };
+        let key = self.file_key(None)?;
+        let mut doc = self.file_doc(
+            space,
+            &key,
+            &format!("voice-{item}.{ext}"),
+            &format!("VoiceNotes/{item}.{ext}"),
+            mime,
+            bytes,
+            None,
+            &HashMap::new(),
+        )?;
+        doc.voice = Some(roda_types::VoiceMeta {
+            ms,
+            levels: roda_types::VoiceMeta::encode(levels),
+            transcript: transcript.trim().to_string(),
+            reply,
+        });
+        self.store
+            .set_meta(&format!("file_key:{item}"), &hex::encode(key))?;
+        self.append(
+            space,
+            &me,
+            EventBody::ItemCreated {
+                item: item.clone(),
+                kind: ItemKind::File,
+                content: ItemContent::File(doc),
+                origin: t("Mensagem de voz", "Voice message"),
+            },
+        )?;
+        self.index_dirty = true;
+        let s = self.space_state(space)?;
+        Ok(self.entry_dto(s.entries.last().expect("just appended")))
+    }
+
     /// A new version of a file (an edit, a markup, a trim). Unchanged chunks are re-used.
     pub fn file_new_version(
         &mut self,
@@ -349,6 +424,11 @@ impl Engine {
         let me = self.me_id()?;
         let (it, cur) = self.file_item(item)?;
         let space = it.space.clone();
+        if !self.state.writer(&space, &me) || !it.voice_edit_allowed(&me, None) {
+            return Err(CoreError::Forbidden {
+                reason: t("edição de arquivo não autorizada", "unauthorized file edit"),
+            });
+        }
         // Every chunk any version already has is re-used as is (its key travels in the
         // event), so this works on a device that didn't add the file too.
         let mut prior = HashMap::new();
@@ -363,9 +443,14 @@ impl Engine {
         self.store
             .set_meta(&format!("file_key:{item}"), &hex::encode(key))?;
         let (name, mime) = format.unwrap_or((&cur.name, &cur.mime));
-        let doc = self.file_doc(
+        let mut doc = self.file_doc(
             &space, &key, name, &cur.path, mime, bytes, thumbnail, &prior,
         )?;
+        // Renaming or changing a preview keeps the same audio. A byte edit invalidates
+        // its timings and transcript (removed words must not survive in metadata).
+        if doc.sha256 == cur.sha256 && doc.mime.starts_with("audio/") {
+            doc.voice = cur.voice.clone();
+        }
         if doc.sha256 == cur.sha256
             && doc.name == cur.name
             && doc.mime == cur.mime

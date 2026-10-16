@@ -183,3 +183,12 @@ schemes:
       config: Device
     archive:
       config: Device
+  # Simulador e Mac em Debug, usados por scripts/run.sh.
+  ZoeniOS:
+    build:
+      targets:
+        ZoeniOS: all
+  ZoenMac:
+    build:
+      targets:
+        ZoenMac: all

@@ -149,19 +149,19 @@ fun VoiceComposer(
 fun VoiceBubble(model: ZoenViewModel, reference: VoiceNoteRef, modifier: Modifier = Modifier) {
     val playback by VoicePlayback.state.collectAsStateWithLifecycle()
     val context = LocalContext.current
-    val current = playback.id == reference.id
+    val current = playback.id == reference.id && playback.sha256 == reference.sha256
     var transcript by rememberSaveable(reference.id) { mutableStateOf(false) }
     var loading by remember(reference.id) { mutableStateOf(false) }
     val label = stringResource(R.string.media_audio_arriving)
     fun play() {
         if (loading) return
-        if (current) VoicePlayback.toggle(context, reference.id, File(context.cacheDir, "unused"))
+        if (current && playback.error == null) VoicePlayback.toggle(context, reference.id, File(context.cacheDir, "unused"), sha256 = reference.sha256)
         else {
             loading = true
             model.launch {
                 try {
                     val file = VoiceTransport.localFile(context, model.repository, reference)
-                    if (file == null) model.notify(label) else VoicePlayback.toggle(context, reference.id, file)
+                    if (file == null) model.notify(label) else VoicePlayback.toggle(context, reference.id, file, sha256 = reference.sha256)
                 } finally { loading = false }
             }
         }
