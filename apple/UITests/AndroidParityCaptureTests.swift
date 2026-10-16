@@ -80,11 +80,16 @@ final class AndroidParityCaptureTests: XCTestCase {
             // Await app idleness and one settled animation before recording the actual app frame.
             Thread.sleep(forTimeInterval: screen == "onboarding" ? 8 : 2)
             // Diagnostic geometry is separate from the common cross-platform fixture contract.
-            let frame = app.windows.firstMatch.frame
-            let geometry: [String: Any] = ["screen": screen, "mode": appearance,
-                "viewport": environment["ZOEN_PARITY_VIEWPORT"] ?? "narrow",
-                "window_points": ["x": frame.minX, "y": frame.minY, "width": frame.width, "height": frame.height],
-                "note": "XCUI window bounds only; safe-area crops require app-side inset probe"]
+            let geometryWitness = app.descendants(matching: .any)["parity-window-geometry"].firstMatch
+            XCTAssertTrue(geometryWitness.waitForExistence(timeout: 10), "Applied fixture requires actual UIKit window geometry")
+            var geometry = try XCTUnwrap(try JSONSerialization.jsonObject(with: Data(geometryWitness.label.utf8)) as? [String: Any])
+            XCTAssertNotNil(geometry["window_points"] as? [String: Any])
+            XCTAssertNotNil(geometry["safe_area_points"] as? [String: Any])
+            XCTAssertNotNil(geometry["safe_area_pixels"] as? [String: Any])
+            XCTAssertGreaterThan(try XCTUnwrap(geometry["scale"] as? Double), 0)
+            geometry["screen"] = screen
+            geometry["mode"] = appearance
+            geometry["viewport"] = environment["ZOEN_PARITY_VIEWPORT"] ?? "narrow"
             let diagnostic = XCTAttachment(data: try JSONSerialization.data(withJSONObject: geometry, options: [.sortedKeys]), uniformTypeIdentifier: "public.json")
             diagnostic.name = "ios-geometry-\(screen)-\(appearance).json"
             diagnostic.lifetime = .keepAlways
