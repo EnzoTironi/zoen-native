@@ -54,7 +54,7 @@ def capture_ios(args, output):
     run('xcodegen', 'generate', '--spec', 'apple/project.yml')
     result = output/'native.xcresult'
     env = dict(os.environ, TZ='UTC', SIMCTL_CHILD_TZ='UTC', SIMCTL_CHILD_ZOEN_PARITY_FIXTURE='native-parity-v1', SIMCTL_CHILD_ZOEN_PARITY_REVISION=args.revision)
-    derived = output/'DerivedData'
+    derived = (args.derived_data or output/'DerivedData').resolve()
     run('xcodebuild', 'build-for-testing', '-project', 'apple/Zoen.xcodeproj', '-scheme', 'ZoenUITests', '-destination', f'platform=iOS Simulator,id={device}', '-derivedDataPath', str(derived), 'CODE_SIGNING_ALLOWED=NO', env=env)
     specs = list((derived/'Build/Products').glob('*.xctestrun'))
     if len(specs) != 1:
@@ -144,6 +144,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('platform', choices=('ios', 'android'))
     parser.add_argument('--output', type=Path, required=True)
+    parser.add_argument('--derived-data', type=Path, help='Reuse current-source Xcode build products across iPhone/iPad captures')
     parser.add_argument('--device', help='Booted iOS simulator UDID')
     parser.add_argument('--viewport', choices=('narrow', 'wide'), default='narrow')
     parser.add_argument('--clear-installed', action='store_true')
