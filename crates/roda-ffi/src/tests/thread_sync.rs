@@ -41,7 +41,7 @@ fn thread_follow_and_read_watermarks_replay_on_another_device() {
     let space = a
         .spaces()
         .into_iter()
-        .find(|s| s.members.len() >= 3)
+        .find(|s| s.counterpart.is_some())
         .unwrap();
     let other = space
         .members

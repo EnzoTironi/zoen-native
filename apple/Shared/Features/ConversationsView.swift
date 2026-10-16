@@ -80,7 +80,7 @@ struct ConversationsList: View {
 
     var body: some View {
         LazyVStack(alignment: .leading, spacing: 2) {
-            if !archive, query.isEmpty, model.spaces.contains(where: { $0.kind != .direct }) {
+            if !archive, query.isEmpty, !model.spaces.isEmpty {
                 ThreadsRow(unread: model.spaces.reduce(0) { $0 + Int($1.threadsUnread) }) { showThreads = true }
             }
             // WhatsApp: "Archived" sits above the chats while you have any.

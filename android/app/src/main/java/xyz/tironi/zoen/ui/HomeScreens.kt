@@ -102,7 +102,7 @@ fun ConversationsScreen(model: ZoenViewModel, state: AppState, navigate: (NavKey
                     }
                 }
                 if (!showArchived) item { ChatFilterMenu(filter) { filter = it; haptics.perform(ZoenFeedback.Selection) } }
-                if (!showArchived && query.isBlank() && state.spaces.any { it.counterpart == null }) item(key = "threads") {
+                if (!showArchived && query.isBlank() && state.spaces.isNotEmpty()) item(key = "threads") {
                     val unread = state.spaces.sumOf { it.threadsUnread.toInt() }
                     ListItem(headlineContent = { Text(stringResource(R.string.threads), fontWeight = if (unread > 0) FontWeight.SemiBold else null) },
                         leadingContent = { Icon(if (showThreads) Icons.AutoMirrored.Rounded.ArrowBack else Icons.Rounded.Forum, null, Modifier.padding(horizontal = 16.dp)) },

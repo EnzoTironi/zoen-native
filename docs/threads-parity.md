@@ -22,7 +22,8 @@ responding to a reply. Interface copy uses “Respostas” and “Acompanhar res
 - `cargo test --locked -j2 -p roda-ffi thread -- --nocapture`: passed, 5 tests.
   Includes mandatory incoming-send assertions, nested broadcast replies, whole-handle
   mention matching (including dot suffixes), and log-only replication to another
-  device without copying local read metadata. The replication test covers read,
+  device without copying local read metadata (also exercised with a direct chat).
+  The replication test covers read,
   follow/unfollow, new replies after reading, monotonic stale-device reads and a
   failed append followed by retry.
 - `cargo test --locked -j2 -p zoen-web-core --lib`: passed, 8 tests. Includes real
@@ -34,6 +35,12 @@ responding to a reply. Interface copy uses “Respostas” and “Acompanhar res
   broadcast API and existing durable-save-before-send behavior.
 - Mention regression: the added `@enzo.silva` versus `enzo` assertion failed before
   the suffix-boundary fix and passed afterward.
+- `cargo test --locked -j2 -p roda-ffi`: passed, 318 tests at the merge checkpoint;
+  the focused 5-test suite was rerun after the final activity-label/direct-chat changes.
+- `xcrun swiftc -frontend -parse` on `MessageReplies.swift` and
+  `ConversationsView.swift`: passed (syntax only, not an Apple build).
+- Android XML parsing, Portuguese-copy and nested broadcast/inbox reachability source
+  checks: passed (not an Android compile/runtime check).
 - `git diff --check`: passed.
 
 ## Remaining acceptance checks
@@ -45,4 +52,4 @@ build or visible UI capture was run. Local simulators/emulators are excluded by 
 task constraints; native platform CI and live-device acceptance remain necessary.
 The existing PR #97 publication association failed before any new commits could be
 published, so its previous CI results do not verify these changes. No replacement PR
-was created. The full native core suite is tracked separately from the focused checks.
+was created.
