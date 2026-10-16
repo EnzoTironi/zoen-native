@@ -39,13 +39,29 @@ final class UIPolishJourneyTests: XCTestCase {
         keep(app, "chats-list")
         let scroll = app.scrollViews["chats-list-scroll"]
         XCTAssertTrue(scroll.exists)
-        scroll.swipeUp()
-        scroll.swipeUp()
-        let last = app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "Zoen · Produto")).firstMatch
-        XCTAssertTrue(last.waitForExistence(timeout: 5) && last.isHittable)
-        XCTAssertLessThanOrEqual(last.frame.maxY, app.buttons["bar-search"].frame.minY,
-                                 "the last chat can scroll fully above the floating bar")
+        let last = scroll.buttons["chat-row-last"]
+        var previousBottom: CGFloat?
+        var reachedBottom = false
+        for _ in 0..<12 {
+            scroll.swipeUp()
+            guard last.exists, !last.frame.isEmpty else {
+                previousBottom = nil
+                continue
+            }
+            let bottom = last.frame.maxY
+            if let previousBottom, abs(bottom - previousBottom) < 1 {
+                reachedBottom = true
+                break
+            }
+            previousBottom = bottom
+        }
         keep(app, "chats-list-bottom")
+        XCTAssertTrue(reachedBottom, "the last chat stops moving at the bottom of the list")
+        XCTAssertTrue(last.exists && last.isHittable)
+        let bar = app.otherElements["bottom-bar"]
+        XCTAssertTrue(bar.exists)
+        XCTAssertLessThanOrEqual(last.frame.maxY, bar.frame.minY,
+                                 "the last chat can scroll fully above the floating bar")
     }
 
     @MainActor
@@ -70,6 +86,11 @@ final class UIPolishJourneyTests: XCTestCase {
         let reply = app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH %@", "Levo as frutas.")).firstMatch
         XCTAssertTrue(reply.waitForExistence(timeout: 5))
         sleep(1) // The thread focuses its composer after presentation.
+        let keyboardTip = app.buttons["Continue"]
+        if keyboardTip.waitForExistence(timeout: 3) {
+            keyboardTip.tap()
+            XCTAssertTrue(keyboardTip.waitForNonExistence(timeout: 5))
+        }
         keep(app, "thread")
         close.tap()
         XCTAssertTrue(close.waitForNonExistence(timeout: 5))
@@ -77,7 +98,10 @@ final class UIPolishJourneyTests: XCTestCase {
         let message = app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH %@", "Eu levo água e uns lanches")).firstMatch
         XCTAssertTrue(message.waitForExistence(timeout: 5) && message.isHittable)
         message.press(forDuration: 0.6)
-        XCTAssertTrue(app.buttons["Copiar"].waitForExistence(timeout: 5), "long-press opens message actions")
+        XCTAssertTrue(app.buttons["Responder"].waitForExistence(timeout: 5), "long-press opens message actions")
         keep(app, "message-actions")
+        for label in ["Reagir com 👍", "Encaminhar", "Copiar", "Editar", "Apagar para todos"] {
+            XCTAssertTrue(app.buttons[label].exists, "localized message action: \(label)")
+        }
     }
 }
