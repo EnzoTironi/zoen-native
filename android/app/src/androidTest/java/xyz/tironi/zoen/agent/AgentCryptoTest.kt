@@ -49,7 +49,7 @@ class AgentCryptoTest {
         val directory = File(context.noBackupFilesDir, namespace).apply { mkdirs() }
         val vault = AndroidSecretVault(context, "$namespace-vault")
         val path = File(directory, "profile.sqlite").absolutePath
-        var core = RodaEngine.open(path, "en")
+        var core = ZoenEngine.open(path, "en")
         val bitmap = Bitmap.createBitmap(1600, 800, Bitmap.Config.ARGB_8888).apply { eraseColor(Color.BLUE) }
         try {
             val account = core.createAccount("Photo Test", "photo_test", "http://10.0.2.2:18787", vault)
@@ -62,7 +62,7 @@ class AgentCryptoTest {
             assertArrayEquals(photo, core.media(hash))
             assertEquals("photo_changed", core.account()!!.handle)
             core.destroy()
-            core = RodaEngine.open(path, "en")
+            core = ZoenEngine.open(path, "en")
             assertTrue(core.unlock(vault))
             assertArrayEquals(photo, core.media(hash))
             assertEquals("New Name", core.getProfile(account.identityId).name)

@@ -7,11 +7,11 @@ mod journeys;
 mod retained;
 mod stores;
 use super::*;
-use roda_log::{Author, Signer};
-use roda_types::{Identity, IdentityKind};
 use sqlx::{Connection, PgConnection, PgPool};
 use std::time::Duration;
+use zoen_log::{Author, Signer};
 use zoen_models::{EndpointPolicy, InputMessage, ModelLimits, Operation};
+use zoen_types::{Identity, IdentityKind};
 
 const PROMPT: &str = "PRIVATE-RUNTIME-PROMPT-CANARY-91f";
 const API_KEY: &str = "PUBLIC-FIXTURE-KEY-CANARY-62a";
@@ -56,11 +56,11 @@ impl World {
             .await
             .unwrap();
         let http = http::Provider::new().await;
-        let namespace = roda_types::new_id("authority");
+        let namespace = zoen_types::new_id("authority");
         let mut openers = Vec::new();
         for _ in 0..workers {
             let candidate = if competing_namespaces {
-                roda_types::new_id("authority")
+                zoen_types::new_id("authority")
             } else {
                 namespace.clone()
             };
@@ -103,7 +103,7 @@ impl World {
             agent_roots.push(root);
         }
         let (year, month, _, end) = runtime.finance.current_period().await;
-        let signed = roda_log::owner_budget::sign(
+        let signed = zoen_log::owner_budget::sign(
             &owner,
             OwnerPeriodPolicy {
                 owner: owner.identity.clone(),
@@ -147,12 +147,12 @@ impl World {
         let step = VerifiedStep::Fixture(Box::new(FixtureStep {
             request: ModelRequest {
                 context: AttemptContext {
-                    attempt_id: roda_types::new_id("attempt"),
-                    run_id: roda_types::new_id("run"),
+                    attempt_id: zoen_types::new_id("attempt"),
+                    run_id: zoen_types::new_id("run"),
                     owner: self.owner.identity.clone(),
                     agent: actor.identity.clone(),
                     device: actor.device.clone().unwrap(),
-                    space: roda_types::new_id("sp"),
+                    space: zoen_types::new_id("sp"),
                     authority_version: "fixture-frontier-v1".into(),
                     definition_version: "fixture-definition-v1".into(),
                     price_version: "fixture-price-v1".into(),
@@ -300,7 +300,7 @@ async fn register(pool: &PgPool, actor: &Author, owner: Option<&Author>, handle:
         owner: owner.map(|a| a.identity.clone()),
         bio: String::new(),
         owner_proof: owner
-            .map(|a| Box::new(roda_log::agent_owner::authorize(a, &actor.identity).unwrap())),
+            .map(|a| Box::new(zoen_log::agent_owner::authorize(a, &actor.identity).unwrap())),
     };
     let mut tx = pool.begin().await.unwrap();
     zoen_relay::db::register(

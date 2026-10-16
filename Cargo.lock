@@ -4943,21 +4943,21 @@ dependencies = [
 ]
 
 [[package]]
-name = "roda-docs"
+name = "zoen-docs"
 version = "0.1.0"
 dependencies = [
  "comrak",
  "getrandom 0.2.17",
  "hex",
  "loro",
- "roda-types",
+ "zoen-types",
  "serde",
  "serde_json",
  "sha2 0.10.9",
 ]
 
 [[package]]
-name = "roda-ffi"
+name = "zoen-ffi"
 version = "0.1.0"
 dependencies = [
  "argon2",
@@ -4975,13 +4975,13 @@ dependencies = [
  "prost",
  "rcgen",
  "reqwest",
- "roda-docs",
- "roda-grants",
- "roda-log",
- "roda-mls",
- "roda-proto",
- "roda-store",
- "roda-types",
+ "zoen-docs",
+ "zoen-grants",
+ "zoen-log",
+ "zoen-mls",
+ "zoen-proto",
+ "zoen-store",
+ "zoen-types",
  "rusqlite",
  "rustls",
  "serde",
@@ -4997,26 +4997,26 @@ dependencies = [
 ]
 
 [[package]]
-name = "roda-gate"
+name = "zoen-gate"
 version = "0.1.0"
 dependencies = [
- "roda-grants",
- "roda-types",
+ "zoen-grants",
+ "zoen-types",
  "serde",
  "serde_json",
  "sha2 0.10.9",
 ]
 
 [[package]]
-name = "roda-grants"
+name = "zoen-grants"
 version = "0.1.0"
 dependencies = [
- "roda-types",
+ "zoen-types",
  "serde",
 ]
 
 [[package]]
-name = "roda-log"
+name = "zoen-log"
 version = "0.1.0"
 dependencies = [
  "chacha20poly1305 0.11.0",
@@ -5025,7 +5025,7 @@ dependencies = [
  "hex",
  "hkdf 0.12.4",
  "prost",
- "roda-types",
+ "zoen-types",
  "serde",
  "serde_json",
  "sha2 0.10.9",
@@ -5034,7 +5034,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "roda-mls"
+name = "zoen-mls"
 version = "0.1.0"
 dependencies = [
  "chacha20poly1305 0.11.0",
@@ -5046,7 +5046,7 @@ dependencies = [
  "openmls_rust_crypto",
  "openmls_sqlite_storage",
  "openmls_traits",
- "roda-log",
+ "zoen-log",
  "rusqlite",
  "serde",
  "serde_json",
@@ -5055,30 +5055,30 @@ dependencies = [
 ]
 
 [[package]]
-name = "roda-proto"
+name = "zoen-proto"
 version = "0.1.0"
 dependencies = [
  "hex",
  "prost",
- "roda-log",
- "roda-types",
+ "zoen-log",
+ "zoen-types",
  "serde",
  "serde_json",
  "sha2 0.10.9",
 ]
 
 [[package]]
-name = "roda-store"
+name = "zoen-store"
 version = "0.1.0"
 dependencies = [
- "roda-types",
+ "zoen-types",
  "rusqlite",
  "serde_json",
  "thiserror 2.0.21",
 ]
 
 [[package]]
-name = "roda-types"
+name = "zoen-types"
 version = "0.1.0"
 dependencies = [
  "getrandom 0.2.17",
@@ -7765,9 +7765,9 @@ dependencies = [
  "getrandom 0.2.17",
  "hex",
  "reqwest",
- "roda-gate",
- "roda-log",
- "roda-types",
+ "zoen-gate",
+ "zoen-log",
+ "zoen-types",
  "rustls",
  "serde",
  "serde_json",
@@ -7795,12 +7795,12 @@ dependencies = [
  "opentelemetry-proto",
  "prost",
  "reqwest",
- "roda-ffi",
- "roda-gate",
- "roda-log",
- "roda-proto",
- "roda-store",
- "roda-types",
+ "zoen-ffi",
+ "zoen-gate",
+ "zoen-log",
+ "zoen-proto",
+ "zoen-store",
+ "zoen-types",
  "rusqlite",
  "serde_json",
  "sha2 0.10.9",
@@ -7820,7 +7820,7 @@ dependencies = [
  "hex",
  "httparse",
  "rcgen",
- "roda-types",
+ "zoen-types",
  "rustls",
  "serde",
  "serde_json",
@@ -7864,9 +7864,9 @@ dependencies = [
  "fastrand",
  "futures-util",
  "hdrhistogram",
- "roda-log",
- "roda-proto",
- "roda-types",
+ "zoen-log",
+ "zoen-proto",
+ "zoen-types",
  "serde_json",
  "tokio",
  "tokio-tungstenite 0.30.0",
@@ -7919,10 +7919,10 @@ dependencies = [
  "postgresql_embedded",
  "reqwest",
  "ring",
- "roda-log",
- "roda-mls",
- "roda-proto",
- "roda-types",
+ "zoen-log",
+ "zoen-mls",
+ "zoen-proto",
+ "zoen-types",
  "rusqlite",
  "rustls",
  "serde",
@@ -7948,12 +7948,12 @@ dependencies = [
  "foundationdb",
  "getrandom 0.2.17",
  "hex",
- "roda-ffi",
- "roda-log",
- "roda-mls",
- "roda-proto",
- "roda-store",
- "roda-types",
+ "zoen-ffi",
+ "zoen-log",
+ "zoen-mls",
+ "zoen-proto",
+ "zoen-store",
+ "zoen-types",
  "serde",
  "serde_json",
  "sha2 0.10.9",
@@ -7976,7 +7976,7 @@ dependencies = [
  "hex",
  "libc",
  "rcgen",
- "roda-types",
+ "zoen-types",
  "rustls",
  "serde",
  "serde_json",
@@ -8002,10 +8002,10 @@ dependencies = [
  "openmls",
  "openmls_rust_crypto",
  "openmls_traits",
- "roda-log",
- "roda-mls",
- "roda-proto",
- "roda-types",
+ "zoen-log",
+ "zoen-mls",
+ "zoen-proto",
+ "zoen-types",
  "rusqlite",
  "serde",
  "serde_json",

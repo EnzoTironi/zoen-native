@@ -1,7 +1,7 @@
 import SwiftUI
 
 /// "Escolher desenho": pick a hand-drawn AvatarV1 picture for a group/Space or an agent.
-/// Stored on this device (`RodaGroupAvatar.<id>` / `RodaAgentAvatar.<id>`). "Gerar" comes with the art service.
+/// Stored on this device (`ZoenGroupAvatar.<id>` / `ZoenAgentAvatar.<id>`). "Gerar" comes with the art service.
 struct AvatarArtPicker: View {
     enum Target: Identifiable, Hashable {
         case group(id: String, title: String)

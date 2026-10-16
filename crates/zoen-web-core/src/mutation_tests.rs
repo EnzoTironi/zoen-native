@@ -1,5 +1,5 @@
 use super::*;
-use roda_types::{Annotation, ReplyRef};
+use zoen_types::{Annotation, ReplyRef};
 
 const SPACE: &str = "sp_mutation_fixture";
 
@@ -11,7 +11,7 @@ fn fixture(run: impl FnOnce(&mut Client<HostSigner>, &Device<'_>, &Author, &mut 
     let host = HostSigner(NativeSigner::from_secret(&[44; 32]));
     let author = Author::device(&peer_identity, native_key.clone());
     let mut sqlite = rusqlite::Connection::open_in_memory().unwrap();
-    roda_mls::migrate(&mut sqlite).unwrap();
+    zoen_mls::migrate(&mut sqlite).unwrap();
     let native = Device::new(
         &sqlite,
         [45; 32],
@@ -117,7 +117,7 @@ fn peer_event(
     body: EventBody,
     now: i64,
 ) -> String {
-    let inner = author.sign_event(SPACE, &roda_types::new_ulid(now), now, log.head(), body);
+    let inner = author.sign_event(SPACE, &zoen_types::new_ulid(now), now, log.head(), body);
     let plaintext = InnerEvent {
         content: inner.content,
         sig: inner.sig,

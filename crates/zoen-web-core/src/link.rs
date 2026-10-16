@@ -68,7 +68,7 @@ struct IdentityBox {
 }
 
 pub fn create_link(device: &str, relay: &str) -> Result<PendingLink, String> {
-    roda_log::parse_device_key(device).ok_or("invalid device public key")?;
+    zoen_log::parse_device_key(device).ok_or("invalid device public key")?;
     let mut ikm = Zeroizing::new([0u8; 32]);
     let mut secret = Zeroizing::new([0u8; 32]);
     getrandom::getrandom(ikm.as_mut()).map_err(|e| e.to_string())?;
@@ -136,10 +136,10 @@ pub fn complete_link(pending: &PendingLink, sealed: &[u8]) -> Result<LinkedAccou
     let seed = Zeroizing::new(
         <[u8; 32]>::try_from(identity_secret.as_slice()).map_err(|_| "invalid identity key")?,
     );
-    let identity = roda_log::Signer::from_secret(&seed).id();
-    if !roda_log::verify_sig(
+    let identity = zoen_log::Signer::from_secret(&seed).id();
+    if !zoen_log::verify_sig(
         &identity,
-        &roda_log::device_cert_message(&pending.device),
+        &zoen_log::device_cert_message(&pending.device),
         &identity_box.cert,
     ) {
         return Err("The phone's certificate does not match this browser device.".into());
@@ -170,11 +170,11 @@ pub fn complete_link(pending: &PendingLink, sealed: &[u8]) -> Result<LinkedAccou
 mod tests {
     use super::*;
     use hpke_rs::HpkePublicKey;
-    use roda_log::Signer;
+    use zoen_log::Signer;
 
     fn phone_box(pending: &PendingLink, certified_device: &str) -> Vec<u8> {
         let identity = Signer::from_secret(&[7; 32]);
-        let cert = identity.sign(&roda_log::device_cert_message(certified_device));
+        let cert = identity.sign(&zoen_log::device_cert_message(certified_device));
         let payload = serde_json::json!({ "identity_secret": hex::encode(identity.secret()),
             "agreement_secret": hex::encode([9;32]), "cert":cert, "name":"Test", "handle":"test",
             "relay": pending.relay, "primary": identity.id(), "primary_hpke": hex::encode([8;32]),

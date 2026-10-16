@@ -1,5 +1,5 @@
 import SwiftUI
-import RodaCore
+import ZoenCore
 
 @main
 struct ZoeniOSApp: App {

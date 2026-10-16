@@ -10,8 +10,8 @@ pub(super) async fn policies_and_historical_owner() {
     );
     let mut agent_policy = w.signed.policy.clone();
     agent_policy.owner = w.agents[0].identity.clone();
-    let signed_by_agent = roda_log::owner_budget::sign(&w.agents[0], agent_policy).unwrap();
-    assert!(roda_log::owner_budget::verify(&signed_by_agent));
+    let signed_by_agent = zoen_log::owner_budget::sign(&w.agents[0], agent_policy).unwrap();
+    assert!(zoen_log::owner_budget::verify(&signed_by_agent));
     assert_eq!(
         w.runtime.install_policy(signed_by_agent).await.unwrap_err(),
         RuntimeError::Denied
@@ -28,7 +28,7 @@ pub(super) async fn policies_and_historical_owner() {
     let mut replacement = w.signed.policy.clone();
     replacement.version = 2;
     replacement.previous_digest = Some(w.policy_digest.clone());
-    let signed = roda_log::owner_budget::sign(&w.owner, replacement).unwrap();
+    let signed = zoen_log::owner_budget::sign(&w.owner, replacement).unwrap();
     assert_eq!(
         w.runtime.install_policy(signed).await.unwrap_err(),
         RuntimeError::Denied
@@ -73,8 +73,8 @@ pub(super) async fn owner_wide_concurrency() {
     for i in 0..100 {
         let runtime = w.runtime.clone();
         let mut binding = if i % 2 == 0 { a.clone() } else { b.clone() };
-        binding.context.attempt_id = roda_types::new_id("attempt");
-        binding.context.run_id = roda_types::new_id("child");
+        binding.context.attempt_id = zoen_types::new_id("attempt");
+        binding.context.run_id = zoen_types::new_id("child");
         tasks.push(tokio::spawn(async move {
             runtime.finance.reserve(&binding).await
         }));
@@ -216,7 +216,7 @@ pub(super) async fn changed_and_lowered_policy() {
     policy.previous_digest = Some(w.policy_digest.clone());
     policy.limit_units = 5;
     policy.max_attempt_units = 5;
-    let signed = roda_log::owner_budget::sign(&w.owner, policy).unwrap();
+    let signed = zoen_log::owner_budget::sign(&w.owner, policy).unwrap();
     w.runtime.install_policy(signed).await.unwrap();
     w.runtime.fault.store(0, Ordering::SeqCst);
     assert!(w.runtime.complete_verified(&step).await.is_err());

@@ -7,9 +7,9 @@ pub(crate) use cancellation::{CleanupAcquisition, CleanupStep};
 #[cfg(test)]
 pub(super) mod testing;
 
-use roda_ffi::runtime_core::{NativeError, ReplyFacts, ReplyIntent};
-use roda_types::Seen;
+use zoen_ffi::runtime_core::{NativeError, ReplyFacts, ReplyIntent};
 use zoen_models::{InputMessage, Operation};
+use zoen_types::Seen;
 
 use super::*;
 use crate::{
@@ -344,9 +344,9 @@ impl NativeCustody {
                         return Err(RuntimeError::Denied);
                     }
                     let locator = ReplyRun {
-                        run: roda_types::new_id("run"),
-                        attempt: roda_types::new_id("attempt"),
-                        wake: roda_types::new_id("wake"),
+                        run: zoen_types::new_id("run"),
+                        attempt: zoen_types::new_id("attempt"),
+                        wake: zoen_types::new_id("wake"),
                     };
                     let request = ModelRequest {
                         context: zoen_models::AttemptContext {

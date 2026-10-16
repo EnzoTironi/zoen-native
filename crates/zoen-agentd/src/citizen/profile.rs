@@ -1,10 +1,10 @@
 //! Identity, device, definition and avatar for one agent citizen.
 
-use roda_log::{agent_owner, Author, Signer};
-use roda_types::{Identity, IdentityKind};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use zeroize::Zeroizing;
+use zoen_log::{agent_owner, Author, Signer};
+use zoen_types::{Identity, IdentityKind};
 
 /// Default avatar style until content-addressed hand-drawn art lands.
 pub const AVATAR_STYLE: &str = "hand-drawn-animated";

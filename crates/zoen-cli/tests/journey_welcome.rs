@@ -3,11 +3,11 @@
 mod common;
 use common::World;
 use futures_util::{SinkExt, StreamExt};
-use roda_log::content::SealedKind;
-use roda_proto::ClientFrame;
 use std::time::Duration;
 use tokio::sync::{mpsc, oneshot};
 use tokio_tungstenite::tungstenite::Message;
+use zoen_log::content::SealedKind;
+use zoen_proto::ClientFrame;
 
 #[tokio::test(flavor = "multi_thread")]
 async fn messages_wait_for_welcome_confirmation() {

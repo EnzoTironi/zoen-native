@@ -6,8 +6,8 @@ pub mod admission;
 pub mod fdb;
 pub mod sequencer;
 
-use roda_proto::{Envelope, InviteCreated, Sequenced};
-use roda_types::Role;
+use zoen_proto::{Envelope, InviteCreated, Sequenced};
+use zoen_types::Role;
 
 /// Why an envelope was refused. `permanent` = retrying the same envelope can't succeed.
 #[derive(Debug)]

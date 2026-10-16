@@ -35,11 +35,11 @@ use chacha20poly1305::{
 };
 use curve25519_dalek::{ristretto::CompressedRistretto, Scalar};
 use object_store::{path::Path as ObjPath, ObjectStoreExt, PutPayload};
-use roda_log::verify_sig;
-use roda_proto::{backup_message, BACKUP_UPLOAD_MAGIC};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use sqlx::{PgConnection, Postgres, Row, Transaction};
+use zoen_log::verify_sig;
+use zoen_proto::{backup_message, BACKUP_UPLOAD_MAGIC};
 
 use crate::Shared;
 
@@ -808,7 +808,7 @@ pub async fn restore_start(
     crate::ClientIp(ip): crate::ClientIp,
     Json(req): Json<StartReq>,
 ) -> Response {
-    let Some(handle) = roda_proto::normalize_handle(&req.handle) else {
+    let Some(handle) = zoen_proto::normalize_handle(&req.handle) else {
         return err(StatusCode::BAD_REQUEST, "bad handle");
     };
     if let Err(r) = restore_limit(&st, &ip, &handle) {
@@ -933,7 +933,7 @@ pub async fn restore_enroll(
     crate::ClientIp(ip): crate::ClientIp,
     Json(req): Json<EnrollReq>,
 ) -> Response {
-    let Some(handle) = roda_proto::normalize_handle(&req.handle) else {
+    let Some(handle) = zoen_proto::normalize_handle(&req.handle) else {
         return err(StatusCode::BAD_REQUEST, "bad handle");
     };
     if let Err(r) = restore_limit(&st, &ip, &handle) {
@@ -948,7 +948,7 @@ pub async fn restore_enroll(
     }
     if !verify_sig(
         &req.device,
-        &roda_proto::backup_enroll_message(&row.identity, &req.device, &req.cert, &req.generation),
+        &zoen_proto::backup_enroll_message(&row.identity, &req.device, &req.cert, &req.generation),
         &req.sig,
     ) {
         return err(StatusCode::FORBIDDEN, "invalid device enrollment");
@@ -1036,7 +1036,7 @@ pub async fn restore_open(
     crate::ClientIp(ip): crate::ClientIp,
     Json(req): Json<OpenReq>,
 ) -> Response {
-    let Some(handle) = roda_proto::normalize_handle(&req.handle) else {
+    let Some(handle) = zoen_proto::normalize_handle(&req.handle) else {
         return err(StatusCode::BAD_REQUEST, "bad handle");
     };
     if let Err(r) = restore_limit(&st, &ip, &handle) {
@@ -1073,7 +1073,7 @@ pub async fn restore_blob(
     Query(q): Query<BlobQuery>,
     headers: HeaderMap,
 ) -> Response {
-    let Some(handle) = roda_proto::normalize_handle(&q.handle) else {
+    let Some(handle) = zoen_proto::normalize_handle(&q.handle) else {
         return err(StatusCode::BAD_REQUEST, "bad handle");
     };
     if let Err(r) = restore_limit(&st, &ip, &handle) {

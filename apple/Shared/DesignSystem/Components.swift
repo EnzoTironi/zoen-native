@@ -1,5 +1,5 @@
 import SwiftUI
-import RodaCore
+import ZoenCore
 
 // Privacy labels (end-to-end / Closed / Public) used to live here as PrivacyPill.
 // Users don't need that jargon in the chrome; the lock is gone with the pill.

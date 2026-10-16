@@ -122,7 +122,7 @@ managed credentials, external nonrollback continuity or guarded agent output.
 
 ## Dispatch and finance
 
-`roda-log::owner_budget` signs bounded owner-period policy bytes with a certified
+`zoen-log::owner_budget` signs bounded owner-period policy bytes with a certified
 device. SQL installation requires a live Person owner and active exact device.
 An Agent cannot issue a budget. Policies approve specific profile digests and
 USD micro-unit limits, expiry and a contiguous version chain. They do not convert

@@ -1,5 +1,5 @@
 import SwiftUI
-import RodaCore
+import ZoenCore
 
 /// Tela 2: a conversa com pessoas e agentes. O Item nasce da mensagem do agente.
 struct SpaceView: View {
@@ -728,7 +728,7 @@ struct BubbleMeta: View {
 
     var body: some View {
         HStack(spacing: 3) {
-            Text(RodaTime.clock(atMs))
+            Text(ZoenTime.clock(atMs))
             if let delivery {
                 switch delivery {
                 case .sending: Image(systemName: "clock").imageScale(.small)

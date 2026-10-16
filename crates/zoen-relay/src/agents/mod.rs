@@ -5,8 +5,8 @@
 //! wakes through the relay's ordinary fan-out: the agent's own session is a member like
 //! anyone. These rows are the single source of truth the runtime resumes from.
 
-use roda_proto::{AgentAction, AgentStateRecord};
 use sqlx::{PgPool, Postgres, Transaction};
+use zoen_proto::{AgentAction, AgentStateRecord};
 
 /// Rows of `agent_citizens`, for operators: (agent, device, kind).
 pub async fn citizens(pool: &PgPool) -> Result<Vec<(String, String, Option<String>)>, sqlx::Error> {

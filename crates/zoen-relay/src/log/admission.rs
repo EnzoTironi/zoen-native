@@ -1,9 +1,9 @@
 //! Who may append what to a Space: pure rules over facts read inside the append
 //! transaction, shared by every `LogStore` backend.
 
-use roda_log::content::SealedKind;
-use roda_proto::Envelope;
-use roda_types::{EventBody, Privacy, Role, SpaceKind};
+use zoen_log::content::SealedKind;
+use zoen_proto::Envelope;
+use zoen_types::{EventBody, Privacy, Role, SpaceKind};
 
 use super::Reject;
 
@@ -225,10 +225,10 @@ fn check_handshake(env: &Envelope, f: &Facts) -> Result<Option<Effect>, Reject> 
     };
     let device = env.device().unwrap_or(env.author()).to_string();
     if let Some(bytes) = env.recovery() {
-        let reference = roda_log::recovery::RecoveryRef::parse(bytes)
+        let reference = zoen_log::recovery::RecoveryRef::parse(bytes)
             .ok_or_else(|| Reject::no("invalid recovery context reference"))?;
         if kind != SealedKind::Commit
-            || roda_mls::commit_epoch(data).and_then(|e| e.checked_add(1)) != Some(reference.epoch)
+            || zoen_mls::commit_epoch(data).and_then(|e| e.checked_add(1)) != Some(reference.epoch)
         {
             return Err(Reject::no(
                 "recovery context must follow its commit's epoch",
@@ -237,16 +237,16 @@ fn check_handshake(env: &Envelope, f: &Facts) -> Result<Option<Effect>, Reject> 
     }
     match kind {
         SealedKind::Commit => {
-            let epoch = roda_mls::commit_epoch(data)
+            let epoch = zoen_mls::commit_epoch(data)
                 .ok_or_else(|| Reject::no("a sealed commit that isn't an MLS commit"))?;
             if f.mls.as_ref().is_some_and(|(next, _)| *next != epoch) {
-                return Err(Reject::no(roda_proto::STALE_COMMIT));
+                return Err(Reject::no(zoen_proto::STALE_COMMIT));
             }
             Ok(Some(Effect::Commit { epoch, device }))
         }
-        SealedKind::Application => match (&f.mls, roda_mls::application_epoch(data)) {
+        SealedKind::Application => match (&f.mls, zoen_mls::application_epoch(data)) {
             (Some((current, _)), Some(epoch)) if epoch != *current => {
-                Err(Reject::no(roda_proto::STALE_SEAL))
+                Err(Reject::no(zoen_proto::STALE_SEAL))
             }
             _ => Ok(None),
         },
@@ -285,7 +285,7 @@ fn check_privacy(
                 | EventBody::DeviceJoining { .. },
             ),
         ) => Ok(()),
-        (None, _) if e2e => Err(Reject::no(roda_proto::SEAL_REQUIRED)),
+        (None, _) if e2e => Err(Reject::no(zoen_proto::SEAL_REQUIRED)),
         (None, _) => Ok(()),
     }
 }
@@ -312,8 +312,8 @@ fn check_causal_link(env: &Envelope, f: &Facts, effect: &Effect) -> Result<(), R
 #[cfg(test)]
 mod tests {
     use super::*;
-    use roda_log::{Author, Signer};
-    use roda_types::Seen;
+    use zoen_log::{Author, Signer};
+    use zoen_types::Seen;
 
     fn env(author: &Author, seen: Option<Seen>, body: EventBody) -> Envelope {
         Envelope::plain(&author.sign_event("sp_1", "c", 1, seen, body))
@@ -349,7 +349,7 @@ mod tests {
             "c",
             1,
             Some(&seen),
-            roda_proto::Sealed::new(kind, 3, vec![1, 2, 3]),
+            zoen_proto::Sealed::new(kind, 3, vec![1, 2, 3]),
         )
     }
 

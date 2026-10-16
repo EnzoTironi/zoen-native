@@ -40,7 +40,7 @@ class OnboardingConnectionJourneyTest {
         var ownIdentity: String? = null
         val peerFolder = File(application.noBackupFilesDir, "onboard-peer-$suffix").apply { mkdirs() }
         val peerVault = AndroidSecretVault(application, "onboard-peer-vault-$suffix")
-        val peer = RodaEngine.open(File(peerFolder, "peer.sqlite").absolutePath, "en")
+        val peer = ZoenEngine.open(File(peerFolder, "peer.sqlite").absolutePath, "en")
         var scenario: ActivityScenario<MainActivity>? = null
         var journeyFailure: Throwable? = null
         val automation = InstrumentationRegistry.getInstrumentation().uiAutomation

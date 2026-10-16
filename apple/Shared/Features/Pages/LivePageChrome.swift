@@ -1,5 +1,5 @@
 import SwiftUI
-import RodaCore
+import ZoenCore
 
 struct LivePageMetadata: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -15,7 +15,7 @@ struct LivePageMetadata: View {
             Text(item.spaceTitle).fontWeight(.medium)
             Text("·")
             if displayedVersion > 0, let last {
-                Text("v\(displayedVersion) · \(who) · \(RodaTime.relative(last.atMs))")
+                Text("v\(displayedVersion) · \(who) · \(ZoenTime.relative(last.atMs))")
                     .contentTransition(.numericText())
             } else if displayedVersion > 0 {
                 Text("v\(displayedVersion)")

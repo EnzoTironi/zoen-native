@@ -4,7 +4,7 @@
 
 mod common;
 use common::*;
-use roda_proto::{retry_hint, ErrorCode, ServerFrame, PROTOCOL_VERSION};
+use zoen_proto::{retry_hint, ErrorCode, ServerFrame, PROTOCOL_VERSION};
 
 fn refused_by(metrics: &str, scope: &str) -> u64 {
     metrics

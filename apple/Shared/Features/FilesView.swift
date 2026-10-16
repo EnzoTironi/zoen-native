@@ -1,5 +1,5 @@
 import SwiftUI
-import RodaCore
+import ZoenCore
 import UniformTypeIdentifiers
 
 /// Arquivos (poster #067). No Roda, "arquivo" é um Item: versionado, assinado, com
@@ -59,7 +59,7 @@ struct FilesScreen: View {
                         NavigationLink(value: Route.folder(space.id)) {
                             FileRow(symbol: "folder.fill", tint: Color(hex: "#F5B83D"),
                                     title: space.title,
-                                    subtitle: String(localized: "\(its.count) \(its.count == 1 ? String(localized: "item") : String(localized: "items")) · updated \(RodaTime.relative(its.map(latestAt).max() ?? 0))"))
+                                    subtitle: String(localized: "\(its.count) \(its.count == 1 ? String(localized: "item") : String(localized: "items")) · updated \(ZoenTime.relative(its.map(latestAt).max() ?? 0))"))
                         }
                         .buttonStyle(.plain)
                         if space.id != folders.last?.0.id { Divider().padding(.leading, 58).opacity(0.5) }
@@ -166,17 +166,17 @@ struct ItemFileRow: View {
         } else {
             FileRow(symbol: symbol, tint: tint,
                     title: item.title,
-                    subtitle: String(localized: "v\(item.version) · edited by \(who) · \(RodaTime.relative(last?.atMs ?? 0))"))
+                    subtitle: String(localized: "v\(item.version) · edited by \(who) · \(ZoenTime.relative(last?.atMs ?? 0))"))
         }
     }
     private func subtitle(who: String, at: Int64) -> String {
         if let f = item.file {
             let size = ByteCountFormatter.string(fromByteCount: Int64(f.bytes), countStyle: .file)
             return f.ready
-                ? String(localized: "v\(item.version) · \(size) · \(who) · \(RodaTime.relative(at))")
+                ? String(localized: "v\(item.version) · \(size) · \(who) · \(ZoenTime.relative(at))")
                 : String(localized: "Arriving… \(f.chunksHere) of \(f.chunks) parts")
         }
-        return String(localized: "v\(item.version) · edited by \(who) · \(RodaTime.relative(at))")
+        return String(localized: "v\(item.version) · edited by \(who) · \(ZoenTime.relative(at))")
     }
     private var symbol: String {
         switch item.kindId {

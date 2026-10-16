@@ -1,6 +1,6 @@
 import SwiftUI
 import Observation
-import RodaCore
+import ZoenCore
 
 /// The app's side of Zoen Sync: the account on this device, the relay connection, and
 /// the ephemeral signals (typing, what someone is doing, who's online) that never touch
@@ -41,7 +41,7 @@ final class SyncModel {
     @ObservationIgnored let vault = KeychainVault()
     @ObservationIgnored private var bridge: SyncBridge?
     @ObservationIgnored weak var app: AppModel?
-    @ObservationIgnored private var core: RodaEngine?
+    @ObservationIgnored private var core: ZoenEngine?
     @ObservationIgnored private var lastTypingSent: [String: Date] = [:]
     @ObservationIgnored private var refreshQueued = false
     @ObservationIgnored private var started = false
@@ -50,7 +50,7 @@ final class SyncModel {
     var isOnline: Bool { connection.state == "online" }
 
     /// Opens the account (if any) and starts syncing. Safe to call more than once.
-    func start(core: RodaEngine) {
+    func start(core: ZoenEngine) {
         self.core = core
         account = core.account()
         guard let acct = account, !started else { return }
@@ -89,7 +89,7 @@ final class SyncModel {
 
     /// Creates this device's identity (keys go to the Keychain) and starts syncing. Works
     /// offline: the relay learns about you the first time it's reachable.
-    func createAccount(core: RodaEngine, name: String, handle: String, relay: String = SyncModel.defaultRelayURL) throws {
+    func createAccount(core: ZoenEngine, name: String, handle: String, relay: String = SyncModel.defaultRelayURL) throws {
         account = try core.createAccount(name: name, handle: handle, relayUrl: relay, vault: vault)
         start(core: core)
         app?.refresh()

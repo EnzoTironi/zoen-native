@@ -1,6 +1,6 @@
 import SwiftUI
 import Observation
-import RodaCore
+import ZoenCore
 
 /// Top-level destinations. On iPhone, two live in the bottom bar's pill (`barTabs`),
 /// Search has its own button, and the rest open from the + fan menu.
@@ -74,7 +74,7 @@ enum Route: Hashable {
 @MainActor
 @Observable
 final class AppModel {
-    let core: RodaEngine
+    let core: ZoenEngine
     let planner = AgentPlanner()
     /// Account, relay connection and the live signals (typing, presence).
     let sync = SyncModel()
@@ -205,10 +205,10 @@ final class AppModel {
         }
     }
 
-    private static func boot() -> (RodaEngine, String?) {
+    private static func boot() -> (ZoenEngine, String?) {
         do {
             Money.locale = AppLocale.tag
-            let engine = try RodaEngine.openDefault(locale: AppLocale.tag)
+            let engine = try ZoenEngine.openDefault(locale: AppLocale.tag)
             // The demo story only behind the dev flag (`-RodaDemo YES`); a real install
             // starts empty and creates its account in onboarding.
             if SyncModel.mode == .demo && engine.account() == nil {
@@ -225,7 +225,7 @@ final class AppModel {
         } catch {
             // Último recurso: banco em memória, para o app nunca abrir vazio.
             let message = (error as? CoreError)?.message ?? error.localizedDescription
-            let engine = try! RodaEngine.open(path: ":memory:", locale: AppLocale.tag)
+            let engine = try! ZoenEngine.open(path: ":memory:", locale: AppLocale.tag)
             _ = try? engine.seedDemoIfEmpty()
             return (engine, message)
         }
@@ -663,7 +663,7 @@ final class AppModel {
         #endif
     }
 
-    private func applyRodaOpen(_ d: UserDefaults) {
+    private func applyZoenOpen(_ d: UserDefaults) {
         guard let open = d.string(forKey: "RodaOpen") else { return }
         switch open {
         case "paraty":
@@ -758,7 +758,7 @@ final class AppModel {
         }
         #endif
         // After showcase seed polish so `-RodaOpen` is not wiped by `paths = []`.
-        applyRodaOpen(d)
+        applyZoenOpen(d)
         // `-RodaAgentBrowser YES`: Zoen books the inn in Paraty's browser and stops at the
         // sign-in for you to take over (showcase until the relay carries real sessions).
         if d.bool(forKey: "RodaAgentBrowser"), let id = spaceId(titled: DemoSpace.paraty), let agent = zoen {

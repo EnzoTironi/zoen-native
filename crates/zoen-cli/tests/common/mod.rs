@@ -13,13 +13,13 @@ use std::{
 };
 
 use futures_util::{SinkExt, StreamExt};
-use roda_log::{content::SignedContent, Author, Signer};
-use roda_proto::{
-    auth_message, ClientFrame, Envelope, Op, Sequenced, ServerFrame, PROTOCOL_VERSION,
-};
-use roda_types::{EventBody, Identity, IdentityKind, Seen};
 use sqlx::{Connection, PgConnection};
 use tokio_tungstenite::tungstenite::Message;
+use zoen_log::{content::SignedContent, Author, Signer};
+use zoen_proto::{
+    auth_message, ClientFrame, Envelope, Op, Sequenced, ServerFrame, PROTOCOL_VERSION,
+};
+use zoen_types::{EventBody, Identity, IdentityKind, Seen};
 
 /// The relay binary, built from this checkout once per test run: a stale relay that
 /// predates a wire-type change silently drops new fields and breaks every signature.
@@ -695,7 +695,7 @@ impl RawClient {
         c
     }
 
-    pub async fn request(&mut self, op: Op) -> Result<roda_proto::Reply, String> {
+    pub async fn request(&mut self, op: Op) -> Result<zoen_proto::Reply, String> {
         self.send(&ClientFrame::Req { id: 1, op }).await;
         loop {
             if let ServerFrame::Res { id: 1, result } = self.recv().await {
@@ -819,7 +819,7 @@ impl RawClient {
     pub async fn publish_message(&mut self, space: &str, text: &str) -> String {
         let e = self.author.sign_event(
             space,
-            &roda_types::new_ulid(1),
+            &zoen_types::new_ulid(1),
             1,
             None,
             EventBody::MessagePosted {
@@ -836,7 +836,7 @@ impl RawClient {
     pub async fn publish_as(&mut self, space: &str, someone: &str, text: &str) -> String {
         let e = self.author.sign_event(
             space,
-            &roda_types::new_ulid(1),
+            &zoen_types::new_ulid(1),
             1,
             None,
             EventBody::MessagePosted {
@@ -866,15 +866,15 @@ impl RawClient {
     ) -> Result<Sequenced, String> {
         let e =
             self.author
-                .sign_event(space, &roda_types::new_ulid(now_ms()), now_ms(), seen, body);
+                .sign_event(space, &zoen_types::new_ulid(now_ms()), now_ms(), seen, body);
         self.publish_signed(e.content, e.sig, e.cert).await
     }
 
     /// Publishes bytes this client signed itself (any content a newer client could write).
     pub async fn publish_content(&mut self, content: Vec<u8>) -> Result<Sequenced, String> {
-        let sig = self.author.key.sign(&roda_log::content::signature_message(
+        let sig = self.author.key.sign(&zoen_log::content::signature_message(
             &content,
-            &roda_log::content::signed_hash(&content),
+            &zoen_log::content::signed_hash(&content),
         ));
         let cert = self.author.cert.clone();
         self.publish_signed(content, sig, cert).await
@@ -884,11 +884,11 @@ impl RawClient {
     pub async fn join(&mut self, space: &str, code: &str) -> Result<Sequenced, String> {
         let body = EventBody::MemberAdded {
             identity: self.identity(),
-            role: roda_types::Role::Member,
+            role: zoen_types::Role::Member,
         };
         let e =
             self.author
-                .sign_event(space, &roda_types::new_ulid(now_ms()), now_ms(), None, body);
+                .sign_event(space, &zoen_types::new_ulid(now_ms()), now_ms(), None, body);
         let mut env = Envelope::new(e.content, e.sig, e.cert, None).ok_or("not a v3 content")?;
         env.invite = Some(code.to_string());
         self.publish_env(env).await

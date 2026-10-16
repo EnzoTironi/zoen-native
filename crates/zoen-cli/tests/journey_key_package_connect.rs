@@ -5,10 +5,10 @@
 mod common;
 use common::*;
 use futures_util::StreamExt;
-use roda_log::{Author, Signer};
-use roda_proto::{Op, ServerFrame};
 use sha2::{Digest, Sha256};
 use std::time::Duration;
+use zoen_log::{Author, Signer};
+use zoen_proto::{Op, ServerFrame};
 
 #[tokio::test]
 async fn a_connecting_device_does_not_miss_a_low_stock_notice() {

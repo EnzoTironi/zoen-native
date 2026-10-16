@@ -59,7 +59,7 @@ pub(crate) async fn receive(
         .await
 }
 
-pub(crate) async fn publication(runtime: &RuntimeAuthority, run: &str) -> roda_proto::Envelope {
+pub(crate) async fn publication(runtime: &RuntimeAuthority, run: &str) -> zoen_proto::Envelope {
     let trx = runtime.execution.transaction().await.unwrap();
     let (record, original) = runtime
         .execution
@@ -94,7 +94,7 @@ pub(crate) async fn publication(runtime: &RuntimeAuthority, run: &str) -> roda_p
         .unwrap()
         .clone();
     assert_eq!(
-        hash(&roda_proto::ClientFrame::Publish { env: env.clone() }.encode()),
+        hash(&zoen_proto::ClientFrame::Publish { env: env.clone() }.encode()),
         p.value.publish
     );
     env
@@ -281,7 +281,7 @@ pub(crate) async fn substitutions(
         match mutation {
             0 => capture.binding.frontier = hash(b"different binding"),
             1 => capture.result.request_digest = hash(b"different original request"),
-            2 => capture.result.context.attempt_id = roda_types::new_id("different-attempt"),
+            2 => capture.result.context.attempt_id = zoen_types::new_id("different-attempt"),
             _ => {
                 capture.result.output = Ok(vec![OutputBlock::Text {
                     text: "Different output with otherwise exact original context".into(),

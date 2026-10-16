@@ -2,7 +2,7 @@ import SwiftUI
 import PhotosUI
 import CoreTransferable
 import UniformTypeIdentifiers
-import RodaCore
+import ZoenCore
 
 private struct PickedAttachmentPhoto: Transferable, Sendable {
     let file: AttachmentFile

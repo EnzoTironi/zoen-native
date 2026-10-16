@@ -4,11 +4,11 @@
 
 mod common;
 use common::*;
-use roda_log::content::{Payload, SignedContent};
-use roda_proto::{ErrorCode, ServerFrame, PROTOCOL_VERSION};
-use roda_types::{EventBody, Privacy, Role, Seen, SpaceKind};
+use zoen_log::content::{Payload, SignedContent};
+use zoen_proto::{ErrorCode, ServerFrame, PROTOCOL_VERSION};
+use zoen_types::{EventBody, Privacy, Role, Seen, SpaceKind};
 
-fn head(ev: &roda_proto::Sequenced) -> Option<Seen> {
+fn head(ev: &zoen_proto::Sequenced) -> Option<Seen> {
     Some(Seen {
         seq: ev.seq,
         hash: ev.hash.clone(),
@@ -23,7 +23,7 @@ async fn an_event_from_a_newer_client_survives_the_relay_and_an_older_peer() {
 
     let mut nova = RawClient::connect(&w.relay_url(), "nova").await;
     let me = nova.identity();
-    let space = roda_types::new_id("sp");
+    let space = zoen_types::new_id("sp");
     let created = nova
         .publish_body(
             &space,
@@ -65,11 +65,11 @@ async fn an_event_from_a_newer_client_survives_the_relay_and_an_older_peer() {
     let mut future = SignedContent {
         v: 3,
         space: space.clone(),
-        client_id: roda_types::new_ulid(now_ms()),
+        client_id: zoen_types::new_ulid(now_ms()),
         author: me,
         device: nova.author.device.clone(),
         at_ms: now_ms(),
-        seen: Some(roda_log::content::SeenLink { seq: 2, hash: last }),
+        seen: Some(zoen_log::content::SeenLink { seq: 2, hash: last }),
         payload: Some(Payload::Body(
             br#"{"PollOpened":{"question":"Praia ou serra?","options":["praia","serra"]}}"#
                 .to_vec(),
@@ -112,7 +112,7 @@ async fn an_event_from_a_newer_client_survives_the_relay_and_an_older_peer() {
 async fn the_relay_refuses_events_signed_on_a_history_it_doesnt_have() {
     let w = World::new("causal").await;
     let mut m = RawClient::connect(&w.relay_url(), "mallory").await;
-    let space = roda_types::new_id("sp");
+    let space = zoen_types::new_id("sp");
     let created = m
         .publish_body(
             &space,

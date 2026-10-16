@@ -1,5 +1,5 @@
 import SwiftUI
-import RodaCore
+import ZoenCore
 
 // MARK: - Pinned tiles under the chat's top bar
 

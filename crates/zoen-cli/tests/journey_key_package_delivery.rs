@@ -4,8 +4,6 @@ mod common;
 
 use common::{RawClient, World};
 use futures_util::{SinkExt, StreamExt};
-use roda_ffi::{AccountDto, RodaEngine, SecretVault};
-use roda_proto::{ClientFrame, Op, Reply, ServerFrame};
 use sqlx::{ConnectOptions, Connection, PgConnection};
 use std::{
     collections::HashMap,
@@ -22,6 +20,8 @@ use tokio::{
     task::{JoinHandle, JoinSet},
 };
 use tokio_tungstenite::tungstenite::Message;
+use zoen_ffi::{AccountDto, SecretVault, ZoenEngine};
+use zoen_proto::{ClientFrame, Op, Reply, ServerFrame};
 
 #[derive(Default)]
 struct Vault(Mutex<HashMap<String, Vec<u8>>>);
@@ -42,13 +42,13 @@ impl SecretVault for Vault {
 }
 
 struct Device {
-    core: Arc<RodaEngine>,
+    core: Arc<ZoenEngine>,
     account: AccountDto,
 }
 
 impl Device {
     fn new(w: &World, relay: String) -> Self {
-        let core = RodaEngine::open(
+        let core = ZoenEngine::open(
             w.dir.join("bruno.sqlite").to_string_lossy().into_owned(),
             "en-US".into(),
         )

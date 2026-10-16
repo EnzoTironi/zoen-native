@@ -1,9 +1,9 @@
 //! Postgres: the directory (identities, handles, devices). Logs and membership live in
 //! the log store (`crate::log`).
 
-use roda_proto::{AgreementKeyRecord, DeviceSigned, KeyPackageRecord, SealedProfile};
-use roda_types::{Identity, IdentityKind};
 use sqlx::{PgConnection, PgPool, Postgres, Transaction};
+use zoen_proto::{AgreementKeyRecord, DeviceSigned, KeyPackageRecord, SealedProfile};
+use zoen_types::{Identity, IdentityKind};
 
 /// Holds the device row for request admission or delivery. Ordinary requests commit
 /// before work. Directory mutations keep the fence through their SQL transaction.
@@ -126,7 +126,7 @@ pub async fn enroll_device(
 ) -> Result<(), EnrollmentError> {
     if device.len() != 64
         || !device.bytes().all(|b| b.is_ascii_hexdigit())
-        || !roda_log::verify_sig(identity, &roda_log::device_cert_message(device), cert)
+        || !zoen_log::verify_sig(identity, &zoen_log::device_cert_message(device), cert)
     {
         return Err(EnrollmentError::InvalidCertificate);
     }
@@ -171,7 +171,7 @@ pub async fn register(
     cert: &str,
     first: bool,
 ) -> Result<(), String> {
-    if !roda_log::agent_owner::profile_authorized(profile) {
+    if !zoen_log::agent_owner::profile_authorized(profile) {
         return Err("profile ownership authorization invalid".into());
     }
     let kind = match profile.kind {
@@ -364,7 +364,7 @@ fn authorized_directory_profile((id, kind, owner, json): DirectoryRow) -> Option
     (profile.id == id
         && expected == kind
         && profile.owner == owner
-        && roda_log::agent_owner::profile_authorized(&profile))
+        && zoen_log::agent_owner::profile_authorized(&profile))
     .then_some(profile)
 }
 
@@ -661,7 +661,7 @@ pub async fn take_link_box(pool: &PgPool, id: &str) -> Result<Option<Vec<u8>>, s
 pub async fn devices_of(
     pool: &PgPool,
     identity: &str,
-) -> Result<Vec<roda_proto::DeviceRecord>, sqlx::Error> {
+) -> Result<Vec<zoen_proto::DeviceRecord>, sqlx::Error> {
     let rows: Vec<(String, bool)> = sqlx::query_as(
         "SELECT device, revoked_at IS NOT NULL FROM devices WHERE identity = $1 ORDER BY created_at",
     )
@@ -670,7 +670,7 @@ pub async fn devices_of(
     .await?;
     Ok(rows
         .into_iter()
-        .map(|(device, revoked)| roda_proto::DeviceRecord { device, revoked })
+        .map(|(device, revoked)| zoen_proto::DeviceRecord { device, revoked })
         .collect())
 }
 

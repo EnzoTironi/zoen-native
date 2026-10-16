@@ -11,12 +11,6 @@ use foundationdb::{
     Database,
 };
 use futures_util::{SinkExt, StreamExt};
-use roda_log::{Author, Signer};
-use roda_proto::{
-    auth_message, ClientFrame, Envelope, InviteCreated, Op, Reply, Sequenced, ServerFrame,
-    PROTOCOL_VERSION,
-};
-use roda_types::{EventBody, Identity, IdentityKind, Privacy, Role, Seen, SpaceKind};
 use sqlx::{Connection, PgConnection, PgPool};
 use std::{
     net::TcpListener,
@@ -26,6 +20,11 @@ use std::{
     time::{Duration, Instant},
 };
 use tokio_tungstenite::{tungstenite::Message, MaybeTlsStream, WebSocketStream};
+use zoen_log::{Author, Signer};
+use zoen_proto::{
+    auth_message, ClientFrame, Envelope, InviteCreated, Op, Reply, Sequenced, ServerFrame,
+    PROTOCOL_VERSION,
+};
 use zoen_relay::{
     log::{fdb::FdbLog, LogStore},
     ownership::{
@@ -34,6 +33,7 @@ use zoen_relay::{
         Lease,
     },
 };
+use zoen_types::{EventBody, Identity, IdentityKind, Privacy, Role, Seen, SpaceKind};
 
 struct Node {
     child: Child,
@@ -267,7 +267,7 @@ impl Device {
 }
 
 fn signed(author: &Author, space: &str, seen: Option<Seen>, body: EventBody) -> Envelope {
-    Envelope::plain(&author.sign_event(space, &roda_types::new_id("cid"), 0, seen, body))
+    Envelope::plain(&author.sign_event(space, &zoen_types::new_id("cid"), 0, seen, body))
 }
 fn message(author: &Author, space: &str, seen: &Seen, text: &str) -> Envelope {
     signed(
@@ -275,7 +275,7 @@ fn message(author: &Author, space: &str, seen: &Seen, text: &str) -> Envelope {
         space,
         Some(seen.clone()),
         EventBody::MessagePosted {
-            message: roda_types::new_id("m"),
+            message: zoen_types::new_id("m"),
             text: text.into(),
             attaches: None,
             reply: None,
@@ -311,7 +311,7 @@ async fn wait_owner(db: &Database, root: &Subspace, space: &str, owner: &str) ->
 fn choose_space(preferred: &str, live: &[String]) -> String {
     let owned = ownership::owned_partitions(preferred, live);
     loop {
-        let space = roda_types::new_id("sp");
+        let space = zoen_types::new_id("sp");
         if owned.contains(&ownership::partition_of(&space)) {
             return space;
         }
@@ -320,7 +320,7 @@ fn choose_space(preferred: &str, live: &[String]) -> String {
 
 async fn journey() {
     let admin_url = std::env::var("ZOEN_TEST_PG").expect("Postgres");
-    let db_name = format!("ownership_{}", roda_types::new_id("t").to_lowercase());
+    let db_name = format!("ownership_{}", zoen_types::new_id("t").to_lowercase());
     let mut admin = PgConnection::connect(&admin_url).await.unwrap();
     sqlx::query(sqlx::AssertSqlSafe(format!("CREATE DATABASE {db_name}")))
         .execute(&mut admin)
@@ -337,7 +337,7 @@ async fn journey() {
     let proxy = NatsProxy::start(0, upstream.clone()).await;
     let proxy_port = proxy.port;
     let mut a = Node::start(&url, &db_name, &dir, "a", &proxy.url()).await;
-    let probe = roda_types::new_id("sp");
+    let probe = zoen_types::new_id("sp");
     let alpha = current(&db, &root, &probe).await.fence.owner;
     let author = Author::device(&Signer::generate(), Signer::generate());
     let mut device_a = Device::connect(a.port, author.clone(), true).await;
@@ -658,7 +658,7 @@ async fn current_hash(db: &Database, root: &Subspace, space: &str) -> String {
 }
 
 async fn transaction_conflict() {
-    let cell = roda_types::new_id("t");
+    let cell = zoen_types::new_id("t");
     let cluster = std::env::var("FDB_CLUSTER_FILE").unwrap();
     let db = Arc::new(Database::new(Some(&cluster)).unwrap());
     let root = Subspace::all().subspace(&("zoen", &cell));

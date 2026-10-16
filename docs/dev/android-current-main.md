@@ -50,7 +50,7 @@ For a separately coordinated batched producer, use the same capture/finish seque
 ```sh
 python3 scripts/android-core-contract.py capture --abis arm64-v8a --profile dev
 # Compile the stable Main snapshot and generate Kotlin/JNI through the coordinated producer.
-python3 scripts/android-core-contract.py finish --host-library "$CARGO_TARGET_DIR/debug/libroda_ffi.dylib" --abis arm64-v8a --profile dev
+python3 scripts/android-core-contract.py finish --host-library "$CARGO_TARGET_DIR/debug/libzoen_ffi.dylib" --abis arm64-v8a --profile dev
 ```
 
 The Linux host input ends in `.so`. The `finish` step reads only the host's UniFFI metadata and checksum exports; Android libraries are parsed without executing them.
@@ -61,8 +61,8 @@ After the matching coordinated generation, the minimum first-unit build is:
 
 ```sh
 cd android
-./gradlew :app:testDebugUnitTest --tests xyz.tironi.zoen.pages.PlanPagePresentationTest :app:assembleDebug :app:assembleDebugAndroidTest -x :app:buildRodaCore -PandroidAbis=arm64-v8a -PcoreProfile=dev
-./gradlew :app:connectedDebugAndroidTest -x :app:buildRodaCore -PandroidAbis=arm64-v8a -PcoreProfile=dev -Pandroid.testInstrumentationRunnerArguments.class=xyz.tironi.zoen.PlanPageJourneyTest,xyz.tironi.zoen.FileVersionJourneyTest
+./gradlew :app:testDebugUnitTest --tests xyz.tironi.zoen.pages.PlanPagePresentationTest :app:assembleDebug :app:assembleDebugAndroidTest -x :app:buildZoenCore -PandroidAbis=arm64-v8a -PcoreProfile=dev
+./gradlew :app:connectedDebugAndroidTest -x :app:buildZoenCore -PandroidAbis=arm64-v8a -PcoreProfile=dev -Pandroid.testInstrumentationRunnerArguments.class=xyz.tironi.zoen.PlanPageJourneyTest,xyz.tironi.zoen.FileVersionJourneyTest
 ```
 
 The existing CI matrix retains API28 and API35, both native ABIs, full JVM/lint and owned relay/device journeys. It records the pre-build source report and verifies the generated Core after building. Current-source release, complete device results and actual image/video evidence remain pending. The coordinator captures stable app/test artifacts and attaches real images and video with `gh --attach` to the existing UI review.

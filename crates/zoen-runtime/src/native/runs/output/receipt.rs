@@ -1,4 +1,4 @@
-use roda_proto::{ClientFrame, Sequenced};
+use zoen_proto::{ClientFrame, Sequenced};
 
 use super::*;
 

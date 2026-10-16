@@ -1,5 +1,5 @@
 import Foundation
-import RodaCore
+import ZoenCore
 
 /// Snapshots a mini-app published itself (`zoen.widget.setSnapshot`), validated against the
 /// same strict schema. They win over the core's default for this session only; the core's

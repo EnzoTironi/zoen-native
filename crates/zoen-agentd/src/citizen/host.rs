@@ -6,10 +6,10 @@
 
 use super::profile::{AgentKind, Avatar, CitizenRecord, Definition, ModelTier};
 use async_trait::async_trait;
-use roda_gate::{Check, Gate, Outcome, Point};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::collections::BTreeMap;
+use zoen_gate::{Check, Gate, Outcome, Point};
 
 /// The capability a Creator's `create_agent` action is gated as.
 pub const CREATE_AGENT_CAPABILITY: &str = "agent.create";

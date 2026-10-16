@@ -52,12 +52,12 @@ The choice of mini-app comes from **Foundation Models on device** (`@Generable`,
   - Each card gets `WKWebsiteDataStore.nonPersistent()`.
   - No navigation, no new windows.
 - **Grants:**
-  - Every `tools/call` goes through the Grants evaluator (`roda-grants`).
+  - Every `tools/call` goes through the Grants evaluator (`zoen-grants`).
   - The mini-app gets "Act" **only on its own Item**.
   - Irreversible or external tools return `needsConfirmation` and only run after the **native sheet** (the mini-app doesn't draw that button).
 
 **Deviations and stubs (honest):**
-- **No remote MCP transport.** The "MCP server" is local, inside the Rust core (`crates/roda-ffi/src/apps.rs`). There's no stdio/HTTP, no server `initialize`, no third-party server discovery.
+- **No remote MCP transport.** The "MCP server" is local, inside the Rust core (`crates/zoen-ffi/src/apps.rs`). There's no stdio/HTTP, no server `initialize`, no third-party server discovery.
 - **Swapped transport.** Instead of an iframe's `window.parent.postMessage`, a document-start script replaces `window.parent` with a bridge to `webkit.messageHandlers`. The View can't tell the difference.
 - **`tool-result` is re-sent on every new Item version** (live shared state). The spec sends one per execution.
 - **Native apps.** The donkey, MapTap and Dinner are drawn in SwiftUI inside Zoen. Their tools, state and Grants are the same as the MCP server's, and the donkey also has an HTML View for other hosts. MapTap and Dinner have no MCP View (`has_view = false`).

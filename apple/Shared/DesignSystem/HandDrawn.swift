@@ -1,6 +1,6 @@
 import SwiftUI
 
-// MARK: - Hand-drawn ink: Roda's illustration language
+// MARK: - Hand-drawn ink: Zoen's illustration language
 //
 // Standing rule: every generated or decorative illustration looks hand-drawn and moves.
 // • Strokes are ink ribbons with pen pressure (variable width, tapered ends) drawn
@@ -639,7 +639,7 @@ struct PaperBackground: View {
     }
 }
 
-/// Empty state: Zo, Roda's hand-drawn mascot, in a pose that fits the moment.
+/// Empty state: Zo, Zoen's hand-drawn mascot, in a pose that fits the moment.
 struct InkEmptyState: View {
     let pose: MascotPose
     let title: String

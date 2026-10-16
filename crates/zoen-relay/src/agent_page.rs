@@ -12,8 +12,8 @@ use axum::{
     response::{IntoResponse, Response},
 };
 use base64::Engine as _;
-use roda_types::{Identity, IdentityKind};
 use sha2::{Digest, Sha256};
+use zoen_types::{Identity, IdentityKind};
 
 use crate::{db, ClientIp, Shared};
 
@@ -67,7 +67,7 @@ async fn resolve(st: &Shared, raw: &str) -> Option<Card> {
         return None;
     }
     // Invite code first, then handle (the same order as the apps' `open_agent_link`).
-    if roda_proto::valid_invite_code(target) {
+    if zoen_proto::valid_invite_code(target) {
         if let Ok(info) = st.log.preview_invite(target).await {
             let agent_id = info.agent?;
             let p = db::profiles(&st.pool, &[agent_id])

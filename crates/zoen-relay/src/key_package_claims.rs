@@ -1,11 +1,11 @@
 //! Durable replies to destructive MLS claims. A retry cannot consume another package.
 
-use roda_proto::{
+use sqlx::PgPool;
+use std::{fmt, sync::Arc, time::Duration};
+use zoen_proto::{
     key_package_claim_time_ms, KeyPackageRecord, Reply, ServerFrame, KEY_PACKAGE_CLAIM_EXPIRED,
     KEY_PACKAGE_CLAIM_TTL_MS,
 };
-use sqlx::PgPool;
-use std::{fmt, sync::Arc, time::Duration};
 
 pub const MAX_RECEIPTS: i64 = 4096;
 pub const MAX_RECEIPT_BYTES: i64 = 8 * 1024 * 1024;

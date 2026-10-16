@@ -5,9 +5,6 @@
 //! no booking code). The bot exists only once the owner's own device approves it. Only
 //! the owner's requests count, and anything the gate wants decided goes to the owner.
 
-use roda_gate::{Clef, ClefModel, Gate, HttpTransport};
-use roda_log::{Author, Signer};
-use roda_types::{Identity, IdentityKind};
 use serde_json::json;
 use std::collections::BTreeMap;
 use std::sync::Arc;
@@ -16,6 +13,9 @@ use zoen_agentd::{
     approve_agent, claim_citizen, creator_definition, AgentKind, Avatar, Definition, Host,
     ModelTier, Turn, TurnOutcome, AVATAR_STYLE, CREATOR_HANDLE, CREATOR_NAME,
 };
+use zoen_gate::{Clef, ClefModel, Gate, HttpTransport};
+use zoen_log::{Author, Signer};
+use zoen_types::{Identity, IdentityKind};
 
 const CREATE: &str = r##"Combinado, o Bruno aprova no celular dele.
 ```json

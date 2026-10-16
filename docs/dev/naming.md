@@ -7,9 +7,9 @@ The product and built-in agent are Zoen. Some source packages, generated binding
 | Current identifiers | Target | Required coordinated work |
 | --- | --- | --- |
 | `crates/roda-*`, `roda_*` Rust imports | `crates/zoen-*`, `zoen_*` | Move packages, workspace/lock/features, callers, scripts and tests together; verify complete CI/setup. |
-| `RodaCore`, `RodaFFI`, `RodaEngine`, `roda_ffi` | `ZoenCore`, `ZoenFFI`, `ZoenEngine`, `zoen_ffi` | Regenerate Swift/Kotlin and native libraries together; update every client and supported ABI. |
+| `ZoenCore`, `ZoenFFI`, `ZoenEngine`, `zoen_ffi` | `ZoenCore`, `ZoenFFI`, `ZoenEngine`, `zoen_ffi` | Regenerate Swift/Kotlin and native libraries together; update every client and supported ABI. |
 | Apple `Roda…` preferences and launch flags | `Zoen…` | Replace names and callers directly; reset affected disposable preferences/fixtures, without old aliases or dual reads. |
-| `buildRodaCore`, generated build directories | Zoen task/directory names | Update Gradle inputs/outputs, producer/verifier scripts and CI in one unit; clean rebuild. |
+| `buildZoenCore`, generated build directories | Zoen task/directory names | Update Gradle inputs/outputs, producer/verifier scripts and CI in one unit; clean rebuild. |
 | Old local database names and resource URI namespaces | One current Zoen namespace | Reset affected development/test databases and seed fixtures coherently. Do not add old-path discovery or URI aliases. |
 | Cryptographic/protocol domains, if changed | One current explicit domain/version | Update both peers, proof/signature/encryption tests and setup atomically. Preserve domain separation and authenticated-byte correctness; recreate affected disposable signed history instead of silently rewriting it. |
 

@@ -1,5 +1,5 @@
 import SwiftUI
-import RodaCore
+import ZoenCore
 
 // MARK: - Globo (projeção ortográfica desenhada no Canvas)
 

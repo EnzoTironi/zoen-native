@@ -104,7 +104,7 @@ jobs:
             android/app/build/outputs/cold-process-tls/
             android/app/build/outputs/android-upstream.json
             android/app/build/outputs/android-upstream-source.json
-            android/app/build/generated/roda/core-contract.json
+            android/app/build/generated/zoen/core-contract.json
       - name: Publish native test results
         uses: actions/upload-artifact@v4
         if: always()

@@ -1,5 +1,5 @@
 import SwiftUI
-import RodaCore
+import ZoenCore
 
 /// Aba 4: você, seus agentes, seus Itens, segurança e uma única tela de ajustes.
 struct YouScreen: View {
@@ -401,7 +401,7 @@ struct LogEventsView: View {
                     Text("#\(e.seq)").font(.caption.monospaced().weight(.bold)).foregroundStyle(Palette.action)
                     Text(e.label).font(.subheadline.weight(.medium)).lineLimit(1)
                     Spacer()
-                    Text(RodaTime.relative(e.atMs)).font(.caption).foregroundStyle(Palette.textTertiary)
+                    Text(ZoenTime.relative(e.atMs)).font(.caption).foregroundStyle(Palette.textTertiary)
                 }
                 HStack(spacing: 6) {
                     Avatar(persona: e.author, size: 16)

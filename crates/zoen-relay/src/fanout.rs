@@ -20,9 +20,9 @@ use std::{
 use async_nats::{header::HeaderMap, Client};
 use bytes::Bytes;
 use futures_util::StreamExt;
-use roda_proto::ServerFrame;
 use sha2::{Digest, Sha256};
 use tokio::{sync::mpsc, task::JoinHandle};
+use zoen_proto::ServerFrame;
 
 use crate::hub::{Hub, Mailbox};
 

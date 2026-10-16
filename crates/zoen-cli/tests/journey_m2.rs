@@ -7,8 +7,8 @@
 
 mod common;
 use common::*;
-use roda_types::EventBody;
 use sqlx::Connection;
+use zoen_types::EventBody;
 
 /// Every row of every table in the relay's database, as text, with bytea as hex.
 async fn postgres_text(w: &World) -> String {
@@ -175,7 +175,7 @@ async fn an_end_to_end_group_leaves_the_relay_only_ciphertext() {
     let code = w.zoen("ana", &["invite", "Cofre"]);
     let code = code.split('\t').next().unwrap().trim().to_string();
     let joined = mallory.join(space, &code).await.expect("joins by invite");
-    let seen = Some(roda_types::Seen {
+    let seen = Some(zoen_types::Seen {
         seq: joined.seq,
         hash: joined.hash.clone(),
     });
@@ -187,7 +187,7 @@ async fn an_end_to_end_group_leaves_the_relay_only_ciphertext() {
         forwarded: false,
     };
     let refused = mallory.publish_body(space, seen, clear).await.unwrap_err();
-    assert_eq!(refused, roda_proto::SEAL_REQUIRED);
+    assert_eq!(refused, zoen_proto::SEAL_REQUIRED);
     // She has no key packages, so no commit can add her, and nobody's messages wait for her.
     let after = "seguimos sem esperar quem não tem chaves";
     w.zoen("ana", &["send", "Cofre", after]);
@@ -235,7 +235,7 @@ async fn a_readable_group_becomes_end_to_end_and_never_goes_back() {
 
     // What was said in the clear stays as it was; nothing after the upgrade is readable.
     let stored = w.events_in(space).await;
-    let text = |ev: &roda_proto::Sequenced| String::from_utf8_lossy(ev.env.content()).to_string();
+    let text = |ev: &zoen_proto::Sequenced| String::from_utf8_lossy(ev.env.content()).to_string();
     assert!(stored.iter().any(|ev| text(ev).contains("tucano-antes")));
     let pg = postgres_text(&w).await;
     for n in ["tucano-fila", "tucano-depois"] {
@@ -251,14 +251,14 @@ async fn a_readable_group_becomes_end_to_end_and_never_goes_back() {
     let code = code.split('\t').next().unwrap().trim().to_string();
     let mut mallory = RawClient::connect(&w.relay_url(), "mallory").await;
     let joined = mallory.join(space, &code).await.expect("joins by invite");
-    let seen = Some(roda_types::Seen {
+    let seen = Some(zoen_types::Seen {
         seq: joined.seq,
         hash: joined.hash.clone(),
     });
     let recreate = EventBody::SpaceCreated {
         title: "Trilha".into(),
-        kind: roda_types::SpaceKind::Group,
-        privacy: roda_types::Privacy::Closed,
+        kind: zoen_types::SpaceKind::Group,
+        privacy: zoen_types::Privacy::Closed,
     };
     let refused = mallory.publish_body(space, seen.clone(), recreate).await;
     assert_eq!(refused.unwrap_err(), "space already exists");
@@ -316,14 +316,14 @@ async fn a_removed_member_reads_nothing_after_removal() {
     let commit = stored
         .iter()
         .skip(removed)
-        .position(|ev| ev.env.sealed_kind() == Some(roda_proto::SealedKind::Commit))
+        .position(|ev| ev.env.sealed_kind() == Some(zoen_proto::SealedKind::Commit))
         .map(|i| i + removed)
         .expect("the removal's commit");
     let messages_after: Vec<usize> = stored
         .iter()
         .enumerate()
         .skip(removed)
-        .filter(|(_, ev)| ev.env.sealed_kind() == Some(roda_proto::SealedKind::Application))
+        .filter(|(_, ev)| ev.env.sealed_kind() == Some(zoen_proto::SealedKind::Application))
         .map(|(i, _)| i)
         .collect();
     assert_eq!(messages_after.len(), 2, "Ana's and Carla's");
@@ -394,7 +394,7 @@ async fn two_admins_online_make_one_commit_for_a_newcomer() {
     let commits = stored
         .iter()
         .skip(joined)
-        .filter(|ev| ev.env.sealed_kind() == Some(roda_proto::SealedKind::Commit))
+        .filter(|ev| ev.env.sealed_kind() == Some(zoen_proto::SealedKind::Commit))
         .count();
     assert_eq!(commits, 1, "one commit for Carla");
     for who in ["ana", "bruno", "carla", "dora"] {
@@ -637,7 +637,7 @@ async fn the_relay_prunes_what_every_member_holds() {
         .events_in(&space)
         .await
         .iter()
-        .find(|ev| ev.env.sealed_kind() == Some(roda_proto::SealedKind::Application))
+        .find(|ev| ev.env.sealed_kind() == Some(zoen_proto::SealedKind::Application))
         .map(|ev| ev.seq)
         .expect("the first message is in the log");
 

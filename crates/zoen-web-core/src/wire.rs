@@ -1,5 +1,5 @@
-use roda_proto::{ClientFrame, ErrorCode, Op, Reply, ServerFrame, CAPABILITIES, PROTOCOL_VERSION};
 use serde::Serialize;
+use zoen_proto::{ClientFrame, ErrorCode, Op, Reply, ServerFrame, CAPABILITIES, PROTOCOL_VERSION};
 
 pub fn hello(identity: &str, device: &str, cert: &str) -> Vec<u8> {
     ClientFrame::Hello {
@@ -19,7 +19,7 @@ pub fn request(id: u64, kind: &str, value: &str) -> Result<Vec<u8>, String> {
         },
         "devices" => Op::Devices,
         "unlink" => Op::Unlink {
-            device: roda_log::parse_device_key(value)
+            device: zoen_log::parse_device_key(value)
                 .map(|_| value.to_string())
                 .ok_or("invalid device public key")?,
         },
@@ -177,7 +177,7 @@ mod tests {
 
     #[test]
     fn browser_unlink_uses_the_existing_authenticated_device_operation() {
-        let device = roda_log::Signer::generate().id();
+        let device = zoen_log::Signer::generate().id();
         let frame = ClientFrame::decode(&request(42, "unlink", &device).unwrap()).unwrap();
         assert!(
             matches!(frame, ClientFrame::Req { id: 42, op: Op::Unlink { device: target } } if target == device)

@@ -5,7 +5,7 @@
 
 mod common;
 use common::*;
-use roda_types::EventBody;
+use zoen_types::EventBody;
 
 const PHOTO: &[u8] = b"\x89PNG\r\n\x1a\nana-on-the-trail";
 

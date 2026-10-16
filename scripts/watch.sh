@@ -77,7 +77,7 @@ cycle 0
 
 # fswatch batches events; we debounce further (1 s of quiet; bash 3.2 has integer read timeouts) so a whole sync lands as one build.
 "$FSWATCH" -r -l 0.4 \
-  -e '\.xcodeproj' -e 'xcuserdata' -e 'RodaFFI\.xcframework' -e 'RodaFFI\.generated\.swift' \
+  -e '\.xcodeproj' -e 'xcuserdata' -e 'ZoenFFI\.xcframework' -e 'ZoenFFI\.generated\.swift' \
   -e '/\.[^/]*$' -e '\.swp$' -e '~$' \
   "$ROOT/apple" "$ROOT/crates" |
 while IFS= read -r path; do

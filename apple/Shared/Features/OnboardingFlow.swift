@@ -1,5 +1,5 @@
 import SwiftUI
-import RodaCore
+import ZoenCore
 #if canImport(UserNotifications)
 import UserNotifications
 #endif

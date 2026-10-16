@@ -37,18 +37,18 @@ PR70's hosted `pages_and_files_travel_byte_for_byte` failure is preserved. A sub
 
 The current local unit compiled the Core/store/protocol libraries and both CLI journeys with the lock enforced. All nine new file cases passed in a focused run, with 222 other Core cases explicitly filtered. The complete store library passed nine cases; the complete protocol library passed 28, including the four APNs input/payload cases. These are separate results from the complete 231-case Core run.
 
-That complete Core run was interrupted by the source guard after `crates/roda-proto/src/lib.rs` changed during execution. Its frozen hash was `404bfe6f89c9622d092f4e425e14c94c73711ac0447b8bca78e14e8155c4b713`; the observed file lost the `pub mod push` entry. The interrupted run is not a complete pass. No PostgreSQL or FoundationDB test service had started. An earlier unit also preserved a lock-resolution prerequisite failure before compilation. Both negatives and the actual partial results are retained in the local `.dev/c4-bounds-cli-v1` and `v2` artifacts.
+That complete Core run was interrupted by the source guard after `crates/zoen-proto/src/lib.rs` changed during execution. Its frozen hash was `404bfe6f89c9622d092f4e425e14c94c73711ac0447b8bca78e14e8155c4b713`; the observed file lost the `pub mod push` entry. The interrupted run is not a complete pass. No PostgreSQL or FoundationDB test service had started. An earlier unit also preserved a lock-resolution prerequisite failure before compilation. Both negatives and the actual partial results are retained in the local `.dev/c4-bounds-cli-v1` and `v2` artifacts.
 
 Complete current-source Core acceptance and both actual relay journeys remain required after restoring and freezing the module entry. Existing external dependency versions were preserved by the offline lock resolution. No original test assertion, deadline or stack setting was relaxed.
 
-`crates/roda-ffi/src/tests/file_bounds.rs` adds nine behavioral cases for exact latest/historical limits and metadata, authenticated extreme sizes, invalid chunk references, oversized SQLite rows, missing chunks without mutations, cache/digest corruption, ordered assembly and thumbnail bounds/absence. Invalid metadata fixtures are signed file versions, rather than bypassing the log with a projection edit.
+`crates/zoen-ffi/src/tests/file_bounds.rs` adds nine behavioral cases for exact latest/historical limits and metadata, authenticated extreme sizes, invalid chunk references, oversized SQLite rows, missing chunks without mutations, cache/digest corruption, ordered assembly and thumbnail bounds/absence. Invalid metadata fixtures are signed file versions, rather than bypassing the log with a projection edit.
 
 `crates/zoen-cli/tests/journey_page_completion.rs` uses two real accounts and an owned relay. It limits publication to one event per hour, imports two pages, requires a failure without completion IDs, checks their offline presence, removes the owned relay limit and requires identical exports on the other device. The original files journey and its deadlines/assertions remain unchanged.
 
 After the coordinator freezes the Core inputs and reserves the build slot:
 
 ```sh
-cargo test --locked -j2 -p roda-ffi --lib -- --test-threads=1
+cargo test --locked -j2 -p zoen-ffi --lib -- --test-threads=1
 cargo test --locked -j2 -p zoen-cli --test journey_page_completion -- --nocapture --test-threads=1
 cargo test --locked -j2 -p zoen-cli --test journey_files -- --nocapture --test-threads=1
 ```

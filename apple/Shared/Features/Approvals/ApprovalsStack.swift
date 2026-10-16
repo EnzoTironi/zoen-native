@@ -1,5 +1,5 @@
 import SwiftUI
-import RodaCore
+import ZoenCore
 #if os(iOS)
 import CoreMotion
 #endif
@@ -819,7 +819,7 @@ struct ApprovalCardView: View {
                     Text(request.agent.name)
                         .font(.headline)
                         .foregroundStyle(Palette.textPrimary)
-                    Text(RodaTime.relative(request.openedMs))
+                    Text(ZoenTime.relative(request.openedMs))
                         .font(.caption.weight(.medium))
                         .foregroundStyle(Palette.textTertiary)
                 }
@@ -922,7 +922,7 @@ struct ApprovalCardView: View {
                             Text("Always").font(.caption2.weight(.bold)).foregroundStyle(Palette.textSecondary)
                         }
                         if let at = h.resolvedMs {
-                            Text(RodaTime.relative(at)).font(.caption).foregroundStyle(Palette.textTertiary)
+                            Text(ZoenTime.relative(at)).font(.caption).foregroundStyle(Palette.textTertiary)
                         }
                     }
                 }
@@ -1342,7 +1342,7 @@ struct StandingDecisionRow: View {
                 Text(decision.allow ? String(localized: "Always approve: \(decision.actionLabel)") : String(localized: "Always deny: \(decision.actionLabel)"))
                     .font(.subheadline.weight(.medium))
                     .foregroundStyle(Palette.textPrimary)
-                Text(showSpace ? "\(decision.spaceTitle) · \(RodaTime.relative(decision.atMs))" : RodaTime.relative(decision.atMs))
+                Text(showSpace ? "\(decision.spaceTitle) · \(ZoenTime.relative(decision.atMs))" : ZoenTime.relative(decision.atMs))
                     .font(.caption).foregroundStyle(Palette.textSecondary)
             }
             Spacer(minLength: 8)

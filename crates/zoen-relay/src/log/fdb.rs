@@ -46,10 +46,10 @@ use foundationdb::{
     Database, FdbBindingError, RangeOption, Transaction,
 };
 use futures_util::future::{try_join3, try_join_all};
-use roda_log::chain_hash;
-use roda_proto::{Envelope, InviteCreated, Sequenced};
-use roda_types::{EventBody, Privacy, Role, SpaceKind, GENESIS_PREV};
 use sha2::{Digest, Sha256};
+use zoen_log::chain_hash;
+use zoen_proto::{Envelope, InviteCreated, Sequenced};
+use zoen_types::{EventBody, Privacy, Role, SpaceKind, GENESIS_PREV};
 
 fn extend_co_members(
     out: &mut Vec<String>,
@@ -362,7 +362,7 @@ impl FdbLog {
                     {
                         return Ok(Err("stale partition owner"));
                     }
-                    if !roda_proto::valid_invite_code(code) {
+                    if !zoen_proto::valid_invite_code(code) {
                         return Ok(Err("invalid invite code"));
                     }
                     let mine = self.cell.role_in(&trx, space, who).await?;

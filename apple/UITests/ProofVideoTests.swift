@@ -1,6 +1,6 @@
 import XCTest
 
-/// Paced flows for screen-recorded proof videos (`roda-shots/record-test.sh`).
+/// Paced flows for screen-recorded proof videos (`zoen-shots/record-test.sh`).
 /// Showcase seed, pt-BR, light. Each test asserts its key moment so a broken video fails.
 final class ProofVideoTests: XCTestCase {
     @MainActor

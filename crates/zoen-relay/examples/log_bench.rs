@@ -10,10 +10,10 @@
 
 use std::{sync::Arc, time::Instant};
 
-use roda_log::{Author, Signer};
-use roda_proto::Envelope;
-use roda_types::{EventBody, Privacy, Seen, SpaceKind};
+use zoen_log::{Author, Signer};
+use zoen_proto::Envelope;
 use zoen_relay::log::{fdb::FdbLog, LogStore, Sequencing};
+use zoen_types::{EventBody, Privacy, Seen, SpaceKind};
 
 fn arg(i: usize, default: usize) -> usize {
     std::env::args()
@@ -37,7 +37,7 @@ fn now_ms() -> i64 {
 async fn main() -> anyhow::Result<()> {
     let (spaces, writers, total) = (arg(1, 256), arg(2, 64), arg(3, 20_000));
     let _network = unsafe { foundationdb::boot() };
-    let cell = roda_types::new_id("bench");
+    let cell = zoen_types::new_id("bench");
     let log = Arc::new(FdbLog::open(
         std::env::var("FDB_CLUSTER_FILE").ok().as_deref(),
         &cell,
@@ -46,10 +46,10 @@ async fn main() -> anyhow::Result<()> {
 
     let mut genesis = Vec::new();
     for _ in 0..spaces {
-        let space = roda_types::new_id("sp");
+        let space = zoen_types::new_id("sp");
         let created = author.sign_event(
             &space,
-            &roda_types::new_ulid(now_ms()),
+            &zoen_types::new_ulid(now_ms()),
             now_ms(),
             None,
             EventBody::SpaceCreated {
@@ -76,7 +76,7 @@ async fn main() -> anyhow::Result<()> {
         let (space, seen) = &genesis[i % spaces];
         let e = author.sign_event(
             space,
-            &roda_types::new_ulid(now_ms()),
+            &zoen_types::new_ulid(now_ms()),
             now_ms(),
             Some(seen.clone()),
             EventBody::MessagePosted {

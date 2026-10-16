@@ -241,7 +241,7 @@ impl Limits {
     }
 }
 
-pub use roda_proto::slow_down;
+pub use zoen_proto::slow_down;
 
 #[cfg(test)]
 mod tests {

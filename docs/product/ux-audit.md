@@ -29,7 +29,7 @@ Current resolution and proof are in the [roadmap](../roadmap-status.md). This au
 ## P0: fix first (breaks trust, the house rules or the core chat loop)
 
 ### P0-1 Engineering text shown to users (the "no jargon" rule)
-- `Shared/Features/ItemView.swift:108` shows `item.origin`. The core builds it from the planner's `engineLabel` (`crates/roda-ffi/src/engine.rs:1264`, `:2762`), so a plan header can read **"Zoen · local planner (fallback: the on-device model failed — <raw Swift error>) · from "…""**. Mini-apps also show the `ui://` resource URI. The same string is shown in `Shared/Features/ActivityView.swift:275` (task rows).
+- `Shared/Features/ItemView.swift:108` shows `item.origin`. The core builds it from the planner's `engineLabel` (`crates/zoen-ffi/src/engine.rs:1264`, `:2762`), so a plan header can read **"Zoen · local planner (fallback: the on-device model failed — <raw Swift error>) · from "…""**. Mini-apps also show the `ui://` resource URI. The same string is shown in `Shared/Features/ActivityView.swift:275` (task rows).
 - `Shared/Features/YouView.swift:87` shows `planner.availabilityLabel`, which can be "Local planner (fallback) · <reason>" (`Shared/Agent/AgentPlanner.swift:48-49`).
 - `Shared/Features/YouView.swift:84`: a disabled button labelled **"Soon (weeks 5–6)"**.
 - `Shared/Features/ActivityView.swift:250` "Approved · done (simulated)"; `Shared/App/AppModel.swift:410` "(Simulated: nothing was really paid.)".

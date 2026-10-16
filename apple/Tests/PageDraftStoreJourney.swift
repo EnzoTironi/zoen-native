@@ -1,6 +1,6 @@
 import Foundation
 import CryptoKit
-import RodaCore
+import ZoenCore
 
 // The vault is the only fake. Checkpoints, crypto, DTOs, and the reopen journey use production code.
 private final class MemoryDraftVault: SecretVault, @unchecked Sendable {
@@ -268,7 +268,7 @@ struct PageDraftStoreJourney {
         try run("native checkpoint survives engine destruction and commits through the real core") { root, _, vault in
             try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
             let path = root.appendingPathComponent("page.sqlite").path
-            var engine: RodaEngine? = try RodaEngine.open(path: path, locale: "en")
+            var engine: ZoenEngine? = try ZoenEngine.open(path: path, locale: "en")
             _ = try engine!.seedDemoIfEmpty()
             let space = try engine!.spaces().first(where: { $0.title == "Paraty with Marina" }).unwrap("Demo chat missing")
             let item = try engine!.pageImportMarkdown(spaceId: space.id, path: "checkpoint.md", markdown: "# Title\n\nOriginal\n")
@@ -283,7 +283,7 @@ struct PageDraftStoreJourney {
             try editor.save(edit)
             editor.release()
             engine = nil
-            let reopened = try RodaEngine.open(path: path, locale: "en")
+            let reopened = try ZoenEngine.open(path: path, locale: "en")
             let recoveredStore = try PageDraftStore(actor: actor, space: space.id, item: item.id, vault: vault, root: checkpointRoot)
             defer { recoveredStore.release() }
             let recovered = try recoveredStore.recoverable()[0]

@@ -1,5 +1,5 @@
 import SwiftUI
-import RodaCore
+import ZoenCore
 
 /// Schedule runs as a bundled MCP App (React) in the sandboxed web view, edge to edge,
 /// the same path as the Saturday hike. Close comes from the mini-app chrome.

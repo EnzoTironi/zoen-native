@@ -1,7 +1,7 @@
 use super::*;
 use openmls_traits::{signatures::SignerError, types::SignatureScheme};
-use roda_log::{Author, Signer as NativeSigner};
-use roda_mls::Device;
+use zoen_log::{Author, Signer as NativeSigner};
+use zoen_mls::Device;
 
 #[derive(Clone)]
 struct HostSigner(NativeSigner);
@@ -10,7 +10,7 @@ impl Signer for HostSigner {
         hex::decode(self.0.sign(payload)).map_err(|_| SignerError::SigningError)
     }
     fn signature_scheme(&self) -> SignatureScheme {
-        roda_mls::SUITE.signature_algorithm()
+        zoen_mls::SUITE.signature_algorithm()
     }
 }
 
@@ -18,7 +18,7 @@ fn account(identity: &NativeSigner, device: &NativeSigner) -> LinkedAccount {
     LinkedAccount {
         identity: identity.id(),
         device: device.id(),
-        cert: identity.sign(&roda_log::device_cert_message(&device.id())),
+        cert: identity.sign(&zoen_log::device_cert_message(&device.id())),
         name: "Fixture".into(),
         handle: "fixture".into(),
         relay: "http://127.0.0.1:9000".into(),
@@ -35,7 +35,7 @@ fn account(identity: &NativeSigner, device: &NativeSigner) -> LinkedAccount {
 }
 
 fn sequence(log: &mut SpaceLog, env: Envelope) -> Vec<u8> {
-    let outer = roda_log::event_from_content(
+    let outer = zoen_log::event_from_content(
         env.content().to_vec(),
         env.sig.clone(),
         env.cert.clone(),
@@ -59,7 +59,7 @@ fn sequence(log: &mut SpaceLog, env: Envelope) -> Vec<u8> {
 fn clear(log: &mut SpaceLog, author: &Author, body: EventBody, now: i64) -> Vec<u8> {
     let event = author.sign_event(
         log.space(),
-        &roda_types::new_ulid(now),
+        &zoen_types::new_ulid(now),
         now,
         log.head(),
         body,
@@ -76,7 +76,7 @@ fn sealed(
 ) -> Vec<u8> {
     let (content, sig) = author.sign_sealed(
         log.space(),
-        &roda_types::new_ulid(now),
+        &zoen_types::new_ulid(now),
         now,
         log.head().as_ref(),
         Sealed::new(kind, SUITE_ID, data),
@@ -95,7 +95,7 @@ fn native_sqlite_welcome_messages_saved_reload_and_removal_use_shared_mls() {
     let account = account(&identity, &host.0);
     let author = Author::device(&identity, native_key.clone());
     let mut sqlite = rusqlite::Connection::open_in_memory().unwrap();
-    roda_mls::migrate(&mut sqlite).unwrap();
+    zoen_mls::migrate(&mut sqlite).unwrap();
     let native = Device::new(
         &sqlite,
         [14; 32],
@@ -164,7 +164,7 @@ fn native_sqlite_welcome_messages_saved_reload_and_removal_use_shared_mls() {
 
     let inner = author.sign_event(
         space,
-        &roda_types::new_ulid(9),
+        &zoen_types::new_ulid(9),
         9,
         log.head(),
         EventBody::MessagePosted {
@@ -227,7 +227,7 @@ fn native_sqlite_welcome_messages_saved_reload_and_removal_use_shared_mls() {
         panic!("real MLS application expected")
     };
     let opened = InnerEvent::decode(&plaintext).unwrap();
-    let event = roda_log::event_from_content(
+    let event = zoen_log::event_from_content(
         opened.content,
         opened.sig,
         Some(account.cert.clone()),
@@ -236,7 +236,7 @@ fn native_sqlite_welcome_messages_saved_reload_and_removal_use_shared_mls() {
         String::new(),
     )
     .unwrap();
-    roda_log::verify_author(&event).unwrap();
+    zoen_log::verify_author(&event).unwrap();
     assert!(matches!(event.body, EventBody::MessagePosted { text, .. } if text == "Web to native"));
     let accepted = client.receive(&sequence(&mut log, env), 12).unwrap();
     assert_eq!(accepted.conversations[0].messages.len(), 2);
@@ -341,7 +341,7 @@ fn web_fixture() -> (Client<HostSigner>, Author, Author, SpaceLog, String) {
     (client, author, other, log, target)
 }
 
-fn annotate(log: &mut SpaceLog, author: &Author, target: &str, note: roda_types::Annotation) {
+fn annotate(log: &mut SpaceLog, author: &Author, target: &str, note: zoen_types::Annotation) {
     let now = log.next_seq() as i64 + 10;
     clear(
         log,
@@ -357,7 +357,7 @@ fn annotate(log: &mut SpaceLog, author: &Author, target: &str, note: roda_types:
 #[test]
 fn web_reaction_participants_replace_remove_and_ignore_invalid_reactions() {
     let (mut client, author, other, mut log, target) = web_fixture();
-    let react = |emoji: &str| roda_types::Annotation::React {
+    let react = |emoji: &str| zoen_types::Annotation::React {
         emoji: emoji.into(),
     };
     annotate(&mut log, &author, &target, react("👍"));
@@ -378,7 +378,7 @@ fn web_reaction_participants_replace_remove_and_ignore_invalid_reactions() {
     client.logs.insert(log.space().into(), log.clone());
     let view = client.conversations();
     assert_eq!(view[0].messages[0].reactions.len(), 2);
-    annotate(&mut log, &author, &target, roda_types::Annotation::Unreact);
+    annotate(&mut log, &author, &target, zoen_types::Annotation::Unreact);
     client.logs.insert(log.space().into(), log.clone());
     let view = client.conversations();
     let reactions = &view[0].messages[0].reactions;
@@ -386,7 +386,7 @@ fn web_reaction_participants_replace_remove_and_ignore_invalid_reactions() {
     assert_eq!(reactions[0].emoji, "👍");
     assert_eq!(reactions[0].count, 1);
     assert!(!reactions[0].mine);
-    annotate(&mut log, &author, &target, roda_types::Annotation::Delete);
+    annotate(&mut log, &author, &target, zoen_types::Annotation::Delete);
     annotate(&mut log, &other, &target, react("❤️"));
     client.logs.insert(log.space().into(), log);
     assert!(client.conversations()[0].messages[0].reactions.is_empty());
@@ -406,7 +406,7 @@ fn web_reaction_submission_rejects_blank_and_oversized_utf8_before_encryption() 
             .queue_annotation(
                 "sp_web_receipts",
                 &target,
-                roda_types::Annotation::React { emoji },
+                zoen_types::Annotation::React { emoji },
                 90
             )
             .err()
@@ -420,11 +420,11 @@ fn receipt_marks(frames: &[Vec<u8>]) -> Vec<(&'static str, u64)> {
         .iter()
         .filter_map(|frame| match ClientFrame::decode(frame).unwrap() {
             ClientFrame::Ephemeral {
-                kind: roda_proto::EphemeralKind::Delivered { seq },
+                kind: zoen_proto::EphemeralKind::Delivered { seq },
                 ..
             } => Some(("delivered", seq)),
             ClientFrame::Ephemeral {
-                kind: roda_proto::EphemeralKind::Read { seq },
+                kind: zoen_proto::EphemeralKind::Read { seq },
                 ..
             } => Some(("read", seq)),
             _ => None,

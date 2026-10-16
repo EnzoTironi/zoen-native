@@ -22,14 +22,14 @@ import org.junit.Test
 import org.junit.runner.RunWith
 import xyz.tironi.zoen.core.ConnectionDto
 import xyz.tironi.zoen.core.CoreListener
-import xyz.tironi.zoen.core.RodaEngine
+import xyz.tironi.zoen.core.ZoenEngine
 import xyz.tironi.zoen.data.AndroidSecretVault
 
 @RunWith(AndroidJUnit4::class)
 class NativeCallbackThreadTest {
     @Test fun inlineFutureResumptionCanPollRustAgainOnTheNativeCallbackThread() = runBlocking {
         DelayedConfigServer().use { server ->
-            val core = RodaEngine.open(":memory:", "en")
+            val core = ZoenEngine.open(":memory:", "en")
             try {
                 withTimeout(20_000) {
                     // Unconfined forces the same inline native-thread resumption
@@ -55,7 +55,7 @@ class NativeCallbackThreadTest {
         val folder = File(context.noBackupFilesDir, namespace).apply { mkdirs() }
         val vault = AndroidSecretVault(context, "$namespace-vault")
         DelayedConfigServer().use { server ->
-            val core = RodaEngine.open(File(folder, "core.sqlite").absolutePath, "en")
+            val core = ZoenEngine.open(File(folder, "core.sqlite").absolutePath, "en")
             val callback = CountDownLatch(1)
             val closing = AtomicBoolean(false)
             val failure = AtomicReference<Throwable?>()

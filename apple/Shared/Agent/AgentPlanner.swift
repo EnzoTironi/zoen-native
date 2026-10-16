@@ -1,5 +1,5 @@
 import Foundation
-import RodaCore
+import ZoenCore
 #if canImport(FoundationModels)
 import FoundationModels
 #endif

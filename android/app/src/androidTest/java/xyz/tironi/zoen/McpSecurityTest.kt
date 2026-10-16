@@ -11,7 +11,7 @@ import org.junit.runner.RunWith
 import xyz.tironi.zoen.miniapps.McpPayload
 import xyz.tironi.zoen.miniapps.WidgetSnapshot
 import xyz.tironi.zoen.miniapps.MiniAppSnapshots
-import xyz.tironi.zoen.core.RodaEngine
+import xyz.tironi.zoen.core.ZoenEngine
 import xyz.tironi.zoen.core.AppCallStatus
 
 @RunWith(AndroidJUnit4::class)
@@ -36,7 +36,7 @@ class McpSecurityTest {
     @Test fun publishedWidgetCannotHideNewerSignedSharedState() {
         val context = ApplicationProvider.getApplicationContext<ZoenApplication>()
         val folder = File(context.noBackupFilesDir, "widget-test-${UUID.randomUUID()}").apply { mkdirs() }
-        val core = RodaEngine.open(File(folder, "core.sqlite").absolutePath, "en")
+        val core = ZoenEngine.open(File(folder, "core.sqlite").absolutePath, "en")
         try {
             core.seedDemoIfEmpty()
             val space = core.spaces().first { it.counterpart?.handle == "zoen" }

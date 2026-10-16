@@ -1,6 +1,6 @@
 import SwiftUI
 import WebKit
-import RodaCore
+import ZoenCore
 
 /// # Host de MCP Apps (SEP-1865, versão 2026-01-26)
 ///
@@ -14,7 +14,7 @@ import RodaCore
 /// - **Transporte:** o View fala JSON-RPC 2.0 com `window.parent.postMessage`, como num
 ///   iframe. Um script no início do documento troca `window.parent` por uma ponte para
 ///   `webkit.messageHandlers`, e as respostas voltam como eventos `message`.
-/// - **Concessões:** todo `tools/call` vai para `RodaEngine.appCallTool`, que passa pelo
+/// - **Concessões:** todo `tools/call` vai para `ZoenEngine.appCallTool`, que passa pelo
 ///   avaliador de Concessões. Irreversível ou externo volta como `needsConfirmation`, e só
 ///   roda depois da folha nativa de confirmação.
 enum McpHost {
@@ -28,7 +28,7 @@ enum McpHost {
       const post = (m) => { try { window.webkit.messageHandlers.mcp.postMessage(JSON.stringify(m)); } catch (e) {} };
       const host = { postMessage: (m, _origin) => post(m) };
       try { Object.defineProperty(window, 'parent', { get: () => host, configurable: true }); } catch (e) { try { window.parent = host; } catch (_) {} }
-      window.__rodaDeliver = (m) => window.dispatchEvent(new MessageEvent('message', { data: m }));
+      window.__zoenDeliver = (m) => window.dispatchEvent(new MessageEvent('message', { data: m }));
       window.open = () => null;
     })();
     """
@@ -43,7 +43,7 @@ enum McpHost {
 
     @MainActor static func withRules(_ done: @escaping (WKContentRuleList?) -> Void) {
         if let ruleList { return done(ruleList) }
-        WKContentRuleListStore.default().compileContentRuleList(forIdentifier: "roda-mcp-no-network", encodedContentRuleList: blockRules) { list, _ in
+        WKContentRuleListStore.default().compileContentRuleList(forIdentifier: "zoen-mcp-no-network", encodedContentRuleList: blockRules) { list, _ in
             MainActor.assumeIsolated {
                 ruleList = list
                 done(list)
@@ -534,7 +534,7 @@ final class McpAppBridge: NSObject, WKScriptMessageHandler, WKNavigationDelegate
 
     private func deliver(_ msg: [String: Any]) {
         guard let webView, let data = try? JSONSerialization.data(withJSONObject: msg), let json = String(data: data, encoding: .utf8) else { return }
-        webView.evaluateJavaScript("window.__rodaDeliver && window.__rodaDeliver(\(json));", completionHandler: nil)
+        webView.evaluateJavaScript("window.__zoenDeliver && window.__zoenDeliver(\(json));", completionHandler: nil)
     }
 }
 

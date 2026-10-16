@@ -10,7 +10,7 @@ pub(super) async fn other_namespace_cannot_refund_dispatched_hold() {
     w.http.wait().await;
     assert_eq!(w.balance().await.held_units, 13);
 
-    let other_namespace = roda_types::new_id("other_authority");
+    let other_namespace = zoen_types::new_id("other_authority");
     let other = RuntimeAuthority::open(config(&w.db_url, &other_namespace, &w.http.base)).await;
     let rejected = match other {
         Err(error) => {
@@ -78,7 +78,7 @@ pub(super) async fn expired_policy_cannot_finish_admission() {
     policy.version += 1;
     policy.previous_digest = Some(w.policy_digest.clone());
     policy.expires_at_ms = now + 2500;
-    w.signed = roda_log::owner_budget::sign(&w.owner, policy).unwrap();
+    w.signed = zoen_log::owner_budget::sign(&w.owner, policy).unwrap();
     w.policy_digest = w.runtime.install_policy(w.signed.clone()).await.unwrap();
     let step = w.step(0).await;
     let binding = w.binding(&step);

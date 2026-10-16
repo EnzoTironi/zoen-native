@@ -26,9 +26,9 @@ The native mutation-dialog baseline was established by source inspection, not a 
 ## Reproducing the focused checks
 
 ```sh
-cargo test --locked -j2 -p roda-store search_tests -- --test-threads=1
-cargo test --locked -j2 -p roda-ffi --lib tests::message_search -- --test-threads=1
-cargo test --locked -j2 -p roda-ffi --lib universal_search -- --test-threads=1
+cargo test --locked -j2 -p zoen-store search_tests -- --test-threads=1
+cargo test --locked -j2 -p zoen-ffi --lib tests::message_search -- --test-threads=1
+cargo test --locked -j2 -p zoen-ffi --lib universal_search -- --test-threads=1
 cargo test --locked -j2 -p zoen-web-core --lib
 bash scripts/test-apple-message-mutations.sh
 cd packages/zoen-ui
@@ -37,7 +37,7 @@ npm run typecheck:web
 npm run test:web
 ```
 
-The focused native search runs passed 4 store, 4 FFI mutation/search, and 2 existing universal-search tests. The combined local library command, `CARGO_INCREMENTAL=0 CARGO_PROFILE_DEV_DEBUG=0 cargo test --locked -j2 -p roda-store -p roda-ffi -p zoen-web-core --lib`, passed 319 FFI, 13 store and 9 initial web-core tests, with zero failures or ignored tests. After adding the rejected-deletion regression, the final web-core source separately passed all 10 tests with the same profile settings. `cargo clippy --locked -j2 -p roda-store -p roda-ffi -p zoen-web-core --all-targets -- -D warnings` passed. The web suite passed 22 tests and typechecking. Swift mutation state, Swift parsing, Rust formatting and diff whitespace checks passed.
+The focused native search runs passed 4 store, 4 FFI mutation/search, and 2 existing universal-search tests. The combined local library command, `CARGO_INCREMENTAL=0 CARGO_PROFILE_DEV_DEBUG=0 cargo test --locked -j2 -p zoen-store -p zoen-ffi -p zoen-web-core --lib`, passed 319 FFI, 13 store and 9 initial web-core tests, with zero failures or ignored tests. After adding the rejected-deletion regression, the final web-core source separately passed all 10 tests with the same profile settings. `cargo clippy --locked -j2 -p zoen-store -p zoen-ffi -p zoen-web-core --all-targets -- -D warnings` passed. The web suite passed 22 tests and typechecking. Swift mutation state, Swift parsing, Rust formatting and diff whitespace checks passed.
 
 ## Native binding / Mac build boundary
 

@@ -1,5 +1,5 @@
 import SwiftUI
-import RodaCore
+import ZoenCore
 import QuickLookThumbnailing
 import UniformTypeIdentifiers
 
@@ -22,7 +22,7 @@ enum FileSupport {
     }
 
     /// The viewer keeps the owner alive until Quick Look releases its file.
-    static func localFile(core: RodaEngine, itemId: String, version: UInt32?) async throws -> AttachmentFile? {
+    static func localFile(core: ZoenEngine, itemId: String, version: UInt32?) async throws -> AttachmentFile? {
         let work = Task.detached(priority: .userInitiated) {
             let item = try core.item(itemId: itemId)
             // Old versions lack a byte-count DTO. Do not allocate them without a bounded core read.

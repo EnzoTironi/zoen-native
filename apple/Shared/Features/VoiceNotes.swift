@@ -1,7 +1,7 @@
 import SwiftUI
 import AVFoundation
 import Speech
-import RodaCore
+import ZoenCore
 import UniformTypeIdentifiers
 
 // MARK: - Voice notes

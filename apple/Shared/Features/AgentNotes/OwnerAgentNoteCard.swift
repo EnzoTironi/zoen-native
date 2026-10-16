@@ -1,9 +1,9 @@
 import SwiftUI
-import RodaCore
+import ZoenCore
 
 /// A note your own agent sends you: it needs your say before answering someone, or it
 /// wants to create a new agent. The core decides whether a message is one of these
-/// (`RodaEngine.ownerAgentNote`, which checks the author is your agent with a verified
+/// (`ZoenEngine.ownerAgentNote`, which checks the author is your agent with a verified
 /// ownership proof); the app only renders the JSON it hands back.
 enum OwnerAgentNote: Equatable {
     case ask(space: String, from: String, draft: String)

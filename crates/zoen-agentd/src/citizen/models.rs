@@ -158,7 +158,7 @@ impl Brain for ModelBrain {
                 text: st.result.clone(),
             });
         }
-        let attempt = roda_types::new_id("att");
+        let attempt = zoen_types::new_id("att");
         let request = ModelRequest {
             context: AttemptContext {
                 attempt_id: attempt.clone(),

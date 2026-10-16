@@ -9,10 +9,10 @@ The domain type `Space` is a conversation and its permissions/resources. It does
  ┌──────────────────────────┐                       ┌───────────────────────────────┐
  │ AppModel / SyncModel     │                       │ /v1/sync  WebSocket           │
  │   ▲ CoreListener (UniFFI)│   wss  ClientFrame →  │   session: login, rate limit  │
- │ RodaEngine (roda-ffi)    │ ◄──────────────────►  │   hub: online devices, fan-out│
+ │ ZoenEngine (zoen-ffi)    │ ◄──────────────────►  │   hub: online devices, fan-out│
  │   projection · grants    │      ← ServerFrame    │ log: LogStore (one FDB txn    │
  │   net task (tokio)       │                       │   per append: admit + chain)  │
- │ roda-store (SQLite)      │                       │ FoundationDB: logs and leases,│
+ │ zoen-store (SQLite)      │                       │ FoundationDB: logs and leases,│
  │   events · outbox · FTS5 │                       │   heads, dedupe, members,     │
  │ Keychain: device key     │                       │   invites                     │
  └──────────────────────────┘                       │ Postgres: identities, handles,│
@@ -25,11 +25,11 @@ The domain type `Space` is a conversation and its permissions/resources. It does
 
 | crate | what it is |
 |---|---|
-| `roda-types` | Primitives (Identity, Space, Member, Item, Grant) and `Event` (format v3: signed protobuf bytes plus views, ADR 0010). |
-| `roda-log` | Signing and verification: `Author` (identity root key or certified device key), content hash, relay chain hash, `SpaceLog`. |
-| `roda-proto` | The wire protocol: `Envelope` (what an author signs), `Sequenced` (what the relay adds), client/server frames. |
-| `roda-store` | SQLite on the device: events, identities, media blobs, FTS5 search, and the sync tables (`outbox`, `synced_spaces`). |
-| `roda-ffi` | The core the apps link (UniFFI): projection, grants, agents, and `sync.rs`/`net.rs`/`api.rs` for accounts and the relay connection. |
+| `zoen-types` | Primitives (Identity, Space, Member, Item, Grant) and `Event` (format v3: signed protobuf bytes plus views, ADR 0010). |
+| `zoen-log` | Signing and verification: `Author` (identity root key or certified device key), content hash, relay chain hash, `SpaceLog`. |
+| `zoen-proto` | The wire protocol: `Envelope` (what an author signs), `Sequenced` (what the relay adds), client/server frames. |
+| `zoen-store` | SQLite on the device: events, identities, media blobs, FTS5 search, and the sync tables (`outbox`, `synced_spaces`). |
+| `zoen-ffi` | The core the apps link (UniFFI): projection, grants, agents, and `sync.rs`/`net.rs`/`api.rs` for accounts and the relay connection. |
 | `zoen-relay` | The server: orders, verifies, stores and fans out envelopes. Never invents content. |
 | `zoen-cli` | `zoen`, the same core in a terminal. Used by the journey tests and for poking at a relay. |
 

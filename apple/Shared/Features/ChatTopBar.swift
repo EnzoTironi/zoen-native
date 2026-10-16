@@ -1,5 +1,5 @@
 import SwiftUI
-import RodaCore
+import ZoenCore
 
 /// The chat's top bar (v2, Muse-style): back, a horizontal title whose larger avatar overlaps
 /// the left end of the glass name capsule (live status as the subtitle), and one calls capsule

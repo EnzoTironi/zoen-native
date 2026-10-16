@@ -46,7 +46,7 @@ fun PlanPageView(model: ZoenViewModel, item: ItemDetail, page: PlanPageDto?, fai
     val changed = stringResource(R.string.plan_changed)
     val editable = fresh && page?.ready == true && page.legacyEditAdmitted && !busy
 
-    fun mutate(observed: PlanPageDto, action: (RodaEngine, String) -> EditOutcome, completed: () -> Unit = {}) {
+    fun mutate(observed: PlanPageDto, action: (ZoenEngine, String) -> EditOutcome, completed: () -> Unit = {}) {
         if (busy) return
         busy = true
         model.launch {

@@ -1,5 +1,5 @@
 import SwiftUI
-import RodaCore
+import ZoenCore
 
 enum AgentState: Equatable {
     case idle
@@ -282,7 +282,7 @@ struct FacePile: View {
 
 /// A group's picture: its own photo once one is set; until then a default in our pen-and-paper
 /// style, a doodle that fits the group on a coloured circle. Stable per group (keyed by its name, so it survives a demo reset). The choice is
-/// stored under `RodaGroupAvatar.<id>` (doodle name) so chat info can change it later.
+/// stored under `ZoenGroupAvatar.<id>` (doodle name) so chat info can change it later.
 struct GroupAvatar: View {
     let space: SpaceSummary
     var size: CGFloat = 42

@@ -10,7 +10,7 @@ Production source `6b7e450` restores the original mascot artwork and motion, Eng
 
 | Check | Evidence |
 |---|---|
-| Shared core | All 57 `roda-ffi` tests pass; formatting and strict Clippy over all targets pass. Coverage includes catalog installation, typed media versions, immutable historical content, shutdown/reopening, refused genesis, canonical relay signing and account changes during config/report requests. |
+| Shared core | All 57 `zoen-ffi` tests pass; formatting and strict Clippy over all targets pass. Coverage includes catalog installation, typed media versions, immutable historical content, shutdown/reopening, refused genesis, canonical relay signing and account changes during config/report requests. |
 | JVM | All 77 tests pass in 12 suites, with zero failures, errors or skips. Coverage includes structured generation, routing/context, Unicode search, page editing, onboarding, optional reporting enrollment/ownership/cancellation, MCP boundaries, snapshots, media edits and globe geometry. |
 | Combined build | The normal ARM64/x86_64 debug, instrumentation APK and minified release builds, R8, lint and JVM tests pass. Native build tasks are retained, the Rust profile is release, and matching generated bindings configure all 17 native callbacks. |
 | Complete device run | Matching app/test APKs pass all 52 native cases with zero failures or skips at both 320 × 640 pixels/density 160 (58.30 seconds) and 720 × 1600 pixels/density 280 (66.93 seconds). Complete uncut recordings are 58.10 and 66.81 seconds respectively, with matching encoded dimensions. They include actual launcher pin/open/Edit/Feed/owned cleanup, encrypted delivery and attachments, background notification handback, signed page restoration, image ink, exact microphone playback after rotation, retained thread ownership and restored historical reading position. |
@@ -39,8 +39,8 @@ Earlier failures remain in the [append-only audit](android-parity-decisions.tsv)
 Use JDK 17, SDK 36, NDK 27.1.12297006 and `cargo-ndk`. ARM64 and x86_64 libraries are built from the same source as their generated bindings.
 
 ```bash
-cargo test --locked -q -p roda-ffi
-cargo clippy --locked -p roda-ffi --all-targets -- -D warnings
+cargo test --locked -q -p zoen-ffi
+cargo clippy --locked -p zoen-ffi --all-targets -- -D warnings
 cd android
 ./gradlew :app:assembleDebug :app:assembleDebugAndroidTest :app:assembleRelease \
   :app:testDebugUnitTest :app:lintDebug -PcoreProfile=release

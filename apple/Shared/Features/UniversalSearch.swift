@@ -1,5 +1,5 @@
 import SwiftUI
-import RodaCore
+import ZoenCore
 
 // MARK: - Universal search
 //
@@ -495,7 +495,7 @@ struct UniversalSearchView: View {
                             .lineLimit(1)
                         Spacer(minLength: 6)
                         if h.atMs > 0 && (h.kind == "message" || h.kind == "item" || h.kind == "app") {
-                            Text(RodaTime.short(h.atMs))
+                            Text(ZoenTime.short(h.atMs))
                                 .font(.caption)
                                 .foregroundStyle(Palette.textTertiary)
                         }

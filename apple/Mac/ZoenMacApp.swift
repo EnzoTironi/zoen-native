@@ -1,5 +1,5 @@
 import SwiftUI
-import RodaCore
+import ZoenCore
 import AppKit
 
 private struct MacSearchCommands: Equatable {
@@ -395,7 +395,7 @@ struct MacRootView: View {
                                 HStack {
                                     Text(s.title).font(.system(size: 13, weight: .medium)).lineLimit(1)
                                     Spacer(minLength: 4)
-                                    Text(RodaTime.short(s.lastAtMs)).font(.caption2).foregroundStyle(.secondary)
+                                    Text(ZoenTime.short(s.lastAtMs)).font(.caption2).foregroundStyle(.secondary)
                                 }
                                 Text(s.lastPreview).font(.caption).foregroundStyle(.secondary).lineLimit(1)
                             }

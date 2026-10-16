@@ -5,7 +5,7 @@ use zoen_relay::db;
 #[tokio::test]
 async fn publication_bounds_cleanup_and_reuses_expired_id_beyond_batch() {
     let admin = std::env::var("ZOEN_TEST_PG").expect("set ZOEN_TEST_PG for link-box tests");
-    let name = format!("zoen_link_{}", &roda_log::Signer::generate().id()[..16]);
+    let name = format!("zoen_link_{}", &zoen_log::Signer::generate().id()[..16]);
     let mut c = PgConnection::connect(&admin).await.unwrap();
     sqlx::query(sqlx::AssertSqlSafe(format!("CREATE DATABASE {name}")))
         .execute(&mut c)

@@ -1,5 +1,5 @@
 import SwiftUI
-import RodaCore
+import ZoenCore
 
 /// Mini-apps desenhados nativamente (o resto roda como View MCP no WKWebView).
 enum NativeApps {

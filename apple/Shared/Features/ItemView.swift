@@ -1,5 +1,5 @@
 import SwiftUI
-import RodaCore
+import ZoenCore
 
 /// Opens an Item in the screen made for its kind.
 struct ItemView: View {
@@ -199,7 +199,7 @@ struct VersionsView: View {
                                 if v.number == item.version { Text("current").font(.caption2.weight(.bold)).foregroundStyle(Palette.success) }
                                 if v.isUndo { Image(systemName: "arrow.uturn.backward").font(.caption).foregroundStyle(Palette.textSecondary) }
                                 Spacer()
-                                Text(RodaTime.relative(v.atMs)).font(.caption).foregroundStyle(Palette.textTertiary)
+                                Text(ZoenTime.relative(v.atMs)).font(.caption).foregroundStyle(Palette.textTertiary)
                             }
                             Text("\(v.author.isMe ? "Você" : v.author.name) · \(v.note)").font(.subheadline).foregroundStyle(Palette.textSecondary)
                             if let t = v.totalCents { Text(Money.format(t)).font(.caption.weight(.medium)).monospacedDigit() }

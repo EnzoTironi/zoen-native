@@ -155,9 +155,9 @@ Goal: the relay stores only ciphertext for DMs and groups. It still orders, chec
 membership and fans out.
 
 Shape:
-- `roda-mls` crate over `openmls` with a SQLite storage provider in the device database
+- `zoen-mls` crate over `openmls` with a SQLite storage provider in the device database
   (`openmls_sqlite_storage` if it fits the store's single connection, otherwise our own
-  `StorageProvider` over `roda-store`). Ciphersuite
+  `StorageProvider` over `zoen-store`). Ciphersuite
   `MLS_128_DHKEMX25519_CHACHA20POLY1305_SHA256_Ed25519`.
 - Every device is a leaf. The credential binds the leaf to the identity through the
   existing device certificate, so a member list is "identities with their devices".
@@ -190,7 +190,7 @@ Proof: CLI journeys where the relay's Postgres has no plaintext anywhere, a remo
 can't read anything after removal, a second device reads new messages, and the simulator
 journey passes unchanged on top.
 
-Done: ADR 0026, `roda-mls` (device leaf, SIV-sealed state in the device database, subset
+Done: ADR 0026, `zoen-mls` (device leaf, SIV-sealed state in the device database, subset
 rule, checkpoints), relay admission for E2E Spaces and the `key_packages` directory, the client
 path (seal, open, reconcile, checkpoints) and `journey_m2`.
 

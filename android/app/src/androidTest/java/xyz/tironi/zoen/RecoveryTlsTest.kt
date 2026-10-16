@@ -26,7 +26,7 @@ import org.junit.Assert.*
 import org.junit.Test
 import org.junit.runner.RunWith
 import xyz.tironi.zoen.core.CoreException
-import xyz.tironi.zoen.core.RodaEngine
+import xyz.tironi.zoen.core.ZoenEngine
 import xyz.tironi.zoen.data.AndroidSecretVault
 
 @RunWith(AndroidJUnit4::class)
@@ -67,7 +67,7 @@ class RecoveryTlsTest {
         val namespace = "tls-recovery-${UUID.randomUUID()}"
         val folder = File(context.noBackupFilesDir, namespace).apply { mkdirs() }
         val vault = AndroidSecretVault(context, "$namespace-vault")
-        val core = RodaEngine.open(File(folder, "account.sqlite").absolutePath, "en")
+        val core = ZoenEngine.open(File(folder, "account.sqlite").absolutePath, "en")
         try {
             val fixtureTrust = object : X509TrustManager {
                 override fun getAcceptedIssuers(): Array<X509Certificate> = arrayOf(certificate as X509Certificate)
