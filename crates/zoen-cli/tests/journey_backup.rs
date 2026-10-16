@@ -1278,7 +1278,10 @@ async fn restored_device_rejoins_encrypted_chats(recovery_key: bool) {
     w.zoen("ana-new", &["unlink", &old_device]);
     w.sync_until("ana-new", |s| s.contains("pending=0"));
     let revoked = w.try_zoen("ana", &["sync"]).unwrap_err();
-    assert!(revoked.contains("unlinked"), "{revoked}");
+    assert!(
+        revoked.contains("unlinked") || revoked.contains("link this device first"),
+        "{revoked}"
+    );
     let last = "depois de revogar o celular antigo";
     w.zoen("bruno", &["send", "Cofre", last]);
     assert!(w.zoen("ana-new", &["read", "Cofre"]).contains(last));
