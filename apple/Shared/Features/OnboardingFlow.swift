@@ -273,21 +273,14 @@ struct OnboardingFlow: View {
                     Text("Got an invite?")
                         .font(.footnote)
                         .foregroundStyle(InkPalette.ink.opacity(0.55))
-                    Button {
-                        #if os(iOS)
-                        let raw = UIPasteboard.general.url?.absoluteString ?? UIPasteboard.general.string
-                        #else
-                        let raw = NSPasteboard.general.string(forType: .string)
-                        #endif
-                        guard let raw, let url = URL(string: raw.trimmingCharacters(in: .whitespacesAndNewlines)),
+                    PasteButton(payloadType: String.self) { values in
+                        guard let raw = values.first,
+                              let url = URL(string: raw.trimmingCharacters(in: .whitespacesAndNewlines)),
                               ["https", "http", "zoen"].contains(url.scheme?.lowercased() ?? "") else { return }
                         Task { @MainActor in
                             model.captureAcquisition(url)
                             withAnimation(.snappy) { route = OnboardingRoute(model.core.growthOnboardingPlan()) }
                         }
-                    } label: {
-                        Text("Paste")
-                            .font(.footnote)
                     }
                     .accessibilityIdentifier("onboarding-paste-invite")
                     .buttonStyle(.wabiGlass)

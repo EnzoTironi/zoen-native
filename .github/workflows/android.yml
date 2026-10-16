@@ -50,6 +50,7 @@ jobs:
         run: |
           python3 scripts/test-android-core-contract.py
           python3 scripts/check-android-upstream.py --fetch --source-only --output android/app/build/outputs/android-upstream-source.json
+          python3 scripts/test-android-art-equivalence.py
       - name: UniFFI Android build tool
         run: cargo install cargo-ndk --locked
       - name: Build both ABIs, unit tests, and lint

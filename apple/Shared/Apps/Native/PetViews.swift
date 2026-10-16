@@ -398,7 +398,7 @@ struct PetTabBar: View {
         }
         .foregroundStyle(dark ? .white : Color(hex: "#1C1C1E"))
         .padding(5)
-        .zoenGlass(radius: 999, slab: true)
+        .zoenGlass(radius: 999, slab: true, appearance: dark ? .dark : .light)
         .padding(.horizontal, 22)
     }
 }

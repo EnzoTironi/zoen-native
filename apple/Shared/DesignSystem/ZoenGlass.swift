@@ -9,6 +9,7 @@ struct ZoenGlass: ViewModifier {
     var lens = true
     var strength: CGFloat = 1
     var slab = false
+    var appearance: ColorScheme? = nil
     @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
     @Environment(\.colorScheme) private var scheme
 
@@ -17,11 +18,14 @@ struct ZoenGlass: ViewModifier {
         content.background {
             ZStack {
                 if reduceTransparency {
-                    shape.fill(prominent ? fill : AnyShapeStyle(Palette.surface))
+                    // Composite translucent tints over a truly opaque, appearance-local surface.
+                    shape.fill((appearance ?? scheme) == .dark ? Color.black : Color.white)
+                    if prominent { shape.fill(fill) }
                 } else {
                     GlassOptics(radius: radius, press: pressed ? 1 : 0,
                                 strength: strength, slab: slab, fill: fill,
-                                prominent: prominent, dark: scheme == .dark)
+                                prominent: prominent, dark: (appearance ?? scheme) == .dark)
+                        .environment(\.colorScheme, appearance ?? scheme)
                 }
             }
             .background {
@@ -39,10 +43,11 @@ struct ZoenGlass: ViewModifier {
 extension View {
     @ViewBuilder
     func zoenGlass(radius: CGFloat = 999, prominent: Bool = false, tint: Color? = nil, pressed: Bool = false,
-                   lens: Bool = true, strength: CGFloat = 1, slab: Bool = false, enabled: Bool = true) -> some View {
+                   lens: Bool = true, strength: CGFloat = 1, slab: Bool = false, enabled: Bool = true,
+                   appearance: ColorScheme? = nil) -> some View {
         if enabled {
             modifier(ZoenGlass(radius: radius, prominent: prominent, tint: tint, pressed: pressed,
-                               lens: lens, strength: strength, slab: slab))
+                               lens: lens, strength: strength, slab: slab, appearance: appearance))
         } else {
             self
         }

@@ -42,7 +42,15 @@ def artwork(root, main):
                          (root / "android/app/src/main/java/xyz/tironi/zoen/ui/GeneratedPetArt.kt").read_text())[1]
     upstream = subprocess.run(["git", "show", main + ":" + path], cwd=root, capture_output=True, check=True).stdout
     hashes = {"main": core.digest(upstream), "source_snapshot": core.digest((root / path).read_bytes())}
-    sources[path] = {"fixture_sha256": expected, "input_sha256": hashes, "matches": all(value == expected for value in hashes.values())}
+    # PetViews also contains UI chrome. Verify upstream sprite inputs independently
+    # so appearance-only changes do not masquerade as changes to the original art.
+    current = (root / path).read_bytes()
+    sprite_marker = b"struct PetSprite:"
+    same_art = (sprite_marker in upstream and sprite_marker in current
+                and upstream.split(sprite_marker, 1)[0] == current.split(sprite_marker, 1)[0])
+    sources[path] = {"fixture_sha256": expected, "input_sha256": hashes,
+                     "original_sprite_inputs_equal_main": same_art,
+                     "matches": hashes["source_snapshot"] == expected and same_art}
     generated = subprocess.run(["python3", str(root / "scripts/export-android-pet.py"), "--check"],
                                cwd=root, capture_output=True, text=True)
     return {"original_sources": sources, "generated_pet_matches_original_source": generated.returncode == 0,
