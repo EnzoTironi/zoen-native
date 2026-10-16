@@ -7,7 +7,7 @@ import java.util.UUID
 import org.junit.Assert.*
 import org.junit.Test
 import org.junit.runner.RunWith
-import xyz.tironi.zoen.core.RodaEngine
+import xyz.tironi.zoen.core.ZoenEngine
 import xyz.tironi.zoen.core.TrustLevelDto
 import xyz.tironi.zoen.data.AndroidSecretVault
 import xyz.tironi.zoen.data.LocalPlanner
@@ -20,7 +20,7 @@ class NativeCoreTest {
         val folder = File(context.noBackupFilesDir, namespace).apply { mkdirs() }
         val database = File(folder, "account.sqlite").absolutePath
         val vault = AndroidSecretVault(context, "$namespace-vault")
-        var core = RodaEngine.open(database, "en")
+        var core = ZoenEngine.open(database, "en")
         try {
             val account = core.createAccount("Android Test", "android_test", "http://10.0.2.2:18787", vault)
             assertNotNull(account)
@@ -36,7 +36,7 @@ class NativeCoreTest {
             val file = core.fileAdd(chat.id, "note.txt", "note.txt", "text/plain", bytes, null)
             core.destroy()
 
-            core = RodaEngine.open(database, "en")
+            core = ZoenEngine.open(database, "en")
             assertTrue(core.unlock(AndroidSecretVault(context, "$namespace-vault")))
             assertTrue(core.items().first { it.id == plan.id }.plan!!.sections.first().lines.first().done)
             assertTrue(core.pageMarkdown(page.id).contains("This page survives a restart."))

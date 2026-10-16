@@ -1,15 +1,15 @@
 [workspace]
 resolver = "2"
 members = [
-  "crates/roda-types",
-  "crates/roda-log",
-  "crates/roda-grants",
-  "crates/roda-store",
-  "crates/roda-ffi",
-  "crates/roda-docs",
-  "crates/roda-gate",
-  "crates/roda-proto",
-  "crates/roda-mls",
+  "crates/zoen-types",
+  "crates/zoen-log",
+  "crates/zoen-grants",
+  "crates/zoen-store",
+  "crates/zoen-ffi",
+  "crates/zoen-docs",
+  "crates/zoen-gate",
+  "crates/zoen-proto",
+  "crates/zoen-mls",
   "crates/zoen-web-core",
   "crates/zoen-relay",
   "crates/zoen-cli",
@@ -47,14 +47,14 @@ argon2 = "0.5"
 rusqlite = { version = "0.37", features = ["bundled", "serialize"] }
 uniffi = "0.32"
 prost = "0.14"
-roda-types = { path = "crates/roda-types" }
-roda-log = { path = "crates/roda-log" }
-roda-grants = { path = "crates/roda-grants" }
-roda-gate = { path = "crates/roda-gate" }
-roda-store = { path = "crates/roda-store" }
-roda-proto = { path = "crates/roda-proto" }
-roda-docs = { path = "crates/roda-docs" }
-roda-mls = { path = "crates/roda-mls", default-features = false }
+zoen-types = { path = "crates/zoen-types" }
+zoen-log = { path = "crates/zoen-log" }
+zoen-grants = { path = "crates/zoen-grants" }
+zoen-gate = { path = "crates/zoen-gate" }
+zoen-store = { path = "crates/zoen-store" }
+zoen-proto = { path = "crates/zoen-proto" }
+zoen-docs = { path = "crates/zoen-docs" }
+zoen-mls = { path = "crates/zoen-mls", default-features = false }
 zoen-egress = { path = "crates/zoen-egress" }
 zoen-liveview = { path = "crates/zoen-liveview" }
 
@@ -66,11 +66,11 @@ opt-level = 3
 
 # Debug imports build Loro pages, decode the durable queue, and seal MLS messages.
 # Generic serializers and crypto use the profile of their core-library callers.
-[profile.dev.package.roda-log]
+[profile.dev.package.zoen-log]
 opt-level = 3
-[profile.dev.package.roda-mls]
+[profile.dev.package.zoen-mls]
 opt-level = 3
-[profile.dev.package.roda-docs]
+[profile.dev.package.zoen-docs]
 opt-level = 3
 [profile.dev.package.sha2]
 opt-level = 3
@@ -82,7 +82,7 @@ opt-level = 3
 opt-level = 3
 [profile.dev.package.loro-kv-store]
 opt-level = 3
-[profile.dev.package.roda-store]
+[profile.dev.package.zoen-store]
 opt-level = 3
 [profile.dev.package.serde_json]
 opt-level = 3

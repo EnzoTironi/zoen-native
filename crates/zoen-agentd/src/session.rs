@@ -6,9 +6,9 @@ use crate::budget::{BudgetError, DailyBudget, Usage};
 use crate::sandbox::{
     ExecOutput, ExecRequest, Lease, SandboxError, SandboxProvider, SandboxSpec, SnapshotRef,
 };
-use roda_types::IdentityId;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
+use zoen_types::IdentityId;
 
 #[derive(Debug, thiserror::Error)]
 pub enum SessionError {

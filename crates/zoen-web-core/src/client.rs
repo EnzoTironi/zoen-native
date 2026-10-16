@@ -3,14 +3,14 @@ use std::collections::{BTreeMap, BTreeSet};
 use openmls::prelude::OpenMlsProvider;
 use openmls_rust_crypto::OpenMlsRustCrypto;
 use openmls_traits::signatures::Signer;
-use roda_log::{
+use serde::{Deserialize, Serialize};
+use zoen_log::{
     content::{InnerEvent, Payload, Sealed, SealedKind, SignedContent},
     SpaceLog,
 };
-use roda_mls::{ExternalDevice, GroupState, Leaf, Opened, SUITE_ID};
-use roda_proto::{ClientFrame, Cursor, Envelope, Op, Reply, Sequenced, ServerFrame};
-use roda_types::{Event, EventBody, Identity, Privacy, Role, Seen, SpaceKind};
-use serde::{Deserialize, Serialize};
+use zoen_mls::{ExternalDevice, GroupState, Leaf, Opened, SUITE_ID};
+use zoen_proto::{ClientFrame, Cursor, Envelope, Op, Reply, Sequenced, ServerFrame};
+use zoen_types::{Event, EventBody, Identity, Privacy, Role, Seen, SpaceKind};
 
 use crate::LinkedAccount;
 
@@ -187,7 +187,7 @@ impl<S: Signer> Client<S> {
                 return Err("outbox belongs to another browser device".into());
             }
             if let Some(inner) = &pending.inner {
-                roda_log::verify_author(inner).map_err(|e| e.to_string())?;
+                zoen_log::verify_author(inner).map_err(|e| e.to_string())?;
             }
         }
         let provider = OpenMlsRustCrypto::default();
@@ -305,12 +305,12 @@ impl<S: Signer> Client<S> {
 
     fn sign_content(&self, content: Vec<u8>, sealed: bool) -> Result<PendingEnvelope, String> {
         let hash = if sealed {
-            roda_log::content::signed_hash(&content)
+            zoen_log::content::signed_hash(&content)
         } else {
-            roda_log::content::content_hash(&content)
+            zoen_log::content::content_hash(&content)
         };
         let message = if sealed {
-            roda_log::content::signature_message(&content, &hash)
+            zoen_log::content::signature_message(&content, &hash)
         } else {
             hash.into_bytes()
         };
@@ -337,12 +337,12 @@ impl<S: Signer> Client<S> {
         let content = SignedContent {
             v: 3,
             space: space.into(),
-            client_id: roda_types::new_ulid(now_ms),
+            client_id: zoen_types::new_ulid(now_ms),
             author: self.account.identity.clone(),
             device: Some(self.account.device.clone()),
             at_ms: now_ms,
             seen: self.head(space).as_ref().map(Into::into),
-            payload: Some(Payload::Body(roda_log::content::encode_body(&body))),
+            payload: Some(Payload::Body(zoen_log::content::encode_body(&body))),
         }
         .encode();
         self.sign_content(content, false)
@@ -359,7 +359,7 @@ impl<S: Signer> Client<S> {
             .seal(&event.space, &plaintext)
             .map_err(|e| e.to_string())?;
         let content = SignedContent {
-            v: roda_log::content::SEALED_CONTENT_VERSION,
+            v: zoen_log::content::SEALED_CONTENT_VERSION,
             space: event.space.clone(),
             client_id: event.client_id.clone(),
             author: event.author.clone(),
@@ -407,7 +407,7 @@ impl<S: Signer> Client<S> {
                     Some(root) if thread && root.thread => root.to,
                     _ => to,
                 };
-                Some(roda_types::ReplyRef { to, thread })
+                Some(zoen_types::ReplyRef { to, thread })
             }
             None => None,
         };
@@ -418,7 +418,7 @@ impl<S: Signer> Client<S> {
         let inner = self.clear_event(
             space,
             EventBody::MessagePosted {
-                message: roda_types::new_secret_id("msg"),
+                message: zoen_types::new_secret_id("msg"),
                 text: text.into(),
                 attaches: None,
                 reply,
@@ -438,7 +438,7 @@ impl<S: Signer> Client<S> {
         &mut self,
         space: &str,
         target: &str,
-        note: roda_types::Annotation,
+        note: zoen_types::Annotation,
         now_ms: i64,
     ) -> Result<Update, String> {
         let author = self
@@ -449,12 +449,12 @@ impl<S: Signer> Client<S> {
             .map(|e| e.author.clone())
             .ok_or("That message is no longer available.")?;
         if self.logs.get(space).is_some_and(|log| log.events().iter().any(|event| matches!(
-            &event.body, EventBody::MessageAnnotated { target: to, note: roda_types::Annotation::Delete }
+            &event.body, EventBody::MessageAnnotated { target: to, note: zoen_types::Annotation::Delete }
                 if to == target && event.author == author
         ))) {
             return Err("That message is no longer available.".into());
         }
-        if let roda_types::Annotation::React { emoji } = &note {
+        if let zoen_types::Annotation::React { emoji } = &note {
             if emoji.trim().is_empty() || emoji.len() > 32 {
                 return Err("Choose an emoji of up to 32 bytes.".into());
             }
@@ -468,7 +468,7 @@ impl<S: Signer> Client<S> {
             let deletes_target = |event: &Event| {
                 event.author == author
                     && matches!(&event.body, EventBody::MessageAnnotated {
-                        target: deleted, note: roda_types::Annotation::Delete,
+                        target: deleted, note: zoen_types::Annotation::Delete,
                     } if deleted == target)
             };
             let deleted = self
@@ -490,7 +490,7 @@ impl<S: Signer> Client<S> {
                 return Err("Essa mensagem foi apagada.".into());
             }
         }
-        if let roda_types::Annotation::Edit { text } = &note {
+        if let zoen_types::Annotation::Edit { text } = &note {
             if text.trim().is_empty() || text.len() > 32_768 {
                 return Err("Write a message of up to 32 KB.".into());
             }
@@ -534,7 +534,7 @@ impl<S: Signer> Client<S> {
         *mine = (mine.0.max(last), mine.1.max(last));
         self.update(vec![ClientFrame::Ephemeral {
             space: space.into(),
-            kind: roda_proto::EphemeralKind::Read { seq: last },
+            kind: zoen_proto::EphemeralKind::Read { seq: last },
         }
         .encode()])
     }
@@ -560,7 +560,7 @@ impl<S: Signer> Client<S> {
                 frames.push(
                     ClientFrame::Ephemeral {
                         space: space.clone(),
-                        kind: roda_proto::EphemeralKind::Delivered { seq: mine.0 },
+                        kind: zoen_proto::EphemeralKind::Delivered { seq: mine.0 },
                     }
                     .encode(),
                 );
@@ -569,7 +569,7 @@ impl<S: Signer> Client<S> {
                 frames.push(
                     ClientFrame::Ephemeral {
                         space: space.clone(),
-                        kind: roda_proto::EphemeralKind::Read { seq: mine.1 },
+                        kind: zoen_proto::EphemeralKind::Read { seq: mine.1 },
                     }
                     .encode(),
                 );
@@ -580,7 +580,7 @@ impl<S: Signer> Client<S> {
     }
 
     /// The reply link of the message with this entry id in `space`, if it is a message.
-    fn posted(&self, space: &str, entry: &str) -> Option<Option<roda_types::ReplyRef>> {
+    fn posted(&self, space: &str, entry: &str) -> Option<Option<zoen_types::ReplyRef>> {
         self.logs
             .get(space)?
             .events()
@@ -618,7 +618,7 @@ impl<S: Signer> Client<S> {
         code: &str,
         now_ms: i64,
     ) -> Result<Update, String> {
-        if !roda_proto::valid_invite_code(code) || space.is_empty() {
+        if !zoen_proto::valid_invite_code(code) || space.is_empty() {
             return Err("Invalid invitation.".into());
         }
         if self.roster(space).contains_key(&self.account.identity) {
@@ -684,8 +684,8 @@ impl<S: Signer> Client<S> {
             }
             ServerFrame::Ephemeral { space, from, kind } => {
                 let mark = match kind {
-                    roda_proto::EphemeralKind::Read { seq } => Some((seq, seq)),
-                    roda_proto::EphemeralKind::Delivered { seq } => Some((seq, 0)),
+                    zoen_proto::EphemeralKind::Read { seq } => Some((seq, seq)),
+                    zoen_proto::EphemeralKind::Delivered { seq } => Some((seq, 0)),
                     _ => None,
                 };
                 if let Some((delivered, read)) = mark {
@@ -825,7 +825,7 @@ impl<S: Signer> Client<S> {
             return Ok(());
         }
         envelope.verify().map_err(|e| e.to_string())?;
-        let outer = roda_log::event_from_content(
+        let outer = zoen_log::event_from_content(
             envelope.content().to_vec(),
             envelope.sig.clone(),
             envelope.cert.clone(),
@@ -870,7 +870,7 @@ impl<S: Signer> Client<S> {
                                     opened = inner_event(&sequenced, &plaintext, &from)
                                 }
                                 Ok(_) => {}
-                                Err(roda_mls::MlsError::Storage(error)) => return Err(error),
+                                Err(zoen_mls::MlsError::Storage(error)) => return Err(error),
                                 Err(_) => {}
                             }
                         }
@@ -881,7 +881,7 @@ impl<S: Signer> Client<S> {
                     {
                         match device.join(&space, ciphertext, &roster) {
                             Ok(joined) => landed = joined,
-                            Err(roda_mls::MlsError::Storage(error)) => return Err(error),
+                            Err(zoen_mls::MlsError::Storage(error)) => return Err(error),
                             Err(_) => {}
                         }
                     }
@@ -889,7 +889,7 @@ impl<S: Signer> Client<S> {
                         match device.open(&space, ciphertext, &roster, &admitted) {
                             Ok(Opened::Commit { .. }) => landed = true,
                             Ok(_) => {}
-                            Err(roda_mls::MlsError::Storage(error)) => return Err(error),
+                            Err(zoen_mls::MlsError::Storage(error)) => return Err(error),
                             Err(_) => {}
                         }
                     }
@@ -1051,10 +1051,10 @@ impl<S: Signer> Client<S> {
                 if note.author_only() && *author != event.author { continue; }
                 let f = folded.entry(target.clone()).or_default();
                 match note {
-                    roda_types::Annotation::Edit { text } if !f.deleted => f.text = Some(text.clone()),
-                    roda_types::Annotation::Delete => { f.deleted = true; f.text = None; f.reactions.clear(); }
-                    roda_types::Annotation::React { emoji } if !f.deleted && !emoji.trim().is_empty() && emoji.len() <= 32 => { f.reactions.insert(event.author.clone(), emoji.clone()); }
-                    roda_types::Annotation::Unreact => { f.reactions.remove(&event.author); }
+                    zoen_types::Annotation::Edit { text } if !f.deleted => f.text = Some(text.clone()),
+                    zoen_types::Annotation::Delete => { f.deleted = true; f.text = None; f.reactions.clear(); }
+                    zoen_types::Annotation::React { emoji } if !f.deleted && !emoji.trim().is_empty() && emoji.len() <= 32 => { f.reactions.insert(event.author.clone(), emoji.clone()); }
+                    zoen_types::Annotation::Unreact => { f.reactions.remove(&event.author); }
                     _ => {}
                 }
             }
@@ -1187,7 +1187,7 @@ impl<S: Signer> Client<S> {
 
 fn inner_event(sequenced: &Sequenced, plaintext: &[u8], from: &Leaf) -> Option<Event> {
     let inner = InnerEvent::decode(plaintext)?;
-    let event = roda_log::event_from_content(
+    let event = zoen_log::event_from_content(
         inner.content,
         inner.sig,
         sequenced.env.cert.clone(),

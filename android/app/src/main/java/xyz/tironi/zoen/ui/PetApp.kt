@@ -52,8 +52,8 @@ internal fun PetApp(preferences: android.content.SharedPreferences, itemId: Stri
     val backdrop = listOf(0xFF2C3054 to 0xFFC4D8E2, 0xFF6D5A80 to 0xFFDCDCD6, 0xFFC9A3A0 to 0xFFF2DFCD).map { (night, day) ->
         animateColorAsState(Color(if (asleep) night else day), tween(if (motion) 800 else 0), label = "Pet backdrop").value
     }
-    var unboxing by rememberSaveable(itemId) { mutableStateOf(!preferences.getBoolean("RodaUnboxed.$itemId", false) && !released) }
-    LaunchedEffect(itemId) { preferences.edit().putBoolean("RodaUnboxed.$itemId", true).apply() }
+    var unboxing by rememberSaveable(itemId) { mutableStateOf(!preferences.getBoolean("ZoenUnboxed.$itemId", false) && !released) }
+    LaunchedEffect(itemId) { preferences.edit().putBoolean("ZoenUnboxed.$itemId", true).apply() }
     val petText = if (asleep) Color.White else Color(0xFF1C1C1E)
     val outlineColors = ButtonDefaults.outlinedButtonColors(containerColor = MaterialTheme.colorScheme.surface,
         contentColor = MaterialTheme.colorScheme.onSurface)

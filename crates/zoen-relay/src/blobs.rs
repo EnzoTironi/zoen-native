@@ -18,9 +18,9 @@ use axum::{
 use object_store::{
     path::Path as ObjPath, ObjectStore, ObjectStoreExt, PutMode, PutOptions, PutPayload,
 };
-use roda_log::verify_sig;
-use roda_proto::blob_put_message;
 use sha2::{Digest, Sha256};
+use zoen_log::verify_sig;
+use zoen_proto::blob_put_message;
 
 use crate::Shared;
 

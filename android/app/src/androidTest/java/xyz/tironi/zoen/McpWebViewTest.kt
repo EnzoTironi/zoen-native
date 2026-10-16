@@ -47,7 +47,7 @@ class McpWebViewTest {
         assumeTrue("The installed WebView must support origin-scoped messaging and isolated profiles", MiniAppWebProvider.supported())
         val context = ApplicationProvider.getApplicationContext<ZoenApplication>()
         val folder = File(context.noBackupFilesDir, "web-test-${UUID.randomUUID()}").apply { mkdirs() }
-        val core = RodaEngine.open(File(folder, "core.sqlite").absolutePath, "en")
+        val core = ZoenEngine.open(File(folder, "core.sqlite").absolutePath, "en")
         core.seedDemoIfEmpty()
         val space = core.spaces().first { it.counterpart?.handle == "zoen" }
         val item = core.installApp(space.id, "list", "{\"title\":\"Android WebView list\",\"items\":[\"Water\"]}")
@@ -99,7 +99,7 @@ class McpWebViewTest {
             InstrumentationRegistry.getInstrumentation().uiAutomation.takeScreenshot().use { bitmap -> evidence.outputStream().use { bitmap.compress(Bitmap.CompressFormat.PNG, 100, it) } }
 
             // This request travels through the same HTML protocol, but cannot read another app's resource.
-            evaluate(web.get(), "rpc.request('resources/read',{uri:'ui://roda/pet'}).then(()=>window.resourceOutcome='allowed').catch(e=>window.resourceOutcome=String(e.code)); null")
+            evaluate(web.get(), "rpc.request('resources/read',{uri:'ui://zoen/pet'}).then(()=>window.resourceOutcome='allowed').catch(e=>window.resourceOutcome=String(e.code)); null")
             waitUntil { evaluate(web.get(), "window.resourceOutcome") == "\"-32003\"" }
             touch(web.get(), "#send")
             waitUntil { prompts.get() == 1 }
@@ -134,7 +134,7 @@ class McpWebViewTest {
         assumeTrue("The installed WebView must support origin-scoped messaging and isolated profiles", MiniAppWebProvider.supported())
         val context = ApplicationProvider.getApplicationContext<ZoenApplication>()
         val folder = File(context.noBackupFilesDir, "hike-web-test-${UUID.randomUUID()}").apply { mkdirs() }
-        val core = RodaEngine.open(File(folder, "core.sqlite").absolutePath, "en")
+        val core = ZoenEngine.open(File(folder, "core.sqlite").absolutePath, "en")
         core.seedDemoIfEmpty()
         val space = core.spaces().first { it.counterpart?.handle == "zoen" }
         val item = core.installApp(space.id, "hike", "{}")
@@ -225,7 +225,7 @@ class McpWebViewTest {
         }
     }
 
-    private fun gateway(core: RodaEngine, confirmedCalls: AtomicInteger = AtomicInteger(), lastTool: AtomicReference<String>? = null): MiniAppGateway = object : MiniAppGateway {
+    private fun gateway(core: ZoenEngine, confirmedCalls: AtomicInteger = AtomicInteger(), lastTool: AtomicReference<String>? = null): MiniAppGateway = object : MiniAppGateway {
         override suspend fun item(id: String) = withContext(Dispatchers.IO) { core.item(id) }
         override suspend fun specs() = withContext(Dispatchers.IO) { core.appSpecs() }
         override suspend fun resource(uri: String) = withContext(Dispatchers.IO) { core.readAppResource(uri) }

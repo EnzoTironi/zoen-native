@@ -1,5 +1,5 @@
 import Foundation
-import RodaCore
+import ZoenCore
 
 /// ⚠️ FALLBACK DETERMINÍSTICO — não é IA.
 ///

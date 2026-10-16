@@ -1,5 +1,5 @@
 import SwiftUI
-import RodaCore
+import ZoenCore
 
 // MARK: - Pinned tiles under the chat's top bar
 
@@ -57,7 +57,7 @@ struct ChatPinStrip: View {
             removeTitle: { t in String(localized: "Unpin “\(t.snap.title)” from the top of the chat?") },
             removeMessage: "The mini-app stays in the chat as a card.",
             removeAction: "Unpin",
-            scrollToEnd: UserDefaults.standard.bool(forKey: "RodaPinScroll")
+            scrollToEnd: UserDefaults.standard.bool(forKey: "ZoenPinScroll")
         ) { t in
             SnapshotCard(snap: t.snap, side: side, live: true, corner: 24, height: (side / 1.06).rounded())
         }

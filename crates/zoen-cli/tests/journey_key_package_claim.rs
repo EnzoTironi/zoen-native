@@ -6,18 +6,6 @@ mod common;
 
 use claim_proxy::{Boundary, ClaimProxy, Observed};
 use common::{now_ms, RawClient, World};
-use roda_ffi::{
-    AccountDto, ConnectionDto, CoreListener, EntryKind, PrivacyDto, RodaEngine, SecretVault,
-};
-use roda_log::{
-    profile::{sign_agreement, AgreementKey},
-    Author, Signer,
-};
-use roda_proto::{
-    ClientFrame, KeyPackageRecord, Op, Reply, ServerFrame, KEY_PACKAGE_CLAIM_EXPIRED,
-    KEY_PACKAGE_CLAIM_TTL_MS,
-};
-use roda_types::{Identity, IdentityKind};
 use sqlx::{Connection, PgConnection};
 use std::{
     path::PathBuf,
@@ -25,6 +13,18 @@ use std::{
     sync::Arc,
     time::Duration,
 };
+use zoen_ffi::{
+    AccountDto, ConnectionDto, CoreListener, EntryKind, PrivacyDto, SecretVault, ZoenEngine,
+};
+use zoen_log::{
+    profile::{sign_agreement, AgreementKey},
+    Author, Signer,
+};
+use zoen_proto::{
+    ClientFrame, KeyPackageRecord, Op, Reply, ServerFrame, KEY_PACKAGE_CLAIM_EXPIRED,
+    KEY_PACKAGE_CLAIM_TTL_MS,
+};
+use zoen_types::{Identity, IdentityKind};
 
 struct Vault(PathBuf);
 impl SecretVault for Vault {
@@ -52,7 +52,7 @@ impl CoreListener for Refusals {
 }
 
 struct Device {
-    core: Arc<RodaEngine>,
+    core: Arc<ZoenEngine>,
     account: AccountDto,
     home: PathBuf,
     vault: Arc<Vault>,
@@ -62,7 +62,7 @@ impl Device {
         let home = w.dir.join(who);
         std::fs::create_dir_all(&home).unwrap();
         let vault = Arc::new(Vault(home.join("vault")));
-        let core = RodaEngine::open(
+        let core = ZoenEngine::open(
             home.join("zoen.sqlite").to_string_lossy().into_owned(),
             "en-US".into(),
         )
@@ -79,7 +79,7 @@ impl Device {
     }
     async fn close_database(&mut self) {
         self.core.stop_sync();
-        let placeholder = RodaEngine::open(":memory:".into(), "en-US".into()).unwrap();
+        let placeholder = ZoenEngine::open(":memory:".into(), "en-US".into()).unwrap();
         drop(std::mem::replace(&mut self.core, placeholder));
         // shutdown_background may briefly retain the inner Engine. Observe actual
         // ownership release rather than racing a second app against EXCLUSIVE SQLite.
@@ -102,7 +102,7 @@ impl Device {
     }
     async fn reopen(&mut self) {
         self.close_database().await;
-        let core = RodaEngine::open(
+        let core = ZoenEngine::open(
             self.home.join("zoen.sqlite").to_string_lossy().into_owned(),
             "en-US".into(),
         )
@@ -681,7 +681,7 @@ async fn receipts_bind_canonical_targets_and_authenticated_actor() {
     ana.request(Op::DeliverLink {
         id: Signer::generate().id(),
         sealed: vec![1],
-        device: Some(roda_proto::DeviceCertificate {
+        device: Some(zoen_proto::DeviceCertificate {
             device: second.device.clone().unwrap(),
             cert: second.cert.clone().unwrap(),
         }),
@@ -706,7 +706,7 @@ async fn receipts_bind_canonical_targets_and_authenticated_actor() {
     other_device.request(Op::Unlink { device }).await.unwrap();
     while ana.recv_or_close().await.is_some() {}
     let _ = again
-        .send_if_open(&roda_proto::ClientFrame::Req {
+        .send_if_open(&zoen_proto::ClientFrame::Req {
             id: 99,
             op: Op::ClaimKeyPackages {
                 ids: vec![bruno.account.identity_id.clone()],
@@ -846,7 +846,7 @@ async fn receipt_claims_progress_with_a_sixty_second_device_event_clock_skew() {
     let mut proxy = ClaimProxy::new(w.port, Boundary::Reply).await;
     let ana = Device::new(&w, "ana", &proxy.url);
     ana.start().await;
-    let skewed = roda_types::new_ulid(now_ms() + 60_000);
+    let skewed = zoen_types::new_ulid(now_ms() + 60_000);
     let space = ana
         .core
         .create_group_with(
@@ -857,8 +857,8 @@ async fn receipt_claims_progress_with_a_sixty_second_device_event_clock_skew() {
         .unwrap();
     let (operation, _) = next_request(&mut proxy).await;
     assert!(
-        roda_proto::key_package_claim_time_ms(&operation).unwrap()
-            < roda_types::id_time_ms(&skewed).unwrap() - 50_000
+        zoen_proto::key_package_claim_time_ms(&operation).unwrap()
+            < zoen_types::id_time_ms(&skewed).unwrap() - 50_000
     );
     let (_, records, held) = next_reply(&mut proxy).await;
     assert!(held);

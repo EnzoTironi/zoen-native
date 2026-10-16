@@ -1,5 +1,5 @@
 import SwiftUI
-import RodaCore
+import ZoenCore
 import AppKit
 
 private struct MacSearchCommands: Equatable {
@@ -88,7 +88,7 @@ private extension FocusedValues {
 @main
 struct ZoenMacApp: App {
     @State private var model = AppModel()
-    @AppStorage("RodaAppearance") private var appearance = "system"
+    @AppStorage("ZoenAppearance") private var appearance = "system"
     @FocusedValue(\.macSearch) private var searchCommands
 
     private var colorScheme: ColorScheme? {
@@ -147,7 +147,7 @@ struct MacRootView: View {
     @Environment(AppModel.self) private var model
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @AppStorage("ZoenMacSidebarExpanded") private var sidebarExpanded = true
-    @AppStorage("RodaAppearance") private var appearance = "system"
+    @AppStorage("ZoenAppearance") private var appearance = "system"
     @State private var search = ""
     @FocusState private var searchFocused: Bool
     @State private var searchCommandScope = UUID()
@@ -230,7 +230,7 @@ struct MacRootView: View {
                 OnboardingFlow { withAnimation(.easeInOut(duration: 0.4)) { onboarding = false } }
                     .transition(.opacity)
             }
-            if UserDefaults.standard.bool(forKey: "RodaMascotGallery") { MascotGallery() }
+            if UserDefaults.standard.bool(forKey: "ZoenMascotGallery") { MascotGallery() }
         }
     }
 
@@ -395,7 +395,7 @@ struct MacRootView: View {
                                 HStack {
                                     Text(s.title).font(.system(size: 13, weight: .medium)).lineLimit(1)
                                     Spacer(minLength: 4)
-                                    Text(RodaTime.short(s.lastAtMs)).font(.caption2).foregroundStyle(.secondary)
+                                    Text(ZoenTime.short(s.lastAtMs)).font(.caption2).foregroundStyle(.secondary)
                                 }
                                 Text(s.lastPreview).font(.caption).foregroundStyle(.secondary).lineLimit(1)
                             }

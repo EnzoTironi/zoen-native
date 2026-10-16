@@ -6,8 +6,8 @@ final class ProfileSheetTests: XCTestCase {
         continueAfterFailure = false
         let app = XCUIApplication()
         app.launchArguments = [
-            "-RodaFreshStart", "YES", "-RodaDemo", "YES", "-RodaResetDemo", "YES",
-            "-RodaOpen", "paraty", "-AppleLanguages", "(en)",
+            "-ZoenFreshStart", "YES", "-ZoenDemo", "YES", "-ZoenResetDemo", "YES",
+            "-ZoenOpen", "paraty", "-AppleLanguages", "(en)",
         ]
         app.launch()
 

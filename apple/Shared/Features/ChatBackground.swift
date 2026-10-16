@@ -2,7 +2,7 @@ import SwiftUI
 import PhotosUI
 import ImageIO
 import UniformTypeIdentifiers
-import RodaCore
+import ZoenCore
 #if canImport(UIKit)
 import UIKit
 #endif
@@ -140,8 +140,8 @@ final class ChatBackgroundStore {
     private let imageCache = NSCache<NSString, PlatformImage>()
 
     private init() {
-        overrides = (UserDefaults.standard.dictionary(forKey: "RodaChatBackgrounds") as? [String: String]) ?? [:]
-        if let raw = UserDefaults.standard.data(forKey: "RodaChatBackgroundLayouts"),
+        overrides = (UserDefaults.standard.dictionary(forKey: "ZoenChatBackgrounds") as? [String: String]) ?? [:]
+        if let raw = UserDefaults.standard.data(forKey: "ZoenChatBackgroundLayouts"),
            let decoded = try? JSONDecoder().decode([String: LayoutDTO].self, from: raw) {
             layouts = decoded.mapValues { $0.asLayout }
         } else {
@@ -151,13 +151,13 @@ final class ChatBackgroundStore {
     }
 
     func local(_ spaceId: String) -> ChatBackground? {
-        if let forced = UserDefaults.standard.string(forKey: "RodaChatBackground") { return ChatBackground(token: forced) }
+        if let forced = UserDefaults.standard.string(forKey: "ZoenChatBackground") { return ChatBackground(token: forced) }
         return overrides[spaceId].flatMap(ChatBackground.init(token:))
     }
 
     func setLocal(_ bg: ChatBackground?, layout: PhotoBackgroundLayout? = nil, for spaceId: String) {
         overrides[spaceId] = bg?.token
-        UserDefaults.standard.set(overrides, forKey: "RodaChatBackgrounds")
+        UserDefaults.standard.set(overrides, forKey: "ZoenChatBackgrounds")
         if let layout { setLayout(layout, for: spaceId) }
     }
 
@@ -167,7 +167,7 @@ final class ChatBackgroundStore {
         layouts[spaceId] = layout
         let enc = layouts.mapValues { LayoutDTO($0) }
         if let data = try? JSONEncoder().encode(enc) {
-            UserDefaults.standard.set(data, forKey: "RodaChatBackgroundLayouts")
+            UserDefaults.standard.set(data, forKey: "ZoenChatBackgroundLayouts")
         }
     }
 
@@ -595,8 +595,8 @@ struct ChatBackgroundPicker: View {
         .sheet(item: $editor) { launch in editorView(launch).frame(minWidth: 420, minHeight: 760) }
         #endif
         .task {
-            // Screenshots: `-RodaBackgroundEditor builtin:coast` opens the position editor.
-            guard let t = UserDefaults.standard.string(forKey: "RodaBackgroundEditor"), let bg = ChatBackground(token: t) else { return }
+            // Screenshots: `-ZoenBackgroundEditor builtin:coast` opens the position editor.
+            guard let t = UserDefaults.standard.string(forKey: "ZoenBackgroundEditor"), let bg = ChatBackground(token: t) else { return }
             try? await Task.sleep(for: .seconds(1.2))
             choice = bg
             editor = PhotoEditorLaunch(background: bg, layout: ChatBackgroundStore.shared.layout(for: spaceId))

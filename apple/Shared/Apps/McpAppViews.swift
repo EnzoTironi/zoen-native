@@ -1,5 +1,5 @@
 import SwiftUI
-import RodaCore
+import ZoenCore
 
 extension EnvironmentValues {
     /// Namespace da transição zoom cartão → tela cheia (iPhone).

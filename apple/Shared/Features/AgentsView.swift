@@ -1,5 +1,5 @@
 import SwiftUI
-import RodaCore
+import ZoenCore
 
 /// "Seus agentes": the agents you own and the ones you talk to, as citizens. Each row
 /// shows who it is, whether it's on (yours only: the relay tells owners) and how many
@@ -227,7 +227,7 @@ struct AgentActivitySection: View {
                         Image(systemName: symbol(a.label)).foregroundStyle(Palette.success).frame(width: 22)
                         VStack(alignment: .leading, spacing: 2) {
                             Text("\(a.label): \(a.detail)").font(.subheadline).lineLimit(2)
-                            Text("\(a.spaceTitle) · \(RodaTime.relative(a.atMs))").font(.caption).foregroundStyle(Palette.textSecondary)
+                            Text("\(a.spaceTitle) · \(ZoenTime.relative(a.atMs))").font(.caption).foregroundStyle(Palette.textSecondary)
                         }
                         Spacer(minLength: 8)
                         if let c = a.costCents {

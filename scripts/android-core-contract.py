@@ -12,14 +12,39 @@ import subprocess
 
 
 ROOT = Path(__file__).resolve().parents[1]
-OUTPUT = ROOT / "android/app/build/generated/roda"
+OUTPUT = ROOT / "android/app/build/generated/zoen"
 ABI_MACHINES = {"arm64-v8a": 183, "x86_64": 62}
-META_PREFIX = "UNIFFI_META_RODA_FFI_"
-CHECKSUM_PREFIX = "uniffi_roda_ffi_checksum_"
+META_PREFIX = "UNIFFI_META_ZOEN_FFI_"
+CHECKSUM_PREFIX = "uniffi_zoen_ffi_checksum_"
 
 
 def digest(value):
     return hashlib.sha256(value).hexdigest()
+
+
+ART_RENAME = Path(__file__).with_name("art-rename-equivalence.json")
+
+
+def _renamed(original):
+    return re.sub(r"\broda\b", "zoen", original.replace("Roda", "Zoen"))
+
+
+def art_rename_lines():
+    lines = json.loads(ART_RENAME.read_text())["lines"]
+    for renamed, original in lines.items():
+        if renamed == original or _renamed(original) != renamed:
+            raise ValueError("Art rename equivalence must only rename Roda to Zoen: " + renamed)
+    return {renamed.encode(): original.encode() for renamed, original in lines.items()}
+
+
+def art_bytes(value, lines=None):
+    """Map whole lines renamed Roda -> Zoen back to the original art source.
+
+    Only exact lines listed in art-rename-equivalence.json are rewritten; every other
+    byte must still match the original artwork, so the art gate stays strict.
+    """
+    lines = art_rename_lines() if lines is None else lines
+    return b"\n".join(lines.get(line, line) for line in value.split(b"\n"))
 
 
 def json_digest(value):
@@ -102,10 +127,17 @@ def source_contract(sources):
 def contract_at(root, ref=None):
     if ref is None:
         sources = {path.relative_to(root).as_posix(): path.read_text()
-                   for path in (root / "crates/roda-ffi/src").rglob("*.rs")}
+                   for path in (root / "crates/zoen-ffi/src").rglob("*.rs")}
     else:
-        paths = git(root, "ls-tree", "-r", "--name-only", ref, "crates/roda-ffi/src").stdout.splitlines()
+        paths = git(root, "ls-tree", "-r", "--name-only", ref, "crates/zoen-ffi/src").stdout.splitlines()
+        legacy = not paths
+        if legacy:  # revisions before the roda -> zoen rename
+            paths = git(root, "ls-tree", "-r", "--name-only", ref, "crates/roda-ffi/src").stdout.splitlines()
         sources = {path: git(root, "show", ref + ":" + path).stdout for path in paths if path.endswith(".rs")}
+        if legacy:
+            sources = {path.replace("crates/roda-ffi/", "crates/zoen-ffi/"):
+                       re.sub(r"Roda(?=[A-Z])", "Zoen", re.sub(r"\broda_", "zoen_", text))
+                       for path, text in sources.items()}
     return source_contract(sources)
 
 
@@ -155,7 +187,7 @@ def kotlin_checksums(directory):
         raise ValueError("Missing generated Kotlin bindings")
     checksums = {}
     for path in files:
-        for symbol, value in re.findall(r"\(lib\.(uniffi_roda_ffi_checksum_\w+)\(\) and 0xFFFF\) != (\d+)", path.read_text()):
+        for symbol, value in re.findall(r"\(lib\.(uniffi_zoen_ffi_checksum_\w+)\(\) and 0xFFFF\) != (\d+)", path.read_text()):
             if symbol in checksums:
                 raise ValueError("Duplicate Kotlin ABI checksum: " + symbol)
             checksums[symbol] = int(value)
@@ -176,7 +208,7 @@ def artifacts(output, abis, contract, expected_metadata=None):
     require_inventory(checksums, contract["checksums"], "Kotlin ABI")
     metadata = None
     for abi in abis:
-        path = output / "jniLibs" / abi / "libroda_ffi.so"
+        path = output / "jniLibs" / abi / "libzoen_ffi.so"
         blobs, symbols = elf_contract(path, abi)
         require_inventory(blobs, contract["metadata"], f"{abi} DTO/callback/API metadata")
         require_inventory(symbols, contract["checksums"], f"{abi} ABI")
@@ -191,10 +223,13 @@ def artifacts(output, abis, contract, expected_metadata=None):
 def finish(root, output, source, host_library, abis, profile):
     current = capture(root)
     if source["input_sha256"] != current["input_sha256"] or source["contract_sha256"] != current["contract_sha256"]:
-        raise ValueError("Core inputs changed during Android generation; rebuild the stable source snapshot")
+        changed = sorted(name for name in source["inputs"].keys() | current["inputs"].keys()
+                         if source["inputs"].get(name) != current["inputs"].get(name))
+        raise ValueError("Core inputs changed during Android generation; rebuild the stable source snapshot"
+                         f" (inputs: {changed}; contract changed: {source['contract_sha256'] != current['contract_sha256']})")
     generated = artifacts(output, abis, current["contract"])
     host = ctypes.CDLL(str(host_library.resolve()))
-    blobs, _ = elf_contract(output / "jniLibs" / abis[0] / "libroda_ffi.so", abis[0])
+    blobs, _ = elf_contract(output / "jniLibs" / abis[0] / "libzoen_ffi.so", abis[0])
     for name, blob in blobs.items():
         native = bytes((ctypes.c_ubyte * len(blob)).in_dll(host, name))
         if native != blob:

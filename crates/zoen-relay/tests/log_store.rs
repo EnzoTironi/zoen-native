@@ -5,10 +5,10 @@
 
 use std::{future::Future, sync::Arc};
 
-use roda_log::{chain_hash, Author, Signer};
-use roda_proto::{Envelope, Sequenced};
-use roda_types::{EventBody, Privacy, Role, Seen, SpaceKind, GENESIS_PREV};
+use zoen_log::{chain_hash, Author, Signer};
+use zoen_proto::{Envelope, Sequenced};
 use zoen_relay::log::{fdb::FdbLog, LogStore, Sequencing};
+use zoen_types::{EventBody, Privacy, Role, Seen, SpaceKind, GENESIS_PREV};
 
 fn now_ms() -> i64 {
     std::time::SystemTime::now()
@@ -18,7 +18,7 @@ fn now_ms() -> i64 {
 }
 
 fn store() -> Arc<FdbLog> {
-    store_on(&roda_types::new_id("t"))
+    store_on(&zoen_types::new_id("t"))
 }
 
 /// Another storage client of the same owner: separate sequencer/cache, shared keys.
@@ -36,7 +36,7 @@ fn store_on(cell: &str) -> Arc<FdbLog> {
 }
 
 fn sign(a: &Author, space: &str, seen: Option<Seen>, body: EventBody) -> Envelope {
-    Envelope::plain(&a.sign_event(space, &roda_types::new_ulid(now_ms()), now_ms(), seen, body))
+    Envelope::plain(&a.sign_event(space, &zoen_types::new_ulid(now_ms()), now_ms(), seen, body))
 }
 
 fn message(i: usize) -> EventBody {
@@ -51,7 +51,7 @@ fn message(i: usize) -> EventBody {
 
 async fn create(log: &FdbLog, a: &Author) -> (String, Seen) {
     log.owner.maintain().await.expect("initialize ownership");
-    let space = roda_types::new_id("sp");
+    let space = zoen_types::new_id("sp");
     let body = EventBody::SpaceCreated {
         title: "t".into(),
         kind: SpaceKind::Group,
@@ -269,7 +269,7 @@ async fn invites_are_bounded_by_uses() {
 }
 
 async fn two_storage_clients_share_one_chain_and_one_membership() {
-    let cell = roda_types::new_id("t");
+    let cell = zoen_types::new_id("t");
     let relays = [store_on(&cell), store_on(&cell)];
     let ana = Arc::new(Author::root(Signer::generate()));
     let (space, genesis) = create(&relays[0], &ana).await;
@@ -381,10 +381,10 @@ async fn duplicates_in_one_batch() {
 /// saw the creation still refuses plaintext, and a checkpoint naming an entry long out of
 /// the cache is checked against the stored chain.
 async fn end_to_end_spaces_hold_ciphertext_on_every_relay() {
-    let cell = roda_types::new_id("t");
+    let cell = zoen_types::new_id("t");
     let (warm, cold) = (store_on(&cell), store_on(&cell));
     let ana = Author::device(&Signer::generate(), Signer::generate());
-    let space = roda_types::new_id("sp");
+    let space = zoen_types::new_id("sp");
     let body = EventBody::SpaceCreated {
         title: "t".into(),
         kind: SpaceKind::Group,
@@ -399,11 +399,11 @@ async fn end_to_end_spaces_hold_ciphertext_on_every_relay() {
         hash: ev.hash,
     };
     let seal = |seen: &Seen| {
-        let data = roda_proto::Sealed::new(roda_proto::SealedKind::Application, 3, vec![9; 48]);
+        let data = zoen_proto::Sealed::new(zoen_proto::SealedKind::Application, 3, vec![9; 48]);
         Envelope::sealed(
             &ana,
             &space,
-            &roda_types::new_ulid(now_ms()),
+            &zoen_types::new_ulid(now_ms()),
             now_ms(),
             Some(seen),
             data,
@@ -474,9 +474,9 @@ async fn end_to_end_spaces_hold_ciphertext_on_every_relay() {
 /// relay keeps the first, refuses the second and the Welcome that rode on it, and a cold
 /// relay knows the epoch too.
 async fn one_commit_per_epoch_and_each_welcome_follows_its_commit() {
-    use roda_mls::{sealed::state_key, Device};
-    use roda_proto::{Sealed, SealedKind, STALE_COMMIT};
-    let cell = roda_types::new_id("t");
+    use zoen_mls::{sealed::state_key, Device};
+    use zoen_proto::{Sealed, SealedKind, STALE_COMMIT};
+    let cell = zoen_types::new_id("t");
     let (warm, cold) = (store_on(&cell), store_on(&cell));
     let people: Vec<Author> = (0..3)
         .map(|_| Author::device(&Signer::generate(), Signer::generate()))
@@ -485,7 +485,7 @@ async fn one_commit_per_epoch_and_each_welcome_follows_its_commit() {
     let dbs: Vec<rusqlite::Connection> = (0..3)
         .map(|_| {
             let mut c = rusqlite::Connection::open_in_memory().unwrap();
-            roda_mls::migrate(&mut c).unwrap();
+            zoen_mls::migrate(&mut c).unwrap();
             c
         })
         .collect();
@@ -495,10 +495,10 @@ async fn one_commit_per_epoch_and_each_welcome_follows_its_commit() {
         Device::new(&dbs[i], state_key(&secret), &a.identity, secret, cert).unwrap()
     };
     let (d_ana, d_bruno, d_carla) = (device(0), device(1), device(2));
-    let space = roda_types::new_id("sp");
+    let space = zoen_types::new_id("sp");
     let handshake = |a: &Author, kind, data: Vec<u8>, seen: &Seen| {
-        let data = Sealed::new(kind, roda_mls::SUITE_ID, data);
-        let cid = roda_types::new_ulid(now_ms());
+        let data = Sealed::new(kind, zoen_mls::SUITE_ID, data);
+        let cid = zoen_types::new_ulid(now_ms());
         Envelope::sealed(a, &space, &cid, now_ms(), Some(seen), data)
     };
     let at = |ev: &Sequenced| Seen {
@@ -534,15 +534,15 @@ async fn one_commit_per_epoch_and_each_welcome_follows_its_commit() {
     let first = d_ana
         .commit(&space, &d_bruno.key_packages(1, false).unwrap(), &none)
         .unwrap();
-    let with_context = |kind, data, epoch, head: &roda_types::Seen| {
-        let mut sealed = roda_proto::Sealed::new(kind, roda_mls::SUITE_ID, data);
-        sealed.recovery = roda_log::recovery::RecoveryRef {
+    let with_context = |kind, data, epoch, head: &zoen_types::Seen| {
+        let mut sealed = zoen_proto::Sealed::new(kind, zoen_mls::SUITE_ID, data);
+        sealed.recovery = zoen_log::recovery::RecoveryRef {
             version: 1,
             epoch,
             blob: "ab".repeat(32),
         }
         .encode();
-        Envelope::sealed(ana, &space, &roda_types::new_id("c"), 1, Some(head), sealed)
+        Envelope::sealed(ana, &space, &zoen_types::new_id("c"), 1, Some(head), sealed)
     };
     assert_eq!(
         refused(
@@ -620,7 +620,7 @@ async fn legacy_checkpoint_holds_upgrade_without_expiring_history() {
         Database,
     };
 
-    let cell = roda_types::new_id("t");
+    let cell = zoen_types::new_id("t");
     let warm = store_on(&cell);
     let ana = Author::root(Signer::generate());
     let (space, genesis) = create(&warm, &ana).await;

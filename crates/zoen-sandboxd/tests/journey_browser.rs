@@ -12,7 +12,6 @@
 mod common;
 
 use common::*;
-use roda_types::AgentRequest;
 use rustls::pki_types::{CertificateDer, PrivateKeyDer, PrivatePkcs8KeyDer};
 use std::collections::HashMap;
 use std::net::{IpAddr, Ipv4Addr};
@@ -27,6 +26,7 @@ use zoen_egress::{
 };
 use zoen_liveview::{DeviceKey, Direction, InputEvent};
 use zoen_sandboxd::{FirecrackerProvider, Shape};
+use zoen_types::AgentRequest;
 
 const PASSWORD: &str = "correct-horse-battery-9";
 const OTP: &str = "481516";

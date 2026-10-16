@@ -66,7 +66,7 @@ so a config change rolls the pods. Relays send OTLP/HTTP to `otel-collector:4318
 replace with a real backend. To run the same collector on the box:
 `.tools/otelcol/otelcol-contrib --config=infra/k8s/base/otel-collector.config.yaml
 --config=.dev/otel/local.yaml` (the local file swaps pod discovery for a static target; see
-roda-shots/real-s7/collector-proof.sh).
+zoen-shots/real-s7/collector-proof.sh).
 
 ## FoundationDB in development
 

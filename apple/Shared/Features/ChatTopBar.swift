@@ -1,5 +1,5 @@
 import SwiftUI
-import RodaCore
+import ZoenCore
 
 /// The chat's top bar (v2, Muse-style): back, a horizontal title whose larger avatar overlaps
 /// the left end of the glass name capsule (live status as the subtitle), and one calls capsule
@@ -76,7 +76,7 @@ struct ChatTopBar: View {
         }
         .padding(.horizontal, 12)
         .overlay {
-            if UserDefaults.standard.bool(forKey: "RodaCenterLine") {
+            if UserDefaults.standard.bool(forKey: "ZoenCenterLine") {
                 Rectangle().fill(.red).frame(width: 1).frame(height: Self.height + 16).allowsHitTesting(false)
             }
         }
@@ -196,13 +196,13 @@ extension View {
     func topGlass<S: InsettableShape>(_ shape: S, interactive: Bool = true) -> some View { modifier(TopGlass(shape: shape, interactive: interactive)) }
 }
 
-/// Title layout variants for the Dynamic Island comparison (`-RodaTitleVariant A|B|C`).
+/// Title layout variants for the Dynamic Island comparison (`-ZoenTitleVariant A|B|C`).
 /// A: the avatar + capsule group centred between the side controls (default).
 /// B: A, but the capsule snaps to the island's width when the name fits (a "drop").
 /// C: A, plus the title drops out of the island when the chat opens.
 enum TitleVariant: String {
     case a, b, c
-    static var current: TitleVariant { TitleVariant(rawValue: (UserDefaults.standard.string(forKey: "RodaTitleVariant") ?? "a").lowercased()) ?? .a }
+    static var current: TitleVariant { TitleVariant(rawValue: (UserDefaults.standard.string(forKey: "ZoenTitleVariant") ?? "a").lowercased()) ?? .a }
 }
 
 /// The Dynamic Island's rect in screen points, or nil on notch / home-button models (then the
@@ -304,8 +304,8 @@ struct CallsCapsule: View {
         .frame(height: ChatTopBar.height)
         .topGlass(Capsule())
         .task {
-            // `-RodaCallTap YES`: taps the phone after a beat (screenshot of the Jam toast).
-            guard UserDefaults.standard.bool(forKey: "RodaCallTap") else { return }
+            // `-ZoenCallTap YES`: taps the phone after a beat (screenshot of the Jam toast).
+            guard UserDefaults.standard.bool(forKey: "ZoenCallTap") else { return }
             try? await Task.sleep(for: .seconds(3))
             model.show(ToastModel(kind: .info, text: String(localized: "Calls are coming with Jam")), seconds: 6)
         }
@@ -421,7 +421,7 @@ struct ChatStatus: Equatable {
 
 
 #if os(iOS)
-/// `-RodaTopBarWidths YES`: the v2 top bar for a few real chats at 375 and 393pt (the
+/// `-ZoenTopBarWidths YES`: the v2 top bar for a few real chats at 375 and 393pt (the
 /// narrowest and the common iPhone widths), over a busy striped backdrop, for the width check.
 struct TopBarWidthSheet: View {
     @Environment(AppModel.self) private var model

@@ -432,7 +432,7 @@ Cada área traz a escolha para o v1, a evolução, se é comprar ou construir, e
 **Decisão:** 100% Swift 6 + SwiftUI, com alvo mínimo **iOS 26 e macOS 26**. São eles que trazem o Liquid Glass completo e os Foundation Models no aparelho. O núcleo Rust fica por baixo via **UniFFI** (Swift Package gerado). Não usamos Catalyst nem Flutter.
 
 ### Divisão de responsabilidades
-| Fica em Rust (`roda-core`) | Fica em Swift |
+| Fica em Rust (`zoen-core`) | Fica em Swift |
 |---|---|
 | Primitivos (Identidade, Espaço, Membro, Item, Concessão), log assinado e validação | Toda a UI, a navegação e o Liquid Glass |
 | MLS (OpenMLS), cifra de mídia e verificação de key transparency | Secure Enclave (CryptoKit), passkeys (AuthenticationServices + PRF) e Keychain |
@@ -485,7 +485,7 @@ Cada área traz a escolha para o v1, a evolução, se é comprar ou construir, e
 - Arquivos grandes e pastas como Itens, com sincronização em segundo plano.
 
 ### Web: só o visualizador de convite
-Uma página leve (Cloudflare Pages + `roda-wasm`) para quem recebe o link e ainda não tem o app. Ela permite ver e responder no Espaço convidado e editar Itens de forma simples, depois convida a instalar. No iPhone, o link abre o **App Clip**; no Android e no desktop, abre a web. O app web completo não está no plano antes de 2027.
+Uma página leve (Cloudflare Pages + `zoen-wasm`) para quem recebe o link e ainda não tem o app. Ela permite ver e responder no Espaço convidado e editar Itens de forma simples, depois convida a instalar. No iPhone, o link abre o **App Clip**; no Android e no desktop, abre a web. O app web completo não está no plano antes de 2027.
 
 ---
 
@@ -772,27 +772,27 @@ Uma comunidade 🛡️ pode ter canais 🔒 dentro dela (por exemplo, "staff" ou
 ### Marcos
 | Semanas | Marco | Entregável |
 |---|---|---|
-| 1–2 | **Fundação** | Workspace Rust (tipos, cripto, log, store) com testes de propriedade; relay axum + WebSocket + Postgres; UniFFI gerando o `RodaCore` Swift; app iOS/Mac com a cápsula de vidro e Conversas lendo do núcleo; CI (GitHub Actions + Xcode Cloud) |
+| 1–2 | **Fundação** | Workspace Rust (tipos, cripto, log, store) com testes de propriedade; relay axum + WebSocket + Postgres; UniFFI gerando o `ZoenCore` Swift; app iOS/Mac com a cápsula de vidro e Conversas lendo do núcleo; CI (GitHub Actions + Xcode Cloud) |
 | 3–4 | **Agente na conversa** | Runtime de agentes v0 (gateway de modelos com streaming, Zoen como Membro que usa a mesma API); Itens com Loro e cartão vivo; editor nativo `AttributedString` ↔ Loro; Desfazer; offline e sync. **Demo da semana 4** |
-| 5–6 | **Pessoas** | Link de convite + web de convite (`roda-wasm`) + App Clip; grupos; push APNs; passkey progressiva com backup via PRF; app Mac com 3 colunas |
+| 5–6 | **Pessoas** | Link de convite + web de convite (`zoen-wasm`) + App Clip; grupos; push APNs; passkey progressiva com backup via PRF; app Mac com 3 colunas |
 | 7–8 | **Confiança e privacidade** | Níveis de confiança, orçamento medido no gateway, Atividade com pedidos em lote, recibos; **MLS (OpenMLS)** nos Espaços privados; a NSE decifra; Live Activity de tarefa. **Demo da semana 8** |
 | 9–10 | **Acabamento nativo** | Busca FTS5 + Spotlight, Share Extension, App Intents/Atalhos, widgets, Versões/Comparar básicos, key transparency v0 (AKD), telemetria (OTel, Sentry, PostHog sem conteúdo) |
 | 11–12 | **Beta** | StoreKit 2 + Pix via processador alternativo, documentos de LGPD, revisão de segurança externa focada em cripto, teste de carga (100 mil conexões simuladas por gateway), **TestFlight com 300 pessoas** |
 
-### Workspace Rust (`roda/`)
+### Workspace Rust (`zoen/`)
 ```
 zoen-native/
 ├─ crates/
-│  ├─ roda-types      # Identidade, Espaço, Membro, Item, Concessão, Evento (prost/protobuf)
-│  ├─ roda-crypto     # chaves, assinaturas, embrulho por PRF, hashing, padding
-│  ├─ roda-mls        # OpenMLS ↔ Espaço (épocas, folhas de aparelho e de agente)
-│  ├─ roda-log        # log append-only, cadeia de hash, validação, compactação
-│  ├─ roda-grants     # políticas Cedar, avaliação, orçamento
-│  ├─ roda-store      # SQLite/SQLCipher, migrações, FTS5, sqlite-vec
-│  ├─ roda-crdt       # Loro: Itens, versões, bifurcar, diff, juntar
-│  ├─ roda-sync       # cliente: outbox, cursores, WebSocket, retomada
-│  ├─ roda-ffi        # UniFFI → Swift Package RodaCore (e Kotlin no port Android de 2026)
-│  └─ roda-wasm       # web de convite
+│  ├─ zoen-types      # Identidade, Espaço, Membro, Item, Concessão, Evento (prost/protobuf)
+│  ├─ zoen-crypto     # chaves, assinaturas, embrulho por PRF, hashing, padding
+│  ├─ zoen-mls        # OpenMLS ↔ Espaço (épocas, folhas de aparelho e de agente)
+│  ├─ zoen-log        # log append-only, cadeia de hash, validação, compactação
+│  ├─ zoen-grants     # políticas Cedar, avaliação, orçamento
+│  ├─ zoen-store      # SQLite/SQLCipher, migrações, FTS5, sqlite-vec
+│  ├─ zoen-crdt       # Loro: Itens, versões, bifurcar, diff, juntar
+│  ├─ zoen-sync       # cliente: outbox, cursores, WebSocket, retomada
+│  ├─ zoen-ffi        # UniFFI → Swift Package ZoenCore (e Kotlin no port Android de 2026)
+│  └─ zoen-wasm       # web de convite
 ├─ services/
 │  ├─ relay           # gateway WebSocket + dono de Espaço (axum/tokio)
 │  ├─ push            # APNs/FCM/VoIP
@@ -808,7 +808,7 @@ apple/
 ├─ Apps/      ZoeniOS · ZoenMac · ZoenClip
 ├─ Extensions/ NotificationService · Share · Widgets(+LiveActivities) · Intents
 └─ Packages/
-   ├─ RodaCore        # bindings UniFFI + atores e AsyncStreams
+   ├─ ZoenCore        # bindings UniFFI + atores e AsyncStreams
    ├─ AppModel       # stores @Observable sobre o núcleo
    ├─ DesignSystem    # GlassTabBar, Composer, AgentAvatar, RequestCard, UndoToast, BudgetRing, PrivacyPill
    ├─ Features/       Conversations · Space · Item · Activity · You · Onboarding · Invite
@@ -862,7 +862,7 @@ apple/
 - O tryzoen (Next.js) segue no ar até a migração. Sua landing vira a landing do Zoen, com "Zoen incluso".
 
 **signal-rust (EnzoTironi/signal-rust)**
-- Vira o repositório do núcleo (`roda/`). O plano do PR #34 era Nostr-first com Flutter.
+- Vira o repositório do núcleo (`zoen/`). O plano do PR #34 era Nostr-first com Flutter.
 - **Ajustes decididos:** UI nativa (SwiftUI agora, Compose em 2027) no lugar do Flutter; servidor próprio primeiro; MLS via OpenMLS; ATProto para o público; Nostr/Marmot como ponte.
 - Ressalva: não li o código do signal-rust. Confirmar o estado real antes de reaproveitar.
 

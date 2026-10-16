@@ -1,5 +1,5 @@
 import SwiftUI
-import RodaCore
+import ZoenCore
 
 // MARK: - Store (the marketplace): agents and mini-apps
 //
@@ -72,7 +72,7 @@ enum StoreSeed {
         StoreListing(id: "zoen", kind: .agent, name: "Zoen",
                      blurb: p("Seu agente: planeja, cria mini-apps e cuida dos detalhes.", "Your agent: plans, builds mini-apps and handles the details."),
                      about: p("O Zoen vive nos seus chats como um contato. Pede permissão antes de agir fora do chat.", "Zoen lives in your chats like a contact. It asks before acting outside the chat."),
-                     creator: "zoen", doodle: .roda, accentHex: "#3D7A28", category: .productivity, uses: "—", rating: "—", community: p("Comunidade Zoen", "Zoen community"), handle: "zoen"),
+                     creator: "zoen", doodle: .zoen, accentHex: "#3D7A28", category: .productivity, uses: "—", rating: "—", community: p("Comunidade Zoen", "Zoen community"), handle: "zoen"),
         StoreListing(id: "schedule", kind: .miniApp, name: p("Agenda", "Schedule"),
                      blurb: p("Horários livres e preços. O cliente marca; o agente confirma.", "Free slots and prices. The client books; the agent confirms."),
                      about: p("Agenda para qualquer negócio. Conte ao agente o que você faz; ele monta serviços, preços e horários, e cada pedido vira um evento para ele resolver.", "A schedule for any business. Tell the agent what you do; it sets up services, prices and hours, and every request becomes an event it resolves."),
@@ -254,20 +254,20 @@ struct StoreScreen: View {
         .task { await screenshotScroll() }
     }
 
-    /// Screenshots and the scroll video: `-RodaStoreScroll 640` jumps there;
-    /// `-RodaStoreAutoScroll YES` glides down the page and back.
+    /// Screenshots and the scroll video: `-ZoenStoreScroll 640` jumps there;
+    /// `-ZoenStoreAutoScroll YES` glides down the page and back.
     private func screenshotScroll() async {
         let d = UserDefaults.standard
-        if let id = d.string(forKey: "RodaStoreDetail") {
+        if let id = d.string(forKey: "ZoenStoreDetail") {
             try? await Task.sleep(for: .seconds(0.8))
             model.push(.store(id))
         }
-        let y = d.double(forKey: "RodaStoreScroll")
+        let y = d.double(forKey: "ZoenStoreScroll")
         if y > 0 {
             try? await Task.sleep(for: .seconds(1.2))
             withAnimation(.smooth(duration: 0.5)) { pos.scrollTo(y: y) }
         }
-        if d.bool(forKey: "RodaStoreAutoScroll") {
+        if d.bool(forKey: "ZoenStoreAutoScroll") {
             try? await Task.sleep(for: .seconds(2.5))
             for target in [360.0, 760, 1180, 1700, 2100, 0] {
                 withAnimation(.easeInOut(duration: 1.6)) { pos.scrollTo(y: target) }

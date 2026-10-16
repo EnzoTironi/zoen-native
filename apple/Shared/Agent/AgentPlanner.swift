@@ -1,5 +1,5 @@
 import Foundation
-import RodaCore
+import ZoenCore
 #if canImport(FoundationModels)
 import FoundationModels
 #endif
@@ -83,10 +83,10 @@ final class AgentPlanner {
     static let onDeviceTimeout: Double = 45
 
     /// Onboarding's first plan: the aha has to land in seconds, so the on-device model
-    /// gets a short budget (8 s, or `-RodaAppAITimeout`) before the labeled fallback.
+    /// gets a short budget (8 s, or `-ZoenAppAITimeout`) before the labeled fallback.
     func makeStarterPlan(areas: [OnboardingArea], prompt: String) async -> PlanDraft {
         let d = UserDefaults.standard
-        let timeout = d.object(forKey: "RodaAppAITimeout") != nil ? d.double(forKey: "RodaAppAITimeout") : 8
+        let timeout = d.object(forKey: "ZoenAppAITimeout") != nil ? d.double(forKey: "ZoenAppAITimeout") : 8
         #if canImport(FoundationModels)
         if case .onDevice = availability, timeout > 0 {
             let ask = prompt + " One short section per area, two concrete items each."
@@ -110,7 +110,7 @@ final class AgentPlanner {
         if case .onDevice = availability {
             do {
                 let session = LanguageModelSession(instructions: """
-                You are \(agentName), the user's personal agent inside the Roda messaging app.
+                You are \(agentName), the user's personal agent inside the Zoen messaging app.
                 Answer in \(AppLocale.languageName), in at most two short sentences, warmly and without emoji.
                 When it makes sense, offer to turn the request into a plan or a task.
                 """)

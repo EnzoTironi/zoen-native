@@ -34,15 +34,18 @@ def artwork(root, main):
             if expected not in accepted:
                 raise ValueError("Source equivalence must retain the original fixture: " + path)
             upstream = subprocess.run(["git", "show", main + ":" + path], cwd=root, capture_output=True, check=True).stdout
-            hashes = {"main": core.digest(upstream), "source_snapshot": core.digest((root / path).read_bytes())}
+            hashes = {"main": core.digest(core.art_bytes(upstream)),
+                      "source_snapshot": core.digest(core.art_bytes((root / path).read_bytes()))}
             sources[path] = {"fixture_sha256": expected, "verified_equivalent_sha256": sorted(accepted - {expected}),
                              "input_sha256": hashes, "matches": all(value in accepted for value in hashes.values())}
     path = "apple/Shared/Apps/Native/PetViews.swift"
     expected = re.search(r'const val sourceSha256 = "([a-f0-9]{64})"',
                          (root / "android/app/src/main/java/xyz/tironi/zoen/ui/GeneratedPetArt.kt").read_text())[1]
     upstream = subprocess.run(["git", "show", main + ":" + path], cwd=root, capture_output=True, check=True).stdout
-    hashes = {"main": core.digest(upstream), "source_snapshot": core.digest((root / path).read_bytes())}
-    sources[path] = {"fixture_sha256": expected, "input_sha256": hashes, "matches": all(value == expected for value in hashes.values())}
+    hashes = {"main": core.digest(core.art_bytes(upstream)),
+              "source_snapshot": core.digest(core.art_bytes((root / path).read_bytes()))}
+    sources[path] = {"fixture_sha256": expected, "normalization": "scripts/art-rename-equivalence.json (Roda->Zoen lines only)",
+                     "input_sha256": hashes, "matches": all(value == expected for value in hashes.values())}
     generated = subprocess.run(["python3", str(root / "scripts/export-android-pet.py"), "--check"],
                                cwd=root, capture_output=True, text=True)
     return {"original_sources": sources, "generated_pet_matches_original_source": generated.returncode == 0,

@@ -177,7 +177,7 @@ impl Execution {
             1
         };
         let fence = Fence {
-            holder: roda_types::new_id("native-worker"),
+            holder: zoen_types::new_id("native-worker"),
             token,
         };
         trx.set(
@@ -566,7 +566,7 @@ pub(super) async fn test_cuts(
     execution: &Execution,
     custody: &super::NativeCustody,
     principal: &Principal,
-    image: &roda_ffi::runtime_core::NativeImage,
+    image: &zoen_ffi::runtime_core::NativeImage,
 ) {
     let current = execution.read_native(principal, None).await.unwrap().root;
     let trx = execution.transaction().await.unwrap();

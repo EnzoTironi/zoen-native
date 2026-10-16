@@ -1,5 +1,5 @@
 import SwiftUI
-import RodaCore
+import ZoenCore
 
 /// Participantes (poster #016): Pessoas e Agentes separados, permissões por agente
 /// e a configuração da conversa (convites, privacidade, registro).

@@ -1,5 +1,5 @@
 import SwiftUI
-import RodaCore
+import ZoenCore
 
 /// The existing, signed-in device approves a code only after the person compares both screens.
 struct DeviceConnectionSection: View {

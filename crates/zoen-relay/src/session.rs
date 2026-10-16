@@ -17,14 +17,14 @@ use std::{
 
 use axum::extract::ws::{Message, WebSocket};
 use futures_util::{SinkExt, StreamExt};
-use roda_log::{device_cert_message, verify_sig};
-use roda_proto::{
+use tokio::sync::{mpsc, Notify};
+use tracing::{field::Empty, Instrument};
+use zoen_log::{device_cert_message, verify_sig};
+use zoen_proto::{
     auth_message, negotiate, normalize_handle, AgentRequest, ClientFrame, ErrorCode, Op, Reply,
     ServerFrame, MIN_PROTOCOL_VERSION, PROTOCOL_VERSION,
 };
-use roda_types::{EventBody, IdentityKind};
-use tokio::sync::{mpsc, Notify};
-use tracing::{field::Empty, Instrument};
+use zoen_types::{EventBody, IdentityKind};
 
 use crate::{db, hub::Mailbox, limits, log::Sequencing, metrics::Metrics, Shared};
 
@@ -368,7 +368,7 @@ async fn handshake(
     let capabilities = negotiate(&capabilities);
     let claim_receipts = capabilities
         .iter()
-        .any(|c| c == roda_proto::KEY_PACKAGE_CLAIM_CAPABILITY);
+        .any(|c| c == zoen_proto::KEY_PACKAGE_CLAIM_CAPABILITY);
     let server_time_ms = if claim_receipts {
         match tokio::time::timeout(
             Duration::from_secs(5),
@@ -502,7 +502,7 @@ impl Session {
     }
 
     /// Tells each claimed device that's running low, wherever it is connected.
-    async fn key_packages_low(&self, claimed: &[roda_proto::KeyPackageRecord]) {
+    async fn key_packages_low(&self, claimed: &[zoen_proto::KeyPackageRecord]) {
         let devices: Vec<(String, String)> = claimed
             .iter()
             .map(|k| (k.identity.clone(), k.device.clone()))
@@ -515,7 +515,7 @@ impl Session {
             }
         };
         for (identity, device, left) in stock {
-            if left < roda_proto::KEY_PACKAGES_LOW as i64 {
+            if left < zoen_proto::KEY_PACKAGES_LOW as i64 {
                 let delivered_here = self.st.fanout.send(
                     std::slice::from_ref(&identity),
                     &ServerFrame::KeyPackagesLow {
@@ -590,7 +590,7 @@ impl Session {
         let me = [(self.identity.clone(), self.device.clone())];
         if let Ok(stock) = db::key_package_stock(&self.st.pool, &me).await {
             for (_, device, left) in stock {
-                if left < roda_proto::KEY_PACKAGES_LOW as i64 {
+                if left < zoen_proto::KEY_PACKAGES_LOW as i64 {
                     self.send(ServerFrame::KeyPackagesLow {
                         device,
                         remaining: left as u32,
@@ -768,7 +768,7 @@ impl Session {
         skip_all,
         fields(identity = %pseudo(&self.identity), space = %pseudo(&space), delivered_here = Empty)
     )]
-    async fn ephemeral(&self, space: String, kind: roda_proto::EphemeralKind) {
+    async fn ephemeral(&self, space: String, kind: zoen_proto::EphemeralKind) {
         if self.st.limits.ephemeral_device.check(&self.device).is_err() {
             return;
         }
@@ -782,8 +782,8 @@ impl Session {
             return;
         }
         let receipt = match kind {
-            roda_proto::EphemeralKind::Read { seq } => Some((0, seq)),
-            roda_proto::EphemeralKind::Delivered { seq } => Some((seq, 0)),
+            zoen_proto::EphemeralKind::Read { seq } => Some((0, seq)),
+            zoen_proto::EphemeralKind::Delivered { seq } => Some((seq, 0)),
             _ => None,
         };
         if let Some((delivered, read)) = receipt {
@@ -794,8 +794,8 @@ impl Session {
         // Receipts also reach my other devices (read on the phone clears the Mac), never
         // this session itself.
         let to: Vec<String> = match kind {
-            roda_proto::EphemeralKind::Read { seq }
-            | roda_proto::EphemeralKind::Delivered { seq }
+            zoen_proto::EphemeralKind::Read { seq }
+            | zoen_proto::EphemeralKind::Delivered { seq }
                 if members.len() > RECEIPT_BROADCAST_MAX =>
             {
                 self.receipt_audience(&space, seq).await
@@ -897,7 +897,7 @@ impl Session {
                     .map_err(|e| e.to_string())?;
                 // Turning an agent off also takes its share link down, here on the relay
                 // so no client can leave it up.
-                if action == roda_proto::AgentAction::Revoke {
+                if action == zoen_proto::AgentAction::Revoke {
                     self.st.log.revoke_agent_invite(&agent).await?;
                 }
                 return Ok(Reply::Done);
@@ -1089,7 +1089,7 @@ impl Session {
                 if signed.device != self.device {
                     return Err("agreement key is for another device".into());
                 }
-                if !roda_log::profile::verify_agreement(&self.identity, &public, &signed) {
+                if !zoen_log::profile::verify_agreement(&self.identity, &public, &signed) {
                     return Err("agreement key isn't signed by this identity".into());
                 }
                 db::put_agreement_key(pool, &self.identity, &public, &signed)
@@ -1112,10 +1112,10 @@ impl Session {
                 if profile.signed.device != self.device {
                     return Err("profile is for another device".into());
                 }
-                if profile.ciphertext.len() > roda_log::profile::MAX_CIPHERTEXT {
+                if profile.ciphertext.len() > zoen_log::profile::MAX_CIPHERTEXT {
                     return Err("profile too large".into());
                 }
-                if !roda_log::profile::verify_upload(
+                if !zoen_log::profile::verify_upload(
                     &profile.identity,
                     profile.version,
                     &profile.ciphertext,
@@ -1154,7 +1154,7 @@ impl Session {
                     if kp.len() > MAX_KEY_PACKAGE {
                         return Err("key package too large".into());
                     }
-                    let (leaf, expires) = roda_mls::key_package_publication(kp)
+                    let (leaf, expires) = zoen_mls::key_package_publication(kp)
                         .map_err(|_| "not a valid key package".to_string())?;
                     if leaf.identity != self.identity || leaf.device != self.device {
                         return Err("key package is for another device".into());
@@ -1165,7 +1165,7 @@ impl Session {
                     if kp.len() > MAX_KEY_PACKAGE {
                         return Err("key package too large".into());
                     }
-                    let (leaf, _) = roda_mls::key_package_publication(kp)
+                    let (leaf, _) = zoen_mls::key_package_publication(kp)
                         .map_err(|_| "not a valid key package".to_string())?;
                     if leaf.identity != self.identity || leaf.device != self.device {
                         return Err("key package is for another device".into());
@@ -1338,7 +1338,7 @@ impl Session {
             Some(a) => ("agent", a.name.clone()),
             None => ("space", i.title),
         };
-        Ok(Reply::Preview(roda_proto::InvitePreview {
+        Ok(Reply::Preview(zoen_proto::InvitePreview {
             space: i.space,
             role: i.role,
             title,
@@ -1353,8 +1353,8 @@ impl Session {
     /// never its content (sealed envelopes only say whether they're application data).
     fn count_sequenced(
         &self,
-        env: &roda_proto::Envelope,
-        ev: &roda_proto::Sequenced,
+        env: &zoen_proto::Envelope,
+        ev: &zoen_proto::Sequenced,
         audience: &[String],
         joined: Option<&str>,
         started: std::time::Instant,
@@ -1382,7 +1382,7 @@ impl Session {
                 );
                 false
             }
-            _ => env.sealed_kind() == Some(roda_proto::SealedKind::Application),
+            _ => env.sealed_kind() == Some(zoen_proto::SealedKind::Application),
         };
         if is_message {
             a.message_sent(crate::analytics::SentMessage {
@@ -1410,7 +1410,7 @@ impl Session {
             delivered_here = Empty,
         )
     )]
-    async fn publish(&mut self, env: roda_proto::Envelope) {
+    async fn publish(&mut self, env: zoen_proto::Envelope) {
         let started = std::time::Instant::now();
         let span = tracing::Span::current();
         let analytics = &self.st.analytics;
@@ -1564,7 +1564,7 @@ impl Session {
         skip_all,
         fields(identity = %pseudo(&self.identity), all, spaces = Empty, events = Empty)
     )]
-    async fn sync(&mut self, cursors: Vec<roda_proto::Cursor>, all: bool) {
+    async fn sync(&mut self, cursors: Vec<zoen_proto::Cursor>, all: bool) {
         let Ok(Ok(mine)) = tokio::time::timeout(
             Duration::from_secs(5),
             self.st.log.spaces_of(&self.identity),
@@ -1708,10 +1708,10 @@ impl Session {
     async fn replay_receipts(&self, space: &str, rows: Vec<(String, i64, i64)>) -> bool {
         for (from, delivered, read) in rows {
             for kind in [
-                roda_proto::EphemeralKind::Delivered {
+                zoen_proto::EphemeralKind::Delivered {
                     seq: delivered as u64,
                 },
-                roda_proto::EphemeralKind::Read { seq: read as u64 },
+                zoen_proto::EphemeralKind::Read { seq: read as u64 },
             ] {
                 let frame = ServerFrame::Ephemeral {
                     space: space.to_string(),

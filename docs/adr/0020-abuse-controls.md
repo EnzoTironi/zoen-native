@@ -32,7 +32,7 @@ enumeration), invite previews (code guessing), typing signals, or blob bytes.
   - Publishes get a transient `Rejected`, so the outbox keeps the event and retries.
   - Request ops get an error result.
   - Handshakes get `ErrorCode::RateLimited` before any signature work. The client retries no
-    sooner than the hint (`roda_proto::retry_hint`).
+    sooner than the hint (`zoen_proto::retry_hint`).
   - Blobs get HTTP 429 with `Retry-After`.
   - Older clients decode the new code as `Other`.
 - **Client fix in the same change:** a handshake refusal used to stop the client until the

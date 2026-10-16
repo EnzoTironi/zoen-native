@@ -62,7 +62,7 @@ vendors, dashboards and laptops.
     address.
 - The real otelcol-contrib 0.162.0, running this repo's collector config, received a live
   relay's traces, logs and scraped metrics
-  (`roda-shots/real-s7/collector-proof.{sh,txt}`); `otelcol-contrib validate` passes and
+  (`zoen-shots/real-s7/collector-proof.{sh,txt}`); `otelcol-contrib validate` passes and
   kubeconform validates the rendered manifests.
 
 ## At 1B users

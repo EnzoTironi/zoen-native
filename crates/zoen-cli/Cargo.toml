@@ -11,9 +11,9 @@ name = "zoen"
 path = "src/main.rs"
 
 [dependencies]
-roda-ffi = { path = "../roda-ffi" }
+zoen-ffi = { path = "../zoen-ffi" }
 zoen-agentd = { path = "../zoen-agentd" }
-roda-gate.workspace = true
+zoen-gate.workspace = true
 serde_json = "1"
 reqwest = { version = "0.13", default-features = false, features = ["rustls-no-provider"] }
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "time", "signal", "sync"] }
@@ -21,13 +21,13 @@ tokio = { version = "1", features = ["rt-multi-thread", "macros", "time", "signa
 [dev-dependencies]
 # Journeys run the scripted brain and fault points; production builds never have them.
 zoen-agentd = { path = "../zoen-agentd", features = ["scripted"] }
-roda-store.workspace = true
+zoen-store.workspace = true
 hkdf.workspace = true
 async-nats = "0.50"
 sha2.workspace = true
-roda-proto = { path = "../roda-proto" }
-roda-log = { path = "../roda-log" }
-roda-types = { path = "../roda-types" }
+zoen-proto = { path = "../zoen-proto" }
+zoen-log = { path = "../zoen-log" }
+zoen-types = { path = "../zoen-types" }
 serde_json = "1"
 rusqlite.workspace = true
 sqlx = { version = "0.9", default-features = false, features = ["runtime-tokio", "postgres"] }

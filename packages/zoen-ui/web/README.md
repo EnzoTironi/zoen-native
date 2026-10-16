@@ -65,7 +65,7 @@ headers and publish the manifest from the exact reviewed source build.
 Shared-core checks from the repository root:
 
 ```sh
-cargo test -p roda-mls --features portable
+cargo test -p zoen-mls --features portable
 cargo test -p zoen-web-core
 cargo check -p zoen-web-core --target wasm32-unknown-unknown
 ```
@@ -94,7 +94,7 @@ where a transient close must not cancel the browser's reconnect timer.
 
 ## Final shared-main checkpoint
 
-Root reran the exact final TypeScript sources: typecheck and all 13 behavior tests passed. `cargo test --locked -j2 -p roda-mls --features portable` passed 17 tests, including native SQLite/external-signer exchange. `cargo test --locked -j2 -p zoen-web-core` passed three native Rust tests for enrollment-box cryptography, SQLite Welcome/messages/reload/removal and certified invite publication. These do not prove the browser worker/WASM bridge or real native/browser enrollment. Independent checkpoint-history, snapshot-owner, retry/invite and pre-ack replay findings remain open in the [complete handoff](../../../docs/dev/handoff-2026-10-12.md). The user requested pausing after this source checkpoint.
+Root reran the exact final TypeScript sources: typecheck and all 13 behavior tests passed. `cargo test --locked -j2 -p zoen-mls --features portable` passed 17 tests, including native SQLite/external-signer exchange. `cargo test --locked -j2 -p zoen-web-core` passed three native Rust tests for enrollment-box cryptography, SQLite Welcome/messages/reload/removal and certified invite publication. These do not prove the browser worker/WASM bridge or real native/browser enrollment. Independent checkpoint-history, snapshot-owner, retry/invite and pre-ack replay findings remain open in the [complete handoff](../../../docs/dev/handoff-2026-10-12.md). The user requested pausing after this source checkpoint.
 
 ## Messenger (layer 1)
 

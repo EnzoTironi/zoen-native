@@ -29,7 +29,7 @@ import org.junit.Assert.*
 import org.junit.Test
 import xyz.tironi.zoen.Evidence
 import org.junit.runner.RunWith
-import xyz.tironi.zoen.core.RodaEngine
+import xyz.tironi.zoen.core.ZoenEngine
 import xyz.tironi.zoen.data.ZoenRepository
 
 @RunWith(AndroidJUnit4::class)
@@ -85,7 +85,7 @@ class MediaEditingTest {
             // Reopen the on-disk log through a separate FFI object, without using the UI cache.
             val database = File(wrapped.noBackupFilesDir, "core/demo-en.sqlite")
             repository.close()
-            val reopened = RodaEngine.open(database.absolutePath, "en")
+            val reopened = ZoenEngine.open(database.absolutePath, "en")
             try {
                 assertEquals(entry.voice, reopened.timeline(space).single { it.id == entry.id }.voice)
                 val old = reopened.fileBytes(reference.id, 1u)!!

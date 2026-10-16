@@ -1,7 +1,7 @@
 # Profiles: the core API for the app
 
-For the profile screen on `ui/*`. Everything below is in the Rust core (`roda-ffi`) and
-generated into Swift by UniFFI (`RodaCore`). Design: [ADR 0016](adr/0016-encrypted-profiles.md).
+For the profile screen on `ui/*`. Everything below is in the Rust core (`zoen-ffi`) and
+generated into Swift by UniFFI (`ZoenCore`). Design: [ADR 0016](adr/0016-encrypted-profiles.md).
 
 Use [roadmap status](roadmap-status.md) for the current platform/version ledger. This API contract describes profile operations; it does not establish that every client and public deployment is on the same protocol.
 

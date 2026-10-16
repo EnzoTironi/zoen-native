@@ -6,8 +6,8 @@ final class SettingsJourneyTests: XCTestCase {
     private func launch(_ extra: [String] = []) -> XCUIApplication {
         let app = XCUIApplication()
         app.launchArguments = [
-            "-RodaFreshStart", "YES", "-RodaAccount", "Teste Ajustes:teste_ajustes",
-            "-RodaTab", "you", "-AppleLanguages", "(pt-BR)", "-AppleLocale", "pt_BR",
+            "-ZoenFreshStart", "YES", "-ZoenAccount", "Teste Ajustes:teste_ajustes",
+            "-ZoenTab", "you", "-AppleLanguages", "(pt-BR)", "-AppleLocale", "pt_BR",
         ] + extra
         app.launch()
         return app
@@ -61,7 +61,7 @@ final class SettingsJourneyTests: XCTestCase {
     @MainActor
     func testBackupWithoutCopyCannotRestore() throws {
         continueAfterFailure = false
-        let app = launch(["-RodaSettings", "backup"])
+        let app = launch(["-ZoenSettings", "backup"])
         let restore = app.descendants(matching: .any)["backupRestore"]
         XCTAssertTrue(restore.waitForExistence(timeout: 15), "Cópia e recuperação opens")
         XCTAssertTrue(app.staticTexts["Ainda não disponível neste aparelho"].exists, "restore says it isn't available yet")
@@ -72,7 +72,7 @@ final class SettingsJourneyTests: XCTestCase {
     @MainActor
     func testDisappearingMessagesShowsEveryOptionDisabled() throws {
         continueAfterFailure = false
-        let app = launch(["-RodaSettings", "disappearing"])
+        let app = launch(["-ZoenSettings", "disappearing"])
         for id in ["disappear.off", "disappear.24h", "disappear.7d", "disappear.90d"] {
             let option = app.buttons[id]
             XCTAssertTrue(option.waitForExistence(timeout: 15), "\(id) is listed")
@@ -84,7 +84,7 @@ final class SettingsJourneyTests: XCTestCase {
     @MainActor
     func testProfileShowsTheRealAccount() throws {
         continueAfterFailure = false
-        let app = launch(["-RodaSettings", "x"])
+        let app = launch(["-ZoenSettings", "x"])
         XCTAssertTrue(app.staticTexts["@teste_ajustes"].waitForExistence(timeout: 15), "the account's own @, nothing else")
         XCTAssertFalse(app.staticTexts["Nenhuma conta neste aparelho"].exists)
     }
@@ -92,7 +92,7 @@ final class SettingsJourneyTests: XCTestCase {
     @MainActor
     func testInvitesExplainsTheRewardAndShares() throws {
         continueAfterFailure = false
-        let app = launch(["-RodaSettings", "invites"])
+        let app = launch(["-ZoenSettings", "invites"])
         XCTAssertTrue(app.staticTexts["1 mês de Business a cada 5 amigos"].waitForExistence(timeout: 15), "the rule is stated")
         let share = app.buttons["inviteShare"]
         XCTAssertTrue(share.waitForExistence(timeout: 5), "the core gave a link to share")

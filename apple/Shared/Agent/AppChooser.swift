@@ -1,5 +1,5 @@
 import Foundation
-import RodaCore
+import ZoenCore
 #if canImport(FoundationModels)
 import FoundationModels
 #endif
@@ -49,9 +49,9 @@ enum AppChooser {
 
     static func choose(prompt: String, planner: AgentPlanner) async -> AppChoice? {
         guard let kind = kind(for: prompt) else { return nil }
-        // `-RodaAppAITimeout 0` pula o modelo (demos/capturas determinísticas).
+        // `-ZoenAppAITimeout 0` pula o modelo (demos/capturas determinísticas).
         let d = UserDefaults.standard
-        let timeout = d.object(forKey: "RodaAppAITimeout") != nil ? d.double(forKey: "RodaAppAITimeout") : onDeviceTimeout
+        let timeout = d.object(forKey: "ZoenAppAITimeout") != nil ? d.double(forKey: "ZoenAppAITimeout") : onDeviceTimeout
         #if canImport(FoundationModels)
         // The on-device model's schema doesn't cover the hike yet: local rules pick the day.
         if case .onDevice = planner.availability, timeout > 0, kind != "hike" {
@@ -169,7 +169,7 @@ enum AppChooser {
     #if canImport(FoundationModels)
     private static func generate(prompt: String, kind: String) async throws -> AppChoice? {
         let session = LanguageModelSession(instructions: """
-        You pick and configure a shared mini-app for a group of friends in the Roda app.
+        You pick and configure a shared mini-app for a group of friends in the Zoen app.
         Mini-apps: pet (the group's virtual pet, a pixel-art donkey), poll (a vote to decide), list (shared list), maptap (geography game), recipe (dinner recipe).
         Answer in \(AppLocale.languageName): every title, name and option you write must be in that language. Don't invent places the conversation didn't mention.
         """)

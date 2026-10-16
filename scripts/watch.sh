@@ -10,7 +10,7 @@
 #   stop:   scripts/watch.sh stop
 #   status: tail -f build/watch.log
 #
-# Relaunch arguments live in build/watch.args, one per line (e.g. "-RodaOpen" / "paraty").
+# Relaunch arguments live in build/watch.args, one per line (e.g. "-ZoenOpen" / "paraty").
 # Edit that file and touch any source file to relaunch with the new arguments.
 # WATCH_DEVICE picks the simulator (default: the booted one). WATCH_MAC=1 also rebuilds
 # and reopens the Mac app.
@@ -77,7 +77,7 @@ cycle 0
 
 # fswatch batches events; we debounce further (1 s of quiet; bash 3.2 has integer read timeouts) so a whole sync lands as one build.
 "$FSWATCH" -r -l 0.4 \
-  -e '\.xcodeproj' -e 'xcuserdata' -e 'RodaFFI\.xcframework' -e 'RodaFFI\.generated\.swift' \
+  -e '\.xcodeproj' -e 'xcuserdata' -e 'ZoenFFI\.xcframework' -e 'ZoenFFI\.generated\.swift' \
   -e '/\.[^/]*$' -e '\.swp$' -e '~$' \
   "$ROOT/apple" "$ROOT/crates" |
 while IFS= read -r path; do

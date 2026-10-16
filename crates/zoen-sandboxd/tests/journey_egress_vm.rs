@@ -5,7 +5,6 @@
 mod common;
 
 use common::*;
-use roda_types::AgentRequest;
 use rustls::pki_types::{CertificateDer, PrivateKeyDer, PrivatePkcs8KeyDer};
 use std::collections::HashMap;
 use std::net::{IpAddr, Ipv4Addr};
@@ -19,6 +18,7 @@ use zoen_egress::{
     SecretBinding, SecretSource,
 };
 use zoen_sandboxd::FirecrackerProvider;
+use zoen_types::AgentRequest;
 
 const KEY: &str = "sk_live_REAL_never_in_the_vm";
 

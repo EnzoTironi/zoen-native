@@ -17,9 +17,9 @@ use axum::{
 };
 use futures_util::StreamExt;
 use object_store::{path::Path as ObjPath, ObjectStoreExt, PutMode, PutOptions, PutPayload};
-use roda_log::verify_sig;
-use roda_proto::transfer_message;
 use sha2::{Digest, Sha256};
+use zoen_log::verify_sig;
+use zoen_proto::transfer_message;
 
 use crate::Shared;
 

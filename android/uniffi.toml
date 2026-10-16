@@ -1,6 +1,6 @@
 [defaults.bindings.kotlin]
 package_name = "xyz.tironi.zoen.core"
-cdylib_name = "roda_ffi"
+cdylib_name = "zoen_ffi"
 android = true
 
 [defaults.bindings.kotlin.rename]

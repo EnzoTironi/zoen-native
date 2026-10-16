@@ -1,5 +1,5 @@
 import SwiftUI
-import RodaCore
+import ZoenCore
 
 /// Start a direct chat, group, or community, or join with an invite code.
 /// People search and invites go through the relay; the chat itself is created on this

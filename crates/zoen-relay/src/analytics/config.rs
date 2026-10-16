@@ -11,10 +11,10 @@ use axum::{
     response::{IntoResponse, Response},
     Json,
 };
-use roda_log::verify_sig;
-use roda_proto::experiments::{report_message, valid_unit, ClientReport, RemoteConfig};
 use sha2::{Digest, Sha256};
 use sqlx::PgPool;
+use zoen_log::verify_sig;
+use zoen_proto::experiments::{report_message, valid_unit, ClientReport, RemoteConfig};
 
 use crate::Shared;
 
@@ -192,7 +192,7 @@ fn record(st: &Shared, identity: &str, r: ClientReport) -> usize {
         let campaign = src
             .campaign
             .as_deref()
-            .and_then(roda_proto::experiments::clean_campaign);
+            .and_then(zoen_proto::experiments::clean_campaign);
         a.source(identity, src.kind.as_str(), campaign);
     }
     let cfg = a.config.get();

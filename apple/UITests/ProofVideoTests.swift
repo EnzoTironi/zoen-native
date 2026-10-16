@@ -1,14 +1,14 @@
 import XCTest
 
-/// Paced flows for screen-recorded proof videos (`roda-shots/record-test.sh`).
+/// Paced flows for screen-recorded proof videos (`zoen-shots/record-test.sh`).
 /// Showcase seed, pt-BR, light. Each test asserts its key moment so a broken video fails.
 final class ProofVideoTests: XCTestCase {
     @MainActor
     private func launch(_ extra: [String] = []) -> XCUIApplication {
         let app = XCUIApplication()
         app.launchArguments = [
-            "-RodaShowcase", "YES", "-RodaDemo", "YES", "-RodaFreshStart", "YES", "-RodaResetDemo", "YES",
-            "-RodaWowReset", "YES", "-AppleLanguages", "(pt-BR)", "-RodaAppearance", "light",
+            "-ZoenShowcase", "YES", "-ZoenDemo", "YES", "-ZoenFreshStart", "YES", "-ZoenResetDemo", "YES",
+            "-ZoenWowReset", "YES", "-AppleLanguages", "(pt-BR)", "-ZoenAppearance", "light",
         ] + extra
         app.launch()
         return app
@@ -19,7 +19,7 @@ final class ProofVideoTests: XCTestCase {
     /// ("Sempre negar"), a button, and the all-caught-up end state.
     @MainActor
     func testApprovalsSwipeProof() throws {
-        let app = launch(["-RodaApprovalsExplained", "YES", "-RodaOpen", "aprovacoes"])
+        let app = launch(["-ZoenApprovalsExplained", "YES", "-ZoenOpen", "aprovacoes"])
         let card = app.descendants(matching: .any)["approval-card"].firstMatch
         XCTAssertTrue(card.waitForExistence(timeout: 20), "the stack opens on a card")
         sleep(2)
@@ -74,7 +74,7 @@ final class ProofVideoTests: XCTestCase {
     /// WOW: Store ink stamp → new Space draws in its art → first message flourish.
     @MainActor
     func testWowMomentsProof() throws {
-        let app = launch(["-RodaTab", "store"])
+        let app = launch(["-ZoenTab", "store"])
         let get = app.buttons["Obter"].firstMatch
         XCTAssertTrue(get.waitForExistence(timeout: 20), "Store has a Get button")
         sleep(2)
@@ -103,7 +103,7 @@ final class ProofVideoTests: XCTestCase {
     /// Person sheet from a sender name, then Guia via the title menu → Membros → art picker.
     @MainActor
     func testProfileSheetProof() throws {
-        let app = launch(["-RodaOpen", "coastal"])
+        let app = launch(["-ZoenOpen", "coastal"])
         XCTAssertTrue(app.buttons["zoenBack"].waitForExistence(timeout: 20))
         sleep(3)
         let ana = app.descendants(matching: .any).matching(NSPredicate(format: "label == %@", "Ana")).firstMatch
@@ -141,7 +141,7 @@ final class ProofVideoTests: XCTestCase {
     /// Hold + → record → release: the voice note flies into Zoen's chat.
     @MainActor
     func testPlusVoiceProof() throws {
-        let app = launch(["-RodaVoiceDemo", "plus"])
+        let app = launch(["-ZoenVoiceDemo", "plus"])
         XCTAssertTrue(app.staticTexts["Turma do Sábado"].waitForExistence(timeout: 20))
         sleep(1)
         let plus = app.buttons["Criar e mais"]

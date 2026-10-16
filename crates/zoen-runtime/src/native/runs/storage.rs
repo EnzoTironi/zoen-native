@@ -183,7 +183,7 @@ impl Execution {
         let principal = &record.original.context.principal;
         let run_key = self.run(&record.locator.run, "lease");
         let device_key = self.native_lease(principal);
-        let holder = roda_types::new_id("reply-worker");
+        let holder = zoen_types::new_id("reply-worker");
         let mut fences = Vec::new();
         for key in [&run_key, &device_key] {
             let token = if let Some(prior) = trx.get(key, false).await? {

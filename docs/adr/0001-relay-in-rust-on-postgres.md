@@ -11,7 +11,7 @@ server were Matrix (Synapse/Conduit), a hosted BaaS (Supabase/Firebase), or our 
 
 ## Decision
 Our own relay, `zoen-relay`: axum + tokio for HTTP/WebSocket, sqlx on Postgres. It reuses
-`roda-types`, `roda-log` and `roda-proto`, so client and server verify with the same code.
+`zoen-types`, `zoen-log` and `zoen-proto`, so client and server verify with the same code.
 Per-Space ordering is a `SELECT … FOR UPDATE` on the Space row inside the insert
 transaction: writers to one Space serialize, different Spaces run in parallel.
 

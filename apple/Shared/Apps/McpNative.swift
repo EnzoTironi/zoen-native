@@ -3,7 +3,7 @@ import WebKit
 import CryptoKit
 import CoreLocation
 import EventKit
-import RodaCore
+import ZoenCore
 #if os(iOS)
 import PhotosUI
 import UniformTypeIdentifiers
@@ -326,9 +326,9 @@ enum NativeCapabilities {
         return caps
     }
 
-    /// HealthKit is behind an entitlement we don't ship: off unless `-RodaHealthKit YES`, and
+    /// HealthKit is behind an entitlement we don't ship: off unless `-ZoenHealthKit YES`, and
     /// even then it answers honestly that it isn't wired.
-    static var healthEnabled: Bool { UserDefaults.standard.bool(forKey: "RodaHealthKit") }
+    static var healthEnabled: Bool { UserDefaults.standard.bool(forKey: "ZoenHealthKit") }
 
     static func perform(_ cap: String, params: [String: Any], item: String) async throws -> Any {
         switch cap {

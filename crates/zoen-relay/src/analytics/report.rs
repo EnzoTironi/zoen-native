@@ -359,7 +359,7 @@ fn headline(s: &DayStats) -> serde_json::Value {
 pub async fn report(
     pool: &PgPool,
     everyone: bool,
-    config: &roda_proto::experiments::RemoteConfig,
+    config: &zoen_proto::experiments::RemoteConfig,
 ) -> anyhow::Result<Report> {
     rollup(pool).await?;
     let t = today();

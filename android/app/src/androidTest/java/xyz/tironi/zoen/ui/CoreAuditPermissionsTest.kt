@@ -16,7 +16,7 @@ class CoreAuditPermissionsTest {
         val context = ApplicationProvider.getApplicationContext<ZoenApplication>()
         val directory = File(context.noBackupFilesDir, "audit-${UUID.randomUUID()}").apply { mkdirs() }
         val path = File(directory, "audit.sqlite").absolutePath
-        var core = RodaEngine.open(path, "en")
+        var core = ZoenEngine.open(path, "en")
         try {
             core.seedDemoIfEmpty()
             val space = core.spaces().first { it.members.any { member -> member.isMe } }
@@ -61,7 +61,7 @@ class CoreAuditPermissionsTest {
 
             val before = core.logEvents(space.id).size
             core.destroy()
-            core = RodaEngine.open(path, "en")
+            core = ZoenEngine.open(path, "en")
             assertEquals(before, core.logEvents(space.id).size)
             assertFalse(core.standingDecisions().any { it.grantId == standingId })
             assertFalse(core.appDeviceGrants().any { it.grantId == deviceId || it.grantId == onceId })

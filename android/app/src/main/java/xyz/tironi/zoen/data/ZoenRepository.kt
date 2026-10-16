@@ -51,7 +51,7 @@ class ZoenRepository(private val context: Context) {
     private val changes = Channel<Unit>(Channel.CONFLATED)
     private val errors = Channel<String>(Channel.BUFFERED)
     val errorEvents = errors.receiveAsFlow()
-    private var engine: RodaEngine? = null
+    private var engine: ZoenEngine? = null
     private var syncRunning = false
     private var backgroundOwner: Any? = null
     private var openedLanguage: String? = null
@@ -200,7 +200,7 @@ class ZoenRepository(private val context: Context) {
             }
             try {
                 val demo = BuildConfig.DEBUG && (requestDemo || preferences.getBoolean("demo", false))
-                val core = RodaEngine.open(databaseFile(demo).absolutePath, locale)
+                val core = ZoenEngine.open(databaseFile(demo).absolutePath, locale)
                 engine = core
                 openedLanguage = language
                 mutableState.value = mutableState.value.copy(demo = demo)
@@ -236,11 +236,11 @@ class ZoenRepository(private val context: Context) {
         )
     }
 
-    suspend fun <T> query(block: (RodaEngine) -> T): T = withContext(Dispatchers.IO) {
+    suspend fun <T> query(block: (ZoenEngine) -> T): T = withContext(Dispatchers.IO) {
         gate.withLock { block(checkNotNull(engine) { "Zoen is still opening." }) }
     }
 
-    suspend fun <T> change(block: (RodaEngine) -> T): T = withContext(Dispatchers.IO) {
+    suspend fun <T> change(block: (ZoenEngine) -> T): T = withContext(Dispatchers.IO) {
         gate.withLock {
             val result = block(checkNotNull(engine) { "Zoen is still opening." })
             refreshLocked()
@@ -324,7 +324,7 @@ class ZoenRepository(private val context: Context) {
             try {
                 block(file)
             } finally {
-                engine = RodaEngine.open(file.absolutePath, locale)
+                engine = ZoenEngine.open(file.absolutePath, locale)
                 openedLanguage = Locale.forLanguageTag(locale).language
                 updateSyncLocked()
                 refreshLocked()
@@ -338,7 +338,7 @@ class ZoenRepository(private val context: Context) {
         return File(dir, name)
     }
 
-    suspend fun <T> network(block: suspend (RodaEngine) -> T): T {
+    suspend fun <T> network(block: suspend (ZoenEngine) -> T): T {
         val core = query { it }
         val result = block(core)
         refresh()

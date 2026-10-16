@@ -4,7 +4,6 @@
 
 use bytes::Bytes;
 use ed25519_dalek::SigningKey;
-use roda_types::ActionClass;
 use std::sync::atomic::Ordering;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
@@ -16,6 +15,7 @@ use zoen_agentd::session::{SessionError, ToolSession};
 use zoen_agentd::{
     EgressRule, ExecRequest, Needs, Route, Router, SandboxProvider, Tier, ToolManifest,
 };
+use zoen_types::ActionClass;
 
 const NOW: i64 = 1_791_000_000_000;
 

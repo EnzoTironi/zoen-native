@@ -25,10 +25,10 @@ default = []
 embedded-pg = ["dep:postgresql_embedded"]
 
 [dependencies]
-roda-types.workspace = true
-roda-log.workspace = true
-roda-proto.workspace = true
-roda-mls.workspace = true
+zoen-types.workspace = true
+zoen-log.workspace = true
+zoen-proto.workspace = true
+zoen-mls.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 hex.workspace = true
@@ -58,13 +58,13 @@ opentelemetry_sdk = { version = "0.33", default-features = false, features = ["t
 opentelemetry-otlp = { version = "0.33", default-features = false, features = ["trace", "logs", "http-proto", "reqwest-blocking-client", "internal-logs"] }
 tracing-opentelemetry = "0.34"
 opentelemetry-appender-tracing = "0.33"
-# Daily aggregate export to PostHog (analytics/export.rs); ring, like roda-ffi.
+# Daily aggregate export to PostHog (analytics/export.rs); ring, like zoen-ffi.
 reqwest = { version = "0.13", default-features = false, features = ["rustls-no-provider", "http2"] }
 # Signs APNs (ES256) and FCM (RS256) JWTs; already in the tree through rustls.
 ring = "0.17"
 rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12", "logging"] }
 
 [dev-dependencies]
-roda-mls = { workspace = true, features = ["device"] }
+zoen-mls = { workspace = true, features = ["device"] }
 rusqlite.workspace = true
 tokio-tungstenite = { version = "0.30", default-features = false, features = ["connect", "handshake"] }

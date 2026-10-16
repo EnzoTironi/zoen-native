@@ -120,7 +120,7 @@ class NativeParityTest {
         val folder = File(context.noBackupFilesDir, namespace).apply { mkdirs() }
         val database = File(folder, "account.sqlite").absolutePath
         val vault = AndroidSecretVault(context, "$namespace-vault")
-        var core = RodaEngine.open(database, "en")
+        var core = ZoenEngine.open(database, "en")
         try {
             core.createAccount("Rich Page Test", "rich_page_test", "http://10.0.2.2:18787", vault)
             val space = core.spaces().first { it.counterpart?.handle == "zoen" }
@@ -137,7 +137,7 @@ class NativeParityTest {
             assertEquals(original.blocks, core.pageAt(item.id, 1u).blocks)
             assertTrue(core.pageMarkdown(item.id).contains("**styled 🌿**"))
             core.destroy()
-            core = RodaEngine.open(database, "en")
+            core = ZoenEngine.open(database, "en")
             assertTrue(core.unlock(vault))
             val reopened = core.page(item.id)
             assertEquals(changed.spans, reopened.blocks.first { it.id == body.id }.spans)
@@ -157,7 +157,7 @@ class NativeParityTest {
 
     @Test fun everyWidgetTemplateInflatesAsRealRemoteViewsAndHidesSensitiveContent() {
         val context = ApplicationProvider.getApplicationContext<ZoenApplication>()
-        val core = RodaEngine.open(":memory:", "en")
+        val core = ZoenEngine.open(":memory:", "en")
         try {
             core.seedDemoIfEmpty()
             val space = core.spaces().first { it.counterpart?.handle == "zoen" }
@@ -258,7 +258,7 @@ class NativeParityTest {
         val context = ApplicationProvider.getApplicationContext<ZoenApplication>()
         if (Build.VERSION.SDK_INT >= 33) InstrumentationRegistry.getInstrumentation().uiAutomation.executeShellCommand("pm grant ${context.packageName} android.permission.POST_NOTIFICATIONS").use { android.os.ParcelFileDescriptor.AutoCloseInputStream(it).readBytes() }
         val manager = context.getSystemService(NotificationManager::class.java)
-        val core = RodaEngine.open(":memory:", "en")
+        val core = ZoenEngine.open(":memory:", "en")
         val tag = "chat:notification-${UUID.randomUUID()}"
         val preferences = context.getSharedPreferences("zoen", android.content.Context.MODE_PRIVATE)
         val hadChoice = preferences.contains("notifications"); val oldChoice = preferences.getBoolean("notifications", false)

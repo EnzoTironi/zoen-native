@@ -1,0 +1,1175 @@
+//! # zoen-proto — Zoen Sync, the wire protocol (version 4)
+//!
+//! One WebSocket per device, one protobuf message per binary frame ([`wire`]).
+//!
+//! ```text
+//! client                                         relay
+//!   Hello{protocol, caps, identity, device, cert} ──▶
+//!                                                ◀── Challenge{nonce, relay, protocol, caps}
+//!   Auth{sig(nonce)}                              ──▶
+//!                                                ◀── Ready{registered}
+//!   Req{Register{profile}}                        ──▶  (first time only)
+//!   Sync{cursors}                                 ──▶
+//!                                                ◀── Event{..}* SyncDone
+//!   Publish{envelope}                             ──▶  sequenced (per-Space order)
+//!                                                ◀── Accepted{seq} + Event{..} to every member online
+//!   Ephemeral{typing}                             ──▶  forwarded, never stored
+//! ```
+//!
+//! The relay orders and stores; it never rewrites. An envelope is the author's exact
+//! signed bytes ([`zoen_log::content`]) plus the signature: the relay decodes them to route,
+//! the client decodes them to show, and nobody encodes them again. Backpressure is the
+//! socket's: the relay writes through a bounded queue and disconnects a device that falls
+//! too far behind, which then resumes from its cursors.
+
+pub mod experiments;
+pub mod links;
+pub mod push;
+pub mod wire;
+
+use zoen_log::content::{content_hash, decode_body, stub_content, Payload, SignedContent};
+pub use zoen_log::content::{Sealed, SealedKind};
+use zoen_log::{
+    event_from_content, signed_content_hash, verify_author, verify_sig, Author, LogError,
+};
+use zoen_types::{Event, EventBody, Identity, IdentityId, Role, Seen, SpaceId};
+
+pub use zoen_log::profile::DeviceSigned;
+
+/// Version 4 requires explicit relay enrollment when linking a device. Version 3
+/// sponsors omitted that enrollment and could report a link that cannot log in.
+pub const PROTOCOL_VERSION: u32 = 4;
+/// Why a relay refuses a clear event in an end-to-end Space. A client that wrote it before
+/// it learned the Space went end-to-end (ADR 0027) seals it and sends it again.
+pub const SEAL_REQUIRED: &str = "this space is end-to-end encrypted; seal the event";
+/// Under this many single-use key packages the relay asks the device to publish more.
+pub const KEY_PACKAGES_LOW: u32 = 8;
+/// A connected relay must negotiate this before a client relies on claim replay.
+pub const KEY_PACKAGE_CLAIM_CAPABILITY: &str = "key-package-claim-receipts";
+/// A claim id is never reused once this retry window expires, even after receipt GC.
+pub const KEY_PACKAGE_CLAIM_TTL_MS: i64 = 24 * 60 * 60 * 1000;
+pub const KEY_PACKAGE_CLAIM_EXPIRED: &str = "key_package_claim_expired";
+/// Why a relay refuses a commit: another one already took its epoch (ADR 0026). The author
+/// drops it, applies the winner from the log, and commits again if anything is still owed.
+pub const STALE_COMMIT: &str = "stale_epoch: another commit took this epoch";
+/// Why a relay refuses a message sealed at an epoch the group has left (a device that
+/// sealed before catching up). It waits, catches up, and seals again at the new epoch.
+pub const STALE_SEAL: &str = "stale_epoch: sealed at an epoch the group has left";
+/// Refuse older clients before authentication, linking or delivering sealed v4 entries.
+pub const MIN_PROTOCOL_VERSION: u32 = 4;
+/// Domain tag for what devices sign outside the log (login, blob uploads).
+/// This stays stable across handshake upgrades; changing it would change signed bytes.
+pub const PROTOCOL: &str = "zoen-sync/2";
+/// Optional features; each side announces its own and uses the intersection.
+pub const AGENT_OWNER_PROOF: &str = "agent_owner_proof_v1";
+pub const CAPABILITIES: &[&str] = &[
+    "blobs",
+    "invites",
+    "presence",
+    "profiles",
+    AGENT_OWNER_PROOF,
+    KEY_PACKAGE_CLAIM_CAPABILITY,
+];
+
+/// A database-clock sample from the authenticated, receipt-capable relay connection.
+/// This value is never extrapolated using the device's wall clock.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct KeyPackageClaimClock(i64);
+
+impl KeyPackageClaimClock {
+    pub fn from_server_ms(time: i64) -> Option<Self> {
+        (1..=0xFFFF_FFFF_FFFF).contains(&time).then_some(Self(time))
+    }
+
+    pub fn milliseconds(self) -> i64 {
+        self.0
+    }
+}
+
+/// Canonical uppercase ULIDs only: no prefixes, aliases or overflowing leading bits.
+pub fn key_package_claim_time_ms(operation: &str) -> Option<i64> {
+    if operation.len() != 26
+        || !matches!(operation.as_bytes().first(), Some(b'0'..=b'7'))
+        || operation.bytes().any(|c| c.is_ascii_lowercase())
+    {
+        return None;
+    }
+    zoen_types::id_time_ms(operation)
+}
+
+/// The capabilities both sides have, in our order.
+pub fn negotiate(theirs: &[String]) -> Vec<String> {
+    CAPABILITIES
+        .iter()
+        .filter(|c| theirs.iter().any(|t| t == *c))
+        .map(|c| c.to_string())
+        .collect()
+}
+
+/// What a device publishes: the author's signed bytes, not sequenced yet.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Envelope {
+    content: Vec<u8>,
+    parsed: SignedContent,
+    pub sig: String,
+    pub cert: Option<String>,
+    /// Transport only, never stored: the invite code that lets a newcomer add themselves.
+    pub invite: Option<String>,
+    /// Already-pruned v3 entries retain the original hash carried by old relays.
+    /// Its signature authenticates that hash, not the surviving header. Those lost
+    /// bytes cannot be recovered by an upgrade; new v4 stubs authenticate both.
+    legacy_pruned: Option<String>,
+}
+
+impl Envelope {
+    /// `None` when `content` isn't a v3 signed content.
+    pub fn new(
+        content: Vec<u8>,
+        sig: String,
+        cert: Option<String>,
+        invite: Option<String>,
+    ) -> Option<Self> {
+        if invite
+            .as_deref()
+            .is_some_and(|code| !valid_invite_code(code))
+        {
+            return None;
+        }
+        let parsed = SignedContent::parse(&content)?;
+        parsed.payload.as_ref()?;
+        Some(Self {
+            content,
+            parsed,
+            sig,
+            cert,
+            invite,
+            legacy_pruned: None,
+        })
+    }
+
+    /// The stub a pruned sealed entry leaves (ADR 0026): the same header and kind and the
+    /// hash of the MLS bytes, without them. It hashes and verifies like the original.
+    /// `None` for anything that isn't sealed, or is already a stub.
+    pub fn pruned(&self) -> Option<Envelope> {
+        if self.is_pruned()
+            || (self.parsed.v == 3 && self.wire_hash() == content_hash(&self.content))
+        {
+            // Full legacy ciphertext remains intact: its old signature cannot
+            // authenticate a replacement digest. Never create another weak stub.
+            return None;
+        }
+        let content = stub_content(&self.content)?;
+        Envelope::new(content, self.sig.clone(), self.cert.clone(), None)
+    }
+
+    /// A stub the relay left when it pruned this entry.
+    pub fn is_pruned(&self) -> bool {
+        self.legacy_pruned.is_some()
+            || matches!(&self.parsed.payload, Some(Payload::Sealed(s)) if s.is_stub())
+    }
+
+    pub fn legacy_pruned_hash(&self) -> Option<&str> {
+        self.legacy_pruned.as_deref()
+    }
+
+    pub(crate) fn with_legacy_pruned(mut self, hash: Option<String>) -> Option<Self> {
+        if let Some(original) = &hash {
+            if self.parsed.v != 3
+                || !matches!(&self.parsed.payload, Some(Payload::Sealed(s)) if s.data.is_empty() && s.data_hash.is_empty())
+                || original.len() != 64
+                || !original.bytes().all(|b| b.is_ascii_hexdigit())
+            {
+                return None;
+            }
+        }
+        self.legacy_pruned = hash;
+        Some(self)
+    }
+
+    /// Wraps a signed, unsequenced plaintext event.
+    pub fn plain(e: &Event) -> Self {
+        Self::new(e.content.clone(), e.sig.clone(), e.cert.clone(), None)
+            .expect("events carry v3 content")
+    }
+
+    /// Wraps MLS ciphertext signed by `author`'s device.
+    pub fn sealed(
+        author: &Author,
+        space: &str,
+        client_id: &str,
+        at_ms: i64,
+        seen: Option<&Seen>,
+        sealed: Sealed,
+    ) -> Self {
+        let (content, sig) = author.sign_sealed(space, client_id, at_ms, seen, sealed);
+        Self::new(content, sig, author.cert.clone(), None).expect("sealed content parses")
+    }
+
+    /// The MLS bytes and their kind, for envelopes MLS opens.
+    pub fn sealed_data(&self) -> Option<(SealedKind, &[u8])> {
+        match &self.parsed.payload {
+            Some(Payload::Sealed(s)) => Some((
+                SealedKind::try_from(s.kind).unwrap_or(SealedKind::Unspecified),
+                &s.data,
+            )),
+            _ => None,
+        }
+    }
+
+    pub fn recovery(&self) -> Option<&[u8]> {
+        // Legacy tag-5/v3 stubs authenticate their retained digest, not these
+        // surviving header fields. Recovery references were introduced in v4.
+        if self.parsed.v != 4 || self.legacy_pruned.is_some() {
+            return None;
+        }
+        match &self.parsed.payload {
+            Some(Payload::Sealed(s)) if !s.recovery.is_empty() => Some(&s.recovery),
+            _ => None,
+        }
+    }
+
+    pub fn content(&self) -> &[u8] {
+        &self.content
+    }
+
+    pub fn space(&self) -> &str {
+        &self.parsed.space
+    }
+
+    pub fn client_id(&self) -> &str {
+        &self.parsed.client_id
+    }
+
+    pub fn author(&self) -> &str {
+        &self.parsed.author
+    }
+
+    pub fn device(&self) -> Option<&str> {
+        self.parsed.device.as_deref()
+    }
+
+    pub fn at_ms(&self) -> i64 {
+        self.parsed.at_ms
+    }
+
+    pub fn seen(&self) -> Option<Seen> {
+        self.parsed.seen()
+    }
+
+    pub fn is_sealed(&self) -> bool {
+        matches!(self.parsed.payload, Some(Payload::Sealed(_)))
+    }
+
+    /// What a sealed envelope carries, from its clear framing (`None` when plain).
+    pub fn sealed_kind(&self) -> Option<SealedKind> {
+        self.sealed_data().map(|(kind, _)| kind)
+    }
+
+    /// The body, for envelopes the relay may read (`None` when sealed).
+    pub fn body(&self) -> Option<EventBody> {
+        match &self.parsed.payload {
+            Some(Payload::Body(b)) => Some(decode_body(b)),
+            _ => None,
+        }
+    }
+
+    /// The hash the chain links: over the exact bytes, plain or sealed.
+    pub fn wire_hash(&self) -> String {
+        self.legacy_pruned
+            .clone()
+            .unwrap_or_else(|| signed_content_hash(&self.content, &self.sig))
+    }
+
+    /// Checks the device certificate and the author's signature over the bytes.
+    pub fn verify(&self) -> Result<(), LogError> {
+        if let Some(e) = self.plain_event() {
+            return verify_author(&e);
+        }
+        let signer = match self.device() {
+            Some(d) => {
+                let cert = self
+                    .cert
+                    .as_deref()
+                    .ok_or(LogError::BadDeviceCert { seq: 0 })?;
+                if !verify_sig(self.author(), &zoen_log::device_cert_message(d), cert) {
+                    return Err(LogError::BadDeviceCert { seq: 0 });
+                }
+                d
+            }
+            None => self.author(),
+        };
+        if verify_sig(
+            signer,
+            &zoen_log::content::signature_message(&self.content, &self.wire_hash()),
+            &self.sig,
+        ) {
+            Ok(())
+        } else {
+            Err(LogError::BadSignature { seq: 0 })
+        }
+    }
+
+    /// The event as the relay sees it (plain only), unsequenced.
+    pub fn plain_event(&self) -> Option<Event> {
+        if self.is_sealed() {
+            return None;
+        }
+        event_from_content(
+            self.content.clone(),
+            self.sig.clone(),
+            self.cert.clone(),
+            0,
+            String::new(),
+            String::new(),
+        )
+        .ok()
+    }
+
+    /// Size guard input: the bytes the relay will store.
+    pub fn stored_len(&self) -> usize {
+        self.content.len() + self.sig.len() + self.cert.as_ref().map_or(0, String::len)
+    }
+
+    /// Payload retained while routing/queuing, including the unsigned invite.
+    pub fn retained_len(&self) -> usize {
+        self.stored_len()
+            .saturating_add(self.invite.as_ref().map_or(0, String::len))
+    }
+
+    pub fn valid_invite(&self) -> bool {
+        self.invite.as_deref().is_none_or(valid_invite_code)
+    }
+}
+
+/// Relay capabilities contain ten Crockford-base32 characters. Existing clients
+/// can send lowercase; surrounding formatting is normalized before publishing.
+pub fn valid_invite_code(code: &str) -> bool {
+    code.len() == 10
+        && code
+            .bytes()
+            .all(|c| b"0123456789ABCDEFGHJKMNPQRSTVWXYZ".contains(&c.to_ascii_uppercase()))
+}
+
+/// An envelope after the relay put it in the Space's order.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Sequenced {
+    pub seq: u64,
+    pub prev: String,
+    pub hash: String,
+    pub env: Envelope,
+}
+
+impl Sequenced {
+    /// The plaintext event with its place in the chain (sealed envelopes need MLS first).
+    pub fn plain_event(&self) -> Option<Event> {
+        let mut e = self.env.plain_event()?;
+        e.seq = self.seq;
+        e.prev = self.prev.clone();
+        e.hash = self.hash.clone();
+        Some(e)
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Cursor {
+    pub space: SpaceId,
+    /// The first sequence number this device doesn't have yet.
+    pub next_seq: u64,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum EphemeralKind {
+    Typing,
+    StoppedTyping,
+    /// The agent (or person) is working: "processing", "building", "in_call"…
+    Status {
+        status: String,
+    },
+    /// Read up to and including `seq`.
+    Read {
+        seq: u64,
+    },
+    /// This person's devices hold everything up to and including `seq`. Like `Read`, one
+    /// aggregated watermark per person per Space; the relay keeps the newest and replays it
+    /// on sync, so a sender who was offline still sees its ticks.
+    Delivered {
+        seq: u64,
+    },
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub enum ClientFrame {
+    Hello {
+        protocol: u32,
+        capabilities: Vec<String>,
+        identity: IdentityId,
+        device: String,
+        cert: String,
+    },
+    Auth {
+        sig: String,
+    },
+    Req {
+        id: u64,
+        op: Op,
+    },
+    Publish {
+        env: Envelope,
+    },
+    Sync {
+        cursors: Vec<Cursor>,
+        all: bool,
+    },
+    Ephemeral {
+        space: SpaceId,
+        kind: EphemeralKind,
+    },
+    Ping,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum Op {
+    /// Publishes this identity's profile and claims its handle.
+    Register {
+        profile: Identity,
+    },
+    /// Exact handle, or a prefix search when `prefix` is set.
+    Lookup {
+        handle: String,
+        prefix: bool,
+    },
+    Profiles {
+        ids: Vec<IdentityId>,
+    },
+    CreateInvite {
+        space: SpaceId,
+        /// When set, this invite opens a chat with the agent instead of joining a Space.
+        agent: Option<IdentityId>,
+        role: Role,
+        max_uses: u32,
+        ttl_secs: u64,
+    },
+    PreviewInvite {
+        code: String,
+    },
+    /// Spends one use of an agent link, atomically against its `max_uses`, and returns
+    /// its preview. Space codes are redeemed by joining instead.
+    RedeemAgentInvite {
+        code: String,
+    },
+    /// The owner takes an agent's share link down; the next `CreateInvite` mints a new one.
+    RevokeAgentInvite {
+        agent: IdentityId,
+    },
+    /// Registers this device's push token ("apns", "apns-sandbox" or "fcm"); an empty
+    /// token removes it. The relay only ever sends a content-free wake to it.
+    RegisterPush {
+        platform: String,
+        token: String,
+    },
+    /// Publishes this identity's X25519 key for receiving profile keys (ADR 0016).
+    PublishAgreementKey {
+        public: String,
+        signed: DeviceSigned,
+    },
+    AgreementKeys {
+        ids: Vec<IdentityId>,
+    },
+    /// Stores this identity's encrypted profile; `version` must grow.
+    PutProfile {
+        profile: SealedProfile,
+    },
+    GetProfiles {
+        ids: Vec<IdentityId>,
+    },
+    /// Publishes MLS key packages for this device (ADR 0026). Each must name this identity
+    /// and device; `last_resort` replaces the device's previous one.
+    PublishKeyPackages {
+        packages: Vec<Vec<u8>>,
+        last_resort: Option<Vec<u8>>,
+    },
+    /// Takes one key package for each device of each identity, to add them to a group.
+    ClaimKeyPackages {
+        ids: Vec<IdentityId>,
+        /// Absent in legacy clients. Stable across reconnects for one logical claim.
+        operation_id: Option<String>,
+    },
+    /// Leaves a sealed link box for a device being linked (ADR 0045), under `id` = SHA-256
+    /// of the link secret in its QR code. Only the new device can open it. The identity
+    /// box also enrolls its certified device; history manifests carry no device.
+    DeliverLink {
+        id: String,
+        sealed: Vec<u8>,
+        device: Option<DeviceCertificate>,
+    },
+    /// Takes the link box under `id`, if it is there yet. The one op a device being linked
+    /// (signed in as itself, not registered) may use besides registering.
+    FetchLink {
+        id: String,
+    },
+    /// This identity's devices, unlinked ones included.
+    Devices,
+    /// Unlinks one of this identity's devices: it can't sign in again and its key packages
+    /// go. Its leaves leave the groups through commits by the other devices.
+    Unlink {
+        device: String,
+    },
+    /// Sends sealed bytes to another linked device of this identity that is online (ADR
+    /// 0043: history pages). Nothing is stored; an offline device just doesn't get it.
+    SendDevice {
+        to: String,
+        sealed: Vec<u8>,
+    },
+    /// Agent citizens (migration 0028): the runtime's own state and cursors, or an
+    /// owner's control over an agent it answers for.
+    Agent(AgentRequest),
+}
+
+/// What an agent runtime or its owner asks the relay about an agent citizen.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum AgentRequest {
+    /// The signed-in agent: its status, current definition and per-Space cursors.
+    State,
+    /// The signed-in agent handled its Space through `seq` (inclusive).
+    Advance { space: SpaceId, seq: u64 },
+    /// A new definition version. The owner may always; the agent only for its first.
+    Define {
+        agent: IdentityId,
+        version: u32,
+        kind: String,
+        definition: Vec<u8>,
+    },
+    /// Owner only: one of your agents' status ("active", "paused" or "revoked").
+    Status { agent: IdentityId },
+    /// Owner only.
+    Control {
+        agent: IdentityId,
+        action: AgentAction,
+    },
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum AgentAction {
+    Pause,
+    Resume,
+    /// Final: the agent's runtime device is revoked too.
+    Revoke,
+}
+
+impl AgentAction {
+    pub fn id(self) -> &'static str {
+        match self {
+            AgentAction::Pause => "pause",
+            AgentAction::Resume => "resume",
+            AgentAction::Revoke => "revoke",
+        }
+    }
+
+    pub fn parse(s: &str) -> Option<Self> {
+        match s {
+            "pause" => Some(AgentAction::Pause),
+            "resume" => Some(AgentAction::Resume),
+            "revoke" => Some(AgentAction::Revoke),
+            _ => None,
+        }
+    }
+}
+
+/// The relay's single source of truth for an agent runtime.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct AgentStateRecord {
+    /// "active", "paused" or "revoked".
+    pub status: String,
+    /// "Creator" or "User"; empty until the first definition.
+    pub kind: String,
+    pub definition_version: u32,
+    pub definition: Vec<u8>,
+    /// Last handled seq per Space.
+    pub cursors: Vec<(SpaceId, u64)>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct DeviceCertificate {
+    pub device: String,
+    pub cert: String,
+}
+
+impl Op {
+    /// A stable name for metrics and traces; carries none of the op's data.
+    pub fn name(&self) -> &'static str {
+        match self {
+            Op::Register { .. } => "register",
+            Op::Lookup { .. } => "lookup",
+            Op::Profiles { .. } => "profiles",
+            Op::CreateInvite { .. } => "create_invite",
+            Op::PreviewInvite { .. } => "preview_invite",
+            Op::RedeemAgentInvite { .. } => "redeem_agent_invite",
+            Op::RevokeAgentInvite { .. } => "revoke_agent_invite",
+            Op::RegisterPush { .. } => "register_push",
+            Op::PublishAgreementKey { .. } => "publish_agreement_key",
+            Op::AgreementKeys { .. } => "agreement_keys",
+            Op::PutProfile { .. } => "put_profile",
+            Op::GetProfiles { .. } => "get_profiles",
+            Op::PublishKeyPackages { .. } => "publish_key_packages",
+            Op::ClaimKeyPackages { .. } => "claim_key_packages",
+            Op::DeliverLink { .. } => "deliver_link",
+            Op::FetchLink { .. } => "fetch_link",
+            Op::Devices => "devices",
+            Op::Unlink { .. } => "unlink",
+            Op::SendDevice { .. } => "send_device",
+            Op::Agent(AgentRequest::State) => "agent_state",
+            Op::Agent(AgentRequest::Advance { .. }) => "agent_advance",
+            Op::Agent(AgentRequest::Define { .. }) => "agent_define",
+            Op::Agent(AgentRequest::Control { .. }) => "agent_control",
+            Op::Agent(AgentRequest::Status { .. }) => "agent_status",
+        }
+    }
+}
+
+/// An identity's agreement key as the directory serves it, with the device signature
+/// that lets anyone check it came from that identity.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct AgreementKeyRecord {
+    pub identity: IdentityId,
+    pub public: String,
+    pub signed: DeviceSigned,
+}
+
+/// An encrypted profile: what the relay stores and serves. Only holders of the owner's
+/// profile key can read `ciphertext`.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct SealedProfile {
+    pub identity: IdentityId,
+    pub version: u64,
+    pub ciphertext: Vec<u8>,
+    pub signed: DeviceSigned,
+}
+
+/// The typed answer to each [`Op`].
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum Reply {
+    /// Register: the profile as stored (handle normalized).
+    Registered(Identity),
+    /// Lookup and Profiles.
+    Profiles(Vec<Identity>),
+    Invite(InviteCreated),
+    Preview(InvitePreview),
+    Done,
+    AgreementKeys(Vec<AgreementKeyRecord>),
+    SealedProfiles(Vec<SealedProfile>),
+    KeyPackages(Vec<KeyPackageRecord>),
+    /// FetchLink: the sealed box, `None` while nobody left one.
+    Link(Option<Vec<u8>>),
+    Devices(Vec<DeviceRecord>),
+    AgentState(AgentStateRecord),
+}
+
+/// One of an identity's devices, as the directory has it.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct DeviceRecord {
+    pub device: String,
+    pub revoked: bool,
+}
+
+/// One device's MLS key package, as claimed. Members re-check the leaf inside; the relay's
+/// check only keeps junk out of the table.
+#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct KeyPackageRecord {
+    pub identity: IdentityId,
+    pub device: String,
+    pub data: Vec<u8>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct InvitePreview {
+    pub space: SpaceId,
+    pub role: Role,
+    pub title: String,
+    pub members: u32,
+    pub inviter: Option<Identity>,
+    /// `space` or `agent`.
+    pub kind: String,
+    /// Present when `kind` is `agent`.
+    pub agent: Option<Box<Identity>>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct InviteCreated {
+    pub code: String,
+    pub expires_at_ms: i64,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ErrorCode {
+    Other,
+    /// The client's protocol is older than [`MIN_PROTOCOL_VERSION`]: update the app.
+    UpgradeRequired,
+    /// Login or certificate failed: retrying won't help.
+    Unauthorized,
+    /// A dependency is down: retry with backoff.
+    Unavailable,
+    /// Too much, too fast: retry after the delay in the message ([`retry_hint`]).
+    RateLimited,
+}
+
+/// The relay's words for every rate-limit refusal; [`retry_hint`] reads the delay back.
+pub fn slow_down(retry: std::time::Duration) -> String {
+    format!("slow down, retry in {:.1} s", retry.as_secs_f64().max(0.1))
+}
+
+pub fn retry_hint(message: &str) -> Option<std::time::Duration> {
+    let secs = message.split("retry in ").nth(1)?.split(' ').next()?;
+    let secs: f64 = secs
+        .parse()
+        .ok()
+        .filter(|s: &f64| s.is_finite() && *s >= 0.0)?;
+    Some(std::time::Duration::from_secs_f64(secs.min(3_600.0)))
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub enum ServerFrame {
+    Challenge {
+        nonce: String,
+        relay: String,
+        protocol: u32,
+        capabilities: Vec<String>,
+        /// Optional PG clock sample; required before relying on claim receipts.
+        server_time_ms: Option<i64>,
+    },
+    Ready {
+        identity: IdentityId,
+        registered: bool,
+    },
+    Res {
+        id: u64,
+        result: Result<Reply, String>,
+    },
+    Event {
+        ev: Sequenced,
+    },
+    Accepted {
+        space: SpaceId,
+        client_id: String,
+        seq: u64,
+    },
+    Rejected {
+        space: SpaceId,
+        client_id: String,
+        reason: String,
+        permanent: bool,
+    },
+    Ephemeral {
+        space: SpaceId,
+        from: IdentityId,
+        kind: EphemeralKind,
+    },
+    Presence {
+        identity: IdentityId,
+        online: bool,
+    },
+    /// Someone you share a Space with stored a new profile version.
+    ProfileChanged {
+        identity: IdentityId,
+        version: u64,
+    },
+    /// One of your devices is running out of single-use MLS key packages (ADR 0026): it
+    /// should publish more. Sent at login and after a claim leaves it under
+    /// [`KEY_PACKAGES_LOW`]. Other devices of the identity ignore it.
+    KeyPackagesLow {
+        device: String,
+        remaining: u32,
+    },
+    /// Sealed bytes from another device of yours (`Op::SendDevice`); the others ignore it.
+    DeviceMessage {
+        from: String,
+        to: String,
+        sealed: Vec<u8>,
+    },
+    /// You were added to a Space: sync it from the start.
+    Joined {
+        space: SpaceId,
+    },
+    SyncDone,
+    Pong {
+        server_time_ms: Option<i64>,
+    },
+    Error {
+        code: ErrorCode,
+        message: String,
+    },
+}
+
+impl ServerFrame {
+    pub fn error(code: ErrorCode, message: impl Into<String>) -> Self {
+        ServerFrame::Error {
+            code,
+            message: message.into(),
+        }
+    }
+}
+
+/// What the device signs to log in: binds the nonce to this relay and protocol.
+pub fn auth_message(nonce: &str, relay: &str) -> Vec<u8> {
+    format!("{PROTOCOL}:auth:{relay}:{nonce}").into_bytes()
+}
+
+/// What a device signs to upload a blob: binds the content hash and a timestamp to this
+/// relay, so a captured header only re-uploads the same bytes for a few minutes.
+/// What a device signs to put or delete a chunk of a history transfer (ADR 0045).
+/// `op` is "put" or "delete"; `n` and `sha256` are empty for a delete.
+pub fn transfer_message(op: &str, transfer: &str, n: &str, sha256: &str, ts_ms: i64) -> Vec<u8> {
+    format!("{PROTOCOL}:transfer-{op}:{transfer}:{n}:{sha256}:{ts_ms}").into_bytes()
+}
+
+pub fn blob_put_message(sha256: &str, ts_ms: i64, relay: &str) -> Vec<u8> {
+    format!("{PROTOCOL}:blob-put:{relay}:{sha256}:{ts_ms}").into_bytes()
+}
+
+/// Prefix followed by a 32-byte configuration generation and the encrypted backup.
+pub const BACKUP_UPLOAD_MAGIC: &[u8; 8] = b"ZOENBG1\0";
+
+/// Proof that a recovered device controls the key being enrolled for this backup.
+pub fn backup_enroll_message(
+    identity: &str,
+    device: &str,
+    cert: &str,
+    generation: &str,
+) -> Vec<u8> {
+    format!("{PROTOCOL}:backup-device-enroll:{identity}:{device}:{cert}:{generation}").into_bytes()
+}
+
+/// What a device signs for a backup write (ADR 0046): binds the operation, the identity,
+/// the body's hash and a timestamp to this relay.
+pub fn backup_message(
+    relay: &str,
+    identity: &str,
+    op: &str,
+    body_sha256: &str,
+    ts_ms: i64,
+) -> Vec<u8> {
+    format!("{PROTOCOL}:backup:{relay}:{identity}:{op}:{body_sha256}:{ts_ms}").into_bytes()
+}
+
+/// Handles: 3–24 chars, lowercase letters, digits, `_` and `.`; must start with a letter.
+pub fn normalize_handle(raw: &str) -> Option<String> {
+    let h = raw.trim().trim_start_matches('@').to_lowercase();
+    let ok_len = (3..=24).contains(&h.chars().count());
+    let ok_chars = h
+        .chars()
+        .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '_' || c == '.');
+    let ok_start = h
+        .chars()
+        .next()
+        .map(|c| c.is_ascii_lowercase())
+        .unwrap_or(false);
+    (ok_len && ok_chars && ok_start).then_some(h)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use zoen_log::{chain_hash, Signer, SpaceLog};
+    use zoen_types::GENESIS_PREV;
+
+    #[test]
+    fn recovery_reference_survives_pruning_and_cannot_be_substituted() {
+        let author = Author::root(Signer::generate());
+        let reference = zoen_log::recovery::RecoveryRef {
+            version: 1,
+            epoch: 7,
+            blob: "aa".repeat(32),
+        };
+        let mut sealed = Sealed::new(SealedKind::Commit, 1, b"MLS ciphertext".to_vec());
+        sealed.recovery = reference.encode();
+        let full = Envelope::sealed(&author, "space", "commit", 1, None, sealed);
+        let stub = full.pruned().unwrap();
+        assert_eq!(stub.recovery(), full.recovery());
+        assert_eq!(stub.wire_hash(), full.wire_hash());
+        stub.verify().unwrap();
+        let mut changed = stub.parsed.clone();
+        let Some(Payload::Sealed(sealed)) = &mut changed.payload else {
+            unreachable!()
+        };
+        sealed.recovery = zoen_log::recovery::RecoveryRef {
+            blob: "bb".repeat(32),
+            ..reference
+        }
+        .encode();
+        assert!(Envelope::new(changed.encode(), stub.sig, None, None)
+            .unwrap()
+            .verify()
+            .is_err());
+    }
+
+    fn fixture(name: &str) -> Sequenced {
+        let data: serde_json::Value = serde_json::from_str(include_str!(
+            "../../zoen-log/testdata/legacy-sealed-v3.json"
+        ))
+        .unwrap();
+        Sequenced::decode(&hex::decode(data[name].as_str().unwrap()).unwrap()).unwrap()
+    }
+
+    fn stored_event(ev: &Sequenced) -> Event {
+        let mut e = event_from_content(
+            ev.env.content.clone(),
+            ev.env.sig.clone(),
+            ev.env.cert.clone(),
+            ev.seq,
+            ev.prev.clone(),
+            ev.hash.clone(),
+        )
+        .unwrap();
+        e.sealed_wire = ev.env.legacy_pruned_hash().map(str::to_string);
+        e
+    }
+
+    #[test]
+    fn frozen_main_v3_ciphertext_keeps_its_signature_chain_and_outbox_bytes() {
+        let ev = fixture("legacy_full");
+        ev.env.verify().unwrap();
+        assert_eq!(Sequenced::decode(&ev.encode()).unwrap(), ev);
+        assert!(
+            ev.env.pruned().is_none(),
+            "an old signature cannot authenticate a new pruning digest"
+        );
+        let frame = ClientFrame::Publish {
+            env: ev.env.clone(),
+        };
+        assert_eq!(ClientFrame::decode(&frame.encode()).unwrap(), frame);
+        SpaceLog::from_events(
+            "sp_upgrade",
+            vec![stored_event(&fixture("genesis")), stored_event(&ev)],
+        )
+        .unwrap();
+    }
+
+    #[test]
+    fn frozen_legacy_tag_five_stubs_keep_their_authenticated_original_hash() {
+        let ev = fixture("legacy_stub");
+        let original = fixture("legacy_full");
+        ev.env.verify().unwrap();
+        assert_eq!(ev.env.wire_hash(), original.env.wire_hash());
+        assert_eq!(ev.hash, original.hash);
+        assert_eq!(Sequenced::decode(&ev.encode()).unwrap(), ev);
+        SpaceLog::from_events(
+            "sp_upgrade",
+            vec![stored_event(&fixture("genesis")), stored_event(&ev)],
+        )
+        .unwrap();
+        assert!(ClientFrame::decode(
+            &ClientFrame::Publish {
+                env: ev.env.clone()
+            }
+            .encode()
+        )
+        .is_err());
+        let mut bad = ev.env;
+        bad.sig = "0".repeat(128);
+        assert!(bad.verify().is_err());
+    }
+
+    #[test]
+    fn unauthenticated_legacy_stub_headers_cannot_authorize_recovery() {
+        let original = fixture("legacy_stub");
+        let mut content = original.env.parsed.clone();
+        let Some(Payload::Sealed(sealed)) = &mut content.payload else {
+            unreachable!()
+        };
+        sealed.kind = SealedKind::Commit as i32;
+        sealed.recovery = zoen_log::recovery::RecoveryRef {
+            version: 1,
+            epoch: 7,
+            blob: "aa".repeat(32),
+        }
+        .encode();
+        let grafted = Envelope::new(
+            content.encode(),
+            original.env.sig.clone(),
+            original.env.cert.clone(),
+            None,
+        )
+        .unwrap()
+        .with_legacy_pruned(Some(original.env.legacy_pruned_hash().unwrap().into()))
+        .unwrap();
+        grafted.verify().unwrap();
+        assert_eq!(grafted.sig, original.env.sig);
+        assert_eq!(grafted.wire_hash(), original.env.wire_hash());
+        assert_eq!(grafted.sealed_kind(), Some(SealedKind::Commit));
+        assert!(grafted.recovery().is_none());
+        let modified = Sequenced {
+            env: grafted,
+            ..original.clone()
+        };
+        SpaceLog::from_events(
+            "sp_upgrade",
+            vec![stored_event(&fixture("genesis")), stored_event(&modified)],
+        )
+        .unwrap();
+        assert_eq!(Sequenced::decode(&modified.encode()).unwrap(), modified);
+    }
+
+    #[test]
+    fn frozen_unversioned_m2_hashes_keep_their_chain_and_pruning_proof() {
+        let ev = fixture("unversioned_full");
+        let stub = fixture("unversioned_stub");
+        ev.env.verify().unwrap();
+        stub.env.verify().unwrap();
+        assert_eq!(ev.env.pruned().unwrap(), stub.env);
+        assert_eq!(ev.env.wire_hash(), stub.env.wire_hash());
+        for entry in [ev, stub] {
+            SpaceLog::from_events(
+                "sp_upgrade",
+                vec![stored_event(&fixture("genesis")), stored_event(&entry)],
+            )
+            .unwrap();
+        }
+    }
+
+    #[test]
+    fn versioned_stubs_authenticate_unknown_fields_and_refuse_legacy_markers() {
+        let author = Author::root(zoen_log::Signer::from_secret(&[37; 32]));
+        let env = Envelope::sealed(
+            &author,
+            "sp",
+            "message",
+            3,
+            None,
+            Sealed::new(SealedKind::Application, 1, vec![1, 2, 3]),
+        );
+        let mut bytes = env.content().to_vec();
+        // A newer client's unknown length-delimited field 127 must remain signed.
+        bytes.extend_from_slice(&[0xfa, 0x07, 0x03, b'n', b'e', b'w']);
+        let sig = author.key.sign(&zoen_log::content::signature_message(
+            &bytes,
+            &zoen_log::content::signed_hash(&bytes),
+        ));
+        let full = Envelope::new(bytes, sig, None, None).unwrap();
+        full.verify().unwrap();
+        assert_eq!(full.parsed.v, zoen_log::content::SEALED_CONTENT_VERSION);
+        let stub = full.pruned().unwrap();
+        stub.verify().unwrap();
+        assert_eq!(stub.wire_hash(), full.wire_hash());
+        assert!(stub
+            .content
+            .ends_with(&[0xfa, 0x07, 0x03, b'n', b'e', b'w']));
+        assert!(stub
+            .clone()
+            .with_legacy_pruned(Some(full.wire_hash()))
+            .is_none());
+        let mut changed = stub.content.clone();
+        *changed.last_mut().unwrap() = b'x';
+        assert!(Envelope::new(changed, stub.sig.clone(), None, None)
+            .unwrap()
+            .verify()
+            .is_err());
+        assert_eq!(
+            chain_hash("sp", 0, GENESIS_PREV, &full.wire_hash()),
+            chain_hash("sp", 0, GENESIS_PREV, &stub.wire_hash())
+        );
+    }
+
+    #[test]
+    fn version_four_signatures_cannot_be_downgraded_to_legacy_tag_five_stubs() {
+        let author = Author::root(zoen_log::Signer::from_secret(&[39; 32]));
+        let full = Envelope::sealed(
+            &author,
+            "sp",
+            "authenticated-client-id",
+            3,
+            None,
+            Sealed::new(SealedKind::Application, 1, vec![1, 2, 3]),
+        );
+        full.verify().unwrap();
+        let original_hash = full.wire_hash();
+        let mut forged = full.parsed.clone();
+        forged.v = 3;
+        forged.client_id = "forged-client-id".to_string();
+        let Some(Payload::Sealed(sealed)) = &mut forged.payload else {
+            panic!("sealed fixture");
+        };
+        sealed.data.clear();
+        sealed.data_hash.clear();
+        let forged = Envelope::new(forged.encode(), full.sig.clone(), None, None)
+            .unwrap()
+            .with_legacy_pruned(Some(original_hash.clone()))
+            .unwrap();
+        assert!(forged.verify().is_err());
+
+        // The persisted Event path must reject the same opaque legacy hash replay.
+        let hash = chain_hash("sp", 0, GENESIS_PREV, &original_hash);
+        let mut event = event_from_content(
+            forged.content,
+            forged.sig,
+            None,
+            0,
+            GENESIS_PREV.to_string(),
+            hash,
+        )
+        .unwrap();
+        event.sealed_wire = Some(original_hash);
+        assert!(verify_author(&event).is_err());
+    }
+
+    #[test]
+    fn unsigned_invite_is_bounded_before_wire_admission() {
+        let mut env = fixture("genesis").env;
+        let signed_size = env.stored_len();
+        for code in ["0123456789", "abcdefghjk"] {
+            env.invite = Some(code.into());
+            assert!(env.valid_invite());
+            let wire = ClientFrame::Publish { env: env.clone() }.encode();
+            assert!(ClientFrame::decode(&wire).is_ok());
+            assert_eq!(env.retained_len(), signed_size + 10);
+        }
+        env.invite = Some("x".repeat(1024 * 1024 - 1024));
+        assert!(
+            env.verify().is_ok(),
+            "the signature doesn't cover the invite"
+        );
+        let wire = ClientFrame::Publish { env: env.clone() }.encode();
+        assert!(wire.len() < 1024 * 1024, "the attack fits a session frame");
+        assert!(!env.valid_invite());
+        assert!(ClientFrame::decode(&wire).is_err());
+        assert_eq!(env.retained_len(), signed_size + 1024 * 1024 - 1024);
+    }
+
+    #[test]
+    fn handles_are_normalized() {
+        assert_eq!(normalize_handle("@Enzo.T").as_deref(), Some("enzo.t"));
+        assert_eq!(normalize_handle("1abc"), None);
+        assert_eq!(normalize_handle("ab"), None);
+        assert_eq!(normalize_handle("a b c"), None);
+    }
+
+    #[test]
+    fn claim_operations_are_canonical_ulids() {
+        let operation = "01K75MYBPQ0000000000000001";
+        assert!(key_package_claim_time_ms(operation).is_some());
+        for invalid in [
+            operation.to_lowercase(),
+            format!("prefix-{operation}"),
+            "81K75MYBPQ0000000000000001".into(),
+            "01K75MYBPQ000000000000000I".into(),
+        ] {
+            assert_eq!(key_package_claim_time_ms(&invalid), None, "{invalid}");
+        }
+        assert_eq!(negotiate(&[]), Vec::<String>::new());
+        assert_eq!(
+            negotiate(&[KEY_PACKAGE_CLAIM_CAPABILITY.into()]),
+            vec![KEY_PACKAGE_CLAIM_CAPABILITY]
+        );
+    }
+
+    #[test]
+    fn capabilities_are_the_intersection() {
+        assert_eq!(
+            negotiate(&["presence".into(), "telepathy".into(), "blobs".into()]),
+            vec!["blobs", "presence"]
+        );
+        assert!(negotiate(&[]).is_empty());
+        assert_eq!(
+            negotiate(&[AGENT_OWNER_PROOF.into()]),
+            vec![AGENT_OWNER_PROOF]
+        );
+    }
+}

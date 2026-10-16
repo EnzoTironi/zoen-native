@@ -6,17 +6,17 @@ use std::{collections::HashMap, time::Duration};
 use anyhow::{anyhow, bail, Context};
 use futures_util::{SinkExt, StreamExt};
 use hdrhistogram::Histogram;
-use roda_log::{Author, Signer};
-use roda_proto::{
-    auth_message, ClientFrame, Envelope, EphemeralKind, Op, Sequenced, ServerFrame,
-    PROTOCOL_VERSION,
-};
-use roda_types::{EventBody, Identity, IdentityKind, Privacy, Role, Seen, SpaceKind};
 use tokio::{net::TcpStream, sync::mpsc, time::Instant};
 use tokio_tungstenite::{
     tungstenite::{protocol::WebSocketConfig, Message},
     MaybeTlsStream, WebSocketStream,
 };
+use zoen_log::{Author, Signer};
+use zoen_proto::{
+    auth_message, ClientFrame, Envelope, EphemeralKind, Op, Sequenced, ServerFrame,
+    PROTOCOL_VERSION,
+};
+use zoen_types::{EventBody, Identity, IdentityKind, Privacy, Role, Seen, SpaceKind};
 
 type Ws = WebSocketStream<MaybeTlsStream<TcpStream>>;
 
@@ -127,7 +127,7 @@ impl Conn {
         let now = now_ms();
         let e = self
             .author
-            .sign_event(space, &roda_types::new_ulid(now), now, seen, body);
+            .sign_event(space, &zoen_types::new_ulid(now), now, seen, body);
         let env = Envelope::plain(&e);
         let client_id = env.client_id().to_string();
         // Like the app: a temporary refusal (a rate limit) means send the same envelope again
@@ -161,7 +161,7 @@ impl Conn {
 
     /// Creates a group Space with `members` in it; returns its id.
     pub async fn create_group(&mut self, members: &[String]) -> anyhow::Result<String> {
-        let space = roda_types::new_id("sp");
+        let space = zoen_types::new_id("sp");
         let mut head = self
             .publish(
                 &space,
@@ -299,11 +299,11 @@ pub async fn run(conn: Conn, plan: Plan, mut rx: mpsc::Receiver<Publish>) -> any
                 let now = now_ms();
                 let e = author.sign_event(
                     &space,
-                    &roda_types::new_ulid(now),
+                    &zoen_types::new_ulid(now),
                     now,
                     Some(head.clone()),
                     EventBody::MessagePosted {
-                        message: roda_types::new_id("m"),
+                        message: zoen_types::new_id("m"),
                         text: due_us.to_string(),
                         attaches: None,
                         reply: None,

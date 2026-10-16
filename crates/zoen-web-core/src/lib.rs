@@ -28,14 +28,14 @@ mod browser {
                 .map_err(|_| SignerError::SigningError)?
                 .to_vec();
             if signature.len() != 64
-                || !roda_log::verify_sig(&self.public, payload, &hex::encode(&signature))
+                || !zoen_log::verify_sig(&self.public, payload, &hex::encode(&signature))
             {
                 return Err(SignerError::InvalidSignature);
             }
             Ok(signature)
         }
         fn signature_scheme(&self) -> openmls_traits::types::SignatureScheme {
-            roda_mls::SUITE.signature_algorithm()
+            zoen_mls::SUITE.signature_algorithm()
         }
     }
 
@@ -170,17 +170,17 @@ mod browser {
 
     #[wasm_bindgen]
     pub fn auth_message(nonce: &str, relay: &str) -> Vec<u8> {
-        roda_proto::auth_message(nonce, relay)
+        zoen_proto::auth_message(nonce, relay)
     }
 
     #[wasm_bindgen]
     pub fn device_cert_message(device: &str) -> Vec<u8> {
-        roda_log::device_cert_message(device)
+        zoen_log::device_cert_message(device)
     }
 
     #[wasm_bindgen]
     pub fn auth(signature: &str) -> Vec<u8> {
-        roda_proto::ClientFrame::Auth {
+        zoen_proto::ClientFrame::Auth {
             sig: signature.to_string(),
         }
         .encode()

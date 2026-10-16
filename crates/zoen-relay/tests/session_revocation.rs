@@ -2,18 +2,6 @@
 
 use async_trait::async_trait;
 use futures_util::{SinkExt, StreamExt};
-use roda_log::{
-    profile::{
-        seal_profile, sign_agreement, sign_upload, verify_agreement, verify_upload, AgreementKey,
-        ProfileFields, ProfileKey,
-    },
-    Author, Signer,
-};
-use roda_proto::{
-    auth_message, AgreementKeyRecord, ClientFrame, DeviceCertificate, Envelope, ErrorCode,
-    InviteCreated, Op, Reply, SealedProfile, Sequenced, ServerFrame, PROTOCOL_VERSION,
-};
-use roda_types::{Identity, IdentityKind, Role};
 use sqlx::{postgres::PgPoolOptions, Connection, PgConnection};
 use std::{
     sync::{
@@ -24,11 +12,23 @@ use std::{
 };
 use tokio::sync::{oneshot, Notify, Semaphore};
 use tokio_tungstenite::{tungstenite::Message, MaybeTlsStream, WebSocketStream};
+use zoen_log::{
+    profile::{
+        seal_profile, sign_agreement, sign_upload, verify_agreement, verify_upload, AgreementKey,
+        ProfileFields, ProfileKey,
+    },
+    Author, Signer,
+};
+use zoen_proto::{
+    auth_message, AgreementKeyRecord, ClientFrame, DeviceCertificate, Envelope, ErrorCode,
+    InviteCreated, Op, Reply, SealedProfile, Sequenced, ServerFrame, PROTOCOL_VERSION,
+};
 use zoen_relay::{
     analytics, fanout, limits,
     log::{InviteInfo, LogStore, Reject, Sequencing, StoreError},
     metrics, AppState,
 };
+use zoen_types::{Identity, IdentityKind, Role};
 
 struct BlockedLog {
     block_presence: AtomicBool,
@@ -66,10 +66,10 @@ impl LogStore for BlockedLog {
         tokio::spawn(async move {
             release.acquire().await.unwrap().forget();
             let hash =
-                roda_log::chain_hash(env.space(), 0, roda_types::GENESIS_PREV, &env.wire_hash());
+                zoen_log::chain_hash(env.space(), 0, zoen_types::GENESIS_PREV, &env.wire_hash());
             let ev = Sequenced {
                 seq: 0,
-                prev: roda_types::GENESIS_PREV.into(),
+                prev: zoen_types::GENESIS_PREV.into(),
                 hash,
                 env,
             };
@@ -391,10 +391,10 @@ async fn stalled_operation_revocation(publish: bool) {
                 "admitted-before-revocation",
                 1,
                 None,
-                roda_types::EventBody::SpaceCreated {
+                zoen_types::EventBody::SpaceCreated {
                     title: "Already admitted".into(),
-                    kind: roda_types::SpaceKind::Group,
-                    privacy: roda_types::Privacy::Closed,
+                    kind: zoen_types::SpaceKind::Group,
+                    privacy: zoen_types::Privacy::Closed,
                 },
             )),
         }

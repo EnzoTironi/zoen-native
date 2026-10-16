@@ -1,7 +1,7 @@
 import SwiftUI
 import AVFoundation
 import Speech
-import RodaCore
+import ZoenCore
 import UniformTypeIdentifiers
 
 // MARK: - Voice notes
@@ -132,7 +132,7 @@ final class VoiceRecorder {
     /// Recent input levels, 0…1, newest last (the live waveform).
     var levels: [CGFloat] = []
     var elapsed: TimeInterval = 0
-    /// `-RodaVoiceDemo recording|locked`: fake input, no microphone (screenshots).
+    /// `-ZoenVoiceDemo recording|locked`: fake input, no microphone (screenshots).
     var demo = false
 
     private var recorder: AVAudioRecorder?
@@ -509,7 +509,7 @@ struct VoiceBubble: View {
         .offset(y: landed ? 0 : 18)
         .accessibilityIdentifier("voice-message")
         .task {
-            if UserDefaults.standard.bool(forKey: "RodaVoiceShowTranscript") { showTranscript = true }
+            if UserDefaults.standard.bool(forKey: "ZoenVoiceShowTranscript") { showTranscript = true }
             // +→Zoen send-flight land: bubble drops in where the mic morph handed off.
             if model.pendingVoiceFlight == ref.id {
                 model.pendingVoiceFlight = nil

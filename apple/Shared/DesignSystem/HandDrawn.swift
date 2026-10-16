@@ -1,6 +1,6 @@
 import SwiftUI
 
-// MARK: - Hand-drawn ink: Roda's illustration language
+// MARK: - Hand-drawn ink: Zoen's illustration language
 //
 // Standing rule: every generated or decorative illustration looks hand-drawn and moves.
 // • Strokes are ink ribbons with pen pressure (variable width, tapered ends) drawn
@@ -240,10 +240,10 @@ enum Ink {
     }
 }
 
-/// `-RodaFreezeArt 2.4` freezes every drawing at that time (deterministic screenshots).
+/// `-ZoenFreezeArt 2.4` freezes every drawing at that time (deterministic screenshots).
 enum InkClock {
     static let freeze: Double? = {
-        let v = UserDefaults.standard.double(forKey: "RodaFreezeArt")
+        let v = UserDefaults.standard.double(forKey: "ZoenFreezeArt")
         return v > 0 ? v : nil
     }()
 }
@@ -312,7 +312,7 @@ struct InkOutline: View {
 // MARK: - Doodles
 
 enum Doodle {
-    case pot, allClear, mentions, tasks, search, lost, trophy, ballot, notepad, roda, trip, hike
+    case pot, allClear, mentions, tasks, search, lost, trophy, ballot, notepad, zoen, trip, hike
     case heart, vinyl, moss, hourglass, steps, pin
 
     /// Snapshot `art` names → doodles (Home strip, chat tiles, widgets and the Store share them).
@@ -328,7 +328,7 @@ enum Doodle {
     var seed: UInt64 {
         switch self {
         case .pot: 11; case .allClear: 12; case .mentions: 13; case .tasks: 14; case .search: 15
-        case .lost: 16; case .trophy: 17; case .ballot: 18; case .notepad: 19; case .roda: 20
+        case .lost: 16; case .trophy: 17; case .ballot: 18; case .notepad: 19; case .zoen: 20
         case .trip: 21; case .hike: 22
         case .heart: 23; case .vinyl: 24; case .moss: 25; case .hourglass: 26; case .steps: 27; case .pin: 28
         }
@@ -566,7 +566,7 @@ enum Doodle {
                 InkStroke.shape([(0.5, 0.82), (0.33, 0.52), (0.3, 0.38), (0.36, 0.24), (0.5, 0.17), (0.64, 0.24), (0.7, 0.38), (0.67, 0.52)], fill: InkPalette.tomato, width: 0.028, start: 0.2, span: 0.5).moved(0, bounce),
                 InkStroke.ellipse(0.5, 0.38, 0.075, 0.075, fill: InkPalette.paper, width: 0.02, start: 0.55, span: 0.2).moved(0, bounce),
             ]
-        case .roda:
+        case .zoen:
             var s: [InkStroke] = [InkStroke.ellipse(0.5, 0.5, 0.3, 0.3, closed: false, width: 0.03, span: 0.5, n: 16)]
             let colors = [InkPalette.blush, InkPalette.sky, InkPalette.butter, InkPalette.mint, InkPalette.lilac]
             for i in 0..<5 {
@@ -639,7 +639,7 @@ struct PaperBackground: View {
     }
 }
 
-/// Empty state: Zo, Roda's hand-drawn mascot, in a pose that fits the moment.
+/// Empty state: Zo, Zoen's hand-drawn mascot, in a pose that fits the moment.
 struct InkEmptyState: View {
     let pose: MascotPose
     let title: String

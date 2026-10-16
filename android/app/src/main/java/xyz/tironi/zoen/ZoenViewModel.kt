@@ -67,7 +67,7 @@ class ZoenViewModel(application: Application) : AndroidViewModel(application) {
     suspend fun notifyEdit(result: EditOutcome) {
         messages.send(Notice(result.reaction ?: getApplication<Application>().getString(R.string.saved), result.undo))
     }
-    fun edit(block: (RodaEngine) -> EditOutcome) = launch {
+    fun edit(block: (ZoenEngine) -> EditOutcome) = launch {
         val result = repository.change(block)
         notifyEdit(result)
     }

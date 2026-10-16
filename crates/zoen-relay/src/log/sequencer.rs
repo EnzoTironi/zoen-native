@@ -21,8 +21,8 @@ use std::{
 
 use crate::ownership::Fence;
 use async_trait::async_trait;
-use roda_proto::Envelope;
 use tokio::sync::{mpsc, oneshot, OwnedSemaphorePermit, Semaphore};
+use zoen_proto::Envelope;
 
 use super::{Reject, Sequencing};
 
@@ -289,8 +289,8 @@ pub(crate) mod fork_histories {
     use std::path::Path;
     use std::sync::{LazyLock, Mutex};
 
-    use roda_proto::{Envelope, Sequenced};
-    use roda_types::EventBody;
+    use zoen_proto::{Envelope, Sequenced};
+    use zoen_types::EventBody;
 
     use super::{Applied, Pending};
 
@@ -493,8 +493,8 @@ pub(crate) mod fork_histories {
         let prev = out
             .last()
             .map(|prev| prev.hash.clone())
-            .unwrap_or_else(|| roda_types::GENESIS_PREV.to_string());
-        let hash = roda_log::chain_hash(ev.env.space(), seq, &prev, &ev.env.wire_hash());
+            .unwrap_or_else(|| zoen_types::GENESIS_PREV.to_string());
+        let hash = zoen_log::chain_hash(ev.env.space(), seq, &prev, &ev.env.wire_hash());
         out.push(Sequenced {
             seq,
             prev,
@@ -505,7 +505,7 @@ pub(crate) mod fork_histories {
 
     fn linked(prev: Option<&Sequenced>, ev: &Sequenced) -> bool {
         match prev {
-            None => ev.seq == 0 && ev.prev == roda_types::GENESIS_PREV,
+            None => ev.seq == 0 && ev.prev == zoen_types::GENESIS_PREV,
             Some(prev) => ev.seq == prev.seq + 1 && ev.prev == prev.hash,
         }
     }
@@ -514,9 +514,9 @@ pub(crate) mod fork_histories {
     mod tests {
         use std::sync::atomic::{AtomicU64, Ordering};
 
-        use roda_log::{chain_hash, Author, Signer};
-        use roda_proto::Envelope;
-        use roda_types::{EventBody, Privacy, Seen, SpaceKind, GENESIS_PREV};
+        use zoen_log::{chain_hash, Author, Signer};
+        use zoen_proto::Envelope;
+        use zoen_types::{EventBody, Privacy, Seen, SpaceKind, GENESIS_PREV};
 
         use super::super::{Applied, Pending};
         use super::*;
@@ -794,8 +794,8 @@ pub(crate) mod fork_histories {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use roda_log::{Author, Signer};
-    use roda_types::EventBody;
+    use zoen_log::{Author, Signer};
+    use zoen_types::EventBody;
 
     /// Records each batch's client ids and answers each envelope with its own id. Each
     /// batch waits for a permit, so a test can hold the worker while a backlog builds.

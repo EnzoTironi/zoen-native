@@ -693,7 +693,7 @@ private fun MessageActionDialogs(model: ZoenViewModel, spaceId: String, entry: T
     var running by remember(entry.id) { mutableStateOf(false) }
     var error by rememberSaveable(editing, confirmDelete, forwarding, entry.id) { mutableStateOf<String?>(null) }
     val dismiss = { if (!running) done() }
-    fun run(block: (RodaEngine) -> Unit) {
+    fun run(block: (ZoenEngine) -> Unit) {
         if (running) return
         running = true
         error = null

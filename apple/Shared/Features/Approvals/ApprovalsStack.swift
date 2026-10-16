@@ -1,5 +1,5 @@
 import SwiftUI
-import RodaCore
+import ZoenCore
 #if os(iOS)
 import CoreMotion
 #endif
@@ -91,7 +91,7 @@ struct ApprovalsStackView: View {
     @Environment(AppModel.self) private var model
     @Environment(\.dismiss) private var dismiss
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @AppStorage("RodaApprovalsExplained") private var explained = false
+    @AppStorage("ZoenApprovalsExplained") private var explained = false
 
     @State private var deck: [AgentRequestDto] = []
     /// Decided here but not yet sent to the core (undo window), or already sent.
@@ -819,7 +819,7 @@ struct ApprovalCardView: View {
                     Text(request.agent.name)
                         .font(.headline)
                         .foregroundStyle(Palette.textPrimary)
-                    Text(RodaTime.relative(request.openedMs))
+                    Text(ZoenTime.relative(request.openedMs))
                         .font(.caption.weight(.medium))
                         .foregroundStyle(Palette.textTertiary)
                 }
@@ -922,7 +922,7 @@ struct ApprovalCardView: View {
                             Text("Always").font(.caption2.weight(.bold)).foregroundStyle(Palette.textSecondary)
                         }
                         if let at = h.resolvedMs {
-                            Text(RodaTime.relative(at)).font(.caption).foregroundStyle(Palette.textTertiary)
+                            Text(ZoenTime.relative(at)).font(.caption).foregroundStyle(Palette.textTertiary)
                         }
                     }
                 }
@@ -1129,7 +1129,7 @@ struct TiltSheen<Content: View>: View {
     @ViewBuilder
     private var leaning: some View {
         #if DEBUG
-        if UserDefaults.standard.bool(forKey: "RodaFakeLean") {
+        if UserDefaults.standard.bool(forKey: "ZoenFakeLean") {
             // Recording hook: the simulator has no gyroscope, so sway slowly.
             TimelineView(.animation) { tl in
                 let s = tl.date.timeIntervalSinceReferenceDate
@@ -1342,7 +1342,7 @@ struct StandingDecisionRow: View {
                 Text(decision.allow ? String(localized: "Always approve: \(decision.actionLabel)") : String(localized: "Always deny: \(decision.actionLabel)"))
                     .font(.subheadline.weight(.medium))
                     .foregroundStyle(Palette.textPrimary)
-                Text(showSpace ? "\(decision.spaceTitle) · \(RodaTime.relative(decision.atMs))" : RodaTime.relative(decision.atMs))
+                Text(showSpace ? "\(decision.spaceTitle) · \(ZoenTime.relative(decision.atMs))" : ZoenTime.relative(decision.atMs))
                     .font(.caption).foregroundStyle(Palette.textSecondary)
             }
             Spacer(minLength: 8)

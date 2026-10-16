@@ -200,7 +200,7 @@ async fn main() -> anyhow::Result<()> {
     let measure_from_us = (a.warmup * 1e6) as u64;
     let mut senders: Vec<(mpsc::Sender<Publish>, usize)> = Vec::new();
     let mut tasks = Vec::new();
-    let ready: Vec<(Conn, String, roda_types::Seen, usize)> =
+    let ready: Vec<(Conn, String, zoen_types::Seen, usize)> =
         stream::iter(formed.into_iter().flat_map(|(space, g)| {
             let n = g.len();
             g.into_iter().map(move |c| (c, space.clone(), n))

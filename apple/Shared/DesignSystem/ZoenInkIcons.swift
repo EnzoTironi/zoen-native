@@ -663,7 +663,7 @@ struct InkIcon: View {
 
 }
 
-/// `-RodaIconExplore YES`: the three directions for the six key icons, at 20/24/32pt, the
+/// `-ZoenIconExplore YES`: the three directions for the six key icons, at 20/24/32pt, the
 /// selected state, and a mini bottom bar per direction.
 struct IconExploreSheet: View {
     static let keys: [ZoenGlyph] = [.chats, .spaces, .store, .search, .plus, .send]

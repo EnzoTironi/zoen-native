@@ -240,8 +240,8 @@
     "scope": "Actual source scan for pipe/file controls; injected process failure tests only wrapper output and exit handling. No UI or runtime HIG certification.",
     "input_source_sha256": {
       "apple/Mac/ZoenMacApp.swift": "97d62252b31376bfb918c3f678b0da86f96fe0e13d7660324f01009d6137366b",
-      "apple/Packages/RodaCore/Package.swift": "2f90c6ee540fb49e7a2c64a258a4845c54564844e6c84a13a72f038dd1b87bf5",
-      "apple/Packages/RodaCore/Sources/RodaCore/RodaCore.swift": "0b550cf0e8fb89191556893b599e523c6e293801a0fcb9977aa0432d9c57db4f",
+      "apple/Packages/ZoenCore/Package.swift": "2f90c6ee540fb49e7a2c64a258a4845c54564844e6c84a13a72f038dd1b87bf5",
+      "apple/Packages/ZoenCore/Sources/ZoenCore/ZoenCore.swift": "0b550cf0e8fb89191556893b599e523c6e293801a0fcb9977aa0432d9c57db4f",
       "apple/Shared/Agent/AgentBrowser.swift": "a841b2e30f4a3a38f0c687ffddba85667b51ee3597e207948e5546c6796c2d00",
       "apple/Shared/Agent/AgentPlanner.swift": "2b728d13282dc1f1d51944ba8af2df8509b6e11a54ebed04cbec999b4705fd91",
       "apple/Shared/Agent/AppChooser.swift": "2a2d43275dfe67ac2a5f3c216d87bc7c66ffaf1f33843110fe67f42f587c87e4",
