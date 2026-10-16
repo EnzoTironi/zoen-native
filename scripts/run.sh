@@ -15,11 +15,14 @@ DD="$(pwd)/build/DerivedData"
 (cd apple && xcodegen generate --quiet)
 
 if [[ "$WHAT" == "all" || "$WHAT" == "ios" ]]; then
-  echo "▸ xcodebuild ZoeniOS (simulador: $SIM)"
+  # O simulador pedido, ou o primeiro iPhone instalado se esse nome não existir neste Xcode.
+  LINE=$(xcrun simctl list devices available | grep -F "$SIM (" | head -1 || true)
+  [[ -n "$LINE" ]] || LINE=$(xcrun simctl list devices available | grep -m1 "iPhone")
+  UDID=$(sed -E 's/.*\(([0-9A-F-]{36})\).*/\1/' <<<"$LINE")
+  echo "▸ xcodebuild ZoeniOS (simulador: $(sed -E 's/^ *(.*) \([0-9A-F-]{36}\).*/\1/' <<<"$LINE"))"
   xcodebuild -project apple/Zoen.xcodeproj -scheme ZoeniOS -configuration Debug \
-    -destination "platform=iOS Simulator,name=$SIM" -derivedDataPath "$DD" \
+    -destination "platform=iOS Simulator,id=$UDID" -derivedDataPath "$DD" \
     -quiet build
-  UDID=$(xcrun simctl list devices available | grep -F "$SIM (" | head -1 | sed -E 's/.*\(([0-9A-F-]{36})\).*/\1/')
   xcrun simctl boot "$UDID" 2>/dev/null || true
   open -a Simulator
   xcrun simctl install "$UDID" "$DD/Build/Products/Debug-iphonesimulator/Zoen.app"
