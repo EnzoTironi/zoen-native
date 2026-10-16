@@ -33,6 +33,8 @@ const REVOKE: &str = "revoke-device";
 const OUTBOUND_QUEUE: usize = 65_536;
 const PRESENCE_TIMEOUT: Duration = Duration::from_millis(750);
 const PRESENCE_CONCURRENCY: usize = 32;
+// Presence is best effort and must not consume login's entire 5s go_online budget.
+const PRESENCE_LOOKUP_TIMEOUT: Duration = Duration::from_secs(2);
 
 #[async_trait::async_trait]
 pub trait Bus: Send + Sync {
@@ -397,7 +399,7 @@ impl Bus for NatsBus {
                 }
             }
         });
-        // Keep input order without opening one NATS request/inbox per member.
+        // Bound both outstanding requests and total latency; retain partial presence.
         collect_presence(asks).await
     }
 
@@ -413,11 +415,32 @@ impl Bus for NatsBus {
 async fn collect_presence(
     asks: impl IntoIterator<Item = impl std::future::Future<Output = Option<String>>>,
 ) -> Vec<String> {
-    futures_util::stream::iter(asks)
-        .buffered(PRESENCE_CONCURRENCY)
-        .filter_map(async |id| id)
-        .collect()
-        .await
+    async fn indexed<F: std::future::Future<Output = Option<String>>>(
+        (index, ask): (usize, F),
+    ) -> (usize, Option<String>) {
+        (index, ask.await)
+    }
+    let mut asks = asks.into_iter().enumerate();
+    let mut pending = futures_util::stream::FuturesUnordered::new();
+    for ask in asks.by_ref().take(PRESENCE_CONCURRENCY) {
+        pending.push(indexed(ask));
+    }
+    let mut online = Vec::new();
+    // Keep completed probes even if an earlier request stalls. Dropping this stream at
+    // the overall deadline cancels in-flight requests without spawning background work.
+    let _ = tokio::time::timeout(PRESENCE_LOOKUP_TIMEOUT, async {
+        while let Some((index, id)) = pending.next().await {
+            if let Some(id) = id {
+                online.push((index, id));
+            }
+            if let Some(ask) = asks.next() {
+                pending.push(indexed(ask));
+            }
+        }
+    })
+    .await;
+    online.sort_unstable_by_key(|(index, _)| *index);
+    online.into_iter().map(|(_, id)| id).collect()
 }
 
 /// Reads W3C trace context out of a bus message's headers.
@@ -531,6 +554,55 @@ mod tests {
                 "presence recipients={count}: outstanding before={old_peak}, after={new_peak}"
             );
         }
+    }
+
+    /// 193 timed-out probes used to take seven waves (5.25s), exceeding login's 5s
+    /// timeout. Presence is best effort: keep successes and cancel the remaining work.
+    #[tokio::test]
+    async fn presence_lookup_deadline_keeps_partial_results() {
+        let asks = (0..193).map(|i| async move {
+            if i == 1 {
+                return Some("online".to_string());
+            }
+            tokio::time::sleep(PRESENCE_TIMEOUT).await;
+            None
+        });
+        let online = tokio::time::timeout(Duration::from_secs(3), collect_presence(asks))
+            .await
+            .expect("partial presence must return before the 5s login timeout");
+        assert_eq!(online, vec!["online"]);
+    }
+
+    #[tokio::test]
+    async fn presence_deadline_cancels_stalled_probes_without_hiding_successes() {
+        use std::sync::atomic::AtomicUsize;
+        struct Active<'a>(&'a AtomicUsize);
+        impl Drop for Active<'_> {
+            fn drop(&mut self) {
+                self.0.fetch_sub(1, Relaxed);
+            }
+        }
+        let active = AtomicUsize::new(0);
+        let peak = AtomicUsize::new(0);
+        let asks = (0..193).map(|i| {
+            let active = &active;
+            let peak = &peak;
+            async move {
+                let count = active.fetch_add(1, Relaxed) + 1;
+                peak.fetch_max(count, Relaxed);
+                let _active = Active(active);
+                if i == 1 {
+                    return Some("online".to_string());
+                }
+                std::future::pending::<Option<String>>().await
+            }
+        });
+        let online = tokio::time::timeout(Duration::from_secs(3), collect_presence(asks))
+            .await
+            .expect("stalled probes must not block login");
+        assert_eq!(online, vec!["online"]);
+        assert_eq!(peak.load(Relaxed), PRESENCE_CONCURRENCY);
+        assert_eq!(active.load(Relaxed), 0, "deadline must drop pending probes");
     }
 
     #[test]
