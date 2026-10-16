@@ -60,14 +60,15 @@ pub async fn is_registered(pool: &PgPool, id: &str) -> Result<bool, sqlx::Error>
     }).await.map_err(|_| sqlx::Error::PoolTimedOut)?
 }
 
-pub async fn device_known(pool: &PgPool, device: &str) -> Result<bool, sqlx::Error> {
-    Ok(
-        sqlx::query_scalar::<_, i32>("SELECT 1 FROM devices WHERE device = $1")
-            .bind(device)
-            .fetch_optional(pool)
-            .await?
-            .is_some(),
+/// Whether a device is enrolled and has not been revoked.
+pub async fn device_active(pool: &PgPool, device: &str) -> Result<bool, sqlx::Error> {
+    Ok(sqlx::query_scalar::<_, i32>(
+        "SELECT 1 FROM devices WHERE device = $1 AND revoked_at IS NULL",
     )
+    .bind(device)
+    .fetch_optional(pool)
+    .await?
+    .is_some())
 }
 
 pub async fn touch_device(
