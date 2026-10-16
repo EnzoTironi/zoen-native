@@ -496,6 +496,19 @@ impl RodaEngine {
         self.lock().log_events(&space_id)
     }
 
+    /// A bounded page of message matches within one conversation. A stale cursor
+    /// returns an error; callers restart instead of displaying an incomplete page.
+    pub fn search_messages(
+        &self,
+        space_id: String,
+        query: String,
+        cursor: Option<String>,
+        limit: u32,
+    ) -> Result<MessageSearchPage, CoreError> {
+        self.lock()
+            .search_messages(&space_id, &query, cursor.as_deref(), limit)
+    }
+
     pub fn search(&self, query: String) -> Vec<SearchHit> {
         self.lock().search(&query)
     }

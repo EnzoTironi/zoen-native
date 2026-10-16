@@ -400,10 +400,10 @@ fun ChatScreen(model: ZoenViewModel, state: AppState, spaceId: String, navigate:
 fun TimelineRow(model: ZoenViewModel, spaceId: String, entry: TimelineEntry, navigate: (NavKey) -> Unit, onReply: () -> Unit, onThread: (() -> Unit)?, onQuote: ((String) -> Unit)? = null, direct: Boolean = false) {
     val context = LocalContext.current
     var menu by remember { mutableStateOf(false) }
-    var editing by remember { mutableStateOf(false) }
-    var editText by remember { mutableStateOf("") }
+    var editing by rememberSaveable(entry.id) { mutableStateOf(false) }
+    var editText by rememberSaveable(entry.id) { mutableStateOf("") }
     var forwarding by remember { mutableStateOf(false) }
-    var confirmDelete by remember { mutableStateOf(false) }
+    var confirmDelete by rememberSaveable(entry.id) { mutableStateOf(false) }
     val copied = stringResource(R.string.copied)
     val locale = LocalConfiguration.current.locales[0].toLanguageTag()
     when (val kind = entry.kind) {
@@ -680,14 +680,39 @@ private fun ReactionChips(model: ZoenViewModel, spaceId: String, entry: Timeline
 @Composable
 private fun MessageActionDialogs(model: ZoenViewModel, spaceId: String, entry: TimelineEntry, editing: Boolean, editText: String, onEditText: (String) -> Unit, forwarding: Boolean, confirmDelete: Boolean, done: () -> Unit) {
     val scope = rememberCoroutineScope()
-    fun run(block: (RodaEngine) -> Unit) { done(); scope.launch { runCatching { model.repository.change(block) } } }
-    if (editing) AlertDialog(onDismissRequest = done, title = { Text(stringResource(R.string.edit_message)) },
-        text = { OutlinedTextField(editText, onEditText, Modifier.fillMaxWidth().testTag("edit-field"), shape = RoundedCornerShape(24.dp)) },
-        confirmButton = { TextButton(onClick = { run { it.editMessage(spaceId, entry.id, editText) } }, enabled = editText.isNotBlank()) { Text(stringResource(R.string.save)) } },
-        dismissButton = { TextButton(onClick = done) { Text(stringResource(R.string.cancel)) } })
-    if (confirmDelete) AlertDialog(onDismissRequest = done, title = { Text(stringResource(R.string.delete_for_everyone_q)) },
-        confirmButton = { TextButton(onClick = { run { it.deleteMessage(spaceId, entry.id) } }) { Text(stringResource(R.string.delete_for_everyone), color = MaterialTheme.colorScheme.error) } },
-        dismissButton = { TextButton(onClick = done) { Text(stringResource(R.string.cancel)) } })
+    var running by remember(entry.id) { mutableStateOf(false) }
+    var error by rememberSaveable(editing, confirmDelete, forwarding, entry.id) { mutableStateOf<String?>(null) }
+    val dismiss = { if (!running) done() }
+    fun run(block: (RodaEngine) -> Unit) {
+        if (running) return
+        running = true
+        error = null
+        scope.launch {
+            try {
+                error = performMessageMutation({ model.repository.change(block) }, done)
+            } finally {
+                running = false
+            }
+        }
+    }
+    @Composable fun failure() {
+        error?.let {
+            Text("Não foi possível concluir. Tente novamente.\n$it", color = MaterialTheme.colorScheme.error,
+                modifier = Modifier.testTag("message-mutation-error"))
+        }
+        if (running) LinearProgressIndicator(Modifier.fillMaxWidth())
+    }
+    if (editing) AlertDialog(onDismissRequest = dismiss, title = { Text(stringResource(R.string.edit_message)) },
+        text = { Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            OutlinedTextField(editText, onEditText, Modifier.fillMaxWidth().testTag("edit-field"), enabled = !running, shape = RoundedCornerShape(24.dp))
+            failure()
+        } },
+        confirmButton = { TextButton(onClick = { run { it.editMessage(spaceId, entry.id, editText) } }, enabled = !running && editText.isNotBlank()) { Text(stringResource(R.string.save)) } },
+        dismissButton = { TextButton(onClick = dismiss, enabled = !running) { Text(stringResource(R.string.cancel)) } })
+    if (confirmDelete) AlertDialog(onDismissRequest = dismiss, title = { Text(stringResource(R.string.delete_for_everyone_q)) },
+        text = { Column { Text("Essa ação não pode ser desfeita."); failure() } },
+        confirmButton = { TextButton(onClick = { run { it.deleteMessage(spaceId, entry.id) } }, enabled = !running) { Text(stringResource(R.string.delete_for_everyone), color = MaterialTheme.colorScheme.error) } },
+        dismissButton = { TextButton(onClick = dismiss, enabled = !running) { Text(stringResource(R.string.cancel)) } })
     if (forwarding) {
         val state by model.state.collectAsStateWithLifecycle()
         AlertDialog(onDismissRequest = done, title = { Text(stringResource(R.string.forward_to)) },
