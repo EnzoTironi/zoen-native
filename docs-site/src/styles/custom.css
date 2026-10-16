@@ -130,19 +130,22 @@ body { background: transparent; }
 /* Frosted panels. */
 /* Header, sidebar and table of contents are already fixed by Starlight (a positioned box for ::before);
  * only the in-flow panels need position: relative. */
-.header, .sidebar-pane, .right-sidebar { isolation: isolate; }
+.header { isolation: isolate; }
+/* The sidebars scroll, so a ::before inside them would scroll away: paint them directly (the sky
+ * behind is already blurred, so no backdrop-filter is needed). */
+.sidebar-pane { background-color: var(--zoen-panel-chrome) !important; }
+.right-sidebar { background-color: var(--zoen-panel) !important; }
 :root:not([data-has-hero]) .main-frame > div,
 [data-has-hero] .hero,
 [data-has-hero] .sl-container > .sl-markdown-content,
 [data-has-hero] .sl-container > footer { position: relative; isolation: isolate; }
 .header { background-color: transparent; }
-.sidebar-pane, .right-sidebar { background-color: transparent; }
-:is(.header, .sidebar-pane, .right-sidebar, .main-frame > div, [data-has-hero] .hero, [data-has-hero] .sl-container > .sl-markdown-content, [data-has-hero] .sl-container > footer)::before {
+:is(.header, .main-frame > div, [data-has-hero] .hero, [data-has-hero] .sl-container > .sl-markdown-content, [data-has-hero] .sl-container > footer)::before {
   content: ''; position: absolute; inset: 0; z-index: -1; pointer-events: none;
   background-color: var(--zoen-panel);
   -webkit-backdrop-filter: blur(18px) saturate(1.1); backdrop-filter: blur(18px) saturate(1.1);
 }
-:is(.header, .sidebar-pane)::before { background-color: var(--zoen-panel-chrome); }
+.header::before { background-color: var(--zoen-panel-chrome); }
 [data-has-hero] .main-frame > div::before { display: none; }
 /* Landing: the hero and the content below it are floating cards over the open sky. */
 [data-has-hero] .content-panel { border-top: 0; }
@@ -167,7 +170,8 @@ body { background: transparent; }
 /* More contrast requested, or forced colours: drop the sky and use solid surfaces. */
 @media (prefers-contrast: more), (forced-colors: active) {
   .zoen-sky { display: none; }
-  :is(.header, .sidebar-pane, .right-sidebar, .main-frame > div, [data-has-hero] .hero, [data-has-hero] .sl-container > .sl-markdown-content)::before {
+  .sidebar-pane, .right-sidebar { background-color: var(--sl-color-bg) !important; }
+  :is(.header, .main-frame > div, [data-has-hero] .hero, [data-has-hero] .sl-container > .sl-markdown-content, [data-has-hero] .sl-container > footer)::before {
     background-color: var(--sl-color-bg); -webkit-backdrop-filter: none; backdrop-filter: none;
   }
 }

@@ -14,3 +14,4 @@ The files are in `docs-site/public/sky/`. The site also blurs and tones them, so
 
 The day clip is CC BY 3.0: keep this attribution (author, source link, licence) wherever the clip is
 used, including in the app if it reuses it. The changes made are listed above.
+Published on the site at [/credits/](/credits/) (from `src/content/docs/credits.md`), linked from the sidebar and the home page footer.

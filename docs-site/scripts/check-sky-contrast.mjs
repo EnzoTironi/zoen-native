@@ -254,6 +254,14 @@ for (const theme of (args.themes ?? 'light,dark').split(',')) for (const [name, 
   if (Math.abs(toc.before - toc.after) > 1) failures.push(`table of contents moved while scrolling: ${JSON.stringify(toc)}`);
   console.log(`table of contents while scrolling: top ${toc.before.toFixed(0)} → ${toc.after.toFixed(0)} px`);
   await f.close();
+  // Scrolled sidebars on a short window: their surface must scroll with them (no sky under text).
+  for (const theme of ['light', 'dark']) {
+    const g = await open('/technical/architecture/', theme, 18, [], { w: 1440, h: 480 });
+    await g.evaluate(() => document.querySelectorAll('.sidebar-pane, .right-sidebar').forEach((e) => (e.scrollTop = e.scrollHeight)));
+    const px = await pixelCheck(g, `${theme} sunset 1440x480 scrolled sidebars`, new Set(), 3);
+    console.log(`${theme} 1440x480, sidebars scrolled to the end: runs ${px.checked}, worst ${px.worst.r.toFixed(2)}:1`);
+    await g.close();
+  }
   const q = await open('/', 'light', 12, [{ name: 'prefers-contrast', value: 'more' }]);
   const d = await q.evaluate(() => getComputedStyle(document.querySelector('.zoen-sky')).display);
   if (d !== 'none') failures.push('prefers-contrast: more → sky still visible');

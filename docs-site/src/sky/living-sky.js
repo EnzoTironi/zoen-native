@@ -36,9 +36,10 @@
       var next = order[i], prev = order[(i + 3) % 4];
       var d = h - STARTS[next];
       if (d > 12) d -= 24; if (d < -12) d += 24;
-      if (Math.abs(d) < BLEND / 2) { var t = smooth(d / BLEND + 0.5); w[next] = t; w[prev] = 1 - t; return w; }
+      if (Math.abs(d) < BLEND / 2) { var t = smooth(d / BLEND + 0.5); w[next] = t; w[prev] = 1 - t; w.from = prev; w.to = next; return w; }
     }
     w[phase(h)] = 1;
+    w.from = w.to = phase(h);
     return w;
   }
 
@@ -98,7 +99,10 @@
     PHASES.forEach(function (name) {
       if (!w[name] && !layers[name]) return;
       var el = layer(name);
-      el.style.opacity = String(w[name]);
+      // Real crossfade: the outgoing clip stays opaque underneath and the incoming one fades in on
+      // top, so the plain page colour never shows through mid-blend.
+      el.style.zIndex = name === w.to ? '2' : '1';
+      el.style.opacity = name === w.to ? String(w[name]) : (name === w.from ? '1' : '0');
       var v = w[name] ? video(name, el) : el.querySelector('video');
       if (!v) return;
       if (w[name] && !document.hidden && !api.frozen) { var p = v.play(); if (p && p.catch) p.catch(function () {}); }

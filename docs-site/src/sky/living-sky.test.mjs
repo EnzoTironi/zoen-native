@@ -17,10 +17,10 @@ test('weights sum to 1, use at most two clips, and change smoothly every minute 
   let prev = sky.weights(-1 / 60);
   for (let m = 0; m <= 1440; m++) {
     const w = sky.weights(m / 60);
-    const vals = Object.values(w);
+    const vals = sky.PHASES.map((p) => w[p]);
     assert.ok(Math.abs(vals.reduce((a, b) => a + b, 0) - 1) < 1e-9, `sum at ${m}`);
     assert.ok(vals.filter((v) => v > 0).length <= 2, `count at ${m}`);
-    for (const k of Object.keys(w)) assert.ok(Math.abs(w[k] - prev[k]) < 0.06, `${k} jump at ${m}`);
+    for (const k of sky.PHASES) assert.ok(Math.abs(w[k] - prev[k]) < 0.06, `${k} jump at ${m}`);
     prev = w;
   }
 });
@@ -38,4 +38,10 @@ test('every phase has a small video pair and a poster', () => {
     total += statSync(f).size;
   }
   assert.ok(total < 3 * 1024 * 1024, `sky assets are ${total} bytes`);
+});
+
+test('a blend names the outgoing and incoming clip', () => {
+  const w = sky.weights(8);
+  assert.equal(w.from, 'dawn'); assert.equal(w.to, 'day');
+  const n = sky.weights(20); assert.equal(n.from, 'sunset'); assert.equal(n.to, 'night');
 });

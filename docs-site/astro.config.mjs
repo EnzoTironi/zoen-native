@@ -70,6 +70,7 @@ export default defineConfig({
             { slug: 'reference/miniapp-manifest' },
             { slug: 'reference/decision-records' },
             { slug: 'product/glossary' },
+            { slug: 'credits', label: 'Credits' },
           ],
         },
       ],
