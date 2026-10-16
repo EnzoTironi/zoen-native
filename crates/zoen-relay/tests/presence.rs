@@ -688,12 +688,12 @@ async fn delayed_remote_frames_cannot_leak_timestamps_or_revert_self_policy() {
     // Equivalent to an old NATS publication arriving after the new one; exercise
     // the real websocket writer rather than assuming the bus preserves ordering.
     test.state.fanout.send(
-        &[b.identity.clone()],
+        std::slice::from_ref(&b.identity),
         &stale.frame(a.identity.clone(), false, false),
         None,
     );
     test.state.fanout.send(
-        &[a.identity.clone()],
+        std::slice::from_ref(&a.identity),
         &stale.frame(a.identity.clone(), true, true),
         None,
     );
