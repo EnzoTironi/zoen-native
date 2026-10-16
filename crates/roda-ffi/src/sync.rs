@@ -1260,6 +1260,12 @@ impl Engine {
                 role,
             },
         )?;
+        if matches!(role, Role::Admin | Role::Owner) {
+            self.living_tier_promote_admin(space, who)?;
+        }
+        if self.living_enabled() {
+            self.living_conversation_ensure(space)?;
+        }
         Ok(())
     }
 
@@ -1293,6 +1299,9 @@ impl Engine {
                 ),
             });
         }
+        self.living_tier_remove_from_all(space, who)?;
+        self.living_conversation_remove(space, who)?;
+        self.living_children_remove(space, who)?;
         self.append(
             space,
             &me,
@@ -1305,6 +1314,9 @@ impl Engine {
 
     pub fn leave_space(&mut self, space: &str) -> R<()> {
         let me = self.me_id()?;
+        self.living_tier_remove_from_all(space, &me)?;
+        self.living_conversation_remove(space, &me)?;
+        self.living_children_remove(space, &me)?;
         self.append(
             space,
             &me,

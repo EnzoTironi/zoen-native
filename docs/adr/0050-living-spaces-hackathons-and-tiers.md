@@ -20,7 +20,11 @@ pages, events, files, mini-app slots and conversations. Conversations are one
 section, not the whole product. Underlying child conversations are separate MLS
 groups (ADR 0026/0027); their hierarchy is implementation detail, never navigation
 copy. Each child uses real membership changes and encrypted delivery, not a label
-on a parent conversation.
+on a parent conversation. The experimental conversation allocator bounds each
+partition to 256 members by default (administrator policy can choose 2–4096),
+assigns admitted people internally, and exposes only their conversation
+destination to the home. Ordinary conversation text is not posted to the parent
+metadata log. Partition creation is not proof of production capacity.
 
 Only the community owner and administrators may publish announcements. The core
 checks the authenticated author on local writes and event replay; disabling a
@@ -97,6 +101,11 @@ returned only when issued; the synchronized record stores its digest, not the
 secret. A copied tier identifier is not an invite. Removing or renaming a tier cannot turn
 an old invite into a grant to an unrelated tier. Entitlement changes are signed,
 synchronized and checked against the issuer's role at the time of the operation.
+Tier changes use explicit deltas, not complete snapshot replacement: concurrent
+administrators must not accidentally erase unrelated grants while those people
+still hold keys. Invitation revocation is sticky; replaying an older issuance
+cannot revive a revoked invitation. Local projections include accepted pending
+outbox events, so immediate follow-up actions work before relay acknowledgement.
 
 ### Access is an encryption boundary
 

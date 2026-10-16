@@ -14,8 +14,8 @@
 //! (ver `roda-log`). Nenhuma tela mostra o log; ele é a fonte da verdade.
 
 pub mod annotation;
-pub mod living_space;
 pub mod hackathon;
+pub mod living_space;
 pub mod owner_budget;
 pub use annotation::Annotation;
 pub mod reply;

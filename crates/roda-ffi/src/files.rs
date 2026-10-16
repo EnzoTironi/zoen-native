@@ -476,6 +476,7 @@ impl Engine {
     }
 
     fn file_doc_at(&self, item: &str, version: Option<u32>) -> R<&FileDoc> {
+        self.living_guard_read_resource(item)?;
         let it = self
             .state
             .items

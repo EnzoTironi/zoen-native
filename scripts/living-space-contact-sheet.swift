@@ -11,7 +11,8 @@ let directory = URL(fileURLWithPath: arguments[1], isDirectory: true)
 let platform = arguments[2]
 let theme = arguments[3]
 let screens = ["home", "announcements", "page", "notifications", "hackathon", "teams", "submission", "results", "tiers"]
-let cell = NSSize(width: 280, height: 590)
+let wide = platform == "ipad" || platform == "web-wide"
+let cell = wide ? NSSize(width: 600, height: 480) : NSSize(width: 280, height: 590)
 let size = NSSize(width: cell.width * 3, height: cell.height * 3)
 let sheet = NSImage(size: size)
 sheet.lockFocus()
@@ -23,13 +24,13 @@ for (index, screen) in screens.enumerated() {
     let name = "\(platform)-\(theme)-\(screen).png"
     let image = NSImage(contentsOf: directory.appendingPathComponent(name))
     let label = image == nil ? "MISSING: \(screen)" : screen
-    (label as NSString).draw(at: NSPoint(x: x + 8, y: y + 568), withAttributes: [
+    (label as NSString).draw(at: NSPoint(x: x + 8, y: y + cell.height - 22), withAttributes: [
         .font: NSFont.systemFont(ofSize: 14), .foregroundColor: NSColor.black
     ])
     guard let image else { continue }
-    let scale = min(264 / image.size.width, 550 / image.size.height)
+    let scale = min((cell.width - 16) / image.size.width, (cell.height - 40) / image.size.height)
     let drawn = NSSize(width: image.size.width * scale, height: image.size.height * scale)
-    image.draw(in: NSRect(x: x + (280 - drawn.width) / 2, y: y + 8,
+    image.draw(in: NSRect(x: x + (cell.width - drawn.width) / 2, y: y + 8,
                          width: drawn.width, height: drawn.height))
 }
 sheet.unlockFocus()
