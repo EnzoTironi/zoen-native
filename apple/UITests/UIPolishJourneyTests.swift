@@ -28,7 +28,8 @@ final class UIPolishJourneyTests: XCTestCase {
         let onboarding = launch(["-RodaOnboarding", "YES", "-RodaOnboardingStep", "0"])
         let hello = onboarding.staticTexts.matching(NSPredicate(format: "label BEGINSWITH %@", "Oi, eu sou")).firstMatch
         XCTAssertTrue(hello.waitForExistence(timeout: 20))
-        XCTAssertFalse(onboarding.buttons["Colar"].exists)
+        // The invite paste stays, as a quiet line next to "Recebeu um convite?", not a floating chip.
+        XCTAssertTrue(onboarding.staticTexts["Recebeu um convite?"].exists)
         keep(onboarding, "onboarding")
         onboarding.terminate()
 
