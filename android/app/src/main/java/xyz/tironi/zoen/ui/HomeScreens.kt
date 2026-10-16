@@ -17,11 +17,6 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import androidx.compose.foundation.text.BasicTextField
-import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.ui.focus.onFocusChanged
-import androidx.compose.ui.platform.LocalFocusManager
-import androidx.compose.ui.unit.sp
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
@@ -61,34 +56,25 @@ internal fun HomeBar(title: String, state: AppState, navigate: (NavKey) -> Unit,
 }
 
 @Composable
-fun ConversationsScreen(model: ZoenViewModel, state: AppState, navigate: (NavKey) -> Unit, split: Boolean) {
+internal fun ConversationsScreen(model: ZoenViewModel, state: AppState, navigate: (NavKey) -> Unit, split: Boolean, filter: ChatInboxFilter = ChatInboxFilter.All) {
     var selectedChat by rememberSaveable { mutableStateOf<String?>(null) }
-    var searching by rememberSaveable { mutableStateOf(false) }
-    var query by rememberSaveable { mutableStateOf("") }
-    var filter by rememberSaveable { mutableStateOf(ChatInboxFilter.All) }
     // Pin, archive and mute are mine on every device: they come from the core.
     val archived = state.spaces.filter { it.archived }.map { it.id }.toSet()
     val muted = state.spaces.filter { it.muted }.map { it.id }.toSet()
     fun prefs(chat: SpaceSummary, pinned: Boolean = chat.pinned, archived: Boolean = chat.archived, mutedUntil: Long? = chat.mutedUntilMs) =
         model.launch { model.repository.change { it.setChatPrefs(chat.id, pinned, archived, mutedUntil) } }
     var showArchived by rememberSaveable { mutableStateOf(false) }
-    val focusManager = LocalFocusManager.current
-    androidx.activity.compose.BackHandler(showArchived || searching || query.isNotEmpty()) {
-        if (searching || query.isNotEmpty()) { focusManager.clearFocus(); searching = false; query = "" } else showArchived = false
-    }
+    androidx.activity.compose.BackHandler(showArchived) { showArchived = false }
     val haptics = rememberZoenHaptics()
     val working by model.working.collectAsStateWithLifecycle()
     val archivedChats = state.spaces.filter { it.id in archived }
-    val chats = state.spaces.filter { (it.id in archived) == showArchived && (showArchived || filter.includes(it)) && matchesSpace(it, query) }
+    val chats = state.spaces.filter { (it.id in archived) == showArchived && (showArchived || filter.includes(it)) }
         .sortedByDescending { it.lastAtMs }
         .sortedByDescending { it.pinned }
     val list: @Composable () -> Unit = {
         Scaffold(topBar = { HomeBar(stringResource(R.string.chats), state, navigate) }, containerColor = MaterialTheme.colorScheme.background, contentWindowInsets = WindowInsets(0, 0, 0, 0)) { padding ->
             // Bottom: clear the floating tab bar so the last chat is never under it.
             Column(Modifier.fillMaxSize().padding(padding)) {
-                ChatInboxSearchBar(query, { query = it }, searching, { searching = it }, filter) {
-                    filter = it; haptics.perform(ZoenFeedback.Selection)
-                }
             LazyColumn(Modifier.weight(1f).testTag("conversation-list"), contentPadding = PaddingValues(bottom = 112.dp)) {
                 if (showArchived) item {
                     Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -99,13 +85,13 @@ fun ConversationsScreen(model: ZoenViewModel, state: AppState, navigate: (NavKey
                 val apps = state.items.filter { item ->
                     item.app?.let { !JSONObject(it.viewJson).optBoolean("released") } == true && WidgetSnapshot.from(item) != null
                 }.asReversed()
-                if (apps.isNotEmpty() && !showArchived && !searching && query.isEmpty()) {
+                if (apps.isNotEmpty() && !showArchived) {
                     item {
                         MiniAppTileStrip(model, state, apps, onOpenItem = { navigate(Item(it)) })
                     }
                 }
                 // WhatsApp: "Archived" above the chats while there are any.
-                if (!showArchived && archivedChats.isNotEmpty() && query.isBlank()) item(key = "archived") {
+                if (!showArchived && archivedChats.isNotEmpty()) item(key = "archived") {
                     Row(Modifier.fillMaxWidth().testTag("archived-chats").clickable { haptics.perform(ZoenFeedback.Tap); showArchived = true }.padding(horizontal = 20.dp, vertical = 10.dp),
                         verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp)) {
                         Box(Modifier.width(56.dp), contentAlignment = Alignment.Center) { MotionVectorIcon(Icons.Rounded.Archive, null, tint = MaterialTheme.colorScheme.onSurfaceVariant) }
@@ -128,7 +114,6 @@ fun ConversationsScreen(model: ZoenViewModel, state: AppState, navigate: (NavKey
                 }
                 if (chats.isEmpty()) item {
                     when {
-                        query.isNotBlank() -> EmptyState("Nenhuma conversa encontrada", "Tente outro nome ou mensagem.")
                         showArchived -> EmptyState("Nenhuma conversa arquivada", "")
                         filter != ChatInboxFilter.All -> EmptyState(stringResource(R.string.chat_filter_empty), "")
                         else -> EmptyState(stringResource(R.string.chat_empty_title), stringResource(R.string.chat_empty_detail)) {
@@ -149,31 +134,6 @@ fun ConversationsScreen(model: ZoenViewModel, state: AppState, navigate: (NavKey
             else Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { EmptyState(stringResource(R.string.chat_select_title), stringResource(R.string.chat_select_detail)) }
         }
     } else list()
-}
-
-@Composable
-internal fun ChatInboxSearchBar(
-    query: String, onQuery: (String) -> Unit, focused: Boolean, onFocus: (Boolean) -> Unit,
-    filter: ChatInboxFilter, selectFilter: (ChatInboxFilter) -> Unit,
-) {
-    Surface(Modifier.fillMaxWidth().padding(start = 20.dp, end = 20.dp, top = 8.dp, bottom = 12.dp),
-        shape = CircleShape, color = MaterialTheme.colorScheme.surfaceContainer) {
-        Row(Modifier.heightIn(min = 52.dp).padding(start = 16.dp, end = 12.dp),
-            verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            MotionVectorIcon(Icons.Rounded.Search, null, Modifier.size(17.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
-            BasicTextField(query, onQuery, Modifier.weight(1f).heightIn(min = 48.dp).onFocusChanged { onFocus(it.isFocused) }.testTag("chat-search"),
-                singleLine = true, textStyle = MaterialTheme.typography.bodyLarge.copy(fontSize = 16.sp, color = MaterialTheme.colorScheme.onSurface),
-                cursorBrush = androidx.compose.ui.graphics.SolidColor(MaterialTheme.colorScheme.primary),
-                decorationBox = { input ->
-                    Box(contentAlignment = Alignment.CenterStart) { if (query.isEmpty()) Text(stringResource(R.string.chat_search_hint), fontSize = 16.sp, color = MaterialTheme.colorScheme.onSurfaceVariant); input() }
-                })
-            if (query.isNotEmpty()) NativeIconButton(onClick = { onQuery("") }, modifier = Modifier.size(32.dp).testTag("chat-search-clear")) {
-                MotionVectorIcon(Icons.Rounded.Cancel, stringResource(R.string.chat_search_clear), Modifier.size(17.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
-            }
-            VerticalDivider(Modifier.height(22.dp), thickness = 0.5.dp)
-            ChatFilterMenu(filter, compact = focused || query.isNotEmpty(), select = selectFilter)
-        }
-    }
 }
 
 @OptIn(ExperimentalFoundationApi::class)

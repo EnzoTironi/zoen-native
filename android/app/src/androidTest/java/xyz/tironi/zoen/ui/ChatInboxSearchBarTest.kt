@@ -12,36 +12,31 @@ import org.junit.Test
 import org.junit.runner.RunWith
 import xyz.tironi.zoen.R
 
-/** Exercises the production input and menu, not a replacement search widget. */
+/** Exercises the production compact menu used by the bottom-bar accessory. */
 @RunWith(AndroidJUnit4::class)
 class ChatInboxSearchBarTest {
     @get:Rule val compose = createAndroidComposeRule<ComponentActivity>()
 
-    @Test fun queryFocusAndClearKeepTheFilterAvailable() {
-        var query by mutableStateOf("")
-        var focused by mutableStateOf(false)
+    @Test fun compactFilterSelectsAndRetainsSelectionWhenReopened() {
         var filter by mutableStateOf(ChatInboxFilter.All)
         val all = compose.activity.getString(R.string.chat_filter_all)
+        val groups = compose.activity.getString(R.string.chat_filter_groups)
         compose.setContent {
             MaterialTheme {
-                ChatInboxSearchBar(query, { query = it }, focused, { focused = it }, filter, { filter = it })
+                ChatFilterMenu(filter, compact = true) { filter = it }
             }
         }
-        compose.onNodeWithText(all).assertIsDisplayed()
-        compose.onNodeWithTag("chat-search-clear").assertDoesNotExist()
-        compose.onNodeWithTag("chat-search").performClick()
         compose.onNodeWithText(all).assertDoesNotExist()
-        compose.onNodeWithTag("chat-search").performTextInput("Alice")
-        compose.onNodeWithTag("chat-search").assertTextEquals("Alice")
-        compose.runOnIdle { assertEquals("Alice", query) }
-        compose.onNodeWithTag("chat-filter").assertIsDisplayed().performClick()
+        compose.onNodeWithTag("chat-filter").assertIsDisplayed().assertHasClickAction().performClick()
         compose.onNodeWithTag("chat-filter-groups").performClick()
         compose.runOnIdle { assertEquals(ChatInboxFilter.Groups, filter) }
-        compose.onNodeWithTag("chat-search").assertTextEquals("Alice")
-        compose.onNodeWithTag("chat-search-clear").performClick()
-        compose.onNodeWithTag("chat-search").assertTextEquals("")
-        compose.onNodeWithTag("chat-search-clear").assertDoesNotExist()
+        compose.onNodeWithText(groups).assertDoesNotExist()
+        compose.onNodeWithTag("chat-filter").assert(
+            SemanticsMatcher.expectValue(androidx.compose.ui.semantics.SemanticsProperties.StateDescription, groups)
+        ).performClick()
+        compose.onNodeWithTag("chat-filter-groups").assertIsDisplayed()
+        compose.onNodeWithTag("chat-filter-all").performClick()
+        compose.runOnIdle { assertEquals(ChatInboxFilter.All, filter) }
         compose.onNodeWithTag("chat-filter").assertIsDisplayed()
-        compose.runOnIdle { assertEquals("", query) }
     }
 }
