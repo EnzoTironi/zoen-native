@@ -11,11 +11,12 @@ import androidx.compose.material3.CardElevation
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Shape
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 
 private val CardShape = RoundedCornerShape(22.dp)
 
-/** Compatibility wrapper for a native Material3 card. */
+/** Shared iOS-style glass surface with Material card semantics. */
 @Composable
 fun GlassCard(
     modifier: Modifier = Modifier,
@@ -25,9 +26,9 @@ fun GlassCard(
     border: BorderStroke? = null,
     content: @Composable ColumnScope.() -> Unit,
 ) = Card(
-    modifier = modifier,
+    modifier = modifier.zoenGlass(shape),
     shape = shape,
-    colors = colors ?: CardDefaults.cardColors(),
+    colors = colors ?: CardDefaults.cardColors(containerColor = Color.Transparent),
     elevation = elevation ?: CardDefaults.cardElevation(),
     border = border,
     content = content,
@@ -47,10 +48,10 @@ fun GlassCard(
     content: @Composable ColumnScope.() -> Unit,
 ) = Card(
     onClick = onClick,
-    modifier = modifier,
+    modifier = modifier.zoenGlass(shape),
     enabled = enabled,
     shape = shape,
-    colors = colors ?: CardDefaults.cardColors(),
+    colors = colors ?: CardDefaults.cardColors(containerColor = Color.Transparent),
     elevation = elevation ?: CardDefaults.cardElevation(),
     border = border,
     interactionSource = interactionSource,
