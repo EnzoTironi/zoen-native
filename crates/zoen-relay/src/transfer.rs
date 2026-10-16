@@ -80,7 +80,7 @@ async fn signed_by_device(
     }
     match crate::db::active_device(&st.pool, &device).await {
         Ok(Some(_)) => Ok(device),
-        Ok(None) => Err(err(StatusCode::FORBIDDEN, "unknown or unlinked device")),
+        Ok(None) => Err(err(StatusCode::FORBIDDEN, "unlinked device")),
         Err(_) => Err(err(StatusCode::SERVICE_UNAVAILABLE, "database unavailable")),
     }
 }
