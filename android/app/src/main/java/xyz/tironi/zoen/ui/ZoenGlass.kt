@@ -210,6 +210,10 @@ half4 main(float2 position) {
     float3 Hp = normalize(H + float3(0.12, 0.12, 0.0) * press);
     float spec = pow(max(dot(n, Hp), 0.0), mix(400.0, 12.0, rough));
     light += spec * mix(0.9, 0.45, frost) * strength;
+    // Specular streak: the light source mirrored along the top shoulder (reads as a marble, not a dot)
+    float facing = smoothstep(0.2, -0.85, outward.y);
+    float streak = exp(-sq((depth - bevel * mix(0.32, 0.45, press)) / (bevel * 0.16))) * facing;
+    light += streak * mix(0.55, 0.30, frost) * (0.6 + 0.4 * smoothstep(size.x, 0.0, position.x)) * strength;
     // Lambert falloff gives the body its volume: shoulders facing away from the light darken
     float lambert = dot(n, L);
     dark += (1.0 - clamp(lambert * 1.25, 0.0, 1.0)) * 0.22 * s * strength;
