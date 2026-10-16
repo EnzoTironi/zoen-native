@@ -4,7 +4,7 @@ import starlight from '@astrojs/starlight';
 import mermaid from 'astro-mermaid';
 import { readFileSync } from 'node:fs';
 
-// The living sky runs as a tiny classic script in <head> so the first paint already shows the right sky.
+// The living sky (real time-lapse footage, see src/sky/CREDITS.md) runs as a small classic script in <head>.
 const livingSky = readFileSync(new URL('./src/sky/living-sky.js', import.meta.url), 'utf8');
 
 export default defineConfig({
@@ -14,7 +14,7 @@ export default defineConfig({
     starlight({
       title: 'Zoen',
       description: 'The messenger where friendships, relationships and communities form — and where people build the apps and agents they share.',
-      logo: { src: './src/assets/zoen-icon.png', alt: 'Zoen' },
+      logo: { src: './src/assets/zoen-mascot.png', alt: 'Zoen' },
       favicon: '/favicon.png',
       social: [{ icon: 'github', label: 'GitHub', href: 'https://github.com/EnzoTironi/zoen-native' }],
       customCss: ['./src/styles/custom.css'],

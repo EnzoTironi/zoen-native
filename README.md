@@ -1,6 +1,6 @@
 <div align="center">
 
-<img src="apple/Shared/Assets.xcassets/AppIcon.appiconset/icon-mac-256@1x.png" width="96" height="96" alt="Zoen" />
+<img src="docs/screens/mascot-wave.png" width="120" height="120" alt="Zoen's mascot, a green furball, waving" />
 
 # Zoen
 
@@ -62,7 +62,7 @@ Step-by-step status of this journey is in the [roadmap](docs/product/roadmap.md#
 | **Live Pages & Plans** | Block pages and plans with budgets, edited by people and agents, synced and versioned | In progress |
 | **Agents** | Own identity and invite link, durable owner approvals, Creator agent, sandboxed tools (WASM · Firecracker · browser microVM) | In progress |
 | **Mini-apps** | MCP Apps host, offline hash-pinned bundles, Agenda and Hike apps, SDK | In progress |
-| **Look and feel** | Native SwiftUI and Material 3 · system Liquid Glass on Apple · a living sky that follows your local time | In progress (glass on `ui/native-glass`, sky in [PR #127](https://github.com/EnzoTironi/zoen-native/pull/127)) |
+| **Look and feel** | Native SwiftUI and Material 3 · system Liquid Glass on Apple · a living sky that follows your local time | In progress (glass is on `main`; sky in [PR #127](https://github.com/EnzoTironi/zoen-native/pull/127); the docs site already uses a photo time-lapse sky) |
 
 Full, sourced list: [Features](docs/product/features.md).
 

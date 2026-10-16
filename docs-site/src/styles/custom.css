@@ -92,82 +92,86 @@ h1#_top { letter-spacing: -0.025em; font-weight: 700; }
 }
 
 /* ───────────────────────── Living sky ─────────────────────────
- * The colour comes from src/sky/living-sky.js (same palette and hour anchors as the app's SkyClock).
- * The sky is decorative and sits behind everything; text sits on readable surfaces or on a wash
- * checked for WCAG 2.2 AA at every phase (see scripts/check-sky-contrast.mjs).
+ * Real time-lapse footage (src/sky/living-sky.js, public/sky/, credits in src/sky/CREDITS.md),
+ * softly blurred and toned. Text never sits on the raw sky: header, sidebars, the table of
+ * contents and the content all sit on frosted panels. Checked for WCAG 2.2 AA on real video
+ * frames in every phase and theme by scripts/check-sky-contrast.mjs.
+ *
+ * Frosting lives on a ::before layer, never on the panel itself: a backdrop-filter on an
+ * ancestor would become the containing block of the fixed table of contents and make it scroll.
  */
-@property --zoen-sky { syntax: '<color>'; inherits: true; initial-value: rgb(69 158 230); }
-@property --zoen-sky-stars { syntax: '<number>'; inherits: true; initial-value: 0; }
 :root {
-  /* Wash strength is set per minute by living-sky.js (contrast-guarded); these are no-JS fallbacks. */
-  --zoen-sky-wash-top: 30%;
-  --zoen-sky-wash-mid: 13%;
-  --zoen-cloud: rgb(255 255 255 / 0.5);
-  --zoen-star: rgb(82 94 128 / 0.3);
-  --zoen-surface: 58%;
-  --zoen-surface-chrome: 50%;
+  --zoen-scrim: rgb(255 255 255 / 0.22);
+  --zoen-panel: color-mix(in srgb, var(--sl-color-bg) 84%, transparent);
+  --zoen-panel-chrome: color-mix(in srgb, var(--sl-color-bg-nav) 80%, transparent);
   background-color: var(--sl-color-bg);
 }
-/* Smooth drift between minute updates; only after first paint, so page loads never animate. */
-:root[data-sky-live] { transition: --zoen-sky 1.5s linear, --zoen-sky-stars 1.5s linear; }
 :root[data-theme='dark'] {
-  --zoen-sky-wash-top: 20%;
-  --zoen-sky-wash-mid: 9%;
-  --zoen-cloud: rgb(255 255 255 / 0.04);
-  --zoen-star: rgb(255 255 255 / 0.16);
-  --zoen-surface: 40%;
-  --zoen-surface-chrome: 35%;
+  --zoen-scrim: rgb(6 10 9 / 0.45);
+  --zoen-panel: color-mix(in srgb, var(--sl-color-bg) 88%, transparent);
+  --zoen-panel-chrome: color-mix(in srgb, #111816 86%, transparent);
   --sl-color-bg-nav: #111816;
   --sl-color-bg-sidebar: #111816;
+  /* Muted text (table of contents, captions): lifted from Starlight's #888c96 so it keeps 4.5:1 on the frosted panels. */
+  --sl-color-gray-3: #aeb3bb;
 }
 body { background: transparent; }
 
-.zoen-sky {
-  position: fixed; inset: 0; z-index: -1; pointer-events: none;
-  background: linear-gradient(180deg,
-    color-mix(in srgb, var(--zoen-sky) var(--zoen-sky-wash-top), var(--sl-color-bg)) 0%,
-    color-mix(in srgb, var(--zoen-sky) var(--zoen-sky-wash-mid), var(--sl-color-bg)) 42%,
-    var(--sl-color-bg) 88%);
+.zoen-sky { position: fixed; inset: 0; z-index: -1; pointer-events: none; overflow: hidden; background: var(--sl-color-bg); }
+.zoen-sky-layer {
+  position: absolute; inset: -40px; /* bleed so the blur has no soft edge */
+  background-size: cover; background-position: center;
+  filter: blur(7px) saturate(1.1);
+  transition: opacity 2s linear;
 }
-.zoen-sky svg { position: absolute; inset: 0; display: block; }
-.zoen-sky-clouds { fill: none; stroke: var(--zoen-cloud); stroke-width: 13; stroke-linecap: round; }
-.zoen-sky-stars { fill: none; stroke: var(--zoen-star); stroke-width: 0.9; opacity: var(--zoen-sky-stars); }
+.zoen-sky-layer video { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+.zoen-sky::after { content: ''; position: absolute; inset: 0; background: var(--zoen-scrim); }
 
-/* Readable surfaces over the sky: frosted chrome, paper for reading. */
-.header {
-  background-color: color-mix(in srgb, var(--sl-color-bg-nav) calc(var(--zoen-surface-chrome) + 15%), transparent);
-  -webkit-backdrop-filter: blur(16px) saturate(1.15); backdrop-filter: blur(16px) saturate(1.15);
+/* Frosted panels. */
+/* Header, sidebar and table of contents are already fixed by Starlight (a positioned box for ::before);
+ * only the in-flow panels need position: relative. */
+.header, .sidebar-pane, .right-sidebar { isolation: isolate; }
+:root:not([data-has-hero]) .main-frame > div,
+[data-has-hero] .hero,
+[data-has-hero] .sl-container > .sl-markdown-content,
+[data-has-hero] .sl-container > footer { position: relative; isolation: isolate; }
+.header { background-color: transparent; }
+.sidebar-pane, .right-sidebar { background-color: transparent; }
+:is(.header, .sidebar-pane, .right-sidebar, .main-frame > div, [data-has-hero] .hero, [data-has-hero] .sl-container > .sl-markdown-content, [data-has-hero] .sl-container > footer)::before {
+  content: ''; position: absolute; inset: 0; z-index: -1; pointer-events: none;
+  background-color: var(--zoen-panel);
+  -webkit-backdrop-filter: blur(18px) saturate(1.1); backdrop-filter: blur(18px) saturate(1.1);
 }
-.sidebar-pane {
-  background-color: color-mix(in srgb, var(--sl-color-bg-sidebar) var(--zoen-surface-chrome), transparent);
-  -webkit-backdrop-filter: blur(16px); backdrop-filter: blur(16px);
-}
-:root:not([data-has-hero]) .main-frame > div {
-  background-color: color-mix(in srgb, var(--sl-color-bg) var(--zoen-surface), transparent);
-  -webkit-backdrop-filter: blur(18px); backdrop-filter: blur(18px);
-}
-.right-sidebar { background: transparent; }
-/* Landing: the hero sits on open sky; everything below it sits on a paper card. */
+:is(.header, .sidebar-pane)::before { background-color: var(--zoen-panel-chrome); }
+[data-has-hero] .main-frame > div::before { display: none; }
+/* Landing: the hero and the content below it are floating cards over the open sky. */
 [data-has-hero] .content-panel { border-top: 0; }
-[data-has-hero] .sl-container > .sl-markdown-content {
-  background-color: color-mix(in srgb, var(--sl-color-bg) 90%, transparent);
-  -webkit-backdrop-filter: blur(18px); backdrop-filter: blur(18px);
-  border: 1px solid var(--sl-color-hairline);
-  border-radius: 24px;
-  padding: clamp(1.25rem, 3vw, 2.5rem);
-  box-shadow: 0 30px 80px -50px rgb(0 0 0 / 0.35);
+[data-has-hero] .hero { margin-top: 1.5rem; padding: clamp(1.25rem, 3vw, 2.5rem); }
+[data-has-hero] :is(.hero, .sl-container > .sl-markdown-content) { border: 1px solid var(--sl-color-hairline); border-radius: 24px; box-shadow: 0 30px 80px -50px rgb(0 0 0 / 0.45); }
+[data-has-hero] :is(.hero, .sl-container > .sl-markdown-content)::before { border-radius: 24px; }
+[data-has-hero] .sl-container > .sl-markdown-content { padding: clamp(1.25rem, 3vw, 2.5rem); }
+[data-has-hero] .sl-container > footer { padding: 1rem 1.25rem; margin-bottom: 2rem; border-radius: 18px; }
+[data-has-hero] .sl-container > footer::before { border-radius: 18px; }
+
+/* Mascot: logo in the header and hero art on the home page. */
+.site-title img { height: 2.4rem; width: auto; filter: drop-shadow(0 1px 1px rgb(0 0 0 / 0.25)); }
+.zoen-hero-art { position: relative; }
+.zoen-hero-art .zoen-hero-mascot {
+  position: absolute; z-index: 1; width: clamp(96px, 13vw, 168px); height: auto;
+  left: -6%; top: -18%; filter: drop-shadow(0 12px 18px rgb(0 0 0 / 0.3));
 }
 
 @media (prefers-reduced-motion: reduce) {
-  :root, :root[data-sky-live] { transition: none; }
+  .zoen-sky-layer { transition: none; }
 }
 /* More contrast requested, or forced colours: drop the sky and use solid surfaces. */
 @media (prefers-contrast: more), (forced-colors: active) {
   .zoen-sky { display: none; }
-  .header, .sidebar-pane, :root:not([data-has-hero]) .main-frame > div,
-  [data-has-hero] .sl-container > .sl-markdown-content {
-    background-color: var(--sl-color-bg);
-    -webkit-backdrop-filter: none; backdrop-filter: none;
+  :is(.header, .sidebar-pane, .right-sidebar, .main-frame > div, [data-has-hero] .hero, [data-has-hero] .sl-container > .sl-markdown-content)::before {
+    background-color: var(--sl-color-bg); -webkit-backdrop-filter: none; backdrop-filter: none;
   }
 }
 @media print { .zoen-sky { display: none; } }
+
+/* Mermaid's dark theme draws sequence notes as #ccc-ish text on a grey box (4.49:1); lift them to AA. */
+:root[data-theme='dark'] .sl-markdown-content .mermaid :is(.noteText, .noteText tspan) { fill: #f2f2f2 !important; }

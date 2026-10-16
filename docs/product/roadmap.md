@@ -108,7 +108,6 @@ From the [roadmap status](../roadmap-status.md#completion-sequence):
 These are decided or designed but have **no implementation on `main`**:
 
 - A sky background that follows the person's local time — implemented in [PR #127](https://github.com/EnzoTironi/zoen-native/pull/127) (`ui/living-sky`), open, not merged.
-- System Liquid Glass on Apple (branch `ui/native-glass`, not merged).
 - Remote MCP servers, catalog and Store ([ADR 0042](../adr/0042-dynamic-ui.md)).
 - Hooks runtime ([hooks](../hooks.md)).
 - Calls and live video.

@@ -1,80 +1,54 @@
 /*
- * Zoen living sky for the docs site: a decorative sky that follows the visitor's local time.
+ * Zoen living sky for the docs site: real time-lapse footage of the sky that follows the visitor's
+ * local time. Four looping clips (dawn, day, sunset, night; sources and licences in CREDITS.md)
+ * crossfade around the phase boundaries. The footage is softly blurred and toned by custom.css,
+ * and all text sits on frosted panels, so the sky never decides whether text is readable.
  *
- * The palette, time anchors, star curve and smoothstep easing are copied verbatim from the app's
- * SkyClock (PR #127, branch ui/living-sky, commit 3d86d3b):
- *   apple/Shared/DesignSystem/LivingSky.swift · android/…/theme/LivingSky.kt · packages/zoen-ui/web/living-sky.ts
- * Keep these tokens identical to that model. Only the wash strength differs (the app tints its
- * canvas 8%; the site washes the top of the page more strongly, see custom.css).
- *
- * Local civil time only: no location, network, sunrise API or permissions. Runs as a small classic
- * script in <head> so the first paint already has the right sky. No timers while the tab is hidden.
+ * Local civil time only: no location, network lookups or permissions. Runs as a small classic
+ * script in <head> so the first paint already has the right poster image.
+ * Reduced motion: still photos only, no video is downloaded. Hidden tab: videos pause.
  */
 (function () {
   'use strict';
 
-  /** Hour anchors (local civil time) and their sky colours, as linear sRGB 0…1 triples. */
-  var HOURS = [0, 6, 9, 12, 17, 20, 24];
-  var COLORS = [
-    [0.20, 0.23, 0.46], // 00:00 night
-    [0.84, 0.48, 0.53], // 06:00 dawn
-    [0.38, 0.67, 0.87], // 09:00 morning
-    [0.27, 0.62, 0.90], // 12:00 midday
-    [0.94, 0.61, 0.30], // 17:00 golden hour
-    [0.51, 0.34, 0.63], // 20:00 dusk
-    [0.20, 0.23, 0.46], // 24:00 night (wraps to 00:00)
-  ];
-  /** Star visibility at each anchor (1 = full night). */
-  var STARS = [1, 0, 0, 0, 0, 0.4, 1];
+  var PHASES = ['night', 'dawn', 'day', 'sunset'];
+  /** Where each phase starts (local hour). A phase hands over to the next across BLEND hours. */
+  var STARTS = { night: 20, dawn: 5, day: 8, sunset: 16 };
+  var BLEND = 1; // hours of crossfade, centred on each boundary
 
-  function sample(hour) {
-    var h = isFinite(hour) ? ((hour % 24) + 24) % 24 : 12;
-    var i = 0;
-    while (i < HOURS.length - 2 && h >= HOURS[i + 1]) i++;
-    var t = (h - HOURS[i]) / (HOURS[i + 1] - HOURS[i]);
-    var s = t * t * (3 - 2 * t);
-    var rgb = [0, 1, 2].map(function (c) { return COLORS[i][c] + (COLORS[i + 1][c] - COLORS[i][c]) * s; });
-    return { rgb: rgb, stars: STARS[i] + (STARS[i + 1] - STARS[i]) * s };
-  }
+  function norm(h) { return isFinite(h) ? ((h % 24) + 24) % 24 : 12; }
+  function smooth(t) { t = Math.min(1, Math.max(0, t)); return t * t * (3 - 2 * t); }
 
-  /** Coarse name for the moment, exposed as html[data-sky-phase] for styling and tests. */
+  /** Coarse name for the moment, exposed as html[data-sky-phase]. */
   function phase(hour) {
-    var h = ((hour % 24) + 24) % 24;
+    var h = norm(hour);
     if (h >= 5 && h < 8) return 'dawn';
     if (h >= 8 && h < 16) return 'day';
     if (h >= 16 && h < 20) return 'sunset';
     return 'night';
   }
 
-  /*
-   * Contrast guard. The wash at the top of the page is as strong as the theme allows (up to MAX)
-   * but never pushes the background past a luminance bound that keeps the theme's text at
-   * WCAG 2.2 AA with margin: light pages stay at or above L 0.50 (muted text #39453e needs 0.42
-   * for 4.5:1), dark pages at or below L 0.05 (muted text #c1c3c8 needs 0.08).
-   */
-  var THEMES = {
-    light: { base: [255, 255, 255], max: 0.46, ok: function (l) { return l >= 0.50; } },
-    dark: { base: [12, 18, 16], max: 0.34, ok: function (l) { return l <= 0.05; } },
-  };
-  function luminance(rgb) {
-    var c = rgb.map(function (v) { v /= 255; return v <= 0.04045 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4); });
-    return 0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2];
-  }
-  function mix(sky255, base, w) { return base.map(function (b, i) { return sky255[i] * w + b * (1 - w); }); }
-  function wash(rgb, theme) {
-    var t = THEMES[theme] || THEMES.light;
-    var sky255 = rgb.map(function (v) { return v * 255; });
-    if (t.ok(luminance(mix(sky255, t.base, t.max)))) return t.max;
-    var lo = 0, hi = t.max;
-    for (var k = 0; k < 20; k++) { var m = (lo + hi) / 2; if (t.ok(luminance(mix(sky255, t.base, m)))) lo = m; else hi = m; }
-    return lo;
+  /** Opacity of each clip at this hour; always sums to 1, at most two clips are visible. */
+  function weights(hour) {
+    var h = norm(hour), w = { night: 0, dawn: 0, day: 0, sunset: 0 };
+    var order = ['dawn', 'day', 'sunset', 'night'];
+    for (var i = 0; i < order.length; i++) {
+      var next = order[i], prev = order[(i + 3) % 4];
+      var d = h - STARTS[next];
+      if (d > 12) d -= 24; if (d < -12) d += 24;
+      if (Math.abs(d) < BLEND / 2) { var t = smooth(d / BLEND + 0.5); w[next] = t; w[prev] = 1 - t; return w; }
+    }
+    w[phase(h)] = 1;
+    return w;
   }
 
-  var api = { HOURS: HOURS, COLORS: COLORS, STARS: STARS, THEMES: THEMES, sample: sample, phase: phase, wash: wash, mix: mix, luminance: luminance };
+  var api = { PHASES: PHASES, STARTS: STARTS, BLEND: BLEND, phase: phase, weights: weights };
   if (typeof globalThis !== 'undefined') globalThis.ZoenSky = api;
   if (typeof document === 'undefined') return; // imported by tests
 
   var root = document.documentElement;
+  var still = window.matchMedia('(prefers-reduced-motion: reduce)');
+  var layers = {};
   var timer;
 
   function currentHour() {
@@ -87,62 +61,82 @@
     return now.getHours() + now.getMinutes() / 60 + now.getSeconds() / 3600;
   }
 
+  function layer(name) {
+    if (layers[name]) return layers[name];
+    var el = document.createElement('div');
+    el.className = 'zoen-sky-layer';
+    el.style.backgroundImage = 'url(/sky/' + name + '.jpg)';
+    layers[name] = el;
+    document.querySelector('.zoen-sky').append(el);
+    return el;
+  }
+
+  function video(name, el) {
+    var v = el.querySelector('video');
+    if (still.matches) { if (v) v.remove(); return null; }
+    if (!v) {
+      v = document.createElement('video');
+      v.muted = true; v.loop = true; v.playsInline = true; v.autoplay = true;
+      v.setAttribute('muted', ''); v.setAttribute('playsinline', ''); v.setAttribute('preload', 'auto');
+      v.poster = '/sky/' + name + '.jpg';
+      ['webm', 'mp4'].forEach(function (ext) {
+        var s = document.createElement('source');
+        s.src = '/sky/' + name + '.' + ext; s.type = 'video/' + ext;
+        v.append(s);
+      });
+      el.append(v);
+    }
+    return v;
+  }
+
   function update() {
     clearTimeout(timer);
-    if (document.hidden) return;
     var hour = currentHour();
-    var sky = sample(hour);
-    var rgb = sky.rgb.map(function (v) { return Math.round(v * 255); }).join(' ');
-    root.style.setProperty('--zoen-sky', 'rgb(' + rgb + ')');
-    root.style.setProperty('--zoen-sky-stars', sky.stars.toFixed(3));
-    var w = wash(sky.rgb, root.getAttribute('data-theme') === 'dark' ? 'dark' : 'light');
-    root.style.setProperty('--zoen-sky-wash-top', (w * 100).toFixed(1) + '%');
-    root.style.setProperty('--zoen-sky-wash-mid', (w * 45).toFixed(1) + '%');
     root.setAttribute('data-sky-phase', phase(hour));
-    timer = setTimeout(update, 60000);
+    if (!document.querySelector('.zoen-sky')) return;
+    var w = weights(hour);
+    PHASES.forEach(function (name) {
+      if (!w[name] && !layers[name]) return;
+      var el = layer(name);
+      el.style.opacity = String(w[name]);
+      var v = w[name] ? video(name, el) : el.querySelector('video');
+      if (!v) return;
+      if (w[name] && !document.hidden && !api.frozen) { var p = v.play(); if (p && p.catch) p.catch(function () {}); }
+      else v.pause();
+    });
+    if (!document.hidden) timer = setTimeout(update, 60000);
   }
 
-  // Deterministic decoration, same layout rules as the app's Canvas: five ink clouds, 36 cross stars.
-  function paint(layer) {
-    var w = Math.max(window.innerWidth, 320), h = Math.max(window.innerHeight, 320);
-    var ns = 'http://www.w3.org/2000/svg';
-    var svg = document.createElementNS(ns, 'svg');
-    svg.setAttribute('width', '100%');
-    svg.setAttribute('height', '100%');
-    svg.setAttribute('viewBox', '0 0 ' + w + ' ' + h);
-    svg.setAttribute('focusable', 'false');
-    var clouds = '', stars = '';
-    for (var i = 0; i < 5; i++) {
-      var x = (w * i) / 4, y = h * (0.10 + (i % 3) * 0.12);
-      clouds += 'M' + (x - 65) + ' ' + y + 'C' + (x - 30) + ' ' + (y - 24) + ' ' + (x + 20) + ' ' + (y + 16) + ' ' + (x + 70) + ' ' + (y + 3);
-    }
-    for (var j = 0; j < 36; j++) {
-      var sx = (w * ((j * 73 + 19) % 997)) / 997, sy = (h * ((j * 137 + 31) % 631)) / 1000;
-      stars += 'M' + (sx - 2) + ' ' + sy + 'L' + (sx + 2) + ' ' + (sy + 0.5) + 'M' + sx + ' ' + (sy - 2) + 'L' + (sx + 0.5) + ' ' + (sy + 2);
-    }
-    svg.innerHTML = '<path class="zoen-sky-clouds" d="' + clouds + '"/><path class="zoen-sky-stars" d="' + stars + '"/>';
-    layer.replaceChildren(svg);
-  }
+  /** Test hook: pause every visible clip at time t (seconds) and resolve once the frames are shown. */
+  api.freeze = function (t) {
+    api.frozen = true;
+    var vids = [].slice.call(document.querySelectorAll('.zoen-sky video'));
+    return Promise.all(vids.map(function (v) {
+      v.pause();
+      return new Promise(function (res) {
+        var go = function () {
+          var d = isFinite(v.duration) ? v.duration : 8;
+          v.addEventListener('seeked', function () { res(); }, { once: true });
+          v.currentTime = Math.min(t, d - 0.05);
+        };
+        if (v.readyState >= 1) go(); else v.addEventListener('loadedmetadata', go, { once: true });
+      });
+    }));
+  };
 
   function mount() {
-    if (document.querySelector('.zoen-sky')) return;
-    var layer = document.createElement('div');
-    layer.className = 'zoen-sky';
-    layer.setAttribute('aria-hidden', 'true'); // purely decorative
-    document.body.prepend(layer);
-    paint(layer);
-    requestAnimationFrame(function () { requestAnimationFrame(function () { root.setAttribute('data-sky-live', ''); }); });
-    var resizeTimer;
-    window.addEventListener('resize', function () {
-      clearTimeout(resizeTimer);
-      resizeTimer = setTimeout(function () { paint(layer); }, 150);
-    });
+    if (!document.querySelector('.zoen-sky')) {
+      var sky = document.createElement('div');
+      sky.className = 'zoen-sky';
+      sky.setAttribute('aria-hidden', 'true'); // purely decorative
+      document.body.prepend(sky);
+    }
+    update();
   }
 
-  update();
   document.addEventListener('visibilitychange', update);
-  // Re-guard the wash when the reader switches light/dark.
-  new MutationObserver(update).observe(root, { attributes: true, attributeFilter: ['data-theme'] });
+  if (still.addEventListener) still.addEventListener('change', update);
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', mount);
   else mount();
+  root.setAttribute('data-sky-phase', phase(currentHour()));
 })();

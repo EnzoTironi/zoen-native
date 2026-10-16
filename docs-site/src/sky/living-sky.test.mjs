@@ -1,55 +1,41 @@
-// node --test src/sky/living-sky.test.mjs : the site's sky model matches the app's SkyClock contract.
+// node --test src/sky/living-sky.test.mjs : the sky's time-of-day model.
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { readFileSync, existsSync, statSync } from 'node:fs';
 import vm from 'node:vm';
 
-const ctx = { globalThis: {} };
+const ctx = {};
 ctx.globalThis = ctx;
 vm.runInNewContext(readFileSync(new URL('./living-sky.js', import.meta.url), 'utf8'), ctx);
 const sky = ctx.ZoenSky;
-const plain = (v) => JSON.parse(JSON.stringify(v));
 
-test('anchors and palette match the app (PR #127, commit 3d86d3b)', () => {
-  assert.deepEqual([...sky.HOURS], [0, 6, 9, 12, 17, 20, 24]);
-  assert.deepEqual(plain(sky.COLORS), [[.20,.23,.46],[.84,.48,.53],[.38,.67,.87],[.27,.62,.90],[.94,.61,.30],[.51,.34,.63],[.20,.23,.46]]);
-  assert.deepEqual([...sky.STARS], [1, 0, 0, 0, 0, .4, 1]);
+test('phase names follow local time', () => {
+  for (const [h, p] of [[0, 'night'], [4.9, 'night'], [5, 'dawn'], [7.9, 'dawn'], [8, 'day'], [12, 'day'], [16, 'sunset'], [19.9, 'sunset'], [20, 'night'], [23.5, 'night'], [-1, 'night'], [NaN, 'day']]) assert.equal(sky.phase(h), p, String(h));
 });
 
-test('anchors are hit exactly and the curve is continuous, including midnight', () => {
-  sky.HOURS.slice(0, -1).forEach((h, i) => assert.deepEqual([...sky.sample(h).rgb], [...sky.COLORS[i]]));
-  for (const h of sky.HOURS) {
-    const a = sky.sample(h - 1e-6), b = sky.sample(h + 1e-6);
-    a.rgb.forEach((v, i) => assert.ok(Math.abs(v - b.rgb[i]) < 1e-6));
-    assert.ok(Math.abs(a.stars - b.stars) < 1e-6);
+test('weights sum to 1, use at most two clips, and change smoothly every minute of the day', () => {
+  let prev = sky.weights(-1 / 60);
+  for (let m = 0; m <= 1440; m++) {
+    const w = sky.weights(m / 60);
+    const vals = Object.values(w);
+    assert.ok(Math.abs(vals.reduce((a, b) => a + b, 0) - 1) < 1e-9, `sum at ${m}`);
+    assert.ok(vals.filter((v) => v > 0).length <= 2, `count at ${m}`);
+    for (const k of Object.keys(w)) assert.ok(Math.abs(w[k] - prev[k]) < 0.06, `${k} jump at ${m}`);
+    prev = w;
   }
 });
 
-test('invalid and negative hours wrap like the app', () => {
-  assert.deepEqual([...sky.sample(NaN).rgb], [...sky.sample(12).rgb]);
-  assert.deepEqual([...sky.sample(-1).rgb], [...sky.sample(23).rgb]);
-  for (let m = 0; m < 1440; m++) {
-    const s = sky.sample(m / 60);
-    assert.ok(s.rgb.every((v) => v >= 0 && v <= 1) && s.stars >= 0 && s.stars <= 1);
-  }
+test('each phase is fully shown in the middle of its time', () => {
+  for (const [h, p] of [[2, 'night'], [6.5, 'dawn'], [12, 'day'], [18, 'sunset']]) assert.equal(sky.weights(h)[p], 1);
+  assert.equal(sky.weights(8).dawn, 0.5);
 });
 
-test('phase names', () => {
-  assert.equal(sky.phase(6), 'dawn');
-  assert.equal(sky.phase(12), 'day');
-  assert.equal(sky.phase(17.5), 'sunset');
-  assert.equal(sky.phase(0), 'night');
-  assert.equal(sky.phase(22), 'night');
-});
-
-test('the contrast guard holds for every minute of the day in both themes', () => {
-  for (const theme of ['light', 'dark']) {
-    const { base, max, ok } = sky.THEMES[theme];
-    for (let m = 0; m < 1440; m++) {
-      const { rgb } = sky.sample(m / 60);
-      const w = sky.wash(rgb, theme);
-      assert.ok(w >= 0 && w <= max);
-      assert.ok(ok(sky.luminance(sky.mix(rgb.map((v) => v * 255), base, w))), `${theme} ${m}`);
-    }
+test('every phase has a small video pair and a poster', () => {
+  let total = 0;
+  for (const p of sky.PHASES) for (const ext of ['webm', 'mp4', 'jpg']) {
+    const f = new URL(`../../public/sky/${p}.${ext}`, import.meta.url);
+    assert.ok(existsSync(f), `${p}.${ext}`);
+    total += statSync(f).size;
   }
+  assert.ok(total < 3 * 1024 * 1024, `sky assets are ${total} bytes`);
 });
