@@ -2611,7 +2611,7 @@ impl Engine {
                     None => content_hash(&(title, detail, audience)),
                 };
                 let req = AgentRequest {
-                    id: new_id("rq"),
+                    id: crate::parity_fixture::request_id(),
                     agent: agent.into(),
                     title: title.into(),
                     detail: detail.into(),

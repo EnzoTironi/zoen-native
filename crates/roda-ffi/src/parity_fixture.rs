@@ -1,6 +1,29 @@
 //! Explicit screenshot-test fixture. Deterministic keys are confined to demo seeding.
 use std::cell::Cell;
-thread_local! { static COUNTER: Cell<Option<u64>> = const { Cell::new(None) }; }
+thread_local! {
+    static COUNTER: Cell<Option<u64>> = const { Cell::new(None) };
+    static REQUEST_COUNTER: Cell<Option<u64>> = const { Cell::new(None) };
+}
+// Separate namespace preserves every existing fixture ID and signed card snapshot.
+pub(crate) fn request_id() -> String {
+    REQUEST_COUNTER.with(|c| match c.get() {
+        Some(n) => {
+            c.set(Some(n + 1));
+            let mut value = ((FIXED_MS as u128) << 80) | n as u128;
+            let alphabet = b"0123456789abcdefghjkmnpqrstvwxyz";
+            let mut encoded = [b'0'; 26];
+            for digit in encoded.iter_mut().rev() {
+                *digit = alphabet[(value & 31) as usize];
+                value >>= 5;
+            }
+            format!(
+                "rq_{}",
+                String::from_utf8(encoded.to_vec()).expect("ASCII ULID")
+            )
+        }
+        None => roda_types::new_id("rq"),
+    })
+}
 pub(crate) const FIXED_MS: i64 = 1_768_478_400_000;
 pub(crate) fn enabled() -> bool {
     std::env::var("ZOEN_PARITY_FIXTURE").as_deref() == Ok("native-parity-v1")
@@ -12,12 +35,14 @@ pub(crate) struct SeedGuard;
 impl SeedGuard {
     pub(crate) fn enter() -> Self {
         COUNTER.with(|c| c.set(enabled().then_some(128)));
+        REQUEST_COUNTER.with(|c| c.set(enabled().then_some(128)));
         Self
     }
 }
 impl Drop for SeedGuard {
     fn drop(&mut self) {
         COUNTER.with(|c| c.set(None));
+        REQUEST_COUNTER.with(|c| c.set(None));
     }
 }
 fn next() -> Option<u64> {
@@ -79,6 +104,15 @@ mod tests {
         assert!(super::enabled());
         let core = crate::RodaEngine::open(":memory:".into(), "en_US".into()).unwrap();
         core.seed_demo_if_empty().unwrap();
+        let independently_seeded =
+            crate::RodaEngine::open(":memory:".into(), "en_US".into()).unwrap();
+        independently_seeded.seed_demo_if_empty().unwrap();
+        assert!(!core.requests().is_empty());
+        assert_eq!(
+            core.requests(),
+            independently_seeded.requests(),
+            "full genuine request DTOs must repeat across independent seeds"
+        );
         let spaces: Vec<Value> = core.spaces().iter().map(|s| {
             let entries: Vec<Value> = core.timeline(s.id.clone()).unwrap().iter().map(|e| {
                 let (kind, text, card) = match &e.kind {
@@ -105,23 +139,97 @@ mod tests {
         }).collect();
         // Fresh fixture has empty persisted homePins/homeUnpinned. Match AppModel.homeApps:
         // live (not released) apps, oldest first, retaining only native widget snapshots.
-        let home_apps: Vec<Value> = core.items().into_iter().rev().filter_map(|item| {
-            let app = item.app?;
-            let view: Value = serde_json::from_str(&app.view_json).unwrap();
-            if view.get("released").and_then(Value::as_bool).unwrap_or(false) { return None; }
-            if app.snapshot_json.is_empty() { return None; }
-            let snapshot: Value = serde_json::from_str(&app.snapshot_json).expect("native snapshot JSON");
-            assert_eq!(snapshot["deepLink"], format!("zoen://app/{}", snapshot["id"].as_str().unwrap()));
-            assert!(snapshot["title"].as_str().is_some_and(|s| !s.is_empty()));
-            assert!(["stat", "progress", "countdown", "list", "caption", "ticket", "photo"]
+        let home_apps: Vec<Value> = core
+            .items()
+            .into_iter()
+            .rev()
+            .filter_map(|item| {
+                let app = item.app?;
+                let view: Value = serde_json::from_str(&app.view_json).unwrap();
+                if view
+                    .get("released")
+                    .and_then(Value::as_bool)
+                    .unwrap_or(false)
+                {
+                    return None;
+                }
+                if app.snapshot_json.is_empty() {
+                    return None;
+                }
+                let snapshot: Value =
+                    serde_json::from_str(&app.snapshot_json).expect("native snapshot JSON");
+                assert_eq!(
+                    snapshot["deepLink"],
+                    format!("zoen://app/{}", snapshot["id"].as_str().unwrap())
+                );
+                assert!(snapshot["title"].as_str().is_some_and(|s| !s.is_empty()));
+                assert!([
+                    "stat",
+                    "progress",
+                    "countdown",
+                    "list",
+                    "caption",
+                    "ticket",
+                    "photo"
+                ]
                 .contains(&snapshot["template"].as_str().unwrap()));
-            Some(snapshot)
-        }).collect();
-        assert!(!home_apps.is_empty(), "native seed must expose actual Home widgets");
+                Some(snapshot)
+            })
+            .collect();
+        assert!(
+            !home_apps.is_empty(),
+            "native seed must expose actual Home widgets"
+        );
+        let requests: Vec<Value> = core.requests().iter().map(|r| json!({
+            "id":r.id,"agent":persona(&r.agent),"spaceId":r.space_id,"spaceTitle":r.space_title,
+            "title":r.title,"detail":r.detail,"audience":r.audience,"actionLabel":r.action_label,
+            "costCents":r.cost_cents,"reason":r.reason,"status":format!("{:?}",r.status).to_lowercase(),
+            "openedMs":r.opened_ms,"resolvedMs":r.resolved_ms,"itemId":r.item_id,"lineId":r.line_id,
+            "actionKey":r.action_key,"canAlwaysApprove":r.can_always_approve,"byStanding":r.by_standing
+        })).collect();
+        let agents: Vec<Value> = core.agents().iter().map(|a| json!({
+            "persona":persona(&a.persona),"budgetLimitCents":a.budget_limit_cents,
+            "budgetSpentCents":a.budget_spent_cents,"nearLimit":a.near_limit,
+            "spaces":a.spaces.iter().map(|s| json!({"spaceId":s.space_id,"spaceTitle":s.space_title,
+                "level":format!("{:?}",s.level).to_lowercase()})).collect::<Vec<_>>(),
+            "pendingRequests":a.pending_requests,"approvalsStreak":a.approvals_streak,
+            "runsOn":a.runs_on,"ownerNotesPending":a.owner_notes_pending
+        })).collect();
+        let mentions: Vec<Value> = core
+            .mentions()
+            .iter()
+            .map(|m| {
+                // Resolve the exact projected entry already exported above: no second renderer or fake message.
+                let entry = spaces.iter().find(|s| s["id"] == m.space_id).unwrap()["entries"]
+                    .as_array()
+                    .unwrap()
+                    .iter()
+                    .find(|e| e["id"] == m.entry.id)
+                    .unwrap()
+                    .clone();
+                json!({"spaceId":m.space_id,"spaceTitle":m.space_title,"entry":entry})
+            })
+            .collect();
+        let stats = core.stats();
+        let grants: Vec<Value> = core.app_device_grants().iter().map(|g| json!({
+            "grantId":g.grant_id,"itemId":g.item_id,"itemTitle":g.item_title,"appName":g.app_name,
+            "spaceTitle":g.space_title,"capability":g.capability,"purpose":g.purpose,
+            "always":g.always,"atMs":g.at_ms
+        })).collect();
+        let account = core.account().map(|a| {
+            json!({"identityId":a.identity_id,"deviceId":a.device_id,
+            "name":a.name,"handle":a.handle,"registered":a.registered,"unlocked":a.unlocked})
+        });
+        let connection = core.connection();
         let fixture = json!({"fixture_id":"native-parity-v1","fixed_time":"2026-01-15T12:00:00Z",
             "locale":"en_US","timezone":"UTC","seed":128,"me":persona(&core.me().unwrap()),
             "personas":core.personas().iter().map(persona).collect::<Vec<_>>(),"spaces":spaces,
-            "homeApps":home_apps});
+            "homeApps":home_apps,"requests":requests,"agents":agents,"mentions":mentions,
+            "stats":{"spaces":stats.spaces,"events":stats.events,"items":stats.items,
+                "identities":stats.identities,"allLogsValid":stats.all_logs_valid},
+            "appDeviceGrants":grants,"account":account,
+            "connection":{"state":connection.state,"synced":connection.synced,
+                "pending":connection.pending,"error":connection.error}});
         std::fs::write(
             std::env::var("ZOEN_PARITY_EXPORT").unwrap(),
             serde_json::to_string_pretty(&fixture).unwrap(),
@@ -129,6 +237,17 @@ mod tests {
         .unwrap();
     }
     use super::*;
+    #[test]
+    fn request_ids_are_random_outside_seed_scope() {
+        REQUEST_COUNTER.with(|c| c.set(None));
+        assert_ne!(request_id(), request_id());
+        REQUEST_COUNTER.with(|c| c.set(Some(128)));
+        let first = request_id();
+        REQUEST_COUNTER.with(|c| c.set(Some(128)));
+        assert_eq!(first, request_id());
+        drop(SeedGuard);
+        assert_ne!(first, request_id());
+    }
     #[test]
     fn scoped_sequence_repeats_and_exits() {
         // Test the scope without mutating process environment used by other tests.

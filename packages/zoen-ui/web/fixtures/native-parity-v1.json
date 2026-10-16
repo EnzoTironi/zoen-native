@@ -1,4 +1,137 @@
 {
+  "account": null,
+  "agents": [
+    {
+      "approvalsStreak": 0,
+      "budgetLimitCents": 1000,
+      "budgetSpentCents": 310,
+      "nearLimit": false,
+      "ownerNotesPending": 0,
+      "pendingRequests": 0,
+      "persona": {
+        "bio": "Your agent. Turns conversation into things.",
+        "glyph": "sparkles",
+        "handle": "zoen",
+        "id": "c37776804d11bbddabee36706849641d5ad5e095510563c48bc218147c254250",
+        "initials": "Z",
+        "isMe": false,
+        "kind": "agent",
+        "name": "Zoen",
+        "tintHex": "#7C5CFF"
+      },
+      "runsOn": "On this device · Apple Intelligence when available",
+      "spaces": [
+        {
+          "level": "act",
+          "spaceId": "sp_01kf0rdqg00000000000000050",
+          "spaceTitle": "Zoen · Product"
+        },
+        {
+          "level": "act",
+          "spaceId": "sp_01kf0rdqg0000000000000005e",
+          "spaceTitle": "Saturday Crew"
+        },
+        {
+          "level": "act",
+          "spaceId": "sp_01kf0rdqg00000000000000071",
+          "spaceTitle": "Zoen"
+        },
+        {
+          "level": "act",
+          "spaceId": "sp_01kf0rdqg0000000000000007t",
+          "spaceTitle": "Paraty with Marina"
+        }
+      ]
+    },
+    {
+      "approvalsStreak": 0,
+      "budgetLimitCents": 500,
+      "budgetSpentCents": 420,
+      "nearLimit": true,
+      "ownerNotesPending": 0,
+      "pendingRequests": 3,
+      "persona": {
+        "bio": "Handles money: budget, splits and bookings.",
+        "glyph": "chart.pie.fill",
+        "handle": "financeiro",
+        "id": "071c033d0d56148657233af6608ec4a119a00ab40a87bf93f43f0587dcccd35a",
+        "initials": "F",
+        "isMe": false,
+        "kind": "agent",
+        "name": "Finance",
+        "tintHex": "#22C55E"
+      },
+      "runsOn": "On this device · Apple Intelligence when available",
+      "spaces": [
+        {
+          "level": "act",
+          "spaceId": "sp_01kf0rdqg0000000000000007t",
+          "spaceTitle": "Paraty with Marina"
+        }
+      ]
+    },
+    {
+      "approvalsStreak": 0,
+      "budgetLimitCents": null,
+      "budgetSpentCents": null,
+      "nearLimit": false,
+      "ownerNotesPending": 0,
+      "pendingRequests": 0,
+      "persona": {
+        "bio": "Marina's lists, reminders and calendar.",
+        "glyph": "checklist",
+        "handle": "organizador",
+        "id": "61d0bcce5a93176002ca9cbcdc349392ebcd7519615d36a3b01dcffc4f38720e",
+        "initials": "O",
+        "isMe": false,
+        "kind": "agent",
+        "name": "Organizer",
+        "tintHex": "#FF9F0A"
+      },
+      "runsOn": "On this device · Apple Intelligence when available",
+      "spaces": [
+        {
+          "level": "suggest",
+          "spaceId": "sp_01kf0rdqg0000000000000007t",
+          "spaceTitle": "Paraty with Marina"
+        }
+      ]
+    },
+    {
+      "approvalsStreak": 0,
+      "budgetLimitCents": null,
+      "budgetSpentCents": null,
+      "nearLimit": false,
+      "ownerNotesPending": 0,
+      "pendingRequests": 0,
+      "persona": {
+        "bio": "Tides, trails and community tips.",
+        "glyph": "map.fill",
+        "handle": "guia",
+        "id": "29f305be0f2d0b00f06f75363f49a632107912b33e0ad57a02237714c5a78882",
+        "initials": "G",
+        "isMe": false,
+        "kind": "agent",
+        "name": "Guide",
+        "tintHex": "#0EA5E9"
+      },
+      "runsOn": "On this device · Apple Intelligence when available",
+      "spaces": [
+        {
+          "level": "listen",
+          "spaceId": "sp_01kf0rdqg0000000000000004e",
+          "spaceTitle": "Coastal Travelers"
+        }
+      ]
+    }
+  ],
+  "appDeviceGrants": [],
+  "connection": {
+    "error": null,
+    "pending": 0,
+    "state": "offline",
+    "synced": false
+  },
   "fixed_time": "2026-01-15T12:00:00Z",
   "fixture_id": "native-parity-v1",
   "homeApps": [
@@ -97,6 +230,35 @@
     "name": "Enzo",
     "tintHex": "#4F7CFF"
   },
+  "mentions": [
+    {
+      "entry": {
+        "atMs": 1768477320000,
+        "author": {
+          "bio": "Architect. Plans everything in a spreadsheet.",
+          "glyph": null,
+          "handle": "marina",
+          "id": "133cfc4240dea1fab2e8a1a50af5ab9fe5dba49214f0f31b5a2f285ee952a4bd",
+          "initials": "M",
+          "isMe": false,
+          "kind": "person",
+          "name": "Marina",
+          "tintHex": "#FF5C8A"
+        },
+        "card": null,
+        "deleted": false,
+        "delivery": "local",
+        "edited": false,
+        "id": "01KF0QCRT0000000000000009A",
+        "kind": "message",
+        "seq": 25,
+        "text": "@Enzo did you approve the inn yet? They only hold the booking until today 😅",
+        "threadReplies": 0
+      },
+      "spaceId": "sp_01kf0rdqg0000000000000007t",
+      "spaceTitle": "Paraty with Marina"
+    }
+  ],
   "personas": [
     {
       "bio": "Building Zoen.",
@@ -185,6 +347,98 @@
       "kind": "agent",
       "name": "Guide",
       "tintHex": "#0EA5E9"
+    }
+  ],
+  "requests": [
+    {
+      "actionKey": "external",
+      "actionLabel": "Send outside",
+      "agent": {
+        "bio": "Handles money: budget, splits and bookings.",
+        "glyph": "chart.pie.fill",
+        "handle": "financeiro",
+        "id": "071c033d0d56148657233af6608ec4a119a00ab40a87bf93f43f0587dcccd35a",
+        "initials": "F",
+        "isMe": false,
+        "kind": "agent",
+        "name": "Finance",
+        "tintHex": "#22C55E"
+      },
+      "audience": "Marina, outside Zoen",
+      "byStanding": false,
+      "canAlwaysApprove": true,
+      "costCents": null,
+      "detail": "Payment link with the plan summary. She gets it on WhatsApp.",
+      "id": "rq_01kf0rdqg00000000000000042",
+      "itemId": null,
+      "lineId": null,
+      "openedMs": 1768468980000,
+      "reason": "Leaves the Space or can’t be undone: asks first",
+      "resolvedMs": null,
+      "spaceId": "sp_01kf0rdqg0000000000000007t",
+      "spaceTitle": "Paraty with Marina",
+      "status": "pending",
+      "title": "Send Marina the $694 payment request"
+    },
+    {
+      "actionKey": "money",
+      "actionLabel": "Payment",
+      "agent": {
+        "bio": "Handles money: budget, splits and bookings.",
+        "glyph": "chart.pie.fill",
+        "handle": "financeiro",
+        "id": "071c033d0d56148657233af6608ec4a119a00ab40a87bf93f43f0587dcccd35a",
+        "initials": "F",
+        "isMe": false,
+        "kind": "agent",
+        "name": "Finance",
+        "tintHex": "#22C55E"
+      },
+      "audience": "Viação Costa Verde",
+      "byStanding": false,
+      "canAlwaysApprove": false,
+      "costCents": 24800,
+      "detail": "Rio → Paraty Friday 6 pm, back Sunday 5 pm · 2 people.",
+      "id": "rq_01kf0rdqg00000000000000041",
+      "itemId": "it_01kf0rdqg0000000000000008h",
+      "lineId": "ln_01kf0rdqg0000000000000008b",
+      "openedMs": 1768468920000,
+      "reason": "Red line: money above $100 always asks",
+      "resolvedMs": null,
+      "spaceId": "sp_01kf0rdqg0000000000000007t",
+      "spaceTitle": "Paraty with Marina",
+      "status": "pending",
+      "title": "Buy the bus tickets"
+    },
+    {
+      "actionKey": "money",
+      "actionLabel": "Payment",
+      "agent": {
+        "bio": "Handles money: budget, splits and bookings.",
+        "glyph": "chart.pie.fill",
+        "handle": "financeiro",
+        "id": "071c033d0d56148657233af6608ec4a119a00ab40a87bf93f43f0587dcccd35a",
+        "initials": "F",
+        "isMe": false,
+        "kind": "agent",
+        "name": "Finance",
+        "tintHex": "#22C55E"
+      },
+      "audience": "Casa Azul Inn",
+      "byStanding": false,
+      "canAlwaysApprove": false,
+      "costCents": 64000,
+      "detail": "2 nights, Friday and Saturday, breakfast included. Free cancellation until Wednesday.",
+      "id": "rq_01kf0rdqg00000000000000040",
+      "itemId": "it_01kf0rdqg0000000000000008h",
+      "lineId": "ln_01kf0rdqg0000000000000008a",
+      "openedMs": 1768468860000,
+      "reason": "Red line: money above $100 always asks",
+      "resolvedMs": null,
+      "spaceId": "sp_01kf0rdqg0000000000000007t",
+      "spaceTitle": "Paraty with Marina",
+      "status": "pending",
+      "title": "Book the Casa Azul Inn"
     }
   ],
   "seed": 128,
@@ -1690,5 +1944,12 @@
       "unread": 0
     }
   ],
+  "stats": {
+    "allLogsValid": true,
+    "events": 92,
+    "identities": 8,
+    "items": 8,
+    "spaces": 6
+  },
   "timezone": "UTC"
 }
