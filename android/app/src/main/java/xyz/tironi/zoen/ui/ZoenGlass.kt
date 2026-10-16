@@ -158,7 +158,8 @@ private fun GlassCardBody(
                 ambientColor = Color.Black.copy(alpha = 0.12f), spotColor = Color.Black.copy(alpha = 0.16f))
             .clip(shape)
             .zoenGlass(tint = if (prominent) tint else scheme.surface, prominent = prominent, dark = dark,
-                cornerRadius = 22.dp, press = { if (pressed) 1f else 0f }, strength = 0.8f)
+                cornerRadius = 22.dp, press = { if (pressed) 1f else 0f }, strength = 0.8f,
+                film = if (prominent) null else colors?.containerColor?.takeOrElse { Color.Transparent })
             .then(if (focused) Modifier.border(2.dp, scheme.primary, shape) else Modifier)
             .then(if (onClick != null) Modifier.clickable(interactions, indication = null, enabled = enabled, role = Role.Button, onClick = onClick) else Modifier),
     ) {
