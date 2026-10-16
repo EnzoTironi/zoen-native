@@ -174,16 +174,19 @@ impl Engine {
             if st.kind == SpaceKind::Personal {
                 continue;
             }
+            // A summary projects all followed threads. Compute it once per chat,
+            // not once per thread (which multiplies the projection cost again).
+            let title = self
+                .space_summary(space)
+                .map(|s| s.title)
+                .unwrap_or_else(|_| st.title.clone());
             for (root, replies, _, mentions) in self.followed_threads(space) {
                 let mut dto = vec![self.entry_dto(root)];
                 dto[0].thread_replies = replies.len() as u32;
                 self.fill_thread_roots(space, &mut dto);
                 out.push(ThreadSummary {
                     space_id: space.clone(),
-                    space_title: self
-                        .space_summary(space)
-                        .map(|s| s.title)
-                        .unwrap_or_else(|_| st.title.clone()),
+                    space_title: title.clone(),
                     root: dto.remove(0),
                     last_reply: replies.last().map(|r| self.entry_dto(r)),
                     mentions,

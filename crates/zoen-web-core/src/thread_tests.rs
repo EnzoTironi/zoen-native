@@ -164,13 +164,14 @@ fn synced_follow_read_and_also_in_chat_project_native_roots() {
 }
 
 #[test]
-fn browser_thread_state_is_encrypted_durable_and_read_is_idempotent() {
+fn browser_thread_state_matches_native_personal_replication_and_read_is_idempotent() {
     let (mut client, _, other, root, hash) = fixture();
     let last = reply(&mut client, &other, &root, false);
-    // A failed Personal Space write must not hide unread state or prevent retry.
+    // Native Personal Space has no MLS group. Catch-up failures must remain retryable.
+    client.synced = false;
     assert!(client.mark_thread_read("chat", &hash, 199).is_err());
     assert_eq!(client.conversations()[0].threads_unread, 1);
-    client.device().unwrap().create_group("personal").unwrap();
+    client.synced = true;
     client
         .set_thread_follow("chat", &hash, Some(true), 200)
         .unwrap();
@@ -181,7 +182,8 @@ fn browser_thread_state_is_encrypted_durable_and_read_is_idempotent() {
     assert_eq!(client.saved.outbox.len(), count);
     let pending = client.saved.outbox.values().find(|p| matches!(&p.inner.as_ref().unwrap().body, EventBody::ThreadStateSet { read_up_to, .. } if *read_up_to == last)).unwrap();
     assert_eq!(pending.envelope().unwrap().space(), "personal");
-    assert!(pending.envelope().unwrap().plain_event().is_none());
+    assert!(pending.envelope().unwrap().plain_event().is_some());
+    assert_eq!(pending.epoch, None);
     assert!(
         matches!(&pending.inner.as_ref().unwrap().body, EventBody::ThreadStateSet { root: r, follow: Some(true), .. } if r == &root)
     );
@@ -222,7 +224,7 @@ fn deliver(client: &mut Client<HostSigner>, log: &mut SpaceLog, env: Envelope) {
 }
 
 #[test]
-fn native_and_browser_exchange_encrypted_personal_thread_state() {
+fn personal_thread_state_stays_clear_even_with_a_legacy_mls_group() {
     let (mut client, _, other, root, hash) = fixture();
     let last = reply(&mut client, &other, &root, false);
     let package = client
@@ -287,37 +289,14 @@ fn native_and_browser_exchange_encrypted_personal_thread_state() {
         .into_iter()
         .find_map(|f| match ClientFrame::decode(&f).unwrap() {
             ClientFrame::Publish { env }
-                if env.space() == "personal"
-                    && env
-                        .sealed_data()
-                        .is_some_and(|(k, _)| k == SealedKind::Application) =>
+                if env.space() == "personal" && env.plain_event().is_some() =>
             {
                 Some(env)
             }
             _ => None,
         })
         .unwrap();
-    let from = Leaf {
-        identity: client.account.identity.clone(),
-        device: client.account.device.clone(),
-        cert: client.account.cert.clone(),
-    };
-    let Opened::Application { plaintext, .. } = native
-        .open("personal", env.sealed_data().unwrap().1, &roster, &from)
-        .unwrap()
-    else {
-        panic!("MLS application expected")
-    };
-    let opened = InnerEvent::decode(&plaintext).unwrap();
-    let event = roda_log::event_from_content(
-        opened.content,
-        opened.sig,
-        Some(client.account.cert.clone()),
-        0,
-        String::new(),
-        String::new(),
-    )
-    .unwrap();
+    let event = env.plain_event().unwrap();
     roda_log::verify_author(&event).unwrap();
     assert!(
         matches!(&event.body, EventBody::ThreadStateSet { root: r, read_up_to, follow: None, .. } if r == &root && *read_up_to == last)
@@ -372,6 +351,32 @@ fn missing_personal_group_requests_device_join_like_a_chat() {
         .receive(&ServerFrame::SyncDone.encode(), 400)
         .unwrap();
     assert!(update.frames.iter().any(|f| matches!(ClientFrame::decode(f).unwrap(), ClientFrame::Publish { env } if env.space() == "personal" && matches!(env.plain_event().map(|e| e.body), Some(EventBody::DeviceJoining { .. })))));
+}
+
+#[test]
+fn many_threads_project_hash_and_client_aliases_without_cross_counting() {
+    let (mut client, me, other, _, _) = fixture();
+    for i in 0..128 {
+        let root = append(
+            client.logs.get_mut("chat").unwrap(),
+            &me,
+            EventBody::MessagePosted {
+                message: format!("root-{i}"),
+                text: format!("root {i}"),
+                attaches: None,
+                reply: None,
+                forwarded: false,
+            },
+        );
+        reply(&mut client, &other, &root.hash, false);
+        reply(&mut client, &other, &root.client_id, false);
+    }
+    let view = client.conversations().remove(0);
+    assert_eq!(view.threads_unread, 256);
+    for root in view.messages.iter().filter(|m| m.text.starts_with("root ")) {
+        assert!(root.thread_following);
+        assert_eq!(root.thread_unread, 2);
+    }
 }
 
 #[test]

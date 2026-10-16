@@ -948,6 +948,8 @@ impl<S: Signer> Client<S> {
             .outbox
             .iter()
             .filter_map(|(id, pending)| {
+                // Clear Personal Space state must never be upgraded into MLS traffic.
+                pending.epoch?;
                 let event = pending.inner.as_ref()?;
                 let epoch = self.ready_epoch(&event.space).ok()?;
                 (pending.failure.is_none() && pending.epoch != Some(epoch))
@@ -987,7 +989,7 @@ impl<S: Signer> Client<S> {
             if self.sent.contains(id) {
                 continue;
             }
-            if let Some(inner) = &pending.inner {
+            if let Some(inner) = pending.inner.as_ref().filter(|_| pending.epoch.is_some()) {
                 if self.ready_epoch(&inner.space).ok() != pending.epoch {
                     continue;
                 }

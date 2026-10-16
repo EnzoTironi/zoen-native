@@ -21,8 +21,19 @@ impl<S: Signer> Client<S> {
     }
 
     fn thread_state(&self, space: &str, root: &str) -> (Option<bool>, u64) {
-        let root = self.thread_root(space, root);
-        let mut state = (None, 0);
+        let canonical = |id: &str| self.thread_root(space, id);
+        self.thread_states(space, &canonical)
+            .get(&canonical(root))
+            .copied()
+            .unwrap_or((None, 0))
+    }
+
+    fn thread_states(
+        &self,
+        space: &str,
+        canonical: &impl Fn(&str) -> String,
+    ) -> BTreeMap<String, (Option<bool>, u64)> {
+        let mut states = BTreeMap::new();
         for (id, log) in &self.logs {
             if !matches!(self.metadata(id), Some((_, SpaceKind::Personal, _)))
                 || !self.roster(id).contains_key(&self.account.identity)
@@ -40,8 +51,9 @@ impl<S: Signer> Client<S> {
                     read_up_to,
                 } = &event.body
                 {
-                    if s == space && self.thread_root(space, r) == root {
-                        state = (*follow, state.1.max(*read_up_to));
+                    if s == space {
+                        let state = states.entry(canonical(r)).or_insert((None, 0u64));
+                        *state = (*follow, state.1.max(*read_up_to));
                     }
                 }
             }
@@ -65,12 +77,13 @@ impl<S: Signer> Client<S> {
                 read_up_to,
             } = &event.body
             {
-                if s == space && self.thread_root(space, r) == root {
-                    state = (*follow, state.1.max(*read_up_to));
+                if s == space {
+                    let state = states.entry(canonical(r)).or_insert((None, 0u64));
+                    *state = (*follow, state.1.max(*read_up_to));
                 }
             }
         }
-        state
+        states
     }
 
     fn put_thread_state(
@@ -92,22 +105,29 @@ impl<S: Signer> Client<S> {
             })
             .cloned()
             .ok_or("Personal Space is not available yet.")?;
-        let epoch = self.ready_epoch(&personal)?;
-        let inner = self
-            .clear_event(
-                &personal,
-                EventBody::ThreadStateSet {
-                    space: space.into(),
-                    root: self.thread_root(space, root),
-                    follow,
-                    read_up_to,
-                },
-                now,
-            )?
+        if !self.synced {
+            return Err("Catching up with the conversation…".into());
+        }
+        if let Some(error) = self.saved.integrity_errors.get(&personal) {
+            return Err(error.clone());
+        }
+        // Personal Space uses signed clear events on native, not an MLS group.
+        let mut pending = self.clear_event(
+            &personal,
+            EventBody::ThreadStateSet {
+                space: space.into(),
+                root: self.thread_root(space, root),
+                follow,
+                read_up_to,
+            },
+            now,
+        )?;
+        // Keep the exact signed event for optimistic projection and retries.
+        let inner = pending
             .envelope()?
             .plain_event()
             .ok_or("invalid thread state")?;
-        let pending = self.seal_inner(&inner, epoch)?;
+        pending.inner = Some(inner.clone());
         self.saved.outbox.insert(inner.client_id.clone(), pending);
         self.update(Vec::new())
     }
@@ -141,20 +161,38 @@ impl<S: Signer> Client<S> {
     }
 
     pub(super) fn fill_threads(&self, space: &str, messages: &mut [MessageView]) {
+        let aliases: BTreeMap<&str, &str> = self
+            .logs
+            .get(space)
+            .into_iter()
+            .flat_map(|log| log.events())
+            .flat_map(|e| {
+                let canonical = if e.client_id.is_empty() {
+                    e.hash.as_str()
+                } else {
+                    e.client_id.as_str()
+                };
+                [
+                    (e.hash.as_str(), canonical),
+                    (e.client_id.as_str(), canonical),
+                ]
+            })
+            .collect();
+        let canonical = |id: &str| aliases.get(id).copied().unwrap_or(id).to_string();
+        let mut by_root: BTreeMap<String, Vec<&MessageView>> = BTreeMap::new();
+        for message in messages.iter() {
+            if let Some(root) = &message.thread {
+                by_root.entry(canonical(root)).or_default().push(message);
+            }
+        }
+        let preferences = self.thread_states(space, &canonical);
         let states: BTreeMap<String, (bool, usize, usize)> = messages
             .iter()
             .filter_map(|root| {
                 let entry = root.entry.as_ref()?;
-                let canonical = self.thread_root(space, entry);
-                let replies: Vec<_> = messages
-                    .iter()
-                    .filter(|m| {
-                        m.thread
-                            .as_ref()
-                            .is_some_and(|r| self.thread_root(space, r) == canonical)
-                    })
-                    .collect();
-                let (follow, read) = self.thread_state(space, entry);
+                let id = canonical(entry);
+                let replies = by_root.get(&id).map(Vec::as_slice).unwrap_or_default();
+                let (follow, read) = preferences.get(&id).copied().unwrap_or((None, 0));
                 let following = follow.unwrap_or_else(|| {
                     root.author == self.account.identity
                         || (!root.deleted && mentions(&root.text, &self.account.handle))
