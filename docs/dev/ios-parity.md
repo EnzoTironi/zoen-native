@@ -52,8 +52,9 @@ IPAD=$(xcrun simctl create NativeParityPad com.apple.CoreSimulator.SimDeviceType
 xcrun simctl boot "$IPAD"
 python3 scripts/parity_capture.py ios --device "$IPAD" --viewport wide --output parity/ios-wide
 
-# Android host, boot a fresh API 35 emulator first.
-python3 scripts/parity_capture.py android --output parity/android
+# Android host, boot a fresh API 35 emulator first. Physical devices are refused.
+# All install/instrument/capture operations target this selected emulator only.
+python3 scripts/parity_capture.py android --device emulator-5554 --output parity/android
 
 # Web host: build and start the current app using the Session preview service locally;
 # the CI workflow starts its own server on its isolated runner.
