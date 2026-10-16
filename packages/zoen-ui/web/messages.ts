@@ -220,10 +220,6 @@ export class Messages {
     const doc = parseFile(head.doc);
     if (file.voice) doc.voice = parseVoice(file.voice);
     const uploads = array(head.uploads).map((u) => { const x = object(u); return { blob: string(x.blob), len: integer(x.len) }; });
-    // Queue first so a voice/file stays in the timeline (failed) if the upload dies — like native.
-    await this.act(space, { kind: 'queue_file', space, doc: JSON.stringify(doc), now: Date.now() });
-    const pending = this.conversations.find((c) => c.id === space)?.messages
-      .filter((m) => m.delivery === 'sending' && m.file?.sha256 === doc.sha256).at(-1);
     let offset = 4 + length;
     try {
       for (const [i, upload] of uploads.entries()) {
@@ -232,11 +228,16 @@ export class Messages {
         progress?.(i + 1, uploads.length);
       }
     } catch (error) {
+      // Keep the sealed voice/file in the timeline as failed, like native — do not lose the clip.
+      await this.act(space, { kind: 'queue_file', space, doc: JSON.stringify(doc), now: Date.now() });
+      const pending = this.conversations.find((c) => c.id === space)?.messages
+        .filter((m) => m.delivery === 'sending' && m.file?.sha256 === doc.sha256).at(-1);
       if (pending) {
         await this.act(space, { kind: 'fail_outbox', client_id: pending.id, reason: error instanceof Error ? error.message : 'Sem conexão para enviar o arquivo. Tente de novo.' });
       }
       throw error;
     }
+    await this.act(space, { kind: 'queue_file', space, doc: JSON.stringify(doc), now: Date.now() });
   }
 
   /** The same encrypted chunks, named again in another chat: nothing to upload. */
