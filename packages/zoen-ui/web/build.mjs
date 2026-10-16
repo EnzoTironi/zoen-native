@@ -23,6 +23,9 @@ await mkdir(join(out, 'core'), { recursive: true });
 // Project-owned native artwork: copied byte-for-byte, never redrawn by the capture fixture.
 await cp(join(root, 'apple/AvatarV1/Heroes'), join(out, 'assets/avatars/Heroes'), { recursive: true });
 await cp(join(root, 'apple/AvatarV1/Loops'), join(out, 'assets/avatars/Loops'), { recursive: true });
+await cp(join(here, 'assets/native-avatar-frame0'), join(out, 'assets/avatars/Frame0'), { recursive: true });
+await cp(join(here, 'assets/native-ink-phase2.4'), join(out, 'assets/native'), { recursive: true });
+for (const name of ['hike-tomales', 'hike-steep', 'hike-lands']) await copyFile(join(root, 'apple/Shared/Assets.xcassets', `${name}.imageset`, `${name}.jpg`), join(out, 'assets/native', `${name}.jpg`));
 await mkdir(join(out, 'assets/avatars/Stills'), { recursive: true });
 const avatarManifest = JSON.parse(await readFile(join(root, 'apple/AvatarV1/AvatarV1Manifest.json'), 'utf8'));
 for (const asset of avatarManifest.assets) {
@@ -54,6 +57,15 @@ const integrity = async (file) => `sha384-${createHash('sha384').update(await re
 await writeFile(join(out, 'favicon.svg'), '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><rect width="64" height="64" rx="18" fill="#191919"/><path d="M20 22h24L20 42h24" fill="none" stroke="#fff" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/></svg>\n');
 const html = `<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Zoen</title><link rel="icon" href="/favicon.svg" type="image/svg+xml"><link rel="stylesheet" href="/main.css" integrity="${await integrity('main.css')}" crossorigin="anonymous"></head><body><div id="root"></div><script type="module" src="/main.js" integrity="${await integrity('main.js')}" crossorigin="anonymous"></script></body></html>`;
 await writeFile(join(out, 'index.html'), html);
-const files = [...(await readdir(out)).filter((file) => /\.(js|css|html)$/.test(file)), 'core/zoen_web_core_bg.wasm'];
+async function builtFiles(folder, prefix = '') {
+  const files = [];
+  for (const entry of await readdir(folder, { withFileTypes: true })) {
+    const name = prefix + entry.name;
+    if (entry.isDirectory()) files.push(...await builtFiles(join(folder, entry.name), name + '/'));
+    else if (entry.isFile() && name !== 'build-manifest.json' && /\.(js|css|html|wasm|png|webp|jpg|svg|json)$/.test(name)) files.push(name);
+  }
+  return files.sort();
+}
+const files = await builtFiles(out);
 const manifest = { format: 'zoen-web-build-v1', files: Object.fromEntries(await Promise.all(files.map(async (file) => [file, await integrity(file)]))) };
 await writeFile(join(out, 'build-manifest.json'), JSON.stringify(manifest, null, 2) + '\n');

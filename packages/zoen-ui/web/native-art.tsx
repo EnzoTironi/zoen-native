@@ -52,6 +52,7 @@ export function nativeAvatarAsset(identity: NativeAvatarIdentity) {
  */
 export function nativeAvatarSource(identity: NativeAvatarIdentity, size: number, { animate = true, reduceMotion = false, fixed = isDisplayClockFixed() } = {}): string | undefined {
   if (identity.kind === 'person') return identity.photoUrl;
+  if (identity.kind === 'agent' && identity.handle?.toLowerCase() === 'zoen') return './assets/native/head.png';
   const asset = nativeAvatarAsset(identity);
   if (!asset) return undefined;
   const loop = animate && !reduceMotion && size >= 56;
@@ -84,7 +85,6 @@ export function NativeAvatar({ identity, size = 48, className = '', animate = tr
 }
 
 /** Exact native Ink export, frozen at t=2.4; not a re-drawn SVG or animation. */
-export function NativeWelcomeMascot({ src }: { src?: string | undefined }) {
-  if (!src) return null; // Never substitute approximate art or emit a known broken URL.
+export function NativeWelcomeMascot({ src = './assets/native/wave.png' }: { src?: string | undefined }) {
   return <img className="no-mascot" src={src} alt="Zoen waving" width="230" height="230"/>;
 }
