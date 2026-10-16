@@ -45,9 +45,26 @@ final class NativeIconMotionCaptureTests: XCTestCase {
             XCTAssertEqual(json["driver_error"] as? String, "")
             return try XCTUnwrap(json["notifications"] as? [String: Any])
         }
+        func assertEffect(_ expected: String, after previous: Int) {
+            let submitted = NSPredicate { _, _ in
+                guard let json = try? JSONSerialization.jsonObject(with: Data(state.label.utf8)) as? [String: Any] else { return false }
+                if json["reduce_motion"] as? Bool == true {
+                    return (json["native_effect_event"] as? Int ?? 0) == previous
+                }
+                return json["native_effect_diagnostic"] as? String == expected
+                    && (json["native_effect_event"] as? Int ?? 0) > previous
+            }
+            expectation(for: submitted, evaluatedWith: state)
+            waitForExpectations(timeout: 10)
+        }
+        func effectEvent() -> Int {
+            let json = (try? JSONSerialization.jsonObject(with: Data(state.label.utf8))) as? [String: Any]
+            return json?["native_effect_event"] as? Int ?? 0
+        }
         let baseline = try pendingWitness()
         let initialCount = try XCTUnwrap(baseline["pendingCount"] as? Int)
         XCTAssertEqual(initialCount, 3)
+        let beforeBell = effectEvent()
         app.buttons["parity-open-genuine-request"].tap()
         let increased = NSPredicate { _, _ in
             guard let json = try? JSONSerialization.jsonObject(with: Data(state.label.utf8)) as? [String: Any],
@@ -57,6 +74,7 @@ final class NativeIconMotionCaptureTests: XCTestCase {
         }
         expectation(for: increased, evaluatedWith: state)
         waitForExpectations(timeout: 10)
+        assertEffect("bell-wiggle-submitted-to-symbol-image", after: beforeBell)
         actions.append(["event": "bell-new", "before": baseline, "after": try pendingWitness(),
                         "native_driver_witness": state.label])
         try attachJSON(try XCTUnwrap(actions.last), name: "bell-new-witness-\(appearance)")
@@ -71,7 +89,9 @@ final class NativeIconMotionCaptureTests: XCTestCase {
             XCTAssertTrue(button.waitForExistence(timeout: 10))
             for repetition in ["first", "repeat"] {
                 let start = ProcessInfo.processInfo.systemUptime
+                let beforeTap = effectEvent()
                 button.tap()
+                assertEffect(label == "Profile" ? "Profile-bitmap-feedback-submitted" : "\(label)-bounce-submitted-to-symbol-image", after: beforeTap)
                 XCTAssertTrue(button.isSelected, "Selection witness must follow the actual tab handler")
                 let shot = app.screenshot()
                 let elapsed = (ProcessInfo.processInfo.systemUptime - start) * 1000
@@ -123,8 +143,7 @@ final class NativeIconMotionCaptureTests: XCTestCase {
             "runner_reduce_motion": UIAccessibility.isReduceMotionEnabled,
             "status": "diagnostic-partial-not-aligned-icon-manifest", "actions": actions,
             "timing_note": "XCTest tap/typeText await idleness; completion durations are not animation keyframe phases.",
-            "pending": ["app motion/state witness", "bell-new", "typing-active", "connecting-active",
-                        "icons-draw-on", "aligned video keyframes", "full/reduced mode verification"]]
+            "pending": ["live typing/connecting peer evidence", "aligned video keyframes", "draw-on phase alignment"]]
         let attachment = XCTAttachment(data: try JSONSerialization.data(withJSONObject: report, options: [.sortedKeys]), uniformTypeIdentifier: "public.json")
         attachment.name = "native-icon-action-sequence-\(appearance).json"
         attachment.lifetime = .keepAlways

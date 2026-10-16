@@ -25,6 +25,18 @@ private struct NativeTabImageEffects: UIViewControllerRepresentable {
             view = UIView()
             view.isUserInteractionEnabled = false
         }
+        override func viewDidLoad() {
+            super.viewDidLoad()
+            NotificationCenter.default.addObserver(self, selector: #selector(reduceMotionChanged),
+                name: UIAccessibility.reduceMotionStatusDidChangeNotification, object: nil)
+        }
+        @objc private func reduceMotionChanged() {
+            guard UIAccessibility.isReduceMotionEnabled, let bar = observedBar else { return }
+            descendants(bar, UIImageView.self).forEach {
+                $0.removeAllSymbolEffects()
+                $0.transform = .identity
+            }
+        }
         func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer,
                                shouldRecognizeSimultaneouslyWith otherGestureRecognizer: UIGestureRecognizer) -> Bool { true }
         private func descendants<T: UIView>(_ root: UIView, _: T.Type) -> [T] {
@@ -42,11 +54,10 @@ private struct NativeTabImageEffects: UIViewControllerRepresentable {
             let visible = bars(root).filter { !$0.isHidden && $0.alpha > 0 && $0.window != nil }
             return visible.count == 1 ? visible[0] : nil
         }
-        private func image(in control: UIControl) -> UIImageView? {
-            let images = descendants(control, UIImageView.self).filter {
+        private func images(in control: UIControl) -> [UIImageView] {
+            descendants(control, UIImageView.self).filter {
                 !$0.isHidden && $0.alpha > 0 && $0.bounds.width > 0 && $0.bounds.height > 0 && $0.image != nil
             }
-            return images.count == 1 ? images[0] : nil
         }
         private func title(of control: UIControl, bar: UITabBar) -> String? {
             let titles = bar.items?.compactMap(\.title) ?? []
@@ -56,10 +67,25 @@ private struct NativeTabImageEffects: UIViewControllerRepresentable {
             let matches = titles.filter { $0 == control.accessibilityLabel || visibleLabels.contains($0) }
             return matches.count == 1 ? matches[0] : nil
         }
-        private func control(title: String, bar: UITabBar) -> UIControl? {
-            let matches = descendants(bar, UIControl.self).filter {
-                !$0.isHidden && $0.alpha > 0 && self.title(of: $0, bar: bar) == title
+        private func logicalControls(in bar: UITabBar) -> [UIControl] {
+            let candidates = descendants(bar, UIControl.self).filter { control in
+                guard !control.isHidden, control.alpha > 0, control.isUserInteractionEnabled,
+                      title(of: control, bar: bar) != nil else { return false }
+                let point = control.convert(CGPoint(x: control.bounds.midX, y: control.bounds.midY), to: bar)
+                guard let hit = bar.hitTest(point, with: nil) else { return false }
+                // Liquid Glass keeps a second tab presentation for transitions.
+                // Only the presentation receiving real touches owns the effect.
+                return hit === control || hit.isDescendant(of: control)
             }
+            // UIKit can nest a title-bearing control inside the tab's control. It
+            // is one logical item, not two ambiguous destinations. Keep its outer
+            // owner, which also contains the selected/unselected native SF images.
+            return candidates.filter { candidate in
+                !candidates.contains { other in other !== candidate && candidate.isDescendant(of: other) }
+            }
+        }
+        private func control(title: String, bar: UITabBar) -> UIControl? {
+            let matches = logicalControls(in: bar).filter { self.title(of: $0, bar: bar) == title }
             return matches.count == 1 ? matches[0] : nil
         }
         private func report(_ value: String) {
@@ -82,11 +108,17 @@ private struct NativeTabImageEffects: UIViewControllerRepresentable {
                 }
                 guard !added.isEmpty, !UIAccessibility.isReduceMotionEnabled else { return }
                 guard let title = bar.items?.first(where: { $0.title == String(localized: "Notifications") })?.title,
-                      let control = self.control(title: title, bar: bar),
-                      let image = self.image(in: control), image.image?.isSymbolImage == true else {
-                    self.report("bell-symbol-image-identity-unresolved"); return
+                      let control = self.control(title: title, bar: bar) else {
+                    self.report("bell-control-unresolved:\(self.logicalControls(in: bar).compactMap { self.title(of: $0, bar: bar) })"); return
                 }
-                image.addSymbolEffect(.wiggle)
+                let symbols = self.images(in: control).filter { $0.image?.isSymbolImage == true }
+                guard !symbols.isEmpty else {
+                    let artwork = self.images(in: control).map { "\($0.bounds.size)/\($0.image?.size ?? .zero)/\($0.image?.isSymbolImage == true)" }
+                    let views = self.descendants(control, UIView.self).map { "\(type(of: $0)):\($0.bounds.size)" }
+                    self.report("bell-no-symbol:\(artwork); views:\(views)")
+                    return
+                }
+                symbols.forEach { $0.addSymbolEffect(.wiggle) }
                 self.report("bell-wiggle-submitted-to-symbol-image")
             }
         }
@@ -94,25 +126,26 @@ private struct NativeTabImageEffects: UIViewControllerRepresentable {
             guard recognizer.state == .ended, !UIAccessibility.isReduceMotionEnabled,
                   let bar = observedBar else { return }
             let point = recognizer.location(in: bar)
-            let controls = descendants(bar, UIControl.self).filter {
+            let controls = logicalControls(in: bar).filter {
                 !$0.isHidden && $0.alpha > 0 && $0.convert($0.bounds, to: bar).contains(point)
             }
             guard controls.count == 1, let control = controls.first else {
                 report("tap-control-identity-ambiguous:\(controls.count)"); return
             }
-            guard let title = title(of: control, bar: bar),
-                  let image = image(in: control) else {
+            guard let title = title(of: control, bar: bar) else {
                 report("tap-title-or-image-identity-unresolved"); return
             }
-            if image.image?.isSymbolImage == true {
-                image.addSymbolEffect(.bounce, options: .speed(1.5))
+            let artwork = images(in: control)
+            let symbols = artwork.filter { $0.image?.isSymbolImage == true }
+            if !symbols.isEmpty {
+                symbols.forEach { $0.addSymbolEffect(.bounce, options: .speed(1.5)) }
                 report("\(title)-bounce-submitted-to-symbol-image")
             } else if title == String(localized: "Profile") {
                 report("Profile-bitmap-feedback-submitted")
                 UIView.animate(withDuration: 0.15, animations: {
-                    image.transform = CGAffineTransform(scaleX: 0.96, y: 0.96)
+                    artwork.forEach { $0.transform = CGAffineTransform(scaleX: 0.96, y: 0.96) }
                 }, completion: { _ in
-                    UIView.animate(withDuration: 0.15) { image.transform = .identity }
+                    UIView.animate(withDuration: 0.15) { artwork.forEach { $0.transform = .identity } }
                 })
             } else {
                 report("\(title)-image-is-not-symbol")
@@ -127,6 +160,7 @@ private struct NativeParityMotionDriver: View {
     @Environment(AppModel.self) private var model
     @State private var failure = ""
     @State private var effectDiagnostic = "not-observed"
+    @State private var effectEvents = 0
     private var enabled: Bool {
         ProcessInfo.processInfo.environment["ZOEN_PARITY_MOTION_DRIVER"] == "1"
             && NativeParityClock.appliedManifest(core: model.core) != nil
@@ -136,7 +170,7 @@ private struct NativeParityMotionDriver: View {
             ["agentId": $0.agent.id, "spaceId": $0.spaceId, "title": $0.title, "status": "pending"]
         }.sorted { ($0["spaceId"]!, $0["agentId"]!, $0["title"]!) < ($1["spaceId"]!, $1["agentId"]!, $1["title"]!) }
         let value: [String: Any] = ["notifications": ["pendingCount": pending.count, "pending": pending],
-                                  "driver_error": failure, "native_effect_diagnostic": effectDiagnostic]
+                                  "driver_error": failure, "native_effect_diagnostic": effectDiagnostic, "native_effect_event": effectEvents, "reduce_motion": UIAccessibility.isReduceMotionEnabled]
         guard let data = try? JSONSerialization.data(withJSONObject: value, options: [.sortedKeys]) else { return "{}" }
         return String(decoding: data, as: UTF8.self)
     }
@@ -167,6 +201,7 @@ private struct NativeParityMotionDriver: View {
             }
             .onReceive(NotificationCenter.default.publisher(for: Notification.Name("NativeParityEffectDiagnostic"))) {
                 effectDiagnostic = $0.object as? String ?? "invalid-diagnostic"
+                effectEvents += 1
             }
         }
     }

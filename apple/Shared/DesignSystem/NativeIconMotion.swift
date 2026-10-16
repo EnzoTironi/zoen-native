@@ -29,9 +29,12 @@ struct NativeIconMotion: View {
         replacement
             .modifier(NativeIconFont(size: size))
             .animation(reduced ? nil : .smooth(duration: 0.2), value: systemName)
-            .symbolEffect(.bounce, options: .speed(1.5), value: reduced ? 0 : bounce)
-            .symbolEffect(.wiggle, value: reduced ? 0 : wiggle)
+            .symbolEffect(.bounce, options: .speed(1.5), value: bounce)
+            .symbolEffect(.wiggle, value: wiggle)
             .symbolEffect(.variableColor.iterative, isActive: active && !reduced && !paused)
+            // Keep event identities stable when the preference changes: using zero
+            // as a disabled trigger would replay old taps when motion is re-enabled.
+            .symbolEffectsRemoved(reduced || paused)
             .accessibilityHidden(true)
     }
 
