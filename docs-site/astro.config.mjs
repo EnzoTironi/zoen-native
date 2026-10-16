@@ -8,6 +8,7 @@ import { readFileSync } from 'node:fs';
 const livingSky = readFileSync(new URL('./src/sky/living-sky.js', import.meta.url), 'utf8');
 
 export default defineConfig({
+  site: 'https://docs.tryzoen.com',
   integrations: [
     // Must come before Starlight so ```mermaid fences become diagrams, themed with the site.
     mermaid({ theme: 'neutral', autoTheme: true }),
