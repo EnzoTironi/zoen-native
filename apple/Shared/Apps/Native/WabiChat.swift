@@ -324,7 +324,7 @@ struct McpAppSheet: View {
 
 /// Pílulas do Wabi: the same glass as every Zoen button. `primary` is the tinted lens;
 /// `dark` keeps the clear lens legible over the pet's night scene.
-struct WabiPill: ButtonStyle {
+struct WabiPill: PrimitiveButtonStyle {
     var primary = false
     var dark = false
     func makeBody(configuration: Configuration) -> some View {
