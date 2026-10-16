@@ -344,7 +344,7 @@ impl Engine {
             Delivery::Failed
         } else if self.net.pending.contains_key(source) {
             Delivery::Sending
-        } else if self.net.synced.contains(&e.space) {
+        } else if self.net.synced.contains(&e.space) || self.net.receipts.contains_key(&e.space) {
             self.receipt_for(e)
         } else {
             Delivery::Local
@@ -1394,7 +1394,7 @@ impl Engine {
 
     /// The `Delivered` watermark to announce for `space`, when its head moved past the last
     /// one announced and the head is someone else's message.
-    pub fn delivered_to_announce(&mut self, space: &str) -> Option<u64> {
+    pub fn delivered_to_announce(&self, space: &str) -> Option<u64> {
         let me = self.me.clone().unwrap_or_default();
         let s = self.state.spaces.get(space)?;
         let head = s
@@ -1403,15 +1403,38 @@ impl Engine {
             .filter(|e| e.author != me)
             .map(|e| e.seq)
             .max()?;
+        let last = self.net.delivered_sent.get(space).copied().unwrap_or(0);
+        (head > last).then_some(head)
+    }
+
+    /// Advance only after the socket accepted the frame. Reconnect still replays it:
+    /// a successful write alone cannot prove the relay received it.
+    pub fn delivered_announced(&mut self, space: &str, seq: u64) {
         let last = self
             .net
             .delivered_sent
             .entry(space.to_string())
-            .or_insert(0);
-        (head > *last).then(|| {
-            *last = head;
-            head
-        })
+            .or_default();
+        *last = (*last).max(seq);
+    }
+
+    /// Reconstruct ephemeral receipts from local history after authenticated catch-up.
+    /// Read marks are durable, including reads made while the network task was stopped.
+    pub fn receipts_to_replay(&mut self) -> Vec<(String, roda_proto::EphemeralKind)> {
+        self.net.delivered_sent.clear();
+        let mut frames = Vec::new();
+        for space in &self.net.synced {
+            if !self.state.spaces.contains_key(space) {
+                continue;
+            }
+            if let Some(seq) = self.delivered_to_announce(space) {
+                frames.push((space.clone(), roda_proto::EphemeralKind::Delivered { seq }));
+            }
+            if let Some(seq) = self.read_up_to(space).filter(|seq| *seq > 0) {
+                frames.push((space.clone(), roda_proto::EphemeralKind::Read { seq }));
+            }
+        }
+        frames
     }
 
     pub fn set_presence_privacy(&mut self, hide_last_seen: bool) {

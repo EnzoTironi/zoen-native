@@ -15,7 +15,7 @@ enum SettingsScreen: String, Hashable, CaseIterable, Identifiable {
     var title: LocalizedStringKey {
         switch self {
         case .profile: "Profile"
-        case .preferences: "Preferences"
+        case .preferences: "Language"
         case .theme: "Theme"
         case .security: "Security"
         case .devices: "Devices"
@@ -39,7 +39,7 @@ enum SettingsScreen: String, Hashable, CaseIterable, Identifiable {
     var symbol: String {
         switch self {
         case .profile: "person"
-        case .preferences: "slider.horizontal.3"
+        case .preferences: "character.bubble"
         case .theme: "circle.lefthalf.filled"
         case .security: "lock"
         case .devices: "laptopcomputer.and.iphone"
@@ -220,7 +220,7 @@ extension SettingsScreen {
     var titleResource: LocalizedStringResource {
         switch self {
         case .profile: "Profile"
-        case .preferences: "Preferences"
+        case .preferences: "Language"
         case .theme: "Theme"
         case .security: "Security"
         case .devices: "Devices"
@@ -302,18 +302,12 @@ struct ProfileSettings: View {
 // MARK: - S51 Preferências
 
 struct PreferencesSettings: View {
-    @AppStorage(AppAppearance.key) private var appearance = AppAppearance.auto.rawValue
-    @Environment(AppModel.self) private var model
-
     var body: some View {
-        SettingsPage(title: "Preferences") {
+        SettingsPage(title: "Language") {
             SettingsGroup {
-                NavRow(screen: .theme, value: AppAppearance(rawValue: appearance)?.label ?? AppAppearance.auto.label)
                 SettingsRow(symbol: "character.bubble", title: "Language",
                             value: Locale.current.localizedString(forLanguageCode: Locale.current.language.languageCode?.identifier ?? "pt")?.capitalized,
                             id: "prefsLanguage") { openSystemSettings() }
-                NavRow(screen: .data, value: model.stats.map { String(localized: "\(Int($0.items)) items") })
-                NavRow(screen: .accessibility)
             }
             SettingsCaption("The language follows your device. Tap it to change it in the device settings.")
         }

@@ -20,7 +20,7 @@ struct PhaseNote: View {
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .solidCard(radius: 18, padding: 14)
+        .glassCard(radius: 18, padding: 14)
     }
 }
 
@@ -138,7 +138,7 @@ struct ItemCardView: View {
             }
         }
         .frame(maxWidth: 360, alignment: .leading)
-        .solidCard(radius: 20, padding: 14)
+        .glassCard(radius: 20, padding: 14)
         .contentShape(.rect)
     }
 }
@@ -195,11 +195,11 @@ struct RequestCard: View {
             case .pending:
                 HStack(spacing: 10) {
                     Button(action: onDeny) { Text("Decline").frame(maxWidth: .infinity) }
-                        .buttonStyle(.glass)
+                        .buttonStyle(.wabiGlass)
                     Button(action: onApprove) {
                         Text("Approve").fontWeight(.semibold).foregroundStyle(ActionGlassForeground()).frame(maxWidth: .infinity)
                     }
-                        .buttonStyle(.glassProminent)
+                        .buttonStyle(.wabiGlassProminent)
                 }
                 .controlSize(.large)
             case .stale:
@@ -211,7 +211,7 @@ struct RequestCard: View {
                 Label("Declined", systemImage: "xmark.circle.fill").font(.footnote.weight(.semibold)).foregroundStyle(Palette.textSecondary)
             }
         }
-        .solidCard(radius: 22, padding: 16)
+        .glassCard(radius: 22, padding: 16)
     }
 
     private var icon: String {
@@ -273,7 +273,7 @@ struct ToastView: View {
                     Label("Undo", systemImage: "arrow.uturn.backward").font(.subheadline.weight(.semibold))
                         .foregroundStyle(ActionGlassForeground())
                 }
-                .buttonStyle(.glassProminent)
+                .buttonStyle(.wabiGlassProminent)
             case .revoked(let grantId, let p):
                 AgentAvatar(persona: p, size: 28, showsOwner: false)
                 Text(toast.text).font(.subheadline).lineLimit(2)
@@ -284,7 +284,7 @@ struct ToastView: View {
                     Label("Undo", systemImage: "arrow.uturn.backward").font(.subheadline.weight(.semibold))
                         .foregroundStyle(ActionGlassForeground())
                 }
-                .buttonStyle(.glassProminent)
+                .buttonStyle(.wabiGlassProminent)
                 .accessibilityIdentifier("toast-undo")
             case .agent(let p):
                 AgentAvatar(persona: p, size: 28, showsOwner: false)

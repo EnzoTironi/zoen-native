@@ -1,5 +1,7 @@
 package xyz.tironi.zoen.media
 
+import xyz.tironi.zoen.ui.GlassButton
+
 import android.graphics.Bitmap
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
@@ -98,7 +100,7 @@ fun MarkupEditor(itemId: String, version: UInt, file: File, mime: String, bytes:
                     } ?: CircularProgressIndicator()
                 }
                 session.error?.let { Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall) }
-                Button(onClick = { onSave(session, strokes) }, enabled = strokes.isNotEmpty() && !session.busy, modifier = Modifier.fillMaxWidth().testTag("markup-save")) {
+                GlassButton(onClick = { onSave(session, strokes) }, enabled = strokes.isNotEmpty() && !session.busy, modifier = Modifier.fillMaxWidth().testTag("markup-save")) {
                     if (session.busy) { CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp, color = MaterialTheme.colorScheme.onPrimary); Spacer(Modifier.width(8.dp)) }
                     Text(stringResource(R.string.save))
                 }

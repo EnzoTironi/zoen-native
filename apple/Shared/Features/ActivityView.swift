@@ -96,7 +96,7 @@ struct ActivityScreen: View {
                         Label("Cards", systemImage: "rectangle.stack")
                             .frame(minHeight: 44)
                     }
-                    .buttonStyle(.glass)
+                    .buttonStyle(.wabiGlass)
                     .accessibilityIdentifier("notifications-cards")
                 }
                 pills
@@ -172,7 +172,7 @@ struct ActivityScreen: View {
                             }
                             .padding(.horizontal, 2)
                         }
-                        .buttonStyle(.glass)
+                        .buttonStyle(.wabiGlass)
                         .tint(on ? Palette.action : nil)
                         .accessibilityAddTraits(on ? .isSelected : [])
                     }
@@ -198,7 +198,7 @@ struct ActivityScreen: View {
                     Button { model.approveAll(agent: agent) } label: {
                         Text("Approve all").foregroundStyle(ActionGlassForeground())
                     }
-                        .buttonStyle(.glassProminent)
+                        .buttonStyle(.wabiGlassProminent)
                         .font(.subheadline.weight(.semibold))
                 }
             }
@@ -234,10 +234,10 @@ struct ActivityScreen: View {
                         model.show(.init(kind: .agent(a.persona), text: String(localized: "\(a.persona.name)’s limit raised by \(Money.format(2_000)) this month.")), seconds: 3)
                     }
                 }
-                .buttonStyle(.glass)
+                .buttonStyle(.wabiGlass)
                 .font(.subheadline.weight(.semibold))
             }
-            .solidCard(radius: 20, padding: 14)
+            .glassCard(radius: 20, padding: 14)
         }
     }
 
@@ -270,7 +270,7 @@ struct MentionRow: View {
                 Chip(text: mention.spaceTitle, symbol: "bubble.left.and.bubble.right")
             }
         }
-        .solidCard(radius: 20, padding: 14)
+        .glassCard(radius: 20, padding: 14)
     }
 }
 
@@ -313,6 +313,6 @@ struct TaskRow: View {
             Spacer()
             Image(systemName: "chevron.right").font(.caption.weight(.bold)).foregroundStyle(Palette.textTertiary)
         }
-        .solidCard(radius: 20, padding: 14)
+        .glassCard(radius: 20, padding: 14)
     }
 }

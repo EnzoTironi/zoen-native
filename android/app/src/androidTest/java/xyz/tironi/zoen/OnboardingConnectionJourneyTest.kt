@@ -56,6 +56,9 @@ class OnboardingConnectionJourneyTest {
             fun step(name: String) { compose.waitUntil(20_000) { compose.onAllNodesWithTag("onboarding:$name").fetchSemanticsNodes().isNotEmpty() } }
             fun next() { compose.onNodeWithTag("onboarding-next").performClick() }
             step("hello")
+            compose.waitForIdle()
+            // Evidence for UI review: the onboarding CTA as it renders on this API level.
+            runCatching { automation.takeScreenshot()?.let { shot -> Evidence.outputFile("glass", "onboarding-hello-api${Build.VERSION.SDK_INT}.png").outputStream().use { shot.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, it) } } }
             val sourceBefore = runBlocking { repository.query { it.growthAcquisition() } }
             val campaign = "native_paste_$suffix"
             val clipboard = application.getSystemService(android.content.ClipboardManager::class.java)

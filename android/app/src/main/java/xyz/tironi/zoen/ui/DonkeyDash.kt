@@ -132,10 +132,10 @@ fun DonkeyDash(onClose: () -> Unit, onScore: (Int, Int) -> Unit) {
         if (game.toast != null && (game.last ?: 0.0) < game.toastUntil) Text(stringResource(
             if (game.toast == DashState.Toast.Carrots) R.string.dash_carrot_toast else R.string.dash_jump_toast, game.carrots))
         if (game.phase == DashState.Phase.Ready || game.phase == DashState.Phase.Over) {
-            Button(jump, Modifier.fillMaxWidth().testTag("dash-start")) { Text(stringResource(if (game.phase == DashState.Phase.Over) R.string.retry else R.string.start)) }
+            GlassButton(jump, Modifier.fillMaxWidth().testTag("dash-start")) { Text(stringResource(if (game.phase == DashState.Phase.Over) R.string.retry else R.string.start)) }
         } else {
-            Button(jump, Modifier.fillMaxWidth().testTag("dash-jump"), enabled = game.phase == DashState.Phase.Running) { Text(stringResource(R.string.jump)) }
-            OutlinedButton(onClick = togglePause,
+            GlassButton(jump, Modifier.fillMaxWidth().testTag("dash-jump"), enabled = game.phase == DashState.Phase.Running) { Text(stringResource(R.string.jump)) }
+            GlassOutlinedButton(onClick = togglePause,
                 Modifier.fillMaxWidth().testTag(if (game.phase == DashState.Phase.Paused) "dash-continue" else "dash-pause")) {
                 Text(stringResource(if (game.phase == DashState.Phase.Paused) R.string.miniapp_continue else R.string.miniapp_pause))
             }

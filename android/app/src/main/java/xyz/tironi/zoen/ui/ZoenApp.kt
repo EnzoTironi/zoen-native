@@ -55,7 +55,7 @@ fun ZoenApp(model: ZoenViewModel, deepLink: String?, consumed: () -> Unit) {
     if (state.failure != null) {
         Scaffold(snackbarHost = { SnackbarHost(snackbar) }) { padding ->
             EmptyState(stringResource(R.string.something_wrong), state.failure.orEmpty(), Modifier.padding(padding)) {
-                Button(onClick = { model.boot(false) }) { Text(stringResource(R.string.retry)) }
+                GlassButton(onClick = { model.boot(false) }) { Text(stringResource(R.string.retry)) }
             }
         }
         return

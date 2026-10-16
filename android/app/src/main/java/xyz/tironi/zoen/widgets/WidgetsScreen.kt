@@ -1,5 +1,7 @@
 package xyz.tironi.zoen.widgets
 
+import xyz.tironi.zoen.ui.GlassButton
+
 import android.appwidget.AppWidgetManager
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -26,7 +28,7 @@ fun WidgetsScreen(state: AppState, back: () -> Unit) {
         items(state.items.mapNotNull(WidgetSnapshot::from), key = { it.id }) { snapshot ->
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 SnapshotCard(snapshot, Modifier.fillMaxWidth())
-                if (manager.isRequestPinAppWidgetSupported) Button(enabled = state.me != null && !state.keyMissing, modifier = Modifier.testTag("widget-pin:${snapshot.id}"), onClick = { ZoenWidgetProvider.pin(context, snapshot, checkNotNull(state.me).id, state.demo) }) { Text(stringResource(R.string.widget_add)) }
+                if (manager.isRequestPinAppWidgetSupported) GlassButton(enabled = state.me != null && !state.keyMissing, modifier = Modifier.testTag("widget-pin:${snapshot.id}"), onClick = { ZoenWidgetProvider.pin(context, snapshot, checkNotNull(state.me).id, state.demo) }) { Text(stringResource(R.string.widget_add)) }
             }
         }
     } }

@@ -59,7 +59,7 @@ struct ProfileSheet: View {
                         Label(String(localized: "Choose drawing"), systemImage: "paintbrush.pointed")
                             .font(.subheadline.weight(.semibold))
                     }
-                    .buttonStyle(.glass)
+                    .buttonStyle(.wabiGlass)
                 }
                 actions(p)
                 if detent == .large || true {

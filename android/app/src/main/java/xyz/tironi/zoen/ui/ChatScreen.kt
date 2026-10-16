@@ -12,6 +12,8 @@ import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.layout.*
@@ -247,7 +249,7 @@ fun ChatScreen(model: ZoenViewModel, state: AppState, spaceId: String, navigate:
     if (space == null) {
         Scaffold(topBar = { ScreenBar(stringResource(R.string.chats), back) }) { padding ->
             EmptyState(stringResource(R.string.unavailable), stringResource(R.string.unavailable_detail), Modifier.padding(padding)) {
-                OutlinedButton(onClick = { model.launch { model.repository.refresh() } }) { Text(stringResource(R.string.retry)) }
+                GlassOutlinedButton(onClick = { model.launch { model.repository.refresh() } }) { Text(stringResource(R.string.retry)) }
             }
         }
         return
@@ -403,10 +405,11 @@ fun ChatScreen(model: ZoenViewModel, state: AppState, spaceId: String, navigate:
 fun TimelineRow(model: ZoenViewModel, spaceId: String, entry: TimelineEntry, navigate: (NavKey) -> Unit, onReply: () -> Unit, onThread: (() -> Unit)?, onQuote: ((String) -> Unit)? = null, direct: Boolean = false) {
     val context = LocalContext.current
     var menu by remember { mutableStateOf(false) }
-    var editing by remember { mutableStateOf(false) }
-    var editText by remember { mutableStateOf("") }
+    var choosingReaction by remember(entry.id) { mutableStateOf(false) }
+    var editing by rememberSaveable(entry.id) { mutableStateOf(false) }
+    var editText by rememberSaveable(entry.id) { mutableStateOf("") }
     var forwarding by remember { mutableStateOf(false) }
-    var confirmDelete by remember { mutableStateOf(false) }
+    var confirmDelete by rememberSaveable(entry.id) { mutableStateOf(false) }
     val copied = stringResource(R.string.copied)
     val locale = LocalConfiguration.current.locales[0].toLanguageTag()
     when (val kind = entry.kind) {
@@ -491,7 +494,7 @@ fun TimelineRow(model: ZoenViewModel, spaceId: String, entry: TimelineEntry, nav
                     Surface(shape = RoundedCornerShape(24.dp, 24.dp, if (mine) 6.dp else 24.dp, if (mine) 24.dp else 6.dp),
                         color = if (mine) MaterialTheme.colorScheme.ownMessage else MaterialTheme.colorScheme.otherMessage,
                         contentColor = if (mine) MaterialTheme.colorScheme.onOwnMessage else MaterialTheme.colorScheme.onSurface,
-                        modifier = Modifier.padding(top = 6.dp).messageFace().widthIn(max = 360.dp).combinedClickable(onClick = { kind.card?.let { navigate(Item(it.itemId)) } }, onLongClick = { menu = true })) {
+                        modifier = Modifier.padding(top = 6.dp).messageFace().widthIn(max = 360.dp).testTag("message-actions:${entry.id}").combinedClickable(onClick = { kind.card?.let { navigate(Item(it.itemId)) } }, onLongClick = { menu = true })) {
                         Column(Modifier.padding(horizontal = 14.dp, vertical = 10.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                             entry.replyTo?.let { quote ->
                                 Surface(color = MaterialTheme.colorScheme.surface, contentColor = MaterialTheme.colorScheme.onSurface, shape = RoundedCornerShape(8.dp), modifier = Modifier.testTag("quote:${quote.id}").clickable { onQuote?.invoke(quote.id) }) {
@@ -516,7 +519,7 @@ fun TimelineRow(model: ZoenViewModel, spaceId: String, entry: TimelineEntry, nav
                     }
                     }
                     kind.card?.let { card ->
-                                Card(onClick = { navigate(Item(card.itemId)) }, modifier = Modifier.testTag("item:${card.itemId}").then(if (kind.text.isBlank() && entry.replyTo == null) Modifier.messageFace() else Modifier), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
+                                GlassCard(onClick = { navigate(Item(card.itemId)) }, modifier = Modifier.testTag("item:${card.itemId}").then(if (kind.text.isBlank() && entry.replyTo == null) Modifier.messageFace() else Modifier), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
                                     Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                                         Row(verticalAlignment = Alignment.CenterVertically) {
                                             Text(card.title, Modifier.weight(1f), style = MaterialTheme.typography.titleLarge,
@@ -533,13 +536,14 @@ fun TimelineRow(model: ZoenViewModel, spaceId: String, entry: TimelineEntry, nav
                     DropdownMenu(menu, onDismissRequest = { menu = false }, shape = RoundedCornerShape(24.dp)) {
                         // Reactions on top, then WhatsApp's order.
                         val myReaction = entry.reactions.firstOrNull { it.mine }?.emoji
-                        Row(Modifier.padding(horizontal = 8.dp), horizontalArrangement = Arrangement.spacedBy(2.dp)) {
+                        if (!entry.deleted) Row(Modifier.padding(horizontal = 8.dp), horizontalArrangement = Arrangement.spacedBy(2.dp)) {
                             QUICK_REACTIONS.forEach { emoji ->
                                 Box(Modifier.size(42.dp).clip(CircleShape).background(if (emoji == myReaction) MaterialTheme.colorScheme.primary.copy(alpha = .16f) else androidx.compose.ui.graphics.Color.Transparent)
-                                    .clickable { menu = false; haptics.perform(ZoenFeedback.Selection); scope.launch { runCatching { model.repository.change { it.react(spaceId, entry.id, if (emoji == myReaction) null else emoji) } } } }
+                                    .clickable { menu = false; haptics.perform(ZoenFeedback.Selection); model.launch { model.repository.change { it.react(spaceId, entry.id, if (emoji == myReaction) null else emoji) } } }
                                     .testTag("react:$emoji"), contentAlignment = Alignment.Center) { Text(emoji, fontSize = 24.sp) }
                             }
                         }
+                        if (!entry.deleted) DropdownMenuItem(text = { Text("Mais reações") }, onClick = { menu = false; choosingReaction = true })
                         DropdownMenuItem(text = { Text(stringResource(R.string.reply)) }, onClick = { menu = false; onReply() }, leadingIcon = { Icon(Icons.AutoMirrored.Rounded.Reply, null) })
                         if (onThread != null) DropdownMenuItem(text = { Text(stringResource(R.string.thread)) }, onClick = { menu = false; onThread() }, leadingIcon = { Icon(Icons.Rounded.Forum, null) })
                         if (!entry.deleted) {
@@ -549,6 +553,7 @@ fun TimelineRow(model: ZoenViewModel, spaceId: String, entry: TimelineEntry, nav
                             if (mine) DropdownMenuItem(text = { Text(stringResource(R.string.delete_for_everyone), color = MaterialTheme.colorScheme.error) }, onClick = { menu = false; confirmDelete = true }, leadingIcon = { Icon(Icons.Rounded.Delete, null, tint = MaterialTheme.colorScheme.error) })
                         }
                     }
+                    if (choosingReaction) ReactionPickerDialog(model, spaceId, entry) { choosingReaction = false }
                     MessageActionDialogs(model, spaceId, entry, editing, editText, { editText = it }, forwarding, confirmDelete) { editing = false; forwarding = false; confirmDelete = false }
                 }
                 if (entry.reactions.isNotEmpty()) ReactionChips(model, spaceId, entry)
@@ -565,7 +570,7 @@ fun TimelineRow(model: ZoenViewModel, spaceId: String, entry: TimelineEntry, nav
             val state by model.state.collectAsStateWithLifecycle()
             val request = state.requests.firstOrNull { it.id == kind.requestId }
             var approving by remember { mutableStateOf(false) }
-            OutlinedCard(onClick = { navigate(Request(kind.requestId)) }) {
+            GlassCard(onClick = { navigate(Request(kind.requestId)) }, colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
                 Row(Modifier.fillMaxWidth().padding(12.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                     Avatar(request?.agent ?: entry.author, size = 30)
                     Column(Modifier.weight(1f)) {
@@ -573,7 +578,7 @@ fun TimelineRow(model: ZoenViewModel, spaceId: String, entry: TimelineEntry, nav
                         request?.let { Text(listOfNotNull(it.agent.name, it.costCents?.let { cost -> formatMoney(cost, locale) }).joinToString(" · "), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
                     }
                     when (request?.status) {
-                        RequestStatus.PENDING -> Button(enabled = request?.agent?.isMine == true && !approving, onClick = {
+                        RequestStatus.PENDING -> GlassButton(enabled = request?.agent?.isMine == true && !approving, onClick = {
                             approving = true
                             model.launch { try { val result = model.repository.change { it.approveRequest(kind.requestId) }; model.notify(result.message) } finally { approving = false } }
                         }) { Text(stringResource(R.string.approve)) }
@@ -649,7 +654,7 @@ internal fun bubbleMetaReserve(atMs: Long, mine: Boolean): String =
  *  work adds the double tick and read colour here. */
 @Composable
 internal fun BubbleMeta(atMs: Long, delivery: Delivery?, modifier: Modifier = Modifier) {
-    Row(modifier.clearAndSetSemantics { }, verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(3.dp)) {
+    Row(modifier, verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(3.dp)) {
         Text(DateFormat.getTimeInstance(DateFormat.SHORT).format(Date(atMs)), style = MaterialTheme.typography.labelSmall, color = LocalContentColor.current.copy(alpha = 0.62f))
         // ✓ sent, ✓✓ delivered, blue ✓✓ read (aggregated "read up to").
         if (delivery != null) ReceiptTicks(delivery, LocalContentColor.current.copy(alpha = 0.62f))
@@ -658,17 +663,20 @@ internal fun BubbleMeta(atMs: Long, delivery: Delivery?, modifier: Modifier = Mo
 
 private val QUICK_REACTIONS = listOf("👍", "❤️", "😂", "😮", "😢", "🙏")
 
-/** One chip per emoji under the bubble; mine is tinted and tapping it takes mine back. */
+/** One chip per emoji; tap to react, long press or open details to see participants. */
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun ReactionChips(model: ZoenViewModel, spaceId: String, entry: TimelineEntry) {
-    val scope = rememberCoroutineScope()
+    var showingPeople by remember(entry.id) { mutableStateOf(false) }
     val haptics = rememberZoenHaptics()
-    Row(Modifier.padding(top = 2.dp), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+    if (showingPeople) ReactionPeopleDialog(model, spaceId, entry) { showingPeople = false }
+    Column(Modifier.padding(top = 2.dp)) {
+    Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
         entry.reactions.forEach { r ->
             Surface(shape = CircleShape, color = if (r.mine) MaterialTheme.colorScheme.primary.copy(alpha = .16f) else MaterialTheme.colorScheme.otherMessage,
                 border = androidx.compose.foundation.BorderStroke(0.5.dp, MaterialTheme.colorScheme.outlineVariant),
                 modifier = Modifier.animateContentSize(androidx.compose.animation.core.tween(280, easing = androidx.compose.animation.core.CubicBezierEasing(0.25f, 1f, 0.5f, 1f)))
-                    .clickable { haptics.perform(ZoenFeedback.Selection); scope.launch { runCatching { model.repository.change { it.react(spaceId, entry.id, if (r.mine) null else r.emoji) } } } }
+                    .combinedClickable(onClick = { haptics.perform(ZoenFeedback.Selection); model.launch { model.repository.change { it.react(spaceId, entry.id, if (r.mine) null else r.emoji) } } }, onLongClick = { showingPeople = true })
                     .semantics { contentDescription = "${r.emoji} " + r.people.joinToString { it.name } }) {
                 Row(Modifier.padding(horizontal = 8.dp, vertical = 3.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(3.dp)) {
                     Text(r.emoji, fontSize = 14.sp)
@@ -677,20 +685,47 @@ private fun ReactionChips(model: ZoenViewModel, spaceId: String, entry: Timeline
             }
         }
     }
+        TextButton(onClick = { showingPeople = true }, modifier = Modifier.testTag("reaction-details:${entry.id}")) { Text("Ver reações") }
+    }
 }
 
 /** Edit (author only), forward to another chat, delete for everyone (author only). */
 @Composable
 private fun MessageActionDialogs(model: ZoenViewModel, spaceId: String, entry: TimelineEntry, editing: Boolean, editText: String, onEditText: (String) -> Unit, forwarding: Boolean, confirmDelete: Boolean, done: () -> Unit) {
     val scope = rememberCoroutineScope()
-    fun run(block: (RodaEngine) -> Unit) { done(); scope.launch { runCatching { model.repository.change(block) } } }
-    if (editing) AlertDialog(onDismissRequest = done, title = { Text(stringResource(R.string.edit_message)) },
-        text = { OutlinedTextField(editText, onEditText, Modifier.fillMaxWidth().testTag("edit-field"), shape = RoundedCornerShape(24.dp)) },
-        confirmButton = { TextButton(onClick = { run { it.editMessage(spaceId, entry.id, editText) } }, enabled = editText.isNotBlank()) { Text(stringResource(R.string.save)) } },
-        dismissButton = { TextButton(onClick = done) { Text(stringResource(R.string.cancel)) } })
-    if (confirmDelete) AlertDialog(onDismissRequest = done, title = { Text(stringResource(R.string.delete_for_everyone_q)) },
-        confirmButton = { TextButton(onClick = { run { it.deleteMessage(spaceId, entry.id) } }) { Text(stringResource(R.string.delete_for_everyone), color = MaterialTheme.colorScheme.error) } },
-        dismissButton = { TextButton(onClick = done) { Text(stringResource(R.string.cancel)) } })
+    var running by remember(entry.id) { mutableStateOf(false) }
+    var error by rememberSaveable(editing, confirmDelete, forwarding, entry.id) { mutableStateOf<String?>(null) }
+    val dismiss = { if (!running) done() }
+    fun run(block: (RodaEngine) -> Unit) {
+        if (running) return
+        running = true
+        error = null
+        scope.launch {
+            try {
+                error = performMessageMutation({ model.repository.change(block) }, done)
+            } finally {
+                running = false
+            }
+        }
+    }
+    @Composable fun failure() {
+        error?.let {
+            Text("Não foi possível concluir. Tente novamente.\n$it", color = MaterialTheme.colorScheme.error,
+                modifier = Modifier.testTag("message-mutation-error"))
+        }
+        if (running) LinearProgressIndicator(Modifier.fillMaxWidth())
+    }
+    if (editing) AlertDialog(onDismissRequest = dismiss, title = { Text(stringResource(R.string.edit_message)) },
+        text = { Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            OutlinedTextField(editText, onEditText, Modifier.fillMaxWidth().testTag("edit-field"), enabled = !running, shape = RoundedCornerShape(24.dp))
+            failure()
+        } },
+        confirmButton = { TextButton(onClick = { run { it.editMessage(spaceId, entry.id, editText) } }, enabled = !running && editText.isNotBlank()) { Text(stringResource(R.string.save)) } },
+        dismissButton = { TextButton(onClick = dismiss, enabled = !running) { Text(stringResource(R.string.cancel)) } })
+    if (confirmDelete) AlertDialog(onDismissRequest = dismiss, title = { Text(stringResource(R.string.delete_for_everyone_q)) },
+        text = { Column { Text("Essa ação não pode ser desfeita."); failure() } },
+        confirmButton = { TextButton(onClick = { run { it.deleteMessage(spaceId, entry.id) } }, enabled = !running) { Text(stringResource(R.string.delete_for_everyone), color = MaterialTheme.colorScheme.error) } },
+        dismissButton = { TextButton(onClick = dismiss, enabled = !running) { Text(stringResource(R.string.cancel)) } })
     if (forwarding) {
         val state by model.state.collectAsStateWithLifecycle()
         AlertDialog(onDismissRequest = done, title = { Text(stringResource(R.string.forward_to)) },

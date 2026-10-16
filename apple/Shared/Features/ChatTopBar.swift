@@ -29,10 +29,7 @@ struct ChatTopBar: View {
     static let overlap: CGFloat = 14
 
     var body: some View {
-        // A centring layout, not an HStack with spacers: the back button (44) and the calls capsule
-        // (~88) differ in width, so the title is centred on the screen's midline and capped so
-        // it never reaches either side (the name truncates first). All three pieces are real
-        // Liquid Glass in one container; each piece's text and icons are the glass's content.
+        // Side controls keep their sizes; the title gets all the space between them.
         GlassEffectContainer(spacing: 4) {
             if dynamicTypeSize.isAccessibilitySize {
                 VStack(spacing: Self.gap) {
@@ -46,11 +43,10 @@ struct ChatTopBar: View {
                 }
             } else {
                 TopBarLayout(gap: Self.gap) {
-                    backControl
+                    backControl.fixedSize()
                     titleControl
-                        // B centres the capsule; A centres the avatar and capsule together.
-                        .offset(x: TitleVariant.current == .b ? -(Self.avatar - Self.overlap) / 2 : 0)
-                    CallsCapsule(onCall: onCall)
+                        .layoutPriority(1)
+                    CallsCapsule(onCall: onCall).fixedSize()
                 }
             }
         }
@@ -201,7 +197,7 @@ extension View {
 }
 
 /// Title layout variants for the Dynamic Island comparison (`-RodaTitleVariant A|B|C`).
-/// A: the avatar + capsule group's optical centre on the island's centre line (default).
+/// A: the avatar + capsule group centred between the side controls (default).
 /// B: A, but the capsule snaps to the island's width when the name fits (a "drop").
 /// C: A, plus the title drops out of the island when the chat opens.
 enum TitleVariant: String {
@@ -241,10 +237,7 @@ private struct IslandDrop: ViewModifier {
     }
 }
 
-/// The bar's layout: back pinned leading, calls pinned trailing, and the title centred on the
-/// bar's (= the screen's) midline, offered at most `width − 2 × max(left, right) − 2 × gap`
-/// so it never reaches either side; the name truncates first. A Layout rather than a
-/// measured-width state, so the cap holds on the very first pass.
+/// Keep the title within the actual space between the fixed side controls, on the first pass.
 private struct TopBarLayout: Layout {
     let gap: CGFloat
     func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
@@ -257,9 +250,10 @@ private struct TopBarLayout: Layout {
         subviews[0].place(at: CGPoint(x: b.minX, y: b.midY), anchor: .leading, proposal: ProposedViewSize(l))
         subviews[2].place(at: CGPoint(x: b.maxX, y: b.midY), anchor: .trailing, proposal: ProposedViewSize(r))
         // Leave real room for long group names; sides keep their natural widths.
-        let cap = max(0, b.width - 2 * max(l.width, r.width) - 2 * gap)
+        let cap = max(0, b.width - l.width - r.width - 2 * gap)
         let t = subviews[1].sizeThatFits(ProposedViewSize(width: cap, height: b.height))
-        subviews[1].place(at: CGPoint(x: b.midX, y: b.midY), anchor: .center, proposal: ProposedViewSize(width: min(t.width, cap), height: t.height))
+        let midX = b.minX + l.width + gap + cap / 2
+        subviews[1].place(at: CGPoint(x: midX, y: b.midY), anchor: .center, proposal: ProposedViewSize(width: min(t.width, cap), height: t.height))
     }
 }
 

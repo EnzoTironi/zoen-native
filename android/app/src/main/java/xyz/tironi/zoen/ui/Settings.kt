@@ -235,7 +235,7 @@ private fun PrimaryButton(text: String, enabled: Boolean = true, busy: Boolean =
     val interactions = remember { MutableInteractionSource() }
     val pressed by interactions.collectIsPressedAsState()
     val scale by animateFloatAsState(if (pressed && enabled) 0.96f else 1f, tween(150), label = "press")
-    Button(
+    GlassButton(
         onClick, Modifier.fillMaxWidth().height(50.dp).scale(scale).then(tag?.let { Modifier.testTag(it) } ?: Modifier), enabled = enabled && !busy,
         interactionSource = interactions,
         colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.onSurface, contentColor = MaterialTheme.colorScheme.surface),

@@ -13,7 +13,7 @@ impl Preference {
     pub fn frame(self, identity: String, online: bool, own: bool) -> ServerFrame {
         ServerFrame::Presence {
             identity,
-            online,
+            online: online && (own || !self.hide_last_seen),
             last_seen_ms: if online || self.hide_last_seen {
                 None
             } else {
@@ -283,6 +283,9 @@ pub async fn delivery(
                 if policy.revision.unwrap_or(0) != expected {
                     return Delivery::Skip;
                 }
+                if policy.hide_last_seen && identity != recipient {
+                    *online = false;
+                }
                 *last_seen_ms = if *online || policy.hide_last_seen {
                     None
                 } else {
@@ -302,7 +305,11 @@ pub async fn delivery(
     *last_seen_ms = None;
     *hide_last_seen = None;
     *revision = None;
-    *online = state.fanout.is_online(identity).await;
+    *online = if identity == recipient {
+        state.fanout.is_online(identity).await
+    } else {
+        false
+    };
     Delivery::Send(None)
 }
 
@@ -323,7 +330,7 @@ mod tests {
                     .frame("ana".into(), online, own),
                     ServerFrame::Presence {
                         identity: "ana".into(),
-                        online,
+                        online: online && own,
                         last_seen_ms: None,
                         revision: None,
                         hide_last_seen: own.then_some(true)

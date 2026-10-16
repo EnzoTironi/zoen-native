@@ -1226,7 +1226,7 @@ struct AllCaughtUpView: View {
                 Button(action: onClose) {
                     Text("Done").font(.headline).foregroundStyle(ActionGlassForeground()).frame(maxWidth: 220, minHeight: 50)
                 }
-                .buttonStyle(.glassProminent)
+                .buttonStyle(.wabiGlassProminent)
                 .tint(Palette.action)
                 .accessibilityIdentifier("approvals-done-button")
             }
@@ -1279,7 +1279,7 @@ struct ApprovalExplainerCard: View {
                 .multilineTextAlignment(.center)
             Spacer(minLength: 0)
             Button(String(localized: "Got it"), action: onNext)
-                .buttonStyle(.glass)
+                .buttonStyle(.wabiGlass)
                 .accessibilityIdentifier("approvals-explainer-next")
         }
         .padding(28)

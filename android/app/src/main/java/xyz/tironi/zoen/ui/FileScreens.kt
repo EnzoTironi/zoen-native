@@ -109,12 +109,12 @@ fun FileScreen(model: ZoenViewModel, state: AppState, item: ItemDetail, modifier
         }
         if (bytes != null) item {
             FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Button(onClick = { model.launch { FileAccess.shareFile(context, file.name, file.mime, bytes!!) } }, modifier = Modifier.testTag("file-export")) { Text(stringResource(R.string.export)) }
-                OutlinedButton(onClick = { model.launch { MediaFiles.open(context, file.name, file.mime, bytes!!) } }, modifier = Modifier.testTag("file-open-with")) { Text(stringResource(R.string.media_open_with)) }
-                if (drawing && local != null) OutlinedButton(enabled = file.mime == "application/pdf" || imageCanEdit == true,
+                GlassButton(onClick = { model.launch { FileAccess.shareFile(context, file.name, file.mime, bytes!!) } }, modifier = Modifier.testTag("file-export")) { Text(stringResource(R.string.export)) }
+                GlassOutlinedButton(onClick = { model.launch { MediaFiles.open(context, file.name, file.mime, bytes!!) } }, modifier = Modifier.testTag("file-open-with")) { Text(stringResource(R.string.media_open_with)) }
+                if (drawing && local != null) GlassOutlinedButton(enabled = file.mime == "application/pdf" || imageCanEdit == true,
                     onClick = { markup = true }, modifier = Modifier.testTag("file-markup")) { Icon(Icons.Rounded.Draw, null); Spacer(Modifier.width(8.dp)); Text(stringResource(R.string.media_markup)) }
-                if (media && local != null) OutlinedButton(onClick = { trimming = true }, modifier = Modifier.testTag("file-trim")) { Icon(Icons.Rounded.ContentCut, null); Spacer(Modifier.width(8.dp)); Text(stringResource(R.string.media_trim)) }
-                if (editableText) OutlinedButton(onClick = {
+                if (media && local != null) GlassOutlinedButton(onClick = { trimming = true }, modifier = Modifier.testTag("file-trim")) { Icon(Icons.Rounded.ContentCut, null); Spacer(Modifier.width(8.dp)); Text(stringResource(R.string.media_trim)) }
+                if (editableText) GlassOutlinedButton(onClick = {
                     if (!editing) { text = bytes!!.toString(Charsets.UTF_8); editing = true }
                     else model.launch { model.repository.change { it.fileNewVersion(item.id, text.orEmpty().toByteArray(), null, saved) }; editing = false }
                 }) { Text(stringResource(if (editing) R.string.save else R.string.edit)) }

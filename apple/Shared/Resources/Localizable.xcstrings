@@ -8415,6 +8415,56 @@
         }
       }
     },
+    "Copy": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Copiar"
+          }
+        }
+      }
+    },
+    "Got an invite?": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Recebeu um convite?"
+          }
+        }
+      }
+    },
+    "Delete for everyone": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Apagar para todos"
+          }
+        }
+      }
+    },
+    "Forward": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Encaminhar"
+          }
+        }
+      }
+    },
+    "React %@": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Reagir com %@"
+          }
+        }
+      }
+    },
     "Copy any text you want to keep first. Discarding opens the current page and keeps its saved versions.": {
       "localizations": {
         "pt-BR": {
