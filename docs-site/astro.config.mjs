@@ -2,6 +2,10 @@
 import { defineConfig } from 'astro/config';
 import starlight from '@astrojs/starlight';
 import mermaid from 'astro-mermaid';
+import { readFileSync } from 'node:fs';
+
+// The living sky runs as a tiny classic script in <head> so the first paint already shows the right sky.
+const livingSky = readFileSync(new URL('./src/sky/living-sky.js', import.meta.url), 'utf8');
 
 export default defineConfig({
   integrations: [
@@ -14,6 +18,7 @@ export default defineConfig({
       favicon: '/favicon.png',
       social: [{ icon: 'github', label: 'GitHub', href: 'https://github.com/EnzoTironi/zoen-native' }],
       customCss: ['./src/styles/custom.css'],
+      head: [{ tag: 'script', content: livingSky }],
       lastUpdated: false,
       pagination: true,
       tableOfContents: { minHeadingLevel: 2, maxHeadingLevel: 3 },

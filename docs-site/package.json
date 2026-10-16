@@ -7,7 +7,9 @@
     "sync": "node scripts/sync-content.mjs",
     "dev": "npm run sync && astro dev",
     "build": "npm run sync && astro build",
-    "preview": "astro preview"
+    "preview": "astro preview",
+    "test": "node --test src/sky/living-sky.test.mjs",
+    "check:contrast": "node scripts/check-sky-contrast.mjs"
   },
   "dependencies": {
     "@astrojs/starlight": "^0.42.6",
@@ -15,5 +17,9 @@
     "astro-mermaid": "^2.1.0",
     "mermaid": "^11.17.2",
     "sharp": "^0.35.5"
+  },
+  "devDependencies": {
+    "axe-core": "^4.14.0",
+    "puppeteer-core": "^24.43.1"
   }
 }

@@ -99,6 +99,6 @@ Remote MCP servers, a public catalog and the Store are **planned**.
 | Apple: system **Liquid Glass** | **In progress** — on the `ui/native-glass` branch, not yet on `main` |
 | Android: Material 3 with Jetpack Compose, adaptive navigation (bar, rail, two panes) | **Built** — a fuller native Material pass is in review |
 | Chat backgrounds: colours, gradients, doodles and encrypted photos | **Built** |
-| A sky background that follows the person's local time of day | **Planned** |
+| A sky background that follows the person's local time of day (dawn, day, sunset, night) | **In progress** — implemented for iOS/macOS, Android and the web app in [PR #127](https://github.com/EnzoTironi/zoen-native/pull/127) (`ui/living-sky`), not yet on `main`; evidence there is standalone previews, and the Android checks have not run. The docs site already uses the same palette and hours. |
 | Hand-drawn, animated mascot and illustrations; Reduce Motion respected | **Built** |
 | Plain language everywhere — no technical jargon in the interface | Product rule |

@@ -1,16 +1,16 @@
-/* Zoen brand on top of Starlight: moss-green action colour, calm sky surfaces, generous type. */
+/* Zoen brand on top of Starlight: moss-green action colour, a living local-time sky, generous type. */
 :root {
   --sl-font: "Inter", ui-sans-serif, system-ui, -apple-system, "SF Pro Text", "Segoe UI", Roboto, sans-serif;
   --sl-font-mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace;
   --sl-content-width: 48rem;
   --zoen-moss: #3b7a2a;
-  --zoen-sky-1: #dcebff;
-  --zoen-sky-2: #f6d3f0;
 }
 :root[data-theme='light'] {
   --sl-color-accent-low: #e3f1dc;
   --sl-color-accent: #3b7a2a;
   --sl-color-accent-high: #1f4416;
+  /* Link ink: deep moss keeps 4.5:1 on the brightest-allowed sky wash (L ≥ 0.50), not just on white. */
+  --sl-color-text-accent: #285419;
   --sl-color-white: #121a14;
   --sl-color-gray-1: #24302a;
   --sl-color-gray-2: #39453e;
@@ -46,17 +46,6 @@ h1#_top { letter-spacing: -0.025em; font-weight: 700; }
 }
 :root[data-theme='dark'] .sl-markdown-content .mermaid { background: #111815; }
 
-/* Splash hero: a sky gradient that nods to the app's backgrounds. */
-[data-has-hero] .page {
-  background:
-    radial-gradient(1200px 500px at 85% -10%, color-mix(in srgb, var(--zoen-sky-1) 70%, transparent), transparent 70%),
-    radial-gradient(900px 420px at -10% 10%, color-mix(in srgb, var(--zoen-sky-2) 45%, transparent), transparent 70%);
-}
-:root[data-theme='dark'] [data-has-hero] .page {
-  background:
-    radial-gradient(1200px 500px at 85% -10%, rgb(47 98 255 / 0.18), transparent 70%),
-    radial-gradient(900px 420px at -10% 10%, rgb(124 196 99 / 0.12), transparent 70%);
-}
 .hero h1 { font-size: clamp(2.4rem, 5vw, 3.6rem); letter-spacing: -0.035em; line-height: 1.05; }
 .hero .tagline { font-size: 1.2rem; max-width: 34rem; }
 .hero img.zoen-hero-shot { border-radius: 18px; box-shadow: 0 30px 80px -30px rgb(0 0 0 / 0.45); border: 1px solid var(--sl-color-hairline); }
@@ -85,6 +74,10 @@ h1#_top { letter-spacing: -0.025em; font-weight: 700; }
   stroke: #9fbf94 !important;
 }
 
+/* Mermaid's dark theme draws #ccc edge labels on #585858 (4.43:1); lift them to AA. */
+:root[data-theme='dark'] .sl-markdown-content .mermaid .edgeLabel,
+:root[data-theme='dark'] .sl-markdown-content .mermaid .edgeLabel p { color: #f0f0f0 !important; }
+
 /* Heading anchor links: present, but quiet until hovered (Stripe/Tailwind style). */
 .sl-markdown-content .sl-anchor-link { opacity: 0; transition: opacity 120ms ease; }
 .sl-markdown-content .sl-heading-wrapper:hover .sl-anchor-link,
@@ -97,3 +90,84 @@ h1#_top { letter-spacing: -0.025em; font-weight: 700; }
   .hero { grid-template-columns: 5fr 6fr; gap: 4%; }
   .hero > .hero-html { width: 100%; }
 }
+
+/* ───────────────────────── Living sky ─────────────────────────
+ * The colour comes from src/sky/living-sky.js (same palette and hour anchors as the app's SkyClock).
+ * The sky is decorative and sits behind everything; text sits on readable surfaces or on a wash
+ * checked for WCAG 2.2 AA at every phase (see scripts/check-sky-contrast.mjs).
+ */
+@property --zoen-sky { syntax: '<color>'; inherits: true; initial-value: rgb(69 158 230); }
+@property --zoen-sky-stars { syntax: '<number>'; inherits: true; initial-value: 0; }
+:root {
+  /* Wash strength is set per minute by living-sky.js (contrast-guarded); these are no-JS fallbacks. */
+  --zoen-sky-wash-top: 30%;
+  --zoen-sky-wash-mid: 13%;
+  --zoen-cloud: rgb(255 255 255 / 0.5);
+  --zoen-star: rgb(82 94 128 / 0.3);
+  --zoen-surface: 58%;
+  --zoen-surface-chrome: 50%;
+  background-color: var(--sl-color-bg);
+}
+/* Smooth drift between minute updates; only after first paint, so page loads never animate. */
+:root[data-sky-live] { transition: --zoen-sky 1.5s linear, --zoen-sky-stars 1.5s linear; }
+:root[data-theme='dark'] {
+  --zoen-sky-wash-top: 20%;
+  --zoen-sky-wash-mid: 9%;
+  --zoen-cloud: rgb(255 255 255 / 0.04);
+  --zoen-star: rgb(255 255 255 / 0.16);
+  --zoen-surface: 40%;
+  --zoen-surface-chrome: 35%;
+  --sl-color-bg-nav: #111816;
+  --sl-color-bg-sidebar: #111816;
+}
+body { background: transparent; }
+
+.zoen-sky {
+  position: fixed; inset: 0; z-index: -1; pointer-events: none;
+  background: linear-gradient(180deg,
+    color-mix(in srgb, var(--zoen-sky) var(--zoen-sky-wash-top), var(--sl-color-bg)) 0%,
+    color-mix(in srgb, var(--zoen-sky) var(--zoen-sky-wash-mid), var(--sl-color-bg)) 42%,
+    var(--sl-color-bg) 88%);
+}
+.zoen-sky svg { position: absolute; inset: 0; display: block; }
+.zoen-sky-clouds { fill: none; stroke: var(--zoen-cloud); stroke-width: 13; stroke-linecap: round; }
+.zoen-sky-stars { fill: none; stroke: var(--zoen-star); stroke-width: 0.9; opacity: var(--zoen-sky-stars); }
+
+/* Readable surfaces over the sky: frosted chrome, paper for reading. */
+.header {
+  background-color: color-mix(in srgb, var(--sl-color-bg-nav) calc(var(--zoen-surface-chrome) + 15%), transparent);
+  -webkit-backdrop-filter: blur(16px) saturate(1.15); backdrop-filter: blur(16px) saturate(1.15);
+}
+.sidebar-pane {
+  background-color: color-mix(in srgb, var(--sl-color-bg-sidebar) var(--zoen-surface-chrome), transparent);
+  -webkit-backdrop-filter: blur(16px); backdrop-filter: blur(16px);
+}
+:root:not([data-has-hero]) .main-frame > div {
+  background-color: color-mix(in srgb, var(--sl-color-bg) var(--zoen-surface), transparent);
+  -webkit-backdrop-filter: blur(18px); backdrop-filter: blur(18px);
+}
+.right-sidebar { background: transparent; }
+/* Landing: the hero sits on open sky; everything below it sits on a paper card. */
+[data-has-hero] .content-panel { border-top: 0; }
+[data-has-hero] .sl-container > .sl-markdown-content {
+  background-color: color-mix(in srgb, var(--sl-color-bg) 90%, transparent);
+  -webkit-backdrop-filter: blur(18px); backdrop-filter: blur(18px);
+  border: 1px solid var(--sl-color-hairline);
+  border-radius: 24px;
+  padding: clamp(1.25rem, 3vw, 2.5rem);
+  box-shadow: 0 30px 80px -50px rgb(0 0 0 / 0.35);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root, :root[data-sky-live] { transition: none; }
+}
+/* More contrast requested, or forced colours: drop the sky and use solid surfaces. */
+@media (prefers-contrast: more), (forced-colors: active) {
+  .zoen-sky { display: none; }
+  .header, .sidebar-pane, :root:not([data-has-hero]) .main-frame > div,
+  [data-has-hero] .sl-container > .sl-markdown-content {
+    background-color: var(--sl-color-bg);
+    -webkit-backdrop-filter: none; backdrop-filter: none;
+  }
+}
+@media print { .zoen-sky { display: none; } }
