@@ -3275,7 +3275,14 @@ impl Engine {
         {
             for e in &s.entries {
                 if let EntryBody::Message { text, .. } = &e.body {
-                    if fold(text).contains(&q) {
+                    let snippet = if fold(text).contains(&q) {
+                        Some(text.clone())
+                    } else {
+                        self.entry_voice(e)
+                            .filter(|voice| fold(&voice.transcript).contains(&q))
+                            .map(|voice| voice.transcript)
+                    };
+                    if let Some(snippet) = snippet {
                         hits.push(SearchHit {
                             space_id: s.id.clone(),
                             space_title: self
@@ -3284,7 +3291,7 @@ impl Engine {
                                 .unwrap_or_default(),
                             item_id: None,
                             title: self.persona(&e.author).name,
-                            snippet: text.clone(),
+                            snippet,
                             author: self.persona(&e.author),
                             at_ms: e.at_ms,
                         });

@@ -572,6 +572,36 @@ fn rejected_voice_sends_keep_their_audio_reply_and_delivery_error_after_reopen()
 }
 
 #[test]
+fn core_search_finds_voice_transcripts_as_messages_and_follows_edits() {
+    let e = seeded();
+    let space = find_space(&e, "Zoen").id;
+    let sent = note(&e, &space, None).unwrap();
+    let hits = || e.search("  ReCoRdInG  ".into());
+    let assert_hit = || {
+        let hits = hits();
+        assert_eq!(hits.len(), 1);
+        let hit = &hits[0];
+        assert_eq!(hit.space_id, space);
+        assert!(hit.item_id.is_none(), "transcript belongs to the message");
+        assert_eq!(hit.snippet, "A recording");
+        assert_eq!(hit.author, sent.author);
+        assert_eq!(hit.at_ms, sent.at_ms);
+    };
+    assert!(matches!(&sent.kind, EntryKind::Message { text, .. } if text.is_empty()));
+    assert_hit();
+    e.lock().reload().unwrap();
+    assert_hit();
+    let item = sent.voice.as_ref().unwrap().item_id.clone();
+    e.file_new_version(item.clone(), vec![8; 500], None, "Cut".into())
+        .unwrap();
+    assert!(hits().is_empty());
+    e.restore_version(item, 1).unwrap();
+    assert_hit();
+    e.delete_message(space.clone(), sent.id.clone()).unwrap();
+    assert!(hits().is_empty());
+}
+
+#[test]
 fn typed_voice_transcripts_are_searchable_by_message_id_and_follow_edits() {
     let e = seeded();
     let space = find_space(&e, "Zoen").id;
