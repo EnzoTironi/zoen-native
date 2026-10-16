@@ -636,6 +636,139 @@ fn web_reaction_submission_rejects_blank_and_oversized_utf8_before_encryption() 
     }
 }
 
+#[test]
+fn web_ui_events_require_current_membership_and_never_replay() {
+    use roda_proto::EphemeralKind::{Delivered, Read, StoppedTyping, Typing};
+    let (mut client, author, other, mut log, _) = web_fixture();
+    let space = log.space().to_owned();
+    let me = client.account.identity.clone();
+    let peer = other.identity.clone();
+    clear(
+        &mut log,
+        &author,
+        EventBody::MemberAdded {
+            identity: peer.clone(),
+            role: Role::Member,
+        },
+        3,
+    );
+    client.logs.insert(space.clone(), log.clone());
+    let receive = |client: &mut Client<HostSigner>, space: &str, from: &str, kind| {
+        client
+            .receive(
+                &ServerFrame::Ephemeral {
+                    space: space.into(),
+                    from: from.into(),
+                    kind,
+                }
+                .encode(),
+                100,
+            )
+            .unwrap()
+    };
+    let update = receive(&mut client, &space, &peer, Typing);
+    assert_eq!(
+        update.ui_events,
+        vec![UiEvent::Typing {
+            space: space.clone(),
+            from: peer.clone(),
+            name: None
+        }]
+    );
+    assert_eq!(
+        serde_json::to_value(&update.ui_events).unwrap()[0]["kind"],
+        "typing"
+    );
+    assert_eq!(
+        receive(&mut client, &space, &peer, StoppedTyping).ui_events,
+        vec![UiEvent::Stopped {
+            space: space.clone(),
+            from: peer.clone()
+        }]
+    );
+    for (s, sender) in [
+        ("unknown", peer.as_str()),
+        (space.as_str(), "unknown"),
+        (space.as_str(), me.as_str()),
+    ] {
+        assert!(receive(&mut client, s, sender, Typing).ui_events.is_empty());
+        assert!(receive(&mut client, s, sender, StoppedTyping)
+            .ui_events
+            .is_empty());
+    }
+    assert!(receive(&mut client, &space, &peer, Delivered { seq: 3 })
+        .ui_events
+        .is_empty());
+    assert!(receive(&mut client, &space, &peer, Read { seq: 2 })
+        .ui_events
+        .is_empty());
+    assert_eq!(client.saved.receipts[&space][&peer], (3, 2));
+    assert!(client.update(Vec::new()).unwrap().ui_events.is_empty());
+    let mut restored = Client::new(
+        client.account.clone(),
+        client.signer.clone(),
+        &update.snapshot,
+    )
+    .unwrap();
+    assert!(restored.update(Vec::new()).unwrap().ui_events.is_empty());
+    clear(
+        &mut log,
+        &author,
+        EventBody::MemberRemoved {
+            identity: peer.clone(),
+        },
+        4,
+    );
+    client.logs.insert(space.clone(), log.clone());
+    assert!(receive(&mut client, &space, &peer, Typing)
+        .ui_events
+        .is_empty());
+    clear(
+        &mut log,
+        &author,
+        EventBody::MemberAdded {
+            identity: peer.clone(),
+            role: Role::Member,
+        },
+        5,
+    );
+    clear(
+        &mut log,
+        &author,
+        EventBody::MemberRemoved { identity: me },
+        6,
+    );
+    client.logs.insert(space.clone(), log);
+    assert!(receive(&mut client, &space, &peer, Typing)
+        .ui_events
+        .is_empty());
+}
+
+#[test]
+fn web_verified_event_emits_transient_space_changed() {
+    let (mut client, author, _, mut log, _) = web_fixture();
+    let space = log.space().to_owned();
+    client.logs.insert(space.clone(), log.clone());
+    let bytes = clear(
+        &mut log,
+        &author,
+        EventBody::MessagePosted {
+            message: "msg_changed".into(),
+            text: "New message".into(),
+            attaches: None,
+            reply: None,
+            forwarded: false,
+        },
+        10,
+    );
+    let update = client.receive(&bytes, 10).unwrap();
+    assert_eq!(update.ui_events, vec![UiEvent::SpaceChanged { space }]);
+    assert!(client.update(Vec::new()).unwrap().ui_events.is_empty());
+    let mut invalid = bytes;
+    invalid.truncate(invalid.len() / 2);
+    assert!(client.receive(&invalid, 11).is_err());
+}
+
 fn receipt_marks(frames: &[Vec<u8>]) -> Vec<(&'static str, u64)> {
     frames
         .iter()

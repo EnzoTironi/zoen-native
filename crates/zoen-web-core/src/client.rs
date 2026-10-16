@@ -177,11 +177,30 @@ pub struct ConversationView {
     messages: Vec<MessageView>,
 }
 
+/// Transient UI signals from the authenticated relay receive path, never saved.
+#[derive(Debug, PartialEq, Serialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum UiEvent {
+    Typing {
+        space: String,
+        from: String,
+        name: Option<String>,
+    },
+    Stopped {
+        space: String,
+        from: String,
+    },
+    SpaceChanged {
+        space: String,
+    },
+}
+
 #[derive(Serialize)]
 pub struct Update {
     pub snapshot: String,
     pub frames: Vec<Vec<u8>>,
     pub conversations: Vec<ConversationView>,
+    pub ui_events: Vec<UiEvent>,
 }
 
 /// The same OpenMLS crypto, log verification and binary protocol used by native clients.
@@ -820,6 +839,7 @@ impl<S: Signer> Client<S> {
 
     pub fn receive(&mut self, bytes: &[u8], now_ms: i64) -> Result<Update, String> {
         let mut extra = Vec::new();
+        let mut ui_events = Vec::new();
         match ServerFrame::decode(bytes).map_err(|e| e.to_string())? {
             ServerFrame::Event { ev } => {
                 let space = ev.env.space().to_string();
@@ -836,6 +856,7 @@ impl<S: Signer> Client<S> {
                 }
                 let author = ev.env.author().to_string();
                 self.ingest(ev, now_ms)?;
+                ui_events.push(UiEvent::SpaceChanged { space });
                 if self.synced {
                     extra.extend(self.delivered());
                     if !self.saved.profiles.contains_key(&author) {
@@ -850,6 +871,32 @@ impl<S: Signer> Client<S> {
                 }
             }
             ServerFrame::Ephemeral { space, from, kind } => {
+                // Relay authentication binds `from`; verified local membership is
+                // still required before exposing this transient signal to the UI.
+                let roster = self.roster(&space);
+                if from != self.account.identity
+                    && roster.contains_key(&self.account.identity)
+                    && roster.contains_key(&from)
+                {
+                    match &kind {
+                        roda_proto::EphemeralKind::Typing => ui_events.push(UiEvent::Typing {
+                            space: space.clone(),
+                            from: from.clone(),
+                            name: self
+                                .saved
+                                .profiles
+                                .get(&from)
+                                .map(|profile| profile.name.clone()),
+                        }),
+                        roda_proto::EphemeralKind::StoppedTyping => {
+                            ui_events.push(UiEvent::Stopped {
+                                space: space.clone(),
+                                from: from.clone(),
+                            })
+                        }
+                        _ => {}
+                    }
+                }
                 let mark = match kind {
                     roda_proto::EphemeralKind::Read { seq } => Some((seq, seq)),
                     roda_proto::EphemeralKind::Delivered { seq } => Some((seq, 0)),
@@ -939,7 +986,9 @@ impl<S: Signer> Client<S> {
             }
             _ => {}
         }
-        self.update(extra)
+        let mut update = self.update(extra)?;
+        update.ui_events = ui_events;
+        Ok(update)
     }
 
     fn ask_rejoin(&mut self, now_ms: i64) -> Result<(), String> {
@@ -1191,6 +1240,7 @@ impl<S: Signer> Client<S> {
             snapshot,
             frames,
             conversations: self.conversations(),
+            ui_events: Vec::new(),
         })
     }
 
