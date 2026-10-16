@@ -4,6 +4,9 @@ import type { StoredSession } from './session.ts';
 import { AuthenticatedTransport, type ConnectionState, type RelayFrame } from './transport.ts';
 import type { BrowserVault } from './vault.ts';
 import type { CoreWorker } from './worker-client.ts';
+import type { PageDto, PageSaveRequest } from './live-page.tsx';
+import { parsePage } from './page-data.ts';
+import { download, prepare, parsePlan, parseManifest, upload, ensurePage, MAX_FILE_BYTES, type FileCore, type PreparedFile } from './file-transfer.ts';
 
 function nullableText(value: unknown): string | null { return value === null ? null : string(value); }
 function timestamp(value: unknown): number {
@@ -84,11 +87,17 @@ export class Messages {
   private generation = 0;
   private conversations: Conversation[] = [];
   private notice: string | null = null;
+  private readonly pendingSpaceCommands = new Map<string, { editId: string; now: number }>();
+  private readonly pendingFiles = new Map<string, PreparedFile>();
+  private currentSnapshot: string;
+  private readonly fileCache = new Map<string, Uint8Array>();
 
   constructor({ core, vault, session, changed }: {
     core: MessageCore; vault: MessageVault; session: LinkedSession; changed: (state: MessagesState) => void;
   }) {
     this.core = core; this.vault = vault; this.session = session; this.changed = changed;
+    this.currentSnapshot = session.snapshot;
+    for (const saved of session.pendingUploads ?? []) { const plan = parsePlan(saved.planJSON, saved.editId); this.pendingFiles.set(plan.editId, plan); }
     this.transport = new AuthenticatedTransport(core, vault, session.account, (connection) => {
       if (this.closed) return;
       this.connection = connection;
@@ -96,6 +105,130 @@ export class Messages {
       if (connection.kind === 'failed') { this.fail(connection.message); return; }
       this.publish();
     }, (frame, raw) => this.received(frame, raw));
+  }
+
+  async readPage(item: string): Promise<PageDto> {
+    if (this.closed) throw Error('Reload Zoen to reopen this browser session.');
+    await ensurePage({ pageDownloadManifest: (item) => this.core.text({ kind: 'page_download_manifest', item }), pageBlobSupply: async (item, blob, data) => { await this.core.text({ kind: 'page_blob_supply', item, blob, data }); } }, item, { relay: this.session.account.relay });
+    const result = await this.core.text({ kind: 'page', item });
+    if (this.closed) throw Error('This browser session has closed.');
+    return parsePage(JSON.parse(result));
+  }
+
+  async savePage(request: PageSaveRequest, space: string): Promise<PageDto> {
+    await this.act(space, { kind: 'page_apply', request: JSON.stringify(request), now: Date.now() });
+    return this.readPage(request.item_id);
+  }
+
+  async createPage(space: string, title: string): Promise<PageDto> {
+    if (this.closed || this.connection.kind !== 'ready') throw Error('Reconnect before creating a page.');
+    const key = `page:${space}:${title}`;
+    const mutation = this.pendingSpaceCommands.get(key) ?? { editId: crypto.randomUUID(), now: Date.now() };
+    this.pendingSpaceCommands.set(key, mutation); const generation = this.generation;
+    let page: PageDto | undefined;
+    await this.enqueue(async () => {
+      const envelope = object(JSON.parse(await this.core.text({ kind: 'page_create', space, title, now: mutation.now, editId: mutation.editId })));
+      const result = parsePage(envelope.result);
+      await this.apply(JSON.stringify(envelope.update), generation); page = result; this.pendingSpaceCommands.delete(key);
+    }, () => generation !== this.generation || this.connection.kind !== 'ready' ? 'Reconnect before creating a page.' : null, false);
+    if (!page) throw Error('The page could not be created.');
+    return page;
+  }
+
+  /** Verified signed parent projection; unsupported browser writes are never simulated. */
+  async spaceHome(space: string): Promise<Record<string, unknown>> {
+    if (this.closed) throw Error('This browser session has closed.');
+    const result = await this.core.text({ kind: 'living_space_home', space });
+    if (this.closed) throw Error('This browser session has closed.');
+    return object(JSON.parse(result));
+  }
+
+  /** Mutations share the durable outbox boundary; retries reuse their edit identity until persisted. */
+  async spaceCommand(space: string, command: object): Promise<unknown> {
+    if (this.closed) throw Error('Reload Zoen to reopen this browser session.');
+    if (this.connection.kind !== 'ready') throw Error('Reconnect before updating this Space.');
+    const json = JSON.stringify(command);
+    const key = `${space}:${json}`;
+    const mutation = this.pendingSpaceCommands.get(key) ?? { editId: crypto.randomUUID(), now: Date.now() };
+    this.pendingSpaceCommands.set(key, mutation);
+    const generation = this.generation;
+    let result: unknown;
+    await this.enqueue(async () => {
+      const envelope = object(JSON.parse(await this.core.text({ kind: 'living_space_mutate', space, command: json, now: mutation.now, editId: mutation.editId })));
+      await this.apply(JSON.stringify(envelope.update), generation);
+      result = envelope.result;
+      if (!(typeof result === 'object' && result !== null && 'pending' in result && result.pending === true)) this.pendingSpaceCommands.delete(key);
+    }, () => generation !== this.generation || this.connection.kind !== 'ready' ? 'Reconnect before updating this Space.' : null, false);
+    return result;
+  }
+
+  private fileCore(): FileCore {
+    return {
+      fileManifest: (item) => this.core.text({ kind: 'file_manifest', item }),
+      fileOpen: (item, data) => this.core.bytes({ kind: 'file_open', item, data }),
+      filePrepare: (space, name, mime, data, now) => this.core.text({ kind: 'file_prepare', space, name, mime, data, now }),
+      fileUploadHeaders: (blob, now) => this.core.text({ kind: 'file_upload_headers', blob, now }),
+      fileCommit: (space, plan, now, editId) => this.core.text({ kind: 'file_commit', space, plan, now, editId }),
+    };
+  }
+
+  private stored(snapshot = this.currentSnapshot): LinkedSession {
+    const pendingUploads = [...this.pendingFiles.values()].map(({ planJSON, editId }) => ({ planJSON, editId }));
+    return { kind: 'linked', account: this.session.account, snapshot, ...(pendingUploads.length ? { pendingUploads } : {}) };
+  }
+
+  get pendingUploadCount(): number { return this.pendingFiles.size; }
+
+  async readFile(item: string): Promise<{ name: string; mime: string; bytes: Uint8Array }> {
+    if (this.closed) throw Error('Reload Zoen to reopen this browser session.');
+    // Re-authorize every read before consulting plaintext already authenticated in this session.
+    const raw = await this.core.text({ kind: 'file_manifest', item });
+    const metadata = object(JSON.parse(raw)); const digest = string(metadata.sha256);
+    const manifest = parseManifest(raw);
+    if (manifest.item !== item || !/^[0-9a-f]{64}$/i.test(digest)) throw Error('Invalid file metadata.');
+    const key = `${item}:${digest}`; const cached = this.fileCache.get(key);
+    if (cached && cached.byteLength === manifest.bytes) return { name: manifest.name, mime: manifest.mime, bytes: cached.slice() };
+    const core = this.fileCore();
+    const file = await download({ ...core, fileManifest: async () => raw }, item, { relay: this.session.account.relay });
+    if (this.closed) throw Error('This browser session has closed.');
+    this.fileCache.set(key, file.bytes.slice());
+    let cachedBytes = [...this.fileCache.values()].reduce((n, bytes) => n + bytes.byteLength, 0);
+    while (cachedBytes > 128 * 1024 * 1024) { const oldest = this.fileCache.keys().next().value; if (!oldest) break; cachedBytes -= this.fileCache.get(oldest)!.byteLength; this.fileCache.delete(oldest); }
+    return file;
+  }
+
+  private async finishFile(plan: PreparedFile, generation: number): Promise<void> {
+    await upload(this.fileCore(), plan, { relay: this.session.account.relay });
+    if (this.closed || generation !== this.generation || this.connection.kind !== 'ready') throw Error('Reconnect to finish this file upload.');
+    const update = await this.fileCore().fileCommit(plan.plan.space, plan.planJSON, Date.now(), plan.editId);
+    this.pendingFiles.delete(plan.editId);
+    try { await this.apply(update, generation); }
+    catch (error) { this.pendingFiles.set(plan.editId, plan); throw error; }
+  }
+
+  async uploadFile(space: string, file: File): Promise<string> {
+    if (this.closed || this.connection.kind !== 'ready') throw Error('Reconnect before uploading files.');
+    if (file.size > MAX_FILE_BYTES) throw Error('Choose a file up to 64 MiB.');
+    const generation = this.generation;
+    let item = '';
+    await this.enqueue(async () => {
+      const made = await prepare(this.fileCore(), space, file.name, file.type || 'application/octet-stream', new Uint8Array(await file.arrayBuffer()), Date.now());
+      const existing = [...this.pendingFiles.values()].find((p) => p.plan.space === space && p.plan.doc.name === made.plan.doc.name && p.plan.doc.mime === made.plan.doc.mime && typeof p.plan.doc.sha256 === 'string' && p.plan.doc.sha256 === made.plan.doc.sha256);
+      const plan = existing ?? made;
+      if (!existing && this.pendingFiles.size >= 4) throw Error('Retry unfinished uploads before adding more files.');
+      this.pendingFiles.set(plan.editId, plan);
+      // The whole plan, including file keys, is encrypted by BrowserVault before any PUT.
+      await this.vault.save(this.stored());
+      this.notice = 'Uploading file…'; this.publish();
+      await this.finishFile(plan, generation);
+      item = plan.plan.item; this.notice = null; this.publish();
+    }, () => generation !== this.generation || this.connection.kind !== 'ready' ? 'Reconnect before uploading files.' : null, false);
+    return item;
+  }
+
+  retryUploads(): Promise<void> {
+    const generation = this.generation;
+    return this.enqueue(async () => { for (const plan of [...this.pendingFiles.values()]) await this.finishFile(plan, generation); this.notice = null; this.publish(); }, () => this.connection.kind !== 'ready' ? 'Reconnect before retrying uploads.' : null, false);
   }
 
   start(): Promise<void> {
@@ -120,13 +253,19 @@ export class Messages {
         await this.core.text({ kind: 'receive', bytes: raw, now: Date.now() });
       if (frame.kind === 'rejected' && frame.permanent) this.notice = frame.reason;
       await this.apply(update, generation);
+      if (frame.kind === 'ready') {
+        for (const plan of [...this.pendingFiles.values()]) {
+          try { await this.finishFile(plan, generation); }
+          catch { this.notice = 'A file upload is waiting. Retry it when connected.'; this.publish(); break; }
+        }
+      }
     });
   }
 
   private async apply(json: string, generation: number): Promise<void> {
     const update = parseUpdate(json);
-    await persistBeforeOutgoing({ snapshot: { ...this.session, snapshot: update.snapshot },
-      save: (snapshot) => this.vault.save(snapshot), frames: update.frames, emit: (frame) => {
+    await persistBeforeOutgoing({ snapshot: this.stored(update.snapshot),
+      save: async (snapshot) => { await this.vault.save(snapshot); this.currentSnapshot = snapshot.snapshot; }, frames: update.frames, emit: (frame) => {
         // A reconnect bootstraps again from the saved outbox; never emit stale frames.
         if (this.closed || this.connection.kind !== 'ready' || generation !== this.generation) return;
         this.transport.send(frame);
@@ -239,5 +378,8 @@ export class Messages {
     this.closed = true;
     ++this.generation;
     this.transport.stop();
+    this.fileCache.clear();
+    this.pendingFiles.clear();
+    this.pendingSpaceCommands.clear();
   }
 }

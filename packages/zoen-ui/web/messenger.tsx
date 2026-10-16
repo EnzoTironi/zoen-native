@@ -2,6 +2,8 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { message as reason } from './boundary.ts';
 import type { Conversation, Message, Messages } from './messages.ts';
 import { MessageEditor } from './message-editor.tsx';
+import { livingSpacesEnabled } from './living-space.tsx';
+import { LivingSpaceController } from './living-space-controller.tsx';
 import { MessageSearchResults } from './message-search-view.tsx';
 import type { MessageHit } from './message-search.ts';
 import { loadChatPreferences, saveChatPreferences, type ChatPreferences as Prefs } from './chat-preferences.ts';
@@ -24,6 +26,7 @@ function day(ms: number) {
 }
 const initials = (name: string) => name.replace(/^@/, '').trim().split(/\s+/).slice(0, 2).map((w) => w[0]?.toUpperCase() ?? '').join('') || '?';
 function hue(seed: string) { let h = 0; for (const c of seed) h = (h * 31 + c.charCodeAt(0)) % 360; return h; }
+
 
 function Avatar({ name, size = 44 }: { name: string; size?: number }) {
   return <span className="zm-avatar" aria-hidden="true" style={{ width: size, height: size, fontSize: size * 0.38, background: `oklch(0.93 0.04 ${hue(name)})`, color: `oklch(0.38 0.08 ${hue(name)})` }}>{initials(name)}</span>;
@@ -191,6 +194,9 @@ function AccountMessenger({ conversations, identity, name, connected, status, me
   const [follow, setFollow] = useState(loadFollow);
   const [search, setSearch] = useState('');
   const [showArchived, setShowArchived] = useState(false);
+  const [parentSpace, setParentSpace] = useState('');
+  let experimental = false;
+  try { experimental = livingSpacesEnabled(localStorage); } catch { /* Fail closed. */ }
   const [reply, setReply] = useState<Message | null>(null);
   const [editing, setEditing] = useState<Message | null>(null);
   const [threadRoot, setThreadRoot] = useState<string | null>(null);
@@ -204,11 +210,12 @@ function AccountMessenger({ conversations, identity, name, connected, status, me
   };
   const toggleFollow = (root: string, on: boolean) => { const next = { ...follow, [root]: on }; setFollow(next); localStorage.setItem(FOLLOW, JSON.stringify(next)); };
   const lastAt = (c: Conversation) => c.messages.at(-1)?.at_ms ?? 0;
-  const matches = conversations.filter((c) => c.title.toLocaleLowerCase('pt-BR').includes(search.toLocaleLowerCase('pt-BR')));
+  const matches = conversations.filter((c) => (!experimental || c.kind === 'community') && c.title.toLocaleLowerCase('pt-BR').includes(search.toLocaleLowerCase('pt-BR')));
   const ordered = [...matches].sort((a, b) => Number(!!prefs[b.id]?.pinned) - Number(!!prefs[a.id]?.pinned) || lastAt(b) - lastAt(a));
   const archived = ordered.filter((c) => prefs[c.id]?.archived);
   const list = showArchived ? archived : ordered.filter((c) => !prefs[c.id]?.archived);
   const conversation = conversations.find((c) => c.id === selected) ?? (children ? undefined : list[0]);
+  const parentConversation = experimental ? conversations.find((c) => c.id === parentSpace && c.kind === 'community') ?? (conversation?.kind === 'community' ? conversation : conversations.find((c) => c.kind === 'community')) : undefined;
   const timeline = useMemo(() => conversation?.messages.filter((m) => !m.thread) ?? [], [conversation]);
   const root = threadRoot ? conversation?.messages.find((m) => m.entry === threadRoot) : undefined;
   const replies = root ? conversation!.messages.filter((m) => m.thread === threadRoot) : [];
@@ -248,7 +255,7 @@ function AccountMessenger({ conversations, identity, name, connected, status, me
     onReply={() => { setEditing(null); setReply(m); }} onEdit={() => { setReply(null); setEditing(m); }}
     onThread={() => { if (m.entry) { setThreadRoot(m.entry); if (follow[m.entry] === undefined) toggleFollow(m.entry, true); } }} />);
 
-  return <div className={`zm-app${root ? ' zm-with-thread' : ''}`}>
+  return <div className={`zm-app${root ? ' zm-with-thread' : ''}${parentConversation ? ' zm-space-app' : ''}`}>
     <aside className="zm-sidebar" aria-label="Conversas">
       <header className="zm-side-head">
         {showArchived ? <button className="zm-round glass" aria-label="Voltar" onClick={() => setShowArchived(false)}><Icon name="back" /></button> : null}
@@ -266,8 +273,8 @@ function AccountMessenger({ conversations, identity, name, connected, status, me
       <footer className="zm-side-foot"><Avatar name={name} size={32} /><span><b>{name}</b><span className={connected ? 'zm-online' : 'zm-offline'} role="status">{status}</span></span>{footer}</footer>
     </aside>
     <main className="zm-main">
-      {children ?? (conversation ? <>
-        <header className="zm-chat-head"><span className="zm-title-pill glass-pill"><Avatar name={conversation.title} size={28} /><b>{conversation.title}</b>{conversation.kind !== 'direct' ? <span>{conversation.members} pessoas</span> : null}</span></header>
+      {children ?? (conversation ? <LivingSpaceController conversation={parentConversation ?? conversation} allConversations={conversations} controller={messages.current} identityId={identity} openConversation={select} selectSpace={(id) => { setParentSpace(id); select(id); }}>
+        <header className="zm-chat-head"><span className="zm-title-pill glass-pill"><Avatar name={conversation.title} size={28} /><b>{parentConversation?.title ?? conversation.title}</b>{conversation.kind !== 'direct' ? <span>{conversation.members} pessoas</span> : null}</span></header>
         <section className="zm-timeline" role="log" aria-label="Mensagens" aria-live="polite">
           {conversation.waiting ? <p className="zm-note">Seu celular está preparando esta conversa para o navegador. Deixe ele conectado.</p> : null}
           {conversation.unreadable ? <p className="zm-note">{conversation.unreadable === 1 ? 'Uma mensagem anterior está' : `${conversation.unreadable} mensagens anteriores estão`} só no seu celular.</p> : null}
@@ -280,7 +287,7 @@ function AccountMessenger({ conversations, identity, name, connected, status, me
             const m = messages.current; if (!m) throw new Error('Recarregue o Zoen.');
             await m.post({ space, text, ...(reply?.entry ? { replyTo: reply.entry } : {}) }); setReply(null);
           }} />
-      </> : <section className="zm-blank"><h2>Suas conversas</h2><p>{status}</p></section>)}
+      </LivingSpaceController> : <section className="zm-blank"><h2>Suas conversas</h2><p>{status}</p></section>)}
     </main>
     {root ? <aside className="zm-thread" aria-label="Thread">
       <header className="zm-thread-head"><b>Thread</b>

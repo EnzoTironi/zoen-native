@@ -21,6 +21,18 @@ function parseOperation(input: unknown): CoreOperation {
     case 'decode_server': return { kind: 'decode_server', bytes: bytes(value.bytes) };
     case 'restore': return { kind: 'restore', account: string(value.account), snapshot: string(value.snapshot) };
     case 'bootstrap': return { kind: 'bootstrap' };
+    case 'living_space_home': return { kind: 'living_space_home', space: string(value.space) };
+    case 'living_space_mutate': return { kind: 'living_space_mutate', space: string(value.space), command: string(value.command), now: integer(value.now), editId: string(value.editId) };
+    case 'page': return { kind: 'page', item: string(value.item) };
+    case 'page_download_manifest': return { kind: 'page_download_manifest', item: string(value.item) };
+    case 'page_blob_supply': return { kind: 'page_blob_supply', item: string(value.item), blob: string(value.blob), data: bytes(value.data) };
+    case 'file_manifest': return { kind: 'file_manifest', item: string(value.item) };
+    case 'file_open': return { kind: 'file_open', item: string(value.item), data: bytes(value.data) };
+    case 'file_prepare': return { kind: 'file_prepare', space: string(value.space), name: string(value.name), mime: string(value.mime), data: bytes(value.data), now: integer(value.now) };
+    case 'file_upload_headers': return { kind: 'file_upload_headers', blob: string(value.blob), now: integer(value.now) };
+    case 'file_commit': return { kind: 'file_commit', space: string(value.space), plan: string(value.plan), now: integer(value.now), editId: string(value.editId) };
+    case 'page_apply': return { kind: 'page_apply', request: string(value.request), now: integer(value.now) };
+    case 'page_create': return { kind: 'page_create', space: string(value.space), title: string(value.title), now: integer(value.now), editId: string(value.editId) };
     case 'receive': return { kind: 'receive', bytes: bytes(value.bytes), now: integer(value.now) };
     case 'queue_message': return { kind: 'queue_message', space: string(value.space), text: string(value.text), now: integer(value.now) };
     case 'queue_post': return { kind: 'queue_post', space: string(value.space), text: string(value.text), replyTo: string(value.replyTo), thread: value.thread === true, forwarded: value.forwarded === true, now: integer(value.now) };
@@ -54,6 +66,21 @@ function run(operation: CoreOperation): string | Uint8Array {
       return client.view();
     }
     case 'bootstrap': return restored().bootstrap();
+    case 'page': return restored().page(operation.item);
+    case 'page_download_manifest': return restored().page_download_manifest(operation.item);
+    case 'page_blob_supply': restored().page_blob_supply(operation.item, operation.blob, operation.data); return '';
+    case 'file_manifest': return restored().file_manifest(operation.item);
+    case 'file_open': return restored().file_open(operation.item, operation.data);
+    case 'file_prepare': return restored().file_prepare(operation.space, operation.name, operation.mime, operation.data, operation.now);
+    case 'file_upload_headers': return restored().file_upload_headers(operation.blob, operation.now);
+    case 'file_commit': return restored().file_commit(operation.space, operation.plan, operation.now, operation.editId);
+    case 'living_space_mutate': return restored().living_space_mutate(operation.space, operation.command, operation.now, operation.editId);
+    case 'page_apply': return restored().page_apply(operation.request, operation.now);
+    case 'page_create': return restored().page_create(operation.space, operation.title, operation.now, operation.editId);
+    case 'living_space_home': {
+      restored().set_living_space_enabled(true);
+      return restored().living_space_command(operation.space, JSON.stringify({ action: 'home' }));
+    }
     case 'receive': return restored().receive(operation.bytes, operation.now);
     case 'queue_message': return restored().queue_message(operation.space, operation.text, operation.now);
     case 'queue_post': return restored().queue_post(operation.space, operation.text, operation.replyTo || undefined, operation.thread, operation.forwarded, operation.now);
