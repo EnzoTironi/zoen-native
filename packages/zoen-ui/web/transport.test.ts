@@ -154,6 +154,58 @@ test('production message controller terminates the core and emits nothing when I
   assert.equal(Socket.instances.length, 1);
 });
 
+test('mutation refusals propagate in Portuguese without terminating the session; retry persists before send', async (t) => {
+  install(t);
+  const base = messagingCore();
+  let refusal = 'Only the person who sent this message can change it.';
+  let mutationSaves = 0;
+  const core = { ...base, text: async (operation: CoreOperation) => {
+    if (operation.kind !== 'queue_annotation') return base.text(operation);
+    if (refusal) throw new Error(refusal);
+    return JSON.stringify({ snapshot: 'mutation', frames: [[9]], conversations: [conversation] });
+  } };
+  const states: MessagesState[] = [];
+  const messages = new Messages({ core, session: linked, vault: { ...vault, save: async (saved) => {
+    if (saved.kind === 'linked' && saved.snapshot === 'mutation') {
+      assert.equal(socket().sent.length, 3);
+      ++mutationSaves;
+    }
+  } }, changed: (state) => states.push(state) });
+  t.after(() => messages.stop());
+  await messages.start(); await authenticate();
+  await assert.rejects(messages.annotate('sp_fixture', 'target', { Edit: { text: 'draft' } }), /Só quem enviou/);
+  assert.equal(states.at(-1)?.kind, 'active');
+  assert.equal(base.closed, false);
+  assert.equal(socket().sent.length, 3);
+  refusal = 'Essa mensagem foi apagada.';
+  await assert.rejects(messages.annotate('sp_fixture', 'target', { Edit: { text: 'draft' } }), /Essa mensagem foi apagada/);
+  refusal = 'Write a message of up to 32 KB.';
+  await assert.rejects(messages.annotate('sp_fixture', 'target', { Edit: { text: '' } }), /não pode ficar vazia/);
+  assert.equal(states.at(-1)?.kind, 'active');
+  refusal = '';
+  await messages.annotate('sp_fixture', 'target', { Edit: { text: 'draft' } });
+  assert.equal(mutationSaves, 1);
+  assert.equal(socket().sent.length, 4);
+});
+
+test('mutation persistence failure is fatal and never emits an unsaved annotation', async (t) => {
+  install(t);
+  const base = messagingCore();
+  const core = { ...base, text: async (operation: CoreOperation) => operation.kind === 'queue_annotation'
+    ? JSON.stringify({ snapshot: 'mutation', frames: [[9]], conversations: [conversation] }) : base.text(operation) };
+  const states: MessagesState[] = [];
+  const messages = new Messages({ core, session: linked, vault: { ...vault, save: async (saved) => {
+    if (saved.kind === 'linked' && saved.snapshot === 'mutation') throw new Error('Storage denied');
+  } }, changed: (state) => states.push(state) });
+  t.after(() => messages.stop());
+  await messages.start(); await authenticate();
+  const current = socket();
+  await assert.rejects(messages.annotate('sp_fixture', 'target', 'Delete'), /Storage denied/);
+  assert.equal(base.closed, true);
+  assert.equal(states.at(-1)?.kind, 'failed');
+  assert.equal(current.sent.length, 3);
+});
+
 test('production send persists the ratchet before emitting and reconnect replays only saved state', async (t) => {
   install(t);
   const core = messagingCore();
