@@ -254,6 +254,10 @@
   <string name="jump_latest">Latest messages</string>
   <string name="closed_space">Private space</string>
   <string name="person_typing">%1$s is typing…</string>
+  <string name="people_typing">%1$s are typing…</string>
+  <string name="chat_last_seen">Last seen %1$s</string>
+  <string name="hide_last_seen">Hide last seen</string>
+  <string name="hide_last_seen_detail">Hide when you were last online from other people. Your online status remains visible.</string>
   <string name="unavailable">Nothing here yet</string>
   <string name="unavailable_detail">Check the link and your connection, then try again.</string>
   <string name="approvals_recorded">%1$d approvals recorded</string>

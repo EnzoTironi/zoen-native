@@ -11,7 +11,7 @@
 use std::{
     collections::{HashMap, HashSet},
     sync::{Arc, Mutex},
-    time::Duration,
+    time::{Duration, Instant},
 };
 
 use futures_util::{SinkExt, StreamExt};
@@ -47,6 +47,7 @@ pub struct NetStatus {
 
 #[derive(Clone, Debug)]
 struct AuthenticatedRelay {
+    connected_at: Instant,
     base: String,
     name: String,
     identity: String,
@@ -62,6 +63,7 @@ pub enum Cmd {
     Ephemeral {
         space: String,
         kind: EphemeralKind,
+        transient: Option<(Instant, Instant)>,
     },
     Stop,
 }
@@ -154,6 +156,7 @@ impl Net {
             let mut engine = lock(&engine);
             // stop_sync cancels its runtime; its dispatcher may not reach normal cleanup.
             engine.mls_claims_disconnected();
+            engine.net.presence_privacy_inflight = None;
             engine.net.poke = Some(Box::new(move || {
                 let _ = poke_tx.send(Cmd::Flush);
             }));
@@ -203,7 +206,23 @@ impl Net {
     }
 
     pub fn ephemeral(&self, space: String, kind: EphemeralKind) {
-        let _ = self.cmd.send(Cmd::Ephemeral { space, kind });
+        let transient = if matches!(
+            kind,
+            EphemeralKind::Typing | EphemeralKind::StoppedTyping | EphemeralKind::Status { .. }
+        ) {
+            let status = self.status.borrow();
+            let Some(relay) = status.authenticated_relay.as_ref() else {
+                return;
+            };
+            Some((relay.connected_at, Instant::now()))
+        } else {
+            None
+        }; // Receipt behavior remains distinct from transient activity.
+        let _ = self.cmd.send(Cmd::Ephemeral {
+            space,
+            kind,
+            transient,
+        });
     }
 
     /// A cloneable handle for one request (so callers don't hold locks across awaits).
@@ -273,10 +292,46 @@ impl Ctx {
         }
     }
 
+    fn presence(
+        &self,
+        identity: String,
+        online: bool,
+        last_seen_ms: Option<u64>,
+        hide_last_seen: Option<bool>,
+    ) {
+        let preference = self
+            .engine(|engine| {
+                engine.set_presence(&identity, online);
+                let own = engine.account().is_some_and(|a| a.identity == identity);
+                let preference = hide_last_seen.filter(|_| own);
+                if let Some(hidden) = preference {
+                    engine.presence_privacy_arrived(hidden);
+                }
+                preference
+            })
+            .flatten();
+        if let Some(listener) = &self.listener {
+            listener.on_presence(identity, online, last_seen_ms);
+            if let Some(hidden) = preference {
+                listener.on_presence_privacy(hidden);
+            }
+        }
+    }
+
     fn engine<T>(&self, work: impl FnOnce(&mut Engine) -> T) -> Option<T> {
         crate::i18n::set(self.lang);
         self.engine.with(work)
     }
+}
+
+fn transient_fresh(
+    scope: Option<(Instant, Instant)>,
+    active: Option<Instant>,
+    now: Instant,
+) -> bool {
+    scope.is_none_or(|(connection, queued)| {
+        Some(connection) == active && now.saturating_duration_since(queued) < Duration::from_secs(6)
+    })
 }
 
 enum Exit {
@@ -583,6 +638,7 @@ async fn session(
         s.error = None;
         s.registered = true;
         s.authenticated_relay = (!relay.is_empty()).then(|| AuthenticatedRelay {
+            connected_at: Instant::now(),
             base: http_base(&relay_url),
             name: relay.clone(),
             identity: identity.clone(),
@@ -704,9 +760,9 @@ async fn session(
                             l.on_ephemeral(space, from, k, detail);
                         }
                     }
-                    ServerFrame::Presence { identity, online } => {
-                        engine!(|engine| engine.set_presence(&identity, online));
-                        if let Some(l) = &ctx.listener { l.on_presence(identity, online); }
+                    ServerFrame::Presence { identity, online, last_seen_ms, hide_last_seen, .. } => {
+                        ctx.presence(identity, online, last_seen_ms, hide_last_seen);
+                        if let Err(e) = flush(ctx, &mut sink, &mut sent).await { break Exit::Retry(e) }
                     }
                     ServerFrame::Joined { space } => {
                         let next = engine!(|engine| engine.next_seq(&space));
@@ -833,8 +889,11 @@ async fn session(
                     if let Err(e) = send(&mut sink, &ClientFrame::Req { id, op }).await { let _ = reply.send(Err(e.clone())); break Exit::Retry(e) }
                     waiting.insert(id, Waiting::External(reply));
                 }
-                Some(Cmd::Ephemeral { space, kind }) => {
-                    if let Err(e) = send(&mut sink, &ClientFrame::Ephemeral { space, kind }).await { break Exit::Retry(e) }
+                Some(Cmd::Ephemeral { space, kind, transient }) => {
+                    let active = ctx.status.borrow().authenticated_relay.as_ref().map(|r| r.connected_at);
+                    if transient_fresh(transient, active, Instant::now()) {
+                        if let Err(e) = send(&mut sink, &ClientFrame::Ephemeral { space, kind }).await { break Exit::Retry(e) }
+                    }
                 }
             },
             _ = &mut tick => {
@@ -973,7 +1032,10 @@ async fn session(
         }
     };
     // Include unsent claims if writing a batch failed before their waiting entry existed.
-    engine!(|engine| engine.mls_claims_disconnected());
+    engine!(|engine| {
+        engine.mls_claims_disconnected();
+        engine.net.presence_privacy_inflight = None;
+    });
     for (_, w) in waiting {
         if let Waiting::External(tx) = w {
             let _ = tx.send(Err("offline".into()));
@@ -1019,6 +1081,19 @@ async fn flush(
 ) -> Result<(), String> {
     if !ctx.status.borrow().synced {
         return Ok(());
+    }
+    let privacy = ctx
+        .engine(|engine| {
+            if engine.net.presence_privacy_inflight.is_none() {
+                engine.net.presence_privacy_inflight = engine.net.presence_privacy_pending;
+                engine.net.presence_privacy_pending
+            } else {
+                None
+            }
+        })
+        .flatten();
+    if let Some(hide_last_seen) = privacy {
+        send(sink, &ClientFrame::SetPresencePrivacy { hide_last_seen }).await?;
     }
     let envs = ctx
         .engine(|engine| engine.outbox_envelopes_except(sent))
@@ -1464,6 +1539,22 @@ mod tests {
     }
 
     use super::*;
+
+    #[test]
+    fn typing_is_not_replayed_after_reconnect_or_its_expiry() {
+        let first = Instant::now();
+        let next = first + Duration::from_secs(1);
+        assert!(transient_fresh(Some((first, first)), Some(first), next));
+        assert!(!transient_fresh(Some((first, first)), Some(next), next));
+        assert!(!transient_fresh(Some((first, first)), None, next));
+        assert!(!transient_fresh(
+            Some((first, first)),
+            Some(first),
+            first + Duration::from_secs(6)
+        ));
+        // Receipts are not transient typing and retain their separate behavior.
+        assert!(transient_fresh(None, None, next));
+    }
     use roda_log::{
         chain_hash, content::InnerEvent, content::Sealed, content::SealedKind, Author, Signer,
     };
@@ -1477,6 +1568,55 @@ mod tests {
     use tokio_tungstenite::WebSocketStream;
 
     type RelaySocket = WebSocketStream<tokio::net::TcpStream>;
+
+    #[test]
+    fn presence_callbacks_replace_last_seen_and_only_accept_own_privacy() {
+        #[derive(Default)]
+        struct Listener {
+            seen: Mutex<Vec<(String, bool, Option<u64>)>>,
+            privacy: Mutex<Vec<bool>>,
+        }
+        impl CoreListener for Listener {
+            fn on_change(&self, _: Vec<String>) {}
+            fn on_ephemeral(&self, _: String, _: String, _: String, _: String) {}
+            fn on_presence(&self, id: String, online: bool, seen: Option<u64>) {
+                self.seen.lock().unwrap().push((id, online, seen));
+            }
+            fn on_presence_privacy(&self, hidden: bool) {
+                self.privacy.lock().unwrap().push(hidden);
+            }
+            fn on_connection(&self, _: crate::ConnectionDto) {}
+            fn on_error(&self, _: String) {}
+            fn on_profile_changed(&self, _: String) {}
+        }
+        let mut engine = Engine::open(":memory:").unwrap();
+        engine
+            .create_account("Presence", "presence", "ws://localhost")
+            .unwrap();
+        let identity = engine.account().unwrap().identity.clone();
+        let listener = Arc::new(Listener::default());
+        let (status, _) = watch::channel(NetStatus {
+            state: ConnState::Online,
+            synced: true,
+            error: None,
+            registered: true,
+            authenticated_relay: None,
+        });
+        let ctx = Ctx {
+            engine: EngineLease::new(Arc::new(Mutex::new(engine))),
+            listener: Some(listener.clone()),
+            status,
+            lang: crate::i18n::Lang::En,
+            maintenance_work: None,
+        };
+        ctx.presence("peer".into(), false, Some(1234), None);
+        ctx.presence("peer".into(), false, None, Some(true));
+        ctx.presence(identity, true, None, Some(false));
+        let seen = listener.seen.lock().unwrap();
+        assert_eq!(seen[0], ("peer".into(), false, Some(1234)));
+        assert_eq!(seen[1], ("peer".into(), false, None));
+        assert_eq!(*listener.privacy.lock().unwrap(), vec![false]);
+    }
 
     #[test]
     fn recovery_download_retries_follow_current_references_and_discard_obsolete_failures() {

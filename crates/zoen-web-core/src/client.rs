@@ -131,6 +131,7 @@ pub struct ConversationView {
     unread: usize,
     mentions: usize,
     members: usize,
+    member_ids: Vec<String>,
     messages: Vec<MessageView>,
 }
 
@@ -1123,7 +1124,7 @@ impl<S: Signer> Client<S> {
             let waiting = self.ready_epoch(space).err();
             let unreadable = events.iter().filter(|event| matches!(&event.body, EventBody::Sealed { kind } if kind == "Application")).count();
             Some(ConversationView { id: space.clone(), title, kind: match kind { SpaceKind::Direct=>"direct",SpaceKind::Group=>"group",SpaceKind::Community=>"community",SpaceKind::Personal=>"personal" },
-                can_send: waiting.is_none(), waiting, unreadable, unread, mentions, members: roster.len(), messages })
+                can_send: waiting.is_none(), waiting, unreadable, unread, mentions, members: roster.len(), member_ids: roster.keys().cloned().collect(), messages })
         }).collect()
     }
 

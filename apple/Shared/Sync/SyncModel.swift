@@ -32,8 +32,11 @@ final class SyncModel {
     /// Signed in on this device but the key isn't in the Keychain (restored backup, wiped keychain).
     private(set) var keyMissing = false
     /// Space → who → what they're doing, until when (typing fades on its own if the stop is lost).
-    private(set) var activity: [String: [String: (kind: ChatStatus.Kind, until: Date)]] = [:]
+    private var liveActivity = LiveActivityState<ChatStatus.Kind>()
+    var activity: [String: [String: LiveActivityState<ChatStatus.Kind>.Entry]] { liveActivity.spaces }
     private(set) var online: Set<String> = []
+    private(set) var lastSeen: [String: Date] = [:]
+    private(set) var hideLastSeen = false
     /// Bumped when someone's encrypted profile changes on this device (name, bio or photo
     /// arrived); a profile screen reads it to re-fetch `core.getProfile(identityId:)`.
     private(set) var profileRevisions: [String: Int] = [:]
@@ -43,6 +46,7 @@ final class SyncModel {
     @ObservationIgnored weak var app: AppModel?
     @ObservationIgnored private var core: RodaEngine?
     @ObservationIgnored private var lastTypingSent: [String: Date] = [:]
+    @ObservationIgnored private var activityExpiry: Task<Void, Never>?
     @ObservationIgnored private var refreshQueued = false
     @ObservationIgnored private var started = false
 
@@ -73,6 +77,7 @@ final class SyncModel {
     func stop() {
         core?.stopSync()
         started = false
+        clearLiveState()
     }
 
     /// Signs this device out and deletes its chats and keys (the account stays on the relay).
@@ -82,8 +87,8 @@ final class SyncModel {
         started = false
         account = nil
         connection = ConnectionDto(state: "offline", synced: false, pending: 0, error: nil)
-        activity = [:]
-        online = []
+        clearLiveState()
+        hideLastSeen = false
         app?.refresh()
     }
 
@@ -109,12 +114,17 @@ final class SyncModel {
     func isSynced(_ spaceId: String) -> Bool { core?.isSynced(spaceId: spaceId) ?? false }
 
     /// The live status for a chat's title from other people (typing, processing…).
-    func remoteStatus(_ spaceId: String) -> (who: String, kind: ChatStatus.Kind)? {
+    func remoteStatus(_ spaceId: String) -> (who: String, kind: ChatStatus.Kind, peopleCount: Int)? {
         guard let entries = activity[spaceId] else { return nil }
         let now = Date()
-        guard let (id, v) = entries.first(where: { $0.value.until > now }) else { return nil }
-        let name = app?.space(spaceId)?.members.first { $0.id == id }?.name ?? String(localized: "Someone")
-        return (name, v.kind)
+        let active = entries.filter { $0.value.until > now }.sorted { $0.key < $1.key }
+        guard let first = active.first else { return nil }
+        let typists = active.filter { $0.value.kind == .typing }
+        let selected = typists.isEmpty ? [first] : typists
+        let names = selected.map { entry in
+            app?.space(spaceId)?.members.first { $0.id == entry.key }?.name ?? "Alguém"
+        }
+        return (names.joined(separator: ", "), typists.isEmpty ? first.value.kind : .typing, selected.count)
     }
 
     /// Composer changed: tell the others, at most every 3 s while typing.
@@ -138,8 +148,7 @@ final class SyncModel {
     // MARK: from the core (via SyncBridge, already on the main actor)
 
     fileprivate func changed(_ spaceIds: [String]) {
-        // A message from someone clears their typing.
-        for s in spaceIds { activity[s] = activity[s]?.filter { $0.value.kind != .typing } }
+        // Changes don't identify the author: never erase other concurrent typists.
         guard !refreshQueued else { return }
         refreshQueued = true
         Task { @MainActor in
@@ -150,42 +159,78 @@ final class SyncModel {
     }
 
     fileprivate func ephemeral(space: String, from: String, kind: String, detail: String) {
-        var entries = activity[space] ?? [:]
+        guard from != account?.identityId, isOnline else { return }
+        let value: (ChatStatus.Kind, TimeInterval)?
         switch kind {
-        case "typing": entries[from] = (.typing, Date().addingTimeInterval(6))
-        case "stopped": entries[from] = nil
+        case "typing": value = (.typing, 6)
+        case "stopped": value = nil
         case "status":
             switch detail {
-            case "processing": entries[from] = (.processing, Date().addingTimeInterval(60))
-            case "building": entries[from] = (.building, Date().addingTimeInterval(120))
-            case "in_call", "call": entries[from] = (.call, Date().addingTimeInterval(3600))
-            default: entries[from] = nil
+            case "processing": value = (.processing, 60)
+            case "building": value = (.building, 120)
+            case "in_call", "call": value = (.call, 3600)
+            default: value = nil
             }
         default: return
         }
-        withAnimation(.snappy) { activity[space] = entries.isEmpty ? nil : entries }
-        if kind == "typing" {
-            // Fade out if the "stopped" never comes (they closed the app mid-sentence).
-            Task { @MainActor in
-                try? await Task.sleep(for: .seconds(6.2))
-                let now = Date()
-                if let e = activity[space]?[from], e.until <= now {
-                    withAnimation(.snappy) { activity[space]?[from] = nil }
-                }
+        withAnimation(.snappy) {
+            if let (kind, duration) = value {
+                liveActivity.set(space: space, identity: from, kind: kind, until: Date().addingTimeInterval(duration))
+            } else {
+                liveActivity.remove(space: space, identity: from)
             }
+        }
+        scheduleActivityExpiry()
+    }
+
+    private func scheduleActivityExpiry() {
+        activityExpiry?.cancel()
+        guard let next = liveActivity.nextExpiry else { return }
+        activityExpiry = Task { @MainActor [weak self] in
+            do { try await Task.sleep(for: .seconds(max(0, next.timeIntervalSinceNow))) }
+            catch { return }
+            guard let self else { return }
+            withAnimation(.snappy) { self.liveActivity.expire(now: Date()) }
+            self.scheduleActivityExpiry()
         }
     }
 
-    fileprivate func presence(_ who: String, _ isOnline: Bool) {
-        if isOnline { online.insert(who) } else {
+    private func clearLiveState() {
+        activityExpiry?.cancel()
+        activityExpiry = nil
+        liveActivity.reset()
+        online.removeAll()
+        lastSeen.removeAll()
+        lastTypingSent.removeAll()
+    }
+
+    func setHideLastSeen(_ hidden: Bool) {
+        core?.setPresencePrivacy(hideLastSeen: hidden)
+    }
+
+    fileprivate func presencePrivacy(_ hidden: Bool) { hideLastSeen = hidden }
+
+    func presenceLabel(_ identityId: String) -> String {
+        if online.contains(identityId) { return "online" }
+        guard let date = lastSeen[identityId] else { return "" }
+        return "Visto por último: \(date.formatted(date: .abbreviated, time: .shortened))"
+    }
+
+    fileprivate func presence(_ who: String, _ isOnline: Bool, lastSeenMs: UInt64?) {
+        lastSeen[who] = lastSeenMs.map { Date(timeIntervalSince1970: Double($0) / 1000) }
+        if isOnline {
+            online.insert(who)
+            lastSeen[who] = nil
+        } else {
             online.remove(who)
-            for s in activity.keys { activity[s]?[who] = nil }
+            liveActivity.remove(identity: who)
+            scheduleActivityExpiry()
         }
     }
 
     fileprivate func connectionChanged(_ c: ConnectionDto) {
         connection = c
-        if c.state == "offline" { online.removeAll() }
+        if c.state != "online" { clearLiveState() }
     }
 
     fileprivate func profileChanged(_ identityId: String) {
@@ -212,8 +257,12 @@ final class SyncBridge: CoreListener, @unchecked Sendable {
         Task { @MainActor [weak target] in target?.ephemeral(space: spaceId, from: fromId, kind: kind, detail: detail) }
     }
 
-    func onPresence(identityId: String, online: Bool) {
-        Task { @MainActor [weak target] in target?.presence(identityId, online) }
+    func onPresence(identityId: String, online: Bool, lastSeenMs: UInt64?) {
+        Task { @MainActor [weak target] in target?.presence(identityId, online, lastSeenMs: lastSeenMs) }
+    }
+
+    func onPresencePrivacy(hideLastSeen: Bool) {
+        Task { @MainActor [weak target] in target?.presencePrivacy(hideLastSeen) }
     }
 
     func onConnection(status: ConnectionDto) {

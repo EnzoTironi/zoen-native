@@ -5,6 +5,7 @@ import { MessageEditor } from './message-editor.tsx';
 import { MessageSearchResults } from './message-search-view.tsx';
 import type { MessageHit } from './message-search.ts';
 import { loadChatPreferences, saveChatPreferences, type ChatPreferences as Prefs } from './chat-preferences.ts';
+import { lastSeenLabel, type PresenceSnapshot } from './presence.ts';
 
 /** How I keep a chat. Local to this account/browser until synced preferences reach the web core. */
 function loadPrefs(identity: string): Record<string, Prefs> {
@@ -56,13 +57,11 @@ function Ticks({ state }: { state: Message['ticks'] | 'sending' | 'failed' }) {
   </svg>;
 }
 
-export function Bubble({ entry, own, first, onReact, onReply, onThread, onEdit, onDelete, onForward, inThread }: {
+function Bubble({ entry, own, first, onReact, onReply, onThread, onEdit, onDelete, onForward, inThread }: {
   entry: Message; own: boolean; first: boolean; inThread?: boolean;
   onReact: (emoji: string | null) => void; onReply: () => void; onThread: () => void; onEdit: () => void; onDelete: () => void; onForward: () => void;
 }) {
   const [picker, setPicker] = useState(false);
-  const [emojiDraft, setEmojiDraft] = useState('');
-  const [details, setDetails] = useState(false);
   const [menu, setMenu] = useState(false);
   const ordered = entry.entry !== null;
   const mine = entry.reactions.find((r) => r.mine)?.emoji ?? null;
@@ -77,25 +76,12 @@ export function Bubble({ entry, own, first, onReact, onReply, onThread, onEdit, 
         <span className="zm-meta">{entry.edited && !entry.deleted ? 'editada · ' : ''}<time dateTime={new Date(entry.at_ms).toISOString()}>{time(entry.at_ms)}</time>{own ? <Ticks state={state} /> : null}</span>
       </div>
       {ordered && !entry.deleted ? <div className="zm-actions" role="toolbar" aria-label="Ações da mensagem">
-        <button aria-label="Reagir" aria-expanded={picker} onClick={() => { setEmojiDraft(''); setPicker((v) => !v); }}><Icon name="smile" /></button>
+        <button aria-label="Reagir" onClick={() => setPicker((v) => !v)}><Icon name="smile" /></button>
         {!inThread ? <><button aria-label="Responder" onClick={onReply}><Icon name="reply" /></button>
           <button aria-label="Responder em thread" onClick={onThread}><Icon name="thread" /></button></> : null}
         <button aria-label="Mais ações" aria-expanded={menu} onClick={() => setMenu((v) => !v)}><Icon name="more" /></button>
       </div> : null}
-      {picker ? <div className="zm-scrim" onClick={() => setPicker(false)} onKeyDown={(e) => { if (e.key === 'Escape') setPicker(false); }}>
-        <div className="zm-sheet" role="dialog" aria-modal="true" aria-label="Escolher reação" onClick={(e) => e.stopPropagation()}>
-          <h2>Escolher reação</h2>
-          <div>{QUICK.map((emoji) => <button key={emoji} type="button" className="zm-pill" aria-pressed={emoji === mine} onClick={() => { setPicker(false); onReact(emoji === mine ? null : emoji); }}>{emoji}</button>)}</div>
-          <form onSubmit={(e) => { e.preventDefault(); const emoji = emojiDraft.trim(); if (emoji && new TextEncoder().encode(emoji).length <= 32) { setPicker(false); onReact(emoji === mine ? null : emoji); } }}>
-            <p><label>Outro emoji <input aria-label="Outro emoji" placeholder="Digite ou cole um emoji" value={emojiDraft} maxLength={64} autoFocus onChange={(e) => setEmojiDraft(e.target.value)} /></label></p>
-            <p>Use o teclado de emojis do seu aparelho para escolher qualquer emoji.</p>
-            {new TextEncoder().encode(emojiDraft.trim()).length > 32 ? <p role="alert">Escolha um emoji de até 32 bytes.</p> : null}
-            <button className="zm-pill" type="submit" disabled={!emojiDraft.trim() || new TextEncoder().encode(emojiDraft.trim()).length > 32}>Reagir</button>
-          </form>
-          {mine ? <button className="zm-pill" onClick={() => { setPicker(false); onReact(null); }}>Remover minha reação</button> : null}
-          <button className="zm-pill" onClick={() => setPicker(false)}>Fechar</button>
-        </div>
-      </div> : null}
+      {picker ? <div className="zm-picker" role="menu">{QUICK.map((emoji) => <button key={emoji} role="menuitem" className={emoji === mine ? 'zm-on' : ''} onClick={() => { setPicker(false); onReact(emoji === mine ? null : emoji); }}>{emoji}</button>)}</div> : null}
       {menu ? <div className="zm-menu" role="menu">
         <button role="menuitem" onClick={() => { setMenu(false); onForward(); }}>Encaminhar</button>
         <button role="menuitem" onClick={() => { setMenu(false); void navigator.clipboard?.writeText(entry.text); }}>Copiar</button>
@@ -103,19 +89,7 @@ export function Bubble({ entry, own, first, onReact, onReply, onThread, onEdit, 
           <button role="menuitem" className="zm-danger" onClick={() => { setMenu(false); onDelete(); }}>Apagar para todos</button></> : null}
       </div> : null}
     </div>
-    {entry.reactions.length ? <div className="zm-reactions">{entry.reactions.map((r) => <button key={r.emoji} className={r.mine ? 'zm-on' : ''} aria-label={`Ver quem reagiu com ${r.emoji}: ${r.count}`} onClick={() => setDetails(true)}>{r.emoji}{r.count > 1 ? <span>{r.count}</span> : null}</button>)}</div> : null}
-    {details ? <div className="zm-scrim" onClick={() => setDetails(false)} onKeyDown={(e) => { if (e.key === 'Escape') setDetails(false); }}>
-      <div className="zm-sheet" role="dialog" aria-modal="true" aria-label="Quem reagiu" onClick={(e) => e.stopPropagation()}>
-        <h2>Quem reagiu</h2>
-        {entry.reactions.map((r) => <section key={r.emoji} aria-label={`${r.emoji}: ${r.count} reações`}>
-          <h3>{r.emoji} {r.count}</h3>
-          {r.participants.length ? <ul>{r.participants.map((participant) => <li key={participant.identity}>{participant.name || 'Alguém'}</li>)}</ul> : <p>Os nomes de quem reagiu não estão disponíveis.</p>}
-          <button className="zm-pill" onClick={() => { setDetails(false); onReact(r.mine ? null : r.emoji); }}>{r.mine ? 'Remover minha reação' : `Reagir com ${r.emoji}`}</button>
-        </section>)}
-        {!entry.reactions.length ? <p>Nenhuma reação.</p> : null}
-        <button className="zm-pill" autoFocus onClick={() => setDetails(false)}>Fechar</button>
-      </div>
-    </div> : null}
+    {entry.reactions.length ? <div className="zm-reactions">{entry.reactions.map((r) => <button key={r.emoji} className={r.mine ? 'zm-on' : ''} aria-label={`${r.emoji} ${r.count}`} onClick={() => onReact(r.mine ? null : r.emoji)}>{r.emoji}{r.count > 1 ? <span>{r.count}</span> : null}</button>)}</div> : null}
     {!inThread && entry.replies ? <button className="zm-thread-summary" onClick={onThread}>
       <span className="zm-stack">{entry.repliers.map((n) => <Avatar key={n} name={n} size={20} />)}</span>
       <b>{entry.replies === 1 ? '1 resposta' : `${entry.replies} respostas`}</b>{entry.last_reply_ms ? <span>{day(entry.last_reply_ms)}</span> : null}
@@ -123,9 +97,9 @@ export function Bubble({ entry, own, first, onReact, onReply, onThread, onEdit, 
   </article>;
 }
 
-function Composer({ placeholder, disabled, reply, cancelReply, submit, autoFocus }: {
+function Composer({ placeholder, disabled, reply, cancelReply, submit, autoFocus, activity }: {
   placeholder: string; disabled: boolean; reply?: Message | null; cancelReply?: () => void; autoFocus?: boolean;
-  submit: (text: string) => Promise<void>;
+  submit: (text: string) => Promise<void>; activity?: (active: boolean) => void;
 }) {
   const [draft, setDraft] = useState('');
   const [busy, setBusy] = useState(false);
@@ -136,17 +110,17 @@ function Composer({ placeholder, disabled, reply, cancelReply, submit, autoFocus
   const has = draft.trim().length > 0;
   function go() {
     if (!has || busy || disabled) return;
-    setBusy(true); setError('');
+    activity?.(false); setBusy(true); setError('');
     void submit(draft).then(() => setDraft('')).catch((e: unknown) => setError(reason(e))).finally(() => { setBusy(false); field.current?.focus(); });
   }
   return <div className="zm-composer-zone">
     {reply ? <div className="zm-replying"><span><b>{`Respondendo a ${reply.name}`}</b>{reply.text}</span>
-      <button aria-label="Cancelar" onClick={() => { setDraft(''); cancelReply?.(); }}><Icon name="close" /></button></div> : null}
+      <button aria-label="Cancelar" onClick={() => cancelReply?.()}><Icon name="close" /></button></div> : null}
     {error ? <p className="zm-error" role="alert">{error}</p> : null}
     <form className="zm-composer" onSubmit={(e) => { e.preventDefault(); go(); }}>
       <label className="zm-field"><span className="zw-sr-only">Mensagem</span>
         <textarea ref={field} rows={1} value={draft} disabled={disabled} placeholder={placeholder} maxLength={32_768} autoFocus={autoFocus}
-          onChange={(e) => setDraft(e.target.value)}
+          onChange={(e) => { setDraft(e.target.value); activity?.(e.target.value.trim().length > 0); }} onBlur={() => activity?.(false)}
           onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) { e.preventDefault(); go(); } if (e.key === 'Escape') cancelReply?.(); }} /></label>
       <button type={has ? 'submit' : 'button'} className={`zm-send glass${has ? ' zm-has' : ''}`} disabled={disabled || busy || !has} aria-label={has ? 'Enviar' : 'Mensagem de voz (em breve na web)'} title={has ? 'Enviar' : 'Mensagem de voz chega em breve na web'}>
         <span className="zm-swap"><Icon name={has ? 'send' : 'mic'} /></span></button>
@@ -176,17 +150,10 @@ function ChatRow({ c, active, prefs, open, set }: { c: Conversation; active: boo
   </li>;
 }
 
-type MessengerProps = {
-  conversations: Conversation[]; identity: string; name: string; connected: boolean; status: string;
+export function Messenger({ conversations, identity, name, connected, status, messages, footer, selected, select, children, presence }: {
+  conversations: Conversation[]; identity: string; name: string; connected: boolean; status: string; presence?: PresenceSnapshot | undefined;
   messages: React.RefObject<Messages | null>; footer: React.ReactNode; selected: string; select: (id: string) => void; children?: React.ReactNode;
-};
-
-export function Messenger(props: MessengerProps) {
-  // Account switches must also discard drafts, selections and in-memory preferences.
-  return <AccountMessenger key={props.identity} {...props} />;
-}
-
-function AccountMessenger({ conversations, identity, name, connected, status, messages, footer, selected, select, children }: MessengerProps) {
+}) {
   const [prefs, setPrefs] = useState(() => loadPrefs(identity));
   const [follow, setFollow] = useState(loadFollow);
   const [search, setSearch] = useState('');
@@ -225,6 +192,7 @@ function AccountMessenger({ conversations, identity, name, connected, status, me
     return () => { document.removeEventListener('visibilitychange', read); window.removeEventListener('focus', read); };
   }, [conversation?.id, conversation?.unread, connected]);
 
+
   useEffect(() => {
     if (!searchTarget || conversation?.id !== searchTarget.space) return;
     if (searchTarget.message.thread && threadRoot !== searchTarget.message.thread) { setThreadRoot(searchTarget.message.thread); return; }
@@ -233,14 +201,21 @@ function AccountMessenger({ conversations, identity, name, connected, status, me
   }, [searchTarget, conversation?.id, root?.id, threadRoot]);
 
   const space = conversation?.id ?? '';
+  // Conversation switches, focus loss and unmount stop this browser's activity.
+  useEffect(() => {
+    const stop = () => { if (document.visibilityState !== 'visible' || !document.hasFocus()) messages.current?.typing?.(space, false); };
+    document.addEventListener('visibilitychange', stop); window.addEventListener('blur', stop);
+    return () => { messages.current?.typing?.(space, false); document.removeEventListener('visibilitychange', stop); window.removeEventListener('blur', stop); };
+  }, [space, connected]);
+  const typers = (presence?.typing[space] ?? []).filter((id) => (conversation?.member_ids ?? []).includes(id) && id !== identity);
+  const peer = conversation?.kind === 'direct' ? (conversation.member_ids ?? []).find((id) => id !== identity) : undefined;
+  const personName = (id: string) => [...(conversation?.messages ?? [])].reverse().find((m) => m.author === id)?.name || (conversation?.kind === 'direct' ? conversation.title : 'Alguém');
+  const typingLabel = typers.length === 1 ? personName(typers[0]!) + ' está digitando…' : typers.length > 1 ? typers.length + ' pessoas estão digitando…' : '';
+  const presenceLabel = connected ? typingLabel || (peer ? lastSeenLabel(presence?.people[peer]) : '') : '';
+
   const act = {
     react: (m: Message) => (emoji: string | null) => { if (m.entry) void messages.current?.annotate(space, m.entry, emoji ? { React: { emoji } } : 'Unreact').catch(fail); },
-    del: (m: Message) => () => {
-      if (!m.entry || !window.confirm('Apagar esta mensagem para todos?')) return;
-      const controller = messages.current;
-      if (!controller) { fail(new Error('Recarregue o Zoen para tentar de novo.')); return; }
-      void controller.annotate(space, m.entry, 'Delete').catch(fail);
-    },
+    del: (m: Message) => () => { if (m.entry && window.confirm('Apagar esta mensagem para todos?')) void messages.current?.annotate(space, m.entry, 'Delete').catch(fail); },
   };
   const bubbles = (items: Message[], inThread: boolean) => items.map((m, i) => <Bubble key={m.id} entry={m} own={m.author === identity} inThread={inThread}
     first={i === 0 || items[i - 1]!.author !== m.author}
@@ -253,6 +228,8 @@ function AccountMessenger({ conversations, identity, name, connected, status, me
       <header className="zm-side-head">
         {showArchived ? <button className="zm-round glass" aria-label="Voltar" onClick={() => setShowArchived(false)}><Icon name="back" /></button> : null}
         <h1>{showArchived ? 'Arquivadas' : 'Conversas'}</h1>
+        <details className="zm-privacy"><summary>Privacidade</summary><label><input type="checkbox" checked={presence?.hideLastSeen === true} disabled={!connected || presence?.hideLastSeen == null}
+          onChange={(event) => { void messages.current?.setPresencePrivacy(event.target.checked).catch(fail); }} />Ocultar visto por último</label><p>Seu horário não aparece para outras pessoas. O status online continua visível.</p></details>
       </header>
       <label className="zm-search"><Icon name="search" /><span className="zw-sr-only">Buscar conversas e mensagens</span>
         <input type="search" placeholder="Buscar" value={search} onChange={(e) => setSearch(e.target.value)} /></label>
@@ -267,17 +244,18 @@ function AccountMessenger({ conversations, identity, name, connected, status, me
     </aside>
     <main className="zm-main">
       {children ?? (conversation ? <>
-        <header className="zm-chat-head"><span className="zm-title-pill glass-pill"><Avatar name={conversation.title} size={28} /><b>{conversation.title}</b>{conversation.kind !== 'direct' ? <span>{conversation.members} pessoas</span> : null}</span></header>
+        <header className="zm-chat-head"><span className="zm-title-pill glass-pill"><Avatar name={conversation.title} size={28} /><b>{conversation.title}</b>{conversation.kind !== 'direct' ? <span>{conversation.members} pessoas</span> : null}</span>{presenceLabel ? <span className="zm-presence" role="status">{presenceLabel}</span> : null}</header>
         <section className="zm-timeline" role="log" aria-label="Mensagens" aria-live="polite">
           {conversation.waiting ? <p className="zm-note">Seu celular está preparando esta conversa para o navegador. Deixe ele conectado.</p> : null}
           {conversation.unreadable ? <p className="zm-note">{conversation.unreadable === 1 ? 'Uma mensagem anterior está' : `${conversation.unreadable} mensagens anteriores estão`} só no seu celular.</p> : null}
           {bubbles(timeline, false)}
           <div ref={end} />
         </section>
-        <Composer key={conversation.id} placeholder={connected ? 'Mensagem' : 'Reconectando…'} disabled={!connected || !conversation.can_send} reply={reply} autoFocus
-          cancelReply={() => { setReply(null); setEditing(null); }}
+        <Composer key={conversation.id} activity={(active) => messages.current?.typing?.(space, active)} placeholder={connected ? 'Mensagem' : 'Reconectando…'} disabled={!connected || !conversation.can_send} reply={reply} autoFocus
+          cancelReply={() => { setReply(null); }}
           submit={async (text) => {
             const m = messages.current; if (!m) throw new Error('Recarregue o Zoen.');
+            if (editing?.entry) { await m.annotate(space, editing.entry, { Edit: { text } }); setEditing(null); return; }
             await m.post({ space, text, ...(reply?.entry ? { replyTo: reply.entry } : {}) }); setReply(null);
           }} />
       </> : <section className="zm-blank"><h2>Suas conversas</h2><p>{status}</p></section>)}
@@ -291,7 +269,7 @@ function AccountMessenger({ conversations, identity, name, connected, status, me
         <p className="zm-divider">{replies.length === 1 ? '1 resposta' : `${replies.length} respostas`}</p>
         {bubbles(replies, true)}
       </section>
-      <Composer key={root.entry} placeholder="Responder na thread" disabled={!connected || !conversation?.can_send}
+      <Composer key={root.entry} activity={(active) => messages.current?.typing?.(space, active)} placeholder="Responder na thread" disabled={!connected || !conversation?.can_send}
         submit={async (text) => { await messages.current?.post({ space, text, replyTo: root.entry!, thread: true }); if (follow[root.entry!] === undefined) toggleFollow(root.entry!, true); }} />
     </aside> : null}
     {editing ? <MessageEditor key={`${space}:${editing.id}`} entry={editing} close={() => setEditing(null)} save={async (text) => {

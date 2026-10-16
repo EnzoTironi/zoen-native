@@ -64,29 +64,54 @@ class SettingsJourneyTest {
         ApplicationProvider.getApplicationContext<ZoenApplication>().repository.useDemo()
     }
 
-    @Test fun pickDarkThemeBackPopsOneScreenAndCloseLeavesAjustes() {
-        val stack = open()
+    private fun resetAppearance() {
         val context = compose.activity
-        AppAppearance.set(context, "auto")
-        compose.onNodeWithTag("settings:Preferences").performClick()
-        compose.onNodeWithTag("settings:Theme").performClick()
-        compose.onNodeWithTag("theme:dark").assertIsNotSelected().performClick()
+        assertTrue(context.getSharedPreferences("zoen", android.content.Context.MODE_PRIVATE)
+            .edit().putString("appearance", "auto").commit())
+        compose.runOnIdle { AppAppearance.load(context) }
+    }
+
+    @OptIn(ExperimentalTestApi::class)
+    private fun clickVisible(tag: String) {
+        compose.waitUntilAtLeastOneExists(hasTestTag(tag), 10_000)
+        try {
+            val node = compose.onNodeWithTag(tag)
+            try {
+                node.assertIsDisplayed()
+            } catch (_: AssertionError) {
+                node.performScrollTo()
+            }
+            node.assertIsDisplayed().assertHasClickAction().performClick()
+            compose.waitForIdle()
+        } catch (failure: AssertionError) {
+            throw AssertionError("Falha ao tocar em $tag: ${failure.message}", failure)
+        }
+    }
+
+    @Test fun pickDarkThemeBackPopsOneScreenAndCloseLeavesAjustes() {
+        resetAppearance()
+        val stack = open()
+        clickVisible("settings:Preferences")
+        clickVisible("settings:Theme")
+        compose.onNodeWithTag("theme:auto").assertIsSelected()
+        compose.onNodeWithTag("theme:dark").assertIsNotSelected()
+        clickVisible("theme:dark")
         compose.onNodeWithTag("theme:dark").assertIsSelected()
         assertEquals("dark", AppAppearance.mode)
 
-        compose.onNodeWithTag("settings:back").performClick()
+        clickVisible("settings:back")
         compose.onNodeWithTag("settings:Theme").assertIsDisplayed()  // one pop: Preferências
-        compose.onNodeWithTag("settings:back").performClick()
+        clickVisible("settings:back")
         compose.onNodeWithTag("settings:search").assertIsDisplayed() // Ajustes home
 
         compose.onNodeWithTag("settings:search").performTextInput("xyzzy")
         compose.onNodeWithTag("settings:noResults").assertExists()
         compose.onNodeWithTag("settings:search").performTextReplacement("senha")
-        compose.onNodeWithTag("settings:Security").performClick()
+        clickVisible("settings:Security")
 
-        compose.onNodeWithTag("settings:close").performClick()
+        clickVisible("settings:close")
         compose.runOnIdle { assertTrue(stack.none { it is SettingsRoute }) }
-        AppAppearance.set(context, "auto")
+        resetAppearance()
     }
 
     @Test fun restoreIsDisabledWithoutABackupOnThisDevice() {

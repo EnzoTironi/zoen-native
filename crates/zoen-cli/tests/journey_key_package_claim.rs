@@ -43,7 +43,8 @@ struct Refusals(tokio::sync::mpsc::UnboundedSender<String>);
 impl CoreListener for Refusals {
     fn on_change(&self, _: Vec<String>) {}
     fn on_ephemeral(&self, _: String, _: String, _: String, _: String) {}
-    fn on_presence(&self, _: String, _: bool) {}
+    fn on_presence_privacy(&self, _: bool) {}
+    fn on_presence(&self, _: String, _: bool, _: Option<u64>) {}
     fn on_connection(&self, _: ConnectionDto) {}
     fn on_error(&self, message: String) {
         let _ = self.0.send(message);

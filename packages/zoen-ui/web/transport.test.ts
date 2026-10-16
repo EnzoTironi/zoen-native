@@ -125,7 +125,9 @@ const linked: Extract<StoredSession, { kind: 'linked' }> = { kind: 'linked', acc
   ...login, name: 'Web fixture', handle: 'web_fixture', primary: '33'.repeat(32), primary_hpke: '', hpke_secret: '',
   link_secret: '', agreement_secret: '', profile_key: '', profile_key_version: 0, profile_seen_version: 0, profile_fields: '',
 }, snapshot: '' };
-const conversation = { id: 'sp_fixture', title: 'Fixture', kind: 'group', can_send: true, waiting: null, unreadable: 0, messages: [] };
+const peer = '44'.repeat(32);
+const anotherPeer = '55'.repeat(32);
+const conversation = { id: 'sp_fixture', title: 'Fixture', kind: 'group', can_send: true, waiting: null, unreadable: 0, member_ids: [login.identity, peer, anotherPeer], messages: [] };
 function messagingCore() {
   let closed = false;
   return { ...unitCodec(), close() { closed = true; }, get closed() { return closed; },
@@ -227,4 +229,53 @@ test('production send persists the ratchet before emitting and reconnect replays
   assert.equal(socket().sent.length, 3);
   assert.equal(saves.length, 3);
   assert.equal(core.closed, false);
+});
+
+test('production controller trusts only self privacy, tracks concurrent typing, and clears transient state across reconnect', async (t) => {
+  install(t);
+  const core = messagingCore();
+  const operations: CoreOperation[] = [];
+  const originalBytes = core.bytes;
+  core.bytes = async (op) => { operations.push(op); return originalBytes(op); };
+  const states: MessagesState[] = [];
+  let saves = 0;
+  const messages = new Messages({ core, session: linked, vault: { ...vault, save: async () => { ++saves; } }, changed: (s) => states.push(s) });
+  const state = () => { const s = states.at(-1); assert.equal(s?.kind, 'active'); if (s?.kind !== 'active') throw new Error('Expected active state'); return s; };
+  t.after(() => messages.stop());
+  await messages.start(); await authenticate();
+  assert.equal(state().presence.hideLastSeen, null);
+  socket().frame({ kind: 'presence', identity: login.identity, online: true, hide_last_seen: true }); await settle();
+  socket().frame({ kind: 'presence', identity: peer, online: false, last_seen_ms: 123, hide_last_seen: false }); await settle();
+  assert.equal(state().presence.hideLastSeen, true);
+  assert.equal(state().presence.people[peer]?.last_seen_ms, 123);
+  for (const from of [peer, anotherPeer, 'not-a-member', login.identity]) {
+    socket().frame({ kind: 'ephemeral', space: conversation.id, from, activity: 'typing' }); await settle();
+  }
+  assert.deepEqual(state().presence.typing[conversation.id], [peer, anotherPeer]);
+  socket().frame({ kind: 'ephemeral', space: conversation.id, from: peer, activity: 'stopped_typing' }); await settle();
+  assert.deepEqual(state().presence.typing[conversation.id], [anotherPeer]);
+  // None clears an old last-seen value; no ephemeral data reaches durable storage.
+  socket().frame({ kind: 'presence', identity: peer, online: false, last_seen_ms: null }); await settle();
+  assert.equal(state().presence.people[peer]?.last_seen_ms, null);
+  assert.equal(saves, 1);
+  messages.typing(conversation.id, true); await settle();
+  messages.typing(conversation.id, true); await settle();
+  assert.equal(operations.filter((op) => op.kind === 'request' && op.op === 'typing').length, 1);
+  t.mock.timers.tick(4_000); await settle();
+  assert.equal(operations.filter((op) => op.kind === 'request' && op.op === 'stopped_typing').length, 1);
+  await messages.setPresencePrivacy(false);
+  assert.ok(operations.some((op) => op.kind === 'request' && op.op === 'presence_privacy' && op.value === 'false'));
+  // Local request does not invent acknowledgment; self echo changes the control.
+  assert.equal(state().presence.hideLastSeen, true);
+  socket().frame({ kind: 'presence', identity: login.identity, online: true, hide_last_seen: false }); await settle();
+  assert.equal(state().presence.hideLastSeen, false);
+  messages.typing(conversation.id, true); await settle();
+  socket().close(); await settle();
+  assert.deepEqual(state().presence, { people: {}, typing: {}, hideLastSeen: null });
+  const sentBefore = operations.length;
+  await assert.rejects(messages.setPresencePrivacy(true), /Sem conexão/);
+  t.mock.timers.tick(900); await settle(); await authenticate();
+  assert.equal(state().connection.kind, 'ready');
+  assert.deepEqual(state().presence.typing, {});
+  assert.equal(operations.slice(sentBefore).some((op) => op.kind === 'request'), false);
 });

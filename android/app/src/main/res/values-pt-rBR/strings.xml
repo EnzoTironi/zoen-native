@@ -254,6 +254,10 @@
   <string name="jump_latest">Últimas mensagens</string>
   <string name="closed_space">Espaço privado</string>
   <string name="person_typing">%1$s está digitando…</string>
+  <string name="people_typing">%1$s estão digitando…</string>
+  <string name="chat_last_seen">Visto por último em %1$s</string>
+  <string name="hide_last_seen">Ocultar visto por último</string>
+  <string name="hide_last_seen_detail">Oculte das outras pessoas quando você esteve online pela última vez. Seu status online continua visível.</string>
   <string name="unavailable">Nada aqui ainda</string>
   <string name="unavailable_detail">Confira o link e sua conexão e tente novamente.</string>
   <string name="approvals_recorded">%1$d aprovações registradas</string>

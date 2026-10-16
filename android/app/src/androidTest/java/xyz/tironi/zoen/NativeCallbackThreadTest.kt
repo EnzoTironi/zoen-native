@@ -63,7 +63,8 @@ class NativeCallbackThreadTest {
             val listener = object : CoreListener {
                 override fun onChange(spaceIds: List<String>) = Unit
                 override fun onEphemeral(spaceId: String, fromId: String, kind: String, detail: String) = Unit
-                override fun onPresence(identityId: String, online: Boolean) = Unit
+                override fun onPresence(identityId: String, online: Boolean, lastSeenMs: ULong?) = Unit
+                override fun onPresencePrivacy(hideLastSeen: Boolean) = Unit
                 override fun onError(message: String) = Unit
                 override fun onProfileChanged(identityId: String) = Unit
                 override fun onConnection(status: ConnectionDto) {

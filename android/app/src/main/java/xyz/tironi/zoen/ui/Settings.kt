@@ -44,6 +44,7 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
@@ -68,6 +69,7 @@ enum class SettingsPage(val title: Int, val icon: ImageVector, val keywords: Str
     Preferences(R.string.st_preferences, Icons.Rounded.Tune, "preferências idioma language"),
     Theme(R.string.st_theme, Icons.Rounded.Contrast, "tema escuro claro dark light aparência appearance"),
     Security(R.string.st_security, Icons.Rounded.Lock, "segurança senha password código code"),
+    Privacy(R.string.privacy, Icons.Rounded.VisibilityOff, "privacidade privacy visto último last seen presença online"),
     Devices(R.string.st_devices, Icons.Rounded.Devices, "aparelhos celular computador desconectar"),
     TwoStep(R.string.st_two_step, Icons.Rounded.VerifiedUser, "duas etapas 2fa autenticador sms"),
     Data(R.string.st_data, Icons.Rounded.Storage, "dados exportar apagar espaço storage"),
@@ -103,6 +105,7 @@ fun SettingsScreen(model: ZoenViewModel, state: AppState, page: String?, navigat
         SettingsPage.Preferences -> PreferencesPage(state, navigate, back, close)
         SettingsPage.Theme -> ThemePage(back, close)
         SettingsPage.Security -> SecurityPage(model, state, navigate, back, close)
+        SettingsPage.Privacy -> PrivacyPage(model, state, back, close)
         SettingsPage.Devices -> DevicesPage(model, state, back, close)
         SettingsPage.TwoStep -> TwoStepPage(back, close)
         SettingsPage.Data -> DataPage(model, state, navigate, back, close)
@@ -264,7 +267,7 @@ private fun settingsFold(s: String) = Normalizer.normalize(s, Normalizer.Form.NF
 // region S49 Ajustes
 
 private val sections = listOf(
-    R.string.st_account to listOf(SettingsPage.Profile, SettingsPage.Security, SettingsPage.Devices, SettingsPage.Backup, SettingsPage.Data),
+    R.string.st_account to listOf(SettingsPage.Profile, SettingsPage.Security, SettingsPage.Privacy, SettingsPage.Devices, SettingsPage.Backup, SettingsPage.Data),
     R.string.st_preferences to listOf(SettingsPage.Preferences, SettingsPage.Theme, SettingsPage.Accessibility, SettingsPage.Disappearing),
     R.string.st_zoen to listOf(SettingsPage.Plans, SettingsPage.Invites, SettingsPage.Wallet, SettingsPage.Discover, SettingsPage.Moderation, SettingsPage.Tasks),
     R.string.st_help to listOf(SettingsPage.Feedback, SettingsPage.Legal, SettingsPage.About),
@@ -366,6 +369,18 @@ private fun SecurityPage(model: ZoenViewModel, state: AppState, navigate: (NavKe
         NavRow(SettingsPage.Devices, navigate, devices?.count { !it.revoked }?.toString())
     }
     Caption(R.string.st_security_caption)
+}
+
+@Composable
+private fun PrivacyPage(model: ZoenViewModel, state: AppState, back: () -> Unit, close: () -> Unit) = SettingsScaffold(stringResource(R.string.privacy), back, close) {
+    val label = stringResource(R.string.hide_last_seen)
+    Group {
+        Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            Text(label, Modifier.weight(1f), style = MaterialTheme.typography.bodyLarge)
+            Switch(checked = state.hideLastSeen, onCheckedChange = { hidden -> model.launch { model.repository.setHideLastSeen(hidden) } }, enabled = state.account != null, modifier = Modifier.testTag("settings:hideLastSeen").semantics { contentDescription = label })
+        }
+    }
+    Caption(R.string.hide_last_seen_detail)
 }
 
 @Composable

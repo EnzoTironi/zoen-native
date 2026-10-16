@@ -371,6 +371,18 @@ struct SecuritySettings: View {
                 NavRow(screen: .devices, value: devices.map { "\($0.filter { !$0.revoked }.count)" })
             }
             SettingsCaption("Your messages are end-to-end encrypted. Only your devices hold the keys.")
+            if model.sync.account != nil {
+                SettingsGroup {
+                    Toggle("Ocultar visto por último", isOn: Binding(
+                        get: { model.sync.hideLastSeen },
+                        set: { model.sync.setHideLastSeen($0) }
+                    ))
+                    .padding(.horizontal, 16)
+                    .frame(minHeight: SettingsStyle.rowHeight)
+                    .accessibilityIdentifier("settings.hideLastSeen")
+                }
+                SettingsCaption("Quando ativado, outras pessoas não veem quando você esteve online pela última vez. Seu status online continua visível.")
+            }
         }
         .task { devices = try? await model.core.devices() }
     }

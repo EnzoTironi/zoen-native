@@ -136,7 +136,7 @@ function Linked({ runtime, session, forget }: { runtime: Runtime; session: Extra
   const status = state.kind === 'loading' ? 'Abrindo suas conversas…' : state.kind === 'failed' ? 'Algo deu errado. Recarregue a página.' :
     state.connection.kind === 'ready' ? 'Conectado' : state.connection.kind === 'reconnecting' ? 'Reconectando…' : 'Conectando…';
   return <Messenger conversations={conversations} identity={session.account.identity} name={session.account.name} connected={connected} status={status}
-    messages={running} selected={selected} select={(id) => { setSelected(id); setShowInvite(false); }}
+    presence={state.kind === 'active' ? state.presence : undefined} messages={running} selected={selected} select={(id) => { setSelected(id); setShowInvite(false); }}
     footer={<>{state.kind === 'failed' ? <button className="zw-secondary" onClick={() => location.reload()}>Recarregar</button> : null}
       <button className="zw-secondary" onClick={() => setShowDevices(true)}>Aparelhos</button>
       <button className="zw-secondary" onClick={forget}>Sair</button></>}>

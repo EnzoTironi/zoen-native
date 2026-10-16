@@ -14,6 +14,30 @@ fn seeded() -> Arc<RodaEngine> {
     e
 }
 
+#[test]
+fn presence_privacy_retries_only_explicit_unacknowledged_changes() {
+    let core = seeded();
+    core.set_presence_privacy(true);
+    let mut engine = core.lock();
+    assert_eq!(engine.net.presence_privacy_pending, Some(true));
+    // An initial snapshot before sending must not consume explicit intent.
+    engine.presence_privacy_arrived(true);
+    assert_eq!(engine.net.presence_privacy_pending, Some(true));
+    engine.net.presence_privacy_inflight = Some(true);
+    // A newer user choice must survive the first change's acknowledgement.
+    engine.set_presence_privacy(false);
+    engine.presence_privacy_arrived(true);
+    assert_eq!(engine.net.presence_privacy_pending, Some(false));
+    assert_eq!(engine.net.presence_privacy_inflight, None);
+    engine.net.presence_privacy_inflight = Some(false);
+    engine.presence_privacy_arrived(false);
+    assert_eq!(engine.net.presence_privacy_pending, None);
+    assert_eq!(engine.net.presence_privacy_inflight, None);
+    // Later cross-device updates are authoritative, never written back.
+    engine.presence_privacy_arrived(true);
+    assert_eq!(engine.net.presence_privacy_pending, None);
+}
+
 fn find_space(e: &RodaEngine, title: &str) -> SpaceSummary {
     e.spaces()
         .into_iter()
@@ -2277,7 +2301,8 @@ fn callback_can_stop_and_destroy_its_core_before_immediate_reopen() {
         }
         fn on_change(&self, _: Vec<String>) {}
         fn on_ephemeral(&self, _: String, _: String, _: String, _: String) {}
-        fn on_presence(&self, _: String, _: bool) {}
+        fn on_presence(&self, _: String, _: bool, _: Option<u64>) {}
+        fn on_presence_privacy(&self, _: bool) {}
         fn on_error(&self, _: String) {}
         fn on_profile_changed(&self, _: String) {}
     }

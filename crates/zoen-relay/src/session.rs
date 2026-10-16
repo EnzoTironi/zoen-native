@@ -93,12 +93,22 @@ pub async fn run(socket: WebSocket, st: Shared, ip: String) {
     let kick = Arc::new(Notify::new());
     let writer_kick = kick.clone();
     let delivery_auth = st.delivery_auth.clone();
+    let presence_state = st.clone();
     let writer = tokio::spawn(async move {
         loop {
-            let frame = tokio::select! {
+            let mut frame = tokio::select! {
                 frame = rx.recv() => match frame { Some(frame) => frame, None => break },
                 _ = writer_kick.notified() => break,
             };
+            let recipient = writer_credentials
+                .get()
+                .map(|auth| auth.identity.as_str())
+                .unwrap_or("");
+            let presence_fence =
+                match crate::presence::delivery(&presence_state, recipient, &mut frame).await {
+                    crate::presence::Delivery::Skip => continue,
+                    crate::presence::Delivery::Send(fence) => fence,
+                };
             if writer_revoked.load(Ordering::Acquire) {
                 break;
             }
@@ -129,6 +139,7 @@ pub async fn run(socket: WebSocket, st: Shared, ip: String) {
             )
             .await;
             drop(authorization);
+            drop(presence_fence);
             if !matches!(sent, Ok(Ok(()))) {
                 writer_kick.notify_one();
                 break;
@@ -274,14 +285,22 @@ pub async fn run(socket: WebSocket, st: Shared, ip: String) {
         if let Ok(Ok(co)) =
             tokio::time::timeout(Duration::from_secs(2), st.log.co_members(&identity)).await
         {
-            st.fanout.send(
-                &co,
-                &ServerFrame::Presence {
-                    identity: identity.clone(),
-                    online: false,
-                },
-                None,
-            );
+            if !tokio::time::timeout(
+                Duration::from_secs(2),
+                crate::presence::offline(&st, &identity, &co),
+            )
+            .await
+            .is_ok_and(|r| r.is_ok())
+                && !st.fanout.is_online(&identity).await
+            {
+                // A directory outage must not leave peers stuck online. Fail closed
+                // for the timestamp, not for the timestamp-free offline signal.
+                st.fanout.send(
+                    &co,
+                    &crate::presence::Preference::default().frame(identity.clone(), false, false),
+                    None,
+                );
+            }
         }
     }
 }
@@ -538,31 +557,26 @@ impl Session {
         // mailbox, or is reflected in the query. Reading first can lose both signals.
         // Packages claimed while this device was away: it refills as it comes back.
         self.send_key_package_stock().await;
-        if let Ok(Ok(co)) = tokio::time::timeout(
+        let co = tokio::time::timeout(
             Duration::from_secs(2),
             self.st.log.co_members(&self.identity),
         )
         .await
+        .ok()
+        .and_then(Result::ok)
+        .unwrap_or_default();
+        if crate::presence::connected(&self.st, &self.identity, &co, !was_online)
+            .await
+            .is_err()
+            && !was_online
         {
-            if !was_online {
-                self.st.fanout.send(
-                    &co,
-                    &ServerFrame::Presence {
-                        identity: self.identity.clone(),
-                        online: true,
-                    },
-                    None,
-                );
-            }
-            // And tell this device who is already here (every device, not just the first).
-            for who in self.st.fanout.online(&co).await {
-                self.send(ServerFrame::Presence {
-                    identity: who,
-                    online: true,
-                })
-                .await;
-            }
+            self.st.fanout.send(
+                &co,
+                &crate::presence::Preference::default().frame(self.identity.clone(), true, false),
+                None,
+            );
         }
+        let _ = crate::presence::snapshot(&self.st, &self.identity, &co).await;
     }
 
     async fn send_key_package_stock(&self) {
@@ -734,6 +748,32 @@ impl Session {
             ClientFrame::Publish { env } => self.publish(env).await,
             ClientFrame::Sync { cursors, all } => self.sync(cursors, all).await,
             ClientFrame::Ephemeral { space, kind } => self.ephemeral(space, kind).await,
+            ClientFrame::SetPresencePrivacy { hide_last_seen } => {
+                if self.st.limits.request_device.check(&self.device).is_err() {
+                    self.send(ServerFrame::error(
+                        ErrorCode::Other,
+                        "Tente novamente em instantes.",
+                    ))
+                    .await;
+                } else {
+                    let co = self
+                        .st
+                        .log
+                        .co_members(&self.identity)
+                        .await
+                        .unwrap_or_default();
+                    if crate::presence::set_privacy(&self.st, &self.identity, hide_last_seen, &co)
+                        .await
+                        .is_err()
+                    {
+                        self.send(ServerFrame::error(
+                            ErrorCode::Other,
+                            "Não foi possível salvar sua privacidade.",
+                        ))
+                        .await;
+                    }
+                }
+            }
             ClientFrame::Hello { .. } | ClientFrame::Auth { .. } => {
                 self.send(ServerFrame::error(ErrorCode::Other, "already logged in"))
                     .await
@@ -1473,6 +1513,9 @@ impl Session {
                 };
                 span.record("audience", audience.len() as i64);
                 span.record("delivered_here", n as i64);
+                if let Some(identity) = joined.as_deref() {
+                    crate::presence::joined(&self.st, identity, &audience).await;
+                }
                 if let Some(identity) = joined.filter(|id| id != &self.identity) {
                     self.st.fanout.send(
                         std::slice::from_ref(&identity),
@@ -1509,6 +1552,7 @@ impl Session {
                 span.record("audience", audience.len() as i64);
                 span.record("delivered_here", n as i64);
                 if let Some(j) = joined {
+                    crate::presence::joined(&self.st, &j, &audience).await;
                     if j != self.identity {
                         self.st.fanout.send(
                             std::slice::from_ref(&j),

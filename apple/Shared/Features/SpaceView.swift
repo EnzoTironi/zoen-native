@@ -485,7 +485,7 @@ struct SpaceView: View {
         }
         // People in shared chats: typing and what they're doing come from the relay.
         if let remote = model.sync.remoteStatus(spaceId) {
-            return ChatStatus(kind: remote.kind, who: group ? remote.who : nil)
+            return ChatStatus(kind: remote.kind, who: group ? remote.who : nil, peopleCount: remote.peopleCount)
         }
         return nil
     }
@@ -495,9 +495,7 @@ struct SpaceView: View {
     private func subtitle(_ s: SpaceSummary) -> String {
         if let c = s.counterpart {
             if model.sync.isSynced(s.id), c.kind == .person {
-                return model.sync.online.contains(c.id)
-                    ? String(localized: "online")
-                    : ""
+                return model.sync.presenceLabel(c.id)
             }
             return ""
         }

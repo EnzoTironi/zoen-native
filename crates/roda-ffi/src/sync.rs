@@ -67,6 +67,9 @@ pub struct NetState {
     /// Identities seen in logs whose profile this device doesn't have yet.
     pub unknown: HashSet<IdentityId>,
     pub presence: HashMap<IdentityId, bool>,
+    /// Explicit user intent only; relay snapshots must never enqueue a change.
+    pub presence_privacy_pending: Option<bool>,
+    pub presence_privacy_inflight: Option<bool>,
     /// Space → member → (delivered up to, read up to). Aggregated watermarks, never per
     /// message; the relay replays the newest on every sync, so nothing is stored here.
     pub receipts: HashMap<SpaceId, HashMap<IdentityId, (u64, u64)>>,
@@ -1432,6 +1435,20 @@ impl Engine {
             }
         }
         frames
+    }
+
+    pub fn set_presence_privacy(&mut self, hide_last_seen: bool) {
+        self.net.presence_privacy_pending = Some(hide_last_seen);
+        self.net.wake();
+    }
+
+    pub(crate) fn presence_privacy_arrived(&mut self, hide_last_seen: bool) {
+        if self.net.presence_privacy_inflight == Some(hide_last_seen) {
+            if self.net.presence_privacy_pending == Some(hide_last_seen) {
+                self.net.presence_privacy_pending = None;
+            }
+            self.net.presence_privacy_inflight = None;
+        }
     }
 
     pub fn set_presence(&mut self, who: &str, online: bool) {

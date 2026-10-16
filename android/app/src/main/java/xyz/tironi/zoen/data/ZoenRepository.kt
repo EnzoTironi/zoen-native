@@ -36,8 +36,10 @@ data class AppState(
     val requests: List<AgentRequestDto> = emptyList(),
     val timelines: Map<String, List<TimelineEntry>> = emptyMap(),
     val connection: ConnectionDto = ConnectionDto("offline", false, 0uL, null),
-    val typing: Map<String, String> = emptyMap(),
+    val typing: Map<String, Set<String>> = emptyMap(),
     val online: Set<String> = emptySet(),
+    val lastSeen: Map<String, ULong> = emptyMap(),
+    val hideLastSeen: Boolean = false,
     val remoteActivity: Map<String, RemoteActivity> = emptyMap(),
     val revision: Long = 0,
 ) {
@@ -56,7 +58,7 @@ class ZoenRepository(private val context: Context) {
     private var backgroundOwner: Any? = null
     private var openedLanguage: String? = null
     private val observed = mutableMapOf<String, MutableSet<Any>>()
-    private val typingUpdates = mutableMapOf<String, Long>()
+    private val typingPresence = TypingPresence()
     private val activityUpdates = mutableMapOf<String, Long>()
     private val mutableState = MutableStateFlow(AppState())
     val state = mutableState.asStateFlow()
@@ -110,23 +112,31 @@ class ZoenRepository(private val context: Context) {
         if (shouldConnect && !syncRunning) { core.startSync(listener); syncRunning = true }
         else if (!shouldConnect && syncRunning) {
             core.stopSync(); syncRunning = false
-            mutableState.value = mutableState.value.copy(online = emptySet(), remoteActivity = emptyMap(), typing = emptyMap())
+            clearEphemeralLocked()
         }
     }
 
     private val listener = object : CoreListener {
         override fun onChange(spaceIds: List<String>) { changes.trySend(Unit) }
         override fun onProfileChanged(identityId: String) { changes.trySend(Unit) }
-        override fun onPresence(identityId: String, online: Boolean) {
+        override fun onPresence(identityId: String, online: Boolean, lastSeenMs: ULong?) {
             scope.launch { gate.withLock {
                 if (online && mutableState.value.spaces.none { it.members.any { person -> person.id == identityId } }) refreshLocked()
                 val old = mutableState.value
-                if (old.spaces.any { it.members.any { person -> person.id == identityId } }) mutableState.value = old.copy(online = if (online) old.online + identityId else old.online - identityId)
+                if (old.spaces.any { it.members.any { person -> person.id == identityId } }) mutableState.value = old.copy(
+                    online = if (online) old.online + identityId else old.online - identityId,
+                    lastSeen = if (lastSeenMs != null) old.lastSeen + (identityId to lastSeenMs) else old.lastSeen - identityId,
+                )
+            } }
+        }
+        override fun onPresencePrivacy(hideLastSeen: Boolean) {
+            scope.launch { gate.withLock {
+                mutableState.value = mutableState.value.copy(hideLastSeen = hideLastSeen)
             } }
         }
         override fun onConnection(status: ConnectionDto) {
             scope.launch { gate.withLock {
-                if (status.state != "online") mutableState.value = mutableState.value.copy(online = emptySet(), remoteActivity = emptyMap(), typing = emptyMap())
+                if (status.state != "online") clearEphemeralLocked()
                 refreshLocked()
             } }
         }
@@ -153,22 +163,31 @@ class ZoenRepository(private val context: Context) {
             scope.launch {
                 var update = 0L
                 gate.withLock {
-                    if (fromId == mutableState.value.me?.id) return@withLock
-                    update = (typingUpdates[spaceId] ?: 0L) + 1
-                    typingUpdates[spaceId] = update
-                    val typing = mutableState.value.typing.toMutableMap()
-                    if (kind == "typing") typing[spaceId] = fromId else typing.remove(spaceId)
-                    mutableState.value = mutableState.value.copy(typing = typing)
+                    val old = mutableState.value
+                    if (fromId == old.me?.id || old.spaces.none { it.id == spaceId && it.members.any { person -> person.id == fromId } }) return@withLock
+                    update = typingPresence.update(spaceId, fromId, kind == "typing")
+                    mutableState.value = old.copy(typing = typingPresence.identities)
                 }
                 if (kind == "typing") {
                     delay(5_000)
                     gate.withLock {
-                        if (typingUpdates[spaceId] == update && mutableState.value.typing[spaceId] == fromId) {
-                            mutableState.value = mutableState.value.copy(typing = mutableState.value.typing - spaceId)
-                        }
+                        typingPresence.expire(spaceId, fromId, update)
+                        mutableState.value = mutableState.value.copy(typing = typingPresence.identities)
                     }
                 }
             }
+        }
+    }
+
+    private fun clearEphemeralLocked() {
+        typingPresence.clear()
+        mutableState.value = mutableState.value.copy(online = emptySet(), lastSeen = emptyMap(), remoteActivity = emptyMap(), typing = emptyMap())
+    }
+
+    suspend fun setHideLastSeen(hidden: Boolean) = withContext(Dispatchers.IO) {
+        gate.withLock {
+            checkNotNull(engine).setPresencePrivacy(hidden)
+            // The relay's onPresencePrivacy callback is authoritative, including other devices.
         }
     }
 
@@ -194,6 +213,7 @@ class ZoenRepository(private val context: Context) {
                 engine?.destroy()
                 engine = null
                 observed.clear()
+                clearEphemeralLocked()
                 mutableState.value = AppState()
                 xyz.tironi.zoen.miniapps.MiniAppSnapshots.clear()
                 xyz.tironi.zoen.miniapps.MiniAppModelContext.clear()
@@ -288,6 +308,7 @@ class ZoenRepository(private val context: Context) {
             engine = null
             observed.clear()
             preferences.edit().putBoolean("demo", true).putBoolean("onboarded", true).commit()
+            clearEphemeralLocked()
             mutableState.value = AppState()
             xyz.tironi.zoen.miniapps.MiniAppSnapshots.clear()
             xyz.tironi.zoen.miniapps.MiniAppModelContext.clear()
@@ -303,6 +324,7 @@ class ZoenRepository(private val context: Context) {
             engine = null
             observed.clear()
             preferences.edit().putBoolean("demo", false).putBoolean("onboarded", false).commit()
+            clearEphemeralLocked()
             mutableState.value = AppState()
             xyz.tironi.zoen.miniapps.MiniAppSnapshots.clear()
             xyz.tironi.zoen.miniapps.MiniAppModelContext.clear()
@@ -348,6 +370,7 @@ class ZoenRepository(private val context: Context) {
     suspend fun resetDemo() = withContext(Dispatchers.IO) {
         gate.withLock {
             check(mutableState.value.demo)
+            clearEphemeralLocked()
             observed.clear()
             engine?.resetDemo()
             xyz.tironi.zoen.miniapps.MiniAppSnapshots.clear()
@@ -364,6 +387,8 @@ class ZoenRepository(private val context: Context) {
             activeSpace = null
             engine?.stopSync()
             engine?.eraseDevice(vault)
+            clearEphemeralLocked()
+            mutableState.value = mutableState.value.copy(hideLastSeen = false)
             xyz.tironi.zoen.miniapps.MiniAppSnapshots.clear()
             xyz.tironi.zoen.miniapps.MiniAppModelContext.clear()
             preferences.edit().clear().putBoolean("onboarded", false).putBoolean("demo", false).commit()

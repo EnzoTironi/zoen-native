@@ -29,7 +29,7 @@ fn bad(what: &str) -> DecodeError {
 
 #[derive(Clone, PartialEq, Message)]
 pub struct PbClientFrame {
-    #[prost(oneof = "pb_client_frame::F", tags = "1, 2, 3, 4, 5, 6, 7")]
+    #[prost(oneof = "pb_client_frame::F", tags = "1, 2, 3, 4, 5, 6, 7, 8")]
     pub f: Option<pb_client_frame::F>,
 }
 
@@ -52,11 +52,19 @@ pub mod pb_client_frame {
         Ephemeral(PbEphemeral),
         #[prost(message, tag = "7")]
         Ping(PbEmpty),
+        #[prost(message, tag = "8")]
+        SetPresencePrivacy(PbSetPresencePrivacy),
     }
 }
 
 #[derive(Clone, PartialEq, Message)]
 pub struct PbEmpty {}
+
+#[derive(Clone, PartialEq, Message)]
+pub struct PbSetPresencePrivacy {
+    #[prost(bool, tag = "1")]
+    pub hide_last_seen: bool,
+}
 
 #[derive(Clone, PartialEq, Message)]
 pub struct PbPushToken {
@@ -638,6 +646,12 @@ pub struct PbPresence {
     pub identity: String,
     #[prost(bool, tag = "2")]
     pub online: bool,
+    #[prost(uint64, optional, tag = "3")]
+    pub last_seen_ms: Option<u64>,
+    #[prost(bool, optional, tag = "4")]
+    pub hide_last_seen: Option<bool>,
+    #[prost(uint64, optional, tag = "5")]
+    pub revision: Option<u64>,
 }
 
 #[derive(Clone, PartialEq, Message)]
@@ -944,6 +958,11 @@ impl ClientFrame {
             }),
             ClientFrame::Ephemeral { space, kind } => F::Ephemeral(ephemeral_to(space, "", kind)),
             ClientFrame::Ping => F::Ping(PbEmpty {}),
+            ClientFrame::SetPresencePrivacy { hide_last_seen } => {
+                F::SetPresencePrivacy(PbSetPresencePrivacy {
+                    hide_last_seen: *hide_last_seen,
+                })
+            }
         };
         PbClientFrame { f: Some(f) }.encode_to_vec()
     }
@@ -1044,6 +1063,9 @@ impl ClientFrame {
                 kind: ephemeral_kind(e.kind)?,
             },
             F::Ping(_) => ClientFrame::Ping,
+            F::SetPresencePrivacy(p) => ClientFrame::SetPresencePrivacy {
+                hide_last_seen: p.hide_last_seen,
+            },
         })
     }
 }
@@ -1169,9 +1191,18 @@ impl ServerFrame {
             ServerFrame::Ephemeral { space, from, kind } => {
                 F::Ephemeral(ephemeral_to(space, from, kind))
             }
-            ServerFrame::Presence { identity, online } => F::Presence(PbPresence {
+            ServerFrame::Presence {
+                identity,
+                online,
+                last_seen_ms,
+                hide_last_seen,
+                revision,
+            } => F::Presence(PbPresence {
                 identity: identity.clone(),
                 online: *online,
+                last_seen_ms: *last_seen_ms,
+                hide_last_seen: *hide_last_seen,
+                revision: *revision,
             }),
             ServerFrame::ProfileChanged { identity, version } => {
                 F::ProfileChanged(PbProfileChanged {
@@ -1323,6 +1354,9 @@ impl ServerFrame {
             F::Presence(p) => ServerFrame::Presence {
                 identity: p.identity,
                 online: p.online,
+                last_seen_ms: p.last_seen_ms,
+                hide_last_seen: p.hide_last_seen,
+                revision: p.revision,
             },
             F::ProfileChanged(p) => ServerFrame::ProfileChanged {
                 identity: p.identity,
@@ -1471,6 +1505,22 @@ mod tests {
     }
 
     #[test]
+    fn legacy_presence_without_optional_fields_decodes() {
+        // ServerFrame oneof #8, legacy identity #1 + online #2 only.
+        let bytes = [0x42, 0x05, 0x0a, 0x01, b'i', 0x10, 0x01];
+        assert_eq!(
+            ServerFrame::decode(&bytes).unwrap(),
+            ServerFrame::Presence {
+                identity: "i".into(),
+                online: true,
+                last_seen_ms: None,
+                hide_last_seen: None,
+                revision: None,
+            }
+        );
+    }
+
+    #[test]
     fn every_server_frame_roundtrips() {
         let (env, log) = signed();
         let first = &log.events()[0];
@@ -1555,6 +1605,9 @@ mod tests {
             ServerFrame::Presence {
                 identity: "i".into(),
                 online: false,
+                last_seen_ms: Some(42),
+                hide_last_seen: None,
+                revision: Some(7),
             },
             ServerFrame::Res {
                 id: 12,
@@ -1730,6 +1783,9 @@ mod tests {
                 },
             },
             ClientFrame::Ping,
+            ClientFrame::SetPresencePrivacy {
+                hide_last_seen: true,
+            },
         ];
         for f in frames {
             assert_eq!(ClientFrame::decode(&f.encode()).unwrap(), f);

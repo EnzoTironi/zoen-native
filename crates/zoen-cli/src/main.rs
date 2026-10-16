@@ -112,7 +112,8 @@ impl CoreListener for Printer {
         };
         println!("[{}] {who} {what}", title_of(&e, &space_id));
     }
-    fn on_presence(&self, identity_id: String, online: bool) {
+    fn on_presence_privacy(&self, _: bool) {}
+    fn on_presence(&self, identity_id: String, online: bool, _last_seen_ms: Option<u64>) {
         let Some(e) = self.engine.upgrade() else {
             return;
         };
