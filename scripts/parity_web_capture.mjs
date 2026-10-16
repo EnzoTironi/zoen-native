@@ -21,7 +21,7 @@ const fixture = {
   source_revision: execFileSync('git', ['rev-parse', 'HEAD'], { encoding: 'utf8' }).trim(),
 };
 const wide = args.viewport === 'wide';
-const viewport = wide ? { width: 1376, height: 988 } : { width: 402, height: 778 };
+const viewport = wide ? { width: 1376, height: 988 } : { width: 402, height: 812 };
 const browser = await webkit.launch();
 try {
   for (const screen of ['chats', 'chat', 'composer', 'spaces', 'notifications', 'profile', 'settings', 'onboarding']) {

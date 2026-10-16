@@ -1,7 +1,7 @@
 {
   "viewport": "narrow-iphone",
-  "size": [402, 778],
-  "ios": {"os_bar_crop": [0, 186, 0, 102]},
+  "size": [402, 812],
+  "ios": {"os_bar_crop": [0, 186, 0, 0]},
   "android": {"os_bar_crop": [0, 72, 0, 72]},
   "web": {"os_bar_crop": [0, 0, 0, 0]}
 }

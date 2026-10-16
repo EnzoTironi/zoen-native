@@ -146,12 +146,22 @@ Only declared OS-bar crops and uniform full-frame resampling are allowed:
 
 | Profile | Source geometry | OS-only crop (physical px) | Comparison / web CSS viewport |
 |---|---|---|---|
-| iPhone | 1206 × 2622 at 3× | top 186, bottom 102 | 402 × 778 |
-| Android | 1206 × 2478 at 480 dpi | top 72, bottom 72 | 402 × 778 |
+| iPhone | 1206 × 2622 at 3× | top 186, bottom 0 | 402 × 812 |
+| Android (candidate; runtime validation required) | 1206 × 2580 at 480 dpi | top 72, bottom 72, provisional | 402 × 812 |
 | iPad landscape | 2752 × 2064 at 2× | top 48, bottom 40 | 1376 × 988 |
 | Web narrow / wide | CSS viewport above at 3× / 2× | none | same content size |
 
-Phone geometry is measured on the existing 402 × 874 point iPhone simulator. The
+Phone geometry is measured on the existing 402 × 874 point iPhone simulator.
+The runtime window witness reports top 62 / bottom 34 point safe-area insets, but
+safe areas are not OS-only crops: the native compose button occupies
+`(319, 791, 62, 62)` and the tab buttons extend through y=849. Cropping the bottom
+34 points at y=840 would cut app glass and controls. Retain the entire bottom
+surface (bottom crop 0), including any OS indicator; do not mask it. The measured
+witness is `.reason-pr-fixes/logs/after-geometry-attachments/CB500D98-ECF2-4293-803F-CF390C2950F8.json`.
+Android's 2580-pixel height and 72-pixel system-bar crops are a candidate only:
+verify actual runtime insets and raw frames before accepting comparison results;
+if either crop intersects app content, correct the declared geometry, not the UI.
+The narrow web viewport is 402 × 812 CSS pixels. The
 wide iPad safe-area configuration is provisional until verified against actual
 fresh iPad captures; a configured crop is not evidence of a measured safe area.
 Verify all OS-bar measurements when device/runtime versions change. Never adjust

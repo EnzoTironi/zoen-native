@@ -118,7 +118,7 @@ def capture_android(args, output):
     abi = subprocess.check_output([*adb, 'shell', 'getprop', 'ro.product.cpu.abi'], cwd=ROOT, text=True).strip()
     if abi not in ('arm64-v8a', 'x86_64'):
         raise ValueError(f'Unsupported emulator ABI: {abi}')
-    run(*adb, 'shell', 'wm', 'size', '1206x2478')
+    run(*adb, 'shell', 'wm', 'size', '1206x2580')
     run(*adb, 'shell', 'wm', 'density', '480')
     run(*adb, 'shell', 'settings', 'put', 'system', 'font_scale', '1.0')
     run(*adb, 'shell', 'settings', 'put', 'global', 'window_animation_scale', '0')
