@@ -103,7 +103,8 @@
     if (!document.querySelector('.zoen-sky')) return;
     if (noSky.matches) { PHASES.forEach(function (n) { if (layers[n]) { var v = layers[n].querySelector('video'); if (v) v.remove(); } }); return; }
     // Paused by the reader: keep the picture exactly as it is (no minute-by-minute crossfade) until Play.
-    if (paused && painted) return;
+    // Reduced motion is treated the same way: the photo chosen on load stays until the next page.
+    if ((paused || still.matches) && painted) return;
     var w = weights(hour);
     painted = true;
     PHASES.forEach(function (name) {
@@ -170,7 +171,7 @@
   }
 
   document.addEventListener('visibilitychange', update);
-  if (still.addEventListener) { [still, noSky].forEach(function (m) { m.addEventListener('change', function () { update(); toggle(); }); }); }
+  if (still.addEventListener) { [still, noSky].forEach(function (m) { m.addEventListener('change', function () { painted = false; update(); toggle(); }); }); }
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', mount);
   else mount();
   root.setAttribute('data-sky-phase', phase(currentHour()));

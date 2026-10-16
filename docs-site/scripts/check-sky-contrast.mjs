@@ -241,10 +241,13 @@ for (const theme of (args.themes ?? 'light,dark').split(',')) for (const [name, 
 
 // Preference checks.
 {
-  const p = await open('/', 'light', 12, [{ name: 'prefers-reduced-motion', value: 'reduce' }]);
-  const t = await p.evaluate(() => ({ videos: document.querySelectorAll('.zoen-sky video').length, layers: document.querySelectorAll('.zoen-sky-layer').length, transition: getComputedStyle(document.querySelector('.zoen-sky-layer')).transitionDuration }));
-  if (t.videos || !t.layers || t.transition !== '0s') failures.push(`prefers-reduced-motion: expected a still photo, got ${JSON.stringify(t)}`);
-  console.log(`prefers-reduced-motion: reduce → ${t.videos} videos, ${t.layers} still photo layer(s), transition ${t.transition}`);
+  const p = await open('/', 'light', 7.75, [{ name: 'prefers-reduced-motion', value: 'reduce' }]); // mid crossfade
+  const t = await p.evaluate(() => ({ held: (() => {
+      const snap = () => [...document.querySelectorAll('.zoen-sky-layer')].map((l) => l.style.opacity).join(); const o = snap();
+      const t2 = Date.now() + 5 * 60000, D = Date; globalThis.Date = class extends D { constructor(...a) { super(...(a.length ? a : [t2])); } static now() { return t2; } };
+      document.dispatchEvent(new Event('visibilitychange')); return snap() === o; })(), videos: document.querySelectorAll('.zoen-sky video').length, layers: document.querySelectorAll('.zoen-sky-layer').length, transition: getComputedStyle(document.querySelector('.zoen-sky-layer')).transitionDuration }));
+  if (t.videos || !t.layers || t.transition !== '0s' || !t.held) failures.push(`prefers-reduced-motion: expected a still photo, got ${JSON.stringify(t)}`);
+  console.log(`prefers-reduced-motion: reduce → ${t.videos} videos, ${t.layers} still photo layer(s), transition ${t.transition}, holds still over time: ${t.held}`);
   await p.close();
   // The table of contents must stay fixed while the page scrolls (no filtered ancestor).
   const f = await open('/technical/architecture/', 'dark', 12);
