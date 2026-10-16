@@ -1,11 +1,20 @@
 import { useEffect, useState, type ReactNode } from 'react';
-import type fixture from './fixtures/native-parity-v1.json';
 import './native-adaptive.css';
 
-export type NativeAdaptiveSpace = typeof fixture.spaces[number];
+export interface NativeAdaptiveSpace {
+  id: string;
+  title: string;
+  kind: string;
+  lastAtMs: number;
+  lastPreview: string;
+  unread: number;
+  counterpart: { tintHex: string; initials: string } | null;
+}
 export type NativeAdaptiveDestination = 'chats' | 'activity' | 'store' | 'files' | 'agents' | 'you' | 'search' | 'new-chat' | 'participants' | 'zoen';
 export interface NativeAdaptiveShellProps {
   children: ReactNode;
+  /** Host-owned account controls, rendered beneath the chat list. */
+  footer?: ReactNode;
   spaces: readonly NativeAdaptiveSpace[];
   /** Space ID or rail destination. Null selects Paraty, then the first chat. */
   selected: string | null;
@@ -31,7 +40,7 @@ function Icon({ name }: { name: string }) {
   };
   return <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">{paths[name] ?? paths.plus}</svg>;
 }
-export function NativeAdaptiveShell({ children, spaces, selected, onSelect }: NativeAdaptiveShellProps) {
+export function NativeAdaptiveShell({ children, footer, spaces, selected, onSelect }: NativeAdaptiveShellProps) {
   const [expanded, setExpanded] = useState(true);
   const [query, setQuery] = useState('');
   const [filter, setFilter] = useState('all');
@@ -52,6 +61,7 @@ export function NativeAdaptiveShell({ children, spaces, selected, onSelect }: Na
     </nav>{expanded && <section className="na-chat-sidebar" aria-label="Chats"><header><b>Chats</b><label className="na-filter"><Icon name="filter"/><select aria-label="Filter chats" value={filter} onChange={e => setFilter(e.target.value)}><option value="all">All chats</option><option value="direct">Direct chats</option><option value="group">Groups</option><option value="community">Communities</option></select></label><button aria-label="Participants" onClick={() => onSelect('participants')}><Icon name="info"/></button><button aria-label="New Chat" onClick={() => onSelect('new-chat')}><Icon name="edit"/></button></header>
       <label className="na-search"><Icon name="search"/><input aria-label="Search" placeholder="Search" value={query} onChange={e => setQuery(e.target.value)}/>{query && <button aria-label="Clear search" onClick={() => setQuery('')}>×</button>}</label>
       <div className="na-list">{spaces.filter(s => (filter === 'all' || s.kind === filter) && s.title.toLocaleLowerCase().includes(query.toLocaleLowerCase())).map(space => <button className="na-chat-row" key={space.id} aria-current={active === space.id ? 'page' : undefined} onClick={() => onSelect(space.id)}><span className="na-avatar" style={{ background: space.counterpart?.tintHex ?? '#19B5A5' }}>{space.counterpart?.initials ?? space.title.split(' ').slice(0,2).map(w => w[0]).join('')}</span><span className="na-copy"><span><b>{space.title}</b><time>{new Intl.DateTimeFormat('en-US',{hour:'numeric',minute:'2-digit',timeZone:'UTC'}).format(space.lastAtMs)}</time></span><small>{space.lastPreview}</small></span>{space.unread > 0 && <span className="na-row-badge">{space.unread}</span>}</button>)}</div>
+      {footer != null && <footer className="na-footer" style={{ flexShrink: 0, marginTop: 'auto', padding: '8px 12px', borderTop: '.5px solid var(--na-hairline)' }}>{footer}</footer>}
     </section>}</aside><main className="na-detail">{children}</main>
   </div>;
 }
