@@ -55,7 +55,11 @@ final class PushBridge {
         self.model = model
         Task {
             let s = await UNUserNotificationCenter.current().notificationSettings()
-            guard [.authorized, .provisional, .ephemeral].contains(s.authorizationStatus) else { return }
+            var authorizedStatuses: [UNAuthorizationStatus] = [.authorized, .provisional]
+            #if os(iOS)
+            authorizedStatuses.append(.ephemeral)
+            #endif
+            guard authorizedStatuses.contains(s.authorizationStatus) else { return }
             #if os(iOS)
             UIApplication.shared.registerForRemoteNotifications()
             #endif
