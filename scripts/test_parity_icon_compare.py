@@ -63,6 +63,16 @@ class IconContractTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, 'state or event phase differs'):
             validate_states(*self.folders)
 
+    def test_invalid_phases_are_rejected(self):
+        for phase in (True, -1, float('nan'), float('inf'), 10001, 10**1000):
+            with self.subTest(phase=str(phase)):
+                states = copy.deepcopy(self.states)
+                states[next(iter(STATES))]['phase_ms'] = phase
+                for folder in self.folders:
+                    self.write(folder, states)
+                with self.assertRaisesRegex(ValueError, 'event phase'):
+                    validate_states(*self.folders)
+
     def test_no_state_witness_is_rejected(self):
         states = copy.deepcopy(self.states)
         states[next(iter(STATES))]['observed_state'] = {}

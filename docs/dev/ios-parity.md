@@ -104,8 +104,8 @@ Android receives instrumentation `parityFixture` and `parityRevision`. iOS recei
 `ZOEN_PARITY_FIXTURE`, `ZOEN_PARITY_REVISION` and `ZOEN_PARITY_VIEWPORT` through the
 `.xctestrun` environment; the UI test forwards fixture values to its app.
 
-Each producer renders `chats`, `chat`, `composer`, `spaces`, `settings`, `onboarding`,
-each in light and dark. Composer contains “See you tomorrow” and the actual platform
+Each producer renders `chats`, `chat`, `composer`, `spaces`, `notifications`,
+`profile`, `settings`, `onboarding`, each in light and dark. Composer contains “See you tomorrow” and the actual platform
 keyboard where present. Browser keyboard absence and native keyboard differences
 count: do not mask them or draw a fake keyboard to pass the comparison.
 
@@ -178,3 +178,55 @@ visual parity. Only fresh native/web captures for all 48 comparison pairs (eight
 passing report prove this static check. Review raw frames and test motion/haptics
 on devices separately. An absent canonical iPad split view remains a source/design
 gap even when the current wide baseline is rendered successfully.
+
+## State-keyed icon parity
+
+The main-screen gate remains mandatory. `scripts/parity_icon_compare.py` adds a
+separate full-frame icon-state comparison; it does not replace the 16 main-screen
+captures or prove timing from static images alone.
+
+Use the same applied native fixture and source revision. Produce 40 PNGs: each of
+these events in light/dark and full/reduced motion:
+
+- `tab-chats-tap`, `tab-spaces-tap`, `tab-notifications-tap`, `tab-profile-tap`
+- `composer-mic`, `composer-send`, `bell-new`
+- `typing-active`, `connecting-active`, `icons-draw-on`
+
+Filename: `<event>-<light|dark>-<full|reduced>.png`. The directory's `manifest.json`
+contains the usual fixture fields and an `icon_states` object keyed by the same
+filename without `.png`. Example descriptor (phase is illustrative, not assumed):
+
+```json
+{
+  "event": "composer-send",
+  "appearance": "light",
+  "reduce_motion": false,
+  "phase_ms": 160,
+  "observed_state": {"draft": "Hi", "glyph": "arrow.up"}
+}
+```
+
+Values must come from actual applied application state. Never toggle an animation
+counter directly to imitate a new notification, manufacture a recording/network
+event, relabel a late frame, or select a phase because its pixels look closer. Use
+real input/selection handlers and genuine recorded fixture events through the
+production model-update path. Capture phases must match across platforms.
+
+A missing state, reduced-motion mismatch, empty witness, phase mismatch or missing
+PNG is a contract failure. Only the main gate's OS-bar crop and full-frame size
+normalization apply: no icon masks, content alignment, fuzzy colors or per-event
+threshold increases.
+
+```sh
+python3 scripts/parity_icon_compare.py --ios parity/ios-icons \
+  --android parity/android-icons --config scripts/parity_config.json \
+  --output parity/report/icons-android --threshold 2.5
+```
+
+The command also accepts `--web` instead of `--android`. Keep real short MP4s with
+the frames to inspect timing, easing, interruption, repeat-selected-tab taps and
+Reduce Motion. Passing static frames do not prove those behaviors or haptics.
+
+Contract unit tests exercise missing states/files, wrong motion mode, mismatched
+application state and unaligned phases, not runtime motion. Actual producers,
+all 40 frame pairs and recordings remain required before claiming icon parity.

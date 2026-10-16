@@ -2,6 +2,7 @@
 """Compare real, state-keyed icon frames, independently of the main-screen gate."""
 import argparse
 import json
+import math
 from pathlib import Path
 
 from parity_compare import compare
@@ -25,10 +26,12 @@ def validate_states(reference, candidate):
             observed = manifest.get('icon_states', {}).get(key)
             if not isinstance(observed, dict):
                 raise ValueError(f'Missing actual icon state: {key}')
-            if any(observed.get(field) != value for field, value in expected.items()):
+            if any(type(observed.get(field)) is not type(value)
+                   or observed.get(field) != value for field, value in expected.items()):
                 raise ValueError(f'Icon event/appearance/motion mismatch: {key}')
             phase = observed.get('phase_ms')
-            if isinstance(phase, bool) or not isinstance(phase, (int, float)) or phase < 0:
+            if (isinstance(phase, bool) or not isinstance(phase, (int, float))
+                    or phase < 0 or phase > 10000 or not math.isfinite(phase)):
                 raise ValueError(f'Missing measured event phase: {key}')
             state = observed.get('observed_state')
             if not isinstance(state, dict) or not state:
