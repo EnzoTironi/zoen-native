@@ -105,7 +105,14 @@ def contract_at(root, ref=None):
                    for path in (root / "crates/zoen-ffi/src").rglob("*.rs")}
     else:
         paths = git(root, "ls-tree", "-r", "--name-only", ref, "crates/zoen-ffi/src").stdout.splitlines()
+        legacy = not paths
+        if legacy:  # revisions before the roda -> zoen rename
+            paths = git(root, "ls-tree", "-r", "--name-only", ref, "crates/roda-ffi/src").stdout.splitlines()
         sources = {path: git(root, "show", ref + ":" + path).stdout for path in paths if path.endswith(".rs")}
+        if legacy:
+            sources = {path.replace("crates/roda-ffi/", "crates/zoen-ffi/"):
+                       re.sub(r"Roda(?=[A-Z])", "Zoen", re.sub(r"\broda_", "zoen_", text))
+                       for path, text in sources.items()}
     return source_contract(sources)
 
 
