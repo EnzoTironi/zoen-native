@@ -1,5 +1,6 @@
-//! A package claimed while a device connects must trigger refill. Hold the real NATS
-//! presence lookup between the handshake and live attachment, then claim the package.
+//! A package claimed around reconnect must still trigger refill for the attaching device.
+//! Login no longer awaits a NATS presence self-ping, so this journey synchronizes on
+//! live attachment (hub online) rather than holding that ping between handshake and add.
 
 mod common;
 use common::*;
@@ -50,32 +51,24 @@ async fn a_connecting_device_does_not_miss_a_low_stock_notice() {
         tokio::time::sleep(Duration::from_millis(20)).await;
     }
 
-    // A peer interested in Bruno holds the presence reply. No device is attached yet.
+    // Subscribe before reconnect so we can observe the low-stock bus publish.
     let bus = async_nats::connect(w.nats.as_ref().unwrap()).await.unwrap();
     let hash =
         Sha256::digest([b"zoen-subject-v1\0".as_slice(), bruno.identity.as_bytes()].concat());
     let subject = format!("zoen.{}.to.{}", w.cell, hex::encode(&hash[..16]));
     let mut peer = bus.subscribe(subject).await.unwrap();
     bus.flush().await.unwrap();
+
     let mut connecting = RawClient::reconnect(&w.relay_url(), bruno.clone()).await;
-    let ping = tokio::time::timeout(Duration::from_secs(3), peer.next())
-        .await
-        .expect("presence ping timeout")
-        .expect("presence ping");
-    assert_eq!(
-        ping.headers
-            .as_ref()
-            .unwrap()
-            .get("Zoen-Kind")
-            .unwrap()
-            .as_str(),
-        "ping"
-    );
-    assert_eq!(
-        w.sessions_online(),
-        1,
-        "the connecting device attached before the controlled claim"
-    );
+    let attached = tokio::time::Instant::now() + Duration::from_secs(3);
+    while w.sessions_online() < 2 {
+        assert!(
+            tokio::time::Instant::now() < attached,
+            "connecting device never attached"
+        );
+        tokio::time::sleep(Duration::from_millis(20)).await;
+    }
+
     ana.request(Op::ClaimKeyPackages {
         ids: vec![bruno.identity.clone()],
         operation_id: None,
@@ -84,8 +77,6 @@ async fn a_connecting_device_does_not_miss_a_low_stock_notice() {
     .expect("claim the eighth package");
     assert_eq!(w.count(&sql).await, 7);
 
-    // Observe the low-stock publish while only this peer is subscribed. This ensures
-    // it cannot later arrive via a newly attached subscription and hide the race.
     let low = tokio::time::timeout(Duration::from_secs(3), peer.next())
         .await
         .expect("low-stock publish timeout")
@@ -94,18 +85,6 @@ async fn a_connecting_device_does_not_miss_a_low_stock_notice() {
         ServerFrame::decode(&low.payload).unwrap(),
         ServerFrame::KeyPackagesLow { remaining: 7, .. }
     ));
-    assert_eq!(
-        w.sessions_online(),
-        1,
-        "the presence hold expired before the low-stock publish"
-    );
-    bus.publish(
-        ping.reply.expect("presence reply address"),
-        Vec::new().into(),
-    )
-    .await
-    .unwrap();
-    bus.flush().await.unwrap();
 
     let notice = tokio::time::timeout(Duration::from_secs(3), connecting.recv()).await;
     assert!(
