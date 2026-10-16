@@ -45,6 +45,7 @@ The first release is built around one end-to-end journey. Bruno, a barber, descr
   <tr>
     <td align="center"><img src="docs/screens/iphone/approvals-light.webp" width="240" alt="Owner notes on iPhone: the agent asks for approval" /><br/><sub>“Your agent needs you”</sub></td>
     <td align="center"><img src="docs/screens/iphone/approvals-dark.webp" width="240" alt="The same owner notes in dark mode" /><br/><sub>The same cards in dark mode</sub></td>
+    <td align="center"><img src="docs/screens/iphone/agenda-light.webp" width="240" alt="Bruno's booking page: a haircut request from Marina waiting for Confirm" /><br/><sub>Bookings come in</sub></td>
   </tr>
 </table>
 
