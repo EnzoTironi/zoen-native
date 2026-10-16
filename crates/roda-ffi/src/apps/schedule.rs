@@ -484,10 +484,6 @@ pub fn pending(st: &Value) -> usize {
         .count()
 }
 
-pub fn accent(st: &Value) -> &str {
-    st["accentHex"].as_str().unwrap_or("#3D7A28")
-}
-
 // ── the rules ──
 
 fn local(tz: Tz, ms: i64) -> Option<chrono::DateTime<Tz>> {

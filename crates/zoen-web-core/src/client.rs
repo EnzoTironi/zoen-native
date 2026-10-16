@@ -1195,6 +1195,11 @@ impl<S: Signer> Client<S> {
     }
 
     pub fn conversations(&self) -> Vec<ConversationView> {
+        self.conversations_at(0, false)
+    }
+
+    /// Projection time and language supplied by the displaying client, as on native.
+    pub fn conversations_at(&self, now_ms: i64, english: bool) -> Vec<ConversationView> {
         self.logs.keys().filter_map(|space| {
             let (title, kind, _) = self.metadata(space)?;
             let roster = self.roster(space);
@@ -1261,7 +1266,7 @@ impl<S: Signer> Client<S> {
             };
             let (all_delivered, all_read) = (watermark(|r| r.0.max(r.1)), watermark(|r| r.1));
             let my_read = receipts.and_then(|r| r.get(me)).map(|r| r.1).unwrap_or(0);
-            let cards = crate::cards::project(events);
+            let cards = crate::cards::project(events, now_ms, english);
             let mut messages = events.iter().filter_map(|event| {
                 let mut view = self.message_view(event, "confirmed", None)?;
                 view.entry = Some(event.hash.clone());

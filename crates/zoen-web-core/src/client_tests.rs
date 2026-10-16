@@ -721,3 +721,24 @@ fn counterpart_preserves_missing_metadata_without_defaults() {
     assert!(value["glyph"].is_null());
     assert!(value.get("avatarRef").is_none());
 }
+
+#[test]
+fn authorized_app_snapshots_use_shared_native_clock_locale_and_versions() {
+    use roda_types::{AppDoc, ItemContent, ItemKind};
+    let (mut client, author, _, mut log, _) = web_fixture();
+    let content = |name: &str| ItemContent::App(AppDoc { app: "pet".into(), resource_uri: "ui://roda/pet".into(), title: name.into(), state_json: serde_json::json!({"name":name,"updated":0,"fullness":90,"energy":90,"joy":90}).to_string() });
+    clear(&mut log, &author, EventBody::ItemCreated { item: "actual-pet".into(), kind: ItemKind::App, content: content("Peanut"), origin: "human".into() }, 3);
+    clear(&mut log, &author, EventBody::ItemVersioned { item: "actual-pet".into(), content: content("Renamed"), note: "edit".into() }, 4);
+    client.logs.insert(log.space().into(), log.clone());
+    let views = client.conversations_at(3_600_000, true);
+    let snapshot = views[0].messages.iter().find_map(|m| m.card.as_ref()).unwrap().snapshot.as_ref().unwrap();
+    assert_eq!(snapshot["title"], "Renamed");
+    assert_eq!(snapshot["bars"][0]["label"], "Food");
+    assert_eq!(snapshot["bars"][0]["value"], 0.84);
+    clear(&mut log, &author, EventBody::ItemReverted { item: "actual-pet".into(), to_version: 1, note: "undo".into() }, 5);
+    client.logs.insert(log.space().into(), log);
+    let views = client.conversations_at(0, false);
+    let snapshot = views[0].messages.iter().find_map(|m| m.card.as_ref()).unwrap().snapshot.as_ref().unwrap();
+    assert_eq!(snapshot["title"], "Peanut");
+    assert_eq!(snapshot["bars"][0]["label"], "Comida");
+}
