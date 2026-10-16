@@ -154,25 +154,7 @@ struct SpaceView: View {
             .environment(\.chatBackdrop, !background.isNone)
             // Messages fade out just above the composer instead of ghosting through its
             // glass; the chat background (drawn below this mask) stays whole.
-            .mask {
-                GeometryReader { g in
-                    let fade: CGFloat = 28
-                    let cut = composerTop.isFinite ? max(0, composerTop - g.frame(in: .global).minY) : g.size.height
-                    // Top: hidden under the header and pinned card, then a short fade in.
-                    let top = min(cut, max(0, chromeBottom - g.frame(in: .global).minY - 6))
-                    let topFade = min(18, max(0, cut - top))
-                    VStack(spacing: 0) {
-                        Color.clear.frame(height: top)
-                        LinearGradient(colors: [.black.opacity(0), .black], startPoint: .top, endPoint: .bottom)
-                            .frame(height: topFade)
-                        Color.black.frame(height: max(0, cut - fade - top - topFade))
-                        LinearGradient(colors: [.black, .black.opacity(0)], startPoint: .top, endPoint: .bottom)
-                            .frame(height: min(fade, cut))
-                        Color.clear
-                    }
-                }
-                .ignoresSafeArea()
-            }
+            .mask { ChatFadeMask(composerTop: composerTop, chromeBottom: chromeBottom) }
             .background(ChatBackdropView(background: background, spaceId: spaceId, layout: backgroundState.layout).ignoresSafeArea())
             // A bar, not an inset: iOS 26 fades and blurs what scrolls under the composer,
             // so message text doesn't ghost through its glass.
@@ -1438,5 +1420,31 @@ struct NewMessagesPill: View {
         .buttonStyle(.plain)
         .accessibilityIdentifier("new-messages-pill")
         .accessibilityHint(Text("Jumps to the latest message"))
+    }
+}
+
+/// Hides messages under the header/pinned card and fades them out above the composer.
+private struct ChatFadeMask: View {
+    let composerTop: CGFloat
+    let chromeBottom: CGFloat
+
+    var body: some View {
+        GeometryReader { g in
+            let fade: CGFloat = 28
+            let cut = composerTop.isFinite ? max(0, composerTop - g.frame(in: .global).minY) : g.size.height
+            // Top: hidden under the header and pinned card, then a short fade in.
+            let top = min(cut, max(0, chromeBottom - g.frame(in: .global).minY - 6))
+            let topFade = min(18, max(0, cut - top))
+            VStack(spacing: 0) {
+                Color.clear.frame(height: top)
+                LinearGradient(colors: [.black.opacity(0), .black], startPoint: .top, endPoint: .bottom)
+                    .frame(height: topFade)
+                Color.black.frame(height: max(0, cut - fade - top - topFade))
+                LinearGradient(colors: [.black, .black.opacity(0)], startPoint: .top, endPoint: .bottom)
+                    .frame(height: min(fade, cut))
+                Color.clear
+            }
+        }
+        .ignoresSafeArea()
     }
 }

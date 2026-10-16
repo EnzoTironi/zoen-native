@@ -7,6 +7,7 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 WHAT="${1:-all}"
+[[ $# -gt 0 ]] && shift
 SIM="${SIM:-iPhone 17 Pro}"
 DD="$(pwd)/build/DerivedData"
 
