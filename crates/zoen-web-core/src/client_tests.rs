@@ -199,6 +199,63 @@ fn native_sqlite_welcome_messages_saved_reload_and_removal_use_shared_mls() {
         .unwrap();
     assert_eq!(client.conversations()[0].messages[0].text, "Native to web");
 
+    // Ordinary files need a companion chat post for native's Entry projection.
+    let before_media = client.saved.outbox.clone();
+    let file = crate::media::seal_file("report.txt", "text/plain", b"report", None)
+        .unwrap()
+        .doc;
+    client.queue_file(space, file, 11).unwrap();
+    let events: Vec<_> = client
+        .saved
+        .outbox
+        .values()
+        .filter_map(|p| p.inner.clone())
+        .collect();
+    let item = events
+        .iter()
+        .find_map(|e| match &e.body {
+            EventBody::ItemCreated { item, .. } => Some(item.clone()),
+            _ => None,
+        })
+        .unwrap();
+    assert!(events.iter().any(|e| matches!(&e.body,
+        EventBody::MessagePosted { attaches: Some(id), .. } if id == &item)));
+    assert_eq!(
+        client.conversations()[0]
+            .messages
+            .iter()
+            .filter(|m| m.file.is_some())
+            .count(),
+        1
+    );
+    client.saved.outbox = before_media.clone();
+    let target = client.conversations()[0].messages[0].entry.clone().unwrap();
+    let expected = client
+        .resolve_post(space, &target)
+        .unwrap()
+        .client_id
+        .clone();
+    let mut voice = crate::media::seal_file("voice.webm", "audio/webm", b"voice", None)
+        .unwrap()
+        .doc;
+    voice.voice = Some(roda_types::VoiceMeta {
+        reply: Some(roda_types::ReplyRef {
+            to: target,
+            thread: false,
+        }),
+        ..Default::default()
+    });
+    client.queue_file(space, voice, 11).unwrap();
+    assert!(client
+        .saved
+        .outbox
+        .values()
+        .filter_map(|p| p.inner.as_ref())
+        .any(|e| matches!(&e.body,
+        EventBody::ItemCreated { content: roda_types::ItemContent::File(doc), .. }
+        if doc.voice.as_ref().and_then(|v| v.reply.as_ref()).is_some_and(|r| r.to == expected))));
+    client.saved.outbox = before_media;
+
     let sealed =
         crate::media::seal_file("voice.webm", "audio/webm", b"retained audio", None).unwrap();
     let chunks = sealed

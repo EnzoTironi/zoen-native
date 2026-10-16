@@ -501,18 +501,26 @@ impl<S: Signer> Client<S> {
     fn queue_file_inner(
         &mut self,
         space: &str,
-        doc: roda_types::FileDoc,
+        mut doc: roda_types::FileDoc,
         now_ms: i64,
         failure: Option<String>,
     ) -> Result<Update, String> {
         if doc.chunks.is_empty() {
             return Err("file empty or too large".into());
         }
+        if let Some(reply) = doc.voice.as_mut().and_then(|voice| voice.reply.as_mut()) {
+            let target = self
+                .resolve_post(space, &reply.to)
+                .ok_or("That message is no longer available.")?;
+            reply.to = target.client_id.clone();
+        }
+        let attachment = (!doc.is_voice()).then(|| roda_types::new_secret_id("msg"));
+        let item = roda_types::new_secret_id("it");
         let epoch = self.ready_epoch(space)?;
         let inner = self.clear_event(
             space,
             EventBody::ItemCreated {
-                item: roda_types::new_secret_id("it"),
+                item: item.clone(),
                 kind: roda_types::ItemKind::File,
                 content: roda_types::ItemContent::File(doc),
                 origin: "Adicionado".into(),
@@ -525,7 +533,30 @@ impl<S: Signer> Client<S> {
             .ok_or("invalid inner message")?;
         let mut pending = self.seal_inner(&event, epoch)?;
         pending.failure = failure;
+        let chat = if let Some(message) = attachment {
+            let inner = self.clear_event(
+                space,
+                EventBody::MessagePosted {
+                    message,
+                    text: String::new(),
+                    attaches: Some(item),
+                    reply: None,
+                    forwarded: false,
+                },
+                now_ms,
+            )?;
+            let event = inner
+                .envelope()?
+                .plain_event()
+                .ok_or("invalid inner message")?;
+            Some((event.client_id.clone(), self.seal_inner(&event, epoch)?))
+        } else {
+            None
+        };
         self.saved.outbox.insert(event.client_id.clone(), pending);
+        if let Some((id, pending)) = chat {
+            self.saved.outbox.insert(id, pending);
+        }
         self.update(Vec::new())
     }
 
@@ -612,7 +643,7 @@ impl<S: Signer> Client<S> {
         let inner = self.clear_event(
             space,
             EventBody::MessageAnnotated {
-                target: target.into(),
+                target,
                 note,
             },
             now_ms,
@@ -1312,7 +1343,20 @@ impl<S: Signer> Client<S> {
                 reply,
                 forwarded,
                 ..
-            } => (text.clone(), reply.clone(), *forwarded, None),
+            } => {
+                // The file Item already supplies the web card; its companion post is
+                // required by native timelines, not a second empty web bubble.
+                if matches!(
+                    &event.body,
+                    EventBody::MessagePosted {
+                        attaches: Some(_),
+                        ..
+                    }
+                ) {
+                    return None;
+                }
+                (text.clone(), reply.clone(), *forwarded, None)
+            }
             EventBody::ItemCreated {
                 content: roda_types::ItemContent::File(doc),
                 ..
