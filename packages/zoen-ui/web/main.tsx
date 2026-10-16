@@ -4,6 +4,7 @@ import QRCode from 'qrcode';
 import { message } from './boundary.ts';
 import { unavailableCapability } from './capabilities.ts';
 import { Pairing, type PairingState } from './pairing.ts';
+import { Devices } from './devices.tsx';
 import { Messages, type Conversation, type Invite, type MessagesState } from './messages.ts';
 import { inviteFromPath, relayUrl, type StoredSession } from './session.ts';
 import { BrowserVault } from './vault.ts';
@@ -64,7 +65,7 @@ function PairingGate({ runtime, session, linked }: { runtime: Runtime; session: 
     {state.kind === 'starting' ? <p role="status">Preparando este navegador com segurança…</p> : null}
     {state.kind === 'waiting' ? <>
       {qr ? <img className="zw-qr" src={qr} alt="Código para escanear com o Zoen no seu celular" /> : <p>Preparando o código…</p>}
-      <p>No celular, abra Aparelhos, toque em Conectar aparelho e escaneie este código.</p>
+      <p>No celular, abra Aparelhos, toque em Conectar aparelho e cole o código em texto mostrado abaixo.</p>
       <div className="zw-check" aria-label={`Código de conferência ${state.pending.check}`} tabIndex={-1} ref={checkFocus}>{state.pending.check}</div>
       <p className="zw-status">Confira se os seis números são iguais nas duas telas antes de aprovar no celular.</p>
       <p className="zw-status" role="status">{state.connection.kind === 'ready' ? 'Esperando a aprovação no celular…' :
@@ -72,6 +73,7 @@ function PairingGate({ runtime, session, linked }: { runtime: Runtime; session: 
       <details><summary>Usar código em texto</summary><p className="zw-code">{state.pending.code}</p>
         <button className="zw-secondary" onClick={() => { void navigator.clipboard.writeText(state.pending.code).then(() => setCopied(true))
           .catch(() => setState({ kind: 'failed', message: 'O navegador bloqueou a cópia. Selecione o código para copiar.' })); }}>{copied ? 'Copiado' : 'Copiar código'}</button></details>
+      <button className="zw-secondary" onClick={() => { running.current?.stop(); setState({ kind: 'idle' }); }}>Cancelar conexão</button>
     </> : null}
     {state.kind === 'failed' ? <p className="zw-error" role="alert" tabIndex={-1} ref={errorFocus}>{state.message}</p> : null}
   </Gate>;
@@ -121,6 +123,7 @@ function Linked({ runtime, session, forget }: { runtime: Runtime; session: Extra
   const [state, setState] = useState<MessagesState>({ kind: 'loading' });
   const [selected, setSelected] = useState('');
   const [showInvite, setShowInvite] = useState(invitation !== null);
+  const [showDevices, setShowDevices] = useState(false);
   const running = useRef<Messages | null>(null);
   useEffect(() => {
     const messages = new Messages({ ...runtime, session, changed: setState });
@@ -135,8 +138,9 @@ function Linked({ runtime, session, forget }: { runtime: Runtime; session: Extra
   return <Messenger conversations={conversations} identity={session.account.identity} name={session.account.name} connected={connected} status={status}
     messages={running} selected={selected} select={(id) => { setSelected(id); setShowInvite(false); }}
     footer={<>{state.kind === 'failed' ? <button className="zw-secondary" onClick={() => location.reload()}>Recarregar</button> : null}
+      <button className="zw-secondary" onClick={() => setShowDevices(true)}>Aparelhos</button>
       <button className="zw-secondary" onClick={forget}>Sair</button></>}>
-    {showInvite && invitation ? <Invitation code={invitation} messages={running} connected={connected} conversations={conversations}
+    {showDevices ? <Devices messages={running.current} current={session.account.device} close={() => setShowDevices(false)} /> : showInvite && invitation ? <Invitation code={invitation} messages={running} connected={connected} conversations={conversations}
       notice={state.kind === 'active' ? state.notice : state.kind === 'failed' ? state.message : null}
       opened={(space) => { setSelected(space); setShowInvite(false); }} cancel={() => setShowInvite(false)} /> : undefined}
   </Messenger>;

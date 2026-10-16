@@ -28,7 +28,7 @@ test('nonexportable WebCrypto keys sign and authenticate encrypted session snaps
   await assert.rejects(crypto.subtle.exportKey('raw', key));
   const session: StoredSession = { kind: 'pending', pending: {
     device: '11'.repeat(32), relay: 'https://relay.example', hpke_secret: '22'.repeat(32), secret: '33'.repeat(32),
-    code: 'zoen-link:1:' + '11'.repeat(32) + '22'.repeat(32) + '33'.repeat(32), check: '123456', box_id: '44'.repeat(32),
+    code: 'zoen-link:1:' + '11'.repeat(32) + '22'.repeat(32) + '33'.repeat(32), check: '123456', box_id: '44'.repeat(32), expires_at_ms: 0,
   } };
   const sealed = await sealSession(session, key);
   assert.deepEqual(await openSession(sealed, key), session);
