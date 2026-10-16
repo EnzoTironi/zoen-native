@@ -167,7 +167,23 @@ fun SearchScreen(model: ZoenViewModel, state: AppState, navigate: (NavKey) -> Un
     val hits = if (current) outcome.hits else emptyList()
     val catalog = if (current) outcome.catalog else emptyList()
     val error = if (current) outcome.error else null
-    val people = state.spaces.flatMap { it.members }.filterNot { it.isMe }.distinctBy { it.id }
+    val remotePeople by produceState<List<Persona>>(emptyList(), trimmedQuery, state.demo) {
+        value = emptyList()
+        if (trimmedQuery.isNotEmpty() && !state.demo) {
+            delay(300)
+            try { value = model.repository.network { it.findPeople(trimmedQuery) } }
+            catch (error: Exception) { if (error is CancellationException) throw error }
+        }
+    }
+    val knownPeople by produceState<List<Persona>>(emptyList(), state.revision) {
+        value = model.repository.query { it.personas() }
+    }
+    val people = (knownPeople + state.spaces.flatMap { it.members } + remotePeople).filterNot { it.isMe }.distinctBy { it.id }
+    val matchingPeople = people.filter { it.kind == PersonaKind.PERSON &&
+        (trimmedQuery.isEmpty() || it.name.contains(trimmedQuery, true) || it.handle.contains(trimmedQuery, true)) }
+    val matchingChats = state.spaces.filter { trimmedQuery.isEmpty() || it.title.contains(trimmedQuery, true) }.sortedByDescending { it.lastAtMs }
+    var startingPerson by remember { mutableStateOf<String?>(null) }
+    var createOpen by remember { mutableStateOf(false) }
     val suggested = people.filter { it.kind == PersonaKind.PERSON }.take(4) +
         people.filter { it.kind == PersonaKind.AGENT }.take(4)
     val featured = specs.take(3)
@@ -181,12 +197,16 @@ fun SearchScreen(model: ZoenViewModel, state: AppState, navigate: (NavKey) -> Un
     fun leave() { saveQuery(); keyboard?.hide(); back() }
     fun openPerson(person: Persona) {
         saveQuery(); keyboard?.hide()
-        val route = if (person.kind == PersonaKind.AGENT) Agent(person.id)
-        else state.spaces.firstOrNull { it.counterpart?.id == person.id }
-            ?.let { Chat(it.id) }
-            ?: state.spaces.firstOrNull { space -> space.members.any { it.id == person.id } }?.let { Chat(it.id) }
-            ?: Person(person.id)
-        navigate(route)
+        if (person.kind == PersonaKind.AGENT) { navigate(Agent(person.id)); return }
+        if (startingPerson != null) return
+        startingPerson = person.id
+        model.launch {
+            try {
+                val id = state.spaces.firstOrNull { it.counterpart?.id == person.id }?.id
+                    ?: model.repository.change { it.startDirect(person.id) }
+                navigate(Chat(id))
+            } finally { startingPerson = null }
+        }
     }
     fun openHit(hit: UniversalHit) {
         saveQuery(); keyboard?.hide()
@@ -207,7 +227,16 @@ fun SearchScreen(model: ZoenViewModel, state: AppState, navigate: (NavKey) -> Un
     }
     BackHandler(onBack = ::leave)
     LaunchedEffect(Unit) { focus.requestFocus() }
-    Scaffold(topBar = { ScreenBar(stringResource(R.string.search), ::leave) }) { padding ->
+    Scaffold(topBar = { ScreenBar(stringResource(R.string.search), ::leave, actions = {
+        Box {
+            TextButton(onClick = { createOpen = true }) { Text(stringResource(R.string.create)) }
+            DropdownMenu(createOpen, { createOpen = false }) {
+                DropdownMenuItem(text = { Text(stringResource(R.string.new_chat)) }, onClick = { createOpen = false; navigate(NewChat) })
+                DropdownMenuItem(text = { Text(stringResource(R.string.new_space)) }, onClick = { createOpen = false; navigate(NewSpace) })
+                DropdownMenuItem(text = { Text(stringResource(R.string.join_space)) }, onClick = { createOpen = false; navigate(Join("")) })
+            }
+        }
+    }) }) { padding ->
         Column(Modifier.fillMaxSize().padding(padding).imePadding()) {
             OutlinedTextField(query, { query = it }, Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp)
                 .focusRequester(focus).testTag("search"),
@@ -241,6 +270,19 @@ fun SearchScreen(model: ZoenViewModel, state: AppState, navigate: (NavKey) -> Un
             }
             if (loading) LinearProgressIndicator(Modifier.fillMaxWidth().padding(top = 8.dp))
             LazyColumn(Modifier.weight(1f).testTag("search-results"), contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                if (scope == SearchScope.All || scope == SearchScope.Spaces) {
+                    items(matchingChats, key = { "local-chat:" + it.id }) { chat ->
+                        ListItem(headlineContent = { Text(chat.title) }, leadingContent = { SpaceAvatar(chat, size = 40) },
+                            modifier = Modifier.testTag("search-chat:" + chat.id).clickable { saveQuery(); keyboard?.hide(); navigate(Chat(chat.id)) })
+                    }
+                }
+                if (scope == SearchScope.All || scope == SearchScope.People) {
+                    items(matchingPeople, key = { "recipient:" + it.id }) { person ->
+                        ListItem(headlineContent = { Text(person.name) }, supportingContent = { Text("@${person.handle}") },
+                            leadingContent = { Avatar(person, size = 40) },
+                            modifier = Modifier.testTag("search-recipient:" + person.id).clickable(enabled = startingPerson == null) { openPerson(person) })
+                    }
+                }
                 if (trimmedQuery.isEmpty()) {
                     if (recentQueries.isNotEmpty()) {
                         item("recents-header") { SearchSectionTitle(stringResource(R.string.search_recent), stringResource(R.string.search_clear_recent)) {
@@ -278,7 +320,7 @@ fun SearchScreen(model: ZoenViewModel, state: AppState, navigate: (NavKey) -> Un
                             OutlinedButton(onClick = { retry++ }) { Text(stringResource(R.string.retry)) }
                         }
                     }
-                } else if (!loading && hits.isEmpty() && catalog.isEmpty()) {
+                } else if (!loading && hits.isEmpty() && catalog.isEmpty() && matchingChats.isEmpty() && matchingPeople.isEmpty()) {
                     item("no-results") { Text(stringResource(R.string.search_not_found), style = MaterialTheme.typography.titleLarge) }
                     if (suggestions.isNotEmpty()) {
                         item("suggestions-label") { Text(stringResource(R.string.search_try_suggestion), color = MaterialTheme.colorScheme.onSurfaceVariant) }

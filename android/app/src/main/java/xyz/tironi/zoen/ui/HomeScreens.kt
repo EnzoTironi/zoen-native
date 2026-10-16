@@ -85,9 +85,9 @@ internal fun ConversationsScreen(model: ZoenViewModel, state: AppState, navigate
                 val apps = state.items.filter { item ->
                     item.app?.let { !JSONObject(it.viewJson).optBoolean("released") } == true && WidgetSnapshot.from(item) != null
                 }.asReversed()
-                if (apps.isNotEmpty() && !showArchived) {
+                if (!showArchived) {
                     item {
-                        MiniAppTileStrip(model, state, apps, onOpenItem = { navigate(Item(it)) })
+                        MiniAppTileStrip(model, state, apps, onOpenItem = { navigate(Item(it)) }, onOpenNotifications = { navigate(Activity) })
                     }
                 }
                 // WhatsApp: "Archived" above the chats while there are any.

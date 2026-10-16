@@ -9,8 +9,8 @@ class PrimaryNavigationTest {
         assertEquals(false, SettingsPage.entries.any { it.name == "Preferences" })
     }
 
-    @Test fun nativeFourDestinationsHaveStableOrderAndNoStoreTab() {
-        assertEquals(listOf(Tab.Chats, Tab.Spaces, Tab.Notifications, Tab.Profile), Tab.main)
+    @Test fun nativeThreeDestinationsKeepNotificationsInHomeAndGroupsInChats() {
+        assertEquals(listOf(Tab.Chats, Tab.Marketplace, Tab.Profile), Tab.main)
         assertEquals(Tab.entries.toList(), Tab.main)
     }
 }

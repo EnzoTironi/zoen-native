@@ -31,4 +31,4 @@ import kotlinx.serialization.Serializable
 
 @Serializable data object Activity : NavKey
 
-enum class Tab { Chats, Spaces, Notifications, Profile; companion object { val main = entries.toList() } }
+enum class Tab { Chats, Marketplace, Profile; companion object { val main = entries.toList() } }

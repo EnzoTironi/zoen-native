@@ -12,7 +12,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.rounded.Edit
+import androidx.compose.material.icons.rounded.Search
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
@@ -40,7 +40,7 @@ internal object AppleChromeMetrics {
     const val ComposerHoldMillis = 230L
 }
 
-/** Four real destinations and a separate New message action, matching the native TabView.
+/** Three real destinations and a detached unified Search/start-chat action.
  * OS navigation insets remain intact: no screenshot crop participates in layout. */
 @Composable
 internal fun AppleBottomBar(tab: Tab, unread: Int, pending: Int, me: Persona?, select: (Tab) -> Unit, newMessage: () -> Unit, pendingIds: Set<String> = emptySet(), transportActive: Boolean = false, offline: Boolean = false) {
@@ -65,9 +65,8 @@ internal fun AppleBottomBar(tab: Tab, unread: Int, pending: Int, me: Persona?, s
                     val color = if (on) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface
                     CompositionLocalProvider(LocalContentColor provides color) {
                         Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                            TabIcon(target, if (target == Tab.Notifications) pending else 0,
+                            TabIcon(target, if (target == Tab.Chats) unread else 0,
                                 on, me, press = taps,
-                                pendingIds = if (target == Tab.Notifications) pendingIds else emptySet(),
                                 active = target == Tab.Chats && transportActive)
                             Text(tabName(target), fontSize = 11.sp, lineHeight = 13.sp,
                                 fontWeight = if (on) FontWeight.SemiBold else FontWeight.Medium, maxLines = 1)
@@ -83,7 +82,7 @@ internal fun AppleBottomBar(tab: Tab, unread: Int, pending: Int, me: Persona?, s
         }
         var composeTaps by remember { mutableIntStateOf(0) }
         NativeIconButton({ composeTaps++; newMessage() }, Modifier.size(62.dp).zoenGlass(CircleShape).testTag("newChat")) {
-            NativeAnimatedSymbol("compose", "New message", press = composeTaps)
+            MotionVectorIcon(Icons.Rounded.Search, "Search")
         }
     }
 }

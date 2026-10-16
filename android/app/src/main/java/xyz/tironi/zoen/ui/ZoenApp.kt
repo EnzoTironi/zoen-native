@@ -70,13 +70,11 @@ fun ZoenApp(model: ZoenViewModel, deepLink: String?, consumed: () -> Unit) {
     key(state.demo, state.me?.id, LocalConfiguration.current.locales[0].language) {
         var tab by rememberSaveable { mutableStateOf(Tab.Chats) }
         val chats = rememberNavBackStack(Home)
-        val spaces = rememberNavBackStack(Home)
-        val notifications = rememberNavBackStack(Home)
+        val marketplace = rememberNavBackStack(Home)
         val profile = rememberNavBackStack(Home)
         val stack = when (tab) {
             Tab.Chats -> chats
-            Tab.Spaces -> spaces
-            Tab.Notifications -> notifications
+            Tab.Marketplace -> marketplace
             Tab.Profile -> profile
         }
         val navigate: (NavKey) -> Unit = { key ->
@@ -141,7 +139,7 @@ fun ZoenApp(model: ZoenViewModel, deepLink: String?, consumed: () -> Unit) {
             val density = LocalDensity.current
             Row {
                 if (rail) NavigationRail(modifier = Modifier.fillMaxHeight(), header = {
-                    NativeIconButton(onClick = { navigate(NewChat) }) { MotionVectorIcon(Icons.Rounded.Edit, "New message") }
+                    NativeIconButton(onClick = { navigate(Search) }) { MotionVectorIcon(Icons.Rounded.Search, stringResource(R.string.search)) }
                 }) {
                     Spacer(Modifier.height(24.dp))
                     Tab.main.forEach { target ->
@@ -151,16 +149,12 @@ fun ZoenApp(model: ZoenViewModel, deepLink: String?, consumed: () -> Unit) {
                             if (tab != target) haptics.perform(ZoenFeedback.Selection)
                             tab = target
                         }, icon = {
-                            TabIcon(target, if (target == Tab.Chats) unread else if (target == Tab.Notifications) state.pending else 0,
+                            TabIcon(target, if (target == Tab.Chats) unread else 0,
                                 tab == target, state.me, press = taps,
-                                pendingIds = if (target == Tab.Notifications) state.requests.filter {
-                                    it.status == xyz.tironi.zoen.core.RequestStatus.PENDING && it.agent.isMine
-                                }.map { it.id }.toSet() else emptySet(),
                                 active = target == Tab.Chats && (state.typing.isNotEmpty() || state.connection.state in setOf("connecting", "reconnecting")))
                         }, label = { Text(tabName(target)) })
                     }
                     Spacer(Modifier.weight(1f))
-                    NativeIconButton(onClick = { navigate(Search) }) { MotionVectorIcon(Icons.Rounded.Search, stringResource(R.string.search)) }
                 }
                 Scaffold(
                     modifier = Modifier.weight(1f),
@@ -170,7 +164,7 @@ fun ZoenApp(model: ZoenViewModel, deepLink: String?, consumed: () -> Unit) {
                         if (!rail && stack.size == 1) AppleBottomBar(tab, unread, state.pending, state.me, { target ->
                             if (tab != target) haptics.perform(ZoenFeedback.Selection)
                             tab = target
-                        }, { navigate(NewChat) }, pendingIds = state.requests.filter {
+                        }, { navigate(Search) }, pendingIds = state.requests.filter {
                             it.status == xyz.tironi.zoen.core.RequestStatus.PENDING && it.agent.isMine
                         }.map { it.id }.toSet(), transportActive = state.typing.isNotEmpty() || state.connection.state in setOf("connecting", "reconnecting"),
                             offline = state.account != null && state.connection.state == "offline")
@@ -184,8 +178,7 @@ fun ZoenApp(model: ZoenViewModel, deepLink: String?, consumed: () -> Unit) {
                                 Box(Modifier.fillMaxSize().statusBarsPadding()) {
                                     when (tab) {
                                         Tab.Chats -> ConversationsScreen(model, state, navigate, split)
-                                        Tab.Spaces -> SpacesDirectoryScreen(state, navigate)
-                                        Tab.Notifications -> ActivityScreen(model, state, navigate, back, root = true)
+                                        Tab.Marketplace -> MiniAppStoreScreen(model, state, onOpenItem = { navigate(Item(it)) }, back = back, onOpenAgent = { navigate(Agent(it)) })
                                         Tab.Profile -> YouScreen(model, state, navigate, { tab = Tab.Chats })
                                     }
                                 }
@@ -232,19 +225,17 @@ fun ZoenApp(model: ZoenViewModel, deepLink: String?, consumed: () -> Unit) {
 @Composable
 internal fun tabName(tab: Tab): String = when (tab) {
     Tab.Chats -> stringResource(R.string.chats)
-    Tab.Spaces -> "Spaces"
-    Tab.Notifications -> "Notifications"
+    Tab.Marketplace -> "Marketplace"
     Tab.Profile -> "Profile"
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 internal fun TabIcon(tab: Tab, count: Int, selected: Boolean, me: xyz.tironi.zoen.core.Persona?, press: Int = 0, pendingIds: Set<String> = emptySet(), active: Boolean = false) {
-    BadgedBox(badge = { if (count > 0 && (tab == Tab.Chats || tab == Tab.Notifications)) Badge { Text(if (count > 99) "99+" else count.toString()) } }) {
+    BadgedBox(badge = { if (count > 0 && tab == Tab.Chats) Badge { Text(if (count > 99) "99+" else count.toString()) } }) {
         when (tab) {
             Tab.Chats -> NativeAnimatedSymbol("chats_tab", tabName(tab), press = press, active = active)
-            Tab.Spaces -> NativeAnimatedSymbol("spaces_tab", tabName(tab), press = press)
-            Tab.Notifications -> NativeAnimatedSymbol("bell_tab", tabName(tab), press = press, pendingIds = pendingIds)
+            Tab.Marketplace -> MotionVectorIcon(Icons.Rounded.Storefront, tabName(tab))
             Tab.Profile -> Avatar(me, size = 26)
         }
     }
