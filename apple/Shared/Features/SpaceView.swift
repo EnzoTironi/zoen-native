@@ -47,7 +47,6 @@ struct SpaceView: View {
     @State private var actionTarget: TimelineEntry?
     @State private var forwardTarget: ThreadRef?
     @State private var editTarget: TimelineEntry?
-    @State private var editText = ""
     @State private var deleteTarget: TimelineEntry?
     /// The main timeline: thread replies live in their thread, not here.
     private var visible: [TimelineEntry] { entries.filter { $0.inThread == nil } }
@@ -154,25 +153,7 @@ struct SpaceView: View {
             .environment(\.chatBackdrop, !background.isNone)
             // Messages fade out just above the composer instead of ghosting through its
             // glass; the chat background (drawn below this mask) stays whole.
-            .mask {
-                GeometryReader { g in
-                    let fade: CGFloat = 28
-                    let cut = composerTop.isFinite ? max(0, composerTop - g.frame(in: .global).minY) : g.size.height
-                    // Top: hidden under the header and pinned card, then a short fade in.
-                    let top = min(cut, max(0, chromeBottom - g.frame(in: .global).minY - 6))
-                    let topFade = min(18, max(0, cut - top))
-                    VStack(spacing: 0) {
-                        Color.clear.frame(height: top)
-                        LinearGradient(colors: [.black.opacity(0), .black], startPoint: .top, endPoint: .bottom)
-                            .frame(height: topFade)
-                        Color.black.frame(height: max(0, cut - fade - top - topFade))
-                        LinearGradient(colors: [.black, .black.opacity(0)], startPoint: .top, endPoint: .bottom)
-                            .frame(height: min(fade, cut))
-                        Color.clear
-                    }
-                }
-                .ignoresSafeArea()
-            }
+            .mask { ChatFadeMask(composerTop: composerTop, chromeBottom: chromeBottom) }
             .background(ChatBackdropView(background: background, spaceId: spaceId, layout: backgroundState.layout).ignoresSafeArea())
             // A bar, not an inset: iOS 26 fades and blurs what scrolls under the composer,
             // so message text doesn't ghost through its glass.
@@ -231,7 +212,6 @@ struct SpaceView: View {
                         },
                         onForward: { forwardTarget = ThreadRef(id: target.id) },
                         onEdit: {
-                            if case .message(let text, _) = target.kind { editText = text }
                             editTarget = target
                         },
                         onDelete: { deleteTarget = target },
@@ -241,22 +221,13 @@ struct SpaceView: View {
             .sheet(item: $forwardTarget) { t in
                 ForwardSheet(fromSpaceId: spaceId, messageId: t.id).presentationDetents([.medium, .large])
             }
-            .alert("Edit message", isPresented: Binding(get: { editTarget != nil }, set: { if !$0 { editTarget = nil } })) {
-                TextField("Message", text: $editText)
-                Button("Save") {
-                    if let t = editTarget {
-                        model.perform { try model.core.editMessage(spaceId: spaceId, messageId: t.id, text: editText) }
-                    }
+            .sheet(item: $editTarget) { target in
+                if case .message(let text, _) = target.kind {
+                    MessageMutationSheet(spaceId: spaceId, messageId: target.id, text: text)
                 }
-                Button("Cancel", role: .cancel) {}
             }
-            .confirmationDialog("Delete for everyone?", isPresented: Binding(get: { deleteTarget != nil }, set: { if !$0 { deleteTarget = nil } }), titleVisibility: .visible) {
-                Button("Delete for everyone", role: .destructive) {
-                    if let t = deleteTarget {
-                        Haptics.remove()
-                        model.perform { try model.core.deleteMessage(spaceId: spaceId, messageId: t.id) }
-                    }
-                }
+            .sheet(item: $deleteTarget) { target in
+                MessageMutationSheet(spaceId: spaceId, messageId: target.id, deleting: true)
             }
             .sheet(item: $thread) { t in
                 ThreadSheet(spaceId: spaceId, rootId: t.id)
@@ -281,7 +252,7 @@ struct SpaceView: View {
                         demoIncomingSent = true
                         Task { await model.receiveIncomingStoryMessages() }
                     }
-                    .buttonStyle(.borderedProminent)
+                    .buttonStyle(.wabiGlassProminent)
                     .accessibilityIdentifier("demo-incoming-trigger")
                     .padding(.top, chromeHeight + 8)
                     .padding(.trailing, 14)
@@ -700,8 +671,8 @@ struct EntryView: View {
                 }
                 MessageRow(author: entry.author, text: text, card: card, voice: entry.voice.map(VoiceNoteRef.init), atMs: entry.atMs, delivery: entry.delivery,
                            grouped: grouped && entry.replyTo == nil, endsRun: endsRun, isDirect: isDirect, onOpenItem: onOpenItem,
-                           quote: entry.replyTo, onQuote: { onJump?($0) }, onIntent: onSwipe)
-                    .modifier(MessageSwipe(enabled: onSwipe != nil) { onSwipe?($0) })
+                           quote: entry.replyTo, onQuote: { onJump?($0) })
+                    .modifier(MessageSwipe(enabled: onSwipe != nil, onActions: onLongPress) { onSwipe?($0) })
                     .onLongPressGesture(minimumDuration: 0.35) { onLongPress?() }
                 if !entry.reactions.isEmpty {
                     ReactionChips(spaceId: spaceId, entry: entry)
@@ -754,11 +725,6 @@ struct BubbleMeta: View {
     let atMs: Int64
     let delivery: Delivery?
     let mine: Bool
-
-    /// Figure spaces as wide as the time ("12:11 PM") plus a tick, so text wraps before the meta.
-    static func reserve(atMs: Int64, mine: Bool) -> String {
-        "\u{2002}" + String(repeating: "\u{2007}", count: RodaTime.clock(atMs).count + (mine ? 3 : 1))
-    }
 
     var body: some View {
         HStack(spacing: 3) {
@@ -869,7 +835,6 @@ struct MessageRow: View {
     /// Inline reply: the message this one answers, quoted at the top of the bubble.
     var quote: ReplyQuote? = nil
     var onQuote: ((String) -> Void)? = nil
-    var onIntent: ((MessageSwipeIntent) -> Void)? = nil
     @Environment(\.chatBackdrop) private var backdrop
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
@@ -931,15 +896,11 @@ struct MessageRow: View {
                                     ReplyQuoteView(quote: quote, mine: mine)
                                 }
                             }
-                            // WhatsApp: time and ticks sit inside the bubble, bottom right. A clear
-                            // run of the same width at the end of the text keeps them off the last line.
-                            Text("\(Text(attributed(text)))\(Text(verbatim: BubbleMeta.reserve(atMs: atMs, mine: mine)).font(.caption2).foregroundStyle(.clear))")
+                            BubbleText(text: Text(attributed(text))) {
+                                BubbleMeta(atMs: atMs, delivery: mine ? delivery : nil, mine: mine)
+                            }
                                 .font(.body)
                                 .foregroundStyle(mine ? Palette.myBubbleText : Palette.textPrimary)
-                                .overlay(alignment: .bottomTrailing) {
-                                    BubbleMeta(atMs: atMs, delivery: mine ? delivery : nil, mine: mine)
-                                        .offset(y: 3)
-                                }
                         }
                             .padding(.horizontal, quote == nil ? 14 : 10)
                             .padding(.top, quote == nil ? 9 : 8)
@@ -954,7 +915,6 @@ struct MessageRow: View {
                                 }
                             }
                             .shadow(color: .black.opacity(backdrop ? 0.1 : 0), radius: 1.5, y: 0.5)
-                            .textSelection(.enabled)
                             .alignmentGuide(.messageFace) { $0[.bottom] }
                         if mine && !grouped {
                             FirstBubbleFlourish(key: "\(author.id)-\(atMs)")
@@ -973,12 +933,7 @@ struct MessageRow: View {
                         .transition(reduceMotion ? .opacity : .scale(scale: 0.85, anchor: .topLeading).combined(with: .opacity))
                 }
             }
-            if !mine { Spacer(minLength: onIntent != nil ? 44 : (card?.app != nil ? 0 : 32)) }
-        }
-        .overlay(alignment: mine ? .leading : .trailing) {
-            if let onIntent {
-                MessageActionsMenu(author: author, onIntent: onIntent)
-            }
+            if !mine { Spacer(minLength: card?.app != nil ? 0 : 32) }
         }
     }
 
@@ -1043,7 +998,7 @@ struct InlineRequestRow: View {
                 Button { model.approve(request) } label: {
                     Text("Approve").foregroundStyle(ActionGlassForeground())
                 }
-                    .buttonStyle(.glassProminent)
+                    .buttonStyle(.wabiGlassProminent)
                     .controlSize(.small)
             case .stale:
                 ZoenIcon(.back, size: 17).scaleEffect(x: -1).foregroundStyle(Palette.amber)
@@ -1444,5 +1399,31 @@ struct NewMessagesPill: View {
         .buttonStyle(.plain)
         .accessibilityIdentifier("new-messages-pill")
         .accessibilityHint(Text("Jumps to the latest message"))
+    }
+}
+
+/// Hides messages under the header/pinned card and fades them out above the composer.
+private struct ChatFadeMask: View {
+    let composerTop: CGFloat
+    let chromeBottom: CGFloat
+
+    var body: some View {
+        GeometryReader { g in
+            let fade: CGFloat = 28
+            let cut = composerTop.isFinite ? max(0, composerTop - g.frame(in: .global).minY) : g.size.height
+            // Top: hidden under the header and pinned card, then a short fade in.
+            let top = min(cut, max(0, chromeBottom - g.frame(in: .global).minY - 6))
+            let topFade = min(18, max(0, cut - top))
+            VStack(spacing: 0) {
+                Color.clear.frame(height: top)
+                LinearGradient(colors: [.black.opacity(0), .black], startPoint: .top, endPoint: .bottom)
+                    .frame(height: topFade)
+                Color.black.frame(height: max(0, cut - fade - top - topFade))
+                LinearGradient(colors: [.black, .black.opacity(0)], startPoint: .top, endPoint: .bottom)
+                    .frame(height: min(fade, cut))
+                Color.clear
+            }
+        }
+        .ignoresSafeArea()
     }
 }

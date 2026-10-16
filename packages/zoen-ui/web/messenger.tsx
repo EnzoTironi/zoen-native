@@ -2,11 +2,15 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { message as reason } from './boundary.ts';
 import type { Conversation, FileDoc, Message, Messages, VoiceMeta } from './messages.ts';
 import { FileView, kindOf, thumbnail, useRecorder } from './media.tsx';
+import { MessageEditor } from './message-editor.tsx';
+import { MessageSearchResults } from './message-search-view.tsx';
+import type { MessageHit } from './message-search.ts';
+import { loadChatPreferences, saveChatPreferences, type ChatPreferences as Prefs } from './chat-preferences.ts';
 
-/** How I keep a chat. Local to this browser until the synced chat preferences reach the web core. */
-type Prefs = { pinned?: boolean; muted?: boolean; archived?: boolean };
-const PREFS = 'zoen.chat-prefs';
-function loadPrefs(): Record<string, Prefs> { try { return JSON.parse(localStorage.getItem(PREFS) ?? '{}') as Record<string, Prefs>; } catch { return {}; } }
+/** How I keep a chat. Local to this account/browser until synced preferences reach the web core. */
+function loadPrefs(identity: string): Record<string, Prefs> {
+  try { return loadChatPreferences(localStorage, identity); } catch { return {}; }
+}
 const FOLLOW = 'zoen.thread-follow';
 function loadFollow(): Record<string, boolean> { try { return JSON.parse(localStorage.getItem(FOLLOW) ?? '{}') as Record<string, boolean>; } catch { return {}; } }
 
@@ -181,7 +185,7 @@ export function Messenger({ conversations, identity, name, connected, status, me
   conversations: Conversation[]; identity: string; name: string; connected: boolean; status: string;
   messages: React.RefObject<Messages | null>; footer: React.ReactNode; selected: string; select: (id: string) => void; children?: React.ReactNode;
 }) {
-  const [prefs, setPrefs] = useState(loadPrefs);
+  const [prefs, setPrefs] = useState(() => loadPrefs(identity));
   const [follow, setFollow] = useState(loadFollow);
   const [search, setSearch] = useState('');
   const [showArchived, setShowArchived] = useState(false);
@@ -191,7 +195,11 @@ export function Messenger({ conversations, identity, name, connected, status, me
   const [forward, setForward] = useState<Message | null>(null);
   const [toast, setToast] = useState('');
   const end = useRef<HTMLDivElement>(null);
-  const savePrefs = (id: string, p: Prefs) => { const next = { ...prefs, [id]: p }; setPrefs(next); localStorage.setItem(PREFS, JSON.stringify(next)); };
+  const [searchTarget, setSearchTarget] = useState<MessageHit | null>(null);
+  const savePrefs = (id: string, p: Prefs) => {
+    const next = { ...prefs, [id]: p }; setPrefs(next);
+    try { saveChatPreferences(localStorage, identity, next); } catch { /* Storage may be disabled. */ }
+  };
   const toggleFollow = (root: string, on: boolean) => { const next = { ...follow, [root]: on }; setFollow(next); localStorage.setItem(FOLLOW, JSON.stringify(next)); };
   const lastAt = (c: Conversation) => c.messages.at(-1)?.at_ms ?? 0;
   const matches = conversations.filter((c) => c.title.toLocaleLowerCase('pt-BR').includes(search.toLocaleLowerCase('pt-BR')));
@@ -210,10 +218,17 @@ export function Messenger({ conversations, identity, name, connected, status, me
   useEffect(() => {
     if (!conversation?.unread || !connected) return;
     // Read means seen: the tab is visible and the window has focus, like WhatsApp Web.
-    const read = () => { if (document.visibilityState === 'visible' && document.hasFocus()) void messages.current?.markRead(conversation.id); };
+    const read = () => { if (document.visibilityState === 'visible' && document.hasFocus()) void messages.current?.markRead(conversation.id).catch(fail); };
     read(); document.addEventListener('visibilitychange', read); window.addEventListener('focus', read);
     return () => { document.removeEventListener('visibilitychange', read); window.removeEventListener('focus', read); };
   }, [conversation?.id, conversation?.unread, connected]);
+
+  useEffect(() => {
+    if (!searchTarget || conversation?.id !== searchTarget.space) return;
+    if (searchTarget.message.thread && threadRoot !== searchTarget.message.thread) { setThreadRoot(searchTarget.message.thread); return; }
+    const target = document.getElementById(`message-${searchTarget.message.id}`);
+    if (target) { target.scrollIntoView({ block: 'center' }); target.focus(); setSearchTarget(null); }
+  }, [searchTarget, conversation?.id, root?.id, threadRoot]);
 
   const space = conversation?.id ?? '';
   const act = {
@@ -232,10 +247,13 @@ export function Messenger({ conversations, identity, name, connected, status, me
         {showArchived ? <button className="zm-round glass" aria-label="Voltar" onClick={() => setShowArchived(false)}><Icon name="back" /></button> : null}
         <h1>{showArchived ? 'Arquivadas' : 'Conversas'}</h1>
       </header>
-      <label className="zm-search"><Icon name="search" /><span className="zw-sr-only">Buscar conversas</span>
+      <label className="zm-search"><Icon name="search" /><span className="zw-sr-only">Buscar conversas e mensagens</span>
         <input type="search" placeholder="Buscar" value={search} onChange={(e) => setSearch(e.target.value)} /></label>
       {!showArchived && threadsUnread ? <p className="zm-threads-row"><Icon name="thread" />Threads que você segue<span className="zm-badge">{threadsUnread}</span></p> : null}
       {!showArchived && archived.length ? <button className="zm-archived-row" onClick={() => setShowArchived(true)}><Icon name="archive" />Arquivadas<span>{archived.length}</span></button> : null}
+      {search.trim() ? <MessageSearchResults key={search.trim()} conversations={conversations} query={search} open={(hit) => {
+        select(hit.space); setSearchTarget(hit);
+      }} /> : null}
       <ul className="zm-chats">{list.map((c) => <ChatRow key={c.id} c={c} active={c.id === conversation?.id} prefs={prefs[c.id] ?? {}} open={() => select(c.id)} set={(p) => savePrefs(c.id, p)} />)}</ul>
       {!list.length ? <p className="zm-empty">{search ? 'Nenhuma conversa encontrada.' : 'As conversas do seu celular aparecem aqui.'}</p> : null}
       <footer className="zm-side-foot"><Avatar name={name} size={32} /><span><b>{name}</b><span className={connected ? 'zm-online' : 'zm-offline'} role="status">{status}</span></span>{footer}</footer>
@@ -271,6 +289,11 @@ export function Messenger({ conversations, identity, name, connected, status, me
       <Composer key={root.entry} placeholder="Responder na thread" disabled={!connected || !conversation?.can_send}
         submit={async (text) => { await messages.current?.post({ space, text, replyTo: root.entry!, thread: true }); if (follow[root.entry!] === undefined) toggleFollow(root.entry!, true); }} />
     </aside> : null}
+    {editing ? <MessageEditor key={`${space}:${editing.id}`} entry={editing} close={() => setEditing(null)} save={async (text) => {
+      const m = messages.current;
+      if (!m || !editing.entry) throw new Error('Recarregue o Zoen para tentar de novo.');
+      await m.annotate(space, editing.entry, { Edit: { text } });
+    }} /> : null}
     {forward ? <div className="zm-scrim" onClick={() => setForward(null)}><div className="zm-sheet" role="dialog" aria-label="Encaminhar para" onClick={(e) => e.stopPropagation()}>
       <h2>Encaminhar para</h2>
       <ul>{conversations.filter((c) => c.can_send).map((c) => <li key={c.id}><button onClick={() => {

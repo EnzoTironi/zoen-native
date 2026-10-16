@@ -4,6 +4,7 @@ use super::*;
 
 mod client_api;
 mod file_bounds;
+mod message_search;
 mod voice_notes;
 
 fn seeded() -> Arc<RodaEngine> {
@@ -53,6 +54,83 @@ fn seed_builds_the_story_and_every_log_verifies() {
     let plan = paraty_plan(&e);
     assert_eq!(plan.version, 2);
     assert_eq!(plan.plan.as_ref().unwrap().total_cents, 138_800);
+}
+
+#[test]
+fn request_previews_use_the_action_title_and_preserve_message_bodies() {
+    let e = seeded();
+    let crew = find_space(&e, "Turma do Sábado");
+    let title = "Ler a agenda da Lúcia pra achar um horário";
+    assert!(e
+        .demo_open_request(
+            crew.id.clone(),
+            "zoen".into(),
+            title.into(),
+            "Só livre/ocupado".into(),
+            "Agenda da Lúcia".into(),
+            "third_party_data".into(),
+            0,
+        )
+        .unwrap()
+        .is_some());
+    let preview = find_space(&e, "Turma do Sábado");
+    assert_eq!(preview.last_preview, title);
+    assert!(
+        preview.last_author.is_none(),
+        "a request summary needs no author prefix"
+    );
+    assert!(
+        preview.last_delivery.is_none(),
+        "requests carry no outgoing ticks"
+    );
+
+    let body = "Pedido: trazer água 😂";
+    e.send_message(crew.id, body.into()).unwrap();
+    let preview = find_space(&e, "Turma do Sábado");
+    assert_eq!(
+        preview.last_preview, body,
+        "ordinary text is never stripped"
+    );
+    assert!(preview.last_author.unwrap().is_me);
+}
+
+#[test]
+fn demo_receipts_reactions_and_threads_survive_reopen() {
+    let dir = std::env::temp_dir().join(format!("roda-demo-{}", roda_types::new_id("t")));
+    std::fs::create_dir_all(&dir).unwrap();
+    let path = dir.join("demo.sqlite").to_string_lossy().to_string();
+    for first in [true, false] {
+        let e = RodaEngine::open(path.clone(), "pt-BR".into()).unwrap();
+        assert_eq!(e.seed_demo_if_empty().unwrap(), first);
+        for title in ["Turma do Sábado", "Marina"] {
+            let space = find_space(&e, title);
+            let entries = e.timeline(space.id.clone()).unwrap();
+            for delivery in [Delivery::Sent, Delivery::Delivered, Delivery::Read] {
+                assert!(
+                    entries
+                        .iter()
+                        .any(|entry| entry.author.is_me && entry.delivery == delivery),
+                    "{title} has an outgoing {delivery:?} message"
+                );
+            }
+            assert!(entries.iter().any(|entry| !entry.reactions.is_empty()));
+            if title == "Turma do Sábado" {
+                let root = entries
+                    .iter()
+                    .find(|entry| entry.thread_replies > 0)
+                    .unwrap();
+                let thread = e.thread(space.id.clone(), root.id.clone()).unwrap();
+                assert_eq!(thread.len(), 2);
+                assert_eq!(thread[1].in_thread.as_deref(), Some(root.id.as_str()));
+            }
+            assert!(
+                !e.lock().net.synced.contains(&space.id),
+                "demo edits stay local"
+            );
+        }
+        assert!(e.verify_all().iter().all(|r| r.valid));
+    }
+    std::fs::remove_dir_all(dir).unwrap();
 }
 
 #[test]
@@ -2306,6 +2384,55 @@ fn the_agent_books_only_for_the_member_it_is_serving() {
 }
 
 #[test]
+fn failed_delivery_send_does_not_consume_the_watermark() {
+    let e = seeded();
+    let s = e.spaces().into_iter().find(|s| s.unread > 0).unwrap();
+    let first = e.lock().delivered_to_announce(&s.id).unwrap();
+    // Merely preparing a frame is not a successful send. Retrying must retain it.
+    assert_eq!(e.lock().delivered_to_announce(&s.id), Some(first));
+}
+
+#[test]
+fn receipt_replay_survives_offline_reads_and_restarts() {
+    let path = std::env::temp_dir().join(roda_types::new_id("receipt-replay"));
+    let e = RodaEngine::open(path.to_string_lossy().into(), "en".into()).unwrap();
+    e.seed_demo_if_empty().unwrap();
+    let spaces: Vec<_> = e.spaces().into_iter().filter(|s| s.unread > 0).collect();
+    assert!(spaces.iter().any(|s| s.members.len() == 2));
+    assert!(spaces.iter().any(|s| s.members.len() > 2));
+    for s in &spaces {
+        e.lock().net.synced.insert(s.id.clone());
+        let delivered = e.lock().delivered_to_announce(&s.id).unwrap();
+        e.lock().delivered_announced(&s.id, delivered);
+        assert_eq!(e.lock().delivered_to_announce(&s.id), None);
+        // No network task: only the durable local mark can carry this read forward.
+        e.mark_read(s.id.clone()).unwrap();
+        e.mark_read(s.id.clone()).unwrap();
+    }
+    for _ in 0..2 {
+        let frames = e.lock().receipts_to_replay();
+        for s in &spaces {
+            assert!(frames.iter().any(|(id, k)| id == &s.id
+                && matches!(k, roda_proto::EphemeralKind::Delivered { seq } if *seq > 0)));
+            assert!(frames.iter().any(|(id, k)| id == &s.id
+                && matches!(k, roda_proto::EphemeralKind::Read { seq } if *seq > 0)));
+        }
+    }
+    drop(e);
+    let e = RodaEngine::open(path.to_string_lossy().into(), "en".into()).unwrap();
+    for s in &spaces {
+        e.lock().net.synced.insert(s.id.clone());
+    }
+    let frames = e.lock().receipts_to_replay();
+    for s in &spaces {
+        assert!(frames.iter().any(|(id, k)| id == &s.id
+            && matches!(k, roda_proto::EphemeralKind::Read { seq } if *seq > 0)));
+    }
+    drop(e);
+    std::fs::remove_file(path).unwrap();
+}
+
+#[test]
 fn ticks_follow_the_lowest_read_up_to_watermark() {
     let dir = std::env::temp_dir().join(format!("roda-test-{}", roda_types::new_id("t")));
     std::fs::create_dir_all(&dir).unwrap();
@@ -2350,13 +2477,29 @@ fn ticks_follow_the_lowest_read_up_to_watermark() {
         e.lock().receipt(&s.id, o, 0, seq);
     }
     assert_eq!(last(&e).delivery, Delivery::Read);
+    for o in &others {
+        assert!(!e.lock().receipt(&s.id, o, seq, seq), "duplicate");
+        assert!(
+            !e.lock().receipt(&s.id, o, seq.saturating_sub(1), 0),
+            "stale"
+        );
+    }
+    assert_eq!(last(&e).delivery, Delivery::Read);
     // A read on another of my devices clears the unread count here.
     let other_space = e
         .spaces()
         .into_iter()
         .find(|x| x.unread > 0)
         .expect("unread chat");
-    e.lock().receipt(&other_space.id, &me, 0, u64::MAX / 2);
+    let unread = other_space.unread;
+    assert!(!e.lock().receipt(&other_space.id, &me, u64::MAX / 2, 0));
+    assert_eq!(
+        e.lock().space_summary(&other_space.id).unwrap().unread,
+        unread,
+        "own-device delivered is not read"
+    );
+    assert!(e.lock().receipt(&other_space.id, &me, 0, u64::MAX / 2));
+    assert!(!e.lock().receipt(&other_space.id, &me, 0, 1));
     assert_eq!(e.lock().space_summary(&other_space.id).unwrap().unread, 0);
 }
 
@@ -2432,6 +2575,92 @@ fn edits_deletes_and_reactions_fold_over_the_original() {
         .forward_message(s.id.clone(), theirs.id.clone(), other.id.clone())
         .unwrap();
     assert!(f.forwarded);
+}
+
+#[test]
+fn ana_replaces_and_removes_only_her_reaction_while_bias_survives_replay() {
+    let path = std::env::temp_dir().join(roda_types::new_id("reactions-replay"));
+    let e = RodaEngine::open(path.to_string_lossy().into(), "en".into()).unwrap();
+    e.seed_demo_if_empty().unwrap();
+    let s = e
+        .spaces()
+        .into_iter()
+        .find(|s| s.members.len() > 2)
+        .unwrap();
+    let message = e.send_message(s.id.clone(), "react here".into()).unwrap();
+    let (ana, bia) = {
+        let mut engine = e.lock();
+        let owner = engine.me.clone().unwrap();
+        let template = engine.identities[&owner].clone();
+        let mut ids = Vec::new();
+        for name in ["Ana", "Bia"] {
+            let mut person = template.clone();
+            person.name = name.into();
+            person.handle = format!("reaction_{}", name.to_lowercase());
+            let id = engine.create_identity(person, true).unwrap();
+            engine
+                .append(
+                    &s.id,
+                    &owner,
+                    roda_types::EventBody::MemberAdded {
+                        identity: id.clone(),
+                        role: roda_types::Role::Member,
+                    },
+                )
+                .unwrap();
+            ids.push(id);
+        }
+        (ids.remove(0), ids.remove(0))
+    };
+    let react_as = |who: &str, emoji: Option<&str>| {
+        e.lock().me = Some(who.into());
+        e.react(s.id.clone(), message.id.clone(), emoji.map(str::to_string))
+            .unwrap();
+    };
+    let reactions = || {
+        e.timeline(s.id.clone())
+            .unwrap()
+            .into_iter()
+            .find(|t| t.id == message.id)
+            .unwrap()
+            .reactions
+    };
+    react_as(&bia, Some("👍"));
+    react_as(&ana, Some("👍"));
+    let both = reactions();
+    assert_eq!(both.len(), 1);
+    assert!(both[0].mine);
+    assert_eq!(both[0].people.len(), 2);
+    assert!(both[0].people.iter().any(|p| p.id == ana));
+    assert!(both[0].people.iter().any(|p| p.id == bia));
+    react_as(&ana, Some("❤️"));
+    let replaced = reactions();
+    assert_eq!(replaced.len(), 2);
+    let bias = replaced.iter().find(|r| r.emoji == "👍").unwrap();
+    assert!(!bias.mine);
+    assert_eq!(
+        bias.people.iter().map(|p| &p.id).collect::<Vec<_>>(),
+        vec![&bia]
+    );
+    react_as(&ana, None);
+    let remaining = reactions();
+    assert_eq!(remaining.len(), 1);
+    assert_eq!(remaining[0].emoji, "👍");
+    assert!(!remaining[0].mine);
+    assert_eq!(remaining[0].people[0].id, bia);
+    drop(e);
+    let e = RodaEngine::open(path.to_string_lossy().into(), "en".into()).unwrap();
+    e.lock().me = Some(ana);
+    let replayed = e
+        .timeline(s.id)
+        .unwrap()
+        .into_iter()
+        .find(|t| t.id == message.id)
+        .unwrap()
+        .reactions;
+    assert_eq!(replayed, remaining);
+    drop(e);
+    std::fs::remove_file(path).unwrap();
 }
 
 #[test]

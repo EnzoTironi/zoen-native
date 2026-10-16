@@ -719,6 +719,17 @@ async fn session(
                             ctx.status.send_modify(|s| s.synced = true);
                             engine!(|engine| engine.mls_refresh_checkpoints());
                             engine!(|engine| engine.net.link.ask_devices = true);
+                            // Ephemeral sends may have been lost before this socket existed.
+                            // Rebuild receipts after catch-up, even with no new remote events.
+                            let receipts = engine!(|engine| engine.receipts_to_replay());
+                            let mut failed = None;
+                            for (space, kind) in receipts {
+                                if let Err(e) = send(&mut sink, &ClientFrame::Ephemeral { space: space.clone(), kind: kind.clone() }).await { failed = Some(e); break }
+                                if let EphemeralKind::Delivered { seq } = kind {
+                                    engine!(|engine| engine.delivered_announced(&space, seq));
+                                }
+                            }
+                            if let Some(e) = failed { break Exit::Retry(e) }
                         }
                         if let Err(e) = engine!(|engine| engine.mls_ask_rejoin()) { tracing_like(&format!("rejoin: {e}")); }
                         // Anything still pending after a full catch-up goes out again (it
@@ -944,7 +955,8 @@ async fn session(
                     // ✓✓ for the senders: one aggregated watermark per Space whose head moved.
                     let marks: Vec<(String, u64)> = engine!(|engine| spaces.iter().filter_map(|s| engine.delivered_to_announce(s).map(|q| (s.clone(), q))).collect());
                     for (space, seq) in marks {
-                        if let Err(e) = send(&mut sink, &ClientFrame::Ephemeral { space, kind: EphemeralKind::Delivered { seq } }).await { failed = Some(e); break }
+                        if let Err(e) = send(&mut sink, &ClientFrame::Ephemeral { space: space.clone(), kind: EphemeralKind::Delivered { seq } }).await { failed = Some(e); break }
+                        engine!(|engine| engine.delivered_announced(&space, seq));
                     }
                     if let Some(e) = failed { break Exit::Retry(e) }
                     if let Some(l) = &ctx.listener { l.on_change(spaces); }

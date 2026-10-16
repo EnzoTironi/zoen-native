@@ -175,7 +175,7 @@ struct AgentDangerZone: View {
                 Text("This can’t be undone. To pause for a while, use Pause.")
                     .font(.caption).foregroundStyle(Palette.textTertiary)
             }
-            .solidCard()
+            .glassCard()
         }
     }
 }

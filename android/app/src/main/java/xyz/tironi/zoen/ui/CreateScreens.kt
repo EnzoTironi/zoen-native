@@ -64,7 +64,7 @@ fun NewChatScreen(model: ZoenViewModel, state: AppState, navigate: (NavKey) -> U
                     )
                 }
             }
-            if (group) Button(onClick = { model.launch { val id = model.repository.change { it.createGroup(title, selected) }; back(); navigate(Chat(id)) } }, enabled = title.isNotBlank() && selected.isNotEmpty(), modifier = Modifier.fillMaxWidth().navigationBarsPadding().padding(bottom = 16.dp)) { Text(stringResource(R.string.create)) }
+            if (group) GlassButton(onClick = { model.launch { val id = model.repository.change { it.createGroup(title, selected) }; back(); navigate(Chat(id)) } }, enabled = title.isNotBlank() && selected.isNotEmpty(), modifier = Modifier.fillMaxWidth().navigationBarsPadding().padding(bottom = 16.dp)) { Text(stringResource(R.string.create)) }
         }
     }
 }
@@ -79,7 +79,7 @@ fun NewSpaceScreen(model: ZoenViewModel, navigate: (NavKey) -> Unit, back: () ->
             Text(stringResource(R.string.spaces_empty_title), style = MaterialTheme.typography.headlineMedium)
             Text(stringResource(R.string.spaces_empty_detail), color = MaterialTheme.colorScheme.onSurfaceVariant)
             OutlinedTextField(title, { title = it }, Modifier.fillMaxWidth(), label = { Text(stringResource(R.string.space_name)) })
-            Button(onClick = { busy = true; model.launch { try { val id = model.repository.change { it.createCommunity(title) }; back(); navigate(Chat(id)) } finally { busy = false } } }, enabled = title.isNotBlank() && !busy, modifier = Modifier.fillMaxWidth()) { Text(stringResource(R.string.create)) }
+            GlassButton(onClick = { busy = true; model.launch { try { val id = model.repository.change { it.createCommunity(title) }; back(); navigate(Chat(id)) } finally { busy = false } } }, enabled = title.isNotBlank() && !busy, modifier = Modifier.fillMaxWidth()) { Text(stringResource(R.string.create)) }
         }
     }
 }
@@ -93,7 +93,7 @@ fun JoinScreen(model: ZoenViewModel, initial: String, navigate: (NavKey) -> Unit
         Column(Modifier.padding(padding).imePadding().verticalScroll(rememberScrollState()).padding(24.dp), verticalArrangement = Arrangement.spacedBy(20.dp)) {
             OutlinedTextField(code, { code = it; preview = null }, Modifier.fillMaxWidth(), label = { Text(stringResource(R.string.invite_code)) })
             preview?.let { info -> Card { Column(Modifier.fillMaxWidth().padding(20.dp)) { Text(info.title, style = MaterialTheme.typography.titleLarge); info.inviter?.let { Text(it.name) } } } }
-            Button(onClick = {
+            GlassButton(onClick = {
                 loading = true
                 model.launch {
                     try {

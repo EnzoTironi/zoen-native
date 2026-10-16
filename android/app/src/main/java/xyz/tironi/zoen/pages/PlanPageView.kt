@@ -1,5 +1,6 @@
 package xyz.tironi.zoen.pages
 
+import xyz.tironi.zoen.ui.GlassCard
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -80,7 +81,7 @@ fun PlanPageView(model: ZoenViewModel, item: ItemDetail, page: PlanPageDto?, fai
                 when (val content = block.content) {
                     is PlanPageContentDto.Title -> {
                         SelectionContainer { Text(text, style = MaterialTheme.typography.displaySmall) }
-                        Card(Modifier.padding(top = 16.dp), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer)) {
+                        GlassCard(Modifier.padding(top = 16.dp), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer)) {
                             FlowRow(Modifier.fillMaxWidth().padding(20.dp), horizontalArrangement = Arrangement.spacedBy(24.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                                 Column {
                                     Text(stringResource(R.string.total), style = MaterialTheme.typography.labelMedium)
@@ -102,7 +103,7 @@ fun PlanPageView(model: ZoenViewModel, item: ItemDetail, page: PlanPageDto?, fai
                             Icon(Icons.Rounded.Add, null); Spacer(Modifier.width(8.dp)); Text(stringResource(R.string.add_line))
                         }
                     }
-                    is PlanPageContentDto.Line -> Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow)) {
+                    is PlanPageContentDto.Line -> GlassCard(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow)) {
                         Row(Modifier.fillMaxWidth().padding(8.dp), verticalAlignment = Alignment.CenterVertically) {
                             Checkbox(content.done, onCheckedChange = {
                                 mutate(page, { core, hash -> core.togglePlanLine(item.id, content.legacyId, hash) })

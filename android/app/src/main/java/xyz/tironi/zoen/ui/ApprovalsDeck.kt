@@ -319,7 +319,7 @@ private fun ApprovalStack(queue: List<AgentRequestDto>, model: ZoenViewModel, ke
         for (row in rows) {
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 row.forEach { direction ->
-                    OutlinedButton(onClick = { decide(direction) }, enabled = !busy && !keyMissing && (direction != ApprovalDirection.Up || top.canAlwaysApprove), modifier = Modifier.weight(1f).heightIn(min = 48.dp).testTag("approval-${direction.name.lowercase()}"), contentPadding = PaddingValues(horizontal = 12.dp, vertical = 12.dp)) {
+                    GlassOutlinedButton(onClick = { decide(direction) }, enabled = !busy && !keyMissing && (direction != ApprovalDirection.Up || top.canAlwaysApprove), modifier = Modifier.weight(1f).heightIn(min = 48.dp).testTag("approval-${direction.name.lowercase()}"), contentPadding = PaddingValues(horizontal = 12.dp, vertical = 12.dp)) {
                         ZoenIcon(direction.glyph)
                         Spacer(Modifier.width(8.dp))
                         Text(labels.getValue(direction))

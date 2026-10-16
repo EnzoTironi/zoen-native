@@ -107,6 +107,8 @@ private data class SearchOutcome(
     val hits: List<UniversalHit> = emptyList(),
     val catalog: List<AppSpecDto> = emptyList(),
     val error: String? = null,
+    val nextCursor: String? = null,
+    val requestKey: String = "",
 )
 
 @Composable
@@ -122,6 +124,10 @@ fun SearchScreen(model: ZoenViewModel, state: AppState, navigate: (NavKey) -> Un
     var storeApp by rememberSaveable { mutableStateOf<String?>(null) }
     var storeOpen by rememberSaveable { mutableStateOf(false) }
     var retry by remember { mutableIntStateOf(0) }
+    var conversationId by rememberSaveable { mutableStateOf<String?>(null) }
+    var cursor by remember(trimmedQuery, scope, state.revision, conversationId, retry) { mutableStateOf<String?>(null) }
+    var accumulated by remember(trimmedQuery, scope, state.revision, conversationId, retry) { mutableStateOf<List<UniversalHit>>(emptyList()) }
+    val requestKey = "$trimmedQuery|$scope|${state.revision}|$conversationId|$retry|$cursor"
     var asking by remember { mutableStateOf(false) }
     val focus = remember { FocusRequester() }
     val keyboard = LocalSoftwareKeyboardController.current
@@ -129,24 +135,34 @@ fun SearchScreen(model: ZoenViewModel, state: AppState, navigate: (NavKey) -> Un
         value = model.repository.query { it.appSpecs() }
     }
     val specs = specsState
-    val outcomeState by produceState(SearchOutcome(), trimmedQuery, scope, state.revision, specs, retry) {
+    val outcomeState by produceState(SearchOutcome(), requestKey, specs) {
         if (trimmedQuery.isEmpty()) value = SearchOutcome(scope = scope)
         else {
             delay(150)
             value = try {
-                val hits = model.repository.query { it.universalSearch(trimmedQuery, scope.kinds, scope.limit).hits }
+                val selectedConversation = conversationId
+                val page = if (scope == SearchScope.Messages && selectedConversation != null) {
+                    model.repository.query {
+                        val result = it.searchMessages(selectedConversation, trimmedQuery, cursor, 40u)
+                        result.hits to result.nextCursor
+                    }
+                } else {
+                    model.repository.query { it.universalSearch(trimmedQuery, scope.kinds, scope.limit).hits to null }
+                }
+                val hits = if (cursor == null) page.first else (accumulated + page.first).distinctBy { it.refId }
+                accumulated = hits
                 val catalog = if (scope == SearchScope.All || scope == SearchScope.Apps)
                     specs.filter { catalogSearchMatches(trimmedQuery, it) }.let { if (scope == SearchScope.All) it.take(3) else it }
                 else emptyList()
-                SearchOutcome(trimmedQuery, scope, hits, catalog)
+                SearchOutcome(trimmedQuery, scope, hits, catalog, nextCursor = page.second, requestKey = requestKey)
             } catch (error: Exception) {
                 if (error is CancellationException) throw error
-                SearchOutcome(trimmedQuery, scope, error = error.message ?: error.javaClass.simpleName)
+                SearchOutcome(trimmedQuery, scope, error = error.message ?: error.javaClass.simpleName, requestKey = requestKey)
             }
         }
     }
     val outcome = outcomeState
-    val current = outcome.query == trimmedQuery && outcome.scope == scope
+    val current = outcome.requestKey == requestKey
     val loading = trimmedQuery.isNotEmpty() && !current
     val hits = if (current) outcome.hits else emptyList()
     val catalog = if (current) outcome.catalog else emptyList()
@@ -211,6 +227,18 @@ fun SearchScreen(model: ZoenViewModel, state: AppState, navigate: (NavKey) -> Un
                         label = { Text(stringResource(choice.label)) }, modifier = Modifier.testTag("search-scope:" + choice.name.lowercase(Locale.ROOT)))
                 }
             }
+            if (scope == SearchScope.Messages) {
+                LazyRow(contentPadding = PaddingValues(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    item("all-conversations") {
+                        FilterChip(selected = conversationId == null, onClick = { conversationId = null },
+                            label = { Text("Todas as conversas") }, modifier = Modifier.testTag("search-conversation:all"))
+                    }
+                    items(state.spaces, key = { it.id }) { conversation ->
+                        FilterChip(selected = conversationId == conversation.id, onClick = { conversationId = conversation.id },
+                            label = { Text(conversation.title) }, modifier = Modifier.testTag("search-conversation:" + conversation.id))
+                    }
+                }
+            }
             if (loading) LinearProgressIndicator(Modifier.fillMaxWidth().padding(top = 8.dp))
             LazyColumn(Modifier.weight(1f).testTag("search-results"), contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 if (trimmedQuery.isEmpty()) {
@@ -247,7 +275,7 @@ fun SearchScreen(model: ZoenViewModel, state: AppState, navigate: (NavKey) -> Un
                 } else if (error != null) {
                     item("error") {
                         EmptyState(stringResource(R.string.search_failed), error) {
-                            OutlinedButton(onClick = { retry++ }) { Text(stringResource(R.string.retry)) }
+                            GlassOutlinedButton(onClick = { retry++ }) { Text(stringResource(R.string.retry)) }
                         }
                     }
                 } else if (!loading && hits.isEmpty() && catalog.isEmpty()) {
@@ -262,7 +290,7 @@ fun SearchScreen(model: ZoenViewModel, state: AppState, navigate: (NavKey) -> Un
                     }
                     state.zoenChat?.let { chat ->
                         item("ask-zoen") {
-                            Card(onClick = {
+                            GlassCard(onClick = {
                                 if (!asking) {
                                     val question = query.trim()
                                     saveQuery(); keyboard?.hide(); asking = true
@@ -300,6 +328,12 @@ fun SearchScreen(model: ZoenViewModel, state: AppState, navigate: (NavKey) -> Un
                             items(groupCatalog, key = { "catalog:" + it.id }) { spec -> SearchCatalogRow(spec, state, { openCatalog(spec) }) }
                         }
                     }
+                    outcome.nextCursor?.let { next ->
+                        item("load-more") {
+                            OutlinedButton(onClick = { cursor = next }, enabled = !loading,
+                                modifier = Modifier.testTag("search-load-more")) { Text("Carregar mais mensagens") }
+                        }
+                    }
                 }
             }
         }
@@ -328,7 +362,7 @@ private fun SearchHitRow(hit: UniversalHit, state: AppState, onClick: () -> Unit
     val snippet = if (hit.kind in listOf("person", "agent") && hit.snippet.isEmpty())
         hit.persona?.bio?.takeIf { it.isNotBlank() } ?: hit.persona?.let { "@" + it.handle }.orEmpty()
     else hit.snippet
-    Card(onClick = onClick, modifier = Modifier.fillMaxWidth().testTag("search-result:" + hit.refId),
+    GlassCard(onClick = onClick, modifier = Modifier.fillMaxWidth().testTag("search-result:" + hit.refId),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow)) {
         Row(Modifier.padding(16.dp), horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.Top) {
             val space = if (hit.kind == "space") state.spaces.firstOrNull { it.id == hit.refId } else null
@@ -363,7 +397,7 @@ private fun SearchHitRow(hit: UniversalHit, state: AppState, onClick: () -> Unit
 @Composable
 private fun SearchCatalogRow(spec: AppSpecDto, state: AppState, onClick: () -> Unit) {
     val installed = state.items.any { it.app?.appId == spec.id }
-    Card(onClick = onClick, modifier = Modifier.fillMaxWidth().testTag("search-catalog:" + spec.id),
+    GlassCard(onClick = onClick, modifier = Modifier.fillMaxWidth().testTag("search-catalog:" + spec.id),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow)) {
         Row(Modifier.padding(16.dp), horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.Top) {
             Icon(appIcon(spec.id), null, Modifier.size(40.dp), tint = MaterialTheme.colorScheme.primary)

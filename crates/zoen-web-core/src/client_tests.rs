@@ -273,6 +273,9 @@ fn native_sqlite_welcome_messages_saved_reload_and_removal_use_shared_mls() {
     );
 }
 
+#[path = "mutation_tests.rs"]
+mod mutation_tests;
+
 #[test]
 fn invitation_queues_a_certified_self_add_with_the_original_code_and_no_plain_message_fallback() {
     let identity = NativeSigner::from_secret(&[21; 32]);
@@ -332,6 +335,33 @@ fn native_voice_replies_versions_and_reverts_stay_on_the_original_post() {
         EventBody::MessagePosted {
             message: "msg_root".into(),
             text: "Bring the tent".into(),
+
+fn web_fixture() -> (Client<HostSigner>, Author, Author, SpaceLog, String) {
+    let identity = NativeSigner::from_secret(&[41; 32]);
+    let host = HostSigner(NativeSigner::from_secret(&[42; 32]));
+    let author = Author::device(&identity, NativeSigner::from_secret(&[43; 32]));
+    let other = Author::device(
+        &NativeSigner::from_secret(&[44; 32]),
+        NativeSigner::from_secret(&[45; 32]),
+    );
+    let client = Client::new(account(&identity, &host.0), host, "").unwrap();
+    let mut log = SpaceLog::new("sp_web_receipts");
+    clear(
+        &mut log,
+        &author,
+        EventBody::SpaceCreated {
+            title: "Fixture".into(),
+            kind: SpaceKind::Group,
+            privacy: Privacy::EndToEnd,
+        },
+        1,
+    );
+    clear(
+        &mut log,
+        &author,
+        EventBody::MessagePosted {
+            message: "msg_fixture".into(),
+            text: "Oi".into(),
             attaches: None,
             reply: None,
             forwarded: false,
@@ -432,4 +462,131 @@ fn native_voice_replies_versions_and_reverts_stay_on_the_original_post() {
     assert_eq!(conversation.messages.len(), 3);
     assert_eq!(conversation.messages[1].file.as_ref(), Some(&original));
     assert!(conversation.messages[1].edited);
+
+        2,
+    );
+    let target = log.events().last().unwrap().hash.clone();
+    (client, author, other, log, target)
+}
+
+fn annotate(log: &mut SpaceLog, author: &Author, target: &str, note: roda_types::Annotation) {
+    let now = log.next_seq() as i64 + 10;
+    clear(
+        log,
+        author,
+        EventBody::MessageAnnotated {
+            target: target.into(),
+            note,
+        },
+        now,
+    );
+}
+
+#[test]
+fn web_reaction_participants_replace_remove_and_ignore_invalid_reactions() {
+    let (mut client, author, other, mut log, target) = web_fixture();
+    let react = |emoji: &str| roda_types::Annotation::React {
+        emoji: emoji.into(),
+    };
+    annotate(&mut log, &author, &target, react("👍"));
+    annotate(&mut log, &other, &target, react("👍"));
+    client.logs.insert(log.space().into(), log.clone());
+    let view = client.conversations();
+    let reaction = &view[0].messages[0].reactions[0];
+    assert_eq!(reaction.count, 2);
+    assert_eq!(reaction.participants.len(), 2);
+    assert!(reaction.mine);
+    assert!(reaction
+        .participants
+        .iter()
+        .any(|p| p.identity == client.account.identity && p.name == "Fixture"));
+    annotate(&mut log, &author, &target, react("❤️"));
+    annotate(&mut log, &other, &target, react(" "));
+    annotate(&mut log, &other, &target, react(&"😀".repeat(9)));
+    client.logs.insert(log.space().into(), log.clone());
+    let view = client.conversations();
+    assert_eq!(view[0].messages[0].reactions.len(), 2);
+    annotate(&mut log, &author, &target, roda_types::Annotation::Unreact);
+    client.logs.insert(log.space().into(), log.clone());
+    let view = client.conversations();
+    let reactions = &view[0].messages[0].reactions;
+    assert_eq!(reactions.len(), 1);
+    assert_eq!(reactions[0].emoji, "👍");
+    assert_eq!(reactions[0].count, 1);
+    assert!(!reactions[0].mine);
+    annotate(&mut log, &author, &target, roda_types::Annotation::Delete);
+    annotate(&mut log, &other, &target, react("❤️"));
+    client.logs.insert(log.space().into(), log);
+    assert!(client.conversations()[0].messages[0].reactions.is_empty());
+    assert!(client
+        .queue_annotation("sp_web_receipts", &target, react("👍"), 90)
+        .err()
+        .unwrap()
+        .contains("no longer available"));
+}
+
+#[test]
+fn web_reaction_submission_rejects_blank_and_oversized_utf8_before_encryption() {
+    let (mut client, _, _, log, target) = web_fixture();
+    client.logs.insert(log.space().into(), log);
+    for emoji in [" ".into(), "😀".repeat(9)] {
+        assert!(client
+            .queue_annotation(
+                "sp_web_receipts",
+                &target,
+                roda_types::Annotation::React { emoji },
+                90
+            )
+            .err()
+            .unwrap()
+            .contains("32 bytes"));
+    }
+}
+
+fn receipt_marks(frames: &[Vec<u8>]) -> Vec<(&'static str, u64)> {
+    frames
+        .iter()
+        .filter_map(|frame| match ClientFrame::decode(frame).unwrap() {
+            ClientFrame::Ephemeral {
+                kind: roda_proto::EphemeralKind::Delivered { seq },
+                ..
+            } => Some(("delivered", seq)),
+            ClientFrame::Ephemeral {
+                kind: roda_proto::EphemeralKind::Read { seq },
+                ..
+            } => Some(("read", seq)),
+            _ => None,
+        })
+        .collect()
+}
+
+#[test]
+fn web_receipts_replay_after_saved_unsent_frames_and_each_reconnect() {
+    let (mut client, _, _, log, _) = web_fixture();
+    let space = log.space().to_owned();
+    let last = log.next_seq() - 1;
+    client.logs.insert(space.clone(), log);
+    let first = client.mark_read(&space).unwrap(); // Simulate a durable save, then losing the outgoing frame.
+    assert_eq!(receipt_marks(&first.frames), vec![("read", last)]);
+    assert_eq!(
+        receipt_marks(&client.mark_read(&space).unwrap().frames),
+        vec![("read", last)]
+    );
+    let mut restored = Client::new(
+        client.account.clone(),
+        client.signer.clone(),
+        &first.snapshot,
+    )
+    .unwrap();
+    for _ in 0..2 {
+        restored.bootstrap().unwrap();
+        let update = restored
+            .receive(&ServerFrame::SyncDone.encode(), 100)
+            .unwrap();
+        assert_eq!(
+            receipt_marks(&update.frames),
+            vec![("delivered", last), ("read", last)]
+        );
+        assert!(restored.delivered().is_empty());
+    }
 }
