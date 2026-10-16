@@ -139,6 +139,7 @@ fun ChatScreen(model: ZoenViewModel, state: AppState, spaceId: String, navigate:
     var draft by remember(draftKey) { mutableStateOf(model.repository.preferences.getString(draftKey, "").orEmpty()) }
     var sending by remember { mutableStateOf(false) }
     var attachments by remember { mutableStateOf(false) }
+    var inlineVoiceActive by remember { mutableStateOf(false) }
     var overflow by remember { mutableStateOf(false) }
     var highlight by remember(spaceId) { mutableStateOf<String?>(null) }
     var jumpTo by remember(spaceId) { mutableStateOf<String?>(focusMessage) }
@@ -318,8 +319,8 @@ fun ChatScreen(model: ZoenViewModel, state: AppState, spaceId: String, navigate:
                             IconButton(onClick = { replyId = null }) { Icon(Icons.Rounded.Close, stringResource(R.string.cancel)) }
                         }
                     }
-                    Row(verticalAlignment = Alignment.Bottom, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                        Box {
+                    Row(verticalAlignment = Alignment.Bottom, horizontalArrangement = Arrangement.spacedBy(if (inlineVoiceActive) 0.dp else 10.dp)) {
+                        Box(if (inlineVoiceActive) Modifier.width(0.dp) else Modifier) {
                             IconButton({ navigationHaptics.perform(ZoenFeedback.Open); attachments = true }, Modifier.size(44.dp).zoenGlass(androidx.compose.foundation.shape.CircleShape).testTag("composer-attach")) { ZoenIcon(ZoenGlyph.Plus, stringResource(R.string.attach)) }
                             DropdownMenu(attachments, { attachments = false }) {
                                 DropdownMenuItem(text = { Text(stringResource(R.string.camera)) }, onClick = { attachments = false; val uri = FileAccess.cameraUri(context); cameraUri = uri.toString(); camera.launch(uri) }, leadingIcon = { Icon(Icons.Rounded.CameraAlt, null) })
@@ -330,14 +331,14 @@ fun ChatScreen(model: ZoenViewModel, state: AppState, spaceId: String, navigate:
                         androidx.compose.foundation.text.BasicTextField(value = draft, onValueChange = {
                             draft = it
                             model.repository.preferences.edit().putString(draftKey, it).apply()
-                        }, modifier = Modifier.weight(1f).heightIn(min = 48.dp).zoenGlass(RoundedCornerShape(24.dp)).padding(horizontal = 18.dp, vertical = 14.dp).testTag("composer"),
+                        }, modifier = (if (inlineVoiceActive) Modifier.width(0.dp) else Modifier.weight(1f)).heightIn(min = 48.dp).zoenGlass(RoundedCornerShape(24.dp)).padding(horizontal = 18.dp, vertical = 14.dp).testTag("composer"),
                             textStyle = MaterialTheme.typography.bodyLarge.copy(fontSize = 15.sp, lineHeight = 19.sp, color = MaterialTheme.colorScheme.onSurface),
                             cursorBrush = androidx.compose.ui.graphics.SolidColor(MaterialTheme.colorScheme.primary),
                             decorationBox = { field -> Box { if (draft.isEmpty()) Text(stringResource(if (space.counterpart?.handle == "zoen") R.string.message_zoen else R.string.message), fontSize = 15.sp, lineHeight = 19.sp, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1); field() } },
                             maxLines = 5, keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Sentences, imeAction = ImeAction.Send),
                             keyboardActions = KeyboardActions(onSend = { send() }),
                         )
-                        if (draft.isBlank()) VoiceComposer(model, spaceId, Modifier, reply = replyId, onSent = { replyId = null })
+                        if (draft.isBlank()) VoiceComposer(model, spaceId, Modifier, reply = replyId, onActiveChanged = { inlineVoiceActive = it }, onSent = { replyId = null })
                         else IconButton(onClick = send, enabled = draft.isNotBlank() && !sending && !state.keyMissing, modifier = Modifier.size(48.dp).zoenGlass(androidx.compose.foundation.shape.CircleShape, MaterialTheme.colorScheme.primary).testTag("send")) {
                             if (sending) CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp)
                             else ZoenIcon(ZoenGlyph.Send, stringResource(R.string.send), modifier = Modifier.size(21.dp), tint = MaterialTheme.colorScheme.onPrimary)

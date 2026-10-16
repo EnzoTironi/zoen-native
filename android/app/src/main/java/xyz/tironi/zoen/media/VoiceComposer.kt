@@ -17,6 +17,7 @@ import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
@@ -106,9 +107,10 @@ fun VoiceComposer(
         owner.lifecycle.addObserver(observer)
         onDispose { owner.lifecycle.removeObserver(observer); active(false) }
     }
-    Box(modifier.size(48.dp), contentAlignment = Alignment.Center) {
+    val isRecording = recording.phase != RecordingPhase.IDLE
+    Box(modifier.then(if (isRecording) Modifier.width((LocalConfiguration.current.screenWidthDp - 32).coerceIn(240, 380).dp).heightIn(min = 56.dp) else if (showTrigger) Modifier.size(48.dp) else Modifier.size(0.dp)), contentAlignment = Alignment.Center) {
         if (showTrigger) IconButton(onClick = { begin(true) }, enabled = !appState.keyMissing && recording.phase == RecordingPhase.IDLE && review.clip == null,
-            modifier = Modifier.size(48.dp).zoenGlass(androidx.compose.foundation.shape.CircleShape, MaterialTheme.colorScheme.primary).testTag("voice-record").pointerInput(session, cancelDistance, lockDistance) {
+            modifier = Modifier.size(48.dp).then(if (isRecording) Modifier.graphicsLayer { alpha = 0f } else Modifier).zoenGlass(androidx.compose.foundation.shape.CircleShape, MaterialTheme.colorScheme.primary).testTag("voice-record").pointerInput(session, cancelDistance, lockDistance) {
                 detectVoiceHoldGestures(cancelDistance, lockDistance,
                     onStart = { currentBegin(false) },
                     onRelease = {
@@ -121,8 +123,7 @@ fun VoiceComposer(
             }) { Icon(Icons.Rounded.Mic, stringResource(R.string.media_hold_record), tint = MaterialTheme.colorScheme.onPrimary, modifier = Modifier.size(21.dp)) }
         if (recording.phase != RecordingPhase.IDLE) {
             val width = (LocalConfiguration.current.screenWidthDp - 32).coerceIn(240, 380).dp
-            Popup(alignment = Alignment.BottomEnd, offset = IntOffset(0, -with(density) { 60.dp.roundToPx() }), properties = PopupProperties(focusable = false)) {
-                Surface(Modifier.width(width).testTag("voice-recording"), shape = RoundedCornerShape(20.dp), color = MaterialTheme.colorScheme.surfaceContainerHigh, tonalElevation = 6.dp, shadowElevation = 8.dp) {
+            Box(Modifier.width(width).testTag("voice-recording").zoenGlass(RoundedCornerShape(28.dp))) {
                     Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                             IconButton(onClick = { session.cancel(); haptics.perform(ZoenFeedback.Reject) }, enabled = recording.phase != RecordingPhase.FINISHING) { Icon(Icons.Rounded.DeleteOutline, stringResource(R.string.media_delete_recording), tint = MaterialTheme.colorScheme.error) }
@@ -139,7 +140,6 @@ fun VoiceComposer(
                         if (recording.phase == RecordingPhase.HOLDING) Text(stringResource(R.string.media_slide_cancel), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         recording.error?.let { Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall) }
                     }
-                }
             }
         }
     }

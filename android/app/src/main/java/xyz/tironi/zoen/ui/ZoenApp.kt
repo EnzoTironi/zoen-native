@@ -117,6 +117,13 @@ fun ZoenApp(model: ZoenViewModel, deepLink: String?, consumed: () -> Unit) {
             }
             consumed()
         }
+        val productionFanActions = listOf(
+                FanAction(Icons.Rounded.AutoAwesome, stringResource(R.string.ask_zoen)) { state.zoenChat?.let { navigate(Chat(it.id)) } },
+                FanAction(Icons.Rounded.Group, stringResource(R.string.agents)) { navigate(Agents) },
+                FanAction(Icons.Rounded.FolderOpen, stringResource(R.string.files)) { navigate(Files) },
+                FanAction(Icons.Rounded.PersonOutline, stringResource(R.string.context)) { navigate(Context) },
+
+        )
         ZoenGlassBackdrop { BoxWithConstraints(Modifier.fillMaxSize()) {
             val unread = state.spaces.sumOf { it.unread.toLong() }.coerceAtMost(100L).toInt()
             val rail = maxWidth >= 600.dp
@@ -129,7 +136,7 @@ fun ZoenApp(model: ZoenViewModel, deepLink: String?, consumed: () -> Unit) {
                 if (rail) NavigationRail(modifier = Modifier.fillMaxHeight(), header = {
                     ZoenMascot(Modifier.padding(top = 12.dp).size(64.dp))
                     Spacer(Modifier.height(16.dp))
-                    PlusVoiceButton({ quickActions = true }, { voiceStart++ }, { voiceRelease++ }, { voiceLock++ }, { voiceCancel++ }, compact = true)
+                    PlusVoiceButton({ quickActions = true }, { voiceStart++ }, { voiceRelease++ }, { voiceLock++ }, { voiceCancel++ }, compact = true, fanActions = productionFanActions)
                 }) {
                     Spacer(Modifier.height(24.dp))
                     Tab.main.forEach { target ->
@@ -148,7 +155,7 @@ fun ZoenApp(model: ZoenViewModel, deepLink: String?, consumed: () -> Unit) {
                             if (tab != target) haptics.perform(ZoenFeedback.Selection)
                             tab = target
                         }, { navigate(Search) }) {
-                            PlusVoiceButton({ quickActions = true }, { voiceStart++ }, { voiceRelease++ }, { voiceLock++ }, { voiceCancel++ }, compact = true)
+                            PlusVoiceButton({ quickActions = true }, { voiceStart++ }, { voiceRelease++ }, { voiceLock++ }, { voiceCancel++ }, compact = true, fanActions = productionFanActions)
                         }
                     },
                     contentWindowInsets = WindowInsets(0, 0, 0, 0),
@@ -193,17 +200,10 @@ fun ZoenApp(model: ZoenViewModel, deepLink: String?, consumed: () -> Unit) {
         }
         state.zoenChat?.let { chat ->
             Box(Modifier.fillMaxSize(), contentAlignment = Alignment.BottomEnd) {
-                xyz.tironi.zoen.media.VoiceComposer(model, chat.id, Modifier.padding(end = 16.dp, bottom = 140.dp), startSignal = voiceStart, releaseSignal = voiceRelease, lockSignal = voiceLock, cancelSignal = voiceCancel, showTrigger = false, onSent = { navigate(Chat(chat.id)) })
+                xyz.tironi.zoen.media.VoiceComposer(model, chat.id, Modifier.navigationBarsPadding().padding(end = 16.dp, bottom = 2.dp), startSignal = voiceStart, releaseSignal = voiceRelease, lockSignal = voiceLock, cancelSignal = voiceCancel, showTrigger = false, onSent = { navigate(Chat(chat.id)) })
             }
         }
-        if (quickActions) {
-            AppleActionFan(onDismiss = { quickActions = false }, actions = listOf(
-                FanAction(Icons.Rounded.AutoAwesome, stringResource(R.string.ask_zoen)) { state.zoenChat?.let { navigate(Chat(it.id)) } },
-                FanAction(Icons.Rounded.Group, stringResource(R.string.agents)) { navigate(Agents) },
-                FanAction(Icons.Rounded.FolderOpen, stringResource(R.string.files)) { navigate(Files) },
-                FanAction(Icons.Rounded.PersonOutline, stringResource(R.string.context)) { navigate(Context) },
-            ))
-        }
+
         }
     }
 }
