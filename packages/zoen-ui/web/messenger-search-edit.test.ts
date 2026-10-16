@@ -25,10 +25,10 @@ async function input(el: HTMLInputElement | HTMLTextAreaElement, value: string) 
 }
 async function click(el: Element | undefined | null) { assert.ok(el); await act(async () => (el as HTMLElement).click()); }
 function button(label: string) { return [...document.querySelectorAll('button')].find((b) => b.textContent === label || b.getAttribute('aria-label') === label); }
-async function mount(annotate = async () => {}, data = conversations) {
+async function mount(annotate = async () => {}, data = conversations, selected = 'chat') {
   const calls: unknown[] = [];
   const root = createRoot(document.getElementById('root')!);
-  await act(async () => root.render(h(Messenger, { conversations: data, identity: own, name: 'Ana', connected: true, status: 'Conectado', messages: { current: { annotate, post: async (v: unknown) => { calls.push(v); }, sendFile: async (...args: unknown[]) => { calls.push(args); } } }, footer: null, selected: 'chat', select: () => {} })));
+  await act(async () => root.render(h(Messenger, { conversations: data, identity: own, name: 'Ana', connected: true, status: 'Conectado', messages: { current: { annotate, post: async (v: unknown) => { calls.push(v); }, sendFile: async (...args: unknown[]) => { calls.push(args); } } }, footer: null, selected, select: () => {} })));
   return { calls, close: async () => { await act(async () => root.unmount()); } };
 }
 
@@ -76,20 +76,23 @@ test('read conversation initially scrolls to bottom without an unread divider', 
   } finally { await ui.close(); dom.window.HTMLElement.prototype.scrollIntoView = () => {}; }
 });
 
-test('sidebar finds message bodies, not only conversation titles', async () => {
-  const ui = await mount();
+test('native four-tab routing opens production directories and profile without retired header controls', async () => {
+  const ui = await mount(undefined, conversations, '');
   try {
-    await click(button('Search'));
-    await input(document.querySelector('input[type=search]')!, 'pousada');
-    assert.ok(document.querySelector('[aria-label="Resultados de mensagens"]'), 'message results must be visible');
-    assert.match(document.querySelector('[aria-label="Resultados de mensagens"]')!.textContent!, /pousada antiga/);
-    await click(document.querySelector('[aria-label="Resultados de mensagens"] li button'));
-    assert.equal(document.activeElement?.id, 'message-first');
+    assert.equal(document.querySelector('.zm-home-head img'), null);
+    assert.equal(button('Search'), undefined);
+    await click(button('Spaces'));
+    assert.ok(document.querySelector('[data-testid="spaces-directory"]'));
+    assert.match(document.querySelector('[data-testid="spaces-directory"]')!.textContent!, /Amigos/);
+    await click(button('Profile'));
+    assert.ok(document.querySelector('.zm-main [aria-label="Profile"]'));
+    assert.match(document.querySelector('.zm-main')!.textContent!, /Your personal space/);
+    assert.equal(document.querySelector('[aria-label="Main navigation"] [aria-current="page"]')?.getAttribute('aria-label'), 'Profile');
   } finally { await ui.close(); }
 });
 
-test('inbox filter selects actual conversation kinds and search opens from the bottom bar', async () => {
-  const ui = await mount();
+test('inbox filter preserves actual conversation kinds and New message opens the production recipient sheet', async () => {
+  const ui = await mount(undefined, conversations, '');
   try {
     assert.equal(document.querySelector('input[type=search]'), null);
     assert.ok(document.querySelector('.nw-empty'));
@@ -98,9 +101,12 @@ test('inbox filter selects actual conversation kinds and search opens from the b
     assert.equal(document.querySelectorAll('.zm-chats > li').length, 0);
     await act(async () => { filter.value = 'group'; filter.dispatchEvent(new dom.window.Event('change', { bubbles: true })); });
     assert.equal(document.querySelectorAll('.zm-chats > li').length, 1);
-    await click(button('Search'));
-    assert.ok(document.querySelector('input[type=search]'));
-    assert.equal(document.querySelector('.zm-home-head'), null);
+    await click(button('New message'));
+    const dialog = document.querySelector('[role="dialog"][aria-labelledby="nnm-title"]');
+    assert.ok(dialog);
+    assert.equal(dialog.querySelector('#nnm-title')?.textContent, 'New chat');
+    assert.equal(document.querySelector('.zm-home-head h1')?.textContent, 'Chats');
+    assert.deepEqual(ui.calls, [], 'opening the recipient picker never fabricates a sent message');
   } finally { await ui.close(); }
 });
 
