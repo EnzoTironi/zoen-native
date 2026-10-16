@@ -17,14 +17,21 @@ function parseMessage(input: unknown) {
   const ticks = value.ticks === null || value.ticks === undefined ? null : string(value.ticks);
   if (ticks !== null && ticks !== 'sent' && ticks !== 'delivered' && ticks !== 'read') throw new Error('Invalid message receipt.');
   const quote = value.quote ? object(value.quote) : null;
-  return { id: string(value.id), entry: value.entry ? string(value.entry) : null, author: publicKey(value.author), name: string(value.name), text: string(value.text),
+  let text = string(value.text);
+  let file: FileDoc | null = null;
+  // A bad attachment must not prevent saving or restoring the conversation's sync state.
+  if (value.file) {
+    try { file = parseFile(value.file); }
+    catch { text = 'Anexo indisponível'; }
+  }
+  return { id: string(value.id), entry: value.entry ? string(value.entry) : null, author: publicKey(value.author), name: string(value.name), text,
     at_ms: timestamp(value.at_ms), delivery, failure: nullableText(value.failure), ticks: ticks as 'sent' | 'delivered' | 'read' | null,
     edited: value.edited === true, deleted: value.deleted === true, forwarded: value.forwarded === true,
     reactions: array(value.reactions ?? []).map((r) => { const x = object(r); return { emoji: string(x.emoji), count: integer(x.count), mine: x.mine === true }; }),
     quote: quote ? { id: string(quote.id), name: string(quote.name), text: string(quote.text) } : null,
     thread: value.thread ? string(value.thread) : null, replies: integer(value.replies ?? 0),
     repliers: array(value.repliers ?? []).map(string), last_reply_ms: typeof value.last_reply_ms === 'number' ? value.last_reply_ms : null,
-    file: value.file ? parseFile(value.file) : null };
+    file };
 }
 
 const HASH = /^[0-9a-f]{64}$/;

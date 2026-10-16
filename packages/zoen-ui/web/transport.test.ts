@@ -183,6 +183,77 @@ async function attachment(data = new Uint8Array([1, 2, 3])): Promise<FileDoc> {
   return { name: 'clip.webm', mime: 'audio/webm', bytes: data.length, sha256,
     chunks: [{ sha256, bytes: data.length, blob: '44'.repeat(32), key: '55'.repeat(32) }], thumb: null };
 }
+
+test('malformed attachments stay local while received updates persist, synchronize and reload', async (t) => {
+  install(t);
+  const file = await attachment();
+  const chunk = file.chunks[0]!;
+  const entry = { id: 'text', entry: 'ordered', author: login.identity, name: 'Member', text: 'Still readable',
+    at_ms: 1, delivery: 'confirmed', failure: null, file: null };
+  const invalid = [
+    { ...file, chunks: [{ ...chunk, blob: 'bad' }] },
+    { ...file, chunks: [{ ...chunk, sha256: 'bad' }] },
+    { ...file, chunks: [{ ...chunk, key: 'bad' }] },
+    { ...file, thumb: { ...chunk, blob: 'bad' } },
+  ];
+  const received = [{ ...conversation, messages: [
+    ...invalid.map((file, i) => ({ ...entry, id: `invalid-${i}`, text: '', file })),
+    { ...entry, id: 'valid', text: '', file }, entry,
+  ] }, { ...conversation, id: 'sp_other', messages: [entry] }];
+  let saved: StoredSession = linked;
+  const states: MessagesState[] = [];
+  const core = messagingCore();
+  const text = core.text;
+  core.text = async (operation: CoreOperation) => {
+    if (operation.kind === 'restore' && operation.snapshot === 'received attachments') return JSON.stringify(received);
+    if (operation.kind === 'bootstrap' && saved.kind === 'linked' && saved.snapshot === 'received attachments') {
+      return JSON.stringify({ snapshot: saved.snapshot, frames: [], conversations: received });
+    }
+    if (operation.kind === 'receive') return JSON.stringify({ snapshot: 'received attachments', frames: [[9]], conversations: received });
+    return text(operation);
+  };
+  const open = (session: typeof linked) => {
+    const messages = new Messages({ core, session, vault: { ...vault, save: async (session) => { saved = session; } },
+      changed: (state) => states.push(state) });
+    t.after(() => messages.stop());
+    return messages;
+  };
+  const check = () => {
+    const state = states.at(-1);
+    assert.equal(state?.kind, 'active');
+    if (state?.kind !== 'active') assert.fail('message controller failed');
+    const entries = state.conversations[0]!.messages;
+    for (const [i] of invalid.entries()) {
+      assert.equal(entries[i]!.id, `invalid-${i}`);
+      assert.equal(entries[i]!.file, null);
+      assert.equal(entries[i]!.text, 'Anexo indisponível');
+    }
+    assert.deepEqual(entries[invalid.length]!.file, file);
+    assert.equal(entries.at(-1)!.text, entry.text);
+    assert.equal(state.conversations[1]!.messages[0]!.text, entry.text);
+    assert.equal(core.closed, false);
+  };
+  const messages = open(linked);
+  await messages.start(); await authenticate();
+  socket().frame({ kind: 'event' }); await settle();
+  check();
+  assert.equal(saved.kind === 'linked' && saved.snapshot, 'received attachments');
+  assert.deepEqual(socket().sent.at(-1), new Uint8Array([9]));
+  await messages.send({ space: 'sp_other', text: 'Can still send' });
+  assert.deepEqual(socket().sent.at(-1), new Uint8Array([8]));
+  // Save another received update, then restore that same unmodified snapshot.
+  socket().frame({ kind: 'event' }); await settle(); check();
+  messages.stop();
+  assert.equal(saved.kind, 'linked');
+  if (saved.kind !== 'linked') assert.fail('received snapshot was not persisted');
+  const reloaded = open(saved);
+  await reloaded.start(); check();
+  await authenticate(); check();
+  const state = states.at(-1);
+  assert.equal(state?.kind === 'active' && state.connection.kind, 'ready');
+  assert.equal(states.some((state) => state.kind === 'failed'), false);
+});
+
 function mediaMessages(t: test.TestContext, bytes: (op: CoreOperation) => Promise<Uint8Array>) {
   const messages = new Messages({ core: { ...messagingCore(), bytes }, session: linked,
     vault: { ...vault, save: async () => {} }, changed: () => {} });
