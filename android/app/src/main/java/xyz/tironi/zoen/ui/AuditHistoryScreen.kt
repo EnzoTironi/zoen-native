@@ -88,7 +88,7 @@ fun AuditHistoryScreen(model: ZoenViewModel, state: AppState, back: () -> Unit) 
                         else AuditVerification(reports.all { it.valid }, stringResource(R.string.ap_audit_checked_chats, reports.size))
                     }
                     items(reports, key = { it.spaceId }) { entry ->
-                        Card(onClick = { selected = entry.spaceId }) { AuditReport(entry) }
+                        GlassCard(onClick = { selected = entry.spaceId }) { AuditReport(entry) }
                     }
                 }
                 item { Text(stringResource(R.string.ap_audit_explanation), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }

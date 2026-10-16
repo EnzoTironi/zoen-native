@@ -322,21 +322,14 @@ struct McpAppSheet: View {
     }
 }
 
-/// Pílulas do Wabi: primária preta, secundária branca com contorno cinza.
+/// Pílulas do Wabi: the same glass as every Zoen button. `primary` is the tinted lens;
+/// `dark` keeps the clear lens legible over the pet's night scene.
 struct WabiPill: ButtonStyle {
     var primary = false
     var dark = false
     func makeBody(configuration: Configuration) -> some View {
-        configuration.label
-            .font(.subheadline.weight(.semibold))
-            .foregroundStyle(primary ? .white : (dark ? .white : Color(hex: "#1C1C1E")))
-            .frame(maxWidth: .infinity, minHeight: 46)
-            .background {
-                Capsule().fill(primary ? Color(hex: "#111113") : (dark ? Color.white.opacity(0.14) : Color.white))
-                    .shadow(color: .black.opacity(primary ? 0 : 0.06), radius: 8, y: 3)
-            }
-            .overlay { if !primary { Capsule().strokeBorder(dark ? .white.opacity(0.18) : Color.black.opacity(0.06), lineWidth: 0.8) } }
-            .scaleEffect(configuration.isPressed ? 0.96 : 1)
-            .animation(.spring(duration: 0.25), value: configuration.isPressed)
+        GlassButtonStyle(prominent: primary, tint: Color(hex: "#111113"), fullWidth: true, font: .subheadline.weight(.semibold))
+            .makeBody(configuration: configuration)
+            .environment(\.colorScheme, dark ? .dark : .light)
     }
 }

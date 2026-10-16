@@ -58,7 +58,7 @@ struct ParticipantsView: View {
                             NavigationLink(value: Route.permissions(agent: a.id, space: spaceId)) {
                                 Text("Permissions").font(.subheadline.weight(.medium))
                             }
-                            .buttonStyle(.glass)
+                            .buttonStyle(.wabiGlass)
                             .fixedSize()
                         }
                     }

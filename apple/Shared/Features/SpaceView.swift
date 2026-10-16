@@ -47,7 +47,6 @@ struct SpaceView: View {
     @State private var actionTarget: TimelineEntry?
     @State private var forwardTarget: ThreadRef?
     @State private var editTarget: TimelineEntry?
-    @State private var editText = ""
     @State private var deleteTarget: TimelineEntry?
     /// The main timeline: thread replies live in their thread, not here.
     private var visible: [TimelineEntry] { entries.filter { $0.inThread == nil } }
@@ -213,7 +212,6 @@ struct SpaceView: View {
                         },
                         onForward: { forwardTarget = ThreadRef(id: target.id) },
                         onEdit: {
-                            if case .message(let text, _) = target.kind { editText = text }
                             editTarget = target
                         },
                         onDelete: { deleteTarget = target },
@@ -223,22 +221,13 @@ struct SpaceView: View {
             .sheet(item: $forwardTarget) { t in
                 ForwardSheet(fromSpaceId: spaceId, messageId: t.id).presentationDetents([.medium, .large])
             }
-            .alert("Edit message", isPresented: Binding(get: { editTarget != nil }, set: { if !$0 { editTarget = nil } })) {
-                TextField("Message", text: $editText)
-                Button("Save") {
-                    if let t = editTarget {
-                        model.perform { try model.core.editMessage(spaceId: spaceId, messageId: t.id, text: editText) }
-                    }
+            .sheet(item: $editTarget) { target in
+                if case .message(let text, _) = target.kind {
+                    MessageMutationSheet(spaceId: spaceId, messageId: target.id, text: text)
                 }
-                Button("Cancel", role: .cancel) {}
             }
-            .confirmationDialog("Delete for everyone?", isPresented: Binding(get: { deleteTarget != nil }, set: { if !$0 { deleteTarget = nil } }), titleVisibility: .visible) {
-                Button("Delete for everyone", role: .destructive) {
-                    if let t = deleteTarget {
-                        Haptics.remove()
-                        model.perform { try model.core.deleteMessage(spaceId: spaceId, messageId: t.id) }
-                    }
-                }
+            .sheet(item: $deleteTarget) { target in
+                MessageMutationSheet(spaceId: spaceId, messageId: target.id, deleting: true)
             }
             .sheet(item: $thread) { t in
                 ThreadSheet(spaceId: spaceId, rootId: t.id)
@@ -263,7 +252,7 @@ struct SpaceView: View {
                         demoIncomingSent = true
                         Task { await model.receiveIncomingStoryMessages() }
                     }
-                    .buttonStyle(.borderedProminent)
+                    .buttonStyle(.wabiGlassProminent)
                     .accessibilityIdentifier("demo-incoming-trigger")
                     .padding(.top, chromeHeight + 8)
                     .padding(.trailing, 14)
@@ -1009,7 +998,7 @@ struct InlineRequestRow: View {
                 Button { model.approve(request) } label: {
                     Text("Approve").foregroundStyle(ActionGlassForeground())
                 }
-                    .buttonStyle(.glassProminent)
+                    .buttonStyle(.wabiGlassProminent)
                     .controlSize(.small)
             case .stale:
                 ZoenIcon(.back, size: 17).scaleEffect(x: -1).foregroundStyle(Palette.amber)

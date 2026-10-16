@@ -1,5 +1,8 @@
 package xyz.tironi.zoen.media
 
+import xyz.tironi.zoen.ui.GlassButton
+import xyz.tironi.zoen.ui.GlassOutlinedButton
+
 import android.widget.VideoView
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
@@ -117,8 +120,8 @@ fun MediaTrimEditor(itemId: String, version: UInt, file: File, mime: String, onD
                     }, valueRange = 0f..duration.toFloat(), enabled = !session.busy, modifier = Modifier.testTag("media-trim-range"))
                     Text(stringResource(R.string.media_keep_original), color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
                     FlowRow(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        OutlinedButton(onClick = { onExport(session, TimeRange(session.start, session.end), true) }, enabled = !session.busy) { Icon(Icons.Rounded.IosShare, null); Spacer(Modifier.width(8.dp)); Text(stringResource(R.string.media_export_clip)) }
-                        Button(onClick = { onExport(session, TimeRange(session.start, session.end), false) }, enabled = !session.busy, modifier = Modifier.testTag("media-trim-save")) { Text(stringResource(R.string.save)) }
+                        GlassOutlinedButton(onClick = { onExport(session, TimeRange(session.start, session.end), true) }, enabled = !session.busy) { Icon(Icons.Rounded.IosShare, null); Spacer(Modifier.width(8.dp)); Text(stringResource(R.string.media_export_clip)) }
+                        GlassButton(onClick = { onExport(session, TimeRange(session.start, session.end), false) }, enabled = !session.busy, modifier = Modifier.testTag("media-trim-save")) { Text(stringResource(R.string.save)) }
                     }
                 } else if (session.error == null) CircularProgressIndicator()
                 session.error?.let { Text(it, color = MaterialTheme.colorScheme.error) }

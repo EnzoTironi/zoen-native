@@ -26,7 +26,7 @@ fun RequestScreen(model: ZoenViewModel, state: AppState, id: String, navigate: (
             item { Avatar(request.agent, size = 68, onClick = { navigate(Agent(request.agent.id)) }) }
             item { Text(request.title, style = MaterialTheme.typography.headlineMedium); Text(request.agent.name + " · " + request.spaceTitle, color = MaterialTheme.colorScheme.onSurfaceVariant) }
             item { Text(request.detail, style = MaterialTheme.typography.bodyLarge) }
-            item { Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer)) {
+            item { GlassCard(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer)) {
                 Column(Modifier.fillMaxWidth().padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                     Icon(Icons.Rounded.VerifiedUser, null)
                     Text(request.reason)
@@ -34,12 +34,12 @@ fun RequestScreen(model: ZoenViewModel, state: AppState, id: String, navigate: (
                     request.costCents?.let { Text(formatMoney(it, model.repository.locale), style = MaterialTheme.typography.titleLarge) }
                 }
             } }
-            request.itemId?.let { itemId -> item { OutlinedButton(onClick = { navigate(Item(itemId)) }) { Text(stringResource(R.string.files)) } } }
+            request.itemId?.let { itemId -> item { GlassOutlinedButton(onClick = { navigate(Item(itemId)) }) { Text(stringResource(R.string.files)) } } }
             item { Text(stringResource(requestStatusLabel(request.status)), color = MaterialTheme.colorScheme.primary) }
             if (request.status == RequestStatus.PENDING && request.agent.isMine) {
                 item { Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    OutlinedButton(onClick = { confirm = RequestDecision.DENY }, enabled = !busy, modifier = Modifier.weight(1f)) { Text(stringResource(R.string.deny)) }
-                    Button(onClick = { confirm = RequestDecision.APPROVE }, enabled = !busy, modifier = Modifier.weight(1f)) { Text(stringResource(R.string.approve)) }
+                    GlassOutlinedButton(onClick = { confirm = RequestDecision.DENY }, enabled = !busy, modifier = Modifier.weight(1f)) { Text(stringResource(R.string.deny)) }
+                    GlassButton(onClick = { confirm = RequestDecision.APPROVE }, enabled = !busy, modifier = Modifier.weight(1f)) { Text(stringResource(R.string.approve)) }
                 } }
                 if (request.canAlwaysApprove) item { TextButton(onClick = { confirm = RequestDecision.ALWAYS_APPROVE }, enabled = !busy) { Text(stringResource(R.string.always_approve)) } }
                 item { TextButton(onClick = { confirm = RequestDecision.ALWAYS_DENY }, enabled = !busy) { Text(stringResource(R.string.always_deny)) } }

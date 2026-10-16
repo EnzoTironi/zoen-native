@@ -393,16 +393,10 @@ struct OnboardingFlow: View {
 
     private var continueButton: some View {
         Button { advance() } label: {
-            Text(continueTitle)
-                .font(.headline)
-                .foregroundStyle(continueEnabled ? Color.white : Mascot.line.opacity(0.55))
-                .frame(maxWidth: 520)
-                .frame(height: 56)
-                .background(continueEnabled ? Mascot.body : Mascot.belly.opacity(0.35), in: .capsule)
-                .overlay(Capsule().strokeBorder(Mascot.line.opacity(continueEnabled ? 0.9 : 0.25), lineWidth: 1.5))
-                .shadow(color: Mascot.body.opacity(continueEnabled ? 0.35 : 0), radius: 12, y: 6)
+            Text(continueTitle).frame(maxWidth: 520)
         }
-        .buttonStyle(.plain)
+        .buttonStyle(.wabiGlass(prominent: continueEnabled, tint: Mascot.body, fullWidth: true, height: 56))
+        .frame(maxWidth: 520)
         .disabled(!continueEnabled)
         .padding(.horizontal, 20)
         .padding(.top, 6)

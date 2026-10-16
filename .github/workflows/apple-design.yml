@@ -1,0 +1,20 @@
+name: apple-design
+
+on:
+  pull_request:
+    paths: ["apple/Shared/DesignSystem/**", "scripts/check-apple-glass.sh", ".github/workflows/apple-design.yml"]
+  push:
+    branches: [main]
+    paths: ["apple/Shared/DesignSystem/**", "scripts/check-apple-glass.sh", ".github/workflows/apple-design.yml"]
+
+permissions:
+  contents: read
+
+jobs:
+  glass:
+    name: glass shader + style (iOS, macOS)
+    runs-on: macos-26
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - run: scripts/check-apple-glass.sh

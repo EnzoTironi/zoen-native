@@ -54,17 +54,55 @@ was allowed. No screenshot contains a recovery key.
 
 ## Human blockers / unverified acceptance
 
-PR #121 remains **draft**. GitHub reports a conflict against main and returns no CI
-checks. The original base was `3804b61`; observed main was `502a03f`. Changed-file
-intersection includes Android `Onboarding.kt` and `Settings.kt`, and Apple
-`OnboardingFlow.swift`; GitHub does not identify exact conflict hunks in its snapshot.
-No reconciliation was attempted under the no-merge/no-rebase restriction.
+At the original delivery, PR #121 was **draft**, conflicted against main and had no
+CI checks. The original base was `3804b61`; observed main was `502a03f`.
+Reconciliation was initially withheld under the no-merge/no-rebase restriction.
+The subsequent explicitly authorized integration is recorded below; hosted PR/CI
+state must not be inferred from local checks.
 
-A human-authorized integration is required before CI can start. Actual loss of all
+Actual loss of all
 original devices, restored peer messaging/history, successful full-key UI confirmation,
 UI failure/retry/cancellation under native lifecycle interruption, iPhone/Android builds,
 physical-device execution and browser-after-native-recovery remain unverified.
 
 Devices ownership was coordinated with front f: this change avoids Devices sections,
 pickup helpers, pairing/session behavior and device requests. No changes were made to
-revoked-device admission, #97, #98, #103/#104, #105, #109, #112/#113/#114/#117, or merges.
+revoked-device admission, #97, #98, #103/#104, #105, #109, #112/#113/#114/#117, or merges
+in the original delivery.
+
+## Authorized main integration
+
+The requester subsequently authorized a merge commit from `origin/main`, without
+rebasing, force-pushing or merging the PR. Integrated main: `14167d6c`.
+The published branch and inherited local branch had identical trees but different
+commit identities; the published ancestry was retained before starting the merge.
+
+Only Android `ui/Onboarding.kt` conflicted. Resolution keeps the recovery action
+available before account creation and preserves main's `GlassOutlinedButton` invite
+control, clipboard validation and route handling. Other main changes were merged
+without feature edits. No generated bindings were hand-edited.
+
+Fresh local checks on the integrated tree:
+
+- `python3 scripts/test-recovery-ui.py`: **passed**, 5 source-wiring guards.
+- `cargo test --locked -p roda-ffi --lib recovery_ui -- --test-threads=1`:
+  **passed**, 3 regressions, 321 unrelated tests filtered out.
+- `cargo clippy --locked -p roda-ffi --lib --tests -- -D warnings`: **passed**.
+- `cargo fmt --all --check` and staged/unstaged `git diff --check`: **passed**.
+- `cargo build --locked -p roda-ffi -p uniffi-bindgen`: **passed**.
+- Swift and Kotlin bindings regenerated from that host dylib using
+  `target/debug/uniffi-bindgen generate --library target/debug/libroda_ffi.dylib`,
+  language-specific output in ignored `build/recovery-bindings`, Kotlin config
+  `android/uniffi.toml`, and `scripts/fix-android-uniffi-callbacks.py`.
+- Swift recovery-input journey: **passed** using the command in the original table.
+- `npm ci --ignore-scripts`, `npm run typecheck:web`, `npm run test:web`:
+  **passed**, 26 web tests.
+
+Hosted PR reads failed at the Reason integration dispatch layer during this
+continuation; these local results do not establish a green CI run. Android remains
+**not run** locally: `java -version` still reports no Java runtime. The full Apple
+build was **not rerun** in this integration; its earlier partial result is recorded
+above. No simulator/emulator or native runtime journey was run. No new visual
+capture was made: this reconciliation preserves the existing controls rather than
+introducing a new presentation. Prior visual evidence retains its stated limits.
+Disk remained above 5 GiB free (over 250 GiB at the integration check).

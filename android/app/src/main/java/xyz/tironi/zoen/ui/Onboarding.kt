@@ -146,22 +146,22 @@ fun Onboarding(model: ZoenViewModel, modifier: Modifier = Modifier, acquisitionL
                     OnboardingStep.Hello -> {
                         if (model.state.value.account == null) TextButton(onClick = { recoverAccount = true }, modifier = Modifier.testTag("onboarding-recover")) { Text("Recuperar minha conta") }
                         if (route.flow == "default") {
-                        OutlinedButton(onClick = {
-                            val clipboard = context.getSystemService(android.content.ClipboardManager::class.java)
-                            val invite = clipboard.primaryClip?.takeIf { it.itemCount > 0 }?.getItemAt(0)?.coerceToText(context)?.toString()?.trim()
-                            if (invite.isNullOrEmpty() || invite.length > 8192 || Uri.parse(invite).scheme !in listOf("https", "zoen")) model.notify(pasteError)
-                            else model.launch {
-                                route = model.repository.query { core ->
-                                    core.growthCaptureLink(invite)
-                                    OnboardingRoute.from(core.growthOnboardingPlan())
+                            GlassOutlinedButton(onClick = {
+                                val clipboard = context.getSystemService(android.content.ClipboardManager::class.java)
+                                val invite = clipboard.primaryClip?.takeIf { it.itemCount > 0 }?.getItemAt(0)?.coerceToText(context)?.toString()?.trim()
+                                if (invite.isNullOrEmpty() || invite.length > 8192 || Uri.parse(invite).scheme !in listOf("https", "zoen")) model.notify(pasteError)
+                                else model.launch {
+                                    route = model.repository.query { core ->
+                                        core.growthCaptureLink(invite)
+                                        OnboardingRoute.from(core.growthOnboardingPlan())
+                                    }
                                 }
+                            }, modifier = Modifier.align(Alignment.CenterHorizontally).testTag("onboarding-paste-invite")) {
+                                Icon(Icons.Rounded.ContentPaste, null, Modifier.size(18.dp))
+                                Spacer(Modifier.width(8.dp))
+                                Text(stringResource(R.string.onboarding_paste_invite))
                             }
-                        }, modifier = Modifier.align(Alignment.CenterHorizontally).testTag("onboarding-paste-invite")) {
-                            Icon(Icons.Rounded.ContentPaste, null, Modifier.size(18.dp))
-                            Spacer(Modifier.width(8.dp))
-                            Text(stringResource(R.string.onboarding_paste_invite))
                         }
-                    }
                     }
                     OnboardingStep.Profile -> {
                         val preview = remember(photo) { photo?.let { BitmapFactory.decodeByteArray(it, 0, it.size) } }
@@ -181,7 +181,7 @@ fun Onboarding(model: ZoenViewModel, modifier: Modifier = Modifier, acquisitionL
                     }
                     OnboardingStep.Plan -> if (planning || plan == null) {
                         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) { CircularProgressIndicator(Modifier.size(24.dp)); Text(stringResource(R.string.onboarding_planning)) }
-                    } else Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer)) {
+                    } else GlassCard(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer)) {
                         Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                             Text(plan!!.plan.title, style = MaterialTheme.typography.titleLarge)
                             plan!!.plan.sections.forEach { section ->
@@ -203,7 +203,7 @@ fun Onboarding(model: ZoenViewModel, modifier: Modifier = Modifier, acquisitionL
             }
         }
         Column(Modifier.widthIn(max = 560.dp).fillMaxWidth().align(Alignment.CenterHorizontally).padding(24.dp), verticalArrangement = Arrangement.spacedBy(4.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-            Button(onClick = {
+            GlassButton(onClick = {
                 when (step) {
                     OnboardingStep.Profile -> {
                         busy = true
