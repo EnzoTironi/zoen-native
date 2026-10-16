@@ -95,15 +95,14 @@ function Bubble({ entry, own, first, onReact, onReply, onThread, onEdit, onDelet
   </article>;
 }
 
-function Composer({ placeholder, disabled, reply, cancelReply, editing, submit, autoFocus }: {
-  placeholder: string; disabled: boolean; reply?: Message | null; cancelReply?: () => void; editing?: Message | null; autoFocus?: boolean;
+function Composer({ placeholder, disabled, reply, cancelReply, submit, autoFocus }: {
+  placeholder: string; disabled: boolean; reply?: Message | null; cancelReply?: () => void; autoFocus?: boolean;
   submit: (text: string) => Promise<void>;
 }) {
   const [draft, setDraft] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const field = useRef<HTMLTextAreaElement>(null);
-  useEffect(() => { if (editing) { setDraft(editing.text); field.current?.focus(); } }, [editing?.id]);
   useEffect(() => { if (reply) field.current?.focus(); }, [reply?.id]);
   useEffect(() => { const el = field.current; if (el) { el.style.height = 'auto'; el.style.height = `${Math.min(el.scrollHeight, 168)}px`; } }, [draft]);
   const has = draft.trim().length > 0;
@@ -113,7 +112,7 @@ function Composer({ placeholder, disabled, reply, cancelReply, editing, submit, 
     void submit(draft).then(() => setDraft('')).catch((e: unknown) => setError(reason(e))).finally(() => { setBusy(false); field.current?.focus(); });
   }
   return <div className="zm-composer-zone">
-    {reply || editing ? <div className="zm-replying"><span><b>{editing ? 'Editando mensagem' : `Respondendo a ${reply?.name}`}</b>{(editing ?? reply)?.text}</span>
+    {reply ? <div className="zm-replying"><span><b>{`Respondendo a ${reply.name}`}</b>{reply.text}</span>
       <button aria-label="Cancelar" onClick={() => { setDraft(''); cancelReply?.(); }}><Icon name="close" /></button></div> : null}
     {error ? <p className="zm-error" role="alert">{error}</p> : null}
     <form className="zm-composer" onSubmit={(e) => { e.preventDefault(); go(); }}>

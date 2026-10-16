@@ -157,11 +157,11 @@ test('production message controller terminates the core and emits nothing when I
 test('mutation refusals propagate in Portuguese without terminating the session; retry persists before send', async (t) => {
   install(t);
   const base = messagingCore();
-  let refusal = true;
+  let refusal = 'Only the person who sent this message can change it.';
   let mutationSaves = 0;
   const core = { ...base, text: async (operation: CoreOperation) => {
     if (operation.kind !== 'queue_annotation') return base.text(operation);
-    if (refusal) throw new Error('Only the person who sent this message can change it.');
+    if (refusal) throw new Error(refusal);
     return JSON.stringify({ snapshot: 'mutation', frames: [[9]], conversations: [conversation] });
   } };
   const states: MessagesState[] = [];
@@ -177,7 +177,12 @@ test('mutation refusals propagate in Portuguese without terminating the session;
   assert.equal(states.at(-1)?.kind, 'active');
   assert.equal(base.closed, false);
   assert.equal(socket().sent.length, 3);
-  refusal = false;
+  refusal = 'Essa mensagem foi apagada.';
+  await assert.rejects(messages.annotate('sp_fixture', 'target', { Edit: { text: 'draft' } }), /Essa mensagem foi apagada/);
+  refusal = 'Write a message of up to 32 KB.';
+  await assert.rejects(messages.annotate('sp_fixture', 'target', { Edit: { text: '' } }), /não pode ficar vazia/);
+  assert.equal(states.at(-1)?.kind, 'active');
+  refusal = '';
   await messages.annotate('sp_fixture', 'target', { Edit: { text: 'draft' } });
   assert.equal(mutationSaves, 1);
   assert.equal(socket().sent.length, 4);

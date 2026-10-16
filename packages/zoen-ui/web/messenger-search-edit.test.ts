@@ -38,6 +38,41 @@ test('sidebar finds message bodies, not only conversation titles', async () => {
     await input(document.querySelector('input[type=search]')!, 'pousada');
     assert.ok(document.querySelector('[aria-label="Resultados de mensagens"]'), 'message results must be visible');
     assert.match(document.querySelector('[aria-label="Resultados de mensagens"]')!.textContent!, /pousada antiga/);
+    await click(document.querySelector('[aria-label="Resultados de mensagens"] li button'));
+    assert.equal(document.activeElement?.id, 'message-first');
+  } finally { await ui.close(); }
+});
+
+test('successful edit sends the exact replacement once, closes the dialog and preserves the send draft', async () => {
+  const annotations: unknown[] = [];
+  const ui = await mount(async (...args: unknown[]) => { annotations.push(args); });
+  try {
+    const send = document.querySelector('.zm-main textarea')! as HTMLTextAreaElement;
+    await input(send, 'mensagem futura');
+    await click(document.querySelectorAll('[aria-label="Mais ações"]')[1]);
+    await click(button('Editar'));
+    await input(document.querySelector('[aria-label="Editar mensagem"] textarea')!, 'Nova versão');
+    await click(button('Salvar'));
+    assert.equal(document.querySelector('[aria-label="Editar mensagem"]'), null);
+    assert.deepEqual(annotations, [['chat', 'second', { Edit: { text: 'Nova versão' } }]]);
+    assert.equal(send.value, 'mensagem futura');
+    assert.deepEqual(ui.calls, []);
+  } finally { await ui.close(); }
+});
+
+test('delete failure is visible and does not discard the send draft', async (t) => {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  dom.window.confirm = () => true;
+  const ui = await mount(async () => { throw new Error('Só quem enviou pode mudar esta mensagem.'); });
+  try {
+    const send = document.querySelector('.zm-main textarea')! as HTMLTextAreaElement;
+    await input(send, 'rascunho preservado');
+    await click(document.querySelectorAll('[aria-label="Mais ações"]')[1]);
+    await click(button('Apagar para todos'));
+    assert.match(document.querySelector('[role=alert]')!.textContent!, /Só quem enviou/);
+    assert.equal(send.value, 'rascunho preservado');
+    assert.deepEqual(ui.calls, []);
+    await act(async () => t.mock.timers.tick(3300));
   } finally { await ui.close(); }
 });
 
