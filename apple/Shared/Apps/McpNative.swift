@@ -247,12 +247,12 @@ struct ZoenConsentSheet: View {
                     Text("Always for this app").font(.headline).foregroundStyle(ActionGlassForeground())
                         .frame(maxWidth: .infinity).frame(height: 50)
                 }
-                .buttonStyle(.glassProminent)
+                .buttonStyle(.wabiGlassProminent)
                 .tint(Palette.action)
                 Button { decide(.once) } label: {
                     Text("Allow once").font(.headline).frame(maxWidth: .infinity).frame(height: 50)
                 }
-                .buttonStyle(.glass)
+                .buttonStyle(.wabiGlass)
                 Button { decide(.deny) } label: {
                     Text("Don’t allow").font(.subheadline.weight(.semibold)).frame(maxWidth: .infinity).frame(height: 40)
                 }

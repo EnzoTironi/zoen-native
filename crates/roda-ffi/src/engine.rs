@@ -1431,7 +1431,7 @@ impl Engine {
         }
     }
 
-    fn preview(&self, s: &SpaceState) -> (String, Option<Persona>) {
+    fn preview(&self, s: &SpaceState) -> (String, Option<Persona>, Option<Delivery>) {
         for e in s.entries.iter().rev() {
             let text = match &e.body {
                 EntryBody::Message { marks, .. } if marks.deleted => {
@@ -1450,12 +1450,13 @@ impl Engine {
                     }
                 }
                 EntryBody::ItemEdited { note, .. } => note.clone(),
-                EntryBody::Request { request } => self
-                    .state
-                    .requests
-                    .get(request)
-                    .map(|r| tr!("Pedido: {}", "Request: {}", r.req.title))
-                    .unwrap_or_default(),
+                EntryBody::Request { request } => {
+                    if let Some(r) = self.state.requests.get(request) {
+                        // A request's title already describes the action in natural language.
+                        return (r.req.title.clone(), None, None);
+                    }
+                    continue;
+                }
                 EntryBody::RequestResolved { .. } | EntryBody::System { .. } => continue,
                 EntryBody::Background { spec } => {
                     if spec.style == "photo" || spec.style.starts_with("builtin:") {
@@ -1468,9 +1469,16 @@ impl Engine {
                     }
                 }
             };
-            return (text, Some(self.persona(&e.author)));
+            let delivery = if matches!(e.body, EntryBody::Message { .. })
+                && self.me.as_deref() == Some(e.author.as_str())
+            {
+                Some(self.delivery(e))
+            } else {
+                None
+            };
+            return (text, Some(self.persona(&e.author)), delivery);
         }
-        (t("Nenhuma mensagem ainda", "No messages yet"), None)
+        (t("Nenhuma mensagem ainda", "No messages yet"), None, None)
     }
 
     pub(crate) fn request_dto(&self, r: &RequestState) -> AgentRequestDto {
@@ -1584,18 +1592,15 @@ impl Engine {
         } else {
             None
         };
-        let (last_preview, last_author) = match &s.integrity_error {
-            Some(err) => (tr!("⚠︎ Log inválido: {err}", "⚠︎ Invalid log: {err}"), None),
+        let (last_preview, last_author, last_delivery) = match &s.integrity_error {
+            Some(err) => (
+                tr!("⚠︎ Log inválido: {err}", "⚠︎ Invalid log: {err}"),
+                None,
+                None,
+            ),
             None => self.preview(s),
         };
         let read_seq = self.read_up_to(id);
-        let last_delivery = s
-            .entries
-            .iter()
-            .rev()
-            .find(|e| matches!(e.body, EntryBody::Message { .. }))
-            .filter(|e| e.author == me)
-            .map(|e| self.delivery(e));
         let unread = s
             .entries
             .iter()

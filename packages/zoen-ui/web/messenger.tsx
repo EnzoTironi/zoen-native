@@ -4,11 +4,12 @@ import type { Conversation, Message, Messages } from './messages.ts';
 import { MessageEditor } from './message-editor.tsx';
 import { MessageSearchResults } from './message-search-view.tsx';
 import type { MessageHit } from './message-search.ts';
+import { loadChatPreferences, saveChatPreferences, type ChatPreferences as Prefs } from './chat-preferences.ts';
 
-/** How I keep a chat. Local to this browser until the synced chat preferences reach the web core. */
-type Prefs = { pinned?: boolean; muted?: boolean; archived?: boolean };
-const PREFS = 'zoen.chat-prefs';
-function loadPrefs(): Record<string, Prefs> { try { return JSON.parse(localStorage.getItem(PREFS) ?? '{}') as Record<string, Prefs>; } catch { return {}; } }
+/** How I keep a chat. Local to this account/browser until synced preferences reach the web core. */
+function loadPrefs(identity: string): Record<string, Prefs> {
+  try { return loadChatPreferences(localStorage, identity); } catch { return {}; }
+}
 const FOLLOW = 'zoen.thread-follow';
 function loadFollow(): Record<string, boolean> { try { return JSON.parse(localStorage.getItem(FOLLOW) ?? '{}') as Record<string, boolean>; } catch { return {}; } }
 
@@ -148,11 +149,18 @@ function ChatRow({ c, active, prefs, open, set }: { c: Conversation; active: boo
   </li>;
 }
 
-export function Messenger({ conversations, identity, name, connected, status, messages, footer, selected, select, children }: {
+type MessengerProps = {
   conversations: Conversation[]; identity: string; name: string; connected: boolean; status: string;
   messages: React.RefObject<Messages | null>; footer: React.ReactNode; selected: string; select: (id: string) => void; children?: React.ReactNode;
-}) {
-  const [prefs, setPrefs] = useState(loadPrefs);
+};
+
+export function Messenger(props: MessengerProps) {
+  // Account switches must also discard drafts, selections and in-memory preferences.
+  return <AccountMessenger key={props.identity} {...props} />;
+}
+
+function AccountMessenger({ conversations, identity, name, connected, status, messages, footer, selected, select, children }: MessengerProps) {
+  const [prefs, setPrefs] = useState(() => loadPrefs(identity));
   const [follow, setFollow] = useState(loadFollow);
   const [search, setSearch] = useState('');
   const [showArchived, setShowArchived] = useState(false);
@@ -163,7 +171,10 @@ export function Messenger({ conversations, identity, name, connected, status, me
   const [toast, setToast] = useState('');
   const end = useRef<HTMLDivElement>(null);
   const [searchTarget, setSearchTarget] = useState<MessageHit | null>(null);
-  const savePrefs = (id: string, p: Prefs) => { const next = { ...prefs, [id]: p }; setPrefs(next); localStorage.setItem(PREFS, JSON.stringify(next)); };
+  const savePrefs = (id: string, p: Prefs) => {
+    const next = { ...prefs, [id]: p }; setPrefs(next);
+    try { saveChatPreferences(localStorage, identity, next); } catch { /* Storage may be disabled. */ }
+  };
   const toggleFollow = (root: string, on: boolean) => { const next = { ...follow, [root]: on }; setFollow(next); localStorage.setItem(FOLLOW, JSON.stringify(next)); };
   const lastAt = (c: Conversation) => c.messages.at(-1)?.at_ms ?? 0;
   const matches = conversations.filter((c) => c.title.toLocaleLowerCase('pt-BR').includes(search.toLocaleLowerCase('pt-BR')));

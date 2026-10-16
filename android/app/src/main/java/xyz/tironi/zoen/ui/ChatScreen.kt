@@ -247,7 +247,7 @@ fun ChatScreen(model: ZoenViewModel, state: AppState, spaceId: String, navigate:
     if (space == null) {
         Scaffold(topBar = { ScreenBar(stringResource(R.string.chats), back) }) { padding ->
             EmptyState(stringResource(R.string.unavailable), stringResource(R.string.unavailable_detail), Modifier.padding(padding)) {
-                OutlinedButton(onClick = { model.launch { model.repository.refresh() } }) { Text(stringResource(R.string.retry)) }
+                GlassOutlinedButton(onClick = { model.launch { model.repository.refresh() } }) { Text(stringResource(R.string.retry)) }
             }
         }
         return
@@ -513,7 +513,7 @@ fun TimelineRow(model: ZoenViewModel, spaceId: String, entry: TimelineEntry, nav
                     }
                     }
                     kind.card?.let { card ->
-                                Card(onClick = { navigate(Item(card.itemId)) }, modifier = Modifier.testTag("item:${card.itemId}").then(if (kind.text.isBlank() && entry.replyTo == null) Modifier.messageFace() else Modifier), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
+                                GlassCard(onClick = { navigate(Item(card.itemId)) }, modifier = Modifier.testTag("item:${card.itemId}").then(if (kind.text.isBlank() && entry.replyTo == null) Modifier.messageFace() else Modifier), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
                                     Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                                         Row(verticalAlignment = Alignment.CenterVertically) {
                                             Text(card.title, Modifier.weight(1f), style = MaterialTheme.typography.titleLarge,
@@ -562,7 +562,7 @@ fun TimelineRow(model: ZoenViewModel, spaceId: String, entry: TimelineEntry, nav
             val state by model.state.collectAsStateWithLifecycle()
             val request = state.requests.firstOrNull { it.id == kind.requestId }
             var approving by remember { mutableStateOf(false) }
-            OutlinedCard(onClick = { navigate(Request(kind.requestId)) }) {
+            GlassCard(onClick = { navigate(Request(kind.requestId)) }, colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
                 Row(Modifier.fillMaxWidth().padding(12.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                     Avatar(request?.agent ?: entry.author, size = 30)
                     Column(Modifier.weight(1f)) {
@@ -570,7 +570,7 @@ fun TimelineRow(model: ZoenViewModel, spaceId: String, entry: TimelineEntry, nav
                         request?.let { Text(listOfNotNull(it.agent.name, it.costCents?.let { cost -> formatMoney(cost, locale) }).joinToString(" · "), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
                     }
                     when (request?.status) {
-                        RequestStatus.PENDING -> Button(enabled = request?.agent?.isMine == true && !approving, onClick = {
+                        RequestStatus.PENDING -> GlassButton(enabled = request?.agent?.isMine == true && !approving, onClick = {
                             approving = true
                             model.launch { try { val result = model.repository.change { it.approveRequest(kind.requestId) }; model.notify(result.message) } finally { approving = false } }
                         }) { Text(stringResource(R.string.approve)) }

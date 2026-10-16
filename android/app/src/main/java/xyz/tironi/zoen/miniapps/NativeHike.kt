@@ -1,5 +1,9 @@
 package xyz.tironi.zoen.miniapps
 
+import xyz.tironi.zoen.ui.GlassCard
+import xyz.tironi.zoen.ui.GlassButton
+import xyz.tironi.zoen.ui.GlassOutlinedButton
+
 import android.content.Intent
 import android.graphics.BitmapFactory
 import android.net.Uri
@@ -84,7 +88,7 @@ fun NativeHike(model: ZoenViewModel, state: AppState, item: ItemDetail, data: JS
         }
         items(shown, key = { it.optString("id") }) { trail ->
             val id = trail.optString("id")
-            Card(onClick = { detail = id }) {
+            GlassCard(onClick = { detail = id }) {
                 Image(painterResource(trailPhoto(id)), trail.optString("name"), Modifier.fillMaxWidth().height(172.dp), contentScale = ContentScale.Crop)
                 Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                     Text(trail.optString("name"), style = MaterialTheme.typography.titleLarge)
@@ -95,7 +99,7 @@ fun NativeHike(model: ZoenViewModel, state: AppState, item: ItemDetail, data: JS
                 }
             }
         }
-        if (decided == null) item { Button(onClick = { action("hike_decide", JSONObject()) }, enabled = votes.values.any { it.isNotEmpty() }, modifier = Modifier.fillMaxWidth()) { Text(stringResource(R.string.hike_decide)) } }
+        if (decided == null) item { GlassButton(onClick = { action("hike_decide", JSONObject()) }, enabled = votes.values.any { it.isNotEmpty() }, modifier = Modifier.fillMaxWidth()) { Text(stringResource(R.string.hike_decide)) } }
         if (data.objects("itinerary").isNotEmpty()) item { HikeItinerary(data.objects("itinerary")) }
         item { data.objects("log").take(6).forEach { Text(it.optString("who") + " " + it.optString("what"), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) } }
     }
@@ -113,20 +117,20 @@ fun NativeHike(model: ZoenViewModel, state: AppState, item: ItemDetail, data: JS
                             HikeStat(trail.optString("time"), stringResource(R.string.miniapp_time))
                         }
                         HikeRoute(trail, Modifier.fillMaxWidth().height(220.dp))
-                        OutlinedButton(onClick = { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("geo:${trail.getJSONArray("trailhead").getDouble(1)},${trail.getJSONArray("trailhead").getDouble(0)}?q=${trail.getJSONArray("trailhead").getDouble(1)},${trail.getJSONArray("trailhead").getDouble(0)}(${Uri.encode(trail.optString("name"))})"))) }) { Icon(Icons.Rounded.Directions, null); Text(stringResource(R.string.miniapp_directions)) }
+                        GlassOutlinedButton(onClick = { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("geo:${trail.getJSONArray("trailhead").getDouble(1)},${trail.getJSONArray("trailhead").getDouble(0)}?q=${trail.getJSONArray("trailhead").getDouble(1)},${trail.getJSONArray("trailhead").getDouble(0)}(${Uri.encode(trail.optString("name"))})"))) }) { Icon(Icons.Rounded.Directions, null); Text(stringResource(R.string.miniapp_directions)) }
                         if (here == null) TextButton(onClick = { native("location.approximate", JSONObject()) { here = it as JSONObject } }, enabled = !busy) { Text(stringResource(R.string.miniapp_distance_from_you)) }
                         else Text(stringResource(R.string.miniapp_miles_away, distanceMiles(here!!, trail).roundToInt()))
                         Text(stringResource(R.string.miniapp_about_trail), style = MaterialTheme.typography.titleLarge)
                         Text(trail.optString("about"))
                         Text(trail.names("attributes").joinToString(" · "), style = MaterialTheme.typography.bodySmall)
                         Text(votes[id].orEmpty().joinToString(), color = MaterialTheme.colorScheme.primary)
-                        if (decided == null) Button(onClick = { action("hike_vote", JSONObject().put("trail", id)) }, Modifier.fillMaxWidth()) { Text(stringResource(if (state.me?.name in votes[id].orEmpty()) R.string.miniapp_voted else R.string.vote)) }
+                        if (decided == null) GlassButton(onClick = { action("hike_vote", JSONObject().put("trail", id)) }, Modifier.fillMaxWidth()) { Text(stringResource(if (state.me?.name in votes[id].orEmpty()) R.string.miniapp_voted else R.string.vote)) }
                         TextButton(onClick = { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(trail.optString("link")))) }) { Icon(Icons.Rounded.OpenInNew, null); Text(stringResource(R.string.miniapp_open_trail_page)) }
                     } }
                     if (decided == id) {
                         if (data.objects("itinerary").isNotEmpty()) item { Box(Modifier.padding(horizontal = 20.dp)) { HikeItinerary(data.objects("itinerary")) } }
                         item { Column(Modifier.padding(horizontal = 20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                            Button(onClick = {
+                            GlassButton(onClick = {
                                 val now = ZonedDateTime.now()
                                 val saturday = now.with(TemporalAdjusters.nextOrSame(DayOfWeek.SATURDAY)).withHour(8).withMinute(0).withSecond(0).withNano(0)
                                 val start = data.optLong("dayMs", (if (saturday <= now) saturday.plusWeeks(1) else saturday).toInstant().toEpochMilli())
@@ -139,8 +143,8 @@ fun NativeHike(model: ZoenViewModel, state: AppState, item: ItemDetail, data: JS
                                 items(mine) { photo -> HikeAlbumPhoto(photo.optString("dataUrl"), stringResource(R.string.miniapp_photo_private)) }
                             }
                             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                OutlinedButton(onClick = { native("photos.pick", JSONObject().put("max", 6 - mine.size).put("maxSide", 900)) { array -> mine = (mine + (array as JSONArray).let { (0 until it.length()).map { index -> it.getJSONObject(index) } }).take(6) } }, enabled = !busy && mine.size < 6) { Text(stringResource(R.string.miniapp_add_photos)) }
-                                if (mine.isNotEmpty()) Button(onClick = { share = true }) { Text(stringResource(R.string.miniapp_share_photos, mine.size)) }
+                                GlassOutlinedButton(onClick = { native("photos.pick", JSONObject().put("max", 6 - mine.size).put("maxSide", 900)) { array -> mine = (mine + (array as JSONArray).let { (0 until it.length()).map { index -> it.getJSONObject(index) } }).take(6) } }, enabled = !busy && mine.size < 6) { Text(stringResource(R.string.miniapp_add_photos)) }
+                                if (mine.isNotEmpty()) GlassButton(onClick = { share = true }) { Text(stringResource(R.string.miniapp_share_photos, mine.size)) }
                             }
                             if (mine.isNotEmpty()) TextButton(onClick = { mine = emptyList() }) { Text(stringResource(R.string.miniapp_discard_photos)) }
                         } }
@@ -174,7 +178,7 @@ fun NativeHike(model: ZoenViewModel, state: AppState, item: ItemDetail, data: JS
                         Text(trail.optString("name"), Modifier.height(50.dp), style = MaterialTheme.typography.titleMedium)
                         listOf("${trail.optDouble("miles")} mi", "${trail.optInt("climbFt")} ft", trail.optString("time"), trail.optString("difficulty"), trail.optString("route"), trail.optString("terrain"), trail.optString("shade"), trail.optString("bestFor")).forEach { Text(it, Modifier.height(64.dp), style = MaterialTheme.typography.bodyMedium) }
                         Text(votes[trail.optString("id")].orEmpty().joinToString(), style = MaterialTheme.typography.bodySmall)
-                        if (decided == null) Button(onClick = { action("hike_vote", JSONObject().put("trail", trail.optString("id"))) }) { Text(stringResource(R.string.vote)) }
+                        if (decided == null) GlassButton(onClick = { action("hike_vote", JSONObject().put("trail", trail.optString("id"))) }) { Text(stringResource(R.string.vote)) }
                         else if (decided == trail.optString("id")) Text(stringResource(R.string.miniapp_going), color = MaterialTheme.colorScheme.primary)
                     } }
                 } }

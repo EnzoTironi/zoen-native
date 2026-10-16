@@ -126,7 +126,7 @@ fun OwnerAgentNoteCard(agent: Persona, note: OwnerAgentNote, personName: (String
             val pressed by press.collectIsPressedAsState()
             val enabled = note.space.isNotBlank()
             val scale by animateFloatAsState(if (pressed && enabled && motion) .96f else 1f, tween(150), label = "press")
-            Button(
+            GlassButton(
                 onClick = { haptics.perform(ZoenFeedback.Tap); open(note.space) },
                 enabled = enabled,
                 interactionSource = press,
