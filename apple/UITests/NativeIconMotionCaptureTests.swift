@@ -32,6 +32,11 @@ final class NativeIconMotionCaptureTests: XCTestCase {
         let applied = try XCTUnwrap(try JSONSerialization.jsonObject(with: Data(fixture.label.utf8)) as? [String: Any])
         XCTAssertEqual(applied["source_revision"] as? String, revision)
         XCTAssertTrue(app.buttons["New message"].firstMatch.waitForExistence(timeout: 20))
+        XCTAssertEqual(app.navigationBars.count, 0, "Root navigation has no top chrome")
+        for title in ["Chats", "Spaces", "Notifications", "Profile", "New message"] {
+            XCTAssertGreaterThan(app.buttons[title].firstMatch.frame.midY, app.frame.midY,
+                                 "Every root destination/action belongs in the bottom bar")
+        }
         var actions: [[String: Any]] = []
         let state = app.descendants(matching: .any)["parity-motion-state"].firstMatch
         XCTAssertTrue(state.waitForExistence(timeout: 10))
@@ -105,7 +110,11 @@ final class NativeIconMotionCaptureTests: XCTestCase {
         XCTAssertEqual(composer.value as? String, "")
         // Re-query by semantic label: XCTest may retain the stable action element
         // across SwiftUI's send-to-mic replacement.
-        XCTAssertFalse(app.buttons.matching(NSPredicate(format: "identifier == %@ AND label == %@", "send", "Send")).firstMatch.exists)
+        let staleSend = app.buttons.matching(NSPredicate(format: "identifier == %@ AND label == %@", "send", "Send")).firstMatch
+        // SwiftUI keeps the outgoing send surface alive during its native replacement
+        // transition. Assert its removal after settling, not during that transition.
+        expectation(for: NSPredicate(format: "exists == false"), evaluatedWith: staleSend)
+        waitForExpectations(timeout: 5)
         attach(app.screenshot(), name: "composer-mic-\(appearance)")
         actions.append(["event": "composer-mic", "dispatch_uptime_seconds": clearStart,
             "capture_completed_after_ms": (ProcessInfo.processInfo.systemUptime - clearStart) * 1000,

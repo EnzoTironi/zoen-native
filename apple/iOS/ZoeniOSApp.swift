@@ -143,7 +143,7 @@ private struct NativeParityMotionDriver: View {
     var body: some View {
         if enabled {
             VStack {
-                Button("Open genuine request") {
+                Button {
                     guard let existing = model.requests.first(where: { $0.agent.isMine }),
                           let agent = model.agents.first(where: { $0.persona.id == existing.agent.id }) else {
                         failure = "No owned agent/space request available"; return
@@ -154,10 +154,11 @@ private struct NativeParityMotionDriver: View {
                             audience: "Parity recipient", action: "external", cents: 0)
                         model.refresh()
                     } catch { failure = String(describing: error) }
+                } label: {
+                    Color.clear.frame(width: 44, height: 44).contentShape(.rect)
                 }
-                .font(.system(size: 1))
-                .foregroundStyle(.clear)
-                .frame(width: 12, height: 12)
+                .buttonStyle(.plain)
+                .accessibilityLabel("Open genuine request")
                 .accessibilityIdentifier("parity-open-genuine-request")
                 Color.clear.frame(width: 1, height: 1)
                     .accessibilityElement(children: .ignore)
@@ -270,6 +271,14 @@ struct RootView: View {
             }
             .tabViewStyle(.tabBarOnly)
             .background(NativeTabImageEffects(pendingIDs: Set(model.requests.filter { $0.status == .pending }.map(\.id))))
+            .overlay(alignment: .bottomLeading) {
+                if barVisible {
+                    ConnectionDot()
+                        .padding(.leading, 28)
+                        .padding(.bottom, 22)
+                        .allowsHitTesting(false)
+                }
+            }
             .onAppear {
                 selectedTab = model.tab
                 previousTab = model.tab
@@ -347,11 +356,7 @@ struct RootView: View {
         NavigationStack(path: Binding(get: { model.path(t) }, set: { model.setPath(t, $0) })) {
             root(t)
                 .toolbar(barVisible ? .visible : .hidden, for: .tabBar)
-                .toolbar {
-                    if model.path(t).isEmpty {
-                        ToolbarItem(placement: .topBarTrailing) { ConnectionDot() }
-                    }
-                }
+                .toolbar(model.path(t).isEmpty ? .hidden : .visible, for: .navigationBar)
                 .navigationDestination(for: Route.self) { route in destination(route) }
         }
     }
