@@ -52,6 +52,9 @@
   // With more contrast or forced colours CSS hides the sky entirely: then load no footage at all.
   var noSky = window.matchMedia('(prefers-contrast: more), (forced-colors: active)');
   var layers = {};
+  /** Reader's own choice (WCAG 2.2.2): a paused sky shows the still photo and stays paused across pages. */
+  var paused = false;
+  try { paused = localStorage.getItem('zoen-sky-paused') === '1'; } catch (e) {}
   var timer;
 
   function currentHour() {
@@ -76,7 +79,7 @@
 
   function video(name, el) {
     var v = el.querySelector('video');
-    if (still.matches || noSky.matches) { if (v) v.remove(); return null; }
+    if (still.matches || noSky.matches || paused) { if (v) v.remove(); return null; }
     if (!v) {
       v = document.createElement('video');
       v.muted = true; v.loop = true; v.playsInline = true; v.autoplay = true;
@@ -131,18 +134,38 @@
     }));
   };
 
+  function toggle() {
+    var b = document.querySelector('.zoen-sky-toggle');
+    if (!b) return;
+    var hidden = still.matches || noSky.matches;
+    b.hidden = hidden;
+    b.setAttribute('aria-pressed', paused ? 'true' : 'false');
+    b.textContent = paused ? 'Play sky' : 'Pause sky';
+  }
+
   function mount() {
+    if (!document.querySelector('.zoen-sky-toggle')) {
+      var b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'zoen-sky-toggle';
+      b.addEventListener('click', function () {
+        paused = !paused;
+        try { localStorage.setItem('zoen-sky-paused', paused ? '1' : '0'); } catch (e) {}
+        update(); toggle();
+      });
+      document.body.append(b);
+    }
     if (!document.querySelector('.zoen-sky')) {
       var sky = document.createElement('div');
       sky.className = 'zoen-sky';
       sky.setAttribute('aria-hidden', 'true'); // purely decorative
       document.body.prepend(sky);
     }
-    update();
+    update(); toggle();
   }
 
   document.addEventListener('visibilitychange', update);
-  if (still.addEventListener) { still.addEventListener('change', update); noSky.addEventListener('change', update); }
+  if (still.addEventListener) { [still, noSky].forEach(function (m) { m.addEventListener('change', function () { update(); toggle(); }); }); }
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', mount);
   else mount();
   root.setAttribute('data-sky-phase', phase(currentHour()));

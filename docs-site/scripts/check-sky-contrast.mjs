@@ -220,18 +220,20 @@ for (const theme of (args.themes ?? 'light,dark').split(',')) for (const [name, 
   await page.evaluate((t) => ZoenSky.freeze(t), FRAMES[0]);
   const axe = await axeCheck(page);
   for (const v of axe.violations) failures.push(`${label}: axe ${v}`);
-  const measured = new Set();
-  let worst = { r: Infinity }, runs = 0;
+  // Undecided nodes that are not painted at all (zero-size or display:none at this width) cannot fail.
+  const unpainted = new Set(await page.evaluate(() => [...document.querySelectorAll('[data-axe-incomplete]')].filter((e) => !e.getClientRects().length || !e.checkVisibility({ opacityProperty: true, visibilityProperty: true })).map((e) => e.dataset.axeIncomplete)));
+  let worst = { r: Infinity }, runs = 0, unmeasured = [];
+  // Coverage is tracked per frame: every undecided node must be measured on every frame.
   for (const frame of FRAMES) {
+    const measured = new Set();
     page._tried = new Set();
     const px = await pixelCheck(page, label, measured, frame);
     runs += px.checked;
     if (px.worst.r < worst.r) worst = { ...px.worst, frame };
+    const miss = axe.incomplete.filter((n) => !n.id || (!measured.has(n.id) && !unpainted.has(n.id)));
+    for (const n of miss) failures.push(`${label} frame ${frame}s: axe could not decide ${n.target} (${n.why}) and the pixel check could not measure it`);
+    if (miss.length > unmeasured.length) unmeasured = miss;
   }
-  // Undecided nodes that are not painted at all (zero-size or display:none at this width) cannot fail.
-  const unpainted = new Set(await page.evaluate(() => [...document.querySelectorAll('[data-axe-incomplete]')].filter((e) => !e.getClientRects().length || !e.checkVisibility({ opacityProperty: true, visibilityProperty: true })).map((e) => e.dataset.axeIncomplete)));
-  const unmeasured = axe.incomplete.filter((n) => !n.id || (!measured.has(n.id) && !unpainted.has(n.id)));
-  for (const n of unmeasured) failures.push(`${label}: axe could not decide ${n.target} (${n.why}) and the pixel check could not measure it`);
   report.push({ theme, time: name, hour, viewport: `${vp.w}x${vp.h}`, path, phase: sky.phase, frames: FRAMES, textRuns: runs, worst: +worst.r.toFixed(2), worstAt: `${worst.kind} "${worst.text}" frame ${worst.frame}s (${worst.large ? 'large/UI, 3:1' : 'body, 4.5:1'})`, axeViolations: axe.violations.length, axePasses: axe.passes, axeIncomplete: axe.incomplete.length, axeIncompleteMeasured: axe.incomplete.length - unmeasured.length });
   console.log(`${label.padEnd(54)} ${sky.phase.padEnd(7)} runs ${String(runs).padStart(5)}  worst ${worst.r.toFixed(2)}:1 ${worst.kind} "${worst.text}" @${worst.frame}s  axe ${axe.violations.length} violations / ${axe.passes} passes / ${axe.incomplete.length - unmeasured.length} of ${axe.incomplete.length} undecided measured by pixels`);
   await page.close();
@@ -267,11 +269,23 @@ for (const theme of (args.themes ?? 'light,dark').split(',')) for (const [name, 
   if (d !== 'none') failures.push('prefers-contrast: more → sky still visible');
   const qv = await q.evaluate(() => document.querySelectorAll('.zoen-sky video').length);
   if (qv) failures.push(`prefers-contrast: more → ${qv} sky video(s) still loaded`);
+  await q.close();
+  // Pause control (WCAG 2.2.2): pausing removes the video, keeps the photo, and persists.
+  const z = await open('/', 'light', 12);
+  const pz = await z.evaluate(async () => {
+    const b = document.querySelector('.zoen-sky-toggle'); const before = document.querySelectorAll('.zoen-sky video').length;
+    b.click(); const after = document.querySelectorAll('.zoen-sky video').length;
+    return { label: b.textContent, pressed: b.getAttribute('aria-pressed'), before, after, stored: localStorage.getItem('zoen-sky-paused') };
+  });
+  if (!(pz.before > 0 && pz.after === 0 && pz.pressed === 'true' && pz.stored === '1')) failures.push(`pause control: ${JSON.stringify(pz)}`);
+  console.log(`pause control: ${pz.before} → ${pz.after} videos, "${pz.label}", aria-pressed ${pz.pressed}`);
+  await z.close();
+  const q2 = await open('/', 'light', 12, [{ name: 'prefers-contrast', value: 'more' }]);
   // The tint must sit above the footage.
-  const zt = await q.evaluate(() => getComputedStyle(document.querySelector('.zoen-sky'), '::after').zIndex);
+  const zt = await q2.evaluate(() => getComputedStyle(document.querySelector('.zoen-sky'), '::after').zIndex);
   if (zt !== '3') failures.push(`sky tint z-index is ${zt}, expected 3 (above both clips)`);
   console.log(`prefers-contrast: more → sky display ${d}`);
-  await q.close();
+  await q2.close();
 }
 
 await browser.close();
