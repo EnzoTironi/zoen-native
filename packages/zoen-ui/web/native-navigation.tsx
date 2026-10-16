@@ -4,7 +4,12 @@ import './native-navigation.css';
 
 export type NativeNavigationTab = 'chats' | 'store';
 export type NativeCreateDestination = 'zoen' | 'agents' | 'files' | 'you';
+export interface NativeNavigationVoice {
+  active: boolean; locked: boolean; seconds: number; levels: readonly number[];
+  start: () => void; lock: () => void; send: () => void; cancel: () => void;
+}
 export interface NativeNavigationProps {
+  voice?: NativeNavigationVoice;
   selected: NativeNavigationTab;
   /** Controlled inbox search. Opening and cancelling also notify the host. */
   search: { open: boolean; value: string; onChange: (value: string) => void; onOpenChange: (open: boolean) => void };
@@ -35,10 +40,46 @@ const destinations: { id: NativeCreateDestination; title: string }[] = [
   { id: 'files', title: 'Files' }, { id: 'you', title: 'Your context' },
 ];
 
-export function NativeNavigation({ selected, search, onSelect, onCreate, unreadCount = 0 }: NativeNavigationProps) {
+export function NativeNavigation({ selected, search, onSelect, onCreate, unreadCount = 0, voice }: NativeNavigationProps) {
   const [expanded, setExpanded] = useState(false);
   const trigger = useRef<HTMLButtonElement>(null);
   const input = useRef<HTMLInputElement>(null);
+  const latestVoice = useRef(voice); latestVoice.current = voice;
+  const gestureCleanup = useRef<(() => void) | null>(null);
+  const suppressClick = useRef(false);
+  useEffect(() => {
+    const cancel = () => { gestureCleanup.current?.(); latestVoice.current?.cancel(); };
+    const hidden = () => { if (document.hidden) cancel(); };
+    document.addEventListener('visibilitychange', hidden);
+    window.addEventListener('blur', cancel);
+    return () => { document.removeEventListener('visibilitychange', hidden); window.removeEventListener('blur', cancel); cancel(); };
+  }, []);
+  const hold = (event: React.PointerEvent<HTMLButtonElement>) => {
+    if (!voice || event.button !== 0 || voice.active) return;
+    gestureCleanup.current?.();
+    suppressClick.current = false;
+    const pointer = event.pointerId;
+    const bounds = event.currentTarget.getBoundingClientRect();
+    const cx = bounds.left + bounds.width / 2, cy = bounds.top + bounds.height / 2;
+    if (Math.hypot(event.clientX - cx, event.clientY - cy) > 18) return;
+    let armed = false, terminal = false, locked = false;
+    let originX = event.clientX, originY = event.clientY;
+    const timer = window.setTimeout(() => {
+      armed = true; suppressClick.current = true; setExpanded(false); latestVoice.current?.start();
+    }, 700);
+    const clean = () => { window.clearTimeout(timer); window.removeEventListener('pointermove', move); window.removeEventListener('pointerup', up); window.removeEventListener('pointercancel', cancel); gestureCleanup.current = null; };
+    const move = (e: PointerEvent) => {
+      if (e.pointerId !== pointer || terminal) return;
+      if (!armed) { if (Math.hypot(e.clientX - cx, e.clientY - cy) > 14 || Math.hypot(e.clientX - originX, e.clientY - originY) > 18) window.clearTimeout(timer); return; }
+      if (locked) return;
+      if (e.clientX - originX < -110) { terminal = true; latestVoice.current?.cancel(); clean(); }
+      else if (e.clientY - originY < -80) { locked = true; latestVoice.current?.lock(); }
+    };
+    const up = (e: PointerEvent) => { if (e.pointerId !== pointer) return; if (armed && !terminal && !locked) latestVoice.current?.send(); clean(); };
+    const cancel = (e: PointerEvent) => { if (e.pointerId !== pointer) return; if (armed && !terminal) latestVoice.current?.cancel(); clean(); };
+    window.addEventListener('pointermove', move); window.addEventListener('pointerup', up); window.addEventListener('pointercancel', cancel);
+    gestureCleanup.current = clean;
+  };
   useEffect(() => { if (search.open) { setExpanded(false); input.current?.focus(); } }, [search.open]);
   useEffect(() => {
     if (!expanded) return;
@@ -49,7 +90,11 @@ export function NativeNavigation({ selected, search, onSelect, onCreate, unreadC
   const cancelSearch = () => { search.onChange(''); search.onOpenChange(false); };
   return <nav className="zn-navigation" aria-label="Main navigation">
     {expanded && <button className="zn-fan-backdrop" aria-label="Close create menu" onClick={() => setExpanded(false)} />}
-    {search.open ? <>
+    {voice?.active ? <div className="zn-voice" aria-label="Recording for Zoen">
+      <div className="zn-recording zn-glass"><button aria-label="Cancel recording" onClick={voice.cancel}>×</button><time>{Math.floor(voice.seconds / 60)}:{String(Math.floor(voice.seconds % 60)).padStart(2, '0')}</time><span className="zn-wave" aria-hidden="true">{voice.levels.map((level, i) => <i key={i} style={{ height: `${Math.max(2, level * 24)}px` }} />)}</span><button aria-label="Send recording" onClick={voice.send}>↑</button></div>
+      <button className="zn-circle zn-voice-mic" aria-label={voice.locked ? 'Send recording to Zoen' : 'Recording for Zoen; release to send'} onClick={voice.send}><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true"><rect x="9" y="2" width="6" height="13" rx="3"/><path d="M5 10v2a7 7 0 0 0 14 0v-2M12 19v3M8 22h8"/></svg></button>
+      <span className="zn-lock-hint">{voice.locked ? 'Locked' : 'Slide up to lock · left to cancel'}</span>
+    </div> : search.open ? <>
       <div className="zn-search zn-glass"><NativeGlyph name="search" /><input ref={input} type="search" aria-label="Search" placeholder="Search" value={search.value} onChange={event => search.onChange(event.target.value)} onKeyDown={event => { if (event.key === 'Escape') cancelSearch(); }} />{search.value && <button aria-label="Clear search" onClick={() => search.onChange('')}><NativeGlyph name="close" /></button>}</div>
       <button className="zn-cancel zn-glass" onClick={cancelSearch}>Cancel</button>
     </> : <>
@@ -61,7 +106,8 @@ export function NativeNavigation({ selected, search, onSelect, onCreate, unreadC
           const style = { '--fan-x': `${Math.cos(angle) * 107}px`, '--fan-y': `${-Math.sin(angle) * 107}px`, '--fan-index': index } as CSSProperties;
           return <button key={item.id} className="zn-fan-item zn-circle zn-glass" style={style} aria-label={item.title} onClick={() => { setExpanded(false); onCreate(item.id); trigger.current?.focus(); }}><NativeGlyph name={item.id} /><span className="zn-fan-label">{item.title}</span></button>;
         })}</div>}
-        <button ref={trigger} className="zn-circle zn-plus" aria-label={expanded ? 'Close create menu' : 'Open create menu'} aria-expanded={expanded} onClick={() => setExpanded(value => !value)}><NativeGlyph name="plus" /></button>
+        <button ref={trigger} className="zn-circle zn-plus" aria-label={expanded ? 'Close create menu' : 'Open create menu'} aria-expanded={expanded} onPointerDown={hold} onClick={() => { if (suppressClick.current) { suppressClick.current = false; return; } setExpanded(value => !value); }}><NativeGlyph name="plus" /></button>
+        {voice && <button className="zn-voice-accessible" onClick={() => { setExpanded(false); voice.start(); }}>Record audio for Zoen</button>}
       </div>
     </>}
   </nav>;
