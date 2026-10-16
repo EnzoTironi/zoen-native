@@ -52,18 +52,18 @@ async function mount() {
 test('native four tabs dispatch their actual destination IDs without retired Search/Plus controls', async () => {
   const ui = await mount();
   try {
-    for (const label of ['Chats', 'Spaces', 'Notifications, 3 pending', 'Profile']) {
+    for (const label of ['Chats', 'Marketplace', 'Profile']) {
       const button = document.querySelector(`[aria-label="${label}"]`) as HTMLButtonElement;
       assert.ok(button); await act(async () => button.click());
     }
-    assert.deepEqual(ui.calls, ['chats', 'spaces', 'notifications', 'profile']);
+    assert.deepEqual(ui.calls, ['chats', 'marketplace', 'profile']);
     assert.equal(document.querySelector('.zn-plus, .zn-search-trigger'), null);
   } finally { await ui.close(); }
 });
 test('New message opens its callback, and a legacy voice prop cannot start a hidden root recorder', async () => {
   const ui = await mount();
   try {
-    const compose = document.querySelector('[aria-label="New message"]') as HTMLButtonElement;
+    const compose = document.querySelector('[aria-label="Search"]') as HTMLButtonElement;
     assert.ok(compose);
     await act(async () => { pointer(compose, 'pointerdown'); await new Promise(resolve => setTimeout(resolve, 725)); pointer(compose, 'pointerup'); });
     assert.deepEqual(ui.calls, []);
@@ -74,14 +74,14 @@ test('New message opens its callback, and a legacy voice prop cannot start a hid
 test('navigation shows the supplied pending count and actual profile avatar while keeping selection state', async () => {
   const ui = await mount();
   try {
-    assert.ok(document.querySelector('[aria-label="Notifications, 3 pending"]'));
+    assert.equal(document.querySelector('[aria-label^="Notifications"]'), null);
     assert.equal(document.querySelector('[aria-label="Offline"]'), null);
     await act(async () => ui.root.render(h(NativeNavigation, { ...ui.props, offline: true })));
     assert.ok(document.querySelector('nav[aria-label="Main navigation"] [role="status"][aria-label="Offline"]'));
     assert.match(document.querySelector('[aria-label="Profile"]')!.textContent!, /E/);
     await act(async () => ui.root.render(h(NativeNavigation, { ...ui.props, selected: 'profile', notificationCount: 4 })));
     assert.equal(document.querySelector('[aria-current="page"]')?.getAttribute('aria-label'), 'Profile');
-    assert.ok(document.querySelector('[aria-label="Notifications, 4 pending"]'));
+    assert.ok(document.querySelector('[aria-label="Marketplace"]'));
     assert.equal(document.querySelector('[aria-label="Offline"]'), null, 'reconnection releases the bottom-only indicator');
     assert.deepEqual(ui.calls, []);
   } finally { await ui.close(); }

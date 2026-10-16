@@ -1,4 +1,3 @@
-import { ChatInboxSearch } from './chat-inbox-search.tsx';
 import { Fragment, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { voiceHold } from './voice-hold.ts';
 import { message as reason } from './boundary.ts';
@@ -318,7 +317,7 @@ function AccountMessenger({ conversations, identity, name, connected, status, ty
   };
   const notificationCount = data.requests?.filter(request => request.status === 'pending').length;
   const canCompose = connected || data.syncMode === 'demo';
-  const [searchOpen, setSearchOpen] = useState(false);
+  const searchOpen = false;
   const [homeNotice, setHomeNotice] = useState<WidgetSnapshot | null>(null);
   useEffect(() => {
     if (!window.matchMedia) return;
@@ -330,8 +329,8 @@ function AccountMessenger({ conversations, identity, name, connected, status, ty
   const navigate = (id: string) => {
     if (conversations.some(c => c.id === id)) { setDestination('chats'); select(id); return; }
     if (id === 'new-chat') { setNewMessageOpen(true); return; }
-    const tab = id === 'you' ? 'profile' : id === 'activity' ? 'notifications' : id === 'files' || id === 'store' ? 'spaces' : id;
-    if (tab === 'chats' || tab === 'spaces' || tab === 'notifications' || tab === 'profile') { setDestination(tab); select(''); }
+    const tab = id === 'you' ? 'profile' : id === 'activity' ? 'notifications' : id === 'store' ? 'marketplace' : id === 'files' ? 'spaces' : id;
+    if (tab === 'chats' || tab === 'spaces' || tab === 'notifications' || tab === 'marketplace' || tab === 'profile') { setDestination(tab); select(''); }
   };
   const [prefs, setPrefs] = useState(() => loadPrefs(identity));
   const [follow, setFollow] = useState(loadFollow);
@@ -429,9 +428,8 @@ function AccountMessenger({ conversations, identity, name, connected, status, ty
 
   const content = <div className={`zm-app zm-native-production${selected || children || destination !== 'chats' ? ' zm-detail-open' : ''}${root ? ' zm-with-thread' : ''}`} data-root-tab={destination} data-selected-space={selected} data-sync-mode={data.syncMode ?? 'live'} data-connection={JSON.stringify(data.connection)} data-pending-requests={JSON.stringify(data.requests?.filter(request => request.status === 'pending').map(request => ({ agentId: request.agent.id, spaceId: request.spaceId, title: request.title, status: request.status })) ?? null)}>
     <aside className="zm-sidebar" aria-label="Conversas">
-      {!wide ? <ChatInboxSearch query={search} onQuery={setSearch} filter={inboxFilter} onFilter={setInboxFilter} onFocusChange={setSearchOpen} /> : null}
       {!searchOpen && !search ? <>
-        <NativeHomeStrip snapshots={homeSnapshots(conversations)} onOpen={setHomeNotice} />
+        <NativeHomeStrip snapshots={homeSnapshots(conversations)} notificationCount={data.requests?.filter(request => request.status === 'pending').length ?? null} onNotifications={() => navigate('notifications')} onOpen={setHomeNotice} />
         {homeNotice ? <div className="zm-scrim" onClick={() => setHomeNotice(null)}><section className="zm-sheet" role="dialog" aria-modal="true" aria-label={homeNotice.title} onClick={e => e.stopPropagation()}><h2>{homeNotice.title}</h2><p>Open this item in the native Zoen app. Item details are not available on web yet.</p><button className="zm-pill" autoFocus onClick={() => setHomeNotice(null)}>Close</button></section></div> : null}
       </> : null}
       {!showArchived && threadsUnread ? <p className="zm-threads-row"><Icon name="thread" />Threads que você segue<span className="zm-badge">{threadsUnread}</span></p> : null}
@@ -444,7 +442,7 @@ function AccountMessenger({ conversations, identity, name, connected, status, ty
       {footer ? <footer className="zm-side-foot"><Avatar name={name} size={32} /><span><b>{name}</b><span className={connected ? 'zm-online' : 'zm-offline'} role="status">{status}</span></span>{footer}</footer> : null}
     </aside>
     <main className="zm-main">
-      {children ?? (!conversation && destination === 'spaces' ? <NativeSpacesDirectory spaces={conversations} onOpen={select} /> : !conversation && destination === 'notifications' ? <NativeNotifications requests={data.requests} agents={data.agents} mentions={data.mentions} items={data.items} onOpenSpace={select} /> : !conversation && destination === 'profile' ? <NativeProfile me={data.me} spaces={conversations} agents={data.agents} stats={data.stats} grants={data.grants} account={data.account} connection={data.connection} syncMode={data.syncMode ?? 'live'} {...(onSettings ? { onSettings } : {})} onChats={() => navigate('chats')} {...(data.plannerLabel ? { plannerLabel: data.plannerLabel } : {})} /> : (conversation ? <>
+      {children ?? (!conversation && destination === 'marketplace' ? <section className="native-root-screen" aria-label="Marketplace"><p>Marketplace is unavailable on this client.</p></section> : !conversation && destination === 'spaces' ? <NativeSpacesDirectory spaces={conversations} onOpen={select} /> : !conversation && destination === 'notifications' ? <NativeNotifications requests={data.requests} agents={data.agents} mentions={data.mentions} items={data.items} onOpenSpace={select} /> : !conversation && destination === 'profile' ? <NativeProfile me={data.me} spaces={conversations} agents={data.agents} stats={data.stats} grants={data.grants} account={data.account} connection={data.connection} syncMode={data.syncMode ?? 'live'} {...(onSettings ? { onSettings } : {})} onChats={() => navigate('chats')} {...(data.plannerLabel ? { plannerLabel: data.plannerLabel } : {})} /> : (conversation ? <>
         <header className="zm-chat-head"><button className="zm-round glass zm-mobile-back" aria-label="Back to Chats" onClick={() => select('')}><Icon name="back" /></button><span className="zm-title-pill glass-pill"><Avatar name={conversation.title} id={conversation.id} counterpart={conversation.counterpart} kind={conversation.kind === 'direct' ? 'person' : 'group'} size={28} /><span className="zm-title-copy"><b>{conversation.title}</b>{typingText ? <span className="zm-live-typing" role="status" data-space={conversation.id} data-from={typingPeer?.identity}><svg viewBox="0 0 16 16" width="11" height="11" fill="none" stroke="currentColor" strokeWidth="1.2" aria-hidden="true"><path d="M2 2h9v7H6l-4 3Z"/><path d="M11 5h3v8l-3-2H8"/></svg>{typingText}</span> : conversation.kind !== 'direct' ? <span>{conversation.members} {english() ? 'people' : 'pessoas'}</span> : null}</span></span></header>
         <section className="zm-timeline" role="log" aria-label="Mensagens" aria-live="polite" onScroll={e => {
           const el = e.currentTarget;
@@ -466,8 +464,8 @@ function AccountMessenger({ conversations, identity, name, connected, status, ty
       </> : <section className="zm-blank"><h2>Suas conversas</h2><p>{status}</p></section>))}
     </main>
     {!selected && !children ? <NativeNavigation selected={destination} offline={data.syncMode === 'live' && data.connection.state === 'offline'} onSelect={navigate} onNewMessage={() => setNewMessageOpen(true)} identity={data.me ?? { kind: 'person', id: identity, name }} {...(notificationCount === undefined ? {} : { notificationCount })} /> : null}
-    {newMessageOpen ? <NativeNewMessage contacts={data.contacts} onClose={() => setNewMessageOpen(false)} onSelect={id => {
-      const existing = conversations.find(conversation => conversation.counterpart?.id === id);
+    {newMessageOpen ? <NativeNewMessage items={data.items} conversations={conversations} onOpenConversation={id => { setNewMessageOpen(false); select(id); }} onOpenMessage={hit => { setNewMessageOpen(false); select(hit.space); setSearchTarget(hit); }} contacts={data.contacts} onClose={() => setNewMessageOpen(false)} onSelect={id => {
+      const existing = conversations.find(conversation => conversation.kind === 'direct' && conversation.counterpart?.id === id);
       if (!existing) { fail('Starting a new direct chat is not available on this client yet.'); return; }
       setNewMessageOpen(false); select(existing.id);
     }} {...(data.connection.state === 'offline' ? { online: false } : data.connection.state === 'online' ? { online: true } : {})} /> : null}
@@ -498,7 +496,7 @@ function AccountMessenger({ conversations, identity, name, connected, status, ty
     </div></div> : null}
     {toast ? <p className="zm-toast" role="alert">{toast}</p> : null}
   </div>;
-  return wide ? <NativeAdaptiveShell selected={destination !== 'chats' ? destination : selected || null} onSelect={navigate} footer={footer} identity={data.me ?? { kind: 'person', id: identity, name }} {...(notificationCount === undefined ? {} : { notificationCount })} spaces={list.map(c => {
+  return wide ? <NativeAdaptiveShell home={<NativeHomeStrip snapshots={homeSnapshots(conversations)} notificationCount={data.requests?.filter(request => request.status === 'pending').length ?? null} onNotifications={() => navigate('notifications')} onOpen={setHomeNotice}/>} selected={destination !== 'chats' ? destination : selected || null} onSelect={navigate} footer={footer} identity={data.me ?? { kind: 'person', id: identity, name }} {...(notificationCount === undefined ? {} : { notificationCount })} spaces={list.map(c => {
     const last = c.messages.at(-1);
     return { id: c.id, title: c.title, kind: c.kind, lastAtMs: last?.at_ms ?? 0, lastPreview: last ? last.deleted ? 'Mensagem apagada' : last.file ? fileLabel(last.file) : last.text : '', unread: c.unread, counterpart: c.counterpart ?? null };
   })}>{content}</NativeAdaptiveShell> : content;

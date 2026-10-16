@@ -1,4 +1,3 @@
-import { ChatInboxSearch } from './chat-inbox-search.tsx';
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import './native-adaptive.css';
 import { displayTime } from './display-clock.ts';
@@ -16,6 +15,7 @@ export interface NativeAdaptiveSpace {
 export type NativeAdaptiveDestination = 'chats' | 'spaces' | 'notifications' | 'profile' | 'new-chat' | 'participants';
 export interface NativeAdaptiveShellProps {
   children: ReactNode;
+  home?: ReactNode;
   /** Compatibility only: the current native shell has no account footer. */
   footer?: ReactNode;
   notificationCount?: number;
@@ -25,8 +25,8 @@ export interface NativeAdaptiveShellProps {
   selected: string | null;
   onSelect: (selection: string) => void;
 }
-const tabs = ['chats', 'spaces', 'notifications', 'profile'] as const;
-const titles: Record<string, string> = { chats: 'Chats', spaces: 'Spaces', notifications: 'Notifications', profile: 'Profile' };
+const tabs = ['chats', 'marketplace', 'profile'] as const;
+const titles: Record<string, string> = { chats: 'Chats', spaces: 'Spaces', marketplace: 'Marketplace', profile: 'Profile' };
 function Icon({ name }: { name: string }) {
   const paths: Record<string, ReactNode> = {
     chats: <><path d="M4 4h13v10H9l-5 4Z"/><path d="M17 8h4v11l-4-3h-4"/></>,
@@ -40,12 +40,13 @@ function Icon({ name }: { name: string }) {
     plus: <path d="M12 4v16M4 12h16"/>,
     edit: <><path d="M10 5H4v16h16v-6M9 15l1-5L19 1l4 4-9 9Z"/></>,
     info: <><circle cx="12" cy="12" r="10"/><path d="M12 11v6M12 7h.01"/></>,
+    marketplace: <><path d="M3 4h18l2 7H1l2-7ZM3 13v9h18v-9M9 22v-7h6v7"/></>,
     filter: <path d="M3 6h18M7 12h10M10 18h4"/>,
     sun: <><circle cx="12" cy="12" r="4"/><path d="M12 1v3M12 20v3M1 12h3M20 12h3M4 4l2 2M18 18l2 2M4 20l2-2M18 6l2-2"/></>,
   };
   return <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">{paths[name] ?? paths.plus}</svg>;
 }
-export function NativeAdaptiveShell({ children, spaces, selected, onSelect, notificationCount = 0, identity }: NativeAdaptiveShellProps) {
+export function NativeAdaptiveShell({ children, home, spaces, selected, onSelect, notificationCount = 0, identity }: NativeAdaptiveShellProps) {
   const [expanded, setExpanded] = useState(true);
   const [query, setQuery] = useState('');
   const [filter, setFilter] = useState('all');
@@ -69,7 +70,7 @@ export function NativeAdaptiveShell({ children, spaces, selected, onSelect, noti
     <aside className="na-sidebar"><nav className="na-rail" aria-label="Main navigation">
       <button className="na-toggle" aria-label={expanded ? 'Hide sidebar' : 'Show sidebar'} aria-expanded={expanded} onClick={() => setExpanded(!expanded)}><Icon name="sidebar"/></button>
       {tabs.map(tab => {
-        const badge = tab === 'notifications' ? notificationCount : tab === 'chats' ? spaces.reduce((sum, space) => sum + space.unread, 0) : 0;
+        const badge = tab === 'chats' ? spaces.reduce((sum, space) => sum + space.unread, 0) : 0;
         return <button key={tab} title={titles[tab]} aria-label={titles[tab]} aria-description={badge > 0 ? String(badge) : undefined} aria-current={activeTab === tab ? 'page' : undefined} onClick={() => selectTab(tab)}>{tab === 'profile' && identity ? <NativeAvatar identity={identity} size={26}/> : <Icon name={tab}/>}{badge > 0 && <span className="na-badge">{badge > 99 ? '99+' : badge}</span>}</button>;
       })}
       <div className="na-rail-spacer"/>
@@ -78,8 +79,8 @@ export function NativeAdaptiveShell({ children, spaces, selected, onSelect, noti
         const mode = modes[(modes.indexOf(appearance) + slot + 3) % 3]!;
         return <button key={slot} aria-label={`${mode[0]!.toUpperCase()}${mode.slice(1)} appearance`} aria-pressed={slot === 0} onClick={() => setAppearance(mode)} onKeyDown={event => { if (event.key === 'ArrowLeft' || event.key === 'ArrowRight') { event.preventDefault(); setAppearance(modes[(modes.indexOf(appearance) + (event.key === 'ArrowLeft' ? 2 : 1)) % 3]!); } }}><Icon name={mode === 'dark' ? 'moon' : mode === 'light' ? 'sun' : 'system'}/></button>;
       })}</div>
-      <button className="na-new-message" aria-label="New message" onClick={() => onSelect('new-chat')}><Icon name="edit"/></button>
-    </nav>{expanded && <section className="na-chat-sidebar" aria-label="Chats"><ChatInboxSearch query={query} onQuery={setQuery} filter={filter} onFilter={setFilter} />
+      <button className="na-new-message" aria-label="Search" onClick={() => onSelect('new-chat')}><Icon name="search"/></button>
+    </nav>{expanded && <section className="na-chat-sidebar" aria-label="Chats">{home}
       <div className="na-list">{spaces.filter(s => (filter === 'all' || s.kind === filter) && s.title.toLocaleLowerCase().includes(query.toLocaleLowerCase())).map(space => <button className="na-chat-row" key={space.id} aria-current={active === space.id ? 'page' : undefined} onClick={() => onSelect(space.id)}><NativeAvatar className="na-avatar" size={34} identity={{ kind: space.kind === 'direct' ? 'person' : 'group', id: space.id, name: space.title, ...(space.counterpart ?? {}) }} /><span className="na-copy"><span><b>{space.title}</b><time>{displayTime(space.lastAtMs)}</time></span><small>{space.lastPreview}</small></span>{space.unread > 0 && <span className="na-row-badge">{space.unread}</span>}</button>)}</div>
     </section>}</aside><main className="na-detail">{children}</main>
   </div>;

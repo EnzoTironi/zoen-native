@@ -61,34 +61,28 @@ try {
       })), true, 'chat previews truncate inside the row without pushing timestamps or unread badges offscreen');
     }
     if (screen === 'chats' && viewport === 'narrow') {
-      assert.deepEqual(await page.locator('.nw-card').evaluateAll(elements => elements.map(element => element.getAttribute('data-snapshot-id'))), fixture.homeApps.map(snapshot => snapshot.id), 'the canonical native home snapshots and order are preserved exactly');
+      assert.deepEqual(await page.locator('.nw-card[data-snapshot-id]').evaluateAll(elements => elements.map(element => element.getAttribute('data-snapshot-id'))), fixture.homeApps.map(snapshot => snapshot.id), 'the canonical native home snapshots and order are preserved exactly');
       assert.equal(await page.locator('.nw-empty').count(), 0, 'a populated native fixture must not be replaced with an empty state');
-      assert.equal(await page.getByRole('button', { name: 'New message', exact: true }).count(), 1);
+      assert.equal(await page.getByRole('button', { name: 'Search', exact: true }).count(), 1);
       const navigation = page.getByRole('navigation', { name: 'Main navigation' });
-      assert.equal(await navigation.locator('.zn-tab').count(), 4);
-      assert.equal(await navigation.getByRole('button', { name: `Notifications, ${fixture.requests.filter(r => r.status === 'pending').length} pending`, exact: true }).count(), 1);
+      assert.equal(await navigation.locator('.zn-tab').count(), 3);
+      assert.equal(await navigation.getByRole('button', { name: 'Marketplace', exact: true }).count(), 1);
       assert.ok(await page.locator('.native-avatar').count() > 0, 'actual shared native avatars render');
       assert.equal(await page.locator('.zn-tabs').evaluate(element => element.getBoundingClientRect().height), 61);
       assert.equal(await page.locator('.zm-chat').count(), 6);
-      assert.equal(await page.getByRole('button', { name: 'Search', exact: true }).count(), 0, 'native root has no retired Search control');
-      await page.getByRole('combobox', { name: 'Filter chats' }).selectOption('direct');
-      assert.equal(await page.locator('.zm-chat').count(), fixture.spaces.filter(c => c.kind === 'direct').length);
-      await page.getByRole('combobox', { name: 'Filter chats' }).selectOption('all');
-      assert.equal(await page.locator('.zm-chat').count(), 6);
+      assert.equal(await page.getByRole('button', { name: 'Spaces', exact: true }).count(), 0, 'groups remain in Chats');
     }
     if (screen === 'chats') {
-      const search = page.getByRole('searchbox', { name: 'Search chats', exact: true });
-      assert.equal(await search.count(), 1, 'one canonical inbox search in either layout');
-      const filter = page.getByLabel('Filter chats', { exact: true });
-      await search.fill('Marina');
-      assert.equal(await search.inputValue(), 'Marina');
-      assert.equal(await page.locator('.chat-inbox-search').getAttribute('data-compact'), 'true');
-      await filter.selectOption('direct');
-      assert.equal(await filter.inputValue(), 'direct');
-      await page.getByRole('button', { name: 'Clear search', exact: true }).click();
-      await filter.selectOption('all');
-      await search.blur();
-      assert.equal(await search.inputValue(), '');
+      assert.equal(await page.getByRole('searchbox', { name: 'Search chats', exact: true }).count(), 0);
+      assert.equal(await page.locator('[aria-label="Filter chats"]').count(), 0);
+      assert.equal(await page.locator(viewport === 'wide' ? '.na-chat-sidebar .nw-strip > button:first-child' : '.zm-sidebar .nw-strip > button:first-child').getAttribute('aria-label'), 'Notifications');
+      await page.getByRole('button', { name: 'Search', exact: true }).click();
+      const query = page.getByRole('searchbox', { name: 'Search chats, messages and people' });
+      await query.fill('Marina');
+      assert.equal(await query.inputValue(), 'Marina');
+      assert.equal(await page.getByRole('dialog').getByRole('region', { name: 'Chats', exact: true }).getByRole('button').count(), fixture.spaces.filter(space => space.title.includes('Marina')).length);
+      await page.screenshot({ path: resolve(args.output, 'search-' + viewport + '-' + appearance + '.png') });
+      await page.getByRole('button', { name: 'Cancel', exact: true }).click();
     }
     if (screen === 'spaces') {
       const rows = page.getByTestId('spaces-directory').getByRole('button');
@@ -131,6 +125,15 @@ try {
     assert.equal(await page.locator('img').evaluateAll(images => images.every(image => image.complete && image.naturalWidth > 0)), true, 'all actual native art loaded');
     const image = resolve(args.output, `web-${viewport}-${appearance}-${screen}.png`);
     await page.screenshot({ path: image });
+    if (screen === 'chats') {
+      await page.getByRole('button', { name: 'Marketplace', exact: true }).click();
+      assert.equal(await page.locator('.zm-main [aria-label="Marketplace"]').count(), 1);
+      assert.equal(await page.locator('[data-testid="spaces-directory"]').count(), 0);
+      await page.getByRole('button', { name: 'Chats', exact: true }).click();
+      // The real card opens the same full notification component used by the fixture screen.
+      await page.locator(viewport === 'wide' ? '.na-chat-sidebar .nw-notifications' : '.zm-sidebar .nw-notifications').click();
+      assert.equal(await page.locator('.native-root-screen[aria-label="Notifications"]').count(), 1);
+    }
     assert.deepEqual(errors, [], 'no uncaught browser errors');
     console.log(`PASS ${viewport}/${appearance}/${screen} ${image}`);
     await context.close();

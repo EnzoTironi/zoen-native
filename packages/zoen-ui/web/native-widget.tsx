@@ -3,10 +3,10 @@ import { snapshotRemaining, type WidgetSnapshot } from './widget-snapshot.ts';
 import './native-widget.css';
 import { displayNow, isDisplayClockFixed } from './display-clock.ts';
 export type { WidgetSnapshot } from './widget-snapshot.ts';
-export interface NativeHomeStripProps { snapshots: readonly WidgetSnapshot[]; onOpen?: (snapshot: WidgetSnapshot) => void }
+export interface NativeHomeStripProps { snapshots: readonly WidgetSnapshot[]; onOpen?: (snapshot: WidgetSnapshot) => void; notificationCount?: number | null; onNotifications?: () => void }
 /** Read-only native small-family cards. Opening is delegated to the production host. */
-export function NativeHomeStrip({snapshots,onOpen}: NativeHomeStripProps) {
-  return <section className="nw-strip" aria-label="Home">{snapshots.length ? snapshots.map(s => onOpen ? <button type="button" className="nw-open" key={s.id} onClick={()=>onOpen(s)}><NativeSnapshotCard snapshot={s}/></button> : <NativeSnapshotCard key={s.id} snapshot={s}/>) : <div className="nw-empty"><img src="assets/native/wave.png" alt=""/><span>Pin a mini-app here</span></div>}</section>;
+export function NativeHomeStrip({snapshots,onOpen,notificationCount,onNotifications}: NativeHomeStripProps) {
+  return <section className="nw-strip" aria-label="Home">{onNotifications && <button className="nw-open nw-notifications" onClick={onNotifications} aria-label="Notifications"><article className="nw-card nw-stat"><div className="nw-content"><strong className="nw-title">Notifications</strong><div className="nw-spacer"/><b className="nw-value">{notificationCount ?? "—"}</b><small className="nw-detail">{notificationCount === null ? "Unavailable on this client" : notificationCount ? "Pending requests" : "View activity"}</small></div></article></button>}{snapshots.length ? snapshots.map(s => onOpen ? <button type="button" className="nw-open" key={s.id} onClick={()=>onOpen(s)}><NativeSnapshotCard snapshot={s}/></button> : <NativeSnapshotCard key={s.id} snapshot={s}/>) : <div className="nw-empty"><img src="assets/native/wave.png" alt=""/><span>Pin a mini-app here</span></div>}</section>;
 }
 /** SnapshotCard.small geometry: 170 square, continuous 28 corner, 14 content inset. */
 export function NativeSnapshotCard({snapshot:s}: {snapshot: WidgetSnapshot}) {

@@ -80,10 +80,10 @@ test('native four-tab routing opens production directories and profile without r
   const ui = await mount(undefined, conversations, '');
   try {
     assert.equal(document.querySelector('.zm-home-head img'), null);
-    assert.equal(button('Search'), undefined);
-    await click(button('Spaces'));
-    assert.ok(document.querySelector('[data-testid="spaces-directory"]'));
-    assert.match(document.querySelector('[data-testid="spaces-directory"]')!.textContent!, /Amigos/);
+    assert.ok(button('Search'));
+    assert.equal(button('Spaces'), undefined);
+    await click(button('Marketplace'));
+    assert.ok(document.querySelector('.zm-main [aria-label="Marketplace"]'));
     await click(button('Profile'));
     assert.ok(document.querySelector('.zm-main [aria-label="Profile"]'));
     assert.match(document.querySelector('.zm-main')!.textContent!, /Your personal space/);
@@ -94,26 +94,23 @@ test('native four-tab routing opens production directories and profile without r
 test('inbox filter preserves actual conversation kinds and New message opens the production recipient sheet', async () => {
   const ui = await mount(undefined, conversations, '');
   try {
-    const search = document.querySelector('input[aria-label="Search chats"]') as HTMLInputElement;
-    assert.ok(search);
-    assert.ok(document.querySelector('.nw-empty'));
-    assert.equal(document.querySelector('.chat-inbox-search select')?.getAttribute('aria-label'), 'Filter chats');
-    await input(search, 'no matching chat');
-    assert.equal(document.querySelectorAll('.zm-chats > li').length, 0);
-    assert.equal(document.querySelector('.nw-empty'), null, 'query hides native home strip');
-    assert.equal(document.querySelector('.chat-inbox-search')?.getAttribute('data-compact'), 'true');
-    await click(button('Clear search'));
-    assert.equal(search.value, '');
-    assert.ok(document.querySelector('.nw-empty'));
-    const filter = document.querySelector('[aria-label="Filter chats"]') as HTMLSelectElement;
-    await act(async () => { filter.value = 'direct'; filter.dispatchEvent(new dom.window.Event('change', { bubbles: true })); });
-    assert.equal(document.querySelectorAll('.zm-chats > li').length, 0);
-    await act(async () => { filter.value = 'group'; filter.dispatchEvent(new dom.window.Event('change', { bubbles: true })); });
-    assert.equal(document.querySelectorAll('.zm-chats > li').length, 1);
-    await click(button('New message'));
+    assert.equal(document.querySelector('input[aria-label="Search chats"]'), null);
+    assert.equal(document.querySelector('[aria-label="Filter chats"]'), null);
+    assert.equal(document.querySelector('.nw-strip > button:first-child')?.getAttribute('aria-label'), 'Notifications');
+    await click(button('Search'));
     const dialog = document.querySelector('[role="dialog"][aria-labelledby="nnm-title"]');
     assert.ok(dialog);
-    assert.equal(dialog.querySelector('#nnm-title')?.textContent, 'New chat');
+    assert.equal(dialog.querySelector('#nnm-title')?.textContent, 'Search');
+    const query = dialog.querySelector('input[type="search"]') as HTMLInputElement;
+    assert.equal(dialog.querySelectorAll('section[aria-label="Chats"] button').length, 1, 'empty query shows existing chats');
+    await input(query, 'pousada');
+    assert.equal(dialog.querySelectorAll('section[aria-label="Chats"] button').length, 0, 'same query filters chat titles');
+    assert.match(dialog.querySelector('[aria-label="Resultados de mensagens"]')!.textContent!, /pousada antiga/);
+    await input(query, 'Amigos');
+    assert.equal(dialog.querySelectorAll('section[aria-label="Chats"] button').length, 1);
+    await click(dialog.querySelector('section[aria-label="Chats"] button'));
+    assert.equal(document.querySelector('[role="dialog"]'), null);
+
     assert.equal(document.querySelector('.zm-home-head'), null, 'native root has no top header');
     assert.deepEqual(ui.calls, [], 'opening the recipient picker never fabricates a sent message');
   } finally { await ui.close(); }
@@ -249,9 +246,9 @@ test('production Home uses latest snapshots in first appearance order and opens 
   assert.deepEqual(homeSnapshots(conversations), []);
   const ui = await mount(undefined, data);
   try {
-    assert.equal(document.querySelectorAll('.nw-strip .nw-card').length, 2);
+    assert.equal(document.querySelectorAll('.nw-strip .nw-card').length, 3);
     assert.equal(document.querySelector('.nw-empty'), null);
-    await click(document.querySelector('.nw-open'));
+    await click(document.querySelectorAll('.nw-open')[1]);
     assert.match(document.querySelector('[role=dialog]')!.textContent!, /Item details are not available on web yet/);
     await click(button('Close'));
     assert.equal(document.querySelector('[role=dialog]'), null);
