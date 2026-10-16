@@ -265,6 +265,11 @@ for (const theme of (args.themes ?? 'light,dark').split(',')) for (const [name, 
   const q = await open('/', 'light', 12, [{ name: 'prefers-contrast', value: 'more' }]);
   const d = await q.evaluate(() => getComputedStyle(document.querySelector('.zoen-sky')).display);
   if (d !== 'none') failures.push('prefers-contrast: more → sky still visible');
+  const qv = await q.evaluate(() => document.querySelectorAll('.zoen-sky video').length);
+  if (qv) failures.push(`prefers-contrast: more → ${qv} sky video(s) still loaded`);
+  // The tint must sit above the footage.
+  const zt = await q.evaluate(() => getComputedStyle(document.querySelector('.zoen-sky'), '::after').zIndex);
+  if (zt !== '3') failures.push(`sky tint z-index is ${zt}, expected 3 (above both clips)`);
   console.log(`prefers-contrast: more → sky display ${d}`);
   await q.close();
 }

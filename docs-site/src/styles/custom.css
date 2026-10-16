@@ -125,7 +125,7 @@ body { background: transparent; }
   transition: opacity 2s linear;
 }
 .zoen-sky-layer video { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
-.zoen-sky::after { content: ''; position: absolute; inset: 0; background: var(--zoen-scrim); }
+.zoen-sky::after { content: ''; position: absolute; inset: 0; z-index: 3; background: var(--zoen-scrim); } /* above both clips (z 1 and 2) */
 
 /* Frosted panels. */
 /* Header, sidebar and table of contents are already fixed by Starlight (a positioned box for ::before);

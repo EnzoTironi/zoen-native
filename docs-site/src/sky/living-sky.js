@@ -49,6 +49,8 @@
 
   var root = document.documentElement;
   var still = window.matchMedia('(prefers-reduced-motion: reduce)');
+  // With more contrast or forced colours CSS hides the sky entirely: then load no footage at all.
+  var noSky = window.matchMedia('(prefers-contrast: more), (forced-colors: active)');
   var layers = {};
   var timer;
 
@@ -74,7 +76,7 @@
 
   function video(name, el) {
     var v = el.querySelector('video');
-    if (still.matches) { if (v) v.remove(); return null; }
+    if (still.matches || noSky.matches) { if (v) v.remove(); return null; }
     if (!v) {
       v = document.createElement('video');
       v.muted = true; v.loop = true; v.playsInline = true; v.autoplay = true;
@@ -95,6 +97,7 @@
     var hour = currentHour();
     root.setAttribute('data-sky-phase', phase(hour));
     if (!document.querySelector('.zoen-sky')) return;
+    if (noSky.matches) { PHASES.forEach(function (n) { if (layers[n]) { var v = layers[n].querySelector('video'); if (v) v.remove(); } }); return; }
     var w = weights(hour);
     PHASES.forEach(function (name) {
       if (!w[name] && !layers[name]) return;
@@ -139,7 +142,7 @@
   }
 
   document.addEventListener('visibilitychange', update);
-  if (still.addEventListener) still.addEventListener('change', update);
+  if (still.addEventListener) { still.addEventListener('change', update); noSky.addEventListener('change', update); }
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', mount);
   else mount();
   root.setAttribute('data-sky-phase', phase(currentHour()));
