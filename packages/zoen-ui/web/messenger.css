@@ -134,6 +134,19 @@ body { background: var(--zm-canvas); color: var(--zm-ink); }
 .zm-sheet h2 { margin: 0 0 12px; font-size: 18px; } .zm-sheet ul { list-style: none; margin: 0 0 12px; padding: 0; }
 .zm-sheet li button { width: 100%; display: flex; align-items: center; gap: 12px; padding: 8px; border: 0; background: none; border-radius: 14px; text-align: left; color: var(--zm-ink); }
 .zm-sheet li button:hover { background: rgba(25,25,25,.05); }
+.zm-search-results { padding: 12px 20px; min-height: 0; overflow: auto; border-bottom: 1px solid var(--zm-line-soft); }
+.zm-search-results h2 { margin: 0; font-size: 15px; }
+.zm-search-results p { margin: 8px 0; font-size: 12px; color: var(--zm-grey); }
+.zm-search-results label { display: grid; gap: 4px; font-size: 12px; }
+.zm-search-results select { width: 100%; padding: 6px; border: 1px solid var(--zm-line-soft); border-radius: 8px; background: #fff; color: var(--zm-ink); }
+.zm-search-results ul { margin: 8px 0; padding: 0; list-style: none; }
+.zm-search-results li button { display: grid; gap: 4px; width: 100%; text-align: left; padding: 10px 0; background: none; border: 0; color: var(--zm-ink); }
+.zm-search-results li span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; }
+.zm-search-results nav, .zm-edit-buttons { display: flex; justify-content: space-between; gap: 12px; }
+.zm-search-results nav button, .zm-edit-buttons button { padding: 8px 12px; border: 0; border-radius: 16px; background: var(--zm-line-soft); color: var(--zm-ink); }
+.zm-edit-sheet label { display: grid; gap: 8px; font-size: 14px; }
+.zm-edit-sheet textarea { box-sizing: border-box; width: 100%; min-height: 120px; margin-bottom: 16px; padding: 12px; resize: vertical; border: 1px solid var(--zm-line-soft); border-radius: 12px; font: inherit; }
+.zm-edit-sheet button:disabled { opacity: .5; }
 .zm-toast { position: fixed; left: 50%; bottom: 96px; translate: -50% 0; margin: 0; padding: 10px 18px; border-radius: 999px; background: rgba(25,25,25,.92); color: #fff; font-size: 14px; animation: zm-up 240ms var(--ease-wabi) both; z-index: 30; }
 
 @keyframes zm-in { from { opacity: 0; transform: translateY(6px); } }
