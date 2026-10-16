@@ -28,7 +28,7 @@ final class BottomComposerParityCaptureTests: XCTestCase {
             app.launch()
             let witness = app.descendants(matching: .any)["parity-applied-fixture"].firstMatch
             XCTAssertTrue(witness.waitForExistence(timeout: 40), "The app must attest its applied core fixture")
-            let manifest = try XCTUnwrap(witness.value as? String)
+            let manifest = witness.label
             if let appliedFixture { XCTAssertEqual(manifest, appliedFixture) }
             else { appliedFixture = manifest }
             let metadata = try XCTUnwrap(try JSONSerialization.jsonObject(with: Data(manifest.utf8)) as? [String: Any])

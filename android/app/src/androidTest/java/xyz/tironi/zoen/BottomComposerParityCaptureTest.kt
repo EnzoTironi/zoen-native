@@ -53,8 +53,14 @@ class BottomComposerParityCaptureTest {
                 runBlocking { app.repository.resetDemo() }
                 fun save(name: String) {
                     SystemClock.sleep(1_000)
+                    await { instrumentation.uiAutomation.rootInActiveWindow?.packageName?.toString() == app.packageName }
+                    NativeParityFixtureSetup.attest(app, app.repository.state.value)
                     val image = checkNotNull(instrumentation.uiAutomation.takeScreenshot())
-                    try { File(app.cacheDir, "device-evidence/android-parity/bottom-$name-${if (dark) "dark" else "light"}.png").outputStream().use { check(image.compress(Bitmap.CompressFormat.PNG, 100, it)) } } finally { image.recycle() }
+                    try {
+                        val file = File(app.cacheDir, "device-evidence/android-parity/bottom-$name-${if (dark) "dark" else "light"}.png")
+                        file.parentFile!!.mkdirs()
+                        file.outputStream().use { check(image.compress(Bitmap.CompressFormat.PNG, 100, it)) }
+                    } finally { image.recycle() }
                 }
                 save("chats")
                 val chat = app.repository.state.value.spaces.first { it.counterpart?.handle == "marina" }.id
@@ -66,15 +72,31 @@ class BottomComposerParityCaptureTest {
                 } catch (error: IllegalStateException) {
                     throw IllegalStateException("chat=$chat active=${app.repository.activeSpace} root=${instrumentation.uiAutomation.rootInActiveWindow}", error)
                 }
+                fun imeVisible(): Boolean {
+                    var visible = false
+                    scenario.onActivity { visible = ViewCompat.getRootWindowInsets(it.window.decorView)?.isVisible(WindowInsetsCompat.Type.ime()) == true }
+                    return visible
+                }
+                val emptyInput = checkNotNull(editable(instrumentation.uiAutomation.rootInActiveWindow))
+                check(emptyInput.performAction(AccessibilityNodeInfo.ACTION_FOCUS))
+                check(emptyInput.performAction(AccessibilityNodeInfo.ACTION_CLICK))
+                scenario.onActivity { activity ->
+                    val manager = activity.getSystemService(android.content.Context.INPUT_METHOD_SERVICE) as android.view.inputmethod.InputMethodManager
+                    manager.showSoftInput(activity.currentFocus, android.view.inputmethod.InputMethodManager.SHOW_IMPLICIT)
+                }
+                await { imeVisible() && editable(instrumentation.uiAutomation.rootInActiveWindow)?.text.isNullOrBlank() }
                 save("composer-empty")
+                instrumentation.uiAutomation.performGlobalAction(android.accessibilityservice.AccessibilityService.GLOBAL_ACTION_BACK)
+                await { !imeVisible() }
                 fun findLabel(node: AccessibilityNodeInfo?, label: String): AccessibilityNodeInfo? {
                     if (node == null) return null
-                    if (node.contentDescription?.toString() == label) return node
+                    if (node.contentDescription?.toString() == label || node.text?.toString() == label) return node
                     for (i in 0 until node.childCount) findLabel(node.getChild(i), label)?.let { return it }
                     return null
                 }
                 val attachment = checkNotNull(findLabel(instrumentation.uiAutomation.rootInActiveWindow, app.getString(R.string.attach)))
                 check(attachment.performAction(AccessibilityNodeInfo.ACTION_CLICK))
+                await { findLabel(instrumentation.uiAutomation.rootInActiveWindow, app.getString(R.string.chat_attachment_files)) != null }
                 save("attachment-menu")
                 instrumentation.uiAutomation.performGlobalAction(android.accessibilityservice.AccessibilityService.GLOBAL_ACTION_BACK)
                 SystemClock.sleep(500)

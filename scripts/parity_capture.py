@@ -54,7 +54,7 @@ def capture_ios(args, output):
     run('xcodegen', 'generate', '--spec', 'apple/project.yml')
     result = output/'native.xcresult'
     env = dict(os.environ, TZ='UTC', SIMCTL_CHILD_TZ='UTC', SIMCTL_CHILD_ZOEN_PARITY_FIXTURE='native-parity-v1', SIMCTL_CHILD_ZOEN_PARITY_REVISION=args.revision)
-    derived = (args.derived_data or output/'DerivedData').resolve()
+    derived = (args.derived_data or ROOT/'.reason/parity-derived-ios').resolve()
     run('xcodebuild', 'build-for-testing', '-project', 'apple/Zoen.xcodeproj', '-scheme', 'ZoenUITests', '-destination', f'platform=iOS Simulator,id={device}', '-derivedDataPath', str(derived), 'CODE_SIGNING_ALLOWED=NO', env=env)
     specs = list((derived/'Build/Products').glob('*.xctestrun'))
     if len(specs) != 1:
@@ -106,6 +106,12 @@ def validate_instrumentation_output(output):
         raise ValueError('Android instrumentation did not report a successful test run')
 
 
+def android_capture_test_classes():
+    return ','.join('xyz.tironi.zoen.' +
+        ('AndroidParityComposerCaptureTest' if key.startswith('composer-') else 'AndroidParityScreensTest') +
+        '#' + key.replace('-light', 'Light').replace('-dark', 'Dark') for key in KEYS)
+
+
 def capture_android(args, output):
     serial = android_emulator_serial(args.device)
     adb = ('adb', '-s', serial)
@@ -119,14 +125,14 @@ def capture_android(args, output):
     run(*adb, 'shell', 'settings', 'put', 'global', 'transition_animation_scale', '0')
     run(*adb, 'shell', 'settings', 'put', 'global', 'animator_duration_scale', '0')
     run(*adb, 'shell', 'setprop', 'persist.sys.timezone', 'UTC')
-    run('bash', 'android/gradlew', '-p', 'android', ':app:assembleDebug', ':app:assembleDebugAndroidTest', '--max-workers=2', f'-PandroidAbis={abi}')
+    run('bash', 'android/gradlew', '-p', 'android', ':app:assembleDebug', ':app:assembleDebugAndroidTest', '--max-workers=2', f'-PandroidAbis={abi}', f'-PcoreProfile={args.core_profile}')
     run(*adb, 'install', '-r', 'android/app/build/outputs/apk/debug/app-debug.apk')
     run(*adb, 'install', '-r', 'android/app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk')
     if args.clear_installed:
         run(*adb, 'shell', 'pm', 'clear', 'xyz.tironi.zoen')
     run(*adb, 'shell', 'run-as', 'xyz.tironi.zoen', 'rm', '-rf', 'cache/device-evidence/android-parity')
     result = subprocess.run([*adb, 'shell', 'am', 'instrument', '-w', '-r',
-        '-e', 'class', 'xyz.tironi.zoen.AndroidParityScreensTest,xyz.tironi.zoen.AndroidParityComposerCaptureTest',
+        '-e', 'class', android_capture_test_classes(),
         '-e', 'parityFixture', 'native-parity-v1', '-e', 'parityRevision', args.revision,
         'xyz.tironi.zoen.test/androidx.test.runner.AndroidJUnitRunner'], cwd=ROOT,
         text=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, check=True)
@@ -145,7 +151,8 @@ def main():
     parser.add_argument('platform', choices=('ios', 'android'))
     parser.add_argument('--output', type=Path, required=True)
     parser.add_argument('--derived-data', type=Path, help='Reuse current-source Xcode build products across iPhone/iPad captures')
-    parser.add_argument('--device', help='Booted iOS simulator UDID')
+    parser.add_argument('--device', help='Booted iOS simulator UDID or online Android emulator serial')
+    parser.add_argument('--core-profile', choices=('dev', 'release'), default='release', help='Android JNI build profile')
     parser.add_argument('--viewport', choices=('narrow', 'wide'), default='narrow')
     parser.add_argument('--clear-installed', action='store_true')
     args = parser.parse_args()

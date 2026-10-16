@@ -323,9 +323,9 @@ fun ChatScreen(model: ZoenViewModel, state: AppState, spaceId: String, navigate:
                         Box(if (inlineVoiceActive) Modifier.width(0.dp) else Modifier) {
                             IconButton({ navigationHaptics.perform(ZoenFeedback.Open); attachments = true }, Modifier.size(44.dp).zoenGlass(androidx.compose.foundation.shape.CircleShape).testTag("composer-attach")) { ZoenIcon(ZoenGlyph.Plus, stringResource(R.string.attach)) }
                             DropdownMenu(attachments, { attachments = false }) {
-                                DropdownMenuItem(text = { Text(stringResource(R.string.camera)) }, onClick = { attachments = false; val uri = FileAccess.cameraUri(context); cameraUri = uri.toString(); camera.launch(uri) }, leadingIcon = { Icon(Icons.Rounded.CameraAlt, null) })
-                                DropdownMenuItem(text = { Text(stringResource(R.string.media_gallery)) }, onClick = { attachments = false; photoPicker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageAndVideo)) }, leadingIcon = { Icon(Icons.Rounded.PhotoLibrary, null) })
-                                DropdownMenuItem(text = { Text(stringResource(R.string.import_file)) }, onClick = { attachments = false; filePicker.launch(arrayOf("*/*")) }, leadingIcon = { Icon(Icons.Rounded.AttachFile, null) })
+                                DropdownMenuItem(text = { Text(stringResource(R.string.chat_attachment_camera)) }, onClick = { attachments = false; val uri = FileAccess.cameraUri(context); cameraUri = uri.toString(); camera.launch(uri) }, leadingIcon = { Icon(Icons.Rounded.CameraAlt, null) })
+                                DropdownMenuItem(text = { Text(stringResource(R.string.chat_attachment_library)) }, onClick = { attachments = false; photoPicker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) }, leadingIcon = { Icon(Icons.Rounded.PhotoLibrary, null) })
+                                DropdownMenuItem(text = { Text(stringResource(R.string.chat_attachment_files)) }, onClick = { attachments = false; filePicker.launch(arrayOf("*/*")) }, leadingIcon = { Icon(Icons.Rounded.Folder, null) })
                             }
                         }
                         androidx.compose.foundation.text.BasicTextField(value = draft, onValueChange = {

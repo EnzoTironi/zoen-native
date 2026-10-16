@@ -33,6 +33,14 @@ class CaptureSafetyTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, 'not online'):
                 parity_capture.android_emulator_serial('emulator-5554')
 
+    def test_capture_selects_exactly_the_twelve_required_cases(self):
+        cases = parity_capture.android_capture_test_classes().split(',')
+        self.assertEqual(len(cases), 12)
+        self.assertEqual(len(set(cases)), 12)
+        self.assertIn('xyz.tironi.zoen.AndroidParityComposerCaptureTest#composerLight', cases)
+        self.assertIn('xyz.tironi.zoen.AndroidParityScreensTest#spacesDark', cases)
+        self.assertFalse(any('#profile' in case or '#thread' in case for case in cases))
+
     def test_instrumentation_requires_actual_success_marker(self):
         parity_capture.validate_instrumentation_output('OK (12 tests)\nINSTRUMENTATION_CODE: -1')
         for output in ('', 'INSTRUMENTATION_FAILED: runner', 'FAILURES!!!\nOK (1 test)',

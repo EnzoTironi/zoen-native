@@ -288,4 +288,7 @@
   <string name="owner_note_booking_cancel_request_body">%1$s pediu para cancelar %2$s, %3$s.</string>
   <string name="owner_note_someone_cap">Alguém</string>
   <string name="mute">Silenciar</string>
+  <string name="chat_attachment_camera">Tirar foto</string>
+  <string name="chat_attachment_library">Fototeca</string>
+  <string name="chat_attachment_files">Escolher arquivos</string>
 </resources>
