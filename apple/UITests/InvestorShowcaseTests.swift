@@ -19,26 +19,26 @@ final class InvestorShowcaseTests: XCTestCase {
         shoot(appearance: appearance, lang: lang, name: "home", extra: [])
         // Turma — open + scroll to top so pinned tiles show
         shoot(appearance: appearance, lang: lang, name: "chat-turma", extra: [
-            "-RodaOpen", "turma", "-RodaChatScrollTop", "YES",
+            "-ZoenOpen", "turma", "-ZoenChatScrollTop", "YES",
         ])
         // Coastal
         shoot(appearance: appearance, lang: lang, name: "chat-coastal", extra: [
-            "-RodaOpen", "coastal", "-RodaChatScrollTop", "YES",
+            "-ZoenOpen", "coastal", "-ZoenChatScrollTop", "YES",
         ])
         // Store
-        shoot(appearance: appearance, lang: lang, name: "store", extra: ["-RodaTab", "store"])
+        shoot(appearance: appearance, lang: lang, name: "store", extra: ["-ZoenTab", "store"])
     }
 
     @MainActor
     private func shoot(appearance: String, lang: String, name: String, extra: [String]) {
         let app = XCUIApplication()
         app.launchArguments = [
-            "-RodaShowcase", "YES", "-RodaDemo", "YES", "-RodaFreshStart", "YES",
-            "-RodaResetDemo", "YES",
+            "-ZoenShowcase", "YES", "-ZoenDemo", "YES", "-ZoenFreshStart", "YES",
+            "-ZoenResetDemo", "YES",
             "-AppleLanguages", "(\(lang))",
         ] + extra
         // App-level override; `-AppleInterfaceStyle` does not reach the simulator app.
-        app.launchArguments += ["-RodaAppearance", appearance]
+        app.launchArguments += ["-ZoenAppearance", appearance]
         app.launch()
         // Settle chrome + optional scroll-top task
         sleep(name.hasPrefix("chat") ? 9 : 3)

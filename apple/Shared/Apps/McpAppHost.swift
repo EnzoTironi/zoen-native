@@ -161,7 +161,7 @@ final class McpAppBridge: NSObject, WKScriptMessageHandler, WKNavigationDelegate
         }
         let wanted = manifest?.allowedDomains ?? []
         grantedHosts = wanted.filter { model.core.appDeviceAllowed(itemId: itemId, capability: "net:" + $0) }
-        let askKey = "RodaNetAsked.\(itemId)"
+        let askKey = "ZoenNetAsked.\(itemId)"
         if let manifest, !wanted.isEmpty, grantedHosts.isEmpty, !UserDefaults.standard.bool(forKey: askKey) {
             let space = model.space(item.spaceId)?.title ?? ""
             model.consent = ConsentRequest(capability: "net:" + wanted.joined(separator: ", "), appName: manifest.name, spaceTitle: space,

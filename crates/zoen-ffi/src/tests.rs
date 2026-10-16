@@ -378,7 +378,7 @@ fn budget_stops_at_ceiling_and_can_be_raised() {
 fn everything_persists_and_reverifies_after_reopen() {
     let dir = std::env::temp_dir().join(format!("zoen-test-{}", zoen_types::new_id("t")));
     std::fs::create_dir_all(&dir).unwrap();
-    let path = dir.join("roda.sqlite").to_string_lossy().to_string();
+    let path = dir.join("zoen.sqlite").to_string_lossy().to_string();
     let (plan_id, version, events) = {
         let e = ZoenEngine::open(path.clone(), "pt-BR".into()).unwrap();
         e.seed_demo_if_empty().unwrap();
@@ -459,7 +459,7 @@ fn members_only_and_invites() {
         "Zoen não é membro da comunidade"
     );
     let link = e.invite_link(com.id).unwrap();
-    assert!(link.starts_with("https://roda.app/c/"));
+    assert!(link.starts_with("https://tryzoen.com/c/"));
 }
 
 #[test]
@@ -982,7 +982,7 @@ fn english_is_the_default_language_for_demo_data_agents_and_money() {
 fn switching_the_device_language_restarts_the_demo_in_that_language() {
     let dir = std::env::temp_dir().join(format!("zoen-lang-{}", std::process::id()));
     std::fs::create_dir_all(&dir).unwrap();
-    let path = dir.join("roda.sqlite").to_string_lossy().to_string();
+    let path = dir.join("zoen.sqlite").to_string_lossy().to_string();
     let _ = std::fs::remove_file(&path);
     {
         let e = ZoenEngine::open(path.clone(), "pt-BR".into()).unwrap();
@@ -1070,7 +1070,7 @@ fn hike_votes_decide_plan_and_album() {
         .into_iter()
         .find(|i| i.app.as_ref().map(|a| a.app_id == "hike").unwrap_or(false))
         .expect("hike");
-    let r = e.read_app_resource("ui://roda/hike".into()).unwrap();
+    let r = e.read_app_resource("ui://zoen/hike".into()).unwrap();
     let manifest: serde_json::Value = serde_json::from_str(&r.manifest_json).unwrap();
     // The bundle is pinned: the host refuses it if this hash doesn't match.
     use sha2::Digest;
@@ -1218,7 +1218,7 @@ fn book(e: &ZoenEngine, item: &str, who: &str, svc: &str, start: i64) -> (serde_
 fn schedule_journey_client_books_agent_resolves_privately() {
     let e = seeded();
     let (item, zoen) = schedule_item(&e);
-    let r = e.read_app_resource("ui://roda/schedule".into()).unwrap();
+    let r = e.read_app_resource("ui://zoen/schedule".into()).unwrap();
     let manifest: serde_json::Value = serde_json::from_str(&r.manifest_json).unwrap();
     use sha2::Digest;
     assert_eq!(

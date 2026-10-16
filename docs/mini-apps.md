@@ -37,7 +37,7 @@ The choice of mini-app comes from **Foundation Models on device** (`@Generable`,
 
 **Follows the spec:**
 - **Resources and tools:**
-  - `ui://roda/<app>` resources with `text/html;profile=mcp-app`.
+  - `ui://zoen/<app>` resources with `text/html;profile=mcp-app`.
   - Tools carry `_meta.ui.resourceUri` and `visibility` (`model` = the agent creates; `app` = the UI calls).
   - The host **refuses** `tools/call` from the UI for tools without `app`.
 - **Handshake:** `ui/initialize` with `protocolVersion`, `hostInfo` and `hostCapabilities`.

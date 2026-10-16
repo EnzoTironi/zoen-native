@@ -549,7 +549,7 @@ mod tests {
     fn one_process_per_file() {
         let dir = std::env::temp_dir().join(format!("zoen-lock-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
-        let path = dir.join("roda.sqlite");
+        let path = dir.join("zoen.sqlite");
         let path = path.to_str().unwrap();
         let first = Store::open(path).unwrap();
         assert!(

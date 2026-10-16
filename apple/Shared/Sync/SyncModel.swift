@@ -11,18 +11,18 @@ import ZoenCore
 final class SyncModel {
     enum Mode { case demo, real }
 
-    /// Demo data only behind a dev flag: `-RodaDemo YES` (screenshot stories imply it).
+    /// Demo data only behind a dev flag: `-ZoenDemo YES` (screenshot stories imply it).
     /// Without it the app is real: an account on this device, chats through the relay.
     nonisolated static var mode: Mode {
         let d = UserDefaults.standard
-        if d.bool(forKey: "RodaDemo") || d.bool(forKey: "RodaResetDemo") || d.bool(forKey: "RodaShowcase") || d.string(forKey: "RodaStory") != nil { return .demo }
+        if d.bool(forKey: "ZoenDemo") || d.bool(forKey: "ZoenResetDemo") || d.bool(forKey: "ZoenShowcase") || d.string(forKey: "ZoenStory") != nil { return .demo }
         return .real
     }
 
-    /// The relay this device signs up with: `-RodaRelay URL`, else the build's
+    /// The relay this device signs up with: `-ZoenRelay URL`, else the build's
     /// `ZoenRelayURL`, else a relay on this Mac (`scripts/dev-stack.sh`).
     nonisolated static var defaultRelayURL: String {
-        if let s = UserDefaults.standard.string(forKey: "RodaRelay"), !s.isEmpty { return s }
+        if let s = UserDefaults.standard.string(forKey: "ZoenRelay"), !s.isEmpty { return s }
         if let s = Bundle.main.object(forInfoDictionaryKey: "ZoenRelayURL") as? String, !s.isEmpty { return s }
         return "http://127.0.0.1:8787"
     }
@@ -99,7 +99,7 @@ final class SyncModel {
         guard let core else { return }
         account = try core.updateProfile(name: name, handle: handle, bio: bio)
         if !bio.isEmpty, let id = account?.identityId {
-            UserDefaults.standard.set(bio, forKey: "RodaBio.\(id)")
+            UserDefaults.standard.set(bio, forKey: "ZoenBio.\(id)")
         }
         app?.refresh()
     }

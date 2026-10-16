@@ -34,7 +34,7 @@ struct Path {
 }
 """
 types = hand_source[hand_source.index("struct InkRNG {"):hand_source.index("enum Ink {")]
-geometry = "enum Ink {\n" + hand_source[hand_source.index("    static func catmull("):hand_source.index("/// `-RodaFreezeArt")]
+geometry = "enum Ink {\n" + hand_source[hand_source.index("    static func catmull("):hand_source.index("/// `-ZoenFreezeArt")]
 rig = mascot_source[mascot_source.index("enum MascotPose:"):mascot_source.index("struct MascotView:")]
 doodles = hand_source[hand_source.index("enum Doodle {"):hand_source.index("struct DoodleView:")]
 export = r"""

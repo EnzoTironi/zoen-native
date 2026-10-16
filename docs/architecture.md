@@ -86,7 +86,7 @@ target/debug/zoen --home /tmp/b init --name Bruno --handle bruno
 target/debug/zoen --home /tmp/b watch  # see what arrives
 ```
 
-`-RodaDemo YES` brings the old demo story back (screenshots); a normal launch is real.
+`-ZoenDemo YES` brings the old demo story back (screenshots); a normal launch is real.
 
 ## Tests that prove it
 

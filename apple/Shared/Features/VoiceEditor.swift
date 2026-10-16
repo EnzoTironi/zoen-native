@@ -41,7 +41,7 @@ final class VoiceEditorModel: Identifiable {
     var playhead: Double = 0
     var isPlaying = false
     var rendering = false
-    /// UI tests (`-RodaVoiceEditorTest YES`): the rendered file's real duration and the
+    /// UI tests (`-ZoenVoiceEditorTest YES`): the rendered file's real duration and the
     /// transcript that would be sent, instead of sending.
     var testResult: String?
     private var player: AVPlayer?
@@ -545,7 +545,7 @@ struct VoiceReviewSheet: View {
                 Task {
                     if let (clip, text) = await model.render() {
                         Haptics.commit()
-                        if UserDefaults.standard.bool(forKey: "RodaVoiceEditorTest") {
+                        if UserDefaults.standard.bool(forKey: "ZoenVoiceEditorTest") {
                             // UI test: report the real exported duration + transcript, don't send.
                             let secs = (try? await AVURLAsset(url: clip.url).load(.duration).seconds) ?? -1
                             model.testResult = String(format: "file=%.2f expected=%.2f text=", secs, Double(clip.ms) / 1000) + text
@@ -778,7 +778,7 @@ struct FlowLayout: Layout {
 }
 
 extension VoiceTranscript {
-    /// Demo words for the editor screenshots (`-RodaVoiceEditor`), timed over a 7 s clip with
+    /// Demo words for the editor screenshots (`-ZoenVoiceEditor`), timed over a 7 s clip with
     /// one long pause.
     static func demo(seconds: Double) -> VoiceTranscript {
         let en = "So um I think we leave at eight, uh, and bring the snacks and the good thermos"

@@ -13,9 +13,9 @@ final class VoiceEditorMultiCutTests: XCTestCase {
     @MainActor
     func testThreeOrMoreSeparateCutsRenderOnlyTheKeptAudio() throws {
         let app = XCUIApplication()
-        app.launchArguments = ["-RodaResetDemo", "YES", "-AppleLanguages", "(en)", "-AppleLocale", "en_US",
-                               "-RodaStory", "hike-ride", "-RodaAppAITimeout", "0",
-                               "-RodaVoiceEditor", "edit-clean", "-RodaVoiceEditorTest", "YES"]
+        app.launchArguments = ["-ZoenResetDemo", "YES", "-AppleLanguages", "(en)", "-AppleLocale", "en_US",
+                               "-ZoenStory", "hike-ride", "-ZoenAppAITimeout", "0",
+                               "-ZoenVoiceEditor", "edit-clean", "-ZoenVoiceEditorTest", "YES"]
         app.launch()
         let any = app.descendants(matching: .any)
         XCTAssertTrue(any["word-0"].waitForExistence(timeout: 25), "editor didn't open")

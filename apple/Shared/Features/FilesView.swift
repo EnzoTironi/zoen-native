@@ -2,7 +2,7 @@ import SwiftUI
 import ZoenCore
 import UniformTypeIdentifiers
 
-/// Arquivos (poster #067). No Roda, "arquivo" é um Item: versionado, assinado, com
+/// Arquivos (poster #067). No Zoen, "arquivo" é um Item: versionado, assinado, com
 /// desfazer. Pastas = Espaços onde os Itens nasceram; Recentes = última versão.
 struct FilesScreen: View {
     @Environment(AppModel.self) private var model

@@ -125,14 +125,14 @@ struct OnboardingFlow: View {
             route = OnboardingRoute(model.core.growthOnboardingPlan())
             Task { await model.growthSync() }
             // Numbers keep their meaning from before the profile step existed; "profile" opens it.
-            let raw = UserDefaults.standard.string(forKey: "RodaOnboardingStep") ?? ""
+            let raw = UserDefaults.standard.string(forKey: "ZoenOnboardingStep") ?? ""
             if let st = raw == "profile" ? Step.profile : Int(raw).flatMap({ Step(rawValue: $0 >= 1 ? $0 + 1 : $0) }) {
                 if st.rawValue >= Step.areas.rawValue { areas = [.trips, .food] }   // demo jump (launch arg only)
                 step = st
                 if st == .plan { await makePlan() }
             }
-            // `-RodaOnboardingAuto YES`: plays the whole flow by itself (screen recordings, demos).
-            if UserDefaults.standard.bool(forKey: "RodaOnboardingAuto") {
+            // `-ZoenOnboardingAuto YES`: plays the whole flow by itself (screen recordings, demos).
+            if UserDefaults.standard.bool(forKey: "ZoenOnboardingAuto") {
                 for _ in 0..<route.steps.count {
                     try? await Task.sleep(for: .seconds(step == .plan ? 3.4 : 2.8))
                     if step == .areas && areas.isEmpty {
@@ -462,7 +462,7 @@ struct OnboardingFlow: View {
     }
 
     private func finish() {
-        UserDefaults.standard.set(true, forKey: "RodaOnboarded")
+        UserDefaults.standard.set(true, forKey: "ZoenOnboarded")
         let route = route
         Task { @MainActor in
             // A friend's link lands in the chat with them, a Space link in the Space.
@@ -473,12 +473,12 @@ struct OnboardingFlow: View {
     }
 
     /// First launch only. Launch arguments (demo shortcuts, screenshots) skip it, except
-    /// `-RodaOnboarding YES`, which forces it.
+    /// `-ZoenOnboarding YES`, which forces it.
     static var shouldShow: Bool {
         let d = UserDefaults.standard
-        if d.bool(forKey: "RodaOnboarding") { return true }
-        if ProcessInfo.processInfo.arguments.contains(where: { $0.hasPrefix("-Roda") }) { return false }
-        return !d.bool(forKey: "RodaOnboarded")
+        if d.bool(forKey: "ZoenOnboarding") { return true }
+        if ProcessInfo.processInfo.arguments.contains(where: { $0.hasPrefix("-Zoen") }) { return false }
+        return !d.bool(forKey: "ZoenOnboarded")
     }
 }
 

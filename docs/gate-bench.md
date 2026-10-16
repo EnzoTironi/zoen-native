@@ -36,7 +36,7 @@ caps it at 256 MB and clears it after each request.
 Jev (TypeSafe API) stays the production target with the default thresholds. Benchmarking it
 or OpenAI Decisions needs real keys (`GATE_BEARER_<NAME>` in a dev .env, never in the repo).
 
-Disk on the Mac (everything under `~/Developer/roda/.tools`, gitignored): 1.1 GB kept
+Disk on the Mac (everything under `~/Developer/zoen/.tools`, gitignored): 1.1 GB kept
 (Laya model 808 MB, venv 264 MB, Python 3.13 72 MB). Kev-0.8B (about 2.7 GB with its venv) and
 Laya typed (807 MB) were removed after benchmarking. Free disk: 13 GB before, 14 GB after
 (`target/debug` and the uv cache were also cleaned).

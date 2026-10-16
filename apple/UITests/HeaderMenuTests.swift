@@ -6,9 +6,9 @@ final class HeaderMenuTests: XCTestCase {
 
     @MainActor private func launch() -> XCUIApplication {
         let app = XCUIApplication()
-        app.launchArguments = ["-RodaDemo", "YES", "-RodaFreshStart", "YES", "-RodaResetDemo", "YES",
-                               "-AppleLanguages", "(pt-BR)", "-RodaAppearance", "light",
-                               "-RodaApprovalsExplained", "YES", "-RodaOpen", "paraty"]
+        app.launchArguments = ["-ZoenDemo", "YES", "-ZoenFreshStart", "YES", "-ZoenResetDemo", "YES",
+                               "-AppleLanguages", "(pt-BR)", "-ZoenAppearance", "light",
+                               "-ZoenApprovalsExplained", "YES", "-ZoenOpen", "paraty"]
         app.launch()
         return app
     }

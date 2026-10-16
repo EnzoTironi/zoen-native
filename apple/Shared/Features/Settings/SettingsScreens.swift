@@ -317,7 +317,7 @@ struct PreferencesSettings: View {
 /// The app's light/dark choice (read by the app root).
 enum AppAppearance: String, CaseIterable {
     case auto, light, dark
-    static let key = "RodaAppearance"
+    static let key = "ZoenAppearance"
     var label: String {
         switch self {
         case .auto: String(localized: "Automatic")

@@ -812,7 +812,7 @@ pub(crate) fn seed(e: &mut Engine) -> Result<(), CoreError> {
             kind: ItemKind::App,
             content: ItemContent::App(AppDoc {
                 app: "countdown".into(),
-                resource_uri: "ui://roda/countdown".into(),
+                resource_uri: "ui://zoen/countdown".into(),
                 title: trip_title.clone(),
                 state_json: trip_state.to_string(),
             }),
@@ -1057,7 +1057,7 @@ fn seed_turma_apps(
             kind: ItemKind::App,
             content: ItemContent::App(AppDoc {
                 app: "hike".into(),
-                resource_uri: "ui://roda/hike".into(),
+                resource_uri: "ui://zoen/hike".into(),
                 title: hike_title.clone(),
                 state_json: hike_state.to_string(),
             }),
@@ -1159,7 +1159,7 @@ fn seed_turma_apps(
             kind: ItemKind::App,
             content: ItemContent::App(AppDoc {
                 app: "pet".into(),
-                resource_uri: "ui://roda/pet".into(),
+                resource_uri: "ui://zoen/pet".into(),
                 title: pet_name.clone(),
                 state_json: pet_state.to_string(),
             }),
@@ -1224,7 +1224,7 @@ fn seed_turma_apps(
             kind: ItemKind::App,
             content: ItemContent::App(AppDoc {
                 app: "maptap".into(),
-                resource_uri: "ui://roda/maptap".into(),
+                resource_uri: "ui://zoen/maptap".into(),
                 title: map_title,
                 state_json: map_st.to_string(),
             }),
@@ -1313,7 +1313,7 @@ fn seed_coastal_hike(
             kind: ItemKind::App,
             content: ItemContent::App(AppDoc {
                 app: "hike".into(),
-                resource_uri: "ui://roda/hike".into(),
+                resource_uri: "ui://zoen/hike".into(),
                 title: hike_title.clone(),
                 state_json: hike_state.to_string(),
             }),

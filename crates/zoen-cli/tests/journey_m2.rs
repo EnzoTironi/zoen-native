@@ -495,7 +495,7 @@ async fn key_packages_refill_when_they_run_low() {
 
     // Bruno is away: 25 groups claim 25 of his packages.
     for i in 0..25 {
-        w.zoen("ana", &["group", &format!("Roda {i}"), "@bruno"]);
+        w.zoen("ana", &["group", &format!("Zoen {i}"), "@bruno"]);
     }
     assert_eq!(w.count(&sql).await, 7);
     // He comes back: the relay says he's low, his device publishes 25 more.
@@ -504,7 +504,7 @@ async fn key_packages_refill_when_they_run_low() {
 
     // Down to 8 while he isn't looking: nothing to do yet.
     for i in 25..49 {
-        w.zoen("ana", &["group", &format!("Roda {i}"), "@bruno"]);
+        w.zoen("ana", &["group", &format!("Zoen {i}"), "@bruno"]);
     }
     assert_eq!(
         w.count(&sql).await,
@@ -550,7 +550,7 @@ async fn key_packages_refill_when_they_run_low() {
             std::fs::read_to_string(&status_path).unwrap()
         );
     }
-    w.zoen("ana", &["group", "Roda 49", "@bruno"]);
+    w.zoen("ana", &["group", "Zoen 49", "@bruno"]);
     let mut stock = 0;
     for _ in 0..200 {
         stock = w.count(&sql).await;
@@ -586,8 +586,8 @@ async fn key_packages_refill_when_they_run_low() {
     );
 
     // A group made from a refilled package opens like any other, and so do the old ones.
-    w.zoen("ana", &["group", "Roda nova", "@bruno"]);
-    for chat in ["Roda nova", "Roda 0", "Roda 24", "Roda 49"] {
+    w.zoen("ana", &["group", "Zoen nova", "@bruno"]);
+    for chat in ["Zoen nova", "Zoen 0", "Zoen 24", "Zoen 49"] {
         let text = format!("oi na {chat}: tucano");
         w.zoen("ana", &["send", chat, &text]);
         assert!(w.zoen("bruno", &["read", chat]).contains(&text), "{chat}");

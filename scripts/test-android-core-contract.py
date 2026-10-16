@@ -139,5 +139,29 @@ class CurrentCoreContractTest(unittest.TestCase):
         self.assertEqual(self.contract, core.source_contract({"src/lib.rs": SOURCE + fake}))
 
 
+class ArtRenameEquivalenceTest(unittest.TestCase):
+    ORIGINAL = b"import SwiftUI\nimport RodaCore\nlet k = \"RodaStory\"\nlet rows = [\"..#..\"]\n"
+    RENAMED = b"import SwiftUI\nimport ZoenCore\nlet k = \"ZoenStory\"\nlet rows = [\"..#..\"]\n"
+    LINES = {b"import ZoenCore": b"import RodaCore", b"let k = \"ZoenStory\"": b"let k = \"RodaStory\""}
+
+    def test_listed_rename_lines_are_equivalent(self):
+        self.assertEqual(core.art_bytes(self.RENAMED, self.LINES), self.ORIGINAL)
+        self.assertEqual(core.art_bytes(self.ORIGINAL, self.LINES), self.ORIGINAL)
+
+    def test_any_other_change_still_fails(self):
+        expected = core.digest(self.ORIGINAL)
+        for changed in [self.RENAMED.replace(b"..#..", b"..##."), self.RENAMED + b"// note\n",
+                        self.RENAMED.replace(b"import ZoenCore", b"import ZoenCore // x"),
+                        self.RENAMED.replace(b"import SwiftUI", b"import ZoenKit")]:
+            self.assertNotEqual(core.digest(core.art_bytes(changed, self.LINES)), expected)
+
+    def test_repository_table_only_renames(self):
+        self.assertTrue(core.art_rename_lines())
+        with tempfile.TemporaryDirectory() as directory, patch.object(core, "ART_RENAME", Path(directory) / "t.json"):
+            core.ART_RENAME.write_text(json.dumps({"lines": {"let x = 2": "let x = 1"}}))
+            with self.assertRaises(ValueError):
+                core.art_rename_lines()
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -6,9 +6,9 @@ final class AgentsJourneyTests: XCTestCase {
     private func launch(dark: Bool) -> XCUIApplication {
         let app = XCUIApplication()
         app.launchArguments = [
-            "-RodaFreshStart", "YES", "-RodaDemo", "YES", "-RodaResetDemo", "YES",
-            "-RodaTab", "agents", "-AppleLanguages", "(pt-BR)", "-AppleLocale", "pt_BR",
-            "-RodaAppearance", dark ? "dark" : "light",
+            "-ZoenFreshStart", "YES", "-ZoenDemo", "YES", "-ZoenResetDemo", "YES",
+            "-ZoenTab", "agents", "-AppleLanguages", "(pt-BR)", "-AppleLocale", "pt_BR",
+            "-ZoenAppearance", dark ? "dark" : "light",
         ]
         app.launch()
         return app

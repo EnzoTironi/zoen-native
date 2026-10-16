@@ -3372,7 +3372,7 @@ impl Engine {
         let id = grant.id.clone();
         self.append(space, &me, EventBody::GrantIssued { grant })?;
         Ok(format!(
-            "https://roda.app/c/{}#{}",
+            "https://tryzoen.com/c/{}#{}",
             &space[3..15.min(space.len())],
             &id[4..20.min(id.len())]
         ))

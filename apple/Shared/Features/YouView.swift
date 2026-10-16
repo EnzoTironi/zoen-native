@@ -114,8 +114,8 @@ struct YouScreen: View {
         .navigationTitle("Your context")
         .sheet(item: $settings) { SettingsRoot(start: $0.start).environment(model) }
         .onAppear {
-            // `-RodaSettings tema`: opens Ajustes on that screen (journey tests, screenshots).
-            if let raw = UserDefaults.standard.string(forKey: "RodaSettings"), settings == nil {
+            // `-ZoenSettings tema`: opens Ajustes on that screen (journey tests, screenshots).
+            if let raw = UserDefaults.standard.string(forKey: "ZoenSettings"), settings == nil {
                 settings = SettingsLaunch(start: SettingsScreen(rawValue: raw))
             }
         }

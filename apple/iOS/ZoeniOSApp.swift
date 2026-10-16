@@ -93,10 +93,10 @@ struct RootView: View {
                 OnboardingFlow { withAnimation(.easeInOut(duration: 0.4)) { onboarding = false } }
                     .transition(.opacity)
             }
-            if UserDefaults.standard.bool(forKey: "RodaMascotGallery") { MascotGallery() }
-            if UserDefaults.standard.bool(forKey: "RodaIconSheet") { ZoenIconSheet() }
-            if UserDefaults.standard.bool(forKey: "RodaTopBarWidths") { TopBarWidthSheet() }
-            if UserDefaults.standard.bool(forKey: "RodaIconExplore") { IconExploreSheet() }
+            if UserDefaults.standard.bool(forKey: "ZoenMascotGallery") { MascotGallery() }
+            if UserDefaults.standard.bool(forKey: "ZoenIconSheet") { ZoenIconSheet() }
+            if UserDefaults.standard.bool(forKey: "ZoenTopBarWidths") { TopBarWidthSheet() }
+            if UserDefaults.standard.bool(forKey: "ZoenIconExplore") { IconExploreSheet() }
         }
         .overlay {
             if let flip = model.appFlip {
@@ -235,9 +235,9 @@ struct ZoenBottomBar: View {
     static let bottom: CGFloat = 2
 
     /// Tab pill labels: `selected` (default: only the current tab shows its word) or `none`
-    /// (icons only). `-RodaTabLabels none` for the comparison screenshots.
+    /// (icons only). `-ZoenTabLabels none` for the comparison screenshots.
     enum LabelStyle: String { case selected, none }
-    static var labelStyle: LabelStyle { LabelStyle(rawValue: UserDefaults.standard.string(forKey: "RodaTabLabels") ?? "") ?? .selected }
+    static var labelStyle: LabelStyle { LabelStyle(rawValue: UserDefaults.standard.string(forKey: "ZoenTabLabels") ?? "") ?? .selected }
 
     @Environment(AppModel.self) private var model
     @Environment(\.colorScheme) private var scheme
@@ -375,7 +375,7 @@ struct ZoenBottomBar: View {
             .frame(minWidth: 48)
             .background {
                 // The selected tab sits on a tinted pill (the ink icons' highlighter swipe is
-                // only used with `-RodaInkIcons YES`).
+                // only used with `-ZoenInkIcons YES`).
                 if on && !ZoenIconStyle.ink {
                     Capsule().fill(Palette.action.opacity(scheme == .dark ? 0.26 : 0.14))
                         .matchedGeometryEffect(id: "tab", in: pill)
@@ -444,9 +444,9 @@ struct BarEdgeModifier<S: InsettableShape>: ViewModifier {
             // Diffusion inside the element: `.regular` glass alone only frosts lightly, so busy
             // content (paper-card titles) still read sharply through it and collided with the
             // icons. A material in the element's own shape, under the glass, softens what's
-            // behind each piece (no band behind the bar). `-RodaBarDiffuse NO` turns it off.
+            // behind each piece (no band behind the bar). `-ZoenBarDiffuse NO` turns it off.
             .background {
-                if diffuse, UserDefaults.standard.object(forKey: "RodaBarDiffuse") == nil || UserDefaults.standard.bool(forKey: "RodaBarDiffuse") {
+                if diffuse, UserDefaults.standard.object(forKey: "ZoenBarDiffuse") == nil || UserDefaults.standard.bool(forKey: "ZoenBarDiffuse") {
                     shape.fill(dark ? .thinMaterial : .ultraThinMaterial).allowsHitTesting(false)
                 }
             }
@@ -454,7 +454,7 @@ struct BarEdgeModifier<S: InsettableShape>: ViewModifier {
             // `.shadow` on the glass view itself flattens it into an offscreen layer and the
             // glass loses its backdrop diffusion, so busy content showed through sharply.
             .background {
-                if !UserDefaults.standard.bool(forKey: "RodaBarOldShadow") {
+                if !UserDefaults.standard.bool(forKey: "ZoenBarOldShadow") {
                     shape.fill(.black)
                         .shadow(color: .black.opacity(dark ? 0.55 : 0.12), radius: dark ? 14 : 10, y: dark ? 6 : 4)
                         .mask {
@@ -471,11 +471,11 @@ struct BarEdgeModifier<S: InsettableShape>: ViewModifier {
     }
 }
 
-/// `-RodaBarOldShadow YES` restores the previous shadow for the before/after shots.
+/// `-ZoenBarOldShadow YES` restores the previous shadow for the before/after shots.
 private struct OldShadow: ViewModifier {
     let dark: Bool
     func body(content: Content) -> some View {
-        if UserDefaults.standard.bool(forKey: "RodaBarOldShadow") {
+        if UserDefaults.standard.bool(forKey: "ZoenBarOldShadow") {
             content.shadow(color: .black.opacity(dark ? 0.55 : 0.1), radius: dark ? 14 : 10, y: dark ? 6 : 4)
         } else { content }
     }

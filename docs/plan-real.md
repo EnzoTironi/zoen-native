@@ -15,7 +15,7 @@ project are in [accounts.md](accounts.md).
 ## Rules for every milestone
 
 - No stubs or fakes in shipped code paths. Test doubles live under `tests/` only.
-- The demo story stays behind `-RodaDemo YES` (ADR 0006). A normal launch is real.
+- The demo story stays behind `-ZoenDemo YES` (ADR 0006). A normal launch is real.
 - Real persistence and real migrations: SQLite `user_version` steps on the device, `sqlx`
   migrations on the relay. Nothing is dropped on upgrade except the pre-v2 demo logs.
 - Real crypto from audited libraries: Ed25519 (ed25519-dalek), OpenMLS, XChaCha20-Poly1305.

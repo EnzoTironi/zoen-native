@@ -45,7 +45,7 @@ class NativeDashJourneyTest {
     @Test fun firstAdoptionRevealIsSkippableSavedPerPetAndTabsUseTheSharedLeaderboard() {
         val pet = app.repository.state.value.items.first { it.app?.appId == "pet" }
         val version = pet.version
-        app.repository.preferences.edit().remove("RodaUnboxed.${pet.id}").commit()
+        app.repository.preferences.edit().remove("ZoenUnboxed.${pet.id}").commit()
         scenario.close()
         shell("settings put global animator_duration_scale 1")
         compose.mainClock.autoAdvance = false
@@ -61,7 +61,7 @@ class NativeDashJourneyTest {
         compose.onNodeWithTag("pet-unboxing").performClick()
         compose.mainClock.autoAdvance = true
         compose.onNodeWithTag("pet-unboxing").assertDoesNotExist()
-        assertTrue(app.repository.preferences.getBoolean("RodaUnboxed.${pet.id}", false))
+        assertTrue(app.repository.preferences.getBoolean("ZoenUnboxed.${pet.id}", false))
         scenario.recreate()
         compose.onNodeWithTag("pet-unboxing").assertDoesNotExist()
         compose.onNodeWithTag("pet-tab-0").assertIsSelected()

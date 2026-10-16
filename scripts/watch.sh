@@ -10,7 +10,7 @@
 #   stop:   scripts/watch.sh stop
 #   status: tail -f build/watch.log
 #
-# Relaunch arguments live in build/watch.args, one per line (e.g. "-RodaOpen" / "paraty").
+# Relaunch arguments live in build/watch.args, one per line (e.g. "-ZoenOpen" / "paraty").
 # Edit that file and touch any source file to relaunch with the new arguments.
 # WATCH_DEVICE picks the simulator (default: the booted one). WATCH_MAC=1 also rebuilds
 # and reopens the Mac app.

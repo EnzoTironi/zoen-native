@@ -174,9 +174,9 @@ schemes:
       config: Device
       # Desligados; marque um em Product > Scheme > Edit Scheme > Arguments para usar.
       commandLineArguments:
-        "-RodaDemo YES": false
-        "-RodaRelay http://SEU-MAC.local:8787": false
-        "-RodaRelay https://TROQUE.trycloudflare.com": false
+        "-ZoenDemo YES": false
+        "-ZoenRelay http://SEU-MAC.local:8787": false
+        "-ZoenRelay https://TROQUE.trycloudflare.com": false
     profile:
       config: Device
     analyze:

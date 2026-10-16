@@ -88,7 +88,7 @@ struct RecipeSheet: View {
             }
             .navigationDestination(isPresented: $cooking) { CookingMode(item: item, app: app) }
         }
-        .onAppear { if UserDefaults.standard.string(forKey: "RodaStory") == "recipe-cook" { cooking = true } }
+        .onAppear { if UserDefaults.standard.string(forKey: "ZoenStory") == "recipe-cook" { cooking = true } }
     }
 
     private func set(_ n: Int) {
@@ -177,7 +177,7 @@ struct CookingMode: View {
         .animation(.spring(duration: 0.4), value: step)
         .animation(.spring(duration: 0.4), value: timerEnd)
         .onAppear {
-            if UserDefaults.standard.string(forKey: "RodaStory") == "recipe-cook" {
+            if UserDefaults.standard.string(forKey: "ZoenStory") == "recipe-cook" {
                 step = 1
                 startTimer(8)
                 timerEnd = Date().addingTimeInterval(8 * 60 - 74)

@@ -14,7 +14,7 @@
 //! do pet continua servido, para qualquer host MCP); poll e list rodam como View MCP
 //! no WKWebView isolado.
 //!
-//! Cada mini-app declara um recurso `ui://roda/<app>` (`text/html;profile=mcp-app`)
+//! Cada mini-app declara um recurso `ui://zoen/<app>` (`text/html;profile=mcp-app`)
 //! e ferramentas com `_meta.ui.resourceUri` e `visibility` (`model` = o agente cria,
 //! `app` = a interface chama). O estado compartilhado mora num Item versionado; quem
 //! decide se uma chamada pode rodar é o `zoen-grants` (no `engine`), não este módulo.
@@ -112,7 +112,7 @@ pub fn specs() -> Vec<AppSpec> {
             id: "pet",
             name: ts("Jumento do grupo", "Group donkey"),
             description: ts("Um jumento em pixel art que mora no grupo: comer, cochilar, brincar e a Corrida do Jumento, com placar do grupo. Todo mundo vê o mesmo bicho e quem fez o quê.", "A pixel-art donkey that lives in the group: eat, nap, play and Donkey Dash, with a group leaderboard. Everyone sees the same pet and who did what."),
-            resource_uri: "ui://roda/pet",
+            resource_uri: "ui://zoen/pet",
             html: Some(include_str!("../apps/pet.html")),
             manifest: None,
             tools: vec![
@@ -131,7 +131,7 @@ pub fn specs() -> Vec<AppSpec> {
             id: "maptap",
             name: "MapTap",
             description: ts("Jogo de geografia por turnos: os mesmos 5 lugares para todo mundo, um toque no globo por rodada.", "Turn-based geography game: the same 5 places for everyone, one tap on the globe per round."),
-            resource_uri: "ui://roda/maptap",
+            resource_uri: "ui://zoen/maptap",
             html: None,
             manifest: None,
             tools: vec![
@@ -144,7 +144,7 @@ pub fn specs() -> Vec<AppSpec> {
             id: "recipe",
             name: ts("Jantar", "Dinner"),
             description: ts("Receita compartilhada: porções que recalculam os ingredientes, checklist e modo cozinhar.", "Shared recipe: servings that rescale the ingredients, a checklist and cooking mode."),
-            resource_uri: "ui://roda/recipe",
+            resource_uri: "ui://zoen/recipe",
             html: None,
             manifest: None,
             tools: vec![
@@ -159,7 +159,7 @@ pub fn specs() -> Vec<AppSpec> {
             id: "poll",
             name: ts("Enquete", "Poll"),
             description: ts("Votação rápida no grupo. Ao fechar, a opção vencedora entra no plano do Espaço.", "Quick group vote. When it closes, the winning option goes into the Space’s plan."),
-            resource_uri: "ui://roda/poll",
+            resource_uri: "ui://zoen/poll",
             html: Some(include_str!("../apps/poll.html")),
             manifest: None,
             tools: vec![
@@ -174,7 +174,7 @@ pub fn specs() -> Vec<AppSpec> {
             id: "list",
             name: ts("Lista do grupo", "Group list"),
             description: ts("Lista compartilhada: quem marcou cada coisa fica registrado.", "Shared list: who checked off each thing is recorded."),
-            resource_uri: "ui://roda/list",
+            resource_uri: "ui://zoen/list",
             html: Some(include_str!("../apps/list.html")),
             manifest: None,
             tools: vec![
@@ -189,7 +189,7 @@ pub fn specs() -> Vec<AppSpec> {
             id: "countdown",
             name: ts("Contagem", "Countdown"),
             description: ts("Contagem regressiva do grupo para uma data (viagem, show, aniversário).", "The group’s countdown to a date (a trip, a show, a birthday)."),
-            resource_uri: "ui://roda/countdown",
+            resource_uri: "ui://zoen/countdown",
             html: None,
             manifest: None,
             tools: vec![
@@ -201,7 +201,7 @@ pub fn specs() -> Vec<AppSpec> {
             id: "hike",
             name: ts("Trilha de sábado", "Saturday hike"),
             description: ts("Três trilhas com mapa e fotos: o grupo compara, vota e o agente monta o dia (carona, horários).", "Three trails with maps and photos: the group compares, votes and the agent plans the day (rides, times)."),
-            resource_uri: "ui://roda/hike",
+            resource_uri: "ui://zoen/hike",
             html: Some(include_str!("../apps/hike.html")),
             manifest: Some(include_str!("../apps/hike.manifest.json")),
             tools: vec![
@@ -220,7 +220,7 @@ pub fn specs() -> Vec<AppSpec> {
                 "Horários livres, serviços e preços. O cliente marca; o agente confirma o que for especial.",
                 "Free slots, services and prices. The client books; the agent confirms anything special.",
             ),
-            resource_uri: "ui://roda/schedule",
+            resource_uri: "ui://zoen/schedule",
             html: Some(include_str!("../apps/schedule.html")),
             manifest: Some(include_str!("../apps/schedule.manifest.json")),
             tools: vec![

@@ -22,6 +22,31 @@ def digest(value):
     return hashlib.sha256(value).hexdigest()
 
 
+ART_RENAME = Path(__file__).with_name("art-rename-equivalence.json")
+
+
+def _renamed(original):
+    return re.sub(r"\broda\b", "zoen", original.replace("Roda", "Zoen"))
+
+
+def art_rename_lines():
+    lines = json.loads(ART_RENAME.read_text())["lines"]
+    for renamed, original in lines.items():
+        if renamed == original or _renamed(original) != renamed:
+            raise ValueError("Art rename equivalence must only rename Roda to Zoen: " + renamed)
+    return {renamed.encode(): original.encode() for renamed, original in lines.items()}
+
+
+def art_bytes(value, lines=None):
+    """Map whole lines renamed Roda -> Zoen back to the original art source.
+
+    Only exact lines listed in art-rename-equivalence.json are rewritten; every other
+    byte must still match the original artwork, so the art gate stays strict.
+    """
+    lines = art_rename_lines() if lines is None else lines
+    return b"\n".join(lines.get(line, line) for line in value.split(b"\n"))
+
+
 def json_digest(value):
     return digest(json.dumps(value, sort_keys=True, separators=(",", ":")).encode())
 

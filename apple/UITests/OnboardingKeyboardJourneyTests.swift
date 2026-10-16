@@ -9,7 +9,7 @@ final class OnboardingKeyboardJourneyTests: XCTestCase {
     @MainActor
     func testPickingYourHandleFitsAboveTheKeyboard() {
         let app = XCUIApplication()
-        app.launchArguments = ["-RodaOnboarding", "YES", "-RodaOnboardingStep", "profile",
+        app.launchArguments = ["-ZoenOnboarding", "YES", "-ZoenOnboardingStep", "profile",
                                "-AppleLanguages", "(pt-BR)"]
         app.launch()
 

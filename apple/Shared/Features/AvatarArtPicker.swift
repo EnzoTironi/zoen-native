@@ -16,7 +16,7 @@ struct AvatarArtPicker: View {
 
     let target: Target
     @Environment(\.dismiss) private var dismiss
-    @AppStorage("RodaAvatarArtVersion") private var artVersion = 0
+    @AppStorage("ZoenAvatarArtVersion") private var artVersion = 0
 
     private var pool: [HandDrawnAvatarAsset.Asset] {
         switch target {

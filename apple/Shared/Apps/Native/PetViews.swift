@@ -224,8 +224,8 @@ struct PetSheet: View {
         .onAppear {
             // The first time someone opens a newly adopted donkey, it arrives in a box.
             let d = UserDefaults.standard
-            let key = "RodaUnboxed." + item.id
-            let story = d.string(forKey: "RodaStory")
+            let key = "ZoenUnboxed." + item.id
+            let story = d.string(forKey: "ZoenStory")
             if story == "pet-unbox" || (story == nil && !d.bool(forKey: key) && !v.bool("released")) { unboxing = true }
             d.set(true, forKey: key)
         }
@@ -233,9 +233,9 @@ struct PetSheet: View {
         .presentationBackground(.clear)
     }
 
-    /// `-RodaUnboxFreeze 2.6` freezes the reveal at that moment (screenshots).
+    /// `-ZoenUnboxFreeze 2.6` freezes the reveal at that moment (screenshots).
     private static var unboxFreeze: Double? {
-        let v = UserDefaults.standard.double(forKey: "RodaUnboxFreeze")
+        let v = UserDefaults.standard.double(forKey: "ZoenUnboxFreeze")
         return v > 0 ? v : nil
     }
 
@@ -601,7 +601,7 @@ struct DashGameView: View {
             .onTapGesture { game.jump(now: Date().timeIntervalSinceReferenceDate); bump += 1 }
         }
         .onAppear {
-            if UserDefaults.standard.bool(forKey: "RodaDashAuto") {
+            if UserDefaults.standard.bool(forKey: "ZoenDashAuto") {
                 game.auto = true
                 game.reset()
                 bump += 1

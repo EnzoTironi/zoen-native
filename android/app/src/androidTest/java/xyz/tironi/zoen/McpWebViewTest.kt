@@ -99,7 +99,7 @@ class McpWebViewTest {
             InstrumentationRegistry.getInstrumentation().uiAutomation.takeScreenshot().use { bitmap -> evidence.outputStream().use { bitmap.compress(Bitmap.CompressFormat.PNG, 100, it) } }
 
             // This request travels through the same HTML protocol, but cannot read another app's resource.
-            evaluate(web.get(), "rpc.request('resources/read',{uri:'ui://roda/pet'}).then(()=>window.resourceOutcome='allowed').catch(e=>window.resourceOutcome=String(e.code)); null")
+            evaluate(web.get(), "rpc.request('resources/read',{uri:'ui://zoen/pet'}).then(()=>window.resourceOutcome='allowed').catch(e=>window.resourceOutcome=String(e.code)); null")
             waitUntil { evaluate(web.get(), "window.resourceOutcome") == "\"-32003\"" }
             touch(web.get(), "#send")
             waitUntil { prompts.get() == 1 }

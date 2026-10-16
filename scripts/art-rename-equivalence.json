@@ -1,0 +1,28 @@
+{
+  "scope": "Roda->Zoen rename only; each renamed line maps back to its original art-source line",
+  "lines": {
+    "import ZoenCore": "import RodaCore",
+    "            let key = \"ZoenUnboxed.\" + item.id": "            let key = \"RodaUnboxed.\" + item.id",
+    "            let story = d.string(forKey: \"ZoenStory\")": "            let story = d.string(forKey: \"RodaStory\")",
+    "    /// `-ZoenUnboxFreeze 2.6` freezes the reveal at that moment (screenshots).": "    /// `-RodaUnboxFreeze 2.6` freezes the reveal at that moment (screenshots).",
+    "        let v = UserDefaults.standard.double(forKey: \"ZoenUnboxFreeze\")": "        let v = UserDefaults.standard.double(forKey: \"RodaUnboxFreeze\")",
+    "            if UserDefaults.standard.bool(forKey: \"ZoenDashAuto\") {": "            if UserDefaults.standard.bool(forKey: \"RodaDashAuto\") {",
+    "// MARK: - Hand-drawn ink: Zoen's illustration language": "// MARK: - Hand-drawn ink: Roda's illustration language",
+    "/// `-ZoenFreezeArt 2.4` freezes every drawing at that time (deterministic screenshots).": "/// `-RodaFreezeArt 2.4` freezes every drawing at that time (deterministic screenshots).",
+    "        let v = UserDefaults.standard.double(forKey: \"ZoenFreezeArt\")": "        let v = UserDefaults.standard.double(forKey: \"RodaFreezeArt\")",
+    "    case pot, allClear, mentions, tasks, search, lost, trophy, ballot, notepad, zoen, trip, hike": "    case pot, allClear, mentions, tasks, search, lost, trophy, ballot, notepad, roda, trip, hike",
+    "        case .lost: 16; case .trophy: 17; case .ballot: 18; case .notepad: 19; case .zoen: 20": "        case .lost: 16; case .trophy: 17; case .ballot: 18; case .notepad: 19; case .roda: 20",
+    "        case .zoen:": "        case .roda:",
+    "/// Empty state: Zo, Zoen's hand-drawn mascot, in a pose that fits the moment.": "/// Empty state: Zo, Roda's hand-drawn mascot, in a pose that fits the moment.",
+    "// MARK: - Zoen, Zoen's mascot": "// MARK: - Zoen, Roda's mascot",
+    "/// `-ZoenMascotGallery YES`: every pose on one page, for review and screenshots.": "/// `-RodaMascotGallery YES`: every pose on one page, for review and screenshots.",
+    "/// `-ZoenMascotPose run` shows one pose, big (close-ups).": "/// `-RodaMascotPose run` shows one pose, big (close-ups).",
+    "            if let one = UserDefaults.standard.string(forKey: \"ZoenMascotPose\").flatMap(MascotPose.init(rawValue:)) {": "            if let one = UserDefaults.standard.string(forKey: \"RodaMascotPose\").flatMap(MascotPose.init(rawValue:)) {",
+    "        // in the code behind flags: `-ZoenInkIcons YES` (ink v2) and `-ZoenIconsV1 YES`.": "        // in the code behind flags: `-RodaInkIcons YES` (ink v2) and `-RodaIconsV1 YES`.",
+    "        } else if UserDefaults.standard.bool(forKey: \"ZoenIconsV1\") {": "        } else if UserDefaults.standard.bool(forKey: \"RodaIconsV1\") {",
+    "    static var ink: Bool { UserDefaults.standard.bool(forKey: \"ZoenInkIcons\") }": "    static var ink: Bool { UserDefaults.standard.bool(forKey: \"RodaInkIcons\") }",
+    "/// v1 outline icons, kept for the before/after shots (`-ZoenIconsV1 YES`).": "/// v1 outline icons, kept for the before/after shots (`-RodaIconsV1 YES`).",
+    "/// `-ZoenIconSheet YES`: every icon at 20/24/32pt plus the selected state (24pt), fixed": "/// `-RodaIconSheet YES`: every icon at 20/24/32pt plus the selected state (24pt), fixed",
+    "/// `-ZoenIconExplore YES`: the three directions for the six key icons, at 20/24/32pt, the": "/// `-RodaIconExplore YES`: the three directions for the six key icons, at 20/24/32pt, the"
+  }
+}

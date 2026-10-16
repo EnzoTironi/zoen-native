@@ -91,7 +91,7 @@ struct ApprovalsStackView: View {
     @Environment(AppModel.self) private var model
     @Environment(\.dismiss) private var dismiss
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @AppStorage("RodaApprovalsExplained") private var explained = false
+    @AppStorage("ZoenApprovalsExplained") private var explained = false
 
     @State private var deck: [AgentRequestDto] = []
     /// Decided here but not yet sent to the core (undo window), or already sent.
@@ -1129,7 +1129,7 @@ struct TiltSheen<Content: View>: View {
     @ViewBuilder
     private var leaning: some View {
         #if DEBUG
-        if UserDefaults.standard.bool(forKey: "RodaFakeLean") {
+        if UserDefaults.standard.bool(forKey: "ZoenFakeLean") {
             // Recording hook: the simulator has no gyroscope, so sway slowly.
             TimelineView(.animation) { tl in
                 let s = tl.date.timeIntervalSinceReferenceDate

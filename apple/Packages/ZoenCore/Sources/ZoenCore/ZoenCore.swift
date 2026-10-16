@@ -43,12 +43,12 @@ extension TrustLevelDto: CaseIterable {
 }
 
 public extension ZoenEngine {
-    /// Opens the app database at Application Support/Roda/roda.sqlite, speaking `locale`
+    /// Opens the app database at Application Support/Zoen/zoen.sqlite, speaking `locale`
     /// (agent output, demo data and money follow it).
     static func openDefault(locale: String) throws -> ZoenEngine {
         let base = try FileManager.default.url(for: .applicationSupportDirectory, in: .userDomainMask, appropriateFor: nil, create: true)
-            .appendingPathComponent("Roda", isDirectory: true)
+            .appendingPathComponent("Zoen", isDirectory: true)
         try FileManager.default.createDirectory(at: base, withIntermediateDirectories: true)
-        return try ZoenEngine.open(path: base.appendingPathComponent("roda.sqlite").path, locale: locale)
+        return try ZoenEngine.open(path: base.appendingPathComponent("zoen.sqlite").path, locale: locale)
     }
 }

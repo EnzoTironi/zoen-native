@@ -3,7 +3,7 @@ import Foundation
 import QuartzCore
 import UIKit
 
-/// Debug-only frame-pacing probe (launch with `-RodaFramePacing YES`). Between `begin` and
+/// Debug-only frame-pacing probe (launch with `-ZoenFramePacing YES`). Between `begin` and
 /// `end` it records every display-link interval and every main-thread busy stretch (run
 /// loop wake → sleep), and logs one line, e.g.
 /// `ZPACE card-drag frames=212 target=8.3ms mean=8.4ms p95=9.1ms max=16.9ms hitches=1
@@ -14,7 +14,7 @@ import UIKit
 @MainActor
 final class FramePacingProbe: NSObject {
     static let shared = FramePacingProbe()
-    static var enabled: Bool { UserDefaults.standard.bool(forKey: "RodaFramePacing") }
+    static var enabled: Bool { UserDefaults.standard.bool(forKey: "ZoenFramePacing") }
 
     private var link: CADisplayLink?
     private var last: CFTimeInterval = 0

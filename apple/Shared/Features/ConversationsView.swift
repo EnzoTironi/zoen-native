@@ -365,7 +365,7 @@ struct ConversationsScreen: View {
             .accessibilityIdentifier("chats-list-scroll")
             .scrollDismissesKeyboard(.interactively)
             .scrollEdgeEffectStyle(.soft, for: .top)
-            .defaultScrollAnchor(UserDefaults.standard.bool(forKey: "RodaScrollChats") ? .bottom : .top)
+            .defaultScrollAnchor(UserDefaults.standard.bool(forKey: "ZoenScrollChats") ? .bottom : .top)
         }
         .background(NightBackdrop())
         .navigationTitle("Chats")

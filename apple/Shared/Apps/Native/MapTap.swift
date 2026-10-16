@@ -229,7 +229,7 @@ struct MapTapSheet: View {
                 .accessibilityLabel("Close")
         }
         .onAppear {
-            if ["maptap-play", "maptap-result"].contains(UserDefaults.standard.string(forKey: "RodaStory") ?? "") { startDemo() }
+            if ["maptap-play", "maptap-result"].contains(UserDefaults.standard.string(forKey: "ZoenStory") ?? "") { startDemo() }
         }
     }
 
@@ -439,9 +439,9 @@ struct MapTapSheet: View {
         withAnimation(.spring(duration: 0.5)) { phase = round >= places.count ? .finished : .playing }
     }
 
-    /// Demonstração (capturas): `-RodaStory maptap-play` marca um palpite; `maptap-result` crava.
+    /// Demonstração (capturas): `-ZoenStory maptap-play` marca um palpite; `maptap-result` crava.
     private func startDemo() {
-        let story = UserDefaults.standard.string(forKey: "RodaStory") ?? ""
+        let story = UserDefaults.standard.string(forKey: "ZoenStory") ?? ""
         guard round < places.count else { return }
         phase = .playing
         let p = places[round]

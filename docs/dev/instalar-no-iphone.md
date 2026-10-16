@@ -79,14 +79,14 @@ grupos (M2), que o servidor antigo não conhece. Volta a funcionar quando o stag
 (precisa do `fly auth login` no Mac). Enquanto isso, três saídas grátis:
 
 - **Ver o app sem servidor:** em Product > Scheme > Edit Scheme > Run > Arguments, marque
-  `-RodaDemo YES`. Dados de demonstração, tudo local.
+  `-ZoenDemo YES`. Dados de demonstração, tudo local.
 - **Servidor no Mac, iPhone no mesmo Wi-Fi:** rode `scripts/dev-stack.sh` (ele escuta em
-  `0.0.0.0:8787`) e marque `-RodaRelay http://SEU-MAC.local:8787` trocando `SEU-MAC` pelo nome em
+  `0.0.0.0:8787`) e marque `-ZoenRelay http://SEU-MAC.local:8787` trocando `SEU-MAC` pelo nome em
   Ajustes do Sistema > Geral > Compartilhamento > Nome do host local. Na primeira vez o iPhone
   pede acesso à rede local: aceite.
 - **Servidor no Mac, iPhone em qualquer rede (4G):** com o `dev-stack.sh` rodando,
   `cloudflared tunnel --url http://127.0.0.1:8787` imprime um endereço
-  `https://….trycloudflare.com`, grátis e sem conta. Marque `-RodaRelay` com esse endereço.
+  `https://….trycloudflare.com`, grátis e sem conta. Marque `-ZoenRelay` com esse endereço.
   O endereço muda cada vez que o túnel reinicia, e fica público enquanto estiver rodando.
   O túnel precisa de saída na porta 7844 (normal em casa; na rede do box ela é bloqueada, então
   esse caminho ainda não foi testado de ponta a ponta).
