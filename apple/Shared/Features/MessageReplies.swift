@@ -371,9 +371,11 @@ struct ThreadSheet: View {
                 try model.core.markThreadRead(spaceId: spaceId, rootId: rootId)
                 model.refresh()
                 loaded = (try? model.core.thread(spaceId: spaceId, rootId: rootId)) ?? loaded
-            } catch {
+            } catch let error as CoreError {
                 // perform() refreshes even on failure, restarting this revision task
                 // with the same unread root forever. Leave revision unchanged here.
+                model.show(.init(kind: .error, text: error.message))
+            } catch {
                 model.show(.init(kind: .error, text: error.localizedDescription))
             }
         }

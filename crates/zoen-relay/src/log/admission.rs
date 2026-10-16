@@ -74,10 +74,20 @@ pub fn admit(env: &Envelope, f: &Facts) -> Result<Effect, Reject> {
     }
     let body = env.body();
     let author = env.author();
+    // Personal state is shared by certified devices of one identity, never by
+    // adding another identity (or redeeming an invite) to its roster.
+    if f.kind == Some(SpaceKind::Personal)
+        && matches!(
+            body,
+            Some(EventBody::MemberAdded { .. } | EventBody::MemberRemoved { .. })
+        )
+    {
+        return Err(Reject::no("personal space membership cannot change"));
+    }
     let effect = match (&f.head, body.clone()) {
         (None, Some(EventBody::SpaceCreated { kind, privacy, .. })) => {
-            if kind == SpaceKind::Personal {
-                return Err(Reject::no("personal spaces stay on the device"));
+            if kind == SpaceKind::Personal && privacy != Privacy::Closed {
+                return Err(Reject::no("personal spaces must be closed"));
             }
             Effect::Create { kind, privacy }
         }
@@ -362,6 +372,55 @@ mod tests {
             epoch: 2,
             digest: "d".into(),
         }
+    }
+
+    #[test]
+    fn personal_spaces_replicate_without_allowing_other_identities() {
+        let a = Author::root(Signer::generate());
+        for privacy in [Privacy::Closed, Privacy::Public, Privacy::EndToEnd] {
+            let create = env(
+                &a,
+                None,
+                EventBody::SpaceCreated {
+                    title: "Personal".into(),
+                    kind: SpaceKind::Personal,
+                    privacy,
+                },
+            );
+            assert_eq!(
+                admit(&create, &Facts::default()).is_ok(),
+                privacy == Privacy::Closed
+            );
+        }
+        let f = Facts {
+            kind: Some(SpaceKind::Personal),
+            privacy: Some(Privacy::Closed),
+            ..member_facts(Role::Owner)
+        };
+        let seen = Some(Seen {
+            seq: 3,
+            hash: "h3".into(),
+        });
+        assert_eq!(
+            admit(&env(&a, seen.clone(), msg()), &f).unwrap(),
+            Effect::Nothing
+        );
+        for body in [
+            EventBody::MemberAdded {
+                identity: Signer::generate().id(),
+                role: Role::Member,
+            },
+            EventBody::MemberRemoved {
+                identity: a.identity.clone(),
+            },
+        ] {
+            assert!(admit(&env(&a, seen.clone(), body), &f).is_err());
+        }
+        let outsider = Facts {
+            author_role: None,
+            ..f
+        };
+        assert!(admit(&env(&a, seen, msg()), &outsider).is_err());
     }
 
     #[test]

@@ -5,6 +5,7 @@ use super::*;
 mod client_api;
 mod file_bounds;
 mod message_search;
+mod personal_replication;
 mod thread_sync;
 mod voice_notes;
 
@@ -2715,6 +2716,18 @@ fn threads_follow_count_and_stay_out_of_the_chat_unread() {
         .map(|m| m.id.clone())
         .expect("another person must be present to exercise unread replies");
     let root = e.send_message(s.id.clone(), "plano?".into()).unwrap();
+    let empty = e.thread(s.id.clone(), root.id.clone()).unwrap();
+    assert_eq!(empty[0].thread_replies, 0);
+    assert!(
+        empty[0].thread_following,
+        "my root is followed before its first reply"
+    );
+    e.set_thread_follow(s.id.clone(), root.id.clone(), Some(false))
+        .unwrap();
+    assert!(!e.thread(s.id.clone(), root.id.clone()).unwrap()[0].thread_following);
+    e.set_thread_follow(s.id.clone(), root.id.clone(), Some(true))
+        .unwrap();
+    assert!(e.thread(s.id.clone(), root.id.clone()).unwrap()[0].thread_following);
     e.mark_read(s.id.clone()).unwrap();
     let before = e.lock().space_summary(&s.id).unwrap().unread;
 

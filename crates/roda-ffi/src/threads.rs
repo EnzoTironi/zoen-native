@@ -112,7 +112,7 @@ impl Engine {
         let Ok(s) = self.space_state(space) else {
             return;
         };
-        for dto in out.iter_mut().filter(|d| d.thread_replies > 0) {
+        for dto in out.iter_mut().filter(|d| d.in_thread.is_none()) {
             let Some(root) = s.entries.iter().find(|e| e.id() == dto.id) else {
                 continue;
             };

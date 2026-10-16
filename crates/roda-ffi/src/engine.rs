@@ -1173,13 +1173,15 @@ impl Engine {
     pub(crate) fn personal_space(&self) -> Option<SpaceId> {
         self.space_order
             .iter()
-            .find(|s| {
+            .filter(|s| {
                 self.state
                     .spaces
                     .get(*s)
                     .map(|x| x.kind == SpaceKind::Personal)
                     .unwrap_or(false)
             })
+            // A migrated synced space supersedes the preserved local history.
+            .min_by_key(|s| !self.net.synced.contains(*s))
             .cloned()
     }
 

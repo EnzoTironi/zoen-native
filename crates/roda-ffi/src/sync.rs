@@ -1007,17 +1007,9 @@ impl Engine {
     /// Your on-device Zoen (local agent, local DM) until the agent runtime takes over.
     fn seed_personal_agent(&mut self, me: &str) -> R<()> {
         let at = crate::engine::now_ms();
-        let personal = new_id("sp");
-        self.append_at(
-            &personal,
-            me,
-            at,
-            EventBody::SpaceCreated {
-                title: "Personal".into(),
-                kind: SpaceKind::Personal,
-                privacy: Privacy::EndToEnd,
-            },
-        )?;
+        // Personal state follows the account's certified devices through the relay.
+        // It is signed clear state, not an MLS group (whose roster is identities).
+        self.create_synced_space("Personal", SpaceKind::Personal, Privacy::Closed, &[])?;
         let zoen = self.create_identity(
             Identity {
                 owner_proof: None,
@@ -1058,6 +1050,54 @@ impl Engine {
         Ok(())
     }
 
+    /// Upgrade device-only Personal state without rewriting signed history. A
+    /// savepoint keeps a failed/crashed migration from leaving a partial new log.
+    fn migrate_personal_space(&mut self) -> R<()> {
+        let Some(local) = self
+            .personal_space()
+            .filter(|s| !self.net.synced.contains(s))
+        else {
+            return Ok(());
+        };
+        let me = self.me_id()?;
+        let events = self.store.events(&local)?;
+        self.store
+            .conn()
+            .execute_batch("SAVEPOINT migrate_personal")
+            .map_err(|e| CoreError::Storage {
+                message: e.to_string(),
+            })?;
+        let result = (|| {
+            let space =
+                self.create_synced_space("Personal", SpaceKind::Personal, Privacy::Closed, &[])?;
+            for event in events {
+                if event.author == me
+                    && matches!(
+                        event.body,
+                        EventBody::ChatPrefsSet { .. } | EventBody::ThreadStateSet { .. }
+                    )
+                {
+                    self.append_at(&space, &me, crate::engine::now_ms(), event.body)?;
+                }
+            }
+            self.store
+                .conn()
+                .execute_batch("RELEASE migrate_personal")
+                .map_err(|e| CoreError::Storage {
+                    message: e.to_string(),
+                })?;
+            Ok(())
+        })();
+        if result.is_err() {
+            let _ = self
+                .store
+                .conn()
+                .execute_batch("ROLLBACK TO migrate_personal; RELEASE migrate_personal");
+            self.reload()?;
+        }
+        result
+    }
+
     /// Loads the device key from the vault. `false` = no account (or key missing).
     pub fn unlock(&mut self, device_secret: Option<Vec<u8>>) -> R<bool> {
         let Some(acct) = self.net.account.clone() else {
@@ -1081,6 +1121,7 @@ impl Engine {
             key,
             acct.cert.clone(),
         ));
+        self.migrate_personal_space()?;
         self.net
             .mls
             .wake_recovery_many(self.net.synced.iter().cloned());
