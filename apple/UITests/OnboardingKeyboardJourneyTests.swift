@@ -32,6 +32,7 @@ final class OnboardingKeyboardJourneyTests: XCTestCase {
         XCTAssertTrue(title.exists, "the title is on screen")
         let next = app.buttons["Continuar"]
         XCTAssertTrue(next.exists, "Continue is on screen")
+        XCTAssertGreaterThanOrEqual(next.frame.height, 56, "the native glass CTA preserves its 56-point minimum height")
         let window = app.windows.firstMatch.frame
         XCTAssertGreaterThanOrEqual(title.frame.minY, window.minY + 44, "the title isn't cut off at the top")
         XCTAssertLessThanOrEqual(title.frame.maxY, name.frame.minY, "the title sits above the fields")

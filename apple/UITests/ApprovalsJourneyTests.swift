@@ -203,6 +203,9 @@ final class ApprovalsJourneyTests: XCTestCase {
         XCTAssertTrue(none.waitForExistence(timeout: 3), "one tap revokes")
         let undo = again.buttons["toast-undo"]
         XCTAssertTrue(undo.waitForExistence(timeout: 3), "the toast offers Desfazer")
+        XCTAssertLessThan(undo.frame.width, again.windows.firstMatch.frame.width / 3,
+                          "compact glass Undo must not stretch across the toast")
+        keep(again, "compact-glass-undo")
         undo.tap()
         XCTAssertTrue(row.waitForExistence(timeout: 3), "Desfazer brings the decision back")
         sleep(1)
