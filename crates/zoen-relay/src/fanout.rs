@@ -32,6 +32,7 @@ const PING: &str = "ping";
 const REVOKE: &str = "revoke-device";
 const OUTBOUND_QUEUE: usize = 65_536;
 const PRESENCE_TIMEOUT: Duration = Duration::from_millis(750);
+const PRESENCE_CONCURRENCY: usize = 32;
 
 #[async_trait::async_trait]
 pub trait Bus: Send + Sync {
@@ -355,14 +356,17 @@ impl Bus for NatsBus {
         if to.is_empty() {
             return;
         }
-        let out = Outbound {
+        // Reserve before cloning recipients or encoding a potentially large frame.
+        // Overload must not add allocation/serialization work to the producer.
+        let Ok(permit) = self.out.try_reserve() else {
+            self.stats.dropped.fetch_add(1, Relaxed);
+            return;
+        };
+        permit.send(Outbound {
             to: to.to_vec(),
             bytes: Bytes::from(frame.encode()),
             trace: crate::telemetry::current_context_headers(),
-        };
-        if self.out.try_send(out).is_err() {
-            self.stats.dropped.fetch_add(1, Relaxed);
-        }
+        });
     }
 
     async fn revoke_device(&self, identity: &str, device: &str) -> anyhow::Result<()> {
@@ -394,11 +398,8 @@ impl Bus for NatsBus {
                 }
             }
         });
-        futures_util::future::join_all(asks)
-            .await
-            .into_iter()
-            .flatten()
-            .collect()
+        // Keep input order without opening one NATS request/inbox per member.
+        collect_presence(asks).await
     }
 
     fn stats(&self) -> BusStats {
@@ -408,6 +409,16 @@ impl Bus for NatsBus {
             dropped: self.stats.dropped.load(Relaxed),
         }
     }
+}
+
+async fn collect_presence(
+    asks: impl IntoIterator<Item = impl std::future::Future<Output = Option<String>>>,
+) -> Vec<String> {
+    futures_util::stream::iter(asks)
+        .buffered(PRESENCE_CONCURRENCY)
+        .filter_map(async |id| id)
+        .collect()
+        .await
 }
 
 /// Reads W3C trace context out of a bus message's headers.
@@ -481,6 +492,47 @@ pub fn new_node_id() -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Short deterministic resource benchmark: no NATS server or wall-time threshold.
+    #[tokio::test]
+    async fn presence_fanout_resource_benchmark() {
+        use std::sync::atomic::AtomicUsize;
+        for count in [32, 256, 4096] {
+            let active = AtomicUsize::new(0);
+            let peak = AtomicUsize::new(0);
+            let requests = || {
+                (0..count).map(|i| {
+                    let active = &active;
+                    let peak = &peak;
+                    async move {
+                        let n = active.fetch_add(1, Relaxed) + 1;
+                        peak.fetch_max(n, Relaxed);
+                        tokio::task::yield_now().await;
+                        active.fetch_sub(1, Relaxed);
+                        (i % 2 == 0).then(|| i.to_string())
+                    }
+                })
+            };
+            let before: Vec<_> = futures_util::future::join_all(requests())
+                .await
+                .into_iter()
+                .flatten()
+                .collect();
+            let old_peak = peak.swap(0, Relaxed);
+            let after = collect_presence(requests()).await;
+            let new_peak = peak.load(Relaxed);
+            assert_eq!(
+                before, after,
+                "membership and input order must survive batching"
+            );
+            assert_eq!(old_peak, count);
+            assert_eq!(new_peak, count.min(PRESENCE_CONCURRENCY));
+            assert_eq!(active.load(Relaxed), 0);
+            println!(
+                "presence recipients={count}: outstanding before={old_peak}, after={new_peak}"
+            );
+        }
+    }
 
     #[test]
     fn subjects_are_pseudonymous_and_cell_scoped() {
