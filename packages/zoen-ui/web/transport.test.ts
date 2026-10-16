@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { AuthenticatedTransport, type ConnectionState } from './transport.ts';
 import type { CoreOperation } from './worker-client.ts';
-import { Messages, type MessagesState } from './messages.ts';
+import { Messages, type FileDoc, type MessagesState } from './messages.ts';
 import type { StoredSession } from './session.ts';
 
 // These tests exercise connection/storage ordering. Native protobuf/MLS
@@ -175,4 +175,119 @@ test('production send persists the ratchet before emitting and reconnect replays
   assert.equal(socket().sent.length, 3);
   assert.equal(saves.length, 3);
   assert.equal(core.closed, false);
+});
+
+const digest = async (data: Uint8Array) => Buffer.from(await crypto.subtle.digest('SHA-256', Uint8Array.from(data))).toString('hex');
+async function attachment(data = new Uint8Array([1, 2, 3])): Promise<FileDoc> {
+  const sha256 = await digest(data);
+  return { name: 'clip.webm', mime: 'audio/webm', bytes: data.length, sha256,
+    chunks: [{ sha256, bytes: data.length, blob: '44'.repeat(32), key: '55'.repeat(32) }], thumb: null };
+}
+function mediaMessages(t: test.TestContext, bytes: (op: CoreOperation) => Promise<Uint8Array>) {
+  const messages = new Messages({ core: { ...messagingCore(), bytes }, session: linked,
+    vault: { ...vault, save: async () => {} }, changed: () => {} });
+  t.after(() => messages.stop());
+  return messages;
+}
+
+test('files and thumbnails require the complete digest and exact decrypted lengths', async (t) => {
+  const data = new Uint8Array([1, 2, 3]);
+  const file = await attachment(data);
+  let opened = data;
+  const messages = mediaMessages(t, async () => opened);
+  t.mock.method(globalThis, 'fetch', async () => new Response(new Uint8Array(file.bytes + 40)));
+  assert.deepEqual(new Uint8Array(await (await messages.openFile(file)).arrayBuffer()), data);
+  await assert.rejects(messages.openFile({ ...file, sha256: '00'.repeat(32) }));
+  for (const length of [2, 4]) { opened = new Uint8Array(length); await assert.rejects(messages.openFile(file)); }
+  opened = data;
+  const thumb = { ...file, thumb: file.chunks[0]! };
+  assert.equal((await messages.openFile(thumb, true)).type, 'image/png');
+  await assert.rejects(messages.openFile({ ...thumb, thumb: { ...thumb.thumb, sha256: '00'.repeat(32) } }, true));
+});
+
+test('native media bounds reject hostile descriptors before any network or worker work', async (t) => {
+  const file = await attachment();
+  const messages = mediaMessages(t, async () => { assert.fail('worker called for invalid descriptor'); });
+  const fetching = t.mock.method(globalThis, 'fetch', async () => { assert.fail('fetch called for invalid descriptor'); });
+  const chunk = file.chunks[0]!;
+  const invalid = [
+    { ...file, bytes: 0 }, { ...file, bytes: (512 << 20) + 1 }, { ...file, sha256: 'bad' },
+    { ...file, chunks: [] }, { ...file, chunks: Array(514).fill(chunk), bytes: 3 * 514 },
+    { ...file, chunks: [{ ...chunk, bytes: 0 }] },
+    { ...file, chunks: [{ ...chunk, bytes: (16 << 20) + 1 }], bytes: (16 << 20) + 1 },
+    { ...file, chunks: Array(100).fill({ ...chunk, bytes: 16 << 20 }), bytes: 100 * (16 << 20) },
+    { ...file, bytes: file.bytes + 1 }, { ...file, name: 'é'.repeat(128 << 10) },
+    { ...file, thumb: { ...chunk, bytes: (2 << 20) + 1 } },
+  ];
+  for (const doc of invalid) {
+    await assert.rejects(messages.openFile(doc));
+    await assert.rejects(messages.openFile(doc, true));
+  }
+  assert.equal(fetching.mock.callCount(), 0);
+});
+
+test('encrypted chunk reads reject truncation and cancel streamed overruns before decryption', async (t) => {
+  const file = await attachment();
+  const messages = mediaMessages(t, async () => { assert.fail('invalid ciphertext reached worker'); });
+  t.mock.method(globalThis, 'fetch', async () => new Response(new Uint8Array(file.bytes + 39)));
+  await assert.rejects(messages.openFile(file));
+  let cancelled = false;
+  t.mock.method(globalThis, 'fetch', async () => new Response(new ReadableStream({
+    start(controller) { controller.enqueue(new Uint8Array(file.bytes + 40)); controller.enqueue(new Uint8Array(1)); },
+    cancel() { cancelled = true; },
+  })));
+  await assert.rejects(messages.openFile(file));
+  assert.equal(cancelled, true);
+});
+
+test('valid chunks assemble in manifest order and snapshot metadata before fetching', async (t) => {
+  const first = await attachment(new Uint8Array([1, 2]));
+  const last = await attachment(new Uint8Array([3]));
+  const file = await attachment(); file.chunks = [...first.chunks, ...last.chunks];
+  const messages = mediaMessages(t, async (op) => {
+    if (op.kind !== 'open_chunk') throw new Error('Unexpected test operation.');
+    return new Uint8Array(JSON.parse(op.chunk).bytes === 2 ? [1, 2] : [3]);
+  });
+  let calls = 0;
+  t.mock.method(globalThis, 'fetch', async () => {
+    file.bytes = 0; file.sha256 = '00'.repeat(32); file.chunks.length = 0;
+    return new Response(new Uint8Array((calls++ ? 1 : 2) + 40));
+  });
+  assert.deepEqual(new Uint8Array(await (await messages.openFile(file)).arrayBuffer()), new Uint8Array([1, 2, 3]));
+  assert.equal(calls, 2);
+});
+
+test('upload retries stop after four attempts for HTTP failures and network errors', async (t) => {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  const file = await attachment();
+  const head = new TextEncoder().encode(JSON.stringify({ doc: file, uploads: [{ blob: file.chunks[0]!.blob, len: 1 }] }));
+  const framed = new Uint8Array(head.length + 5);
+  new DataView(framed.buffer).setUint32(0, head.length, true); framed.set(head, 4);
+  const messages = mediaMessages(t, async (op) => op.kind === 'seal_file' ? framed : new Uint8Array());
+  for (const status of [429, 500, 503, 0]) {
+    const fetching = t.mock.method(globalThis, 'fetch', async () => {
+      if (!status) throw new Error('offline');
+      return new Response(null, { status });
+    });
+    const sending = messages.sendFile('sp_fixture', { name: file.name, mime: file.mime, bytes: new Uint8Array([1]) });
+    const rejected = assert.rejects(sending, /Sem conexão/);
+    await settle();
+    for (const delay of [800, 1600, 3200]) { t.mock.timers.tick(delay); await settle(); }
+    await rejected;
+    assert.equal(fetching.mock.callCount(), 4);
+    fetching.mock.restore();
+  }
+  for (const status of [403, 413]) {
+    const fetching = t.mock.method(globalThis, 'fetch', async () => new Response(null, { status }));
+    await assert.rejects(messages.sendFile('sp_fixture', { name: file.name, mime: file.mime, bytes: new Uint8Array([1]) }),
+      status === 413 ? /grande demais/ : /recusou/);
+    assert.equal(fetching.mock.callCount(), 1); fetching.mock.restore();
+  }
+  let responses = 0;
+  const fetching = t.mock.method(globalThis, 'fetch', async () => new Response(null, { status: ++responses < 2 ? 503 : 200 }));
+  let done = 0;
+  // Upload succeeds after the retry; this unstarted controller then refuses the post.
+  const sending = assert.rejects(messages.sendFile('sp_fixture', { name: file.name, mime: file.mime, bytes: new Uint8Array([1]) }, () => { done++; }), /Sem conexão agora/);
+  await settle(); t.mock.timers.tick(800); await settle(); await sending;
+  assert.equal(fetching.mock.callCount(), 2); assert.equal(done, 1);
 });

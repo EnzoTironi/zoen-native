@@ -1,32 +1,36 @@
 import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { message as reason } from './boundary.ts';
-import type { Chunk, FileDoc, Messages } from './messages.ts';
+import type { FileDoc, Messages } from './messages.ts';
 
 /** The sender picks the type. A blob: URL shares our origin, so only inert media types
  *  keep theirs; HTML, SVG and the rest open as plain bytes and can only be downloaded. */
 const safeMime = (mime: string) => /^(image\/(png|jpeg|gif|webp|avif|heic)|video\/(mp4|webm|quicktime)|audio\/(webm|mp4|mpeg|ogg|aac|wav))$/.test(mime) ? mime : 'application/octet-stream';
 
-/** Decrypted files live only in memory, once per file, for this tab. */
-const opened = new Map<string, Promise<string>>();
-function openUrl(messages: Messages, key: string, chunks: Chunk[], mime: string): Promise<string> {
-  let url = opened.get(key);
+/** Cache only verified bytes, bound to the session and complete authenticated manifest. */
+const opened = new WeakMap<Messages, Map<string, Promise<string>>>();
+function openUrl(messages: Messages, file: FileDoc, thumbnail = false): Promise<string> {
+  let cache = opened.get(messages);
+  if (!cache) { cache = new Map(); opened.set(messages, cache); }
+  const key = JSON.stringify([file, thumbnail]);
+  let url = cache.get(key);
   if (!url) {
-    url = messages.openFile(chunks, safeMime(mime)).then((blob) => URL.createObjectURL(blob));
-    url.catch(() => opened.delete(key));
-    opened.set(key, url);
+    url = messages.openFile(file, thumbnail).then((blob) => URL.createObjectURL(blob.slice(0, blob.size, safeMime(blob.type))));
+    url.catch(() => cache.delete(key));
+    cache.set(key, url);
   }
   return url;
 }
-function useOpened(messages: Messages | null, key: string, chunks: Chunk[] | null, mime: string, enabled = true) {
-  const [state, setState] = useState<{ url?: string; error?: string }>({});
+function useOpened(messages: Messages | null, file: FileDoc | null, thumbnail = false, enabled = true) {
+  const key = JSON.stringify([file, thumbnail]);
+  const [state, setState] = useState<{ key?: string; url?: string; error?: string }>({});
   useEffect(() => {
-    if (!messages || !chunks || !enabled) return;
+    if (!messages || !file || !enabled) return;
     let live = true;
-    openUrl(messages, key, chunks, mime).then((url) => live && setState({ url })).catch((e: unknown) => live && setState({ error: reason(e) }));
+    openUrl(messages, file, thumbnail).then((url) => live && setState({ key, url })).catch((e: unknown) => live && setState({ key, error: reason(e) }));
     return () => { live = false; };
   }, [messages, key, enabled]);
-  return state;
+  return state.key === key ? state : {};
 }
 
 export const kindOf = (mime: string) => mime.startsWith('image/') ? 'image' : mime.startsWith('video/') ? 'video' : mime.startsWith('audio/') ? 'audio' : 'file';
@@ -43,8 +47,8 @@ export function FileView({ file, messages }: { file: FileDoc; messages: Messages
 function Visual({ file, messages, kind }: { file: FileDoc; messages: Messages | null; kind: 'image' | 'video' }) {
   const [full, setFull] = useState(false);
   const small = kind === 'image' && file.bytes <= 2 << 20;
-  const thumb = useOpened(messages, `${file.sha256}:t`, file.thumb ? [file.thumb] : small ? file.chunks : null, file.thumb ? 'image/png' : file.mime);
-  const whole = useOpened(messages, file.sha256, file.chunks, file.mime, full || (small && !file.thumb));
+  const thumb = useOpened(messages, file.thumb || small ? file : null, !!file.thumb);
+  const whole = useOpened(messages, file, false, full || (small && !file.thumb));
   const preview = thumb.url ?? (small ? whole.url : undefined);
   return <>
     <button className={`zm-visual zm-${kind}`} onClick={() => setFull(true)} aria-label={kind === 'image' ? `Abrir foto ${file.name}` : `Assistir vídeo ${file.name}`}>
@@ -69,7 +73,7 @@ function FileCard({ file, messages }: { file: FileDoc; messages: Messages | null
     <span className="zm-file-body"><b>{file.name}</b><span>{error || size(file.bytes)}</span></span>
     <button className="zm-round glass" aria-label={`Baixar ${file.name}`} disabled={busy || !messages} onClick={() => {
       if (!messages) return; setBusy(true); setError('');
-      void openUrl(messages, file.sha256, file.chunks, file.mime).then((url) => { const a = document.createElement('a'); a.href = url; a.download = file.name; a.click(); })
+      void openUrl(messages, file).then((url) => { const a = document.createElement('a'); a.href = url; a.download = file.name; a.click(); })
         .catch((e: unknown) => setError(reason(e))).finally(() => setBusy(false));
     }}><svg className="zm-icon" viewBox="0 0 24 24"><path d="M12 4v11m0 0-4-4m4 4 4-4M5 20h14" /></svg></button>
   </span>;
@@ -88,7 +92,7 @@ async function levels(url: string, bars = 36): Promise<{ peaks: number[]; second
 }
 
 export function VoicePlayer({ file, messages }: { file: FileDoc; messages: Messages | null }) {
-  const opened = useOpened(messages, file.sha256, file.chunks, file.mime);
+  const opened = useOpened(messages, file);
   const [wave, setWave] = useState<{ peaks: number[]; seconds: number } | null>(null);
   const [playing, setPlaying] = useState(false);
   const [at, setAt] = useState(0);
@@ -132,33 +136,75 @@ export async function thumbnail(file: File): Promise<Uint8Array | null> {
 /** Hold-free voice recording (tap mic, tap send), with live levels. */
 export function useRecorder(done: (clip: { bytes: Uint8Array; mime: string; seconds: number }) => void, fail: (why: string) => void) {
   const [recording, setRecording] = useState<{ started: number; levels: number[] } | null>(null);
-  const parts = useRef<{ recorder: MediaRecorder; stream: MediaStream; chunks: Blob[]; keep: boolean; raf: number; context: AudioContext } | null>(null);
+  type Parts = { recorder: MediaRecorder | null; stream: MediaStream | null; chunks: Blob[]; keep: boolean; raf: number; context: AudioContext | null };
+  const parts = useRef<Parts | null>(null);
+  const mounted = useRef(true);
   const [now, setNow] = useState(0);
   const live = recording !== null;
+  function release(p: Parts) {
+    cancelAnimationFrame(p.raf);
+    p.stream?.getTracks().forEach((t) => t.stop()); p.stream = null;
+    if (p.context) { void p.context.close().catch(() => {}); p.context = null; }
+  }
+  function discard() {
+    const p = parts.current; parts.current = null;
+    if (!p) return;
+    p.keep = false; p.chunks.length = 0;
+    if (p.recorder) {
+      p.recorder.ondataavailable = null; p.recorder.onstop = null; p.recorder.onerror = null;
+      try { if (p.recorder.state !== 'inactive') p.recorder.stop(); }
+      finally { release(p); }
+    } else release(p);
+  }
+  useEffect(() => { mounted.current = true; return () => { mounted.current = false; discard(); }; }, []);
   useEffect(() => { if (!live) return; const t = setInterval(() => setNow(Date.now()), 250); return () => clearInterval(t); }, [live]);
   async function start() {
+    if (!mounted.current || parts.current) return;
+    const state: Parts = { recorder: null, stream: null, chunks: [], keep: false, raf: 0, context: null };
+    parts.current = state;
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      if (parts.current !== state) { stream.getTracks().forEach((t) => t.stop()); return; }
+      state.stream = stream;
       const mime = ['audio/mp4;codecs=mp4a.40.2', 'audio/mp4', 'audio/webm;codecs=opus', 'audio/webm'].find((m) => MediaRecorder.isTypeSupported(m)) ?? '';
       const recorder = new MediaRecorder(stream, mime ? { mimeType: mime } : {});
-      const context = new AudioContext(); void context.resume(); const analyser = context.createAnalyser(); analyser.fftSize = 256;
+      state.recorder = recorder;
+      const context = new AudioContext(); state.context = context;
+      void context.resume().catch(failed);
+      const analyser = context.createAnalyser(); analyser.fftSize = 256;
       context.createMediaStreamSource(stream).connect(analyser);
       const buffer = new Uint8Array(analyser.frequencyBinCount);
-      const state = { recorder, stream, chunks: [] as Blob[], keep: false, raf: 0, context };
-      parts.current = state;
       const started = Date.now();
       const tick = () => { analyser.getByteTimeDomainData(buffer); let m = 0; for (const v of buffer) m = Math.max(m, Math.abs(v - 128) / 128);
         setRecording((r) => r && { ...r, levels: [...r.levels.slice(-27), Math.max(0.08, Math.min(1, m * 2.4))] }); state.raf = requestAnimationFrame(tick); };
       recorder.ondataavailable = (e) => { if (e.data.size) state.chunks.push(e.data); };
       recorder.onstop = () => {
-        cancelAnimationFrame(state.raf); stream.getTracks().forEach((t) => t.stop()); void context.close();
-        if (!state.keep) return;
+        release(state); setRecording(null);
+        if (!state.keep) { discard(); return; }
         const blob = new Blob(state.chunks, { type: recorder.mimeType || 'audio/webm' });
-        void blob.arrayBuffer().then((b) => done({ bytes: new Uint8Array(b), mime: (recorder.mimeType || 'audio/webm').split(';')[0]!, seconds: (Date.now() - started) / 1000 }));
+        state.chunks.length = 0;
+        void blob.arrayBuffer().then((b) => {
+          if (parts.current !== state) return;
+          discard();
+          done({ bytes: new Uint8Array(b), mime: (recorder.mimeType || 'audio/webm').split(';')[0]!, seconds: (Date.now() - started) / 1000 });
+        }).catch(() => failed());
       };
+      function failed() {
+        if (parts.current !== state) return;
+        discard(); setRecording(null); fail('Não deu para gravar. Tente de novo.');
+      }
+      recorder.onerror = failed;
       recorder.start(250); setRecording({ started, levels: [] }); setNow(started); tick();
-    } catch { fail('Libere o microfone no navegador para gravar.'); }
+    } catch {
+      if (parts.current !== state) return;
+      discard(); setRecording(null); fail('Libere o microfone no navegador para gravar.');
+    }
   }
-  function stop(keep: boolean) { const p = parts.current; if (!p) return; p.keep = keep; p.recorder.stop(); parts.current = null; setRecording(null); }
+  function stop(keep: boolean) {
+    const p = parts.current; if (!p) return;
+    if (keep && p.keep) return;
+    if (!keep || !p.recorder || p.recorder.state === 'inactive') { discard(); setRecording(null); return; }
+    p.keep = true; p.recorder.stop(); release(p); setRecording(null);
+  }
   return { recording, seconds: recording ? (now - recording.started) / 1000 : 0, start, send: () => stop(true), cancel: () => stop(false), clock };
 }

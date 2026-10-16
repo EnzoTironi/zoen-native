@@ -1,4 +1,4 @@
-import { array, boolean, bytes, integer, message, object, publicKey, string } from './boundary.ts';
+import { array, boolean, bytes, hex, integer, message, object, publicKey, string } from './boundary.ts';
 import { persistBeforeOutgoing } from './persistence.ts';
 import type { StoredSession } from './session.ts';
 import { AuthenticatedTransport, type ConnectionState, type RelayFrame } from './transport.ts';
@@ -41,6 +41,24 @@ function parseFile(input: unknown) {
 }
 export type FileDoc = ReturnType<typeof parseFile>;
 export type Chunk = ReturnType<typeof parseChunk>;
+
+// Keep received media within the same bounds as roda-ffi/src/files.rs.
+const MAX_FILE_BYTES = 512 << 20;
+const MAX_CHUNK_BYTES = 16 << 20;
+const MAX_THUMBNAIL_BYTES = 2 << 20;
+function boundedFile(input: FileDoc): FileDoc {
+  const invalid = () => new Error('Arquivo inválido ou grande demais para abrir.');
+  if (!input.chunks.length || input.chunks.length > MAX_FILE_BYTES / (1 << 20) + 1) throw invalid();
+  const file = parseFile(input); // Snapshot the manifest before any asynchronous work.
+  if (!file.bytes || file.bytes > MAX_FILE_BYTES || !HASH.test(file.sha256)) throw invalid();
+  if (file.chunks.some((c) => !c.bytes || c.bytes > MAX_CHUNK_BYTES) ||
+      file.chunks.reduce((total, c) => total + c.bytes, 0) !== file.bytes ||
+      (file.thumb && (!file.thumb.bytes || file.thumb.bytes > MAX_THUMBNAIL_BYTES))) throw invalid();
+  const metadata = new TextEncoder().encode(file.name + file.mime + file.sha256).length +
+    (file.chunks.length + Number(!!file.thumb)) * (3 * 64 + 8);
+  if (metadata > 128 << 10) throw invalid();
+  return file;
+}
 
 function parseConversation(input: unknown) {
   const value = object(input);
@@ -174,7 +192,7 @@ export class Messages {
 
   /** Seal like native, upload every encrypted chunk, then post the file into the chat. */
   async sendFile(space: string, file: { name: string; mime: string; bytes: Uint8Array; thumb?: Uint8Array | null }, progress?: (done: number, total: number) => void): Promise<void> {
-    if (file.bytes.length > 25 * 1024 * 1024 * 20) throw new Error('Este arquivo é grande demais para o navegador.');
+    if (file.bytes.length > MAX_FILE_BYTES) throw new Error('Este arquivo é grande demais para o navegador.');
     let framed: Uint8Array;
     try { framed = await this.core.bytes({ kind: 'seal_file', name: file.name.replace(/[\\/\0]/g, '_').slice(0, 255) || 'arquivo', mime: file.mime || 'application/octet-stream', bytes: file.bytes, thumb: file.thumb ?? new Uint8Array() }); }
     catch { throw new Error('Não deu para preparar este arquivo.'); }
@@ -206,6 +224,7 @@ export class Messages {
         if (response.ok) return;
         if (response.status === 413) throw Object.assign(new Error('Este arquivo é grande demais.'), { final: true });
         if (response.status < 500 && response.status !== 429) throw Object.assign(new Error('O servidor recusou o arquivo.'), { final: true });
+        throw new Error('O servidor não conseguiu receber o arquivo.');
       } catch (error) { if ((error as { final?: boolean }).final || attempt >= 3) throw error instanceof Error && (error as { final?: boolean }).final ? error : new Error('Sem conexão para enviar o arquivo. Tente de novo.'); }
       await new Promise((r) => setTimeout(r, 800 * 2 ** attempt));
     }
@@ -214,19 +233,42 @@ export class Messages {
   private base(): string { return new URL(this.session.account.relay).origin; }
 
   /** Fetches, checks and opens a file's chunks. Throws plain Portuguese on failure. */
-  async openFile(chunks: Chunk[], mime: string): Promise<Blob> {
-    const parts: BlobPart[] = [];
+  async openFile(input: FileDoc, thumbnail = false): Promise<Blob> {
+    const file = boundedFile(input);
+    const expected = thumbnail ? file.thumb : file;
+    if (!expected) throw new Error('Este arquivo não tem prévia.');
+    const chunks = thumbnail ? [file.thumb!] : file.chunks;
+    const plain = new Uint8Array(expected.bytes);
+    let offset = 0;
     for (const chunk of chunks) {
       let sealed: Uint8Array;
       try {
         const response = await fetch(`${this.base()}/v1/blobs/${chunk.blob}`);
-        if (!response.ok) throw new Error(String(response.status));
-        sealed = new Uint8Array(await response.arrayBuffer());
+        if (!response.ok || !response.body) { await response.body?.cancel(); throw new Error(String(response.status)); }
+        const reader = response.body.getReader();
+        sealed = new Uint8Array(chunk.bytes + 40); // XChaCha20 nonce + authentication tag.
+        let received = 0;
+        try {
+          for (;;) {
+            const { done, value } = await reader.read();
+            if (done) break;
+            if (value.length > sealed.length - received) throw new Error('Invalid chunk length.');
+            sealed.set(value, received); received += value.length;
+          }
+          if (received !== sealed.length) throw new Error('Invalid chunk length.');
+        } finally { await reader.cancel().catch(() => {}); }
       } catch { throw new Error('O arquivo ainda está chegando. Tente de novo em instantes.'); }
-      try { parts.push(Uint8Array.from(await this.core.bytes({ kind: 'open_chunk', chunk: JSON.stringify(chunk), sealed }))); }
+      try {
+        const opened = await this.core.bytes({ kind: 'open_chunk', chunk: JSON.stringify(chunk), sealed });
+        if (opened.length !== chunk.bytes) throw new Error('Invalid chunk length.');
+        plain.set(opened, offset); offset += opened.length;
+      }
       catch { throw new Error('Não deu para abrir este arquivo.'); }
     }
-    return new Blob(parts, { type: mime });
+    if (offset !== expected.bytes || hex(new Uint8Array(await crypto.subtle.digest('SHA-256', plain))) !== expected.sha256) {
+      throw new Error('Não deu para abrir este arquivo.');
+    }
+    return new Blob([plain], { type: thumbnail ? 'image/png' : file.mime });
   }
 
   markRead(space: string): Promise<void> {

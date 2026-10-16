@@ -172,6 +172,7 @@ function App() {
   if (boot.kind === 'unavailable') return <Gate><h1>Abra o Zoen no seu celular</h1><p role="alert">{boot.message}</p></Gate>;
   if (boot.session.kind === 'linked') return <Linked runtime={boot.runtime} session={boot.session} forget={() => {
     if (!window.confirm('Sair deste navegador e apagar as conversas guardadas aqui? Remova também em Aparelhos no seu celular.')) return;
+    setBoot({ kind: 'loading' }); // Unmount the composer before database deletion can block.
     boot.runtime.core.close();
     // Chat preferences and followed threads live in localStorage; leave nothing behind.
     localStorage.removeItem('zoen.chat-prefs'); localStorage.removeItem('zoen.thread-follow');
