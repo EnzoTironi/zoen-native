@@ -243,6 +243,7 @@ enum Ink {
 /// `-RodaFreezeArt 2.4` freezes every drawing at that time (deterministic screenshots).
 enum InkClock {
     static let freeze: Double? = {
+        if ProcessInfo.processInfo.environment["ZOEN_PARITY_FIXTURE"] == "native-parity-v1" { return 2.4 }
         let v = UserDefaults.standard.double(forKey: "RodaFreezeArt")
         return v > 0 ? v : nil
     }()
@@ -295,8 +296,8 @@ struct InkOutline: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
-        TimelineView(.animation(minimumInterval: 1 / fps, paused: ambientPaused || reduceMotion)) { tl in
-            let t = reduceMotion ? 0 : tl.date.timeIntervalSinceReferenceDate
+        TimelineView(.animation(minimumInterval: 1 / fps, paused: ambientPaused || reduceMotion || InkClock.freeze != nil)) { tl in
+            let t = InkClock.freeze ?? (reduceMotion ? 0 : tl.date.timeIntervalSinceReferenceDate)
             Canvas { ctx, size in
                 let frame = reduceMotion ? 0 : Int(t * fps) % 4
                 let progress: Double = reduceMotion ? 2 : loop.map { (t / $0).truncatingRemainder(dividingBy: 1) * 1.3 } ?? 2

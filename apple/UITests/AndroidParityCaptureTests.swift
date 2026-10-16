@@ -23,6 +23,7 @@ final class AndroidParityCaptureTests: XCTestCase {
             let app = XCUIApplication()
             app.launchEnvironment["ZOEN_PARITY_FIXTURE"] = fixture
             app.launchEnvironment["ZOEN_PARITY_REVISION"] = revision
+            app.launchEnvironment["ZOEN_PARITY_VIEWPORT"] = environment["ZOEN_PARITY_VIEWPORT"]
             app.launchEnvironment["TZ"] = "UTC"
             app.launchArguments = ["-RodaFreshStart", "YES", "-RodaResetDemo", "YES",
                 "-AppleLanguages", "(en)", "-AppleLocale", "en_US", "-RodaAppearance", appearance,
@@ -73,10 +74,21 @@ final class AndroidParityCaptureTests: XCTestCase {
             } else if screen == "spaces" {
                 XCTAssertTrue(app.buttons["chat-title"].waitForExistence(timeout: 30))
             } else {
-                XCTAssertTrue(app.buttons["newChat"].waitForExistence(timeout: 30))
+                let newChat = environment["ZOEN_PARITY_VIEWPORT"] == "wide" ? app.buttons["New Chat"] : app.buttons["newChat"]
+                XCTAssertTrue(newChat.waitForExistence(timeout: 30))
             }
             // Await app idleness and one settled animation before recording the actual app frame.
             Thread.sleep(forTimeInterval: screen == "onboarding" ? 8 : 2)
+            // Diagnostic geometry is separate from the common cross-platform fixture contract.
+            let frame = app.windows.firstMatch.frame
+            let geometry: [String: Any] = ["screen": screen, "mode": appearance,
+                "viewport": environment["ZOEN_PARITY_VIEWPORT"] ?? "narrow",
+                "window_points": ["x": frame.minX, "y": frame.minY, "width": frame.width, "height": frame.height],
+                "note": "XCUI window bounds only; safe-area crops require app-side inset probe"]
+            let diagnostic = XCTAttachment(data: try JSONSerialization.data(withJSONObject: geometry, options: [.sortedKeys]), uniformTypeIdentifier: "public.json")
+            diagnostic.name = "ios-geometry-\(screen)-\(appearance).json"
+            diagnostic.lifetime = .keepAlways
+            add(diagnostic)
             let shot = XCTAttachment(screenshot: app.screenshot())
             shot.name = "ios-\(screen)-\(appearance)"
             shot.lifetime = .keepAlways

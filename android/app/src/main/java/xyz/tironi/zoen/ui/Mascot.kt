@@ -77,7 +77,8 @@ internal class MascotCanvasView(context: Context) : View(context) {
         if (canAnimate()) schedule() else pause()
     }
 
-    private fun canAnimate() = moving && active && isAttachedToWindow && hasWindowFocus() && windowVisibility == VISIBLE && isShown && getGlobalVisibleRect(visibleRect)
+    private val fixtureActive get() = android.system.Os.getenv("ZOEN_PARITY_FIXTURE") == "native-parity-v1"
+    private fun canAnimate() = !fixtureActive && moving && active && isAttachedToWindow && hasWindowFocus() && windowVisibility == VISIBLE && isShown && getGlobalVisibleRect(visibleRect)
     private fun schedule() {
         if (!scheduled && !framePending && canAnimate()) {
             if (lastTick == 0L) lastTick = SystemClock.uptimeMillis()
@@ -112,11 +113,11 @@ internal class MascotCanvasView(context: Context) : View(context) {
             if (lastTick != 0L) { val delta = now - lastTick; elapsed += delta; entrance += delta }
             lastTick = now
         } else pause()
-        val t = if (moving) animationTimeSeconds else 0.0
+        val t = if (fixtureActive) 2.4 else if (moving) animationTimeSeconds else 0.0
         val strokes = if (head) MascotArt.head(t, mood) else MascotArt.strokes(pose, t)
         val progress = if (!moving || head) 2.0 else t / 0.9
         val saved = canvas.save()
-        if (moving && !head && entrance < 1000L) {
+        if (!fixtureActive && moving && !head && entrance < 1000L) {
             val e = entrance / 1000.0
             // Damped spring from 0.7 scale / -7 degrees / 16 dp, anchored at the feet.
             val settle = 1 - exp(-8 * e) * (cos(16 * e) + 0.5 * sin(16 * e))
