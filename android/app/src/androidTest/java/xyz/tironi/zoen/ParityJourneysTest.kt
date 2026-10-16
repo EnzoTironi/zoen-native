@@ -52,11 +52,12 @@ class ParityJourneysTest {
         CommittedWindowCapture.save(activity, "pages", name)
     }
 
-    @Test fun filesAreAPrimaryDestinationAndFolderBackReturnsToFiles() {
+    @Test fun filesOpenFromQuickActionsAndFolderBackReturnsToFiles() {
         val item = application.repository.state.value.items.first()
-        compose.onNodeWithTag("tab:Files").performClick()
+        compose.onNodeWithTag("home-plus").performClick()
+        compose.onNodeWithText(application.getString(R.string.files)).performClick()
         compose.onNodeWithTag("files-list").assertExists()
-        compose.onNodeWithContentDescription(application.getString(R.string.back)).assertDoesNotExist()
+        compose.onNodeWithContentDescription(application.getString(R.string.back)).assertIsDisplayed()
         compose.onNodeWithTag("files-list").performScrollToNode(hasTestTag("folder:${item.spaceId}"))
         compose.onNodeWithTag("folder:${item.spaceId}").performClick()
         compose.onNodeWithTag("files-search").performTextReplacement(item.title)
@@ -64,12 +65,12 @@ class ParityJourneysTest {
         compose.onNodeWithTag("files-search").assertTextContains(item.title)
         compose.onNodeWithContentDescription(application.getString(R.string.back)).performClick()
         compose.onNodeWithTag("files-list").assertExists()
-        compose.onNodeWithTag("tab:Files").assertIsSelected()
-        capturePageHistory("primary-files-after-folder-back")
-        compose.onNodeWithTag("tab:Chats").performClick()
+        capturePageHistory("files-after-folder-back")
+        compose.onNodeWithContentDescription(application.getString(R.string.back)).performClick()
         compose.onNodeWithTag("conversation-list").assertExists()
         compose.onNodeWithTag("home-plus").assertIsDisplayed()
-        compose.onNodeWithTag("tab:Files").performClick()
+        compose.onNodeWithTag("home-plus").performClick()
+        compose.onNodeWithText(application.getString(R.string.files)).performClick()
         compose.onNodeWithTag("files-list").assertExists()
     }
 

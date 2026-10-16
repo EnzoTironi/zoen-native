@@ -29,4 +29,6 @@ import kotlinx.serialization.Serializable
 @Serializable data object Browser : NavKey
 @Serializable data class VersionPreview(val id: String, val number: UInt) : NavKey
 
-enum class Tab { Chats, Spaces, Store, Files, Activity; companion object { val main = listOf(Chats, Store, Files, Activity) } }
+@Serializable data object Activity : NavKey
+
+enum class Tab { Chats, Store; companion object { val main = entries.toList() } }

@@ -39,18 +39,21 @@ import androidx.compose.ui.window.DialogProperties
 
 @Composable
 @OptIn(ExperimentalMaterial3Api::class)
-private fun HomeBar(title: String, state: AppState, navigate: (NavKey) -> Unit, onStore: (() -> Unit)? = null, onSearch: (() -> Unit)? = null) {
+private fun HomeBar(title: String, state: AppState, navigate: (NavKey) -> Unit, onActivity: (() -> Unit)? = null, onSearch: (() -> Unit)? = null, onBack: (() -> Unit)? = null) {
     val haptics = rememberZoenHaptics()
     TopAppBar(title = {
-        if (onStore != null) Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+        if (onActivity != null) Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
             ZoenMascot(Modifier.size(32.dp), headOnly = true, mood = MascotMood.Smirk)
             Text("zoen", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.ExtraBold)
         } else Text(title, maxLines = 1, overflow = TextOverflow.Ellipsis)
+    }, navigationIcon = {
+        if (onBack != null) IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Rounded.ArrowBack, stringResource(R.string.back)) }
     }, actions = {
-        if (onStore != null) IconButton(onClick = { haptics.perform(ZoenFeedback.Open); onStore() }) {
-            Icon(Icons.Rounded.Storefront, stringResource(R.string.miniapp_store))
-        }
-        IconButton(onClick = { haptics.perform(ZoenFeedback.Tap); if (onSearch != null) onSearch() else navigate(Search) }) {
+        if (onActivity != null) IconButton(onClick = { haptics.perform(ZoenFeedback.Open); onActivity() }, modifier = Modifier.testTag("open-activity")) {
+            BadgedBox(badge = { if (state.pending > 0) Badge { Text(state.pending.toString()) } }) {
+                Icon(Icons.Rounded.NotificationsNone, stringResource(R.string.activity))
+            }
+        } else IconButton(onClick = { haptics.perform(ZoenFeedback.Tap); if (onSearch != null) onSearch() else navigate(Search) }) {
             Icon(Icons.Rounded.Search, stringResource(R.string.search))
         }
         IconButton(onClick = { navigate(Context) }, modifier = Modifier.testTag("open-context")) { Avatar(state.me, size = 34) }
@@ -59,7 +62,6 @@ private fun HomeBar(title: String, state: AppState, navigate: (NavKey) -> Unit, 
 
 @Composable
 fun ConversationsScreen(model: ZoenViewModel, state: AppState, navigate: (NavKey) -> Unit, split: Boolean) {
-    var store by rememberSaveable { mutableStateOf(false) }
     var selectedChat by rememberSaveable { mutableStateOf<String?>(null) }
     var searching by rememberSaveable { mutableStateOf(false) }
     var query by rememberSaveable { mutableStateOf("") }
@@ -80,7 +82,7 @@ fun ConversationsScreen(model: ZoenViewModel, state: AppState, navigate: (NavKey
         .sortedByDescending { it.lastAtMs }
         .sortedByDescending { it.pinned }
     val list: @Composable () -> Unit = {
-        Scaffold(topBar = { HomeBar(stringResource(R.string.app_name), state, navigate, onStore = { store = true }, onSearch = { searching = !searching; if (!searching) query = "" }) }, containerColor = MaterialTheme.colorScheme.background, contentWindowInsets = WindowInsets(0, 0, 0, 0)) { padding ->
+        Scaffold(topBar = { HomeBar(stringResource(R.string.app_name), state, navigate, onActivity = { navigate(Activity) }, onSearch = { searching = !searching; if (!searching) query = "" }) }, containerColor = MaterialTheme.colorScheme.background, contentWindowInsets = WindowInsets(0, 0, 0, 0)) { padding ->
             // Bottom: clear the floating tab bar so the last chat is never under it.
             LazyColumn(Modifier.fillMaxSize().padding(padding).testTag("conversation-list"), contentPadding = PaddingValues(bottom = 112.dp)) {
                 if (showArchived) item {
@@ -145,9 +147,6 @@ fun ConversationsScreen(model: ZoenViewModel, state: AppState, navigate: (NavKey
             else Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { EmptyState(stringResource(R.string.chat_select_title), stringResource(R.string.chat_select_detail)) }
         }
     } else list()
-    if (store) Dialog(onDismissRequest = { store = false }, properties = DialogProperties(usePlatformDefaultWidth = false)) {
-        MiniAppStoreScreen(model, state, onOpenItem = { store = false; navigate(Item(it)) }, back = { store = false }, onOpenAgent = { store = false; navigate(Agent(it)) })
-    }
 }
 
 @OptIn(ExperimentalFoundationApi::class)
@@ -204,10 +203,10 @@ private fun matchesSpace(space: SpaceSummary, query: String): Boolean {
 }
 
 @Composable
-fun ActivityScreen(model: ZoenViewModel, state: AppState, navigate: (NavKey) -> Unit) {
+fun ActivityScreen(model: ZoenViewModel, state: AppState, navigate: (NavKey) -> Unit, back: () -> Unit) {
     var showingList by rememberSaveable(state.me?.id) { mutableStateOf(false) }
     if (showingList) ActivityList(model, state, navigate) { showingList = false }
-    else Scaffold(topBar = { HomeBar(stringResource(R.string.activity), state, navigate) }, contentWindowInsets = WindowInsets(0, 0, 0, 0)) { padding ->
+    else Scaffold(topBar = { HomeBar(stringResource(R.string.activity), state, navigate, onBack = back) }, contentWindowInsets = WindowInsets(0, 0, 0, 0)) { padding ->
         ApprovalsDeck(model, state, navigate, { model.approvals.flush(); showingList = true }, Modifier.padding(padding))
     }
 }

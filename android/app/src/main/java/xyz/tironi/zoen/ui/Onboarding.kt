@@ -11,7 +11,6 @@ import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
-import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.selection.selectable
@@ -27,6 +26,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
@@ -121,7 +121,9 @@ fun Onboarding(model: ZoenViewModel, modifier: Modifier = Modifier, acquisitionL
         OnboardingStep.Location -> MascotPose.Walk
         OnboardingStep.Done -> MascotPose.Cheer
     }
-    Column(modifier.fillMaxSize().background(if (isSystemInDarkTheme()) MaterialTheme.colorScheme.background else Color(0xFFFFFCF5)).safeDrawingPadding().imePadding().testTag("onboarding:${step.id}")) {
+    // The app's selected appearance can differ from the device's system appearance.
+    val canvas = MaterialTheme.colorScheme.background.let { if (it.luminance() > .5f) Color(0xFFFFFCF5) else it }
+    Column(modifier.fillMaxSize().background(canvas).safeDrawingPadding().imePadding().testTag("onboarding:${step.id}")) {
         Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp), verticalAlignment = Alignment.CenterVertically) {
             IconButton(onClick = ::goBack, enabled = (position > 0 || connectionSettings) && !busy) { Icon(Icons.AutoMirrored.Rounded.ArrowBack, stringResource(R.string.back)) }
             Row(Modifier.weight(1f).padding(end = 28.dp), horizontalArrangement = Arrangement.spacedBy(5.dp)) {

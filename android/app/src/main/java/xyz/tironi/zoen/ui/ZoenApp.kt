@@ -71,10 +71,7 @@ fun ZoenApp(model: ZoenViewModel, deepLink: String?, consumed: () -> Unit) {
         var tab by rememberSaveable { mutableStateOf(Tab.Chats) }
         val chats = rememberNavBackStack(Home)
         val store = rememberNavBackStack(Home)
-        val files = rememberNavBackStack(Home)
-        val activity = rememberNavBackStack(Home)
-        LaunchedEffect(tab) { if (tab == Tab.Spaces) tab = Tab.Chats }
-        val stack = when (tab) { Tab.Chats, Tab.Spaces -> chats; Tab.Store -> store; Tab.Files -> files; Tab.Activity -> activity }
+        val stack = when (tab) { Tab.Chats -> chats; Tab.Store -> store }
         val navigate: (NavKey) -> Unit = { key ->
             if (key == Home) { while (stack.size > 1) stack.removeLastOrNull() }
             else if (stack.lastOrNull() != key) stack.add(key)
@@ -148,10 +145,10 @@ fun ZoenApp(model: ZoenViewModel, deepLink: String?, consumed: () -> Unit) {
                         Modifier.padding(bottom = with(density) { snackbarClearance.bottomPx.toDp() }).testTag("app-snackbar")) },
                     bottomBar = {
                         if (!rail && stack.size == 1) NavigationBar(modifier = Modifier.heightIn(min = navigationHeight), containerColor = MaterialTheme.colorScheme.surface, tonalElevation = 0.dp) {
-                            Tab.main.forEachIndexed { index, target ->
-                                if (index == 2) Box(Modifier.weight(1f), contentAlignment = Alignment.Center) {
-                                    PlusVoiceButton({ quickActions = true }, { voiceStart++ }, { voiceRelease++ }, { voiceLock++ }, { voiceCancel++ }, compact = true)
-                                }
+                            IconButton(onClick = { navigate(Search) }, modifier = Modifier.testTag("bar-search")) {
+                                Icon(Icons.Rounded.Search, stringResource(R.string.search))
+                            }
+                            Tab.main.forEach { target ->
                                 val item: @Composable RowScope.() -> Unit = {
                                     NavigationBarItem(selected = tab == target, onClick = { if (tab != target) haptics.perform(ZoenFeedback.Selection); tab = target }, icon = { TabIcon(target, if (target == Tab.Chats) unread else state.pending, tab == target) }, label = {
                                         Text(tabName(target), maxLines = 1, overflow = TextOverflow.Ellipsis,
@@ -160,6 +157,9 @@ fun ZoenApp(model: ZoenViewModel, deepLink: String?, consumed: () -> Unit) {
                                 }
                                 if (largeNavigationText) Row(Modifier.weight(if (tab == target) 2.5f else 1f)) { item() }
                                 else item()
+                            }
+                            Box(Modifier.padding(horizontal = 8.dp), contentAlignment = Alignment.Center) {
+                                PlusVoiceButton({ quickActions = true }, { voiceStart++ }, { voiceRelease++ }, { voiceLock++ }, { voiceCancel++ }, compact = true)
                             }
                         }
                     },
@@ -171,10 +171,7 @@ fun ZoenApp(model: ZoenViewModel, deepLink: String?, consumed: () -> Unit) {
                             entry<Home> {
                                 when (tab) {
                                     Tab.Chats -> ConversationsScreen(model, state, navigate, split)
-                                    Tab.Spaces -> ConversationsScreen(model, state, navigate, split)
                                     Tab.Store -> MiniAppStoreScreen(model, state, { navigate(Item(it)) }, { tab = Tab.Chats }, { navigate(Agent(it)) })
-                                    Tab.Files -> FilesScreen(model, state, navigate, null)
-                                    Tab.Activity -> ActivityScreen(model, state, navigate)
                                 }
                             }
                             entry<Chat> { ChatScreen(model, state, it.id, navigate, back, it.message) }
@@ -183,6 +180,7 @@ fun ZoenApp(model: ZoenViewModel, deepLink: String?, consumed: () -> Unit) {
                             entry<Person> { ProfileScreen(model, state, it.id, navigate, back) }
                             entry<Participants> { ParticipantsScreen(model, state, it.id, navigate, back) }
                             entry<Thread> { ThreadScreen(model, state, it.space, it.root, navigate, back) }
+                            entry<Activity> { ActivityScreen(model, state, navigate, back) }
                             entry<Files> { FilesScreen(model, state, navigate, back) }
                             entry<Folder> { FilesScreen(model, state, navigate, back, it.space) }
                             entry<Agents> { AgentsScreen(model, state, navigate, back) }
@@ -233,11 +231,11 @@ fun ZoenApp(model: ZoenViewModel, deepLink: String?, consumed: () -> Unit) {
 }
 
 @Composable
-private fun tabName(tab: Tab) = stringResource(when (tab) { Tab.Chats -> R.string.chats; Tab.Spaces -> R.string.spaces; Tab.Store -> R.string.miniapp_store; Tab.Files -> R.string.files; Tab.Activity -> R.string.activity })
+private fun tabName(tab: Tab) = stringResource(when (tab) { Tab.Chats -> R.string.chats; Tab.Store -> R.string.miniapp_store })
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun TabIcon(tab: Tab, count: Int, selected: Boolean) {
-    val icon = when (tab) { Tab.Chats -> ZoenGlyph.Chats; Tab.Spaces -> ZoenGlyph.Spaces; Tab.Store -> ZoenGlyph.Store; Tab.Files -> ZoenGlyph.Folder; Tab.Activity -> ZoenGlyph.Bell }
-    BadgedBox(badge = { if (tab in listOf(Tab.Chats, Tab.Activity) && count > 0) Badge { Text(if (count > 99) "99+" else count.toString()) } }) { ZoenIcon(icon, tabName(tab), selected = selected) }
+    val icon = when (tab) { Tab.Chats -> ZoenGlyph.Chats; Tab.Store -> ZoenGlyph.Store }
+    BadgedBox(badge = { if (tab == Tab.Chats && count > 0) Badge { Text(if (count > 99) "99+" else count.toString()) } }) { ZoenIcon(icon, tabName(tab), selected = selected) }
 }

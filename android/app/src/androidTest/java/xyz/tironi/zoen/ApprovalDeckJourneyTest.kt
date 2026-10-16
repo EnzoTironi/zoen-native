@@ -193,10 +193,10 @@ class ApprovalDeckJourneyTest {
             compose.waitForIdle()
             val request = app.repository.state.value.requests.filter { it.agent.isMine && it.status == RequestStatus.PENDING }.minBy { it.openedMs }
             val before = runBlocking { app.repository.query { it.logEvents(request.spaceId).size } }
-            compose.onNodeWithTag("tab:Activity").performClick()
-            listOf("Chats", "Store", "Files", "Activity").forEach {
+            listOf("Chats", "Store").forEach {
                 compose.onNodeWithTag("tab:$it").assertIsDisplayed().assertHasClickAction()
             }
+            compose.onNodeWithTag("open-activity").performClick()
             compose.waitForIdle()
             val rejected = feedback("Reject")
             capture("font200-before-reading-scroll")
