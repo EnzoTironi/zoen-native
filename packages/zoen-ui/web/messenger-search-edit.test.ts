@@ -155,6 +155,25 @@ test('voice recording carries the selected inline reply', async (t) => {
     const [space, file] = ui.calls[0] as [string, { voice: { reply: unknown } }];
     assert.equal(space, 'chat');
     assert.deepEqual(file.voice.reply, { to: 'first', thread: false });
+    // Window release survives the mic being replaced by the recording row.
+    const pointer = async (target: EventTarget, type: string, x: number, y: number) => {
+      await act(async () => {
+        const event = new window.MouseEvent(type, { bubbles: true, clientX: x, clientY: y, button: 0 });
+        Object.defineProperty(event, 'pointerId', { value: 1 }); target.dispatchEvent(event);
+      });
+    };
+    for (const mode of ['send', 'cancel', 'lock']) {
+      await pointer(button('Gravar mensagem de voz')!, 'pointerdown', 200, 200);
+      await act(async () => { await new Promise(resolve => setTimeout(resolve, 250)); });
+      now += 1500;
+      if (mode !== 'send') await pointer(window, 'pointermove', mode === 'cancel' ? 89 : 200, mode === 'lock' ? 119 : 200);
+      await pointer(window, 'pointerup', 200, 200);
+      if (mode === 'lock') {
+        assert.ok(button('Enviar mensagem de voz'), 'locked recorder survives release');
+        await click(button('Descartar gravação'));
+      }
+    }
+    assert.equal(ui.calls.length, 2, 'only the unlocked release adds a voice upload');
   } finally {
     await ui.close();
     globals.forEach((key, i) => { const d = descriptors[i]; if (d) Object.defineProperty(globalThis, key, d); else Reflect.deleteProperty(globalThis, key); });

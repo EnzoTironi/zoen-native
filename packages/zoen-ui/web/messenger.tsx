@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { voiceHold } from './voice-hold.ts';
 import { message as reason } from './boundary.ts';
 import type { Conversation, FileDoc, Message, Messages, VoiceMeta } from './messages.ts';
 import { FileView, kindOf, thumbnail, useRecorder } from './media.tsx';
@@ -173,6 +174,54 @@ export function Composer({ placeholder, disabled, reply, cancelReply, submit, au
   const recorder = useRecorder((clip) => { if (clip.seconds < 0.6) return; void share({ name: `Mensagem de voz.${clip.mime.includes('mp4') ? 'm4a' : 'webm'}`, mime: clip.mime, bytes: clip.bytes,
     voice: { ms: Math.round(clip.seconds * 1000), levels: clip.levels, transcript: '', reply: reply?.entry ? { to: reply.entry, thread: false } : null } }, 'Enviando mensagem de voz…'); },
     (why) => setError(why));
+  const latestRecorder = useRef(recorder);
+  latestRecorder.current = recorder;
+  const gestureCleanup = useRef<(() => void) | null>(null);
+  const suppressVoiceClick = useRef(false);
+  const [voiceLocked, setVoiceLocked] = useState(true);
+  useEffect(() => {
+    const hidden = () => { if (document.hidden) { gestureCleanup.current?.(); latestRecorder.current.cancel(); } };
+    document.addEventListener('visibilitychange', hidden);
+    return () => { document.removeEventListener('visibilitychange', hidden); gestureCleanup.current?.(); latestRecorder.current.cancel(); };
+  }, []);
+  function beginVoice(e: React.PointerEvent<HTMLButtonElement>) {
+    if (e.button !== 0 || gestureCleanup.current) return;
+    e.preventDefault();
+    suppressVoiceClick.current = true;
+    setVoiceLocked(false);
+    let started = false;
+    const gesture = voiceHold(e.clientX, e.clientY, {
+      send: () => latestRecorder.current.send(), cancel: () => latestRecorder.current.cancel(),
+    });
+    const timer = window.setTimeout(() => { started = true; void latestRecorder.current.start(); }, 230);
+    const cleanup = () => {
+      clearTimeout(timer);
+      window.removeEventListener('pointermove', move);
+      window.removeEventListener('pointerup', up);
+      window.removeEventListener('pointercancel', cancel);
+      document.removeEventListener('visibilitychange', hidden);
+      gestureCleanup.current = null;
+    };
+    const move = (event: PointerEvent) => {
+      if (event.pointerId !== e.pointerId || !started) return;
+      const phase = gesture.move(event.clientX, event.clientY);
+      if (phase === 'locked') { setVoiceLocked(true); cleanup(); }
+      else if (phase === 'ended') cleanup();
+    };
+    const up = (event: PointerEvent) => {
+      if (event.pointerId !== e.pointerId) return;
+      cleanup();
+      if (started) gesture.release();
+      else { setVoiceLocked(true); void latestRecorder.current.start(); }
+    };
+    const cancel = () => { cleanup(); gesture.cancel(); };
+    const hidden = () => { if (document.hidden) cancel(); };
+    gestureCleanup.current = cancel;
+    window.addEventListener('pointermove', move);
+    window.addEventListener('pointerup', up);
+    window.addEventListener('pointercancel', cancel);
+    document.addEventListener('visibilitychange', hidden);
+  }
   const [draft, setDraft] = useState(initialText ?? '');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
@@ -194,6 +243,7 @@ export function Composer({ placeholder, disabled, reply, cancelReply, submit, au
     {recorder.recording ? <div className="zm-composer zm-recording" role="group" aria-label="Gravando mensagem de voz">
       <div className="zm-recording-surface">
       <button type="button" className="zm-round" aria-label="Descartar gravação" onClick={recorder.cancel}><Icon name="close" /></button>
+      <span className="zw-sr-only" role="status">{voiceLocked ? 'Recording locked' : 'Release to send. Slide left to cancel or up to lock.'}</span>
       <span className="zm-rec-dot" aria-hidden="true" /><span className="zm-voice-time">{recorder.clock(recorder.seconds)}</span>
       <span className="zm-wave zm-live" aria-hidden="true">{Array.from({ length: 28 }, (_, i) => recorder.recording!.levels[i - 28 + recorder.recording!.levels.length] ?? 0.08).map((p, i) => <i key={i} style={{ height: `${Math.round(p * 100)}%` }} />)}</span>
       </div>
@@ -207,7 +257,12 @@ export function Composer({ placeholder, disabled, reply, cancelReply, submit, au
           onPaste={(e) => { if (attach && e.clipboardData.files.length) { e.preventDefault(); void files(e.clipboardData.files); } }}
           onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) { e.preventDefault(); go(); } if (e.key === 'Escape') cancelReply?.(); }} /></label>
       <button type={has ? 'submit' : 'button'} key={has ? 'send' : 'mic'} className={`zm-send glass${has ? ' zm-has' : ''}`} disabled={disabled || busy || (!has && !attach)}
-        aria-label={has ? 'Enviar' : 'Gravar mensagem de voz'} onClick={has ? undefined : () => void recorder.start()}>
+        aria-label={has ? 'Enviar' : 'Gravar mensagem de voz'} style={!has ? { touchAction: 'none' } : undefined}
+        onPointerDown={has ? undefined : beginVoice}
+        onClick={has ? undefined : (e) => {
+          if (e.detail > 0 && suppressVoiceClick.current) { suppressVoiceClick.current = false; return; }
+          setVoiceLocked(true); void recorder.start();
+        }}>
         <span className="zm-swap"><Icon name={has ? 'send' : 'mic'} /></span></button>
     </form>}
   </div>;
