@@ -16,6 +16,8 @@ import androidx.navigation3.runtime.NavKey
 import xyz.tironi.zoen.ZoenViewModel
 import xyz.tironi.zoen.agent.OnDeviceAiSettings
 import xyz.tironi.zoen.core.CoreStats
+import xyz.tironi.zoen.core.DeviceGrantDto
+import xyz.tironi.zoen.miniapps.capabilityName
 import xyz.tironi.zoen.core.formatMoney
 import xyz.tironi.zoen.data.AppState
 
@@ -23,6 +25,9 @@ import xyz.tironi.zoen.data.AppState
 @Composable
 internal fun YouScreen(model: ZoenViewModel, state: AppState, navigate: (NavKey) -> Unit, chats: () -> Unit) {
     val stats by produceState<CoreStats?>(null, state.revision) { value = model.repository.query { it.stats() } }
+    val grants by produceState<List<DeviceGrantDto>?>(null, state.revision) {
+        value = model.repository.query { it.appDeviceGrants() }
+    }
     var reset by remember { mutableStateOf(false) }
     Scaffold(topBar = { HomeBar("Profile", state, navigate) }, contentWindowInsets = WindowInsets(0, 0, 0, 0)) { padding ->
         LazyColumn(Modifier.fillMaxSize().padding(padding).testTag("profile-list"), contentPadding = PaddingValues(20.dp, 8.dp, 20.dp, 112.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
@@ -68,6 +73,22 @@ internal fun YouScreen(model: ZoenViewModel, state: AppState, navigate: (NavKey)
                 }
             }
             item { Text("Each of your agents has a trust level per chat and a monthly budget.", style = MaterialTheme.typography.bodySmall) }
+            item { SectionLabel("Mini-app access") }
+            if (grants?.isEmpty() == true) item {
+                Text("No mini-app has asked for anything yet.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+            items(grants.orEmpty(), key = { it.grantId }) { grant ->
+                ListItem(
+                    headlineContent = { Text(capabilityName(grant.capability)) },
+                    supportingContent = { Text("${grant.appName} · ${grant.spaceTitle} · ${if (grant.always) "always" else "once"}") },
+                    trailingContent = {
+                        TextButton(onClick = { model.launch { model.repository.change { it.revokeAppDevice(grant.grantId) } } }) {
+                            Text("Revoke", color = MaterialTheme.colorScheme.error)
+                        }
+                    },
+                )
+            }
+            item { Text("Each permission is for one mini-app in one chat. Android keeps its own switch in Settings too.", style = MaterialTheme.typography.bodySmall) }
             item { GlassCard { Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text("Protect what’s yours", style = MaterialTheme.typography.titleMedium)
                 Text("A passkey keeps your identity on all your devices.", style = MaterialTheme.typography.bodySmall)
