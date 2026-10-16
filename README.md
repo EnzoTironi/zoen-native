@@ -43,8 +43,8 @@ The first release is built around one end-to-end journey. Bruno, a barber, descr
 
 <table>
   <tr>
-    <td align="center"><img src="docs/screenshots/owner-notes/ios-owner-notes-light.png" width="240" alt="Owner notes on iPhone: the agent asks for approval" /><br/><sub>“Your agent needs you”</sub></td>
-    <td align="center"><img src="docs/screenshots/owner-notes/ios-owner-notes-dark.png" width="240" alt="The same owner notes in dark mode" /><br/><sub>The same cards in dark mode</sub></td>
+    <td align="center"><img src="docs/screens/iphone/approvals-light.webp" width="240" alt="Owner notes on iPhone: the agent asks for approval" /><br/><sub>“Your agent needs you”</sub></td>
+    <td align="center"><img src="docs/screens/iphone/approvals-dark.webp" width="240" alt="The same owner notes in dark mode" /><br/><sub>The same cards in dark mode</sub></td>
   </tr>
 </table>
 

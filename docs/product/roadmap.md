@@ -54,8 +54,8 @@ sequenceDiagram
 | 10. Payments | Charging clients, Pix, credit ledger. | **Planned** |
 
 <p>
-  <img src="../screenshots/owner-notes/ios-owner-notes-light.png" alt="Your agent needs you approval card" width="240" />
-  <img src="../screenshots/owner-notes/ios-owner-notes-dark.png" alt="The same approval cards in dark mode" width="240" />
+  <img src="../screens/iphone/approvals-light.webp" alt="Your agent needs you approval card" width="240" />
+  <img src="../screens/iphone/approvals-dark.webp" alt="The same approval cards in dark mode" width="240" />
 </p>
 
 *The approval cards on iPhone, light and dark — screenshots from the repository's journey evidence.*

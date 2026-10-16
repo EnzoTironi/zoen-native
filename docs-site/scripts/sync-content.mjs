@@ -89,7 +89,7 @@ for (const [file, route] of pages) {
 // Images the landing page uses directly.
 // Product shots are iPhone captures (docs/screens/iphone, framed), the app's best-looking version.
 const phones = readdirSync(join(repo, 'docs/screens/iphone')).filter((f) => IMAGE.has(extname(f))).map((f) => `screens/iphone/${f}`);
-for (const img of [...phones, 'screenshots/owner-notes/ios-owner-notes-light.png', 'screenshots/owner-notes/ios-owner-notes-dark.png']) {
+for (const img of phones) {
   const dst = join(media, img);
   mkdirSync(dirname(dst), { recursive: true });
   copyFileSync(join(repo, 'docs', img), dst);
