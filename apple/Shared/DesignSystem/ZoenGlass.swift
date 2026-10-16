@@ -72,7 +72,7 @@ private struct GlassVolume: View, Animatable {
     var strength: CGFloat
     var frost: CGFloat
 
-    var animatableData: AnimatablePair<AnimatablePair<Double, Double>, Double> {
+    nonisolated var animatableData: AnimatablePair<AnimatablePair<Double, Double>, Double> {
         get { .init(.init(rimAngle, shine), press) }
         set { rimAngle = newValue.first.first; shine = newValue.first.second; press = newValue.second }
     }
