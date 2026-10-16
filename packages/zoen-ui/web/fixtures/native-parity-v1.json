@@ -1,6 +1,90 @@
 {
   "fixed_time": "2026-01-15T12:00:00Z",
   "fixture_id": "native-parity-v1",
+  "homeApps": [
+    {
+      "accentHex": "#3D7A28",
+      "appId": "hike",
+      "deepLink": "zoen://app/it_01kf0rdqg0000000000000004r",
+      "detail": "8:00 Meet at the pier",
+      "eyebrow": "Saturday",
+      "id": "it_01kf0rdqg0000000000000004r",
+      "photo": "hike-tomales",
+      "symbol": "figure.hiking",
+      "template": "photo",
+      "title": "Praia do Sono"
+    },
+    {
+      "accentHex": "#3D7A28",
+      "appId": "countdown",
+      "art": "trip",
+      "deepLink": "zoen://app/it_01kf0rdqg0000000000000008p",
+      "eyebrow": "Paraty long weekend",
+      "id": "it_01kf0rdqg0000000000000008p",
+      "symbol": "airplane",
+      "targetMs": 1769281200000,
+      "template": "countdown",
+      "title": "Paraty"
+    },
+    {
+      "accentHex": "#E8833A",
+      "actions": [
+        {
+          "label": "Feed",
+          "tool": "pet_feed"
+        },
+        {
+          "label": "Nap",
+          "tool": "pet_nap"
+        }
+      ],
+      "appId": "pet",
+      "art": "pet",
+      "bars": [
+        {
+          "label": "Food",
+          "value": 0.64
+        },
+        {
+          "label": "Mood",
+          "value": 0.79
+        },
+        {
+          "label": "Rest",
+          "value": 0.51
+        }
+      ],
+      "deepLink": "zoen://app/it_01kf0rdqg0000000000000006g",
+      "detail": "Happy here",
+      "id": "it_01kf0rdqg0000000000000006g",
+      "symbol": "pawprint.fill",
+      "template": "progress",
+      "title": "Peanut"
+    },
+    {
+      "accentHex": "#3D7A28",
+      "appId": "hike",
+      "deepLink": "zoen://app/it_01kf0rdqg00000000000000062",
+      "detail": "8:00 Lucas · car ready",
+      "eyebrow": "Saturday",
+      "id": "it_01kf0rdqg00000000000000062",
+      "photo": "hike-tomales",
+      "symbol": "figure.hiking",
+      "template": "photo",
+      "title": "Tomales Point"
+    },
+    {
+      "accentHex": "#1B2A4A",
+      "appId": "maptap",
+      "art": "globe",
+      "deepLink": "zoen://app/it_01kf0rdqg0000000000000006p",
+      "id": "it_01kf0rdqg0000000000000006p",
+      "symbol": "globe.americas.fill",
+      "template": "stat",
+      "title": "Lucas leads",
+      "value": "4,148"
+    }
+  ],
   "locale": "en_US",
   "me": {
     "bio": "Building Zoen.",
@@ -174,6 +258,7 @@
             "kindId": "plan",
             "kindLabel": "Plan",
             "lineCount": 7,
+            "snapshot": null,
             "summary": "Friday to Sunday · Enzo and Marina · historic center, schooner and Praia do Sono",
             "title": "Weekend in Paraty",
             "totalCents": 138800,
@@ -208,6 +293,18 @@
             "kindId": "app",
             "kindLabel": "Mini-app",
             "lineCount": 0,
+            "snapshot": {
+              "accentHex": "#3D7A28",
+              "appId": "countdown",
+              "art": "trip",
+              "deepLink": "zoen://app/it_01kf0rdqg0000000000000008p",
+              "eyebrow": "Paraty long weekend",
+              "id": "it_01kf0rdqg0000000000000008p",
+              "symbol": "airplane",
+              "targetMs": 1769281200000,
+              "template": "countdown",
+              "title": "Paraty"
+            },
             "summary": "",
             "title": "Paraty long weekend",
             "totalCents": null,
@@ -668,6 +765,18 @@
             "kindId": "app",
             "kindLabel": "Mini-app",
             "lineCount": 0,
+            "snapshot": {
+              "accentHex": "#3D7A28",
+              "appId": "hike",
+              "deepLink": "zoen://app/it_01kf0rdqg00000000000000062",
+              "detail": "8:00 Lucas · car ready",
+              "eyebrow": "Saturday",
+              "id": "it_01kf0rdqg00000000000000062",
+              "photo": "hike-tomales",
+              "symbol": "figure.hiking",
+              "template": "photo",
+              "title": "Tomales Point"
+            },
             "summary": "",
             "title": "Saturday hike",
             "totalCents": null,
@@ -794,6 +903,41 @@
             "kindId": "app",
             "kindLabel": "Mini-app",
             "lineCount": 0,
+            "snapshot": {
+              "accentHex": "#E8833A",
+              "actions": [
+                {
+                  "label": "Feed",
+                  "tool": "pet_feed"
+                },
+                {
+                  "label": "Nap",
+                  "tool": "pet_nap"
+                }
+              ],
+              "appId": "pet",
+              "art": "pet",
+              "bars": [
+                {
+                  "label": "Food",
+                  "value": 0.64
+                },
+                {
+                  "label": "Mood",
+                  "value": 0.79
+                },
+                {
+                  "label": "Rest",
+                  "value": 0.51
+                }
+              ],
+              "deepLink": "zoen://app/it_01kf0rdqg0000000000000006g",
+              "detail": "Happy here",
+              "id": "it_01kf0rdqg0000000000000006g",
+              "symbol": "pawprint.fill",
+              "template": "progress",
+              "title": "Peanut"
+            },
             "summary": "",
             "title": "Peanut",
             "totalCents": null,
@@ -828,6 +972,17 @@
             "kindId": "app",
             "kindLabel": "Mini-app",
             "lineCount": 0,
+            "snapshot": {
+              "accentHex": "#1B2A4A",
+              "appId": "maptap",
+              "art": "globe",
+              "deepLink": "zoen://app/it_01kf0rdqg0000000000000006p",
+              "id": "it_01kf0rdqg0000000000000006p",
+              "symbol": "globe.americas.fill",
+              "template": "stat",
+              "title": "Lucas leads",
+              "value": "4,148"
+            },
             "summary": "",
             "title": "MapTap",
             "totalCents": null,
@@ -1162,6 +1317,7 @@
             "kindId": "note",
             "kindLabel": "Note",
             "lineCount": 0,
+            "snapshot": null,
             "summary": "Daily summary\n• New build on TestFlight (Lucas)\n• Request card approved in dark mode (Ana)\n• Pending: the Mac app icon",
             "title": "Daily summary",
             "totalCents": null,
@@ -1312,6 +1468,18 @@
             "kindId": "app",
             "kindLabel": "Mini-app",
             "lineCount": 0,
+            "snapshot": {
+              "accentHex": "#3D7A28",
+              "appId": "hike",
+              "deepLink": "zoen://app/it_01kf0rdqg0000000000000004r",
+              "detail": "8:00 Meet at the pier",
+              "eyebrow": "Saturday",
+              "id": "it_01kf0rdqg0000000000000004r",
+              "photo": "hike-tomales",
+              "symbol": "figure.hiking",
+              "template": "photo",
+              "title": "Praia do Sono"
+            },
             "summary": "",
             "title": "Praia do Sono trail",
             "totalCents": null,
@@ -1461,6 +1629,7 @@
             "kindId": "task",
             "kindLabel": "Task",
             "lineCount": 0,
+            "snapshot": null,
             "summary": "Renew passport\nBook an appointment by Nov 15 · bring ID and the old passport",
             "title": "Renew passport",
             "totalCents": null,

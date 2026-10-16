@@ -86,7 +86,9 @@ mod tests {
                     crate::dto::EntryKind::Message { text, card } => ("message", text.clone(), card.as_ref().map(|c| json!({
                         "itemId":c.item_id,"title":c.title,"summary":c.summary,"kindLabel":c.kind_label,
                         "kindId":c.kind_id,"version":c.version,"totalCents":c.total_cents,
-                        "budgetCents":c.budget_cents,"lineCount":c.line_count,"doneCount":c.done_count}))),
+                        "budgetCents":c.budget_cents,"lineCount":c.line_count,"doneCount":c.done_count,
+                        "snapshot":core.item(c.item_id.clone()).ok().and_then(|item| item.app)
+                            .and_then(|app| serde_json::from_str::<Value>(&app.snapshot_json).ok())}))),
                     crate::dto::EntryKind::System {text} => ("system",text.clone(),None),
                     crate::dto::EntryKind::ItemEdited {note,..} => ("itemEdited",note.clone(),None),
                     crate::dto::EntryKind::Request {title,..} => ("request",title.clone(),None),
@@ -102,9 +104,25 @@ mod tests {
                 "lastAuthor":s.last_author.as_ref().map(persona),"lastAtMs":s.last_at_ms,
                 "unread":s.unread,"pinned":s.pinned,"muted":s.muted,"entries":entries})
         }).collect();
+        // Fresh fixture has empty persisted homePins/homeUnpinned. Match AppModel.homeApps:
+        // live (not released) apps, oldest first, retaining only native widget snapshots.
+        let home_apps: Vec<Value> = core.items().into_iter().rev().filter_map(|item| {
+            let app = item.app?;
+            let view: Value = serde_json::from_str(&app.view_json).unwrap();
+            if view.get("released").and_then(Value::as_bool).unwrap_or(false) { return None; }
+            if app.snapshot_json.is_empty() { return None; }
+            let snapshot: Value = serde_json::from_str(&app.snapshot_json).expect("native snapshot JSON");
+            assert_eq!(snapshot["deepLink"], format!("zoen://app/{}", snapshot["id"].as_str().unwrap()));
+            assert!(snapshot["title"].as_str().is_some_and(|s| !s.is_empty()));
+            assert!(["stat", "progress", "countdown", "list", "caption", "ticket", "photo"]
+                .contains(&snapshot["template"].as_str().unwrap()));
+            Some(snapshot)
+        }).collect();
+        assert!(!home_apps.is_empty(), "native seed must expose actual Home widgets");
         let fixture = json!({"fixture_id":"native-parity-v1","fixed_time":"2026-01-15T12:00:00Z",
             "locale":"en_US","timezone":"UTC","seed":128,"me":persona(&core.me().unwrap()),
-            "personas":core.personas().iter().map(persona).collect::<Vec<_>>(),"spaces":spaces});
+            "personas":core.personas().iter().map(persona).collect::<Vec<_>>(),"spaces":spaces,
+            "homeApps":home_apps});
         std::fs::write(
             std::env::var("ZOEN_PARITY_EXPORT").unwrap(),
             serde_json::to_string_pretty(&fixture).unwrap(),
