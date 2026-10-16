@@ -46,6 +46,9 @@ struct Session {
     device: String,
     cert: String,
     hub_id: Option<u64>,
+    // Polled alongside frames, never awaited by login or a request handler. Dropping
+    // the session cancels the lookup/snapshot without leaving a detached task.
+    presence: Option<std::sync::Mutex<futures_util::future::BoxFuture<'static, ()>>>,
     kick: Arc<Notify>,
     revoked: Arc<AtomicBool>,
     require_device: Arc<AtomicBool>,
@@ -202,6 +205,7 @@ pub async fn run(socket: WebSocket, st: Shared, ip: String) {
         device,
         cert,
         hub_id: None,
+        presence: None,
         kick,
         revoked,
         require_device,
@@ -234,6 +238,12 @@ pub async fn run(socket: WebSocket, st: Shared, ip: String) {
     let mut idle_deadline = tokio::time::Instant::now() + Duration::from_secs(90);
     loop {
         tokio::select! {
+            _ = async {
+                match s.presence.as_mut() {
+                    Some(presence) => presence.get_mut().expect("presence future poisoned").await,
+                    None => std::future::pending().await,
+                }
+            } => { s.presence = None; }
             frame = tokio::time::timeout_at(idle_deadline, recv_frame(&mut stream)) => {
                 match frame {
                     Ok(Some(f)) => {
@@ -372,7 +382,7 @@ async fn handshake(
                     "database_unavailable",
                     ServerFrame::error(ErrorCode::Unavailable, "database unavailable"),
                 )
-                .await
+                .await;
             }
         }
     } else {
@@ -524,7 +534,6 @@ impl Session {
             return;
         }
         self.st.analytics.session(&self.identity);
-        let was_online = self.st.fanout.is_online(&self.identity).await;
         self.hub_id = Some(self.st.fanout.add(
             &self.identity,
             Mailbox {
@@ -538,31 +547,43 @@ impl Session {
         // mailbox, or is reflected in the query. Reading first can lose both signals.
         // Packages claimed while this device was away: it refills as it comes back.
         self.send_key_package_stock().await;
-        if let Ok(Ok(co)) = tokio::time::timeout(
-            Duration::from_secs(2),
-            self.st.log.co_members(&self.identity),
-        )
-        .await
-        {
-            if !was_online {
-                self.st.fanout.send(
+        let st = self.st.clone();
+        let identity = self.identity.clone();
+        let tx = self.tx.clone();
+        // The mutex makes Session Sync for its &self async methods; only this
+        // session's frame loop ever accesses the future, through get_mut (no lock).
+        self.presence = Some(std::sync::Mutex::new(Box::pin(async move {
+            if let Ok(Ok(co)) =
+                tokio::time::timeout(Duration::from_secs(2), st.log.co_members(&identity)).await
+            {
+                // Always announce this attach. A redundant online announcement is
+                // harmless. Probing remote presence here would put NATS back on
+                // the login critical path; connecting-device refill races sync on
+                // hub attachment instead of a pre-attach self-ping.
+                st.fanout.send(
                     &co,
                     &ServerFrame::Presence {
-                        identity: self.identity.clone(),
+                        identity: identity.clone(),
                         online: true,
                     },
                     None,
                 );
+                // Every device receives a snapshot. Mailbox backpressure pauses only
+                // this future, not login, Ping, Sync or authorization refreshes.
+                for who in st.fanout.online(&co).await {
+                    if tx
+                        .send(ServerFrame::Presence {
+                            identity: who,
+                            online: true,
+                        })
+                        .await
+                        .is_err()
+                    {
+                        break;
+                    }
+                }
             }
-            // And tell this device who is already here (every device, not just the first).
-            for who in self.st.fanout.online(&co).await {
-                self.send(ServerFrame::Presence {
-                    identity: who,
-                    online: true,
-                })
-                .await;
-            }
-        }
+        })));
     }
 
     async fn send_key_package_stock(&self) {
@@ -1236,16 +1257,22 @@ impl Session {
     }
 
     /// Wakes the devices of every member with no live session. The push carries nothing;
-    /// the app syncs, decrypts and decides itself whether to notify.
+    /// the app syncs, decrypts and decides itself whether to notify. Under overload,
+    /// best-effort wakes are dropped before allocation/spawn, not queued.
     fn wake_away(&self, audience: &[String]) {
         if !self.st.push.enabled() {
             return;
         }
+        let Some(permit) = self.st.push.try_wake_task() else {
+            return;
+        };
         let st = self.st.clone();
         let me = self.identity.clone();
         let audience: Vec<String> = audience.iter().filter(|a| **a != me).cloned().collect();
         tokio::spawn(async move {
-            let online = st.fanout.online(&audience).await;
+            let _permit = permit;
+            let online: std::collections::HashSet<String> =
+                st.fanout.online(&audience).await.into_iter().collect();
             let away: Vec<String> = audience
                 .into_iter()
                 .filter(|a| !online.contains(a))

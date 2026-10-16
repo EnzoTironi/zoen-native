@@ -1,0 +1,6 @@
+.zw-devices { box-sizing: border-box; width: min(100%, 720px); margin-inline: auto; padding: 24px; overflow-y: auto; }
+.zw-devices h2 { margin-top: 0; }
+.zw-devices p { line-height: 1.5; }
+.zw-device-card { border: 1px solid #b1c2b6; border-radius: 12px; padding: 16px; margin-block: 16px; }
+.zw-devices button { margin: 4px; }
+.zw-devices button:disabled { opacity: .55; cursor: wait; }
