@@ -2,7 +2,13 @@
 """Run the original Swift rig to produce independent Android geometry test vectors."""
 import gzip
 import hashlib
+import importlib.util as _ilu
+from pathlib import Path as _P
+_spec = _ilu.spec_from_file_location("android_contract", _P(__file__).with_name("android-core-contract.py"))
+core = _ilu.module_from_spec(_spec)
+_spec.loader.exec_module(core)
 import json
+import re
 from pathlib import Path
 import subprocess
 import tempfile
@@ -34,7 +40,7 @@ struct Path {
 }
 """
 types = hand_source[hand_source.index("struct InkRNG {"):hand_source.index("enum Ink {")]
-geometry = "enum Ink {\n" + hand_source[hand_source.index("    static func catmull("):hand_source.index("/// `-ZoenFreezeArt")]
+geometry = "enum Ink {\n" + hand_source[hand_source.index("    static func catmull("):re.search(r"/// `-(?:Roda|Zoen)FreezeArt", hand_source).start()]
 rig = mascot_source[mascot_source.index("enum MascotPose:"):mascot_source.index("struct MascotView:")]
 doodles = hand_source[hand_source.index("enum Doodle {"):hand_source.index("struct DoodleView:")]
 export = r"""
@@ -85,7 +91,7 @@ with tempfile.TemporaryDirectory(prefix="zoen-ink-reference-") as directory:
     result = subprocess.run([str(executable)], check=True, capture_output=True)
 
 document = json.loads(result.stdout)
-document["sources"] = {str(p.relative_to(root)): hashlib.sha256(p.read_bytes()).hexdigest() for p in (hand, mascot)}
+document["sources"] = {str(p.relative_to(root)): hashlib.sha256(core.art_bytes(p.read_bytes())).hexdigest() for p in (hand, mascot)}
 target = root / "android/app/src/test/resources/ink-swift-reference.json.gz"
 target.parent.mkdir(parents=True, exist_ok=True)
 target.write_bytes(gzip.compress(json.dumps(document, separators=(",", ":"), sort_keys=True).encode(), mtime=0))

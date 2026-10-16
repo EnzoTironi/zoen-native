@@ -162,6 +162,21 @@ class ArtRenameEquivalenceTest(unittest.TestCase):
             with self.assertRaises(ValueError):
                 core.art_rename_lines()
 
+    def test_ink_exporters_handle_pre_and_post_rename_sources(self):
+        import re as _re
+        scripts = Path(__file__).parent
+        root = scripts.parent
+        hand = (root / "apple/Shared/DesignSystem/HandDrawn.swift").read_bytes()
+        original = core.art_bytes(hand)
+        for name in ["export-android-ink-icons.py", "export-android-ink-reference.py"]:
+            text = (scripts / name).read_text()
+            self.assertIn("core.art_bytes(", text)
+            self.assertNotIn('index("/// `-ZoenFreezeArt")', text)
+        for source in (hand, original):
+            self.assertIsNotNone(_re.search(rb"/// `-(?:Roda|Zoen)FreezeArt", source))
+        fixture = json.loads(__import__("gzip").decompress((root / "android/app/src/test/resources/ink-swift-reference.json.gz").read_bytes()))
+        self.assertEqual(fixture["sources"]["apple/Shared/DesignSystem/HandDrawn.swift"], core.digest(original))
+
 
 if __name__ == "__main__":
     unittest.main()
