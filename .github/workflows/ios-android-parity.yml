@@ -101,7 +101,25 @@ jobs:
             android/app/build/outputs/androidTest-results
           if-no-files-found: error
 
+  fixtures:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+      - name: Export canonical fixture from current Rust seed, not an old PNG/data baseline
+        run: |
+          ZOEN_PARITY_FIXTURE=native-parity-v1 ZOEN_PARITY_EXPORT="$PWD/packages/zoen-ui/web/fixtures/native-parity-v1.json" cargo test -p roda-ffi parity_fixture::tests::export_native_fixture --lib -- --ignored --exact
+          git diff --exit-code -- packages/zoen-ui/web/fixtures/native-parity-v1.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: parity-canonical-fixture
+          path: packages/zoen-ui/web/fixtures/native-parity-v1.json
+          if-no-files-found: error
+
   web:
+    needs: fixtures
     runs-on: macos-26
     timeout-minutes: 20
     strategy:
@@ -115,6 +133,10 @@ jobs:
           node-version: '24'
           cache: npm
           cache-dependency-path: packages/zoen-ui/package-lock.json
+      - uses: actions/download-artifact@v4
+        with:
+          name: parity-canonical-fixture
+          path: packages/zoen-ui/web/fixtures
       - name: Build current web sources and install isolated capture dependency
         run: |
           npm ci --prefix packages/zoen-ui
@@ -140,7 +162,7 @@ jobs:
 
   compare:
     if: always()
-    needs: [ios, android, web]
+    needs: [ios, android, web, fixtures]
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1

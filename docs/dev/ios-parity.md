@@ -40,6 +40,7 @@ python3 scripts/parity_capture.py android --output parity/android
 
 # Web host: build and start the current app using the Session preview service locally;
 # the CI workflow starts its own server on its isolated runner.
+ZOEN_PARITY_FIXTURE=native-parity-v1 ZOEN_PARITY_EXPORT="$PWD/packages/zoen-ui/web/fixtures/native-parity-v1.json" cargo test -p roda-ffi parity_fixture::tests::export_native_fixture --lib -- --ignored --exact
 npm ci --prefix packages/zoen-ui
 npm run build:web --prefix packages/zoen-ui
 npm install --prefix /tmp/parity-playwright playwright@1.56.1
@@ -89,6 +90,12 @@ its explicit parity entry. `render` applies the real app fixture and navigates t
 It receives the fixture fields below plus `screen`, `appearance`, and
 `viewport: "narrow" | "wide"`. Playwright sets a fixed Date before loading, awaits
 this hook and fonts, then captures the real app. It injects no hiding/recoloring CSS.
+
+Web's read-only visual fixture is exported from the actual Rust demo seed into
+`packages/zoen-ui/web/fixtures/native-parity-v1.json`, not independently invented
+content. CI regenerates it from current sources, checks that the checked-in fixture
+is current, and hands that fresh artifact to the web render jobs. This visual entry
+must not claim real account synchronization or voice transport.
 
 Every producer emits these matching fields; the orchestrators never fabricate them:
 
