@@ -78,14 +78,9 @@ async fn signed_by_device(
     if !verify_sig(&device, &msg(ts_ms), &sig) {
         return Err(err(StatusCode::UNAUTHORIZED, "bad signature"));
     }
-    match crate::db::device_known(&st.pool, &device).await {
-        Ok(true) => {}
-        Ok(false) => return Err(err(StatusCode::FORBIDDEN, "unknown device")),
-        Err(_) => return Err(err(StatusCode::SERVICE_UNAVAILABLE, "database unavailable")),
-    }
-    match crate::db::device_revoked(&st.pool, &device).await {
-        Ok(false) => Ok(device),
-        Ok(true) => Err(err(StatusCode::FORBIDDEN, "unlinked device")),
+    match crate::db::device_active(&st.pool, &device).await {
+        Ok(true) => Ok(device),
+        Ok(false) => Err(err(StatusCode::FORBIDDEN, "unlinked device")),
         Err(_) => Err(err(StatusCode::SERVICE_UNAVAILABLE, "database unavailable")),
     }
 }
