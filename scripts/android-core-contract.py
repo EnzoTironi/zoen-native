@@ -223,7 +223,10 @@ def artifacts(output, abis, contract, expected_metadata=None):
 def finish(root, output, source, host_library, abis, profile):
     current = capture(root)
     if source["input_sha256"] != current["input_sha256"] or source["contract_sha256"] != current["contract_sha256"]:
-        raise ValueError("Core inputs changed during Android generation; rebuild the stable source snapshot")
+        changed = sorted(name for name in source["inputs"].keys() | current["inputs"].keys()
+                         if source["inputs"].get(name) != current["inputs"].get(name))
+        raise ValueError("Core inputs changed during Android generation; rebuild the stable source snapshot"
+                         f" (inputs: {changed}; contract changed: {source['contract_sha256'] != current['contract_sha256']})")
     generated = artifacts(output, abis, current["contract"])
     host = ctypes.CDLL(str(host_library.resolve()))
     blobs, _ = elf_contract(output / "jniLibs" / abis[0] / "libzoen_ffi.so", abis[0])
