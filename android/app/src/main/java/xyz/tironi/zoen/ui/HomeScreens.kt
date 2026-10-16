@@ -124,7 +124,7 @@ fun ConversationsScreen(model: ZoenViewModel, state: AppState, navigate: (NavKey
                 }
                 if (chats.isEmpty()) item {
                     EmptyState(stringResource(if (filter != ChatInboxFilter.All) R.string.chat_filter_empty else R.string.chat_empty_title), if (filter != ChatInboxFilter.All) "" else stringResource(R.string.chat_empty_detail)) {
-                        Button(onClick = { navigate(NewChat) }) { Text(stringResource(R.string.new_chat)) }
+                        GlassButton(onClick = { navigate(NewChat) }) { Text(stringResource(R.string.new_chat)) }
                     }
                 }
             }
@@ -231,7 +231,7 @@ private fun ActivityList(model: ZoenViewModel, state: AppState, navigate: (NavKe
                 1 -> {
                     if (mentions.isEmpty()) item { EmptyState(stringResource(R.string.activity_no_mentions), "") }
                     items(mentions, key = { it.entry.id }) { mention ->
-                        Card(onClick = { navigate(Chat(mention.spaceId, mention.entry.id)) }) {
+                        GlassCard(onClick = { navigate(Chat(mention.spaceId, mention.entry.id)) }) {
                             ListItem(leadingContent = { Avatar(mention.entry.author, size = 40) }, headlineContent = { Text(stringResource(R.string.activity_mentioned, mention.entry.author.name)) }, supportingContent = {
                                 Column { Text((mention.entry.kind as? EntryKind.Message)?.text.orEmpty(), maxLines = 3, overflow = TextOverflow.Ellipsis); Text(mention.spaceTitle, style = MaterialTheme.typography.labelMedium) }
                             })
@@ -240,11 +240,11 @@ private fun ActivityList(model: ZoenViewModel, state: AppState, navigate: (NavKe
                 }
                 2 -> {
                     if (tasks.isEmpty()) item { EmptyState(stringResource(R.string.activity_no_tasks), "") }
-                    items(tasks, key = { it.id }) { task -> Card(onClick = { navigate(Item(task.id)) }) { ListItem(headlineContent = { Text(task.title) }, supportingContent = { Text(task.spaceTitle) }, leadingContent = { Icon(Icons.Rounded.Checklist, null) }) } }
+                    items(tasks, key = { it.id }) { task -> GlassCard(onClick = { navigate(Item(task.id)) }) { ListItem(headlineContent = { Text(task.title) }, supportingContent = { Text(task.spaceTitle) }, leadingContent = { Icon(Icons.Rounded.Checklist, null) }) } }
                 }
                 else -> {
             items(state.agents.filter { it.nearLimit }, key = { "budget:${it.persona.id}" }) { agent ->
-                Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.tertiaryContainer)) {
+                GlassCard(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.tertiaryContainer)) {
                     Column(Modifier.fillMaxWidth().padding(16.dp)) {
                         Text(stringResource(R.string.activity_near_cap, agent.persona.name), style = MaterialTheme.typography.titleMedium)
                         Text(formatMoney(agent.budgetSpentCents ?: 0, model.repository.locale) + " / " + formatMoney(agent.budgetLimitCents ?: 0, model.repository.locale))
@@ -255,7 +255,7 @@ private fun ActivityList(model: ZoenViewModel, state: AppState, navigate: (NavKe
             item { Text(stringResource(R.string.pending), style = MaterialTheme.typography.headlineMedium) }
             val approvable = pending.filter { it.status == RequestStatus.PENDING }
             if (approvable.size > 1) item {
-                OutlinedButton(onClick = { review = approvable.toList() }, enabled = !busy) { Text(stringResource(R.string.approve_all)) }
+                GlassOutlinedButton(onClick = { review = approvable.toList() }, enabled = !busy) { Text(stringResource(R.string.approve_all)) }
             }
             if (pending.isEmpty()) item { EmptyState(stringResource(R.string.all_clear), stringResource(R.string.all_clear_detail)) }
             items(pending, key = { it.id }) { request -> RequestCard(request, { navigate(Request(request.id)) }) }
@@ -294,7 +294,7 @@ private fun ActivityList(model: ZoenViewModel, state: AppState, navigate: (NavKe
 
 @Composable
 fun RequestCard(request: AgentRequestDto, onClick: () -> Unit) {
-    Card(onClick = onClick, colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow)) {
+    GlassCard(onClick = onClick, colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow)) {
         Column(Modifier.fillMaxWidth().padding(20.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 Avatar(request.agent, size = 38)

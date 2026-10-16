@@ -26,7 +26,7 @@ struct RequestReviewView: View {
                         }
                     }
                     .frame(maxWidth: .infinity, alignment: .leading)
-                    .solidCard(radius: 18, padding: 14)
+                    .glassCard(radius: 18, padding: 14)
 
                     Text("\(r.agent.name) suggests the action below and asks for your approval to continue.")
                         .font(.subheadline).foregroundStyle(Palette.textSecondary)
@@ -48,7 +48,7 @@ struct RequestReviewView: View {
                         if let c = r.costCents { detailRow("brazilianrealsign.circle", String(localized: "Amount: \(Money.format(c))")) }
                         detailRow("exclamationmark.shield", r.reason, tint: Palette.danger)
                     }
-                    .solidCard(radius: 18, padding: 14)
+                    .glassCard(radius: 18, padding: 14)
 
                     status(r)
 
@@ -60,7 +60,7 @@ struct RequestReviewView: View {
                                 Text("Approve").font(.headline).foregroundStyle(ActionGlassForeground())
                                     .frame(maxWidth: .infinity, minHeight: 34)
                             }
-                            .buttonStyle(.glassProminent)
+                            .buttonStyle(.wabiGlassProminent)
                             .disabled(r.status == .stale)
 
                             if let item = r.itemId {
@@ -69,7 +69,7 @@ struct RequestReviewView: View {
                                 } label: {
                                     Text("Edit in the plan").font(.headline).frame(maxWidth: .infinity, minHeight: 34)
                                 }
-                                .buttonStyle(.glass)
+                                .buttonStyle(.wabiGlass)
                             }
 
                             Button(role: .destructive) {
@@ -77,7 +77,7 @@ struct RequestReviewView: View {
                             } label: {
                                 Text("Decline").font(.headline).frame(maxWidth: .infinity, minHeight: 34)
                             }
-                            .buttonStyle(.glass)
+                            .buttonStyle(.wabiGlass)
                             .tint(Palette.danger)
                         }
                     }

@@ -263,7 +263,7 @@ struct SpaceView: View {
                         demoIncomingSent = true
                         Task { await model.receiveIncomingStoryMessages() }
                     }
-                    .buttonStyle(.borderedProminent)
+                    .buttonStyle(.wabiGlassProminent)
                     .accessibilityIdentifier("demo-incoming-trigger")
                     .padding(.top, chromeHeight + 8)
                     .padding(.trailing, 14)
@@ -1009,7 +1009,7 @@ struct InlineRequestRow: View {
                 Button { model.approve(request) } label: {
                     Text("Approve").foregroundStyle(ActionGlassForeground())
                 }
-                    .buttonStyle(.glassProminent)
+                    .buttonStyle(.wabiGlassProminent)
                     .controlSize(.small)
             case .stale:
                 ZoenIcon(.back, size: 17).scaleEffect(x: -1).foregroundStyle(Palette.amber)

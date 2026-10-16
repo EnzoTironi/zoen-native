@@ -1,5 +1,7 @@
 package xyz.tironi.zoen.agent
 
+import xyz.tironi.zoen.ui.GlassButton
+
 import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.Canvas
@@ -92,7 +94,7 @@ fun ProfilePhotoCrop(source: Bitmap, apply: (Float, Float, Float) -> Unit, cance
                 Text(stringResource(R.string.agent_photo_vertical)); Slider(y, { y = it }, valueRange = -1f..1f)
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     TextButton(onClick = cancel, Modifier.weight(1f)) { Text(stringResource(R.string.cancel)) }
-                    Button(onClick = { apply(zoom, x, y) }, Modifier.weight(1f)) { Text(stringResource(R.string.agent_photo_crop_apply)) }
+                    GlassButton(onClick = { apply(zoom, x, y) }, Modifier.weight(1f)) { Text(stringResource(R.string.agent_photo_crop_apply)) }
                 }
             }
         }

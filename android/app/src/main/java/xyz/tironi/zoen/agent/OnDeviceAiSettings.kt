@@ -1,5 +1,8 @@
 package xyz.tironi.zoen.agent
 
+import xyz.tironi.zoen.ui.GlassCard
+import xyz.tironi.zoen.ui.GlassButton
+
 import androidx.compose.foundation.layout.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -14,7 +17,7 @@ import xyz.tironi.zoen.ZoenViewModel
 fun OnDeviceAiSettings(model: ZoenViewModel) {
     val availability by model.planner.availability.collectAsStateWithLifecycle()
     LaunchedEffect(model.planner) { model.planner.refreshAvailability() }
-    Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow)) {
+    GlassCard(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow)) {
         Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Text(stringResource(R.string.agent_ai_title), style = MaterialTheme.typography.titleMedium)
             Text(stringResource(when (availability.status) {
@@ -27,7 +30,7 @@ fun OnDeviceAiSettings(model: ZoenViewModel) {
             }, availability.downloadedBytes / (1024 * 1024)), style = MaterialTheme.typography.bodyMedium)
             Text(stringResource(R.string.agent_ai_privacy), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             if (availability.status in setOf(ModelStatus.Checking, ModelStatus.Downloading)) LinearProgressIndicator(Modifier.fillMaxWidth())
-            else if (availability.status == ModelStatus.Downloadable) Button(onClick = { model.launch { model.planner.downloadModel() } }) { Text(stringResource(R.string.agent_ai_download)) }
+            else if (availability.status == ModelStatus.Downloadable) GlassButton(onClick = { model.launch { model.planner.downloadModel() } }) { Text(stringResource(R.string.agent_ai_download)) }
             else if (availability.status in setOf(ModelStatus.Failed, ModelStatus.Unavailable)) TextButton(onClick = { model.launch { model.planner.refreshAvailability() } }) { Text(stringResource(R.string.agent_ai_retry)) }
         }
     }

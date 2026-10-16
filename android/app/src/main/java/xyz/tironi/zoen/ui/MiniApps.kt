@@ -133,14 +133,14 @@ private fun PollApp(data: JSONObject, action: AppAction, modifier: Modifier) {
     LazyColumn(modifier, contentPadding = PaddingValues(24.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
         item { Icon(Icons.Rounded.Poll, null, Modifier.size(48.dp), tint = MaterialTheme.colorScheme.primary); Text(data.optString("question"), style = MaterialTheme.typography.displaySmall) }
         items(options, key = { it.optString("id") }) { option ->
-            Card(onClick = { action("poll_vote", JSONObject().put("option", option.optString("id"))) }, enabled = !closed) {
+            GlassCard(onClick = { action("poll_vote", JSONObject().put("option", option.optString("id"))) }, enabled = !closed) {
                 Column(Modifier.fillMaxWidth().padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) { Text(option.optString("text"), Modifier.weight(1f), style = MaterialTheme.typography.titleMedium); Text((option.optJSONArray("votes")?.length() ?: 0).toString()) }
                     LinearProgressIndicator(progress = { (option.optJSONArray("votes")?.length() ?: 0).toFloat() / total }, modifier = Modifier.fillMaxWidth())
                 }
             }
         }
-        if (!closed) item { Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) { OutlinedButton(onClick = { add = true }) { Text(stringResource(R.string.add_option)) }; Button(onClick = { action("poll_close", JSONObject()) }) { Text(stringResource(R.string.close_poll)) } } }
+        if (!closed) item { Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) { GlassOutlinedButton(onClick = { add = true }) { Text(stringResource(R.string.add_option)) }; GlassButton(onClick = { action("poll_close", JSONObject()) }) { Text(stringResource(R.string.close_poll)) } } }
         else if (!data.isNull("winner")) item { Text(data.optString("winner"), style = MaterialTheme.typography.titleLarge, color = MaterialTheme.colorScheme.primary) }
         item { AppLog(data) }
     }
@@ -162,7 +162,7 @@ private fun ListApp(data: JSONObject, action: AppAction, modifier: Modifier) {
             OutlinedTextField(text, { text = it }, Modifier.weight(1f), placeholder = { Text(stringResource(R.string.add_item)) })
             FilledIconButton(onClick = { action("list_add", JSONObject().put("text", text)); text = "" }, enabled = text.isNotBlank()) { Icon(Icons.Rounded.Add, stringResource(R.string.add_item)) }
         } }
-        item { OutlinedButton(onClick = { action("list_send_whatsapp", JSONObject()) }, Modifier.fillMaxWidth()) { Icon(Icons.Rounded.Share, null); Spacer(Modifier.width(8.dp)); Text(stringResource(R.string.miniapp_send_whatsapp)) } }
+        item { GlassOutlinedButton(onClick = { action("list_send_whatsapp", JSONObject()) }, Modifier.fillMaxWidth()) { Icon(Icons.Rounded.Share, null); Spacer(Modifier.width(8.dp)); Text(stringResource(R.string.miniapp_send_whatsapp)) } }
         item { AppLog(data) }
     }
 }
@@ -193,21 +193,21 @@ private fun RecipeApp(data: JSONObject, action: AppAction, modifier: Modifier) {
                 Text(recipeAmount(quantity, ingredient.optString("unit")) + " " + ingredient.optString("name"), textDecoration = if (ingredient.optBoolean("done")) TextDecoration.LineThrough else null)
             }
         }
-        if (cooking == null) item { Button(onClick = { action("recipe_cook", JSONObject().put("step", 0)) }, Modifier.fillMaxWidth()) { Text(stringResource(R.string.cook)) } }
-        else item { Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.tertiaryContainer)) {
+        if (cooking == null) item { GlassButton(onClick = { action("recipe_cook", JSONObject().put("step", 0)) }, Modifier.fillMaxWidth()) { Text(stringResource(R.string.cook)) } }
+        else item { GlassCard(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.tertiaryContainer)) {
             Column(Modifier.fillMaxWidth().padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 val step = steps.getOrNull(currentStep)
                 Text(if (step == null) stringResource(R.string.done) else "${currentStep + 1}/${steps.size}", style = MaterialTheme.typography.titleMedium)
                 Text(step?.optString("text").orEmpty(), style = MaterialTheme.typography.bodyLarge)
                 if (step != null) {
                     val seconds = step.optLong("minutes", 0) * 60
-                    if (seconds > 0) OutlinedButton(onClick = { timerEnd = System.currentTimeMillis() + seconds * 1000 }) { Icon(Icons.Rounded.Timer, null); Spacer(Modifier.width(8.dp)); Text(if (remaining > 0) "${remaining / 60}:${(remaining % 60).toString().padStart(2, '0')}" else "${seconds / 60} min") }
+                    if (seconds > 0) GlassOutlinedButton(onClick = { timerEnd = System.currentTimeMillis() + seconds * 1000 }) { Icon(Icons.Rounded.Timer, null); Spacer(Modifier.width(8.dp)); Text(if (remaining > 0) "${remaining / 60}:${(remaining % 60).toString().padStart(2, '0')}" else "${seconds / 60} min") }
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        OutlinedButton(onClick = { action("recipe_cook", JSONObject().put("step", currentStep - 1)) }, enabled = currentStep > 0) { Text(stringResource(R.string.miniapp_back_step)) }
-                        Button(onClick = { action("recipe_cook", JSONObject().put("step", currentStep + 1)); timerEnd = 0 }) { Text(stringResource(if (currentStep + 1 >= steps.size) R.string.miniapp_finish_cooking else R.string.next_step)) }
+                        GlassOutlinedButton(onClick = { action("recipe_cook", JSONObject().put("step", currentStep - 1)) }, enabled = currentStep > 0) { Text(stringResource(R.string.miniapp_back_step)) }
+                        GlassButton(onClick = { action("recipe_cook", JSONObject().put("step", currentStep + 1)); timerEnd = 0 }) { Text(stringResource(if (currentStep + 1 >= steps.size) R.string.miniapp_finish_cooking else R.string.next_step)) }
                     }
                 }
-                if (step == null) OutlinedButton(onClick = { action("recipe_cook", JSONObject().put("step", 0)) }) { Text(stringResource(R.string.retry)) }
+                if (step == null) GlassOutlinedButton(onClick = { action("recipe_cook", JSONObject().put("step", 0)) }) { Text(stringResource(R.string.retry)) }
             }
         } }
         if (timerEnd > 0) item { Card { Row(Modifier.fillMaxWidth().padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -271,11 +271,11 @@ private fun MapTapApp(data: JSONObject, state: AppState, action: AppAction, modi
             if (guess == null) {
                 item { Text(stringResource(R.string.map_hint), style = MaterialTheme.typography.bodySmall); Text("${"%.1f".format(lat)}°, ${"%.1f".format(lon)}°") }
                 item { Slider(lat, { lat = it; selected = true }, valueRange = -90f..90f, modifier = Modifier.semantics { contentDescription = latitude }); Slider(lon, { lon = it; selected = true }, valueRange = -180f..180f, modifier = Modifier.semantics { contentDescription = longitude }) }
-                item { Button(onClick = { action("maptap_guess", JSONObject().put("round", round).put("lat", lat).put("lon", lon)) }, enabled = selected, modifier = Modifier.fillMaxWidth()) { Text(stringResource(R.string.guess)) } }
-            } else item { Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer)) { Column(Modifier.fillMaxWidth().padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                item { GlassButton(onClick = { action("maptap_guess", JSONObject().put("round", round).put("lat", lat).put("lon", lon)) }, enabled = selected, modifier = Modifier.fillMaxWidth()) { Text(stringResource(R.string.guess)) } }
+            } else item { GlassCard(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer)) { Column(Modifier.fillMaxWidth().padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 Text(stringResource(R.string.miniapp_score_points, guess.optInt("points")), style = MaterialTheme.typography.headlineMedium)
                 Text("${guess.optInt("km")} km · ${place?.optString("country").orEmpty()}")
-                Button(onClick = { if (round < places.lastIndex) { round++; selected = false; lat = 0f; lon = 0f } else board = true }) { Text(stringResource(if (round < places.lastIndex) R.string.next_step else R.string.miniapp_leaderboard)) }
+                GlassButton(onClick = { if (round < places.lastIndex) { round++; selected = false; lat = 0f; lon = 0f } else board = true }) { Text(stringResource(if (round < places.lastIndex) R.string.next_step else R.string.miniapp_leaderboard)) }
             } } }
         }
         item { AppLog(data) }
@@ -291,7 +291,7 @@ private fun CountdownApp(model: ZoenViewModel, item: ItemDetail, data: JSONObjec
     val pins = remember(model.repository.preferences) { MiniAppPins(model.repository.preferences) }
     var pinned by remember(item.id) { mutableStateOf(item.id !in pins.hidden()) }
     LazyColumn(modifier, contentPadding = PaddingValues(24.dp), verticalArrangement = Arrangement.spacedBy(24.dp)) {
-        item { Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.tertiaryContainer)) {
+        item { GlassCard(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.tertiaryContainer)) {
             Column(Modifier.fillMaxWidth().padding(20.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 ZoenMascot(Modifier.fillMaxWidth().height(180.dp), animated = true, pose = MascotPose.Cheer)
                 Text(data.optString("title"), style = MaterialTheme.typography.headlineLarge)
@@ -304,11 +304,11 @@ private fun CountdownApp(model: ZoenViewModel, item: ItemDetail, data: JSONObjec
             val columns = if (androidx.compose.ui.platform.LocalDensity.current.fontScale > 1.3f) 2 else 4
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) { values.chunked(columns).forEach { row ->
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) { row.forEach { (value, label) ->
-                    Card(Modifier.weight(1f)) { Column(Modifier.fillMaxWidth().padding(vertical = 16.dp), horizontalAlignment = Alignment.CenterHorizontally) { Text(value.toString(), style = MaterialTheme.typography.headlineMedium); Text(stringResource(label), style = MaterialTheme.typography.labelSmall) } }
+                    GlassCard(Modifier.weight(1f)) { Column(Modifier.fillMaxWidth().padding(vertical = 16.dp), horizontalAlignment = Alignment.CenterHorizontally) { Text(value.toString(), style = MaterialTheme.typography.headlineMedium); Text(stringResource(label), style = MaterialTheme.typography.labelSmall) } }
                 } }
             } }
         }
-        item { OutlinedButton(onClick = { pinned = !pinned; if (pinned) pins.show(item.id) else pins.hide(item.id); model.launch { model.repository.refresh() } }, Modifier.fillMaxWidth()) { Icon(Icons.Rounded.PushPin, null); Spacer(Modifier.width(8.dp)); Text(stringResource(if (pinned) R.string.miniapp_unpin_home else R.string.miniapp_pin_home)) } }
+        item { GlassOutlinedButton(onClick = { pinned = !pinned; if (pinned) pins.show(item.id) else pins.hide(item.id); model.launch { model.repository.refresh() } }, Modifier.fillMaxWidth()) { Icon(Icons.Rounded.PushPin, null); Spacer(Modifier.width(8.dp)); Text(stringResource(if (pinned) R.string.miniapp_unpin_home else R.string.miniapp_pin_home)) } }
         item { AppLog(data) }
     }
 }
