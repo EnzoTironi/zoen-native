@@ -170,3 +170,18 @@ pub fn decode_server(bytes: &[u8]) -> Result<ServerMessage, String> {
         _ => ServerMessage::Other,
     })
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn browser_unlink_uses_the_existing_authenticated_device_operation() {
+        let device = roda_log::Signer::generate().id();
+        let frame = ClientFrame::decode(&request(42, "unlink", &device).unwrap()).unwrap();
+        assert!(
+            matches!(frame, ClientFrame::Req { id: 42, op: Op::Unlink { device: target } } if target == device)
+        );
+        assert!(request(43, "unlink", "not-a-device").is_err());
+    }
+}

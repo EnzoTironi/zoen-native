@@ -1251,6 +1251,10 @@ pub async fn fetch_link_box(
     id: &str,
     deadline: tokio::time::Instant,
 ) -> Result<Vec<u8>, String> {
+    let expired = || "O prazo para conectar este aparelho acabou. Gere outro código.".to_string();
+    if tokio::time::Instant::now() >= deadline {
+        return Err(expired());
+    }
     let pickup = async {
         loop {
             match fetch_link_attempt(relay_url, key, id).await {
@@ -1264,9 +1268,13 @@ pub async fn fetch_link_box(
     };
     // One deadline owns connect, authentication, every receive/send and backoff.
     // Dropping this future also drops the socket and cancels all pickup work.
-    tokio::time::timeout_at(deadline, pickup)
+    let result = tokio::time::timeout_at(deadline, pickup)
         .await
-        .map_err(|_| "O prazo para conectar este aparelho acabou. Gere outro código.".to_string())?
+        .map_err(|_| expired())?;
+    if tokio::time::Instant::now() >= deadline {
+        return Err(expired());
+    }
+    result
 }
 
 enum PickupError {
@@ -1367,6 +1375,24 @@ async fn fetch_link_attempt(
 
 #[cfg(test)]
 mod tests {
+    #[tokio::test]
+    async fn pickup_expired_deadline_opens_no_connection() {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let result = fetch_link_box(
+            &format!("http://{}", listener.local_addr().unwrap()),
+            &Signer::generate(),
+            "fixture",
+            tokio::time::Instant::now(),
+        )
+        .await;
+        assert!(result.unwrap_err().contains("prazo"));
+        assert!(
+            tokio::time::timeout(Duration::from_millis(80), listener.accept())
+                .await
+                .is_err()
+        );
+    }
+
     #[tokio::test]
     async fn pickup_deadline_bounds_a_stalled_connection() {
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();

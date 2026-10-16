@@ -22,6 +22,7 @@ export class Pairing {
   private poll: ReturnType<typeof setTimeout> | undefined;
   private expiry: ReturnType<typeof setTimeout> | undefined;
   private canceled = false;
+  private readonly abort = new AbortController();
   private fetching = false;
   private pending: PendingLink | undefined;
   private connection: ConnectionState = { kind: 'connecting' };
@@ -50,7 +51,7 @@ export class Pairing {
       if (pending.device !== device) throw new Error('different device');
       this.pending = pending;
       this.expiry = setTimeout(() => this.fail(EXPIRED), Math.max(0, pending.expires_at_ms - Date.now()));
-      await this.vault.save({ kind: 'pending', pending });
+      await this.vault.save({ kind: 'pending', pending }, this.abort.signal);
       if (!this.active()) return;
       const cert = hex(await this.vault.sign(await this.core.bytes({ kind: 'device_cert_message', device })));
       if (!this.active()) return;
@@ -95,7 +96,7 @@ export class Pairing {
       const account = parseAccount(await this.core.text({ kind: 'complete_link', pending: JSON.stringify(this.pending), sealed: bytes(result.sealed) }));
       if (!this.active()) return;
       // Persist before exposing enrollment. No late response can begin a save after expiry/cancellation.
-      await this.vault.save({ kind: 'linked', account, snapshot: '' });
+      await this.vault.save({ kind: 'linked', account, snapshot: '' }, this.abort.signal);
       if (!this.active()) return;
       this.stop();
       this.changed({ kind: 'linked', account });
@@ -116,6 +117,7 @@ export class Pairing {
 
   stop(): void {
     this.canceled = true;
+    this.abort.abort();
     clearTimeout(this.poll);
     clearTimeout(this.expiry);
     this.transport?.stop();

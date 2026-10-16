@@ -18,7 +18,7 @@ internal fun DeviceConnections(model: ZoenViewModel, accountId: String) {
     var busy by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
     var code by remember { mutableStateOf("") }
-    var check by remember { mutableStateOf<String?>(null) }
+    var check by remember { mutableStateOf<Pair<String, String>?>(null) }
     var removing by remember { mutableStateOf<DeviceDto?>(null) }
     LaunchedEffect(accountId, revision) {
         try { devices = model.repository.network { it.devices() }; error = null }
@@ -40,15 +40,16 @@ internal fun DeviceConnections(model: ZoenViewModel, accountId: String) {
         OutlinedTextField(value = code, onValueChange = { code = it }, enabled = !busy,
             label = { Text("Código de conexão") }, modifier = Modifier.fillMaxWidth())
         Button(enabled = !busy && code.isNotBlank(), onClick = {
+            val candidate = code.trim()
             scope.launch {
-                try { check = model.repository.query { it.linkCodeCheck(code.trim()) }; error = null }
+                try { check = candidate to model.repository.query { it.linkCodeCheck(candidate) }; error = null }
                 catch (e: CancellationException) { throw e }
                 catch (_: Exception) { error = "Código inválido. Copie o código do outro aparelho e tente de novo." }
             }
         }) { Text("Conferir código") }
         if (busy) CircularProgressIndicator()
     }
-    check?.let { digits ->
+    check?.let { (approvedCode, digits) ->
         AlertDialog(onDismissRequest = { check = null }, title = { Text("Os números são iguais?") },
             text = { Text("Confira nas duas telas: $digits. Só conecte se forem iguais.") },
             dismissButton = { TextButton(onClick = { check = null }) { Text("Cancelar") } },
@@ -56,7 +57,7 @@ internal fun DeviceConnections(model: ZoenViewModel, accountId: String) {
                 check = null; busy = true
                 scope.launch {
                     try {
-                        model.repository.network { it.linkDevice(code.trim(), model.repository.vault) }
+                        model.repository.network { it.linkDevice(approvedCode, model.repository.vault) }
                         code = ""; revision++
                     } catch (e: CancellationException) { throw e }
                     catch (_: Exception) { error = "Não foi possível conectar. Confira o código e tente de novo." }
