@@ -16,9 +16,15 @@ struct ZoeniOSApp: App {
                 .preferredColorScheme(AppAppearance(rawValue: appearance)?.scheme)
                 .task { await model.applyLaunchOptions(); PushBridge.shared.start(model) }
                 // Friend, Space and campaign links: where this install came from (ADR 0044).
-                .onOpenURL { model.captureAcquisition($0) }
+                .onOpenURL { url in
+                    // Tier tokens are capabilities, not acquisition/analytics context.
+                    if url.host != "tier" { model.captureAcquisition(url) }
+                }
                 .onContinueUserActivity(NSUserActivityTypeBrowsingWeb) { a in
-                    if let url = a.webpageURL { model.captureAcquisition(url) }
+                    if let url = a.webpageURL,
+                       url.host != "tier", !url.pathComponents.contains("tier") {
+                        model.captureAcquisition(url)
+                    }
                 }
         }
         // A revoke waiting on its "Desfazer" is settled before the app can be killed.
@@ -33,6 +39,13 @@ struct ZoeniOSApp: App {
 /// Search on the left, a three-tab pill in the middle, and the dark + on the right that fans
 /// out the radial menu (create and the destinations that aren't tabs).
 struct RootView: View {
+    @AppStorage("LivingSpacesEnabled") private var livingSpaces = false
+    var body: some View {
+        if livingSpaces { LivingSpaceShell() } else { LegacyRootView() }
+    }
+}
+
+struct LegacyRootView: View {
     @Environment(AppModel.self) private var model
     @Namespace private var zoom
     @State private var onboarding = OnboardingFlow.shouldShow

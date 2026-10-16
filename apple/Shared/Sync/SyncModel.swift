@@ -15,6 +15,9 @@ final class SyncModel {
     /// Without it the app is real: an account on this device, chats through the relay.
     nonisolated static var mode: Mode {
         let d = UserDefaults.standard
+        #if DEBUG
+        if d.bool(forKey: "RodaLivingAccountFixture") { return .real }
+        #endif
         if d.bool(forKey: "RodaDemo") || d.bool(forKey: "RodaResetDemo") || d.bool(forKey: "RodaShowcase") || d.string(forKey: "RodaStory") != nil { return .demo }
         return .real
     }
@@ -38,7 +41,12 @@ final class SyncModel {
     /// arrived); a profile screen reads it to re-fetch `core.getProfile(identityId:)`.
     private(set) var profileRevisions: [String: Int] = [:]
 
-    @ObservationIgnored let vault = KeychainVault()
+    @ObservationIgnored let vault: any SecretVault = {
+        #if DEBUG
+        if UserDefaults.standard.bool(forKey: "RodaLivingAccountFixture") || UserDefaults.standard.bool(forKey: "RodaLivingSpaceFixture") { return LivingFixtureVault() }
+        #endif
+        return KeychainVault()
+    }()
     @ObservationIgnored private var bridge: SyncBridge?
     @ObservationIgnored weak var app: AppModel?
     @ObservationIgnored private var core: RodaEngine?
@@ -59,6 +67,13 @@ final class SyncModel {
                 keyMissing = !(try core.unlock(vault: vault))
                 if keyMissing { return }
             }
+            #if DEBUG
+            if UserDefaults.standard.bool(forKey: "RodaLivingAccountFixture") {
+                // Isolated synthetic identity exercises local MLS/outbox, never a relay.
+                account = core.account()
+                return
+            }
+            #endif
             let bridge = self.bridge ?? SyncBridge(self)
             self.bridge = bridge
             try core.startSync(listener: bridge)

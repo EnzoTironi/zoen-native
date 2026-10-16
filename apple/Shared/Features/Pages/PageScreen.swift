@@ -188,6 +188,25 @@ struct PageScreen: View {
 
     // MARK: data
 
+    private var editorDraftVault: any SecretVault {
+        #if DEBUG
+        if UserDefaults.standard.bool(forKey: "RodaLivingAccountFixture") || UserDefaults.standard.bool(forKey: "RodaLivingSpaceFixture") {
+            return model.sync.vault
+        }
+        #endif
+        return KeychainVault(service: "xyz.tironi.zoen.page-drafts")
+    }
+
+    private var editorDraftRoot: URL? {
+        #if DEBUG
+        if UserDefaults.standard.bool(forKey: "RodaLivingAccountFixture") || UserDefaults.standard.bool(forKey: "RodaLivingSpaceFixture") {
+            return FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+                .appendingPathComponent("LivingSpaceFixture/PageDrafts", isDirectory: true)
+        }
+        #endif
+        return nil
+    }
+
     private func load(initial: Bool) {
         item = try? model.core.item(itemId: itemId)
         guard var page = try? model.core.page(itemId: itemId) else { return }
@@ -197,7 +216,7 @@ struct PageScreen: View {
             do {
                 if draftStore == nil {
                     draftStore = try PageDraftStore(actor: model.me?.id ?? "", space: page.spaceId, item: itemId,
-                                                    vault: KeychainVault(service: "xyz.tironi.zoen.page-drafts"))
+                                                    vault: editorDraftVault, root: editorDraftRoot)
                 }
                 guard let draftStore else { throw PageDraftStore.Failure.unavailable }
                 draftReady = true
