@@ -4317,7 +4317,7 @@ fn event_label(b: &EventBody) -> String {
         } => t("Mensagem com Item", "Message with Item"),
         EventBody::MessagePosted { .. } => t("Mensagem", "Message"),
         EventBody::ChatPrefsSet { .. } => t("Preferências da conversa", "Chat preferences"),
-        EventBody::ThreadStateSet { .. } => t("Estado da thread", "Thread state"),
+        EventBody::ThreadStateSet { .. } => t("Estado das respostas", "Thread state"),
         EventBody::MessageAnnotated { note, .. } => match note {
             roda_types::Annotation::Edit { .. } => t("Mensagem editada", "Message edited"),
             roda_types::Annotation::Delete => t("Mensagem apagada", "Message deleted"),
