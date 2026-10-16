@@ -60,19 +60,34 @@ struct SearchOutcome {
     var hits: [UniversalHit] = []
     var store: [StoreListing] = []
     var tookUs: UInt64 = 0
+    var error: String?
+    var nextCursor: String?
     var isEmpty: Bool { hits.isEmpty && store.isEmpty }
 }
 
 @MainActor
 enum SearchEngine {
-    static func run(_ q: String, scope: SearchScope, model: AppModel) -> SearchOutcome {
+    static func run(_ q: String, scope: SearchScope, model: AppModel, spaceId: String? = nil, cursor: String? = nil) -> SearchOutcome {
         let query = q.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !query.isEmpty else { return SearchOutcome() }
         var out = SearchOutcome()
         let limit: UInt32 = scope == .all ? 4 : 40
-        if let r = try? model.core.universalSearch(query: query, kinds: scope.kinds, limit: limit) {
-            out.hits = r.hits
-            out.tookUs = r.tookUs
+        do {
+            if scope == .messages, let spaceId {
+                let page = try model.core.searchMessages(spaceId: spaceId, query: query, cursor: cursor, limit: 40)
+                out.hits = page.hits
+                out.nextCursor = page.nextCursor
+            } else {
+                let result = try model.core.universalSearch(query: query, kinds: scope.kinds, limit: limit)
+                out.hits = result.hits
+                out.tookUs = result.tookUs
+            }
+        } catch let error as CoreError {
+            out.error = error.message
+            return out
+        } catch {
+            out.error = error.localizedDescription
+            return out
         }
         if scope == .all || scope == .apps {
             let terms = fold(query).split(separator: " ").map(String.init)
@@ -136,9 +151,15 @@ struct UniversalSearchView: View {
     @State private var query = ""
     @State private var scope: SearchScope = .all
     @State private var outcome = SearchOutcome()
-    @State private var searched = ""
+    @State private var completedRequest = ""
+    @State private var spaceId: String?
+    @State private var retry = 0
     @State private var recents = SearchRecents.all
     @FocusState private var focused: Bool
+
+    private var requestKey: String {
+        "\(query)|\(scope.rawValue)|\(spaceId ?? "")|\(model.revision)|\(retry)"
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -147,14 +168,37 @@ struct UniversalSearchView: View {
                 .padding(.horizontal, 16)
             chips
                 .padding(.top, 12)
+            if scope == .messages {
+                Picker("Conversa", selection: $spaceId) {
+                    Text("Todas as conversas").tag(String?.none)
+                    ForEach(model.spaces) { space in
+                        Text(space.title).tag(Optional(space.id))
+                    }
+                }
+                .padding(.horizontal, 16)
+                .accessibilityIdentifier("search-conversation")
+            }
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: 18, pinnedViews: []) {
                     if query.trimmingCharacters(in: .whitespaces).isEmpty {
                         emptyState
-                    } else if outcome.isEmpty && searched == query {
+                    } else if completedRequest != requestKey {
+                        ProgressView("Buscando…")
+                    } else if let error = outcome.error {
+                        VStack(alignment: .leading, spacing: 12) {
+                            Text("Não foi possível buscar").font(.headline)
+                            Text(error).font(.caption)
+                            Button("Tentar novamente") { retry += 1 }
+                        }
+                        .accessibilityIdentifier("search-error")
+                    } else if outcome.isEmpty {
                         noResults
                     } else {
                         results
+                        if outcome.nextCursor != nil {
+                            Button("Carregar mais mensagens") { loadMore() }
+                                .accessibilityIdentifier("search-load-more")
+                        }
                     }
                     if UserDefaults.standard.bool(forKey: "RodaSearchTiming"), !query.isEmpty {
                         Text(verbatim: "\(outcome.hits.count + outcome.store.count) results · \(String(format: "%.1f", Double(outcome.tookUs) / 1000)) ms on device")
@@ -170,12 +214,12 @@ struct UniversalSearchView: View {
             .scrollDismissesKeyboard(.interactively)
         }
         .background(Palette.background.ignoresSafeArea())
-        .task(id: "\(query)|\(scope.rawValue)") {
+        .task(id: requestKey) {
             // Debounce typing by 150 ms.
             if !query.isEmpty { try? await Task.sleep(for: .milliseconds(150)) }
             guard !Task.isCancelled else { return }
-            outcome = SearchEngine.run(query, scope: scope, model: model)
-            searched = query
+            outcome = SearchEngine.run(query, scope: scope, model: model, spaceId: spaceId)
+            completedRequest = requestKey
         }
         .task {
             if let seed = model.searchSeed { query = seed; model.searchSeed = nil }
@@ -193,6 +237,19 @@ struct UniversalSearchView: View {
             guard UserDefaults.standard.bool(forKey: "RodaSearchJump") else { return }
             try? await Task.sleep(for: .seconds(2.2))
             if let h = outcome.hits.first(where: { $0.kind == "message" }) { open(h) }
+        }
+    }
+
+    private func loadMore() {
+        guard completedRequest == requestKey, scope == .messages, let spaceId, let cursor = outcome.nextCursor else { return }
+        let page = SearchEngine.run(query, scope: scope, model: model, spaceId: spaceId, cursor: cursor)
+        if let error = page.error {
+            // The core invalidates cursors after mutations; retry always restarts the search.
+            outcome.error = error
+        } else {
+            let existing = Set(outcome.hits.map(\.refId))
+            outcome.hits += page.hits.filter { !existing.contains($0.refId) }
+            outcome.nextCursor = page.nextCursor
         }
     }
 

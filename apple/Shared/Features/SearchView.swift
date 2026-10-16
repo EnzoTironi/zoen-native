@@ -7,7 +7,8 @@ import RodaCore
 struct SearchScreen: View {
     @Environment(AppModel.self) private var model
     @State private var query = ""
-    @State private var hits: [SearchHit] = []
+    @State private var hits: [UniversalHit] = []
+    @State private var searchError: String?
     @FocusState private var focused: Bool
     var focusOnAppear = false
     var onOpenItem: (String) -> Void = { _ in }
@@ -36,6 +37,11 @@ struct SearchScreen: View {
                     ForEach(AppLocale.isPortuguese ? ["pousada", "Marina", "Financeiro", "TestFlight"] : ["inn", "Marina", "Finance", "TestFlight"], id: \.self) { s in
                         Button { query = s } label: { Label(s, systemImage: "magnifyingglass") }
                     }
+                }
+            } else if let searchError {
+                Section("Não foi possível buscar") {
+                    Text(searchError)
+                    Button("Tentar novamente") { refreshSearch() }
                 }
             } else if hits.isEmpty && chats.isEmpty && people.isEmpty && apps.isEmpty {
                 InkEmptyState(pose: .zen, title: String(localized: "No results for “\(query)”"),
@@ -93,16 +99,24 @@ struct SearchScreen: View {
                 }
                 if !hits.isEmpty {
                     Section("Messages and items") {
-                        ForEach(hits) { h in
+                        ForEach(hits, id: \.refId) { h in
                             Button {
-                                leave { if let item = h.itemId { onOpenItem(item) } else { model.go(.space(h.spaceId)) } }
+                                leave {
+                                    if h.kind == "item" { onOpenItem(h.refId) }
+                                    else if let sid = h.spaceId {
+                                        model.jumpTarget = JumpTarget(space: sid, entry: h.refId)
+                                        model.go(.space(sid))
+                                    }
+                                }
                             } label: {
                                 HStack(alignment: .top, spacing: 12) {
-                                    if h.itemId != nil {
+                                    if h.kind == "item" {
                                         Image(systemName: "map").foregroundStyle(Palette.action).frame(width: 34, height: 34)
                                             .background(Palette.action.opacity(0.12), in: .rect(cornerRadius: 10, style: .continuous))
+                                    } else if let person = h.persona {
+                                        Avatar(persona: person, size: 34)
                                     } else {
-                                        Avatar(persona: h.author, size: 34)
+                                        Image(systemName: "message").frame(width: 34, height: 34)
                                     }
                                     VStack(alignment: .leading, spacing: 2) {
                                         HStack {
@@ -111,7 +125,7 @@ struct SearchScreen: View {
                                             Text(RodaTime.short(h.atMs)).font(.caption).foregroundStyle(Palette.textTertiary)
                                         }
                                         Text(h.snippet).font(.subheadline).foregroundStyle(Palette.textSecondary).lineLimit(2)
-                                        Text(h.spaceTitle).font(.caption).foregroundStyle(Palette.textTertiary)
+                                        Text(h.spaceTitle ?? "").font(.caption).foregroundStyle(Palette.textTertiary)
                                     }
                                 }
                             }
@@ -127,11 +141,25 @@ struct SearchScreen: View {
         .searchable(text: $query, prompt: "Chats, people, agents, mini-apps")
         #endif
         .searchFocused($focused)
-        .onChange(of: query) { _, q in hits = model.core.search(query: q) }
-        .task(id: model.revision) { if !query.isEmpty { hits = model.core.search(query: query) } }
+        .onChange(of: query) { _, _ in refreshSearch() }
+        .task(id: model.revision) { refreshSearch() }
         .onAppear {
             if let seed = model.searchSeed { query = seed; model.searchSeed = nil }
             if focusOnAppear { focused = true }
+        }
+    }
+
+    private func refreshSearch() {
+        guard !query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            hits = []; searchError = nil; return
+        }
+        do {
+            hits = try model.core.universalSearch(query: query, kinds: ["message", "item"], limit: 40).hits
+            searchError = nil
+        } catch let error as CoreError {
+            hits = []; searchError = error.message
+        } catch {
+            hits = []; searchError = error.localizedDescription
         }
     }
 
