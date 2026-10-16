@@ -65,7 +65,8 @@ fun Modifier.zoenGlass(
         val r = cornerRadius?.toPx()?.coerceAtMost(size.minDimension / 2) ?: (size.minDimension / 2)
         val corner = CornerRadius(r, r)
         val frost = if (slab) 0.2f else 0.6f
-        val body = if (prominent) tint.copy(alpha = 0.92f) else Color.White.copy(alpha = if (dark) 0.07f else 0.6f)
+        val body = if (prominent) tint.copy(alpha = 1f) else   // opaque: no backdrop to refract, and white labels keep 4.5:1
+            Color.White.copy(alpha = if (dark) 0.07f else 0.6f)
         val crown = Brush.radialGradient(listOf(Color.White.copy(.5f * strength), Color.Transparent),
             center = Offset(size.width * 0.35f, size.height * 0.2f), radius = size.minDimension * 0.8f)
         val volume = Brush.verticalGradient(0f to Color.Transparent, .6f to Color.Transparent, 1f to Color.Black.copy(.18f * strength))
@@ -77,7 +78,7 @@ fun Modifier.zoenGlass(
                 drawRect(glass.brush)
             } else {
                 drawRoundRect(volume, cornerRadius = corner)
-                drawRoundRect(crown, cornerRadius = corner)
+                if (!prominent) drawRoundRect(crown, cornerRadius = corner)
                 drawRoundRect(rim, cornerRadius = corner, style = Stroke(1.dp.toPx()))
             }
         }
@@ -202,7 +203,7 @@ half4 main(float2 position) {
     float rough = mix(0.116, 0.14, slab);
     float3 Hp = normalize(H + float3(0.0, 0.10, 0.0) * press);
     float spec = pow(max(dot(n, Hp), 0.0), 0.5 / (rough * rough)) * mix(1.41, 0.4, slab) * 0.7
-               * smoothstep(mix(0.08, 0.62, prominent), mix(0.45, 0.9, prominent), edge);   // only the curved rail glints: the crown stays clear behind the label
+               * smoothstep(mix(0.08, 0.42, prominent), mix(0.45, 0.75, prominent), edge);   // only the curved rail glints: the crown stays clear behind the label
     // Frost lifts the body toward white (the only whitening: no separate tint film)
     float frostWhite = frost * mix(0.16, 0.03, prominent);       // a coloured body stays deep enough for white text
     // Dispersion fringe: red out, blue in, only on the rail (strength = dispersion x edge^2)
