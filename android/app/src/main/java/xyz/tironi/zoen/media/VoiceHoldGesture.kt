@@ -16,16 +16,28 @@ internal suspend fun PointerInputScope.detectVoiceHoldGestures(
     onRelease: () -> Unit,
     onLock: () -> Unit,
     onCancel: () -> Unit,
+    holdMillis: Long = 230,
+    armSlop: Float = Float.POSITIVE_INFINITY,
 ) {
     awaitEachGesture {
         var started = false
         var finished = false
         try {
             val down = awaitFirstDown(requireUnconsumed = false)
-            val hold = awaitLongPressOrCancellation(down.id) ?: return@awaitEachGesture
+            // Explicit iOS timings, not Android's configurable long-press timeout.
+            val ended = withTimeoutOrNull(holdMillis) {
+                while (true) {
+                    val event = awaitPointerEvent(PointerEventPass.Initial)
+                    val change = event.changes.firstOrNull { it.id == down.id }
+                    if (change == null || !change.pressed || change.isConsumed ||
+                        (change.position - down.position).getDistance() > armSlop) return@withTimeoutOrNull true
+                }
+                @Suppress("UNREACHABLE_CODE") false
+            }
+            if (ended == true) return@awaitEachGesture
             started = true
             onStart()
-            var pointer = hold.id
+            var pointer = down.id
             var x = 0f
             var y = 0f
             while (true) {

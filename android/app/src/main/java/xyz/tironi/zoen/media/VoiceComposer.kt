@@ -2,6 +2,7 @@ package xyz.tironi.zoen.media
 
 import xyz.tironi.zoen.ui.rememberZoenHaptics
 import xyz.tironi.zoen.ui.ZoenFeedback
+import xyz.tironi.zoen.ui.zoenGlass
 
 import android.Manifest
 import android.content.pm.PackageManager
@@ -106,8 +107,8 @@ fun VoiceComposer(
         onDispose { owner.lifecycle.removeObserver(observer); active(false) }
     }
     Box(modifier.size(48.dp), contentAlignment = Alignment.Center) {
-        if (showTrigger) FilledTonalIconButton(onClick = { begin(true) }, enabled = !appState.keyMissing && recording.phase == RecordingPhase.IDLE && review.clip == null,
-            modifier = Modifier.size(48.dp).testTag("voice-record").pointerInput(session, cancelDistance, lockDistance) {
+        if (showTrigger) IconButton(onClick = { begin(true) }, enabled = !appState.keyMissing && recording.phase == RecordingPhase.IDLE && review.clip == null,
+            modifier = Modifier.size(48.dp).zoenGlass(androidx.compose.foundation.shape.CircleShape, MaterialTheme.colorScheme.primary).testTag("voice-record").pointerInput(session, cancelDistance, lockDistance) {
                 detectVoiceHoldGestures(cancelDistance, lockDistance,
                     onStart = { currentBegin(false) },
                     onRelease = {
@@ -117,7 +118,7 @@ fun VoiceComposer(
                     }, onCancel = {
                         if (session.recorder.state.value.phase == RecordingPhase.HOLDING) { session.cancel(); haptics.perform(ZoenFeedback.Reject) }
                     })
-            }) { Icon(Icons.Rounded.Mic, stringResource(R.string.media_hold_record)) }
+            }) { Icon(Icons.Rounded.Mic, stringResource(R.string.media_hold_record), tint = MaterialTheme.colorScheme.onPrimary, modifier = Modifier.size(21.dp)) }
         if (recording.phase != RecordingPhase.IDLE) {
             val width = (LocalConfiguration.current.screenWidthDp - 32).coerceIn(240, 380).dp
             Popup(alignment = Alignment.BottomEnd, offset = IntOffset(0, -with(density) { 60.dp.roundToPx() }), properties = PopupProperties(focusable = false)) {

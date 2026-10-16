@@ -117,7 +117,7 @@ fun ZoenApp(model: ZoenViewModel, deepLink: String?, consumed: () -> Unit) {
             }
             consumed()
         }
-        BoxWithConstraints(Modifier.fillMaxSize()) {
+        ZoenGlassBackdrop { BoxWithConstraints(Modifier.fillMaxSize()) {
             val unread = state.spaces.sumOf { it.unread.toLong() }.coerceAtMost(100L).toInt()
             val rail = maxWidth >= 600.dp
             val split = maxWidth >= 840.dp
@@ -144,29 +144,17 @@ fun ZoenApp(model: ZoenViewModel, deepLink: String?, consumed: () -> Unit) {
                     snackbarHost = { if (stack.lastOrNull() !is VersionPreview) SnackbarHost(snackbar,
                         Modifier.padding(bottom = with(density) { snackbarClearance.bottomPx.toDp() }).testTag("app-snackbar")) },
                     bottomBar = {
-                        if (!rail && stack.size == 1) NavigationBar(modifier = Modifier.heightIn(min = navigationHeight), containerColor = MaterialTheme.colorScheme.surface, tonalElevation = 0.dp) {
-                            IconButton(onClick = { navigate(Search) }, modifier = Modifier.testTag("bar-search")) {
-                                Icon(Icons.Rounded.Search, stringResource(R.string.search))
-                            }
-                            Tab.main.forEach { target ->
-                                val item: @Composable RowScope.() -> Unit = {
-                                    NavigationBarItem(selected = tab == target, onClick = { if (tab != target) haptics.perform(ZoenFeedback.Selection); tab = target }, icon = { TabIcon(target, if (target == Tab.Chats) unread else state.pending, tab == target) }, label = {
-                                        Text(tabName(target), maxLines = 1, overflow = TextOverflow.Ellipsis,
-                                            style = if (largeNavigationText) MaterialTheme.typography.labelSmall else MaterialTheme.typography.labelMedium)
-                                    }, alwaysShowLabel = !largeNavigationText, modifier = Modifier.testTag("tab:${target.name}"))
-                                }
-                                if (largeNavigationText) Row(Modifier.weight(if (tab == target) 2.5f else 1f)) { item() }
-                                else item()
-                            }
-                            Box(Modifier.padding(horizontal = 8.dp), contentAlignment = Alignment.Center) {
-                                PlusVoiceButton({ quickActions = true }, { voiceStart++ }, { voiceRelease++ }, { voiceLock++ }, { voiceCancel++ }, compact = true)
-                            }
+                        if (!rail && stack.size == 1) AppleBottomBar(tab, unread, { target ->
+                            if (tab != target) haptics.perform(ZoenFeedback.Selection)
+                            tab = target
+                        }, { navigate(Search) }) {
+                            PlusVoiceButton({ quickActions = true }, { voiceStart++ }, { voiceRelease++ }, { voiceLock++ }, { voiceCancel++ }, compact = true)
                         }
                     },
                     contentWindowInsets = WindowInsets(0, 0, 0, 0),
                 ) { padding ->
                     CompositionLocalProvider(LocalSnackbarClearance provides snackbarClearance) { NavDisplay(
-                        modifier = Modifier.fillMaxSize().padding(padding), backStack = stack, onBack = back,
+                        modifier = Modifier.fillMaxSize().padding(top = padding.calculateTopPadding()).zoenGlassSource(), backStack = stack, onBack = back,
                         entryProvider = entryProvider {
                             entry<Home> {
                                 when (tab) {
@@ -208,24 +196,14 @@ fun ZoenApp(model: ZoenViewModel, deepLink: String?, consumed: () -> Unit) {
                 xyz.tironi.zoen.media.VoiceComposer(model, chat.id, Modifier.padding(end = 16.dp, bottom = 140.dp), startSignal = voiceStart, releaseSignal = voiceRelease, lockSignal = voiceLock, cancelSignal = voiceCancel, showTrigger = false, onSent = { navigate(Chat(chat.id)) })
             }
         }
-        if (quickActions) ModalBottomSheet(onDismissRequest = { quickActions = false }) {
-            Column(Modifier.fillMaxWidth().weight(1f, fill = false).verticalScroll(rememberScrollState()).testTag("quickActions")) {
-                Text(stringResource(R.string.app_name), Modifier.padding(horizontal = 24.dp, vertical = 8.dp), style = MaterialTheme.typography.headlineMedium)
-                val actions = listOf(
-                    Triple(Icons.Rounded.Search, R.string.search, Search),
-                    Triple(Icons.Rounded.AutoAwesome, R.string.ask_zoen, state.zoenChat?.let { Chat(it.id) }),
-                    Triple(Icons.AutoMirrored.Rounded.Chat, R.string.new_chat, NewChat),
-                    Triple(Icons.Rounded.GroupAdd, R.string.new_space, NewSpace),
-                    Triple(Icons.Rounded.SmartToy, R.string.agents, Agents),
-                    Triple(Icons.Rounded.FolderOpen, R.string.files, Files),
-                    Triple(Icons.Rounded.PersonOutline, R.string.context, Context),
-                    Triple(Icons.Rounded.Widgets, R.string.widgets, Widgets),
-                )
-                actions.forEach { (icon, label, route) ->
-                    if (route != null) SettingsRow(icon, stringResource(label), onClick = { quickActions = false; navigate(route) })
-                }
-                Spacer(Modifier.height(24.dp))
-            }
+        if (quickActions) {
+            AppleActionFan(onDismiss = { quickActions = false }, actions = listOf(
+                FanAction(Icons.Rounded.AutoAwesome, stringResource(R.string.ask_zoen)) { state.zoenChat?.let { navigate(Chat(it.id)) } },
+                FanAction(Icons.Rounded.Group, stringResource(R.string.agents)) { navigate(Agents) },
+                FanAction(Icons.Rounded.FolderOpen, stringResource(R.string.files)) { navigate(Files) },
+                FanAction(Icons.Rounded.PersonOutline, stringResource(R.string.context)) { navigate(Context) },
+            ))
+        }
         }
     }
 }
