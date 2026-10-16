@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { message as reason } from './boundary.ts';
-import type { Conversation, Message, Messages } from './messages.ts';
+import type { Conversation, FileDoc, Message, Messages, VoiceMeta } from './messages.ts';
+import { FileView, kindOf, thumbnail, useRecorder } from './media.tsx';
 import { MessageEditor } from './message-editor.tsx';
 import { MessageSearchResults } from './message-search-view.tsx';
 import type { MessageHit } from './message-search.ts';
@@ -29,9 +30,10 @@ function Avatar({ name, size = 44 }: { name: string; size?: number }) {
   return <span className="zm-avatar" aria-hidden="true" style={{ width: size, height: size, fontSize: size * 0.38, background: `oklch(0.93 0.04 ${hue(name)})`, color: `oklch(0.38 0.08 ${hue(name)})` }}>{initials(name)}</span>;
 }
 
-function Icon({ name }: { name: 'send' | 'mic' | 'reply' | 'thread' | 'smile' | 'more' | 'close' | 'pin' | 'mute' | 'archive' | 'back' | 'search' }) {
+function Icon({ name }: { name: 'plus' | 'send' | 'mic' | 'reply' | 'thread' | 'smile' | 'more' | 'close' | 'pin' | 'mute' | 'archive' | 'back' | 'search' }) {
   const p: Record<string, React.ReactNode> = {
     send: <path d="M12 19V5m0 0-6 6m6-6 6 6" />,
+    plus: <path d="M12 5v14M5 12h14" />,
     mic: <><rect x="9" y="3" width="6" height="11" rx="3" /><path d="M5 11a7 7 0 0 0 14 0M12 18v3" /></>,
     reply: <path d="M9 14 4 9l5-5M4 9h10a6 6 0 0 1 6 6v4" />,
     thread: <path d="M21 12a8 8 0 0 1-11.8 7L4 20l1.1-4.6A8 8 0 1 1 21 12Z" />,
@@ -56,8 +58,8 @@ function Ticks({ state }: { state: Message['ticks'] | 'sending' | 'failed' }) {
   </svg>;
 }
 
-export function Bubble({ entry, own, first, onReact, onReply, onThread, onEdit, onDelete, onForward, inThread }: {
-  entry: Message; own: boolean; first: boolean; inThread?: boolean;
+export function Bubble({ entry, own, first, onReact, onReply, onThread, onEdit, onDelete, onForward, inThread, messages }: {
+  entry: Message; messages: Messages | null; own: boolean; first: boolean; inThread?: boolean;
   onReact: (emoji: string | null) => void; onReply: () => void; onThread: () => void; onEdit: () => void; onDelete: () => void; onForward: () => void;
 }) {
   const [picker, setPicker] = useState(false);
@@ -70,10 +72,10 @@ export function Bubble({ entry, own, first, onReact, onReply, onThread, onEdit, 
   return <article className={`zm-row${own ? ' zm-own' : ''}${first ? ' zm-first' : ''}`} data-testid="message" id={`message-${entry.id}`} tabIndex={-1} onMouseLeave={() => { setPicker(false); setMenu(false); }}>
     {!own && first ? <span className="zm-author">{entry.name}</span> : null}
     <div className="zm-bubble-wrap">
-      <div className={`zm-bubble${entry.deleted ? ' zm-deleted' : ''}`}>
+      <div className={`zm-bubble${entry.deleted ? ' zm-deleted' : ''}${entry.file && !entry.deleted ? ` zm-media zm-media-${kindOf(entry.file.mime)}` : ''}`}>
         {entry.forwarded && !entry.deleted ? <span className="zm-forwarded">Encaminhada</span> : null}
         {entry.quote && !entry.deleted ? <span className="zm-quote"><b>{entry.quote.name || 'Mensagem'}</b>{entry.quote.text || 'Mensagem apagada'}</span> : null}
-        <span className="zm-text">{entry.deleted ? 'Mensagem apagada' : entry.text}</span>
+        {entry.file && !entry.deleted ? <FileView file={entry.file} messages={messages} /> : <span className="zm-text">{entry.deleted ? 'Mensagem apagada' : entry.text}</span>}
         <span className="zm-meta">{entry.edited && !entry.deleted ? 'editada · ' : ''}<time dateTime={new Date(entry.at_ms).toISOString()}>{time(entry.at_ms)}</time>{own ? <Ticks state={state} /> : null}</span>
       </div>
       {ordered && !entry.deleted ? <div className="zm-actions" role="toolbar" aria-label="Ações da mensagem">
@@ -98,9 +100,10 @@ export function Bubble({ entry, own, first, onReact, onReply, onThread, onEdit, 
       </div> : null}
       {menu ? <div className="zm-menu" role="menu">
         <button role="menuitem" onClick={() => { setMenu(false); onForward(); }}>Encaminhar</button>
-        <button role="menuitem" onClick={() => { setMenu(false); void navigator.clipboard?.writeText(entry.text); }}>Copiar</button>
-        {own ? <><button role="menuitem" onClick={() => { setMenu(false); onEdit(); }}>Editar</button>
-          <button role="menuitem" className="zm-danger" onClick={() => { setMenu(false); onDelete(); }}>Apagar para todos</button></> : null}
+        {entry.file ? null : <button role="menuitem" onClick={() => { setMenu(false); void navigator.clipboard?.writeText(entry.text); }}>Copiar</button>}
+        {own && !entry.file ? <><button role="menuitem" onClick={() => { setMenu(false); onEdit(); }}>Editar</button>
+          </> : null}
+        {own ? <button role="menuitem" className="zm-danger" onClick={() => { setMenu(false); onDelete(); }}>Apagar para todos</button> : null}
       </div> : null}
     </div>
     {entry.reactions.length ? <div className="zm-reactions">{entry.reactions.map((r) => <button key={r.emoji} className={r.mine ? 'zm-on' : ''} aria-label={`Ver quem reagiu com ${r.emoji}: ${r.count}`} onClick={() => setDetails(true)}>{r.emoji}{r.count > 1 ? <span>{r.count}</span> : null}</button>)}</div> : null}
@@ -123,10 +126,25 @@ export function Bubble({ entry, own, first, onReact, onReply, onThread, onEdit, 
   </article>;
 }
 
-function Composer({ placeholder, disabled, reply, cancelReply, submit, autoFocus }: {
+type Outgoing = { name: string; mime: string; bytes: Uint8Array; thumb?: Uint8Array | null; voice?: VoiceMeta };
+function Composer({ placeholder, disabled, reply, cancelReply, submit, autoFocus, attach }: {
   placeholder: string; disabled: boolean; reply?: Message | null; cancelReply?: () => void; autoFocus?: boolean;
-  submit: (text: string) => Promise<void>;
+  submit: (text: string) => Promise<void>; attach?: (file: Outgoing) => Promise<void>;
 }) {
+  const [sending, setSending] = useState('');
+  const picker = useRef<HTMLInputElement>(null);
+  const share = (out: Outgoing, label: string) => { if (!attach) return Promise.resolve(); setSending(label); setError('');
+    return attach(out).catch((e: unknown) => setError(reason(e))).finally(() => setSending('')); };
+  const files = async (list: FileList | File[]) => {
+    for (const f of Array.from(list)) {
+      const bytes = new Uint8Array(await f.arrayBuffer());
+      await share({ name: f.name || 'arquivo', mime: f.type || 'application/octet-stream', bytes, thumb: await thumbnail(f) },
+        kindOf(f.type) === 'image' ? 'Enviando foto…' : kindOf(f.type) === 'video' ? 'Enviando vídeo…' : 'Enviando arquivo…');
+    }
+  };
+  const recorder = useRecorder((clip) => { if (clip.seconds < 0.6) return; void share({ name: `Mensagem de voz.${clip.mime.includes('mp4') ? 'm4a' : 'webm'}`, mime: clip.mime, bytes: clip.bytes,
+    voice: { ms: Math.round(clip.seconds * 1000), levels: clip.levels, transcript: '', reply: reply?.entry ? { to: reply.entry, thread: false } : null } }, 'Enviando mensagem de voz…'); },
+    (why) => setError(why));
   const [draft, setDraft] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
@@ -139,25 +157,38 @@ function Composer({ placeholder, disabled, reply, cancelReply, submit, autoFocus
     setBusy(true); setError('');
     void submit(draft).then(() => setDraft('')).catch((e: unknown) => setError(reason(e))).finally(() => { setBusy(false); field.current?.focus(); });
   }
-  return <div className="zm-composer-zone">
+  return <div className="zm-composer-zone" onDragOver={(e) => { if (attach && e.dataTransfer.types.includes('Files')) e.preventDefault(); }}
+    onDrop={(e) => { if (!attach || !e.dataTransfer.files.length) return; e.preventDefault(); void files(e.dataTransfer.files); }}>
     {reply ? <div className="zm-replying"><span><b>{`Respondendo a ${reply.name}`}</b>{reply.text}</span>
       <button aria-label="Cancelar" onClick={() => { setDraft(''); cancelReply?.(); }}><Icon name="close" /></button></div> : null}
     {error ? <p className="zm-error" role="alert">{error}</p> : null}
-    <form className="zm-composer" onSubmit={(e) => { e.preventDefault(); go(); }}>
+    {sending ? <p className="zm-sending" role="status">{sending}</p> : null}
+    {recorder.recording ? <div className="zm-composer zm-recording" role="group" aria-label="Gravando mensagem de voz">
+      <button type="button" className="zm-round" aria-label="Descartar gravação" onClick={recorder.cancel}><Icon name="close" /></button>
+      <span className="zm-rec-dot" aria-hidden="true" /><span className="zm-voice-time">{recorder.clock(recorder.seconds)}</span>
+      <span className="zm-wave zm-live" aria-hidden="true">{Array.from({ length: 28 }, (_, i) => recorder.recording!.levels[i - 28 + recorder.recording!.levels.length] ?? 0.08).map((p, i) => <i key={i} style={{ height: `${Math.round(p * 100)}%` }} />)}</span>
+      <button type="button" className="zm-send glass zm-has" aria-label="Enviar mensagem de voz" onClick={recorder.send}><span className="zm-swap"><Icon name="send" /></span></button>
+    </div> : <form className="zm-composer" onSubmit={(e) => { e.preventDefault(); go(); }}>
+      {attach ? <><button type="button" className="zm-attach" aria-label="Anexar foto, vídeo ou arquivo" disabled={disabled} onClick={() => picker.current?.click()}><Icon name="plus" /></button>
+        <input ref={picker} type="file" multiple hidden onChange={(e) => { if (e.target.files) void files(e.target.files); e.target.value = ''; }} /></> : null}
       <label className="zm-field"><span className="zw-sr-only">Mensagem</span>
         <textarea ref={field} rows={1} value={draft} disabled={disabled} placeholder={placeholder} maxLength={32_768} autoFocus={autoFocus}
           onChange={(e) => setDraft(e.target.value)}
+          onPaste={(e) => { if (attach && e.clipboardData.files.length) { e.preventDefault(); void files(e.clipboardData.files); } }}
           onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) { e.preventDefault(); go(); } if (e.key === 'Escape') cancelReply?.(); }} /></label>
-      <button type={has ? 'submit' : 'button'} className={`zm-send glass${has ? ' zm-has' : ''}`} disabled={disabled || busy || !has} aria-label={has ? 'Enviar' : 'Mensagem de voz (em breve na web)'} title={has ? 'Enviar' : 'Mensagem de voz chega em breve na web'}>
+      <button type={has ? 'submit' : 'button'} key={has ? 'send' : 'mic'} className={`zm-send glass${has ? ' zm-has' : ''}`} disabled={disabled || busy || (!has && !attach)}
+        aria-label={has ? 'Enviar' : 'Gravar mensagem de voz'} onClick={has ? undefined : () => void recorder.start()}>
         <span className="zm-swap"><Icon name={has ? 'send' : 'mic'} /></span></button>
-    </form>
+    </form>}
   </div>;
 }
+
+const fileLabel = (f: FileDoc) => ({ image: 'Foto', video: 'Vídeo', audio: 'Mensagem de voz', file: f.name } as const)[kindOf(f.mime)];
 
 function ChatRow({ c, active, prefs, open, set }: { c: Conversation; active: boolean; prefs: Prefs; open: () => void; set: (p: Prefs) => void }) {
   const last = [...c.messages].reverse().find((m) => !m.thread);
   const [menu, setMenu] = useState(false);
-  const preview = last ? (last.deleted ? 'Mensagem apagada' : `${c.kind !== 'direct' && last.name ? `${last.name}: ` : ''}${last.text}`) : c.waiting ? 'Preparando a conversa…' : 'Nenhuma mensagem ainda';
+  const preview = last ? (last.deleted ? 'Mensagem apagada' : `${c.kind !== 'direct' && last.name ? `${last.name}: ` : ''}${last.file ? fileLabel(last.file) : last.text}`) : c.waiting ? 'Preparando a conversa…' : 'Nenhuma mensagem ainda';
   return <li className={`zm-chat${active ? ' zm-active' : ''}${c.unread ? ' zm-unread' : ''}`} onContextMenu={(e) => { e.preventDefault(); setMenu(true); }} onMouseLeave={() => setMenu(false)}>
     <button className="zm-chat-open" onClick={open} aria-current={active ? 'true' : undefined}>
       <Avatar name={c.title} />
@@ -242,7 +273,7 @@ function AccountMessenger({ conversations, identity, name, connected, status, me
       void controller.annotate(space, m.entry, 'Delete').catch(fail);
     },
   };
-  const bubbles = (items: Message[], inThread: boolean) => items.map((m, i) => <Bubble key={m.id} entry={m} own={m.author === identity} inThread={inThread}
+  const bubbles = (items: Message[], inThread: boolean) => items.map((m, i) => <Bubble key={m.id} entry={m} own={m.author === identity} inThread={inThread} messages={messages.current}
     first={i === 0 || items[i - 1]!.author !== m.author}
     onReact={act.react(m)} onDelete={act.del(m)} onForward={() => setForward(m)}
     onReply={() => { setEditing(null); setReply(m); }} onEdit={() => { setReply(null); setEditing(m); }}
@@ -276,6 +307,7 @@ function AccountMessenger({ conversations, identity, name, connected, status, me
         </section>
         <Composer key={conversation.id} placeholder={connected ? 'Mensagem' : 'Reconectando…'} disabled={!connected || !conversation.can_send} reply={reply} autoFocus
           cancelReply={() => { setReply(null); setEditing(null); }}
+          attach={async (file) => { const m = messages.current; if (!m) throw new Error('Recarregue o Zoen.'); await m.sendFile(space, file); if (file.voice?.reply) setReply(null); }}
           submit={async (text) => {
             const m = messages.current; if (!m) throw new Error('Recarregue o Zoen.');
             await m.post({ space, text, ...(reply?.entry ? { replyTo: reply.entry } : {}) }); setReply(null);
@@ -302,8 +334,8 @@ function AccountMessenger({ conversations, identity, name, connected, status, me
     {forward ? <div className="zm-scrim" onClick={() => setForward(null)}><div className="zm-sheet" role="dialog" aria-label="Encaminhar para" onClick={(e) => e.stopPropagation()}>
       <h2>Encaminhar para</h2>
       <ul>{conversations.filter((c) => c.can_send).map((c) => <li key={c.id}><button onClick={() => {
-        const text = forward.text; setForward(null);
-        void messages.current?.post({ space: c.id, text, forwarded: true }).then(() => select(c.id)).catch(fail);
+        const { text, file } = forward; setForward(null);
+        void ((file ? messages.current?.forwardFile(c.id, file) : messages.current?.post({ space: c.id, text, forwarded: true }) ) ?? Promise.resolve()).then(() => select(c.id)).catch(fail);
       }}><Avatar name={c.title} size={32} />{c.title}</button></li>)}</ul>
       <button className="zm-pill" onClick={() => setForward(null)}>Cancelar</button>
     </div></div> : null}

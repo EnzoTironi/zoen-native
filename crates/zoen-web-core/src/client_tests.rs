@@ -199,6 +199,38 @@ fn native_sqlite_welcome_messages_saved_reload_and_removal_use_shared_mls() {
         .unwrap();
     assert_eq!(client.conversations()[0].messages[0].text, "Native to web");
 
+    let sealed =
+        crate::media::seal_file("voice.webm", "audio/webm", b"retained audio", None).unwrap();
+    let chunks = sealed
+        .uploads
+        .iter()
+        .map(|u| (u.blob.clone(), u.sealed.clone()))
+        .collect();
+    // A recording that failed offline must survive without a synced MLS epoch.
+    client.synced = false;
+    let failed = client
+        .queue_failed_file(space, sealed.doc.clone(), 11, "offline".into(), chunks)
+        .unwrap();
+    assert!(failed
+        .frames
+        .iter()
+        .all(|f| !matches!(ClientFrame::decode(f).unwrap(), ClientFrame::Publish { .. })));
+    let restored_failed = Client::new(account.clone(), host.clone(), &failed.snapshot).unwrap();
+    let bytes = restored_failed.local_chunk(&sealed.doc.chunks[0].blob);
+    assert_eq!(
+        crate::media::open_chunk(&sealed.doc.chunks[0], &bytes).unwrap(),
+        b"retained audio"
+    );
+    assert_eq!(
+        restored_failed.conversations()[0]
+            .messages
+            .last()
+            .unwrap()
+            .delivery,
+        "failed"
+    );
+    client.synced = true;
+    client.saved.outbox.retain(|_, p| p.failure.is_none());
     let sending = client.queue_message(space, "Web to native", 11).unwrap();
     let env = sending
         .frames
@@ -273,9 +305,6 @@ fn native_sqlite_welcome_messages_saved_reload_and_removal_use_shared_mls() {
     );
 }
 
-#[path = "mutation_tests.rs"]
-mod mutation_tests;
-
 #[test]
 fn invitation_queues_a_certified_self_add_with_the_original_code_and_no_plain_message_fallback() {
     let identity = NativeSigner::from_secret(&[21; 32]);
@@ -303,6 +332,169 @@ fn invitation_queues_a_certified_self_add_with_the_original_code_and_no_plain_me
     assert!(client
         .queue_message("sp_invite", "plain text forbidden", 3)
         .is_err());
+}
+
+#[test]
+fn native_voice_replies_versions_and_reverts_stay_on_the_original_post() {
+    use roda_types::{FileDoc, ItemContent, ItemKind, ReplyRef, VoiceMeta};
+
+    let identity = NativeSigner::from_secret(&[31; 32]);
+    let host = HostSigner(NativeSigner::from_secret(&[32; 32]));
+    let author = Author::root(identity.clone());
+    let other = Author::root(NativeSigner::from_secret(&[33; 32]));
+    let mut client = Client::new(account(&identity, &host.0), host, "").unwrap();
+    let space = "sp_voice";
+    let mut log = SpaceLog::new(space);
+    let append = |log: &mut SpaceLog, author: &Author, body| {
+        let now = log.next_seq() as i64 + 1;
+        clear(log, author, body, now);
+    };
+    append(
+        &mut log,
+        &author,
+        EventBody::SpaceCreated {
+            title: "Voice fixture".into(),
+            kind: SpaceKind::Group,
+            privacy: Privacy::EndToEnd,
+        },
+    );
+    append(
+        &mut log,
+        &author,
+        EventBody::MessagePosted {
+            message: "msg_root".into(),
+            text: "Bring the tent".into(),
+            attaches: None,
+            reply: None,
+            forwarded: false,
+        },
+    );
+    let root = log.events().last().unwrap().hash.clone();
+    let root_alias = log.events().last().unwrap().client_id.clone();
+    let mut original = crate::media::seal_file("voice.webm", "audio/webm", b"original", None)
+        .unwrap()
+        .doc;
+    original.path = "VoiceNotes/native.webm".into();
+    original.voice = Some(VoiceMeta {
+        ms: 3400,
+        levels: "08ff80".into(),
+        transcript: "See you there".into(),
+        reply: Some(ReplyRef::inline(&root)),
+    });
+    let post = |item: &str, doc: FileDoc| EventBody::ItemCreated {
+        item: item.into(),
+        kind: ItemKind::File,
+        content: ItemContent::File(doc),
+        origin: "Voice message".into(),
+    };
+    append(&mut log, &author, post("it_voice", original.clone()));
+    let entry = log.events().last().unwrap().hash.clone();
+    let mut threaded = original.clone();
+    threaded.voice.as_mut().unwrap().reply = Some(ReplyRef::thread(&root_alias));
+    append(&mut log, &author, post("it_thread", threaded));
+    let thread_entry = log.events().last().unwrap().hash.clone();
+    client.logs.insert(space.into(), log.clone());
+
+    let conversation = &client.conversations()[0];
+    assert_eq!(conversation.messages.len(), 3);
+    let voice = &conversation.messages[1];
+    assert_eq!(voice.file.as_ref(), Some(&original));
+    assert_eq!(voice.quote.as_ref().unwrap().id, root);
+    assert_eq!(voice.quote.as_ref().unwrap().text, "Bring the tent");
+    assert!(voice.thread.is_none());
+    assert!(!voice.edited);
+    assert_eq!(
+        conversation.messages[2].thread.as_deref(),
+        Some(root.as_str())
+    );
+    assert!(conversation.messages[2].quote.is_none());
+    assert_eq!(conversation.messages[0].replies, 1);
+    assert_eq!(
+        client.posted(space, &entry),
+        Some(Some(ReplyRef::inline(&root)))
+    );
+    assert_eq!(
+        client.posted(space, &thread_entry),
+        Some(Some(ReplyRef::thread(&root_alias)))
+    );
+
+    let mut edited = crate::media::seal_file("voice.webm", "audio/webm", b"edited", None)
+        .unwrap()
+        .doc;
+    // Native byte edits clear stale timings/transcript but retain the legacy voice path.
+    edited.path = original.path.clone();
+    let version = |doc: FileDoc| EventBody::ItemVersioned {
+        item: "it_voice".into(),
+        content: ItemContent::File(doc),
+        note: "Trimmed".into(),
+    };
+    append(&mut log, &author, version(edited.clone()));
+    append(&mut log, &other, version(original.clone()));
+    client.logs.insert(space.into(), log.clone());
+    let conversation = &client.conversations()[0];
+    let voice = &conversation.messages[1];
+    assert_eq!(conversation.messages.len(), 3);
+    assert_eq!(voice.entry.as_deref(), Some(entry.as_str()));
+    assert_eq!(voice.file.as_ref(), Some(&edited));
+    assert!(voice.edited);
+    assert_eq!(voice.quote.as_ref().unwrap().id, root);
+
+    let revert = |to_version| EventBody::ItemReverted {
+        item: "it_voice".into(),
+        to_version,
+        note: "Restored".into(),
+    };
+    append(&mut log, &other, revert(1));
+    append(&mut log, &author, revert(0));
+    append(&mut log, &author, revert(99));
+    client.logs.insert(space.into(), log.clone());
+    assert_eq!(
+        client.conversations()[0].messages[1].file.as_ref(),
+        Some(&edited)
+    );
+    append(&mut log, &author, revert(1)); // Version 3 is a copy of version 1.
+    client.logs.insert(space.into(), log.clone());
+    assert_eq!(
+        client.conversations()[0].messages[1].file.as_ref(),
+        Some(&original)
+    );
+    append(&mut log, &author, revert(2)); // Version 4 is a copy of version 2.
+    append(&mut log, &author, revert(3)); // Reverts can target earlier reverts.
+    client.logs.insert(space.into(), log);
+    let conversation = &client.conversations()[0];
+    assert_eq!(conversation.messages.len(), 3);
+    assert_eq!(conversation.messages[1].file.as_ref(), Some(&original));
+    assert!(conversation.messages[1].edited);
+    let native_target = client.logs[space]
+        .events()
+        .iter()
+        .find(|e| e.hash == entry)
+        .unwrap()
+        .client_id
+        .clone();
+    let mut log = client.logs[space].clone();
+    append(
+        &mut log,
+        &other,
+        EventBody::MessageAnnotated {
+            target: native_target.clone(),
+            note: roda_types::Annotation::Delete,
+        },
+    );
+    client.logs.insert(space.into(), log.clone());
+    assert!(!client.conversations()[0].messages[1].deleted);
+    append(
+        &mut log,
+        &author,
+        EventBody::MessageAnnotated {
+            target: native_target,
+            note: roda_types::Annotation::Delete,
+        },
+    );
+    client.logs.insert(space.into(), log);
+    let conversations = client.conversations();
+    assert!(conversations[0].messages[1].deleted);
+    assert!(conversations[0].messages[1].file.is_none());
 }
 
 fn web_fixture() -> (Client<HostSigner>, Author, Author, SpaceLog, String) {

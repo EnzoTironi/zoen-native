@@ -6,12 +6,12 @@ import { fileURLToPath } from 'node:url';
 const directory = resolve(dirname(fileURLToPath(import.meta.url)), 'dist');
 const port = Number(process.env.ZOEN_WEB_PORT ?? 4174);
 const types = new Map([['.html', 'text/html; charset=utf-8'], ['.js', 'text/javascript; charset=utf-8'],
-  ['.css', 'text/css; charset=utf-8'], ['.wasm', 'application/wasm'], ['.json', 'application/json; charset=utf-8']]);
+  ['.css', 'text/css; charset=utf-8'], ['.wasm', 'application/wasm'], ['.json', 'application/json; charset=utf-8'], ['.svg', 'image/svg+xml']]);
 const headers = {
   'Cross-Origin-Opener-Policy': 'same-origin',
   'Cross-Origin-Embedder-Policy': 'require-corp',
   'Cross-Origin-Resource-Policy': 'same-origin',
-  'Content-Security-Policy': "default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; worker-src 'self' blob:; style-src 'self'; img-src 'self' data: blob:; connect-src 'self' https: wss: http://localhost:* http://127.0.0.1:* ws://localhost:* ws://127.0.0.1:*; object-src 'none'; base-uri 'none'; frame-ancestors 'none'",
+  'Content-Security-Policy': "default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; worker-src 'self' blob:; style-src 'self'; img-src 'self' data: blob:; media-src 'self' blob:; connect-src 'self' blob: https: wss: http://localhost:* http://127.0.0.1:* ws://localhost:* ws://127.0.0.1:*; object-src 'none'; base-uri 'none'; frame-ancestors 'none'",
   'X-Content-Type-Options': 'nosniff',
   'Referrer-Policy': 'no-referrer',
   'Cache-Control': 'no-store',
