@@ -1,6 +1,101 @@
 import SwiftUI
 import RodaCore
 
+/// Observes the owned native bar without replacing its delegates or changing layout.
+/// Ambiguous accessibility/image identity deliberately produces no effect.
+private struct NativeTabImageEffects: UIViewControllerRepresentable {
+    var pendingCount: Int
+    func makeUIViewController(context: Context) -> Observer { Observer() }
+    func updateUIViewController(_ controller: Observer, context: Context) {
+        controller.observe(pendingCount: pendingCount)
+    }
+
+    final class Observer: UIViewController, UIGestureRecognizerDelegate {
+        private weak var observedBar: UITabBar?
+        private var previousPending: Int?
+        private lazy var taps: UITapGestureRecognizer = {
+            let recognizer = UITapGestureRecognizer(target: self, action: #selector(tapped(_:)))
+            recognizer.cancelsTouchesInView = false
+            recognizer.delaysTouchesBegan = false
+            recognizer.delaysTouchesEnded = false
+            recognizer.delegate = self
+            return recognizer
+        }()
+        override func loadView() {
+            view = UIView()
+            view.isUserInteractionEnabled = false
+        }
+        func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer,
+                               shouldRecognizeSimultaneouslyWith otherGestureRecognizer: UIGestureRecognizer) -> Bool { true }
+        private func descendants<T: UIView>(_ root: UIView, _: T.Type) -> [T] {
+            root.subviews.flatMap { child in
+                (child as? T).map { [$0] } ?? []
+            } + root.subviews.flatMap { descendants($0, T.self) }
+        }
+        private func bars(_ controller: UIViewController) -> [UITabBar] {
+            let own = (controller as? UITabBarController).map { [$0.tabBar] } ?? []
+            return own + controller.children.flatMap { bars($0) }
+        }
+        private func resolveBar() -> UITabBar? {
+            var root: UIViewController = self
+            while let parent = root.parent { root = parent }
+            let visible = bars(root).filter { !$0.isHidden && $0.alpha > 0 && $0.window != nil }
+            return visible.count == 1 ? visible[0] : nil
+        }
+        private func image(in control: UIControl) -> UIImageView? {
+            let images = descendants(control, UIImageView.self).filter {
+                !$0.isHidden && $0.alpha > 0 && $0.bounds.width > 0 && $0.bounds.height > 0 && $0.image != nil
+            }
+            return images.count == 1 ? images[0] : nil
+        }
+        private func control(title: String, bar: UITabBar) -> UIControl? {
+            let matches = descendants(bar, UIControl.self).filter {
+                !$0.isHidden && $0.alpha > 0 && $0.accessibilityLabel == title
+            }
+            return matches.count == 1 ? matches[0] : nil
+        }
+        func observe(pendingCount: Int) {
+            // Resolve after SwiftUI has attached the representable to its parent.
+            DispatchQueue.main.async { [weak self] in
+                guard let self, let bar = self.resolveBar() else { return }
+                if self.observedBar !== bar {
+                    self.observedBar?.removeGestureRecognizer(self.taps)
+                    bar.addGestureRecognizer(self.taps)
+                    self.observedBar = bar
+                }
+                defer { self.previousPending = pendingCount }
+                guard let old = self.previousPending, pendingCount > old,
+                      !UIAccessibility.isReduceMotionEnabled,
+                      let title = bar.items?.first(where: { $0.image?.isSymbolImage == true && $0.title == String(localized: "Notifications") })?.title,
+                      let control = self.control(title: title, bar: bar),
+                      let image = self.image(in: control), image.image?.isSymbolImage == true else { return }
+                image.addSymbolEffect(.wiggle)
+            }
+        }
+        @objc private func tapped(_ recognizer: UITapGestureRecognizer) {
+            guard recognizer.state == .ended, !UIAccessibility.isReduceMotionEnabled,
+                  let bar = observedBar else { return }
+            let point = recognizer.location(in: bar)
+            let controls = descendants(bar, UIControl.self).filter {
+                !$0.isHidden && $0.alpha > 0 && $0.convert($0.bounds, to: bar).contains(point)
+            }
+            guard controls.count == 1, let control = controls.first,
+                  let title = control.accessibilityLabel,
+                  bar.items?.filter({ $0.title == title }).count == 1,
+                  let image = image(in: control) else { return }
+            if image.image?.isSymbolImage == true {
+                image.addSymbolEffect(.bounce, options: .speed(1.5))
+            } else if title == String(localized: "Profile") {
+                UIView.animate(withDuration: 0.15, animations: {
+                    image.transform = CGAffineTransform(scaleX: 0.96, y: 0.96)
+                }, completion: { _ in
+                    UIView.animate(withDuration: 0.15) { image.transform = .identity }
+                })
+            }
+        }
+    }
+}
+
 @main
 struct ZoeniOSApp: App {
     @UIApplicationDelegateAdaptor(ZoenAppDelegate.self) private var delegate
@@ -97,6 +192,7 @@ struct RootView: View {
                 }
             }
             .tabViewStyle(.tabBarOnly)
+            .background(NativeTabImageEffects(pendingCount: model.pendingCount))
             .onAppear {
                 selectedTab = model.tab
                 previousTab = model.tab
