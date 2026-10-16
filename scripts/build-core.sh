@@ -25,15 +25,21 @@ unset MACOSX_DEPLOYMENT_TARGET
 TARGETS=(aarch64-apple-ios aarch64-apple-ios-sim aarch64-apple-darwin)
 for t in "${TARGETS[@]}"; do
   echo "▸ cargo build roda-ffi ($PROFILE, $t)"
+  case "$t" in
+    aarch64-apple-ios) sdk=iphoneos ;;
+    aarch64-apple-ios-sim) sdk=iphonesimulator ;;
+    aarch64-apple-darwin) sdk=macosx ;;
+  esac
+  target_sdk="$(xcrun --sdk "$sdk" --show-sdk-path)"
   if [[ "$t" == "aarch64-apple-darwin" ]]; then
     zoen_mac_cflags="$(printenv CFLAGS_aarch64-apple-darwin || true)"
     zoen_mac_cxxflags="$(printenv CXXFLAGS_aarch64-apple-darwin || true)"
     zoen_mac_cflags="${zoen_mac_cflags:-${CFLAGS_aarch64_apple_darwin:-${CFLAGS:-}}} -mmacosx-version-min=26.0"
     zoen_mac_cxxflags="${zoen_mac_cxxflags:-${CXXFLAGS_aarch64_apple_darwin:-${CXXFLAGS:-}}} -mmacosx-version-min=26.0"
-    env "CFLAGS_${t}=$zoen_mac_cflags" "CXXFLAGS_${t}=$zoen_mac_cxxflags" \
+    env "SDKROOT=$target_sdk" "CFLAGS_${t}=$zoen_mac_cflags" "CXXFLAGS_${t}=$zoen_mac_cxxflags" \
       cargo build -q -p roda-ffi --profile "$PROFILE" --target "$t"
   else
-    cargo build -q -p roda-ffi --profile "$PROFILE" --target "$t"
+    SDKROOT="$target_sdk" cargo build -q -p roda-ffi --profile "$PROFILE" --target "$t"
   fi
 done
 
