@@ -2,7 +2,7 @@
 
 Original rounded-lens math replaces the white colour-effect overlay. Apple now samples the local material field with a Metal `layerEffect`; Android uses the equivalent AGSL field. Both use IOR 1.5, quadratic edge displacement, ±0.04 RGB dispersion, Schlick Fresnel, a top-left glint, rim, inner shadow and opposite-side caustic. Full surfaces use 26% black shadow, offset (2,41), blur 60, spread -8; small controls have a shallower profile and compact shadow. Custom Apple glass surfaces now use the shared modifier rather than independent system glass effects. Native toolbar glass is system-owned.
 
-The invite action uses the system `PasteButton`, with the secondary glass style and small control size. The system owns paste authorization; there are no direct clipboard reads. The earlier captures below predate this review correction; paste authorization behavior has not been exercised interactively.
+The invite action uses the system `PasteButton`, with the secondary glass style requested and small control size (the system retains its native paste-control rendering). The system owns paste authorization; there are no direct clipboard reads. The earlier captures below predate this review correction; paste authorization behavior has not been exercised interactively.
 
 ## Verified captures
 
@@ -37,6 +37,14 @@ All commands used `DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer` whe
 - PASS: three new glass source-contract regressions fail against the original PR head and pass after the correction; all seven optics/contract tests pass. These are not interactive accessibility or paste tests.
 - PASS: `python3 scripts/check-android-upstream.py --source-only --output /tmp/zoen-upstream-review.json` reports `art_sources_match: true`, no errors. The pre-build source check does not certify generated ABI artifacts.
 - PASS: `python3 scripts/test-android-art-equivalence.py` (four tests), `python3 scripts/test-android-core-contract.py` (six tests), and Apple shader/style compilation for both platforms.
+
+### Review verification and fresh screenshots
+
+- PASS: `scripts/build-core.sh` regenerated the core and bindings, followed by `xcodegen generate --spec apple/project.yml` for the merged source set. Bindings remain untracked build artifacts.
+- PASS: `xcodebuild build -project apple/Zoen.xcodeproj -scheme ZoeniOS -destination 'generic/platform=iOS Simulator' -derivedDataPath .reason/glass-build ARCHS=arm64 ONLY_ACTIVE_ARCH=YES CODE_SIGNING_ALLOWED=NO`. A generic dual-architecture attempt failed because the core package does not include x86_64; the arm64 build succeeds.
+- PASS: the UI journey command above, with `ARCHS=arm64 ONLY_ACTIVE_ARCH=YES` and `-resultBundlePath .reason/glass-review-tests.xcresult`: two tests passed, zero failed. Both the onboarding/paste-control layout and chats/group journeys were rerun. One simulator only, confirmed shut down afterward.
+- Fresh, visually inspected XCTest captures: [onboarding](review-onboarding.png), [chats list](review-chats-list.png), [group chat card](review-group-chat.png). They do not exercise sleeping-pet mode, Reduce Transparency or an actual paste authorization interaction.
+- Publication blocked: the supported PR service rejected reads and publication before execution. Hosted Android API 28/35 checks and generated ABI acceptance remain unverified; no claim of green CI.
 
 ## Material limitation
 
