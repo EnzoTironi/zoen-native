@@ -64,7 +64,7 @@ struct MessageActionsOverlay: View {
                         .background { if emoji == myReaction { Circle().fill(Palette.action.opacity(0.18)) } }
                 }
                 .buttonStyle(PressScale())
-                .accessibilityLabel(emoji == myReaction ? "Remove \(emoji)" : "React \(emoji)")
+                .accessibilityLabel(emoji == myReaction ? String(localized: "Remove \(emoji)") : String(localized: "React \(emoji)"))
             }
         }
         .padding(6)

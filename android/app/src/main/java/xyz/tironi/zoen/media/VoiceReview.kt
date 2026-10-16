@@ -1,5 +1,8 @@
 package xyz.tironi.zoen.media
 
+import xyz.tironi.zoen.ui.GlassButton
+import xyz.tironi.zoen.ui.GlassOutlinedButton
+
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
@@ -93,7 +96,7 @@ fun VoiceReview(session: VoiceSession, model: ZoenViewModel, space: String, repl
                         selection?.takeIf { it.duration >= .05 }?.let { range ->
                             Row(verticalAlignment = Alignment.CenterVertically) {
                                 Text(stringResource(R.string.media_selection, voiceTime(range.start), voiceTime(range.end)), Modifier.weight(1f), style = MaterialTheme.typography.bodySmall)
-                                Button(onClick = { session.change { it.cut(range) }; selection = null }, enabled = !state.busy, modifier = Modifier.testTag("voice-cut-selection")) { Icon(Icons.Rounded.ContentCut, null); Text(stringResource(R.string.media_cut)) }
+                                GlassButton(onClick = { session.change { it.cut(range) }; selection = null }, enabled = !state.busy, modifier = Modifier.testTag("voice-cut-selection")) { Icon(Icons.Rounded.ContentCut, null); Text(stringResource(R.string.media_cut)) }
                             }
                         }
                         Text(stringResource(R.string.media_trim), style = MaterialTheme.typography.titleSmall)
@@ -130,12 +133,12 @@ fun VoiceReview(session: VoiceSession, model: ZoenViewModel, space: String, repl
                 HorizontalDivider()
                 FlowRow(Modifier.fillMaxWidth().padding(16.dp), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     OutlinedIconButton(onClick = { session.cancel() }, enabled = !state.busy) { Icon(Icons.Rounded.DeleteOutline, stringResource(R.string.media_delete_recording)) }
-                    OutlinedButton(onClick = { session.preview() }, enabled = !state.busy && editor.keptDuration >= .3) {
+                    GlassOutlinedButton(onClick = { session.preview() }, enabled = !state.busy && editor.keptDuration >= .3) {
                         Icon(if (current && playback.playing) Icons.Rounded.Pause else Icons.Rounded.PlayArrow, stringResource(if (current && playback.playing) R.string.media_pause else R.string.media_play_preview))
                         Text(voiceDuration(editor.keptDuration))
                     }
-                    if (!state.editing) OutlinedButton(onClick = { session.edit() }, enabled = !state.busy) { Text(stringResource(R.string.edit)) }
-                    Button(onClick = { session.sendNow(model.repository, space, reply, thread, onSent) }, enabled = !state.busy && !state.transcribing && editor.keptDuration >= .3 && !appState.keyMissing, modifier = Modifier.testTag("voice-send")) {
+                    if (!state.editing) GlassOutlinedButton(onClick = { session.edit() }, enabled = !state.busy) { Text(stringResource(R.string.edit)) }
+                    GlassButton(onClick = { session.sendNow(model.repository, space, reply, thread, onSent) }, enabled = !state.busy && !state.transcribing && editor.keptDuration >= .3 && !appState.keyMissing, modifier = Modifier.testTag("voice-send")) {
                         if (state.busy) CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp, color = MaterialTheme.colorScheme.onPrimary)
                         else Icon(Icons.AutoMirrored.Rounded.Send, null)
                         Spacer(Modifier.width(8.dp)); Text(stringResource(R.string.media_send_voice))

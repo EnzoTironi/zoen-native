@@ -114,11 +114,12 @@ struct EditableTileStrip<Item: Identifiable, Tile: View>: View where Item.ID == 
                     }
                 }
                 .scrollTargetLayout()
-                .padding(.horizontal, margin)
                 // Room for the minus badges that sit on the tiles' top-left corners.
                 .padding(.top, editing ? 10 : 0)
                 .animation(reduceMotion ? nil : .spring(response: 0.34, dampingFraction: 0.78), value: shown.map(\.id))
             }
+            .contentMargins(.horizontal, margin, for: .scrollContent)
+            .scrollTargetBehavior(.viewAligned)
             .scrollPosition(id: $leadingId, anchor: .leading)
             .scrollClipDisabled()
             .scrollDisabled(dragging != nil)

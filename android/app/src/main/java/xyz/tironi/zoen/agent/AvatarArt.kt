@@ -1,5 +1,6 @@
 package xyz.tironi.zoen.agent
 
+import xyz.tironi.zoen.ui.GlassCard
 import android.content.Context
 import android.graphics.BitmapFactory
 import android.graphics.ImageDecoder
@@ -119,7 +120,7 @@ fun AvatarArtPicker(kind: String, id: String, selected: AvatarAsset?, close: () 
         Text(stringResource(R.string.agent_choose_drawing), Modifier.padding(24.dp), style = MaterialTheme.typography.titleLarge)
         LazyVerticalGrid(GridCells.Adaptive(88.dp), Modifier.fillMaxWidth().heightIn(max = 440.dp), contentPadding = PaddingValues(20.dp), verticalArrangement = Arrangement.spacedBy(16.dp), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
             items(pool, key = { it.id }) { asset ->
-                Card(onClick = { selection = asset.id; context.getSharedPreferences("zoen", Context.MODE_PRIVATE).edit().putString(AvatarArt.preferenceKey(context, kind, id), asset.id).apply() },
+                GlassCard(onClick = { selection = asset.id; context.getSharedPreferences("zoen", Context.MODE_PRIVATE).edit().putString(AvatarArt.preferenceKey(context, kind, id), asset.id).apply() },
                     colors = CardDefaults.cardColors(containerColor = if (selection == asset.id) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surface)) {
                     AvatarDrawing(asset, 76, animate = false, modifier = Modifier.padding(4.dp))
                 }

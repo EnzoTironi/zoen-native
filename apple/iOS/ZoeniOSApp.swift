@@ -132,7 +132,8 @@ struct RootView: View {
     private func stack(for t: AppTab) -> some View {
         NavigationStack(path: Binding(get: { model.path(t) }, set: { model.setPath(t, $0) })) {
             root(t)
-                .safeAreaInset(edge: .bottom, spacing: 0) { Color.clear.frame(height: 74) }
+                // Chats reserves the bar directly on its scroll view.
+                .safeAreaInset(edge: .bottom, spacing: 0) { Color.clear.frame(height: t == .conversations ? 0 : 74) }
                 .navigationDestination(for: Route.self) { route in destination(route) }
         }
     }
@@ -321,6 +322,8 @@ struct ZoenBottomBar: View {
         }
         .padding(.horizontal, Self.inset)
         .padding(.bottom, Self.bottom)
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("bottom-bar")
         .onChange(of: model.chatSearch) { _, open in fieldFocused = open }
         .onAppear { if model.chatSearch { fieldFocused = true } }
     }

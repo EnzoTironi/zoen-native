@@ -15,6 +15,7 @@ enum MessageSwipeIntent: Equatable { case reply, thread }
 /// ignored, and only a mostly-horizontal motion locks in, so vertical scrolling stays free.
 struct MessageSwipe: ViewModifier {
     var enabled: Bool
+    var onActions: (() -> Void)? = nil
     var onIntent: (MessageSwipeIntent) -> Void
 
     /// Past this the release counts.
@@ -49,7 +50,7 @@ struct MessageSwipe: ViewModifier {
                     .padding(.leading, 6)
             }
             .simultaneousGesture(drag, isEnabled: enabled)
-            .modifier(SwipeActionsForVoiceOver(on: voiceOver && enabled, onIntent: onIntent))
+            .modifier(SwipeActionsForVoiceOver(on: voiceOver && enabled, onIntent: onIntent, onActions: onActions))
     }
 
     private func icon(_ name: String, active: Bool) -> some View {
@@ -114,40 +115,16 @@ struct MessageSwipe: ViewModifier {
 private struct SwipeActionsForVoiceOver: ViewModifier {
     var on: Bool
     var onIntent: (MessageSwipeIntent) -> Void
+    var onActions: (() -> Void)?
     func body(content: Content) -> some View {
         if on {
             content
                 .accessibilityAction(named: Text("Reply")) { onIntent(.reply) }
                 .accessibilityAction(named: Text("Reply in thread")) { onIntent(.thread) }
+                .accessibilityAction(named: Text("Message actions")) { onActions?() }
         } else {
             content
         }
-    }
-}
-
-struct MessageActionsMenu: View {
-    let author: Persona
-    var onIntent: (MessageSwipeIntent) -> Void
-
-    var body: some View {
-        Menu {
-            Button("Reply", systemImage: "arrowshape.turn.up.left") { onIntent(.reply) }
-            Button("Reply in thread", systemImage: "bubble.left.and.text.bubble.right") { onIntent(.thread) }
-        } label: {
-            Image(systemName: "ellipsis")
-                .font(.body.weight(.semibold))
-                .foregroundStyle(Palette.textSecondary)
-                .frame(width: 44, height: 44)
-                .contentShape(.rect)
-        }
-        #if os(macOS)
-        .menuStyle(.borderlessButton)
-        .menuIndicator(.hidden)
-        #endif
-        .accessibilityLabel(Text("Message actions"))
-        .accessibilityValue(Text(author.name))
-        .accessibilityHint(Text("Reply or open a thread"))
-        .accessibilityIdentifier("message-actions")
     }
 }
 
@@ -333,8 +310,14 @@ struct ThreadSheet: View {
         let grouped = previous?.author.id == e.author.id && e.atMs - (previous?.atMs ?? 0) < 5 * 60_000
         return Group {
             if case .message(let text, let card) = e.kind {
-                MessageRow(author: e.author, text: text, card: card, voice: e.voice.map(VoiceNoteRef.init), atMs: e.atMs, grouped: grouped,
+                MessageRow(author: e.author, text: text, card: card, voice: e.voice.map(VoiceNoteRef.init), atMs: e.atMs, delivery: e.delivery, grouped: grouped,
                            isDirect: false, onOpenItem: { model.openApp($0) })
+                    // Thread replies live only here, so long-press must still offer Copy.
+                    .contextMenu {
+                        if !text.isEmpty {
+                            Button { copyToPasteboard(text) } label: { Label("Copy", systemImage: "doc.on.doc") }
+                        }
+                    }
                     .padding(.top, grouped ? 0 : 8)
             }
         }
@@ -348,3 +331,13 @@ struct ThreadSheet: View {
 }
 
 struct ThreadRef: Identifiable, Equatable { let id: String }
+
+@MainActor
+private func copyToPasteboard(_ text: String) {
+    #if os(iOS)
+    UIPasteboard.general.string = text
+    #elseif os(macOS)
+    NSPasteboard.general.clearContents()
+    NSPasteboard.general.setString(text, forType: .string)
+    #endif
+}

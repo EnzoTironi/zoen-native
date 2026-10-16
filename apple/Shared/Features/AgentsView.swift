@@ -70,7 +70,7 @@ struct AgentLibraryCard: View {
             Spacer(minLength: 6)
             Image(systemName: "chevron.right").font(.caption.weight(.bold)).foregroundStyle(Palette.textTertiary)
         }
-        .solidCard(radius: 20, padding: 14)
+        .glassCard(radius: 20, padding: 14)
         .contentShape(.rect)
     }
 

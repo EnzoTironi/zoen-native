@@ -126,7 +126,10 @@ impl Engine {
             self.store.index_abort();
             return Err(e);
         }
-        self.store.index_commit()?;
+        if let Err(error) = self.store.index_commit() {
+            self.store.index_abort();
+            return Err(error.into());
+        }
         self.index_dirty = false;
         Ok(())
     }
@@ -255,6 +258,92 @@ impl Engine {
         Ok(())
     }
 
+    /// Search one conversation without globally truncating matches before scoping.
+    /// Cursors bind the query, conversation and committed index generation. A changed
+    /// projection explicitly invalidates them rather than silently skipping hits.
+    pub fn search_messages(
+        &mut self,
+        space: &str,
+        query: &str,
+        cursor: Option<&str>,
+        limit: u32,
+    ) -> R<MessageSearchPage> {
+        let invalid = || CoreError::Invalid {
+            reason: "Busca inválida ou desatualizada. Reinicie a busca.".into(),
+        };
+        if !(1..=100).contains(&limit) || query.len() > 512 {
+            return Err(invalid());
+        }
+        self.space_state(space)?;
+        let me = self.me_id()?;
+        if !self.is_member(space, &me) {
+            return Err(CoreError::Forbidden {
+                reason: "Só membros podem buscar nesta conversa.".into(),
+            });
+        }
+        if self.index_dirty {
+            self.reindex()?;
+        }
+        let generation = self.store.search_generation()?;
+        let position: Option<MessageSearchCursor> = cursor
+            .map(|cursor| {
+                if cursor.len() > 4096 {
+                    return Err(invalid());
+                }
+                let position: MessageSearchCursor =
+                    serde_json::from_str(cursor).map_err(|_| invalid())?;
+                if position.space != space
+                    || position.query != query
+                    || position.generation != generation
+                {
+                    return Err(invalid());
+                }
+                Ok(position)
+            })
+            .transpose()?;
+        let mut rows = self.store.search_messages_page(
+            query,
+            space,
+            position
+                .as_ref()
+                .map(|position| (position.at_ms, position.ref_id.as_str())),
+            limit,
+        )?;
+        let has_more = rows.len() > limit as usize;
+        rows.truncate(limit as usize);
+        let next_cursor = if has_more {
+            let row = rows.last().expect("a nonzero limit leaves a row");
+            Some(
+                serde_json::to_string(&MessageSearchCursor {
+                    space: space.into(),
+                    query: query.into(),
+                    generation,
+                    at_ms: row.at_ms,
+                    ref_id: row.ref_id.clone(),
+                })
+                .map_err(|_| invalid())?,
+            )
+        } else {
+            None
+        };
+        let space_title = self.space_state(space)?.title.clone();
+        let hits = rows
+            .into_iter()
+            .map(|row| UniversalHit {
+                kind: row.kind,
+                ref_id: row.ref_id,
+                space_id: Some(row.space),
+                space_title: Some(space_title.clone()),
+                title: row.title,
+                title_snippet: row.title_snippet,
+                snippet: row.snippet,
+                at_ms: row.at_ms,
+                persona: Some(self.persona(&row.author)),
+            })
+            .collect();
+        Ok(MessageSearchPage { hits, next_cursor })
+    }
+
     /// Searches messages, people, agents, spaces, items and mini-apps on this device.
     /// `kinds` empty = all; `limit` per kind.
     pub fn universal_search(
@@ -307,6 +396,15 @@ impl Engine {
             took_us: started.elapsed().as_micros() as u64,
         })
     }
+}
+
+#[derive(serde::Serialize, serde::Deserialize)]
+struct MessageSearchCursor {
+    space: String,
+    query: String,
+    generation: u64,
+    at_ms: i64,
+    ref_id: String,
 }
 
 /// What a message contributes to the index: voice notes by their transcript, background
