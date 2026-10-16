@@ -12,6 +12,13 @@ Object.defineProperty(globalThis, 'navigator', { configurable: true, value: dom.
 const { createElement: h, act } = await import('react');
 const { createRoot } = await import('react-dom/client');
 const { NativeNotifications, NativeProfile, NativeSpacesDirectory, nativeOpenTasks, nativeConnectionLabel } = await import(pathToFileURL(output).href);
+test('connection labels preserve unknown sync and outbox capabilities', () => {
+  assert.equal(nativeConnectionLabel({ state: 'online', synced: null, pending: null }), 'Connected · sync status unavailable');
+  assert.equal(nativeConnectionLabel({ state: 'offline', synced: null, pending: null }), 'Offline');
+  assert.equal(nativeConnectionLabel({ state: 'online', synced: false, pending: 0 }), 'Syncing…');
+  assert.equal(nativeConnectionLabel({ state: 'online', synced: true, pending: 0 }), 'Connected');
+  assert.equal(nativeConnectionLabel({ state: 'offline', synced: false, pending: 2 }), 'Offline · 2 queued');
+});
 const root = createRoot(document.getElementById('root')!);
 const text = () => document.getElementById('root')!.textContent!;
 const person = { id: '12345678901234567890', kind: 'person', name: 'Owner', handle: 'owner' };
