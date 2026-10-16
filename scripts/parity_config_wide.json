@@ -1,0 +1,6 @@
+{
+  "viewport": "wide-ipad-landscape",
+  "size": [1376, 988],
+  "ios": {"os_bar_crop": [0, 48, 0, 40]},
+  "web": {"os_bar_crop": [0, 0, 0, 0]}
+}
