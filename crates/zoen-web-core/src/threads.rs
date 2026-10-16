@@ -231,6 +231,13 @@ impl<S: Signer> Client<S> {
 #[path = "thread_tests.rs"]
 mod tests;
 
+#[test]
+fn mention_suffix_dot_is_part_of_a_handle() {
+    assert!(!mentions("@fixture.other", "fixture"));
+    assert!(mentions("@fixture.other", "fixture.other"));
+    assert!(mentions("Hi @fixture!", "fixture"));
+}
+
 fn mentions(text: &str, handle: &str) -> bool {
     if handle.is_empty() {
         return false;
@@ -241,6 +248,6 @@ fn mentions(text: &str, handle: &str) -> bool {
         let before = lower[..i].chars().next_back();
         let after = lower[i + needle.len()..].chars().next();
         !before.is_some_and(|c| c.is_alphanumeric() || c == '_' || c == '.')
-            && !after.is_some_and(|c| c.is_alphanumeric() || c == '_')
+            && !after.is_some_and(|c| c.is_alphanumeric() || c == '_' || c == '.')
     })
 }

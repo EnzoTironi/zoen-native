@@ -96,7 +96,7 @@ struct SpaceView: View {
                                           withAnimation(reduceMotion ? nil : .spring(response: 0.35, dampingFraction: 0.8)) { replyTo = entry }
                                           composerFocused = true
                                       case .thread:
-                                          thread = ThreadRef(id: entry.id)
+                                          thread = ThreadRef(id: entry.inThread ?? entry.id)
                                       }
                                   },
                                   onLongPress: { actionTarget = entry },

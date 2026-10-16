@@ -367,8 +367,15 @@ struct ThreadSheet: View {
     private func reload() {
         var loaded = (try? model.core.thread(spaceId: spaceId, rootId: rootId)) ?? []
         if let root = loaded.first, root.threadUnread > 0 {
-            model.perform { try model.core.markThreadRead(spaceId: spaceId, rootId: rootId) }
-            loaded = (try? model.core.thread(spaceId: spaceId, rootId: rootId)) ?? []
+            do {
+                try model.core.markThreadRead(spaceId: spaceId, rootId: rootId)
+                model.refresh()
+                loaded = (try? model.core.thread(spaceId: spaceId, rootId: rootId)) ?? loaded
+            } catch {
+                // perform() refreshes even on failure, restarting this revision task
+                // with the same unread root forever. Leave revision unchanged here.
+                model.show(.init(kind: .error, text: error.localizedDescription))
+            }
         }
         withAnimation(reduceMotion ? nil : Motion.wabi) {
             entries = loaded

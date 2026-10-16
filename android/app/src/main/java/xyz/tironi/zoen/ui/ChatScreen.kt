@@ -364,7 +364,7 @@ fun ChatScreen(model: ZoenViewModel, state: AppState, spaceId: String, navigate:
                                 HorizontalDivider(Modifier.weight(1f))
                             }
                             Box(Modifier.animateItem(fadeInSpec = if (motion) androidx.compose.animation.core.tween(180) else null, placementSpec = null, fadeOutSpec = null).testTag("timeline:${entry.id}").background(if (highlight == entry.id) MaterialTheme.colorScheme.secondaryContainer else androidx.compose.ui.graphics.Color.Transparent, RoundedCornerShape(16.dp))) {
-                                TimelineRow(model, spaceId, entry, navigate, onReply = { replyId = entry.id }, onThread = { navigate(Thread(spaceId, entry.id)) }, onQuote = { jumpTo = it }, direct = space.counterpart != null)
+                                TimelineRow(model, spaceId, entry, navigate, onReply = { replyId = entry.id }, onThread = { navigate(Thread(spaceId, entry.inThread ?: entry.id)) }, onQuote = { jumpTo = it }, direct = space.counterpart != null)
                             }
                         }
                     }
