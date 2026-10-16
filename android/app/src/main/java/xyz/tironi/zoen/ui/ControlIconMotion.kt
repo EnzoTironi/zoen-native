@@ -112,7 +112,7 @@ internal fun nativeSymbolForMaterial(name: String): String? = when (name.substri
     "PushPin" -> "pin"
     "PlayArrow" -> "play"
     "Pause" -> "pause"
-    "Storefront" -> "store"
+    "Storefront", "Marketplace" -> "marketplace"
     "Settings" -> "settings"
     "Translate", "Language" -> "language"
     "Contrast" -> "contrast"

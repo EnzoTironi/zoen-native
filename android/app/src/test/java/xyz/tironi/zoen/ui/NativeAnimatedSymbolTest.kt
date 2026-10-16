@@ -11,6 +11,10 @@ class NativeAnimatedSymbolTest {
         assertEquals("language", nativeSymbolForMaterial("Rounded.Translate"))
         assertEquals("devices", nativeSymbolForMaterial("Rounded.Devices"))
     }
+    @Test fun marketplaceUsesStorefrontRatherThanShoppingBag() {
+        assertEquals("marketplace", nativeSymbolForMaterial("Rounded.Storefront"))
+        assertEquals("marketplace", nativeSymbolForMaterial("Rounded.Marketplace"))
+    }
     @Test fun reducedMotionAlwaysUsesStaticVector() {
         assertEquals("", nativeSymbolEffect(false, true, true, true, true, true))
     }
