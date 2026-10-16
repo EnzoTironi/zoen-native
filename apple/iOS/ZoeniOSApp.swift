@@ -64,40 +64,47 @@ struct RootView: View {
     @Environment(AppModel.self) private var model
     @Namespace private var zoom
     @State private var onboarding = OnboardingFlow.shouldShow
-    @State private var size: CGSize = .zero
+    @State private var selectedTab: AppTab = .conversations
+    @State private var previousTab: AppTab = .conversations
 
     private var barVisible: Bool { model.path(model.tab).isEmpty }
 
     var body: some View {
         @Bindable var model = model
         ZStack(alignment: .bottom) {
-            ForEach(AppTab.allCases, id: \.self) { t in
-                if (t != .search || model.tab == .search)
-                    && (t != .activity || (model.tab == .activity && !model.approvalsOpen && !model.notificationsOpen)) {
-                    stack(for: t)
-                        .opacity(model.tab == t ? 1 : 0)
-                        .allowsHitTesting(model.tab == t)
-                        .accessibilityHidden(model.tab != t)
+            TabView(selection: $selectedTab) {
+                Tab(value: AppTab.conversations) { stack(for: .conversations) } label: {
+                    Label { Text("Chats") } icon: { NativeNavigationSymbol(name: "bubble.left.and.bubble.right", selected: selectedTab == .conversations) }
+                }
+                Tab(value: AppTab.files) { stack(for: .files) } label: {
+                    Label { Text("Spaces") } icon: { NativeNavigationSymbol(name: "square.grid.2x2", selected: selectedTab == .files) }
+                }
+                Tab(value: AppTab.activity) { stack(for: .activity) } label: {
+                    Label { Text("Notifications") } icon: { NativeNavigationSymbol(name: "bell", selected: selectedTab == .activity, notificationCount: model.pendingCount) }
+                }
+                    .badge(model.pendingCount)
+                Tab(value: AppTab.you) { stack(for: .you) } label: {
+                    Label { Text("Profile") } icon: { profileTabImage }
+                }
+                Tab("New message", systemImage: "square.and.pencil", value: AppTab.search, role: .search) {
+                    Color.clear
                 }
             }
-
-            if barVisible {
-                // The bar keeps an empty slot for the +; the real trigger sits above the dim
-                // veil so the fan and the + stay bright while everything else dims.
-                ZStack(alignment: .bottomTrailing) {
-                    ZoenBottomBar()
-                    if !model.chatSearch {
-                        RadialBackdrop(isOpen: $model.radialOpen)
-                        FanMenu(isOpen: $model.radialOpen, items: model.radialItems,
-                                triggerSize: ZoenBottomBar.circle, room: (left: size.width - 16 - ZoenBottomBar.circle / 2, right: 16 + ZoenBottomBar.circle / 2)) {
-                            model.handleRadial($0)
-                        }
-                        .padding(.trailing, ZoenBottomBar.inset)
-                        .padding(.bottom, ZoenBottomBar.bottom + (ZoenBottomBar.height - ZoenBottomBar.circle) / 2)
-                        .transition(.scale(scale: 0.6).combined(with: .opacity))
-                    }
+            .onAppear {
+                selectedTab = model.tab
+                previousTab = model.tab
+            }
+            .onChange(of: selectedTab) { _, tab in
+                if tab == .search {
+                    selectedTab = previousTab
+                    model.newChatOpen = true
+                } else {
+                    previousTab = tab
+                    if model.tab != tab { model.select(tab) }
                 }
-                .transition(.move(edge: .bottom).combined(with: .opacity))
+            }
+            .onChange(of: model.tab) { _, tab in
+                if [.conversations, .files, .activity, .you].contains(tab) { selectedTab = tab }
             }
 
             if model.searchOpen {
@@ -111,7 +118,6 @@ struct RootView: View {
                     .transition(.move(edge: .bottom).combined(with: .opacity))
             }
         }
-        .onGeometryChange(for: CGSize.self) { $0.size } action: { size = $0 }
         .animation(.spring(duration: 0.35), value: barVisible)
         // Nothing under the approvals cover is visible: stop its ink/mascot/globe loops so
         // the cards get the whole main thread (sheets below are outside this and keep theirs).
@@ -160,8 +166,12 @@ struct RootView: View {
     private func stack(for t: AppTab) -> some View {
         NavigationStack(path: Binding(get: { model.path(t) }, set: { model.setPath(t, $0) })) {
             root(t)
-                // Chats reserves the bar directly on its scroll view.
-                .safeAreaInset(edge: .bottom, spacing: 0) { Color.clear.frame(height: t == .conversations ? 0 : 74) }
+                .toolbar(barVisible ? .visible : .hidden, for: .tabBar)
+                .toolbar {
+                    if model.path(t).isEmpty {
+                        ToolbarItem(placement: .topBarTrailing) { ConnectionDot() }
+                    }
+                }
                 .navigationDestination(for: Route.self) { route in destination(route) }
         }
     }
@@ -170,12 +180,28 @@ struct RootView: View {
     private func root(_ t: AppTab) -> some View {
         switch t {
         case .conversations: ConversationsScreen()
-        case .files: FilesScreen()
-        case .activity: ActivityScreen()
+        case .files: SpacesDirectoryScreen()
+        case .activity: ActivityScreen(initialList: true, onShowCards: { model.openNotifications() })
         case .agents: AgentsLibraryScreen()
         case .you: YouScreen()
         case .search: SearchScreen(onOpenItem: { id in model.push(.item(id)) })
         case .store: StoreScreen()
+        }
+    }
+
+    private var profileTabImage: some View {
+        Group {
+            if let me = model.me {
+                if let photo = AvatarPhotoStore.load(me.id) {
+                    Image(uiImage: photo).resizable().scaledToFill()
+                        .frame(width: 26, height: 26).clipShape(.circle)
+                } else {
+                    let renderer = ImageRenderer(content: PersonAvatar(persona: me, size: 26))
+                    if let image = renderer.uiImage {
+                        Image(uiImage: image).renderingMode(.original)
+                    }
+                }
+            }
         }
     }
 

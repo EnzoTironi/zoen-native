@@ -11,10 +11,10 @@ enum AppTab: String, Hashable, CaseIterable {
     var title: String {
         switch self {
         case .conversations: String(localized: "Chats")
-        case .files: String(localized: "Files")
-        case .activity: String(localized: "Activity")
+        case .files: String(localized: "Spaces")
+        case .activity: String(localized: "Notifications")
         case .agents: String(localized: "Your agents")
-        case .you: String(localized: "Your context")
+        case .you: String(localized: "Profile")
         case .search: String(localized: "Search")
         case .store: String(localized: "Store")
         }
@@ -740,12 +740,12 @@ final class AppModel {
         #endif
         if let tab = d.string(forKey: "RodaTab") {
             self.tab = switch tab {
-            case "atividade", "activity": .activity
+            case "atividade", "activity", "notifications": .activity
             case "loja", "store", "explore": .store
-            case "comunidades", "communities", "espacos", "spaces": .conversations
+            case "comunidades", "communities", "espacos", "spaces": .files
             case "arquivos", "files": .files
             case "agentes", "agents": .agents
-            case "voce", "you", "contexto": .you
+            case "voce", "you", "contexto", "profile": .you
             case "busca", "search": .search
             default: .conversations
             }

@@ -78,7 +78,7 @@ struct ActivityScreen: View {
                 ApprovalsStackView(showsClose: false, onShowList: { showingList = true })
             }
         }
-        .navigationTitle("Activity")
+        .navigationTitle("Notifications")
     }
 
     private var list: some View {

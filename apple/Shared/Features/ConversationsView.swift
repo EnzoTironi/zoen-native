@@ -335,13 +335,6 @@ struct ConversationsScreen: View {
     var body: some View {
         let searching = model.chatSearch || !model.chatQuery.isEmpty
         VStack(spacing: 0) {
-            // Glass chrome stays put; the refresh band grows beneath it (Snapchat-style).
-            if !searching {
-                HomeHeader()
-                    .padding(.horizontal, 20)
-                    .padding(.top, 4)
-                    .padding(.bottom, 8)
-            }
             ScrollView {
                 VStack(alignment: .leading, spacing: 14) {
                     if !searching {
@@ -355,12 +348,6 @@ struct ConversationsScreen: View {
                 .padding(.top, searching ? 12 : 0)
                 .animation(.spring(duration: 0.4, bounce: 0.15), value: searching)
             }
-            #if os(iOS)
-            // Reserve the floating bar on the scroll view that needs the clearance.
-            .safeAreaInset(edge: .bottom, spacing: 0) {
-                Color.clear.frame(height: ZoenBottomBar.height + ZoenBottomBar.bottom)
-            }
-            #endif
             .contentMargins(.bottom, 12, for: .scrollContent)
             .accessibilityIdentifier("chats-list-scroll")
             .scrollDismissesKeyboard(.interactively)
@@ -370,7 +357,7 @@ struct ConversationsScreen: View {
         .background(NightBackdrop())
         .navigationTitle("Chats")
         #if os(iOS)
-        .toolbar(.hidden, for: .navigationBar)
+        .navigationBarTitleDisplayMode(.large)
         #endif
     }
 }
@@ -505,18 +492,10 @@ struct ConnectionDot: View {
 
     var body: some View {
         let c = model.sync.connection
-        if c.state != "online" {
-            HStack(spacing: 5) {
-                Circle().fill(c.state == "connecting" ? Color.orange : Palette.textTertiary).frame(width: 7, height: 7)
-                Text(c.state == "connecting" ? String(localized: "Connecting") : (c.pending > 0 ? String(localized: "Offline · \(c.pending) queued") : String(localized: "Offline")))
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(Palette.textSecondary)
-            }
-            .padding(.horizontal, 10).padding(.vertical, 6)
-            .glassEffect(.regular, in: .capsule)
-            .help(c.error ?? "")
-            .accessibilityElement(children: .combine)
-            .transition(.opacity.combined(with: .scale(scale: 0.9)))
+        if c.state == "offline", model.sync.account != nil {
+            Circle().fill(Palette.textTertiary).frame(width: 6, height: 6)
+                .accessibilityLabel("Offline")
+                .help(c.error ?? String(localized: "Offline"))
         }
     }
 }

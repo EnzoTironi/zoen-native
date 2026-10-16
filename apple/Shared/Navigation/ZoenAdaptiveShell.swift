@@ -11,7 +11,7 @@ enum ZoenAdaptiveGeometry {
 }
 
 /// The rail stays available when the chat card is closed. Detail navigation and the
-/// Item inspector keep their existing routes; the + fan remains available with ⌘K.
+/// Item inspector keep their existing routes; ⌘K opens New message.
 struct ZoenAdaptiveShell: View {
     @Environment(AppModel.self) private var model
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -158,15 +158,18 @@ struct ZoenAdaptiveShell: View {
         return VStack(spacing: 6) {
             sidebarToggle
                 .padding(.bottom, 4)
-            ForEach([AppTab.conversations, .activity, .store, .files, .agents, .you, .search], id: \.self) { tab in
+            ForEach([AppTab.conversations, .files, .activity, .you], id: \.self) { tab in
                 railButton(tab)
             }
             Spacer(minLength: 8)
             appearanceControl
-            FanMenu(isOpen: $model.radialOpen, items: model.radialItems, triggerSize: 44, arc: 8...88) {
-                search = ""
-                model.handleRadial($0)
+            Button { model.newChatOpen = true } label: {
+                Image(systemName: "square.and.pencil")
+                    .frame(width: 44, height: 44)
+                    .glassEffect(.regular.interactive(), in: .circle)
             }
+            .buttonStyle(.plain)
+            .accessibilityLabel("New message")
             .padding(.top, 8)
         }
         .padding(.vertical, 12)
@@ -177,7 +180,10 @@ struct ZoenAdaptiveShell: View {
         let selected = activeTab == tab
         let badge = tab == .activity ? model.pendingCount : tab == .conversations ? model.spaces.reduce(0) { $0 + Int($1.unread) } : 0
         return Button { select(tab) } label: {
-            Image(systemName: tab.symbol)
+            Group {
+                if tab == .you, let me = model.me { PersonAvatar(persona: me, size: 26) }
+                else { NativeNavigationSymbol(name: tab == .files ? "square.grid.2x2" : tab.symbol, selected: selected, notificationCount: tab == .activity ? model.pendingCount : 0) }
+            }
                 .font(.system(size: 17, weight: .medium))
                 .foregroundStyle(selected ? Palette.action : Palette.textSecondary)
                 .frame(width: 40, height: 36)
@@ -248,7 +254,6 @@ struct ZoenAdaptiveShell: View {
                 Text("Chats").font(.system(size: 14, weight: .semibold))
                 Spacer()
                 ChatInboxFilterMenu(showsLabel: false)
-                if model.sync.account != nil { ConnectionDot() }
                 if case .space(let id)? = model.macSelection {
                     Button { model.go(.participants(id)) } label: {
                         ZoenIcon(.info, size: 16).frame(width: 28, height: 28)
@@ -257,13 +262,6 @@ struct ZoenAdaptiveShell: View {
                     .help("Participants")
                     .accessibilityLabel("Participants")
                 }
-                Button { model.newChatOpen = true } label: {
-                    Image(systemName: "square.and.pencil").frame(width: 28, height: 28)
-                }
-                .buttonStyle(.plain)
-                .disabled(model.sync.account == nil && SyncModel.mode != .demo)
-                .help("New chat (⌘N)")
-                .accessibilityLabel("New Chat")
             }
             .foregroundStyle(Palette.textPrimary)
             .padding(.horizontal, 16).padding(.top, 12).padding(.bottom, 8)
@@ -379,9 +377,9 @@ struct ZoenAdaptiveShell: View {
             MacSearchResults(query: search) { search = ""; searchFocused = false }
         } else {
             switch model.macSelection {
-            case .activity: ActivityScreen()
+            case .activity: ActivityScreen(initialList: true, onShowCards: { model.openNotifications() })
             case .store: StoreScreen()
-            case .files: FilesScreen()
+            case .files: SpacesDirectoryScreen()
             case .agents: AgentsLibraryScreen()
             case .you: YouScreen()
             case .search: UniversalSearchView(embedded: true)

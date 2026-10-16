@@ -128,13 +128,9 @@ struct ZoenMacApp: App {
                     .disabled(model.path(.conversations).isEmpty)
                 Button("Chat with Zoen") { searchCommands?.reset(); if let id = model.zoenSpaceId() { model.go(.space(id)) } }
                     .keyboardShortcut("0", modifiers: .command)
-                Button("Activity") { searchCommands?.reset(); model.select(.activity) }
+                Button("Notifications") { searchCommands?.reset(); model.select(.activity) }
                     .keyboardShortcut("1", modifiers: .command)
-                Button("Create and more") {
-                    withAnimation(NSWorkspace.shared.accessibilityDisplayShouldReduceMotion ? nil : .spring(duration: 0.45, bounce: 0.28)) {
-                        model.radialOpen.toggle()
-                    }
-                }
+                Button("New message") { model.newChatOpen = true }
                     .keyboardShortcut("k", modifiers: .command)
             }
         }
