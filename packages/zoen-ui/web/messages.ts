@@ -20,7 +20,10 @@ function parseMessage(input: unknown) {
   return { id: string(value.id), entry: value.entry ? string(value.entry) : null, author: publicKey(value.author), name: string(value.name), text: string(value.text),
     at_ms: timestamp(value.at_ms), delivery, failure: nullableText(value.failure), ticks: ticks as 'sent' | 'delivered' | 'read' | null,
     edited: value.edited === true, deleted: value.deleted === true, forwarded: value.forwarded === true,
-    reactions: array(value.reactions ?? []).map((r) => { const x = object(r); return { emoji: string(x.emoji), count: integer(x.count), mine: x.mine === true }; }),
+    reactions: array(value.reactions ?? []).map((r) => { const x = object(r); return {
+      emoji: string(x.emoji), count: integer(x.count), mine: x.mine === true,
+      participants: array(x.participants ?? []).map((p) => { const participant = object(p); return { identity: publicKey(participant.identity), name: string(participant.name) }; }),
+    }; }),
     quote: quote ? { id: string(quote.id), name: string(quote.name), text: string(quote.text) } : null,
     thread: value.thread ? string(value.thread) : null, also_in_chat: value.also_in_chat === true,
     thread_following: value.thread_following === true, thread_unread: integer(value.thread_unread ?? 0), thread_mentions: integer(value.thread_mentions ?? 0), replies: integer(value.replies ?? 0),
@@ -171,7 +174,12 @@ export class Messages {
     const conversation = this.conversations.find((c) => c.id === space);
     if (!conversation?.unread) return Promise.resolve();
     const generation = this.generation;
-    return this.enqueue(async () => { await this.apply(await this.core.text({ kind: 'mark_read', space }), generation); }, () => null, false).catch(() => {});
+    return this.enqueue(async () => {
+      let update: string;
+      try { update = await this.core.text({ kind: 'mark_read', space }); }
+      catch { throw Object.assign(new Error('Não deu para marcar a conversa como lida. Tente de novo.'), { soft: true }); }
+      await this.apply(update, generation);
+    }, () => generation !== this.generation || this.connection.kind !== 'ready' ? 'A conexão mudou. Tente de novo.' : null, false);
   }
 
   private act(space: string, operation: Parameters<MessageCore['text']>[0]): Promise<void> {
@@ -188,6 +196,17 @@ export class Messages {
       catch (error) { throw Object.assign(new Error(plain(message(error))), { soft: true }); }
       await this.apply(update, generation);
     }, () => generation !== this.generation || this.connection.kind !== 'ready' ? 'A conexão mudou. Tente de novo.' : null, false);
+  }
+
+  async devices(): Promise<unknown> {
+    if (this.closed) throw new Error('Esta sessão está fechada.');
+    return this.transport.request('devices');
+  }
+
+  async unlinkDevice(device: string): Promise<void> {
+    if (this.closed) throw new Error('Esta sessão está fechada.');
+    if (device === this.session.account.device) throw new Error('Use Sair para fechar este navegador.');
+    await this.transport.request('unlink', device);
   }
 
   async preview(code: string): Promise<Invite> {

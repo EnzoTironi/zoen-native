@@ -31,6 +31,8 @@ use zoen_relay::{
 };
 
 struct BlockedLog {
+    block_presence: AtomicBool,
+    presence_entered: Notify,
     entered: Notify,
     cancelled: Notify,
     reading: AtomicBool,
@@ -101,6 +103,10 @@ impl LogStore for BlockedLog {
         std::future::pending().await
     }
     async fn co_members(&self, _: &str) -> Result<Vec<String>, StoreError> {
+        if self.block_presence.load(Ordering::Acquire) {
+            self.presence_entered.notify_one();
+            std::future::pending::<()>().await;
+        }
         Ok(Vec::new())
     }
     async fn create_invite(
@@ -230,6 +236,8 @@ impl TestRelay {
                 .unwrap()
         };
         let log = Arc::new(BlockedLog {
+            block_presence: AtomicBool::new(false),
+            presence_entered: Notify::new(),
             entered: Notify::new(),
             cancelled: Notify::new(),
             reading: AtomicBool::new(false),
@@ -464,6 +472,51 @@ async fn stalled_operation_revocation(publish: bool) {
         );
     }
     let _ = controller.close(None).await;
+    test.close().await;
+}
+
+/// A stalled bounded presence lookup must not consume the login/frame budget.
+#[tokio::test]
+async fn login_handles_ping_while_presence_is_stalled() {
+    let test = TestRelay::new().await;
+    let primary = Author::device(&Signer::generate(), Signer::generate());
+    let mut first = connect(&test.ws_url, &primary).await;
+    request(
+        &mut first,
+        1,
+        Op::Register {
+            profile: profile(&primary, "ana"),
+        },
+    )
+    .await
+    .unwrap();
+    first.close(None).await.unwrap();
+    test.log.block_presence.store(true, Ordering::Release);
+
+    let (mut socket, ready) = authenticate(&test.ws_url, &primary).await;
+    assert!(matches!(
+        ready,
+        ServerFrame::Ready {
+            registered: true,
+            ..
+        }
+    ));
+    tokio::time::timeout(Duration::from_secs(1), test.log.presence_entered.notified())
+        .await
+        .expect("login should start its presence snapshot");
+    // Much shorter than co_members' two-second deadline: this tests decoupling,
+    // not merely a smaller presence timeout. Use the real socket/session path.
+    send(&mut socket, ClientFrame::Ping).await;
+    tokio::time::timeout(Duration::from_millis(500), async {
+        loop {
+            if matches!(recv(&mut socket).await, Some(ServerFrame::Pong { .. })) {
+                break;
+            }
+        }
+    })
+    .await
+    .expect("presence must not block login frame handling");
+    socket.close(None).await.unwrap();
     test.close().await;
 }
 

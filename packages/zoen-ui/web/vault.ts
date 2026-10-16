@@ -102,12 +102,18 @@ export class BrowserVault {
     return openSession(encrypted, this.sealingKey);
   }
 
-  async save(session: StoredSession): Promise<void> {
+  async save(session: StoredSession, signal?: AbortSignal): Promise<void> {
+    signal?.throwIfAborted();
     const encrypted = await sealSession(session, this.sealingKey);
+    signal?.throwIfAborted();
     const transaction = this.db.transaction('vault', 'readwrite', { durability: 'strict' });
     const done = completed(transaction);
-    transaction.objectStore('vault').put(encrypted, 'session');
-    await done;
+    const abort = () => { try { transaction.abort(); } catch { /* Already committed or aborted. */ } };
+    signal?.addEventListener('abort', abort, { once: true });
+    try {
+      transaction.objectStore('vault').put(encrypted, 'session');
+      await done;
+    } finally { signal?.removeEventListener('abort', abort); }
   }
 
   close(): void { this.db.close(); }

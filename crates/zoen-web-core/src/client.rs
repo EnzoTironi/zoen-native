@@ -72,6 +72,13 @@ pub struct Reaction {
     emoji: String,
     count: usize,
     mine: bool,
+    participants: Vec<ReactionParticipant>,
+}
+
+#[derive(Serialize)]
+pub struct ReactionParticipant {
+    identity: String,
+    name: String,
 }
 
 #[derive(Serialize)]
@@ -153,6 +160,8 @@ pub struct Client<S> {
     synced: bool,
     sent: BTreeSet<String>,
     packages_in_flight: bool,
+    /// Ephemeral receipt announcements are connection-local, never durable acknowledgements.
+    announced_receipts: BTreeMap<String, (u64, u64)>,
 }
 
 impl<S: Signer> Client<S> {
@@ -204,6 +213,7 @@ impl<S: Signer> Client<S> {
             synced: false,
             sent: BTreeSet::new(),
             packages_in_flight: false,
+            announced_receipts: BTreeMap::new(),
         };
         client.device()?;
         Ok(client)
@@ -462,6 +472,17 @@ impl<S: Signer> Client<S> {
             .filter(|e| matches!(e.body, EventBody::MessagePosted { .. }))
             .map(|e| e.author.clone())
             .ok_or("That message is no longer available.")?;
+        if self.logs.get(space).is_some_and(|log| log.events().iter().any(|event| matches!(
+            &event.body, EventBody::MessageAnnotated { target: to, note: roda_types::Annotation::Delete }
+                if to == target && event.author == author
+        ))) {
+            return Err("That message is no longer available.".into());
+        }
+        if let roda_types::Annotation::React { emoji } = &note {
+            if emoji.trim().is_empty() || emoji.len() > 32 {
+                return Err("Choose an emoji of up to 32 bytes.".into());
+            }
+        }
         if note.author_only() && author != self.account.identity {
             return Err("Only the person who sent this message can change it.".into());
         }
@@ -534,10 +555,7 @@ impl<S: Signer> Client<S> {
             .or_default()
             .entry(me)
             .or_default();
-        if mine.1 >= last {
-            return self.update(Vec::new());
-        }
-        *mine = (mine.0.max(last), last);
+        *mine = (mine.0.max(last), mine.1.max(last));
         self.update(vec![ClientFrame::Ephemeral {
             space: space.into(),
             kind: roda_proto::EphemeralKind::Read { seq: last },
@@ -560,16 +578,27 @@ impl<S: Signer> Client<S> {
                 .or_default()
                 .entry(me.clone())
                 .or_default();
-            if mine.0 < last {
-                mine.0 = last;
+            mine.0 = mine.0.max(last);
+            let announced = self.announced_receipts.get(space).copied();
+            if announced.is_none_or(|mark| mark.0 < mine.0) {
                 frames.push(
                     ClientFrame::Ephemeral {
                         space: space.clone(),
-                        kind: roda_proto::EphemeralKind::Delivered { seq: last },
+                        kind: roda_proto::EphemeralKind::Delivered { seq: mine.0 },
                     }
                     .encode(),
                 );
             }
+            if mine.1 > 0 && announced.is_none_or(|mark| mark.1 < mine.1) {
+                frames.push(
+                    ClientFrame::Ephemeral {
+                        space: space.clone(),
+                        kind: roda_proto::EphemeralKind::Read { seq: mine.1 },
+                    }
+                    .encode(),
+                );
+            }
+            self.announced_receipts.insert(space.clone(), *mine);
         }
         frames
     }
@@ -590,6 +619,7 @@ impl<S: Signer> Client<S> {
     pub fn bootstrap(&mut self) -> Result<Update, String> {
         self.synced = false;
         self.sent.clear();
+        self.announced_receipts.clear();
         self.packages_in_flight = false;
         if !self.saved.packages_published && self.saved.packages.is_none() {
             self.prepare_packages(true)?;
@@ -1050,7 +1080,7 @@ impl<S: Signer> Client<S> {
                 match note {
                     roda_types::Annotation::Edit { text } if !f.deleted => f.text = Some(text.clone()),
                     roda_types::Annotation::Delete => { f.deleted = true; f.text = None; f.reactions.clear(); }
-                    roda_types::Annotation::React { emoji } if !f.deleted => { f.reactions.insert(event.author.clone(), emoji.clone()); }
+                    roda_types::Annotation::React { emoji } if !f.deleted && !emoji.trim().is_empty() && emoji.len() <= 32 => { f.reactions.insert(event.author.clone(), emoji.clone()); }
                     roda_types::Annotation::Unreact => { f.reactions.remove(&event.author); }
                     _ => {}
                 }
@@ -1073,12 +1103,19 @@ impl<S: Signer> Client<S> {
                     view.deleted = f.deleted;
                     if f.deleted { view.text.clear(); }
                     if let Some(text) = &f.text { view.text = text.clone(); view.edited = true; }
-                    let mut counts: BTreeMap<&str, (usize, bool)> = BTreeMap::new();
+                    let mut groups: BTreeMap<&str, Vec<ReactionParticipant>> = BTreeMap::new();
                     for (who, emoji) in &f.reactions {
-                        let c = counts.entry(emoji.as_str()).or_default();
-                        c.0 += 1; c.1 |= who == me;
+                        let name = if who == me { self.account.name.clone() } else {
+                            self.saved.profiles.get(who).map(|profile| {
+                                if profile.name.is_empty() { format!("@{}", profile.handle) } else { profile.name.clone() }
+                            }).unwrap_or_else(|| "Alguém".into())
+                        };
+                        groups.entry(emoji.as_str()).or_default().push(ReactionParticipant { identity: who.clone(), name });
                     }
-                    view.reactions = counts.into_iter().map(|(emoji, (count, mine))| Reaction { emoji: emoji.into(), count, mine }).collect();
+                    view.reactions = groups.into_iter().map(|(emoji, participants)| Reaction {
+                        emoji: emoji.into(), count: participants.len(),
+                        mine: participants.iter().any(|participant| participant.identity == *me), participants,
+                    }).collect();
                 }
                 Some(view)
             }).collect::<Vec<_>>();

@@ -5,6 +5,7 @@ export function parsePending(json: string) {
   return {
     device: publicKey(value.device), relay: string(value.relay), hpke_secret: string(value.hpke_secret),
     secret: string(value.secret), code: string(value.code), check: string(value.check), box_id: string(value.box_id),
+    expires_at_ms: integer(value.expires_at_ms ?? 0),
   };
 }
 export type PendingLink = ReturnType<typeof parsePending>;

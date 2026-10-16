@@ -15,6 +15,7 @@ struct MessageActionsOverlay: View {
     @Environment(AppModel.self) private var model
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var shown = false
+    @State private var choosingEmoji = false
 
     static let quick = ["👍", "❤️", "😂", "😮", "😢", "🙏"]
 
@@ -43,6 +44,11 @@ struct MessageActionsOverlay: View {
             .padding(.horizontal, 16)
             .padding(.bottom, 96)
         }
+        .sheet(isPresented: $choosingEmoji) {
+            EmojiReactionPicker(currentEmoji: myReaction) { emoji in
+                react(emoji)
+            }
+        }
         .onAppear {
             Haptics.menuOpen()
             withAnimation(reduceMotion ? .linear(duration: 0.12) : Motion.wabi) { shown = true }
@@ -50,22 +56,26 @@ struct MessageActionsOverlay: View {
     }
 
     private var reactionBar: some View {
-        HStack(spacing: 4) {
+        HStack(spacing: 2) {
             ForEach(Self.quick, id: \.self) { emoji in
                 Button {
-                    Haptics.selectionTick()
-                    let next = emoji == myReaction ? nil : emoji
-                    model.perform { try model.core.react(spaceId: spaceId, messageId: entry.id, emoji: next) }
-                    close()
+                    react(emoji)
                 } label: {
                     Text(emoji)
                         .font(.system(size: 28))
-                        .frame(width: 44, height: 44)
+                        .frame(width: 38, height: 44)
                         .background { if emoji == myReaction { Circle().fill(Palette.action.opacity(0.18)) } }
                 }
                 .buttonStyle(PressScale())
                 .accessibilityLabel(emoji == myReaction ? String(localized: "Remove \(emoji)") : String(localized: "React \(emoji)"))
             }
+            Button { choosingEmoji = true } label: {
+                Image(systemName: "plus")
+                    .font(.title3.weight(.semibold))
+                    .frame(width: 38, height: 44)
+            }
+            .buttonStyle(PressScale())
+            .accessibilityLabel("Mais emojis")
         }
         .padding(6)
         .background(.regularMaterial, in: Capsule())
@@ -117,6 +127,14 @@ struct MessageActionsOverlay: View {
         .buttonStyle(.plain)
     }
 
+    private func react(_ emoji: String) {
+        Haptics.selectionTick()
+        let next = emoji == myReaction ? nil : emoji
+        model.perform { try model.core.react(spaceId: spaceId, messageId: entry.id, emoji: next) }
+        choosingEmoji = false
+        close()
+    }
+
     private func close() {
         withAnimation(reduceMotion ? .linear(duration: 0.1) : Motion.wabi) { shown = false }
         Task { @MainActor in
@@ -126,19 +144,18 @@ struct MessageActionsOverlay: View {
     }
 }
 
-/// Reactions under a bubble: one chip per emoji with its count; mine is tinted, and tapping
-/// it takes mine back.
+/// Reaction chips open participant details, with explicit replace/remove actions.
 struct ReactionChips: View {
     let spaceId: String
     let entry: TimelineEntry
-    @Environment(AppModel.self) private var model
+    @State private var selectedReaction: String?
 
     var body: some View {
         HStack(spacing: 4) {
             ForEach(entry.reactions, id: \.emoji) { r in
                 Button {
                     Haptics.selectionTick()
-                    model.perform { try model.core.react(spaceId: spaceId, messageId: entry.id, emoji: r.mine ? nil : r.emoji) }
+                    selectedReaction = r.emoji
                 } label: {
                     HStack(spacing: 3) {
                         Text(r.emoji).font(.system(size: 14))
@@ -153,10 +170,176 @@ struct ReactionChips: View {
                 }
                 .buttonStyle(PressScale())
                 .accessibilityLabel("\(r.emoji), \(r.people.map(\.name).joined(separator: ", "))")
+                .accessibilityHint("Ver participantes e opções da reação")
                 .transition(.scale(scale: 0.4).combined(with: .opacity))
             }
         }
         .animation(Motion.wabi, value: entry.reactions)
+        .sheet(isPresented: Binding(
+            get: { selectedReaction != nil },
+            set: { if !$0 { selectedReaction = nil } }
+        )) {
+            ReactionDetailsSheet(spaceId: spaceId, entry: entry, initialEmoji: selectedReaction ?? "")
+        }
+    }
+}
+
+/// Full emoji entry uses the system keyboard, so skin tones, flags and joined emoji
+/// are not limited to the curated palette.
+private struct EmojiReactionPicker: View {
+    let currentEmoji: String?
+    var onSelect: (String) -> Void
+    @Environment(\.dismiss) private var dismiss
+    @State private var typedEmoji = ""
+
+    private static let groups: [(title: String, emojis: [String])] = [
+        ("Rostos", ["😀", "😃", "😁", "🥹", "😊", "😍", "🥰", "😘", "😎", "🤔", "🤨", "😴", "😭", "😡", "🤯", "🥳", "🫠", "🫡", "🤗", "🤩", "😅"]),
+        ("Gestos e pessoas", ["👍", "👎", "👏", "🙌", "🙏", "🤝", "💪", "👋", "✌️", "🤞", "🫶", "👌", "🤷", "🤦", "💃", "🕺", "👀", "🧠", "👑", "🫂", "💅"]),
+        ("Corações e símbolos", ["❤️", "🧡", "💛", "💚", "💙", "💜", "🖤", "🤍", "🤎", "🩷", "🩵", "🩶", "💔", "💕", "💯", "✅", "❌", "❓", "❗️", "✨", "🔥"]),
+        ("Animais e natureza", ["🐶", "🐱", "🐼", "🦊", "🦋", "🐝", "🌻", "🌹", "🌱", "🌈", "☀️", "🌙", "⭐️", "🌊"]),
+        ("Comida e atividades", ["☕️", "🍵", "🍕", "🍔", "🍰", "🎂", "🍻", "🥂", "🎉", "🎊", "🎁", "🎯", "⚽️", "🏆", "🎮", "🎵", "🚀", "🏖️", "💻", "📚", "💡"])
+    ]
+
+    private var validEmoji: String? {
+        let value = typedEmoji.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard value.count == 1,
+              value.unicodeScalars.contains(where: {
+                  ($0.properties.isEmoji && $0.value > 0x7F) || $0.value == 0x20E3
+              })
+        else { return nil }
+        return value
+    }
+
+    var body: some View {
+        NavigationStack {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 20) {
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("Qualquer emoji").font(.headline)
+                        Text("Use o teclado de emojis para escolher variações, tons de pele e bandeiras.")
+                            .font(.subheadline)
+                            .foregroundStyle(Palette.textSecondary)
+                        HStack {
+                            TextField("Digite ou cole um emoji", text: $typedEmoji)
+                                .textFieldStyle(.roundedBorder)
+                                .autocorrectionDisabled()
+                                .onSubmit { if let emoji = validEmoji { onSelect(emoji) } }
+                            Button("Usar") { if let emoji = validEmoji { onSelect(emoji) } }
+                                .disabled(validEmoji == nil)
+                        }
+                        if !typedEmoji.isEmpty && validEmoji == nil {
+                            Text("Escolha apenas um emoji.")
+                                .font(.caption)
+                                .foregroundStyle(Palette.textSecondary)
+                        }
+                    }
+                    ForEach(Self.groups.indices, id: \.self) { index in
+                        VStack(alignment: .leading, spacing: 8) {
+                            Text(Self.groups[index].title).font(.headline)
+                            LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 4), count: 7), spacing: 8) {
+                                ForEach(Self.groups[index].emojis, id: \.self) { emoji in
+                                    Button { onSelect(emoji) } label: {
+                                        Text(emoji)
+                                            .font(.system(size: 28))
+                                            .frame(maxWidth: .infinity, minHeight: 44)
+                                            .background {
+                                                if emoji == currentEmoji {
+                                                    RoundedRectangle(cornerRadius: 12).fill(Palette.action.opacity(0.18))
+                                                }
+                                            }
+                                    }
+                                    .buttonStyle(PressScale())
+                                    .accessibilityLabel(emoji == currentEmoji ? "Remover \(emoji)" : "Reagir com \(emoji)")
+                                }
+                            }
+                        }
+                    }
+                }
+                .padding()
+            }
+            .navigationTitle("Escolher reação")
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) { Button("Cancelar") { dismiss() } }
+            }
+        }
+    }
+}
+
+private struct ReactionDetailsSheet: View {
+    let spaceId: String
+    let entry: TimelineEntry
+    let initialEmoji: String
+    @Environment(AppModel.self) private var model
+    @Environment(\.dismiss) private var dismiss
+    @State private var selectedEmoji = ""
+    @State private var choosingEmoji = false
+
+    private var reaction: ReactionDto? {
+        entry.reactions.first { $0.emoji == (selectedEmoji.isEmpty ? initialEmoji : selectedEmoji) }
+    }
+    private var myReaction: String? { entry.reactions.first(where: \.mine)?.emoji }
+
+    var body: some View {
+        NavigationStack {
+            List {
+                Section {
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        HStack(spacing: 12) {
+                            ForEach(entry.reactions, id: \.emoji) { item in
+                                Button { selectedEmoji = item.emoji } label: {
+                                    Text("\(item.emoji) \(item.people.count)")
+                                        .padding(10)
+                                        .background(item.emoji == reaction?.emoji ? Palette.action.opacity(0.18) : .clear, in: Capsule())
+                                }
+                                .buttonStyle(.plain)
+                                .accessibilityLabel("\(item.emoji), \(item.people.count) participantes")
+                                .accessibilityAddTraits(item.emoji == reaction?.emoji ? .isSelected : [])
+                            }
+                        }
+                    }
+                }
+                if let reaction {
+                    Section("Quem reagiu com \(reaction.emoji)") {
+                        ForEach(reaction.people, id: \.id) { person in
+                            HStack(spacing: 12) {
+                                Avatar(persona: person, size: 36)
+                                Text(person.name)
+                                if person.isMe {
+                                    Text("Você").font(.caption).foregroundStyle(Palette.textSecondary)
+                                }
+                            }
+                        }
+                    }
+                    Section {
+                        Button(reaction.mine ? "Remover minha reação" : "Reagir com \(reaction.emoji)") {
+                            react(reaction.mine ? nil : reaction.emoji)
+                        }
+                        Button(myReaction == nil ? "Escolher outra reação" : "Trocar minha reação") {
+                            choosingEmoji = true
+                        }
+                        if myReaction != nil && !reaction.mine {
+                            Button("Remover minha reação", role: .destructive) { react(nil) }
+                        }
+                    }
+                }
+            }
+            .navigationTitle("Reações")
+            .toolbar {
+                ToolbarItem(placement: .confirmationAction) { Button("Fechar") { dismiss() } }
+            }
+            .sheet(isPresented: $choosingEmoji) {
+                EmojiReactionPicker(currentEmoji: myReaction) { emoji in
+                    react(emoji == myReaction ? nil : emoji)
+                }
+            }
+        }
+    }
+
+    private func react(_ emoji: String?) {
+        Haptics.selectionTick()
+        model.perform { try model.core.react(spaceId: spaceId, messageId: entry.id, emoji: emoji) }
+        choosingEmoji = false
+        dismiss()
     }
 }
 

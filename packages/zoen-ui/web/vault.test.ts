@@ -19,12 +19,28 @@ function install(t: test.TestContext) {
   return factory;
 }
 
+test('canceling a save during encryption does not commit a session', async (t) => {
+  const factory = install(t);
+  const vault = await BrowserVault.open();
+  t.after(() => vault.close());
+  const controller = new AbortController();
+  const saving = vault.save({ kind: 'empty' }, controller.signal);
+  controller.abort();
+  await assert.rejects(saving, { name: 'AbortError' });
+  const db = await operation(factory.open(name));
+  t.after(() => db.close());
+  const transaction = db.transaction('vault', 'readonly');
+  const done = complete(transaction);
+  assert.equal(await operation(transaction.objectStore('vault').get('session')), undefined);
+  await done;
+});
+
 test('the vault keeps protected signing keys and encrypted state across an IndexedDB reopen', async (t) => {
   const factory = install(t);
   const first = await BrowserVault.open();
   const device = await first.device();
   const session: StoredSession = { kind: 'pending', pending: { device, relay: 'https://relay.example', hpke_secret: '11'.repeat(32), secret: '22'.repeat(32),
-    code: 'zoen-link:1:fixture', check: '123456', box_id: '33'.repeat(32) } };
+    code: 'zoen-link:1:fixture', check: '123456', box_id: '33'.repeat(32), expires_at_ms: 0 } };
   await first.save(session); first.close();
   const second = await BrowserVault.open();
   t.after(() => second.close());
