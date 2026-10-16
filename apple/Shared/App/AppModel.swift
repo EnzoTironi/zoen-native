@@ -214,7 +214,16 @@ final class AppModel {
     private static func boot() -> (RodaEngine, String?) {
         do {
             Money.locale = AppLocale.tag
+            #if DEBUG
+            // Fixture-only Mac QA must never open or reset a person’s real database.
+            let parityMemory = ProcessInfo.processInfo.environment["ZOEN_PARITY_FIXTURE"] == "native-parity-v1"
+                && UserDefaults.standard.bool(forKey: "RodaParityMemory")
+            let engine = try parityMemory
+                ? RodaEngine.open(path: ":memory:", locale: AppLocale.tag)
+                : RodaEngine.openDefault(locale: AppLocale.tag)
+            #else
             let engine = try RodaEngine.openDefault(locale: AppLocale.tag)
+            #endif
             // The demo story only behind the dev flag (`-RodaDemo YES`); a real install
             // starts empty and creates its account in onboarding.
             if SyncModel.mode == .demo && engine.account() == nil {
