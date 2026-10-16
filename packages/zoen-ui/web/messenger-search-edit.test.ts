@@ -94,7 +94,16 @@ test('native four-tab routing opens production directories and profile without r
 test('inbox filter preserves actual conversation kinds and New message opens the production recipient sheet', async () => {
   const ui = await mount(undefined, conversations, '');
   try {
-    assert.equal(document.querySelector('input[type=search]'), null);
+    const search = document.querySelector('input[aria-label="Search chats"]') as HTMLInputElement;
+    assert.ok(search);
+    assert.ok(document.querySelector('.nw-empty'));
+    assert.equal(document.querySelector('.chat-inbox-search select')?.getAttribute('aria-label'), 'Filter chats');
+    await input(search, 'no matching chat');
+    assert.equal(document.querySelectorAll('.zm-chats > li').length, 0);
+    assert.equal(document.querySelector('.nw-empty'), null, 'query hides native home strip');
+    assert.equal(document.querySelector('.chat-inbox-search')?.getAttribute('data-compact'), 'true');
+    await click(button('Clear search'));
+    assert.equal(search.value, '');
     assert.ok(document.querySelector('.nw-empty'));
     const filter = document.querySelector('[aria-label="Filter chats"]') as HTMLSelectElement;
     await act(async () => { filter.value = 'direct'; filter.dispatchEvent(new dom.window.Event('change', { bubbles: true })); });

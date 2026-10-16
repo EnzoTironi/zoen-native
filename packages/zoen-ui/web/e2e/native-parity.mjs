@@ -76,6 +76,20 @@ try {
       await page.getByRole('combobox', { name: 'Filter chats' }).selectOption('all');
       assert.equal(await page.locator('.zm-chat').count(), 6);
     }
+    if (screen === 'chats') {
+      const search = page.getByRole('searchbox', { name: 'Search chats', exact: true });
+      assert.equal(await search.count(), 1, 'one canonical inbox search in either layout');
+      const filter = page.getByLabel('Filter chats', { exact: true });
+      await search.fill('Marina');
+      assert.equal(await search.inputValue(), 'Marina');
+      assert.equal(await page.locator('.chat-inbox-search').getAttribute('data-compact'), 'true');
+      await filter.selectOption('direct');
+      assert.equal(await filter.inputValue(), 'direct');
+      await page.getByRole('button', { name: 'Clear search', exact: true }).click();
+      await filter.selectOption('all');
+      await search.blur();
+      assert.equal(await search.inputValue(), '');
+    }
     if (screen === 'spaces') {
       const rows = page.getByTestId('spaces-directory').getByRole('button');
       assert.equal(await rows.count(), fixture.spaces.length);

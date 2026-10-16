@@ -1,3 +1,4 @@
+import { ChatInboxSearch } from './chat-inbox-search.tsx';
 import { Fragment, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { voiceHold } from './voice-hold.ts';
 import { message as reason } from './boundary.ts';
@@ -428,20 +429,11 @@ function AccountMessenger({ conversations, identity, name, connected, status, ty
 
   const content = <div className={`zm-app zm-native-production${selected || children || destination !== 'chats' ? ' zm-detail-open' : ''}${root ? ' zm-with-thread' : ''}`} data-root-tab={destination} data-selected-space={selected} data-sync-mode={data.syncMode ?? 'live'} data-connection={JSON.stringify(data.connection)} data-pending-requests={JSON.stringify(data.requests?.filter(request => request.status === 'pending').map(request => ({ agentId: request.agent.id, spaceId: request.spaceId, title: request.title, status: request.status })) ?? null)}>
     <aside className="zm-sidebar" aria-label="Conversas">
+      {!wide ? <ChatInboxSearch query={search} onQuery={setSearch} filter={inboxFilter} onFilter={setInboxFilter} onFocusChange={setSearchOpen} /> : null}
       {!searchOpen && !search ? <>
         <NativeHomeStrip snapshots={homeSnapshots(conversations)} onOpen={setHomeNotice} />
         {homeNotice ? <div className="zm-scrim" onClick={() => setHomeNotice(null)}><section className="zm-sheet" role="dialog" aria-modal="true" aria-label={homeNotice.title} onClick={e => e.stopPropagation()}><h2>{homeNotice.title}</h2><p>Open this item in the native Zoen app. Item details are not available on web yet.</p><button className="zm-pill" autoFocus onClick={() => setHomeNotice(null)}>Close</button></section></div> : null}
       </> : null}
-      <div className="zm-inbox-filter">
-        {showArchived ? <button className="zm-round" aria-label="Voltar" onClick={() => setShowArchived(false)}><Icon name="back" /></button> : null}
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true"><path d="M3 6h18M6 12h12M9 18h6" /></svg>
-        <select aria-label="Filter chats" value={inboxFilter} onChange={(e) => setInboxFilter(e.target.value)}>
-          <option value="all">{english() ? 'All chats' : 'Todas as conversas'}</option>
-          <option value="direct">{english() ? 'Direct chats' : 'Conversas diretas'}</option>
-          <option value="group">{english() ? 'Groups' : 'Grupos'}</option>
-          <option value="community">{english() ? 'Communities' : 'Comunidades'}</option>
-        </select>
-      </div>
       {!showArchived && threadsUnread ? <p className="zm-threads-row"><Icon name="thread" />Threads que você segue<span className="zm-badge">{threadsUnread}</span></p> : null}
       {!showArchived && archived.length ? <button className="zm-archived-row" onClick={() => setShowArchived(true)}><Icon name="archive" />Arquivadas<span>{archived.length}</span></button> : null}
       {search.trim() ? <MessageSearchResults key={search.trim()} conversations={conversations} query={search} open={(hit) => {
