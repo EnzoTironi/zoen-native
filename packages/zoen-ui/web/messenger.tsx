@@ -2,6 +2,8 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { message as reason } from './boundary.ts';
 import type { Conversation, FileDoc, Message, Messages, VoiceMeta } from './messages.ts';
 import { FileView, kindOf, thumbnail, useRecorder } from './media.tsx';
+import { NativeAdaptiveShell } from './native-adaptive.tsx';
+import { NativeNavigation } from './native-navigation.tsx';
 import { MessageEditor } from './message-editor.tsx';
 import { MessageSearchResults } from './message-search-view.tsx';
 import type { MessageHit } from './message-search.ts';
@@ -26,8 +28,9 @@ function day(ms: number) {
 const initials = (name: string) => name.replace(/^@/, '').trim().split(/\s+/).slice(0, 2).map((w) => w[0]?.toUpperCase() ?? '').join('') || '?';
 function hue(seed: string) { let h = 0; for (const c of seed) h = (h * 31 + c.charCodeAt(0)) % 360; return h; }
 
-function Avatar({ name, size = 44 }: { name: string; size?: number }) {
-  return <span className="zm-avatar" aria-hidden="true" style={{ width: size, height: size, fontSize: size * 0.38, background: `oklch(0.93 0.04 ${hue(name)})`, color: `oklch(0.38 0.08 ${hue(name)})` }}>{initials(name)}</span>;
+const english = () => document.documentElement.lang.toLowerCase().startsWith('en');
+function Avatar({ name, size = 44, counterpart }: { name: string; size?: number; counterpart?: Conversation['counterpart'] }) {
+  return <span className="zm-avatar" aria-hidden="true" style={{ width: size, height: size, fontSize: size * 0.38, background: counterpart?.tintHex ?? `oklch(0.93 0.04 ${hue(name)})`, color: counterpart ? '#fff' : `oklch(0.38 0.08 ${hue(name)})` }}>{counterpart?.initials ?? initials(name)}</span>;
 }
 
 function Icon({ name }: { name: 'plus' | 'send' | 'mic' | 'reply' | 'thread' | 'smile' | 'more' | 'close' | 'pin' | 'mute' | 'archive' | 'back' | 'search' }) {
@@ -119,11 +122,25 @@ export function Bubble({ entry, own, first, onReact, onReply, onThread, onEdit, 
         <button className="zm-pill" autoFocus onClick={() => setDetails(false)}>Fechar</button>
       </div>
     </div> : null}
+    {entry.card && !entry.deleted ? <ItemChatCard card={entry.card} /> : null}
     {!inThread && entry.replies ? <button className="zm-thread-summary" onClick={onThread}>
       <span className="zm-stack">{entry.repliers.map((n) => <Avatar key={n} name={n} size={20} />)}</span>
       <b>{entry.replies === 1 ? '1 resposta' : `${entry.replies} respostas`}</b>{entry.last_reply_ms ? <span>{day(entry.last_reply_ms)}</span> : null}
     </button> : null}
   </article>;
+}
+
+function ItemChatCard({ card }: { card: NonNullable<Message['card']> }) {
+  const [notice, setNotice] = useState(false);
+  const money = (cents: number) => new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(cents / 100);
+  const over = card.totalCents != null && card.budgetCents != null && card.totalCents > card.budgetCents;
+  return <><button className="zm-item-card" onClick={() => setNotice(true)}><span className="zm-item-title">{card.title}<span aria-hidden="true">›</span></span>
+    {card.summary ? <span className="zm-item-summary">{card.summary}</span> : null}
+    {card.totalCents != null ? <><span className="zm-item-budget">
+      {card.budgetCents != null ? <span className="zm-item-track"><i style={{ width: `${Math.max(0, Math.min(100, card.totalCents / Math.max(1, card.budgetCents) * 100))}%`, background: over ? '#D64545' : undefined }} /></span> : null}
+      <span><b>{money(card.totalCents)}</b>{card.budgetCents != null ? <> of {money(card.budgetCents)}<span>{money(Math.abs(card.budgetCents - card.totalCents))} {over ? 'over' : 'left'}</span></> : null}</span>
+    </span><span className="zm-item-counts">☷ {card.lineCount} items{card.doneCount > 0 ? <span>{card.doneCount} done</span> : null}</span></> : null}
+  </button>{notice ? <div className="zm-scrim" onClick={() => setNotice(false)}><section className="zm-sheet" role="dialog" aria-modal="true" aria-label={card.title} onClick={e => e.stopPropagation()}><h2>{card.title}</h2><p>Open this item in the native Zoen app. Item details are not available on web yet.</p><button className="zm-pill" autoFocus onClick={() => setNotice(false)}>Close</button></section></div> : null}</>;
 }
 
 type Outgoing = { name: string; mime: string; bytes: Uint8Array; thumb?: Uint8Array | null; voice?: VoiceMeta };
@@ -193,7 +210,7 @@ function ChatRow({ c, active, prefs, open, set }: { c: Conversation; active: boo
   const preview = last ? (last.deleted ? 'Mensagem apagada' : `${c.kind !== 'direct' && last.name ? `${last.name}: ` : ''}${last.file ? fileLabel(last.file) : last.text}`) : c.waiting ? 'Preparando a conversa…' : 'Nenhuma mensagem ainda';
   return <li className={`zm-chat${active ? ' zm-active' : ''}${c.unread ? ' zm-unread' : ''}`} onContextMenu={(e) => { e.preventDefault(); setMenu(true); }} onMouseLeave={() => setMenu(false)}>
     <button className="zm-chat-open" onClick={open} aria-current={active ? 'true' : undefined}>
-      <Avatar name={c.title} />
+      <Avatar name={c.title} counterpart={c.counterpart} />
       <span className="zm-chat-body"><span className="zm-chat-top"><b>{c.title}</b>{last ? <time>{day(last.at_ms)}</time> : null}</span>
         <span className="zm-chat-bottom"><span className="zm-preview">{preview}</span>
           {prefs.muted ? <span className="zm-flag" aria-label="Silenciada"><Icon name="mute" /></span> : null}
@@ -209,9 +226,9 @@ function ChatRow({ c, active, prefs, open, set }: { c: Conversation; active: boo
   </li>;
 }
 
-type MessengerProps = {
+export type MessengerProps = {
   conversations: Conversation[]; identity: string; name: string; connected: boolean; status: string;
-  messages: React.RefObject<Messages | null>; footer: React.ReactNode; selected: string; select: (id: string) => void; children?: React.ReactNode;
+  messages: React.RefObject<Messages | null>; footer: React.ReactNode; selected: string; select: (id: string) => void; children?: React.ReactNode; initialDraft?: string; onSettings?: () => void;
 };
 
 export function Messenger(props: MessengerProps) {
@@ -219,7 +236,22 @@ export function Messenger(props: MessengerProps) {
   return <AccountMessenger key={props.identity} {...props} />;
 }
 
-function AccountMessenger({ conversations, identity, name, connected, status, messages, footer, selected, select, children }: MessengerProps) {
+function AccountMessenger({ conversations, identity, name, connected, status, messages, footer, selected, select, children, initialDraft, onSettings }: MessengerProps) {
+  const [wide, setWide] = useState(() => window.matchMedia?.('(min-width: 861px)').matches ?? false);
+  const [destination, setDestination] = useState('chats');
+  const [searchOpen, setSearchOpen] = useState(false);
+  useEffect(() => {
+    if (!window.matchMedia) return;
+    const query = window.matchMedia('(min-width: 861px)');
+    const update = () => setWide(query.matches);
+    query.addEventListener('change', update);
+    return () => query.removeEventListener('change', update);
+  }, []);
+  const navigate = (id: string) => {
+    if (conversations.some(c => c.id === id)) { setDestination('chats'); select(id); }
+    else if (id === 'you' && onSettings) onSettings();
+    else { setDestination(id); if (id === 'chats') select(''); }
+  };
   const [prefs, setPrefs] = useState(() => loadPrefs(identity));
   const [follow, setFollow] = useState(loadFollow);
   const [search, setSearch] = useState('');
@@ -241,7 +273,7 @@ function AccountMessenger({ conversations, identity, name, connected, status, me
   const ordered = [...matches].sort((a, b) => Number(!!prefs[b.id]?.pinned) - Number(!!prefs[a.id]?.pinned) || lastAt(b) - lastAt(a));
   const archived = ordered.filter((c) => prefs[c.id]?.archived);
   const list = showArchived ? archived : ordered.filter((c) => !prefs[c.id]?.archived);
-  const conversation = conversations.find((c) => c.id === selected) ?? (children ? undefined : list[0]);
+  const conversation = conversations.find((c) => c.id === selected);
   const timeline = useMemo(() => conversation?.messages.filter((m) => !m.thread) ?? [], [conversation]);
   const root = threadRoot ? conversation?.messages.find((m) => m.entry === threadRoot) : undefined;
   const replies = root ? conversation!.messages.filter((m) => m.thread === threadRoot) : [];
@@ -276,38 +308,41 @@ function AccountMessenger({ conversations, identity, name, connected, status, me
     },
   };
   const bubbles = (items: Message[], inThread: boolean) => items.map((m, i) => <Bubble key={m.id} entry={m} own={m.author === identity} inThread={inThread} messages={messages.current}
+    formatTime={english() ? ms => new Intl.DateTimeFormat('en-US', { hour: 'numeric', minute: '2-digit', timeZone: 'UTC' }).format(ms) : time}
     first={i === 0 || items[i - 1]!.author !== m.author}
     onReact={act.react(m)} onDelete={act.del(m)} onForward={() => setForward(m)}
     onReply={() => { setEditing(null); setReply(m); }} onEdit={() => { setReply(null); setEditing(m); }}
     onThread={() => { if (m.entry) { setThreadRoot(m.entry); if (follow[m.entry] === undefined) toggleFollow(m.entry, true); } }} />);
 
-  return <div className={`zm-app${root ? ' zm-with-thread' : ''}`}>
+  const content = <div className={`zm-app zm-native-production${selected || children || destination !== 'chats' ? ' zm-detail-open' : ''}${root ? ' zm-with-thread' : ''}`}>
     <aside className="zm-sidebar" aria-label="Conversas">
       <header className="zm-side-head">
         {showArchived ? <button className="zm-round glass" aria-label="Voltar" onClick={() => setShowArchived(false)}><Icon name="back" /></button> : null}
-        <h1>{showArchived ? 'Arquivadas' : 'Conversas'}</h1>
+        <h1>{showArchived ? 'Arquivadas' : 'Chats'}</h1>
+        {onSettings ? <button className="zm-round" aria-label="You" onClick={onSettings}><Avatar name={name} size={28} /></button> : null}
       </header>
       <label className="zm-search"><Icon name="search" /><span className="zw-sr-only">Buscar conversas e mensagens</span>
-        <input type="search" placeholder="Buscar" value={search} onChange={(e) => setSearch(e.target.value)} /></label>
+        <input type="search" placeholder={english() ? 'Search' : 'Buscar'} value={search} onChange={(e) => setSearch(e.target.value)} /></label>
       {!showArchived && threadsUnread ? <p className="zm-threads-row"><Icon name="thread" />Threads que você segue<span className="zm-badge">{threadsUnread}</span></p> : null}
       {!showArchived && archived.length ? <button className="zm-archived-row" onClick={() => setShowArchived(true)}><Icon name="archive" />Arquivadas<span>{archived.length}</span></button> : null}
       {search.trim() ? <MessageSearchResults key={search.trim()} conversations={conversations} query={search} open={(hit) => {
         select(hit.space); setSearchTarget(hit);
       }} /> : null}
-      <ul className="zm-chats">{list.map((c) => <ChatRow key={c.id} c={c} active={c.id === conversation?.id} prefs={prefs[c.id] ?? {}} open={() => select(c.id)} set={(p) => savePrefs(c.id, p)} />)}</ul>
+      <ul className="zm-chats">{list.map((c) => <ChatRow key={c.id} c={c} active={c.id === conversation?.id} prefs={prefs[c.id] ?? {}} open={() => { setDestination('chats'); select(c.id); }} set={(p) => savePrefs(c.id, p)} />)}</ul>
       {!list.length ? <p className="zm-empty">{search ? 'Nenhuma conversa encontrada.' : 'As conversas do seu celular aparecem aqui.'}</p> : null}
       <footer className="zm-side-foot"><Avatar name={name} size={32} /><span><b>{name}</b><span className={connected ? 'zm-online' : 'zm-offline'} role="status">{status}</span></span>{footer}</footer>
+      <NativeNavigation selected={destination === 'store' ? 'store' : 'chats'} search={{ open: searchOpen, value: search, onChange: setSearch, onOpenChange: setSearchOpen }} onSelect={navigate} onCreate={navigate} unreadCount={conversations.reduce((n, c) => n + c.unread, 0)} />
     </aside>
     <main className="zm-main">
-      {children ?? (conversation ? <>
-        <header className="zm-chat-head"><span className="zm-title-pill glass-pill"><Avatar name={conversation.title} size={28} /><b>{conversation.title}</b>{conversation.kind !== 'direct' ? <span>{conversation.members} pessoas</span> : null}</span></header>
+      {destination !== 'chats' ? <section className="zm-blank"><button className="zm-pill" onClick={() => navigate('chats')}>Back to Chats</button><h2>{destination}</h2><p>This feature is available in the native Zoen app, not on web yet.</p></section> : children ?? (conversation ? <>
+        <header className="zm-chat-head"><button className="zm-round zm-mobile-back" aria-label="Back to Chats" onClick={() => select('')}><Icon name="back" /></button><span className="zm-title-pill glass-pill"><Avatar name={conversation.title} counterpart={conversation.counterpart} size={28} /><b>{conversation.title}</b>{conversation.kind !== 'direct' ? <span>{conversation.members} {english() ? 'people' : 'pessoas'}</span> : null}</span></header>
         <section className="zm-timeline" role="log" aria-label="Mensagens" aria-live="polite">
           {conversation.waiting ? <p className="zm-note">Seu celular está preparando esta conversa para o navegador. Deixe ele conectado.</p> : null}
           {conversation.unreadable ? <p className="zm-note">{conversation.unreadable === 1 ? 'Uma mensagem anterior está' : `${conversation.unreadable} mensagens anteriores estão`} só no seu celular.</p> : null}
           {bubbles(timeline, false)}
           <div ref={end} />
         </section>
-        <Composer key={conversation.id} placeholder={connected ? 'Mensagem' : 'Reconectando…'} disabled={!connected || !conversation.can_send} reply={reply} autoFocus
+        <Composer key={conversation.id} initialText={initialDraft ?? ''} placeholder={connected ? english() ? 'Message' : 'Mensagem' : 'Reconectando…'} disabled={!connected || !conversation.can_send} reply={reply} autoFocus
           cancelReply={() => { setReply(null); setEditing(null); }}
           attach={async (file) => { const m = messages.current; if (!m) throw new Error('Recarregue o Zoen.'); await m.sendFile(space, file); if (file.voice?.reply) setReply(null); }}
           submit={async (text) => {
@@ -343,4 +378,8 @@ function AccountMessenger({ conversations, identity, name, connected, status, me
     </div></div> : null}
     {toast ? <p className="zm-toast" role="alert">{toast}</p> : null}
   </div>;
+  return wide ? <NativeAdaptiveShell selected={destination !== 'chats' ? destination : selected || null} onSelect={navigate} footer={footer} spaces={list.map(c => {
+    const last = c.messages.at(-1);
+    return { id: c.id, title: c.title, kind: c.kind, lastAtMs: last?.at_ms ?? 0, lastPreview: last ? last.deleted ? 'Mensagem apagada' : last.file ? fileLabel(last.file) : last.text : '', unread: c.unread, counterpart: c.counterpart ?? null };
+  })}>{content}</NativeAdaptiveShell> : content;
 }

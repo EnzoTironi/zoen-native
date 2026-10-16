@@ -6,6 +6,38 @@
   --ease-wabi: cubic-bezier(.25,1,.5,1); --ease-expo: cubic-bezier(.22,1,.36,1);
 }
 body { background: var(--zm-canvas); color: var(--zm-ink); }
+/* Production messenger shares the adaptive SwiftUI shell, not a fixture clone. */
+.zm-native-production { --zm-canvas: #F4F6FB; --zm-card: #fff; --zm-ink: #0E1320; --zm-other: #fff; --zm-own: #111113; --zm-own-text: #F2F2F0; background: var(--zm-canvas); }
+.zm-native-production .zm-main { background: var(--zm-canvas); }
+.zm-native-production .zm-own .zm-bubble { color: var(--zm-own-text); }
+.zm-mobile-back { display: none; }
+.zm-item-card { display: flex; flex-direction: column; align-items: stretch; gap: 10px; width: min(360px, 100%); text-align: left; padding: 14px; border: 1px solid var(--zm-line-soft); border-radius: 20px; color: var(--zm-ink); background: var(--zm-card); box-shadow: 0 4px 14px rgba(0,0,0,.05); }
+.zm-item-title { display: flex; justify-content: space-between; gap: 6px; font: 20px Georgia, serif; }
+.zm-item-title > span { color: var(--zm-grey); }
+.zm-item-summary { font-size: 15px; line-height: 20px; color: var(--zm-grey); display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+.zm-item-budget { display: grid; gap: 6px; font-size: 13px; font-variant-numeric: tabular-nums; }
+.zm-item-budget > span:last-child { display: flex; gap: 4px; }
+.zm-item-budget > span:last-child > span { margin-left: auto; }
+.zm-item-track { height: 6px; background: var(--zm-line-soft); border-radius: 999px; overflow: hidden; }
+.zm-item-track i { display: block; min-width: 8px; height: 100%; background: linear-gradient(90deg,#19B5A5,#3D7A28); border-radius: inherit; }
+.zm-item-counts { display: flex; gap: 12px; font-size: 12px; color: var(--zm-grey); }
+.zm-item-counts > span { color: #3D7A28; }
+.na-detail > .zm-native-production { grid-template-columns: 1fr 0; height: 100%; }
+.na-detail > .zm-native-production.zm-with-thread { grid-template-columns: 1fr 380px; }
+.na-detail > .zm-native-production > .zm-sidebar { display: none; }
+[data-theme="dark"] .zm-native-production, .na-dark .zm-native-production { --zm-canvas: #090D15; --zm-card: #121826; --zm-ink: #EEF2FA; --zm-other: #121826; --zm-own: #F2F2F0; --zm-own-text: #111113; }
+@media (prefers-color-scheme: dark) {
+  .zm-native-production { --zm-canvas: #090D15; --zm-card: #121826; --zm-ink: #EEF2FA; --zm-other: #121826; --zm-own: #F2F2F0; --zm-own-text: #111113; }
+  [data-theme="light"] .zm-native-production, .na-light .zm-native-production { --zm-canvas: #F4F6FB; --zm-card: #fff; --zm-ink: #0E1320; --zm-other: #fff; --zm-own: #111113; --zm-own-text: #F2F2F0; }
+}
+@media (max-width: 860px) {
+  .zm-native-production, .zm-native-production.zm-with-thread { grid-template-columns: 1fr; }
+  .zm-native-production > .zm-sidebar { display: flex; position: relative; }
+  .zm-native-production > .zm-main { display: none; }
+  .zm-native-production.zm-detail-open > .zm-sidebar { display: none; }
+  .zm-native-production.zm-detail-open > .zm-main { display: flex; }
+  .zm-native-production .zm-mobile-back { display: grid; }
+}
 .zm-app { height: 100dvh; display: grid; grid-template-columns: 340px 1fr 0; transition: grid-template-columns 320ms var(--ease-wabi); overflow: hidden; }
 .zm-app.zm-with-thread { grid-template-columns: 340px 1fr 380px; }
 .zm-icon { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; flex: none; }
@@ -203,8 +235,7 @@ body { background: var(--zm-canvas); color: var(--zm-ink); }
 .zm-attach { width: 36px; height: 36px; margin: 2px 0 2px -10px; flex: none; border: 0; border-radius: 50%; display: grid; place-items: center; background: none; color: var(--zm-grey); transition: background-color 150ms var(--ease-wabi), transform 150ms ease-out; }
 .zm-attach:hover { background: rgba(25,25,25,.05); color: var(--zm-ink); } .zm-attach:not(:disabled):active { transform: scale(.96); }
 .zm-sending { margin: 0 14px 6px; font-size: 13px; color: var(--zm-grey); }
-@media (max-width: 860px) {
-  /* SpaceView.Composer: independent glass surfaces, not a shared capsule.
+/* SpaceView.Composer: independent glass surfaces, not a shared capsule.
      ChatAttachmentButton is 44pt; field/action are 48pt, with 10pt gaps.
      The bottom safe-area inset is additional to Composer’s 8pt padding. */
   .zm-composer-zone, .zm-thread .zm-composer-zone { padding: 8px 12px calc(8px + env(safe-area-inset-bottom, 0px)); }
@@ -225,29 +256,5 @@ body { background: var(--zm-canvas); color: var(--zm-ink); }
   .zm-recording-surface { display: flex; align-items: center; flex: 1; min-width: 0; min-height: 48px; gap: 10px; padding: 0 12px; border-radius: 24px; }
   .zm-recording-surface .zm-wave { min-width: 0; }
   .zm-recording-surface .zm-round { flex: none; }
-}
-/* Native fixture canvases retain phone metrics even in a wide browser viewport. */
-  /* SpaceView.Composer: independent glass surfaces, not a shared capsule.
-     ChatAttachmentButton is 44pt; field/action are 48pt, with 10pt gaps.
-     The bottom safe-area inset is additional to Composer’s 8pt padding. */
-  .native-parity .zm-composer-zone, .native-parity .zm-thread .zm-composer-zone { padding: 8px 12px calc(8px + env(safe-area-inset-bottom, 0px)); }
-  .native-parity .zm-composer { gap: 10px; padding: 0; background: none; box-shadow: none; backdrop-filter: none; -webkit-backdrop-filter: none; }
-  .native-parity .zm-field { min-width: 0; border-radius: 24px; overflow: hidden; }
-  .native-parity .zm-field, .native-parity .zm-attach, .native-parity .zm-recording-surface {
-    background: linear-gradient(155deg, rgba(255,255,255,.38), rgba(255,255,255,.08)), rgba(255,255,255,.46);
-    backdrop-filter: blur(20px) saturate(1.5); -webkit-backdrop-filter: blur(20px) saturate(1.5);
-    box-shadow: inset 0 1px 1px rgba(255,255,255,.8), inset 0 -1px 1px rgba(255,255,255,.32), 0 0 0 1px rgba(25,25,25,.08), 0 3px 10px rgba(0,0,0,.06);
-  }
-  .native-parity .zm-field textarea { box-sizing: border-box; width: 100%; min-width: 0; min-height: 48px; max-height: 123px; padding: 14px 18px; font-size: 15px; line-height: 19px; }
-  .native-parity .zm-attach { width: 44px; height: 44px; margin: 0; color: var(--zm-ink); }
-  .native-parity .zm-attach svg { width: 19px; height: 19px; }
-  .native-parity .zm-send, .native-parity .zm-send.zm-has { width: 48px; height: 48px; color: #fff; background: linear-gradient(155deg, rgba(255,255,255,.16), rgba(255,255,255,0)), rgba(61,122,40,.92); backdrop-filter: blur(20px) saturate(1.5); -webkit-backdrop-filter: blur(20px) saturate(1.5); box-shadow: inset 0 1px 1px rgba(255,255,255,.42), inset 0 -1px 1px rgba(0,0,0,.12), 0 0 0 1px rgba(44,94,28,.18), 0 3px 10px rgba(0,0,0,.08); }
-  .native-parity .zm-send svg { width: 21px; height: 21px; }
-  .native-parity .zm-send:disabled, .native-parity .zm-send:disabled:not(.zm-has) { opacity: .55; color: #fff; }
-  .native-parity .zm-recording { padding: 0; align-items: flex-end; }
-  .native-parity .zm-recording-surface { display: flex; align-items: center; flex: 1; min-width: 0; min-height: 48px; gap: 10px; padding: 0 12px; border-radius: 24px; }
-  .native-parity .zm-recording-surface .zm-wave { min-width: 0; }
-  .native-parity .zm-recording-surface .zm-round { flex: none; }
-
 @keyframes zm-pulse { 50% { opacity: .35; } }
 @media (prefers-reduced-motion: reduce) { .zm-rec-dot { animation: none; } .zm-lightbox img, .zm-lightbox video { animation: none; } }
