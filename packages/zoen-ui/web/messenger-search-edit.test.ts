@@ -32,6 +32,50 @@ async function mount(annotate = async () => {}, data = conversations) {
   return { calls, close: async () => { await act(async () => root.unmount()); } };
 }
 
+test('main unread anchor survives markRead and follows only own appends or incoming at bottom', async () => {
+  const scrolled: { el: HTMLElement; options: ScrollIntoViewOptions }[] = [];
+  dom.window.HTMLElement.prototype.scrollIntoView = function(options) { scrolled.push({ el: this, options: options as ScrollIntoViewOptions }); };
+  const incoming = (id: string) => ({ ...msg(id, id), author: 'other' });
+  let data = [{ ...conversations[0], unread: 2, messages: [incoming('older'), incoming('unread'), { ...incoming('thread'), thread: 'older' }] }];
+  const root = createRoot(document.getElementById('root')!);
+  const render = async () => { await act(async () => root.render(h(Messenger, { conversations: data, identity: own, name: 'Ana', connected: true, status: 'Connected', messages: { current: { markRead: async () => {} } }, footer: null, selected: 'chat', select: () => {} }))); };
+  try {
+    await render();
+    const divider = document.querySelector('.zm-unread-divider')!;
+    assert.ok(divider);
+    assert.equal(divider.nextElementSibling?.id, 'message-unread');
+    assert.equal(scrolled[0]?.el, divider);
+    assert.equal(scrolled[0]?.options.block, 'start');
+    const log = document.querySelector('.zm-main [role=log]') as HTMLElement;
+    Object.defineProperties(log, { scrollHeight: { configurable: true, value: 1000 }, clientHeight: { configurable: true, value: 200 }, scrollTop: { configurable: true, writable: true, value: 100 } });
+    await act(async () => log.dispatchEvent(new dom.window.Event('scroll', { bubbles: true })));
+    scrolled.length = 0;
+    data = [{ ...data[0], unread: 0, messages: [...data[0].messages, incoming('new')] }];
+    await render();
+    assert.ok(document.querySelector('.zm-unread-divider'));
+    assert.equal(scrolled.length, 0, 'incoming does not steal a reader’s position');
+    data = [{ ...data[0], messages: [...data[0].messages, msg('mine', 'sent')] }];
+    await render();
+    assert.equal(scrolled.at(-1)?.options.block, 'end', 'own append always follows');
+    log.scrollTop = 800;
+    await act(async () => log.dispatchEvent(new dom.window.Event('scroll', { bubbles: true })));
+    scrolled.length = 0;
+    data = [{ ...data[0], messages: [...data[0].messages, incoming('new-bottom')] }];
+    await render();
+    assert.equal(scrolled.at(-1)?.options.block, 'end');
+  } finally { await act(async () => root.unmount()); dom.window.HTMLElement.prototype.scrollIntoView = () => {}; }
+});
+
+test('read conversation initially scrolls to bottom without an unread divider', async () => {
+  const blocks: unknown[] = [];
+  dom.window.HTMLElement.prototype.scrollIntoView = options => { blocks.push((options as ScrollIntoViewOptions)?.block); };
+  const ui = await mount();
+  try {
+    assert.equal(document.querySelector('.zm-unread-divider'), null);
+    assert.deepEqual(blocks, ['end']);
+  } finally { await ui.close(); dom.window.HTMLElement.prototype.scrollIntoView = () => {}; }
+});
+
 test('sidebar finds message bodies, not only conversation titles', async () => {
   const ui = await mount();
   try {

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { Fragment, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { voiceHold } from './voice-hold.ts';
 import { message as reason } from './boundary.ts';
 import type { Conversation, FileDoc, Message, Messages, VoiceMeta } from './messages.ts';
@@ -332,6 +332,9 @@ function AccountMessenger({ conversations, identity, name, connected, status, me
   const [toast, setToast] = useState('');
   const rootVoice = useRootVoice({ conversations, messages, select: navigate, onNotice: setToast });
   const end = useRef<HTMLDivElement>(null);
+  const unreadDivider = useRef<HTMLDivElement>(null);
+  const atBottom = useRef(true);
+  const scrollState = useRef<{ chat: string | undefined; captured: boolean; firstUnread: string | null; known: Set<string> }>({ chat: undefined, captured: false, firstUnread: null, known: new Set() });
   const [searchTarget, setSearchTarget] = useState<MessageHit | null>(null);
   const savePrefs = (id: string, p: Prefs) => {
     const next = { ...prefs, [id]: p }; setPrefs(next);
@@ -350,7 +353,28 @@ function AccountMessenger({ conversations, identity, name, connected, status, me
   const threadsUnread = conversations.reduce((n, c) => n + c.messages.filter((m) => m.thread && follow[m.thread] && m.author !== identity).length, 0);
   const fail = (e: unknown) => { setToast(reason(e)); setTimeout(() => setToast(''), 3200); };
 
-  useEffect(() => { end.current?.scrollIntoView({ block: 'end' }); }, [conversation?.id, timeline.length]);
+  // Capture before markRead can clear the count. Core unread includes thread replies,
+  // but only normal incoming messages (not item cards) can anchor the main divider.
+  if (scrollState.current.chat !== conversation?.id) {
+    scrollState.current = { chat: conversation?.id, captured: false, firstUnread: null, known: new Set() };
+    atBottom.current = true;
+  }
+  if (!scrollState.current.captured && conversation?.messages.length) {
+    const incoming = conversation.messages.filter(m => m.author !== identity && !m.card);
+    const unread = Math.max(0, conversation.unread);
+    scrollState.current.firstUnread = unread ? incoming.slice(-unread).find(m => !m.thread)?.id ?? null : null;
+    scrollState.current.captured = true;
+  }
+  const firstUnread = scrollState.current.firstUnread;
+  useLayoutEffect(() => {
+    const state = scrollState.current;
+    if (!timeline.length) return;
+    const initial = state.known.size === 0;
+    const appendedMine = timeline.some(m => !state.known.has(m.id) && m.author === identity);
+    if (initial && firstUnread) unreadDivider.current?.scrollIntoView({ block: 'start' });
+    else if (initial || appendedMine || atBottom.current) end.current?.scrollIntoView({ block: 'end' });
+    state.known = new Set(timeline.map(m => m.id));
+  }, [conversation?.id, timeline, firstUnread, identity]);
   useEffect(() => { setReply(null); setEditing(null); setThreadRoot(null); }, [conversation?.id]);
   useEffect(() => {
     if (!conversation?.unread || !connected) return;
@@ -377,12 +401,14 @@ function AccountMessenger({ conversations, identity, name, connected, status, me
       void controller.annotate(space, m.entry, 'Delete').catch(fail);
     },
   };
-  const bubbles = (items: Message[], inThread: boolean) => items.map((m, i) => <Bubble key={m.id} entry={m} own={m.author === identity} inThread={inThread} direct={conversation?.kind === 'direct'} counterpart={conversation?.counterpart} messages={messages.current}
+  const bubbles = (items: Message[], inThread: boolean) => items.map((m, i) => <Fragment key={m.id}>
+    {!inThread && m.id === firstUnread ? <div ref={unreadDivider} className="zm-unread-divider" data-testid="unread-divider"><span>{english() ? 'Unread messages' : 'Mensagens não lidas'}</span></div> : null}
+    <Bubble entry={m} own={m.author === identity} inThread={inThread} direct={conversation?.kind === 'direct'} counterpart={conversation?.counterpart} messages={messages.current}
     formatTime={displayTime}
     first={i === 0 || items[i - 1]!.author !== m.author || m.at_ms - items[i - 1]!.at_ms >= 300_000}
     onReact={act.react(m)} onDelete={act.del(m)} onForward={() => setForward(m)}
     onReply={() => { setEditing(null); setReply(m); }} onEdit={() => { setReply(null); setEditing(m); }}
-    onThread={() => { if (m.entry) { setThreadRoot(m.entry); if (follow[m.entry] === undefined) toggleFollow(m.entry, true); } }} />);
+    onThread={() => { if (m.entry) { setThreadRoot(m.entry); if (follow[m.entry] === undefined) toggleFollow(m.entry, true); } }} /></Fragment>);
 
   const content = <div className={`zm-app zm-native-production${selected || children || destination !== 'chats' ? ' zm-detail-open' : ''}${root ? ' zm-with-thread' : ''}`}>
     <aside className="zm-sidebar" aria-label="Conversas">
@@ -420,7 +446,10 @@ function AccountMessenger({ conversations, identity, name, connected, status, me
     <main className="zm-main">
       {destination !== 'chats' ? <section className="zm-blank"><button className="zm-pill" onClick={() => navigate('chats')}>Back to Chats</button><h2>{destination}</h2><p>This feature is available in the native Zoen app, not on web yet.</p></section> : children ?? (conversation ? <>
         <header className="zm-chat-head"><button className="zm-round glass zm-mobile-back" aria-label="Back to Chats" onClick={() => select('')}><Icon name="back" /></button><span className="zm-title-pill glass-pill"><Avatar name={conversation.title} id={conversation.id} counterpart={conversation.counterpart} kind={conversation.kind === 'direct' ? 'person' : 'group'} size={28} /><b>{conversation.title}</b>{conversation.kind !== 'direct' ? <span>{conversation.members} {english() ? 'people' : 'pessoas'}</span> : null}</span></header>
-        <section className="zm-timeline" role="log" aria-label="Mensagens" aria-live="polite">
+        <section className="zm-timeline" role="log" aria-label="Mensagens" aria-live="polite" onScroll={e => {
+          const el = e.currentTarget;
+          atBottom.current = el.scrollHeight - el.scrollTop - el.clientHeight <= 140;
+        }}>
           <div className="zm-space-hero"><Avatar name={conversation.title} id={conversation.id} counterpart={conversation.counterpart} kind={conversation.kind === 'direct' ? 'person' : 'group'} size={conversation.kind === 'direct' ? 64 : 72} /></div>
           {conversation.waiting ? <p className="zm-note">Seu celular está preparando esta conversa para o navegador. Deixe ele conectado.</p> : null}
           {conversation.unreadable ? <p className="zm-note">{conversation.unreadable === 1 ? 'Uma mensagem anterior está' : `${conversation.unreadable} mensagens anteriores estão`} só no seu celular.</p> : null}
