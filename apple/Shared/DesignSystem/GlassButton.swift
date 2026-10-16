@@ -44,13 +44,13 @@ private struct GlassButtonBody: View {
             .shadow(color: .black.opacity(0.05), radius: 0.5, y: 0.8)      // text-shadow 0 .05em .05em
             .padding(.horizontal, controlSize == .small || controlSize == .mini ? 14 : 24)
             .frame(maxWidth: fullWidth ? .infinity : nil, minHeight: controlSize == .small || controlSize == .mini ? min(height, 34) : (controlSize == .large || controlSize == .extraLarge ? max(height, 52) : height))
-            .zoenGlass(prominent: prominent, tint: tint, pressed: pressed)
+            .zoenGlass(prominent: prominent, tint: tint, pressed: pressed, slab: !(prominent || fullWidth || height >= 52))
             .contentShape(.capsule)
             // Wabi: scale(.975) and rotate3d(1,0,0,25deg) while held; better-ui press is 0.96.
-            .scaleEffect(x: pressed && !reduceMotion ? 1.02 : 1, y: pressed && !reduceMotion ? 0.94 : 1)   // squash, Wabi's wobble
+            .scaleEffect(pressed && !reduceMotion ? 0.96 : 1)
             .rotation3DEffect(.degrees(pressed && !reduceMotion ? 10 : 0), axis: (1, 0, 0), perspective: 0.5)
             .opacity(isEnabled ? 1 : (pressed ? 0.8 : 0.45))
-            .animation(reduceMotion ? .easeOut(duration: 0.15) : .spring(duration: 0.5, bounce: 0.55), value: pressed)       // 3-4 wobbles, settles in ~.5s
+            .animation(reduceMotion ? .easeOut(duration: 0.15) : (pressed ? .spring(response: 0.34, dampingFraction: 0.92) : .spring(response: 1.2, dampingFraction: 0.8)), value: pressed)   // Wabi: drag / release
             .animation(.easeOut(duration: 0.15), value: isEnabled)
             .sensoryFeedback(.impact(weight: .light, intensity: 0.6), trigger: pressed) { _, now in now }
     }

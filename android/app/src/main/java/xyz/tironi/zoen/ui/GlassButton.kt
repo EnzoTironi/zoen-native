@@ -1,6 +1,5 @@
 package xyz.tironi.zoen.ui
 
-import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
@@ -66,7 +65,7 @@ fun GlassButton(
 
     val held = pressed && enabled
     val press by animateFloatAsState(if (held) 1f else 0f,
-        if (reduce) tween(150) else spring(dampingRatio = 0.3f, stiffness = Spring.StiffnessMedium), label = "glass-press")
+        if (reduce) tween(150) else if (held) wabiSpring(0.34f, 0.92f) else wabiSpring(1.2f, 0.8f), label = "glass-press")
     val tint = colors?.containerColor?.takeIf { prominent || it != Color.Transparent } ?: MaterialTheme.colorScheme.primary
     val ink = when {
         colors != null && prominent -> colors.contentColor
@@ -78,9 +77,8 @@ fun GlassButton(
     Box(
         modifier
             .graphicsLayer {
-                // Wabi's wobble: squash on press, a bouncy spring back
-                scaleX = if (reduce) 1f else 1f + 0.02f * press
-                scaleY = if (reduce) 1f else 1f - 0.06f * press
+                val s = if (reduce) 1f else 1f - 0.04f * press             // better-ui: 0.96
+                scaleX = s; scaleY = s
                 rotationX = if (reduce) 0f else 10f * press                 // Wabi: rotate3d(1,0,0,25deg)
                 cameraDistance = 8 * density
                 alpha = if (enabled) 1f else 0.45f
@@ -88,7 +86,7 @@ fun GlassButton(
             .shadow(if (held) 2.dp else 6.dp, CircleShape, clip = false,
                 ambientColor = (if (prominent) tint else Color.Black).copy(alpha = 0.18f),
                 spotColor = (if (prominent) tint else Color.Black).copy(alpha = 0.22f))
-            .zoenGlass(tint, prominent, dark, press = { press })
+            .zoenGlass(tint, prominent, dark, press = { press }, slab = !prominent)
             .clickable(interactions, indication = null, enabled = enabled, role = Role.Button, onClick = onClick)
             .defaultMinSize(minWidth = 64.dp, minHeight = 46.dp)
             .padding(contentPadding),
@@ -116,3 +114,7 @@ fun GlassOutlinedButton(
     content: @Composable RowScope.() -> Unit,
 ) = GlassButton(onClick, modifier, enabled, prominent = false, shape, colors, interactionSource, contentPadding, content)
 
+
+/** Wabi's SwiftUI-style spring (response, damping ratio): drag .34/.92, release 1.2/.8. */
+private fun wabiSpring(response: Float, damping: Float) =
+    spring<Float>(dampingRatio = damping, stiffness = (2f * Math.PI.toFloat() / response).let { it * it })

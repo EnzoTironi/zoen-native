@@ -37,16 +37,16 @@ import androidx.compose.ui.unit.dp
 
 /**
  * Zoen's one material: a marble of glass. GlassButton and GlassCard both draw with this,
- * so the look lives in one place (the same shader as apple/Shared/DesignSystem/ZoenGlass.metal).
+ * so the look lives in one place (the same lens as apple/Shared/DesignSystem/ZoenGlass.metal,
+ * our own port of the optics measured in Wabi's app, ui-refs/wabi-glass/app/NOTES.md:
+ * hemisphere rail, Schlick Fresnel, 27deg/65deg key light, frost as the only whitening,
+ * red/blue dispersion on the rail).
  *
- * Wabi's conic edge and travelling shine plus the lens volume measured from Wabi's video
- * (ui-refs/wabi-glass/VIDEO-ANALYSIS.md): hemisphere shading, clear↔frosted specular,
- * 1.5% rim brighter top-left, bottom-right inner shadow, .05–.25 white film. Compose can't
- * sample what's behind a view, so the body is a tinted film; API 33+ paints the volume with
- * AGSL, older devices with gradients. One RuntimeShader per surface, built once in the draw
- * cache, so scrolling lists only update uniforms.
- *
- * [press] is 0…1 (animated by the caller); [cornerRadius] null means a capsule.
+ * [slab] true is Wabi's flat button preset (thin rail, no dispersion, frost .2) for small
+ * controls; false is the full marble for hero buttons and cards. Compose can't sample what
+ * is behind a view, so the body is a tinted film and the lens is painted, not refracted.
+ * API 33+ uses AGSL (one RuntimeShader per surface, built once in the draw cache, so
+ * scrolling lists only update the press uniform); older devices get gradients.
  */
 fun Modifier.zoenGlass(
     tint: Color,
@@ -55,54 +55,44 @@ fun Modifier.zoenGlass(
     cornerRadius: Dp? = null,
     press: () -> Float = { 0f },
     strength: Float = 1f,
-    frost: Float = 0.35f,
+    slab: Boolean = false,
 ): Modifier = drawWithCache {
     val r = cornerRadius?.toPx()?.coerceAtMost(size.minDimension / 2) ?: (size.minDimension / 2)
     val corner = CornerRadius(r, r)
+    val frost = if (slab) 0.2f else 0.6f
     val body = if (prominent) tint.copy(alpha = 0.92f) else Color.White.copy(alpha = if (dark) 0.07f else 0.6f)
-    val glass = if (Build.VERSION.SDK_INT >= 33) runCatching { MarbleShader() }.getOrNull() else null
-    glass?.setStatic(size.width, size.height, r, prominent, strength)
-    glass?.frost = frost
-    val fill = Brush.linearGradient(listOf(Color.White.copy(.05f), Color.White.copy(if (prominent) .11f else .2f), Color.White.copy(.05f)),
-        start = Offset(0f, size.height), end = Offset(size.width, 0f))
-    val inset = Brush.verticalGradient(0f to Color.Black.copy(.08f), .22f to Color.Transparent, .55f to Color.Transparent,
-        .8f to Color.White.copy(.18f), 1f to Color.White.copy(.4f))
-    val rim = Brush.sweepGradient(listOf(Color.Black.copy(.35f), Color.White.copy(.5f), Color.White.copy(.2f), Color.Black.copy(.35f),
-        Color.White.copy(.2f), Color.White.copy(.5f), Color.Black.copy(.35f)))
-    val spec = Brush.radialGradient(listOf(Color.White.copy(.55f * strength), Color.Transparent),
-        center = Offset(size.width * 0.32f, size.height * 0.18f), radius = size.minDimension * 0.9f)
+    val glass = if (Build.VERSION.SDK_INT >= 33) runCatching { MarbleShader(size.width, size.height, r, prominent, strength, frost, slab) }.getOrNull() else null
+    val crown = Brush.radialGradient(listOf(Color.White.copy(.5f * strength), Color.Transparent),
+        center = Offset(size.width * 0.35f, size.height * 0.2f), radius = size.minDimension * 0.8f)
+    val volume = Brush.verticalGradient(0f to Color.Transparent, .6f to Color.Transparent, 1f to Color.Black.copy(.18f * strength))
+    val rim = Brush.sweepGradient(listOf(Color.White.copy(.7f), Color.White.copy(.15f), Color.White.copy(.7f)))
     onDrawBehind {
         drawRoundRect(body, cornerRadius = corner)
-        val p = press()
         if (glass != null) {
-            glass.setPress(p)
+            glass.setPress(press())
             drawRect(glass.brush)
         } else {
-            drawRoundRect(fill, cornerRadius = corner)
-            drawRoundRect(inset, cornerRadius = corner)
-            drawRoundRect(spec, cornerRadius = corner)
+            drawRoundRect(volume, cornerRadius = corner)
+            drawRoundRect(crown, cornerRadius = corner)
             drawRoundRect(rim, cornerRadius = corner, style = Stroke(1.dp.toPx()))
         }
     }
 }
 
 @RequiresApi(33)
-private class MarbleShader {
-    val shader = RuntimeShader(ZOEN_GLASS)
-    val brush = ShaderBrush(shader)
-    fun setStatic(w: Float, h: Float, r: Float, prominent: Boolean, strength: Float) {
-        shader.setFloatUniform("size", w, h)
-        shader.setFloatUniform("radius", r)
-        shader.setFloatUniform("prominent", if (prominent) 1f else 0f)
-        shader.setFloatUniform("strength", strength)
+private class MarbleShader(w: Float, h: Float, r: Float, prominent: Boolean, strength: Float, private val frost: Float, slab: Boolean) {
+    val shader = RuntimeShader(ZOEN_GLASS).apply {
+        setFloatUniform("size", w, h)
+        setFloatUniform("radius", r)
+        setFloatUniform("prominent", if (prominent) 1f else 0f)
+        setFloatUniform("strength", strength)
+        setFloatUniform("slab", if (slab) 1f else 0f)
     }
-    var frost = 0.35f
+    val brush = ShaderBrush(shader)
     fun setPress(raw: Float) {
         val p = raw.coerceIn(0f, 1f)
         shader.setFloatUniform("press", p)
-        shader.setFloatUniform("frost", frost * (1f - p))       // a press clears the lens
-        shader.setFloatUniform("rimAngle", -75f - 50f * p)
-        shader.setFloatUniform("shine", 0.25f * p)
+        shader.setFloatUniform("frost", frost * (1f - 0.5f * p))   // a press clears the lens
     }
 }
 
@@ -156,7 +146,7 @@ private fun GlassCardBody(
                 ambientColor = Color.Black.copy(alpha = 0.12f), spotColor = Color.Black.copy(alpha = 0.16f))
             .clip(shape)
             .zoenGlass(tint = if (prominent) tint else scheme.surface, prominent = prominent, dark = dark,
-                cornerRadius = 22.dp, press = { if (pressed) 1f else 0f }, strength = 0.7f, frost = 0.8f)
+                cornerRadius = 22.dp, press = { if (pressed) 1f else 0f }, strength = 0.8f)
             .then(if (onClick != null) Modifier.clickable(interactions, indication = null, enabled = enabled, role = Role.Button, onClick = onClick) else Modifier),
     ) {
         CompositionLocalProvider(LocalContentColor provides ink) { content() }
@@ -166,24 +156,16 @@ private fun GlassCardBody(
 private const val ZOEN_GLASS = """
 uniform float2 size;
 uniform float radius;
-uniform float rimAngle;
-uniform float shine;
 uniform float press;
 uniform float prominent;
 uniform float strength;
 uniform float frost;
+uniform float slab;
 
-float sq(float x) { return x * x; }
 float roundedDistance(float2 p, float2 size, float r) {
     float2 h = size * 0.5;
     float2 q = abs(p - h) - (h - r);
     return length(max(q, 0.0)) + min(max(q.x, q.y), 0.0) - r;
-}
-float alongCSS(float2 p, float2 size, float deg) {
-    float a = radians(deg);
-    float2 dir = float2(sin(a), -cos(a));
-    float halfLength = 0.5 * (abs(size.x * dir.x) + abs(size.y * dir.y));
-    return dot(p - size * 0.5, dir) / (2.0 * halfLength) + 0.5;
 }
 half4 main(float2 position) {
     float2 c = size * 0.5;
@@ -194,51 +176,37 @@ half4 main(float2 position) {
     float2 outward = float2(roundedDistance(position + e.xy, size, r) - roundedDistance(position - e.xy, size, r),
                             roundedDistance(position + e.yx, size, r) - roundedDistance(position - e.yx, size, r));
     outward = outward / max(length(outward), 0.0001);
-    // Hemisphere profile across the shoulder (Wabi's lens: the outer band bends hardest).
-    float bevel = max(min(r, 28.0), 4.0);
-    float s = 1.0 - clamp(depth / bevel, 0.0, 1.0);               // 1 at the edge, 0 on the crown
-    float3 n = normalize(float3(outward * s, sqrt(max(1.0 - s * s, 0.0))));
-    float3 L = normalize(float3(-0.7, -0.7, 1.0));                // top-left (y grows down)
-    float3 H = normalize(L + float3(0.0, 0.0, 1.0));
-    float clear = 1.0 - frost;                                    // Wabi: clear lens ↔ frosted
+    // The lens profile: a hemisphere across the rail. A marble's rail is the whole radius;
+    // the flat preset's is a thin bevel, so small buttons read as a slab with a rounded lip.
+    float rail = max(mix(min(r, 28.0), min(r, 28.0) * 0.35, slab), 3.0);
+    float edge = 1.0 - clamp(depth / rail, 0.0, 1.0);             // 0 on the crown, 1 at the rim
+    float3 n = normalize(float3(outward * edge, sqrt(max(1.0 - edge * edge, 0.0))));
+    float3 V = float3(0.0, 0.0, 1.0);
+    // Key light 27deg around from straight up-left, 65deg high
+    float az = radians(-90.0 - 27.0);
+    float el = radians(65.0);
+    float3 L = normalize(float3(cos(az) * cos(el), sin(az) * cos(el), sin(el)));
+    float3 H = normalize(L + V);
 
-    // Tint film: white .05 clear → .25 frosted
-    float light = mix(0.05, 0.25, frost) * mix(1.0, 0.4, prominent);
-    float dark = 0.0;
-    // Specular: sharp (roughness .1) when clear, broad (.7) when frosted; slides on press
-    float rough = mix(0.1, 0.7, frost);
-    float3 Hp = normalize(H + float3(0.12, 0.12, 0.0) * press);
-    float spec = pow(max(dot(n, Hp), 0.0), mix(400.0, 12.0, rough));
-    light += spec * mix(0.9, 0.45, frost) * strength;
-    // Specular streak: the light source mirrored along the top shoulder (reads as a marble, not a dot)
-    float facing = smoothstep(0.2, -0.85, outward.y);
-    float streak = exp(-sq((depth - bevel * mix(0.32, 0.45, press)) / (bevel * 0.16))) * facing;
-    light += streak * mix(0.55, 0.30, frost) * (0.6 + 0.4 * smoothstep(size.x, 0.0, position.x)) * strength;
-    // Lambert falloff gives the body its volume: shoulders facing away from the light darken
-    float lambert = dot(n, L);
-    dark += (1.0 - clamp(lambert * 1.25, 0.0, 1.0)) * 0.22 * s * strength;
-    // Inner shadow, bottom-right, 15-20% of the radius deep, 10-20% black
-    float br = clamp(dot(outward, normalize(float2(1.0, 1.0))), 0.0, 1.0);
-    dark += exp(-depth / max(bevel * 0.18, 1.0)) * br * 0.18 * strength;
-    // Rim: thin white, 1.5% of the radius (≥ 1px), brighter top-left
-    float rimW = max(r * 0.015 * 2.0, 1.0);
-    float rim = 1.0 - smoothstep(0.0, rimW, depth);
-    float tl = clamp(dot(outward, normalize(float2(-1.0, -1.0))) * 0.5 + 0.5, 0.0, 1.0);
-    light += rim * mix(0.25, 0.85, tl);
-    // Wabi's conic edge turns on press
-    float2 d = position - c;
-    float turn = fract((atan(d.y, d.x) * 57.29578 + 90.0 - rimAngle) / 360.0 + 1.0);
-    float conic = max(max(1.0 - smoothstep(0.0, 0.05, turn), smoothstep(0.95, 1.0, turn)),
-                      smoothstep(0.40, 0.50, turn) * (1.0 - smoothstep(0.50, 0.60, turn)));
-    dark += rim * conic * 0.25 * clear;
-    // Wabi's travelling shine band
-    float u = (alongCSS(position, size, -45.0) + shine) * 0.5;
-    light += smoothstep(0.20, 0.40, u) * (1.0 - smoothstep(0.50, 0.55, u)) * mix(0.25, 0.10, prominent);
+    // Schlick Fresnel: almost clear facing you, mirror-bright at grazing (the rim)
+    float cosT = clamp(n.z, 0.0, 1.0);
+    float fresnel = 0.035 + 0.965 * pow(1.0 - cosT, 5.0);
+    // Specular, roughness .116 (marble) / .14 (flat), highlights 1.41 / clearcoat .4; press slides it
+    float rough = mix(0.116, 0.14, slab);
+    float3 Hp = normalize(H + float3(0.0, 0.10, 0.0) * press);
+    float spec = pow(max(dot(n, Hp), 0.0), 2.0 / (rough * rough)) * mix(1.41, 0.4, slab);
+    // Frost lifts the body toward white (the only whitening: no separate tint film)
+    float frostWhite = frost * mix(0.16, 0.10, prominent);
+    // Dispersion fringe: red out, blue in, only on the rail (strength = dispersion x edge^2)
+    float disp = mix(0.81, 0.0, slab) * edge * edge;
+    float3 fringe = float3(1.0, 0.0, -1.0) * disp * 0.10;
+    // Lambert shading of the rail gives the body its volume; the far side falls into shadow
+    float shade = (1.0 - clamp(dot(n, L) * 1.2, 0.0, 1.0)) * edge * 0.30 * strength;
 
-    light = clamp(light, 0.0, 1.0);
-    dark = clamp(dark, 0.0, 1.0);
-    float alpha = light + dark - light * dark;
-    float white = light * (1.0 - dark);                           // premultiplied
-    return half4(half3(half(white)), half(alpha)) * half(coverage);
+    float3 rgb = float3(fresnel * 0.9 * strength + spec * strength + frostWhite) + fringe;
+    float lum = clamp(max(max(rgb.r, rgb.g), rgb.b), 0.0, 1.0);
+    float alpha = clamp(lum + shade * (1.0 - lum), 0.0, 1.0);
+    rgb = clamp(rgb, 0.0, 1.0) * (1.0 - shade);                   // premultiplied
+    return half4(half3(rgb), half(alpha)) * half(coverage);
 }
 """

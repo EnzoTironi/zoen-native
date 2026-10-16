@@ -1,17 +1,14 @@
 // Zoen's marble glass, one colour shader for every button and card.
 //
-// Wabi's production `.glass-btn` (design-reference-rea-20261014/wabi-static/wabi-page-css.css)
-// gives the conic edge that turns on press and the travelling shine. The volume follows the
-// frame analysis of Wabi's lens (ui-refs/wabi-glass/VIDEO-ANALYSIS.md): a hemisphere normal
-// across the shoulder, light from normalize(-.7,.7,1), a specular that is sharp when clear and
-// broad when frosted, a 1.5% white rim brighter top-left, a bottom-right inner shadow and a
-// white film from .05 (clear) to .25 (frosted). The real refraction of what is behind comes from
-// Liquid Glass (.glassEffect) under this layer; see ZoenGlass.swift.
+// Our own implementation of the lens measured in Wabi's app (ui-refs/wabi-glass/app/NOTES.md):
+// a hemisphere normal across the rail, Schlick Fresnel 0.035 + 0.965(1-cos)^5, a key light
+// 27deg / 65deg high with highlights 1.41, frost as the only whitening and a red/blue
+// dispersion fringe on the rail. `slab` 1 is Wabi's button preset (thin rail, no dispersion,
+// clearcoat .4); 0 is the full marble for hero buttons and cards. The refraction of what is
+// behind comes from Liquid Glass (.glassEffect) under this layer; see ZoenGlass.swift.
 #include <metal_stdlib>
 #include <SwiftUI/SwiftUI_Metal.h>
 using namespace metal;
-
-static float sq(float x) { return x * x; }
 
 static float roundedDistance(float2 p, float2 size, float r) {
     float2 h = size * 0.5;
@@ -19,16 +16,8 @@ static float roundedDistance(float2 p, float2 size, float r) {
     return length(max(q, 0.0)) + min(max(q.x, q.y), 0.0) - r;   // < 0 inside
 }
 
-/// Position 0…1 along a CSS linear-gradient angle (0° points up, clockwise).
-static float alongCSS(float2 p, float2 size, float degreesCSS) {
-    float a = degreesCSS * M_PI_F / 180.0;
-    float2 dir = float2(sin(a), -cos(a));
-    float halfLength = 0.5 * (abs(size.x * dir.x) + abs(size.y * dir.y));
-    return dot(p - size * 0.5, dir) / (2.0 * halfLength) + 0.5;
-}
-
 [[ stitchable ]] half4 zoenGlass(float2 position, half4 color, float2 size, float radius,
-                                 float rimAngle, float shine, float press, float prominent, float strength, float frost) {
+                                 float press, float prominent, float strength, float frost, float slab) {
     if (color.a <= 0.0h) return half4(0.0h);
     float2 c = size * 0.5;
     float r = min(radius, min(c.x, c.y));
@@ -38,50 +27,36 @@ static float alongCSS(float2 p, float2 size, float degreesCSS) {
     float2 outward = float2(roundedDistance(position + e.xy, size, r) - roundedDistance(position - e.xy, size, r),
                             roundedDistance(position + e.yx, size, r) - roundedDistance(position - e.yx, size, r));
     outward = outward / max(length(outward), 0.0001);
-    // Hemisphere profile across the shoulder (Wabi's lens: the outer band bends hardest).
-    float bevel = max(min(r, 28.0), 4.0);
-    float s = 1.0 - clamp(depth / bevel, 0.0, 1.0);               // 1 at the edge, 0 on the crown
-    float3 n = normalize(float3(outward * s, sqrt(max(1.0 - s * s, 0.0))));
-    float3 L = normalize(float3(-0.7, -0.7, 1.0));                // top-left (y grows down)
-    float3 H = normalize(L + float3(0.0, 0.0, 1.0));
-    float clear = 1.0 - frost;                                    // Wabi: clear lens ↔ frosted
+    // The lens profile: a hemisphere across the rail. A marble's rail is the whole radius;
+    // the slab preset's is a thin bevel, so small buttons read as a slab with a rounded lip.
+    float rail = max(mix(min(r, 28.0), min(r, 28.0) * 0.35, slab), 3.0);
+    float edge = 1.0 - clamp(depth / rail, 0.0, 1.0);             // 0 on the crown, 1 at the rim
+    float3 n = normalize(float3(outward * edge, sqrt(max(1.0 - edge * edge, 0.0))));
+    float3 V = float3(0.0, 0.0, 1.0);
+    // Key light 27deg around from straight up-left, 65deg high
+    float az = radians(-90.0 - 27.0);
+    float el = radians(65.0);
+    float3 L = normalize(float3(cos(az) * cos(el), sin(az) * cos(el), sin(el)));
+    float3 H = normalize(L + V);
 
-    // Tint film: white .05 clear → .25 frosted
-    float light = mix(0.05, 0.25, frost) * mix(1.0, 0.4, prominent);
-    float dark = 0.0;
-    // Specular: sharp (roughness .1) when clear, broad (.7) when frosted; slides on press
-    float rough = mix(0.1, 0.7, frost);
-    float3 Hp = normalize(H + float3(0.12, 0.12, 0.0) * press);
-    float spec = pow(max(dot(n, Hp), 0.0), mix(400.0, 12.0, rough));
-    light += spec * mix(0.9, 0.45, frost) * strength;
-    // Specular streak: the light source mirrored along the top shoulder (reads as a marble, not a dot)
-    float facing = smoothstep(0.2, -0.85, outward.y);
-    float streak = exp(-sq((depth - bevel * mix(0.32, 0.45, press)) / (bevel * 0.16))) * facing;
-    light += streak * mix(0.55, 0.30, frost) * (0.6 + 0.4 * smoothstep(size.x, 0.0, position.x)) * strength;
-    // Lambert falloff gives the body its volume: shoulders facing away from the light darken
-    float lambert = dot(n, L);
-    dark += (1.0 - clamp(lambert * 1.25, 0.0, 1.0)) * 0.22 * s * strength;
-    // Inner shadow, bottom-right, 15-20% of the radius deep, 10-20% black
-    float br = clamp(dot(outward, normalize(float2(1.0, 1.0))), 0.0, 1.0);
-    dark += exp(-depth / max(bevel * 0.18, 1.0)) * br * 0.18 * strength;
-    // Rim: thin white, 1.5% of the radius (≥ 1px), brighter top-left
-    float rimW = max(r * 0.015 * 2.0, 1.0);
-    float rim = 1.0 - smoothstep(0.0, rimW, depth);
-    float tl = clamp(dot(outward, normalize(float2(-1.0, -1.0))) * 0.5 + 0.5, 0.0, 1.0);
-    light += rim * mix(0.25, 0.85, tl);
-    // Wabi's conic edge turns on press
-    float2 d = position - c;
-    float turn = fract((atan2(d.y, d.x) * 57.29578 + 90.0 - rimAngle) / 360.0 + 1.0);
-    float conic = max(max(1.0 - smoothstep(0.0, 0.05, turn), smoothstep(0.95, 1.0, turn)),
-                      smoothstep(0.40, 0.50, turn) * (1.0 - smoothstep(0.50, 0.60, turn)));
-    dark += rim * conic * 0.25 * clear;
-    // Wabi's travelling shine band
-    float u = (alongCSS(position, size, -45.0) + shine) * 0.5;
-    light += smoothstep(0.20, 0.40, u) * (1.0 - smoothstep(0.50, 0.55, u)) * mix(0.25, 0.10, prominent);
+    // Schlick Fresnel: almost clear facing you, mirror-bright at grazing (the rim)
+    float cosT = clamp(n.z, 0.0, 1.0);
+    float fresnel = 0.035 + 0.965 * pow(1.0 - cosT, 5.0);
+    // Specular, roughness .116 (marble) / .14 (slab), highlights 1.41 / clearcoat .4; press slides it
+    float rough = mix(0.116, 0.14, slab);
+    float3 Hp = normalize(H + float3(0.0, 0.10, 0.0) * press);
+    float spec = pow(max(dot(n, Hp), 0.0), 2.0 / (rough * rough)) * mix(1.41, 0.4, slab);
+    // Frost lifts the body toward white (the only whitening: no separate tint film)
+    float frostWhite = frost * mix(0.16, 0.10, prominent);
+    // Dispersion fringe: red out, blue in, only on the rail (strength = dispersion x edge^2)
+    float disp = mix(0.81, 0.0, slab) * edge * edge;
+    float3 fringe = float3(1.0, 0.0, -1.0) * disp * 0.10;
+    // Lambert shading of the rail gives the body its volume; the far side falls into shadow
+    float shade = (1.0 - clamp(dot(n, L) * 1.2, 0.0, 1.0)) * edge * 0.30 * strength;
 
-    light = clamp(light, 0.0, 1.0);
-    dark = clamp(dark, 0.0, 1.0);
-    float alpha = light + dark - light * dark;
-    float white = light * (1.0 - dark);                           // premultiplied
-    return half4(half3(white), half(alpha)) * color.a * half(coverage);
+    float3 rgb = float3(fresnel * 0.9 * strength + spec * strength + frostWhite) + fringe;
+    float lum = clamp(max(max(rgb.r, rgb.g), rgb.b), 0.0, 1.0);
+    float alpha = clamp(lum + shade * (1.0 - lum), 0.0, 1.0);
+    rgb = clamp(rgb, 0.0, 1.0) * (1.0 - shade);                   // premultiplied
+    return half4(half3(rgb), half(alpha)) * color.a * half(coverage);
 }
