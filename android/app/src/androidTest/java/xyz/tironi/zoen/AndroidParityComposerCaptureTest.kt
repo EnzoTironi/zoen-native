@@ -42,6 +42,7 @@ class AndroidParityComposerCaptureTest {
     private fun capture(dark: Boolean) {
         val instrumentation = InstrumentationRegistry.getInstrumentation()
         val app = ApplicationProvider.getApplicationContext<ZoenApplication>()
+        NativeParityFixtureSetup.install(app)
         val previous = app.repository.preferences.getString("appearance", "auto") ?: "auto"
         app.repository.preferences.edit().putBoolean("demo", true).putBoolean("onboarded", true).commit()
         instrumentation.runOnMainSync { AppAppearance.set(app, if (dark) "dark" else "light") }

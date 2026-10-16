@@ -9,6 +9,7 @@
 
 use std::sync::{Arc, Mutex, MutexGuard};
 
+mod parity_fixture;
 mod agent_notes;
 mod api;
 mod backup;

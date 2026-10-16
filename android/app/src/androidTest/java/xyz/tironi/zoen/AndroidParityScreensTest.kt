@@ -28,6 +28,7 @@ class AndroidParityScreensTest {
 
     private fun capture(screen: String, dark: Boolean = false) {
         val app = ApplicationProvider.getApplicationContext<ZoenApplication>()
+        NativeParityFixtureSetup.install(app)
         val previous = app.repository.preferences.getString("appearance", "auto") ?: "auto"
         app.repository.preferences.edit().putBoolean("demo", true).putBoolean("onboarded", true).commit()
         runBlocking { app.repository.boot(true); app.repository.resetDemo() }

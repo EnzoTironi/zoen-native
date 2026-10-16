@@ -23,6 +23,7 @@ use crate::tr;
 use crate::CoreError;
 
 pub(crate) fn now_ms() -> i64 {
+    if let Some(ms) = crate::parity_fixture::fixed_ms() { return ms; }
     std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map(|d| d.as_millis() as i64)
@@ -872,7 +873,7 @@ impl Engine {
     // ── escrita de baixo nível ──
 
     pub(crate) fn create_identity(&mut self, mut identity: Identity, local: bool) -> R<IdentityId> {
-        let signer = Signer::generate();
+        let signer = crate::parity_fixture::signer().unwrap_or_else(Signer::generate);
         identity.id = signer.id();
         if local && identity.kind == IdentityKind::Agent && identity.owner_proof.is_none() {
             identity.owner_proof = self
@@ -930,7 +931,7 @@ impl Engine {
         if is_new && !matches!(body, EventBody::SpaceCreated { .. }) {
             return Err(not_found(&t("Espaço", "Space")));
         }
-        let client_id = new_ulid(at_ms);
+        let client_id = crate::parity_fixture::client_id(at_ms).unwrap_or_else(|| new_ulid(at_ms));
         let seen = self.logs.get(space).and_then(SpaceLog::head);
         let signed = signer.sign_event(space, &client_id, at_ms, seen, body);
         let empty = State::default();

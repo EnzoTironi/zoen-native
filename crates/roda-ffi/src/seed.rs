@@ -7,6 +7,7 @@
 use roda_types::*;
 
 use crate::apps;
+use crate::parity_fixture::id as new_id;
 use crate::engine::{now_ms, Engine};
 use crate::i18n::t;
 use crate::CoreError;
@@ -74,6 +75,7 @@ fn msg(text: &str) -> EventBody {
 }
 
 pub(crate) fn seed(e: &mut Engine) -> Result<(), CoreError> {
+    let _fixture_scope = crate::parity_fixture::SeedGuard::enter();
     let t0 = now_ms();
     let at = |minutes_ago: i64| t0 - minutes_ago * MIN;
 

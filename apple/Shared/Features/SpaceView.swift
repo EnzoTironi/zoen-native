@@ -653,7 +653,7 @@ struct EntryView: View {
                                 spaceId: entry.id, layout: PhotoBackgroundLayout(dto: dto))
         case .message(let text, _) where model.ownerAgentNote(entry, text: text) != nil:
             OwnerAgentNoteCard(agent: entry.author, note: model.ownerAgentNote(entry, text: text)!,
-                               fresh: Date().timeIntervalSince1970 * 1000 - Double(entry.atMs) < 15_000)
+                               fresh: NativeParityClock.now.timeIntervalSince1970 * 1000 - Double(entry.atMs) < 15_000)
                 .padding(.top, 10)
                 .padding(.leading, 44)
                 .frame(maxWidth: .infinity, alignment: .leading)
