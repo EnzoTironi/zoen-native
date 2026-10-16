@@ -40,6 +40,9 @@ class IconMotionParityCaptureTest {
         val args = InstrumentationRegistry.getArguments()
         val event = requireNotNull(args.getString("iconEvent"))
         require(event in EVENTS) { "Unknown iconEvent: $event" }
+        check(event in AVAILABLE_EVENTS) {
+            "Genuine live transport required for $event; offline canonical demo cannot produce this event"
+        }
         val appearance = requireNotNull(args.getString("iconAppearance"))
         require(appearance in listOf("light", "dark"))
         val motion = requireNotNull(args.getString("iconMotion"))
@@ -189,5 +192,8 @@ class IconMotionParityCaptureTest {
     companion object {
         val EVENTS = listOf("tab-chats-tap", "tab-spaces-tap", "tab-notifications-tap", "tab-profile-tap",
             "composer-mic", "composer-send", "bell-new", "typing-active", "connecting-active", "icons-draw-on")
+        // Explicit partial coverage: 8 × 2 appearances × 2 motion modes = 32 frames.
+        // Reject unsupported events before resetting the fixture or touching evidence.
+        val AVAILABLE_EVENTS = EVENTS.filterNot { it == "typing-active" || it == "connecting-active" }
     }
 }
