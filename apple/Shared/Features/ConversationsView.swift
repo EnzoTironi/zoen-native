@@ -539,7 +539,7 @@ struct ThreadsRow: View {
                 Image(systemName: "bubble.left.and.text.bubble.right")
                     .font(.system(size: 17, weight: .semibold))
                     .frame(width: 56)
-                Text("Threads").font(.body.weight(unread > 0 ? .semibold : .medium))
+                Text("Respostas").font(.body.weight(unread > 0 ? .semibold : .medium))
                 Spacer()
                 if unread > 0 {
                     Text("\(unread)").font(.caption.weight(.bold).monospacedDigit()).foregroundStyle(.white)

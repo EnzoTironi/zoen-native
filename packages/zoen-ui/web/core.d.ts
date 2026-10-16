@@ -15,6 +15,11 @@ declare module '*/core/zoen_web_core.js' {
     bootstrap(): string;
     receive(bytes: Uint8Array, now: number): string;
     queue_message(space: string, text: string, now: number): string;
+    queue_post(space: string, text: string, replyTo: string | undefined, thread: boolean, forwarded: boolean, alsoInChat: boolean, now: number): string;
+    queue_annotation(space: string, target: string, note: string, now: number): string;
+    mark_read(space: string): string;
+    set_thread_follow(space: string, root: string, follow: boolean | undefined, now: number): string;
+    mark_thread_read(space: string, root: string, now: number): string;
     queue_join(space: string, role: string, code: string, now: number): string;
   }
 }

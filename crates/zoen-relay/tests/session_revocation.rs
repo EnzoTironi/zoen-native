@@ -2,10 +2,16 @@
 
 use async_trait::async_trait;
 use futures_util::{SinkExt, StreamExt};
-use roda_log::{Author, Signer};
+use roda_log::{
+    profile::{
+        seal_profile, sign_agreement, sign_upload, verify_agreement, verify_upload, AgreementKey,
+        ProfileFields, ProfileKey,
+    },
+    Author, Signer,
+};
 use roda_proto::{
-    auth_message, ClientFrame, DeviceCertificate, Envelope, ErrorCode, InviteCreated, Op, Reply,
-    Sequenced, ServerFrame, PROTOCOL_VERSION,
+    auth_message, AgreementKeyRecord, ClientFrame, DeviceCertificate, Envelope, ErrorCode,
+    InviteCreated, Op, Reply, SealedProfile, Sequenced, ServerFrame, PROTOCOL_VERSION,
 };
 use roda_types::{Identity, IdentityKind, Role};
 use sqlx::{postgres::PgPoolOptions, Connection, PgConnection};
@@ -249,6 +255,7 @@ impl TestRelay {
             android_packages: Vec::new(),
             android_store_url: None,
             push: Arc::new(zoen_relay::push::Pusher::disabled()),
+            receipts: Default::default(),
         });
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
         let address = listener.local_addr().unwrap();
@@ -319,6 +326,15 @@ fn link_op(author: &Author, id: &str) -> Op {
             cert: author.cert.clone().unwrap(),
         }),
     }
+}
+
+async fn assert_device_absent(test: &TestRelay, author: &Author) {
+    let exists: bool = sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM devices WHERE device = $1)")
+        .bind(author.device.as_deref().unwrap())
+        .fetch_one(&test.state.pool)
+        .await
+        .unwrap();
+    assert!(!exists, "device row survived refused enrollment");
 }
 
 async fn stalled_operation_revocation(publish: bool) {
@@ -548,11 +564,7 @@ async fn an_unlinked_root_holder_cannot_return_with_a_fresh_certificate() {
         "{result:?}"
     );
     assert!(recv(&mut attempted).await.is_none());
-    assert!(
-        !zoen_relay::db::device_known(&test.state.pool, fresh.device.as_ref().unwrap())
-            .await
-            .unwrap()
-    );
+    assert_device_absent(&test, &fresh).await;
     while let Some(frame) = recv(&mut target).await {
         assert!(matches!(
             frame,
@@ -592,6 +604,148 @@ async fn an_unlinked_root_holder_cannot_return_with_a_fresh_certificate() {
         .await
         .unwrap();
     assert_eq!(handle, "ana_changed");
+    let _ = controller.close(None).await;
+    test.close().await;
+}
+
+#[tokio::test]
+async fn embedded_payloads_must_be_signed_by_the_authorized_session_device() {
+    let test = TestRelay::new().await;
+    let root = Signer::generate();
+    let primary = Author::device(&root, Signer::generate());
+    let lost = Author::device(&root, Signer::generate());
+    let mut controller = connect(&test.ws_url, &primary).await;
+    request(
+        &mut controller,
+        1,
+        Op::Register {
+            profile: profile(&primary, "ana"),
+        },
+    )
+    .await
+    .unwrap();
+    request(&mut controller, 2, link_op(&lost, &Signer::generate().id()))
+        .await
+        .unwrap();
+
+    let profile_key = ProfileKey::generate();
+    let fields = ProfileFields {
+        name: "Ana".into(),
+        bio: String::new(),
+        photo: None,
+    };
+    for revoked in [false, true] {
+        let id = if revoked { 10 } else { 3 };
+        if revoked {
+            request(
+                &mut controller,
+                id,
+                Op::Unlink {
+                    device: lost.device.clone().unwrap(),
+                },
+            )
+            .await
+            .unwrap();
+        }
+        assert_eq!(
+            zoen_relay::db::device_revoked(&test.state.pool, lost.device.as_deref().unwrap())
+                .await
+                .unwrap(),
+            revoked
+        );
+
+        // The active session can still publish its own signatures after revocation.
+        let public = AgreementKey::generate().public_hex();
+        let agreement = AgreementKeyRecord {
+            identity: primary.identity.clone(),
+            signed: sign_agreement(&primary, &public).unwrap(),
+            public,
+        };
+        assert_eq!(
+            request(
+                &mut controller,
+                id + 1,
+                Op::PublishAgreementKey {
+                    public: agreement.public.clone(),
+                    signed: agreement.signed.clone(),
+                },
+            )
+            .await,
+            Ok(Reply::Done)
+        );
+        let version = if revoked { 3 } else { 1 };
+        let ciphertext = seal_profile(&profile_key, &primary.identity, version, &fields);
+        let upload = SealedProfile {
+            identity: primary.identity.clone(),
+            version,
+            signed: sign_upload(&primary, version, &ciphertext).unwrap(),
+            ciphertext,
+        };
+        assert_eq!(
+            request(
+                &mut controller,
+                id + 2,
+                Op::PutProfile {
+                    profile: upload.clone(),
+                },
+            )
+            .await,
+            Ok(Reply::Done)
+        );
+
+        // Another device's valid certificate and signatures cannot borrow this session's
+        // authority, whether that device is still active or has already been revoked.
+        let public = AgreementKey::generate().public_hex();
+        let signed = sign_agreement(&lost, &public).unwrap();
+        assert!(verify_agreement(&primary.identity, &public, &signed));
+        assert_eq!(
+            request(
+                &mut controller,
+                id + 3,
+                Op::PublishAgreementKey { public, signed },
+            )
+            .await,
+            Err("agreement key is for another device".into())
+        );
+        let version = version + 1;
+        let ciphertext = seal_profile(&profile_key, &primary.identity, version, &fields);
+        let signed = sign_upload(&lost, version, &ciphertext).unwrap();
+        assert!(verify_upload(
+            &primary.identity,
+            version,
+            &ciphertext,
+            &signed
+        ));
+        assert_eq!(
+            request(
+                &mut controller,
+                id + 4,
+                Op::PutProfile {
+                    profile: SealedProfile {
+                        identity: primary.identity.clone(),
+                        version,
+                        ciphertext,
+                        signed,
+                    },
+                },
+            )
+            .await,
+            Err("profile is for another device".into())
+        );
+        let ids = [primary.identity.clone()];
+        assert_eq!(
+            zoen_relay::db::agreement_keys(&test.state.pool, &ids)
+                .await
+                .unwrap(),
+            vec![agreement]
+        );
+        assert_eq!(
+            zoen_relay::db::sealed_profiles(&test.state.pool, &ids)
+                .await
+                .unwrap(),
+            vec![upload]
+        );
+    }
     let _ = controller.close(None).await;
     test.close().await;
 }
@@ -678,11 +832,7 @@ async fn a_preopened_unregistered_socket_cannot_enroll_after_registration() {
         .await
         .unwrap();
     assert_eq!(handle, "ana");
-    assert!(
-        !zoen_relay::db::device_known(&test.state.pool, late.device.as_ref().unwrap())
-            .await
-            .unwrap()
-    );
+    assert_device_absent(&test, &late).await;
     let _ = controller.close(None).await;
     test.close().await;
 }
@@ -757,11 +907,7 @@ async fn enrollment_and_link_box_delivery_commit_or_rollback_together() {
     assert!(request(&mut controller, 4, link_op(&third, &occupied_id))
         .await
         .is_err());
-    assert!(
-        !zoen_relay::db::device_known(&test.state.pool, third.device.as_ref().unwrap())
-            .await
-            .unwrap()
-    );
+    assert_device_absent(&test, &third).await;
     assert_eq!(
         zoen_relay::db::take_link_box(&test.state.pool, &occupied_id)
             .await
@@ -777,11 +923,7 @@ async fn enrollment_and_link_box_delivery_commit_or_rollback_together() {
         .await
         .unwrap()
         .is_none());
-    assert!(
-        !zoen_relay::db::device_known(&test.state.pool, bad_cert.device.as_ref().unwrap())
-            .await
-            .unwrap()
-    );
+    assert_device_absent(&test, &bad_cert).await;
     // History manifests still work without a certificate and do not enroll any key.
     let history_id = Signer::generate().id();
     request(

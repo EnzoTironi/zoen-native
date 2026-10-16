@@ -99,8 +99,8 @@
   <string name="photo">Choose a photo</string>
   <string name="camera">Take a photo</string>
   <string name="reply">Reply</string>
-  <string name="thread">Open thread</string>
-  <string name="replies">Replies</string>
+  <string name="thread">Abrir respostas</string>
+  <string name="replies">Respostas</string>
   <string name="forward">Forward</string>
   <string name="delete_for_everyone">Delete for everyone</string>
   <string name="delete_for_everyone_q">Delete for everyone?</string>
@@ -116,15 +116,16 @@
   <string name="archive">Archive</string>
   <string name="unarchive">Unarchive</string>
   <string name="muted">Muted</string>
-  <string name="thread_follow">Follow</string>
-  <string name="thread_following">Following</string>
-  <string name="thread_also_in_chat">Also send to chat</string>
-  <string name="threads">Threads</string>
-  <string name="threads_empty">No threads yet</string>
+  <string name="thread_reply_hint">Escreva uma resposta</string>
+  <string name="thread_follow">Acompanhar respostas</string>
+  <string name="thread_following">Acompanhando</string>
+  <string name="thread_also_in_chat">Também enviar na conversa</string>
+  <string name="threads">Respostas</string>
+  <string name="threads_empty">Nenhuma resposta acompanhada ainda</string>
   <string name="mentions_count">@%1$d</string>
   <plurals name="thread_replies">
-    <item quantity="one">%d reply</item>
-    <item quantity="other">%d replies</item>
+    <item quantity="one">%d resposta</item>
+    <item quantity="other">%d respostas</item>
   </plurals>
   <string name="receipt_sending">Sending</string>
   <string name="receipt_sent">Sent</string>

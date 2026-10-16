@@ -38,7 +38,7 @@ fn mentions(text: &str, handle: &str) -> bool {
         let before = lower[..i].chars().next_back();
         let after = lower[i + needle.len()..].chars().next();
         !before.is_some_and(|c| c.is_alphanumeric() || c == '_' || c == '.')
-            && !after.is_some_and(|c| c.is_alphanumeric() || c == '_')
+            && !after.is_some_and(|c| c.is_alphanumeric() || c == '_' || c == '.')
     })
 }
 
@@ -237,8 +237,8 @@ impl Engine {
         if last <= self.thread_read(space, root) {
             return Ok(());
         }
-        self.store
-            .set_meta(&format!("tread:{space}:{root}"), &last.to_string())?;
+        // Publish the synced watermark first. If appending fails, a local read must not
+        // hide the unread replies and prevent the next attempt from syncing them.
         if unread > 0 {
             let follow = self
                 .state
@@ -247,6 +247,8 @@ impl Engine {
                 .and_then(|s| s.0);
             self.put_thread_state(space, root, follow, last)?;
         }
+        self.store
+            .set_meta(&format!("tread:{space}:{root}"), &last.to_string())?;
         Ok(())
     }
 
@@ -260,7 +262,7 @@ impl Engine {
         also_in_chat: bool,
     ) -> R<TimelineEntry> {
         let me = self.me_id()?;
-        self.reply_with(space, &me, text, root, true, also_in_chat)
+        self.reply_with_chat(space, &me, text, None, root, true, also_in_chat)
     }
 }
 
@@ -308,5 +310,7 @@ mod tests {
         assert!(mentions("@enzo", "enzo"));
         assert!(!mentions("@enzofilho", "enzo"));
         assert!(!mentions("mail@enzo.com", "enzo"));
+        assert!(!mentions("oi @enzo.silva", "enzo"));
+        assert!(mentions("oi @enzo.silva!", "enzo.silva"));
     }
 }

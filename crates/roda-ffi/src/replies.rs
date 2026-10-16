@@ -81,14 +81,28 @@ impl Engine {
         to: &str,
         thread: bool,
     ) -> R<TimelineEntry> {
-        self.reply_with(space, author, text, to, thread, false)
+        self.reply_with(space, author, text, None, to, thread)
     }
 
+    /// A reply that may carry an Item (a voice note) instead of text.
     pub(crate) fn reply_with(
         &mut self,
         space: &str,
         author: &str,
         text: &str,
+        attaches: Option<String>,
+        to: &str,
+        thread: bool,
+    ) -> R<TimelineEntry> {
+        self.reply_with_chat(space, author, text, attaches, to, thread, false)
+    }
+
+    pub(crate) fn reply_with_chat(
+        &mut self,
+        space: &str,
+        author: &str,
+        text: &str,
+        attaches: Option<String>,
         to: &str,
         thread: bool,
         also_in_chat: bool,
@@ -102,11 +116,30 @@ impl Engine {
             });
         }
         let text = text.trim();
-        if text.is_empty() {
+        if text.is_empty() && attaches.is_none() {
             return Err(CoreError::Invalid {
                 reason: t("mensagem vazia", "empty message"),
             });
         }
+        let mut reply = self.reply_ref(space, to, thread)?;
+        reply.also_in_chat = thread && also_in_chat;
+        self.append(
+            space,
+            author,
+            EventBody::MessagePosted {
+                message: roda_types::new_id("msg"),
+                text: text.to_string(),
+                attaches,
+                reply: Some(reply),
+                forwarded: false,
+            },
+        )?;
+        let s = self.space_state(space)?;
+        Ok(self.entry_dto(s.entries.last().expect("just appended")))
+    }
+
+    /// Validate before storing a voice file, so a bad target cannot post it to the main chat.
+    pub(crate) fn reply_ref(&self, space: &str, to: &str, thread: bool) -> R<ReplyRef> {
         let s = self.space_state(space)?;
         let Some(target) = s.entries.iter().find(|e| e.id() == to) else {
             return Err(CoreError::NotFound {
@@ -130,27 +163,11 @@ impl Engine {
             Some(r) if thread && r.thread => r.to.clone(),
             _ => to.to_string(),
         };
-        let reply = if thread {
-            ReplyRef {
-                also_in_chat,
-                ..ReplyRef::thread(to)
-            }
+        Ok(if thread {
+            ReplyRef::thread(to)
         } else {
             ReplyRef::inline(to)
-        };
-        self.append(
-            space,
-            author,
-            EventBody::MessagePosted {
-                message: roda_types::new_id("msg"),
-                text: text.to_string(),
-                attaches: None,
-                reply: Some(reply),
-                forwarded: false,
-            },
-        )?;
-        let s = self.space_state(space)?;
-        Ok(self.entry_dto(s.entries.last().expect("just appended")))
+        })
     }
 
     /// The thread under `root`: the root message, then its replies oldest first.
@@ -169,6 +186,7 @@ impl Engine {
                 .map(|e| self.entry_dto(e)),
         );
         out[0].thread_replies = (out.len() - 1) as u32;
+        self.fill_thread_roots(space, &mut out);
         Ok(out)
     }
 }

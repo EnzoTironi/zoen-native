@@ -2,14 +2,17 @@ import SwiftUI
 import AVFoundation
 import Speech
 import RodaCore
+import UniformTypeIdentifiers
 
 // MARK: - Voice notes
 //
 // Hold the mic to record (AAC, mono), slide left to cancel, slide up to lock, release to
 // send. Transcribed on device (Speech, `requiresOnDeviceRecognition`), with word timings
-// kept for the editor. A sent note travels in the chat as a compact marker
-// (`⟦voice:<id>:<ms>:<levels>⟧` + the transcript); the audio file stays in the app's
-// container under VoiceNotes/.
+// kept for the editor. A sent note travels as an end-to-end encrypted audio file Item
+// (`send_voice_note`: chunked, sealed, on the relay like any file) carrying its length,
+// waveform and transcript, so every device and the web can play it. Notes from older
+// builds arrive as a text marker (`⟦voice:<id>:<ms>:<levels>⟧` + the transcript) whose
+// audio only exists on the sender's device; those are still read.
 
 /// One recorded clip, ready to send.
 struct VoiceClip: Equatable {
@@ -30,12 +33,14 @@ struct VoiceTranscript: Equatable, Sendable {
     var words: [Word]
 }
 
-/// The marker a voice note is sent as.
+/// A playable voice note, including the marker format used by older builds.
 struct VoiceNoteRef: Equatable {
     let id: String
     let ms: Int
     let levels: [CGFloat]
     let transcript: String
+    let mime: String?
+    let sha256: String?
 
     static let open = "⟦voice:", close = "⟧"
 
@@ -44,6 +49,18 @@ struct VoiceNoteRef: Equatable {
         return "\(Self.open)\(id):\(ms):\(hex)\(Self.close)" + (transcript.isEmpty ? "" : "\n\(transcript)")
     }
 
+    /// A note sent as an audio file: `id` is the file's Item, played through the core.
+    init(_ voice: VoiceNoteDto) {
+        self.init(id: voice.itemId, ms: Int(clamping: voice.ms), levels: voice.levels.map { CGFloat($0) }, transcript: voice.transcript, mime: voice.mime, sha256: voice.sha256)
+    }
+
+    init(id: String, ms: Int, levels: [CGFloat], transcript: String, mime: String? = nil, sha256: String? = nil) {
+        self.id = id; self.ms = ms; self.levels = levels; self.transcript = transcript
+        self.mime = mime
+        self.sha256 = sha256
+    }
+
+    /// Backward compatibility: notes from builds that sent only a marker.
     static func parse(_ text: String) -> VoiceNoteRef? {
         guard text.hasPrefix(open), let end = text.range(of: close) else { return nil }
         let body = text[text.index(text.startIndex, offsetBy: open.count)..<end.lowerBound].split(separator: ":")
@@ -269,34 +286,67 @@ final class VoicePlayer {
     var currentId: String?
     var isPlaying = false
     var progress: Double = 0
+    var duration: Double = 0
     var rate: Float = 1
+    var error: String?
     private var player: AVAudioPlayer?
+    private var sha256: String?
     private var tick: Task<Void, Never>?
+    /// The audio of a note sent as a file (its Item id), from the core; `nil` until the
+    /// encrypted pieces have arrived.
+    @ObservationIgnored var fetch: ((String) -> Data?)?
+
+    private func audio(_ ref: VoiceNoteRef) -> AVAudioPlayer? {
+        let local = VoiceStore.url(ref.id)
+        // Only marker-era notes need an unversioned local copy. Native notes always use
+        // the current signed bytes, including on the device that recorded them.
+        if ref.mime == nil, FileManager.default.fileExists(atPath: local.path), let p = try? AVAudioPlayer(contentsOf: local) { return p }
+        guard let data = fetch?(ref.id) else {
+            error = String(localized: "The audio is still arriving on this device.")
+            return nil
+        }
+        // The core also carries web recordings and MP3/WAV files. A type hint helps the
+        // system identify in-memory bytes, but does not supply a missing decoder.
+        let hint = ref.mime.flatMap { UTType(mimeType: $0.components(separatedBy: ";")[0])?.identifier }
+        do { return try AVAudioPlayer(data: data, fileTypeHint: hint) }
+        catch {
+            self.error = String(localized: "This recording could not be played on this device.")
+            return nil
+        }
+    }
+
+    func isCurrent(_ ref: VoiceNoteRef) -> Bool {
+        currentId == ref.id && sha256 == ref.sha256
+    }
 
     func toggle(_ ref: VoiceNoteRef) {
-        if currentId == ref.id, let p = player {
-            if p.isPlaying { p.pause(); isPlaying = false } else { p.play(); isPlaying = true; loop() }
+        if isCurrent(ref), let p = player {
+            if p.isPlaying { p.pause(); isPlaying = false } else { isPlaying = p.play(); loop() }
             return
         }
         stop()
+        currentId = ref.id
+        sha256 = ref.sha256
         #if os(iOS)
         try? AVAudioSession.sharedInstance().setCategory(.playback)
         try? AVAudioSession.sharedInstance().setActive(true)
         #endif
-        guard let p = try? AVAudioPlayer(contentsOf: VoiceStore.url(ref.id)) else { currentId = ref.id; return }
+        guard let p = audio(ref) else { return }
         p.enableRate = true
         p.rate = rate
-        p.prepareToPlay()
-        p.play()
+        guard p.prepareToPlay(), p.play() else {
+            error = String(localized: "This recording could not be played on this device.")
+            return
+        }
         player = p
-        currentId = ref.id
         isPlaying = true
         progress = 0
+        duration = p.duration
         loop()
     }
 
     func seek(_ ref: VoiceNoteRef, to f: Double) {
-        if currentId != ref.id { toggle(ref); player?.pause(); isPlaying = false }
+        if !isCurrent(ref) { toggle(ref); player?.pause(); isPlaying = false }
         guard let p = player else { return }
         p.currentTime = max(0, min(1, f)) * p.duration
         progress = f
@@ -313,7 +363,10 @@ final class VoicePlayer {
         player = nil
         isPlaying = false
         progress = 0
+        duration = 0
         currentId = nil
+        sha256 = nil
+        error = nil
     }
 
     private func loop() {
@@ -376,7 +429,7 @@ struct VoiceBubble: View {
     private var player: VoicePlayer { VoicePlayer.shared }
 
     var body: some View {
-        let current = player.currentId == ref.id
+        let current = player.isCurrent(ref)
         let fg = mine ? Palette.myBubbleText : Palette.textPrimary
         VStack(alignment: .leading, spacing: 6) {
             HStack(spacing: 10) {
@@ -406,7 +459,7 @@ struct VoiceBubble: View {
                 }
 
                 VStack(alignment: .trailing, spacing: 2) {
-                    Text(VoiceFormat.time(current ? player.progress * Double(ref.ms) / 1000 : Double(ref.ms) / 1000))
+                    Text(VoiceFormat.time(current ? player.progress * player.duration : Double(ref.ms) / 1000))
                         .font(.caption.monospacedDigit())
                         .foregroundStyle(fg.opacity(0.8))
                     Button { player.cycleRate() } label: {
@@ -419,6 +472,9 @@ struct VoiceBubble: View {
                     .buttonStyle(.plain)
                     .accessibilityLabel(Text("Playback speed"))
                 }
+            }
+            if current, let error = player.error {
+                Text(error).font(.caption).foregroundStyle(fg)
             }
             if !ref.transcript.isEmpty {
                 Button { withAnimation(.snappy) { showTranscript.toggle() } } label: {

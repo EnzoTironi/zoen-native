@@ -28,6 +28,10 @@ use tracing::{field::Empty, Instrument};
 
 use crate::{db, hub::Mailbox, limits, log::Sequencing, metrics::Metrics, Shared};
 
+/// Spaces up to this size hear every member's receipts; larger ones route each receipt
+/// to the author it concerns (`Session::receipt_audience`).
+pub const RECEIPT_BROADCAST_MAX: usize = 16;
+
 /// An X25519/Ed25519 key package is about 300 bytes; this leaves room for extensions.
 const MAX_KEY_PACKAGE: usize = 4096;
 
@@ -747,31 +751,40 @@ impl Session {
         if self.st.limits.ephemeral_device.check(&self.device).is_err() {
             return;
         }
-        let Ok(Some(_)) = self.st.log.role(&space, &self.identity).await else {
-            return;
-        };
+        // One read: the member list answers both "may I?" and "who hears it?". Typing and
+        // receipts are the most frequent frames, so a second transaction here doubled the
+        // log store's read load for no extra information.
         let Ok(members) = self.st.log.members(&space).await else {
             return;
         };
+        if !members.iter().any(|(m, _)| *m == self.identity) {
+            return;
+        }
         let receipt = match kind {
             roda_proto::EphemeralKind::Read { seq } => Some((0, seq)),
             roda_proto::EphemeralKind::Delivered { seq } => Some((seq, 0)),
             _ => None,
         };
         if let Some((delivered, read)) = receipt {
-            if let Err(error) =
-                db::raise_receipt(&self.st.pool, &space, &self.identity, delivered, read).await
-            {
-                tracing::warn!(%error, "receipt not kept");
-            }
+            self.st
+                .receipts
+                .raise(&space, &self.identity, delivered, read);
         }
         // Receipts also reach my other devices (read on the phone clears the Mac), never
         // this session itself.
-        let to: Vec<String> = members
-            .into_iter()
-            .map(|(m, _)| m)
-            .filter(|m| receipt.is_some() || *m != self.identity)
-            .collect();
+        let to: Vec<String> = match kind {
+            roda_proto::EphemeralKind::Read { seq }
+            | roda_proto::EphemeralKind::Delivered { seq }
+                if members.len() > RECEIPT_BROADCAST_MAX =>
+            {
+                self.receipt_audience(&space, seq).await
+            }
+            _ => members
+                .into_iter()
+                .map(|(m, _)| m)
+                .filter(|m| receipt.is_some() || *m != self.identity)
+                .collect(),
+        };
         let n = self.st.fanout.send(
             &to,
             &ServerFrame::Ephemeral {
@@ -783,6 +796,37 @@ impl Session {
         );
         tracing::Span::current().record("delivered_here", n as i64);
         Metrics::inc(&self.st.metrics.ephemeral_forwarded);
+    }
+
+    /// In a large Space a receipt goes to the authors of the messages it acknowledges and
+    /// to my own devices, not to everyone: broadcasting every member's receipt for every
+    /// message is O(members²) frames per message (a 32-person group at 250 msgs/s fell from
+    /// 250 to 5 accepted msgs/s under it, SCALE.md §3). Authors are the ones whose ticks
+    /// change. The watermark covers the last [`crate::recent::WINDOW`] messages up to `seq`
+    /// live; an author further back learns it from the stored watermark on the next sync.
+    async fn receipt_audience(&self, space: &str, seq: u64) -> Vec<String> {
+        let mut to = vec![self.identity.clone()];
+        let authors = match self.st.fanout.recent.authors_through(space, seq) {
+            Some(authors) => authors,
+            None => {
+                let window = crate::recent::WINDOW;
+                let from = seq.saturating_sub(window as u64 - 1).max(1);
+                match self.st.log.read(space, from, window).await {
+                    Ok(events) => events
+                        .iter()
+                        .filter(|e| e.seq <= seq)
+                        .map(|e| e.env.author().to_string())
+                        .collect(),
+                    Err(_) => Vec::new(),
+                }
+            }
+        };
+        for author in authors {
+            if !to.contains(&author) {
+                to.push(author);
+            }
+        }
+        to
     }
 
     /// Agent citizens: the runtime's own state and cursors, or an owner's control.
@@ -1020,6 +1064,10 @@ impl Session {
                 Ok(Reply::Invite(invite))
             }
             Op::PublishAgreementKey { public, signed } => {
+                // The request admission check authorizes only this session's device.
+                if signed.device != self.device {
+                    return Err("agreement key is for another device".into());
+                }
                 if !roda_log::profile::verify_agreement(&self.identity, &public, &signed) {
                     return Err("agreement key isn't signed by this identity".into());
                 }
@@ -1039,6 +1087,9 @@ impl Session {
             Op::PutProfile { profile } => {
                 if profile.identity != self.identity {
                     return Err("profile is for another identity".into());
+                }
+                if profile.signed.device != self.device {
+                    return Err("profile is for another device".into());
                 }
                 if profile.ciphertext.len() > roda_log::profile::MAX_CIPHERTEXT {
                     return Err("profile too large".into());
@@ -1527,6 +1578,19 @@ impl Session {
         let span = tracing::Span::current();
         span.record("spaces", plan.len() as i64);
         let mut sent = 0usize;
+        // Receipt watermarks for every Space this sync reads to the head, in one query
+        // instead of one per Space (a 500-chat reconnect was 500 queries).
+        let heads: Vec<String> = plan
+            .iter()
+            .filter(|(_, _, through)| through.is_none())
+            .map(|(s, ..)| s.clone())
+            .collect();
+        let mut marks = self
+            .st
+            .receipts
+            .of_spaces(&self.st.pool, &heads)
+            .await
+            .unwrap_or_default();
         for (space, mut next, through) in plan {
             #[cfg(debug_assertions)]
             if crate::log::sequencer::fork_histories::armed(&space) {
@@ -1589,7 +1653,11 @@ impl Session {
                     break;
                 }
             }
-            if through.is_none() && !self.replay_receipts(&space).await {
+            if through.is_none()
+                && !self
+                    .replay_receipts(&space, marks.remove(&space).unwrap_or_default())
+                    .await
+            {
                 return;
             }
         }
@@ -1610,10 +1678,7 @@ impl Session {
 impl Session {
     /// The newest receipt watermarks of a Space, so a device that was away still learns
     /// what was delivered and read while it was gone.
-    async fn replay_receipts(&self, space: &str) -> bool {
-        let Ok(rows) = db::receipts(&self.st.pool, space).await else {
-            return true;
-        };
+    async fn replay_receipts(&self, space: &str, rows: Vec<(String, i64, i64)>) -> bool {
         for (from, delivered, read) in rows {
             for kind in [
                 roda_proto::EphemeralKind::Delivered {

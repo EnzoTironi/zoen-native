@@ -60,14 +60,15 @@ pub async fn is_registered(pool: &PgPool, id: &str) -> Result<bool, sqlx::Error>
     }).await.map_err(|_| sqlx::Error::PoolTimedOut)?
 }
 
-pub async fn device_known(pool: &PgPool, device: &str) -> Result<bool, sqlx::Error> {
-    Ok(
-        sqlx::query_scalar::<_, i32>("SELECT 1 FROM devices WHERE device = $1")
-            .bind(device)
-            .fetch_optional(pool)
-            .await?
-            .is_some(),
+/// Whether a device is enrolled and has not been revoked.
+pub async fn device_active(pool: &PgPool, device: &str) -> Result<bool, sqlx::Error> {
+    Ok(sqlx::query_scalar::<_, i32>(
+        "SELECT 1 FROM devices WHERE device = $1 AND revoked_at IS NULL",
     )
+    .bind(device)
+    .fetch_optional(pool)
+    .await?
+    .is_some())
 }
 
 pub async fn touch_device(
@@ -695,33 +696,53 @@ pub async fn revoke_device(
     Ok(r.rows_affected() == 1)
 }
 
-/// Raises a person's receipt watermarks in a Space (never lowers them). `read` implies
-/// `delivered`.
-pub async fn raise_receipt(
-    pool: &PgPool,
-    space: &str,
-    identity: &str,
-    delivered: u64,
-    read: u64,
-) -> Result<(), sqlx::Error> {
-    // Clamp so a bogus u64 can't wrap to a negative BIGINT.
-    let (delivered, read) = (
-        delivered.max(read).min(i64::MAX as u64),
-        read.min(i64::MAX as u64),
-    );
+/// ((space, identity), (delivered, read)).
+pub type ReceiptRow = ((String, String), (u64, u64));
+
+/// Raises many watermarks in one statement, never lowering any. Each key appears once
+/// (the caller folds duplicates), which `ON CONFLICT` requires.
+pub async fn raise_receipts(pool: &PgPool, batch: &[ReceiptRow]) -> Result<(), sqlx::Error> {
+    let mut spaces = Vec::with_capacity(batch.len());
+    let mut ids = Vec::with_capacity(batch.len());
+    let mut delivered = Vec::with_capacity(batch.len());
+    let mut read = Vec::with_capacity(batch.len());
+    // Sorted keys take row locks in one order, so concurrent flushes from two nodes can't
+    // deadlock.
+    let mut sorted: Vec<_> = batch.iter().collect();
+    sorted.sort_by(|a, b| a.0.cmp(&b.0));
+    for ((space, who), (d, r)) in sorted {
+        spaces.push(space.as_str());
+        ids.push(who.as_str());
+        delivered.push((*d).max(*r).min(i64::MAX as u64) as i64);
+        read.push((*r).min(i64::MAX as u64) as i64);
+    }
     sqlx::query(
-        "INSERT INTO space_receipts (space, identity, delivered, read) VALUES ($1, $2, $3, $4)
+        "INSERT INTO space_receipts (space, identity, delivered, read)
+         SELECT * FROM UNNEST($1::text[], $2::text[], $3::bigint[], $4::bigint[])
          ON CONFLICT (space, identity) DO UPDATE SET
            delivered = GREATEST(space_receipts.delivered, EXCLUDED.delivered),
            read = GREATEST(space_receipts.read, EXCLUDED.read)",
     )
-    .bind(space)
-    .bind(identity)
-    .bind(delivered as i64)
-    .bind(read as i64)
+    .bind(&spaces)
+    .bind(&ids)
+    .bind(&delivered)
+    .bind(&read)
     .execute(pool)
     .await
     .map(|_| ())
+}
+
+/// Receipt watermarks of many Spaces at once: (space, identity, delivered, read).
+pub async fn receipts_of_spaces(
+    pool: &PgPool,
+    spaces: &[String],
+) -> Result<Vec<(String, String, i64, i64)>, sqlx::Error> {
+    sqlx::query_as(
+        "SELECT space, identity, delivered, read FROM space_receipts WHERE space = ANY($1)",
+    )
+    .bind(spaces)
+    .fetch_all(pool)
+    .await
 }
 
 /// Every member's receipt watermarks in a Space: (identity, delivered, read).

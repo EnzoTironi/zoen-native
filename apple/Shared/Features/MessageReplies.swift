@@ -118,7 +118,7 @@ private struct SwipeActionsForVoiceOver: ViewModifier {
         if on {
             content
                 .accessibilityAction(named: Text("Reply")) { onIntent(.reply) }
-                .accessibilityAction(named: Text("Reply in thread")) { onIntent(.thread) }
+                .accessibilityAction(named: Text("Abrir respostas")) { onIntent(.thread) }
         } else {
             content
         }
@@ -132,7 +132,7 @@ struct MessageActionsMenu: View {
     var body: some View {
         Menu {
             Button("Reply", systemImage: "arrowshape.turn.up.left") { onIntent(.reply) }
-            Button("Reply in thread", systemImage: "bubble.left.and.text.bubble.right") { onIntent(.thread) }
+            Button("Abrir respostas", systemImage: "bubble.left.and.text.bubble.right") { onIntent(.thread) }
         } label: {
             Image(systemName: "ellipsis")
                 .font(.body.weight(.semibold))
@@ -146,7 +146,7 @@ struct MessageActionsMenu: View {
         #endif
         .accessibilityLabel(Text("Message actions"))
         .accessibilityValue(Text(author.name))
-        .accessibilityHint(Text("Reply or open a thread"))
+        .accessibilityHint(Text("Responder ou abrir respostas"))
         .accessibilityIdentifier("message-actions")
     }
 }
@@ -240,7 +240,7 @@ struct ThreadRepliesChip: View {
                             .overlay(Circle().strokeBorder(Palette.background, lineWidth: 1.5))
                     }
                 }
-                Text(count == 1 ? String(localized: "1 reply") : String(localized: "\(Int(count)) replies"))
+                Text(count == 1 ? String(localized: "1 resposta") : String(localized: "\(Int(count)) respostas"))
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(Palette.action)
                 if lastReplyMs > 0 {
@@ -251,7 +251,7 @@ struct ThreadRepliesChip: View {
                 if unread > 0 {
                     Circle().fill(Palette.action).frame(width: 7, height: 7)
                         .transition(.scale.combined(with: .opacity))
-                        .accessibilityLabel("\(Int(unread)) unread")
+                        .accessibilityLabel("\(Int(unread)) não lidas")
                 }
                 Image(systemName: "chevron.right").font(.system(size: 9, weight: .bold)).foregroundStyle(Palette.action.opacity(0.7))
             }
@@ -297,8 +297,8 @@ struct ThreadSheet: View {
                             row(root, previous: nil)
                                 .padding(.bottom, 6)
                             HStack(spacing: 8) {
-                                Text(root.threadReplies == 0 ? String(localized: "No replies yet") :
-                                        root.threadReplies == 1 ? String(localized: "1 reply") : String(localized: "\(Int(root.threadReplies)) replies"))
+                                Text(root.threadReplies == 0 ? String(localized: "Nenhuma resposta ainda") :
+                                        root.threadReplies == 1 ? String(localized: "1 resposta") : String(localized: "\(Int(root.threadReplies)) respostas"))
                                     .font(.caption.weight(.semibold))
                                     .foregroundStyle(Palette.textSecondary)
                                 Rectangle().fill(Palette.textPrimary.opacity(0.1)).frame(height: 1)
@@ -323,13 +323,13 @@ struct ThreadSheet: View {
             .safeAreaBar(edge: .bottom, spacing: 0) {
                 VStack(alignment: .leading, spacing: 0) {
                     Toggle(isOn: $alsoInChat) {
-                        Text("Also send to chat").font(.footnote)
+                        Text("Também enviar na conversa").font(.footnote)
                     }
                     .toggleStyle(.checkmark)
                     .padding(.horizontal, 18)
                     .padding(.bottom, 4)
                     .accessibilityIdentifier("thread-also-in-chat")
-                    Composer(text: $draft, placeholder: String(localized: "Reply in thread"), focused: $focused, busy: false) {
+                    Composer(text: $draft, placeholder: String(localized: "Escreva uma resposta"), focused: $focused, busy: false) {
                         let text = draft.trimmingCharacters(in: .whitespacesAndNewlines)
                         draft = ""
                         guard !text.isEmpty else { return }
@@ -340,13 +340,13 @@ struct ThreadSheet: View {
                     }
                 }
             }
-            .navigationTitle(Text("Thread"))
+            .navigationTitle(Text("Respostas"))
             #if os(iOS)
             .navigationBarTitleDisplayMode(.inline)
             #endif
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
-                    Button { dismiss() } label: { Text("Close") }
+                    Button { dismiss() } label: { Text("Fechar") }
                         .accessibilityIdentifier("thread-close")
                 }
                 ToolbarItem(placement: .primaryAction) {
@@ -355,7 +355,7 @@ struct ThreadSheet: View {
                         model.perform { try model.core.setThreadFollow(spaceId: spaceId, rootId: rootId, follow: !following) }
                         reload()
                     } label: {
-                        Label(following ? "Following" : "Follow", systemImage: following ? "bell.fill" : "bell")
+                        Label(following ? "Acompanhando" : "Acompanhar respostas", systemImage: following ? "bell.fill" : "bell")
                             .contentTransition(.symbolEffect(.replace))
                     }
                     .accessibilityIdentifier("thread-follow")
@@ -374,7 +374,7 @@ struct ThreadSheet: View {
         let grouped = previous?.author.id == e.author.id && e.atMs - (previous?.atMs ?? 0) < 5 * 60_000
         return Group {
             if case .message(let text, let card) = e.kind {
-                MessageRow(author: e.author, text: text, card: card, atMs: e.atMs, grouped: grouped,
+                MessageRow(author: e.author, text: text, card: card, voice: e.voice.map(VoiceNoteRef.init), atMs: e.atMs, grouped: grouped,
                            isDirect: false, onOpenItem: { model.openApp($0) })
                     .padding(.top, grouped ? 0 : 8)
             }
@@ -382,10 +382,14 @@ struct ThreadSheet: View {
     }
 
     private func reload() {
-        withAnimation(reduceMotion ? nil : Motion.wabi) {
-            entries = (try? model.core.thread(spaceId: spaceId, rootId: rootId)) ?? []
+        var loaded = (try? model.core.thread(spaceId: spaceId, rootId: rootId)) ?? []
+        if let root = loaded.first, root.threadUnread > 0 {
+            model.perform { try model.core.markThreadRead(spaceId: spaceId, rootId: rootId) }
+            loaded = (try? model.core.thread(spaceId: spaceId, rootId: rootId)) ?? []
         }
-        try? model.core.markThreadRead(spaceId: spaceId, rootId: rootId)
+        withAnimation(reduceMotion ? nil : Motion.wabi) {
+            entries = loaded
+        }
     }
 }
 
@@ -446,8 +450,8 @@ struct ThreadsInboxView: View {
             .buttonStyle(.plain)
         }
         .listStyle(.plain)
-        .overlay { if threads.isEmpty { InkEmptyState(pose: .map, title: String(localized: "No threads yet")) } }
-        .navigationTitle("Threads")
+        .overlay { if threads.isEmpty { InkEmptyState(pose: .map, title: String(localized: "Nenhuma resposta acompanhada ainda")) } }
+        .navigationTitle("Respostas")
         .task(id: model.revision) { threads = model.core.threads() }
         .threadPanel(item: $open) { t in ThreadSheet(spaceId: t.spaceId, rootId: t.root.id) }
     }

@@ -176,11 +176,27 @@ impl Engine {
                 &names.join(", "),
             )?;
             for e in &s.entries {
-                let EntryBody::Message { text, .. } = &e.body else {
+                let EntryBody::Message {
+                    text,
+                    attaches,
+                    marks,
+                    ..
+                } = &e.body
+                else {
                     continue;
                 };
-                let body = searchable_text(text);
-                if body.is_empty() {
+                if marks.deleted {
+                    continue;
+                }
+                let mut body = searchable_text(text);
+                if let Some(voice) = attaches
+                    .as_deref()
+                    .and_then(|item| self.voice_of(&s.id, item))
+                {
+                    body.push('\n');
+                    body.push_str(&voice.transcript);
+                }
+                if body.trim().is_empty() {
                     continue;
                 }
                 let who = self

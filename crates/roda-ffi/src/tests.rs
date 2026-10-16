@@ -4,6 +4,8 @@ use super::*;
 
 mod client_api;
 mod file_bounds;
+mod thread_sync;
+mod voice_notes;
 
 fn seeded() -> Arc<RodaEngine> {
     let e = RodaEngine::open(":memory:".into(), "pt-BR".into()).unwrap();
@@ -2481,7 +2483,8 @@ fn threads_follow_count_and_stay_out_of_the_chat_unread() {
         .members
         .iter()
         .find(|m| m.id != me && m.kind == PersonaKind::Person)
-        .map(|m| m.id.clone());
+        .map(|m| m.id.clone())
+        .expect("another person must be present to exercise unread replies");
     let root = e.send_message(s.id.clone(), "plano?".into()).unwrap();
     e.mark_read(s.id.clone()).unwrap();
     let before = e.lock().space_summary(&s.id).unwrap().unread;
@@ -2493,32 +2496,42 @@ fn threads_follow_count_and_stay_out_of_the_chat_unread() {
     assert!(inbox
         .iter()
         .any(|t| t.root.id == root.id && t.root.thread_following));
-    if let Some(other) = other {
-        if e.lock()
-            .reply_with(&s.id, &other, "@nobody bora", &root.id, true, false)
-            .is_ok()
-        {
-            let sum = e.lock().space_summary(&s.id).unwrap();
-            assert_eq!(sum.unread, before, "a thread reply is not chat unread");
-            assert_eq!(sum.threads_unread, 1);
-            e.mark_thread_read(s.id.clone(), root.id.clone()).unwrap();
-            assert_eq!(e.lock().space_summary(&s.id).unwrap().threads_unread, 0);
-        }
-    }
+    e.lock()
+        .reply_with(&s.id, &other, "@nobody bora", None, &root.id, true)
+        .expect("the incoming reply must be stored before checking unread");
+    let sum = e.lock().space_summary(&s.id).unwrap();
+    assert_eq!(sum.unread, before, "a thread reply is not chat unread");
+    assert_eq!(sum.threads_unread, 1);
+    let panel = e.thread(s.id.clone(), root.id.clone()).unwrap();
+    assert!(panel[0].thread_following);
+    assert_eq!(panel[0].thread_unread, 1);
+    e.mark_thread_read(s.id.clone(), root.id.clone()).unwrap();
+    assert_eq!(e.lock().space_summary(&s.id).unwrap().threads_unread, 0);
     // Also send to chat: the reply carries the flag the main timeline shows.
     let both = e
         .send_thread_reply(s.id.clone(), "vale pra todos".into(), root.id.clone(), true)
         .unwrap();
     assert!(both.also_in_chat && both.in_thread.is_some());
+    // Replying to a reply keeps both the root and the also-in-chat flag.
+    let nested = e
+        .send_thread_reply(s.id.clone(), "também aqui".into(), both.id.clone(), true)
+        .unwrap();
+    assert_eq!(nested.in_thread.as_deref(), Some(root.id.as_str()));
+    assert!(nested.also_in_chat);
+    e.lock()
+        .reply_with_chat(&s.id, &other, "para a conversa", None, &nested.id, true, true)
+        .unwrap();
+    assert_eq!(
+        e.lock().space_summary(&s.id).unwrap().unread,
+        before + 1,
+        "a broadcast thread reply is also chat unread"
+    );
     // Unfollow wins over automatic.
     e.set_thread_follow(s.id.clone(), root.id.clone(), Some(false))
         .unwrap();
     assert!(!e.threads().iter().any(|t| t.root.id == root.id));
     let tl = e.timeline(s.id.clone()).unwrap();
     let r = tl.iter().find(|t| t.id == root.id).unwrap();
-    assert_eq!(
-        r.thread_participants.len(),
-        1.max(r.thread_participants.len())
-    );
+    assert_eq!(r.thread_participants.len(), 2);
     assert!(r.thread_last_reply_ms > 0 && !r.thread_following);
 }

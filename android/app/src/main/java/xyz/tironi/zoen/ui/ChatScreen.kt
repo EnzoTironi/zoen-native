@@ -487,7 +487,7 @@ fun TimelineRow(model: ZoenViewModel, spaceId: String, entry: TimelineEntry, nav
                         modifier = Modifier.padding(top = 6.dp).messageFace().combinedClickable(onClick = {}, onLongClick = { menu = true })) {
                         Text(stringResource(R.string.message_deleted), Modifier.padding(horizontal = 14.dp, vertical = 10.dp), style = MaterialTheme.typography.bodyMedium.copy(fontStyle = androidx.compose.ui.text.font.FontStyle.Italic), color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
-                    else if (kind.text.isNotBlank() || entry.replyTo != null) {
+                    else if (entry.voice != null || kind.text.isNotBlank() || entry.replyTo != null) {
                     Surface(shape = RoundedCornerShape(24.dp, 24.dp, if (mine) 6.dp else 24.dp, if (mine) 24.dp else 6.dp),
                         color = if (mine) MaterialTheme.colorScheme.ownMessage else MaterialTheme.colorScheme.otherMessage,
                         contentColor = if (mine) MaterialTheme.colorScheme.onOwnMessage else MaterialTheme.colorScheme.onSurface,
@@ -499,7 +499,7 @@ fun TimelineRow(model: ZoenViewModel, spaceId: String, entry: TimelineEntry, nav
                                 }
                             }
                             if (entry.forwarded) Text(stringResource(R.string.forwarded), style = MaterialTheme.typography.labelSmall.copy(fontStyle = androidx.compose.ui.text.font.FontStyle.Italic), color = LocalContentColor.current.copy(alpha = .65f))
-                            val voice = VoiceNoteRef.parse(kind.text)
+                            val voice = entry.voice?.let(VoiceNoteRef::from) ?: VoiceNoteRef.parse(kind.text)
                             if (voice != null) VoiceBubble(model, voice)
                             else if (kind.text.isNotBlank()) {
                                 val mentionColor = if (mine) LocalContentColor.current else MaterialTheme.colorScheme.primary
@@ -545,7 +545,7 @@ fun TimelineRow(model: ZoenViewModel, spaceId: String, entry: TimelineEntry, nav
                         if (!entry.deleted) {
                             DropdownMenuItem(text = { Text(stringResource(R.string.forward)) }, onClick = { menu = false; forwarding = true }, leadingIcon = { Icon(Icons.AutoMirrored.Rounded.Forward, null) })
                             if (kind.text.isNotBlank()) DropdownMenuItem(text = { Text(stringResource(R.string.copy)) }, onClick = { menu = false; context.getSystemService(ClipboardManager::class.java).setPrimaryClip(ClipData.newPlainText(copied, kind.text)) }, leadingIcon = { Icon(Icons.Rounded.ContentCopy, null) })
-                            if (mine && kind.text.isNotBlank() && VoiceNoteRef.parse(kind.text) == null) DropdownMenuItem(text = { Text(stringResource(R.string.edit)) }, onClick = { menu = false; editText = kind.text; editing = true }, leadingIcon = { Icon(Icons.Rounded.Edit, null) })
+                            if (mine && entry.voice == null && kind.text.isNotBlank() && VoiceNoteRef.parse(kind.text) == null) DropdownMenuItem(text = { Text(stringResource(R.string.edit)) }, onClick = { menu = false; editText = kind.text; editing = true }, leadingIcon = { Icon(Icons.Rounded.Edit, null) })
                             if (mine) DropdownMenuItem(text = { Text(stringResource(R.string.delete_for_everyone), color = MaterialTheme.colorScheme.error) }, onClick = { menu = false; confirmDelete = true }, leadingIcon = { Icon(Icons.Rounded.Delete, null, tint = MaterialTheme.colorScheme.error) })
                         }
                     }
@@ -554,7 +554,7 @@ fun TimelineRow(model: ZoenViewModel, spaceId: String, entry: TimelineEntry, nav
                 if (entry.reactions.isNotEmpty()) ReactionChips(model, spaceId, entry)
                 if (entry.edited) Text(stringResource(R.string.edited), Modifier.padding(top = 2.dp, start = 8.dp, end = 8.dp), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 // Cards without a text bubble keep the meta underneath.
-                if (kind.text.isBlank() && entry.replyTo == null) BubbleMeta(entry.atMs, if (mine) entry.delivery else null, Modifier.padding(top = 5.dp, start = 8.dp, end = 8.dp))
+                if (entry.voice == null && kind.text.isBlank() && entry.replyTo == null) BubbleMeta(entry.atMs, if (mine) entry.delivery else null, Modifier.padding(top = 5.dp, start = 8.dp, end = 8.dp))
                 if (entry.threadReplies > 0u && onThread != null) ThreadRepliesRow(entry, onThread)
                 }
             }
@@ -603,9 +603,19 @@ fun ThreadScreen(model: ZoenViewModel, state: AppState, space: String, root: Str
     val motion = rememberMotionEnabled()
     var alsoInChat by rememberSaveable(root) { mutableStateOf(false) }
     val following = entries.firstOrNull()?.threadFollowing == true
+    var changingFollow by remember(root) { mutableStateOf(false) }
     LaunchedEffect(entries) { if (entries.isNotEmpty()) runCatching { model.repository.change { it.markThreadRead(space, root) } } }
     Scaffold(topBar = { ScreenBar(stringResource(R.string.replies), back) {
-        TextButton(onClick = { threadHaptics.perform(ZoenFeedback.Selection); model.launch { model.repository.change { it.setThreadFollow(space, root, !following) } } }, modifier = Modifier.testTag("thread-follow")) {
+        TextButton(onClick = {
+            if (!changingFollow) {
+                changingFollow = true
+                threadHaptics.perform(ZoenFeedback.Selection)
+                model.launch {
+                    try { model.repository.change { it.setThreadFollow(space, root, !following) } }
+                    finally { changingFollow = false }
+                }
+            }
+        }, enabled = entries.isNotEmpty() && !changingFollow, modifier = Modifier.testTag("thread-follow")) {
             Icon(if (following) Icons.Rounded.Notifications else Icons.Rounded.NotificationsNone, null, Modifier.size(18.dp)); Spacer(Modifier.width(6.dp))
             Text(stringResource(if (following) R.string.thread_following else R.string.thread_follow))
         }
@@ -615,15 +625,15 @@ fun ThreadScreen(model: ZoenViewModel, state: AppState, space: String, root: Str
             Checkbox(alsoInChat, null, Modifier.size(20.dp)); Text(stringResource(R.string.thread_also_in_chat), style = MaterialTheme.typography.bodySmall)
         }
         Row(Modifier.padding(start = 16.dp, end = 16.dp, bottom = 16.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            OutlinedTextField(text, { text = it }, Modifier.weight(1f), placeholder = { Text(stringResource(R.string.reply)) }, maxLines = 4,
+            OutlinedTextField(text, { text = it }, Modifier.weight(1f), placeholder = { Text(stringResource(R.string.thread_reply_hint)) }, maxLines = 4,
                 label = entries.firstOrNull { it.id == replyTo }?.let { { Text(it.author.name) } })
             if (text.isBlank()) VoiceComposer(model, space, reply = replyTo, thread = true, threadRoot = root, onSent = { replyTo = root })
             else FilledIconButton(onClick = {
                 val draft = text; val target = replyTo; sending = true
                 val broadcast = alsoInChat
                 model.launch { try {
-                    if (target == root) { model.repository.change { it.sendThreadReply(space, draft.trim(), root, broadcast) }; threadHaptics.perform(ZoenFeedback.Send) }
-                    else model.send(space, draft, target, true, onStored = { threadHaptics.perform(ZoenFeedback.Send) })
+                    model.repository.change { it.sendThreadReply(space, draft.trim(), target, broadcast) }
+                    threadHaptics.perform(ZoenFeedback.Send)
                     if (text == draft) text = ""; replyTo = root; alsoInChat = false
                 } finally { sending = false } }
             }, enabled = text.isNotBlank() && !sending && !state.keyMissing) { ZoenIcon(ZoenGlyph.Send, stringResource(R.string.send)) }

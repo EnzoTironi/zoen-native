@@ -2,7 +2,7 @@
 
 use crate::files::FileDto;
 use crate::pages::{MarkdownFileDto, PageBlockDto, PageDto, PageEditResult, PlanPageDto};
-use crate::{CoreError, ItemDetail, RodaEngine};
+use crate::{CoreError, ItemDetail, RodaEngine, TimelineEntry};
 
 #[uniffi::export]
 impl RodaEngine {
@@ -114,6 +114,33 @@ impl RodaEngine {
         let mut e = self.lock();
         let id = e.file_add(&space_id, &path, &name, &mime, &bytes, thumbnail.as_deref())?;
         e.item(&id)
+    }
+
+    /// Sends a voice note as an encrypted audio file (see `Engine::send_voice_note`).
+    /// `levels` are waveform bars 0…1; `reply_to` answers a message, in its thread if
+    /// `thread`.
+    #[allow(clippy::too_many_arguments)]
+    pub fn send_voice_note(
+        &self,
+        space_id: String,
+        bytes: Vec<u8>,
+        mime: String,
+        ms: u64,
+        levels: Vec<f32>,
+        transcript: String,
+        reply_to: Option<String>,
+        thread: bool,
+    ) -> Result<TimelineEntry, CoreError> {
+        self.lock().send_voice_note(
+            &space_id,
+            &bytes,
+            &mime,
+            ms,
+            &levels,
+            &transcript,
+            reply_to.as_deref(),
+            thread,
+        )
     }
 
     /// Saves new bytes for a file as its next version (markup, crop, trim…).

@@ -101,9 +101,9 @@ pub async fn put(
     ) {
         return err(StatusCode::UNAUTHORIZED, "bad signature");
     }
-    match crate::db::device_known(&st.pool, &device).await {
+    match crate::db::device_active(&st.pool, &device).await {
         Ok(true) => {}
-        Ok(false) => return err(StatusCode::FORBIDDEN, "unknown device"),
+        Ok(false) => return err(StatusCode::FORBIDDEN, "unlinked device"),
         Err(_) => return err(StatusCode::SERVICE_UNAVAILABLE, "database unavailable"),
     }
     if body.is_empty() || body.len() > MAX_BLOB_BYTES {

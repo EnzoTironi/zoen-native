@@ -87,6 +87,66 @@ mod browser {
             )
             .map_err(error)
         }
+        pub fn queue_post(
+            &mut self,
+            space: &str,
+            text: &str,
+            reply_to: Option<String>,
+            thread: bool,
+            forwarded: bool,
+            also_in_chat: bool,
+            now_ms: f64,
+        ) -> Result<String, JsValue> {
+            let reply = reply_to.filter(|to| !to.is_empty()).map(|to| (to, thread));
+            serde_json::to_string(
+                &self
+                    .client
+                    .queue_post_with_chat(space, text, reply, forwarded, also_in_chat, time(now_ms)?)
+                    .map_err(error)?,
+            )
+            .map_err(error)
+        }
+        /// `note` is the shared Annotation JSON, e.g. {"React":{"emoji":"👍"}} or "Delete".
+        pub fn queue_annotation(
+            &mut self,
+            space: &str,
+            target: &str,
+            note: &str,
+            now_ms: f64,
+        ) -> Result<String, JsValue> {
+            let note = serde_json::from_str(note).map_err(error)?;
+            serde_json::to_string(
+                &self
+                    .client
+                    .queue_annotation(space, target, note, time(now_ms)?)
+                    .map_err(error)?,
+            )
+            .map_err(error)
+        }
+        pub fn mark_read(&mut self, space: &str) -> Result<String, JsValue> {
+            serde_json::to_string(&self.client.mark_read(space).map_err(error)?).map_err(error)
+        }
+        pub fn set_thread_follow(
+            &mut self,
+            space: &str,
+            root: &str,
+            follow: Option<bool>,
+            now_ms: f64,
+        ) -> Result<String, JsValue> {
+            serde_json::to_string(
+                &self.client.set_thread_follow(space, root, follow, time(now_ms)?).map_err(error)?,
+            ).map_err(error)
+        }
+        pub fn mark_thread_read(
+            &mut self,
+            space: &str,
+            root: &str,
+            now_ms: f64,
+        ) -> Result<String, JsValue> {
+            serde_json::to_string(
+                &self.client.mark_thread_read(space, root, time(now_ms)?).map_err(error)?,
+            ).map_err(error)
+        }
         pub fn queue_join(
             &mut self,
             space: &str,
