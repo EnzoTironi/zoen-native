@@ -98,13 +98,13 @@ fun HackathonScreen(model: ZoenViewModel, state: AppState, spaceId: String, navi
                     } else Text("No hackathon yet.")
                 }
             } else {
-                val ended = now >= hack.optLong("deadline_ms")
+                val ended = hack.optBoolean("submissions_closed")
                 val remaining = ((hack.optLong("deadline_ms") - now + 999) / 1000).coerceAtLeast(0)
                 val finalized = hack.optBoolean("finalized")
                 val registered = me in hack.optJSONArray("registered").strings()
                 LivingFormSection("Overview") {
                     Text(hack.optString("title"), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold)
-                    Text(if (ended) "Submissions closed" else "${remaining / 86400}d ${remaining / 3600 % 24}h ${remaining / 60 % 60}m ${remaining % 60}s remaining", style = MaterialTheme.typography.bodyLarge.copy(fontFeatureSettings = "tnum"))
+                    Text(if (ended) "Submissions closed" else if (remaining == 0L) "Awaiting administrator to close submissions" else "${remaining / 86400}d ${remaining / 3600 % 24}h ${remaining / 60 % 60}m ${remaining % 60}s remaining", style = MaterialTheme.typography.bodyLarge.copy(fontFeatureSettings = "tnum"))
                     Text(java.text.DateFormat.getDateTimeInstance().format(java.util.Date(hack.optLong("deadline_ms"))), color = MaterialTheme.colorScheme.onSurfaceVariant)
                     OutlinedTextField(skills, { skills = it.take(512) }, label = { Text("What would you like to work on?") }, modifier = Modifier.fillMaxWidth(), minLines = 2, maxLines = 4)
                     Button(enabled = !busy && !ended && !finalized, onClick = { command(JSONObject().put("action", "register").put("skills", skills.trim())) }) { Text(if (registered) "Update interests" else "Register") }
@@ -182,6 +182,7 @@ fun HackathonScreen(model: ZoenViewModel, state: AppState, spaceId: String, navi
                     val winners = hack.optJSONArray("winners").strings()
                     if (winners.isEmpty()) Text("Results have not been published.", color = MaterialTheme.colorScheme.onSurfaceVariant)
                     teams.filter { it.optString("id") in winners }.forEach { team -> Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) { Icon(Icons.Rounded.EmojiEvents, null); Text(team.optString("name"), fontWeight = FontWeight.SemiBold) } }
+                    if (admin && !ended && !finalized) Button(enabled = !busy, onClick = { command(JSONObject().put("action", "submissions_close")) }) { Text("Close submissions and open voting") }
                     if (admin && !finalized) Button(enabled = !busy && ended, onClick = { command(JSONObject().put("action", "finalize")) }) { Text("Publish winners announcement") }
                     if (finalized) Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) { Icon(Icons.Rounded.CheckCircle, null); Text("Results published to announcements", style = MaterialTheme.typography.bodySmall) }
                 }

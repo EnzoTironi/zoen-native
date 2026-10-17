@@ -15,6 +15,8 @@ struct LivingHackathon: Decodable, Equatable, Identifiable {
     let schedule: [Milestone]
     let winners: [String]
     let finalized: Bool
+    let submissionsClosed: Bool?
+    var isClosed: Bool { finalized || submissionsClosed == true }
     let canJudge: Bool?
     let pendingTeamRequests: [TeamRequest]?
 
@@ -22,6 +24,7 @@ struct LivingHackathon: Decodable, Equatable, Identifiable {
     enum CodingKeys: String, CodingKey {
         case id, title, registered, profiles, teams, schedule, winners, finalized
         case deadlineMs = "deadline_ms"
+        case submissionsClosed = "submissions_closed"
         case canJudge = "can_judge"
         case pendingTeamRequests = "pending_team_requests"
     }

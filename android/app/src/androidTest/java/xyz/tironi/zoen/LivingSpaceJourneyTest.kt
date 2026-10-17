@@ -108,7 +108,7 @@ class LivingSpaceJourneyTest {
         compose.waitUntil(10_000) { compose.onAllNodesWithText("Project submitted", substring = false).fetchSemanticsNodes().isNotEmpty() }
         scrollSection("Project")
         shot("android-submission.png")
-        runBlocking { kotlinx.coroutines.delay((deadline - System.currentTimeMillis() + 1100).coerceAtLeast(0)) }
+        compose.onNodeWithText("Close submissions and open voting", substring = false).performScrollTo().performClick()
         compose.onNodeWithText("Publish winners announcement", substring = false).performScrollTo().performClick()
         compose.waitUntil(10_000) { compose.onAllNodesWithText("Winners", substring = false).fetchSemanticsNodes().isNotEmpty() }
         scrollSection("Winners")

@@ -67,7 +67,7 @@ struct LivingHackathonView: View {
         Section {
             Label(h.title, systemImage: "trophy").font(.title2.bold())
             LabeledContent("Submission deadline") { Text(h.deadline, format: .dateTime.month().day().hour().minute()) }
-            if h.deadline > clock {
+            if !h.isClosed {
                 HStack {
                     Text("Time remaining")
                     Spacer()
@@ -80,7 +80,10 @@ struct LivingHackathonView: View {
             TextField("What would you like to work on?", text: $skills, axis: .vertical).lineLimit(2...4)
             Button(h.registered.contains(me) ? String(localized: "Update interests") : String(localized: "Register"), systemImage: "person.badge.plus") {
                 command(["action": "register", "skills": skills])
-            }.buttonStyle(.glass)
+            }.buttonStyle(.glass).disabled(h.isClosed)
+            if !h.isClosed && h.deadline <= clock {
+                Text("Awaiting administrator to close submissions").font(.caption).foregroundStyle(.secondary)
+            }
         } header: { Text("Overview") }
     }
 
@@ -105,7 +108,7 @@ struct LivingHackathonView: View {
                         Text(model.core.personas().first { $0.id == request.identityId }?.name ?? String(localized: "Community member")).font(.caption)
                         Button("Accept teammate", systemImage: "person.badge.plus") {
                             command(["action": "team_join", "team_id": team.id, "identity_id": request.identityId])
-                        }
+                        }.disabled(h.isClosed)
                     }
                     if team.members.contains(me) {
                         if let conversation = team.space {
@@ -118,14 +121,14 @@ struct LivingHackathonView: View {
                     } else if myTeam == nil {
                         Button("Request to join", systemImage: "person.crop.circle.badge.plus") {
                             command(["action": "team_join", "team_id": team.id])
-                        }
+                        }.disabled(h.isClosed)
                     }
                 }.padding(.vertical, 6)
             }
             if myTeam == nil && h.registered.contains(me) {
                 TextField("Team name", text: $teamName)
                 Button("Create team", systemImage: "person.3") { command(["action": "team_create", "name": teamName]) }
-                    .disabled(teamName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                    .disabled(h.isClosed || teamName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
             }
         }
     }
@@ -161,7 +164,7 @@ struct LivingHackathonView: View {
                 }
                 Button("Submit project", systemImage: "paperplane") {
                     command(["action": "project_submit", "team_id": team.id, "url": projectURL, "file_ids": Array(selectedFiles)])
-                }.disabled(h.finalized || h.deadline <= clock || (projectURL.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && selectedFiles.isEmpty))
+                }.disabled(h.isClosed || (projectURL.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && selectedFiles.isEmpty))
                 ForEach(team.files, id: \.self) { id in
                     Button("Open submitted file", systemImage: "doc") { model.push(.item(id)) }
                 }
@@ -174,8 +177,8 @@ struct LivingHackathonView: View {
         Section("Judging & voting") {
             ForEach(h.teams) { team in
                 let noSubmission = team.projectUrl == nil && team.files.isEmpty
-                let cannotVote = h.finalized || h.deadline > clock || !h.registered.contains(me) || team.members.contains(me) || noSubmission
-                let cannotJudge = h.finalized || h.deadline > clock || team.members.contains(me) || noSubmission
+                let cannotVote = h.finalized || !h.isClosed || !h.registered.contains(me) || team.members.contains(me) || noSubmission
+                let cannotJudge = h.finalized || !h.isClosed || team.members.contains(me) || noSubmission
                 VStack(alignment: .leading, spacing: 10) {
                     LabeledContent(team.name, value: "\(team.votes) votes · \(team.score) points")
                     Button("Vote", systemImage: "hand.thumbsup") { command(["action": "vote", "team_id": team.id]) }
@@ -211,9 +214,12 @@ struct LivingHackathonView: View {
                 Label(team.name, systemImage: "trophy.fill").font(.headline)
             }
             if h.winners.isEmpty { Text("Results have not been published.").foregroundStyle(.secondary) }
+            if admin && !h.isClosed {
+                Button("Close submissions and open voting", systemImage: "lock") { command(["action": "submissions_close"]) }
+            }
             if admin && !h.finalized {
                 Button("Publish winners announcement", systemImage: "megaphone") { command(["action": "finalize"]) }
-                    .disabled(h.deadline > clock)
+                    .disabled(!h.isClosed)
             }
             if h.finalized { Label("Results published to announcements", systemImage: "checkmark.circle").font(.caption) }
         }

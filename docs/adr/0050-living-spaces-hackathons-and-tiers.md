@@ -55,7 +55,13 @@ A Space may host a hackathon with an administrator-controlled schedule. The even
 has registration, team discovery and formation, project submission, judging,
 voting and results. Deadlines are persisted instants; countdowns derive from the
 clock instead of decrementing an in-memory counter. Countdown text remains
-legible with Reduce Motion and does not animate every second.
+legible with Reduce Motion and does not animate every second. A deadline is an
+advisory schedule, not a trusted timestamp attestation: the relay does not attest
+participant clocks. An authenticated administrator publishes `submissions_close`
+to freeze registration, team formation and submissions and open judging/voting.
+Replay uses this signed phase transition (`submissions_closed`), never a
+participant's `at_ms`, for phase authorization. An elapsed countdown alone does
+not open voting; administrators must close submissions explicitly.
 
 Registration is attributed to the authenticated member. A person cannot register,
 join a team, submit or vote on another person's behalf. Team membership is

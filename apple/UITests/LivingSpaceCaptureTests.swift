@@ -127,6 +127,10 @@ final class LivingSpaceCaptureTests: XCTestCase {
         XCTAssertTrue(submission.exists)
         XCTAssertTrue(app.links["Submitted project"].exists || app.buttons["Submitted project"].exists)
         capture(app, theme, "submission")
+        let close = app.buttons["Close submissions and open voting"]
+        scrollTo(close, in: app)
+        XCTAssertTrue(close.exists)
+        close.tap()
         let publish = app.buttons["Publish winners announcement"]
         scrollTo(publish, in: app)
         if publish.exists {

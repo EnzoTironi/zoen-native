@@ -40,8 +40,33 @@ struct ZoeniOSApp: App {
 /// out the radial menu (create and the destinations that aren't tabs).
 struct RootView: View {
     @AppStorage("LivingSpacesEnabled") private var livingSpaces = false
+    @Environment(AppModel.self) private var model
+    @State private var configuredFlag: Bool?
+    @State private var configurationError: String?
+
     var body: some View {
-        if livingSpaces { LivingSpaceShell() } else { LegacyRootView() }
+        Group {
+            // Do not load either shell until the persisted core flag agrees with
+            // the current preference (including switching the experiment off).
+            if configuredFlag == livingSpaces {
+                if livingSpaces { LivingSpaceShell() } else { LegacyRootView() }
+            } else if let configurationError {
+                ContentUnavailableView("Couldn't configure this account", systemImage: "exclamationmark.triangle", description: Text(configurationError))
+            } else {
+                ProgressView()
+            }
+        }
+        .task(id: livingSpaces) {
+            configuredFlag = nil
+            configurationError = nil
+            do {
+                try model.core.setLivingSpaceEnabled(enabled: livingSpaces)
+                model.refresh()
+                configuredFlag = livingSpaces
+            } catch {
+                configurationError = error.localizedDescription
+            }
+        }
     }
 }
 

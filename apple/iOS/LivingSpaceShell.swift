@@ -54,7 +54,6 @@ struct LivingSpaceShell: View {
             } else if model.sync.needsAccount { OnboardingFlow {} }
         }
         .task(id: model.revision) {
-            try? model.core.setLivingSpaceEnabled(enabled: true)
             pending = model.spaces.filter { $0.kind == .community }.reduce(0) { count, space in
                 guard let json = try? model.core.livingSpaceCommand(spaceId: space.id, commandJson: "{\"action\":\"home\"}"),
                       let home = try? LivingSpaceProjection.decode(json), home.canManage else { return count }
