@@ -132,7 +132,23 @@ final class AndroidParityCaptureTests: XCTestCase {
             diagnostic.name = "ios-geometry-\(screen)-\(appearance).json"
             diagnostic.lifetime = .keepAlways
             add(diagnostic)
-            let shot = XCTAttachment(screenshot: app.screenshot())
+            // Screen pixels can retain portrait backing with UIImage orientation metadata.
+            // app.screenshot() crops that backing using landscape app bounds on iOS 27,
+            // losing the right side and adding black pixels. Draw the full screen image
+            // through UIKit so its supplied orientation is applied before PNG encoding.
+            let image = XCUIScreen.main.screenshot().image
+            let format = UIGraphicsImageRendererFormat()
+            format.scale = image.scale
+            let rendered = UIGraphicsImageRenderer(size: image.size, format: format).image { _ in
+                image.draw(at: .zero)
+            }
+            let window = try XCTUnwrap(geometry["window_points"] as? [String: Double])
+            XCTAssertEqual(rendered.size.width, try XCTUnwrap(window["width"]))
+            XCTAssertEqual(rendered.size.height, try XCTUnwrap(window["height"]))
+            XCTAssertEqual(rendered.imageOrientation, .up)
+            XCTAssertEqual(CGFloat(try XCTUnwrap(rendered.cgImage).width), rendered.size.width * image.scale)
+            XCTAssertEqual(CGFloat(try XCTUnwrap(rendered.cgImage).height), rendered.size.height * image.scale)
+            let shot = XCTAttachment(image: rendered)
             shot.name = "ios-\(screen)-\(appearance)"
             shot.lifetime = .keepAlways
             add(shot)
