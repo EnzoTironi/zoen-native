@@ -5,6 +5,8 @@ final class AndroidParityCaptureTests: XCTestCase {
     @MainActor func testLightScreens() throws { try capture(dark: false) }
     @MainActor func testDarkScreens() throws { try capture(dark: true) }
     @MainActor func testOnboardingLightFrame() throws { try capture(dark: false, screens: ["onboarding"]) }
+    @MainActor func testIntegrationLightScreens() throws { try capture(dark: false, screens: ["home", "marketplace", "notifications", "search"]) }
+    @MainActor func testIntegrationDarkScreens() throws { try capture(dark: true, screens: ["home", "marketplace", "notifications", "search"]) }
 
     @MainActor private func capture(dark: Bool, screens: [String] = ["onboarding", "chats", "chat", "composer", "spaces", "notifications", "profile", "settings"]) throws {
         continueAfterFailure = false
@@ -79,6 +81,15 @@ final class AndroidParityCaptureTests: XCTestCase {
                 XCTAssertTrue(app.buttons["chat-title"].waitForExistence(timeout: 10))
             } else if screen == "profile" {
                 XCTAssertTrue(app.buttons["openSettings"].waitForExistence(timeout: 30))
+            } else if screen == "marketplace" {
+                let marketplace = app.tabBars.buttons["Marketplace"].firstMatch
+                XCTAssertTrue(marketplace.waitForExistence(timeout: 30))
+                marketplace.tap()
+            } else if screen == "search" {
+                let search = app.tabBars.buttons["Search"].firstMatch
+                XCTAssertTrue(search.waitForExistence(timeout: 30))
+                search.tap()
+                XCTAssertTrue(app.textFields["unified-search-field"].waitForExistence(timeout: 10))
             } else if screen == "notifications" {
                 let notifications = app.descendants(matching: .any)["home-notifications-card"].firstMatch
                 XCTAssertTrue(notifications.waitForExistence(timeout: 30), "Notifications must remain reachable from the first Home card")
