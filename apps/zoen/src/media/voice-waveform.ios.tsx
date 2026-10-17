@@ -1,7 +1,7 @@
 import { Host } from '@expo/ui';
 import { Button, Slider, Text as NativeText, VStack } from '@expo/ui/swift-ui';
 import { disabled as disabledModifier, foregroundStyle } from '@expo/ui/swift-ui/modifiers';
-import { useRef, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import { Text, View } from 'react-native';
 import {
   GestureDetector,
@@ -27,6 +27,7 @@ type Preview = { draft: VoiceDraft; range: FrameRange };
 type Drag = {
   draft: VoiceDraft;
   kind: 'start' | 'end' | 'selection';
+  width: number;
   origin: number;
   trim: FrameRange;
   selection: Preview | null;
@@ -42,7 +43,7 @@ export function VoiceWaveform({ draft, onEdit, disabled = false }: Props) {
   const [preview, setPreview] = useState<Preview | null>(null);
   const [selection, setSelection] = useState<Preview | null>(null);
   const drag = useRef<Drag | null>(null);
-  const tapping = useRef<VoiceDraft | null>(null);
+  const tapping = useRef<{ draft: VoiceDraft; width: number } | null>(null);
   const frames = draft.original.frameCount;
   const trim = preview?.draft === draft ? preview.range : draft.edit.trim;
   const selected = selection?.draft === draft ? selection.range : null;
@@ -50,8 +51,15 @@ export function VoiceWaveform({ draft, onEdit, disabled = false }: Props) {
   const position = (frame: number) => GUTTER + (frame / frames) * track;
   const frameAt = (x: number) => clamp(((x - GUTTER) / track) * frames, 0, frames);
   const time = (frame: number) => `${(frame / draft.original.sampleRate).toFixed(2)} s`;
-  const projection = projectVoiceDraft({ ...draft, edit: { ...draft.edit, trim } });
-  const canonicalProjection = projectVoiceDraft(draft);
+  const projection = useMemo(
+    () =>
+      projectVoiceDraft({
+        ...draft,
+        edit: { ...draft.edit, trim: { startFrame: trim.startFrame, endFrame: trim.endFrame } },
+      }),
+    [draft, trim.startFrame, trim.endFrame],
+  );
+  const canonicalProjection = useMemo(() => projectVoiceDraft(draft), [draft]);
   const removed: FrameRange[] = [];
   let cursor = 0;
   for (const kept of projection.keptRanges) {
@@ -88,6 +96,7 @@ export function VoiceWaveform({ draft, onEdit, disabled = false }: Props) {
       const endDistance = Math.abs(event.x - position(trim.endFrame));
       drag.current = {
         draft,
+        width,
         kind:
           Math.min(startDistance, endDistance) <= GUTTER
             ? startDistance < endDistance
@@ -101,11 +110,12 @@ export function VoiceWaveform({ draft, onEdit, disabled = false }: Props) {
     },
     onUpdate: (event) => {
       const context = drag.current;
-      if (!disabled && context?.draft === draft) updateDrag(event.x, context);
+      if (!disabled && context?.draft === draft && context.width === width)
+        updateDrag(event.x, context);
     },
     onDeactivate: (event) => {
       const context = drag.current;
-      if (event.canceled || disabled || context?.draft !== draft) return;
+      if (event.canceled || disabled || context?.draft !== draft || context.width !== width) return;
       const range = updateDrag(event.x, context);
       drag.current = null;
       if (context.kind !== 'selection') onEdit({ type: 'trim', range });
@@ -123,10 +133,16 @@ export function VoiceWaveform({ draft, onEdit, disabled = false }: Props) {
     enabled: !disabled && width > GUTTER * 2,
     runOnJS: true,
     onBegin: () => {
-      tapping.current = draft;
+      tapping.current = { draft, width };
     },
     onDeactivate: (event) => {
-      if (event.canceled || disabled || tapping.current !== draft) return;
+      if (
+        event.canceled ||
+        disabled ||
+        tapping.current?.draft !== draft ||
+        tapping.current.width !== width
+      )
+        return;
       tapping.current = null;
       const frame = Math.min(frames - 1, frameAt(event.x));
       let startFrame = 0;

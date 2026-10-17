@@ -44,6 +44,20 @@ enum ZoenMediaFiles { static let maximumBytes: UInt64 = 64 << 20 }
     let editor = ZoenVoiceEditor(cacheRoot: owned)
     let source = try await editor.prepare(uri: input.absoluteString)
     precondition(source.sampleRate == rate && source.frameCount == 132_300 && source.levels.count == 160)
+    // A finite Speech timestamp may still exceed Int64 after scaling. These
+    // regressions execute the production conversion, not a JS reimplementation.
+    let extreme = ZoenVoiceEditor.speechRange(startSeconds: -Double.greatestFiniteMagnitude,
+      endSeconds: Double.greatestFiniteMagnitude, source: source, previousEnd: 0)
+    precondition(extreme?.startFrame == 0 && extreme?.endFrame == source.frameCount)
+    precondition(ZoenVoiceEditor.speechRange(startSeconds: .nan, endSeconds: 1, source: source, previousEnd: 0) == nil)
+    precondition(ZoenVoiceEditor.speechRange(startSeconds: 0, endSeconds: .infinity, source: source, previousEnd: 0) == nil)
+    precondition(ZoenVoiceEditor.speechRange(startSeconds: 2, endSeconds: 1, source: source, previousEnd: 0) == nil)
+    precondition(ZoenVoiceEditor.speechRange(startSeconds: 1e100, endSeconds: 1e200, source: source, previousEnd: 0) == nil)
+    let adjacent = ZoenVoiceEditor.speechRange(startSeconds: 0.99999999, endSeconds: 1.25, source: source, previousEnd: 44_100)
+    precondition(adjacent?.startFrame == 44_100 && adjacent?.endFrame == 55_125)
+    precondition(ZoenVoiceEditor.processingTimeout(durationSeconds: 3) == 60)
+    precondition(ZoenVoiceEditor.processingTimeout(durationSeconds: 120) == 90)
+    precondition(ZoenVoiceEditor.processingTimeout(durationSeconds: 3_600) == 900)
     expect(try digest(source.uri).elementsEqual(originalHash))
     let ranges = [ZoenVoiceEditor.Range(startFrame: 5_512, endFrame: 38_587), ZoenVoiceEditor.Range(startFrame: 93_712, endFrame: 126_787)]
     let output = try await editor.render(sourceId: source.id, ranges: ranges)
@@ -79,6 +93,6 @@ enum ZoenMediaFiles { static let maximumBytes: UInt64 = 64 << 20 }
     try await editor.release(source.id)
     precondition(!FileManager.default.fileExists(atPath: URL(string: source.uri)!.deletingLastPathComponent().path))
     expect(try digest(input.absoluteString).elementsEqual(originalHash))
-    print("Native voice PCM→AAC PASS: 66150 decoded frames,1500ms; disjoint440/880Hz kept,1200Hz excluded;15ms fades; immutable source; invalid edits refused; cancellation and owned cleanup.")
+    print("Native voice PCM→AAC PASS: 66150 decoded frames,1500ms; disjoint440/880Hz kept,1200Hz excluded;15ms fades; immutable source; invalid edits refused; cancellation and owned cleanup; extreme/invalid Speech times and duration-aware processing budgets.")
   }
 }

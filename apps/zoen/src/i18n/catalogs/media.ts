@@ -2,6 +2,20 @@ import { defineFeature } from '../catalog.ts';
 
 export const media = defineFeature(
   {
+    voiceImportAudio: 'Import audio',
+    voiceImportDetail: 'Choose an audio file to review locally. Microphone access is not needed.',
+    voiceCleanupFailed: 'Couldn’t discard this recording. Try again.',
+    voiceSuggestions: 'Suggested cuts',
+    voiceRemoveFillers: {
+      one: 'Remove %{count} possible hesitation',
+      other: 'Remove %{count} possible hesitations',
+    },
+    voiceShortenPauses: {
+      one: 'Shorten %{count} possible pause',
+      other: 'Shorten %{count} possible pauses',
+    },
+    voiceSuggestionsDetail:
+      'Review suggestions before applying. Pauses may contain sounds, and text segments may include more than one word.',
     voiceWaveform: 'Original recording',
     voiceTrimStart: 'Trim start',
     voiceTrimEnd: 'Trim end',
@@ -32,12 +46,12 @@ export const media = defineFeature(
     voiceUndo: 'Undo edit',
     voiceRedo: 'Redo edit',
     voiceOriginalEdited: 'Original %{original} · Edited %{edited}',
-    voiceRemoveWord: 'Remove “%{word}” from audio',
-    voiceRestoreWord: 'Restore “%{word}” in audio',
-    voiceWordsHint: 'Tap a word to remove it. Touch and drag to select a run.',
-    voiceWordsPrevious: 'Previous words',
-    voiceWordsNext: 'Next words',
-    voiceWordsPage: 'Words page %{page} of %{total}',
+    voiceRemoveWord: 'Remove text segment “%{word}” from audio',
+    voiceRestoreWord: 'Restore text segment “%{word}” in audio',
+    voiceWordsHint: 'Tap a text segment to remove it. Touch and drag to select several segments.',
+    voiceWordsPrevious: 'Previous segments',
+    voiceWordsNext: 'Next segments',
+    voiceWordsPage: 'Text segments: page %{page} of %{total}',
     pauseAudio: 'Pause audio',
     playAudio: 'Play audio',
     thisAudioCouldNotBePlayed: 'This audio could not be played.',
@@ -99,6 +113,21 @@ export const media = defineFeature(
     shareFileLabel: 'Share %{name}',
   },
   {
+    voiceImportAudio: 'Importar áudio',
+    voiceImportDetail:
+      'Escolha um arquivo de áudio para revisar neste aparelho. Não é necessário acesso ao microfone.',
+    voiceCleanupFailed: 'Não foi possível descartar este áudio. Tente novamente.',
+    voiceSuggestions: 'Sugestões de cortes',
+    voiceRemoveFillers: {
+      one: 'Remover %{count} possível hesitação',
+      other: 'Remover %{count} possíveis hesitações',
+    },
+    voiceShortenPauses: {
+      one: 'Encurtar %{count} possível pausa',
+      other: 'Encurtar %{count} possíveis pausas',
+    },
+    voiceSuggestionsDetail:
+      'Revise as sugestões antes de aplicar. As pausas podem conter sons, e os trechos de texto podem incluir mais de uma palavra.',
     voiceWaveform: 'Gravação original',
     voiceTrimStart: 'Início do recorte',
     voiceTrimEnd: 'Fim do recorte',
@@ -130,13 +159,13 @@ export const media = defineFeature(
     voiceUndo: 'Desfazer edição',
     voiceRedo: 'Refazer edição',
     voiceOriginalEdited: 'Original %{original} · Editado %{edited}',
-    voiceRemoveWord: 'Remover “%{word}” do áudio',
-    voiceRestoreWord: 'Restaurar “%{word}” no áudio',
+    voiceRemoveWord: 'Remover trecho “%{word}” do áudio',
+    voiceRestoreWord: 'Restaurar trecho “%{word}” no áudio',
     voiceWordsHint:
-      'Toque em uma palavra para removê-la. Mantenha o toque e arraste para selecionar várias.',
-    voiceWordsPrevious: 'Palavras anteriores',
-    voiceWordsNext: 'Próximas palavras',
-    voiceWordsPage: 'Palavras: página %{page} de %{total}',
+      'Toque em um trecho para removê-lo. Mantenha o toque e arraste para selecionar vários trechos.',
+    voiceWordsPrevious: 'Trechos anteriores',
+    voiceWordsNext: 'Próximos trechos',
+    voiceWordsPage: 'Trechos de texto: página %{page} de %{total}',
     pauseAudio: 'Pausar áudio',
     playAudio: 'Reproduzir áudio',
     thisAudioCouldNotBePlayed: 'Não foi possível reproduzir este áudio.',

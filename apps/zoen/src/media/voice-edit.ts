@@ -11,6 +11,7 @@ export type VoiceSource = Readonly<{
   /** Uniform bins over the complete original recording, each normalized to 0…1. */
   levels: readonly number[];
 }>;
+/** One original timed transcript fragment; it may be a whole phrase. Never infer inner word times. */
 export type VoiceWord = FrameRange & Readonly<{ id: string; text: string }>;
 export type VoiceTranscript = Readonly<{ text: string; words: readonly VoiceWord[] }>;
 export type VoiceEdit = Readonly<{

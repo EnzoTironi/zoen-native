@@ -250,6 +250,29 @@ actor ZoenVoiceEditor {
     try FileManager.default.setAttributes([.protectionKey: FileProtectionType.completeUntilFirstUserAuthentication], ofItemAtPath: output.path)
   }
 
+  /// Speech time-codes are external floating-point metadata. Clamp in seconds
+  /// before multiplying or converting, including finite values outside Int64.
+  /// Keep each attributed fragment intact; no per-word timing is synthesized.
+  static func speechRange(startSeconds: Double, endSeconds: Double, source: Source, previousEnd: Int64) -> Range? {
+    guard startSeconds.isFinite, endSeconds.isFinite, endSeconds > startSeconds,
+          source.sampleRate.isFinite, source.sampleRate > 0,
+          source.frameCount > 0, source.frameCount <= 9_007_199_254_740_991,
+          previousEnd >= 0, previousEnd <= source.frameCount else { return nil }
+    let duration = Double(source.frameCount) / source.sampleRate
+    let start = max(0, min(duration, startSeconds)) * source.sampleRate
+    let end = max(0, min(duration, endSeconds)) * source.sampleRate
+    let a = max(previousEnd, min(source.frameCount, Int64(start.rounded(.down))))
+    let b = max(a, min(source.frameCount, Int64(end.rounded(.up))))
+    return b > a ? Range(startFrame: a, endFrame: b) : nil
+  }
+
+  /// Local file analysis need not run in real time. Give longer recordings a
+  /// proportionate budget (30s + half their length), bounded to 1–15 minutes.
+  /// This timer starts after any explicit language-model installation finishes.
+  static func processingTimeout(durationSeconds: Double) -> Double {
+    max(60, min(900, 30 + durationSeconds / 2))
+  }
+
   private static func transcribe(source: Source, locale: String) async throws -> Transcript {
     guard SpeechTranscriber.isAvailable,
           let supported = await SpeechTranscriber.supportedLocale(equivalentTo: Locale(identifier: locale == "pt-BR" ? "pt-BR" : "en-US")),
@@ -276,16 +299,14 @@ actor ZoenVoiceEditor {
                 let fragment = String(result.text[run.range].characters)
                 text += fragment
                 guard let timing = run.audioTimeRange else { continue }
-                let start = timing.start.seconds * source.sampleRate
-                let end = CMTimeRangeGetEnd(timing).seconds * source.sampleRate
-                guard start.isFinite, end.isFinite, end > start else { continue }
                 // Adjacent Speech times may straddle one PCM frame after
                 // quantization. Keep word ranges monotonic in original frames.
-                let a = max(words.last?.endFrame ?? 0, min(source.frameCount, Int64(start.rounded(.down))))
-                let b = max(a, min(source.frameCount, Int64(end.rounded(.up))))
+                guard let range = speechRange(startSeconds: timing.start.seconds,
+                  endSeconds: CMTimeRangeGetEnd(timing).seconds, source: source,
+                  previousEnd: words.last?.endFrame ?? 0) else { continue }
                 let word = fragment.trimmingCharacters(in: .whitespacesAndNewlines)
-                if !word.isEmpty, b > a {
-                  words.append(Word(id: "\(source.id):\(words.count)", text: word, startFrame: a, endFrame: b))
+                if !word.isEmpty {
+                  words.append(Word(id: "\(source.id):\(words.count)", text: word, startFrame: range.startFrame, endFrame: range.endFrame))
                 }
               }
               guard text.utf8.count <= 65_536, words.count <= 10_000 else { throw Failure.invalidAudio }
@@ -294,7 +315,7 @@ actor ZoenVoiceEditor {
             return Transcript(status: "ready", text: text, words: words)
           }
           group.addTask {
-            try await Task.sleep(for: .seconds(60))
+            try await Task.sleep(for: .seconds(processingTimeout(durationSeconds: source.durationMs / 1_000)))
             await analyzer.cancelAndFinishNow()
             return .unavailable
           }
