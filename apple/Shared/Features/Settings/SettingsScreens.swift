@@ -505,41 +505,36 @@ struct DataSettings: View {
 
 struct BackupSettings: View {
     @Environment(AppModel.self) private var model
-    @State private var status: BackupStatusDto? = nil
-    @State private var askPassword = false
+    @State private var status: BackupStatusDto?
+    @State private var askKey = false
     @State private var busy = false
 
     var body: some View {
         let s = status ?? model.core.backupStatus()
-        SettingsPage(title: "Backup and recovery") {
+        SettingsPage(title: "Cópia e recuperação") {
             SettingsGroup {
                 if s.enabled {
-                    SettingsRow(symbol: "checkmark.icloud", title: "Backup is on",
-                                subtitle: s.lastBackupMs > 0
-                                    ? String(localized: "Last backup: \(Date(timeIntervalSince1970: Double(s.lastBackupMs) / 1000).formatted(.relative(presentation: .named)))")
-                                    : String(localized: "No backup yet"))
-                    SettingsRow(symbol: "arrow.triangle.2.circlepath.icloud", title: "Back up now", id: "backupNow") { Task { await backupNow() } }
+                    SettingsRow(symbol: "checkmark.icloud", title: "Cópia ativada",
+                                subtitle: s.lastBackupMs > 0 ? "Sua última cópia foi enviada." : "O envio ainda não foi concluído.")
+                    SettingsRow(symbol: "arrow.triangle.2.circlepath.icloud", title: "Fazer cópia agora", id: "backupNow") { Task { await backupNow() } }
                 } else {
-                    SettingsRow(symbol: "icloud.slash", title: "Backup is off",
-                                subtitle: String(localized: "Your chats live only on your devices"))
+                    SettingsRow(symbol: "icloud.slash", title: "Cópia desativada", subtitle: "Suas conversas estão apenas nos seus aparelhos.")
                     if model.sync.account != nil {
-                        SettingsRow(symbol: "lock", title: "Turn on with a password", id: "backupTurnOn") { askPassword = true }
+                        SettingsRow(symbol: "key", title: "Ativar com chave de recuperação", id: "backupTurnOn") { askKey = true }
                     }
                 }
             }
-            SettingsGroup {
-                SettingsRow(symbol: "clock.arrow.circlepath", title: "Restore from a backup",
-                            subtitle: String(localized: "Not available on this device yet"), chevron: false, id: "backupRestore")
-                    .opacity(0.45)
-                    .accessibilityHint(Text("Unavailable"))
+            SettingsCaption("Para recuperar em um aparelho novo, escolha Recuperar minha conta na tela inicial e use sua chave de 64 números. Guarde a chave fora deste aparelho.")
+            if s.enabled && s.mode == "password" {
+                SettingsCaption("Esta cópia usa senha. Ela foi mantida e você pode continuar fazendo cópias. A recuperação por senha não está disponível nesta tela; mantenha um aparelho conectado.")
             }
-            SettingsCaption("Restoring happens when you sign in on a new device: choose “I already have an account” and type your backup password.")
         }
-        .sheet(isPresented: $askPassword) { BackupPasswordSheet { status = $0 } }
+        .sheet(isPresented: $askKey, onDismiss: { status = model.core.backupStatus() }) { RecoveryKeySetup { status = $0 } }
         .disabled(busy)
     }
 
     private func backupNow() async {
+        guard !busy else { return }
         busy = true
         defer { busy = false }
         do {
@@ -547,53 +542,7 @@ struct BackupSettings: View {
             Haptics.commit()
         } catch {
             Haptics.warning()
-            model.show(.init(kind: .error, text: (error as? CoreError)?.message ?? error.localizedDescription))
-        }
-    }
-}
-
-private struct BackupPasswordSheet: View {
-    @Environment(AppModel.self) private var model
-    @Environment(\.dismiss) private var dismiss
-    let done: (BackupStatusDto) -> Void
-    @State private var password = ""
-    @State private var busy = false
-    @State private var error: String? = nil
-
-    var body: some View {
-        NavigationStack {
-            SettingsPage(title: "Backup password", showsBack: false) {
-                SettingsCaption("Pick a password with at least 8 characters. We can't recover it for you: after 10 wrong tries the backup locks for good.")
-                SecureField("Password", text: $password)
-                    .textContentType(.newPassword)
-                    .padding(.horizontal, 16)
-                    .frame(height: 50)
-                    .background(SettingsStyle.card, in: .rect(cornerRadius: 14, style: .continuous))
-                    .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).strokeBorder(SettingsStyle.controlOutline, lineWidth: 1))
-                    .accessibilityIdentifier("backupPassword")
-                if let error { Text(error).font(.footnote).foregroundStyle(Palette.danger) }
-            } footer: {
-                SettingsPrimaryButton(title: "Turn on backup", id: "backupConfirm", busy: busy) {
-                    Task { await turnOn() }
-                }
-                .disabled(password.count < 8 || busy)
-            }
-            .environment(\.settingsClose, SettingsCloseAction { dismiss() })
-        }
-        .presentationDetents([.medium, .large])
-    }
-
-    private func turnOn() async {
-        busy = true
-        defer { busy = false }
-        do {
-            let s = try await model.core.backupTurnOnPassword(password: password, vault: model.sync.vault)
-            Haptics.commit()
-            done(s)
-            dismiss()
-        } catch {
-            Haptics.warning()
-            self.error = (error as? CoreError)?.message ?? error.localizedDescription
+            model.show(.init(kind: .error, text: "Não foi possível enviar a cópia. Confira a conexão e tente novamente."))
         }
     }
 }

@@ -685,4 +685,6 @@ pub fn core_version() -> String {
 }
 
 #[cfg(test)]
+mod recovery_ui_tests;
+#[cfg(test)]
 mod tests;

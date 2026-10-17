@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
+import { acquireUrl } from './media-url.ts';
 import { message as reason } from './boundary.ts';
 import type { FileDoc, Messages } from './messages.ts';
 
@@ -7,19 +8,9 @@ import type { FileDoc, Messages } from './messages.ts';
  *  keep theirs; HTML, SVG and the rest open as plain bytes and can only be downloaded. */
 const safeMime = (mime: string) => /^(image\/(png|jpeg|gif|webp|avif|heic)|video\/(mp4|webm|quicktime)|audio\/(webm|mp4|mpeg|ogg|aac|wav))$/.test(mime) ? mime : 'application/octet-stream';
 
-/** Cache only verified bytes, bound to the session and complete authenticated manifest. */
-const opened = new WeakMap<Messages, Map<string, Promise<string>>>();
-function openUrl(messages: Messages, file: FileDoc, thumbnail = false): Promise<string> {
-  let cache = opened.get(messages);
-  if (!cache) { cache = new Map(); opened.set(messages, cache); }
-  const key = JSON.stringify([file, thumbnail]);
-  let url = cache.get(key);
-  if (!url) {
-    url = messages.openFile(file, thumbnail).then((blob) => URL.createObjectURL(blob.slice(0, blob.size, safeMime(blob.type))));
-    url.catch(() => cache.delete(key));
-    cache.set(key, url);
-  }
-  return url;
+/** No session-long cache of decrypted bytes: URLs live only as long as their consumer. */
+function openUrl(messages: Messages, file: FileDoc, thumbnail = false) {
+  return acquireUrl(() => messages.openFile(file, thumbnail), safeMime);
 }
 function useOpened(messages: Messages | null, file: FileDoc | null, thumbnail = false, enabled = true) {
   const key = JSON.stringify([file, thumbnail]);
@@ -27,8 +18,9 @@ function useOpened(messages: Messages | null, file: FileDoc | null, thumbnail = 
   useEffect(() => {
     if (!messages || !file || !enabled) return;
     let live = true;
-    openUrl(messages, file, thumbnail).then((url) => live && setState({ key, url })).catch((e: unknown) => live && setState({ key, error: reason(e) }));
-    return () => { live = false; };
+    const opened = openUrl(messages, file, thumbnail);
+    opened.url.then((url) => live && setState({ key, url })).catch((e: unknown) => live && setState({ key, error: reason(e) }));
+    return () => { live = false; opened.release(); };
   }, [messages, key, enabled]);
   return state.key === key ? state : {};
 }
@@ -73,8 +65,9 @@ function FileCard({ file, messages }: { file: FileDoc; messages: Messages | null
     <span className="zm-file-body"><b>{file.name}</b><span>{error || size(file.bytes)}</span></span>
     <button className="zm-round glass" aria-label={`Baixar ${file.name}`} disabled={busy || !messages} onClick={() => {
       if (!messages) return; setBusy(true); setError('');
-      void openUrl(messages, file).then((url) => { const a = document.createElement('a'); a.href = url; a.download = file.name; a.click(); })
-        .catch((e: unknown) => setError(reason(e))).finally(() => setBusy(false));
+      const opened = openUrl(messages, file);
+      void opened.url.then((url) => { const a = document.createElement('a'); a.href = url; a.download = file.name; a.click(); })
+        .catch((e: unknown) => setError(reason(e))).finally(() => { setTimeout(opened.release, 0); setBusy(false); });
     }}><svg className="zm-icon" viewBox="0 0 24 24"><path d="M12 4v11m0 0-4-4m4 4 4-4M5 20h14" /></svg></button>
   </span>;
 }
@@ -116,11 +109,13 @@ export function VoicePlayer({ file, messages }: { file: FileDoc; messages: Messa
 
 /** A small PNG preview made on this device, like native, for photos and videos. */
 export async function thumbnail(file: File): Promise<Uint8Array | null> {
+  let videoUrl: string | undefined;
+  let bitmap: ImageBitmap | undefined;
   try {
     let source: CanvasImageSource; let w: number; let h: number;
-    if (file.type.startsWith('image/')) { const b = await createImageBitmap(file); source = b; w = b.width; h = b.height; }
+    if (file.type.startsWith('image/')) { const b = await createImageBitmap(file); bitmap = b; source = b; w = b.width; h = b.height; }
     else if (file.type.startsWith('video/')) {
-      const v = document.createElement('video'); v.muted = true; v.playsInline = true; v.src = URL.createObjectURL(file);
+      const v = document.createElement('video'); v.muted = true; v.playsInline = true; v.src = videoUrl = URL.createObjectURL(file);
       await new Promise<void>((ok, fail) => { v.onloadeddata = () => ok(); v.onerror = () => fail(new Error('video')); });
       v.currentTime = Math.min(0.5, v.duration / 2 || 0); await new Promise((ok) => { v.onseeked = ok; });
       source = v; w = v.videoWidth; h = v.videoHeight;
@@ -131,6 +126,7 @@ export async function thumbnail(file: File): Promise<Uint8Array | null> {
     const png = new Uint8Array(await (await canvas.convertToBlob({ type: 'image/png' })).arrayBuffer());
     return png.length <= 2 << 20 ? png : null;
   } catch { return null; }
+  finally { if (videoUrl) URL.revokeObjectURL(videoUrl); bitmap?.close(); }
 }
 
 /** Hold-free voice recording (tap mic, tap send), with live levels. */

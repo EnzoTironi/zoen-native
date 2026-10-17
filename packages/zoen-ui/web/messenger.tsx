@@ -94,8 +94,10 @@ export function Bubble({ entry, own, first, onReact, onReply, onThread, onEdit, 
       <div className={`zm-bubble${entry.deleted ? ' zm-deleted' : ''}${entry.file && !entry.deleted ? ` zm-media zm-media-${kindOf(entry.file.mime)}` : ''}`}>
         {entry.forwarded && !entry.deleted ? <span className="zm-forwarded">Encaminhada</span> : null}
         {entry.quote && !entry.deleted ? <span className="zm-quote"><b>{entry.quote.name || 'Mensagem'}</b>{entry.quote.text || 'Mensagem apagada'}</span> : null}
-        {entry.file && !entry.deleted ? <FileView file={entry.file} messages={messages} /> : <span className="zm-text">{entry.deleted ? 'Mensagem apagada' : entry.text}</span>}
+        {entry.file && !entry.deleted ? <FileView file={entry.file} messages={messages} /> : null}
+        {entry.deleted || entry.text || !entry.file ? <span className="zm-text">{entry.deleted ? 'Mensagem apagada' : entry.text}</span> : null}
         <span className="zm-meta">{entry.edited && !entry.deleted ? 'editada · ' : ''}<time dateTime={new Date(entry.at_ms).toISOString()}>{formatTime(entry.at_ms)}</time>{own ? <Ticks state={state} /> : null}</span>
+
       </div>
       {ordered && !entry.deleted ? <div className="zm-actions" role="toolbar" aria-label="Ações da mensagem">
         <button aria-label="Reagir" aria-expanded={picker} onClick={() => { setEmojiDraft(''); setPicker((v) => !v); }}><Icon name="smile" /></button>

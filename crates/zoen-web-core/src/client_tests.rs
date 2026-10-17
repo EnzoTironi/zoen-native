@@ -199,6 +199,150 @@ fn native_sqlite_welcome_messages_saved_reload_and_removal_use_shared_mls() {
         .unwrap();
     assert_eq!(client.conversations()[0].messages[0].text, "Native to web");
 
+    // Ordinary files need a companion chat post for native's Entry projection.
+    let before_media = client.saved.outbox.clone();
+    let file = crate::media::seal_file("report.txt", "text/plain", b"report", None)
+        .unwrap()
+        .doc;
+    client.queue_file(space, file, 11).unwrap();
+    let events: Vec<_> = client
+        .saved
+        .outbox
+        .values()
+        .filter_map(|p| p.inner.clone())
+        .collect();
+    let item = events
+        .iter()
+        .find_map(|e| match &e.body {
+            EventBody::ItemCreated { item, .. } => Some(item.clone()),
+            _ => None,
+        })
+        .unwrap();
+    assert!(events.iter().any(|e| matches!(&e.body,
+        EventBody::MessagePosted { attaches: Some(id), .. } if id == &item)));
+    assert_eq!(
+        client.conversations()[0]
+            .messages
+            .iter()
+            .filter(|m| m.file.is_some())
+            .count(),
+        1
+    );
+    // Only the redundant empty file companion may disappear. Attachment posts
+    // carrying text, reply/thread context, forwards, or non-file items are posts.
+    let companion = events
+        .iter()
+        .find(|e| matches!(e.body, EventBody::MessagePosted { .. }))
+        .unwrap();
+    assert!(client.message_view(companion, "sending", None).is_none());
+    assert_eq!(client.conversations()[0].messages.len(), 2);
+    // A later empty reshare is not the generated companion, even by its owner.
+    let mut reshare = companion.clone();
+    if let EventBody::MessagePosted { message, .. } = &mut reshare.body {
+        *message = "later-reshare".into();
+    }
+    reshare.at_ms += 60_000;
+    let shared = client.message_view(&reshare, "sending", None).unwrap();
+    assert_eq!(shared.file.as_ref().unwrap().name, "report.txt");
+    let mut other_author = companion.clone();
+    other_author.author = "another-author".into();
+    assert!(client
+        .message_view(&other_author, "sending", None)
+        .unwrap()
+        .file
+        .is_some());
+    let mut other_space = companion.clone();
+    other_space.space = "another-space".into();
+    assert!(client
+        .message_view(&other_space, "sending", None)
+        .unwrap()
+        .file
+        .is_none());
+    for (text, reply, forwarded, attachment) in [
+        ("caption", None, false, item.clone()),
+        (
+            "",
+            Some(roda_types::ReplyRef {
+                to: "root".into(),
+                thread: false,
+            }),
+            false,
+            item.clone(),
+        ),
+        (
+            "",
+            Some(roda_types::ReplyRef {
+                to: "root".into(),
+                thread: true,
+            }),
+            false,
+            item.clone(),
+        ),
+        ("", None, true, item.clone()),
+        ("", None, false, "non-file-item".into()),
+    ] {
+        let mut post = companion.clone();
+        if let EventBody::MessagePosted {
+            text: t,
+            reply: r,
+            forwarded: f,
+            attaches,
+            ..
+        } = &mut post.body
+        {
+            *t = text.into();
+            *r = reply.clone();
+            *f = forwarded;
+            *attaches = Some(attachment.clone());
+        }
+        let view = client
+            .message_view(&post, "sending", None)
+            .expect("meaningful attachment post must survive");
+        assert_eq!(view.text, text);
+        if attachment == item {
+            let doc = view
+                .file
+                .as_ref()
+                .expect("retained attachment must render file payload");
+            assert_eq!(doc.name, "report.txt");
+            assert!(!doc.chunks.is_empty());
+        } else {
+            assert!(view.file.is_none());
+        }
+        assert_eq!(view.forwarded, forwarded);
+        assert_eq!(
+            view.quote.is_some() || view.thread.is_some(),
+            reply.is_some()
+        );
+    }
+    client.saved.outbox = before_media.clone();
+    let target = client.conversations()[0].messages[0].entry.clone().unwrap();
+    let expected = client
+        .resolve_post(space, &target)
+        .unwrap()
+        .client_id
+        .clone();
+    let mut voice = crate::media::seal_file("voice.webm", "audio/webm", b"voice", None)
+        .unwrap()
+        .doc;
+    voice.voice = Some(roda_types::VoiceMeta {
+        reply: Some(roda_types::ReplyRef {
+            to: target,
+            thread: false,
+        }),
+        ..Default::default()
+    });
+    client.queue_file(space, voice, 11).unwrap();
+    assert!(client
+        .saved
+        .outbox
+        .values()
+        .filter_map(|p| p.inner.as_ref())
+        .any(|e| matches!(&e.body,
+        EventBody::ItemCreated { content: roda_types::ItemContent::File(doc), .. }
+        if doc.voice.as_ref().and_then(|v| v.reply.as_ref()).is_some_and(|r| r.to == expected))));
+    client.saved.outbox = before_media;
+
     let sealed =
         crate::media::seal_file("voice.webm", "audio/webm", b"retained audio", None).unwrap();
     let chunks = sealed
@@ -430,7 +574,30 @@ fn native_voice_replies_versions_and_reverts_stay_on_the_original_post() {
     };
     append(&mut log, &author, version(edited.clone()));
     append(&mut log, &other, version(original.clone()));
+    // A retained caption/forward must resolve the same current manifest as the
+    // original card, including ownership-checked versions and reverts.
+    let attachment = author.sign_event(
+        space,
+        "attachment-forward",
+        100,
+        log.head(),
+        EventBody::MessagePosted {
+            message: "legacy-forward".into(),
+            text: "caption".into(),
+            attaches: Some("it_voice".into()),
+            reply: None,
+            forwarded: true,
+        },
+    );
+    let assert_attachment = |client: &Client<HostSigner>, expected: &FileDoc| {
+        let view = client.message_view(&attachment, "confirmed", None).unwrap();
+        assert_eq!(view.text, "caption");
+        assert!(view.forwarded);
+        assert_eq!(view.file.as_ref().unwrap().chunks, expected.chunks);
+        assert_eq!(view.file.as_ref(), Some(expected));
+    };
     client.logs.insert(space.into(), log.clone());
+    assert_attachment(&client, &edited);
     let conversation = &client.conversations()[0];
     let voice = &conversation.messages[1];
     assert_eq!(conversation.messages.len(), 3);
@@ -452,12 +619,14 @@ fn native_voice_replies_versions_and_reverts_stay_on_the_original_post() {
         client.conversations()[0].messages[1].file.as_ref(),
         Some(&edited)
     );
+    assert_attachment(&client, &edited);
     append(&mut log, &author, revert(1)); // Version 3 is a copy of version 1.
     client.logs.insert(space.into(), log.clone());
     assert_eq!(
         client.conversations()[0].messages[1].file.as_ref(),
         Some(&original)
     );
+    assert_attachment(&client, &original);
     append(&mut log, &author, revert(2)); // Version 4 is a copy of version 2.
     append(&mut log, &author, revert(3)); // Reverts can target earlier reverts.
     client.logs.insert(space.into(), log);

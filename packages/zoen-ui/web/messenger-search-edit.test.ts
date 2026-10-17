@@ -25,6 +25,20 @@ async function input(el: HTMLInputElement | HTMLTextAreaElement, value: string) 
 }
 async function click(el: Element | undefined | null) { assert.ok(el); await act(async () => (el as HTMLElement).click()); }
 function button(label: string) { return [...document.querySelectorAll('button')].find((b) => b.textContent === label || b.getAttribute('aria-label') === label); }
+test('attachment post renders file payload and caption alongside forward and reply context', async () => {
+  const file = { name: 'report.txt', mime: 'text/plain', bytes: 6, chunks: [{ blob: 'blob-id', bytes: 6 }], key: 'key' };
+  const entry = { ...msg('attachment', 'Meaningful caption'), file, forwarded: true, quote: { id: 'root', name: 'Bea', text: 'Original question' } };
+  const ui = await mount(undefined, [{ ...conversations[0], messages: [entry] }]);
+  try {
+    const row = document.getElementById('message-attachment')!;
+    assert.ok(row.querySelector('.zm-file'), 'actual file component must render');
+    assert.match(row.textContent!, /report.txt/);
+    assert.equal(row.querySelector('.zm-text')?.textContent, 'Meaningful caption');
+    assert.match(row.textContent!, /Original question/);
+    assert.match(row.textContent!, /Encaminhada/);
+  } finally { await ui.close(); }
+});
+
 async function mount(annotate = async () => {}, data = conversations, selected = 'chat') {
   const calls: unknown[] = [];
   const root = createRoot(document.getElementById('root')!);
