@@ -95,6 +95,7 @@ struct ChatTopBar: View {
                     .contentShape(.circle)
             }
             .buttonStyle(GlassPress(shape: .circle))
+            .frame(width: Self.height, height: Self.height)
             .accessibilityLabel(Text("Back"))
             .accessibilityIdentifier("zoenBack")
         } else {
@@ -301,7 +302,7 @@ struct CallsCapsule: View {
             button(.video, label: "Video call")
         }
         .padding(.horizontal, 2)
-        .frame(height: ChatTopBar.height)
+        .frame(width: Self.width, height: ChatTopBar.height)
         .topGlass(Capsule())
         .task {
             // `-RodaCallTap YES`: taps the phone after a beat (screenshot of the Jam toast).
@@ -323,6 +324,7 @@ struct CallsCapsule: View {
                 .contentShape(.rect)
         }
         .buttonStyle(IconPressStyle())
+        .frame(width: 42, height: ChatTopBar.height)
         .accessibilityLabel(Text(label))
     }
 }

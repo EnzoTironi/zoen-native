@@ -26,40 +26,45 @@ struct NativeIconMotion: View {
     private var reduced: Bool { systemReduce || appReduce }
 
     var body: some View {
-        replacement
+        ZStack {
+            if drawOn && !reduced {
+                // A real hidden image keeps both intrinsic geometry and an onAppear
+                // host alive. An empty Group never appeared, leaving symbols absent.
+                Image(systemName: systemName)
+                    .modifier(NativeIconFont(size: size))
+                    .hidden()
+            }
+            if !drawOn || reduced {
+                artwork
+            } else if appeared {
+                artwork.transition(.symbolEffect(.drawOn))
+            }
+        }
+        .onAppear {
+            if drawOn && !reduced && !paused { withAnimation { appeared = true } }
+            else { appeared = true }
+        }
+        .animation(reduced ? nil : .smooth(duration: 0.2), value: systemName)
+        .transaction { if reduced || paused { $0.animation = nil } }
+        .accessibilityHidden(true)
+    }
+
+    @ViewBuilder private var artwork: some View {
+        if #available(iOS 26.0, macOS 26.0, *) {
+            image.contentTransition(reduced ? .opacity : .symbolEffect(.replace.magic(fallback: .replace)))
+        } else {
+            image.contentTransition(reduced ? .opacity : .symbolEffect(.replace))
+        }
+    }
+
+    private var image: some View {
+        Image(systemName: systemName)
             .modifier(NativeIconFont(size: size))
-            .animation(reduced ? nil : .smooth(duration: 0.2), value: systemName)
             .symbolEffect(.bounce, options: .speed(1.5), value: bounce)
             .symbolEffect(.wiggle, value: wiggle)
             .symbolEffect(.variableColor.iterative, isActive: active && !reduced && !paused)
-            // Keep event identities stable when the preference changes: using zero
-            // as a disabled trigger would replay old taps when motion is re-enabled.
+            // Keep event identities stable across preference changes; never replay taps.
             .symbolEffectsRemoved(reduced || paused)
-            .accessibilityHidden(true)
-    }
-
-    @ViewBuilder private var replacement: some View {
-        if #available(iOS 26.0, macOS 26.0, *) {
-            Group {
-                if reduced {
-                    Image(systemName: systemName)
-                } else if !drawOn || appeared {
-                    Image(systemName: systemName)
-                        .contentTransition(reduced ? .opacity : .symbolEffect(.replace.magic(fallback: .replace)))
-                        .transition(.symbolEffect(.drawOn))
-                }
-            }
-            .onAppear {
-                if drawOn && !reduced {
-                    withAnimation { appeared = true }
-                } else {
-                    appeared = true
-                }
-            }
-        } else {
-            Image(systemName: systemName)
-                .contentTransition(reduced ? .opacity : .symbolEffect(.replace))
-        }
     }
 }
 

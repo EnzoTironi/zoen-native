@@ -42,14 +42,25 @@ final class NativeIconMotionCaptureTests: XCTestCase {
         let search = app.textFields["unified-search-field"]
         XCTAssertTrue(search.waitForExistence(timeout: 10))
         search.typeText("inn")
-        XCTAssertTrue(app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@", "unified-search-message-")).firstMatch.waitForExistence(timeout: 10))
+        let message = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@", "unified-search-message-")).firstMatch
+        XCTAssertTrue(message.waitForExistence(timeout: 10))
+        let resultSpace = try XCTUnwrap(message.value as? String)
+        XCTAssertFalse(resultSpace.isEmpty)
         attach(app.screenshot(), name: "unified-message-search-\(appearance)")
-        search.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: 3))
+        message.tap()
+        XCTAssertTrue(app.descendants(matching: .any)["composer"].firstMatch.waitForExistence(timeout: 10))
+        XCTAssertTrue(app.buttons["chat-title"].label.contains(resultSpace))
+        XCTAssertGreaterThanOrEqual(app.buttons["zoenBack"].frame.width, 44)
+        app.buttons["zoenBack"].tap()
+        app.tabBars.buttons["Search"].tap()
+        XCTAssertTrue(search.waitForExistence(timeout: 10))
         search.typeText("Marina")
         let marina = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@ AND label BEGINSWITH %@", "unified-search-chat-", "Marina")).firstMatch
         XCTAssertTrue(marina.waitForExistence(timeout: 5))
         marina.tap()
         XCTAssertTrue(app.descendants(matching: .any)["composer"].firstMatch.waitForExistence(timeout: 10))
+        XCTAssertGreaterThanOrEqual(app.buttons["zoenBack"].frame.width, 44)
+        XCTAssertGreaterThanOrEqual(app.buttons["Voice call"].firstMatch.frame.width, 42)
         app.buttons["zoenBack"].tap()
         app.tabBars.buttons["Search"].tap()
         XCTAssertTrue(search.waitForExistence(timeout: 10))
@@ -58,7 +69,12 @@ final class NativeIconMotionCaptureTests: XCTestCase {
         XCTAssertTrue(lucas.waitForExistence(timeout: 5))
         attach(app.screenshot(), name: "unified-start-chat-\(appearance)")
         lucas.tap()
-        XCTAssertTrue(app.descendants(matching: .any)["composer"].firstMatch.waitForExistence(timeout: 10), "Selecting a known person creates/opens a real direct chat")
+        // The canonical demo intentionally has no signed-in author. Exercise the
+        // real operation and its account boundary rather than inventing a fake DM.
+        XCTAssertTrue(app.staticTexts.matching(NSPredicate(format: "label CONTAINS[c] %@", "Sign in first")).firstMatch.waitForExistence(timeout: 10))
+        app.alerts.buttons["OK"].tap()
+        XCTAssertTrue(search.exists)
+        XCTAssertEqual(search.value as? String, "Lucas")
     }
 
     @MainActor private func sequence(appearance: String) throws {

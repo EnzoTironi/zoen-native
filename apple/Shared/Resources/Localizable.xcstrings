@@ -4436,6 +4436,9 @@
         }
       }
     },
+    "Couldn’t open chat": {
+      "localizations": { "pt-BR": { "stringUnit": { "state": "translated", "value": "Não foi possível abrir a conversa" } } }
+    },
     "Marketplace": {
       "localizations": { "pt-BR": { "stringUnit": { "state": "translated", "value": "Mercado" } } }
     },

@@ -8,6 +8,8 @@ import androidx.activity.enableEdgeToEdge
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.test.*
+import androidx.compose.ui.semantics.SemanticsProperties
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -112,6 +114,9 @@ class IconMotionParityCaptureTest {
                     val direct = initial.spaces.first { it.counterpart?.handle == "marina" }
                     compose.onNodeWithText(direct.title).performClick()
                     compose.onNodeWithTag("composer").assertExists()
+                    // Drafts intentionally survive demo resets. Establish this capture's
+                    // empty baseline through the real input, before timing the event.
+                    compose.onNodeWithTag("composer").performTextClearance()
                     if (event == "composer-mic") compose.onNodeWithTag("composer").performTextInput("Hi")
                     eventAt = SystemClock.uptimeMillis()
                     if (event == "composer-send") {
@@ -119,7 +124,10 @@ class IconMotionParityCaptureTest {
                         compose.onNodeWithTag("composer").performTextInput(draft)
                         compose.onNodeWithTag("send").assertExists()
                     } else compose.onNodeWithTag("composer").performTextClearance()
-                    compose.onNodeWithTag("composer").assertTextEquals(draft).assertIsFocused()
+                    compose.onNodeWithTag("composer").assert(
+                        SemanticsMatcher.expectValue(SemanticsProperties.EditableText, AnnotatedString(draft))
+                    ).assertIsFocused()
+                    if (event == "composer-mic") compose.onNodeWithTag("voice-record").assertExists()
                 }
                 "bell-new" -> {
                     val owned = initial.agents.first { it.persona.isMine && it.spaces.isNotEmpty() }

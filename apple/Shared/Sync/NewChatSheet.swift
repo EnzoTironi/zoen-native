@@ -33,6 +33,7 @@ struct NewChatSheet: View {
     @State private var preview: InvitePreviewDto?
     @State private var working = false
     @State private var failure: String?
+    @State private var directFailure = false
     @FocusState private var queryFocused: Bool
 
     init(mode: Mode = .chat) {
@@ -104,6 +105,11 @@ struct NewChatSheet: View {
                 if mode == .chat { queryFocused = true }
             }
             .task(id: code) { await loadPreview() }
+            .alert("Couldn’t open chat", isPresented: $directFailure) {
+                Button("OK", role: .cancel) {}
+            } message: {
+                Text(failure ?? "")
+            }
         }
         #if os(macOS)
         .frame(minWidth: 420, minHeight: 480)
@@ -231,6 +237,7 @@ struct NewChatSheet: View {
                         }
                     }
                     .accessibilityIdentifier("unified-search-\(hit.kind)-\(hit.refId)")
+                    .accessibilityValue(Text(hit.spaceTitle ?? ""))
                 }
             }
         }
@@ -279,6 +286,10 @@ struct NewChatSheet: View {
             if let i = picked.firstIndex(where: { $0.id == p.id }) { picked.remove(at: i) } else { picked.append(p) }
             return
         }
+        if let existing = model.spaces.first(where: { $0.kind == .direct && $0.counterpart?.id == p.id }) {
+            open(existing.id)
+            return
+        }
         working = true
         defer { working = false }
         do {
@@ -287,6 +298,7 @@ struct NewChatSheet: View {
             open(id)
         } catch {
             failure = (error as? CoreError)?.message ?? error.localizedDescription
+            directFailure = true
         }
     }
 
