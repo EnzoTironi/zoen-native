@@ -1,0 +1,16 @@
+{
+  "verified_ref": "03ad7a2fef5e09f5678e50694a228ad68f5d0ca9",
+  "reference_corpus_sha256": "0b135c10754e668fc2aef745dc5a47fff20bfcd3149cb8ab762b9d0b38dd4640",
+  "mascot_frames_compared": 98,
+  "doodle_frames_compared": 50,
+  "comparison": "Exact independently compiled Swift mascot and doodle strokes, curve/trim/ribbon geometry and RNG samples; existing corpus unchanged",
+  "source_variants": {
+    "apple/Shared/DesignSystem/HandDrawn.swift": [
+      "3daa4e6df6cc8b9804012e7c13b76af3704401319f03794bb5a94cd504b655eb",
+      "e6481c1a4ff73a18459dbfcc19434391188c169174babcf959baa05f53e0b76c"
+    ],
+    "apple/Shared/DesignSystem/Mascot.swift": [
+      "bf2c6c587f694586b6735a9bc9504f5ff07e93befd1bbfe0f0b5006e53b429a3"
+    ]
+  }
+}

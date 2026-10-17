@@ -20,19 +20,33 @@ spec.loader.exec_module(core)
 
 def artwork(root, main):
     sources = {}
-    for fixture in ["ink-swift-reference.json.gz", "ink-icons-swift-reference.json.gz"]:
+    accepted_sources = {}
+    for fixture, equivalence_file in [("ink-swift-reference.json.gz", "ink-source-equivalence.json"),
+                                      ("ink-icons-swift-reference.json.gz", "ink-icons-source-equivalence.json")]:
         directory = root / "android/app/src/test/resources"
         document = json.loads(gzip.decompress((directory / fixture).read_bytes()))
         variants = {}
-        if fixture == "ink-icons-swift-reference.json.gz":
-            equivalence = json.loads((directory / "ink-icons-source-equivalence.json").read_text())
-            if core.json_digest(document["icons"]) != equivalence["reference_icons_sha256"]:
-                raise ValueError("Swift source equivalence does not match the icon corpus")
+        equivalence_path = directory / equivalence_file
+        if equivalence_path.exists() or fixture == "ink-icons-swift-reference.json.gz":
+            equivalence = json.loads(equivalence_path.read_text())
+            if fixture == "ink-icons-swift-reference.json.gz":
+                corpus, expected = document["icons"], equivalence["reference_icons_sha256"]
+            else:
+                corpus = {key: value for key, value in document.items() if key != "sources"}
+                expected = equivalence["reference_corpus_sha256"]
+            if core.json_digest(corpus) != expected:
+                raise ValueError("Swift source equivalence does not match the corpus: " + fixture)
             variants = equivalence["source_variants"]
         for path, expected in document["sources"].items():
             accepted = set(variants.get(path, [expected]))
             if expected not in accepted:
                 raise ValueError("Source equivalence must retain the original fixture: " + path)
+            # Shared inputs must be verified by every dependent corpus, not just the last one.
+            if path in accepted_sources:
+                if sources[path]["fixture_sha256"] != expected:
+                    raise ValueError("Art corpora disagree about the original source: " + path)
+                accepted &= accepted_sources[path]
+            accepted_sources[path] = accepted
             upstream = subprocess.run(["git", "show", main + ":" + path], cwd=root, capture_output=True, check=True).stdout
             hashes = {"main": core.digest(upstream), "source_snapshot": core.digest((root / path).read_bytes())}
             sources[path] = {"fixture_sha256": expected, "verified_equivalent_sha256": sorted(accepted - {expected}),
