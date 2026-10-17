@@ -60,7 +60,7 @@ class UnifiedSearchJourneyTest {
         compose.runOnIdle { assertEquals(Chat(direct.id), destination) }
     }
 
-    @Test fun selectingPersonWithoutDirectCreatesRealDirectNotSharedGroup() {
+    @Test fun selectingPersonWithoutDirectInDemoReportsAccountGateNotSharedGroup() {
         val model = setup()
         val state = model.repository.state.value
         val person = runBlocking { model.repository.query { it.personas() } }.first {
@@ -74,13 +74,14 @@ class UnifiedSearchJourneyTest {
         } } }
         compose.onNodeWithTag("search").performTextInput(person.handle)
         selectRecipient(person.id, person.handle)
-        try { compose.waitUntil(10_000) { destination != null } }
-        catch (error: ComposeTimeoutException) {
-            throw AssertionError("Direct creation for ${person.id} (@${person.handle}) failed: $errors", error)
-        }
-        val created = model.repository.state.value.spaces.single { it.counterpart?.id == person.id }
-        compose.runOnIdle { assertEquals(Chat(created.id), destination) }
-        assertFalse(state.spaces.any { it.id == created.id })
+        // Demo has no authenticated author. Exercise the real startDirect failure,
+        // rather than mutating demo credentials or treating a shared group as a DM.
+        compose.waitUntil(10_000) { errors.isNotEmpty() }
+        assertTrue("Expected account gate, received $errors", errors.any {
+            it.contains("Sign in first", ignoreCase = true) || it.contains("Entre na sua conta", ignoreCase = true)
+        })
+        compose.runOnIdle { assertNull(destination) }
+        assertEquals(state.spaces.map { it.id }, model.repository.state.value.spaces.map { it.id })
     }
 
     @Test fun sameQueryFindsActualMessageAndOpensItsConversationAtMessage() {
