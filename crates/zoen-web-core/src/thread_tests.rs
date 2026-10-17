@@ -215,15 +215,28 @@ fn deliver(client: &mut Client<HostSigner>, log: &mut SpaceLog, env: Envelope) {
 fn personal_thread_state_is_encrypted_and_native_can_receive_it() {
     let (mut client, _, other, root, hash) = fixture();
     reply(&mut client, &other, &root, false);
-    let mut voice = crate::media::seal_file("voice.webm", "audio/webm", b"voice", None).unwrap().doc;
+    let mut voice = crate::media::seal_file("voice.webm", "audio/webm", b"voice", None)
+        .unwrap()
+        .doc;
     voice.voice = Some(roda_types::VoiceMeta {
-        reply: Some(roda_types::ReplyRef { to: root.clone(), thread: true, also_in_chat: false }),
+        reply: Some(roda_types::ReplyRef {
+            to: root.clone(),
+            thread: true,
+            also_in_chat: false,
+        }),
         ..Default::default()
     });
-    let last = append(client.logs.get_mut("chat").unwrap(), &other, EventBody::ItemCreated {
-        item: "voice_reply".into(), kind: roda_types::ItemKind::File,
-        content: roda_types::ItemContent::File(voice), origin: String::new(),
-    }).seq;
+    let last = append(
+        client.logs.get_mut("chat").unwrap(),
+        &other,
+        EventBody::ItemCreated {
+            item: "voice_reply".into(),
+            kind: roda_types::ItemKind::File,
+            content: roda_types::ItemContent::File(voice),
+            origin: String::new(),
+        },
+    )
+    .seq;
     let package = client
         .bootstrap()
         .unwrap()
@@ -593,9 +606,17 @@ fn legacy_snapshot_never_republishes_plaintext_preferences() {
 fn read_only_thread_events_do_not_restore_following() {
     let (mut client, me, _, root, _) = fixture();
     for (follow, read_only, read_up_to) in [(Some(false), false, 1), (Some(true), true, 99)] {
-        append(client.logs.get_mut("personal").unwrap(), &me, EventBody::ThreadStateSet {
-            space: "chat".into(), root: root.clone(), follow, read_up_to, read_only,
-        });
+        append(
+            client.logs.get_mut("personal").unwrap(),
+            &me,
+            EventBody::ThreadStateSet {
+                space: "chat".into(),
+                root: root.clone(),
+                follow,
+                read_up_to,
+                read_only,
+            },
+        );
     }
     assert_eq!(client.thread_state("chat", &root), (Some(false), 99));
 }

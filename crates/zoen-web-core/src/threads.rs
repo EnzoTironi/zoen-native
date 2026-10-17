@@ -64,7 +64,9 @@ impl<S: Signer> Client<S> {
                 if s == space {
                     let state = states.entry(canonical(root)).or_insert((None, 0u64));
                     state.1 = state.1.max(*read_up_to);
-                    if !read_only { state.0 = *follow; }
+                    if !read_only {
+                        state.0 = *follow;
+                    }
                 }
             }
         }
@@ -138,17 +140,26 @@ impl<S: Signer> Client<S> {
         now: i64,
     ) -> Result<Update, String> {
         let canonical = self.thread_root(space, root);
-        let last = self.logs.get(space).ok_or("That message is no longer available.")?.events().iter()
+        let last = self
+            .logs
+            .get(space)
+            .ok_or("That message is no longer available.")?
+            .events()
+            .iter()
             .filter(|e| {
                 let reply = match &e.body {
                     EventBody::MessagePosted { reply, .. } => reply.as_ref(),
-                    EventBody::ItemCreated { content: roda_types::ItemContent::File(doc), .. } =>
-                        doc.voice.as_ref().and_then(|voice| voice.reply.as_ref()),
+                    EventBody::ItemCreated {
+                        content: roda_types::ItemContent::File(doc),
+                        ..
+                    } => doc.voice.as_ref().and_then(|voice| voice.reply.as_ref()),
                     _ => None,
                 };
                 reply.is_some_and(|r| r.thread && self.thread_root(space, &r.to) == canonical)
             })
-            .map(|e| e.seq).max().unwrap_or(0);
+            .map(|e| e.seq)
+            .max()
+            .unwrap_or(0);
         let (follow, read) = self.thread_state(space, root);
         if last <= read {
             return self.update(Vec::new());

@@ -450,10 +450,11 @@ impl State {
                     let version = (e.at_ms, e.seq, e.client_id.clone());
                     let slot = self.thread_state.entry(key.clone()).or_insert((None, 0));
                     slot.1 = slot.1.max(*read_up_to);
-                    if !read_only && self
-                        .thread_versions
-                        .get(&key)
-                        .is_none_or(|old| version > *old)
+                    if !read_only
+                        && self
+                            .thread_versions
+                            .get(&key)
+                            .is_none_or(|old| version > *old)
                     {
                         slot.0 = *follow;
                         self.thread_versions.insert(key, version);
@@ -467,7 +468,11 @@ impl State {
                 });
                 if mine {
                     let version = (e.at_ms, e.seq, e.client_id.clone());
-                    if self.chat_pref_versions.get(space).is_none_or(|old| version > *old) {
+                    if self
+                        .chat_pref_versions
+                        .get(space)
+                        .is_none_or(|old| version > *old)
+                    {
                         self.chat_prefs.insert(space.clone(), prefs.clone());
                         self.chat_pref_versions.insert(space.clone(), version);
                     }
@@ -755,9 +760,15 @@ impl Engine {
             // Only a Personal Space projects prefs (checked when applied).
             for (key, prefs) in &scoped.chat_prefs {
                 if let Some(version) = scoped.chat_pref_versions.get(key) {
-                    if state.chat_pref_versions.get(key).is_none_or(|old| version > old) {
+                    if state
+                        .chat_pref_versions
+                        .get(key)
+                        .is_none_or(|old| version > old)
+                    {
                         state.chat_prefs.insert(key.clone(), prefs.clone());
-                        state.chat_pref_versions.insert(key.clone(), version.clone());
+                        state
+                            .chat_pref_versions
+                            .insert(key.clone(), version.clone());
                     }
                 }
             }

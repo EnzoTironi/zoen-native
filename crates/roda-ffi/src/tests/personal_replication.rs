@@ -238,28 +238,70 @@ fn personal_thread_merge_is_monotonic_and_uses_newest_follow_in_either_order() {
 fn read_only_updates_preserve_unfollow_and_preferences_merge_by_recency() {
     let engine = RodaEngine::open(":memory:".into(), "en".into()).unwrap();
     let mut e = engine.lock();
-    e.create_account("Alice", "alice", "https://relay.example").unwrap();
+    e.create_account("Alice", "alice", "https://relay.example")
+        .unwrap();
     let me = e.me.clone().unwrap();
     for (space, at, pinned) in [("old", 30, true), ("new", 20, false)] {
-        e.append_at(space, &me, 1, roda_types::EventBody::SpaceCreated {
-            title: "Personal".into(), kind: roda_types::SpaceKind::Personal,
-            privacy: roda_types::Privacy::EndToEnd,
-        }).unwrap();
-        e.append_at(space, &me, at, roda_types::EventBody::ChatPrefsSet {
-            space: "chat".into(), prefs: roda_types::ChatPrefs { pinned, ..Default::default() },
-        }).unwrap();
-        e.append_at(space, &me, at, roda_types::EventBody::ThreadStateSet {
-            space: "chat".into(), root: "root".into(), follow: Some(false),
-            read_up_to: 1, read_only: false,
-        }).unwrap();
+        e.append_at(
+            space,
+            &me,
+            1,
+            roda_types::EventBody::SpaceCreated {
+                title: "Personal".into(),
+                kind: roda_types::SpaceKind::Personal,
+                privacy: roda_types::Privacy::EndToEnd,
+            },
+        )
+        .unwrap();
+        e.append_at(
+            space,
+            &me,
+            at,
+            roda_types::EventBody::ChatPrefsSet {
+                space: "chat".into(),
+                prefs: roda_types::ChatPrefs {
+                    pinned,
+                    ..Default::default()
+                },
+            },
+        )
+        .unwrap();
+        e.append_at(
+            space,
+            &me,
+            at,
+            roda_types::EventBody::ThreadStateSet {
+                space: "chat".into(),
+                root: "root".into(),
+                follow: Some(false),
+                read_up_to: 1,
+                read_only: false,
+            },
+        )
+        .unwrap();
     }
-    e.append_at("new", &me, 40, roda_types::EventBody::ThreadStateSet {
-        space: "chat".into(), root: "root".into(), follow: Some(true),
-        read_up_to: 99, read_only: true,
-    }).unwrap();
+    e.append_at(
+        "new",
+        &me,
+        40,
+        roda_types::EventBody::ThreadStateSet {
+            space: "chat".into(),
+            root: "root".into(),
+            follow: Some(true),
+            read_up_to: 99,
+            read_only: true,
+        },
+    )
+    .unwrap();
     for order in [["old", "new"], ["new", "old"]] {
-        let state = crate::engine::Engine::merge_space_projections(&e.space_projections, &order.map(String::from));
+        let state = crate::engine::Engine::merge_space_projections(
+            &e.space_projections,
+            &order.map(String::from),
+        );
         assert!(state.chat_prefs["chat"].pinned);
-        assert_eq!(state.thread_state[&("chat".into(), "root".into())], (Some(false), 99));
+        assert_eq!(
+            state.thread_state[&("chat".into(), "root".into())],
+            (Some(false), 99)
+        );
     }
 }
