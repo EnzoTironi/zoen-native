@@ -1,9 +1,11 @@
 import { t, formatLocale } from '../i18n/index.ts';
+import { useEventListener } from 'expo';
 import { useAudioPlayer, useAudioPlayerStatus, setAudioModeAsync } from 'expo-audio';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, Text, View } from 'react-native';
 import { MessagePressable as Pressable } from '../components/message-interaction';
-import { Icon } from '../components/primitives';
+import { Icon, NativeButton } from '../components/primitives';
+import { mediaPlayback, type PlaybackOwner } from './playback-owner.ts';
 import { useTheme } from '../theme';
 import { AudioProgress } from './audio-progress';
 
@@ -12,12 +14,8 @@ export function clipTime(seconds: number) {
   return `${Math.floor(value / 60)}:${String(value % 60).padStart(2, '0')}`;
 }
 
-let stopPrevious: (() => void) | null = null;
-let playbackIntent = 0;
 export function pauseAudioPlayback() {
-  ++playbackIntent;
-  stopPrevious?.();
-  stopPrevious = null;
+  mediaPlayback.pauseAll();
 }
 
 type Props = {
@@ -32,7 +30,14 @@ type Props = {
 
 /** Each signed URI owns one player; recycled rows cannot retain a previous source's intent. */
 export function AudioClip(props: Props) {
-  return <AudioClipContent key={props.uri} {...props} />;
+  const [retry, setRetry] = useState(0);
+  return (
+    <AudioClipContent
+      key={`${props.uri}:${retry}`}
+      {...props}
+      onRetry={() => setRetry((value) => value + 1)}
+    />
+  );
 }
 
 function AudioClipContent({
@@ -43,7 +48,8 @@ function AudioClipContent({
   appearance = 'default',
   autoPlay = false,
   onLongPress,
-}: Props) {
+  onRetry,
+}: Props & { onRetry: () => void }) {
   const { colors } = useTheme();
   const ink = appearance === 'mine' ? colors.onMine : colors.text;
   const player = useAudioPlayer({ uri }, { updateInterval: 100, allowsExternalPlayback: false });
@@ -55,33 +61,40 @@ function AudioClipContent({
   const autoplay = useRef(autoPlay);
   const seekTarget = useRef<number | null>(null);
   const seekRunning = useRef(false);
+  const playback = useRef<{ player: typeof player; owner: PlaybackOwner } | null>(null);
   const pause = useCallback(() => player.pause(), [player]);
   useEffect(() => {
     mounted.current = true;
+    const owner = mediaPlayback.register(pause, () => player.playing);
+    playback.current = { player, owner };
     return () => {
       mounted.current = false;
       seekTarget.current = null;
-      if (stopPrevious === pause) {
-        ++playbackIntent;
-        stopPrevious = null;
-      }
+      if (playback.current?.owner === owner) playback.current = null;
+      owner.dispose();
     };
-  }, [pause]);
+  }, [pause, player]);
+  useEventListener(player, 'playbackStatusUpdate', () => {
+    const current = playback.current;
+    if (mounted.current && current?.player === player) current.owner.observeExplicitPlayback();
+  });
   const total =
     Number.isFinite(status.duration) && status.duration > 0
       ? status.duration
       : Math.max(0, durationMs / 1000);
   const current = Math.min(total, Math.max(0, seeking ?? status.currentTime));
   const progress = total > 0 ? current / total : 0;
-  const report = useCallback((reason: unknown) => {
-    if (mounted.current)
-      setFailure(reason instanceof Error ? reason.message : t('media.thisAudioCouldNotBePlayed'));
+  const loadFailed = Boolean(status.error) || status.playbackState === 'failed';
+  const failureMessage = loadFailed ? t('media.thisAudioCouldNotBePlayed') : failure;
+  const report = useCallback((_reason: unknown) => {
+    if (mounted.current) setFailure(t('media.thisAudioCouldNotBePlayed'));
   }, []);
   const play = useCallback(async () => {
-    if (!player.isLoaded || !mounted.current) return;
-    const intent = ++playbackIntent;
-    stopPrevious?.();
-    stopPrevious = pause;
+    const currentOwner = playback.current;
+    const owner = currentOwner?.player === player ? currentOwner.owner : null;
+    if (!player.isLoaded || !mounted.current || !owner) return;
+    const intent = owner.begin();
+    if (!intent) return;
     setStarting(true);
     try {
       await setAudioModeAsync({
@@ -90,14 +103,17 @@ function AudioClipContent({
         shouldPlayInBackground: false,
         interruptionMode: 'doNotMix',
       });
-      if (!mounted.current || playbackIntent !== intent || stopPrevious !== pause) return;
+      if (!mounted.current || !owner.isCurrent(intent)) return;
       if (player.duration > 0 && player.currentTime >= player.duration - 0.05)
         await player.seekTo(0);
-      if (mounted.current && playbackIntent === intent && stopPrevious === pause) player.play();
+      if (mounted.current && owner.isCurrent(intent)) player.play();
+    } catch (reason) {
+      owner.release(intent);
+      throw reason;
     } finally {
       if (mounted.current) setStarting(false);
     }
-  }, [player, pause]);
+  }, [player]);
   useEffect(() => {
     if (!autoplay.current || !status.isLoaded) return;
     autoplay.current = false;
@@ -136,10 +152,10 @@ function AudioClipContent({
           accessibilityRole="button"
           accessibilityLabel={status.playing ? t('media.pauseAudio') : t('media.playAudio')}
           accessibilityState={{
-            disabled: !status.isLoaded || starting,
+            disabled: !status.isLoaded || starting || loadFailed,
             busy: starting || status.isBuffering,
           }}
-          disabled={!status.isLoaded || starting}
+          disabled={!status.isLoaded || starting || loadFailed}
           onPress={() => {
             setFailure(null);
             if (status.playing) pauseAudioPlayback();
@@ -154,14 +170,20 @@ function AudioClipContent({
             opacity: pressed ? 0.6 : 1,
           })}
         >
-          {!status.isLoaded || starting || status.isBuffering ? (
+          {!loadFailed && (!status.isLoaded || starting || status.isBuffering) ? (
             <ActivityIndicator color={ink} size="small" />
           ) : (
             <Icon
               name={
-                status.playing
-                  ? { ios: 'pause.fill', android: 'pause', web: 'pause' }
-                  : { ios: 'play.fill', android: 'play_arrow', web: 'play_arrow' }
+                loadFailed
+                  ? {
+                      ios: 'exclamationmark.circle',
+                      android: 'error_outline',
+                      web: 'error_outline',
+                    }
+                  : status.playing
+                    ? { ios: 'pause.fill', android: 'pause', web: 'pause' }
+                    : { ios: 'play.fill', android: 'play_arrow', web: 'play_arrow' }
               }
               size={25}
               color={ink}
@@ -213,10 +235,13 @@ function AudioClipContent({
           </Pressable>
         </View>
       </View>
-      {failure ? (
-        <Text selectable accessibilityRole="alert" style={{ color: ink, fontSize: 13 }}>
-          {failure}
+      {failureMessage ? (
+        <Text accessibilityRole="alert" style={{ color: ink, fontSize: 13 }}>
+          {failureMessage}
         </Text>
+      ) : null}
+      {loadFailed ? (
+        <NativeButton secondary label={t('media.retryAudio')} onPress={onRetry} />
       ) : null}
     </View>
   );

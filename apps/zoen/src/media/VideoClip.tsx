@@ -1,9 +1,12 @@
-import { useEvent } from 'expo';
+import { useEvent, useEventListener } from 'expo';
+import { useEffect, useRef } from 'react';
 import { useVideoPlayer, VideoView } from 'expo-video';
 import { ActivityIndicator, Text, View } from 'react-native';
 import { GestureDetector, useNativeGesture } from 'react-native-gesture-handler';
 import { useMessagePan, useMessagePressConsumption } from '../components/message-interaction';
 import { useTheme } from '../theme';
+import { t } from '../i18n/index.ts';
+import { mediaPlayback, type PlaybackOwner } from './playback-owner.ts';
 
 export function VideoClip({ uri, compact = false }: { uri: string; compact?: boolean }) {
   return <VideoClipContent key={uri} uri={uri} compact={compact} />;
@@ -25,6 +28,22 @@ function VideoClipContent({ uri, compact }: { uri: string; compact: boolean }) {
   const player = useVideoPlayer({ uri }, (value) => {
     value.allowsExternalPlayback = false;
   });
+  const playback = useRef<{ player: typeof player; owner: PlaybackOwner } | null>(null);
+  useEffect(() => {
+    const owner = mediaPlayback.register(
+      () => player.pause(),
+      () => player.playing,
+    );
+    playback.current = { player, owner };
+    return () => {
+      if (playback.current?.owner === owner) playback.current = null;
+      owner.dispose();
+    };
+  }, [player]);
+  useEventListener(player, 'playingChange', ({ isPlaying }) => {
+    const current = playback.current;
+    if (current?.player === player) current.owner.observe(isPlaying);
+  });
   const status = useEvent(player, 'statusChange', { status: player.status, error: undefined });
   const source = useEvent(player, 'sourceLoad', {
     videoSource: { uri },
@@ -40,7 +59,10 @@ function VideoClipContent({ uri, compact }: { uri: string; compact: boolean }) {
       <GestureDetector gesture={nativeControls}>
         <View
           collapsable={false}
-          onTouchStart={consumePress}
+          onTouchStart={() => {
+            consumePress();
+            if (playback.current?.player === player) playback.current.owner.refresh();
+          }}
           style={{
             borderRadius: compact ? 24 : 16,
             borderCurve: 'continuous',
@@ -81,7 +103,7 @@ function VideoClipContent({ uri, compact }: { uri: string; compact: boolean }) {
       </GestureDetector>
       {status.error ? (
         <Text accessibilityRole="alert" style={{ color: colors.danger, fontSize: 14 }}>
-          {status.error.message}
+          {t('media.thisVideoCouldNotBePlayed')}
         </Text>
       ) : null}
     </View>
