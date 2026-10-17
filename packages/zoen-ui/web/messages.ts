@@ -272,7 +272,7 @@ export class Messages {
       save: (snapshot) => this.vault.save(snapshot), frames: update.frames, emit: (frame) => {
         // A reconnect bootstraps again from the saved outbox; never emit stale frames.
         if (this.closed || this.connection.kind !== 'ready' || generation !== this.generation) return;
-        this.transport.send(frame);
+        this.transport.sendRetained(frame);
       } });
     if (this.closed) return;
     this.conversations = update.conversations;

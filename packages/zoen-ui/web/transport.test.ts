@@ -787,3 +787,30 @@ test('outgoing linked history never uploads when encrypted persistence fails', a
   await assert.rejects(messages.sendHistory('11'.repeat(32)),/QuotaExceededError/);
   assert.equal(fetching.mock.callCount(),0);assert.equal(codec.closed,true);
 });
+
+test('a socket closing before onclose cannot terminate a durably saved message', async(t)=>{
+  install(t);
+  const core=messagingCore();
+  let release=()=>{};
+  const saving=new Promise<void>(resolve=>{release=resolve;});
+  const saves:StoredSession[]=[];
+  const messages=new Messages({core,session:linked,vault:{...vault,save:async(session)=>{
+    saves.push(session);
+    if(session.kind==='linked'&&session.snapshot==='new MLS send ratchet')await saving;
+  }},changed:()=>{}});
+  t.after(()=>messages.stop());
+  await messages.start();await authenticate();
+  const first=socket();
+  const sending=messages.send({space:'sp_fixture',text:'Keep the encrypted outbox'});await settle();
+  // Native socket state can change while encryption/storage awaits, before the
+  // browser has dispatched the onclose callback that updates connection state.
+  first.readyState=2;
+  release();await sending;
+  assert.equal(first.sent.length,3);
+  assert.equal(core.closed,false);
+  assert.equal((saves.at(-1) as Extract<StoredSession,{kind:'linked'}>).snapshot,'new MLS send ratchet');
+  t.mock.timers.tick(900);await settle();await authenticate();
+  assert.notEqual(socket(),first);
+  assert.equal(socket().sent.length,3);
+  assert.equal(core.closed,false);
+});

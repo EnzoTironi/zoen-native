@@ -230,6 +230,17 @@ export class AuthenticatedTransport {
     this.socket.send(Uint8Array.from(frame));
   }
 
+  /** A durable core snapshot owns these bytes. A close/backpressure race must
+   * reconnect and bootstrap that journal instead of terminating the account. */
+  sendRetained(frame:Uint8Array):void {
+    try {this.send(frame);}
+    catch {
+      if(this.stopped)return;
+      try {this.socket?.close(4000,'Retry retained encrypted state');}
+      catch { /* A socket already closing will still deliver its close event. */ }
+    }
+  }
+
   private rejectPending(error: Error): void {
     for (const request of this.pending.values()) { clearTimeout(request.timer); request.reject(error); }
     this.pending.clear();
