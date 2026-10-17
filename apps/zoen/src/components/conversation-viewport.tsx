@@ -1,4 +1,4 @@
-import type { ReactElement, ReactNode } from 'react';
+import { useState, type ReactElement, type ReactNode } from 'react';
 import { View } from 'react-native';
 import Animated, { useAnimatedStyle, useSharedValue } from 'react-native-reanimated';
 
@@ -12,16 +12,22 @@ export function ConversationViewport({
   composer: ReactNode;
   overlay?: ReactNode;
 }) {
+  const [composerMeasured, setComposerMeasured] = useState(false);
   const composerHeight = useSharedValue(0);
   const spacerStyle = useAnimatedStyle(() => ({ height: composerHeight.value }));
   return (
     <View style={{ flex: 1, backgroundColor: 'transparent' }}>
-      {children(<Animated.View pointerEvents="none" accessible={false} style={spacerStyle} />)}
+      {composerMeasured
+        ? children(<Animated.View pointerEvents="none" accessible={false} style={spacerStyle} />)
+        : null}
       {overlay}
       <View
         pointerEvents="box-none"
         onLayout={({ nativeEvent }) => {
-          composerHeight.set(nativeEvent.layout.height);
+          const height = nativeEvent.layout.height;
+          composerHeight.set(height);
+          // The list's first bottom position must include the actual footer height.
+          if (!composerMeasured && height > 0) setComposerMeasured(true);
         }}
         style={{
           position: 'absolute',
