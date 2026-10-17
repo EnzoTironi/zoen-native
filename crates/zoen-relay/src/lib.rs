@@ -141,7 +141,12 @@ pub fn router(state: Shared) -> Router {
             "/v1/blobs/{sha}",
             put(blobs::put)
                 .get(blobs::get)
-                .layer(DefaultBodyLimit::max(blobs::MAX_BLOB_BYTES + 1024)),
+                .layer::<_, std::convert::Infallible>(DefaultBodyLimit::max(
+                    blobs::MAX_BLOB_BYTES + 1024,
+                ))
+                // The web client lives on another origin. Blobs are ciphertext addressed by
+                // hash and uploads are device-signed, so any origin may call them.
+                .layer::<_, std::convert::Infallible>(blobs::cors()),
         )
         .route(
             "/v1/transfer/{id}/{n}",
