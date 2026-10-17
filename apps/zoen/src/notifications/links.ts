@@ -54,27 +54,57 @@ export function parseZoenLink(value: string): ZoenLink | null {
   }
 }
 
-export function nativeLinkPath(path: string, development = false): string {
-  if (path.startsWith('/') && !path.startsWith('//')) return path;
-  if (development) {
-    try {
-      const launch = new URL(path);
-      const metro = new URL(launch.searchParams.get('__expo_url') ?? '');
-      if (
-        ['zoen:', 'exp+zoen:'].includes(launch.protocol) &&
-        !launch.host &&
-        ['', '/'].includes(launch.pathname) &&
-        !launch.hash &&
-        ['http:', 'https:'].includes(metro.protocol) &&
-        ['localhost', '127.0.0.1', '[::1]'].includes(metro.hostname) &&
-        !metro.username &&
-        !metro.password
-      )
-        return '/';
-    } catch {
-      // Ordinary application links continue through the strict parser below.
+/** Expo CLI may redeliver its transport envelope to an installed Release binary.
+ * Discard the whole envelope; never open, fetch or authenticate with its inner address. */
+function expoBootstrapLink(path: string): boolean {
+  if (
+    path.length > 2048 ||
+    !/^(?:zoen|exp\+zoen):\/\/\?/.test(path) ||
+    Array.from(path).some(
+      (character) => character.charCodeAt(0) <= 32 || character.charCodeAt(0) === 127,
+    )
+  )
+    return false;
+  try {
+    const launch = new URL(path);
+    if (
+      !['zoen:', 'exp+zoen:'].includes(launch.protocol) ||
+      launch.host ||
+      launch.username ||
+      launch.password ||
+      launch.pathname ||
+      launch.hash
+    )
+      return false;
+    const keys = [...launch.searchParams.keys()].sort().join(',');
+    if (
+      keys !== '__expo_url' &&
+      keys !== '__expo_disable_auto_launch,__expo_disable_fab,__expo_disable_onboarding,__expo_url'
+    )
+      return false;
+    for (const key of [
+      '__expo_disable_auto_launch',
+      '__expo_disable_fab',
+      '__expo_disable_onboarding',
+    ]) {
+      if (launch.searchParams.has(key) && launch.searchParams.get(key) !== '1') return false;
     }
+    const transport = new URL(launch.searchParams.get('__expo_url') ?? '');
+    return (
+      ['http:', 'https:'].includes(transport.protocol) &&
+      !!transport.hostname &&
+      !transport.username &&
+      !transport.password
+    );
+  } catch {
+    return false;
   }
+}
+
+export function nativeLinkPath(path: string): string {
+  if (path.startsWith('/') && !path.startsWith('//')) return path;
+  // Expo Router uses createURL('/') when a native launch has no incoming deep link.
+  if (/^(?:zoen|exp\+zoen):\/\/\/?$/.test(path) || expoBootstrapLink(path)) return '/';
   const link = parseZoenLink(path);
   if (!link) return '/open-link?invalid=1';
   switch (link.kind) {

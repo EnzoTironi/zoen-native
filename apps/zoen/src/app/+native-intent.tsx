@@ -7,6 +7,6 @@ export function redirectSystemPath({ path }: { path: string; initial: boolean })
   return (
     nativeProviderReturnPath(path, identityProviders.google?.iosClientId) ??
     surfaceLinkPath(path) ??
-    nativeLinkPath(path, __DEV__)
+    nativeLinkPath(path)
   );
 }

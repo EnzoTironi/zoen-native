@@ -50,14 +50,63 @@ test('notification taps are account-bound local navigation hints and preserve fu
     assert.equal(validLocalNotification(invalid, 'current'), null);
 });
 
-test('local Metro development launches open the entry screen without becoming invalid invitations', () => {
-  const launch = 'exp+zoen://?__expo_url=http%3A%2F%2Flocalhost%3A58704';
-  assert.equal(nativeLinkPath(launch, true), '/');
-  assert.equal(nativeLinkPath(launch, false), '/open-link?invalid=1');
+test('Expo SDK transport envelopes always open home and never follow their inner URL', () => {
+  for (const scheme of ['zoen', 'exp+zoen']) {
+    for (const transport of [
+      'http://localhost:58704',
+      'http://192.168.2.113:8081',
+      'https://example.test/tunnel',
+    ]) {
+      const launch = `${scheme}://?__expo_url=${encodeURIComponent(transport)}`;
+      assert.equal(nativeLinkPath(launch), '/');
+      assert.equal(
+        nativeLinkPath(
+          `${launch}&__expo_disable_fab=1&__expo_disable_auto_launch=1&__expo_disable_onboarding=1`,
+        ),
+        '/',
+      );
+    }
+  }
+});
+
+test('only the exact SDK bootstrap shape is discarded; malformed links remain invalid', () => {
+  const base = 'zoen://?__expo_url=http%3A%2F%2Flocalhost%3A58704';
   for (const value of [
-    'foreign://?__expo_url=http%3A%2F%2Flocalhost%3A58704',
-    'exp+zoen://?__expo_url=https%3A%2F%2Fforeign.test',
-    'exp+zoen://chat/private?__expo_url=http%3A%2F%2Flocalhost%3A58704',
+    base.replace('zoen:', 'foreign:'),
+    base.replace('zoen://?', 'zoen://chat/private?'),
+    base.replace('zoen://?', 'zoen:/?'),
+    base.replace('zoen://?', 'zoen:?'),
+    `${base}&code=provider-proof`,
+    `${base}&state=provider-state`,
+    `${base}&__expo_url=http%3A%2F%2Flocalhost%3A58704`,
+    `${base}&__expo_disable_fab=1`,
+    `${base}&__expo_disable_fab=1&__expo_disable_auto_launch=0&__expo_disable_onboarding=1`,
+    `${base}&__expo_disable_fab=1&__expo_disable_auto_launch=1&__expo_disable_onboarding=1&__expo_disable_fab=1`,
+    `${base}#fragment`,
+    ` ${base}`,
+    `${base}\n`,
+    'zoen://?__expo_url=javascript%3Aalert(1)',
+    'zoen://?__expo_url=http%3A%2F%2Fuser%3Apassword%40localhost',
+    'zoen://?__expo_url=not-a-url',
+    `zoen://?__expo_url=${'x'.repeat(2048)}`,
   ])
-    assert.equal(nativeLinkPath(value, true), '/open-link?invalid=1');
+    assert.equal(nativeLinkPath(value), '/open-link?invalid=1', value);
+  assert.equal(nativeLinkPath('zoen://chat/sp_signed'), '/chat/sp_signed');
+  assert.equal(
+    nativeLinkPath('zoen://join/abcde12345'),
+    '/open-link?kind=invite&target=ABCDE12345',
+  );
+});
+
+test('Expo Router empty root scheme URLs open home on ordinary native cold launches', () => {
+  for (const root of ['zoen:///', 'zoen://', 'exp+zoen:///', 'exp+zoen://'])
+    assert.equal(nativeLinkPath(root), '/');
+  for (const invalid of [
+    'zoen:/',
+    'foreign:///',
+    'zoen://unknown',
+    'zoen:///?code=proof',
+    'zoen:///#fragment',
+  ])
+    assert.equal(nativeLinkPath(invalid), '/open-link?invalid=1');
 });
