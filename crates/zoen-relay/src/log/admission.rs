@@ -74,10 +74,20 @@ pub fn admit(env: &Envelope, f: &Facts) -> Result<Effect, Reject> {
     }
     let body = env.body();
     let author = env.author();
+    // Personal state is shared by certified devices of one identity, never by
+    // adding another identity (or redeeming an invite) to its roster.
+    if f.kind == Some(SpaceKind::Personal)
+        && matches!(
+            body,
+            Some(EventBody::MemberAdded { .. } | EventBody::MemberRemoved { .. })
+        )
+    {
+        return Err(Reject::no("personal space membership cannot change"));
+    }
     let effect = match (&f.head, body.clone()) {
         (None, Some(EventBody::SpaceCreated { kind, privacy, .. })) => {
-            if kind == SpaceKind::Personal {
-                return Err(Reject::no("personal spaces stay on the device"));
+            if kind == SpaceKind::Personal && privacy != Privacy::EndToEnd {
+                return Err(Reject::no("personal spaces must be end-to-end encrypted"));
             }
             Effect::Create { kind, privacy }
         }
@@ -362,6 +372,73 @@ mod tests {
             epoch: 2,
             digest: "d".into(),
         }
+    }
+
+    #[test]
+    fn personal_spaces_require_encryption_without_allowing_other_identities() {
+        let a = Author::root(Signer::generate());
+        for privacy in [Privacy::EndToEnd, Privacy::Closed, Privacy::Public] {
+            let create = env(
+                &a,
+                None,
+                EventBody::SpaceCreated {
+                    title: "Personal".into(),
+                    kind: SpaceKind::Personal,
+                    privacy,
+                },
+            );
+            assert_eq!(
+                admit(&create, &Facts::default()).is_ok(),
+                privacy == Privacy::EndToEnd
+            );
+        }
+        let f = Facts {
+            kind: Some(SpaceKind::Personal),
+            privacy: Some(Privacy::EndToEnd),
+            ..member_facts(Role::Owner)
+        };
+        let seen = Some(Seen {
+            seq: 3,
+            hash: "h3".into(),
+        });
+        assert_eq!(
+            admit(&sealed(&a, SealedKind::Application), &f).unwrap(),
+            Effect::Nothing
+        );
+        let preference = EventBody::ThreadStateSet {
+            space: "chat".into(),
+            root: "root".into(),
+            follow: Some(true),
+            read_up_to: 7,
+            read_only: false,
+        };
+        assert_eq!(
+            admit(&env(&a, seen.clone(), preference), &f)
+                .unwrap_err()
+                .reason,
+            roda_proto::SEAL_REQUIRED
+        );
+        for body in [
+            EventBody::MemberAdded {
+                identity: Signer::generate().id(),
+                role: Role::Member,
+            },
+            EventBody::MemberRemoved {
+                identity: a.identity.clone(),
+            },
+        ] {
+            assert!(admit(&env(&a, seen.clone(), body), &f).is_err());
+        }
+        let outsider = Facts {
+            author_role: None,
+            ..f
+        };
+        assert_eq!(
+            admit(&sealed(&a, SealedKind::Application), &outsider)
+                .unwrap_err()
+                .reason,
+            "not a member of this space"
+        );
     }
 
     #[test]

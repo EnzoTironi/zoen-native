@@ -178,8 +178,49 @@ pub(crate) struct SpaceState {
     pub privacy: Privacy,
     pub members: Vec<(IdentityId, Role)>,
     pub entries: Vec<Entry>,
+    /// Accepted chain hashes, including controls and entries replaced by voice markers.
+    pub event_hashes: HashSet<String>,
     pub last_at_ms: i64,
     pub integrity_error: Option<String>,
+}
+
+impl SpaceState {
+    /// A chain hash is authoritative; client ids are optional, untrusted aliases.
+    pub(crate) fn entry_index(&self, reference: &str) -> Option<usize> {
+        if reference.is_empty() {
+            return None;
+        }
+        let by_hash = self
+            .entries
+            .iter()
+            .position(|entry| entry.hash == reference);
+        if by_hash.is_some() || self.event_hashes.contains(reference) {
+            return by_hash;
+        }
+        self.entries
+            .iter()
+            .position(|entry| entry.client_id == reference)
+    }
+
+    pub(crate) fn resolve_entry(&self, reference: &str) -> Option<&Entry> {
+        self.entry_index(reference)
+            .map(|index| &self.entries[index])
+    }
+
+    /// Keep optimistic ids stable, but never emit an alias that names another entry.
+    pub(crate) fn entry_id<'a>(&self, entry: &'a Entry) -> &'a str {
+        if !entry.client_id.is_empty()
+            && self
+                .resolve_entry(&entry.client_id)
+                .is_some_and(|resolved| {
+                    resolved.hash == entry.hash && resolved.client_id == entry.client_id
+                })
+        {
+            &entry.client_id
+        } else {
+            &entry.hash
+        }
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -246,9 +287,56 @@ pub(crate) struct State {
     pub(crate) waiting_spaces: HashSet<SpaceId>,
     /// My per-chat prefs (pin, archive, mute), from my Personal Space.
     pub(crate) chat_prefs: HashMap<SpaceId, roda_types::ChatPrefs>,
+    /// My state per thread, (space, root) → (follow override, read up to).
+    pub(crate) thread_state: HashMap<(SpaceId, String), (Option<bool>, u64)>,
+    /// Cross-Personal-log last-writer ordering; relay sequences are only per Space.
+    chat_pref_versions: HashMap<SpaceId, (i64, u64, String)>,
+    thread_versions: HashMap<(SpaceId, String), (i64, u64, String)>,
 }
 
 impl State {
+    /// Pending writes follow confirmed writes from the same millisecond. Confirmation
+    /// reprojects these registers with their actual relay sequence.
+    fn personal_version(event: &Event) -> (i64, u64, String) {
+        (
+            event.at_ms,
+            if event.hash.is_empty() {
+                u64::MAX
+            } else {
+                event.seq
+            },
+            event.client_id.clone(),
+        )
+    }
+
+    /// Hash and safe client aliases are names for one independent follow/read register.
+    pub(crate) fn thread_register(&self, space: &str, root: &Entry) -> (Option<bool>, u64) {
+        let id = self
+            .spaces
+            .get(space)
+            .map(|state| state.entry_id(root))
+            .unwrap_or_else(|| root.id());
+        let mut follow = None;
+        let mut read = 0;
+        let mut newest = None;
+        for reference in [root.hash.as_str(), id] {
+            if reference.is_empty() {
+                continue;
+            }
+            let key = (space.to_string(), reference.to_string());
+            if let Some((value, watermark)) = self.thread_state.get(&key) {
+                read = read.max(*watermark);
+                if let Some(version) = self.thread_versions.get(&key) {
+                    if newest.is_none_or(|old| version > old) {
+                        follow = *value;
+                        newest = Some(version);
+                    }
+                }
+            }
+        }
+        (follow, read)
+    }
+
     fn create_item(
         &mut self,
         e: &Event,
@@ -323,6 +411,13 @@ impl State {
         identities: &HashMap<IdentityId, Identity>,
         context: &BeforeEvent,
     ) -> Projection {
+        // Even a control or refused projection owns its verified chain hash. An
+        // untrusted message alias must never turn that reference into a message.
+        if !e.hash.is_empty() {
+            if let Some(space) = self.spaces.get_mut(&e.space) {
+                space.event_hashes.insert(e.hash.clone());
+            }
+        }
         match self.approval_event_valid(e, identities, context) {
             Projection::Refused => return Projection::Refused,
             Projection::Waiting => {
@@ -357,6 +452,10 @@ impl State {
                         privacy: *privacy,
                         members: vec![(e.author.clone(), Role::Owner)],
                         entries: Vec::new(),
+                        event_hashes: (!e.hash.is_empty())
+                            .then(|| e.hash.clone())
+                            .into_iter()
+                            .collect(),
                         last_at_ms: e.at_ms,
                         integrity_error: None,
                     },
@@ -430,18 +529,54 @@ impl State {
                     s.last_at_ms = s.last_at_ms.max(e.at_ms);
                 }
             }
+            EventBody::ThreadStateSet {
+                space,
+                root,
+                follow,
+                read_up_to,
+                read_only,
+            } => {
+                let mine = self.spaces.get(&e.space).is_some_and(|s| {
+                    s.kind == SpaceKind::Personal && s.members.iter().any(|(m, _)| *m == e.author)
+                });
+                if mine {
+                    let key = (space.clone(), root.clone());
+                    let version = Self::personal_version(e);
+                    let slot = self.thread_state.entry(key.clone()).or_insert((None, 0));
+                    slot.1 = slot.1.max(*read_up_to);
+                    if !read_only
+                        && self
+                            .thread_versions
+                            .get(&key)
+                            .is_none_or(|old| version > *old)
+                    {
+                        slot.0 = *follow;
+                        self.thread_versions.insert(key, version);
+                    }
+                }
+            }
             EventBody::ChatPrefsSet { space, prefs } => {
                 // Only my own Personal Space carries prefs; anywhere else they mean nothing.
                 let mine = self.spaces.get(&e.space).is_some_and(|s| {
                     s.kind == SpaceKind::Personal && s.members.iter().any(|(m, _)| *m == e.author)
                 });
                 if mine {
-                    self.chat_prefs.insert(space.clone(), prefs.clone());
+                    let version = Self::personal_version(e);
+                    if self
+                        .chat_pref_versions
+                        .get(space)
+                        .is_none_or(|old| version > *old)
+                    {
+                        self.chat_prefs.insert(space.clone(), prefs.clone());
+                        self.chat_pref_versions.insert(space.clone(), version);
+                    }
                 }
             }
             EventBody::MessageAnnotated { target, note } => {
                 if let Some(s) = self.spaces.get_mut(&e.space) {
-                    let found = s.entries.iter_mut().rev().find(|x| x.id() == target);
+                    let found = s
+                        .entry_index(target)
+                        .and_then(|index| s.entries.get_mut(index));
                     if let Some(Entry {
                         author,
                         body:
@@ -679,7 +814,7 @@ impl From<roda_store::StoreError> for CoreError {
     }
 }
 
-fn not_found(what: &str) -> CoreError {
+pub(crate) fn not_found(what: &str) -> CoreError {
     CoreError::NotFound {
         what: what.to_string(),
     }
@@ -719,12 +854,34 @@ impl Engine {
                 state.spaces.insert(space.clone(), projected.clone());
             }
             // Only a Personal Space projects prefs (checked when applied).
-            state.chat_prefs.extend(
-                scoped
-                    .chat_prefs
-                    .iter()
-                    .map(|(k, v)| (k.clone(), v.clone())),
-            );
+            for (key, prefs) in &scoped.chat_prefs {
+                if let Some(version) = scoped.chat_pref_versions.get(key) {
+                    if state
+                        .chat_pref_versions
+                        .get(key)
+                        .is_none_or(|old| version > old)
+                    {
+                        state.chat_prefs.insert(key.clone(), prefs.clone());
+                        state
+                            .chat_pref_versions
+                            .insert(key.clone(), version.clone());
+                    }
+                }
+            }
+            for (key, (follow, read)) in &scoped.thread_state {
+                let slot = state.thread_state.entry(key.clone()).or_insert((None, 0));
+                slot.1 = slot.1.max(*read);
+                if let Some(version) = scoped.thread_versions.get(key) {
+                    if state
+                        .thread_versions
+                        .get(key)
+                        .is_none_or(|old| version > old)
+                    {
+                        slot.0 = *follow;
+                        state.thread_versions.insert(key.clone(), version.clone());
+                    }
+                }
+            }
             for (item, projected) in &scoped.items {
                 if item_spaces.get(item.as_str()) == Some(&1) {
                     state.items.insert(item.clone(), projected.clone());
@@ -849,6 +1006,7 @@ impl Engine {
                             privacy: Privacy::EndToEnd,
                             members: vec![],
                             entries: vec![],
+                            event_hashes: HashSet::new(),
                             last_at_ms: 0,
                             integrity_error: Some(err.to_string()),
                         },
@@ -1148,16 +1306,18 @@ impl Engine {
             })
     }
 
-    fn personal_space(&self) -> Option<SpaceId> {
+    pub(crate) fn personal_space(&self) -> Option<SpaceId> {
         self.space_order
             .iter()
-            .find(|s| {
+            .filter(|s| {
                 self.state
                     .spaces
                     .get(*s)
                     .map(|x| x.kind == SpaceKind::Personal)
                     .unwrap_or(false)
             })
+            // A migrated synced space supersedes the preserved local history.
+            .min_by_key(|s| !self.net.synced.contains(*s))
             .cloned()
     }
 
@@ -1418,7 +1578,13 @@ impl Engine {
             deleted: marks.deleted,
             forwarded: marks.forwarded,
             reactions,
-            id: e.id().to_string(),
+            id: self
+                .state
+                .spaces
+                .get(&e.space)
+                .map(|space| space.entry_id(e))
+                .unwrap_or_else(|| e.id())
+                .to_string(),
             seq: e.seq,
             author: self.persona(&e.author),
             at_ms: e.at_ms,
@@ -1428,6 +1594,11 @@ impl Engine {
             reply_to,
             in_thread,
             thread_replies: 0,
+            thread_participants: Vec::new(),
+            thread_last_reply_ms: 0,
+            thread_unread: 0,
+            thread_following: false,
+            also_in_chat: matches!(&e.body, EntryBody::Message { reply: Some(r), .. } if r.thread && r.also_in_chat),
         }
     }
 
@@ -1605,8 +1776,17 @@ impl Engine {
             .entries
             .iter()
             .filter(|e| e.author != me && read_seq.map(|r| e.seq > r).unwrap_or(true))
-            .filter(|e| matches!(e.body, EntryBody::Message { .. }))
+            .filter(|e| {
+                matches!(e.body, EntryBody::Message { .. }) && !crate::threads::thread_only(e)
+            })
             .count() as u32;
+        let mentions = s
+            .entries
+            .iter()
+            .filter(|e| e.author != me && read_seq.map(|r| e.seq > r).unwrap_or(true))
+            .filter(|e| !crate::threads::thread_only(e) && self.mentions_me(e))
+            .count() as u32;
+        let threads_unread = self.threads_unread(id);
         let pending = self
             .state
             .requests
@@ -1616,6 +1796,8 @@ impl Engine {
         let prefs = self.state.chat_prefs.get(id).cloned().unwrap_or_default();
         let muted = prefs.muted_until_ms.is_some_and(|until| until > now_ms());
         Ok(SpaceSummary {
+            mentions,
+            threads_unread,
             pinned: prefs.pinned,
             archived: prefs.archived,
             muted,
@@ -1695,6 +1877,7 @@ impl Engine {
         let s = self.space_state(space)?;
         let mut out: Vec<TimelineEntry> = s.entries.iter().map(|e| self.entry_dto(e)).collect();
         crate::replies::count_thread_replies(&mut out);
+        self.fill_thread_roots(space, &mut out);
         Ok(out)
     }
 
@@ -1717,11 +1900,13 @@ impl Engine {
     pub fn annotate(&mut self, space: &str, target: &str, note: roda_types::Annotation) -> R<()> {
         let me = self.me_id()?;
         let s = self.space_state(space)?;
-        let Some(Entry {
-            author,
-            body: EntryBody::Message { marks, .. },
-            ..
-        }) = s.entries.iter().find(|e| e.id() == target)
+        let Some(
+            entry @ Entry {
+                author,
+                body: EntryBody::Message { marks, .. },
+                ..
+            },
+        ) = s.resolve_entry(target)
         else {
             return Err(not_found(&t("Mensagem", "Message")));
         };
@@ -1755,14 +1940,8 @@ impl Engine {
                 ),
             });
         }
-        self.append(
-            space,
-            &me,
-            EventBody::MessageAnnotated {
-                target: target.to_string(),
-                note,
-            },
-        )?;
+        let target = s.entry_id(entry).to_string();
+        self.append(space, &me, EventBody::MessageAnnotated { target, note })?;
         Ok(())
     }
 
@@ -1775,7 +1954,7 @@ impl Engine {
             attaches,
             marks,
             ..
-        }) = s.entries.iter().find(|e| e.id() == target).map(|e| &e.body)
+        }) = s.resolve_entry(target).map(|e| &e.body)
         else {
             return Err(not_found(&t("Mensagem", "Message")));
         };
@@ -4283,6 +4462,7 @@ fn event_label(b: &EventBody) -> String {
         } => t("Mensagem com Item", "Message with Item"),
         EventBody::MessagePosted { .. } => t("Mensagem", "Message"),
         EventBody::ChatPrefsSet { .. } => t("Preferências da conversa", "Chat preferences"),
+        EventBody::ThreadStateSet { .. } => t("Estado das respostas", "Thread state"),
         EventBody::MessageAnnotated { note, .. } => match note {
             roda_types::Annotation::Edit { .. } => t("Mensagem editada", "Message edited"),
             roda_types::Annotation::Delete => t("Mensagem apagada", "Message deleted"),

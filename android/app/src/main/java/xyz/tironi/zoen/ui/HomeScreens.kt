@@ -64,6 +64,8 @@ fun ConversationsScreen(model: ZoenViewModel, state: AppState, navigate: (NavKey
     var selectedChat by rememberSaveable { mutableStateOf<String?>(null) }
     var searching by rememberSaveable { mutableStateOf(false) }
     var query by rememberSaveable { mutableStateOf("") }
+    var showThreads by rememberSaveable { mutableStateOf(false) }
+    val threads by produceState(emptyList<ThreadSummary>(), state.revision, showThreads) { if (showThreads) value = model.repository.query { it.threads() } }
     var filter by rememberSaveable { mutableStateOf(ChatInboxFilter.All) }
     // Pin, archive and mute are mine on every device: they come from the core.
     val archived = state.spaces.filter { it.archived }.map { it.id }.toSet()
@@ -100,6 +102,27 @@ fun ConversationsScreen(model: ZoenViewModel, state: AppState, navigate: (NavKey
                     }
                 }
                 if (!showArchived) item { ChatFilterMenu(filter) { filter = it; haptics.perform(ZoenFeedback.Selection) } }
+                if (!showArchived && query.isBlank() && state.spaces.isNotEmpty()) item(key = "threads") {
+                    val unread = state.spaces.sumOf { it.threadsUnread.toInt() }
+                    ListItem(headlineContent = { Text(stringResource(R.string.threads), fontWeight = if (unread > 0) FontWeight.SemiBold else null) },
+                        leadingContent = { Icon(if (showThreads) Icons.AutoMirrored.Rounded.ArrowBack else Icons.Rounded.Forum, null, Modifier.padding(horizontal = 16.dp)) },
+                        trailingContent = { if (unread > 0 && !showThreads) Badge { Text(unread.toString()) } },
+                        modifier = Modifier.animateItem().testTag("threads-row").clickable { haptics.perform(ZoenFeedback.Selection); showThreads = !showThreads })
+                }
+                if (showThreadInbox(showThreads, query, showArchived)) {
+                    items(threads, key = { threadListKey(it.spaceId, it.root.id) }) { t ->
+                        ListItem(headlineContent = { Text(t.spaceTitle, fontWeight = if (t.root.threadUnread > 0u) FontWeight.Bold else FontWeight.SemiBold) },
+                            supportingContent = { Text((t.lastReply ?: t.root).let { e -> (if (e.author.isMe) stringResource(R.string.files_you) else e.author.name) + ": " + ((e.kind as? EntryKind.Message)?.text ?: "") }, maxLines = 1, overflow = TextOverflow.Ellipsis) },
+                            leadingContent = { Avatar(t.root.author, size = 40) },
+                            trailingContent = {
+                                if (t.mentions > 0u) Badge { Text(stringResource(R.string.mentions_count, t.mentions.toInt())) }
+                                else if (t.root.threadUnread > 0u) Box(Modifier.size(9.dp).background(MaterialTheme.colorScheme.primary, androidx.compose.foundation.shape.CircleShape))
+                            },
+                            modifier = Modifier.animateItem().clickable { navigate(Thread(t.spaceId, t.root.id)) })
+                    }
+                    if (threads.isEmpty()) item { Text(stringResource(R.string.threads_empty), Modifier.padding(24.dp), color = MaterialTheme.colorScheme.onSurfaceVariant) }
+                    return@LazyColumn
+                }
                 // WhatsApp: "Archived" above the chats while there are any.
                 if (!showArchived && archivedChats.isNotEmpty() && query.isBlank()) item(key = "archived") {
                     Row(Modifier.fillMaxWidth().testTag("archived-chats").clickable { haptics.perform(ZoenFeedback.Tap); showArchived = true }.padding(horizontal = 20.dp, vertical = 10.dp),
@@ -170,7 +193,9 @@ private fun ConversationRow(chat: SpaceSummary, pinned: Boolean, working: String
                     if (muted) Icon(Icons.Rounded.NotificationsOff, stringResource(R.string.muted), Modifier.size(16.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
                     if (pinned) Icon(Icons.Rounded.PushPin, stringResource(R.string.pinned), Modifier.size(16.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
                     // Muted unread goes grey (WhatsApp); unmuted is the accent.
-                    if (chat.unread > 0u) Badge(containerColor = if (muted) MaterialTheme.colorScheme.outline else MaterialTheme.colorScheme.primary, contentColor = MaterialTheme.colorScheme.onPrimary) { Text(chat.unread.toString()) }
+                    // Ando: a mention is its own state, with its count.
+                    if (chat.mentions > 0u) Badge(containerColor = MaterialTheme.colorScheme.primary, contentColor = MaterialTheme.colorScheme.onPrimary) { Text(stringResource(R.string.mentions_count, chat.mentions.toInt())) }
+                    else if (chat.unread > 0u) Badge(containerColor = if (muted) MaterialTheme.colorScheme.outline else MaterialTheme.colorScheme.primary, contentColor = MaterialTheme.colorScheme.onPrimary) { Text(chat.unread.toString()) }
                 }
             }
         }

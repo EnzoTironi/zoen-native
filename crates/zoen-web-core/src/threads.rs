@@ -1,0 +1,307 @@
+//! Personal Space thread preferences share the native protocol and sequence watermarks.
+use super::*;
+
+impl<S: Signer> Client<S> {
+    pub(super) fn thread_root(&self, space: &str, root: &str) -> String {
+        // Retain the native alias only when resolving it round-trips to this
+        // event. A client id can equal another event's authoritative hash.
+        self.resolve_post(space, root)
+            .map(|e| {
+                if !e.client_id.is_empty()
+                    && self
+                        .resolve_post(space, &e.client_id)
+                        .is_some_and(|target| target.hash == e.hash)
+                {
+                    e.client_id.clone()
+                } else {
+                    e.hash.clone()
+                }
+            })
+            .unwrap_or_else(|| root.into())
+    }
+
+    fn thread_state(&self, space: &str, root: &str) -> (Option<bool>, u64) {
+        let canonical = |id: &str| self.thread_root(space, id);
+        self.thread_states(space, &canonical)
+            .get(&canonical(root))
+            .copied()
+            .unwrap_or((None, 0))
+    }
+
+    fn thread_states(
+        &self,
+        space: &str,
+        canonical: &impl Fn(&str) -> String,
+    ) -> BTreeMap<String, (Option<bool>, u64)> {
+        let personal = |id: &str| {
+            matches!(self.metadata(id), Some((_, SpaceKind::Personal, _)))
+                && self.roster(id).contains_key(&self.account.identity)
+        };
+        let mut events: Vec<&Event> = self
+            .logs
+            .iter()
+            .filter(|(id, _)| personal(id))
+            .flat_map(|(_, log)| log.events())
+            .chain(
+                self.saved
+                    .outbox
+                    .values()
+                    .filter(|pending| pending.failure.is_none())
+                    .filter_map(|pending| pending.inner.as_ref())
+                    .filter(|event| personal(&event.space)),
+            )
+            .filter(|event| event.author == self.account.identity)
+            .collect();
+        // Personal logs have independent sequence numbers. Match native's total
+        // LWW order for follow, while reads only ever move forward.
+        let version = |event: &Event| {
+            // Pending events have no relay position yet; a confirmed earlier write
+            // in the same millisecond must not beat a later optimistic preference.
+            (
+                event.at_ms,
+                if event.hash.is_empty() {
+                    u64::MAX
+                } else {
+                    event.seq
+                },
+            )
+        };
+        events.sort_by(|a, b| {
+            version(a)
+                .cmp(&version(b))
+                .then_with(|| a.client_id.cmp(&b.client_id))
+        });
+        let mut states = BTreeMap::new();
+        for event in events {
+            if let EventBody::ThreadStateSet {
+                space: s,
+                root,
+                follow,
+                read_up_to,
+                read_only,
+            } = &event.body
+            {
+                if s == space {
+                    let state = states.entry(canonical(root)).or_insert((None, 0u64));
+                    state.1 = state.1.max(*read_up_to);
+                    if !read_only {
+                        state.0 = *follow;
+                    }
+                }
+            }
+        }
+        states
+    }
+
+    fn put_thread_state(
+        &mut self,
+        space: &str,
+        root: &str,
+        follow: Option<bool>,
+        read_up_to: u64,
+        now: i64,
+        read_only: bool,
+    ) -> Result<Update, String> {
+        self.posted(space, root)
+            .ok_or("That message is no longer available.")?;
+        let personal = self
+            .logs
+            .keys()
+            .find(|id| {
+                matches!(self.metadata(id), Some((_, SpaceKind::Personal, _)))
+                    && self.roster(id).contains_key(&self.account.identity)
+            })
+            .cloned()
+            .ok_or("Personal Space is not available yet.")?;
+        if !self.synced {
+            return Err("Catching up with the conversation…".into());
+        }
+        if let Some(error) = self.saved.integrity_errors.get(&personal) {
+            return Err(error.clone());
+        }
+        // Preferences follow the same encrypted Personal contract as native.
+        let epoch = self.ready_epoch(&personal)?;
+        let pending = self.clear_event(
+            &personal,
+            EventBody::ThreadStateSet {
+                space: space.into(),
+                root: self.thread_root(space, root),
+                follow,
+                read_up_to,
+                read_only,
+            },
+            now,
+        )?;
+        // Keep the exact signed event for optimistic projection and retries.
+        let inner = pending
+            .envelope()?
+            .plain_event()
+            .ok_or("invalid thread state")?;
+        let pending = self.seal_inner(&inner, epoch)?;
+        self.saved.outbox.insert(inner.client_id.clone(), pending);
+        self.update(Vec::new())
+    }
+
+    pub fn set_thread_follow(
+        &mut self,
+        space: &str,
+        root: &str,
+        follow: Option<bool>,
+        now: i64,
+    ) -> Result<Update, String> {
+        let read = self.thread_state(space, root).1;
+        self.put_thread_state(space, root, follow, read, now, false)
+    }
+
+    pub fn mark_thread_read(
+        &mut self,
+        space: &str,
+        root: &str,
+        now: i64,
+    ) -> Result<Update, String> {
+        self.mark_thread_read_up_to(space, root, u64::MAX, now)
+    }
+
+    /// Mark only replies included in the rendered snapshot, not a newer arrival.
+    pub fn mark_thread_read_up_to(
+        &mut self,
+        space: &str,
+        root: &str,
+        up_to: u64,
+        now: i64,
+    ) -> Result<Update, String> {
+        let canonical = self.thread_root(space, root);
+        let last = self
+            .logs
+            .get(space)
+            .ok_or("That message is no longer available.")?
+            .events()
+            .iter()
+            .filter(|e| e.seq <= up_to)
+            .filter(|e| {
+                let reply = match &e.body {
+                    EventBody::MessagePosted { reply, .. } => reply.as_ref(),
+                    EventBody::ItemCreated {
+                        content: roda_types::ItemContent::File(doc),
+                        ..
+                    } => doc.voice.as_ref().and_then(|voice| voice.reply.as_ref()),
+                    _ => None,
+                };
+                reply.is_some_and(|r| r.thread && self.thread_root(space, &r.to) == canonical)
+            })
+            .map(|e| e.seq)
+            .max()
+            .unwrap_or(0);
+        let (follow, read) = self.thread_state(space, root);
+        if last <= read {
+            return self.update(Vec::new());
+        }
+        self.put_thread_state(space, root, follow, last, now, true)
+    }
+
+    pub(super) fn fill_threads(&self, space: &str, messages: &mut [MessageView]) {
+        let mut aliases: BTreeMap<&str, &str> = BTreeMap::new();
+        if let Some(log) = self.logs.get(space) {
+            // Build one hash-first index, then choose the same safe canonical ids
+            // as thread_root without resolving every root by a full-log scan.
+            let mut references: BTreeMap<&str, &Event> = log
+                .events()
+                .iter()
+                .map(|event| (event.hash.as_str(), event))
+                .collect();
+            for event in log.events().iter().filter(|event| is_post(&event.body)) {
+                references.entry(event.client_id.as_str()).or_insert(event);
+            }
+            for event in log.events() {
+                let canonical = if is_post(&event.body)
+                    && !event.client_id.is_empty()
+                    && references
+                        .get(event.client_id.as_str())
+                        .is_some_and(|target| target.hash == event.hash)
+                {
+                    event.client_id.as_str()
+                } else {
+                    event.hash.as_str()
+                };
+                aliases.insert(event.hash.as_str(), canonical);
+            }
+            for event in log.events().iter().filter(|event| is_post(&event.body)) {
+                if !event.client_id.is_empty() {
+                    let canonical = aliases[event.hash.as_str()];
+                    aliases.entry(event.client_id.as_str()).or_insert(canonical);
+                }
+            }
+        }
+        let canonical = |id: &str| aliases.get(id).copied().unwrap_or(id).to_string();
+        let mut by_root: BTreeMap<String, Vec<&MessageView>> = BTreeMap::new();
+        for message in messages.iter() {
+            if let Some(root) = &message.thread {
+                by_root.entry(canonical(root)).or_default().push(message);
+            }
+        }
+        let preferences = self.thread_states(space, &canonical);
+        let states: BTreeMap<String, (bool, usize, usize)> = messages
+            .iter()
+            .filter_map(|root| {
+                let entry = root.entry.as_ref()?;
+                let id = canonical(entry);
+                let replies = by_root.get(&id).map(Vec::as_slice).unwrap_or_default();
+                let (follow, read) = preferences.get(&id).copied().unwrap_or((None, 0));
+                let following = follow.unwrap_or_else(|| {
+                    root.author == self.account.identity
+                        || (!root.deleted && mentions(&root.text, &self.account.handle))
+                        || replies.iter().any(|m| {
+                            m.author == self.account.identity
+                                || (!m.deleted && mentions(&m.text, &self.account.handle))
+                        })
+                });
+                let fresh: Vec<_> = replies
+                    .iter()
+                    .filter(|m| {
+                        m.author != self.account.identity && m.seq.is_some_and(|s| s > read)
+                    })
+                    .collect();
+                let unread = fresh.len();
+                let mention_count = fresh
+                    .iter()
+                    .filter(|m| !m.deleted && mentions(&m.text, &self.account.handle))
+                    .count();
+                Some((entry.clone(), (following, unread, mention_count)))
+            })
+            .collect();
+        for m in messages {
+            if let Some((following, unread, mention_count)) =
+                m.entry.as_ref().and_then(|id| states.get(id))
+            {
+                m.thread_following = *following;
+                m.thread_unread = *unread;
+                m.thread_mentions = *mention_count;
+            }
+        }
+    }
+}
+
+#[cfg(all(test, not(target_arch = "wasm32")))]
+#[path = "thread_tests.rs"]
+mod tests;
+
+#[test]
+fn mention_suffix_dot_is_part_of_a_handle() {
+    assert!(!mentions("@fixture.other", "fixture"));
+    assert!(mentions("@fixture.other", "fixture.other"));
+    assert!(mentions("Hi @fixture!", "fixture"));
+}
+
+pub(super) fn mentions(text: &str, handle: &str) -> bool {
+    if handle.is_empty() {
+        return false;
+    }
+    let lower = text.to_lowercase();
+    let needle = format!("@{}", handle.to_lowercase());
+    lower.match_indices(&needle).any(|(i, _)| {
+        let before = lower[..i].chars().next_back();
+        let after = lower[i + needle.len()..].chars().next();
+        !before.is_some_and(|c| c.is_alphanumeric() || c == '_' || c == '.')
+            && !after.is_some_and(|c| c.is_alphanumeric() || c == '_' || c == '.')
+    })
+}

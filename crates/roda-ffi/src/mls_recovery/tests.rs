@@ -37,6 +37,42 @@ fn seen(engine: &Engine, space: &str) -> Option<roda_types::Seen> {
         })
 }
 
+fn confirm_signup_genesis(engine: &mut Engine) {
+    // Confirm signup before exercising unrelated conversation outbox/recovery work.
+    for queued in engine.store.outbox().unwrap() {
+        let env = Envelope::plain(&queued.event);
+        let seq = engine.next_seq(env.space());
+        let prev = engine
+            .logs
+            .get(env.space())
+            .and_then(|log| log.events().last())
+            .map(|event| event.hash.clone())
+            .unwrap_or_else(|| roda_types::GENESIS_PREV.into());
+        let frame = roda_proto::Sequenced {
+            seq,
+            hash: roda_log::chain_hash(env.space(), seq, &prev, &env.wire_hash()),
+            prev,
+            env,
+        };
+        assert_eq!(engine.ingest(frame), crate::sync::Ingest::Confirmed);
+    }
+}
+fn settle_signup_recovery(engine: &mut Engine) {
+    // Give Personal its own completed context before testing conversation scheduling.
+    engine.profiles_session_start(true);
+    assert!(engine.mls_to_claim(None).unwrap().is_none());
+    assert!(engine.mls_recovery_pass().unwrap());
+    for (sha, _) in engine.pending_uploads(8) {
+        engine.upload_done(&sha);
+    }
+    confirm_signup_genesis(engine);
+    // The confirmed recovery commit also owes a checkpoint; finish that maintenance
+    // so Personal cannot keep an otherwise idle conversation fixture unsettled.
+    assert!(engine.mls_checkpoints().unwrap());
+    confirm_signup_genesis(engine);
+    assert!(!engine.mls_recovery_pass().unwrap());
+}
+
 struct StagedRecovery {
     engine: Engine,
     peer_engine: Engine,
@@ -55,6 +91,8 @@ fn a_ready_group_creates_its_context_after_profiles_become_available() {
     engine
         .create_account("Ana", "ana", "http://relay.test")
         .unwrap();
+    confirm_signup_genesis(&mut engine);
+    settle_signup_recovery(&mut engine);
     engine.profiles_session_start(false);
     let author = engine.net.author.clone().unwrap();
     let genesis = Envelope::plain(&author.sign_event(
@@ -104,9 +142,12 @@ fn an_empty_claim_reply_resumes_context_creation_for_a_ready_group() {
     engine
         .create_account("Ana", "ana", "http://relay.test")
         .unwrap();
+    confirm_signup_genesis(&mut engine);
+    settle_signup_recovery(&mut engine);
     let mut peer = Engine::open(":memory:").unwrap();
     peer.create_account("Bruno", "bruno", "http://relay.test")
         .unwrap();
+    confirm_signup_genesis(&mut peer);
     engine.profiles_session_start(true);
     peer.profiles_session_start(true);
     let identity = peer.me.clone().unwrap();
@@ -233,6 +274,8 @@ fn producing_one_context_preserves_the_other_queued_groups() {
     engine
         .create_account("Ana", "ana", "http://relay.test")
         .unwrap();
+    confirm_signup_genesis(&mut engine);
+    settle_signup_recovery(&mut engine);
     engine.profiles_session_start(true);
     let author = engine.net.author.clone().unwrap();
     for space in ["first-context", "second-context"] {
@@ -268,10 +311,12 @@ fn staged_recovery(path: &str, space: &str) -> StagedRecovery {
     let (root, _, agreement) = engine
         .create_account("Ana", "ana", "http://relay.test")
         .unwrap();
+    confirm_signup_genesis(&mut engine);
     let mut peer_engine = Engine::open(":memory:").unwrap();
     peer_engine
         .create_account("Bruno", "bruno", "http://relay.test")
         .unwrap();
+    confirm_signup_genesis(&mut peer_engine);
     engine.net.profiles.supported = true;
     peer_engine.net.profiles.supported = true;
     let (public, signed) = peer_engine.agreement_to_publish().unwrap();
@@ -656,9 +701,11 @@ fn agreement_lookup_finishes_before_the_engine_requests_one_shot_key_packages() 
     engine
         .create_account("Ana", "ana", "http://relay.test")
         .unwrap();
+    confirm_signup_genesis(&mut engine);
     let mut peer = Engine::open(":memory:").unwrap();
     peer.create_account("Bruno", "bruno", "http://relay.test")
         .unwrap();
+    confirm_signup_genesis(&mut peer);
     engine.net.profiles.supported = true;
     peer.net.profiles.supported = true;
     let author = engine.net.author.clone().unwrap();
@@ -898,6 +945,7 @@ fn context_and_commit_roll_back_together_and_wait_for_upload_after_restart() {
         let (root, device, key) = engine
             .create_account("Ana", "ana", "http://relay.test")
             .unwrap();
+        confirm_signup_genesis(&mut engine);
         secret = device;
         root_secret = root;
         agreement = key;

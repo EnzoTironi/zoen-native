@@ -11,8 +11,6 @@ import { loadChatPreferences, saveChatPreferences, type ChatPreferences as Prefs
 function loadPrefs(identity: string): Record<string, Prefs> {
   try { return loadChatPreferences(localStorage, identity); } catch { return {}; }
 }
-const FOLLOW = 'zoen.thread-follow';
-function loadFollow(): Record<string, boolean> { try { return JSON.parse(localStorage.getItem(FOLLOW) ?? '{}') as Record<string, boolean>; } catch { return {}; } }
 
 const QUICK = ['👍', '❤️', '😂', '😮', '😢', '🙏'];
 const time = (ms: number) => new Date(ms).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
@@ -82,7 +80,7 @@ export function Bubble({ entry, own, first, onReact, onReply, onThread, onEdit, 
       {ordered && !entry.deleted ? <div className="zm-actions" role="toolbar" aria-label="Ações da mensagem">
         <button aria-label="Reagir" aria-expanded={picker} onClick={() => { setEmojiDraft(''); setPicker((v) => !v); }}><Icon name="smile" /></button>
         {!inThread ? <><button aria-label="Responder" onClick={onReply}><Icon name="reply" /></button>
-          <button aria-label="Responder em thread" onClick={onThread}><Icon name="thread" /></button></> : null}
+          <button aria-label="Abrir respostas" onClick={onThread}><Icon name="thread" /></button></> : null}
         <button aria-label="Mais ações" aria-expanded={menu} onClick={() => setMenu((v) => !v)}><Icon name="more" /></button>
       </div> : null}
       {picker ? <div className="zm-scrim" onClick={() => setPicker(false)} onKeyDown={(e) => { if (e.key === 'Escape') setPicker(false); }}>
@@ -122,7 +120,7 @@ export function Bubble({ entry, own, first, onReact, onReply, onThread, onEdit, 
     </div> : null}
     {!inThread && entry.replies ? <button className="zm-thread-summary" onClick={onThread}>
       <span className="zm-stack">{entry.repliers.map((n) => <Avatar key={n} name={n} size={20} />)}</span>
-      <b>{entry.replies === 1 ? '1 resposta' : `${entry.replies} respostas`}</b>{entry.last_reply_ms ? <span>{day(entry.last_reply_ms)}</span> : null}
+      <b>{entry.replies === 1 ? '1 resposta' : `${entry.replies} respostas`}</b>{entry.thread_mentions ? <span className="zm-badge zm-mention" aria-label={`${entry.thread_mentions} menções não lidas nas respostas`}>@{entry.thread_mentions}</span> : entry.thread_unread ? <span className="zm-badge" aria-label={`${entry.thread_unread} respostas não lidas`}>{entry.thread_unread}</span> : null}{entry.last_reply_ms ? <span>{day(entry.last_reply_ms)}</span> : null}
     </button> : null}
   </article>;
 }
@@ -187,7 +185,7 @@ function Composer({ placeholder, disabled, reply, cancelReply, submit, autoFocus
 const fileLabel = (f: FileDoc) => ({ image: 'Foto', video: 'Vídeo', audio: 'Mensagem de voz', file: f.name } as const)[kindOf(f.mime)];
 
 function ChatRow({ c, active, prefs, open, set }: { c: Conversation; active: boolean; prefs: Prefs; open: () => void; set: (p: Prefs) => void }) {
-  const last = [...c.messages].reverse().find((m) => !m.thread);
+  const last = [...c.messages].reverse().find((m) => !m.thread || m.also_in_chat);
   const [menu, setMenu] = useState(false);
   const preview = last ? (last.deleted ? 'Mensagem apagada' : `${c.kind !== 'direct' && last.name ? `${last.name}: ` : ''}${last.file ? fileLabel(last.file) : last.text}`) : c.waiting ? 'Preparando a conversa…' : 'Nenhuma mensagem ainda';
   return <li className={`zm-chat${active ? ' zm-active' : ''}${c.unread ? ' zm-unread' : ''}`} onContextMenu={(e) => { e.preventDefault(); setMenu(true); }} onMouseLeave={() => setMenu(false)}>
@@ -220,12 +218,15 @@ export function Messenger(props: MessengerProps) {
 
 function AccountMessenger({ conversations, identity, name, connected, status, messages, footer, selected, select, children }: MessengerProps) {
   const [prefs, setPrefs] = useState(() => loadPrefs(identity));
-  const [follow, setFollow] = useState(loadFollow);
+  const [alsoInChat, setAlsoInChat] = useState(false);
   const [search, setSearch] = useState('');
   const [showArchived, setShowArchived] = useState(false);
   const [reply, setReply] = useState<Message | null>(null);
   const [editing, setEditing] = useState<Message | null>(null);
-  const [threadRoot, setThreadRoot] = useState<string | null>(null);
+  const [threadTarget, setThreadTarget] = useState<{ space: string; entry: string } | null>(null);
+  const [showThreads, setShowThreads] = useState(false);
+  const threadRoot = threadTarget?.entry ?? null;
+  const setThreadRoot = (entry: string | null) => setThreadTarget(entry && conversation ? { space: conversation.id, entry } : null);
   const [forward, setForward] = useState<Message | null>(null);
   const [toast, setToast] = useState('');
   const end = useRef<HTMLDivElement>(null);
@@ -234,21 +235,32 @@ function AccountMessenger({ conversations, identity, name, connected, status, me
     const next = { ...prefs, [id]: p }; setPrefs(next);
     try { saveChatPreferences(localStorage, identity, next); } catch { /* Storage may be disabled. */ }
   };
-  const toggleFollow = (root: string, on: boolean) => { const next = { ...follow, [root]: on }; setFollow(next); localStorage.setItem(FOLLOW, JSON.stringify(next)); };
   const lastAt = (c: Conversation) => c.messages.at(-1)?.at_ms ?? 0;
   const matches = conversations.filter((c) => c.title.toLocaleLowerCase('pt-BR').includes(search.toLocaleLowerCase('pt-BR')));
   const ordered = [...matches].sort((a, b) => Number(!!prefs[b.id]?.pinned) - Number(!!prefs[a.id]?.pinned) || lastAt(b) - lastAt(a));
   const archived = ordered.filter((c) => prefs[c.id]?.archived);
   const list = showArchived ? archived : ordered.filter((c) => !prefs[c.id]?.archived);
   const conversation = conversations.find((c) => c.id === selected) ?? (children ? undefined : list[0]);
-  const timeline = useMemo(() => conversation?.messages.filter((m) => !m.thread) ?? [], [conversation]);
-  const root = threadRoot ? conversation?.messages.find((m) => m.entry === threadRoot) : undefined;
+  const timeline = useMemo(() => conversation?.messages.filter((m) => !m.thread || m.also_in_chat) ?? [], [conversation]);
+  const root = threadTarget?.space === conversation?.id ? conversation?.messages.find((m) => m.entry === threadRoot) : undefined;
   const replies = root ? conversation!.messages.filter((m) => m.thread === threadRoot) : [];
-  const threadsUnread = conversations.reduce((n, c) => n + c.messages.filter((m) => m.thread && follow[m.thread] && m.author !== identity).length, 0);
+  const threadReadUpTo = root ? [root, ...replies].reduce<number | null>((last, m) => m.seq == null ? last : Math.max(last ?? 0, m.seq), null) : null;
+  const threadsUnread = conversations.reduce((n, c) => n + c.threads_unread, 0);
+  const followedThreads = conversations.flatMap((c) => c.messages.filter((m) => m.entry && !m.thread && m.thread_following && m.replies > 0).map((m) => ({ conversation: c, root: m })))
+    .sort((a, b) => (b.root.last_reply_ms ?? b.root.at_ms) - (a.root.last_reply_ms ?? a.root.at_ms));
+  const threadList = followedThreads.filter(({ conversation: c, root: m }) => `${c.title} ${m.text}`.toLocaleLowerCase('pt-BR').includes(search.toLocaleLowerCase('pt-BR')));
   const fail = (e: unknown) => { setToast(reason(e)); setTimeout(() => setToast(''), 3200); };
 
   useEffect(() => { end.current?.scrollIntoView({ block: 'end' }); }, [conversation?.id, timeline.length]);
-  useEffect(() => { setReply(null); setEditing(null); setThreadRoot(null); }, [conversation?.id]);
+  useEffect(() => { setReply(null); setEditing(null); setThreadTarget((target) => target?.space === conversation?.id ? target : null); }, [conversation?.id]);
+  useEffect(() => { setAlsoInChat(false); }, [threadRoot]);
+  useEffect(() => {
+    if (!conversation || !root?.entry || !root.thread_unread || !connected || threadReadUpTo === null) return;
+    const space = conversation.id; const entry = root.entry; const upTo = threadReadUpTo;
+    const read = () => { if (document.visibilityState === 'visible' && document.hasFocus()) void messages.current?.markThreadRead(space, entry, upTo).catch(fail); };
+    read(); document.addEventListener('visibilitychange', read); window.addEventListener('focus', read);
+    return () => { document.removeEventListener('visibilitychange', read); window.removeEventListener('focus', read); };
+  }, [conversation?.id, root?.entry, root?.thread_unread, threadReadUpTo, connected]);
   useEffect(() => {
     if (!conversation?.unread || !connected) return;
     // Read means seen: the tab is visible and the window has focus, like WhatsApp Web.
@@ -259,7 +271,7 @@ function AccountMessenger({ conversations, identity, name, connected, status, me
 
   useEffect(() => {
     if (!searchTarget || conversation?.id !== searchTarget.space) return;
-    if (searchTarget.message.thread && threadRoot !== searchTarget.message.thread) { setThreadRoot(searchTarget.message.thread); return; }
+    if (searchTarget.message.thread && !searchTarget.message.also_in_chat && threadRoot !== searchTarget.message.thread) { setThreadRoot(searchTarget.message.thread); return; }
     const target = document.getElementById(`message-${searchTarget.message.id}`);
     if (target) { target.scrollIntoView({ block: 'center' }); target.focus(); setSearchTarget(null); }
   }, [searchTarget, conversation?.id, root?.id, threadRoot]);
@@ -278,23 +290,31 @@ function AccountMessenger({ conversations, identity, name, connected, status, me
     first={i === 0 || items[i - 1]!.author !== m.author}
     onReact={act.react(m)} onDelete={act.del(m)} onForward={() => setForward(m)}
     onReply={() => { setEditing(null); setReply(m); }} onEdit={() => { setReply(null); setEditing(m); }}
-    onThread={() => { if (m.entry) { setThreadRoot(m.entry); if (follow[m.entry] === undefined) toggleFollow(m.entry, true); } }} />);
+    onThread={() => { if (m.entry) setThreadRoot(m.thread ?? m.entry); }} />);
 
   return <div className={`zm-app${root ? ' zm-with-thread' : ''}`}>
     <aside className="zm-sidebar" aria-label="Conversas">
       <header className="zm-side-head">
-        {showArchived ? <button className="zm-round glass" aria-label="Voltar" onClick={() => setShowArchived(false)}><Icon name="back" /></button> : null}
-        <h1>{showArchived ? 'Arquivadas' : 'Conversas'}</h1>
+        {showArchived || showThreads ? <button className="zm-round glass" aria-label="Voltar para conversas" onClick={() => { setShowArchived(false); setShowThreads(false); }}><Icon name="back" /></button> : null}
+        <h1>{showThreads ? 'Respostas que você acompanha' : showArchived ? 'Arquivadas' : 'Conversas'}</h1>
       </header>
       <label className="zm-search"><Icon name="search" /><span className="zw-sr-only">Buscar conversas e mensagens</span>
         <input type="search" placeholder="Buscar" value={search} onChange={(e) => setSearch(e.target.value)} /></label>
-      {!showArchived && threadsUnread ? <p className="zm-threads-row"><Icon name="thread" />Threads que você segue<span className="zm-badge">{threadsUnread}</span></p> : null}
-      {!showArchived && archived.length ? <button className="zm-archived-row" onClick={() => setShowArchived(true)}><Icon name="archive" />Arquivadas<span>{archived.length}</span></button> : null}
       {search.trim() ? <MessageSearchResults key={search.trim()} conversations={conversations} query={search} open={(hit) => {
         select(hit.space); setSearchTarget(hit);
       }} /> : null}
-      <ul className="zm-chats">{list.map((c) => <ChatRow key={c.id} c={c} active={c.id === conversation?.id} prefs={prefs[c.id] ?? {}} open={() => select(c.id)} set={(p) => savePrefs(c.id, p)} />)}</ul>
-      {!list.length ? <p className="zm-empty">{search ? 'Nenhuma conversa encontrada.' : 'As conversas do seu celular aparecem aqui.'}</p> : null}
+      {!showArchived && !showThreads ? <button className="zm-threads-row" onClick={() => setShowThreads(true)}><Icon name="thread" />Respostas que você acompanha{threadsUnread ? <span className="zm-badge" aria-label={`${threadsUnread} respostas não lidas`}>{threadsUnread}</span> : null}</button> : null}
+      {!showArchived && !showThreads && archived.length ? <button className="zm-archived-row" onClick={() => setShowArchived(true)}><Icon name="archive" />Arquivadas<span>{archived.length}</span></button> : null}
+      {showThreads ? <ul className="zm-chats" aria-label="Respostas que você acompanha">{threadList.map(({ conversation: c, root: m }) => <li key={`${c.id}:${m.entry}`} className={`zm-chat${m.thread_unread ? ' zm-unread' : ''}`}>
+        <button className="zm-chat-open" aria-current={root?.entry === m.entry && conversation?.id === c.id ? 'true' : undefined} onClick={() => { select(c.id); setThreadTarget({ space: c.id, entry: m.entry! }); }}>
+          <Avatar name={c.title} /><span className="zm-chat-body"><span className="zm-chat-top"><b>{c.title}</b><time>{day(m.last_reply_ms ?? m.at_ms)}</time></span>
+            <span className="zm-preview">{m.deleted ? 'Mensagem apagada' : m.text}</span>
+            <span className="zm-chat-bottom"><span>{m.replies === 1 ? '1 resposta' : `${m.replies} respostas`}</span>{m.thread_mentions ? <span className="zm-badge zm-mention" aria-label={`${m.thread_mentions} menções não lidas`}>@{m.thread_mentions}</span> : m.thread_unread ? <span className="zm-badge" aria-label={`${m.thread_unread} respostas não lidas`}>{m.thread_unread}</span> : null}</span>
+          </span>
+        </button>
+      </li>)}</ul> : <ul className="zm-chats">{list.map((c) => <ChatRow key={c.id} c={c} active={c.id === conversation?.id} prefs={prefs[c.id] ?? {}} open={() => select(c.id)} set={(p) => savePrefs(c.id, p)} />)}</ul>}
+      {showThreads && !threadList.length ? <p className="zm-empty">{search ? 'Nenhuma resposta encontrada.' : 'As respostas que você acompanha aparecem aqui, mesmo depois de lidas.'}</p> : null}
+      {!showThreads && !list.length ? <p className="zm-empty">{search ? 'Nenhuma conversa encontrada.' : 'As conversas do seu celular aparecem aqui.'}</p> : null}
       <footer className="zm-side-foot"><Avatar name={name} size={32} /><span><b>{name}</b><span className={connected ? 'zm-online' : 'zm-offline'} role="status">{status}</span></span>{footer}</footer>
     </aside>
     <main className="zm-main">
@@ -315,17 +335,18 @@ function AccountMessenger({ conversations, identity, name, connected, status, me
           }} />
       </> : <section className="zm-blank"><h2>Suas conversas</h2><p>{status}</p></section>)}
     </main>
-    {root ? <aside className="zm-thread" aria-label="Thread">
-      <header className="zm-thread-head"><b>Thread</b>
-        <button className={`zm-follow${follow[root.entry!] ? ' zm-on' : ''}`} aria-pressed={!!follow[root.entry!]} onClick={() => toggleFollow(root.entry!, !follow[root.entry!])}>{follow[root.entry!] ? 'Seguindo' : 'Seguir'}</button>
-        <button className="zm-round glass" aria-label="Fechar thread" onClick={() => setThreadRoot(null)}><Icon name="close" /></button></header>
+    {root ? <aside className="zm-thread" aria-label="Respostas">
+      <header className="zm-thread-head"><b>Respostas</b>
+        <button className={`zm-follow${root.thread_following ? ' zm-on' : ''}`} disabled={!connected} aria-pressed={root.thread_following} onClick={() => { void messages.current?.setThreadFollow(space, root.entry!, !root.thread_following).catch(fail); }}>{root.thread_following ? 'Acompanhando' : 'Acompanhar respostas'}</button>
+        <button className="zm-round glass" aria-label="Fechar respostas" onClick={() => setThreadRoot(null)}><Icon name="close" /></button></header>
       <section className="zm-timeline zm-thread-log" role="log" aria-label="Respostas">
         {bubbles([root], true)}
         <p className="zm-divider">{replies.length === 1 ? '1 resposta' : `${replies.length} respostas`}</p>
         {bubbles(replies, true)}
       </section>
-      <Composer key={root.entry} placeholder="Responder na thread" disabled={!connected || !conversation?.can_send}
-        submit={async (text) => { await messages.current?.post({ space, text, replyTo: root.entry!, thread: true }); if (follow[root.entry!] === undefined) toggleFollow(root.entry!, true); }} />
+      <label><input type="checkbox" checked={alsoInChat} onChange={(event) => setAlsoInChat(event.target.checked)} />Também enviar na conversa</label>
+      <Composer key={root.entry} placeholder="Escrever uma resposta" disabled={!connected || !conversation?.can_send}
+        submit={async (text) => { const m = messages.current; if (!m) throw new Error('Recarregue o Zoen.'); await m.post({ space, text, replyTo: root.entry!, thread: true, alsoInChat }); }} />
     </aside> : null}
     {editing ? <MessageEditor key={`${space}:${editing.id}`} entry={editing} close={() => setEditing(null)} save={async (text) => {
       const m = messages.current;

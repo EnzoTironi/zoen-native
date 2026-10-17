@@ -19,22 +19,6 @@ enum MutedChats {
     }
 }
 
-/// What a wake turns into once this device has synced and decrypted: one local
-/// notification per unmuted chat that gained unread messages. Pure, so it is unit-tested.
-enum WakeNotifications {
-    struct Note: Equatable { let spaceId: String; let title: String; let body: String }
-
-    static func notes(before: [String: UInt32], after: [SpaceSummary], muted: Set<String>) -> [Note] {
-        after.compactMap { s in
-            guard s.unread > (before[s.id] ?? 0), !muted.contains(s.id) else { return nil }
-            let who = s.lastAuthor?.name ?? s.title
-            let title = s.kind == .direct ? who : s.title
-            let body = s.kind == .direct || s.lastAuthor == nil ? s.lastPreview : "\(who): \(s.lastPreview)"
-            return Note(spaceId: s.id, title: title, body: body)
-        }
-    }
-}
-
 /// Wires APNs to the core: register the token with the relay, and on a wake sync,
 /// decrypt locally and show local notifications (respecting mute).
 @MainActor
@@ -82,13 +66,15 @@ final class PushBridge {
     /// Up to ~25 s of background time: wait for the core to catch up, then notify.
     func wake(_ payload: [AnyHashable: Any]) async -> Bool {
         guard PushWake.decode(payload) != nil, let model else { return false }
-        let before = Dictionary(model.spaces.map { ($0.id, $0.unread) }, uniquingKeysWith: { a, _ in a })
+        let before = WakeNotifications.snapshot(model.spaces)
         for _ in 0..<40 {
             if model.sync.connection.synced { break }
             try? await Task.sleep(for: .milliseconds(500))
         }
         model.refresh()
-        let notes = WakeNotifications.notes(before: before, after: model.spaces, muted: model.muted)
+        let notes = WakeNotifications.notes(before: before, after: model.spaces, muted: model.muted) {
+            (try? model.core.timeline(spaceId: $0)) ?? []
+        }
         for n in notes {
             let c = UNMutableNotificationContent()
             c.title = n.title

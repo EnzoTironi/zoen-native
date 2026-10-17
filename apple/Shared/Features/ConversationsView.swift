@@ -61,6 +61,7 @@ struct ConversationsList: View {
     var query: String = ""
     var onOpen: (String) -> Void
     var selected: String? = nil
+    @State private var showThreads = false
     /// The "Archived" screen lists the archived chats instead.
     var archive = false
     @State private var archiveOpen = false
@@ -80,6 +81,9 @@ struct ConversationsList: View {
     var body: some View {
         let spaces = filtered
         LazyVStack(alignment: .leading, spacing: 2) {
+            if !archive, query.isEmpty, !model.spaces.isEmpty {
+                ThreadsRow(unread: model.spaces.reduce(0) { $0 + Int($1.threadsUnread) }) { showThreads = true }
+            }
             // WhatsApp: "Archived" sits above the chats while you have any.
             if !archive, query.isEmpty, !model.archivedSpaces.isEmpty {
                 ArchivedEntry(count: model.archivedSpaces.count, unread: model.archivedSpaces.filter { $0.unread > 0 }.count) {
@@ -112,6 +116,8 @@ struct ConversationsList: View {
                     }
                 }
             }
+            Color.clear.frame(height: 0)
+                .sheet(isPresented: $showThreads) { NavigationStack { ThreadsInboxView() } }
             if archive && spaces.isEmpty {
                 InkEmptyState(pose: .map, title: String(localized: "No archived chats"))
             } else if spaces.isEmpty && !query.isEmpty {
@@ -215,8 +221,15 @@ struct ConversationRow: View {
                         ZoenIcon(.pin, size: 13)
                             .foregroundStyle(Palette.textTertiary)
                     }
-                    if unread {
-                        // Ando: mention and unread are different states; muted unread goes grey.
+                    if space.mentions > 0 {
+                        // Ando: a mention is its own state, with its count.
+                        Text("@\(Int(space.mentions))")
+                            .font(.caption2.weight(.bold).monospacedDigit())
+                            .foregroundStyle(.white)
+                            .padding(.horizontal, 6).frame(height: 18)
+                            .background(Palette.action, in: Capsule())
+                            .accessibilityLabel("\(Int(space.mentions)) mentions")
+                    } else if unread {
                         UnreadBadge(count: space.unread, muted: muted)
                             .transition(.scale.combined(with: .opacity))
                     }
@@ -252,6 +265,7 @@ struct ConversationRow: View {
         if pinned { parts.append(String(localized: "Pinned")) }
         if muted { parts.append(String(localized: "Muted")) }
         if space.unread > 0 { parts.append(String(localized: "\(space.unread) unread")) }
+        if space.mentions > 0 { parts.append(String(localized: "\(space.mentions) mentions")) }
         parts.append((space.lastAuthor?.isMe == true ? String(localized: "You: ") : otherPrefix) + space.lastPreview)
         parts.append(RodaTime.short(space.lastAtMs))
         return parts.joined(separator: ", ")
@@ -518,5 +532,36 @@ struct ConnectionDot: View {
             .accessibilityElement(children: .combine)
             .transition(.opacity.combined(with: .scale(scale: 0.9)))
         }
+    }
+}
+
+/// Replies inbox at the top of the list, with an unread count.
+struct ThreadsRow: View {
+    let unread: Int
+    var open: () -> Void
+
+    var body: some View {
+        Button {
+            Haptics.tap()
+            open()
+        } label: {
+            HStack(spacing: 14) {
+                Image(systemName: "bubble.left.and.text.bubble.right")
+                    .font(.system(size: 17, weight: .semibold))
+                    .frame(width: 56)
+                Text("Respostas").font(.body.weight(unread > 0 ? .semibold : .medium))
+                Spacer()
+                if unread > 0 {
+                    Text("\(unread)").font(.caption.weight(.bold).monospacedDigit()).foregroundStyle(.white)
+                        .padding(.horizontal, 7).frame(height: 20).background(Palette.action, in: Capsule())
+                }
+            }
+            .foregroundStyle(Palette.textPrimary)
+            .padding(.horizontal, 16)
+            .frame(height: 48)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityIdentifier("threads-row")
     }
 }

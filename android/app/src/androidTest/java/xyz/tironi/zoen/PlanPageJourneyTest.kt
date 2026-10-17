@@ -101,6 +101,8 @@ class PlanPageJourneyTest {
         assertEquals(savedVersion + 1u, removedVersion)
 
         compose.onNodeWithTag("item-history").performClick()
+        // History opens after the asynchronous page-save flush, not at Compose idle.
+        compose.waitUntil(10_000) { compose.onAllNodesWithTag("item-versions").fetchSemanticsNodes().isNotEmpty() }
         for (version in 1u..removedVersion) {
             compose.onNodeWithTag("item-versions").performScrollToNode(hasTestTag("version:$version"))
             compose.onNodeWithTag("version:$version").assertIsDisplayed()

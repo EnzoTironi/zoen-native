@@ -139,6 +139,46 @@ function messagingCore() {
     } };
 }
 
+test('thread actions preserve synced DTOs and send follow, read and also-in-chat through the core', async (t) => {
+  install(t);
+  const base = messagingCore();
+  const operations: CoreOperation[] = [];
+  const states: MessagesState[] = [];
+  const root = {
+    id: 'root-client', entry: 'root-hash', author: login.identity, name: 'Fixture', text: 'Root', at_ms: 1,
+    delivery: 'confirmed', failure: null, thread: null, thread_following: true, thread_unread: 1, also_in_chat: false,
+  };
+  const voice = { ...await attachment(), voice: {
+    ms: 1200, levels: '08ff', transcript: '', reply: { to: 'root-hash', thread: true, also_in_chat: true },
+  } };
+  const threaded = { ...conversation, threads_unread: 1, messages: [root, { ...root, id: 'voice', entry: 'voice-hash', text: '', file: voice }] };
+  const core = { ...base, text: async (operation: CoreOperation) => {
+    operations.push(operation);
+    if (operation.kind === 'restore') return JSON.stringify([threaded]);
+    if (operation.kind === 'bootstrap' || operation.kind === 'receive' || operation.kind === 'set_thread_follow' || operation.kind === 'mark_thread_read' || operation.kind === 'queue_post') {
+      return JSON.stringify({ snapshot: operation.kind, frames: [], conversations: [threaded] });
+    }
+    return base.text(operation);
+  } };
+  const messages = new Messages({ core, session: linked, vault: { ...vault, save: async () => {} }, changed: (state) => states.push(state) });
+  t.after(() => messages.stop());
+  await messages.start(); await authenticate();
+  await messages.setThreadFollow('sp_fixture', 'root-hash', false);
+  await messages.markThreadRead('sp_fixture', 'root-hash', 42);
+  await messages.post({ space: 'sp_fixture', text: 'Reply', replyTo: 'root-hash', thread: true, alsoInChat: true });
+  assert.ok(operations.some((o) => o.kind === 'set_thread_follow' && o.follow === false && o.root === 'root-hash'));
+  assert.ok(operations.some((o) => o.kind === 'mark_thread_read' && o.root === 'root-hash' && o.upTo === 42));
+  assert.ok(operations.some((o) => o.kind === 'queue_post' && o.thread && o.alsoInChat));
+  const state = states.at(-1);
+  assert.equal(state?.kind, 'active');
+  if (state?.kind !== 'active') throw new Error('Expected active state.');
+  assert.equal(state.conversations[0]?.threads_unread, 1);
+  assert.equal(state.conversations[0]?.messages[0]?.thread_following, true);
+  assert.equal(state.conversations[0]?.messages[0]?.thread_unread, 1);
+  assert.deepEqual(state.conversations[0]?.messages[1]?.file?.voice?.reply,
+    { to: 'root-hash', thread: true, also_in_chat: true });
+});
+
 test('production message controller terminates the core and emits nothing when IndexedDB save fails', async (t) => {
   install(t);
   const core = messagingCore();

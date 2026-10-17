@@ -44,7 +44,7 @@ import xyz.tironi.zoen.ZoenViewModel
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
-fun VoiceReview(session: VoiceSession, model: ZoenViewModel, space: String, reply: String?, thread: Boolean, onSent: () -> Unit) {
+fun VoiceReview(session: VoiceSession, model: ZoenViewModel, space: String, reply: String?, thread: Boolean, alsoInChat: Boolean, onSent: () -> Unit) {
     val state by session.state.collectAsStateWithLifecycle()
     val clip = state.clip ?: return
     val editor = state.editor ?: return
@@ -138,7 +138,7 @@ fun VoiceReview(session: VoiceSession, model: ZoenViewModel, space: String, repl
                         Text(voiceDuration(editor.keptDuration))
                     }
                     if (!state.editing) GlassOutlinedButton(onClick = { session.edit() }, enabled = !state.busy) { Text(stringResource(R.string.edit)) }
-                    GlassButton(onClick = { session.sendNow(model.repository, space, reply, thread, onSent) }, enabled = !state.busy && !state.transcribing && editor.keptDuration >= .3 && !appState.keyMissing, modifier = Modifier.testTag("voice-send")) {
+                    GlassButton(onClick = { session.sendNow(model.repository, space, reply, thread, alsoInChat, onSent) }, enabled = !state.busy && !state.transcribing && editor.keptDuration >= .3 && !appState.keyMissing, modifier = Modifier.testTag("voice-send")) {
                         if (state.busy) CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp, color = MaterialTheme.colorScheme.onPrimary)
                         else Icon(Icons.AutoMirrored.Rounded.Send, null)
                         Spacer(Modifier.width(8.dp)); Text(stringResource(R.string.media_send_voice))

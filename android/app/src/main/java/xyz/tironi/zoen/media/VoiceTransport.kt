@@ -15,10 +15,10 @@ object VoiceTransport {
      * transcript, so the other person's phone, Mac and web can play it. One core call: the
      * file and its reply/thread destination travel in the same signed event.
      */
-    suspend fun send(repository: ZoenRepository, clip: VoiceClip, transcript: String, space: String, reply: String? = null, thread: Boolean = false): TimelineEntry {
+    suspend fun send(repository: ZoenRepository, clip: VoiceClip, transcript: String, space: String, reply: String? = null, thread: Boolean = false, alsoInChat: Boolean = false): TimelineEntry {
         val bytes = withContext(Dispatchers.IO) { clip.file.readBytes() }
         val entry = repository.change { core ->
-            core.sendVoiceNote(space, bytes, "audio/mp4", clip.ms.coerceAtLeast(0).toULong(), clip.detail, transcript, reply, thread)
+            core.sendVoiceNote(space, bytes, "audio/mp4", clip.ms.coerceAtLeast(0).toULong(), clip.detail, transcript, reply, thread, alsoInChat)
         }
         // The core already has the bytes locally. Read through it so later file versions
         // cannot be shadowed by an unversioned copy of the original recording.

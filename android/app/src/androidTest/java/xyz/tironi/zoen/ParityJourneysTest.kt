@@ -116,7 +116,6 @@ class ParityJourneysTest {
         try {
             open("zoen://chat/${plan.spaceId}")
             compose.waitUntil(10_000) { compose.onAllNodesWithTag(tile).fetchSemanticsNodes().isNotEmpty() }
-            compose.onNodeWithTag("chat-timeline").performScrollToIndex(0)
             val summary = application.getString(R.string.chat_plan_count, plan.plan!!.sections.sumOf { it.lines.size },
                 xyz.tironi.zoen.core.formatMoney(plan.plan!!.totalCents, application.repository.locale))
             compose.onNodeWithText(summary).assertIsDisplayed()
@@ -176,6 +175,27 @@ class ParityJourneysTest {
         compose.onNodeWithContentDescription(application.getString(R.string.back)).performClick()
         compose.onNodeWithTag("miniapp-tile:${plan.id}#0").performClick()
         compose.onAllNodesWithText(plan.title, substring = false).onFirst().assertExists()
+    }
+
+    @Test fun broadcastReplyOpensItsOriginalThread() {
+        val space = application.repository.state.value.items.first { it.plan != null }.spaceId
+        val (root, broadcast) = runBlocking {
+            application.repository.change { core ->
+                val root = core.sendMessage(space, "Broadcast thread root")
+                val reply = core.sendThreadReply(space, "Broadcast reply in chat", root.id, true)
+                core.sendThreadReply(space, "Sibling visible only in original thread", root.id, false)
+                root.id to reply.id
+            }
+        }
+        open("zoen://chat/$space")
+        compose.onNodeWithTag("chat-timeline").performScrollToNode(hasTestTag("timeline:$broadcast"))
+        compose.onNodeWithTag("timeline:$broadcast").performTouchInput { swipeRight() }
+        compose.waitUntil(10_000) {
+            compose.onAllNodesWithText("Sibling visible only in original thread").fetchSemanticsNodes().isNotEmpty()
+        }
+        compose.onNodeWithText("Broadcast thread root").assertExists()
+        compose.onNodeWithText("Sibling visible only in original thread").assertExists()
+        assertTrue(runBlocking { application.repository.query { it.thread(space, root).size >= 3 } })
     }
 
     @Test fun richFormattingDraftUndoSaveAndOldVersionPreviewUseTheNativeUi() {

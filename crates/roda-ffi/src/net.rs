@@ -1733,6 +1733,26 @@ mod tests {
             .unwrap();
     }
 
+    fn confirm_signup_genesis(engine: &mut Engine) {
+        // Confirm signup before exercising unrelated conversation outbox/recovery work.
+        for queued in engine.store.outbox().unwrap() {
+            let env = Envelope::plain(&queued.event);
+            let seq = engine.next_seq(env.space());
+            let prev = engine
+                .logs
+                .get(env.space())
+                .and_then(|log| log.events().last())
+                .map(|event| event.hash.clone())
+                .unwrap_or_else(|| roda_types::GENESIS_PREV.into());
+            let frame = roda_proto::Sequenced {
+                seq,
+                hash: roda_log::chain_hash(env.space(), seq, &prev, &env.wire_hash()),
+                prev,
+                env,
+            };
+            assert_eq!(engine.ingest(frame), crate::sync::Ingest::Confirmed);
+        }
+    }
     fn sequence(env: Envelope, head: &mut Option<Seen>) -> Sequenced {
         let seq = head.as_ref().map_or(0, |h| h.seq + 1);
         let prev = head
@@ -1772,6 +1792,7 @@ mod tests {
         let url = format!("ws://{}", listener.local_addr().unwrap());
         let mut engine = Engine::open(":memory:").unwrap();
         let (root_secret, device_secret, _) = engine.create_account("Ana", "ana", &url).unwrap();
+        confirm_signup_genesis(&mut engine);
         engine.set_registered(true).unwrap();
         let _ = engine.mls_key_packages_to_publish().unwrap();
         engine.mls_key_packages_published(Ok(()));
@@ -2242,6 +2263,10 @@ mod tests {
         let url = format!("ws://{}", listener.local_addr().unwrap());
         let mut engine = Engine::open(":memory:").unwrap();
         engine.create_account("Bruno", "bruno", &url).unwrap();
+        confirm_signup_genesis(&mut engine);
+        // Drain signup work while profiles are unsupported by this relay fixture.
+        assert!(engine.mls_to_claim(None).unwrap().is_none());
+        assert!(!engine.mls_recovery_pass().unwrap());
         engine.set_registered(true).unwrap();
         // This is a top-up of a device whose initial batch was already acknowledged.
         let _ = engine.mls_key_packages_to_publish().unwrap();

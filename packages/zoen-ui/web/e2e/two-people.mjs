@@ -69,7 +69,7 @@ await bruno.page.locator('.zm-main .zm-text', { hasText: 'Você é demais, Bruno
 await bruno.page.locator('.zm-meta', { hasText: 'editada' }).waitFor();
 // Thread.
 const root = bruno.page.locator('[data-testid=message]', { hasText: 'Que horas' });
-await root.hover(); await root.getByRole('button', { name: 'Responder em thread' }).click();
+await root.hover(); await root.getByRole('button', { name: 'Abrir respostas', exact: true }).click();
 await bruno.page.locator('.zm-thread textarea').fill('Umas 19h, pode ser?');
 await bruno.page.keyboard.press('Enter');
 await ana.page.locator('.zm-thread-summary', { hasText: '1 resposta' }).waitFor({ timeout: 30000 });

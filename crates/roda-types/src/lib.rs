@@ -587,6 +587,20 @@ pub enum EventBody {
         space: SpaceId,
         prefs: ChatPrefs,
     },
+    /// My state in one thread (Slack/Ando): following or not (`None` = automatic: I started
+    /// it, replied or was mentioned) and how far I read it. Personal Space only, like
+    /// `ChatPrefsSet`; the latest one wins.
+    ThreadStateSet {
+        space: SpaceId,
+        root: String,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        follow: Option<bool>,
+        #[serde(default)]
+        read_up_to: u64,
+        /// Read-only updates must never change the independent follow register.
+        #[serde(default)]
+        read_only: bool,
+    },
     /// An edit, delete for everyone or reaction on an earlier message (see [`annotation`]).
     MessageAnnotated {
         target: String,

@@ -48,8 +48,8 @@ struct SpaceView: View {
     @State private var forwardTarget: ThreadRef?
     @State private var editTarget: TimelineEntry?
     @State private var deleteTarget: TimelineEntry?
-    /// The main timeline: thread replies live in their thread, not here.
-    private var visible: [TimelineEntry] { entries.filter { $0.inThread == nil } }
+    /// Thread-only replies stay in the thread; broadcasts also appear in the chat.
+    private var visible: [TimelineEntry] { ChatTimeline.visible(entries) }
 
     private var space: SpaceSummary? { model.space(spaceId) }
     private var workingAgent: Persona? { model.working[spaceId] }
@@ -95,18 +95,11 @@ struct SpaceView: View {
                                           withAnimation(reduceMotion ? nil : .spring(response: 0.35, dampingFraction: 0.8)) { replyTo = entry }
                                           composerFocused = true
                                       case .thread:
-                                          thread = ThreadRef(id: entry.id)
+                                          thread = ThreadRef(id: entry.inThread ?? entry.id)
                                       }
                                   },
                                   onLongPress: { actionTarget = entry },
-                                  onJump: { id in
-                                      withAnimation(reduceMotion ? nil : .smooth(duration: 0.45)) { proxy.scrollTo(id, anchor: .center) }
-                                      withAnimation(.easeOut(duration: 0.25)) { highlighted = id }
-                                      Task { @MainActor in
-                                          try? await Task.sleep(for: .seconds(1.4))
-                                          withAnimation(.easeOut(duration: 0.6)) { highlighted = nil }
-                                      }
-                                  })
+                                  onJump: { jump(to: $0, proxy: proxy) })
                             .background {
                                 if highlighted == entry.id {
                                     RoundedRectangle(cornerRadius: 18, style: .continuous)
@@ -229,10 +222,7 @@ struct SpaceView: View {
             .sheet(item: $deleteTarget) { target in
                 MessageMutationSheet(spaceId: spaceId, messageId: target.id, deleting: true)
             }
-            .sheet(item: $thread) { t in
-                ThreadSheet(spaceId: spaceId, rootId: t.id)
-                    .presentationDetents([.large])
-            }
+            .threadPanel(item: $thread) { t in ThreadSheet(spaceId: spaceId, rootId: t.id, focusedEntryId: t.entryId) }
             .onChange(of: draft) { _, text in model.sync.typingChanged(spaceId, text: text) }
             // The agent's browser card shows up (or asks for you): bring it into view.
             .onChange(of: model.browser.phase) { _, _ in
@@ -260,10 +250,10 @@ struct SpaceView: View {
             }
             #endif
             .onDisappear { model.sync.stoppedTyping(spaceId) }
-            .onChange(of: entries.count) { old, _ in
+            .onChange(of: visible.map(\.id)) { old, _ in
                 // Screenshot journeys can open at the beginning of message history.
                 if UserDefaults.standard.bool(forKey: "RodaChatScrollTop") {
-                    if old == 0 {
+                    if old.isEmpty {
                         Task { @MainActor in
                             try? await Task.sleep(for: .milliseconds(80))
                             proxy.scrollTo("chat-top", anchor: .top)
@@ -272,7 +262,7 @@ struct SpaceView: View {
                     }
                     return
                 }
-                if old == 0 {
+                if old.isEmpty {
                     // Primeira carga: sem animação, direto na primeira mensagem não lida
                     // (ou no fim, quando está tudo lido).
                     let target = firstUnread == nil ? "bottom" : "unread-divider"
@@ -290,17 +280,14 @@ struct SpaceView: View {
                     followOrCount(appendedOthers, proxy: proxy)
                 }
             }
-            .task(id: "\(model.jumpTarget?.entry ?? "")|\(entries.isEmpty)") {
-                // Search jumped here: scroll to the exact message and highlight it briefly.
-                guard let j = model.jumpTarget, j.space == spaceId, entries.contains(where: { $0.id == j.entry }) else { return }
-                try? await Task.sleep(for: .milliseconds(450))
-                withAnimation(reduceMotion ? nil : .smooth(duration: 0.5)) { proxy.scrollTo(j.entry, anchor: .center) }
-                withAnimation(.easeOut(duration: 0.25)) { highlighted = j.entry }
+            .task(id: "\(model.jumpTarget?.space ?? "")|\(model.jumpTarget?.entry ?? "")|\(entries.contains { $0.id == model.jumpTarget?.entry })") {
+                // The target can arrive after the initial history. Hidden replies open
+                // their thread instead of scrolling to an absent chat anchor.
+                guard let j = model.jumpTarget, j.space == spaceId,
+                      ChatTimeline.location(of: j.entry, in: entries) != nil else { return }
+                do { try await Task.sleep(for: .milliseconds(450)) } catch { return }
+                jump(to: j.entry, proxy: proxy)
                 Haptics.selectionTick()
-                Task { @MainActor in
-                    try? await Task.sleep(for: .seconds(1.8))
-                    withAnimation(.easeOut(duration: 0.7)) { highlighted = nil }
-                }
                 model.jumpTarget = nil
             }
             .onChange(of: workingAgent?.id) { _, id in
@@ -542,6 +529,21 @@ struct SpaceView: View {
         }
     }
 
+    private func jump(to id: String, proxy: ScrollViewProxy) {
+        guard let location = ChatTimeline.location(of: id, in: entries) else { return }
+        switch location {
+        case .thread(let root, let entry):
+            thread = ThreadRef(id: root, entryId: entry)
+        case .chat(let entry):
+            withAnimation(reduceMotion ? nil : .smooth(duration: 0.45)) { proxy.scrollTo(entry, anchor: .center) }
+            withAnimation(.easeOut(duration: 0.25)) { highlighted = entry }
+            Task { @MainActor in
+                try? await Task.sleep(for: .seconds(1.8))
+                withAnimation(.easeOut(duration: 0.6)) { highlighted = nil }
+            }
+        }
+    }
+
     private func reload() {
         let new = (try? model.core.timeline(spaceId: spaceId)) ?? []
         let shared = model.sharedBackgroundState(spaceId)
@@ -565,22 +567,16 @@ struct SpaceView: View {
         guard new != entries else { return }
         if firstLoad {
             // Opening the chat: remember where unread starts, then show everything at once.
-            let unread = Int(space?.unread ?? 0)
-            // The core counts incoming messages, including replies in threads.
-            let incoming = new.filter {
-                guard !$0.author.isMe else { return false }
-                if case .message = $0.kind { return true }
-                return false
-            }
-            firstUnread = incoming.suffix(unread).first { $0.inThread == nil }?.id
+            // Match the core's chat count before taking its unread suffix: hidden
+            // replies do not consume that count, while broadcast replies do.
+            firstUnread = ChatTimeline.firstUnread(in: new, unread: space?.unread ?? 0)
             appendedMine = false
             appendedOthers = 0
             var t = Transaction()
             t.disablesAnimations = true
             withTransaction(t) { entries = new }
         } else {
-            let known = Set(entries.map(\.id))
-            let added = new.filter { !known.contains($0.id) && $0.inThread == nil }
+            let added = ChatTimeline.added(in: new, after: entries)
             appendedMine = added.contains { $0.author.isMe }
             appendedOthers = added.filter { !$0.author.isMe }.count
             if added.isEmpty {
@@ -684,7 +680,8 @@ struct EntryView: View {
                         .padding(.leading, entry.author.isMe ? 0 : 44)
                 }
                 if entry.threadReplies > 0 {
-                    ThreadRepliesChip(count: entry.threadReplies, faces: threadFaces) { onSwipe?(.thread) }
+                    ThreadRepliesChip(count: entry.threadReplies, faces: entry.threadParticipants.isEmpty ? threadFaces : entry.threadParticipants,
+                                      lastReplyMs: entry.threadLastReplyMs, unread: entry.threadFollowing ? entry.threadUnread : 0) { onSwipe?(.thread) }
                         .padding(.leading, entry.author.isMe ? 0 : 44)
                         .transition(reduceMotion ? .opacity : .scale(scale: 0.6, anchor: .topLeading).combined(with: .opacity))
                 }

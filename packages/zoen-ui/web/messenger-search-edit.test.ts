@@ -8,7 +8,7 @@ import { resolve } from 'node:path';
 // Mounted production React UI with an in-memory controller, not a relay/MLS E2E journey.
 const output = resolve(import.meta.dirname, '../node_modules/.cache/messenger-test.mjs');
 buildSync({ entryPoints: [resolve(import.meta.dirname, 'messenger.tsx')], outfile: output, bundle: true, platform: 'node', format: 'esm', packages: 'external', jsx: 'automatic' });
-const dom = new JSDOM('<div id="root"></div>', { url: 'http://localhost/' });
+const dom = new JSDOM('<div id="root"></div>', { url: 'http://localhost/', pretendToBeVisual: true });
 Object.assign(globalThis, { window: dom.window, document: dom.window.document, HTMLElement: dom.window.HTMLElement, IS_REACT_ACT_ENVIRONMENT: true });
 Object.defineProperty(globalThis, 'navigator', { configurable: true, value: dom.window.navigator });
 Object.defineProperty(globalThis, 'localStorage', { configurable: true, value: dom.window.localStorage });
@@ -17,7 +17,7 @@ const { createElement: h, act } = await import('react');
 const { createRoot } = await import('react-dom/client');
 const { Messenger } = await import(pathToFileURL(output).href);
 const own = '11'.repeat(32);
-function msg(id: string, text: string) { return { id, entry: id, author: own, name: 'Ana', text, at_ms: 1000, delivery: 'confirmed', failure: null, ticks: 'sent', edited: false, deleted: false, forwarded: false, reactions: [], quote: null, thread: null, replies: 0, repliers: [], last_reply_ms: null }; }
+function msg(id: string, text: string) { return { id, entry: id, seq: 1, author: own, name: 'Ana', text, at_ms: 1000, delivery: 'confirmed', failure: null, ticks: 'sent', edited: false, deleted: false, forwarded: false, reactions: [], quote: null, thread: null, replies: 0, repliers: [], last_reply_ms: null, thread_following: false, thread_unread: 0, thread_mentions: 0, also_in_chat: false }; }
 const conversations = [{ id: 'chat', title: 'Amigos', kind: 'group', can_send: true, waiting: null, unreadable: 0, unread: 0, mentions: 0, members: 2, messages: [msg('first', 'pousada antiga'), msg('second', 'Texto para editar')] }];
 async function input(el: HTMLInputElement | HTMLTextAreaElement, value: string) {
   const proto = el.tagName === 'TEXTAREA' ? dom.window.HTMLTextAreaElement.prototype : dom.window.HTMLInputElement.prototype;
@@ -54,6 +54,104 @@ test('sidebar finds message bodies, not only conversation titles', async () => {
     assert.match(document.querySelector('[aria-label="Resultados de mensagens"]')!.textContent!, /pousada antiga/);
     await click(document.querySelector('[aria-label="Resultados de mensagens"] li button'));
     assert.equal(document.activeElement?.id, 'message-first');
+  } finally { await ui.close(); }
+});
+
+test('merged replies inbox keeps synced state, message search, broadcasts and account isolation', async () => {
+  const calls: unknown[] = [];
+  const rootMessage = { ...msg('root', 'Passeio combinado'), replies: 1, thread_following: true, thread_unread: 1, thread_mentions: 1 };
+  const replyMessage = { ...msg('reply', 'pousada na serra'), thread: 'root' };
+  const chats = [{ ...conversations[0]!, threads_unread: 1, messages: [rootMessage, replyMessage] }];
+  const controller = { current: {
+    post: async (value: unknown) => { calls.push(value); },
+    setThreadFollow: async (...args: unknown[]) => { calls.push(['follow', ...args]); },
+    markThreadRead: async (...args: unknown[]) => { calls.push(['read', ...args]); },
+  } };
+  const root = createRoot(document.getElementById('root')!);
+  const render = async (identity = own) => { await act(async () => root.render(h(Messenger, {
+    conversations: chats, identity, name: 'Ana', connected: true, status: 'Conectado',
+    messages: controller, footer: null, selected: 'chat', select: () => {},
+  }))); };
+  const originalFocus = document.hasFocus;
+  document.hasFocus = () => true;
+  try {
+    await render();
+    assert.equal(document.querySelector('.zm-main #message-reply'), null, 'thread-only replies stay out of chat');
+    await click(document.querySelector('button.zm-threads-row'));
+    assert.ok(document.querySelector('[aria-label="1 menções não lidas"]'));
+    await click(document.querySelector('ul[aria-label="Respostas que você acompanha"] .zm-chat-open'));
+    assert.ok(document.querySelector('.zm-thread #message-reply'));
+    assert.deepEqual(calls.shift(), ['read', 'chat', 'root', 1]);
+    await click(button('Acompanhando'));
+    assert.deepEqual(calls.shift(), ['follow', 'chat', 'root', false]);
+    await click(document.querySelector('.zm-thread input[type=checkbox]'));
+    await input(document.querySelector('.zm-thread textarea')!, 'também na conversa');
+    await click(document.querySelector('.zm-thread [aria-label=Enviar]'));
+    assert.deepEqual(calls.shift(), { space: 'chat', text: 'também na conversa', replyTo: 'root', thread: true, alsoInChat: true });
+    await click(button('Fechar respostas'));
+    await input(document.querySelector('input[type=search]')!, 'pousada');
+    await click(document.querySelector('[aria-label="Resultados de mensagens"] li button'));
+    assert.equal(document.activeElement?.id, 'message-reply', 'search still opens a thread-only result');
+    await input(document.querySelector('.zm-main textarea')!, 'rascunho privado');
+    await render('22'.repeat(32));
+    assert.equal((document.querySelector('.zm-main textarea') as HTMLTextAreaElement).value, '');
+    assert.equal(document.querySelector('.zm-thread'), null, 'account switch discards thread selection');
+    assert.equal((document.querySelector('input[type=search]') as HTMLInputElement).value, '');
+  } finally {
+    document.hasFocus = originalFocus;
+    await act(async () => root.unmount());
+  }
+});
+
+test('thread reads use the displayed snapshot and wait for a visible focused tab', async () => {
+  const calls: unknown[] = [];
+  let visible = false;
+  const oldFocus = document.hasFocus;
+  const oldVisibility = Object.getOwnPropertyDescriptor(document, 'visibilityState');
+  document.hasFocus = () => true;
+  Object.defineProperty(document, 'visibilityState', { configurable: true, get: () => visible ? 'visible' : 'hidden' });
+  const root = createRoot(document.getElementById('root')!);
+  const render = async (seq: number) => {
+    const items = [{ ...conversations[0], threads_unread: 1, messages: [
+      { ...msg('root', 'Original'), replies: 1, thread_following: true, thread_unread: 1 },
+      { ...msg(`reply-${seq}`, 'Nova resposta'), seq, thread: 'root' },
+    ] }];
+    await act(async () => root.render(h(Messenger, {
+      conversations: items, identity: own, name: 'Ana', connected: true, status: 'Conectado',
+      messages: { current: { markThreadRead: async (...args: unknown[]) => { calls.push(args); } } },
+      footer: null, selected: 'chat', select: () => {},
+    })));
+  };
+  try {
+    await render(2);
+    await click(document.querySelector('.zm-main [aria-label="Abrir respostas"]'));
+    assert.deepEqual(calls, [], 'a background tab has not seen its thread');
+    visible = true;
+    await act(async () => document.dispatchEvent(new dom.window.Event('visibilitychange')));
+    assert.deepEqual(calls, [['chat', 'root', 2]]);
+    await render(3); // Unread count stays one while a remote read and new arrival coalesce.
+    assert.deepEqual(calls.at(-1), ['chat', 'root', 3]);
+    document.hasFocus = () => false;
+    await render(4);
+    assert.equal(calls.length, 2, 'an unfocused window must not clear new replies');
+  } finally {
+    document.hasFocus = oldFocus;
+    if (oldVisibility) Object.defineProperty(document, 'visibilityState', oldVisibility);
+    else Reflect.deleteProperty(document, 'visibilityState');
+    await act(async () => root.unmount());
+  }
+});
+
+test('search keeps a broadcast reply in the chat instead of opening its thread', async () => {
+  const ui = await mount(undefined, [{ ...conversations[0], messages: [
+    { ...msg('root', 'Original'), replies: 1 },
+    { ...msg('broadcast', 'resposta compartilhada'), thread: 'root', also_in_chat: true },
+  ] }]);
+  try {
+    await input(document.querySelector('input[type=search]')!, 'compartilhada');
+    await click(document.querySelector('[aria-label="Resultados de mensagens"] li button'));
+    assert.equal(document.querySelector('.zm-thread'), null);
+    assert.equal(document.activeElement?.id, 'message-broadcast');
   } finally { await ui.close(); }
 });
 

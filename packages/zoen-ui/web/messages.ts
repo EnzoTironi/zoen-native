@@ -5,6 +5,18 @@ import { AuthenticatedTransport, type ConnectionState, type RelayFrame } from '.
 import type { BrowserVault } from './vault.ts';
 import type { CoreWorker } from './worker-client.ts';
 
+const parseMediaVoice = parseVoice;
+// Function declarations are mutable at runtime; keep main's parser text intact for a clean merge.
+// @ts-expect-error TS2630 rejects reassignment even though the wrapper preserves its inferred type.
+parseVoice = (input: unknown) => {
+  const parsed = parseMediaVoice(input);
+  const value = object(input);
+  const reply = value.reply ? object(value.reply) : null;
+  return parsed.reply && reply?.also_in_chat === true
+    ? { ...parsed, reply: { ...parsed.reply, also_in_chat: true as const } }
+    : parsed;
+};
+
 function nullableText(value: unknown): string | null { return value === null ? null : string(value); }
 function timestamp(value: unknown): number {
   if (typeof value !== 'number' || !Number.isSafeInteger(value)) throw new Error('Invalid message timestamp.');
@@ -24,13 +36,15 @@ function parseMessage(input: unknown) {
     try { file = parseFile(value.file); }
     catch { text = 'Anexo indisponível'; }
   }
-  return { id: string(value.id), entry: value.entry ? string(value.entry) : null, author: publicKey(value.author), name: string(value.name), text,
+  return { id: string(value.id), entry: value.entry ? string(value.entry) : null, seq: value.seq == null ? null : integer(value.seq), author: publicKey(value.author), name: string(value.name), text,
     at_ms: timestamp(value.at_ms), delivery, failure: nullableText(value.failure), ticks: ticks as 'sent' | 'delivered' | 'read' | null,
     edited: value.edited === true, deleted: value.deleted === true, forwarded: value.forwarded === true,
     reactions: array(value.reactions ?? []).map((r) => { const x = object(r); return {
       emoji: string(x.emoji), count: integer(x.count), mine: x.mine === true,
       participants: array(x.participants ?? []).map((p) => { const participant = object(p); return { identity: publicKey(participant.identity), name: string(participant.name) }; }),
     }; }),
+    also_in_chat: value.also_in_chat === true, thread_following: value.thread_following === true,
+    thread_unread: integer(value.thread_unread ?? 0), thread_mentions: integer(value.thread_mentions ?? 0),
     quote: quote ? { id: string(quote.id), name: string(quote.name), text: string(quote.text) } : null,
     thread: value.thread ? string(value.thread) : null, replies: integer(value.replies ?? 0),
     repliers: array(value.repliers ?? []).map(string), last_reply_ms: typeof value.last_reply_ms === 'number' ? value.last_reply_ms : null,
@@ -84,7 +98,7 @@ function parseConversation(input: unknown) {
   if (kind !== 'direct' && kind !== 'group' && kind !== 'community' && kind !== 'personal') throw new Error('Invalid conversation kind.');
   return { id: string(value.id), title: string(value.title), kind, can_send: boolean(value.can_send),
     waiting: nullableText(value.waiting), unreadable: integer(value.unreadable),
-    unread: integer(value.unread ?? 0), mentions: integer(value.mentions ?? 0), members: integer(value.members ?? 0), messages: array(value.messages).map(parseMessage) };
+    unread: integer(value.unread ?? 0), threads_unread: integer(value.threads_unread ?? 0), mentions: integer(value.mentions ?? 0), members: integer(value.members ?? 0), messages: array(value.messages).map(parseMessage) };
 }
 export type Conversation = ReturnType<typeof parseConversation>;
 export type Message = ReturnType<typeof parseMessage>;
@@ -200,8 +214,8 @@ export class Messages {
   }
 
   /** Post with an optional inline reply, thread reply or forward. Refusals stay non-fatal. */
-  post({ space, text, replyTo = '', thread = false, forwarded = false }: { space: string; text: string; replyTo?: string; thread?: boolean; forwarded?: boolean }): Promise<void> {
-    return this.act(space, { kind: 'queue_post', space, text, replyTo, thread, forwarded, now: Date.now() });
+  post({ space, text, replyTo = '', thread = false, forwarded = false, alsoInChat = false }: { space: string; text: string; replyTo?: string; thread?: boolean; forwarded?: boolean; alsoInChat?: boolean }): Promise<void> {
+    return this.act(space, { kind: 'queue_post', space, text, replyTo, thread, forwarded, alsoInChat, now: Date.now() });
   }
 
   /** Reaction, edit or delete for everyone, in the shared annotation shape. */
@@ -331,10 +345,21 @@ export class Messages {
     }, () => generation !== this.generation || this.connection.kind !== 'ready' ? 'A conexão mudou. Tente de novo.' : null, false);
   }
 
+  setThreadFollow(space: string, root: string, follow: boolean | null): Promise<void> {
+    return this.act(space, { kind: 'set_thread_follow', space, root, follow, now: Date.now() });
+  }
+
+  markThreadRead(space: string, root: string, upTo: number): Promise<void> {
+    return this.act(space, { kind: 'mark_thread_read', space, root, upTo, now: Date.now() });
+  }
+
   private act(space: string, operation: Parameters<MessageCore['text']>[0]): Promise<void> {
     if (this.closed) return Promise.reject(new Error('Recarregue o Zoen para abrir esta sessão de novo.'));
     if (this.connection.kind !== 'ready') return Promise.reject(new Error('Sem conexão agora. Tente de novo em instantes.'));
-    if (!this.conversations.find((conversation) => conversation.id === space)?.can_send) {
+    const conversation = this.conversations.find((conversation) => conversation.id === space);
+    // These operations write only the member's Personal Space, not the read-only chat.
+    const personal = operation.kind === 'set_thread_follow' || operation.kind === 'mark_thread_read';
+    if (!conversation || (!personal && !conversation.can_send)) {
       return Promise.reject(new Error('Esta conversa ainda está sendo preparada no seu celular.'));
     }
     const generation = this.generation;

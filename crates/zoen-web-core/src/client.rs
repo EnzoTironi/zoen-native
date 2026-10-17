@@ -14,6 +14,9 @@ use serde::{Deserialize, Serialize};
 
 use crate::LinkedAccount;
 
+#[path = "threads.rs"]
+mod threads;
+
 const PACKAGES_REQUEST: u64 = 0x8000_0001;
 const PROFILES_REQUEST: u64 = 0x8000_0002;
 
@@ -110,6 +113,10 @@ pub struct MessageView {
     quote: Option<Quote>,
     /// Thread reply: the root it belongs to (shown only in the thread panel).
     thread: Option<String>,
+    also_in_chat: bool,
+    thread_following: bool,
+    thread_unread: usize,
+    thread_mentions: usize,
     replies: usize,
     repliers: Vec<String>,
     last_reply_ms: Option<i64>,
@@ -133,6 +140,7 @@ pub struct ConversationView {
     waiting: Option<String>,
     unreadable: usize,
     unread: usize,
+    threads_unread: usize,
     mentions: usize,
     members: usize,
     messages: Vec<MessageView>,
@@ -383,6 +391,68 @@ impl<S: Signer> Client<S> {
         Ok(pending)
     }
 
+    fn reply_ref(
+        &self,
+        space: &str,
+        to: String,
+        thread: bool,
+        also_in_chat: bool,
+    ) -> roda_types::ReplyRef {
+        roda_types::ReplyRef {
+            to: self.thread_root(space, &to),
+            thread,
+            also_in_chat: thread && also_in_chat,
+        }
+    }
+
+    pub fn queue_post_with_chat(
+        &mut self,
+        space: &str,
+        text: &str,
+        reply: Option<(String, bool)>,
+        forwarded: bool,
+        also_in_chat: bool,
+        now_ms: i64,
+    ) -> Result<Update, String> {
+        let reply = match reply {
+            Some((to, thread)) => {
+                let target = self
+                    .posted(space, &to)
+                    .ok_or("That message is no longer available.")?;
+                let to = match target {
+                    Some(root) if thread && root.thread => root.to,
+                    _ => to,
+                };
+                let to = self
+                    .resolve_post(space, &to)
+                    .map(|event| event.hash.clone())
+                    .unwrap_or(to);
+                Some(self.reply_ref(space, to, thread, also_in_chat))
+            }
+            None => None,
+        };
+        if text.trim().is_empty() || text.len() > 32_768 {
+            return Err("Write a message of up to 32 KB.".into());
+        }
+        let epoch = self.ready_epoch(space)?;
+        let inner = self.clear_event(
+            space,
+            EventBody::MessagePosted {
+                message: roda_types::new_secret_id("msg"),
+                text: text.into(),
+                attaches: None,
+                reply,
+                forwarded,
+            },
+            now_ms,
+        )?;
+        let envelope = inner.envelope()?;
+        let event = envelope.plain_event().ok_or("invalid inner message")?;
+        let pending = self.seal_inner(&event, epoch)?;
+        self.saved.outbox.insert(event.client_id.clone(), pending);
+        self.update(Vec::new())
+    }
+
     pub fn queue_message(
         &mut self,
         space: &str,
@@ -415,7 +485,7 @@ impl<S: Signer> Client<S> {
                     .resolve_post(space, &to)
                     .map(|event| event.hash.clone())
                     .unwrap_or(to);
-                Some(roda_types::ReplyRef { to, thread })
+                Some(self.reply_ref(space, to, thread, false))
             }
             None => None,
         };
@@ -510,9 +580,13 @@ impl<S: Signer> Client<S> {
         }
         if let Some(reply) = doc.voice.as_mut().and_then(|voice| voice.reply.as_mut()) {
             let target = self
-                .resolve_post(space, &reply.to)
+                .posted(space, &reply.to)
                 .ok_or("That message is no longer available.")?;
-            reply.to = target.client_id.clone();
+            let to = match target {
+                Some(root) if reply.thread && root.thread => root.to,
+                _ => reply.to.clone(),
+            };
+            *reply = self.reply_ref(space, to, reply.thread, reply.also_in_chat);
         }
         let item = roda_types::new_secret_id("it");
         let attachment = (!doc.is_voice()).then(|| format!("msg_attachment_{item}"));
@@ -723,7 +797,11 @@ impl<S: Signer> Client<S> {
         events
             .iter()
             .find(|e| e.hash == reference)
-            .or_else(|| events.iter().find(|e| e.client_id == reference))
+            .or_else(|| {
+                events
+                    .iter()
+                    .find(|e| e.client_id == reference && is_post(&e.body))
+            })
             .filter(|e| is_post(&e.body))
     }
 
@@ -931,9 +1009,10 @@ impl<S: Signer> Client<S> {
     fn ask_rejoin(&mut self, now_ms: i64) -> Result<(), String> {
         let mut missing = Vec::new();
         for space in self.logs.keys() {
-            if self.metadata(space).is_some_and(|(_, kind, privacy)| {
-                privacy == Privacy::EndToEnd && kind != SpaceKind::Personal
-            }) && self.roster(space).contains_key(&self.account.identity)
+            if self
+                .metadata(space)
+                .is_some_and(|(_, _, privacy)| privacy == Privacy::EndToEnd)
+                && self.roster(space).contains_key(&self.account.identity)
                 && !self.saved.joining.contains(space)
                 && self
                     .device()?
@@ -1106,6 +1185,8 @@ impl<S: Signer> Client<S> {
             .outbox
             .iter()
             .filter_map(|(id, pending)| {
+                // Only encrypted application events are resealed after an epoch change.
+                pending.epoch?;
                 let event = pending.inner.as_ref()?;
                 let epoch = self.ready_epoch(&event.space).ok()?;
                 (pending.failure.is_none() && pending.epoch != Some(epoch))
@@ -1142,10 +1223,19 @@ impl<S: Signer> Client<S> {
             .iter()
             .filter(|(_, pending)| pending.failure.is_none())
         {
+            // Older snapshots could contain clear Personal preferences. Never
+            // replay those bytes to the relay, even without an inner projection.
+            if pending
+                .envelope()?
+                .plain_event()
+                .is_some_and(|event| matches!(event.body, EventBody::ThreadStateSet { .. }))
+            {
+                continue;
+            }
             if self.sent.contains(id) {
                 continue;
             }
-            if let Some(inner) = &pending.inner {
+            if let Some(inner) = pending.inner.as_ref().filter(|_| pending.epoch.is_some()) {
                 if self.ready_epoch(&inner.space).ok() != pending.epoch {
                     continue;
                 }
@@ -1359,13 +1449,14 @@ impl<S: Signer> Client<S> {
                     }
                 }
             }
-            let mention = format!("@{}", self.account.name.to_lowercase());
-            let incoming = messages.iter().filter(|m| m.author != *me && !m.deleted && m.seq.is_some_and(|s| s > my_read) && (my_read > 0 || m.seq.is_some()));
-            let (unread, mentions) = incoming.fold((0, 0), |(u, n), m| (u + 1, n + usize::from(!self.account.name.is_empty() && m.text.to_lowercase().contains(&mention))));
+            self.fill_threads(space, &mut messages);
+            let threads_unread = messages.iter().filter(|m| m.thread_following).map(|m| m.thread_unread).sum();
+            let incoming = messages.iter().filter(|m| m.author != *me && !m.deleted && (m.thread.is_none() || m.also_in_chat) && m.seq.is_some_and(|s| s > my_read) && (my_read > 0 || m.seq.is_some()));
+            let (unread, mentions) = incoming.fold((0, 0), |(u, n), m| (u + 1, n + usize::from(threads::mentions(&m.text, &self.account.handle))));
             let waiting = self.ready_epoch(space).err();
             let unreadable = events.iter().filter(|event| matches!(&event.body, EventBody::Sealed { kind } if kind == "Application")).count();
             Some(ConversationView { id: space.clone(), title, kind: match kind { SpaceKind::Direct=>"direct",SpaceKind::Group=>"group",SpaceKind::Community=>"community",SpaceKind::Personal=>"personal" },
-                can_send: waiting.is_none(), waiting, unreadable, unread, mentions, members: roster.len(), messages })
+                can_send: waiting.is_none(), waiting, unreadable, unread, threads_unread, mentions, members: roster.len(), messages })
         }).collect()
     }
 
@@ -1453,7 +1544,11 @@ impl<S: Signer> Client<S> {
                 .unwrap_or_else(|| "Alguém".into())
         };
         Some(MessageView {
-            id: event.client_id.clone(),
+            id: if event.hash.is_empty() {
+                event.client_id.clone()
+            } else {
+                self.thread_root(&event.space, &event.hash)
+            },
             entry: None,
             seq: None,
             author: event.author.clone(),
@@ -1468,11 +1563,22 @@ impl<S: Signer> Client<S> {
             forwarded,
             reactions: Vec::new(),
             quote: reply.as_ref().filter(|r| !r.thread).map(|r| Quote {
-                id: r.to.clone(),
+                id: self
+                    .resolve_post(&event.space, &r.to)
+                    .map(|e| e.hash.clone())
+                    .unwrap_or_else(|| r.to.clone()),
                 name: String::new(),
                 text: String::new(),
             }),
-            thread: reply.as_ref().filter(|r| r.thread).map(|r| r.to.clone()),
+            thread: reply.as_ref().filter(|r| r.thread).map(|r| {
+                self.resolve_post(&event.space, &r.to)
+                    .map(|e| e.hash.clone())
+                    .unwrap_or_else(|| r.to.clone())
+            }),
+            also_in_chat: reply.as_ref().is_some_and(|r| r.thread && r.also_in_chat),
+            thread_following: false,
+            thread_unread: 0,
+            thread_mentions: 0,
             replies: 0,
             repliers: Vec::new(),
             last_reply_ms: None,

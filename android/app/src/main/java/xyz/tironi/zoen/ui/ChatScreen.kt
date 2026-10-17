@@ -85,6 +85,8 @@ import xyz.tironi.zoen.miniapps.MiniAppTileStrip
 import xyz.tironi.zoen.R
 import xyz.tironi.zoen.ZoenViewModel
 import xyz.tironi.zoen.core.*
+import androidx.compose.ui.res.pluralStringResource
+import androidx.compose.material.icons.rounded.NotificationsNone
 import androidx.compose.animation.animateContentSize
 import androidx.compose.foundation.background
 import androidx.compose.foundation.shape.CircleShape
@@ -94,6 +96,7 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.sp
 import androidx.compose.material.icons.automirrored.rounded.Forward
 import xyz.tironi.zoen.data.AppState
+import xyz.tironi.zoen.data.isVisibleInChat
 import xyz.tironi.zoen.data.FileAccess
 import xyz.tironi.zoen.media.VoiceBubble
 import xyz.tironi.zoen.media.VoiceComposer
@@ -116,7 +119,8 @@ fun ChatScreen(model: ZoenViewModel, state: AppState, spaceId: String, navigate:
     val space = state.spaces.firstOrNull { it.id == spaceId }
     val allEntries = state.timelines[spaceId].orEmpty()
     val appIds = state.items.filter { it.app != null }.map { it.id }.toSet()
-    val timeline = allEntries.filter { it.inThread == null && (it.kind as? EntryKind.ItemEdited)?.itemId !in appIds }
+    // Thread-only replies live in their thread; one also sent to the chat shows here too.
+    val timeline = allEntries.filter { it.isVisibleInChat() && (it.kind as? EntryKind.ItemEdited)?.itemId !in appIds }
     val list = rememberLazyListState()
     val scrollScope = rememberCoroutineScope()
     var firstLoad by rememberSaveable(spaceId) { mutableStateOf(true) }
@@ -178,12 +182,13 @@ fun ChatScreen(model: ZoenViewModel, state: AppState, spaceId: String, navigate:
     LaunchedEffect(jumpTo, allEntries.size) {
         val target = jumpTo ?: return@LaunchedEffect
         val original = allEntries.firstOrNull { it.id == target } ?: return@LaunchedEffect
-        val index = timeline.indexOfFirst { it.id == (original.inThread ?: target) }
+        val targetId = chatScrollTarget(original)
+        val index = timeline.indexOfFirst { it.id == targetId }
         if (index >= 0) {
             // Navigation can compose this effect inside its current measure pass.
             withFrameNanos { }
             if (motion) list.animateScrollToItem(index) else list.scrollToItem(index)
-            highlight = original.inThread ?: target
+            highlight = targetId
             jumpTo = null
         }
     }
@@ -361,7 +366,7 @@ fun ChatScreen(model: ZoenViewModel, state: AppState, spaceId: String, navigate:
                                 HorizontalDivider(Modifier.weight(1f))
                             }
                             Box(Modifier.animateItem(fadeInSpec = if (motion) androidx.compose.animation.core.tween(180) else null, placementSpec = null, fadeOutSpec = null).testTag("timeline:${entry.id}").background(if (highlight == entry.id) MaterialTheme.colorScheme.secondaryContainer else androidx.compose.ui.graphics.Color.Transparent, RoundedCornerShape(16.dp))) {
-                                TimelineRow(model, spaceId, entry, navigate, onReply = { replyId = entry.id }, onThread = { navigate(Thread(spaceId, entry.id)) }, onQuote = { jumpTo = it }, direct = space.counterpart != null)
+                                TimelineRow(model, spaceId, entry, navigate, onReply = { replyId = entry.id }, onThread = { navigate(Thread(spaceId, entry.inThread ?: entry.id)) }, onQuote = { jumpTo = it }, direct = space.counterpart != null)
                             }
                         }
                     }
@@ -557,7 +562,7 @@ fun TimelineRow(model: ZoenViewModel, spaceId: String, entry: TimelineEntry, nav
                 if (entry.edited) Text(stringResource(R.string.edited), Modifier.padding(top = 2.dp, start = 8.dp, end = 8.dp), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 // Cards without a text bubble keep the meta underneath.
                 if (entry.voice == null && kind.text.isBlank() && entry.replyTo == null) BubbleMeta(entry.atMs, if (mine) entry.delivery else null, Modifier.padding(top = 5.dp, start = 8.dp, end = 8.dp))
-                if (entry.threadReplies > 0u && onThread != null) TextButton(onClick = onThread) { Text("${entry.threadReplies} " + stringResource(R.string.replies)) }
+                if (entry.threadReplies > 0u && onThread != null) ThreadRepliesRow(entry, onThread)
                 }
             }
             }
@@ -594,24 +599,79 @@ fun TimelineRow(model: ZoenViewModel, spaceId: String, entry: TimelineEntry, nav
 
 @Composable
 fun ThreadScreen(model: ZoenViewModel, state: AppState, space: String, root: String, navigate: (NavKey) -> Unit, back: () -> Unit) {
-    val loadedEntries by produceState<List<TimelineEntry>>(emptyList(), state.revision, root) { value = model.repository.query { it.thread(space, root) } }
+    val loadedEntries by key(space, root) {
+        produceState<List<TimelineEntry>>(emptyList(), state.revision) { value = model.repository.query { it.thread(space, root) } }
+    }
     val entries = loadedEntries
+    val owner = LocalLifecycleOwner.current
+    val lifecycleState by owner.lifecycle.currentStateFlow.collectAsState()
+    val visible = model.repository.appVisible
+    val canonicalRoot = entries.firstOrNull()?.id ?: root
+    DisposableEffect(owner, space, canonicalRoot) {
+        val repository = model.repository
+        val active = space to canonicalRoot
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_START) repository.activeThread = active
+            if (event == Lifecycle.Event.ON_STOP && repository.activeThread == active) repository.activeThread = null
+        }
+        owner.lifecycle.addObserver(observer)
+        if (owner.lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED)) repository.activeThread = active
+        onDispose {
+            owner.lifecycle.removeObserver(observer)
+            if (repository.activeThread == active) repository.activeThread = null
+        }
+    }
     val list = rememberLazyListState()
     val scrollScope = rememberCoroutineScope()
-    var text by rememberSaveable { mutableStateOf("") }
-    var replyTo by rememberSaveable(root) { mutableStateOf(root) }
-    var sending by remember { mutableStateOf(false) }
+    var text by rememberSaveable(space, root) { mutableStateOf("") }
+    var replyTo by rememberSaveable(space, root) { mutableStateOf(root) }
+    var sending by remember(space, root) { mutableStateOf(false) }
     val threadHaptics = rememberZoenHaptics()
     val motion = rememberMotionEnabled()
-    Scaffold(topBar = { ScreenBar(stringResource(R.string.replies), back) }, bottomBar = {
-        Row(Modifier.navigationBarsPadding().imePadding().padding(16.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            OutlinedTextField(text, { text = it }, Modifier.weight(1f), placeholder = { Text(stringResource(R.string.reply)) }, maxLines = 4,
+    var alsoInChat by rememberSaveable(space, root) { mutableStateOf(false) }
+    val following = entries.firstOrNull()?.threadFollowing == true
+    var changingFollow by remember(space, root) { mutableStateOf(false) }
+    LaunchedEffect(space, root, entries, lifecycleState, visible) {
+        val seq = observedThreadReadSeq(entries, lifecycleState.isAtLeast(Lifecycle.State.STARTED), visible) ?: return@LaunchedEffect
+        runCatching { model.repository.change {
+            if (model.repository.appVisible && model.repository.activeThread == (space to canonicalRoot)) {
+                it.markThreadReadUpTo(space, root, seq)
+            }
+        } }
+    }
+    Scaffold(topBar = { ScreenBar(stringResource(R.string.replies), back) {
+        TextButton(onClick = {
+            if (!changingFollow) {
+                changingFollow = true
+                threadHaptics.perform(ZoenFeedback.Selection)
+                model.launch {
+                    try { model.repository.change { it.setThreadFollow(space, root, !following) } }
+                    finally { changingFollow = false }
+                }
+            }
+        }, enabled = entries.isNotEmpty() && !changingFollow, modifier = Modifier.testTag("thread-follow")) {
+            Icon(if (following) Icons.Rounded.Notifications else Icons.Rounded.NotificationsNone, null, Modifier.size(18.dp)); Spacer(Modifier.width(6.dp))
+            Text(stringResource(if (following) R.string.thread_following else R.string.thread_follow))
+        }
+    } }, bottomBar = {
+        Column(Modifier.navigationBarsPadding().imePadding()) {
+        Row(Modifier.padding(start = 8.dp).clip(RoundedCornerShape(12.dp)).clickable { alsoInChat = !alsoInChat }.padding(8.dp).testTag("thread-also-in-chat"), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            Checkbox(alsoInChat, null, Modifier.size(20.dp)); Text(stringResource(R.string.thread_also_in_chat), style = MaterialTheme.typography.bodySmall)
+        }
+        Row(Modifier.padding(start = 16.dp, end = 16.dp, bottom = 16.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            OutlinedTextField(text, { text = it }, Modifier.weight(1f), placeholder = { Text(stringResource(R.string.thread_reply_hint)) }, maxLines = 4,
                 label = entries.firstOrNull { it.id == replyTo }?.let { { Text(it.author.name) } })
-            if (text.isBlank()) VoiceComposer(model, space, reply = replyTo, thread = true, threadRoot = root, onSent = { replyTo = root })
+            if (text.isBlank()) VoiceComposer(model, space, reply = replyTo, thread = true, threadRoot = root, alsoInChat = alsoInChat, onSent = { replyTo = root; alsoInChat = false })
             else FilledIconButton(onClick = {
                 val draft = text; val target = replyTo; sending = true
-                model.launch { try { model.send(space, draft, target, true, onStored = { threadHaptics.perform(ZoenFeedback.Send) }); if (text == draft) text = ""; replyTo = root } finally { sending = false } }
+                val broadcast = alsoInChat
+                model.launch { try {
+                    model.repository.change { it.sendThreadReply(space, draft.trim(), target, broadcast) }
+                    threadHaptics.perform(ZoenFeedback.Send)
+                    if (text == draft) text = ""; replyTo = root; alsoInChat = false
+                } finally { sending = false } }
             }, enabled = text.isNotBlank() && !sending && !state.keyMissing) { ZoenIcon(ZoenGlyph.Send, stringResource(R.string.send)) }
+        }
         }
     }) { padding -> LazyColumn(Modifier.padding(padding), state = list, contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
         items(entries, key = { it.id }) { entry -> TimelineRow(model, space, entry, navigate, onReply = { replyTo = entry.id }, onThread = null, onQuote = { id ->
@@ -738,5 +798,17 @@ private fun MessageActionDialogs(model: ZoenViewModel, spaceId: String, entry: T
                 }
             },
             confirmButton = {}, dismissButton = { TextButton(onClick = done) { Text(stringResource(R.string.cancel)) } })
+    }
+}
+
+/** Under a thread's root (Slack/Ando): who replied, "N replies", when, and an unread dot. */
+@Composable
+private fun ThreadRepliesRow(entry: TimelineEntry, open: () -> Unit) {
+    Row(Modifier.padding(top = 4.dp).clip(RoundedCornerShape(24.dp)).background(MaterialTheme.colorScheme.primary.copy(alpha = .1f)).clickable(onClick = open).padding(horizontal = 8.dp, vertical = 4.dp).testTag("thread-chip"),
+        verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+        Row(horizontalArrangement = Arrangement.spacedBy((-6).dp)) { entry.threadParticipants.take(3).forEach { Avatar(it, size = 18) } }
+        Text(pluralStringResource(R.plurals.thread_replies, entry.threadReplies.toInt(), entry.threadReplies.toInt()), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.SemiBold)
+        if (entry.threadLastReplyMs > 0) Text(DateFormat.getTimeInstance(DateFormat.SHORT).format(Date(entry.threadLastReplyMs)), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        androidx.compose.animation.AnimatedVisibility(entry.threadFollowing && entry.threadUnread > 0u) { Box(Modifier.size(7.dp).clip(CircleShape).background(MaterialTheme.colorScheme.primary)) }
     }
 }

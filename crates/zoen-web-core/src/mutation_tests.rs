@@ -117,7 +117,27 @@ fn peer_event(
     body: EventBody,
     now: i64,
 ) -> String {
-    let inner = author.sign_event(SPACE, &roda_types::new_ulid(now), now, log.head(), body);
+    peer_event_id(
+        client,
+        native,
+        author,
+        log,
+        body,
+        now,
+        &roda_types::new_ulid(now),
+    )
+}
+
+fn peer_event_id(
+    client: &mut Client<HostSigner>,
+    native: &Device<'_>,
+    author: &Author,
+    log: &mut SpaceLog,
+    body: EventBody,
+    now: i64,
+    client_id: &str,
+) -> String {
+    let inner = author.sign_event(SPACE, client_id, now, log.head(), body);
     let plaintext = InnerEvent {
         content: inner.content,
         sig: inner.sig,
@@ -368,6 +388,7 @@ fn unauthorized_mutations_are_rejected_and_signed_peer_mutations_do_not_fold() {
                 reply: Some(ReplyRef {
                     to: mine.clone(),
                     thread: false,
+                    also_in_chat: false,
                 }),
                 forwarded: false,
             },
@@ -468,6 +489,156 @@ fn signed_late_author_edit_received_after_deletion_cannot_resurrect_message() {
             assert!(message.text.is_empty());
             assert!(!message.edited);
         }
+    });
+}
+
+#[test]
+fn voice_replies_to_broadcasts_keep_the_original_thread() {
+    fixture(|client, _, _, log| {
+        let update = client.queue_message(SPACE, "Root", 10).unwrap();
+        let root = accept(client, log, update, 11);
+        let update = client
+            .queue_post_with_chat(
+                SPACE,
+                "Broadcast",
+                Some((root.clone(), true)),
+                false,
+                true,
+                12,
+            )
+            .unwrap();
+        let broadcast = accept(client, log, update, 13);
+        let mut doc = crate::media::seal_file("voice.webm", "audio/webm", b"voice", None)
+            .unwrap()
+            .doc;
+        doc.voice = Some(roda_types::VoiceMeta {
+            reply: Some(ReplyRef {
+                to: broadcast,
+                thread: true,
+                also_in_chat: true,
+            }),
+            ..Default::default()
+        });
+        let update = client.queue_file(SPACE, doc, 14).unwrap();
+        let voice = accept(client, log, update, 15);
+        let view = client.conversations();
+        let voice = view[0]
+            .messages
+            .iter()
+            .find(|m| m.entry.as_deref() == Some(voice.as_str()))
+            .unwrap();
+        assert_eq!(voice.thread.as_deref(), Some(root.as_str()));
+        assert!(voice.also_in_chat);
+        assert_eq!(view[0].messages[0].replies, 2);
+    });
+}
+
+#[test]
+fn colliding_client_ids_preserve_text_and_voice_reply_targets() {
+    fixture(|client, native, author, log| {
+        let post = |text: &str| EventBody::MessagePosted {
+            message: roda_types::new_secret_id("msg"),
+            text: text.into(),
+            attaches: None,
+            reply: None,
+            forwarded: false,
+        };
+        let first = peer_event(client, native, author, log, post("First message"), 10);
+        let shadow = peer_event_id(
+            client,
+            native,
+            author,
+            log,
+            post("Intended target"),
+            12,
+            &first,
+        );
+        // Both public text entry points must preserve B, for quotes and threads.
+        for (offset, (broadcast_api, thread)) in
+            [(false, false), (false, true), (true, false), (true, true)]
+                .into_iter()
+                .enumerate()
+        {
+            let now = 20 + offset as i64 * 2;
+            let update = if broadcast_api {
+                client.queue_post_with_chat(
+                    SPACE,
+                    "Text reply",
+                    Some((shadow.clone(), thread)),
+                    false,
+                    true,
+                    now,
+                )
+            } else {
+                client.queue_post(
+                    SPACE,
+                    "Text reply",
+                    Some((shadow.clone(), thread)),
+                    false,
+                    now,
+                )
+            }
+            .unwrap();
+            let hash = accept(client, log, update, now + 1);
+            let conversations = client.conversations();
+            let reply = conversations[0]
+                .messages
+                .iter()
+                .find(|m| m.entry.as_deref() == Some(hash.as_str()))
+                .unwrap();
+            if thread {
+                assert_eq!(reply.thread.as_deref(), Some(shadow.as_str()));
+                assert_eq!(reply.also_in_chat, broadcast_api);
+            } else {
+                let quote = reply.quote.as_ref().unwrap();
+                assert_eq!(quote.id, shadow);
+                assert_eq!(quote.text, "Intended target");
+            }
+        }
+        for thread in [false, true] {
+            let mut doc = crate::media::seal_file("voice.webm", "audio/webm", b"voice", None)
+                .unwrap()
+                .doc;
+            doc.voice = Some(roda_types::VoiceMeta {
+                reply: Some(ReplyRef {
+                    to: shadow.clone(),
+                    thread,
+                    also_in_chat: thread,
+                }),
+                ..Default::default()
+            });
+            let update = client
+                .queue_file(SPACE, doc, 40 + i64::from(thread) * 2)
+                .unwrap();
+            let hash = accept(client, log, update, 41 + i64::from(thread) * 2);
+            let conversations = client.conversations();
+            let reply = conversations[0]
+                .messages
+                .iter()
+                .find(|m| m.entry.as_deref() == Some(hash.as_str()))
+                .unwrap();
+            assert_eq!(
+                reply
+                    .thread
+                    .as_deref()
+                    .or_else(|| reply.quote.as_ref().map(|q| q.id.as_str())),
+                Some(shadow.as_str()),
+            );
+        }
+        reload(client);
+        let view = &client.conversations()[0];
+        let first = view
+            .messages
+            .iter()
+            .find(|m| m.entry.as_deref() == Some(first.as_str()))
+            .unwrap();
+        let shadow = view
+            .messages
+            .iter()
+            .find(|m| m.entry.as_deref() == Some(shadow.as_str()))
+            .unwrap();
+        assert_eq!(first.replies, 0);
+        assert_eq!(shadow.replies, 3);
     });
 }
 

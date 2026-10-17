@@ -22,6 +22,10 @@ pub struct ReplyRef {
     /// `true` = in the thread under `to`; `false` = inline, quoting `to`.
     #[serde(default)]
     pub thread: bool,
+    /// A thread reply also shown in the chat ("also send to chat", Slack). Absent when
+    /// false, so existing replies keep their bytes.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub also_in_chat: bool,
 }
 
 impl ReplyRef {
@@ -29,12 +33,14 @@ impl ReplyRef {
         Self {
             to: to.into(),
             thread: false,
+            also_in_chat: false,
         }
     }
     pub fn thread(root: impl Into<String>) -> Self {
         Self {
             to: root.into(),
             thread: true,
+            also_in_chat: false,
         }
     }
 }

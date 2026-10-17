@@ -30,7 +30,7 @@ use roda_types::*;
 use serde::{Deserialize, Serialize};
 
 use crate::dto::Delivery;
-use crate::engine::{Engine, Entry, State};
+use crate::engine::{Engine, Entry, SpaceState, State};
 use crate::i18n::t;
 use crate::pages::{PlanReplay, Projection};
 use crate::CoreError;
@@ -221,6 +221,8 @@ impl Engine {
                 e.body,
                 EventBody::RequestOpened { .. }
                     | EventBody::RequestResolved { .. }
+                    | EventBody::ChatPrefsSet { .. }
+                    | EventBody::ThreadStateSet { .. }
                     | EventBody::MemberAdded { .. }
                     | EventBody::MemberRemoved { .. }
                     | EventBody::GrantIssued { .. }
@@ -559,8 +561,11 @@ impl Engine {
         seq: u64,
         hash: &str,
     ) -> bool {
-        let stamp = |entries: &mut Vec<Entry>| {
-            for entry in entries.iter_mut().filter(|entry| {
+        let stamp = |state: &mut SpaceState| {
+            if !hash.is_empty() {
+                state.event_hashes.insert(hash.to_string());
+            }
+            for entry in state.entries.iter_mut().filter(|entry| {
                 entry.client_id == client_id
                     || entry.client_id.strip_suffix(":result") == Some(client_id)
             }) {
@@ -573,12 +578,13 @@ impl Engine {
             .get_mut(space)
             .and_then(|scoped| scoped.spaces.get_mut(space))
         {
-            stamp(&mut space_state.entries);
+            stamp(space_state);
         }
         let Some(space_state) = self.state.spaces.get_mut(space) else {
             return false;
         };
-        stamp(&mut space_state.entries);
+        stamp(space_state);
+        self.index_dirty = true;
         true
     }
 
@@ -1007,17 +1013,8 @@ impl Engine {
     /// Your on-device Zoen (local agent, local DM) until the agent runtime takes over.
     fn seed_personal_agent(&mut self, me: &str) -> R<()> {
         let at = crate::engine::now_ms();
-        let personal = new_id("sp");
-        self.append_at(
-            &personal,
-            me,
-            at,
-            EventBody::SpaceCreated {
-                title: "Personal".into(),
-                kind: SpaceKind::Personal,
-                privacy: Privacy::EndToEnd,
-            },
-        )?;
+        // Personal preferences use the encrypted Space enrollment contract.
+        self.create_synced_space("Personal", SpaceKind::Personal, Privacy::EndToEnd, &[])?;
         let zoen = self.create_identity(
             Identity {
                 owner_proof: None,
@@ -1058,6 +1055,54 @@ impl Engine {
         Ok(())
     }
 
+    /// Upgrade device-only Personal state without rewriting signed history. A
+    /// savepoint keeps a failed/crashed migration from leaving a partial new log.
+    fn migrate_personal_space(&mut self) -> R<()> {
+        let Some(local) = self
+            .personal_space()
+            .filter(|s| !self.net.synced.contains(s))
+        else {
+            return Ok(());
+        };
+        let me = self.me_id()?;
+        let events = self.store.events(&local)?;
+        self.store
+            .conn()
+            .execute_batch("SAVEPOINT migrate_personal")
+            .map_err(|e| CoreError::Storage {
+                message: e.to_string(),
+            })?;
+        let result = (|| {
+            let space =
+                self.create_synced_space("Personal", SpaceKind::Personal, Privacy::EndToEnd, &[])?;
+            for event in events {
+                if event.author == me
+                    && matches!(
+                        event.body,
+                        EventBody::ChatPrefsSet { .. } | EventBody::ThreadStateSet { .. }
+                    )
+                {
+                    self.append_at(&space, &me, event.at_ms, event.body)?;
+                }
+            }
+            self.store
+                .conn()
+                .execute_batch("RELEASE migrate_personal")
+                .map_err(|e| CoreError::Storage {
+                    message: e.to_string(),
+                })?;
+            Ok(())
+        })();
+        if result.is_err() {
+            let _ = self
+                .store
+                .conn()
+                .execute_batch("ROLLBACK TO migrate_personal; RELEASE migrate_personal");
+            self.reload()?;
+        }
+        result
+    }
+
     /// Loads the device key from the vault. `false` = no account (or key missing).
     pub fn unlock(&mut self, device_secret: Option<Vec<u8>>) -> R<bool> {
         let Some(acct) = self.net.account.clone() else {
@@ -1081,6 +1126,7 @@ impl Engine {
             key,
             acct.cert.clone(),
         ));
+        self.migrate_personal_space()?;
         self.net
             .mls
             .wake_recovery_many(self.net.synced.iter().cloned());

@@ -27,12 +27,20 @@ impl Engine {
             return (None, None);
         };
         if r.thread {
-            return (None, Some(r.to.clone()));
+            let root = self
+                .space_state(&e.space)
+                .ok()
+                .and_then(|s| {
+                    s.resolve_entry(&r.to)
+                        .map(|root| s.entry_id(root).to_string())
+                })
+                .unwrap_or_else(|| r.to.clone());
+            return (None, Some(root));
         }
         let quote = self.space_state(&e.space).ok().and_then(|s| {
-            let target = s.entries.iter().find(|x| x.id() == r.to)?;
+            let target = s.resolve_entry(&r.to)?;
             Some(ReplyQuote {
-                id: r.to.clone(),
+                id: s.entry_id(target).to_string(),
                 author: self.persona(&target.author),
                 text: self.quote_text(target),
             })
@@ -94,6 +102,31 @@ impl Engine {
         to: &str,
         thread: bool,
     ) -> R<TimelineEntry> {
+        let reply = self.reply_ref(space, to, thread)?;
+        self.post_reply(space, author, text, attaches, reply)
+    }
+
+    pub(crate) fn reply_with_chat(
+        &mut self,
+        space: &str,
+        author: &str,
+        text: &str,
+        to: &str,
+        also_in_chat: bool,
+    ) -> R<TimelineEntry> {
+        let mut reply = self.reply_ref(space, to, true)?;
+        reply.also_in_chat = also_in_chat;
+        self.post_reply(space, author, text, None, reply)
+    }
+
+    fn post_reply(
+        &mut self,
+        space: &str,
+        author: &str,
+        text: &str,
+        attaches: Option<String>,
+        reply: ReplyRef,
+    ) -> R<TimelineEntry> {
         if !self.is_member(space, author) {
             return Err(CoreError::Forbidden {
                 reason: t(
@@ -108,7 +141,6 @@ impl Engine {
                 reason: t("mensagem vazia", "empty message"),
             });
         }
-        let reply = self.reply_ref(space, to, thread)?;
         self.append(
             space,
             author,
@@ -127,7 +159,7 @@ impl Engine {
     /// Validate before storing a voice file, so a bad target cannot post it to the main chat.
     pub(crate) fn reply_ref(&self, space: &str, to: &str, thread: bool) -> R<ReplyRef> {
         let s = self.space_state(space)?;
-        let Some(target) = s.entries.iter().find(|e| e.id() == to) else {
+        let Some(target) = s.resolve_entry(to) else {
             return Err(CoreError::NotFound {
                 what: t("mensagem", "message"),
             });
@@ -146,8 +178,11 @@ impl Engine {
         };
         // One level deep: a thread reply to a thread reply belongs to the same root.
         let to = match target_reply {
-            Some(r) if thread && r.thread => r.to.clone(),
-            _ => to.to_string(),
+            Some(r) if thread && r.thread => s
+                .resolve_entry(&r.to)
+                .map(|root| s.entry_id(root).to_string())
+                .unwrap_or_else(|| r.to.clone()),
+            _ => s.entry_id(target).to_string(),
         };
         Ok(if thread {
             ReplyRef::thread(to)
@@ -159,19 +194,15 @@ impl Engine {
     /// The thread under `root`: the root message, then its replies oldest first.
     pub fn thread(&self, space: &str, root: &str) -> R<Vec<TimelineEntry>> {
         let s = self.space_state(space)?;
-        let Some(r) = s.entries.iter().find(|e| e.id() == root) else {
+        let Some(r) = s.resolve_entry(root) else {
             return Err(CoreError::NotFound {
                 what: t("mensagem", "message"),
             });
         };
         let mut out = vec![self.entry_dto(r)];
-        out.extend(
-            s.entries
-                .iter()
-                .filter(|e| matches!(&e.body, EntryBody::Message { reply: Some(x), .. } if x.thread && x.to == root))
-                .map(|e| self.entry_dto(e)),
-        );
+        out.extend(self.replies_of(s, r).into_iter().map(|e| self.entry_dto(e)));
         out[0].thread_replies = (out.len() - 1) as u32;
+        self.fill_thread_roots(space, &mut out);
         Ok(out)
     }
 }

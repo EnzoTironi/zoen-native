@@ -33,14 +33,14 @@ class VoiceSession(private val context: Context) : ViewModel() {
             mutableState.value = VoiceSessionState(clip, VoiceEditor(clip.audio.duration))
         } catch (error: Exception) { fail(error) }
     }
-    fun release(repository: ZoenRepository, space: String, reply: String?, thread: Boolean, onSent: () -> Unit) = viewModelScope.launch {
+    fun release(repository: ZoenRepository, space: String, reply: String?, thread: Boolean, alsoInChat: Boolean, onSent: () -> Unit) = viewModelScope.launch {
         val currentGeneration = generation
         try {
             val clip = recorder.finish() ?: return@launch
             if (currentGeneration != generation) { clip.delete(); return@launch }
             mutableState.value = VoiceSessionState(clip, VoiceEditor(clip.audio.duration))
             transcribe(repository.locale)
-            send(repository, space, reply, thread, onSent)
+            send(repository, space, reply, thread, alsoInChat, onSent)
         } catch (error: Exception) { fail(error) }
     }
     suspend fun transcribe(locale: String) {
@@ -83,10 +83,10 @@ class VoiceSession(private val context: Context) : ViewModel() {
         } catch (error: Exception) { fail(error) }
         finally { mutableState.value = mutableState.value.copy(busy = false) }
     }
-    fun sendNow(repository: ZoenRepository, space: String, reply: String?, thread: Boolean, onSent: () -> Unit) = viewModelScope.launch {
-        try { send(repository, space, reply, thread, onSent) } catch (error: Exception) { fail(error) }
+    fun sendNow(repository: ZoenRepository, space: String, reply: String?, thread: Boolean, alsoInChat: Boolean, onSent: () -> Unit) = viewModelScope.launch {
+        try { send(repository, space, reply, thread, alsoInChat, onSent) } catch (error: Exception) { fail(error) }
     }
-    private suspend fun send(repository: ZoenRepository, space: String, reply: String?, thread: Boolean, onSent: () -> Unit) {
+    private suspend fun send(repository: ZoenRepository, space: String, reply: String?, thread: Boolean, alsoInChat: Boolean, onSent: () -> Unit) {
         val current = mutableState.value
         val clip = current.clip ?: return
         val editor = current.editor ?: return
@@ -100,7 +100,7 @@ class VoiceSession(private val context: Context) : ViewModel() {
                 val id = UUID.randomUUID().toString()
                 VoiceClip(id, AudioFiles.encode(edited, File(VoiceRecorder.directory(context), "$id.m4a")), edited)
             }.also { render = it }
-            VoiceTransport.send(repository, sentClip, editor.keptTranscript, space, reply, thread)
+            VoiceTransport.send(repository, sentClip, editor.keptTranscript, space, reply, thread, alsoInChat)
             withContext(Dispatchers.IO) { clip.delete(); preview?.delete() }
             preview = null; render = null
             mutableState.value = VoiceSessionState()

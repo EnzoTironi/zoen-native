@@ -20,6 +20,7 @@ import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import xyz.tironi.zoen.BuildConfig
 import xyz.tironi.zoen.core.*
+import xyz.tironi.zoen.background.eligibleUnreadActivity
 
 data class RemoteActivity(val identity: String, val kind: String)
 
@@ -35,6 +36,7 @@ data class AppState(
     val agents: List<AgentProfile> = emptyList(),
     val requests: List<AgentRequestDto> = emptyList(),
     val timelines: Map<String, List<TimelineEntry>> = emptyMap(),
+    val unreadActivity: Map<String, List<TimelineEntry>> = emptyMap(),
     val connection: ConnectionDto = ConnectionDto("offline", false, 0uL, null),
     val typing: Map<String, String> = emptyMap(),
     val online: Set<String> = emptySet(),
@@ -66,6 +68,7 @@ class ZoenRepository(private val context: Context) {
         private set
     private val visibleActivities = java.util.Collections.newSetFromMap(java.util.IdentityHashMap<Any, Boolean>())
     @Volatile var activeSpace: String? = null
+    @Volatile var activeThread: Pair<String, String>? = null
     val locale: String get() = context.resources.configuration.locales[0].toLanguageTag()
 
     fun localKey(kind: String, id: String, owner: String = state.value.me?.id.orEmpty()) = "$kind:$owner:$id"
@@ -100,6 +103,7 @@ class ZoenRepository(private val context: Context) {
                 errors.close()
                 synchronized(visibleActivities) { visibleActivities.clear(); appVisible = false }
                 activeSpace = null
+                activeThread = null
             }
         }
     }
@@ -227,12 +231,16 @@ class ZoenRepository(private val context: Context) {
         val old = mutableState.value
         val spaces = core.spaces()
         observed.keys.retainAll(spaces.map { it.id }.toSet())
+        val timelines = observed.keys.associateWith { core.timeline(it) }
+        val unreadActivity = spaces.filter { it.unread > 0u || it.threadsUnread > 0u }.associate { space ->
+            space.id to eligibleUnreadActivity(timelines[space.id] ?: core.timeline(space.id), space.unread)
+        }
         mutableState.value = old.copy(
             ready = true, failure = null, account = account,
             me = if (old.demo || account != null) core.me() else null,
             spaces = spaces, items = core.items(), agents = core.agents(), requests = core.requests(),
             connection = core.connection(), revision = old.revision + 1,
-            timelines = observed.keys.associateWith { core.timeline(it) },
+            timelines = timelines, unreadActivity = unreadActivity,
         )
     }
 
@@ -367,6 +375,7 @@ class ZoenRepository(private val context: Context) {
             syncRunning = false
             backgroundOwner = null
             activeSpace = null
+            activeThread = null
             engine?.stopSync()
             engine?.eraseDevice(vault)
             xyz.tironi.zoen.miniapps.MiniAppSnapshots.clear()
