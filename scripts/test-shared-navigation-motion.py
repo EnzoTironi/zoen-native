@@ -23,14 +23,16 @@ class SharedNavigationMotion(unittest.TestCase):
 
     def test_selection_initial_state_is_silent(self):
         self.assertIn('.onChange(of: selected)', NAV)
-        self.assertIn('if new { selectionTap += 1 }', NAV)
+        self.assertIn('if new && tap == 0 { selectionTap += 1 }', NAV)
+        # Explicit tap counters already submit feedback; selection must not double-bounce.
         self.assertNotIn('initial: true', NAV)
 
     def test_toolbar_effects_are_on_real_symbols_with_action_events(self):
         self.assertIn('Button { sidebarTap += 1; setSidebar(!sidebarExpanded) }', SHELL)
         self.assertIn('NativeIconMotion(systemName: "sidebar.left", bounce: sidebarTap, drawOn: true)', SHELL)
         self.assertIn('Button { newMessageTap += 1; model.newChatOpen = true }', SHELL)
-        self.assertIn('NativeIconMotion(systemName: "square.and.pencil", bounce: newMessageTap, drawOn: true)', SHELL)
+        self.assertIn('NativeIconMotion(systemName: "magnifyingglass", bounce: newMessageTap, drawOn: true)', SHELL)
+        self.assertIn('.accessibilityLabel("Search")', SHELL)
         self.assertIn('Button { activation += 1; action() }', SETTINGS)
         self.assertIn('NativeIconMotion(systemName: symbol, bounce: activation, drawOn: true)', SETTINGS)
 
