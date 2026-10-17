@@ -8,7 +8,7 @@ declare class ZoenCoreModule extends NativeModule<{ onChange: (event: CoreEvent)
   askAssistant(id: string, question: string): Promise<string>;
   closeAssistant(id: string): Promise<void>;
   createAccount(name: string, handle: string, relay: string): Promise<string>;
-  sendFile(spaceId: string, uri: string, name: string, mime: string): Promise<string>;
+  sendFile(request: string): Promise<string>;
   sendVoice(request: string): Promise<string>;
   prepareVoice(uri: string): Promise<string>;
   renderVoice(sourceId: string, ranges: string): Promise<string>;

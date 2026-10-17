@@ -1,5 +1,6 @@
 import { getBrowserMediaHost, type BrowserMediaHost } from '../core/browser-media.ts';
 import type { FileDto } from '../core/generated/FileDto';
+import { t } from '../i18n/index.ts';
 import { MAX_SELECTED_BYTES, type MediaDriver } from './types.ts';
 
 function current(host: BrowserMediaHost, resolveHost: () => BrowserMediaHost) {
@@ -89,6 +90,7 @@ export function createBrowserMediaDriver(
   }
   return {
     async sendFile(selection) {
+      if (selection.replyTo || selection.thread) throw new Error(t('media.fileReplyUnavailable'));
       const host = resolveHost();
       selectionMetadata(selection.name, selection.mime);
       const local = await selectedBytes(selection.uri, host, resolveHost);

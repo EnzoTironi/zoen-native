@@ -112,6 +112,12 @@ class ZoenCoreModule : Module() {
         core.clientRequest("{\"op\":\"snapshot\"}")
       } }
     }
+    // File-message ingestion remains iOS-only until Android URI ownership and
+    // lifecycle draining are implemented and validated. Match the JSON contract
+    // while refusing before any canonical mutation.
+    AsyncFunction("sendFile") Coroutine { _: String ->
+      error("Sending attachments is not available on Android yet.")
+    }
     // Android local erasure requires its own durable lease-draining lifecycle.
     // Keep this bridge explicit and fail closed until that milestone is validated.
     AsyncFunction("eraseDevice") Coroutine { _: String, _: String ->

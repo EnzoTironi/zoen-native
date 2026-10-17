@@ -70,6 +70,9 @@ test('media ingress refuses remote URLs and oversized local payloads before Rust
   await assert.rejects(
     media.sendFile({
       spaceId: 'sp',
+      replyTo: null,
+      thread: false,
+      mutationId: 'qa-file-selection',
       name: 'file.txt',
       mime: 'text/plain',
       uri: 'https://evil.test/file',
@@ -79,6 +82,9 @@ test('media ingress refuses remote URLs and oversized local payloads before Rust
   await assert.rejects(
     media.sendFile({
       spaceId: 'sp',
+      replyTo: null,
+      thread: false,
+      mutationId: 'qa-file-selection',
       name: 'file.txt',
       mime: 'text/plain',
       uri: 'blob:https://another.test/id',
@@ -89,12 +95,43 @@ test('media ingress refuses remote URLs and oversized local payloads before Rust
   await assert.rejects(
     media.sendFile({
       spaceId: 'sp',
+      replyTo: null,
+      thread: false,
+      mutationId: 'qa-file-selection',
       name: 'file.txt',
       mime: 'text/plain',
       uri: 'blob:https://zoen.test/id',
     }),
     /64 MB/,
   );
+  assert.equal(calls.length, 0);
+});
+
+test('file replies cannot silently fall back to the main conversation on web', async (t) => {
+  browser(t);
+  const { host, calls } = fixture();
+  let resolutions = 0;
+  const media = createBrowserMediaDriver(() => {
+    resolutions++;
+    return host;
+  });
+  const fetch = t.mock.method(globalThis, 'fetch', async () => new Response('abc'));
+  for (const thread of [false, true]) {
+    await assert.rejects(
+      media.sendFile({
+        spaceId: 'sp',
+        replyTo: 'msg-root',
+        thread,
+        mutationId: 'qa-file-reply',
+        name: 'file.txt',
+        mime: 'text/plain',
+        uri: 'blob:https://zoen.test/id',
+      }),
+      /iPhone/,
+    );
+  }
+  assert.equal(resolutions, 0);
+  assert.equal(fetch.mock.callCount(), 0);
   assert.equal(calls.length, 0);
 });
 

@@ -6,7 +6,7 @@ export type MessageInteractionProps = Readonly<{
   disabled?: boolean;
   onReply: () => void;
   onThread: () => void;
-  /** Bubble Pressable owns these callbacks; the wrapper recognises pan only. */
+  /** Bubble MessagePressable owns physical callbacks; the wrapper recognises pan only. */
   onTap?: () => void;
   onActions?: () => void;
   accessibilityLabel?: string;

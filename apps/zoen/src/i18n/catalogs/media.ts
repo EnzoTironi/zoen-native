@@ -2,6 +2,7 @@ import { defineFeature } from '../catalog.ts';
 
 export const media = defineFeature(
   {
+    fileReplyUnavailable: 'Send file replies from your iPhone for now.',
     voiceImportAudio: 'Import audio',
     voiceImportDetail: 'Choose an audio file to review locally. Microphone access is not needed.',
     voiceCleanupFailed: 'Couldn’t discard this recording. Try again.',
@@ -116,6 +117,7 @@ export const media = defineFeature(
     shareFileLabel: 'Share %{name}',
   },
   {
+    fileReplyUnavailable: 'Por enquanto, envie arquivos em respostas pelo iPhone.',
     voiceImportAudio: 'Importar áudio',
     voiceImportDetail:
       'Escolha um arquivo de áudio para revisar neste aparelho. Não é necessário acesso ao microfone.',

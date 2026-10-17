@@ -1,5 +1,5 @@
 import { memo, useRef, type ComponentRef } from 'react';
-import { Pressable, Text, View, useWindowDimensions } from 'react-native';
+import { Text, View, useWindowDimensions } from 'react-native';
 import type { TimelineEntry } from '../core/types';
 import type { ItemDetail } from '../core/generated/ItemDetail';
 import {
@@ -14,7 +14,7 @@ import { MessageMedia } from '../media/MediaAttachment';
 import { MiniappMessageCard } from '../miniapps/message-card';
 import { useTheme } from '../theme';
 import { Icon } from './primitives';
-import { MessageInteraction } from './message-interaction';
+import { MessageInteraction, MessagePressable as Pressable } from './message-interaction';
 import { MessageReceipt, messageDeliveryLabel } from './message-receipt';
 import type { MessageActionMode, MessageAnchor } from './use-message-actions';
 
@@ -198,6 +198,7 @@ export const ConversationMessage = memo(function ConversationMessage({
             accessibilityHint={disabled ? undefined : t('chat.touchAndHoldToReplyOrSeeActions')}
             onPress={() => open('reactions')}
             onLongPress={() => open('actions')}
+            onAccessibilityTap={() => open('actions')}
             delayLongPress={350}
             disabled={disabled || !messageCanInteract(entry)}
             style={{
@@ -267,7 +268,6 @@ export const ConversationMessage = memo(function ConversationMessage({
             ) : null}
             {!voice && card?.kind_id !== 'file' && text.trim() ? (
               <Text
-                selectable
                 style={{
                   color: attachment ? colors.text : ink,
                   fontSize: 17,

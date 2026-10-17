@@ -40,7 +40,17 @@ export function createDriver(): CoreDriver {
         : undefined,
     async sendFile(selection) {
       return JSON.parse(
-        await core().sendFile(selection.spaceId, selection.uri, selection.name, selection.mime),
+        await core().sendFile(
+          JSON.stringify({
+            spaceId: selection.spaceId,
+            uri: selection.uri,
+            name: selection.name,
+            mime: selection.mime,
+            replyTo: selection.replyTo,
+            thread: selection.thread,
+            mutationId: selection.mutationId,
+          }),
+        ),
       );
     },
     async sendVoice(recording) {

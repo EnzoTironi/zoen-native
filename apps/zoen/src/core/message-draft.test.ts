@@ -44,3 +44,16 @@ test('accepted exact edit returns to the preserved normal message draft; failure
   assert.equal(result.editing, null);
   assert.equal(result.editText, '');
 });
+
+test('media completion keeps newer quotes, edits and unrelated typed text', () => {
+  let draft = reduce(initialMessageDraft(), { type: 'text', value: 'Unsent caption' });
+  draft = reduce(draft, { type: 'reply', entry: message('a') });
+  const contextRevision = draft.contextRevision;
+  const next = reduce(draft, { type: 'reply', entry: message('b') });
+  assert.deepEqual(reduce(next, { type: 'media-accepted', contextRevision }), next);
+  const edit = reduce(draft, { type: 'edit', entry: message('c'), text: 'New edit' });
+  assert.deepEqual(reduce(edit, { type: 'media-accepted', contextRevision }), edit);
+  const accepted = reduce(draft, { type: 'media-accepted', contextRevision });
+  assert.equal(accepted.reply, null);
+  assert.equal(accepted.text, 'Unsent caption');
+});

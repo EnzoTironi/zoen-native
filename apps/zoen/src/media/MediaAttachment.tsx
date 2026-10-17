@@ -1,6 +1,7 @@
 import { t, formatLocale } from '../i18n/index.ts';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, Pressable, Text, View } from 'react-native';
+import { ActivityIndicator, Text, View } from 'react-native';
+import { MessagePressable as Pressable } from '../components/message-interaction';
 import { File } from 'expo-file-system';
 import * as Sharing from 'expo-sharing';
 import { Image } from 'expo-image';

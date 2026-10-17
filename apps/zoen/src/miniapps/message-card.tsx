@@ -1,5 +1,6 @@
 import { router } from 'expo-router';
-import { Pressable, Text, View } from 'react-native';
+import { Text, View } from 'react-native';
+import { MessagePressable as Pressable } from '../components/message-interaction';
 import type { ItemCard } from '../core/generated/ItemCard';
 import type { ItemDetail } from '../core/generated/ItemDetail';
 import { t, locale } from '../i18n/index.ts';
@@ -52,7 +53,7 @@ export function MiniappMessageCard({
         paddingVertical: 12,
         minHeight: 44,
         backgroundColor: colors.surface,
-        borderRadius: 16,
+        borderRadius: 12,
       }}
     >
       <Icon
@@ -83,6 +84,7 @@ export function MiniappMessageCard({
         <CompactMiniappCard
           item={projection}
           size={side}
+          layout="message"
           onPress={open}
           onLongPress={onLongPress}
           footer={footer}

@@ -1,6 +1,8 @@
 import { useEvent } from 'expo';
 import { useVideoPlayer, VideoView } from 'expo-video';
 import { ActivityIndicator, Text, View } from 'react-native';
+import { GestureDetector, useNativeGesture } from 'react-native-gesture-handler';
+import { useMessagePan, useMessagePressConsumption } from '../components/message-interaction';
 import { useTheme } from '../theme';
 
 export function VideoClip({ uri, compact = false }: { uri: string; compact?: boolean }) {
@@ -9,6 +11,17 @@ export function VideoClip({ uri, compact = false }: { uri: string; compact?: boo
 
 function VideoClipContent({ uri, compact }: { uri: string; compact: boolean }) {
   const { colors } = useTheme();
+  const messagePan = useMessagePan();
+  const consumePress = useMessagePressConsumption();
+  // AVKit owns touches within its controls. Only the surrounding message pan
+  // waits for this native boundary; the timeline's vertical scroll is unaffected.
+  // Do not use disallowInterruption, which would also cancel ancestor scrolling.
+  const nativeControls = useNativeGesture({
+    enabled: Boolean(messagePan),
+    block: messagePan,
+    cancelsTouchesInView: false,
+    onActivate: consumePress,
+  });
   const player = useVideoPlayer({ uri }, (value) => {
     value.allowsExternalPlayback = false;
   });
@@ -24,40 +37,48 @@ function VideoClipContent({ uri, compact }: { uri: string; compact: boolean }) {
   const ratio = size && size.width > 0 && size.height > 0 ? size.width / size.height : 16 / 9;
   return (
     <View style={{ width: '100%', minWidth: 0, gap: 10 }}>
-      <View
-        style={{
-          borderRadius: compact ? 24 : 16,
-          borderCurve: 'continuous',
-          overflow: 'hidden',
-          backgroundColor: '#000000',
-        }}
-      >
-        <VideoView
-          player={player}
-          style={
-            compact
-              ? { width: '100%', aspectRatio: Math.max(0.75, Math.min(1.9, ratio)), maxHeight: 360 }
-              : { width: '100%', height: 320 }
-          }
-          contentFit="contain"
-          nativeControls
-          fullscreenOptions={{ enable: true }}
-          playsInline
-        />
-        {status.status === 'loading' ? (
-          <View
-            pointerEvents="none"
-            style={{
-              position: 'absolute',
-              inset: 0,
-              alignItems: 'center',
-              justifyContent: 'center',
-            }}
-          >
-            <ActivityIndicator color="#FFFFFF" />
-          </View>
-        ) : null}
-      </View>
+      <GestureDetector gesture={nativeControls}>
+        <View
+          collapsable={false}
+          onTouchStart={consumePress}
+          style={{
+            borderRadius: compact ? 24 : 16,
+            borderCurve: 'continuous',
+            overflow: 'hidden',
+            backgroundColor: '#000000',
+          }}
+        >
+          <VideoView
+            player={player}
+            style={
+              compact
+                ? {
+                    width: '100%',
+                    aspectRatio: Math.max(0.75, Math.min(1.9, ratio)),
+                    maxHeight: 360,
+                  }
+                : { width: '100%', height: 320 }
+            }
+            contentFit="contain"
+            nativeControls
+            fullscreenOptions={{ enable: true }}
+            playsInline
+          />
+          {status.status === 'loading' ? (
+            <View
+              pointerEvents="none"
+              style={{
+                position: 'absolute',
+                inset: 0,
+                alignItems: 'center',
+                justifyContent: 'center',
+              }}
+            >
+              <ActivityIndicator color="#FFFFFF" />
+            </View>
+          ) : null}
+        </View>
+      </GestureDetector>
       {status.error ? (
         <Text accessibilityRole="alert" style={{ color: colors.danger, fontSize: 14 }}>
           {status.error.message}

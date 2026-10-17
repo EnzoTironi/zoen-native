@@ -306,6 +306,111 @@ impl Engine {
         Ok(item)
     }
 
+    /// Stores an ordinary file and posts its attachment as one durable operation.
+    /// A receipt binds retries to the original intent, including reply/thread scope.
+    #[allow(clippy::too_many_arguments)]
+    pub fn send_file_message(
+        &mut self,
+        space: &str,
+        name: &str,
+        mime: &str,
+        bytes: &[u8],
+        thumbnail: Option<&[u8]>,
+        reply_to: Option<&str>,
+        thread: bool,
+        mutation_id: &str,
+    ) -> R<TimelineEntry> {
+        let me = self.me_id()?;
+        if !self.state.writer(space, &me) {
+            return Err(CoreError::Forbidden {
+                reason: t("só autores enviam arquivos", "only writers can send files"),
+            });
+        }
+        if mutation_id.is_empty()
+            || mutation_id.len() > 128
+            || !mutation_id
+                .bytes()
+                .all(|b| b.is_ascii_alphanumeric() || b == b'-' || b == b'_')
+            || name.trim().is_empty()
+            || name.len() > 1024
+            || name.contains(['/', '\\', '\0'])
+            || mime.is_empty()
+            || mime.len() > 255
+            || !mime.contains('/')
+            || mime.chars().any(char::is_control)
+            || bytes.is_empty()
+            || bytes.len() > MAX_FILE_BYTES
+            || thumbnail.is_some_and(|t| t.is_empty() || t.len() > MAX_THUMBNAIL_BYTES)
+            || (thread && reply_to.is_none())
+        {
+            return Err(invalid("envio de arquivo inválido", "invalid file send"));
+        }
+        // Resolve the target before file keys or chunks are written. Never fall back
+        // to the main conversation when a thread target disappeared or is foreign.
+        let reply = reply_to
+            .map(|to| self.reply_ref(space, to, thread))
+            .transpose()?;
+        let intent = serde_json::to_vec(&(
+            space,
+            name,
+            mime,
+            hex::encode(Sha256::digest(bytes)),
+            thumbnail.map(|t| hex::encode(Sha256::digest(t))),
+            reply_to,
+            thread,
+        ))
+        .map_err(|_| invalid_file())?;
+        let fingerprint = hex::encode(Sha256::digest(&intent));
+        let key = format!("file_send:{me}:{mutation_id}");
+        if let Some(receipt) = self.store.meta(&key)? {
+            let (accepted, message): (String, String) =
+                serde_json::from_str(&receipt).map_err(|_| invalid_file())?;
+            if accepted != fingerprint {
+                return Err(invalid(
+                    "identificador de envio já utilizado",
+                    "send identifier already used",
+                ));
+            }
+            let entry = self
+                .space_state(space)?
+                .entries
+                .iter()
+                .find(|entry| entry.id() == message)
+                .ok_or_else(invalid_file)?;
+            return Ok(self.entry_dto(entry));
+        }
+        self.atomic_agent_action(|engine| {
+            let item = engine.file_add(space, name, name, mime, bytes, thumbnail)?;
+            let posted = engine.append(
+                space,
+                &me,
+                EventBody::MessagePosted {
+                    message: new_id("msg"),
+                    text: String::new(),
+                    attaches: Some(item),
+                    reply,
+                    forwarded: false,
+                },
+            )?;
+            // Timeline identity is the signed event client ID, not MessagePosted.message.
+            let message = if posted.client_id.is_empty() {
+                posted.hash
+            } else {
+                posted.client_id
+            };
+            let receipt =
+                serde_json::to_string(&(fingerprint, &message)).map_err(|_| invalid_file())?;
+            engine.store.set_meta(&key, &receipt)?;
+            let entry = engine
+                .space_state(space)?
+                .entries
+                .iter()
+                .find(|entry| entry.id() == message)
+                .ok_or_else(invalid_file)?;
+            Ok(engine.entry_dto(entry))
+        })
+    }
+
     /// Sends a voice note: the audio as an end-to-end encrypted file Item (the same chunked
     /// path as any file, so every client, the web included, can fetch and play it), tagged
     /// with its length, waveform and transcript. With `reply_to` it answers that message

@@ -10,6 +10,7 @@ import {
 } from 'react';
 import { useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { useHeaderHeight } from 'expo-router/react-navigation';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { FlashList, type FlashListRef } from '@shopify/flash-list';
 import {
   KeyboardAvoidingView,
@@ -48,6 +49,7 @@ export default function Chat() {
   const { colors } = useTheme();
   const { items } = useHome();
   const headerHeight = useHeaderHeight();
+  const { top: statusBarHeight } = useSafeAreaInsets();
   const { progress: keyboardProgress } = useReanimatedKeyboardAnimation();
   const conversationMiniapps = items.filter((item) => item.space_id === id);
   const { inform } = useDialogs();
@@ -223,7 +225,8 @@ export default function Chat() {
           animated: true,
           viewPosition: 0,
           viewOffset: -(
-            headerHeight +
+            headerHeight -
+            statusBarHeight +
             railHeight * (1 - Math.min(1, Math.max(0, keyboardProgress.value))) +
             noticeHeight +
             8
@@ -243,6 +246,7 @@ export default function Chat() {
     page,
     inform,
     headerHeight,
+    statusBarHeight,
     railHeight,
     noticeHeight,
     keyboardProgress,
@@ -420,7 +424,12 @@ export default function Chat() {
                     }
                   : undefined
               }
-              onMediaSent={() => updateDraft({ type: 'cancel' })}
+              onMediaSent={() =>
+                updateDraft({
+                  type: 'media-accepted',
+                  contextRevision: messageDraft.contextRevision,
+                })
+              }
             />
           </>
         }
@@ -461,6 +470,7 @@ export default function Chat() {
             <Loading />
           ) : (
             <FlashList
+              style={{ flex: 1, marginTop: statusBarHeight, overflow: 'hidden' }}
               key={timelineKey}
               ref={list}
               onLoad={() => setLoadedSpace(timelineKey)}
@@ -473,7 +483,7 @@ export default function Chat() {
               ListFooterComponent={composerSpacer}
               contentContainerStyle={{
                 paddingHorizontal: 16,
-                paddingTop: headerHeight + noticeHeight + 8,
+                paddingTop: Math.max(0, headerHeight - statusBarHeight) + noticeHeight + 8,
                 paddingBottom: 12,
               }}
               maintainVisibleContentPosition={{

@@ -183,12 +183,15 @@ export function VoiceWaveform({ draft, onEdit, disabled = false }: Props) {
     return (
       <Slider
         label={<NativeText>{`${label}: ${time(value)}`}</NativeText>}
-        value={value}
-        min={min}
-        max={Math.max(min + 1, max)}
-        step={1}
-        onValueChange={(value) => {
-          if (!disabled) change(clamp(value, min, max));
+        // A source can contain millions of frames. A stepped SwiftUI slider
+        // creates native tick views for those steps; keep the native domain
+        // continuous and bounded, then round only at the original-frame boundary.
+        value={max > min ? (value - min) / (max - min) : 0}
+        min={0}
+        max={1}
+        onValueChange={(fraction) => {
+          if (!disabled && Number.isFinite(fraction))
+            change(clamp(min + Math.max(0, Math.min(1, fraction)) * (max - min), min, max));
         }}
         modifiers={[disabledModifier(disabled || max <= min)]}
       />

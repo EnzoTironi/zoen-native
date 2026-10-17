@@ -2,7 +2,8 @@ import { Image } from 'expo-image';
 import { PHOTO_CARD_TEXT, PHOTO_CARD_SECONDARY, PHOTO_CARD_TEXT_GRADIENT } from './photo-card';
 import { router } from 'expo-router';
 import type { ReactNode } from 'react';
-import { Pressable, Text, View, useWindowDimensions } from 'react-native';
+import { Text, View, useWindowDimensions } from 'react-native';
+import { MessagePressable as Pressable } from '../components/message-interaction';
 import { t, formatLocale } from '../i18n/index.ts';
 import type { ItemDetail } from '../core/generated/ItemDetail';
 import { useTheme } from '../theme';
@@ -42,6 +43,8 @@ export type MiniappCardItem = Pick<ItemDetail, 'id' | 'space_id' | 'version' | '
 export type CompactMiniappCardProps = {
   item: MiniappCardItem;
   size?: number;
+  /** Home/rail tiles remain square; message attachments follow their content. */
+  layout?: 'tile' | 'message';
   onPress?: () => void;
   onLongPress?: () => void;
   /** A sibling control, so menus never become an interactive child of the card. */
@@ -54,6 +57,7 @@ export type CompactMiniappCardProps = {
 export function CompactMiniappCard({
   item,
   size = 152,
+  layout = 'tile',
   onPress,
   onLongPress,
   accessory,
@@ -64,6 +68,8 @@ export function CompactMiniappCard({
   if (!item.app) return null;
   const snapshot = miniappSnapshot(item);
   const side = Math.max(136, size);
+  const message = layout === 'message';
+  const minimumHeight = message ? Math.max(196, Math.round(side * 0.72)) : side;
   const art = snapshot?.art as keyof typeof artwork | undefined;
   const photo = snapshot?.photo as keyof typeof photos | undefined;
   const photoSource = photo ? photos[photo] : undefined;
@@ -95,7 +101,7 @@ export function CompactMiniappCard({
     .filter(Boolean)
     .join(', ');
   return (
-    <View style={{ width: side, minHeight: side }}>
+    <View style={{ width: side, minHeight: minimumHeight }}>
       <Pressable
         testID={`miniapp-card-${item.id}`}
         accessibilityRole="button"
@@ -106,7 +112,7 @@ export function CompactMiniappCard({
         }
         onLongPress={onLongPress}
         style={({ pressed }) => ({
-          minHeight: side,
+          minHeight: minimumHeight,
           borderRadius: 24,
           borderCurve: 'continuous',
           overflow: 'hidden',
@@ -135,9 +141,12 @@ export function CompactMiniappCard({
             experimental_backgroundImage: photoSource ? PHOTO_CARD_TEXT_GRADIENT : undefined,
           }}
         >
-          <View style={{ paddingRight: accessory && !photoSource ? 44 : 0, gap: 6 }}>
-            {snapshot?.eyebrow ? (
-              <Text numberOfLines={1} style={{ color: secondary, fontSize: 11, fontWeight: '600' }}>
+          <View style={{ paddingRight: accessory && !photoSource ? 44 : 0, gap: message ? 8 : 6 }}>
+            {snapshot?.eyebrow && (!message || snapshot.eyebrow !== title) ? (
+              <Text
+                numberOfLines={message ? undefined : 1}
+                style={{ color: secondary, fontSize: message ? 12 : 11, fontWeight: '600' }}
+              >
                 {snapshot.eyebrow}
               </Text>
             ) : null}
@@ -150,7 +159,13 @@ export function CompactMiniappCard({
                       numberOfLines={1}
                       adjustsFontSizeToFit
                       minimumFontScale={0.7}
-                      style={{ flex: 1, minWidth: 0, color: ink, fontSize: 24, fontWeight: '700' }}
+                      style={{
+                        flex: 1,
+                        minWidth: 0,
+                        color: ink,
+                        fontSize: message ? 28 : 24,
+                        fontWeight: '700',
+                      }}
                     >
                       {code}
                     </Text>
@@ -167,7 +182,7 @@ export function CompactMiniappCard({
             ) : (
               <View
                 style={{
-                  minHeight: value || !photoSource ? 48 : 0,
+                  minHeight: value || !photoSource ? (message ? 68 : 48) : 0,
                   flexDirection: accessory && value ? 'column' : 'row',
                   alignItems: accessory && value ? 'flex-start' : 'center',
                   gap: 3,
@@ -175,11 +190,11 @@ export function CompactMiniappCard({
               >
                 {value ? (
                   <Text
-                    numberOfLines={2}
+                    numberOfLines={message ? undefined : 2}
                     style={{
                       flex: accessory ? undefined : 1,
                       color: ink,
-                      fontSize: date ? 25 : 32,
+                      fontSize: message ? (date ? 30 : 38) : date ? 25 : 32,
                       fontWeight: '700',
                       fontVariant: ['tabular-nums'],
                     }}
@@ -193,8 +208,14 @@ export function CompactMiniappCard({
                     accessible={false}
                     contentFit="contain"
                     style={{
-                      width: value ? (accessory ? 38 : 54) : side - 36 - (accessory ? 44 : 0),
-                      height: value ? (accessory ? 38 : 54) : 52,
+                      width: value
+                        ? accessory
+                          ? 38
+                          : message
+                            ? 72
+                            : 54
+                        : side - 36 - (accessory ? 44 : 0),
+                      height: value ? (accessory ? 38 : message ? 68 : 54) : message ? 84 : 52,
                     }}
                   />
                 ) : !photoSource ? (
@@ -204,7 +225,7 @@ export function CompactMiniappCard({
                       android: 'widgets',
                       web: 'widgets',
                     }}
-                    size={34}
+                    size={message ? 42 : 34}
                     color={ink}
                   />
                 ) : null}
@@ -212,8 +233,13 @@ export function CompactMiniappCard({
             )}
           </View>
           <Text
-            numberOfLines={fontScale > 1.3 ? 3 : 2}
-            style={{ color: ink, fontSize: 14, lineHeight: 17, fontWeight: '600' }}
+            numberOfLines={message ? undefined : fontScale > 1.3 ? 3 : 2}
+            style={{
+              color: ink,
+              fontSize: message ? 16 : 14,
+              lineHeight: message ? 20 : 17,
+              fontWeight: '600',
+            }}
           >
             {title}
           </Text>
@@ -221,7 +247,7 @@ export function CompactMiniappCard({
             <View style={{ flexDirection: 'row', gap: 6 }}>
               {snapshot.bars.slice(0, 3).map((bar) => (
                 <View key={bar.label} style={{ flex: 1, minWidth: 0, gap: 3 }}>
-                  <Text numberOfLines={1} style={{ color: secondary, fontSize: 10 }}>
+                  <Text numberOfLines={1} style={{ color: secondary, fontSize: message ? 11 : 10 }}>
                     {bar.label}
                   </Text>
                   <View
@@ -261,12 +287,25 @@ export function CompactMiniappCard({
             </View>
           ))}
           {detail && !snapshot?.bars.length ? (
-            <Text numberOfLines={1} style={{ color: secondary, fontSize: 11, lineHeight: 15 }}>
+            <Text
+              numberOfLines={message ? (fontScale > 1.3 ? undefined : 2) : 1}
+              style={{
+                color: secondary,
+                fontSize: message ? 13 : 11,
+                lineHeight: message ? 18 : 15,
+              }}
+            >
               {detail}
             </Text>
           ) : null}
         </View>
-        {footer}
+        {footer ? (
+          message ? (
+            <View style={{ marginTop: 'auto', paddingTop: 12 }}>{footer}</View>
+          ) : (
+            footer
+          )
+        ) : null}
       </Pressable>
       {accessory ? (
         <View style={{ position: 'absolute', right: 8, top: 8 }}>{accessory}</View>

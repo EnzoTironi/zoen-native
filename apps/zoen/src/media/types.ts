@@ -12,7 +12,13 @@ export type FileSelection = {
   size?: number;
 };
 
-export type SendFile = FileSelection & { spaceId: string };
+export type SendFile = FileSelection & {
+  spaceId: string;
+  replyTo: string | null;
+  thread: boolean;
+  /** One immutable selection intent, retained across failed-send retries. */
+  mutationId: string;
+};
 export type SendVoice = {
   spaceId: string;
   uri: string;
@@ -36,7 +42,7 @@ export type LocalMediaFile = {
 /** Bytes stay in native storage. The bridge carries local URIs and small metadata only. */
 export interface MediaDriver {
   voiceEditor?: VoiceNativePort;
-  sendFile(selection: SendFile): Promise<{ itemId: string }>;
+  sendFile(selection: SendFile): Promise<{ itemId: string; messageId: string }>;
   sendVoice(recording: SendVoice): Promise<{ messageId: string; itemId: string }>;
   fileInfo(itemId: string, version?: number): Promise<FileDto>;
   materializeFile(itemId: string, version?: number): Promise<LocalMediaFile | null>;

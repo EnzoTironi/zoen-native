@@ -1,6 +1,8 @@
 import { t } from '../../../i18n/index.ts';
 import { useCallback, useReducer, useRef, useState } from 'react';
 import { router, Stack, useFocusEffect, useLocalSearchParams } from 'expo-router';
+import { useHeaderHeight } from 'expo-router/react-navigation';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { FlashList, type FlashListRef } from '@shopify/flash-list';
 import { Text, View, type TextInputInstance } from 'react-native';
 import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
@@ -26,6 +28,8 @@ import { useMessageActions } from '../../../components/use-message-actions';
 export default function Thread() {
   const { space, root } = useLocalSearchParams<{ space: string; root: string }>();
   const { store, notice } = useClient();
+  const headerHeight = useHeaderHeight();
+  const { top: statusBarHeight } = useSafeAreaInsets();
   const { items } = useHome();
   const input = useRef<TextInputInstance>(null);
   const list = useRef<FlashListRef<TimelineEntry>>(null);
@@ -119,6 +123,7 @@ export default function Thread() {
               />
             ) : null}
             <MessageComposer
+              threadRootId={root}
               spaceId={space}
               inputRef={input}
               replyTo={reply?.id ?? root}
@@ -134,7 +139,12 @@ export default function Thread() {
               onSend={() => {
                 void send();
               }}
-              onMediaSent={() => updateDraft({ type: 'cancel' })}
+              onMediaSent={() =>
+                updateDraft({
+                  type: 'media-accepted',
+                  contextRevision: messageDraft.contextRevision,
+                })
+              }
             />
           </>
         }
@@ -148,14 +158,19 @@ export default function Thread() {
             <Loading />
           ) : (
             <FlashList
+              style={{ flex: 1, marginTop: statusBarHeight, overflow: 'hidden' }}
               ref={list}
               data={entries}
               keyExtractor={(entry) => entry.id}
               keyboardDismissMode="interactive"
               keyboardShouldPersistTaps="handled"
-              contentInsetAdjustmentBehavior="automatic"
+              contentInsetAdjustmentBehavior="never"
               ListFooterComponent={composerSpacer}
-              contentContainerStyle={{ paddingHorizontal: 16, paddingTop: 8, paddingBottom: 12 }}
+              contentContainerStyle={{
+                paddingHorizontal: 16,
+                paddingTop: Math.max(0, headerHeight - statusBarHeight) + 8,
+                paddingBottom: 12,
+              }}
               maintainVisibleContentPosition={{
                 startRenderingFromBottom: false,
                 autoscrollToBottomThreshold: 0.15,

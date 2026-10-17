@@ -29,8 +29,8 @@ public class ZoenCoreModule: Module {
     AsyncFunction("createAccount") { (name: String, handle: String, relay: String) async throws -> String in
       try await self.session.createAccount(name: name, handle: handle, relay: relay)
     }
-    AsyncFunction("sendFile") { (spaceId: String, uri: String, name: String, mime: String) async throws -> String in
-      try await self.session.sendFile(spaceId: spaceId, uri: uri, name: name, mime: mime)
+    AsyncFunction("sendFile") { (request: String) async throws -> String in
+      try await self.session.sendFile(request)
     }
     AsyncFunction("sendVoice") { (request: String) async throws -> String in
       try await self.session.sendVoice(request)
@@ -259,12 +259,34 @@ private actor ZoenSession {
     return try await core.clientRequest(request: #"{"op":"snapshot"}"#)
   }
 
-  func sendFile(spaceId: String, uri: String, name: String, mime: String) throws -> String {
+  private struct FileSend: Decodable {
+    let spaceId: String
+    let uri: String
+    let name: String
+    let mime: String
+    let replyTo: String?
+    let thread: Bool
+    let mutationId: String
+  }
+  func sendFile(_ request: String) throws -> String {
     guard !erasing, let core else { throw SessionError.closed }
-    let selection = try mediaFiles.readSelection(uri: uri, name: name, mime: mime)
+    guard request.utf8.count <= 32_768 else { throw ZoenMediaFiles.Failure.invalidFile }
+    let save = try JSONDecoder().decode(FileSend.self, from: Data(request.utf8))
+    guard !save.spaceId.isEmpty, save.spaceId.utf8.count <= 256,
+          !save.spaceId.contains("\0"), save.uri.utf8.count <= 16_384,
+          !save.mutationId.isEmpty, save.mutationId.utf8.count <= 256, !save.mutationId.contains("\0"),
+          save.replyTo.map({ !$0.isEmpty && $0.utf8.count <= 256 && !$0.contains("\0") }) ?? true
+          else { throw ZoenMediaFiles.Failure.invalidFile }
+    let selection = try mediaFiles.readSelection(uri: save.uri, name: save.name, mime: save.mime)
     let thumbnail = try? ZoenMediaFiles.thumbnail(at: selection.url)
-    let item = try core.fileAdd(spaceId: spaceId, path: selection.name, name: selection.name, mime: selection.mime, bytes: selection.data, thumbnail: thumbnail)
-    return try ZoenMediaFiles.json(["itemId": item.id])
+    // This actor method has no suspension: close/erase cannot cross the native
+    // selection validation and synchronous canonical file-message mutation.
+    let entry = try core.sendFileMessage(spaceId: save.spaceId, name: selection.name,
+      mime: selection.mime, bytes: selection.data, thumbnail: thumbnail,
+      replyTo: save.replyTo, thread: save.thread, mutationId: save.mutationId)
+    var result: [String: Any] = ["messageId": entry.id]
+    if case let .message(_, card) = entry.kind, let card { result["itemId"] = card.itemId }
+    return try ZoenMediaFiles.json(result)
   }
 
   private struct VoiceSend: Decodable {

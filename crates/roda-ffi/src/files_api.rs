@@ -117,6 +117,33 @@ impl RodaEngine {
         e.item(&id)
     }
 
+    /// Sends an ordinary attachment in the conversation, atomically with its file.
+    /// Reuse mutation_id only to retry the exact same selected file and target.
+    #[allow(clippy::too_many_arguments)]
+    pub fn send_file_message(
+        &self,
+        space_id: String,
+        name: String,
+        mime: String,
+        bytes: Vec<u8>,
+        thumbnail: Option<Vec<u8>>,
+        reply_to: Option<String>,
+        thread: bool,
+        mutation_id: String,
+    ) -> Result<TimelineEntry, CoreError> {
+        let _language = crate::i18n::enter(self.lang);
+        self.lock().send_file_message(
+            &space_id,
+            &name,
+            &mime,
+            &bytes,
+            thumbnail.as_deref(),
+            reply_to.as_deref(),
+            thread,
+            &mutation_id,
+        )
+    }
+
     /// Sends a voice note as an encrypted audio file (see `Engine::send_voice_note`).
     /// `levels` are waveform bars 0…1; `reply_to` answers a message, in its thread if
     /// `thread`.

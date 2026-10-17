@@ -5,6 +5,7 @@ import { useFocusEffect } from 'expo-router';
 import { Image } from 'expo-image';
 import * as DocumentPicker from 'expo-document-picker';
 import * as ImagePicker from 'expo-image-picker';
+import { randomUUID } from 'expo-crypto';
 import {
   AudioModule,
   RecordingPresets,
@@ -17,7 +18,7 @@ import { IconButton, NativeButton } from '../components/primitives';
 import { useDialogs } from '../components/dialogs';
 import { useClient } from '../core/provider';
 import { AudioClip, clipTime, pauseAudioPlayback } from './AudioClip';
-import type { FileSelection } from './types';
+import type { FileSelection, SendFile } from './types';
 import { discardCacheCopy } from './cache-files';
 import { sensitiveCacheWork } from './cache-work';
 import { MAX_SELECTED_BYTES } from './types';
@@ -32,6 +33,7 @@ import { MediaActions } from './media-actions';
 import type { MediaPickKind } from './media-actions.types';
 
 type Recording = { uri: string; durationMs: number; levels: number[]; owner?: VoiceReviewOwner };
+type FileDraft = SendFile & { onAccepted?: () => void };
 const failureMessage = (reason: unknown) =>
   reason instanceof Error ? reason.message : t('media.thisCouldNotBeCompletedTryAgain');
 async function discard(uri: string | undefined) {
@@ -81,7 +83,7 @@ export function MediaComposer({
   const recorderState = useAudioRecorderState(recorder, 100);
   const [menu, setMenu] = useState(false);
   const [expanded, setExpanded] = useState(false);
-  const [selection, setSelection] = useState<FileSelection | null>(null);
+  const [selection, setSelection] = useState<FileDraft | null>(null);
   const [clip, setClip] = useState<Recording | null>(null);
   const [busy, setBusy] = useState(false);
   const [failure, setFailure] = useState<string | null>(null);
@@ -240,7 +242,14 @@ export function MediaComposer({
       }
       // Keep cleanup ownership immediately; an unmount can precede React's next effect.
       uriToDiscard.current = file.uri;
-      setSelection(file);
+      setSelection({
+        ...file,
+        spaceId,
+        replyTo,
+        thread,
+        mutationId: randomUUID(),
+        onAccepted: onSent,
+      });
     }
     try {
       if (kind === 'document' || kind === 'audio') {
@@ -400,7 +409,7 @@ export function MediaComposer({
     setFailure(null);
     const uri = selection?.uri ?? clip?.uri;
     try {
-      if (selection) await media.sendFile({ ...selection, spaceId });
+      if (selection) await media.sendFile(selection);
       else if (clip)
         await media.sendVoice({
           uri: clip.uri,
@@ -415,8 +424,10 @@ export function MediaComposer({
       clipNow.current = null;
       setClip(null);
       uriToDiscard.current = undefined;
-      await discard(uri);
-      onSent?.();
+      if (selection) selection.onAccepted?.();
+      else onSent?.();
+      // Acknowledged sends stay successful even if local cache cleanup needs a retry.
+      void discard(uri).catch(() => {});
       void store.refresh().catch(() => {});
     } catch (reason) {
       setFailure(failureMessage(reason));
@@ -492,16 +503,15 @@ export function MediaComposer({
         }}
       />
     ) : null;
-  const attachment =
-    !thread && replyTo === null ? (
-      <ComposerAction
-        testID="add-attachment"
-        label={t('media.addAttachment')}
-        name="plus"
-        disabled={disabled || busy || presented}
-        onPress={() => setMenu(true)}
-      />
-    ) : null;
+  const attachment = (
+    <ComposerAction
+      testID="add-attachment"
+      label={t('media.addAttachment')}
+      name="plus"
+      disabled={disabled || busy || presented}
+      onPress={() => setMenu(true)}
+    />
+  );
   const voice = (
     <ComposerAction
       testID="record-voice"

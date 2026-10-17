@@ -1,7 +1,8 @@
 import { t, formatLocale } from '../i18n/index.ts';
 import { useAudioPlayer, useAudioPlayerStatus, setAudioModeAsync } from 'expo-audio';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, Pressable, Text, View } from 'react-native';
+import { ActivityIndicator, Text, View } from 'react-native';
+import { MessagePressable as Pressable } from '../components/message-interaction';
 import { Icon } from '../components/primitives';
 import { useTheme } from '../theme';
 import { AudioProgress } from './audio-progress';

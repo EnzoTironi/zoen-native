@@ -7,7 +7,7 @@ import {
   useTapGesture,
 } from 'react-native-gesture-handler';
 import { t } from '../i18n/index.ts';
-import { useMessagePan } from '../components/message-interaction';
+import { useMessagePan, useMessagePressConsumption } from '../components/message-interaction';
 
 const clamp = (value: number) => Math.max(0, Math.min(1, value));
 
@@ -80,6 +80,7 @@ export function AudioProgress({
   const drag = useRef<number | null>(null);
   const tapping = useRef<number | null>(null);
   const messagePan = useMessagePan();
+  const consumePress = useMessagePressConsumption();
   const enabled = !disabled && duration > 0 && width > 0;
   const at = (x: number) => clamp(x / Math.max(1, width));
   const pan = usePanGesture({
@@ -91,6 +92,7 @@ export function AudioProgress({
     onBegin: () => {
       drag.current = width;
     },
+    onActivate: consumePress,
     onUpdate: (event) => {
       if (enabled && drag.current === width) setDragging(at(event.x));
     },
@@ -109,6 +111,7 @@ export function AudioProgress({
     onBegin: () => {
       tapping.current = width;
     },
+    onActivate: consumePress,
     onDeactivate: (event) => {
       if (!event.canceled && enabled && tapping.current === width) onSeek(at(event.x));
     },
@@ -125,6 +128,7 @@ export function AudioProgress({
       <View
         accessible
         collapsable={false}
+        onTouchStart={consumePress}
         accessibilityRole="adjustable"
         accessibilityLabel={t('media.voiceMessage')}
         accessibilityState={{ disabled }}

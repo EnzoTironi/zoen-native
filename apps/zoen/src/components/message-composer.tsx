@@ -30,6 +30,7 @@ export function MessageComposer({
   editing = false,
   replyTo = null,
   thread = false,
+  threadRootId,
   inputRef,
   mediaEnabled = true,
   suspended = false,
@@ -45,6 +46,7 @@ export function MessageComposer({
   editing?: boolean;
   replyTo?: string | null;
   thread?: boolean;
+  threadRootId?: string;
   inputRef?: Ref<TextInputInstance>;
   mediaEnabled?: boolean;
   suspended?: boolean;
@@ -216,6 +218,7 @@ export function MessageComposer({
     >
       {mediaEnabled ? (
         <MediaComposer
+          key={`${spaceId}:${threadRootId ?? 'chat'}`}
           spaceId={spaceId}
           replyTo={replyTo}
           thread={thread}

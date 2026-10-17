@@ -22,6 +22,7 @@ export type MessageDraftAction =
   | { type: 'reply'; entry: TimelineEntry }
   | { type: 'edit'; entry: TimelineEntry; text: string }
   | { type: 'cancel' }
+  | { type: 'media-accepted'; contextRevision: number }
   | { type: 'accepted'; attempt: MessageDraftAttempt };
 
 export function initialMessageDraft(): MessageDraft {
@@ -79,6 +80,10 @@ export function messageDraftReducer(state: MessageDraft, action: MessageDraftAct
         editText: '',
         contextRevision: state.contextRevision + 1,
       };
+    case 'media-accepted':
+      return state.contextRevision === action.contextRevision && !state.editing
+        ? { ...state, reply: null, contextRevision: state.contextRevision + 1 }
+        : state;
     case 'accepted': {
       const sent = action.attempt;
       if (sent.editingId)
