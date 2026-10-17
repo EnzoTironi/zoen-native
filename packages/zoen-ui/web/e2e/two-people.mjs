@@ -1,5 +1,8 @@
 // Two people, each with a CLI "phone" that links a headless browser; they chat on the web.
 import { chromium } from 'playwright-core';
+import assert from 'node:assert/strict';
+import { chatRow, openChat, showNarrowChats } from './chat-navigation.mjs';
+const wideViewport = { width: 1280, height: 820 };
 import { spawn, execFileSync } from 'node:child_process';
 const RELAY = process.env.RELAY ?? 'http://127.0.0.1:8790';
 const WEB = process.env.WEB ?? 'http://127.0.0.1:4174';
@@ -15,7 +18,7 @@ const browser = await chromium.launch({ executablePath: process.env.CHROME ?? '/
 const watchers = [];
 const errors = [];
 async function linkWeb(p) {
-  const ctx = await browser.newContext({ viewport: { width: 1280, height: 820 }, deviceScaleFactor: 2, locale: 'pt-BR', permissions: ['microphone'] });
+  const ctx = await browser.newContext({ viewport: wideViewport, deviceScaleFactor: 2, locale: 'pt-BR', permissions: ['microphone'] });
   const page = await ctx.newPage();
   page.on('pageerror', (e) => errors.push(`${p.name}: ${e.message}`));
   page.on('console', (m) => { if (m.type() === 'error') errors.push(`${p.name}: ${m.text()}`); });
@@ -92,13 +95,20 @@ await bruno.page.getByRole('menuitem', { name: 'Apagar para todos' }).click();
 await ana.page.locator('.zm-main .zm-deleted').waitFor({ timeout: 30000 });
 // A second chat, unread + pinned/muted/archived in the list.
 await offline(bruno, () => { run(bruno.home, 'group', 'Churrasco de sexta', `@${ana.handle}`); run(bruno.home, 'send', 'Churrasco de sexta', `@${ana.name.toLowerCase()} traz o carvão?`); });
-await ana.page.locator('.zm-chat-open', { hasText: 'Churrasco de sexta' }).waitFor({ timeout: 60000 });
-await ana.page.locator('.zm-chat', { hasText: 'Churrasco' }).locator('.zm-badge').waitFor({ timeout: 60000 }).catch(() => {});
+await chatRow(ana.page, 'Churrasco de sexta').waitFor({ timeout: 60000 });
+await chatRow(ana.page, 'Churrasco de sexta').locator('.na-row-badge, .zm-badge').waitFor({ timeout: 60000 });
 await ana.page.screenshot({ path: `${SHOTS}/08-lista-nao-lidas.png` });
-const row = ana.page.locator('.zm-chat', { hasText: 'Bruno' }).first();
-await row.hover(); await row.locator('.zm-chat-more').click(); await ana.page.getByRole('menuitem', { name: 'Fixar' }).click();
-await row.hover(); await row.locator('.zm-chat-more').click(); await ana.page.getByRole('menuitem', { name: 'Silenciar' }).click();
+// The wide native sidebar is not the hidden phone list. Exercise phone-only
+// list preferences by navigating Back to Chats in the actual narrow layout.
+await showNarrowChats(ana.page);
+const row = chatRow(ana.page, `@${bruno.handle}`);
+await row.hover(); await row.locator('.zm-chat-more').click(); await ana.page.getByRole('menuitem', { name: 'Fixar', exact: true }).click();
+await row.hover(); await row.locator('.zm-chat-more').click(); await ana.page.getByRole('menuitem', { name: 'Silenciar', exact: true }).click();
+await row.locator('[aria-label="Fixada"]').waitFor();
+await row.locator('[aria-label="Silenciada"]').waitFor();
 await ana.page.screenshot({ path: `${SHOTS}/09-fixada-silenciada.png` });
+await ana.page.setViewportSize(wideViewport);
+await openChat(ana.page, `@${bruno.handle}`);
 // Forward.
 const fw = ana.page.locator('.zm-main [data-testid=message]', { hasText: 'Levo o bolo' }).first();
 await fw.hover(); await fw.getByRole('button', { name: 'Mais ações' }).click();
@@ -108,12 +118,15 @@ await ana.page.getByRole('dialog').getByRole('button', { name: /Churrasco/ }).cl
 await ana.page.locator('.zm-forwarded').first().waitFor({ timeout: 30000 });
 await ana.page.locator('.zm-main .zm-own .zm-ticks').last().waitFor({ timeout: 30000 }); await ana.page.waitForTimeout(500);
 await ana.page.screenshot({ path: `${SHOTS}/11-encaminhada.png` });
-const crow = ana.page.locator('.zm-chat', { hasText: 'Churrasco' }).first();
-await crow.hover(); await crow.locator('.zm-chat-more').click(); await ana.page.getByRole('menuitem', { name: 'Arquivar' }).click();
+await showNarrowChats(ana.page);
+const crow = chatRow(ana.page, 'Churrasco de sexta');
+await crow.hover(); await crow.locator('.zm-chat-more').click(); await ana.page.getByRole('menuitem', { name: 'Arquivar', exact: true }).click();
+await crow.waitFor({ state: 'hidden' });
+await ana.page.locator('.zm-archived-row').waitFor();
 await ana.page.screenshot({ path: `${SHOTS}/12-arquivadas.png` });
-// Pick a chat by its exact title, never by preview text (a group preview can mention @ana).
-const chat = (page, title) => page.locator('.zm-chat').filter({ has: page.locator('.zm-chat-top b').getByText(title, { exact: true }) });
-await chat(bruno.page, `@${ana.handle}`).click();
+await ana.page.setViewportSize(wideViewport);
+assert.equal(await chatRow(ana.page, 'Churrasco de sexta').count(), 0);
+await openChat(bruno.page, `@${ana.handle}`);
 await bruno.page.waitForTimeout(500); await bruno.page.screenshot({ path: `${SHOTS}/13-bruno-chat.png` });
 // Empty composer shows the mic; typing swaps to send.
 await bruno.page.locator('.zm-main .zm-composer textarea').fill('');
@@ -122,7 +135,7 @@ await bruno.page.locator('.zm-main .zm-composer textarea').fill('Até sexta!');
 await bruno.page.locator('.zm-main .zm-composer').screenshot({ path: `${SHOTS}/15-composer-enviar.png` });
 // Media: photo, video, file and a voice note, end-to-end encrypted through the relay.
 const fixtures = new URL('./fixtures/', import.meta.url).pathname;
-await chat(ana.page, `@${bruno.handle}`).click();
+await openChat(ana.page, `@${bruno.handle}`);
 const attach = async (page, file) => { await page.locator('.zm-main input[type=file]').setInputFiles(fixtures + file, { timeout: 15000 }); };
 await attach(ana.page, 'praia.jpg');
 await bruno.page.locator('.zm-main .zm-visual.zm-image img').last().waitFor({ timeout: 40000 });
