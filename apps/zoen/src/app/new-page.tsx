@@ -84,7 +84,7 @@ export default function NewPage() {
           <Pressable
             key={chat.id}
             accessibilityRole="radio"
-            accessibilityState={{ checked: space === chat.id }}
+            aria-checked={space === chat.id}
             onPress={() => setSpace(chat.id)}
             style={{
               padding: 18,

@@ -96,6 +96,7 @@ export default function Chats() {
                   key={item.id}
                   accessibilityRole="button"
                   accessibilityState={{ selected: filter === item.id }}
+                  aria-pressed={process.env.EXPO_OS === 'web' ? filter === item.id : undefined}
                   onPress={() => setFilter(item.id)}
                   style={{
                     minHeight: 36,

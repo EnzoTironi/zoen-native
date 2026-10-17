@@ -28,16 +28,7 @@ export function PageBlocks({
     <View style={{ gap: 10 }}>
       {blocks.map((block, index) => (
         <View key={block.id} style={{ gap: 6 }}>
-          <Pressable
-            accessibilityRole={editable ? 'button' : undefined}
-            accessibilityLabel={
-              editable
-                ? `Editar ${block.kind === 'heading' ? 'título' : 'bloco'}: ${block.text || 'vazio'}`
-                : undefined
-            }
-            accessibilityHint={editable ? 'Abre o editor de texto' : undefined}
-            disabled={!editable || busy}
-            onPress={() => onEdit?.(block)}
+          <View
             style={{
               flexDirection: 'row',
               alignItems: 'flex-start',
@@ -53,11 +44,8 @@ export function PageBlocks({
                 disabled={!editable || busy}
                 accessibilityRole="checkbox"
                 accessibilityLabel={block.text || 'Tarefa sem título'}
-                accessibilityState={{ checked: block.checked, disabled: !editable || busy }}
-                onPress={(event) => {
-                  event.stopPropagation();
-                  onToggle?.(block);
-                }}
+                aria-checked={block.checked}
+                onPress={() => onToggle?.(block)}
                 style={{
                   minWidth: 44,
                   minHeight: 44,
@@ -80,50 +68,61 @@ export function PageBlocks({
             ) : block.kind === 'numbered' ? (
               <Text style={{ color: colors.secondary, lineHeight: 27 }}>{block.number}.</Text>
             ) : null}
-            {block.kind === 'divider' ? (
-              <View
-                style={{ flex: 1, height: 1, marginVertical: 14, backgroundColor: colors.line }}
-              />
-            ) : (
-              <View style={{ flex: 1, minHeight: 32 }}>
-                <RichText
-                  text={
-                    block.kind === 'image'
-                      ? block.alt || 'Imagem'
-                      : block.text || (editable ? 'Bloco vazio' : '')
-                  }
-                  spans={block.spans}
-                  style={{
-                    color: !block.text && editable ? colors.tertiary : colors.text,
-                    fontSize:
-                      block.kind === 'heading'
-                        ? block.level === 1
-                          ? 34
-                          : block.level === 2
-                            ? 26
-                            : 21
-                        : 17,
-                    lineHeight: block.kind === 'heading' ? (block.level === 1 ? 42 : 34) : 27,
-                    fontWeight: block.kind === 'heading' ? '600' : '400',
-                    fontFamily:
-                      block.kind === 'code' || block.kind === 'raw'
-                        ? process.env.EXPO_OS === 'ios'
-                          ? 'Menlo'
-                          : 'monospace'
-                        : undefined,
-                  }}
-                />
-                {block.kind === 'image' && block.url ? (
-                  <Text
-                    selectable
-                    style={{ color: colors.secondary, fontSize: 12, lineHeight: 18 }}
-                  >
-                    {block.url}
-                  </Text>
-                ) : null}
-              </View>
-            )}
-          </Pressable>
+            <Pressable
+              accessibilityRole={editable ? 'button' : undefined}
+              accessibilityLabel={
+                editable
+                  ? `Editar ${block.kind === 'heading' ? 'título' : 'bloco'}: ${block.text || 'vazio'}`
+                  : undefined
+              }
+              accessibilityHint={editable ? 'Abre o editor de texto' : undefined}
+              disabled={!editable || busy}
+              onPress={() => onEdit?.(block)}
+              style={{ flex: 1, minHeight: 32 }}
+            >
+              {block.kind === 'divider' ? (
+                <View style={{ height: 1, marginVertical: 14, backgroundColor: colors.line }} />
+              ) : (
+                <>
+                  <RichText
+                    text={
+                      block.kind === 'image'
+                        ? block.alt || 'Imagem'
+                        : block.text || (editable ? 'Bloco vazio' : '')
+                    }
+                    spans={block.spans}
+                    style={{
+                      color: !block.text && editable ? colors.tertiary : colors.text,
+                      fontSize:
+                        block.kind === 'heading'
+                          ? block.level === 1
+                            ? 34
+                            : block.level === 2
+                              ? 26
+                              : 21
+                          : 17,
+                      lineHeight: block.kind === 'heading' ? (block.level === 1 ? 42 : 34) : 27,
+                      fontWeight: block.kind === 'heading' ? '600' : '400',
+                      fontFamily:
+                        block.kind === 'code' || block.kind === 'raw'
+                          ? process.env.EXPO_OS === 'ios'
+                            ? 'Menlo'
+                            : 'monospace'
+                          : undefined,
+                    }}
+                  />
+                  {block.kind === 'image' && block.url ? (
+                    <Text
+                      selectable
+                      style={{ color: colors.secondary, fontSize: 12, lineHeight: 18 }}
+                    >
+                      {block.url}
+                    </Text>
+                  ) : null}
+                </>
+              )}
+            </Pressable>
+          </View>
           {organizing && editable ? (
             <View
               style={{

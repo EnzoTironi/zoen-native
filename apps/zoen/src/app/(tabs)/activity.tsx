@@ -65,7 +65,7 @@ export default function Activity() {
           <Pressable
             key={choice.id}
             accessibilityRole="tab"
-            accessibilityState={{ selected: section === choice.id }}
+            aria-selected={section === choice.id}
             onPress={() => setSection(choice.id)}
             style={{
               paddingHorizontal: 16,

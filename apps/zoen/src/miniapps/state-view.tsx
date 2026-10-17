@@ -70,11 +70,9 @@ export function MiniappState({
               <View
                 accessibilityRole="progressbar"
                 accessibilityLabel={metric.label}
-                accessibilityValue={{
-                  min: 0,
-                  max: 100,
-                  now: Math.round(Math.min(1, Math.max(0, metric.value)) * 100),
-                }}
+                aria-valuemin={0}
+                aria-valuemax={100}
+                aria-valuenow={Math.round(Math.min(1, Math.max(0, metric.value)) * 100)}
                 style={{
                   height: 6,
                   borderRadius: 3,
@@ -178,7 +176,7 @@ export function MiniappState({
               key={text(item.id)}
               disabled={busy}
               accessibilityRole="checkbox"
-              accessibilityState={{ checked: item.done === true, disabled: busy }}
+              aria-checked={item.done === true}
               accessibilityLabel={text(item.text)}
               onPress={() => onCall('list_toggle', { id: text(item.id) })}
               style={{
@@ -225,7 +223,7 @@ export function MiniappState({
               <Pressable
                 key={text(ingredient.id)}
                 accessibilityRole="checkbox"
-                accessibilityState={{ checked: ingredient.done === true, disabled: busy }}
+                aria-checked={ingredient.done === true}
                 disabled={busy}
                 onPress={() => onCall('recipe_check', { id: text(ingredient.id) })}
                 style={{ minHeight: 48, flexDirection: 'row', gap: 12, alignItems: 'center' }}

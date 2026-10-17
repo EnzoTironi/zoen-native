@@ -215,7 +215,7 @@ export function Loading({ label }: { label?: string }) {
       accessible
       accessibilityRole="progressbar"
       accessibilityLabel={label ?? 'Carregando'}
-      accessibilityState={{ busy: true }}
+      aria-busy
       style={{
         flex: 1,
         alignItems: 'center',

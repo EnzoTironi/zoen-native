@@ -71,7 +71,7 @@ function Install({
               key={chat.id}
               disabled={busy}
               accessibilityRole="radio"
-              accessibilityState={{ checked: space === chat.id, disabled: busy }}
+              aria-checked={space === chat.id}
               onPress={() => setSpace(chat.id)}
               style={{
                 minHeight: 48,

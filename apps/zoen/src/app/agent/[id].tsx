@@ -191,10 +191,7 @@ export default function Agent() {
               key={level.value}
               disabled={busy || !agent.persona.is_mine}
               accessibilityRole="radio"
-              accessibilityState={{
-                checked: space.level === level.value,
-                disabled: busy || !agent.persona.is_mine,
-              }}
+              aria-checked={space.level === level.value}
               onPress={() => {
                 if (space.level === level.value) return;
                 void act(async () => {

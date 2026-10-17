@@ -45,6 +45,26 @@ import Foundation
     try manager.setAttributes([.posixPermissions: 0o700], ofItemAtPath: blocked.path)
     try ZoenDeviceErasure.erasePreviewCache(cacheRoot: cache)
     precondition(!manager.fileExists(atPath: blocked.path))
-    print("Synthetic cache sweep passed: six owned namespaces, asset/update/font preservation, external originals, symlink, denied cleanup and retry.")
+    // An inaccessible parent is an inspection failure, never an empty cache.
+    try manager.createDirectory(at: blocked, withIntermediateDirectories: true)
+    let retained = blocked.appendingPathComponent("unreadable-parent.jpg")
+    try Data("synthetic inaccessible copy".utf8).write(to: retained)
+    try manager.setAttributes([.posixPermissions: 0o000], ofItemAtPath: cache.path)
+    defer { try? manager.setAttributes([.posixPermissions: 0o700], ofItemAtPath: cache.path) }
+    do {
+      try ZoenDeviceErasure.erasePreviewCache(cacheRoot: cache)
+      fatalError("unreadable cache parent accepted as empty")
+    } catch ZoenDeviceErasure.Failure.incomplete {}
+    try manager.setAttributes([.posixPermissions: 0o700], ofItemAtPath: cache.path)
+    precondition(manager.fileExists(atPath: retained.path))
+    try ZoenDeviceErasure.erasePreviewCache(cacheRoot: cache)
+    precondition(!manager.fileExists(atPath: retained.path))
+    // `attributesOfItem` observes the link itself, including a dangling cache link.
+    let dangling = cache.appendingPathComponent("ImagePicker")
+    try manager.createSymbolicLink(at: dangling, withDestinationURL: sandbox.appendingPathComponent("missing-original"))
+    try ZoenDeviceErasure.erasePreviewCache(cacheRoot: cache)
+    do { _ = try manager.attributesOfItem(atPath: dangling.path); fatalError("dangling cache link retained") }
+    catch let error as CocoaError where error.code == .fileNoSuchFile || error.code == .fileReadNoSuchFile {}
+    print("Synthetic cache sweep passed: six namespaces, external originals/assets preserved, symlinks, denied child/root inspection and retry.")
   }
 }

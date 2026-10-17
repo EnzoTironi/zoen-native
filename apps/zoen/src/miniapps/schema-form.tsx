@@ -42,7 +42,7 @@ export function SchemaForm({
               key={String(option)}
               disabled={disabled}
               accessibilityRole="radio"
-              accessibilityState={{ checked: value === option, disabled }}
+              aria-checked={value === option}
               onPress={() => onChange(option)}
               style={{
                 minHeight: 44,
@@ -76,7 +76,7 @@ export function SchemaForm({
               <Pressable
                 disabled={disabled}
                 accessibilityRole="checkbox"
-                accessibilityState={{ checked: windows.length > 0, disabled }}
+                aria-checked={windows.length > 0}
                 onPress={() => {
                   const next = { ...hours };
                   if (windows.length) delete next[String(index)];
@@ -189,7 +189,7 @@ export function SchemaForm({
       <Pressable
         disabled={disabled}
         accessibilityRole="checkbox"
-        accessibilityState={{ checked: value === true, disabled }}
+        aria-checked={value === true}
         onPress={() => onChange(value !== true)}
         style={{ minHeight: 44, justifyContent: 'center' }}
       >

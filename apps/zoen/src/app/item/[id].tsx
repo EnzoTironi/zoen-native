@@ -320,6 +320,7 @@ export default function Item() {
             accessibilityRole="button"
             accessibilityLabel={`Prévia da versão ${version.number}: ${version.note}`}
             accessibilityState={{ selected: selected === version.number, disabled: busy }}
+            aria-pressed={process.env.EXPO_OS === 'web' ? selected === version.number : undefined}
             onPress={() => {
               setFailure(null);
               setSelected(version.number);

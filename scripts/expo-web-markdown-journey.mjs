@@ -44,6 +44,18 @@ export async function acceptMarkdownJourney({
   await page.getByText("Compartilhada na conversa", { exact: true }).waitFor({ timeout: 90_000 });
   step("markdown-file-chooser-imports-encrypted-page", { itemId });
 
+  const taskCheckbox = page.getByRole("checkbox", { name: task, exact: true });
+  await taskCheckbox.click();
+  await page.getByRole("checkbox", { name: task, exact: true, checked: true }).waitFor();
+  await page.getByText("Rascunho salvo neste aparelho", { exact: true }).waitFor();
+  await taskCheckbox.click();
+  await page.getByRole("checkbox", { name: task, exact: true, checked: false }).waitFor();
+  assert.equal(await taskCheckbox.getAttribute("aria-checked"), "false");
+  await page.getByText("Rascunho salvo neste aparelho", { exact: true }).waitFor();
+  step("markdown-checkbox-interaction-updates-visible-state-and-draft", {
+    checkedThenUnchecked: true,
+  });
+
   await block(original).click();
   await page
     .getByRole("textbox", { name: "Conteúdo do bloco em Markdown", exact: true })

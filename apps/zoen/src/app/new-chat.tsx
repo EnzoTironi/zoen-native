@@ -149,9 +149,7 @@ export default function NewChat() {
               }}
               style={{ flexDirection: 'row', alignItems: 'center', gap: 14, paddingVertical: 8 }}
               accessibilityRole={kind === 'group' ? 'checkbox' : 'button'}
-              accessibilityState={
-                kind === 'group' ? { checked: selected.includes(person.id) } : undefined
-              }
+              aria-checked={kind === 'group' ? selected.includes(person.id) : undefined}
             >
               <ProfileAvatar person={person} name={person.name} color={person.tint_hex} />
               <View style={{ flex: 1 }}>

@@ -27,8 +27,17 @@ final class ZoenDeviceErasure {
       }
     }
   }
+  /// `fileExists` also returns false on access failures. Only missing files count as absent.
+  private static func exists(_ url: URL) throws -> Bool {
+    do {
+      _ = try FileManager.default.attributesOfItem(atPath: url.path)
+      return true
+    } catch let error as CocoaError where error.code == .fileNoSuchFile || error.code == .fileReadNoSuchFile {
+      return false
+    } catch { throw Failure.incomplete }
+  }
   func pending() throws -> ZoenDeviceScope? {
-    guard FileManager.default.fileExists(atPath: marker.path) else { return nil }
+    guard try Self.exists(marker) else { return nil }
     let attributes = try FileManager.default.attributesOfItem(atPath: marker.path)
     guard let size = attributes[.size] as? NSNumber, size.intValue <= 2048 else { throw Failure.incomplete }
     let intent = try JSONDecoder().decode(Intent.self, from: Data(contentsOf: marker))
@@ -46,7 +55,8 @@ final class ZoenDeviceErasure {
     try data.write(to: marker, options: [.atomic, .completeFileProtectionUntilFirstUserAuthentication])
   }
   func complete() throws {
-    if FileManager.default.fileExists(atPath: marker.path) { try FileManager.default.removeItem(at: marker) }
+    if try Self.exists(marker) { try FileManager.default.removeItem(at: marker) }
+    if try Self.exists(marker) { throw Failure.incomplete }
   }
   /// SDK58-owned copies only. Assets, fonts, updates, Documents and Photos stay untouched.
   static func erasePreviewCache(cacheRoot: URL = .cachesDirectory) throws {
@@ -55,8 +65,8 @@ final class ZoenDeviceErasure {
     for name in owned {
       let directory = cacheRoot.appending(path: name, directoryHint: .isDirectory)
       do {
-        if FileManager.default.fileExists(atPath: directory.path) { try FileManager.default.removeItem(at: directory) }
-        if FileManager.default.fileExists(atPath: directory.path) { failed = true }
+        if try exists(directory) { try FileManager.default.removeItem(at: directory) }
+        if try exists(directory) { failed = true }
       } catch { failed = true }
     }
     if failed { throw Failure.incomplete }

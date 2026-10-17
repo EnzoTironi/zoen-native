@@ -112,10 +112,7 @@ export function PlanBlocks({
                 disabled={busy || !plan.legacy_edit_admitted || !plan.ready}
                 accessibilityRole="checkbox"
                 accessibilityLabel={block.text}
-                accessibilityState={{
-                  checked: line.done,
-                  disabled: busy || !plan.legacy_edit_admitted || !plan.ready,
-                }}
+                aria-checked={line.done}
                 onPress={() => onToggle(block)}
                 style={{
                   minWidth: 44,

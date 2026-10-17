@@ -183,7 +183,9 @@ The preflight also drains active SDK file writers and clears image memory/disk c
 through the public Expo Image APIs. Private image views disable caching. Picker
 originals are disposed after profile processing, including failure paths. Cleanup
 preserves photo-library originals, Documents, assets, fonts and update caches; re-audit
-the owned namespace list when upgrading the SDK packages. The intent is removed last; a cold
+the owned namespace list when upgrading the SDK packages. Missing files are distinguished
+from failed metadata inspection: inaccessible cache or journal parents fail closed instead
+of being treated as empty. The intent is removed last; a cold
 open resumes an interrupted destructive stage before allowing another account to
 open. Neither the account on other devices nor their histories is deleted.
 
@@ -194,7 +196,10 @@ transaction remains fenced and retryable; a successful clear removes device keys
 session and root authority together. The action is not offered on Android until its
 native lifecycle has separate implementation and acceptance.
 
-Store, browser-vault and pure Foundation intent tests cover ordering, stale ownership,
-delayed writes and retry behavior. Installed iOS/Web destructive confirmation,
-post-erasure cold launch and peer-history preservation still require disposable-account
-runtime acceptance. Existing personal accounts must never be reset to produce evidence.
+Store, browser-vault and pure Foundation tests cover ordering, stale ownership,
+delayed writes, inaccessible files and retry behavior. Signed iOS checkpoint `f9544c3a`
+passed two disposable-device confirmations, cold onboarding without Metro and exact
+primary-history preservation; it also accepted profile save/cold reopen and canceled
+silent recording. Actual Web checkpoint `03d787f` passed erasure and peer preservation
+in CI. The later cache-inspection correction needs its own fresh installed acceptance.
+Existing personal accounts must never be reset to produce evidence.
