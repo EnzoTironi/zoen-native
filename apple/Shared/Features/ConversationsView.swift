@@ -265,6 +265,7 @@ struct ConversationRow: View {
         if pinned { parts.append(String(localized: "Pinned")) }
         if muted { parts.append(String(localized: "Muted")) }
         if space.unread > 0 { parts.append(String(localized: "\(space.unread) unread")) }
+        if space.mentions > 0 { parts.append(String(localized: "\(space.mentions) mentions")) }
         parts.append((space.lastAuthor?.isMe == true ? String(localized: "You: ") : otherPrefix) + space.lastPreview)
         parts.append(RodaTime.short(space.lastAtMs))
         return parts.joined(separator: ", ")

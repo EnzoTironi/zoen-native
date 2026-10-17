@@ -11,7 +11,7 @@
 use roda_types::{EventBody, SpaceKind};
 
 use crate::dto::{ThreadSummary, TimelineEntry};
-use crate::engine::{Engine, Entry, EntryBody, R};
+use crate::engine::{Engine, Entry, EntryBody, SpaceState, R};
 use crate::i18n::t;
 use crate::{CoreError, RodaEngine};
 
@@ -58,33 +58,45 @@ impl Engine {
         }
     }
 
-    fn replies_of<'a>(&self, entries: &'a [Entry], root: &str) -> Vec<&'a Entry> {
-        entries
+    pub(crate) fn replies_of<'a>(&self, state: &'a SpaceState, root: &Entry) -> Vec<&'a Entry> {
+        let id = state.entry_id(root);
+        state
+            .entries
             .iter()
-            .filter(|e| root_of(e) == Some(root))
+            .filter(|entry| {
+                root_of(entry).is_some_and(|reference| {
+                    reference == id || (!root.hash.is_empty() && reference == root.hash)
+                })
+            })
             .collect()
     }
 
-    fn thread_read(&self, space: &str, root: &str) -> u64 {
-        let synced = self
+    fn thread_read(&self, space: &str, root: &Entry) -> u64 {
+        let mut read = self.state.thread_register(space, root).1;
+        let id = self
             .state
-            .thread_state
-            .get(&(space.to_string(), root.to_string()))
-            .map(|s| s.1)
-            .unwrap_or(0);
-        let here = self
-            .store
-            .meta(&format!("tread:{space}:{root}"))
-            .ok()
-            .flatten()
-            .and_then(|v| v.parse().ok())
-            .unwrap_or(0);
-        synced.max(here)
+            .spaces
+            .get(space)
+            .map(|state| state.entry_id(root))
+            .unwrap_or_else(|| root.id());
+        for reference in [root.hash.as_str(), id] {
+            if reference.is_empty() {
+                continue;
+            }
+            let here = self
+                .store
+                .meta(&format!("tread:{space}:{reference}"))
+                .ok()
+                .flatten()
+                .and_then(|value| value.parse().ok())
+                .unwrap_or(0);
+            read = read.max(here);
+        }
+        read
     }
 
     fn following(&self, space: &str, root: &Entry, replies: &[&Entry]) -> bool {
-        let key = (space.to_string(), root.id().to_string());
-        if let Some(explicit) = self.state.thread_state.get(&key).and_then(|s| s.0) {
+        if let Some(explicit) = self.state.thread_register(space, root).0 {
             return explicit;
         }
         let me = self.me.as_deref().unwrap_or_default();
@@ -96,7 +108,7 @@ impl Engine {
     }
 
     /// (unread, unread mentions) of one thread.
-    fn thread_unread(&self, space: &str, root: &str, replies: &[&Entry]) -> (u32, u32) {
+    fn thread_unread(&self, space: &str, root: &Entry, replies: &[&Entry]) -> (u32, u32) {
         let me = self.me.as_deref().unwrap_or_default();
         let read = self.thread_read(space, root);
         let fresh: Vec<_> = replies
@@ -113,10 +125,10 @@ impl Engine {
             return;
         };
         for dto in out.iter_mut().filter(|d| d.in_thread.is_none()) {
-            let Some(root) = s.entries.iter().find(|e| e.id() == dto.id) else {
+            let Some(root) = s.resolve_entry(&dto.id) else {
                 continue;
             };
-            let replies = self.replies_of(&s.entries, &dto.id);
+            let replies = self.replies_of(s, root);
             let mut people: Vec<String> = Vec::new();
             for r in &replies {
                 if !people.contains(&r.author) {
@@ -126,7 +138,7 @@ impl Engine {
             dto.thread_participants = people.iter().map(|p| self.persona(p)).collect();
             dto.thread_last_reply_ms = replies.iter().map(|r| r.at_ms).max().unwrap_or(0);
             dto.thread_following = self.following(space, root, &replies);
-            dto.thread_unread = self.thread_unread(space, &dto.id, &replies).0;
+            dto.thread_unread = self.thread_unread(space, root, &replies).0;
         }
     }
 
@@ -143,21 +155,20 @@ impl Engine {
         let Ok(s) = self.space_state(space) else {
             return Vec::new();
         };
-        let mut roots: Vec<&str> = Vec::new();
+        let mut roots: Vec<&Entry> = Vec::new();
         for e in &s.entries {
-            if let Some(r) = root_of(e) {
-                if !roots.contains(&r) {
-                    roots.push(r);
+            if let Some(root) = root_of(e).and_then(|reference| s.resolve_entry(reference)) {
+                if !roots.iter().any(|old| std::ptr::eq(*old, root)) {
+                    roots.push(root);
                 }
             }
         }
         roots
             .into_iter()
-            .filter_map(|id| {
-                let root = s.entries.iter().find(|e| e.id() == id)?;
-                let replies = self.replies_of(&s.entries, id);
+            .filter_map(|root| {
+                let replies = self.replies_of(s, root);
                 self.following(space, root, &replies).then(|| {
-                    let (unread, mentions) = self.thread_unread(space, id, &replies);
+                    let (unread, mentions) = self.thread_unread(space, root, &replies);
                     (root, replies, unread, mentions)
                 })
             })
@@ -225,17 +236,35 @@ impl Engine {
 
     /// Follow (`Some(true)`), unfollow (`Some(false)`) or back to automatic (`None`).
     pub fn set_thread_follow(&mut self, space: &str, root: &str, follow: Option<bool>) -> R<()> {
-        self.space_state(space)?;
+        let id = self.reply_ref(space, root, true)?.to;
+        let state = self.space_state(space)?;
+        let root = state
+            .resolve_entry(&id)
+            .ok_or_else(|| crate::engine::not_found(&t("Mensagem", "Message")))?;
         let read = self.thread_read(space, root);
-        self.put_thread_state(space, root, follow, read, false)
+        self.put_thread_state(space, &id, follow, read, false)
     }
 
-    /// I saw the thread up to its last reply. Syncs to my devices only when it moved past
-    /// something unread, so opening a quiet thread writes nothing.
+    /// Read all replies currently in the thread. UIs should pass their observed sequence
+    /// to `mark_thread_read_up_to`, so a concurrently arriving reply stays unread.
     pub fn mark_thread_read(&mut self, space: &str, root: &str) -> R<()> {
-        let s = self.space_state(space)?;
-        let replies = self.replies_of(&s.entries, root);
-        let Some(last) = replies.iter().map(|r| r.seq).max() else {
+        self.mark_thread_read_up_to(space, root, u64::MAX)
+    }
+
+    /// Read only replies actually shown through `seq`. Clamp to an existing reply so a
+    /// future boundary cannot consume messages that have not arrived yet.
+    pub fn mark_thread_read_up_to(&mut self, space: &str, root: &str, seq: u64) -> R<()> {
+        let id = self.reply_ref(space, root, true)?.to;
+        let state = self.space_state(space)?;
+        let root = state
+            .resolve_entry(&id)
+            .ok_or_else(|| crate::engine::not_found(&t("Mensagem", "Message")))?;
+        let replies: Vec<_> = self
+            .replies_of(state, root)
+            .into_iter()
+            .filter(|reply| reply.seq <= seq)
+            .collect();
+        let Some(last) = replies.iter().map(|reply| reply.seq).max() else {
             return Ok(());
         };
         let (unread, _) = self.thread_unread(space, root, &replies);
@@ -245,15 +274,11 @@ impl Engine {
         // Publish the synced watermark first. If appending fails, a local read must not
         // hide the unread replies and prevent the next attempt from syncing them.
         if unread > 0 {
-            let follow = self
-                .state
-                .thread_state
-                .get(&(space.to_string(), root.to_string()))
-                .and_then(|s| s.0);
-            self.put_thread_state(space, root, follow, last, true)?;
+            let follow = self.state.thread_register(space, root).0;
+            self.put_thread_state(space, &id, follow, last, true)?;
         }
         self.store
-            .set_meta(&format!("tread:{space}:{root}"), &last.to_string())?;
+            .set_meta(&format!("tread:{space}:{id}"), &last.to_string())?;
         Ok(())
     }
 
@@ -290,6 +315,16 @@ impl RodaEngine {
 
     pub fn mark_thread_read(&self, space_id: String, root_id: String) -> Result<(), CoreError> {
         self.lock().mark_thread_read(&space_id, &root_id)
+    }
+
+    /// Read only replies shown through `seq`; later arrivals remain unread.
+    pub fn mark_thread_read_up_to(
+        &self,
+        space_id: String,
+        root_id: String,
+        seq: u64,
+    ) -> Result<(), CoreError> {
+        self.lock().mark_thread_read_up_to(&space_id, &root_id, seq)
     }
 
     /// A thread reply; `also_in_chat` shows it in the chat too (Slack's checkbox).

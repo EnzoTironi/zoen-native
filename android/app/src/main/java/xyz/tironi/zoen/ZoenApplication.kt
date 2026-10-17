@@ -34,7 +34,7 @@ class ZoenApplication : Application() {
             }
         }, IntentFilter().apply { addAction(Intent.ACTION_SCREEN_OFF); addAction(Intent.ACTION_USER_PRESENT); addAction(Intent.ACTION_TIME_TICK) }, ContextCompat.RECEIVER_NOT_EXPORTED)
         scope.launch { repository.state.collect {
-            notifications.update(it, repository.appVisible, repository.activeSpace)
+            notifications.update(it, repository.appVisible, repository.activeSpace, repository.activeThread)
             xyz.tironi.zoen.widgets.ZoenWidgetProvider.updateAll(this@ZoenApplication)
         } }
     }

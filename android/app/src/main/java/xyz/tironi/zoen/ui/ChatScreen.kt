@@ -96,6 +96,7 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.sp
 import androidx.compose.material.icons.automirrored.rounded.Forward
 import xyz.tironi.zoen.data.AppState
+import xyz.tironi.zoen.data.isVisibleInChat
 import xyz.tironi.zoen.data.FileAccess
 import xyz.tironi.zoen.media.VoiceBubble
 import xyz.tironi.zoen.media.VoiceComposer
@@ -119,7 +120,7 @@ fun ChatScreen(model: ZoenViewModel, state: AppState, spaceId: String, navigate:
     val allEntries = state.timelines[spaceId].orEmpty()
     val appIds = state.items.filter { it.app != null }.map { it.id }.toSet()
     // Thread-only replies live in their thread; one also sent to the chat shows here too.
-    val timeline = allEntries.filter { (it.inThread == null || it.alsoInChat) && (it.kind as? EntryKind.ItemEdited)?.itemId !in appIds }
+    val timeline = allEntries.filter { it.isVisibleInChat() && (it.kind as? EntryKind.ItemEdited)?.itemId !in appIds }
     val list = rememberLazyListState()
     val scrollScope = rememberCoroutineScope()
     var firstLoad by rememberSaveable(spaceId) { mutableStateOf(true) }
@@ -181,12 +182,13 @@ fun ChatScreen(model: ZoenViewModel, state: AppState, spaceId: String, navigate:
     LaunchedEffect(jumpTo, allEntries.size) {
         val target = jumpTo ?: return@LaunchedEffect
         val original = allEntries.firstOrNull { it.id == target } ?: return@LaunchedEffect
-        val index = timeline.indexOfFirst { it.id == (original.inThread ?: target) }
+        val targetId = chatScrollTarget(original)
+        val index = timeline.indexOfFirst { it.id == targetId }
         if (index >= 0) {
             // Navigation can compose this effect inside its current measure pass.
             withFrameNanos { }
             if (motion) list.animateScrollToItem(index) else list.scrollToItem(index)
-            highlight = original.inThread ?: target
+            highlight = targetId
             jumpTo = null
         }
     }
@@ -597,19 +599,46 @@ fun TimelineRow(model: ZoenViewModel, spaceId: String, entry: TimelineEntry, nav
 
 @Composable
 fun ThreadScreen(model: ZoenViewModel, state: AppState, space: String, root: String, navigate: (NavKey) -> Unit, back: () -> Unit) {
-    val loadedEntries by produceState<List<TimelineEntry>>(emptyList(), state.revision, root) { value = model.repository.query { it.thread(space, root) } }
+    val loadedEntries by key(space, root) {
+        produceState<List<TimelineEntry>>(emptyList(), state.revision) { value = model.repository.query { it.thread(space, root) } }
+    }
     val entries = loadedEntries
+    val owner = LocalLifecycleOwner.current
+    val lifecycleState by owner.lifecycle.currentStateFlow.collectAsState()
+    val visible = model.repository.appVisible
+    val canonicalRoot = entries.firstOrNull()?.id ?: root
+    DisposableEffect(owner, space, canonicalRoot) {
+        val repository = model.repository
+        val active = space to canonicalRoot
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_START) repository.activeThread = active
+            if (event == Lifecycle.Event.ON_STOP && repository.activeThread == active) repository.activeThread = null
+        }
+        owner.lifecycle.addObserver(observer)
+        if (owner.lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED)) repository.activeThread = active
+        onDispose {
+            owner.lifecycle.removeObserver(observer)
+            if (repository.activeThread == active) repository.activeThread = null
+        }
+    }
     val list = rememberLazyListState()
     val scrollScope = rememberCoroutineScope()
-    var text by rememberSaveable { mutableStateOf("") }
-    var replyTo by rememberSaveable(root) { mutableStateOf(root) }
-    var sending by remember { mutableStateOf(false) }
+    var text by rememberSaveable(space, root) { mutableStateOf("") }
+    var replyTo by rememberSaveable(space, root) { mutableStateOf(root) }
+    var sending by remember(space, root) { mutableStateOf(false) }
     val threadHaptics = rememberZoenHaptics()
     val motion = rememberMotionEnabled()
-    var alsoInChat by rememberSaveable(root) { mutableStateOf(false) }
+    var alsoInChat by rememberSaveable(space, root) { mutableStateOf(false) }
     val following = entries.firstOrNull()?.threadFollowing == true
-    var changingFollow by remember(root) { mutableStateOf(false) }
-    LaunchedEffect(entries) { if (entries.isNotEmpty()) runCatching { model.repository.change { it.markThreadRead(space, root) } } }
+    var changingFollow by remember(space, root) { mutableStateOf(false) }
+    LaunchedEffect(space, root, entries, lifecycleState, visible) {
+        val seq = observedThreadReadSeq(entries, lifecycleState.isAtLeast(Lifecycle.State.STARTED), visible) ?: return@LaunchedEffect
+        runCatching { model.repository.change {
+            if (model.repository.appVisible && model.repository.activeThread == (space to canonicalRoot)) {
+                it.markThreadReadUpTo(space, root, seq)
+            }
+        } }
+    }
     Scaffold(topBar = { ScreenBar(stringResource(R.string.replies), back) {
         TextButton(onClick = {
             if (!changingFollow) {

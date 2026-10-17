@@ -105,6 +105,7 @@ fun ZoenApp(model: ZoenViewModel, deepLink: String?, consumed: () -> Unit) {
             if (uri.scheme == "zoen") when (uri.host) {
                 "app", "item" -> uri.lastPathSegment?.let { navigate(Item(it)) }
                 "chat" -> uri.lastPathSegment?.let { navigate(Chat(it)) }
+                "thread" -> if (uri.pathSegments.size == 2) navigate(Thread(uri.pathSegments[0], uri.pathSegments[1]))
                 "join" -> navigate(Join(uri.lastPathSegment.orEmpty()))
                 "request" -> uri.lastPathSegment?.let { navigate(Request(it)) }
                 "widgets" -> navigate(Widgets)

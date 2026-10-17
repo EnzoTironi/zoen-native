@@ -293,9 +293,15 @@ fn personal_thread_state_is_encrypted_and_native_can_receive_it() {
     client
         .receive(&ServerFrame::SyncDone.encode(), 301)
         .unwrap();
-    let update = client.mark_thread_read("chat", &hash, 302).unwrap();
+    // A reply arrives after the UI captured `last`, before its queued read runs.
+    reply(&mut client, &other, &root, false);
+    let update = client
+        .mark_thread_read_up_to("chat", &hash, last, 302)
+        .unwrap();
     let count = client.saved.outbox.len();
-    client.mark_thread_read("chat", &hash, 302).unwrap();
+    client
+        .mark_thread_read_up_to("chat", &hash, last, 302)
+        .unwrap();
     assert_eq!(client.saved.outbox.len(), count);
     let restored = Client::new(
         client.account.clone(),
@@ -303,7 +309,11 @@ fn personal_thread_state_is_encrypted_and_native_can_receive_it() {
         &update.snapshot,
     )
     .unwrap();
-    assert_eq!(restored.conversations()[0].threads_unread, 0);
+    assert_eq!(
+        restored.conversations()[0].threads_unread,
+        1,
+        "the later unseen reply stays unread"
+    );
     let env = update
         .frames
         .into_iter()
@@ -375,7 +385,7 @@ fn personal_thread_state_is_encrypted_and_native_can_receive_it() {
     let view = client.conversations().remove(0);
     assert!(!view.messages[0].thread_following);
     assert_eq!(view.threads_unread, 0);
-    assert_eq!(view.messages[0].thread_unread, 1);
+    assert_eq!(view.messages[0].thread_unread, 2);
 }
 
 #[test]
@@ -452,6 +462,56 @@ fn hash_references_beat_later_client_aliases_in_thread_projection() {
     assert!(view.messages.iter().any(|message| {
         message.text == "reply" && message.thread.as_deref() == Some(root_hash.as_str())
     }));
+}
+
+#[test]
+fn colliding_thread_aliases_keep_follow_and_read_state_on_the_selected_root() {
+    let (mut client, me, other, _, first_hash) = fixture();
+    let shadow = {
+        let log = client.logs.get_mut("chat").unwrap();
+        let event = other.sign_event(
+            "chat",
+            &first_hash,
+            101,
+            log.head(),
+            EventBody::MessagePosted {
+                message: "shadow".into(),
+                text: "Second root".into(),
+                attaches: None,
+                reply: None,
+                forwarded: false,
+            },
+        );
+        log.sequence(event).clone()
+    };
+    let canonical = client.thread_root("chat", &shadow.hash);
+    assert_eq!(
+        canonical, shadow.hash,
+        "an alias that resolves to another hash is not safe to serialize"
+    );
+    let last = reply(&mut client, &other, &shadow.hash, false);
+    append(
+        client.logs.get_mut("personal").unwrap(),
+        &me,
+        EventBody::ThreadStateSet {
+            space: "chat".into(),
+            root: canonical,
+            follow: Some(true),
+            read_up_to: last,
+            read_only: false,
+        },
+    );
+    let view = client.conversations().remove(0);
+    let shadow = view
+        .messages
+        .iter()
+        .find(|m| m.entry.as_deref() == Some(shadow.hash.as_str()))
+        .unwrap();
+    assert_eq!(shadow.id, shadow.entry.as_deref().unwrap());
+    assert!(shadow.thread_following);
+    assert_eq!(shadow.thread_unread, 0);
+    assert_eq!(view.threads_unread, 0);
+    assert_eq!(client.thread_state("chat", &first_hash), (None, 0));
 }
 
 #[test]
@@ -600,6 +660,80 @@ fn legacy_snapshot_never_republishes_plaintext_preferences() {
     .unwrap();
     let update = restored.update(Vec::new()).unwrap();
     assert!(!update.frames.iter().any(|frame| matches!(ClientFrame::decode(frame).unwrap(), ClientFrame::Publish { env } if env.plain_event().is_some_and(|event| matches!(event.body, EventBody::ThreadStateSet { .. })))));
+}
+
+#[test]
+fn chat_mentions_use_whole_handles_including_broadcast_but_not_hidden_replies() {
+    let (mut client, me, other, root, _) = fixture();
+    client.account.name = "Ana Silva".into();
+    client.account.handle = "ana".into();
+    for (author, text, reply) in [
+        (&other, "Oi @ana!", None),
+        (&other, "@ana.silva is a different handle", None),
+        (&other, "mail@ana is not a mention", None),
+        (&me, "@ana own", None),
+        (&other, "@ANA new", None),
+        (
+            &other,
+            "@ana hidden",
+            Some(roda_types::ReplyRef::thread(&root)),
+        ),
+        (
+            &other,
+            "@ana broadcast",
+            Some(roda_types::ReplyRef {
+                to: root,
+                thread: true,
+                also_in_chat: true,
+            }),
+        ),
+    ] {
+        append(
+            client.logs.get_mut("chat").unwrap(),
+            author,
+            EventBody::MessagePosted {
+                message: roda_types::new_secret_id("msg"),
+                text: text.into(),
+                attaches: None,
+                reply,
+                forwarded: false,
+            },
+        );
+    }
+    assert_eq!(client.conversations()[0].mentions, 3);
+}
+
+#[test]
+fn pending_thread_preferences_do_not_lose_to_a_same_millisecond_confirmation() {
+    let (mut client, me, _, root, _) = fixture();
+    let body = |follow| EventBody::ThreadStateSet {
+        space: "chat".into(),
+        root: root.clone(),
+        follow: Some(follow),
+        read_up_to: 0,
+        read_only: false,
+    };
+    let log = client.logs.get_mut("personal").unwrap();
+    let confirmed = me.sign_event(
+        "personal",
+        &roda_types::new_ulid(200),
+        200,
+        log.head(),
+        body(true),
+    );
+    log.sequence(confirmed);
+    let mut pending = client.clear_event("personal", body(false), 200).unwrap();
+    let inner = pending.envelope().unwrap().plain_event().unwrap();
+    pending.inner = Some(inner.clone());
+    client.saved.outbox.insert(inner.client_id.clone(), pending);
+    assert_eq!(client.thread_state("chat", &root), (Some(false), 0));
+    client
+        .logs
+        .get_mut("personal")
+        .unwrap()
+        .sequence(inner.clone());
+    client.saved.outbox.remove(&inner.client_id);
+    assert_eq!(client.thread_state("chat", &root), (Some(false), 0));
 }
 
 #[test]

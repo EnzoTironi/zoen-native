@@ -3,6 +3,9 @@ use openmls_traits::{signatures::SignerError, types::SignatureScheme};
 use roda_log::{Author, Signer as NativeSigner};
 use roda_mls::Device;
 
+#[path = "mutation_tests.rs"]
+mod mutations;
+
 #[derive(Clone)]
 struct HostSigner(NativeSigner);
 impl Signer for HostSigner {

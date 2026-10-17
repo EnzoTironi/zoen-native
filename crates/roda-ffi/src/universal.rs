@@ -207,7 +207,15 @@ impl Engine {
                     .get(&e.author)
                     .map(|i| i.name.clone())
                     .unwrap_or_default();
-                st.index_put("message", e.id(), &s.id, &e.author, e.at_ms, &who, &body)?;
+                st.index_put(
+                    "message",
+                    s.entry_id(e),
+                    &s.id,
+                    &e.author,
+                    e.at_ms,
+                    &who,
+                    &body,
+                )?;
             }
         }
         for it in self.state.items.values() {

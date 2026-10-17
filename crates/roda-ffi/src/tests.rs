@@ -6,6 +6,7 @@ mod client_api;
 mod file_bounds;
 mod message_search;
 mod personal_replication;
+mod thread_references;
 mod thread_sync;
 mod voice_notes;
 

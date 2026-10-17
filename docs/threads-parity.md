@@ -5,9 +5,13 @@ reply resolves to its root and preserves `also_in_chat`; thread-only replies do 
 increase the conversation unread count, while broadcast replies appear in both views.
 
 Native and web clients exchange `ThreadStateSet` events in the account's encrypted
-Personal Space. `root` is the message's stable client ID, not a relay hash. Explicit
-follow/unfollow overrides automatic following (author, participant or mention).
-`read_up_to` is a monotonic per-conversation sequence watermark. Device-local browser
+Personal Space. References resolve authoritative hashes before client IDs. `root`
+uses the stable client ID only when that alias resolves back to the same message;
+a colliding alias retains the message's unambiguous hash. Native and web quotes,
+text/voice replies, thread projection and synced preferences share this rule.
+Explicit follow/unfollow overrides automatic following (author, participant or mention).
+`read_up_to` is a monotonic per-conversation sequence watermark. UI reads are bounded
+by the latest sequence in the displayed snapshot, never a later arrival. Device-local browser
 preferences and historical reply totals are not used as unread state. Personal Space
 requests device enrollment just like a conversation when its MLS group is absent.
 
@@ -27,8 +31,14 @@ so copying old preferences does not make them newer than another device's state.
 Thread projection merges the maximum read watermark independently of follow-state
 recency, including multiple Personal logs and same-millisecond events.
 
-Apple wake decisions compare followed-thread unread and mentions as well as chat
-unread. Android voice sends carry the reply broadcast checkbox through the composer,
+Apple and Android notification decisions use actual unread chat-visible messages
+and replies in followed threads, not growth of aggregate unread counters. The previous
+`eventCount` is the next confirmed sequence (logs are zero-based): only eligible
+incoming entries at or after that boundary can notify. This handles coalesced remote
+reads/new replies, avoids re-notifying old broadcasts when following changes, and uses
+the eligible sender/preview rather than a newer unfollowed reply. Deleted placeholders
+are excluded only after selecting the suffix, matching native unread-count semantics.
+Android voice sends carry the reply broadcast checkbox through the composer,
 review, session and transport into the signed voice reply metadata.
 
 Focused host checks:
@@ -39,6 +49,36 @@ Focused host checks:
 - `cargo test --locked -j2 -p roda-ffi tests::voice_notes -- --nocapture`
 
 These host/source checks do not prove APNs delivery or Android device behavior.
+
+## Whole-diff repair review
+
+The follow-up review compared the full branch against `origin/main`, then exercised
+these failure paths before fixing them:
+
+- Hash/client-ID collisions in quoted and threaded text/voice replies, including
+  duplicate aliases and aliases matching genesis or membership-event hashes.
+  Both clients now retain safe canonical IDs; native also accepts web hash references
+  in thread counts, follow/read state, annotations and search.
+- Native unread boundaries now take the incoming suffix **after** chat visibility
+  filtering. Broadcast replies participate in append/scroll/unseen tracking; hidden
+  thread-only replies cannot displace the unread anchor.
+- Reads use the displayed thread's sequence bound while foreground/visible. A newer
+  reply remains unread; stale/larger bounds cannot regress or invent a watermark.
+- Same-millisecond pending Personal preferences stay newer than earlier confirmations;
+  confirmation replay refreshes version registers as well as timeline metadata.
+- Notifications use eligible incoming entries and confirmed sequence boundaries, not
+  counter growth or the last arbitrary event. Chat and thread destinations/suppression
+  distinguish the actually visible surface.
+- Search/quote jumps keep broadcasts in chat and open hidden replies in their thread.
+  Native inbox identities include the space; Apple inspectors reset between targets.
+- Failed Apple thread sends preserve the draft and broadcast choice. Web chat mentions
+  use whole handles, not display names/substrings; accessibility labels retain mentions.
+- The previously unregistered web message-mutation suite is now executed, including
+  author checks, terminal deletion, replay, quote updates and the new collision tests.
+
+Host/JVM regressions do not by themselves verify native rendering, OS notification
+routing/delivery or APNs. The commands/results below are historical where labeled;
+see the current PR follow-up for the final local verification results.
 
 ## Verification after merging main
 

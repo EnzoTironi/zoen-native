@@ -12,14 +12,16 @@ import androidx.core.app.NotificationCompat
 import androidx.core.content.ContextCompat
 import xyz.tironi.zoen.MainActivity
 import xyz.tironi.zoen.R
+import xyz.tironi.zoen.core.EntryKind
 import xyz.tironi.zoen.core.RequestStatus
 import xyz.tironi.zoen.data.AppState
+import xyz.tironi.zoen.data.isVisibleInChat
 
 class ActivityNotifications(private val context: Context) {
     private var previous: AppState? = null
     private val manager = context.getSystemService(NotificationManager::class.java)
 
-    fun update(state: AppState, visible: Boolean, activeSpace: String?) {
+    fun update(state: AppState, visible: Boolean, activeSpace: String?, activeThread: Pair<String, String>? = null) {
         if (!state.ready || state.me == null) { if (previous != null) clear(); previous = null; return }
         val old = previous
         previous = state
@@ -35,13 +37,21 @@ class ActivityNotifications(private val context: Context) {
             // Thread replies notify only people in the thread (they count in threadsUnread).
             if (space.unread == 0u && space.threadsUnread == 0u) { manager.cancel("chat:${space.id}", 1); return@forEach }
             val former = oldSpaces[space.id]
-            if (!hasNewUnreadActivity(space.unread, space.threadsUnread, space.eventCount,
-                    former?.unread ?: 0u, former?.threadsUnread ?: 0u, former?.eventCount ?: 0uL) || space.lastAuthor?.isMe != false) return@forEach
-            if (context.getSharedPreferences("zoen", Context.MODE_PRIVATE).getBoolean("muted.person:${state.me.id}:${space.lastAuthor?.id}", false)) return@forEach
             if (space.muted) return@forEach
-            if (visible && activeSpace == space.id) return@forEach
-            val preview = if (xyz.tironi.zoen.media.VoiceNoteRef.parse(space.lastPreview) != null) context.getString(R.string.media_voice_message) else space.lastPreview
-            notify("chat:${space.id}", space.title, preview, "zoen://chat/${space.id}", NotificationCompat.CATEGORY_MESSAGE)
+            val preferences = context.getSharedPreferences("zoen", Context.MODE_PRIVATE)
+            val candidates = state.unreadActivity[space.id].orEmpty().filter { entry ->
+                !preferences.getBoolean("muted.person:${state.me.id}:${entry.author.id}", false) &&
+                    !(visible && unreadActivityIsVisible(entry, space.id, activeSpace, activeThread))
+            }
+            val entry = latestNewUnreadActivity(candidates, former?.eventCount ?: 0uL) ?: return@forEach
+            val message = entry.kind as EntryKind.Message
+            val preview = if (entry.voice != null || xyz.tironi.zoen.media.VoiceNoteRef.parse(message.text) != null)
+                context.getString(R.string.media_voice_message) else message.text.ifBlank { message.card?.title.orEmpty() }
+            val link = Uri.Builder().scheme("zoen")
+                .authority(if (entry.isVisibleInChat()) "chat" else "thread").appendPath(space.id).apply {
+                    if (!entry.isVisibleInChat()) appendPath(entry.inThread)
+                }.build().toString()
+            notify("chat:${space.id}", space.title, preview, link, NotificationCompat.CATEGORY_MESSAGE)
         }
         val before = old.requests.associateBy { it.id }
         state.requests.forEach { request ->

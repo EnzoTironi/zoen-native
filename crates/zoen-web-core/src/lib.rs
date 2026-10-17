@@ -199,12 +199,18 @@ mod browser {
             &mut self,
             space: &str,
             root: &str,
+            up_to: f64,
             now_ms: f64,
         ) -> Result<String, JsValue> {
             serde_json::to_string(
                 &self
                     .client
-                    .mark_thread_read(space, root, time(now_ms)?)
+                    .mark_thread_read_up_to(
+                        space,
+                        root,
+                        u64::try_from(time(up_to)?).map_err(error)?,
+                        time(now_ms)?,
+                    )
                     .map_err(error)?,
             )
             .map_err(error)

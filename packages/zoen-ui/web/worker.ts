@@ -29,7 +29,7 @@ function parseOperation(input: unknown): CoreOperation {
       if (value.follow !== null && typeof value.follow !== 'boolean') throw new Error('Invalid thread follow state.');
       return { kind: 'set_thread_follow', space: string(value.space), root: string(value.root), follow: value.follow, now: integer(value.now) };
     }
-    case 'mark_thread_read': return { kind: 'mark_thread_read', space: string(value.space), root: string(value.root), now: integer(value.now) };
+    case 'mark_thread_read': return { kind: 'mark_thread_read', space: string(value.space), root: string(value.root), upTo: integer(value.upTo), now: integer(value.now) };
     case 'mark_read': return { kind: 'mark_read', space: string(value.space) };
     case 'queue_file': return { kind: 'queue_file', space: string(value.space), doc: string(value.doc), now: integer(value.now) };
     case 'queue_failed_file': return { kind: 'queue_failed_file', space: string(value.space), doc: string(value.doc), now: integer(value.now), reason: string(value.reason), chunks: string(value.chunks) };
@@ -71,7 +71,7 @@ function run(operation: CoreOperation): string | Uint8Array {
     case 'queue_post': return restored().queue_post(operation.space, operation.text, operation.replyTo || undefined, operation.thread, operation.forwarded, operation.alsoInChat, operation.now);
     case 'queue_annotation': return restored().queue_annotation(operation.space, operation.target, operation.note, operation.now);
     case 'set_thread_follow': return restored().set_thread_follow(operation.space, operation.root, operation.follow ?? undefined, operation.now);
-    case 'mark_thread_read': return restored().mark_thread_read(operation.space, operation.root, operation.now);
+    case 'mark_thread_read': return restored().mark_thread_read(operation.space, operation.root, operation.upTo, operation.now);
     case 'mark_read': return restored().mark_read(operation.space);
     case 'queue_failed_file': return restored().queue_failed_file(operation.space, operation.doc, operation.now, operation.reason, operation.chunks);
     case 'local_chunk': return restored().local_chunk(operation.blob);

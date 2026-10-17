@@ -26,7 +26,7 @@ const conversation = { id: 'sp_fixture', title: 'Conversa', kind: 'group', can_s
   messages: [{ id: 'message', entry: 'entry', author: other, name: 'Ana', text: 'Oi', at_ms: 1, delivery: 'confirmed', failure: null,
     reactions: [{ emoji: '🧑🏽‍🚀', count: 2, mine: true, participants: [{ identity, name: 'Eu' }, { identity: other, name: 'Ana' }] }] }] };
 const settle = () => new Promise<void>((resolve) => setImmediate(resolve));
-function setup(t: test.TestContext, read: () => Promise<string> = async () => { throw new Error('Core refused'); }) {
+function setup(t: test.TestContext, read: (operation: CoreOperation) => Promise<string> = async () => { throw new Error('Core refused'); }) {
   const descriptor = Object.getOwnPropertyDescriptor(globalThis, 'WebSocket');
   Object.defineProperty(globalThis, 'WebSocket', { configurable: true, value: Socket });
   const states: MessagesState[] = [];
@@ -35,7 +35,7 @@ function setup(t: test.TestContext, read: () => Promise<string> = async () => { 
     if (operation.kind === 'restore') return JSON.stringify([conversation]);
     if (operation.kind === 'decode_server') return new TextDecoder().decode(operation.bytes);
     if (operation.kind === 'bootstrap') return JSON.stringify({ snapshot: 'snapshot', frames: [], conversations: [conversation] });
-    if (operation.kind === 'mark_read' || operation.kind === 'mark_thread_read' || operation.kind === 'set_thread_follow') return read();
+    if (operation.kind === 'mark_read' || operation.kind === 'mark_thread_read' || operation.kind === 'set_thread_follow') return read(operation);
     throw new Error('Unexpected operation');
   } };
   const messages = new Messages({ core, session, vault: { save: async () => {}, sign: async () => new Uint8Array(64) }, changed: (state) => states.push(state) });
@@ -61,14 +61,14 @@ test('read-only members can update personal thread state without gaining send pe
   });
   await connect(messages);
   await messages.setThreadFollow(conversation.id, 'root', false);
-  await messages.markThreadRead(conversation.id, 'root');
+  await messages.markThreadRead(conversation.id, 'root', 42);
   assert.equal(updates, 2);
   await assert.rejects(messages.send({ space: conversation.id, text: 'not allowed' }));
   await assert.rejects(messages.post({ space: conversation.id, text: 'not allowed' }), /Esta conversa ainda/);
   await assert.rejects(messages.annotate(conversation.id, 'root', { Edit: { text: 'not allowed' } }), /Esta conversa ainda/);
-  await assert.rejects(messages.markThreadRead('unknown-space', 'root'));
+  await assert.rejects(messages.markThreadRead('unknown-space', 'root', 42));
   messages.stop();
-  await assert.rejects(messages.markThreadRead(conversation.id, 'root'));
+  await assert.rejects(messages.markThreadRead(conversation.id, 'root', 42));
 });
 
 test('message snapshots preserve reaction participant identities and compound emoji', async (t) => {

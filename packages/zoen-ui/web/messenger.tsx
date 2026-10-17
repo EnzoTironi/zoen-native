@@ -244,6 +244,7 @@ function AccountMessenger({ conversations, identity, name, connected, status, me
   const timeline = useMemo(() => conversation?.messages.filter((m) => !m.thread || m.also_in_chat) ?? [], [conversation]);
   const root = threadTarget?.space === conversation?.id ? conversation?.messages.find((m) => m.entry === threadRoot) : undefined;
   const replies = root ? conversation!.messages.filter((m) => m.thread === threadRoot) : [];
+  const threadReadUpTo = root ? [root, ...replies].reduce<number | null>((last, m) => m.seq == null ? last : Math.max(last ?? 0, m.seq), null) : null;
   const threadsUnread = conversations.reduce((n, c) => n + c.threads_unread, 0);
   const followedThreads = conversations.flatMap((c) => c.messages.filter((m) => m.entry && !m.thread && m.thread_following && m.replies > 0).map((m) => ({ conversation: c, root: m })))
     .sort((a, b) => (b.root.last_reply_ms ?? b.root.at_ms) - (a.root.last_reply_ms ?? a.root.at_ms));
@@ -254,12 +255,12 @@ function AccountMessenger({ conversations, identity, name, connected, status, me
   useEffect(() => { setReply(null); setEditing(null); setThreadTarget((target) => target?.space === conversation?.id ? target : null); }, [conversation?.id]);
   useEffect(() => { setAlsoInChat(false); }, [threadRoot]);
   useEffect(() => {
-    if (!conversation || !root?.entry || !root.thread_unread || !connected) return;
-    const space = conversation.id; const entry = root.entry;
-    const read = () => { if (document.visibilityState === 'visible' && document.hasFocus()) void messages.current?.markThreadRead(space, entry).catch(fail); };
+    if (!conversation || !root?.entry || !root.thread_unread || !connected || threadReadUpTo === null) return;
+    const space = conversation.id; const entry = root.entry; const upTo = threadReadUpTo;
+    const read = () => { if (document.visibilityState === 'visible' && document.hasFocus()) void messages.current?.markThreadRead(space, entry, upTo).catch(fail); };
     read(); document.addEventListener('visibilitychange', read); window.addEventListener('focus', read);
     return () => { document.removeEventListener('visibilitychange', read); window.removeEventListener('focus', read); };
-  }, [conversation?.id, root?.entry, root?.thread_unread, connected]);
+  }, [conversation?.id, root?.entry, root?.thread_unread, threadReadUpTo, connected]);
   useEffect(() => {
     if (!conversation?.unread || !connected) return;
     // Read means seen: the tab is visible and the window has focus, like WhatsApp Web.
@@ -270,7 +271,7 @@ function AccountMessenger({ conversations, identity, name, connected, status, me
 
   useEffect(() => {
     if (!searchTarget || conversation?.id !== searchTarget.space) return;
-    if (searchTarget.message.thread && threadRoot !== searchTarget.message.thread) { setThreadRoot(searchTarget.message.thread); return; }
+    if (searchTarget.message.thread && !searchTarget.message.also_in_chat && threadRoot !== searchTarget.message.thread) { setThreadRoot(searchTarget.message.thread); return; }
     const target = document.getElementById(`message-${searchTarget.message.id}`);
     if (target) { target.scrollIntoView({ block: 'center' }); target.focus(); setSearchTarget(null); }
   }, [searchTarget, conversation?.id, root?.id, threadRoot]);

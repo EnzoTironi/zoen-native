@@ -3,14 +3,17 @@ use super::*;
 
 impl<S: Signer> Client<S> {
     pub(super) fn thread_root(&self, space: &str, root: &str) -> String {
-        // Resolve hashes before client aliases so an untrusted client id cannot
-        // shadow an ordered event, then retain the native-compatible alias.
+        // Retain the native alias only when resolving it round-trips to this
+        // event. A client id can equal another event's authoritative hash.
         self.resolve_post(space, root)
             .map(|e| {
-                if e.client_id.is_empty() {
-                    e.hash.clone()
-                } else {
+                if self
+                    .resolve_post(space, &e.client_id)
+                    .is_some_and(|target| target.hash == e.hash)
+                {
                     e.client_id.clone()
+                } else {
+                    e.hash.clone()
                 }
             })
             .unwrap_or_else(|| root.into())
@@ -50,7 +53,23 @@ impl<S: Signer> Client<S> {
             .collect();
         // Personal logs have independent sequence numbers. Match native's total
         // LWW order for follow, while reads only ever move forward.
-        events.sort_by(|a, b| (a.at_ms, a.seq, &a.client_id).cmp(&(b.at_ms, b.seq, &b.client_id)));
+        let version = |event: &Event| {
+            // Pending events have no relay position yet; a confirmed earlier write
+            // in the same millisecond must not beat a later optimistic preference.
+            (
+                event.at_ms,
+                if event.hash.is_empty() {
+                    u64::MAX
+                } else {
+                    event.seq
+                },
+            )
+        };
+        events.sort_by(|a, b| {
+            version(a)
+                .cmp(&version(b))
+                .then_with(|| a.client_id.cmp(&b.client_id))
+        });
         let mut states = BTreeMap::new();
         for event in events {
             if let EventBody::ThreadStateSet {
@@ -139,6 +158,17 @@ impl<S: Signer> Client<S> {
         root: &str,
         now: i64,
     ) -> Result<Update, String> {
+        self.mark_thread_read_up_to(space, root, u64::MAX, now)
+    }
+
+    /// Mark only replies included in the rendered snapshot, not a newer arrival.
+    pub fn mark_thread_read_up_to(
+        &mut self,
+        space: &str,
+        root: &str,
+        up_to: u64,
+        now: i64,
+    ) -> Result<Update, String> {
         let canonical = self.thread_root(space, root);
         let last = self
             .logs
@@ -146,6 +176,7 @@ impl<S: Signer> Client<S> {
             .ok_or("That message is no longer available.")?
             .events()
             .iter()
+            .filter(|e| e.seq <= up_to)
             .filter(|e| {
                 let reply = match &e.body {
                     EventBody::MessagePosted { reply, .. } => reply.as_ref(),
@@ -170,11 +201,25 @@ impl<S: Signer> Client<S> {
     pub(super) fn fill_threads(&self, space: &str, messages: &mut [MessageView]) {
         let mut aliases: BTreeMap<&str, &str> = BTreeMap::new();
         if let Some(log) = self.logs.get(space) {
+            // Build one hash-first index, then choose the same safe canonical ids
+            // as thread_root without resolving every root by a full-log scan.
+            let mut references: BTreeMap<&str, &Event> = log
+                .events()
+                .iter()
+                .map(|event| (event.hash.as_str(), event))
+                .collect();
             for event in log.events() {
-                let canonical = if event.client_id.is_empty() {
-                    event.hash.as_str()
-                } else {
+                references.entry(event.client_id.as_str()).or_insert(event);
+            }
+            for event in log.events() {
+                let canonical = if !event.client_id.is_empty()
+                    && references
+                        .get(event.client_id.as_str())
+                        .is_some_and(|target| target.hash == event.hash)
+                {
                     event.client_id.as_str()
+                } else {
+                    event.hash.as_str()
                 };
                 aliases.insert(event.hash.as_str(), canonical);
             }
@@ -245,7 +290,7 @@ fn mention_suffix_dot_is_part_of_a_handle() {
     assert!(mentions("Hi @fixture!", "fixture"));
 }
 
-fn mentions(text: &str, handle: &str) -> bool {
+pub(super) fn mentions(text: &str, handle: &str) -> bool {
     if handle.is_empty() {
         return false;
     }

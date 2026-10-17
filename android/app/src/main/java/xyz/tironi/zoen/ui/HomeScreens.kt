@@ -109,8 +109,8 @@ fun ConversationsScreen(model: ZoenViewModel, state: AppState, navigate: (NavKey
                         trailingContent = { if (unread > 0 && !showThreads) Badge { Text(unread.toString()) } },
                         modifier = Modifier.animateItem().testTag("threads-row").clickable { haptics.perform(ZoenFeedback.Selection); showThreads = !showThreads })
                 }
-                if (showThreads) {
-                    items(threads, key = { "t:" + it.root.id }) { t ->
+                if (showThreadInbox(showThreads, query, showArchived)) {
+                    items(threads, key = { threadListKey(it.spaceId, it.root.id) }) { t ->
                         ListItem(headlineContent = { Text(t.spaceTitle, fontWeight = if (t.root.threadUnread > 0u) FontWeight.Bold else FontWeight.SemiBold) },
                             supportingContent = { Text((t.lastReply ?: t.root).let { e -> (if (e.author.isMe) stringResource(R.string.files_you) else e.author.name) + ": " + ((e.kind as? EntryKind.Message)?.text ?: "") }, maxLines = 1, overflow = TextOverflow.Ellipsis) },
                             leadingContent = { Avatar(t.root.author, size = 40) },

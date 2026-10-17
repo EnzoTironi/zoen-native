@@ -580,9 +580,13 @@ impl<S: Signer> Client<S> {
         }
         if let Some(reply) = doc.voice.as_mut().and_then(|voice| voice.reply.as_mut()) {
             let target = self
-                .resolve_post(space, &reply.to)
+                .posted(space, &reply.to)
                 .ok_or("That message is no longer available.")?;
-            reply.to = target.client_id.clone();
+            let to = match target {
+                Some(root) if reply.thread && root.thread => root.to,
+                _ => reply.to.clone(),
+            };
+            *reply = self.reply_ref(space, to, reply.thread, reply.also_in_chat);
         }
         let item = roda_types::new_secret_id("it");
         let attachment = (!doc.is_voice()).then(|| format!("msg_attachment_{item}"));
@@ -1443,9 +1447,8 @@ impl<S: Signer> Client<S> {
             }
             self.fill_threads(space, &mut messages);
             let threads_unread = messages.iter().filter(|m| m.thread_following).map(|m| m.thread_unread).sum();
-            let mention = format!("@{}", self.account.name.to_lowercase());
             let incoming = messages.iter().filter(|m| m.author != *me && !m.deleted && (m.thread.is_none() || m.also_in_chat) && m.seq.is_some_and(|s| s > my_read) && (my_read > 0 || m.seq.is_some()));
-            let (unread, mentions) = incoming.fold((0, 0), |(u, n), m| (u + 1, n + usize::from(!self.account.name.is_empty() && m.text.to_lowercase().contains(&mention))));
+            let (unread, mentions) = incoming.fold((0, 0), |(u, n), m| (u + 1, n + usize::from(threads::mentions(&m.text, &self.account.handle))));
             let waiting = self.ready_epoch(space).err();
             let unreadable = events.iter().filter(|event| matches!(&event.body, EventBody::Sealed { kind } if kind == "Application")).count();
             Some(ConversationView { id: space.clone(), title, kind: match kind { SpaceKind::Direct=>"direct",SpaceKind::Group=>"group",SpaceKind::Community=>"community",SpaceKind::Personal=>"personal" },
@@ -1537,7 +1540,11 @@ impl<S: Signer> Client<S> {
                 .unwrap_or_else(|| "Alguém".into())
         };
         Some(MessageView {
-            id: event.client_id.clone(),
+            id: if event.hash.is_empty() {
+                event.client_id.clone()
+            } else {
+                self.thread_root(&event.space, &event.hash)
+            },
             entry: None,
             seq: None,
             author: event.author.clone(),

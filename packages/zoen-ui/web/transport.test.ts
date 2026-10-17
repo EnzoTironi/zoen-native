@@ -164,10 +164,10 @@ test('thread actions preserve synced DTOs and send follow, read and also-in-chat
   t.after(() => messages.stop());
   await messages.start(); await authenticate();
   await messages.setThreadFollow('sp_fixture', 'root-hash', false);
-  await messages.markThreadRead('sp_fixture', 'root-hash');
+  await messages.markThreadRead('sp_fixture', 'root-hash', 42);
   await messages.post({ space: 'sp_fixture', text: 'Reply', replyTo: 'root-hash', thread: true, alsoInChat: true });
   assert.ok(operations.some((o) => o.kind === 'set_thread_follow' && o.follow === false && o.root === 'root-hash'));
-  assert.ok(operations.some((o) => o.kind === 'mark_thread_read' && o.root === 'root-hash'));
+  assert.ok(operations.some((o) => o.kind === 'mark_thread_read' && o.root === 'root-hash' && o.upTo === 42));
   assert.ok(operations.some((o) => o.kind === 'queue_post' && o.thread && o.alsoInChat));
   const state = states.at(-1);
   assert.equal(state?.kind, 'active');

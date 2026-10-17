@@ -36,7 +36,7 @@ function parseMessage(input: unknown) {
     try { file = parseFile(value.file); }
     catch { text = 'Anexo indisponível'; }
   }
-  return { id: string(value.id), entry: value.entry ? string(value.entry) : null, author: publicKey(value.author), name: string(value.name), text,
+  return { id: string(value.id), entry: value.entry ? string(value.entry) : null, seq: value.seq == null ? null : integer(value.seq), author: publicKey(value.author), name: string(value.name), text,
     at_ms: timestamp(value.at_ms), delivery, failure: nullableText(value.failure), ticks: ticks as 'sent' | 'delivered' | 'read' | null,
     edited: value.edited === true, deleted: value.deleted === true, forwarded: value.forwarded === true,
     reactions: array(value.reactions ?? []).map((r) => { const x = object(r); return {
@@ -349,8 +349,8 @@ export class Messages {
     return this.act(space, { kind: 'set_thread_follow', space, root, follow, now: Date.now() });
   }
 
-  markThreadRead(space: string, root: string): Promise<void> {
-    return this.act(space, { kind: 'mark_thread_read', space, root, now: Date.now() });
+  markThreadRead(space: string, root: string, upTo: number): Promise<void> {
+    return this.act(space, { kind: 'mark_thread_read', space, root, upTo, now: Date.now() });
   }
 
   private act(space: string, operation: Parameters<MessageCore['text']>[0]): Promise<void> {

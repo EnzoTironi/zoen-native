@@ -21,7 +21,7 @@ declare module '*/core/zoen_web_core.js' {
     queue_post(space: string, text: string, replyTo: string | undefined, thread: boolean, forwarded: boolean, alsoInChat: boolean, now: number): string;
     queue_annotation(space: string, target: string, note: string, now: number): string;
     set_thread_follow(space: string, root: string, follow: boolean | undefined, now: number): string;
-    mark_thread_read(space: string, root: string, now: number): string;
+    mark_thread_read(space: string, root: string, upTo: number, now: number): string;
     mark_read(space: string): string;
     fail_outbox(client_id: string, reason: string): string;
     queue_file(space: string, doc: string, now: number): string;

@@ -178,8 +178,49 @@ pub(crate) struct SpaceState {
     pub privacy: Privacy,
     pub members: Vec<(IdentityId, Role)>,
     pub entries: Vec<Entry>,
+    /// Accepted chain hashes, including controls and entries replaced by voice markers.
+    pub event_hashes: HashSet<String>,
     pub last_at_ms: i64,
     pub integrity_error: Option<String>,
+}
+
+impl SpaceState {
+    /// A chain hash is authoritative; client ids are optional, untrusted aliases.
+    pub(crate) fn entry_index(&self, reference: &str) -> Option<usize> {
+        if reference.is_empty() {
+            return None;
+        }
+        let by_hash = self
+            .entries
+            .iter()
+            .position(|entry| entry.hash == reference);
+        if by_hash.is_some() || self.event_hashes.contains(reference) {
+            return by_hash;
+        }
+        self.entries
+            .iter()
+            .position(|entry| entry.client_id == reference)
+    }
+
+    pub(crate) fn resolve_entry(&self, reference: &str) -> Option<&Entry> {
+        self.entry_index(reference)
+            .map(|index| &self.entries[index])
+    }
+
+    /// Keep optimistic ids stable, but never emit an alias that names another entry.
+    pub(crate) fn entry_id<'a>(&self, entry: &'a Entry) -> &'a str {
+        if !entry.client_id.is_empty()
+            && self
+                .resolve_entry(&entry.client_id)
+                .is_some_and(|resolved| {
+                    resolved.hash == entry.hash && resolved.client_id == entry.client_id
+                })
+        {
+            &entry.client_id
+        } else {
+            &entry.hash
+        }
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -254,6 +295,48 @@ pub(crate) struct State {
 }
 
 impl State {
+    /// Pending writes follow confirmed writes from the same millisecond. Confirmation
+    /// reprojects these registers with their actual relay sequence.
+    fn personal_version(event: &Event) -> (i64, u64, String) {
+        (
+            event.at_ms,
+            if event.hash.is_empty() {
+                u64::MAX
+            } else {
+                event.seq
+            },
+            event.client_id.clone(),
+        )
+    }
+
+    /// Hash and safe client aliases are names for one independent follow/read register.
+    pub(crate) fn thread_register(&self, space: &str, root: &Entry) -> (Option<bool>, u64) {
+        let id = self
+            .spaces
+            .get(space)
+            .map(|state| state.entry_id(root))
+            .unwrap_or_else(|| root.id());
+        let mut follow = None;
+        let mut read = 0;
+        let mut newest = None;
+        for reference in [root.hash.as_str(), id] {
+            if reference.is_empty() {
+                continue;
+            }
+            let key = (space.to_string(), reference.to_string());
+            if let Some((value, watermark)) = self.thread_state.get(&key) {
+                read = read.max(*watermark);
+                if let Some(version) = self.thread_versions.get(&key) {
+                    if newest.is_none_or(|old| version > old) {
+                        follow = *value;
+                        newest = Some(version);
+                    }
+                }
+            }
+        }
+        (follow, read)
+    }
+
     fn create_item(
         &mut self,
         e: &Event,
@@ -328,6 +411,13 @@ impl State {
         identities: &HashMap<IdentityId, Identity>,
         context: &BeforeEvent,
     ) -> Projection {
+        // Even a control or refused projection owns its verified chain hash. An
+        // untrusted message alias must never turn that reference into a message.
+        if !e.hash.is_empty() {
+            if let Some(space) = self.spaces.get_mut(&e.space) {
+                space.event_hashes.insert(e.hash.clone());
+            }
+        }
         match self.approval_event_valid(e, identities, context) {
             Projection::Refused => return Projection::Refused,
             Projection::Waiting => {
@@ -362,6 +452,10 @@ impl State {
                         privacy: *privacy,
                         members: vec![(e.author.clone(), Role::Owner)],
                         entries: Vec::new(),
+                        event_hashes: (!e.hash.is_empty())
+                            .then(|| e.hash.clone())
+                            .into_iter()
+                            .collect(),
                         last_at_ms: e.at_ms,
                         integrity_error: None,
                     },
@@ -447,7 +541,7 @@ impl State {
                 });
                 if mine {
                     let key = (space.clone(), root.clone());
-                    let version = (e.at_ms, e.seq, e.client_id.clone());
+                    let version = Self::personal_version(e);
                     let slot = self.thread_state.entry(key.clone()).or_insert((None, 0));
                     slot.1 = slot.1.max(*read_up_to);
                     if !read_only
@@ -467,7 +561,7 @@ impl State {
                     s.kind == SpaceKind::Personal && s.members.iter().any(|(m, _)| *m == e.author)
                 });
                 if mine {
-                    let version = (e.at_ms, e.seq, e.client_id.clone());
+                    let version = Self::personal_version(e);
                     if self
                         .chat_pref_versions
                         .get(space)
@@ -480,7 +574,9 @@ impl State {
             }
             EventBody::MessageAnnotated { target, note } => {
                 if let Some(s) = self.spaces.get_mut(&e.space) {
-                    let found = s.entries.iter_mut().rev().find(|x| x.id() == target);
+                    let found = s
+                        .entry_index(target)
+                        .and_then(|index| s.entries.get_mut(index));
                     if let Some(Entry {
                         author,
                         body:
@@ -910,6 +1006,7 @@ impl Engine {
                             privacy: Privacy::EndToEnd,
                             members: vec![],
                             entries: vec![],
+                            event_hashes: HashSet::new(),
                             last_at_ms: 0,
                             integrity_error: Some(err.to_string()),
                         },
@@ -1481,7 +1578,13 @@ impl Engine {
             deleted: marks.deleted,
             forwarded: marks.forwarded,
             reactions,
-            id: e.id().to_string(),
+            id: self
+                .state
+                .spaces
+                .get(&e.space)
+                .map(|space| space.entry_id(e))
+                .unwrap_or_else(|| e.id())
+                .to_string(),
             seq: e.seq,
             author: self.persona(&e.author),
             at_ms: e.at_ms,
@@ -1797,11 +1900,13 @@ impl Engine {
     pub fn annotate(&mut self, space: &str, target: &str, note: roda_types::Annotation) -> R<()> {
         let me = self.me_id()?;
         let s = self.space_state(space)?;
-        let Some(Entry {
-            author,
-            body: EntryBody::Message { marks, .. },
-            ..
-        }) = s.entries.iter().find(|e| e.id() == target)
+        let Some(
+            entry @ Entry {
+                author,
+                body: EntryBody::Message { marks, .. },
+                ..
+            },
+        ) = s.resolve_entry(target)
         else {
             return Err(not_found(&t("Mensagem", "Message")));
         };
@@ -1835,14 +1940,8 @@ impl Engine {
                 ),
             });
         }
-        self.append(
-            space,
-            &me,
-            EventBody::MessageAnnotated {
-                target: target.to_string(),
-                note,
-            },
-        )?;
+        let target = s.entry_id(entry).to_string();
+        self.append(space, &me, EventBody::MessageAnnotated { target, note })?;
         Ok(())
     }
 
@@ -1855,7 +1954,7 @@ impl Engine {
             attaches,
             marks,
             ..
-        }) = s.entries.iter().find(|e| e.id() == target).map(|e| &e.body)
+        }) = s.resolve_entry(target).map(|e| &e.body)
         else {
             return Err(not_found(&t("Mensagem", "Message")));
         };

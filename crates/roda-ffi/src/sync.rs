@@ -30,7 +30,7 @@ use roda_types::*;
 use serde::{Deserialize, Serialize};
 
 use crate::dto::Delivery;
-use crate::engine::{Engine, Entry, State};
+use crate::engine::{Engine, Entry, SpaceState, State};
 use crate::i18n::t;
 use crate::pages::{PlanReplay, Projection};
 use crate::CoreError;
@@ -221,6 +221,8 @@ impl Engine {
                 e.body,
                 EventBody::RequestOpened { .. }
                     | EventBody::RequestResolved { .. }
+                    | EventBody::ChatPrefsSet { .. }
+                    | EventBody::ThreadStateSet { .. }
                     | EventBody::MemberAdded { .. }
                     | EventBody::MemberRemoved { .. }
                     | EventBody::GrantIssued { .. }
@@ -559,8 +561,11 @@ impl Engine {
         seq: u64,
         hash: &str,
     ) -> bool {
-        let stamp = |entries: &mut Vec<Entry>| {
-            for entry in entries.iter_mut().filter(|entry| {
+        let stamp = |state: &mut SpaceState| {
+            if !hash.is_empty() {
+                state.event_hashes.insert(hash.to_string());
+            }
+            for entry in state.entries.iter_mut().filter(|entry| {
                 entry.client_id == client_id
                     || entry.client_id.strip_suffix(":result") == Some(client_id)
             }) {
@@ -573,12 +578,13 @@ impl Engine {
             .get_mut(space)
             .and_then(|scoped| scoped.spaces.get_mut(space))
         {
-            stamp(&mut space_state.entries);
+            stamp(space_state);
         }
         let Some(space_state) = self.state.spaces.get_mut(space) else {
             return false;
         };
-        stamp(&mut space_state.entries);
+        stamp(space_state);
+        self.index_dirty = true;
         true
     }
 

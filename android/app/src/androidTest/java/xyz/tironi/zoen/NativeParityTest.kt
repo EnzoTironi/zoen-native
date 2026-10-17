@@ -268,37 +268,44 @@ class NativeParityTest {
             val me = core.me()
             val source = core.spaces().first { it.members.any { p -> !p.isMe && p.kind == PersonaKind.PERSON } }
             val author = source.members.first { !it.isMe && it.kind == PersonaKind.PERSON }
-            val initial = source.copy(id = tag.removePrefix("chat:"), unread = 0u)
+            val initial = source.copy(id = tag.removePrefix("chat:"), unread = 0u, threadsUnread = 0u)
+            val template = core.timeline(source.id).first { it.kind is EntryKind.Message }
+            fun activityState(space: SpaceSummary, seq: ULong = space.eventCount - 1uL): AppState {
+                val activity = template.copy(id = "notification-$seq", seq = seq, author = space.lastAuthor ?: author,
+                    kind = EntryKind.Message(space.lastPreview, null), inThread = null, deleted = false, voice = null)
+                return AppState(ready = true, me = me, spaces = listOf(space),
+                    unreadActivity = if (space.unread > 0u) mapOf(space.id to listOf(activity)) else emptyMap())
+            }
             val notifications = ActivityNotifications(context)
-            notifications.update(AppState(ready = true, me = me, spaces = listOf(initial)), false, null)
+            notifications.update(activityState(initial), false, null)
             val incoming = initial.copy(unread = 1u, eventCount = initial.eventCount + 1uL, lastAuthor = author, lastPreview = "Native encrypted message")
-            notifications.update(AppState(ready = true, me = me, spaces = listOf(incoming)), false, null)
+            notifications.update(activityState(incoming), false, null)
             waitUntil { manager.activeNotifications.any { it.tag == tag } }
             val posted = manager.activeNotifications.first { it.tag == tag }.notification
             assertEquals(Notification.VISIBILITY_PRIVATE, posted.visibility)
             assertEquals("Native encrypted message", posted.extras.getCharSequence(Notification.EXTRA_TEXT).toString())
             assertEquals(context.getString(R.string.new_activity), posted.publicVersion.extras.getCharSequence(Notification.EXTRA_TEXT).toString())
-            notifications.update(AppState(ready = true, me = me, spaces = listOf(incoming.copy(unread = 0u))), true, initial.id)
+            notifications.update(activityState(incoming.copy(unread = 0u)), true, initial.id)
             waitUntil { manager.activeNotifications.none { it.tag == tag } }
-            notifications.update(AppState(ready = true, me = me, spaces = listOf(incoming.copy(eventCount = incoming.eventCount + 1uL))), true, initial.id)
+            notifications.update(activityState(incoming.copy(eventCount = incoming.eventCount + 1uL)), true, initial.id)
             assertTrue(manager.activeNotifications.none { it.tag == tag })
             val key = "muted.person:${me.id}:${author.id}"
             val existed = preferences.contains(key); val old = preferences.getBoolean(key, false)
             try {
                 preferences.edit().putBoolean(key, true).commit()
-                notifications.update(AppState(ready = true, me = me, spaces = listOf(incoming.copy(unread = 2u, eventCount = incoming.eventCount + 2uL))), false, null)
+                notifications.update(activityState(incoming.copy(unread = 2u, eventCount = incoming.eventCount + 2uL)), false, null)
                 assertTrue(manager.activeNotifications.none { it.tag == tag })
             } finally { preferences.edit().apply { if (existed) putBoolean(key, old) else remove(key) }.commit() }
             // A new unfollowed reply must not re-notify old outstanding unread messages.
-            notifications.update(AppState(ready = true, me = me, spaces = listOf(incoming.copy(unread = 2u, eventCount = incoming.eventCount + 3uL))), false, null)
+            notifications.update(activityState(incoming.copy(unread = 2u, eventCount = incoming.eventCount + 3uL), seq = incoming.eventCount + 1uL), false, null)
             assertTrue(manager.activeNotifications.none { it.tag == tag })
             // A subsequent eligible message increases unread, unlike the reply above.
-            notifications.update(AppState(ready = true, me = me, spaces = listOf(incoming.copy(unread = 3u, eventCount = incoming.eventCount + 4uL))), false, null)
+            notifications.update(activityState(incoming.copy(unread = 3u, eventCount = incoming.eventCount + 4uL)), false, null)
             waitUntil { manager.activeNotifications.any { it.tag == tag } }
             notifications.update(AppState(ready = true, me = me), false, null)
             waitUntil { manager.activeNotifications.none { it.tag == tag } }
             preferences.edit().putBoolean("notifications", false).commit()
-            notifications.update(AppState(ready = true, me = me, spaces = listOf(incoming.copy(unread = 4u, eventCount = incoming.eventCount + 5uL))), false, null)
+            notifications.update(activityState(incoming.copy(unread = 4u, eventCount = incoming.eventCount + 5uL)), false, null)
             assertTrue(manager.activeNotifications.none { it.tag == tag })
             preferences.edit().putBoolean("notifications", true).commit()
             val foreign = core.requests().first().let { it.copy(id = "foreign-${UUID.randomUUID()}", status = RequestStatus.PENDING, agent = it.agent.copy(isMine = false)) }

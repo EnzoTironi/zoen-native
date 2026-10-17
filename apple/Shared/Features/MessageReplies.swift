@@ -256,11 +256,12 @@ struct ThreadSheet: View {
     @Environment(AppModel.self) private var model
     @Environment(\.dismiss) private var dismiss
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.scenePhase) private var scenePhase
     let spaceId: String
     let rootId: String
+    var focusedEntryId: String? = nil
     @State private var entries: [TimelineEntry] = []
-    @State private var draft = ""
-    @State private var alsoInChat = false
+    @State private var draft = ThreadReplyDraft()
     @FocusState private var focused: Bool
 
     private var following: Bool { entries.first?.threadFollowing ?? false }
@@ -273,6 +274,7 @@ struct ThreadSheet: View {
                         if let root = entries.first {
                             row(root, previous: nil)
                                 .padding(.bottom, 6)
+                                .id(root.id)
                             HStack(spacing: 8) {
                                 Text(root.threadReplies == 0 ? String(localized: "Nenhuma resposta ainda") :
                                         root.threadReplies == 1 ? String(localized: "1 resposta") : String(localized: "\(Int(root.threadReplies)) respostas"))
@@ -295,24 +297,27 @@ struct ThreadSheet: View {
                 }
                 .defaultScrollAnchor(.bottom)
                 .onChange(of: entries.count) { _, _ in withAnimation(reduceMotion ? nil : .snappy) { proxy.scrollTo("thread-bottom", anchor: .bottom) } }
+                .task(id: ChatTimeline.location(of: focusedEntryId ?? "", in: entries)) {
+                    guard let id = focusedEntryId, entries.contains(where: { $0.id == id }) else { return }
+                    do { try await Task.sleep(for: .milliseconds(80)) } catch { return }
+                    proxy.scrollTo(id, anchor: .center)
+                }
             }
             .background(Palette.background.ignoresSafeArea())
             .safeAreaBar(edge: .bottom, spacing: 0) {
                 VStack(alignment: .leading, spacing: 0) {
-                    Toggle(isOn: $alsoInChat) {
+                    Toggle(isOn: $draft.alsoInChat) {
                         Text("Também enviar na conversa").font(.footnote)
                     }
                     .toggleStyle(.checkmark)
                     .padding(.horizontal, 18)
                     .padding(.bottom, 4)
                     .accessibilityIdentifier("thread-also-in-chat")
-                    Composer(text: $draft, placeholder: String(localized: "Escreva uma resposta"), focused: $focused, busy: false) {
-                        let text = draft.trimmingCharacters(in: .whitespacesAndNewlines)
-                        draft = ""
-                        guard !text.isEmpty else { return }
+                    Composer(text: $draft.text, placeholder: String(localized: "Escreva uma resposta"), focused: $focused, busy: false) {
+                        guard draft.submit({ text, broadcast in
+                            model.perform({ try model.core.sendThreadReply(spaceId: spaceId, text: text, rootId: rootId, alsoInChat: broadcast) }) != nil
+                        }) else { return }
                         Haptics.send()
-                        model.perform { try model.core.sendThreadReply(spaceId: spaceId, text: text, rootId: rootId, alsoInChat: alsoInChat) }
-                        alsoInChat = false
                         reload()
                     }
                 }
@@ -341,6 +346,7 @@ struct ThreadSheet: View {
         }
         .accessibilityIdentifier("thread-sheet")
         .task(id: model.revision) { reload() }
+        .onChange(of: scenePhase) { _, phase in if phase == .active { reload() } }
         .task {
             try? await Task.sleep(for: .milliseconds(450))
             focused = true
@@ -366,9 +372,9 @@ struct ThreadSheet: View {
 
     private func reload() {
         var loaded = (try? model.core.thread(spaceId: spaceId, rootId: rootId)) ?? []
-        if let root = loaded.first, root.threadUnread > 0 {
+        if let observed = ChatTimeline.threadReadThrough(in: loaded, active: scenePhase == .active) {
             do {
-                try model.core.markThreadRead(spaceId: spaceId, rootId: rootId)
+                try model.core.markThreadReadUpTo(spaceId: spaceId, rootId: rootId, seq: observed)
                 model.refresh()
                 loaded = (try? model.core.thread(spaceId: spaceId, rootId: rootId)) ?? loaded
             } catch let error as CoreError {
@@ -385,7 +391,10 @@ struct ThreadSheet: View {
     }
 }
 
-struct ThreadRef: Identifiable, Equatable { let id: String }
+struct ThreadRef: Identifiable, Equatable {
+    let id: String
+    var entryId: String? = nil
+}
 
 /// Checkbox-style toggle (Slack's "Also send to channel").
 struct CheckmarkToggleStyle: ToggleStyle {
@@ -415,7 +424,7 @@ struct ThreadsInboxView: View {
     @State private var open: ThreadSummary?
 
     var body: some View {
-        List(threads, id: \.root.id) { t in
+        List(threads) { t in
             Button { open = t } label: {
                 HStack(alignment: .top, spacing: 12) {
                     Avatar(persona: t.root.author, size: 36)
@@ -449,8 +458,6 @@ struct ThreadsInboxView: View {
     }
 }
 
-extension ThreadSummary: Identifiable { public var id: String { root.id } }
-
 extension View {
     /// A thread opens as a side panel where there's room (Mac, iPad, landscape) and as a
     /// sheet on iPhone (Ando).
@@ -464,10 +471,18 @@ private struct ThreadPanel<Item: Identifiable, Panel: View>: ViewModifier {
     let panel: (Item) -> Panel
     @Environment(\.horizontalSizeClass) private var size
 
+    private var usesInspector: Bool {
+        #if os(macOS)
+        true
+        #else
+        size == .regular
+        #endif
+    }
+
     func body(content: Content) -> some View {
-        if size == .regular {
+        if usesInspector {
             content.inspector(isPresented: Binding(get: { item != nil }, set: { if !$0 { item = nil } })) {
-                if let item { panel(item).inspectorColumnWidth(min: 320, ideal: 380, max: 480) }
+                if let item { panel(item).id(item.id).inspectorColumnWidth(min: 320, ideal: 380, max: 480) }
             }
         } else {
             content.sheet(item: $item) { panel($0).presentationDetents([.large]) }
