@@ -514,8 +514,8 @@ impl<S: Signer> Client<S> {
                 .ok_or("That message is no longer available.")?;
             reply.to = target.client_id.clone();
         }
-        let attachment = (!doc.is_voice()).then(|| roda_types::new_secret_id("msg"));
         let item = roda_types::new_secret_id("it");
+        let attachment = (!doc.is_voice()).then(|| format!("msg_attachment_{item}"));
         let epoch = self.ready_epoch(space)?;
         let inner = self.clear_event(
             space,
@@ -1337,12 +1337,18 @@ impl<S: Signer> Client<S> {
                 reply,
                 forwarded,
                 attaches,
-                ..
+                message,
             } => {
-                // Hide only an empty, context-free companion whose same-author
+                // Hide only an explicitly generated, context-free companion whose same-author
                 // file card is actually present. Other attachment posts are real
                 // timeline entries (including non-file items and forwards).
-                if text.is_empty() && reply.is_none() && !forwarded {
+                if text.is_empty()
+                    && reply.is_none()
+                    && !forwarded
+                    && attaches
+                        .as_ref()
+                        .is_some_and(|item| *message == format!("msg_attachment_{item}"))
+                {
                     if let Some(item) = attaches {
                         let is_file_card = |candidate: &Event| {
                             candidate.space == event.space
@@ -1366,7 +1372,19 @@ impl<S: Signer> Client<S> {
                         }
                     }
                 }
-                (text.clone(), reply.clone(), *forwarded, None)
+                // Resolve only from this conversation's readable events, never the
+                // global media cache (which may contain another space's files).
+                let file = attaches.as_ref().and_then(|item| {
+                    let matches_item = |candidate: &&Event| candidate.space == event.space
+                        && matches!(&candidate.body, EventBody::ItemCreated { item: id, content: roda_types::ItemContent::File(_), .. } if id == item);
+                    let confirmed = self.logs.get(&event.space).and_then(|log| log.events().iter().find(matches_item));
+                    let pending = self.saved.outbox.values().filter_map(|p| p.inner.as_ref()).find(matches_item);
+                    confirmed.or(pending).and_then(|candidate| match &candidate.body {
+                        EventBody::ItemCreated { content: roda_types::ItemContent::File(doc), .. } => Some(doc.clone()),
+                        _ => None,
+                    })
+                });
+                (text.clone(), reply.clone(), *forwarded, file)
             }
             EventBody::ItemCreated {
                 content: roda_types::ItemContent::File(doc),

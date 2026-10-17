@@ -236,14 +236,28 @@ fn native_sqlite_welcome_messages_saved_reload_and_removal_use_shared_mls() {
         .unwrap();
     assert!(client.message_view(companion, "sending", None).is_none());
     assert_eq!(client.conversations()[0].messages.len(), 2);
+    // A later empty reshare is not the generated companion, even by its owner.
+    let mut reshare = companion.clone();
+    if let EventBody::MessagePosted { message, .. } = &mut reshare.body {
+        *message = "later-reshare".into();
+    }
+    reshare.at_ms += 60_000;
+    let shared = client.message_view(&reshare, "sending", None).unwrap();
+    assert_eq!(shared.file.as_ref().unwrap().name, "report.txt");
     let mut other_author = companion.clone();
     other_author.author = "another-author".into();
     assert!(client
         .message_view(&other_author, "sending", None)
+        .unwrap()
+        .file
         .is_some());
     let mut other_space = companion.clone();
     other_space.space = "another-space".into();
-    assert!(client.message_view(&other_space, "sending", None).is_some());
+    assert!(client
+        .message_view(&other_space, "sending", None)
+        .unwrap()
+        .file
+        .is_none());
     for (text, reply, forwarded, attachment) in [
         ("caption", None, false, item.clone()),
         (
@@ -279,12 +293,22 @@ fn native_sqlite_welcome_messages_saved_reload_and_removal_use_shared_mls() {
             *t = text.into();
             *r = reply.clone();
             *f = forwarded;
-            *attaches = Some(attachment);
+            *attaches = Some(attachment.clone());
         }
         let view = client
             .message_view(&post, "sending", None)
             .expect("meaningful attachment post must survive");
         assert_eq!(view.text, text);
+        if attachment == item {
+            let doc = view
+                .file
+                .as_ref()
+                .expect("retained attachment must render file payload");
+            assert_eq!(doc.name, "report.txt");
+            assert!(!doc.chunks.is_empty());
+        } else {
+            assert!(view.file.is_none());
+        }
         assert_eq!(view.forwarded, forwarded);
         assert_eq!(
             view.quote.is_some() || view.thread.is_some(),
