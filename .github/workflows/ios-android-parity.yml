@@ -83,7 +83,14 @@ jobs:
             parity/ios/*.png
             parity/ios/manifest.json
             parity/ios/native.xcresult
-            parity/ios-${{ matrix.viewport }}.log
+          if-no-files-found: error
+      # Keep the sibling log separate: including it above changes the artifact's
+      # common root to parity/, nesting frames and manifest under ios/ on download.
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: parity-ios-log-${{ matrix.viewport }}
+          path: parity/ios-${{ matrix.viewport }}.log
           if-no-files-found: error
 
   android:

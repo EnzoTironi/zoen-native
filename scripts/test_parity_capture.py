@@ -59,6 +59,20 @@ class CaptureSafetyTests(unittest.TestCase):
         target_line = next(line.strip() for line in ios.splitlines() if line.strip().startswith('targets:'))
         self.assertEqual(target_line, 'targets: aarch64-apple-ios-sim')
 
+    def test_ios_frame_artifact_extracts_manifest_at_download_root(self):
+        workflow = (parity_capture.ROOT / '.github/workflows/ios-android-parity.yml').read_text()
+        ios = workflow.split('\n  ios:\n', 1)[1].split('\n  android:\n', 1)[0]
+        artifact = ios.split('name: parity-ios-${{ matrix.viewport }}\n', 1)[1]
+        paths = artifact.split('path: |\n', 1)[1].split('          if-no-files-found:', 1)[0]
+        # upload-artifact preserves paths relative to the least common ancestor
+        # of input search directories, not relative to each individual file.
+        roots = [str(Path(line.strip()).parent) for line in paths.splitlines() if line.strip()]
+        archive_root = Path(os.path.commonpath(roots))
+        manifest_member = Path('parity/ios/manifest.json').relative_to(archive_root)
+        self.assertEqual(manifest_member, Path('manifest.json'))
+        self.assertIn('name: parity-ios-log-${{ matrix.viewport }}', ios)
+        self.assertIn('path: parity/ios-${{ matrix.viewport }}.log', ios)
+
     def test_ios_rust_cache_is_keyed_by_current_sources(self):
         workflow = (parity_capture.ROOT / '.github/workflows/ios-android-parity.yml').read_text()
         ios = workflow.split('\n  ios:\n', 1)[1].split('\n  android:\n', 1)[0]
