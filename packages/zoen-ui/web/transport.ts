@@ -46,6 +46,8 @@ export class AuthenticatedTransport {
   private stopped = true;
   private ready = false;
   private readonly pending = new Map<number, Reply>();
+  /** The relay's signed name from its challenge: uploads are signed for it. */
+  relayName = '';
   private readonly core: TransportCore;
   private readonly vault: TransportVault;
   private readonly login: Login;
@@ -105,6 +107,7 @@ export class AuthenticatedTransport {
         if (phase === 'challenge' && frame.kind === 'challenge') {
           if (frame.protocol < 4) { this.fatal('This relay needs protocol 4 before a browser can pair.'); return; }
           phase = 'auth';
+          this.relayName = frame.relay;
           const payload = await this.core.bytes({ kind: 'auth_message', nonce: frame.nonce, relay: frame.relay });
           const signature = await this.vault.sign(payload);
           const signed = Array.from(signature, (b) => b.toString(16).padStart(2, '0')).join('');

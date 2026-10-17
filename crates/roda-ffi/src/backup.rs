@@ -185,7 +185,11 @@ pub fn recovery_keys(recovery_key: &str) -> R<Keys> {
         .chars()
         .filter(|c| c.is_ascii_digit())
         .collect();
-    if digits.len() != RECOVERY_DIGITS {
+    if digits.len() != RECOVERY_DIGITS
+        || !recovery_key
+            .chars()
+            .all(|c| c.is_ascii_digit() || c.is_ascii_whitespace())
+    {
         return Err(invalid(t(
             "A chave de recuperação tem 64 números.",
             "The recovery key has 64 digits.",

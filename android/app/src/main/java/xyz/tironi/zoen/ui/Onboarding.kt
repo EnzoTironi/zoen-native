@@ -21,6 +21,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material.icons.rounded.*
 import androidx.compose.material3.*
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
@@ -50,6 +51,7 @@ import xyz.tironi.zoen.data.FileAccess
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun Onboarding(model: ZoenViewModel, modifier: Modifier = Modifier, acquisitionLink: String? = null, finished: (String?) -> Unit = {}) {
+    val state by model.state.collectAsStateWithLifecycle()
     var route by remember { mutableStateOf(OnboardingRoute()) }
     var position by rememberSaveable { mutableIntStateOf(0) }
     var selected by rememberSaveable { mutableStateOf(listOf<Int>()) }
@@ -59,6 +61,7 @@ fun Onboarding(model: ZoenViewModel, modifier: Modifier = Modifier, acquisitionL
     var relay by rememberSaveable { mutableStateOf(BuildConfig.RELAY_URL) }
     var connectionSettings by rememberSaveable { mutableStateOf(false) }
     var busy by remember { mutableStateOf(false) }
+    var recoverAccount by remember { mutableStateOf(false) }
     var planning by remember { mutableStateOf(false) }
     var savedDraft by rememberSaveable { mutableStateOf<String?>(null) }
     var plan by remember { mutableStateOf(savedDraft?.let(OnboardingDraft::decode)) }
@@ -110,7 +113,11 @@ fun Onboarding(model: ZoenViewModel, modifier: Modifier = Modifier, acquisitionL
             finally { planning = false }
         }
     }
-    BackHandler(enabled = position > 0 && !busy) { position-- }
+    if (recoverAccount) RecoveryKeyRestore(model, { recoverAccount = false }) {
+        model.repository.preferences.edit().putBoolean("onboarded", true).apply()
+        finished(null)
+    }
+    BackHandler(enabled = position > 0 && !busy && !recoverAccount) { position-- }
     val pose = when (step) {
         OnboardingStep.Hello -> MascotPose.Wave
         OnboardingStep.Profile, OnboardingStep.Notifications -> MascotPose.Phone
@@ -138,21 +145,24 @@ fun Onboarding(model: ZoenViewModel, modifier: Modifier = Modifier, acquisitionL
                 val detail = route.text("onboarding.${step.id}.body", language) ?: if (step == OnboardingStep.Profile) null else stringResource(step.detail)
                 detail?.let { Text(it, Modifier.fillMaxWidth(), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, textAlign = TextAlign.Center) }
                 when (step) {
-                    OnboardingStep.Hello -> if (route.flow == "default") {
-                        GlassOutlinedButton(onClick = {
-                            val clipboard = context.getSystemService(android.content.ClipboardManager::class.java)
-                            val invite = clipboard.primaryClip?.takeIf { it.itemCount > 0 }?.getItemAt(0)?.coerceToText(context)?.toString()?.trim()
-                            if (invite.isNullOrEmpty() || invite.length > 8192 || Uri.parse(invite).scheme !in listOf("https", "zoen")) model.notify(pasteError)
-                            else model.launch {
-                                route = model.repository.query { core ->
-                                    core.growthCaptureLink(invite)
-                                    OnboardingRoute.from(core.growthOnboardingPlan())
+                    OnboardingStep.Hello -> {
+                        if (state.account == null) TextButton(onClick = { recoverAccount = true }, modifier = Modifier.testTag("onboarding-recover")) { Text("Recuperar minha conta") }
+                        if (route.flow == "default") {
+                            GlassOutlinedButton(onClick = {
+                                val clipboard = context.getSystemService(android.content.ClipboardManager::class.java)
+                                val invite = clipboard.primaryClip?.takeIf { it.itemCount > 0 }?.getItemAt(0)?.coerceToText(context)?.toString()?.trim()
+                                if (invite.isNullOrEmpty() || invite.length > 8192 || Uri.parse(invite).scheme !in listOf("https", "zoen")) model.notify(pasteError)
+                                else model.launch {
+                                    route = model.repository.query { core ->
+                                        core.growthCaptureLink(invite)
+                                        OnboardingRoute.from(core.growthOnboardingPlan())
+                                    }
                                 }
+                            }, modifier = Modifier.align(Alignment.CenterHorizontally).testTag("onboarding-paste-invite")) {
+                                Icon(Icons.Rounded.ContentPaste, null, Modifier.size(18.dp))
+                                Spacer(Modifier.width(8.dp))
+                                Text(stringResource(R.string.onboarding_paste_invite))
                             }
-                        }, modifier = Modifier.align(Alignment.CenterHorizontally).testTag("onboarding-paste-invite")) {
-                            Icon(Icons.Rounded.ContentPaste, null, Modifier.size(18.dp))
-                            Spacer(Modifier.width(8.dp))
-                            Text(stringResource(R.string.onboarding_paste_invite))
                         }
                     }
                     OnboardingStep.Profile -> {

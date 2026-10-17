@@ -1389,7 +1389,12 @@ mod tests {
             .living_space_mutate("root", r#"{"action":"finalize"}"#, 99, "too-early")
             .is_err());
         assert!(client
-            .living_space_mutate("root", r#"{"action":"finalize"}"#, i64::MAX, "forged-future")
+            .living_space_mutate(
+                "root",
+                r#"{"action":"finalize"}"#,
+                i64::MAX,
+                "forged-future"
+            )
             .is_err());
         client
             .living_space_mutate("root", r#"{"action":"submissions_close"}"#, 100, "close")

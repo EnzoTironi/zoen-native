@@ -46,7 +46,7 @@ futures-util = { version = "0.3", default-features = false, features = ["sink", 
 sqlx = { version = "0.9", default-features = false, features = ["runtime-tokio", "postgres", "json", "migrate", "macros"] }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "json", "fmt"] }
-tower-http = { version = "0.6", features = ["trace", "limit"] }
+tower-http = { version = "0.6", features = ["trace", "limit", "cors"] }
 postgresql_embedded = { version = "0.21", optional = true, default-features = false, features = ["tokio", "zonky", "tls-rustls-ring"] }
 object_store = { version = "0.14.2", features = ["aws"] }
 bytes = "1.12.1"

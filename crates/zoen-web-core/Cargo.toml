@@ -27,6 +27,8 @@ sha2.workspace = true
 zeroize.workspace = true
 getrandom = { workspace = true, features = ["js"] }
 hpke-rs = { version = "0.7", features = ["rustcrypto"] }
+hkdf.workspace = true
+fastcdc = "5"
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 wasm-bindgen = "0.2.129"

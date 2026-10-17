@@ -281,6 +281,11 @@ class ZoenRepository(private val context: Context) {
         }
     }
 
+    suspend fun restoreWithRecoveryKey(relay: String, handle: String, key: String) {
+        network { it.restoreBackupWithRecoveryKey(relay, handle, key, vault) }
+        change { updateSyncLocked() }
+    }
+
     suspend fun useDemo() = withContext(Dispatchers.IO) {
         check(BuildConfig.DEBUG)
         gate.withLock {
