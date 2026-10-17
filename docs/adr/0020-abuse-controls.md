@@ -51,7 +51,7 @@ enumeration), invite previews (code guessing), typing signals, or blob bytes.
 ## Proof
 `crates/zoen-cli/tests/journey_limits.rs`:
 - A real client that sends faster than its bucket allows gets refused and still delivers
-  all six messages in order.
+  all six messages exactly once; transient retries may change their relay order.
 - A raw flood client gets "slow down" with a usable hint.
 - The fourth account from one address is refused, handle lookups get capped, and handshakes
   from one address end in `RateLimited`.

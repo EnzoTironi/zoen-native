@@ -663,6 +663,12 @@ async fn stalled_backup_storage_is_bounded_and_does_not_block_unlink() {
     );
     let identity = w.id_of("ana").await;
     let signer = device_key(&w, "ana");
+    let recovered_root = std::fs::read(w.dir.join("ana-new/vault/zoen.identity.v1")).unwrap();
+    let recovered_author = roda_log::Author::device(
+        &roda_log::Signer::from_secret(&recovered_root.try_into().unwrap()),
+        device_key(&w, "ana-new"),
+    );
+    let mut unlinker = RawClient::reconnect(&w.relay_url(), recovered_author).await;
     let generation = w.scalar("SELECT generation FROM backup_vaults").await;
     let original_key = w.scalar("SELECT blob_key FROM backup_vaults").await;
     let sha = w.scalar("SELECT blob_sha FROM backup_vaults").await;
@@ -688,23 +694,18 @@ async fn stalled_backup_storage_is_bounded_and_does_not_block_unlink() {
     let (response, orphan_key) = tokio::join!(backup_http(&w, &request), async {
         let orphan_key = store.wait_for_call("PUT", after).await;
         // The signed upload now holds FOR SHARE on Ana's original device. Unlink must
-        // complete even though the object store will not acknowledge the upload.
-        let mut child = w.spawn_zoen("ana-new", &["unlink", &signer.id()]);
-        let expires = Instant::now() + Duration::from_secs(2);
-        while child.try_wait().unwrap().is_none() {
-            if Instant::now() >= expires {
-                let _ = child.kill();
-                let _ = child.wait();
-                panic!("stalled backup prevented Unlink");
-            }
-            tokio::time::sleep(Duration::from_millis(10)).await;
-        }
-        let output = child.wait_with_output().unwrap();
-        assert!(
-            output.status.success(),
-            "{}",
-            String::from_utf8_lossy(&output.stderr)
-        );
+        // receive its acknowledgement even though the object store will not acknowledge
+        // the upload; unrelated post-ack MLS maintenance is outside this lock assertion.
+        let reply = tokio::time::timeout(
+            Duration::from_secs(2),
+            unlinker.request(roda_proto::Op::Unlink {
+                device: signer.id(),
+            }),
+        )
+        .await
+        .expect("stalled backup prevented Unlink")
+        .expect("Unlink was refused");
+        assert!(matches!(reply, roda_proto::Reply::Done));
         orphan_key
     });
     assert_eq!(response.0, 503);

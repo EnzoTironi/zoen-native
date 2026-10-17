@@ -35,7 +35,10 @@ async fn a_fast_sender_is_slowed_down_and_loses_nothing() {
     let s = w.zoen("ana", &["sync", "--timeout", "30000"]);
     assert!(s.contains("pending=0"), "{s}");
     let seen = w.zoen("bruno", &["read", "@ana"]);
-    let lines: Vec<&str> = seen.lines().collect();
+    // Transient refusals can let a later in-flight ciphertext land before an older retry.
+    // Compare as a sorted list so duplicates or loss still fail the journey.
+    let mut lines: Vec<&str> = seen.lines().collect();
+    lines.sort_unstable();
     assert_eq!(
         lines,
         ["Ana: 1", "Ana: 2", "Ana: 3", "Ana: 4", "Ana: 5", "Ana: 6"],

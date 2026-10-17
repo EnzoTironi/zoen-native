@@ -116,7 +116,6 @@ class ParityJourneysTest {
         try {
             open("zoen://chat/${plan.spaceId}")
             compose.waitUntil(10_000) { compose.onAllNodesWithTag(tile).fetchSemanticsNodes().isNotEmpty() }
-            compose.onNodeWithTag("chat-timeline").performScrollToIndex(0)
             val summary = application.getString(R.string.chat_plan_count, plan.plan!!.sections.sumOf { it.lines.size },
                 xyz.tironi.zoen.core.formatMoney(plan.plan!!.totalCents, application.repository.locale))
             compose.onNodeWithText(summary).assertIsDisplayed()

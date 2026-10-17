@@ -96,9 +96,10 @@ async fn dm_roundtrip_survives_relaunch_and_verifies() {
     );
     assert_eq!(
         events.len(),
-        12,
-        "2 encrypted Personal genesis, SpaceCreated, MemberAdded, a profile key share each way, \
-         the commit and Welcome, a checkpoint each, 2 sealed messages"
+        16,
+        "2 encrypted Personal spaces (genesis, recovery commit and checkpoint each), \
+         SpaceCreated, MemberAdded, a profile key share each way, the commit and Welcome, \
+         a checkpoint each, 2 sealed messages"
     );
 }
 
@@ -369,15 +370,17 @@ async fn photo_background_travels_encrypted() {
                 }
             }
         }
-        for event in w.events_in(&space).await {
-            event.env.verify().unwrap();
-            if let Some(reference) = event
-                .env
-                .recovery()
-                .and_then(roda_log::recovery::RecoveryRef::parse)
-            {
-                contexts.insert(reference.blob);
-            }
+    }
+    // The blob store is global to the World, so admit recovery objects from every relay
+    // Space, including Bruno's Personal Space that is not present in Ana's local store.
+    for event in w.events().await {
+        event.env.verify().unwrap();
+        if let Some(reference) = event
+            .env
+            .recovery()
+            .and_then(roda_log::recovery::RecoveryRef::parse)
+        {
+            contexts.insert(reference.blob);
         }
     }
     assert_eq!(photos.len(), 1, "one authenticated photo reference");
