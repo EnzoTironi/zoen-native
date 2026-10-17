@@ -19,15 +19,15 @@ function NativeParity({ config }: { config: ParityConfig }) {
   const coastal = nativeFixture.spaces.find(s => s.kind === 'community');
   const paraty = nativeFixture.spaces.find(s => s.title === 'Paraty with Marina');
   if (!marina || !coastal || !paraty) throw new Error('Native parity seed is missing required spaces.');
-  const [selected, select] = useState(config.screen === 'chat' || config.screen === 'composer' ? marina.id : config.screen === 'chats' && config.viewport === 'wide' ? paraty.id : '');
+  const [selected, select] = useState(config.screen === 'chat' || config.screen === 'composer' ? marina.id : config.screen === 'spaces' ? coastal.id : config.screen === 'chats' && config.viewport === 'wide' ? paraty.id : '');
   const rootData = nativeFixtureRootData();
-  const destination = config.screen === 'spaces' ? 'spaces' : config.screen === 'notifications' ? 'notifications' : config.screen === 'profile' || config.screen === 'settings' ? 'profile' : 'chats';
+  // The native capture's historical "spaces" name now opens the seeded community
+  // from Chats; it must not resurrect the removed Spaces root destination.
+  const destination = config.screen === 'notifications' ? 'notifications' : config.screen === 'profile' || config.screen === 'settings' ? 'profile' : 'chats';
   const [settings, setSettings] = useState(config.screen === 'settings');
   const messages = useRef<Messages | null>(null);
   return <div className={`native-parity np-${config.appearance} np-${config.viewport}`} data-screen={config.screen} data-fixture-id={config.fixture_id}>
-    {config.screen === 'onboarding' ? <NativeOnboarding onContinue={() => { completeWelcome(); location.assign('/'); }} onPasteInvite={openWelcomeInvite} /> : <Messenger conversations={conversations} identity={nativeFixture.me.id} name={nativeFixture.me.name} connected={rootData.connection.state === 'online'} status="Read-only native fixture" rootData={rootData} initialDestination={destination} messages={messages} selected={selected} select={select} initialDraft={config.screen === 'composer' ? 'See you tomorrow' : ''} onSettings={() => setSettings(true)} footer={null}>
-      {settings ? <BrowserSettings me={nativeFixture.me} close={() => setSettings(false)} /> : undefined}
-    </Messenger>}
+    {config.screen === 'onboarding' ? <NativeOnboarding onContinue={() => { completeWelcome(); location.assign('/'); }} onPasteInvite={openWelcomeInvite} /> : <Messenger conversations={conversations} identity={nativeFixture.me.id} name={nativeFixture.me.name} connected={rootData.connection.state === 'online'} status="Read-only native fixture" rootData={rootData} initialDestination={destination} messages={messages} selected={selected} select={select} initialDraft={config.screen === 'composer' ? 'See you tomorrow' : ''} onSettings={() => setSettings(true)} footer={null} overlay={settings ? <BrowserSettings me={nativeFixture.me} showAccountProfile={rootData.account !== null} close={() => setSettings(false)} /> : undefined} />}
   </div>;
 }
 

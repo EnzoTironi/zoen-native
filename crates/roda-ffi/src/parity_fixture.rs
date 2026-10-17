@@ -97,6 +97,47 @@ mod tests {
             "isMine":p.is_mine,"ownerId":p.owner_id,"ownerName":p.owner_name,"ownerTintHex":p.owner_tint_hex,
             "kind":format!("{:?}",p.kind).to_lowercase()})
     }
+    fn reactions(values: &[crate::dto::ReactionDto]) -> Vec<Value> {
+        values
+            .iter()
+            .map(|r| {
+                json!({
+                    "emoji": r.emoji, "mine": r.mine,
+                    "people": r.people.iter().map(persona).collect::<Vec<_>>()
+                })
+            })
+            .collect()
+    }
+    fn reply_quote(value: &crate::dto::ReplyQuote) -> Value {
+        json!({"id": value.id, "author": persona(&value.author), "text": value.text})
+    }
+    #[test]
+    fn timeline_relations_preserve_typed_native_data() {
+        let core = crate::RodaEngine::open(":memory:".into(), "en_US".into()).unwrap();
+        core.seed_demo_if_empty().unwrap();
+        let author = core.me().unwrap();
+        let native = crate::dto::ReactionDto {
+            emoji: "🦋".into(),
+            people: vec![author.clone()],
+            mine: true,
+        };
+        let exported = reactions(&[native]);
+        assert_eq!(exported[0]["emoji"], "🦋");
+        assert_eq!(exported[0]["mine"], true);
+        assert_eq!(exported[0]["people"][0], persona(&author));
+        assert!(reactions(&[]).is_empty());
+        let quote = crate::dto::ReplyQuote {
+            id: "quoted-entry".into(),
+            author: author.clone(),
+            text: "Quoted text".into(),
+        };
+        assert_eq!(
+            reply_quote(&quote),
+            json!({
+                "id": quote.id, "author": persona(&author), "text": quote.text
+            })
+        );
+    }
     /// Regenerate the web's read-only native fixture directly from the native seed.
     /// Run alone with ZOEN_PARITY_FIXTURE=native-parity-v1 and ZOEN_PARITY_EXPORT=<path>.
     #[test]
@@ -130,7 +171,9 @@ mod tests {
                 };
                 json!({"id":e.id,"seq":e.seq,"author":persona(&e.author),"atMs":e.at_ms,
                     "kind":kind,"text":text,"card":card,"delivery":format!("{:?}",e.delivery).to_lowercase(),
-                    "threadReplies":e.thread_replies,"edited":e.edited,"deleted":e.deleted})
+                    "threadReplies":e.thread_replies,"edited":e.edited,"deleted":e.deleted,
+                    "inThread":e.in_thread,"replyRef":e.reply_to.as_ref().map(reply_quote),
+                    "forwarded":e.forwarded,"reactions":reactions(&e.reactions)})
             }).collect();
             json!({"id":s.id,"title":s.title,"kind":format!("{:?}",s.kind).to_lowercase(),
                 "members":s.members.iter().map(persona).collect::<Vec<_>>(),

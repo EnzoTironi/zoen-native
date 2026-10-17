@@ -26,6 +26,22 @@ internal class FanGestureState(private val count: Int, private val radius: Float
         else -> FanRelease.Tap
     }
 }
+/** iOS PlusVoiceCapture's translation thresholds in logical points/dp. */
+internal class VoiceHoldDragState {
+    var settled = false; private set
+    fun move(x: Float, y: Float): VoiceHoldDragResult? {
+        if (settled) return null
+        val result = when {
+            x < -110f -> VoiceHoldDragResult.Cancel
+            y < -80f -> VoiceHoldDragResult.Lock
+            else -> return null
+        }
+        settled = true
+        return result
+    }
+}
+internal enum class VoiceHoldDragResult { Cancel, Lock }
+
 internal sealed interface FanRelease {
     data object Voice : FanRelease
     data object Tap : FanRelease

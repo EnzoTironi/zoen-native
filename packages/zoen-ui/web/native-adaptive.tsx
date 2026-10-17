@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import './native-adaptive.css';
-import { displayTime } from './display-clock.ts';
+import { displayShort } from './display-clock.ts';
 import { NativeAvatar, type NativeAvatarIdentity } from './native-art.tsx';
 
 export interface NativeAdaptiveSpace {
@@ -80,8 +80,8 @@ export function NativeAdaptiveShell({ children, home, spaces, selected, onSelect
         return <button key={slot} aria-label={`${mode[0]!.toUpperCase()}${mode.slice(1)} appearance`} aria-pressed={slot === 0} onClick={() => setAppearance(mode)} onKeyDown={event => { if (event.key === 'ArrowLeft' || event.key === 'ArrowRight') { event.preventDefault(); setAppearance(modes[(modes.indexOf(appearance) + (event.key === 'ArrowLeft' ? 2 : 1)) % 3]!); } }}><Icon name={mode === 'dark' ? 'moon' : mode === 'light' ? 'sun' : 'system'}/></button>;
       })}</div>
       <button className="na-new-message" aria-label="Search" onClick={() => onSelect('new-chat')}><Icon name="search"/></button>
-    </nav>{expanded && <section className="na-chat-sidebar" aria-label="Chats">{home}
-      <div className="na-list">{spaces.filter(s => (filter === 'all' || s.kind === filter) && s.title.toLocaleLowerCase().includes(query.toLocaleLowerCase())).map(space => <button className="na-chat-row" key={space.id} aria-current={active === space.id ? 'page' : undefined} onClick={() => onSelect(space.id)}><NativeAvatar className="na-avatar" size={34} identity={{ kind: space.kind === 'direct' ? 'person' : 'group', id: space.id, name: space.title, ...(space.counterpart ?? {}) }} /><span className="na-copy"><span><b>{space.title}</b><time>{displayTime(space.lastAtMs)}</time></span><small>{space.lastPreview}</small></span>{space.unread > 0 && <span className="na-row-badge">{space.unread}</span>}</button>)}</div>
+    </nav>{expanded && <section className="na-chat-sidebar" aria-label="Chats"><header><b>Chats</b>{spaces.some(space => space.id === selected) && <button aria-label="Participants" onClick={() => onSelect('participants')}><Icon name="info"/></button>}</header>{home}
+      <div className="na-list">{spaces.filter(s => (filter === 'all' || s.kind === filter) && s.title.toLocaleLowerCase().includes(query.toLocaleLowerCase())).map(space => <button className="na-chat-row" key={space.id} aria-current={active === space.id ? 'page' : undefined} onClick={() => onSelect(space.id)}><NativeAvatar className="na-avatar" size={34} identity={{ kind: space.kind === 'direct' ? 'person' : 'group', id: space.id, name: space.title, ...(space.counterpart ?? {}) }} /><span className="na-copy"><span><b>{space.title}</b><time>{displayShort(space.lastAtMs)}</time></span><small>{space.lastPreview}</small></span>{space.unread > 0 && <span className="na-row-badge">{space.unread}</span>}</button>)}</div>
     </section>}</aside><main className="na-detail">{children}</main>
   </div>;
 }

@@ -1,6 +1,6 @@
 // Production-component checks against genuine read-only native-core data.
 // Narrow viewport corresponds to the authoritative native crop: 62pt top, 0pt bottom.
-// Wide geometry remains preliminary until a matching native wide render is available.
+// Wide geometry follows the canonical iPad balanced split-view render (320pt column).
 // Does not claim relay, recording, file transport, or native pixel parity coverage.
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
@@ -20,7 +20,7 @@ console.log('WebKit matrix starting');
 try {
   for (const viewport of ['narrow', 'wide']) for (const appearance of ['light', 'dark']) for (const screen of ['chats', 'spaces', 'notifications', 'profile', 'chat', 'composer', 'settings', 'onboarding']) {
     if (screen === 'chats') { if (browser) await browser.close(); browser = await webkit.launch({ timeout: 20_000 }); }
-    const context = await browser.newContext({ viewport: viewport === 'narrow' ? { width: 402, height: 812 } : { width: 1376, height: 988 }, deviceScaleFactor: viewport === 'narrow' ? 3 : 2, locale: 'en-US', timezoneId: 'UTC', colorScheme: appearance });
+    const context = await browser.newContext({ viewport: viewport === 'narrow' ? { width: 402, height: 812 } : { width: 1376, height: 988 }, deviceScaleFactor: viewport === 'narrow' ? 3 : 2, isMobile: true, hasTouch: true, locale: 'en-US', timezoneId: 'UTC', colorScheme: appearance });
     const page = await context.newPage();
     const errors = []; page.on('pageerror', error => errors.push(error.message));
     await page.clock.setFixedTime(new Date('2026-01-15T12:00:00Z'));
@@ -35,7 +35,8 @@ try {
     assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true, 'no horizontal overflow');
     assert.equal(await page.locator('.zm-bubble .zm-meta').evaluateAll(elements => elements.every(element => { const meta = element.getBoundingClientRect(); const bubble = element.closest('.zm-bubble').getBoundingClientRect(); return meta.bottom <= bubble.bottom + 1 && meta.right <= bubble.right + 1; })), true, 'message timestamps stay inside their bubbles');
     if (['chats', 'spaces', 'notifications', 'profile'].includes(screen)) {
-      assert.equal(await page.locator('.zm-home-head, .native-root-screen > h1').count(), 0, 'root has no top title chrome');
+      assert.equal(await page.locator('.zm-home-head').count(), 0, 'compact root retains its native bottom-only chrome');
+      assert.equal(await page.locator('.native-root-screen > h1').count(), viewport === 'wide' && ['notifications', 'profile'].includes(screen) ? 1 : 0, 'only iPad detail navigation owns a top title');
       assert.equal(await page.locator('[aria-label="Offline"]:not(.zn-navigation [aria-label="Offline"])').count(), 0, 'offline dot belongs only to the bottom bar');
     }
     if (screen === 'composer') {
@@ -47,9 +48,9 @@ try {
       await page.locator('textarea').fill('See you tomorrow');
     }
     if (viewport === 'wide' && screen !== 'onboarding') {
-      assert.equal(await page.locator('.na-sidebar').evaluate(element => element.getBoundingClientRect().width), 372);
+      assert.equal(await page.locator('.na-sidebar').evaluate(element => element.getBoundingClientRect().width), 320);
       assert.equal(await page.locator('.na-rail').evaluate(element => element.getBoundingClientRect().width), 80);
-      assert.equal(await page.locator('.na-chat-sidebar').evaluate(element => element.getBoundingClientRect().width), 280);
+      assert.equal(await page.locator('.na-chat-sidebar').evaluate(element => element.getBoundingClientRect().width), 228);
     }
     if (screen === 'chats') {
       assert.equal(await page.locator('.zm-chat-open').evaluateAll(rows => rows.every(row => {
@@ -85,9 +86,11 @@ try {
       await page.getByRole('button', { name: 'Cancel', exact: true }).click();
     }
     if (screen === 'spaces') {
-      const rows = page.getByTestId('spaces-directory').getByRole('button');
-      assert.equal(await rows.count(), fixture.spaces.length);
-      for (const space of fixture.spaces) assert.equal(await page.getByTestId('spaces-directory').getByRole('button', { name: space.title, exact: true }).count(), 1);
+      const community = fixture.spaces.find(space => space.kind === 'community');
+      assert.ok(community);
+      assert.equal(await page.locator('.zm-app').getAttribute('data-selected-space'), community.id);
+      assert.equal(await page.getByTestId('spaces-directory').count(), 0, 'historical capture name follows the real community-opening journey');
+      assert.equal(await page.locator('.native-hike-card').count(), 1, 'the genuine app state uses the native hike renderer');
     }
     if (screen === 'notifications') {
       const pending = fixture.requests.filter(r => r.status === 'pending');

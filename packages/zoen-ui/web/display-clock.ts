@@ -23,6 +23,21 @@ export function displayRelativeTime(ms: number): string {
   }
   return new Intl.DateTimeFormat(locale, { day: 'numeric', month: 'short', ...zone }).format(ms);
 }
+/** RodaTime.short: calendar dates use the same locale, zone and displayed clock as times. */
+export function displayShort(ms: number): string {
+  const locale = typeof document === 'undefined' ? 'pt-BR' : document.documentElement.lang || 'pt-BR';
+  const zone = timeZone ? { timeZone } : {};
+  const calendar = new Intl.DateTimeFormat('en-US', { year: 'numeric', month: 'numeric', day: 'numeric', ...zone });
+  const day = (value: number) => {
+    const parts = Object.fromEntries(calendar.formatToParts(value).map(part => [part.type, part.value]));
+    return Date.UTC(Number(parts.year), Number(parts.month) - 1, Number(parts.day));
+  };
+  const difference = day(displayNow()) - day(ms);
+  if (difference === 0) return displayTime(ms);
+  if (difference === 86_400_000) return locale.startsWith('pt') ? 'Ontem' : 'Yesterday';
+  if (difference > 0 && difference < 7 * 86_400_000) return new Intl.DateTimeFormat(locale, { weekday: 'short', ...zone }).format(ms).replaceAll('.', '');
+  return new Intl.DateTimeFormat(locale, { day: 'numeric', month: 'short', ...zone }).format(ms);
+}
 export function displayTime(ms: number): string {
   const locale = typeof document === 'undefined' ? 'pt-BR' : document.documentElement.lang || 'pt-BR';
   return new Intl.DateTimeFormat(locale, { hour: 'numeric', minute: '2-digit', ...(timeZone ? { timeZone } : {}) }).format(ms);

@@ -106,6 +106,28 @@ class CaptureSafetyTests(unittest.TestCase):
         self.assertIn('"home-notifications-card"', source)
         self.assertIn('"notifications-list-view"', source)
 
+    def test_ios_capture_selects_exact_seeded_routes_and_waits_for_title(self):
+        import json
+        source = (parity_capture.ROOT / 'apple/UITests/AndroidParityCaptureTests.swift').read_text()
+        fixture = json.loads((parity_capture.ROOT / 'packages/zoen-ui/web/fixtures/native-parity-v1.json').read_text())
+        direct = next(s for s in fixture['spaces'] if (s.get('counterpart') or {}).get('handle') == 'marina')
+        coastal = next(s for s in fixture['spaces'] if s['title'] == 'Coastal Travelers')
+        for space in (direct, coastal):
+            self.assertIn('spaceID: "' + space['id'] + '", title: "' + space['title'] + '"', source)
+        self.assertIn('"mac-chat-" : "chat-row-"', source)
+        self.assertIn('app.buttons[prefix + spaceID]', source)
+        self.assertIn('identifier == %@ AND label BEGINSWITH %@', source)
+        self.assertNotIn('"label BEGINSWITH %@", "Marina"', source)
+        self.assertNotIn('"label BEGINSWITH %@", "Coastal Travelers"', source)
+
+    def test_android_profile_capture_matches_ios_root_profile_journey(self):
+        ios = (parity_capture.ROOT / 'apple/UITests/AndroidParityCaptureTests.swift').read_text()
+        android = (parity_capture.ROOT / 'android/app/src/androidTest/java/xyz/tironi/zoen/AndroidParityScreensTest.kt').read_text()
+        self.assertIn('"-RodaTab", "you"', ios)
+        self.assertIn('"profile" -> ZoenApp(model, null, {})', android)
+        self.assertIn('compose.onNodeWithTag("tab:Profile").performClick()', android)
+        self.assertNotIn('"profile" -> ProfileScreen(', android)
+
     def test_ios_capture_waits_for_current_search_controls(self):
         screens = (parity_capture.ROOT / 'apple/UITests/AndroidParityCaptureTests.swift').read_text()
         composer = (parity_capture.ROOT / 'apple/UITests/BottomComposerParityCaptureTests.swift').read_text()

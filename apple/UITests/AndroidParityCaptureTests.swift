@@ -9,6 +9,19 @@ final class AndroidParityCaptureTests: XCTestCase {
     @MainActor func testIntegrationDarkScreens() throws { try capture(dark: true, screens: ["home", "marketplace", "notifications", "search"]) }
     @MainActor func testIntegrationDarkSearch() throws { try capture(dark: true, screens: ["search"]) }
 
+    /// Fixture IDs are checked against the exported native fixture by source regression.
+    /// A wide detail title already exists at launch; existence alone cannot prove selection.
+    @MainActor private func openSeededChat(_ app: XCUIApplication, wide: Bool, spaceID: String, title: String) {
+        let prefix = wide ? "mac-chat-" : "chat-row-"
+        let row = app.buttons[prefix + spaceID]
+        XCTAssertTrue(row.waitForExistence(timeout: 30), "Missing seeded conversation row: \(spaceID)")
+        row.tap()
+        let selectedTitle = app.buttons.matching(NSPredicate(
+            format: "identifier == %@ AND label BEGINSWITH %@", "chat-title", title
+        )).firstMatch
+        XCTAssertTrue(selectedTitle.waitForExistence(timeout: 10), "Expected selected conversation: \(title)")
+    }
+
     @MainActor private func capture(dark: Bool, screens: [String] = ["onboarding", "chats", "chat", "composer", "spaces", "notifications", "profile", "settings"]) throws {
         continueAfterFailure = false
         let environment = ProcessInfo.processInfo.environment
@@ -62,10 +75,8 @@ final class AndroidParityCaptureTests: XCTestCase {
                 settings.tap()
                 XCTAssertTrue(app.textFields["settingsSearch"].waitForExistence(timeout: 10))
             } else if screen == "chat" || screen == "composer" {
-                let marina = app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "Marina")).firstMatch
-                XCTAssertTrue(marina.waitForExistence(timeout: 30))
-                marina.tap()
-                XCTAssertTrue(app.buttons["chat-title"].waitForExistence(timeout: 10))
+                openSeededChat(app, wide: environment["ZOEN_PARITY_VIEWPORT"] == "wide",
+                    spaceID: "sp_01kf0rdqg0000000000000007d", title: "Marina")
                 if screen == "composer" {
                     let composer = app.descendants(matching: .any)["composer"].firstMatch
                     XCTAssertTrue(composer.waitForExistence(timeout: 10))
@@ -76,10 +87,8 @@ final class AndroidParityCaptureTests: XCTestCase {
             } else if screen == "spaces" {
                 // Capture the current seeded community journey; the Files/Spaces root tab
                 // was removed when compact navigation moved to Chats, Marketplace and Profile.
-                let community = app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "Coastal Travelers")).firstMatch
-                XCTAssertTrue(community.waitForExistence(timeout: 30), "The seeded community must be reachable from the current Chats root")
-                community.tap()
-                XCTAssertTrue(app.buttons["chat-title"].waitForExistence(timeout: 10))
+                openSeededChat(app, wide: environment["ZOEN_PARITY_VIEWPORT"] == "wide",
+                    spaceID: "sp_01kf0rdqg0000000000000004e", title: "Coastal Travelers")
             } else if screen == "profile" {
                 XCTAssertTrue(app.buttons["openSettings"].waitForExistence(timeout: 30))
             } else if screen == "marketplace" {

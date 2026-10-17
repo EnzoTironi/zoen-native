@@ -11,7 +11,14 @@ Object.assign(globalThis, { window: dom.window, document: dom.window.document, H
 Object.defineProperty(globalThis, 'navigator', { configurable: true, value: dom.window.navigator });
 const { createElement: h, act } = await import('react');
 const { createRoot } = await import('react-dom/client');
-const { NativeNotifications, NativeProfile, NativeSpacesDirectory, nativeOpenTasks, nativeConnectionLabel } = await import(pathToFileURL(output).href);
+const { NativeNotifications, NativeProfile, NativeSpacesDirectory, nativeOpenTasks, nativeConnectionLabel, nativeMoney } = await import(pathToFileURL(output).href);
+test('native money omits cents only for exact whole-dollar amounts', () => {
+  assert.equal(nativeMoney(500), '$5');
+  assert.equal(nativeMoney(420), '$4.20');
+  assert.equal(nativeMoney(24800), '$248');
+  assert.equal(nativeMoney(-2000), '-$20');
+});
+
 test('connection labels preserve unknown sync and outbox capabilities', () => {
   assert.equal(nativeConnectionLabel({ state: 'online', synced: null, pending: null }), 'Connected · sync status unavailable');
   assert.equal(nativeConnectionLabel({ state: 'offline', synced: null, pending: null }), 'Offline');

@@ -151,8 +151,8 @@ function Linked({ runtime, session, forget }: { runtime: Runtime; session: Extra
     state.connection.kind === 'ready' ? 'Conectado' : state.connection.kind === 'reconnecting' ? 'Reconectando…' : 'Conectando…';
   return <Messenger conversations={conversations} identity={session.account.identity} name={session.account.name} connected={connected} status={status} typing={state.kind === 'active' ? state.typing ?? {} : {}} rootData={rootData}
     messages={running} selected={selected} select={(id) => { setSelected(id); setShowInvite(false); }} onSettings={() => setShowSettings(true)}
-    footer={null}>
-    {showSettings ? <BrowserSettings me={{ name: session.account.name, handle: session.account.handle, initials: session.account.name.slice(0, 1).toUpperCase(), tintHex: '#4F7CFF' }} close={() => setShowSettings(false)} openDevices={() => { setShowSettings(false); setShowDevices(true); }} forget={forget} failed={state.kind === 'failed'} /> : showDevices ? <Devices messages={running.current} current={session.account.device} close={() => setShowDevices(false)} /> : showInvite && invitation ? <Invitation code={invitation} messages={running} connected={connected} conversations={conversations}
+    footer={null} overlay={showSettings ? <BrowserSettings me={{ name: session.account.name, handle: session.account.handle, initials: session.account.name.slice(0, 1).toUpperCase(), tintHex: '#4F7CFF' }} close={() => setShowSettings(false)} openDevices={() => { setShowSettings(false); setShowDevices(true); }} forget={forget} failed={state.kind === 'failed'} /> : undefined}>
+    {showDevices ? <Devices messages={running.current} current={session.account.device} close={() => setShowDevices(false)} /> : showInvite && invitation ? <Invitation code={invitation} messages={running} connected={connected} conversations={conversations}
       notice={state.kind === 'active' ? state.notice : state.kind === 'failed' ? state.message : null}
       opened={(space) => { setSelected(space); setShowInvite(false); }} cancel={() => setShowInvite(false)} /> : undefined}
   </Messenger>;

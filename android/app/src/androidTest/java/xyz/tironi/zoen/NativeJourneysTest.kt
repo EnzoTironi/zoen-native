@@ -54,7 +54,10 @@ class NativeJourneysTest {
         val before = application.repository.state.value.items.map { it.id }.toSet()
         compose.onNodeWithTag("conversation-list").performScrollToNode(hasTestTag("chat:zoen"))
         compose.onNodeWithTag("chat:zoen").performClick()
-        compose.onNodeWithTag("composer").performTextReplacement(prompt)
+        compose.waitUntil(10_000) {
+            compose.onAllNodesWithTag("composer").fetchSemanticsNodes().size == 1
+        }
+        compose.onNodeWithTag("composer").assertIsDisplayed().performTextReplacement(prompt)
         compose.onNodeWithTag("send").performClick()
         fun fromThisPrompt(item: ItemDetail) = item.id !in before && item.spaceId == chat.id && item.kindId == "plan" && item.origin.contains(prompt) && item.plan?.budgetCents == 150_000L
         compose.waitUntil(60_000) { application.repository.state.value.items.any(::fromThisPrompt) }

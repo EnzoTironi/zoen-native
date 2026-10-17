@@ -37,6 +37,8 @@ internal fun PlusVoiceButton(actions: () -> Unit, start: () -> Unit, release: ()
     var hovered by remember { mutableStateOf<Int?>(null) }
     val currentStart by rememberUpdatedState(start)
     val currentRelease by rememberUpdatedState(release)
+    val currentLock by rememberUpdatedState(lock)
+    val currentCancel by rememberUpdatedState(cancel)
     val currentItems by rememberUpdatedState(fanActions)
     val dark = MaterialTheme.colorScheme.background.luminance() < .5f
     val tint = if (holding) MaterialTheme.colorScheme.error else if (dark) MaterialTheme.colorScheme.primary else Color(0xEB1D2418)
@@ -67,13 +69,18 @@ internal fun PlusVoiceButton(actions: () -> Unit, start: () -> Unit, release: ()
                 val wasOpen = open
                 touching = true; open = true
                 val gesture = FanGestureState(currentItems.size, fanRadius(currentItems.size))
+                val voiceDrag = VoiceHoldDragState()
                     val arm = timerScope.launch { delay(700); if (gesture.arm()) { holding = true; open = false; currentStart() } }
                     try {
                         while (true) {
                             val event = awaitPointerEvent()
                             val change = event.changes.firstOrNull { it.id == down.id } ?: break
+                            // A consumed/cancelled stream is not a normal finger-up/send.
+                            // finally cancels a recording still owned by this gesture.
+                            if (change.isConsumed) break
                             if (!change.pressed) {
                                 arm.cancel()
+                                if (voiceDrag.settled) { change.consume(); break }
                                 when (val result = gesture.release()) {
                                     FanRelease.Voice -> { holding = false; currentRelease() }
                                     FanRelease.Tap -> { open = !wasOpen; if (currentItems.isEmpty()) actions() }
@@ -82,12 +89,21 @@ internal fun PlusVoiceButton(actions: () -> Unit, start: () -> Unit, release: ()
                                 }
                                 change.consume(); break
                             }
+                            if (gesture.ownsVoice) {
+                                when (voiceDrag.move((change.position.x - down.position.x) / density, (change.position.y - down.position.y) / density)) {
+                                    VoiceHoldDragResult.Cancel -> { holding = false; currentCancel() }
+                                    VoiceHoldDragResult.Lock -> { holding = false; currentLock() }
+                                    null -> Unit
+                                }
+                                change.consume()
+                                continue
+                            }
                             gesture.move((change.position.x / density) - 28, (change.position.y / density) - 28)
                             hovered = gesture.hovered
                             if (gesture.dragging) arm.cancel()
                             change.consume()
                         }
-                    } finally { arm.cancel(); touching = false; hovered = null; if (holding) { holding = false; cancel() } }
+                    } finally { arm.cancel(); touching = false; hovered = null; if (holding) { holding = false; currentCancel() } }
             }
             }
         }, contentAlignment = Alignment.Center) {

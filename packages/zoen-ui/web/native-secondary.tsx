@@ -12,20 +12,22 @@ const sections = [
 
 export type NativeSettingsProps = {
   me: NativeSettingsPerson;
+  /** The native Settings profile summary exists only for an enrolled sync account. */
+  showAccountProfile?: boolean;
   onClose?: () => void;
   onOpen?: (label: string) => void;
 };
 
 /** Navigation belongs to the host; the same component is used in parity captures. */
-export function NativeSettings({ me, onClose, onOpen }: NativeSettingsProps) {
+export function NativeSettings({ me, onClose, onOpen, showAccountProfile = true }: NativeSettingsProps) {
   const [query, setQuery] = useState('');
   const matches = (label: string) => label.toLocaleLowerCase().includes(query.trim().toLocaleLowerCase());
   const visibleSections = sections.map(([heading, rows]) => ({ heading, rows: rows.filter(label => matches(heading) || matches(label)) })).filter(({ rows }) => rows.length > 0);
-  const showProfile = matches(`Profile ${me.name} ${me.handle}`);
-  return <section className="native-settings" aria-label="Settings">
-    <header className="ns-top"><h1>Settings</h1><button type="button" className="ns-close" aria-label="Close settings" disabled={!onClose} onClick={onClose}>×</button></header>
+  const showProfile = showAccountProfile && matches(`Profile ${me.name} ${me.handle}`);
+  return <section className="native-settings" role="dialog" aria-modal="true" aria-label="Settings">
+    <header className="ns-top"><h1>Settings</h1><button type="button" className="ns-close" aria-label="Close settings" disabled={!onClose} onClick={onClose}><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" aria-hidden="true"><path d="m4 4 12 12M16 4 4 16"/></svg></button></header>
     <div className="ns-scroll"><div className="ns-content">
-      <label className="ns-search"><span aria-hidden="true">⌕</span><input type="search" aria-label="Search settings" placeholder="Search settings" value={query} onChange={event => setQuery(event.target.value)}/></label>
+      <label className="ns-search"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" aria-hidden="true"><circle cx="10" cy="10" r="7"/><path d="m15 15 6 6"/></svg><input type="search" aria-label="Search settings" placeholder="Search settings" value={query} onChange={event => setQuery(event.target.value)}/></label>
       {showProfile && <button type="button" className="ns-profile" disabled={!onOpen} onClick={() => onOpen?.('Profile')}><NativeAvatar identity={{ ...me, kind: 'person' }} size={52} className="ns-avatar"/><span><strong>{me.name}</strong><small>@{me.handle}</small></span><span className="ns-chevron" aria-hidden="true">›</span></button>}
       {visibleSections.map(({ heading, rows }) => <section className="ns-group" key={heading}><h2>{heading}</h2><div className="ns-card">{rows.map(label => <button type="button" className="ns-row" key={label} disabled={!onOpen} onClick={() => onOpen?.(label)}><SettingsGlyph label={label}/><span>{label}</span><span className="ns-chevron" aria-hidden="true">›</span></button>)}</div></section>)}
       {!showProfile && visibleSections.length === 0 && <p role="status">No settings found.</p>}

@@ -3,7 +3,7 @@
 ## Status
 
 Implementation in progress, based on `ui/native-glass` PR #124 (46de5a0).
-This directory does **not** yet contain verified side-by-side screenshots of the parity changes. The older native-glass evidence is not evidence of this change.
+See [follow-up 5 repairs, checks and diagnostic comparisons](followup-5.md). Fresh web frames exist, but same-source native pixel parity is **not verified**; the strict comparison gate has not passed. The older native-glass evidence is not evidence of this change.
 
 ## Capture matrix
 

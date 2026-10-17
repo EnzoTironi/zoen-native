@@ -7,6 +7,8 @@ import androidx.activity.enableEdgeToEdge
 import androidx.compose.runtime.getValue
 import androidx.compose.material3.Surface
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
+import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.test.performClick
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.test.core.app.ApplicationProvider
@@ -41,7 +43,6 @@ class AndroidParityScreensTest {
         val direct = state.spaces.first { it.counterpart?.handle == "marina" }.id
         val community = state.spaces.first { it.kind == SpaceKindDto.COMMUNITY }.id
         val root = runBlocking { app.repository.query { it.timeline(group).first().id } }
-        val person = requireNotNull(state.me).id
         val model = ViewModelProvider(compose.activity)[ZoenViewModel::class.java]
         try {
             compose.runOnUiThread {
@@ -60,7 +61,7 @@ class AndroidParityScreensTest {
                             "chat" -> ChatScreen(model, current, direct, {}, {})
                             "group" -> ChatScreen(model, current, group, {}, {})
                             "thread" -> ThreadScreen(model, current, group, root, {}, {})
-                            "profile" -> ProfileScreen(model, current, person, {}, {})
+                            "profile" -> ZoenApp(model, null, {})
                             "settings" -> SettingsScreen(model, current, null, {}, {}, {})
                             "devices" -> SettingsScreen(model, current, "Devices", {}, {}, {})
                             "search" -> SearchScreen(model, current, {}, {})
@@ -70,6 +71,8 @@ class AndroidParityScreensTest {
                 }
             }
             compose.waitForIdle()
+            // iOS's profile fixture selects the root You tab, not a person's profile.
+            if (screen == "profile") compose.onNodeWithTag("tab:Profile").performClick()
             compose.waitForIdle()
             android.os.SystemClock.sleep(1_500)
             NativeParityFixtureSetup.attest(app, model.state.value)

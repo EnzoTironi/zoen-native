@@ -16,6 +16,10 @@ test('native fixture adapter preserves actual core content, IDs, cards and times
       assert.equal(message.id, entry.id); assert.equal(message.author, entry.author.id);
       assert.equal(message.at_ms, entry.atMs); assert.equal(message.text, entry.text);
       assert.deepEqual(message.card ?? null, entry.card);
+      assert.equal(message.forwarded, entry.forwarded);
+      assert.equal(message.thread, entry.inThread);
+      assert.deepEqual(message.quote, entry.replyRef ? { id: entry.replyRef.id, name: entry.replyRef.author.name, text: entry.replyRef.text } : null);
+      assert.deepEqual(message.reactions, entry.reactions.map(reaction => ({ emoji: reaction.emoji, mine: reaction.mine, count: reaction.people.length, participants: reaction.people.map(person => ({ identity: person.id, name: person.name })) })));
     }
   }
 });
@@ -37,6 +41,17 @@ test('root screens receive actual request, ownership, task and account projectio
   assert.equal(data.account, null);
   assert.deepEqual(data.grants, []);
   assert.deepEqual(data.connection, nativeFixture.connection);
+});
+
+test('native timeline relations are exercised by actual reactions and thread replies', () => {
+  const conversations = nativeFixtureConversations();
+  assert.ok(conversations.flatMap(space => space.messages).some(message => message.reactions.length > 0));
+  const threadReply = conversations.flatMap(space => space.messages).find(message => message.thread !== null);
+  assert.ok(threadReply, 'the real seed includes a thread reply, which must not leak into the main timeline');
+  const root = conversations.flatMap(space => space.messages).find(message => message.id === threadReply.thread);
+  assert.ok(root);
+  assert.ok(root.repliers.includes(threadReply.name));
+  assert.equal(root.last_reply_ms, threadReply.at_ms);
 });
 
 test('fixture conversation mentions come from the actual Engine mention projection', () => {

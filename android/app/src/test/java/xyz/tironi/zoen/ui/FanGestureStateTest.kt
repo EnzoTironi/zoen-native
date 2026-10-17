@@ -4,6 +4,16 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class FanGestureStateTest {
+    @Test fun voiceDragUsesCanonicalThresholdsAndSettlesOnlyOnce() {
+        val cancel = VoiceHoldDragState()
+        assertNull(cancel.move(-110f, -80f))
+        assertEquals(VoiceHoldDragResult.Cancel, cancel.move(-111f, -81f))
+        assertNull(cancel.move(0f, -100f))
+        val lock = VoiceHoldDragState()
+        assertEquals(VoiceHoldDragResult.Lock, lock.move(0f, -81f))
+        assertNull(lock.move(-140f, 0f))
+    }
+
     @Test fun centreHoldOwnsReleaseEvenAfterMorphAndMovement() {
         val state = FanGestureState(4, 107f)
         state.move(10f, 0f)
