@@ -7,6 +7,7 @@ final class AndroidParityCaptureTests: XCTestCase {
     @MainActor func testOnboardingLightFrame() throws { try capture(dark: false, screens: ["onboarding"]) }
     @MainActor func testIntegrationLightScreens() throws { try capture(dark: false, screens: ["home", "marketplace", "notifications", "search"]) }
     @MainActor func testIntegrationDarkScreens() throws { try capture(dark: true, screens: ["home", "marketplace", "notifications", "search"]) }
+    @MainActor func testIntegrationDarkSearch() throws { try capture(dark: true, screens: ["search"]) }
 
     @MainActor private func capture(dark: Bool, screens: [String] = ["onboarding", "chats", "chat", "composer", "spaces", "notifications", "profile", "settings"]) throws {
         continueAfterFailure = false
@@ -90,6 +91,13 @@ final class AndroidParityCaptureTests: XCTestCase {
                 XCTAssertTrue(search.waitForExistence(timeout: 30))
                 search.tap()
                 XCTAssertTrue(app.textFields["unified-search-field"].waitForExistence(timeout: 10))
+                // A fresh simulator can show Apple's slide-to-type introduction.
+                // Dismiss the observed system prompt rather than capturing it over Search.
+                let keyboardIntroduction = app.staticTexts["Speed up your typing by sliding your finger across the letters to compose a word."]
+                if keyboardIntroduction.waitForExistence(timeout: 3) {
+                    app.buttons["Continue"].tap()
+                    XCTAssertFalse(keyboardIntroduction.waitForExistence(timeout: 1))
+                }
             } else if screen == "notifications" {
                 let notifications = app.descendants(matching: .any)["home-notifications-card"].firstMatch
                 XCTAssertTrue(notifications.waitForExistence(timeout: 30), "Notifications must remain reachable from the first Home card")
