@@ -86,8 +86,8 @@ pub fn admit(env: &Envelope, f: &Facts) -> Result<Effect, Reject> {
     }
     let effect = match (&f.head, body.clone()) {
         (None, Some(EventBody::SpaceCreated { kind, privacy, .. })) => {
-            if kind == SpaceKind::Personal && privacy != Privacy::Closed {
-                return Err(Reject::no("personal spaces must be closed"));
+            if kind == SpaceKind::Personal && privacy != Privacy::EndToEnd {
+                return Err(Reject::no("personal spaces must be end-to-end encrypted"));
             }
             Effect::Create { kind, privacy }
         }
@@ -375,9 +375,9 @@ mod tests {
     }
 
     #[test]
-    fn personal_spaces_replicate_without_allowing_other_identities() {
+    fn personal_spaces_require_encryption_without_allowing_other_identities() {
         let a = Author::root(Signer::generate());
-        for privacy in [Privacy::Closed, Privacy::Public, Privacy::EndToEnd] {
+        for privacy in [Privacy::EndToEnd, Privacy::Closed, Privacy::Public] {
             let create = env(
                 &a,
                 None,
@@ -389,12 +389,12 @@ mod tests {
             );
             assert_eq!(
                 admit(&create, &Facts::default()).is_ok(),
-                privacy == Privacy::Closed
+                privacy == Privacy::EndToEnd
             );
         }
         let f = Facts {
             kind: Some(SpaceKind::Personal),
-            privacy: Some(Privacy::Closed),
+            privacy: Some(Privacy::EndToEnd),
             ..member_facts(Role::Owner)
         };
         let seen = Some(Seen {
@@ -402,8 +402,20 @@ mod tests {
             hash: "h3".into(),
         });
         assert_eq!(
-            admit(&env(&a, seen.clone(), msg()), &f).unwrap(),
+            admit(&sealed(&a, SealedKind::Application), &f).unwrap(),
             Effect::Nothing
+        );
+        let preference = EventBody::ThreadStateSet {
+            space: "chat".into(),
+            root: "root".into(),
+            follow: Some(true),
+            read_up_to: 7,
+        };
+        assert_eq!(
+            admit(&env(&a, seen.clone(), preference), &f)
+                .unwrap_err()
+                .reason,
+            roda_proto::SEAL_REQUIRED
         );
         for body in [
             EventBody::MemberAdded {
@@ -420,7 +432,12 @@ mod tests {
             author_role: None,
             ..f
         };
-        assert!(admit(&env(&a, seen, msg()), &outsider).is_err());
+        assert_eq!(
+            admit(&sealed(&a, SealedKind::Application), &outsider)
+                .unwrap_err()
+                .reason,
+            "not a member of this space"
+        );
     }
 
     #[test]

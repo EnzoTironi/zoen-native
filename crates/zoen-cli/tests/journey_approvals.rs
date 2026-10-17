@@ -47,6 +47,16 @@ async fn setup(w: &World, path: &Path) -> (Engine, Owner, RawClient, RawClient, 
         Ok(Reply::Registered(_))
     ));
     e.set_registered(true).unwrap();
+    // Signup now queues the encrypted Personal Space's genesis. Confirm it through
+    // the real relay before these journeys count or replay approval-only batches.
+    for env in e.outbox_envelopes() {
+        ingest(&mut e, person.publish_env(env).await.unwrap());
+    }
+    assert_eq!(
+        e.outbox_len(),
+        0,
+        "signup must be confirmed before approvals"
+    );
     let author = Author::device(&Signer::generate(), Signer::generate());
     let mut agent = RawClient::reconnect(&w.relay_url(), author).await;
     let profile = Identity {
