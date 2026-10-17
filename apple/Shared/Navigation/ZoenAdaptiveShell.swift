@@ -26,6 +26,8 @@ struct ZoenAdaptiveShell: View {
     @State private var lastChat: String?
     @State private var onboarding = OnboardingFlow.shouldShow
 
+    private var sidebarWidth: CGFloat { sidebarExpanded ? ZoenAdaptiveGeometry.sidebar : ZoenAdaptiveGeometry.rail + ZoenAdaptiveGeometry.columnGap }
+
     var body: some View {
         @Bindable var model = model
         NavigationSplitView {
@@ -33,7 +35,7 @@ struct ZoenAdaptiveShell: View {
                 rail.zIndex(2)
                 if sidebarExpanded {
                     chatSidebar
-                        .frame(width: ZoenAdaptiveGeometry.chatList)
+                        .frame(minWidth: 208, idealWidth: ZoenAdaptiveGeometry.chatList, maxWidth: ZoenAdaptiveGeometry.chatList)
                         .background(Palette.surface, in: .rect(cornerRadius: 20))
                         .overlay(RoundedRectangle(cornerRadius: 20).strokeBorder(Palette.hairline.opacity(0.6), lineWidth: 0.5))
                         .clipShape(RoundedRectangle(cornerRadius: 20))
@@ -42,7 +44,7 @@ struct ZoenAdaptiveShell: View {
             }
             .padding(.trailing, ZoenAdaptiveGeometry.columnGap)
             .padding(.bottom, ZoenAdaptiveGeometry.outerInset)
-            .navigationSplitViewColumnWidth(sidebarExpanded ? ZoenAdaptiveGeometry.sidebar : ZoenAdaptiveGeometry.rail + ZoenAdaptiveGeometry.columnGap)
+            .navigationSplitViewColumnWidth(sidebarWidth)
             .toolbar(removing: .sidebarToggle)
             #if os(iOS)
             // The shared rail and chat header already provide native navigation controls.

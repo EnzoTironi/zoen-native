@@ -11,6 +11,37 @@ final class NativeIconMotionCaptureTests: XCTestCase {
     @MainActor func testLightUnifiedSearchJourney() throws { try searchJourney(appearance: "light") }
     @MainActor func testDarkUnifiedSearchJourney() throws { try searchJourney(appearance: "dark") }
 
+    @MainActor func testCanonicalRootDestinations() throws {
+        let env = ProcessInfo.processInfo.environment
+        continueAfterFailure = false
+        let app = XCUIApplication()
+        app.launchEnvironment["ZOEN_PARITY_FIXTURE"] = "native-parity-v1"
+        app.launchEnvironment["ZOEN_PARITY_REVISION"] = try XCTUnwrap(env["ZOEN_PARITY_REVISION"])
+        app.launchEnvironment["TZ"] = "UTC"
+        app.launchArguments = ["-RodaFreshStart", "YES", "-RodaResetDemo", "YES", "-RodaDemo", "YES",
+            "-AppleLanguages", "(en)", "-AppleLocale", "en_US", "-RodaAppearance", "light"]
+        app.launch()
+        let card = app.buttons["home-notifications-card"]
+        XCTAssertTrue(card.waitForExistence(timeout: 40))
+        XCTAssertGreaterThanOrEqual(app.buttons["Search"].firstMatch.frame.minX, 0, "System sidebar compression must not clip the rail")
+        attach(app.screenshot(), name: "canonical-home")
+        try attachJSON(["window": NSCoder.string(for: app.frame), "notification_card": NSCoder.string(for: card.frame),
+                        "search": NSCoder.string(for: app.buttons["Search"].firstMatch.frame)], name: "canonical-root-bounds")
+        card.tap()
+        XCTAssertTrue(app.buttons["notifications-cards"].waitForExistence(timeout: 10))
+        attach(app.screenshot(), name: "canonical-notifications")
+        if app.buttons["Close"].firstMatch.exists { app.buttons["Close"].firstMatch.tap() }
+        app.buttons["Marketplace"].firstMatch.tap()
+        attach(app.screenshot(), name: "canonical-marketplace")
+        app.buttons["Chats"].firstMatch.tap()
+        app.buttons["Search"].firstMatch.tap()
+        let field = app.textFields["unified-search-field"]
+        XCTAssertTrue(field.waitForExistence(timeout: 10))
+        field.typeText("inn")
+        XCTAssertTrue(app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@", "unified-search-message-")).firstMatch.waitForExistence(timeout: 10))
+        attach(app.screenshot(), name: "canonical-search")
+    }
+
     @MainActor private func searchJourney(appearance: String) throws {
         let env = ProcessInfo.processInfo.environment
         guard env["ZOEN_PARITY_FIXTURE"] == "native-parity-v1" else { throw XCTSkip("Requires native parity fixture") }

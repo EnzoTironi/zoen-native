@@ -22,31 +22,23 @@ struct NativeIconMotion: View {
     @Environment(\.accessibilityReduceMotion) private var systemReduce
     @Environment(\.nativeIconReduceMotion) private var appReduce
     @Environment(\.ambientPaused) private var paused
-    @State private var appeared = false
     private var reduced: Bool { systemReduce || appReduce }
 
     var body: some View {
-        ZStack {
-            if drawOn && !reduced {
-                // A real hidden image keeps both intrinsic geometry and an onAppear
-                // host alive. An empty Group never appeared, leaving symbols absent.
-                Image(systemName: systemName)
-                    .modifier(NativeIconFont(size: size))
-                    .hidden()
-            }
-            if !drawOn || reduced {
+        // Keep the semantic SF Image alive even in native button-label extraction.
+        // DrawOn is a native indefinite effect: activation reveals it once and
+        // retains the completed glyph, without an empty first-appearance branch.
+        Group {
+            if drawOn && !reduced && !paused {
+                artwork.symbolEffect(.drawOn, options: .nonRepeating, isActive: true)
+            } else {
+                // Inactive drawOn represents the drawn-off state, not a static icon.
                 artwork
-            } else if appeared {
-                artwork.transition(.symbolEffect(.drawOn))
             }
         }
-        .onAppear {
-            if drawOn && !reduced && !paused { withAnimation { appeared = true } }
-            else { appeared = true }
-        }
-        .animation(reduced ? nil : .smooth(duration: 0.2), value: systemName)
-        .transaction { if reduced || paused { $0.animation = nil } }
-        .accessibilityHidden(true)
+            .animation(reduced || paused ? nil : .smooth(duration: 0.2), value: systemName)
+            .transaction { if reduced || paused { $0.animation = nil } }
+            .accessibilityHidden(true)
     }
 
     @ViewBuilder private var artwork: some View {
