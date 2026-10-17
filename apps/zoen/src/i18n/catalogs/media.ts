@@ -18,6 +18,8 @@ export const media = defineFeature(
     voiceSuggestionsDetail:
       'Review suggestions before applying. Pauses may contain sounds, and text segments may include more than one word.',
     voiceWaveform: 'Original recording',
+    voiceTrimGroup: 'Trim',
+    voiceSelectionGroup: 'Selection',
     voiceTrimStart: 'Trim start',
     voiceTrimEnd: 'Trim end',
     voiceSelectionStart: 'Selection start',
@@ -134,6 +136,8 @@ export const media = defineFeature(
     voiceSuggestionsDetail:
       'Revise as sugestões antes de aplicar. As pausas podem conter sons, e os trechos de texto podem incluir mais de uma palavra.',
     voiceWaveform: 'Gravação original',
+    voiceTrimGroup: 'Recorte',
+    voiceSelectionGroup: 'Seleção',
     voiceTrimStart: 'Início do recorte',
     voiceTrimEnd: 'Fim do recorte',
     voiceSelectionStart: 'Início da seleção',

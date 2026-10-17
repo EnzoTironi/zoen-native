@@ -1,6 +1,6 @@
 import { Host } from '@expo/ui';
 import { Button, Slider, Text as NativeText, VStack } from '@expo/ui/swift-ui';
-import { disabled as disabledModifier, foregroundStyle } from '@expo/ui/swift-ui/modifiers';
+import { disabled as disabledModifier, font, foregroundStyle } from '@expo/ui/swift-ui/modifiers';
 import { useMemo, useRef, useState } from 'react';
 import { Text, View } from 'react-native';
 import {
@@ -9,7 +9,7 @@ import {
   usePanGesture,
   useTapGesture,
 } from 'react-native-gesture-handler';
-import { t } from '../i18n/index.ts';
+import { formatLocale, t } from '../i18n/index.ts';
 import { useTheme } from '../theme';
 import {
   projectVoiceDraft,
@@ -50,7 +50,11 @@ export function VoiceWaveform({ draft, onEdit, disabled = false }: Props) {
   const track = Math.max(1, width - GUTTER * 2);
   const position = (frame: number) => GUTTER + (frame / frames) * track;
   const frameAt = (x: number) => clamp(((x - GUTTER) / track) * frames, 0, frames);
-  const time = (frame: number) => `${(frame / draft.original.sampleRate).toFixed(2)} s`;
+  const timeFormatter = new Intl.NumberFormat(formatLocale, {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  });
+  const time = (frame: number) => `${timeFormatter.format(frame / draft.original.sampleRate)} s`;
   const projection = useMemo(
     () =>
       projectVoiceDraft({
@@ -181,24 +185,37 @@ export function VoiceWaveform({ draft, onEdit, disabled = false }: Props) {
     change: (value: number) => void,
   ) {
     return (
-      <Slider
-        label={<NativeText>{`${label}: ${time(value)}`}</NativeText>}
-        // A source can contain millions of frames. A stepped SwiftUI slider
-        // creates native tick views for those steps; keep the native domain
-        // continuous and bounded, then round only at the original-frame boundary.
-        value={max > min ? (value - min) / (max - min) : 0}
-        min={0}
-        max={1}
-        onValueChange={(fraction) => {
-          if (!disabled && Number.isFinite(fraction))
-            change(clamp(min + Math.max(0, Math.min(1, fraction)) * (max - min), min, max));
-        }}
-        modifiers={[disabledModifier(disabled || max <= min)]}
-      />
+      <VStack alignment="leading" spacing={4}>
+        <NativeText
+          modifiers={[font({ textStyle: 'subheadline' }), foregroundStyle(colors.secondary)]}
+        >
+          {`${label}: ${time(value)}`}
+        </NativeText>
+        <Slider
+          label={<NativeText>{`${label}: ${time(value)}`}</NativeText>}
+          // A source can contain millions of frames. A stepped SwiftUI slider
+          // creates native tick views for those steps; keep the native domain
+          // continuous and bounded, then round only at the original-frame boundary.
+          value={max > min ? (value - min) / (max - min) : 0}
+          min={0}
+          max={1}
+          onValueChange={(fraction) => {
+            if (!disabled && Number.isFinite(fraction))
+              change(clamp(min + Math.max(0, Math.min(1, fraction)) * (max - min), min, max));
+          }}
+          modifiers={[disabledModifier(disabled || max <= min)]}
+        />
+      </VStack>
     );
   }
   return (
     <View style={{ gap: 12 }}>
+      <Text
+        accessibilityRole="header"
+        style={{ color: colors.text, fontSize: 18, fontWeight: '600' }}
+      >
+        {t('media.voiceWaveform')}
+      </Text>
       <Text style={{ color: colors.secondary, fontSize: 13 }}>{t('media.voiceWaveformHint')}</Text>
       <GestureDetector gesture={gesture}>
         <View
@@ -303,58 +320,71 @@ export function VoiceWaveform({ draft, onEdit, disabled = false }: Props) {
         colorScheme={scheme}
         seedColor={colors.accent}
       >
-        <VStack spacing={10}>
-          {slider(t('media.voiceTrimStart'), trim.startFrame, 0, trim.endFrame, (startFrame) =>
-            setPreview({ draft, range: { startFrame, endFrame: trim.endFrame } }),
-          )}
-          {slider(t('media.voiceTrimEnd'), trim.endFrame, trim.startFrame, frames, (endFrame) =>
-            setPreview({ draft, range: { startFrame: trim.startFrame, endFrame } }),
-          )}
-          <Button
-            label={t('media.voiceApplyTrim')}
-            onPress={() => {
-              if (!disabled && trimChanged) onEdit({ type: 'trim', range: trim });
-            }}
-            modifiers={[disabledModifier(disabled || !trimChanged), foregroundStyle(colors.accent)]}
-          />
-          {slider(
-            t('media.voiceSelectionStart'),
-            selectedRange.startFrame,
-            0,
-            selectedRange.endFrame,
-            (startFrame) =>
-              setSelection({ draft, range: { startFrame, endFrame: selectedRange.endFrame } }),
-          )}
-          {slider(
-            t('media.voiceSelectionEnd'),
-            selectedRange.endFrame,
-            selectedRange.startFrame,
-            frames,
-            (endFrame) =>
-              setSelection({ draft, range: { startFrame: selectedRange.startFrame, endFrame } }),
-          )}
-          <Button
-            label={t('media.voiceCutSelection')}
-            onPress={() => {
-              if (!disabled && selected && selected.endFrame > selected.startFrame)
-                onEdit({ type: 'cut', range: selected });
-            }}
-            modifiers={[
-              disabledModifier(disabled || !selected || selected.endFrame <= selected.startFrame),
-              foregroundStyle(colors.accent),
-            ]}
-          />
-          <Button
-            label={t('media.voiceRestoreSelection')}
-            onPress={() => {
-              if (!disabled && selected && selected.endFrame > selected.startFrame)
-                onEdit({ type: 'restore', range: selected });
-            }}
-            modifiers={[
-              disabledModifier(disabled || !selected || selected.endFrame <= selected.startFrame),
-              foregroundStyle(colors.accent),
-            ]}
-          />
+        <VStack alignment="leading" spacing={24}>
+          <VStack alignment="leading" spacing={16}>
+            <NativeText modifiers={[font({ textStyle: 'headline' }), foregroundStyle(colors.text)]}>
+              {t('media.voiceTrimGroup')}
+            </NativeText>
+            {slider(t('media.voiceTrimStart'), trim.startFrame, 0, trim.endFrame, (startFrame) =>
+              setPreview({ draft, range: { startFrame, endFrame: trim.endFrame } }),
+            )}
+            {slider(t('media.voiceTrimEnd'), trim.endFrame, trim.startFrame, frames, (endFrame) =>
+              setPreview({ draft, range: { startFrame: trim.startFrame, endFrame } }),
+            )}
+            <Button
+              label={t('media.voiceApplyTrim')}
+              onPress={() => {
+                if (!disabled && trimChanged) onEdit({ type: 'trim', range: trim });
+              }}
+              modifiers={[
+                disabledModifier(disabled || !trimChanged),
+                foregroundStyle(colors.accent),
+              ]}
+            />
+          </VStack>
+          <VStack alignment="leading" spacing={16}>
+            <NativeText modifiers={[font({ textStyle: 'headline' }), foregroundStyle(colors.text)]}>
+              {t('media.voiceSelectionGroup')}
+            </NativeText>
+            {slider(
+              t('media.voiceSelectionStart'),
+              selectedRange.startFrame,
+              0,
+              selectedRange.endFrame,
+              (startFrame) =>
+                setSelection({ draft, range: { startFrame, endFrame: selectedRange.endFrame } }),
+            )}
+            {slider(
+              t('media.voiceSelectionEnd'),
+              selectedRange.endFrame,
+              selectedRange.startFrame,
+              frames,
+              (endFrame) =>
+                setSelection({ draft, range: { startFrame: selectedRange.startFrame, endFrame } }),
+            )}
+            <Button
+              label={t('media.voiceCutSelection')}
+              onPress={() => {
+                if (!disabled && selected && selected.endFrame > selected.startFrame)
+                  onEdit({ type: 'cut', range: selected });
+              }}
+              modifiers={[
+                disabledModifier(disabled || !selected || selected.endFrame <= selected.startFrame),
+                foregroundStyle(colors.accent),
+              ]}
+            />
+            <Button
+              label={t('media.voiceRestoreSelection')}
+              onPress={() => {
+                if (!disabled && selected && selected.endFrame > selected.startFrame)
+                  onEdit({ type: 'restore', range: selected });
+              }}
+              modifiers={[
+                disabledModifier(disabled || !selected || selected.endFrame <= selected.startFrame),
+                foregroundStyle(colors.accent),
+              ]}
+            />
+          </VStack>
         </VStack>
       </Host>
     </View>
