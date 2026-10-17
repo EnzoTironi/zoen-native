@@ -1560,19 +1560,21 @@ impl Engine {
     /// anything the person wrote, so it isn't shown as failed: a lost commit is dropped with
     /// its Welcome, the winner arrives from the log, and the group is checked again.
     /// `false` when `client_id` isn't a handshake.
-    pub(crate) fn mls_handshake_refused(&mut self, client_id: &str, reason: &str) -> bool {
-        let Some(e) = self.store.outbox().ok().and_then(|o| {
-            o.into_iter()
-                .map(|p| p.event)
-                .find(|e| e.client_id == client_id)
-        }) else {
-            return false;
+    pub(crate) fn mls_handshake_refused(&mut self, client_id: &str, reason: &str) -> R<bool> {
+        let Some(e) = self
+            .store
+            .outbox()?
+            .into_iter()
+            .map(|p| p.event)
+            .find(|e| e.client_id == client_id)
+        else {
+            return Ok(false);
         };
         let EventBody::Sealed { kind } = &e.body else {
-            return false;
+            return Ok(false);
         };
         if kind != SealedKind::Commit.name() && kind != SealedKind::Welcome.name() {
-            return false;
+            return Ok(false);
         }
         tracing_like(&format!("{kind} in {} refused: {reason}", e.space));
         let dropped = (|| -> R<Vec<String>> {
@@ -1632,14 +1634,14 @@ impl Engine {
                 // This is still a handshake. Preserve its whole transaction for retry;
                 // treating it as a failed user event would strand the pending group.
                 tracing_like(&format!("dropping the handshake in {}: {err}", e.space));
-                return true;
+                return Err(err);
             }
         };
         for id in dropped {
             self.net.pending.remove(&id);
         }
         self.net.mls.mark_group_dirty(e.space);
-        true
+        Ok(true)
     }
 
     /// The next group that owes a commit adding someone: claim their key packages. Groups

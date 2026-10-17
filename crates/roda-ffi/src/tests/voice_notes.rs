@@ -536,7 +536,9 @@ fn rejected_voice_sends_keep_their_audio_reply_and_delivery_error_after_reopen()
             },
         );
         let client_id = engine.store.outbox().unwrap()[0].event.client_id.clone();
-        assert!(engine.reject(&client_id, "permission denied", true, None));
+        assert!(engine
+            .reject(&client_id, "permission denied", true, None)
+            .user_failed());
         assert_eq!(
             engine.net.failed.get(&client_id).map(String::as_str),
             Some("permission denied")

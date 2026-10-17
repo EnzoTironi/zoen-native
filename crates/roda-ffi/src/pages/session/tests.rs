@@ -2099,7 +2099,8 @@ fn pending_legacy_and_remote_cutover_never_expand_seed() {
         } else {
             assert!(f
                 .engine
-                .reject(&legacy.client_id, "legacy writer refused", true, None));
+                .reject(&legacy.client_id, "legacy writer refused", true, None)
+                .user_failed());
         }
         let current = s.read(&f.engine).unwrap();
         assert!(current.can_edit);
@@ -2288,12 +2289,15 @@ fn newer_draft_survives_older_ack_and_permanent_transport_refusal() {
     assert_eq!(current.view, newer.current.view);
     let second = queued(s.commit(&mut f.engine, "second").unwrap());
     let failed = f.pending(&second);
-    assert!(f.engine.reject(
-        &failed.client_id,
-        "actual permanent transport refusal",
-        true,
-        None
-    ));
+    assert!(f
+        .engine
+        .reject(
+            &failed.client_id,
+            "actual permanent transport refusal",
+            true,
+            None
+        )
+        .user_failed());
     let refused = s.read(&f.engine).unwrap();
     assert!(refused.unsaved);
     assert!(refused.save_error.as_ref().unwrap().contains("permanent"));

@@ -1960,7 +1960,8 @@ fn permanently_rejected_genesis_fails_descendants_atomically_across_relaunch() {
         }
         assert!(!e
             .lock()
-            .reject(genesis.client_id(), "too large", true, None));
+            .reject(genesis.client_id(), "too large", true, None)
+            .user_failed());
         {
             let engine = e.lock();
             assert!(engine.store.conn().is_autocommit());
@@ -1983,7 +1984,8 @@ fn permanently_rejected_genesis_fails_descendants_atomically_across_relaunch() {
         }
         assert!(e
             .lock()
-            .reject(genesis.client_id(), "too large", true, None));
+            .reject(genesis.client_id(), "too large", true, None)
+            .user_failed());
         {
             let engine = e.lock();
             let queued = engine.store.outbox().unwrap();

@@ -1000,7 +1000,9 @@ fn context_and_commit_roll_back_together_and_wait_for_upload_after_restart() {
             .is_err());
         let old = engine.store.outbox().unwrap()[0].event.client_id.clone();
         engine.store.conn().execute_batch("CREATE TRIGGER fail_abandon BEFORE DELETE ON outbox BEGIN SELECT RAISE(ABORT, 'injected refusal write failure'); END;").unwrap();
-        assert!(!engine.reject(&old, roda_proto::STALE_COMMIT, true, None));
+        assert!(
+            matches!(engine.reject(&old, roda_proto::STALE_COMMIT, true, None), crate::sync::RejectionOutcome::StorageFailure(reason) if reason.contains("injected refusal write failure"))
+        );
         assert!(engine.device().unwrap().recovery_pending(space));
         assert_eq!(engine.outbox_len(), 1);
         assert_eq!(engine.uploads_pending(), 1);
@@ -1009,7 +1011,10 @@ fn context_and_commit_roll_back_together_and_wait_for_upload_after_restart() {
             .conn()
             .execute_batch("DROP TRIGGER fail_abandon")
             .unwrap();
-        assert!(!engine.reject(&old, roda_proto::STALE_COMMIT, true, None));
+        assert_eq!(
+            engine.reject(&old, roda_proto::STALE_COMMIT, true, None),
+            crate::sync::RejectionOutcome::HandshakeReconciled
+        );
         assert!(!engine.device().unwrap().has_group(space));
         assert!(!engine.device().unwrap().pending(space));
         assert_eq!(engine.outbox_len(), 0);

@@ -107,6 +107,21 @@ pub enum Ingest {
     Invalid(String),
 }
 
+/// Local handling of a relay publication refusal; never a wire/UI error code.
+#[derive(Debug, PartialEq, Eq)]
+pub(crate) enum RejectionOutcome {
+    HandshakeReconciled,
+    Retry,
+    UserFailed,
+    Ignored,
+    StorageFailure(String),
+}
+impl RejectionOutcome {
+    pub(crate) fn user_failed(&self) -> bool {
+        matches!(self, Self::UserFailed)
+    }
+}
+
 pub(crate) fn tint_for(id: &str) -> String {
     const TINTS: [&str; 8] = [
         "#4F7CFF", "#FF5C8A", "#19B5A5", "#F59E0B", "#7C5CFF", "#22C55E", "#0EA5E9", "#FF9F0A",
@@ -592,15 +607,24 @@ impl Engine {
 
     /// The relay refused one of ours. `sent_epoch` describes the application envelope
     /// actually sent on this connection, not a copy resealed since then.
-    pub fn reject(
+    pub(crate) fn reject(
         &mut self,
         client_id: &str,
         reason: &str,
         permanent: bool,
         sent_epoch: Option<u64>,
-    ) -> bool {
-        if permanent && self.mls_handshake_refused(client_id, reason) {
-            return false;
+    ) -> RejectionOutcome {
+        if permanent {
+            match self.mls_handshake_refused(client_id, reason) {
+                Ok(true) => return RejectionOutcome::HandshakeReconciled,
+                Ok(false) => {}
+                Err(error) => return RejectionOutcome::StorageFailure(error.to_string()),
+            }
+        }
+        match self.store.outbox_get(client_id) {
+            Ok(None) => return RejectionOutcome::Ignored,
+            Err(error) => return RejectionOutcome::StorageFailure(error.to_string()),
+            Ok(Some(_)) => {}
         }
         // Written in the clear just before the Space went end-to-end: it waits for the
         // group and goes out sealed, it doesn't fail.
@@ -622,16 +646,16 @@ impl Engine {
         } else {
             self.store.outbox_note(client_id, reason, permanent)
         };
-        if noted.is_err() {
-            return false;
+        if let Err(error) = noted {
+            return RejectionOutcome::StorageFailure(error.to_string());
         }
         if !permanent {
-            return false;
+            return RejectionOutcome::Retry;
         }
         let _ = self.store.meta_delete(&format!("invite:{client_id}"));
         // Re-project without the refused event (messages stay visible as failed).
         let _ = self.reload();
-        true
+        RejectionOutcome::UserFailed
     }
 
     pub fn cursors(&self) -> Vec<Cursor> {

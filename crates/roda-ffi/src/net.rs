@@ -25,7 +25,7 @@ use tokio::sync::{mpsc, oneshot, watch};
 use tokio_tungstenite::tungstenite::Message;
 
 use crate::engine::Engine;
-use crate::sync::Ingest;
+use crate::sync::{Ingest, RejectionOutcome};
 use crate::CoreListener;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -469,6 +469,23 @@ impl ClaimClockSample {
     }
 }
 
+fn report_rejection(ctx: &Ctx, outcome: &RejectionOutcome) {
+    let notice = crate::i18n::with_lang(ctx.lang, || match outcome {
+        RejectionOutcome::UserFailed => Some(crate::i18n::t(
+            "Não foi possível enviar. Tente novamente.",
+            "Could not send. Try again.",
+        )),
+        RejectionOutcome::StorageFailure(_) => Some(crate::i18n::t(
+            "Não foi possível concluir a sincronização. Tente novamente.",
+            "Could not finish syncing. Try again.",
+        )),
+        _ => None,
+    });
+    if let (Some(listener), Some(notice)) = (&ctx.listener, notice) {
+        listener.on_error(notice);
+    }
+}
+
 const MAINTENANCE_PERIOD: Duration = Duration::from_millis(50);
 
 async fn session(
@@ -690,19 +707,20 @@ async fn session(
                     ServerFrame::Accepted { .. } => {}
                     ServerFrame::Rejected { space, client_id, reason, permanent } => {
                         let sent_epoch = sent.remove(&client_id).flatten();
-                        let recoverable = reason == roda_proto::STALE_SEAL || reason == roda_proto::SEAL_REQUIRED;
-                        if engine!(|engine| engine.reject(&client_id, &reason, permanent, sent_epoch)) { dirty.insert(space); }
+                        let outcome = engine!(|engine| engine.reject(&client_id, &reason, permanent, sent_epoch));
+                        tracing_like(&format!("publication {client_id} refused: {reason}; {outcome:?}"));
+                        if outcome.user_failed() { dirty.insert(space); }
                         if !permanent {
                             // Transient (rate limit, db hiccup): retry shortly.
                             let poke = engine!(|engine| engine.net.poke.is_some());
                             if poke { tokio::time::sleep(Duration::from_millis(500)).await; }
                         }
-                        if !permanent || recoverable {
+                        if matches!(outcome, RejectionOutcome::Retry) {
                             // The relay refuses the old encoding permanently, but the
                             // queued plaintext may already have a current sealed copy.
                             if let Err(e) = flush(ctx, &mut sink, &mut sent).await { break Exit::Retry(e) }
                         }
-                        if let Some(l) = &ctx.listener { if permanent && !recoverable { l.on_error(reason); } }
+                        report_rejection(ctx, &outcome);
                     }
                     ServerFrame::Ephemeral { space, from, kind } => {
                         let mark = match kind {
@@ -1792,9 +1810,40 @@ mod tests {
         queued_messages_round_trip(CatchUp::Incremental).await;
     }
 
+    #[tokio::test(flavor = "current_thread")]
+    async fn handled_commit_collision_reconciles_without_listener_error() {
+        queued_messages_round_trip(CatchUp::HandshakeCollision).await;
+    }
+    #[tokio::test(flavor = "current_thread")]
+    async fn terminal_application_refusal_keeps_failed_delivery_and_listener_notice() {
+        queued_messages_round_trip(CatchUp::PermissionRefusal).await;
+    }
+    #[tokio::test(flavor = "current_thread")]
+    async fn handshake_storage_failure_notifies_and_retains_retry_before_reconciliation() {
+        queued_messages_round_trip(CatchUp::StorageRefusal).await;
+    }
+    #[derive(Default)]
+    struct RejectionListener {
+        errors: Mutex<Vec<String>>,
+        changed: tokio::sync::Notify,
+    }
+    impl CoreListener for RejectionListener {
+        fn on_change(&self, _: Vec<String>) {}
+        fn on_ephemeral(&self, _: String, _: String, _: String, _: String) {}
+        fn on_presence(&self, _: String, _: bool) {}
+        fn on_connection(&self, _: crate::ConnectionDto) {}
+        fn on_error(&self, message: String) {
+            self.errors.lock().unwrap().push(message);
+            self.changed.notify_one();
+        }
+        fn on_profile_changed(&self, _: String) {}
+    }
     enum CatchUp {
         Initial,
         Incremental,
+        HandshakeCollision,
+        PermissionRefusal,
+        StorageRefusal,
     }
 
     async fn queued_messages_round_trip(catch_up: CatchUp) {
@@ -1930,6 +1979,28 @@ mod tests {
             ),
             &mut head,
         );
+        let losing_commit = if matches!(
+            catch_up,
+            CatchUp::HandshakeCollision | CatchUp::StorageRefusal
+        ) {
+            engine.commit_now(space, &[], &Default::default()).unwrap();
+            Some(
+                engine
+                    .store
+                    .outbox_handshakes()
+                    .unwrap()
+                    .into_iter()
+                    .find(|(_, _, kind)| kind == SealedKind::Commit.name())
+                    .unwrap()
+                    .0,
+            )
+        } else {
+            None
+        };
+        if matches!(catch_up, CatchUp::StorageRefusal) {
+            engine.store.conn().execute_batch("CREATE TRIGGER fail_refusal BEFORE DELETE ON outbox BEGIN SELECT RAISE(ABORT, 'injected handshake storage failure'); END;").unwrap();
+        }
+        let notices = Arc::new(RejectionListener::default());
         let engine = Arc::new(Mutex::new(engine));
         let (cmd, mut commands) = mpsc::unbounded_channel();
         let (status, _) = watch::channel(NetStatus {
@@ -1942,7 +2013,7 @@ mod tests {
         let (maintenance, mut maintenance_started) = mpsc::unbounded_channel();
         let ctx = Ctx {
             engine: EngineLease::new(engine.clone()),
-            listener: None,
+            listener: Some(notices.clone()),
             status,
             lang: crate::i18n::Lang::En,
             maintenance_work: Some(Arc::new(move || {
@@ -1992,6 +2063,95 @@ mod tests {
                 ClientFrame::Sync { all: true, .. }
             ));
             let mut current_copies = HashMap::new();
+            if matches!(
+                catch_up,
+                CatchUp::HandshakeCollision | CatchUp::StorageRefusal
+            ) {
+                reply(&mut socket, ServerFrame::SyncDone).await;
+                loop {
+                    match request(&mut socket).await {
+                        ClientFrame::Publish { env }
+                            if Some(env.client_id()) == losing_commit.as_deref() =>
+                        {
+                            reply(
+                                &mut socket,
+                                ServerFrame::Rejected {
+                                    space: space.into(),
+                                    client_id: env.client_id().into(),
+                                    reason: roda_proto::STALE_COMMIT.into(),
+                                    permanent: true,
+                                },
+                            )
+                            .await;
+                            break;
+                        }
+                        ClientFrame::Req { id, .. } => {
+                            reply(
+                                &mut socket,
+                                ServerFrame::Res {
+                                    id,
+                                    result: Ok(Reply::Done),
+                                },
+                            )
+                            .await
+                        }
+                        ClientFrame::Ping => {
+                            reply(
+                                &mut socket,
+                                ServerFrame::Pong {
+                                    server_time_ms: None,
+                                },
+                            )
+                            .await
+                        }
+                        other => panic!("unexpected before commit collision {other:?}"),
+                    }
+                }
+                if matches!(catch_up, CatchUp::StorageRefusal) {
+                    notices.changed.notified().await;
+                    {
+                        let engine = lock(&engine);
+                        assert!(engine.device().unwrap().pending(space));
+                        assert!(engine
+                            .store
+                            .outbox_get(losing_commit.as_ref().unwrap())
+                            .unwrap()
+                            .is_some());
+                        engine
+                            .store
+                            .conn()
+                            .execute_batch("DROP TRIGGER fail_refusal")
+                            .unwrap();
+                    }
+                    reply(
+                        &mut socket,
+                        ServerFrame::Rejected {
+                            space: space.into(),
+                            client_id: losing_commit.clone().unwrap(),
+                            reason: roda_proto::STALE_COMMIT.into(),
+                            permanent: true,
+                        },
+                    )
+                    .await;
+                }
+                reply(
+                    &mut socket,
+                    ServerFrame::Event {
+                        ev: missed_commit.clone(),
+                    },
+                )
+                .await;
+            }
+            if matches!(catch_up, CatchUp::PermissionRefusal) {
+                reply(
+                    &mut socket,
+                    ServerFrame::Event {
+                        ev: missed_commit.clone(),
+                    },
+                )
+                .await;
+                reply(&mut socket, ServerFrame::SyncDone).await;
+            }
             if matches!(catch_up, CatchUp::Incremental) {
                 reply(&mut socket, ServerFrame::SyncDone).await;
                 let mut sent_at_old_epoch = HashSet::new();
@@ -2151,6 +2311,22 @@ mod tests {
                                 "a late rejection must preserve the newer sealed copy"
                             );
                         }
+                        if matches!(catch_up, CatchUp::PermissionRefusal)
+                            && env.client_id() == cached.client_id
+                        {
+                            assert!(readable.insert(env.client_id().to_string()));
+                            reply(
+                                &mut socket,
+                                ServerFrame::Rejected {
+                                    space: space.into(),
+                                    client_id: env.client_id().into(),
+                                    reason: "permission denied".into(),
+                                    permanent: true,
+                                },
+                            )
+                            .await;
+                            continue;
+                        }
                         let (_, bytes) = env.sealed_data().unwrap();
                         assert_eq!(roda_mls::application_epoch(bytes), Some(2));
                         let Opened::Application { plaintext, .. } = peer
@@ -2254,6 +2430,22 @@ mod tests {
                 assert!(!engine.net.pending.contains_key(&cached.client_id));
                 assert!(!engine.net.pending.contains_key(&fresh.client_id));
                 engine.logs[space].verify().unwrap();
+                let errors = notices.errors.lock().unwrap();
+                if matches!(catch_up, CatchUp::PermissionRefusal) {
+                    assert_eq!(errors.as_slice(), ["Could not send. Try again."]);
+                    assert!(engine.store.outbox().unwrap().iter().any(|p| p.failed
+                        && p.event.client_id == cached.client_id
+                        && p.last_error.as_deref() == Some("permission denied")));
+                } else if matches!(catch_up, CatchUp::StorageRefusal) {
+                    assert_eq!(errors.as_slice(), ["Could not finish syncing. Try again."]);
+                    assert_eq!(engine.outbox_len(), 0);
+                } else {
+                    assert!(
+                        errors.is_empty(),
+                        "handled reconciliation is not a user error: {errors:?}"
+                    );
+                    assert_eq!(engine.outbox_len(), 0);
+                }
             }
             cmd.send(Cmd::Stop).unwrap();
             stopped.await.unwrap();
